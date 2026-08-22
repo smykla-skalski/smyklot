@@ -426,7 +426,7 @@ func TestPullRequestOpenedWakesGateReconciliation(t *testing.T) {
 	}}
 	err := srv.applyPendingCINotification(
 		context.Background(),
-		&webhook.PendingCINotification{
+		&pendingci.Notification{
 			Event: webhook.EventPullRequest, Action: "opened",
 		},
 		"delivery-1",

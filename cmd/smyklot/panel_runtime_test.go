@@ -712,7 +712,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		delivery := job{
 			eventName:   webhook.EventIssueComment,
 			action:      event.Action,
-			metadata:    issueCommentMetadata(event),
+			source:      issueCommentSource(event),
 			pullRequest: event.Issue.Number,
 			comment:     event,
 			key:         event.ContentKey(),

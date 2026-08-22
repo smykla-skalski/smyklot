@@ -20,10 +20,10 @@ import (
 // state before it ever decides to merge.
 func (g *Gate) HandleWebhook(
 	ctx context.Context,
-	notification *webhook.PendingCINotification,
+	notification *pendingci.Notification,
 	deliveryID string,
 ) error {
-	repositoryID := storage.RepositoryID(notification.Metadata.RepositoryID)
+	repositoryID := storage.RepositoryID(notification.Source.Repository.ID)
 	return g.Coordinator.Exclusive(ctx, repositoryID, func() error {
 		return g.applyPendingCINotification(ctx, notification, deliveryID)
 	})
@@ -31,7 +31,7 @@ func (g *Gate) HandleWebhook(
 
 func (g *Gate) applyPendingCINotification(
 	ctx context.Context,
-	notification *webhook.PendingCINotification,
+	notification *pendingci.Notification,
 	deliveryID string,
 ) error {
 	if notification.Event == webhook.EventPullRequest && notification.Action == "opened" {
@@ -45,7 +45,7 @@ func (g *Gate) applyPendingCINotification(
 
 	for _, signal := range notification.Signals {
 		count, err := g.applyPendingCISignal(
-			ctx, notification.Metadata, occurredAt, notification.Event, deliveryID, signal,
+			ctx, notification.Source, occurredAt, notification.Event, deliveryID, signal,
 		)
 		if err != nil {
 			return fmt.Errorf("apply %s pending CI signal: %w", notification.Event, err)
@@ -64,22 +64,22 @@ func (g *Gate) applyPendingCINotification(
 
 func (g *Gate) applyPendingCISignal(
 	ctx context.Context,
-	metadata webhook.Metadata,
+	source webhook.Source,
 	occurredAt time.Time,
 	eventName string,
 	deliveryID string,
-	signal webhook.PendingCISignal,
+	signal pendingci.Signal,
 ) (int64, error) {
-	repositoryID := storage.RepositoryID(metadata.RepositoryID)
+	repositoryID := storage.RepositoryID(source.Repository.ID)
 	switch signal.Kind {
-	case webhook.SignalWakePullRequest:
+	case pendingci.SignalWakePullRequest:
 		changed, err := g.wakePendingCIPullRequest(
 			ctx, repositoryID, occurredAt, eventName, deliveryID, signal,
 		)
 		if err != nil {
 			return 0, err
 		}
-		if err := g.ensureWebhookPendingCIBaseline(ctx, metadata, signal.PullRequest); err != nil {
+		if err := g.ensureWebhookPendingCIBaseline(ctx, source, signal.PullRequest); err != nil {
 			return 0, err
 		}
 		if changed {
@@ -87,7 +87,7 @@ func (g *Gate) applyPendingCISignal(
 		}
 
 		return 0, nil
-	case webhook.SignalPullRequestDone, webhook.SignalLabelRemoved:
+	case pendingci.SignalPullRequestDone, pendingci.SignalLabelRemoved:
 		changed, err := g.wakePendingCIPullRequest(
 			ctx, repositoryID, occurredAt, eventName, deliveryID, signal,
 		)
@@ -96,13 +96,13 @@ func (g *Gate) applyPendingCISignal(
 		}
 
 		return 0, err
-	case webhook.SignalWakeHead:
+	case pendingci.SignalWakeHead:
 		return g.Store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
 		})
-	case webhook.SignalReauthorize:
+	case pendingci.SignalReauthorize:
 		changed, err := g.reauthorizePendingCI(
 			ctx,
 			repositoryID,
@@ -115,7 +115,7 @@ func (g *Gate) applyPendingCISignal(
 		}
 
 		return 0, err
-	case webhook.SignalRerequestCheck:
+	case pendingci.SignalRerequestCheck:
 		if g.Checks != nil {
 			_, err := g.Checks.RefreshRerequest(
 				ctx, repositoryID, signal.HeadSHA, signal.AppID, signal.CheckRunID,
@@ -141,7 +141,7 @@ func (g *Gate) wakePendingCIPullRequest(
 	repositoryID string,
 	occurredAt time.Time,
 	eventName, deliveryID string,
-	signal webhook.PendingCISignal,
+	signal pendingci.Signal,
 ) (bool, error) {
 	expectedHead := ""
 	if signal.MatchHead {
@@ -156,7 +156,7 @@ func (g *Gate) wakePendingCIPullRequest(
 
 func (g *Gate) ensureWebhookPendingCIBaseline(
 	ctx context.Context,
-	metadata webhook.Metadata,
+	source webhook.Source,
 	pullRequest int,
 ) error {
 	if !g.Panelled || g.Checks == nil || pullRequest <= 0 {
@@ -164,7 +164,7 @@ func (g *Gate) ensureWebhookPendingCIBaseline(
 	}
 	target, repository, eligible, err := g.webhookPendingCIBaselineControls(
 		ctx,
-		metadata,
+		source,
 		pullRequest,
 	)
 	if err != nil || !eligible {
@@ -208,11 +208,11 @@ func (g *Gate) ensureWebhookPendingCIBaseline(
 
 func (g *Gate) webhookPendingCIBaselineControls(
 	ctx context.Context,
-	metadata webhook.Metadata,
+	source webhook.Source,
 	pullRequest int,
 ) (storage.Target, storage.Repository, bool, error) {
-	targetID := storage.InstallationID(metadata.InstallationID)
-	repositoryID := storage.RepositoryID(metadata.RepositoryID)
+	targetID := storage.InstallationID(source.InstallationID)
+	repositoryID := storage.RepositoryID(source.Repository.ID)
 	target, repository, err := readControls(ctx, g.Store, targetID, repositoryID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return storage.Target{}, storage.Repository{}, false, nil
@@ -262,7 +262,7 @@ func (g *Gate) reauthorizePendingCI(
 	repositoryID string,
 	authorizedAt time.Time,
 	deliveryID string,
-	signal webhook.PendingCISignal,
+	signal pendingci.Signal,
 ) (bool, error) {
 	candidate, found, err := g.reauthorizationCandidate(ctx, repositoryID, signal)
 	if err != nil || !found {
@@ -309,7 +309,7 @@ func (g *Gate) reauthorizePendingCI(
 func (g *Gate) reauthorizationCandidate(
 	ctx context.Context,
 	repositoryID string,
-	signal webhook.PendingCISignal,
+	signal pendingci.Signal,
 ) (reauthorizationCandidate, bool, error) {
 	slot, err := g.Store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
 	if errors.Is(err, storage.ErrNotFound) {
@@ -352,7 +352,7 @@ func (g *Gate) reauthorizationCandidate(
 func (g *Gate) preparePendingCIReauthorization(
 	ctx context.Context,
 	candidate reauthorizationCandidate,
-	signal webhook.PendingCISignal,
+	signal pendingci.Signal,
 ) (bool, error) {
 	client := candidate.client
 	owner := candidate.owner

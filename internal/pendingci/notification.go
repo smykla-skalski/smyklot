@@ -1,8 +1,10 @@
-package webhook
+package pendingci
 
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 type SignalKind string
@@ -16,15 +18,7 @@ const (
 	SignalRerequestCheck  SignalKind = "rerequest_check"
 )
 
-type Metadata struct {
-	InstallationID     int64
-	RepositoryID       int64
-	RepositoryFullName string
-	RepositoryOwner    string
-	RepositoryName     string
-}
-
-type PendingCISignal struct {
+type Signal struct {
 	Kind        SignalKind
 	PullRequest int
 	HeadSHA     string
@@ -40,90 +34,50 @@ type PendingCISignal struct {
 	ActionID    string
 }
 
-type PendingCINotification struct {
-	Event    string
-	Action   string
-	Key      string
-	Metadata Metadata
-	Signals  []PendingCISignal
+type Notification struct {
+	Event   string
+	Action  string
+	Key     string
+	Source  webhook.Source
+	Signals []Signal
 }
 
-type commonPayload struct {
-	Action       string `json:"action"`
-	Installation struct {
-		ID int64 `json:"id"`
-	} `json:"installation"`
-	Repository struct {
-		ID       int64  `json:"id"`
-		Name     string `json:"name"`
-		FullName string `json:"full_name"`
-		Owner    struct {
-			Login string `json:"login"`
-		} `json:"owner"`
-	} `json:"repository"`
-}
-
-func SupportsPendingCI(event string) bool {
+func Supports(event string) bool {
 	switch event {
-	case EventCheckRun, EventCheckSuite, EventStatus, EventPullRequest:
+	case webhook.EventCheckRun, webhook.EventCheckSuite, webhook.EventStatus, webhook.EventPullRequest:
 		return true
 	default:
 		return false
 	}
 }
 
-// ParsePendingCINotification normalizes CI and pull-request deliveries into
+// ParseNotification normalizes CI and pull-request deliveries into
 // wake-up signals. It does not decide pending-CI state or trust the payload as
 // current GitHub truth; the reconciler performs that live read later.
-func ParsePendingCINotification(event string, body []byte) (*PendingCINotification, error) {
-	var common commonPayload
-	if err := json.Unmarshal(body, &common); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMalformedPayload, err)
-	}
-	metadata, err := metadataFrom(common)
+func ParseNotification(event string, body []byte) (*Notification, error) {
+	source, err := webhook.ParseSource(body)
 	if err != nil {
 		return nil, err
 	}
 
-	var notification *PendingCINotification
+	var notification *Notification
 	switch event {
-	case EventCheckRun:
-		notification, err = parseCheckRun(common, metadata, body)
-	case EventCheckSuite:
-		notification, err = parseCheckSuite(common, metadata, body)
-	case EventStatus:
-		notification, err = parseStatus(metadata, body)
-	case EventPullRequest:
-		notification, err = parsePullRequest(common, metadata, body)
+	case webhook.EventCheckRun:
+		notification, err = parseCheckRun(source, body)
+	case webhook.EventCheckSuite:
+		notification, err = parseCheckSuite(source, body)
+	case webhook.EventStatus:
+		notification, err = parseStatus(source, body)
+	case webhook.EventPullRequest:
+		notification, err = parsePullRequest(source, body)
 	default:
-		return nil, fmt.Errorf("%w: unsupported event %q", ErrMalformedPayload, event)
+		return nil, fmt.Errorf("%w: unsupported event %q", webhook.ErrMalformedPayload, event)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrMalformedPayload, err)
+		return nil, fmt.Errorf("%w: %w", webhook.ErrMalformedPayload, err)
 	}
 
 	return notification, nil
-}
-
-func metadataFrom(payload commonPayload) (Metadata, error) {
-	if payload.Installation.ID == 0 {
-		return Metadata{}, ErrNoInstallation
-	}
-	if payload.Repository.ID == 0 || payload.Repository.Owner.Login == "" || payload.Repository.Name == "" {
-		return Metadata{}, ErrNoRepository
-	}
-	fullName := payload.Repository.FullName
-	if fullName == "" {
-		fullName = payload.Repository.Owner.Login + "/" + payload.Repository.Name
-	}
-
-	return Metadata{
-		InstallationID:     payload.Installation.ID,
-		RepositoryID:       payload.Repository.ID,
-		RepositoryFullName: fullName,
-		RepositoryOwner:    payload.Repository.Owner.Login,
-		RepositoryName:     payload.Repository.Name,
-	}, nil
 }
 
 type checkSubject struct {
@@ -143,10 +97,9 @@ type checkSubject struct {
 }
 
 func parseCheckRun(
-	common commonPayload,
-	metadata Metadata,
+	source webhook.Source,
 	body []byte,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	var payload struct {
 		CheckRun        checkSubject `json:"check_run"`
 		RequestedAction struct {
@@ -160,38 +113,38 @@ func parseCheckRun(
 		return nil, err
 	}
 
-	if common.Action == "requested_action" {
+	if source.Action == "requested_action" {
 		return requestedCheckActionNotification(
-			metadata,
+			source,
 			payload.CheckRun,
 			payload.RequestedAction.Identifier,
 			payload.Sender.Login,
 		)
 	}
 
-	return checkNotification(EventCheckRun, common.Action, metadata, payload.CheckRun)
+	return checkNotification(webhook.EventCheckRun, source.Action, source, payload.CheckRun)
 }
 
 func requestedCheckActionNotification(
-	metadata Metadata,
+	source webhook.Source,
 	subject checkSubject,
 	identifier, actor string,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	if subject.ID <= 0 || subject.HeadSHA == "" || subject.Name == "" ||
 		subject.ExternalID == "" || subject.App.ID <= 0 || identifier == "" || actor == "" {
 		return nil, fmt.Errorf("check_run requested action is missing check or actor identity")
 	}
 	key := fmt.Sprintf(
 		"%s:%d:%d:requested_action:%s:%s",
-		EventCheckRun,
-		metadata.RepositoryID,
+		webhook.EventCheckRun,
+		source.Repository.ID,
 		subject.ID,
 		identifier,
 		actor,
 	)
-	signals := make([]PendingCISignal, 0, max(1, len(subject.PullRequests)))
+	signals := make([]Signal, 0, max(1, len(subject.PullRequests)))
 	appendSignal := func(pullRequest int) {
-		signals = append(signals, PendingCISignal{
+		signals = append(signals, Signal{
 			Kind: SignalReauthorize, PullRequest: pullRequest, HeadSHA: subject.HeadSHA,
 			EventKey: key, Actor: actor, CheckRunID: subject.ID, CheckName: subject.Name,
 			ExternalID: subject.ExternalID, AppID: subject.App.ID,
@@ -207,17 +160,16 @@ func requestedCheckActionNotification(
 		appendSignal(0)
 	}
 
-	return &PendingCINotification{
-		Event: EventCheckRun, Action: "requested_action", Key: key,
-		Metadata: metadata, Signals: signals,
+	return &Notification{
+		Event: webhook.EventCheckRun, Action: "requested_action", Key: key,
+		Source: source, Signals: signals,
 	}, nil
 }
 
 func parseCheckSuite(
-	common commonPayload,
-	metadata Metadata,
+	source webhook.Source,
 	body []byte,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	var payload struct {
 		CheckSuite checkSubject `json:"check_suite"`
 	}
@@ -225,28 +177,28 @@ func parseCheckSuite(
 		return nil, err
 	}
 
-	return checkNotification(EventCheckSuite, common.Action, metadata, payload.CheckSuite)
+	return checkNotification(webhook.EventCheckSuite, source.Action, source, payload.CheckSuite)
 }
 
 func checkNotification(
 	event, action string,
-	metadata Metadata,
+	source webhook.Source,
 	subject checkSubject,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	if action == "" || subject.ID == 0 || subject.HeadSHA == "" {
 		return nil, fmt.Errorf("%s payload is missing action, id, or head SHA", event)
 	}
 	key := fmt.Sprintf(
 		"%s:%d:%d:%s:%s:%s:%s",
 		event,
-		metadata.RepositoryID,
+		source.Repository.ID,
 		subject.ID,
 		action,
 		subject.Status,
 		subject.Conclusion,
 		subject.UpdatedAt,
 	)
-	signals := make([]PendingCISignal, 0, max(1, len(subject.PullRequests)))
+	signals := make([]Signal, 0, max(1, len(subject.PullRequests)))
 	kind := SignalWakePullRequest
 	if action == "rerequested" {
 		if subject.App.ID <= 0 {
@@ -258,7 +210,7 @@ func checkNotification(
 		if pullRequest.Number <= 0 {
 			continue
 		}
-		signal := PendingCISignal{
+		signal := Signal{
 			Kind: kind, PullRequest: pullRequest.Number,
 			HeadSHA: subject.HeadSHA, MatchHead: true, EventKey: key,
 		}
@@ -272,27 +224,27 @@ func checkNotification(
 	}
 	if len(signals) == 0 {
 		if kind == SignalRerequestCheck {
-			signals = append(signals, PendingCISignal{
+			signals = append(signals, Signal{
 				Kind: kind, HeadSHA: subject.HeadSHA, EventKey: key,
 				CheckRunID: subject.ID, CheckName: subject.Name,
 				ExternalID: subject.ExternalID, AppID: subject.App.ID,
 			})
 		} else {
-			signals = append(signals, PendingCISignal{
+			signals = append(signals, Signal{
 				Kind: SignalWakeHead, HeadSHA: subject.HeadSHA, EventKey: key,
 			})
 		}
 	}
 
-	return &PendingCINotification{
-		Event: event, Action: action, Key: key, Metadata: metadata, Signals: signals,
+	return &Notification{
+		Event: event, Action: action, Key: key, Source: source, Signals: signals,
 	}, nil
 }
 
 func parseStatus(
-	metadata Metadata,
+	source webhook.Source,
 	body []byte,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	var payload struct {
 		SHA       string `json:"sha"`
 		Context   string `json:"context"`
@@ -307,25 +259,24 @@ func parseStatus(
 	}
 	key := fmt.Sprintf(
 		"%s:%d:%s:%s:%s:%s",
-		EventStatus,
-		metadata.RepositoryID,
+		webhook.EventStatus,
+		source.Repository.ID,
 		payload.SHA,
 		payload.Context,
 		payload.State,
 		payload.UpdatedAt,
 	)
 
-	return &PendingCINotification{
-		Event: EventStatus, Action: payload.State, Key: key, Metadata: metadata,
-		Signals: []PendingCISignal{{Kind: SignalWakeHead, HeadSHA: payload.SHA, EventKey: key}},
+	return &Notification{
+		Event: webhook.EventStatus, Action: payload.State, Key: key, Source: source,
+		Signals: []Signal{{Kind: SignalWakeHead, HeadSHA: payload.SHA, EventKey: key}},
 	}, nil
 }
 
 func parsePullRequest(
-	common commonPayload,
-	metadata Metadata,
+	source webhook.Source,
 	body []byte,
-) (*PendingCINotification, error) {
+) (*Notification, error) {
 	var payload struct {
 		Number      int `json:"number"`
 		PullRequest struct {
@@ -342,24 +293,24 @@ func parsePullRequest(
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return nil, err
 	}
-	if common.Action == "" || payload.Number <= 0 {
+	if source.Action == "" || payload.Number <= 0 {
 		return nil, fmt.Errorf("pull request payload is missing action or number")
 	}
 	key := fmt.Sprintf(
 		"%s:%d:%d:%s:%s:%s:%s",
-		EventPullRequest,
-		metadata.RepositoryID,
+		webhook.EventPullRequest,
+		source.Repository.ID,
 		payload.Number,
-		common.Action,
+		source.Action,
 		payload.PullRequest.Head.SHA,
 		payload.PullRequest.UpdatedAt,
 		payload.Label.Name,
 	)
-	signal := PendingCISignal{
+	signal := Signal{
 		Kind: SignalWakePullRequest, PullRequest: payload.Number,
 		HeadSHA: payload.PullRequest.Head.SHA, EventKey: key,
 	}
-	switch common.Action {
+	switch source.Action {
 	case "closed":
 		signal.Kind = SignalPullRequestDone
 		signal.Merged = payload.PullRequest.Merged
@@ -369,13 +320,13 @@ func parsePullRequest(
 	case "opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "edited", "labeled",
 		"unlocked", "enqueued", "dequeued":
 	default:
-		return &PendingCINotification{
-			Event: EventPullRequest, Action: common.Action, Key: key, Metadata: metadata,
+		return &Notification{
+			Event: webhook.EventPullRequest, Action: source.Action, Key: key, Source: source,
 		}, nil
 	}
 
-	return &PendingCINotification{
-		Event: EventPullRequest, Action: common.Action, Key: key, Metadata: metadata,
-		Signals: []PendingCISignal{signal},
+	return &Notification{
+		Event: webhook.EventPullRequest, Action: source.Action, Key: key, Source: source,
+		Signals: []Signal{signal},
 	}, nil
 }

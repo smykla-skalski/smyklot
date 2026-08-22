@@ -120,14 +120,14 @@ func (s *server) beginDelivery(
 	ctx context.Context,
 	j *job,
 ) (storage.DeliveryClaimDisposition, error) {
-	repositoryID := storage.RepositoryID(j.metadata.RepositoryID)
+	repositoryID := storage.RepositoryID(j.source.Repository.ID)
 
 	result, err := s.deliveryStore.ClaimDelivery(ctx, storage.DeliveryClaim{
 		ClaimKey:           j.key,
 		DeliveryID:         j.deliveryID,
-		TargetID:           storage.InstallationID(j.metadata.InstallationID),
+		TargetID:           storage.InstallationID(j.source.InstallationID),
 		RepositoryID:       &repositoryID,
-		RepositoryFullName: j.metadata.RepositoryFullName,
+		RepositoryFullName: j.source.Repository.FullName,
 		Event:              j.eventName,
 		Payload:            j.payload,
 		ClaimedAt:          time.Now().UTC(),
@@ -225,8 +225,8 @@ func retryableDelivery(cause error, attempt int) bool {
 func (s *server) announceDelivery(j job) {
 	if s.panel != nil {
 		s.panel.Announce(
-			storage.InstallationID(j.metadata.InstallationID),
-			storage.RepositoryID(j.metadata.RepositoryID),
+			storage.InstallationID(j.source.InstallationID),
+			storage.RepositoryID(j.source.Repository.ID),
 		)
 	}
 }

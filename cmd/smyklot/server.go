@@ -192,10 +192,10 @@ type server struct {
 type job struct {
 	eventName    string
 	action       string
-	metadata     webhook.Metadata
+	source       webhook.Source
 	pullRequest  int
 	comment      *webhook.IssueCommentEvent
-	notification *webhook.PendingCINotification
+	notification *pendingci.Notification
 	key          string
 	deliveryID   string
 	claimID      int64
@@ -503,7 +503,7 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if eventName != webhook.EventIssueComment && !webhook.SupportsPendingCI(eventName) {
+	if eventName != webhook.EventIssueComment && !pendingci.Supports(eventName) {
 		s.ignore(w, event, http.StatusNoContent)
 
 		return
@@ -535,7 +535,7 @@ func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx = logging.With(ctx,
-		"repo", j.metadata.RepositoryFullName,
+		"repo", j.source.Repository.FullName,
 		"pr", j.pullRequest,
 		"action", j.action,
 	)
@@ -698,7 +698,7 @@ func (s *server) recordFailure(j job, cause error) {
 	s.failures.Record(deliveryFailure{
 		Time:        time.Now(),
 		DeliveryID:  j.deliveryID,
-		Repository:  j.metadata.RepositoryFullName,
+		Repository:  j.source.Repository.FullName,
 		PullRequest: j.pullRequest,
 		Action:      j.action,
 		Reason:      s.redactor.Error(cause),

@@ -13,7 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
-	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 func TestPendingCICheckObservationAppliesFreshBranchScope(t *testing.T) {
@@ -83,7 +82,7 @@ func TestPendingCIReauthorizationRejectsANewMergeQueue(t *testing.T) {
 			},
 			client: client, owner: "owner", repository: "repository",
 		},
-		webhook.PendingCISignal{Actor: "maintainer", HeadSHA: "new-head"},
+		pendingci.Signal{Actor: "maintainer", HeadSHA: "new-head"},
 	)
 	if err != nil {
 		t.Fatal(err)

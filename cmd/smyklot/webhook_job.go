@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -14,11 +15,11 @@ func (s *server) decodeWebhookJob(eventName string, body []byte) (job, bool, err
 	if eventName == webhook.EventIssueComment {
 		return s.decodeIssueCommentJob(body)
 	}
-	if !webhook.SupportsPendingCI(eventName) {
+	if !pendingci.Supports(eventName) {
 		return job{}, false, nil
 	}
 
-	notification, err := webhook.ParsePendingCINotification(eventName, body)
+	notification, err := pendingci.ParseNotification(eventName, body)
 	if err != nil {
 		return job{}, false, err
 	}
@@ -34,7 +35,7 @@ func (s *server) decodeWebhookJob(eventName string, body []byte) (job, bool, err
 	return job{
 		eventName:    eventName,
 		action:       notification.Action,
-		metadata:     notification.Metadata,
+		source:       notification.Source,
 		pullRequest:  pullRequest,
 		notification: notification,
 		key:          notification.Key,
@@ -56,32 +57,35 @@ func (s *server) decodeIssueCommentJob(body []byte) (job, bool, error) {
 	return job{
 		eventName:   webhook.EventIssueComment,
 		action:      event.Action,
-		metadata:    issueCommentMetadata(event),
+		source:      issueCommentSource(event),
 		pullRequest: event.Issue.Number,
 		comment:     event,
 		key:         event.ContentKey(),
 	}, true, nil
 }
 
-func issueCommentMetadata(event *webhook.IssueCommentEvent) webhook.Metadata {
-	return webhook.Metadata{
-		InstallationID:     event.Installation.ID,
-		RepositoryID:       event.Repository.ID,
-		RepositoryFullName: event.Repository.FullName,
-		RepositoryOwner:    event.Repository.Owner.Login,
-		RepositoryName:     event.Repository.Name,
+func issueCommentSource(event *webhook.IssueCommentEvent) webhook.Source {
+	return webhook.Source{
+		InstallationID: event.Installation.ID,
+		Repository: webhook.Repository{
+			ID:       event.Repository.ID,
+			Owner:    event.Repository.Owner.Login,
+			Name:     event.Repository.Name,
+			FullName: event.Repository.FullName,
+		},
+		Action: event.Action,
 	}
 }
 
-func relevantPendingCISignals(signals []webhook.PendingCISignal) []webhook.PendingCISignal {
-	relevant := make([]webhook.PendingCISignal, 0, len(signals))
+func relevantPendingCISignals(signals []pendingci.Signal) []pendingci.Signal {
+	relevant := make([]pendingci.Signal, 0, len(signals))
 	for _, signal := range signals {
-		if signal.Kind == webhook.SignalReauthorize &&
+		if signal.Kind == pendingci.SignalReauthorize &&
 			(signal.ActionID != gate.ReauthorizeAction ||
 				signal.CheckName != storage.PendingCICheckName) {
 			continue
 		}
-		if signal.Kind == webhook.SignalLabelRemoved {
+		if signal.Kind == pendingci.SignalLabelRemoved {
 			_, _, label := bot.ParsePendingCILabel(signal.Label)
 			if label == "" {
 				continue
@@ -109,7 +113,7 @@ func (s *server) deliveryJob(work storage.DeliveryWork) (job, error) {
 	j.logger = s.logger.With(
 		"delivery_id", work.DeliveryID,
 		"event", work.Event,
-		"repo", j.metadata.RepositoryFullName,
+		"repo", j.source.Repository.FullName,
 		"pr", j.pullRequest,
 		"action", j.action,
 		"attempt", work.Attempt,
