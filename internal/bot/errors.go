@@ -131,49 +131,21 @@ func (e *inputError) Is(target error) bool {
 	return errors.Is(e.Op, target)
 }
 
-// gitHubError represents an error from GitHub API operations.
-type gitHubError struct {
+// opError names the operation that failed and carries the cause underneath it.
+type opError struct {
 	Op  error
 	Err error
 }
 
 func NewGitHubError(op, err error) error {
-	return &gitHubError{
-		Op:  op,
-		Err: err,
-	}
-}
-
-func (e *gitHubError) Error() string {
-	if e.Err != nil {
-		return fmt.Sprintf("%s: %v", e.Op, e.Err)
-	}
-
-	return e.Op.Error()
-}
-
-func (e *gitHubError) Unwrap() error {
-	if e.Err != nil {
-		return e.Err
-	}
-
-	return e.Op
-}
-
-// configError represents an error from configuration loading.
-type configError struct {
-	Op  error
-	Err error
+	return &opError{Op: op, Err: err}
 }
 
 func NewConfigError(op, err error) error {
-	return &configError{
-		Op:  op,
-		Err: err,
-	}
+	return &opError{Op: op, Err: err}
 }
 
-func (e *configError) Error() string {
+func (e *opError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %v", e.Op, e.Err)
 	}
@@ -181,7 +153,7 @@ func (e *configError) Error() string {
 	return e.Op.Error()
 }
 
-func (e *configError) Unwrap() error {
+func (e *opError) Unwrap() error {
 	if e.Err != nil {
 		return e.Err
 	}
@@ -191,23 +163,8 @@ func (e *configError) Unwrap() error {
 
 // Is matches on the operation, since Unwrap walks to the cause instead.
 //
-// Without this a caller cannot tell one configuration failure from another -
-// errors.Is would follow Unwrap past Op and never see it. gitHubError and
-// inputError already do this.
-func (e *configError) Is(target error) bool {
-	var configErr *configError
-	if errors.As(target, &configErr) {
-		return true
-	}
-
-	return errors.Is(e.Op, target)
-}
-
-func (e *gitHubError) Is(target error) bool {
-	var ghErr *gitHubError
-	if errors.As(target, &ghErr) {
-		return true
-	}
-
+// Without this a caller cannot tell one failure from another - errors.Is would
+// follow Unwrap past Op and never see it.
+func (e *opError) Is(target error) bool {
 	return errors.Is(e.Op, target)
 }

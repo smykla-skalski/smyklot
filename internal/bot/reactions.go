@@ -64,6 +64,7 @@ func handleReactions(
 	// Build maps for quick lookup
 	reactionMap := make(map[github.ReactionType]bool)
 	labelMap := make(map[string]bool)
+	permitted := make([]github.Reaction, 0, len(reactions))
 
 	for _, reaction := range reactions {
 		// Check if user has permission
@@ -79,6 +80,7 @@ func handleReactions(
 			continue
 		}
 
+		permitted = append(permitted, reaction)
 		reactionMap[reaction.Type] = true
 	}
 
@@ -100,20 +102,7 @@ func handleReactions(
 	}
 
 	// Process each reaction
-	for _, reaction := range reactions {
-		// Check if user has permission
-		canApprove, err := CheckUserPermission(
-			ctx,
-			client,
-			checker,
-			reaction.User,
-			rc.RepoOwner,
-			rc.RepoName,
-		)
-		if err != nil || !canApprove {
-			continue
-		}
-
+	for _, reaction := range permitted {
 		// Handle approve reaction
 		if reaction.Type == github.ReactionApprove {
 			if err := handleReactionApprove(ctx, client, rc, bc, prNum, commentID, reaction.User); err != nil {

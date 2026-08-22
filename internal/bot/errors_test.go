@@ -1,0 +1,38 @@
+package bot
+
+import (
+	"errors"
+	"testing"
+)
+
+func TestOpErrorMatchesItsOperationAndItsCause(t *testing.T) {
+	t.Parallel()
+	cause := errors.New("connection reset")
+
+	tests := []struct {
+		name   string
+		err    error
+		target error
+		want   bool
+	}{
+		// Given a failure wrapped with the operation it came from
+		{"its own operation", NewGitHubError(errMergePR, cause), errMergePR, true},
+		{"the cause underneath", NewGitHubError(errMergePR, cause), cause, true},
+		{"a different operation", NewGitHubError(errMergePR, cause), errApprovePR, false},
+
+		// Then a configuration failure is still told apart from a GitHub one,
+		// which is what sharing one struct must not cost
+		{"config keeps its own operation", NewConfigError(ErrConfigLoad, cause), ErrConfigLoad, true},
+		{"config is not a GitHub failure", NewConfigError(ErrConfigLoad, cause), errMergePR, false},
+		{"GitHub is not a config failure", NewGitHubError(errMergePR, cause), ErrConfigLoad, false},
+
+		// And an operation with no cause still names itself
+		{"no cause", NewGitHubError(errMergePR, nil), errMergePR, true},
+	}
+
+	for _, test := range tests {
+		if got := errors.Is(test.err, test.target); got != test.want {
+			t.Errorf("%s: errors.Is = %t, want %t (%v)", test.name, got, test.want, test.err)
+		}
+	}
+}
