@@ -10,6 +10,18 @@
 -- SQLite cannot widen a CHECK in place, so the table is rebuilt the way
 -- 026_sync_audit.sql rebuilt the audit trunk: a copy with the wider list, the
 -- rows carried across, the old table dropped and the copy renamed under it.
+--
+-- sync_plan_actions points at this table with ON DELETE CASCADE. Dropping the
+-- parent therefore deletes the actions before the replacement can take its
+-- name, even though every plan id is copied. Move the children aside first,
+-- exactly as migration 026 does for security_notifications.
+PRAGMA defer_foreign_keys = ON;
+
+CREATE TABLE sync_plan_actions_discard_rebuild AS
+SELECT * FROM sync_plan_actions;
+
+DELETE FROM sync_plan_actions;
+
 CREATE TABLE sync_plans_with_discard (
     id TEXT PRIMARY KEY,
     target_id TEXT NOT NULL REFERENCES targets(id) ON DELETE CASCADE,
@@ -60,6 +72,17 @@ FROM sync_plans;
 DROP TABLE sync_plans;
 
 ALTER TABLE sync_plans_with_discard RENAME TO sync_plans;
+
+INSERT INTO sync_plan_actions (
+    id, plan_id, repository_id, kind, operation, subject,
+    before_state, after_state, payload, state, error, blocker
+)
+SELECT
+    id, plan_id, repository_id, kind, operation, subject,
+    before_state, after_state, payload, state, error, blocker
+FROM sync_plan_actions_discard_rebuild;
+
+DROP TABLE sync_plan_actions_discard_rebuild;
 
 -- One live plan per installation, as a fact the database holds rather than a
 -- convention the callers keep. A discarded plan leaves the slot, which is the

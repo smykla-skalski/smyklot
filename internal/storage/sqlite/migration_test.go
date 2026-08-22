@@ -546,6 +546,66 @@ VALUES ('not-a-category', 'github:1', 'x', 'x', ?)`, now); err == nil {
 	}
 }
 
+// TestSyncPlanDiscardMigrationPreservesActions proves rebuilding the plan
+// parent does not trigger the action table's ON DELETE CASCADE.
+func TestSyncPlanDiscardMigrationPreservesActions(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "sync-plan-discard.db")
+	db := openLegacyDatabase(t, ctx, path, 36)
+	now := time.Date(2026, time.August, 21, 12, 0, 0, 0, time.UTC).
+		Format(time.RFC3339Nano)
+
+	statements := []string{
+		`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES ('github:1', 'github', '1', 'smykla', 'Smykla', '` + now + `')`,
+		`INSERT INTO targets (
+id, installation_id, kind, account_id, settings_updated_at, synced_at
+) VALUES ('installation:1', '1', 'Organization', 'github:1', '` + now + `', '` + now + `')`,
+		`INSERT INTO repositories (
+id, target_id, name, full_name, private, settings_updated_at, synced_at
+) VALUES (
+'repository:1', 'installation:1', 'smyklot', 'smykla/smyklot', 0, '` + now + `', '` + now + `'
+)`,
+		`INSERT INTO sync_plans (
+id, target_id, trigger_kind, actor_account_id, digest, state,
+create_count, computed_at, expires_at
+) VALUES (
+'plan:1', 'installation:1', 'manual', 'github:1', 'digest', 'computed',
+1, '` + now + `', '` + now + `'
+)`,
+		`INSERT INTO sync_plan_actions (
+plan_id, repository_id, kind, operation, subject, before_state,
+after_state, payload, state
+) VALUES (
+'plan:1', 'repository:1', 'files', 'create', 'README.md', '',
+'new', 'payload', 'pending'
+)`,
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatalf("seed sync plan relationship: %v\n%s", err, statement)
+		}
+	}
+
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrations); err != nil {
+		t.Fatalf("apply the sync plan discard migration: %v", err)
+	}
+
+	var planID, payload, state string
+	if err := db.QueryRowContext(ctx, `
+SELECT plan_id, payload, state FROM sync_plan_actions WHERE subject = 'README.md'`,
+	).Scan(&planID, &payload, &state); err != nil {
+		t.Fatalf("read migrated sync plan action: %v", err)
+	}
+	if planID != "plan:1" || payload != "payload" || state != "pending" {
+		t.Errorf("migrated action = (%q, %q, %q)", planID, payload, state)
+	}
+
+	requireNoForeignKeyViolations(t, ctx, db)
+}
+
 // seedAuditRelationship writes an audit event with a notification pointing at
 // it, which is the pair the rebuild has to keep together.
 func seedAuditRelationship(t *testing.T, ctx context.Context, db *sql.DB, now string) {
