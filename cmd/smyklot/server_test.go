@@ -17,6 +17,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -754,7 +755,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 
 		It("should reject a comment past the length cap", func() {
-			oversized := make([]byte, maxCommentBodyLength+1)
+			oversized := make([]byte, bot.MaxCommentBodyLength+1)
 			for i := range oversized {
 				oversized[i] = 'a'
 			}

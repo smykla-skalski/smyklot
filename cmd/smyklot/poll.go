@@ -56,13 +56,13 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 
 	// Create runtime config for GitHub App auth
 	rc := &bot.RuntimeConfig{}
-	loadEnvIfEmpty(&rc.Token, envGitHubToken)
-	loadEnvIfEmpty(&rc.GitHubAppPrivateKey, envGitHubAppPrivateKey)
-	loadEnvIfEmpty(&rc.GitHubAppClientID, envGitHubAppClientID)
-	loadEnvIfEmpty(&rc.GitHubAppID, envGitHubAppID)
-	loadEnvIfEmpty(&rc.InstallationID, envInstallationID)
-	loadEnvIfEmpty(&rc.BotUsername, envBotUsername)
-	loadEnvIfEmpty(&rc.APIBaseURL, envAPIBaseURL)
+	loadEnvIfEmpty(&rc.Token, bot.EnvGitHubToken)
+	loadEnvIfEmpty(&rc.GitHubAppPrivateKey, bot.EnvGitHubAppPrivateKey)
+	loadEnvIfEmpty(&rc.GitHubAppClientID, bot.EnvGitHubAppClientID)
+	loadEnvIfEmpty(&rc.GitHubAppID, bot.EnvGitHubAppID)
+	loadEnvIfEmpty(&rc.InstallationID, bot.EnvInstallationID)
+	loadEnvIfEmpty(&rc.BotUsername, bot.EnvBotUsername)
+	loadEnvIfEmpty(&rc.APIBaseURL, bot.EnvAPIBaseURL)
 
 	if rc.BotUsername == "" {
 		rc.BotUsername = defaultBotUsername
@@ -133,8 +133,8 @@ func getPollConfig(cmd *cobra.Command, rc *bot.RuntimeConfig) (string, string, e
 
 	// Get repo from environment if not provided via flag
 	if repo == "" {
-		owner := os.Getenv(envRepoOwner)
-		name := os.Getenv(envRepoName)
+		owner := os.Getenv(bot.EnvRepoOwner)
+		name := os.Getenv(bot.EnvRepoName)
 		if owner == "" || name == "" {
 			return "", "", fmt.Errorf("repository not specified (use --repo or REPO_OWNER/REPO_NAME env vars)")
 		}
@@ -143,10 +143,10 @@ func getPollConfig(cmd *cobra.Command, rc *bot.RuntimeConfig) (string, string, e
 
 	// Get token from environment if not provided via flag
 	if token == "" {
-		token = os.Getenv(envGitHubToken)
+		token = os.Getenv(bot.EnvGitHubToken)
 		if token == "" {
 			// Try GitHub App auth
-			installationToken, err := getInstallationToken(rc)
+			installationToken, err := bot.InstallationToken(rc)
 			if err != nil {
 				return "", "", err
 			}
@@ -338,7 +338,7 @@ func processPR(
 	rc := &bot.RuntimeConfig{
 		CommentBody:   title, // Use PR title as body
 		CommentID:     strconv.Itoa(prNumber),
-		CommentAction: commentActionCreated,
+		CommentAction: bot.CommentActionCreated,
 		PRNumber:      strconv.Itoa(prNumber),
 		RepoOwner:     repoOwner,
 		RepoName:      repoName,
@@ -348,7 +348,7 @@ func processPR(
 
 	// Process reactions if not disabled
 	if !bc.DisableReactions {
-		if err := handleReactions(
+		if err := bot.HandleReactions(
 			ctx, client, rc, bc, checker, prNumber, prNumber, environment,
 		); err != nil {
 			return fmt.Errorf("failed to process reactions on PR #%d: %w", prNumber, err)

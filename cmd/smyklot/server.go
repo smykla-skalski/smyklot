@@ -709,7 +709,7 @@ func (s *server) recordFailure(j job, cause error) {
 
 // handleIssueComment runs the command a comment carries.
 //
-// Everything past executeComment is the Action's own code, so a comment gets
+// Everything past bot.ExecuteComment is the Action's own code, so a comment gets
 // the same permission check and the same feedback whichever entry point saw it.
 func (s *server) handleIssueComment(
 	ctx context.Context,
@@ -783,7 +783,7 @@ func (s *server) handleIssueComment(
 		return nil
 	}
 
-	return executeCommentWithEnvironment(
+	return bot.ExecuteCommentWithEnvironment(
 		ctx, client, rc, bc, s.commandEnvironment(client, event, claim.Source.SourceOrder),
 	)
 }

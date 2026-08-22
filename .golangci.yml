@@ -154,8 +154,15 @@ linters:
           - unused
           - revive  # Allow dot imports and unused parameters in tests
 
-      # Allow long functions in main.go (GitHub Actions handlers)
-      - path: cmd/smyklot/main\.go
+      # main.go used to carry this, and what needed it was the comment, merge
+      # and reaction handlers rather than the file they happened to share. Each
+      # is one long branch over what a pull request turned out to be, and
+      # splitting one buys a name for a step nothing else will ever call.
+      #
+      # Narrower than what it replaces: the rest of internal/bot is held to the
+      # same lengths as everything else, and the file the cobra commands live
+      # in no longer needs an exemption at all.
+      - path: internal/bot/(command|reactions)\.go
         linters:
           - funlen
           - gocyclo

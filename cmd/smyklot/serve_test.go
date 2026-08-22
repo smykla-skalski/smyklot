@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -35,11 +36,11 @@ var serveEnv = []string{
 	envPanelClientSecret,
 	envGitHubAuthURL,
 	envGitHubTokenURL,
-	envAPIBaseURL,
-	envBotUsername,
-	envGitHubAppClientID,
-	envGitHubAppID,
-	envGitHubAppPrivateKey,
+	bot.EnvAPIBaseURL,
+	bot.EnvBotUsername,
+	bot.EnvGitHubAppClientID,
+	bot.EnvGitHubAppID,
+	bot.EnvGitHubAppPrivateKey,
 	config.EnvConfig,
 }
 
@@ -254,15 +255,15 @@ var _ = Describe("Serve configuration [Unit]", func() {
 	Context("App credentials", func() {
 		It("should prefer the client ID", func() {
 			cfg, err := loadServe(map[string]string{
-				envGitHubAppClientID: "Iv1.client",
-				envGitHubAppID:       "12345",
+				bot.EnvGitHubAppClientID: "Iv1.client",
+				bot.EnvGitHubAppID:       "12345",
 			})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.appClientID).To(Equal("Iv1.client"))
 		})
 
 		It("should fall back to the numeric app ID", func() {
-			cfg, err := loadServe(map[string]string{envGitHubAppID: "12345"})
+			cfg, err := loadServe(map[string]string{bot.EnvGitHubAppID: "12345"})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(cfg.appClientID).To(Equal("12345"))
 		})
@@ -327,7 +328,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 			_, err := loadServe(map[string]string{
 				envPanelOrigin:             "https://smyklot.example",
 				envPanelSuperRootID:        "42",
-				envGitHubAppClientID:       "Iv1.app",
+				bot.EnvGitHubAppClientID:   "Iv1.app",
 				"GITHUB_APP_CLIENT_SECRET": "app-secret",
 			})
 			Expect(err).To(MatchError(ErrPanelConfig))

@@ -304,15 +304,15 @@ func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
 
 	cfg := &serveConfig{
 		webhookSecret: []byte(os.Getenv(envWebhookSecret)),
-		apiBaseURL:    os.Getenv(envAPIBaseURL),
-		botUsername:   os.Getenv(envBotUsername),
-		appClientID:   os.Getenv(envGitHubAppClientID),
-		appPrivateKey: []byte(os.Getenv(envGitHubAppPrivateKey)),
+		apiBaseURL:    os.Getenv(bot.EnvAPIBaseURL),
+		botUsername:   os.Getenv(bot.EnvBotUsername),
+		appClientID:   os.Getenv(bot.EnvGitHubAppClientID),
+		appPrivateKey: []byte(os.Getenv(bot.EnvGitHubAppPrivateKey)),
 		botConfig:     botConfig,
 	}
 
 	if cfg.appClientID == "" {
-		cfg.appClientID = os.Getenv(envGitHubAppID)
+		cfg.appClientID = os.Getenv(bot.EnvGitHubAppID)
 	}
 
 	if cfg.botUsername == "" {

@@ -48,7 +48,7 @@ func (s *server) decodeIssueCommentJob(body []byte) (job, bool, error) {
 	if !event.Actionable() {
 		return job{}, false, nil
 	}
-	if err := validateCommentInput(runtimeConfigFor(event, s.cfg)); err != nil {
+	if err := bot.ValidateCommentInput(runtimeConfigFor(event, s.cfg)); err != nil {
 		return job{}, false, fmt.Errorf("validate issue comment: %w", err)
 	}
 

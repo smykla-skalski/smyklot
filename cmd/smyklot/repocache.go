@@ -94,7 +94,7 @@ func reportInvalidRepoConfig(
 	}
 
 	fb := feedback.NewRepoConfigInvalid(cause.Error())
-	if err := postFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError); err != nil {
+	if err := bot.PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError); err != nil {
 		return err
 	}
 

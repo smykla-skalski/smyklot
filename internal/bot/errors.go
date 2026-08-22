@@ -1,11 +1,3 @@
-// Package bot is one pull request, one command, one answer.
-//
-// It is the layer all three entry points stand on - the Action, the cron poll
-// and the webhook service - and it is the layer that has to work with none of
-// the rest of them present: a repository running the Action has no panel, no
-// store to sweep and no worker to schedule. So nothing here reaches upward. A
-// caller that needs something from the service it runs inside says so in an
-// interface and is handed an implementation.
 package bot
 
 import (

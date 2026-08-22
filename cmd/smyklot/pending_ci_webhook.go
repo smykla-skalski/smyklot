@@ -363,7 +363,7 @@ func (s *server) preparePendingCIReauthorization(
 	if err != nil {
 		return false, err
 	}
-	authorized, err := checkUserPermission(
+	authorized, err := bot.CheckUserPermission(
 		ctx,
 		client,
 		checker,

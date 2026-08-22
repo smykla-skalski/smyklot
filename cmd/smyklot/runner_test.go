@@ -118,11 +118,11 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			}
 
 			settings := map[string]string{
-				envGitHubToken: "test-token",
-				envAPIBaseURL:  endpoint.URL,
-				envRepoOwner:   "smykla-skalski",
-				envRepoName:    "smyklot",
-				envRunner:      string(config.RunnerAction),
+				bot.EnvGitHubToken: "test-token",
+				bot.EnvAPIBaseURL:  endpoint.URL,
+				bot.EnvRepoOwner:   "smykla-skalski",
+				bot.EnvRepoName:    "smyklot",
+				envRunner:          string(config.RunnerAction),
 			}
 			for key, value := range env {
 				settings[key] = value

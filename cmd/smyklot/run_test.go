@@ -13,10 +13,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/spf13/cobra"
-
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/spf13/cobra"
 )
 
 // envDisableDeletedComments is the environment spelling of the disable flag
@@ -28,20 +27,20 @@ const envRunner = "SMYKLOT_RUNNER"
 // runEnv lists every variable run() reads, so a spec starts from a known state
 // whatever the developer's shell or the CI job already exports
 var runEnv = []string{
-	envGitHubToken,
-	envCommentBody,
-	envCommentID,
-	envCommentAction,
-	envPRNumber,
-	envRepoOwner,
-	envRepoName,
-	envCommentAuthor,
-	envGitHubAppPrivateKey,
-	envGitHubAppClientID,
-	envGitHubAppID,
-	envInstallationID,
-	envBotUsername,
-	envAPIBaseURL,
+	bot.EnvGitHubToken,
+	bot.EnvCommentBody,
+	bot.EnvCommentID,
+	bot.EnvCommentAction,
+	bot.EnvPRNumber,
+	bot.EnvRepoOwner,
+	bot.EnvRepoName,
+	bot.EnvCommentAuthor,
+	bot.EnvGitHubAppPrivateKey,
+	bot.EnvGitHubAppClientID,
+	bot.EnvGitHubAppID,
+	bot.EnvInstallationID,
+	bot.EnvBotUsername,
+	bot.EnvAPIBaseURL,
 	bot.EnvStepSummary,
 	envDisableDeletedComments,
 	envRunner,
@@ -176,15 +175,15 @@ func runCommentOn(
 	}
 
 	settings := map[string]string{
-		envGitHubToken:   "test-token",
-		envAPIBaseURL:    server.URL,
-		envCommentAction: commentAction,
-		envCommentBody:   commentBody,
-		envCommentID:     "555",
-		envPRNumber:      "42",
-		envRepoOwner:     "smykla-skalski",
-		envRepoName:      "smyklot",
-		envCommentAuthor: "someone",
+		bot.EnvGitHubToken:   "test-token",
+		bot.EnvAPIBaseURL:    server.URL,
+		bot.EnvCommentAction: commentAction,
+		bot.EnvCommentBody:   commentBody,
+		bot.EnvCommentID:     "555",
+		bot.EnvPRNumber:      "42",
+		bot.EnvRepoOwner:     "smykla-skalski",
+		bot.EnvRepoName:      "smyklot",
+		bot.EnvCommentAuthor: "someone",
 
 		// These specs exercise the Action, which stands down by default now
 		// that the service handles a repository that says nothing
@@ -236,12 +235,12 @@ var _ = Describe("Deleted comment handling [Unit]", func() {
 			Entry("cleanup command", "/cleanup"),
 		)
 
-		// An empty body never reaches the deleted branch - validateConfig
+		// An empty body never reaches the deleted branch - bot.ValidateConfig
 		// rejects it first - so the silence there proves nothing about this code
 		It("should reject an empty comment body before deciding anything", func() {
 			_, err := runComment("deleted", "", nil)
 
-			Expect(err).To(MatchError(ContainSubstring(envCommentBody)))
+			Expect(err).To(MatchError(ContainSubstring(bot.EnvCommentBody)))
 		})
 	})
 
