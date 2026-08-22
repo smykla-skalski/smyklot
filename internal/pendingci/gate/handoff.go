@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
-type pendingCIHandoffStore interface {
+type handoffStore interface {
 	CancelRepository(
 		context.Context,
 		pendingci.CancelRepositoryRequest,
@@ -16,16 +16,16 @@ type pendingCIHandoffStore interface {
 	HasPendingCleanup(context.Context, pendingci.CleanupFilter) (bool, error)
 }
 
-// pendingCIHandoff terminalizes service-owned work before a repository is
+// Handoff terminalizes service-owned work before a repository is
 // returned to the GitHub Action runner. GitHub artifact cleanup stays with the
 // caller that owns the installation client.
-type pendingCIHandoff struct {
-	store       pendingCIHandoffStore
+type Handoff struct {
+	store       handoffStore
 	coordinator bot.Exclusive
 	wake        func()
 }
 
-func (handoff *pendingCIHandoff) CancelRepository(
+func (handoff *Handoff) CancelRepository(
 	ctx context.Context,
 	repositoryID string,
 	reason string,

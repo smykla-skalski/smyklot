@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
@@ -18,7 +17,7 @@ import (
 func TestPendingCICheckModeRequiresTheExactBaseBranchContext(t *testing.T) {
 	t.Parallel()
 
-	api := httptest.NewServer(pendingCIActivationGuardHandler(t))
+	api := httptest.NewServer(activationGuardHandler(t))
 	defer api.Close()
 
 	client, err := github.NewClient("installation-token", api.URL)
@@ -64,8 +63,9 @@ func TestPendingCICheckModeRequiresTheExactBaseBranchContext(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	guard := githubPendingCIActivationGuard{
-		server:       &server{store: store, panel: &adminpanel.Server{}},
+	guard := ActivationGuard{
+		store:        store,
+		panelled:     true,
 		client:       client,
 		targetID:     "installation:77",
 		repositoryID: "repository-20",
@@ -118,7 +118,7 @@ func TestPendingCICheckModeRequiresTheExactBaseBranchContext(t *testing.T) {
 	}
 }
 
-func pendingCIActivationGuardHandler(t *testing.T) http.Handler {
+func activationGuardHandler(t *testing.T) http.Handler {
 	t.Helper()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -169,7 +169,7 @@ func TestRequiredOnlyExcludesOnlySmyklotsOwnedRequirement(t *testing.T) {
 		{Context: "build"},
 	}
 
-	external := pendingCIExternalRequiredChecks(
+	external := externalRequiredChecks(
 		required,
 		storage.PendingCICheckName,
 		appID,

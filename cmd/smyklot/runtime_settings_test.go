@@ -1,32 +1,43 @@
 package main
 
 import (
-	"io"
 	"log/slog"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
+	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
+	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+// What the service does with a settings change, rather than what the pending CI
+// runtime does with the one value it is handed: that half is proven next to the
+// scheduler it has to wake, in internal/pendingci/gate.
 func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	t.Parallel()
-	timing := defaultPendingCITiming()
-	reconciler := newPendingCIReconciler(
-		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
-		bot.NewCoordinator(), timing,
-	)
-	scheduler := newPendingCIScheduler(
-		&schedulerTestStore{}, reconciler,
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-	)
+	store, err := open.Store(t.Context(), filepath.Join(t.TempDir(), "runtime.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
 	level := &slog.LevelVar{}
 	service := &server{
 		logLevel: level, runtimeBotConfig: config.Default(),
 		pollIntervalChanged: make(chan struct{}, 1),
-		pendingCIReconciler: reconciler, pendingCI: scheduler,
+		gate: gate.New(gate.Dependencies{
+			Store: store, Gates: store, Checks: store, Transitions: store,
+			Leases: store, Handoffs: store, Current: store,
+			Coordinator: bot.NewCoordinator(),
+			Logger:      slog.New(slog.DiscardHandler),
+		}),
 	}
 
 	service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
@@ -35,21 +46,15 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 		SessionTTL: time.Hour,
 	})
 
-	if got := reconciler.currentTiming().PassingQuiet; got != 45*time.Second {
+	if got := service.gate.PassingQuiet(); got != 45*time.Second {
 		t.Fatalf("pending-CI quiet period = %s, want 45s", got)
 	}
 	if level.Level() != slog.LevelDebug {
 		t.Fatalf("log level = %s, want debug", level.Level())
 	}
 	select {
-	case <-scheduler.wake:
+	case <-service.pollIntervalChanged:
 	default:
-		t.Fatal("pending-CI scheduler was not woken after a quiet-period change")
-	}
-	scheduler.retuneMu.Lock()
-	retune := scheduler.retune
-	scheduler.retuneMu.Unlock()
-	if retune == nil || retune.PassingQuiet != 45*time.Second {
-		t.Fatalf("pending-CI retune = %#v, want 45s", retune)
+		t.Fatal("the poll loop was not told the interval changed")
 	}
 }

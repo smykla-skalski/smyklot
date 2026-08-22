@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 func TestPendingCIControlSerializesCancellationWithRepositoryWork(t *testing.T) {
 	t.Parallel()
 	coordinator := bot.NewCoordinator()
-	store := &pendingCIControlStoreStub{
+	store := &controlStoreStub{
 		request:  pendingci.Request{ID: 41, RepositoryID: "repository:7", Revision: 3},
 		read:     make(chan struct{}),
 		finished: make(chan struct{}),
 	}
-	control := newPendingCIControl(store, coordinator, func() {})
+	control := newControl(store, coordinator, func() {})
 	held := make(chan struct{})
 	release := make(chan struct{})
 	ownerDone := make(chan error, 1)
@@ -64,7 +64,7 @@ func TestPendingCIControlSerializesCancellationWithRepositoryWork(t *testing.T) 
 func TestPendingCIControlSerializesTargetSettingsWithEveryRepository(t *testing.T) {
 	t.Parallel()
 	coordinator := bot.NewCoordinator()
-	control := newPendingCIControl(&pendingCIControlStoreStub{}, coordinator, func() {})
+	control := newControl(&controlStoreStub{}, coordinator, func() {})
 	held := make(chan struct{})
 	release := make(chan struct{})
 	ownerDone := make(chan error, 1)
@@ -111,13 +111,13 @@ func TestPendingCIControlSerializesTargetSettingsWithEveryRepository(t *testing.
 	}
 }
 
-type pendingCIControlStoreStub struct {
+type controlStoreStub struct {
 	request  pendingci.Request
 	read     chan struct{}
 	finished chan struct{}
 }
 
-func (store *pendingCIControlStoreStub) Get(
+func (store *controlStoreStub) Get(
 	context.Context,
 	int64,
 ) (pendingci.Request, error) {
@@ -126,14 +126,14 @@ func (store *pendingCIControlStoreStub) Get(
 	return store.request, nil
 }
 
-func (store *pendingCIControlStoreStub) CheckNow(
+func (store *controlStoreStub) CheckNow(
 	context.Context,
 	pendingci.CheckNowRequest,
 ) (pendingci.Request, error) {
 	return store.request, nil
 }
 
-func (store *pendingCIControlStoreStub) Finish(
+func (store *controlStoreStub) Finish(
 	context.Context,
 	pendingci.FinishRequest,
 ) (pendingci.Request, error) {

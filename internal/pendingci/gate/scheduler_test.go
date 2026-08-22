@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func TestPendingCISchedulerWakePreemptsFallbackTimer(t *testing.T) {
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	store := &schedulerTestStore{now: now, firstLease: make(chan struct{})}
 	processor := &schedulerTestProcessor{processed: make(chan pendingci.Request, 1)}
-	scheduler := newPendingCIScheduler(
+	scheduler := newScheduler(
 		store,
 		processor,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -58,7 +58,7 @@ func TestPendingCISchedulerRetunesBeforeLeasing(t *testing.T) {
 		now: now, firstLease: make(chan struct{}),
 		retuned: make(chan pendingci.RetuneQuietPeriodRequest, 1),
 	}
-	scheduler := newPendingCIScheduler(
+	scheduler := newScheduler(
 		store,
 		&schedulerTestProcessor{processed: make(chan pendingci.Request, 1)},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),

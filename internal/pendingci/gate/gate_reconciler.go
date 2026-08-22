@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -19,29 +19,43 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type pendingCIGateReconciler struct {
-	store  storage.Store
-	checks *githubPendingCIChecks
+// gateStore is what reconciling branch protection reads and writes. Five
+// methods rather than storage.Store, for the reason the package boundary
+// exists: nothing here should be able to reach the panel's tables.
+type gateStore interface {
+	GetArmed(context.Context, string, int) (pendingci.Request, error)
+	ListQueue(context.Context, pendingci.QueueFilter) ([]pendingci.Request, error)
+	HasPendingCleanup(context.Context, pendingci.CleanupFilter) (bool, error)
+	GetPendingCIRepositoryGate(context.Context, string) (storage.PendingCIRepositoryGate, error)
+	UpdatePendingCIRepositoryGate(
+		context.Context,
+		storage.PendingCIGateChange,
+	) (storage.PendingCIRepositoryGate, error)
+}
+
+type GateReconciler struct {
+	store  gateStore
+	checks *Checks
 	now    func() time.Time
 	wake   func()
 }
 
 const (
-	pendingCIChecksReadyReason = "Checks and required context are ready"
-	pendingCIRulesetActive     = "active"
-	pendingCIRulesetBranch     = "branch"
+	checksReadyReason = "Checks and required context are ready"
+	rulesetActive     = "active"
+	rulesetBranch     = "branch"
 )
 
-type pendingCIGatePolicyError struct{ cause error }
+type gatePolicyError struct{ cause error }
 
-func (err pendingCIGatePolicyError) Error() string { return err.cause.Error() }
-func (err pendingCIGatePolicyError) Unwrap() error { return err.cause }
+func (err gatePolicyError) Error() string { return err.cause.Error() }
+func (err gatePolicyError) Unwrap() error { return err.cause }
 
-func pendingCIGatePolicy(cause error) error {
-	return pendingCIGatePolicyError{cause: cause}
+func gatePolicy(cause error) error {
+	return gatePolicyError{cause: cause}
 }
 
-func (reconciler *pendingCIGateReconciler) Reconcile(
+func (reconciler *GateReconciler) Reconcile(
 	ctx context.Context,
 	client *github.Client,
 	target storage.Target,
@@ -55,7 +69,7 @@ func (reconciler *pendingCIGateReconciler) Reconcile(
 	}
 	owner, name, err := bot.ParseRepo(repository.FullName)
 	if err != nil {
-		return reconciler.block(ctx, gate, pendingCIGatePolicy(err))
+		return reconciler.block(ctx, gate, gatePolicy(err))
 	}
 	if !serviceEnabled {
 		return reconciler.reconcileInactive(
@@ -76,17 +90,17 @@ func (reconciler *pendingCIGateReconciler) Reconcile(
 			return reconciler.block(ctx, gate, err)
 		}
 	}
-	maintainChecks := pendingCIMustMaintainChecks(gate.DesiredMode, drainingChecks)
+	maintainChecks := mustMaintainChecks(gate.DesiredMode, drainingChecks)
 	if maintainChecks {
 		if !target.Grants("checks") {
 			return reconciler.block(
-				ctx, gate, pendingCIGatePolicy(errors.New("checks write approval is missing")),
+				ctx, gate, gatePolicy(errors.New("checks write approval is missing")),
 			)
 		}
 		if !target.CanRead("statuses") {
 			return reconciler.block(
 				ctx, gate,
-				pendingCIGatePolicy(errors.New("commit statuses read approval is missing")),
+				gatePolicy(errors.New("commit statuses read approval is missing")),
 			)
 		}
 		patterns := target.PendingCIBranchPatternsDefault
@@ -104,23 +118,23 @@ func (reconciler *pendingCIGateReconciler) Reconcile(
 	}
 	if !target.CanRead("merge_queues") {
 		return reconciler.block(
-			ctx, gate, pendingCIGatePolicy(errors.New("merge queues read approval is missing")),
+			ctx, gate, gatePolicy(errors.New("merge queues read approval is missing")),
 		)
 	}
 	if !target.Grants("administration") {
 		return reconciler.block(
-			ctx, gate, pendingCIGatePolicy(errors.New("administration write approval is missing")),
+			ctx, gate, gatePolicy(errors.New("administration write approval is missing")),
 		)
 	}
 
 	return reconciler.reconcileChecks(ctx, client, target, repository, gate, prs, owner, name)
 }
 
-func pendingCIMustMaintainChecks(desired storage.PendingCIMode, draining bool) bool {
+func mustMaintainChecks(desired storage.PendingCIMode, draining bool) bool {
 	return desired == storage.PendingCIModeChecks || draining
 }
 
-func (reconciler *pendingCIGateReconciler) reconcileChecks(
+func (reconciler *GateReconciler) reconcileChecks(
 	ctx context.Context,
 	client *github.Client,
 	target storage.Target,
@@ -142,12 +156,12 @@ func (reconciler *pendingCIGateReconciler) reconcileChecks(
 	); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	desired := pendingCIRuleset(patterns, appID)
+	desired := ruleset(patterns, appID)
 	rulesetID, err := reconcilePendingCIRuleset(ctx, client, owner, name, gate, desired)
 	if err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
-	fingerprint, err := pendingCIRulesetFingerprint(desired)
+	fingerprint, err := rulesetFingerprint(desired)
 	if err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
@@ -173,13 +187,13 @@ func (reconciler *pendingCIGateReconciler) reconcileChecks(
 		return reconciler.block(ctx, gate, err)
 	}
 	if gate.EffectiveMode == storage.PendingCIEffectiveChecks &&
-		gate.Readiness == storage.PendingCIReady && gate.Reason == pendingCIChecksReadyReason {
+		gate.Readiness == storage.PendingCIReady && gate.Reason == checksReadyReason {
 		return nil
 	}
 	_, err = reconciler.store.UpdatePendingCIRepositoryGate(ctx, storage.PendingCIGateChange{
 		RepositoryID: repository.ID, ExpectedRevision: gate.Revision,
 		EffectiveMode: storage.PendingCIEffectiveChecks, Readiness: storage.PendingCIReady,
-		Reason: pendingCIChecksReadyReason, AppID: &appID,
+		Reason: checksReadyReason, AppID: &appID,
 		RulesetID: &rulesetID, RulesetFingerprint: fingerprint, ObservedAt: reconciler.now(),
 	})
 	if err != nil && !errors.Is(err, storage.ErrConflict) {
@@ -192,7 +206,7 @@ func (reconciler *pendingCIGateReconciler) reconcileChecks(
 	return nil
 }
 
-func (reconciler *pendingCIGateReconciler) ensureBaselines(
+func (reconciler *GateReconciler) ensureBaselines(
 	ctx context.Context,
 	target storage.Target,
 	repository storage.Repository,
@@ -200,11 +214,11 @@ func (reconciler *pendingCIGateReconciler) ensureBaselines(
 	patterns storage.PendingCIBranchPatterns,
 ) error {
 	for _, raw := range prs {
-		pullRequest, headSHA, baseBranch, err := pendingCIPullRequestHead(raw)
+		pullRequest, headSHA, baseBranch, err := pullRequestHead(raw)
 		if err != nil {
 			return err
 		}
-		if !pendingCIBranchIncluded(baseBranch, repository.DefaultBranch, patterns) {
+		if !branchIncluded(baseBranch, repository.DefaultBranch, patterns) {
 			continue
 		}
 		armed, err := reconciler.store.GetArmed(ctx, repository.ID, pullRequest)
@@ -224,7 +238,7 @@ func (reconciler *pendingCIGateReconciler) ensureBaselines(
 	return nil
 }
 
-func (reconciler *pendingCIGateReconciler) reconcileLabels(
+func (reconciler *GateReconciler) reconcileLabels(
 	ctx context.Context,
 	client *github.Client,
 	gate storage.PendingCIRepositoryGate,
@@ -274,7 +288,7 @@ func (reconciler *pendingCIGateReconciler) reconcileLabels(
 	return nil
 }
 
-func (reconciler *pendingCIGateReconciler) hasArmedCheckRequest(
+func (reconciler *GateReconciler) hasArmedCheckRequest(
 	ctx context.Context,
 	repositoryID string,
 ) (bool, error) {
@@ -290,7 +304,7 @@ func (reconciler *pendingCIGateReconciler) hasArmedCheckRequest(
 	return len(requests) > 0, nil
 }
 
-func (reconciler *pendingCIGateReconciler) reconcileInactive(
+func (reconciler *GateReconciler) reconcileInactive(
 	ctx context.Context,
 	client *github.Client,
 	gate storage.PendingCIRepositoryGate,
@@ -346,7 +360,7 @@ func (reconciler *pendingCIGateReconciler) reconcileInactive(
 	return nil
 }
 
-func (reconciler *pendingCIGateReconciler) block(
+func (reconciler *GateReconciler) block(
 	ctx context.Context,
 	gate storage.PendingCIRepositoryGate,
 	cause error,
@@ -360,7 +374,7 @@ func (reconciler *pendingCIGateReconciler) block(
 	if err != nil && !errors.Is(err, storage.ErrConflict) {
 		return fmt.Errorf("pending CI readiness failed: %v; persist blocker: %w", cause, err)
 	}
-	var policy pendingCIGatePolicyError
+	var policy gatePolicyError
 	if errors.As(cause, &policy) {
 		return nil
 	}
@@ -368,13 +382,13 @@ func (reconciler *pendingCIGateReconciler) block(
 	return cause
 }
 
-func pendingCIRuleset(
+func ruleset(
 	patterns storage.PendingCIBranchPatterns,
 	appID int64,
 ) github.RepositoryRuleset {
 	return github.RepositoryRuleset{
-		Name: storage.PendingCIRulesetName, Target: pendingCIRulesetBranch,
-		Enforcement: pendingCIRulesetActive,
+		Name: storage.PendingCIRulesetName, Target: rulesetBranch,
+		Enforcement: rulesetActive,
 		Conditions: github.RulesetConditions{
 			IncludeRefs: append([]string(nil), patterns.Include...),
 			ExcludeRefs: append([]string(nil), patterns.Exclude...),
@@ -399,12 +413,12 @@ func reconcilePendingCIRuleset(
 	if err != nil {
 		return 0, err
 	}
-	owned := pendingCIOwnedRuleset(summaries, gate.RulesetID)
+	owned := ownedRuleset(summaries, gate.RulesetID)
 	if owned == nil {
 		return adoptOrCreatePendingCIRuleset(ctx, client, owner, repository, summaries, desired)
 	}
 	if owned.Source.Inherited() {
-		return 0, pendingCIGatePolicy(
+		return 0, gatePolicy(
 			errors.New("the recorded Smyklot ruleset is inherited and cannot be managed"),
 		)
 	}
@@ -421,7 +435,7 @@ func reconcilePendingCIRuleset(
 	return owned.ID, nil
 }
 
-func pendingCIOwnedRuleset(
+func ownedRuleset(
 	summaries []github.RulesetSummary,
 	rulesetID *int64,
 ) *github.RulesetSummary {
@@ -451,7 +465,7 @@ func adoptOrCreatePendingCIRuleset(
 		}
 	}
 	if len(named) > 1 || (len(named) == 1 && named[0].Source.Inherited()) {
-		return 0, pendingCIGatePolicy(
+		return 0, gatePolicy(
 			errors.New("another ruleset already uses Smyklot's managed name"),
 		)
 	}
@@ -463,7 +477,7 @@ func adoptOrCreatePendingCIRuleset(
 		return 0, err
 	}
 	if !samePendingCIRuleset(actual, desired) {
-		return 0, pendingCIGatePolicy(
+		return 0, gatePolicy(
 			errors.New("an unmanaged ruleset already uses Smyklot's managed name"),
 		)
 	}
@@ -517,7 +531,7 @@ func removePendingCIRuleset(
 	}
 	for _, summary := range summaries {
 		if summary.Name == storage.PendingCIRulesetName {
-			return pendingCIGatePolicy(
+			return gatePolicy(
 				errors.New("a same-named ruleset is not recorded as Smyklot-owned"),
 			)
 		}
@@ -533,12 +547,12 @@ func ensureNoMergeQueue(
 	prs []map[string]interface{},
 	patterns storage.PendingCIBranchPatterns,
 ) error {
-	branches, err := pendingCIBaseBranches(defaultBranch, prs)
+	branches, err := baseBranches(defaultBranch, prs)
 	if err != nil {
 		return err
 	}
 	for _, branch := range branches {
-		if !pendingCIBranchIncluded(branch, defaultBranch, patterns) {
+		if !branchIncluded(branch, defaultBranch, patterns) {
 			continue
 		}
 		enabled, err := client.IsMergeQueueEnabled(ctx, owner, repository, branch)
@@ -546,7 +560,7 @@ func ensureNoMergeQueue(
 			return err
 		}
 		if enabled {
-			return pendingCIGatePolicy(fmt.Errorf(
+			return gatePolicy(fmt.Errorf(
 				"merge queue on branch %s is not supported by merge-after-CI checks",
 				branch,
 			))
@@ -565,8 +579,8 @@ func ensureNoPendingCIRequiredRulesets(
 		return err
 	}
 	for _, summary := range summaries {
-		if summary.Target != pendingCIRulesetBranch ||
-			summary.Enforcement != pendingCIRulesetActive {
+		if summary.Target != rulesetBranch ||
+			summary.Enforcement != rulesetActive {
 			continue
 		}
 		ruleset, err := client.GetRepositoryRulesetIncludingParents(
@@ -580,7 +594,7 @@ func ensureNoPendingCIRequiredRulesets(
 		}
 		for _, check := range ruleset.Rules.RequiredStatusChecks.Checks {
 			if check.Context == storage.PendingCICheckName {
-				return pendingCIGatePolicy(
+				return gatePolicy(
 					errors.New("remove the required Smyklot check before enabling label mode"),
 				)
 			}
@@ -596,7 +610,7 @@ func ensureNoPendingCIRequiredContextOnBranches(
 	owner, repository, defaultBranch string,
 	prs []map[string]interface{},
 ) error {
-	branches, err := pendingCIBaseBranches(defaultBranch, prs)
+	branches, err := baseBranches(defaultBranch, prs)
 	if err != nil {
 		return err
 	}
@@ -607,7 +621,7 @@ func ensureNoPendingCIRequiredContextOnBranches(
 		}
 		for _, check := range required {
 			if check.Context == storage.PendingCICheckName {
-				return pendingCIGatePolicy(fmt.Errorf(
+				return gatePolicy(fmt.Errorf(
 					"remove the required Smyklot check from branch %s before enabling label mode",
 					branch,
 				))
@@ -634,7 +648,7 @@ func ensureNoConflictingRequiredContext(
 			continue
 		}
 		if check.AppID == nil || *check.AppID != appID {
-			return pendingCIGatePolicy(
+			return gatePolicy(
 				errors.New("the Smyklot required context is not bound to this GitHub App"),
 			)
 		}
@@ -657,15 +671,15 @@ func ensurePendingCIRequiredContexts(
 	appID int64,
 ) error {
 	branches := make(map[string]struct{})
-	if pendingCIBranchIncluded(repository.DefaultBranch, repository.DefaultBranch, patterns) {
+	if branchIncluded(repository.DefaultBranch, repository.DefaultBranch, patterns) {
 		branches[repository.DefaultBranch] = struct{}{}
 	}
 	for _, raw := range prs {
-		_, _, baseBranch, err := pendingCIPullRequestHead(raw)
+		_, _, baseBranch, err := pullRequestHead(raw)
 		if err != nil {
 			return err
 		}
-		if pendingCIBranchIncluded(baseBranch, repository.DefaultBranch, patterns) {
+		if branchIncluded(baseBranch, repository.DefaultBranch, patterns) {
 			branches[baseBranch] = struct{}{}
 		}
 	}
@@ -685,13 +699,13 @@ func ensurePendingCIRequiredContexts(
 	return nil
 }
 
-func pendingCIBaseBranches(
+func baseBranches(
 	defaultBranch string,
 	prs []map[string]interface{},
 ) ([]string, error) {
 	branches := map[string]struct{}{defaultBranch: {}}
 	for _, raw := range prs {
-		_, _, baseBranch, err := pendingCIPullRequestHead(raw)
+		_, _, baseBranch, err := pullRequestHead(raw)
 		if err != nil {
 			return nil, err
 		}
@@ -708,7 +722,7 @@ func pendingCIBaseBranches(
 	return result, nil
 }
 
-func pendingCIPullRequestHead(raw map[string]interface{}) (int, string, string, error) {
+func pullRequestHead(raw map[string]interface{}) (int, string, string, error) {
 	number, ok := raw["number"].(float64)
 	if !ok || number <= 0 {
 		return 0, "", "", errors.New("open pull request has no number")
@@ -730,7 +744,7 @@ func pendingCIPullRequestHead(raw map[string]interface{}) (int, string, string, 
 	return int(number), headSHA, baseBranch, nil
 }
 
-func pendingCIBranchIncluded(
+func branchIncluded(
 	branch, defaultBranch string,
 	patterns storage.PendingCIBranchPatterns,
 ) bool {
@@ -823,7 +837,7 @@ func goPathPattern(pattern string) string {
 	return translated.String()
 }
 
-func pendingCIRulesetFingerprint(ruleset github.RepositoryRuleset) (string, error) {
+func rulesetFingerprint(ruleset github.RepositoryRuleset) (string, error) {
 	content, err := json.Marshal(ruleset)
 	if err != nil {
 		return "", err

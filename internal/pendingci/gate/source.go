@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type pendingCISourceValidator interface {
+type sourceValidator interface {
 	CancellationReason(
 		context.Context,
 		*github.Client,
@@ -23,13 +23,13 @@ type pendingCISourceValidator interface {
 	) (string, error)
 }
 
-type githubPendingCISourceValidator struct {
-	server *server
+type SourceValidator struct {
+	config RepositoryConfig
 }
 
 // CancellationReason re-reads the mutable command during fallback polling.
 // Webhooks stay the fast path; this closes missed edit and delete deliveries.
-func (validator githubPendingCISourceValidator) CancellationReason(
+func (validator SourceValidator) CancellationReason(
 	ctx context.Context,
 	client *github.Client,
 	request pendingci.Request,
@@ -46,20 +46,20 @@ func (validator githubPendingCISourceValidator) CancellationReason(
 
 		return "", fmt.Errorf("read pending CI source comment: %w", err)
 	}
-	botConfig, err := validator.server.serviceConfigWithoutCatalogRefresh(
+	botConfig, err := validator.config.Config(
 		ctx, client, request.TargetID, request.RepositoryID, owner, repository,
 	)
 	if err != nil {
 		return "", fmt.Errorf("read pending CI source configuration: %w", err)
 	}
-	if !pendingCISourceMatches(comment, request, botConfig) {
+	if !sourceMatches(comment, request, botConfig) {
 		return "source comment edited", nil
 	}
 
 	return "", nil
 }
 
-func pendingCISourceMatches(
+func sourceMatches(
 	comment github.IssueCommentState,
 	request pendingci.Request,
 	botConfig *config.Config,

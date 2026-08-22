@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"testing"
@@ -67,7 +67,7 @@ func TestPendingCISourceMatchesDurableIntent(t *testing.T) {
 				ID: request.SourceCommentID, Body: test.body, UpdatedAt: test.updatedAt,
 			}
 			comment.User.Login = test.author
-			if got := pendingCISourceMatches(comment, request, config.Default()); got != test.matches {
+			if got := sourceMatches(comment, request, config.Default()); got != test.matches {
 				t.Fatalf("source match = %t, want %t", got, test.matches)
 			}
 		})
@@ -86,11 +86,11 @@ func TestPendingCISourceMatchesRequiredChecksIntent(t *testing.T) {
 		UpdatedAt: request.SourceRevision,
 	}
 	comment.User.Login = request.Requester
-	if !pendingCISourceMatches(comment, request, config.Default()) {
+	if !sourceMatches(comment, request, config.Default()) {
 		t.Fatal("required-checks source did not match its durable intent")
 	}
 	comment.Body = "/rebase after ci"
-	if pendingCISourceMatches(comment, request, config.Default()) {
+	if sourceMatches(comment, request, config.Default()) {
 		t.Fatal("changed required-checks policy still matched")
 	}
 }

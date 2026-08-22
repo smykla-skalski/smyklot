@@ -169,7 +169,7 @@ func startPendingCITestScheduler(srv *server) {
 	stopped := make(chan struct{})
 	go func() {
 		defer close(stopped)
-		srv.pendingCI.Run(ctx)
+		srv.gate.Scheduler.Run(ctx)
 	}()
 	DeferCleanup(func() {
 		cancel()

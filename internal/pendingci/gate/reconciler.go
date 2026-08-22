@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
-type pendingCITransitionStore interface {
+type transitionStore interface {
 	ClaimMerge(context.Context, pendingci.ClaimMergeRequest) (pendingci.Request, error)
 	Reschedule(context.Context, pendingci.RescheduleRequest) (pendingci.Request, error)
 	Finish(context.Context, pendingci.FinishRequest) (pendingci.Request, error)
@@ -23,35 +23,35 @@ type pendingCITransitionStore interface {
 	RetryCleanup(context.Context, pendingci.RetryCleanupRequest) (pendingci.Request, error)
 }
 
-type pendingCIObserver interface {
+type observer interface {
 	Observe(context.Context, pendingci.Request) (pendingci.Observation, error)
 }
 
-type pendingCIEffects interface {
+type effects interface {
 	MergeAtHead(context.Context, pendingci.Request, string) error
 	CleanupArtifacts(context.Context, pendingci.Request, pendingci.Lifecycle) error
 }
 
-type pendingCICheckMergeEffects interface {
+type checkMergeEffects interface {
 	SatisfyCheck(context.Context, pendingci.Request) error
 	RestoreBlockingCheck(context.Context, pendingci.Request) error
 }
 
-type pendingCIMergePhaseStore interface {
+type mergePhaseStore interface {
 	MarkMergeCheckSucceeded(
 		context.Context,
 		pendingci.MarkMergeCheckSucceededRequest,
 	) (pendingci.Request, error)
 }
 
-type pendingCIReauthorizationStore interface {
+type reauthorizationStore interface {
 	RequireReauthorization(
 		context.Context,
 		pendingci.RequireReauthorizationRequest,
 	) (pendingci.Request, error)
 }
 
-type pendingCIReauthorizationEffects interface {
+type reauthorizationEffects interface {
 	RequireReauthorizationCheck(
 		context.Context,
 		pendingci.Request,
@@ -59,14 +59,14 @@ type pendingCIReauthorizationEffects interface {
 	) (pendingci.CheckSlot, error)
 }
 
-type pendingCIRetiredCheckStore interface {
+type retiredCheckStore interface {
 	ClearRetiredCheckSlot(
 		context.Context,
 		pendingci.ClearRetiredCheckSlotRequest,
 	) (pendingci.Request, error)
 }
 
-type pendingCIRetiredCheckEffects interface {
+type retiredCheckEffects interface {
 	GetPendingCICheckSlot(context.Context, int64) (pendingci.CheckSlot, error)
 	PendingCICheckSlotIsCurrent(
 		context.Context,
@@ -76,35 +76,35 @@ type pendingCIRetiredCheckEffects interface {
 	RestoreRetiredPendingCICheck(context.Context, pendingci.CheckSlot) error
 }
 
-type pendingCIGateWakeEffects interface {
+type gateWakeEffects interface {
 	WakePendingCIGates()
 }
 
-// pendingCIReconciler combines live truth with the pure policy, then applies
+// Reconciler combines live truth with the pure policy, then applies
 // one optimistic durable transition. GitHub access stays behind narrow ports.
-type pendingCIReconciler struct {
-	store     pendingCITransitionStore
-	observer  pendingCIObserver
-	effects   pendingCIEffects
+type Reconciler struct {
+	store     transitionStore
+	observer  observer
+	effects   effects
 	exclusive bot.Exclusive
 	timingMu  sync.RWMutex
 	timing    pendingci.Timing
 }
 
-func newPendingCIReconciler(
-	store pendingCITransitionStore,
-	observer pendingCIObserver,
-	effects pendingCIEffects,
+func newReconciler(
+	store transitionStore,
+	observer observer,
+	effects effects,
 	exclusive bot.Exclusive,
 	timing pendingci.Timing,
-) *pendingCIReconciler {
-	return &pendingCIReconciler{
+) *Reconciler {
+	return &Reconciler{
 		store: store, observer: observer, effects: effects,
 		exclusive: exclusive, timing: timing,
 	}
 }
 
-func defaultPendingCITiming() pendingci.Timing {
+func defaultTiming() pendingci.Timing {
 	return pendingci.Timing{
 		ActiveInterval: 5 * time.Minute, DiscoveryGrace: 10 * time.Minute,
 		DeferAfter: time.Hour, DeferredInterval: 6 * time.Hour,
@@ -112,7 +112,7 @@ func defaultPendingCITiming() pendingci.Timing {
 	}
 }
 
-func (reconciler *pendingCIReconciler) SetPassingQuiet(value time.Duration) bool {
+func (reconciler *Reconciler) SetPassingQuiet(value time.Duration) bool {
 	reconciler.timingMu.Lock()
 	defer reconciler.timingMu.Unlock()
 	if reconciler.timing.PassingQuiet == value {
@@ -123,14 +123,14 @@ func (reconciler *pendingCIReconciler) SetPassingQuiet(value time.Duration) bool
 	return true
 }
 
-func (reconciler *pendingCIReconciler) currentTiming() pendingci.Timing {
+func (reconciler *Reconciler) currentTiming() pendingci.Timing {
 	reconciler.timingMu.RLock()
 	defer reconciler.timingMu.RUnlock()
 
 	return reconciler.timing
 }
 
-func (reconciler *pendingCIReconciler) timingFor(
+func (reconciler *Reconciler) timingFor(
 	observation pendingci.Observation,
 ) pendingci.Timing {
 	timing := reconciler.currentTiming()
@@ -141,7 +141,7 @@ func (reconciler *pendingCIReconciler) timingFor(
 	return timing
 }
 
-func (reconciler *pendingCIReconciler) Process(
+func (reconciler *Reconciler) Process(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -154,7 +154,7 @@ func (reconciler *pendingCIReconciler) Process(
 	})
 }
 
-func (reconciler *pendingCIReconciler) processArmedExclusive(
+func (reconciler *Reconciler) processArmedExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -188,7 +188,7 @@ func (reconciler *pendingCIReconciler) processArmedExclusive(
 	}
 }
 
-func (reconciler *pendingCIReconciler) reconcileRetiredCheck(
+func (reconciler *Reconciler) reconcileRetiredCheck(
 	ctx context.Context,
 	request pendingci.Request,
 	decision pendingci.Decision,
@@ -197,11 +197,11 @@ func (reconciler *pendingCIReconciler) reconcileRetiredCheck(
 	if request.RetiredCheckSlotID == nil {
 		return false, nil
 	}
-	effects, ok := reconciler.effects.(pendingCIRetiredCheckEffects)
+	effects, ok := reconciler.effects.(retiredCheckEffects)
 	if !ok {
 		return false, errors.New("pending CI retired-check effects are unavailable")
 	}
-	store, ok := reconciler.store.(pendingCIRetiredCheckStore)
+	store, ok := reconciler.store.(retiredCheckStore)
 	if !ok {
 		return false, errors.New("pending CI retired-check store is unavailable")
 	}
@@ -236,17 +236,17 @@ func (reconciler *pendingCIReconciler) reconcileRetiredCheck(
 	return true, nil
 }
 
-func (reconciler *pendingCIReconciler) requireReauthorization(
+func (reconciler *Reconciler) requireReauthorization(
 	ctx context.Context,
 	request pendingci.Request,
 	decision pendingci.Decision,
 	observation pendingci.Observation,
 ) error {
-	effects, ok := reconciler.effects.(pendingCIReauthorizationEffects)
+	effects, ok := reconciler.effects.(reauthorizationEffects)
 	if !ok {
 		return errors.New("pending CI reauthorization effects are unavailable")
 	}
-	store, ok := reconciler.store.(pendingCIReauthorizationStore)
+	store, ok := reconciler.store.(reauthorizationStore)
 	if !ok {
 		return errors.New("pending CI reauthorization store is unavailable")
 	}
@@ -272,7 +272,7 @@ func (reconciler *pendingCIReconciler) requireReauthorization(
 	return nil
 }
 
-func (reconciler *pendingCIReconciler) mergeExclusive(
+func (reconciler *Reconciler) mergeExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -307,14 +307,14 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 		return fmt.Errorf("claim pending CI merge: %w", err)
 	}
 	if claimed.ArtifactKind == pendingci.ArtifactCheck {
-		checkEffects, ok := reconciler.effects.(pendingCICheckMergeEffects)
+		checkEffects, ok := reconciler.effects.(checkMergeEffects)
 		if !ok {
 			return errors.New("pending CI check merge effects are unavailable")
 		}
 		if err := checkEffects.SatisfyCheck(ctx, claimed); err != nil {
 			return fmt.Errorf("satisfy pending CI required check: %w", err)
 		}
-		phaseStore, ok := reconciler.store.(pendingCIMergePhaseStore)
+		phaseStore, ok := reconciler.store.(mergePhaseStore)
 		if !ok {
 			return errors.New("pending CI merge phase store is unavailable")
 		}
@@ -338,7 +338,7 @@ func (reconciler *pendingCIReconciler) mergeExclusive(
 	return reconciler.merge(ctx, claimed, observation)
 }
 
-func (reconciler *pendingCIReconciler) reschedule(
+func (reconciler *Reconciler) reschedule(
 	ctx context.Context,
 	request pendingci.Request,
 	decision pendingci.Decision,
@@ -357,7 +357,7 @@ func (reconciler *pendingCIReconciler) reschedule(
 	return err
 }
 
-func (reconciler *pendingCIReconciler) finish(
+func (reconciler *Reconciler) finish(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
@@ -375,7 +375,7 @@ func (reconciler *pendingCIReconciler) finish(
 	return nil
 }
 
-func (reconciler *pendingCIReconciler) cleanup(
+func (reconciler *Reconciler) cleanup(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -384,7 +384,7 @@ func (reconciler *pendingCIReconciler) cleanup(
 	})
 }
 
-func (reconciler *pendingCIReconciler) cleanupExclusive(
+func (reconciler *Reconciler) cleanupExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -426,21 +426,21 @@ func (reconciler *pendingCIReconciler) cleanupExclusive(
 	if err != nil {
 		return err
 	}
-	if effects, ok := reconciler.effects.(pendingCIGateWakeEffects); ok {
+	if effects, ok := reconciler.effects.(gateWakeEffects); ok {
 		effects.WakePendingCIGates()
 	}
 
 	return nil
 }
 
-func (reconciler *pendingCIReconciler) retryCleanup(
+func (reconciler *Reconciler) retryCleanup(
 	ctx context.Context,
 	request pendingci.Request,
 	cause error,
 ) error {
 	_, retryErr := reconciler.store.RetryCleanup(ctx, pendingci.RetryCleanupRequest{
 		ID: request.ID, ExpectedRevision: request.Revision,
-		NextAttemptAt: request.UpdatedAt.Add(pendingCIRetryDelay),
+		NextAttemptAt: request.UpdatedAt.Add(RetryDelay),
 		FailedAt:      request.UpdatedAt, Error: cause.Error(),
 	})
 	if retryErr != nil {
@@ -450,7 +450,7 @@ func (reconciler *pendingCIReconciler) retryCleanup(
 	return fmt.Errorf("cleanup failed and will retry: %w", cause)
 }
 
-func (reconciler *pendingCIReconciler) merge(
+func (reconciler *Reconciler) merge(
 	ctx context.Context,
 	request pendingci.Request,
 	observation pendingci.Observation,
@@ -458,7 +458,7 @@ func (reconciler *pendingCIReconciler) merge(
 	if err := reconciler.effects.MergeAtHead(ctx, request, observation.HeadSHA); err != nil {
 		var restoreErr error
 		if request.ArtifactKind == pendingci.ArtifactCheck {
-			if checkEffects, ok := reconciler.effects.(pendingCICheckMergeEffects); ok {
+			if checkEffects, ok := reconciler.effects.(checkMergeEffects); ok {
 				restoreErr = checkEffects.RestoreBlockingCheck(ctx, request)
 			}
 		}

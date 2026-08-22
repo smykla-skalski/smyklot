@@ -97,6 +97,13 @@ jobs:
           - area: service
             task: test:postgres
             dirs: ./cmd/smyklot
+          # Four of the pending CI suites open a store, and until they moved out
+          # of cmd the service entry above was running them. check-test-matrix
+          # deliberately reads only the SQLite matrix, so nothing would have
+          # said the second engine had quietly stopped covering them.
+          - area: pendingci
+            task: test:postgres
+            dirs: ./internal/pendingci/gate
           - area: panel
             task: test:postgres
             dirs: ./internal/panel

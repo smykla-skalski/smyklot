@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -11,11 +11,13 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-// githubPendingCIActivationGuard revalidates the repository's runner only
+// ActivationGuard revalidates the repository's runner only
 // after activation owns its repository coordinator. This fences deliveries
 // that read service ownership before a completed handoff to the Action.
-type githubPendingCIActivationGuard struct {
-	server       *server
+type ActivationGuard struct {
+	config       RepositoryConfig
+	store        Store
+	panelled     bool
 	client       *github.Client
 	targetID     string
 	repositoryID string
@@ -23,7 +25,7 @@ type githubPendingCIActivationGuard struct {
 	repository   string
 }
 
-func (guard githubPendingCIActivationGuard) AllowsActivation(
+func (guard ActivationGuard) AllowsActivation(
 	ctx context.Context,
 	expected pendingci.ArtifactKind,
 	baseBranch string,
@@ -33,7 +35,7 @@ func (guard githubPendingCIActivationGuard) AllowsActivation(
 	if err != nil || !eligible {
 		return false, err
 	}
-	botConfig, err := guard.server.serviceConfigWithoutCatalogRefresh(
+	botConfig, err := guard.config.Config(
 		ctx, guard.client, guard.targetID, guard.repositoryID, guard.owner, guard.repository,
 	)
 	if err != nil {
@@ -61,15 +63,15 @@ func (guard githubPendingCIActivationGuard) AllowsActivation(
 	return guard.requiredCIAllowsActivation(ctx, baseBranch, actual)
 }
 
-func (guard githubPendingCIActivationGuard) repositoryAllowsActivation(
+func (guard ActivationGuard) repositoryAllowsActivation(
 	ctx context.Context,
 	baseBranch string,
 ) (bool, error) {
-	if guard.server.panel == nil {
+	if !guard.panelled {
 		return true, nil
 	}
-	target, repository, err := guard.server.readRepositoryControls(
-		ctx, guard.targetID, guard.repositoryID,
+	target, repository, err := readControls(
+		ctx, guard.store, guard.targetID, guard.repositoryID,
 	)
 	if errors.Is(err, storage.ErrNotFound) ||
 		(err == nil && (!target.Available || !repository.Available)) {
@@ -82,14 +84,14 @@ func (guard githubPendingCIActivationGuard) repositoryAllowsActivation(
 		return false, nil
 	}
 	_, patterns, _ := storage.EffectivePendingCISettings(target, repository, 0)
-	if !pendingCIBranchIncluded(baseBranch, repository.DefaultBranch, patterns) {
+	if !branchIncluded(baseBranch, repository.DefaultBranch, patterns) {
 		return false, nil
 	}
 
 	return true, nil
 }
 
-func (guard githubPendingCIActivationGuard) requiredCIAllowsActivation(
+func (guard ActivationGuard) requiredCIAllowsActivation(
 	ctx context.Context,
 	baseBranch string,
 	artifact pendingci.ArtifactKind,
@@ -105,14 +107,14 @@ func (guard githubPendingCIActivationGuard) requiredCIAllowsActivation(
 	}
 	required := requirements.StatusChecks
 	if artifact == pendingci.ArtifactCheck {
-		gate, err := guard.server.store.GetPendingCIRepositoryGate(ctx, guard.repositoryID)
+		gate, err := guard.store.GetPendingCIRepositoryGate(ctx, guard.repositoryID)
 		if err != nil {
 			return false, fmt.Errorf("read pending CI check identity: %w", err)
 		}
 		if gate.AppID == nil {
 			return false, errors.New("merge-after-CI check identity is unavailable")
 		}
-		required = pendingCIExternalRequiredChecks(
+		required = externalRequiredChecks(
 			required,
 			storage.PendingCICheckName,
 			*gate.AppID,
@@ -125,18 +127,18 @@ func (guard githubPendingCIActivationGuard) requiredCIAllowsActivation(
 	return true, nil
 }
 
-func (guard githubPendingCIActivationGuard) PendingCIMode(
+func (guard ActivationGuard) PendingCIMode(
 	ctx context.Context,
 	baseBranch string,
 ) (storage.PendingCIMode, error) {
 	// Merge-after-CI mode is installation policy owned by the panel. Keep
 	// panel-less service deployments on the legacy label contract because they
 	// have nowhere to provision or report check/ruleset readiness.
-	if guard.server.panel == nil {
+	if !guard.panelled {
 		return storage.PendingCIModeLabels, nil
 	}
 
-	gate, err := guard.server.store.GetPendingCIRepositoryGate(ctx, guard.repositoryID)
+	gate, err := guard.store.GetPendingCIRepositoryGate(ctx, guard.repositoryID)
 	if err != nil {
 		return "", fmt.Errorf("read pending CI readiness: %w", err)
 	}
@@ -154,7 +156,7 @@ func (guard githubPendingCIActivationGuard) PendingCIMode(
 	}
 }
 
-func (guard githubPendingCIActivationGuard) pendingCILabelMode(
+func (guard ActivationGuard) pendingCILabelMode(
 	ctx context.Context,
 	baseBranch string,
 ) (storage.PendingCIMode, error) {
@@ -176,7 +178,7 @@ func (guard githubPendingCIActivationGuard) pendingCILabelMode(
 	return storage.PendingCIModeLabels, nil
 }
 
-func (guard githubPendingCIActivationGuard) pendingCICheckMode(
+func (guard ActivationGuard) pendingCICheckMode(
 	ctx context.Context,
 	baseBranch string,
 	appID *int64,
@@ -202,7 +204,7 @@ func (guard githubPendingCIActivationGuard) pendingCICheckMode(
 	if err != nil {
 		return "", fmt.Errorf("read merge-after-CI base protection: %w", err)
 	}
-	if !pendingCIRequiredContextOwned(required, storage.PendingCICheckName, *appID) {
+	if !requiredContextOwned(required, storage.PendingCICheckName, *appID) {
 		return "", fmt.Errorf(
 			"merge-after-CI checks do not protect base branch %s",
 			baseBranch,
@@ -212,7 +214,7 @@ func (guard githubPendingCIActivationGuard) pendingCICheckMode(
 	return storage.PendingCIModeChecks, nil
 }
 
-func pendingCIRequiredContextOwned(
+func requiredContextOwned(
 	required []github.RequiredCheck,
 	name string,
 	appID int64,
@@ -231,7 +233,7 @@ func pendingCIRequiredContextOwned(
 	return found
 }
 
-func pendingCIExternalRequiredChecks(
+func externalRequiredChecks(
 	required []github.RequiredCheck,
 	name string,
 	appID int64,

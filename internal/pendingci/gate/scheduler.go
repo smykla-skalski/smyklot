@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -10,25 +10,25 @@ import (
 )
 
 const (
-	pendingCIWorkerCount = 4
-	pendingCILease       = 5 * time.Minute
-	pendingCIRetryDelay  = 5 * time.Second
+	workerCount = 4
+	lease       = 5 * time.Minute
+	RetryDelay  = 5 * time.Second
 )
 
-type pendingCILeaseStore interface {
+type leaseStore interface {
 	LeaseDue(context.Context, time.Time, time.Time) (pendingci.LeaseResult, error)
 	RetuneQuietPeriod(context.Context, pendingci.RetuneQuietPeriodRequest) (int64, error)
 }
 
-type pendingCIProcessor interface {
+type processor interface {
 	Process(context.Context, pendingci.Request) error
 }
 
-// pendingCIScheduler owns one fallback timer and a bounded worker pool. A
+// Scheduler owns one fallback timer and a bounded worker pool. A
 // webhook only wakes this dispatcher; it never runs reconciliation inline.
-type pendingCIScheduler struct {
-	store     pendingCILeaseStore
-	processor pendingCIProcessor
+type Scheduler struct {
+	store     leaseStore
+	processor processor
 	logger    *slog.Logger
 	now       func() time.Time
 	wake      chan struct{}
@@ -37,18 +37,18 @@ type pendingCIScheduler struct {
 	retuneGen uint64
 }
 
-func newPendingCIScheduler(
-	store pendingCILeaseStore,
-	processor pendingCIProcessor,
+func newScheduler(
+	store leaseStore,
+	processor processor,
 	logger *slog.Logger,
-) *pendingCIScheduler {
-	return &pendingCIScheduler{
+) *Scheduler {
+	return &Scheduler{
 		store: store, processor: processor, logger: logger,
 		now: func() time.Time { return time.Now().UTC() }, wake: make(chan struct{}, 1),
 	}
 }
 
-func (scheduler *pendingCIScheduler) Wake() {
+func (scheduler *Scheduler) Wake() {
 	select {
 	case scheduler.wake <- struct{}{}:
 	default:
@@ -58,7 +58,7 @@ func (scheduler *pendingCIScheduler) Wake() {
 // RetunePassingQuiet durably reschedules stable-passing requests. The latest
 // value wins, and a storage failure remains pending for the dispatcher's retry
 // loop instead of leaving rows on their old deadlines.
-func (scheduler *pendingCIScheduler) RetunePassingQuiet(value time.Duration) {
+func (scheduler *Scheduler) RetunePassingQuiet(value time.Duration) {
 	scheduler.retuneMu.Lock()
 	scheduler.retuneGen++
 	scheduler.retune = &pendingci.RetuneQuietPeriodRequest{
@@ -68,10 +68,10 @@ func (scheduler *pendingCIScheduler) RetunePassingQuiet(value time.Duration) {
 	scheduler.Wake()
 }
 
-func (scheduler *pendingCIScheduler) Run(ctx context.Context) {
-	jobs := make(chan pendingci.Request, pendingCIWorkerCount)
+func (scheduler *Scheduler) Run(ctx context.Context) {
+	jobs := make(chan pendingci.Request, workerCount)
 	var workers sync.WaitGroup
-	for range pendingCIWorkerCount {
+	for range workerCount {
 		workers.Add(1)
 		go scheduler.worker(ctx, jobs, &workers)
 	}
@@ -80,7 +80,7 @@ func (scheduler *pendingCIScheduler) Run(ctx context.Context) {
 	workers.Wait()
 }
 
-func (scheduler *pendingCIScheduler) dispatch(
+func (scheduler *Scheduler) dispatch(
 	ctx context.Context,
 	jobs chan<- pendingci.Request,
 ) {
@@ -88,16 +88,16 @@ func (scheduler *pendingCIScheduler) dispatch(
 		now := scheduler.now()
 		if err := scheduler.applyQuietPeriodRetune(ctx); err != nil {
 			scheduler.logger.Error("pending CI quiet-period retune failed", "error", err)
-			retryAt := now.Add(pendingCIRetryDelay)
+			retryAt := now.Add(RetryDelay)
 			if !scheduler.wait(ctx, &retryAt) {
 				return
 			}
 			continue
 		}
-		lease, err := scheduler.store.LeaseDue(ctx, now, now.Add(pendingCILease))
+		lease, err := scheduler.store.LeaseDue(ctx, now, now.Add(lease))
 		if err != nil {
 			scheduler.logger.Error("pending CI lease failed", "error", err)
-			retryAt := now.Add(pendingCIRetryDelay)
+			retryAt := now.Add(RetryDelay)
 			if !scheduler.wait(ctx, &retryAt) {
 				return
 			}
@@ -117,7 +117,7 @@ func (scheduler *pendingCIScheduler) dispatch(
 	}
 }
 
-func (scheduler *pendingCIScheduler) applyQuietPeriodRetune(ctx context.Context) error {
+func (scheduler *Scheduler) applyQuietPeriodRetune(ctx context.Context) error {
 	scheduler.retuneMu.Lock()
 	if scheduler.retune == nil {
 		scheduler.retuneMu.Unlock()
@@ -149,7 +149,7 @@ func (scheduler *pendingCIScheduler) applyQuietPeriodRetune(ctx context.Context)
 	return nil
 }
 
-func (scheduler *pendingCIScheduler) worker(
+func (scheduler *Scheduler) worker(
 	ctx context.Context,
 	jobs <-chan pendingci.Request,
 	workers *sync.WaitGroup,
@@ -169,7 +169,7 @@ func (scheduler *pendingCIScheduler) worker(
 	}
 }
 
-func (scheduler *pendingCIScheduler) wait(ctx context.Context, availableAt *time.Time) bool {
+func (scheduler *Scheduler) wait(ctx context.Context, availableAt *time.Time) bool {
 	if availableAt == nil {
 		select {
 		case <-ctx.Done():
@@ -191,5 +191,20 @@ func (scheduler *pendingCIScheduler) wait(ctx context.Context, availableAt *time
 		return true
 	case <-timer.C:
 		return true
+	}
+}
+
+// stopTimer stops a timer and drains it if it had already fired.
+//
+// Deliberately a copy of the one the sweep keeps rather than a shared helper:
+// it is the stdlib's own drain idiom and there is nothing here for two copies
+// to drift apart on. A package this one imports for seven lines would be the
+// worse trade.
+func stopTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
 	}
 }

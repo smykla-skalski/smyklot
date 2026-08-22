@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -76,7 +77,7 @@ func relevantPendingCISignals(signals []webhook.PendingCISignal) []webhook.Pendi
 	relevant := make([]webhook.PendingCISignal, 0, len(signals))
 	for _, signal := range signals {
 		if signal.Kind == webhook.SignalReauthorize &&
-			(signal.ActionID != pendingCIReauthorizeAction ||
+			(signal.ActionID != gate.ReauthorizeAction ||
 				signal.CheckName != storage.PendingCICheckName) {
 			continue
 		}

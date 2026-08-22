@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func TestPendingCISourceClaimWaitsForRepositoryOwnership(t *testing.T) {
 	<-ownerStarted
 
 	storeCalled := make(chan struct{})
-	store := pendingCISourceClaimStoreStub{
+	store := sourceClaimStoreStub{
 		claim: func(pendingci.SourceRevisionRequest) (pendingci.SourceRevisionResult, error) {
 			close(storeCalled)
 
@@ -36,7 +36,7 @@ func TestPendingCISourceClaimWaitsForRepositoryOwnership(t *testing.T) {
 	}
 	claimDone := make(chan error, 1)
 	go func() {
-		_, err := claimPendingCISource(
+		_, err := ClaimSource(
 			t.Context(), store, coordinator,
 			pendingci.SourceRevisionRequest{RepositoryID: "repository:7"}, nil,
 		)
@@ -60,7 +60,7 @@ func TestPendingCISourceClaimWaitsForRepositoryOwnership(t *testing.T) {
 func TestPendingCISourceClaimCancelsWithClaimedOrder(t *testing.T) {
 	t.Parallel()
 	var cancelled pendingci.CancelRequest
-	store := pendingCISourceClaimStoreStub{
+	store := sourceClaimStoreStub{
 		claim: func(pendingci.SourceRevisionRequest) (pendingci.SourceRevisionResult, error) {
 			return pendingci.SourceRevisionResult{Accepted: true, SourceOrder: 23}, nil
 		},
@@ -70,7 +70,7 @@ func TestPendingCISourceClaimCancelsWithClaimedOrder(t *testing.T) {
 			return &pendingci.Request{ID: 9}, nil
 		},
 	}
-	result, err := claimPendingCISource(
+	result, err := ClaimSource(
 		t.Context(), store, bot.NewCoordinator(),
 		pendingci.SourceRevisionRequest{RepositoryID: "repository:7"},
 		&pendingci.CancelRequest{RepositoryID: "repository:7", PullRequest: 198},
@@ -93,25 +93,25 @@ func TestPendingCISourceCancellationReportsWebhookCausality(t *testing.T) {
 	event.Comment.ID = 23
 	event.Comment.UpdatedAt = "2026-08-16T12:00:00Z"
 
-	change := pendingCISourceCancellation(event, "repository:7")
+	change := SourceCancellation(event, "repository:7")
 	if change == nil || change.Trigger != pendingci.TriggerWebhook {
 		t.Fatalf("source cancellation = %+v", change)
 	}
 }
 
-type pendingCISourceClaimStoreStub struct {
+type sourceClaimStoreStub struct {
 	claim  func(pendingci.SourceRevisionRequest) (pendingci.SourceRevisionResult, error)
 	cancel func(pendingci.CancelRequest) (*pendingci.Request, error)
 }
 
-func (store pendingCISourceClaimStoreStub) ClaimSourceRevision(
+func (store sourceClaimStoreStub) ClaimSourceRevision(
 	_ context.Context,
 	request pendingci.SourceRevisionRequest,
 ) (pendingci.SourceRevisionResult, error) {
 	return store.claim(request)
 }
 
-func (store pendingCISourceClaimStoreStub) CancelBySource(
+func (store sourceClaimStoreStub) CancelBySource(
 	_ context.Context,
 	request pendingci.CancelRequest,
 ) (*pendingci.Request, error) {

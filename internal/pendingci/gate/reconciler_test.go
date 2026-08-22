@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -16,12 +16,12 @@ func TestPendingCIReconcilerMergesOnlyAtObservedHead(t *testing.T) {
 	store := &reconcilerTestStore{}
 	effects := &reconcilerTestEffects{}
 	request := reconcilerRequest(now.Add(-time.Minute))
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
 		bot.NewCoordinator(),
-		defaultPendingCITiming(),
+		defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -43,12 +43,12 @@ func TestPendingCIReconcilerKeepsMergeRaceArmed(t *testing.T) {
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	store := &reconcilerTestStore{}
 	effects := &reconcilerTestEffects{mergeErr: errors.New("head changed")}
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
 		bot.NewCoordinator(),
-		defaultPendingCITiming(),
+		defaultTiming(),
 	)
 
 	err := reconciler.Process(context.Background(), reconcilerRequest(now.Add(-time.Minute)))
@@ -68,12 +68,12 @@ func TestPendingCIReconcilerDoesNotMergeAfterLeaseInvalidation(t *testing.T) {
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	store := &reconcilerTestStore{claimErr: errors.New("revision changed")}
 	effects := &reconcilerTestEffects{}
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
 		bot.NewCoordinator(),
-		defaultPendingCITiming(),
+		defaultTiming(),
 	)
 
 	err := reconciler.Process(context.Background(), reconcilerRequest(now.Add(-time.Minute)))
@@ -97,9 +97,9 @@ func TestPendingCIReconcilerDefersUnchangedFailure(t *testing.T) {
 	request.LastFingerprint = "failing"
 	observation := reconcilerObservation(now, pendingci.ObservedFailing)
 	observation.Fingerprint = "failing"
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{observation: observation},
-		&reconcilerTestEffects{}, bot.NewCoordinator(), defaultPendingCITiming(),
+		&reconcilerTestEffects{}, bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -118,9 +118,9 @@ func TestPendingCIReconcilerAppliesQuietPeriodChangesLive(t *testing.T) {
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	store := &reconcilerTestStore{}
 	effects := &reconcilerTestEffects{}
-	timing := defaultPendingCITiming()
+	timing := defaultTiming()
 	timing.PassingQuiet = time.Minute
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
 		effects,
@@ -146,9 +146,9 @@ func TestPendingCIReconcilerCompletesDurableCleanup(t *testing.T) {
 	request.Lifecycle = pendingci.LifecycleCancelled
 	request.CleanupPending = true
 	request.UpdatedAt = now
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{}, effects,
-		bot.NewCoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {
@@ -178,9 +178,9 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	request.Lifecycle = pendingci.LifecycleCancelled
 	request.CleanupPending = true
 	request.UpdatedAt = now
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{}, effects,
-		bot.NewCoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err == nil {
@@ -189,7 +189,7 @@ func TestPendingCIReconcilerPersistsCleanupRetry(t *testing.T) {
 	if store.cleanupRetried == nil {
 		t.Fatal("failed cleanup did not persist a retry")
 	}
-	if store.cleanupRetried.NextAttemptAt != now.Add(pendingCIRetryDelay) {
+	if store.cleanupRetried.NextAttemptAt != now.Add(RetryDelay) {
 		t.Fatalf("cleanup retry = %s", store.cleanupRetried.NextAttemptAt)
 	}
 }
@@ -204,9 +204,9 @@ func TestPendingCIReconcilerNeverRepeatsCleanedArtifacts(t *testing.T) {
 	request.CleanupPending = true
 	request.CleanupArtifactsDone = true
 	request.UpdatedAt = now
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{}, effects,
-		bot.NewCoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err == nil {
@@ -224,9 +224,9 @@ func TestPendingCIReconcilerNeverRepeatsCleanedArtifacts(t *testing.T) {
 func TestPendingCIReconcilerCoordinatesLiveObservation(t *testing.T) {
 	t.Parallel()
 	coordinationErr := errors.New("coordination unavailable")
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
-		pendingCICoordinatorStub{err: coordinationErr}, defaultPendingCITiming(),
+		coordinatorStub{err: coordinationErr}, defaultTiming(),
 	)
 
 	err := reconciler.Process(
@@ -247,12 +247,12 @@ func TestPendingCIReconcilerRestoresRetiredCheckBeforeAdvancing(t *testing.T) {
 	}}
 	request := reconcilerRequest(now)
 	request.RetiredCheckSlotID = &retiredID
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store,
 		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPending)},
 		effects,
 		bot.NewCoordinator(),
-		defaultPendingCITiming(),
+		defaultTiming(),
 	)
 
 	if err := reconciler.Process(t.Context(), request); err != nil {
@@ -278,9 +278,9 @@ func TestPendingCIReconcilerKeepsReturningHeadForAtomicSwap(t *testing.T) {
 	}}
 	request := reconcilerRequest(time.Now().UTC())
 	request.RetiredCheckSlotID = &retiredID
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{}, effects,
-		bot.NewCoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultTiming(),
 	)
 
 	handled, err := reconciler.reconcileRetiredCheck(
@@ -314,9 +314,9 @@ func TestPendingCIReconcilerDoesNotBaselineReplacementCurrentCheck(t *testing.T)
 	request.Lifecycle = pendingci.LifecycleCancelled
 	request.CleanupPending = true
 	request.RetiredCheckSlotID = &retiredID
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		store, reconcilerTestObserver{}, effects,
-		bot.NewCoordinator(), defaultPendingCITiming(),
+		bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(t.Context(), request); err != nil {
@@ -341,8 +341,8 @@ func TestPendingCIReconcilerRevalidatesMergeExclusively(t *testing.T) {
 	}}
 	request := reconcilerRequest(now.Add(-time.Minute))
 	request.RepositoryID = "repository"
-	reconciler := newPendingCIReconciler(
-		store, observer, effects, bot.NewCoordinator(), defaultPendingCITiming(),
+	reconciler := newReconciler(
+		store, observer, effects, bot.NewCoordinator(), defaultTiming(),
 	)
 
 	if err := reconciler.Process(context.Background(), request); err != nil {

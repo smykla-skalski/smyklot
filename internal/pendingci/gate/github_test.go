@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
-	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -19,10 +18,8 @@ import (
 
 func TestPendingCICheckObservationAppliesFreshBranchScope(t *testing.T) {
 	t.Parallel()
-	store, target, repository, _ := pendingCIGateTestStore(t)
-	backend := &githubPendingCIBackend{server: &server{
-		store: store, panel: &adminpanel.Server{},
-	}}
+	store, target, repository, _ := gateTestStore(t)
+	backend := &Backend{store: store, panelled: true}
 	request := pendingci.Request{TargetID: target.ID, RepositoryID: repository.ID}
 	included, err := backend.checkBranchIncluded(t.Context(), request, "main")
 	if err != nil {
@@ -77,9 +74,9 @@ func TestPendingCIReauthorizationRejectsANewMergeQueue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allowed, err := (&server{}).preparePendingCIReauthorization(
+	allowed, err := (&Gate{}).preparePendingCIReauthorization(
 		t.Context(),
-		pendingCIReauthorizationCandidate{
+		reauthorizationCandidate{
 			slot: pendingci.CheckSlot{PullRequest: 42},
 			request: pendingci.Request{
 				CandidateBaseBranch: "main",
@@ -269,7 +266,7 @@ func TestPendingCIRequiredWaitRejectsUnprotectedBranch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	backend := &githubPendingCIBackend{}
+	backend := &Backend{}
 	_, err = backend.checks(
 		context.Background(),
 		client,
@@ -353,7 +350,7 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 		current      pendingci.Request
 		err          error
 		otherCleanup bool
-		scope        pendingCICleanupScope
+		scope        cleanupScope
 	}{
 		{
 			name: "same command source and label",
@@ -366,18 +363,18 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 			current: pendingci.Request{
 				Label: "smyklot:pending:ci:rebase", SourceCommentID: 202,
 			},
-			scope: pendingCICleanupScope{label: true, sourceReaction: true},
+			scope: cleanupScope{label: true, sourceReaction: true},
 		},
 		{
 			name: "replacement no longer armed", err: storage.ErrNotFound,
-			scope: pendingCICleanupScope{
+			scope: cleanupScope{
 				label: true, sourceReaction: true, serviceFence: true,
 			},
 		},
 		{
 			name: "another terminal request retains ownership", err: storage.ErrNotFound,
 			otherCleanup: true,
-			scope: pendingCICleanupScope{
+			scope: cleanupScope{
 				label: true, sourceReaction: true, serviceFence: true,
 			},
 		},
@@ -385,7 +382,7 @@ func TestPendingCICleanupScopePreservesReplacementArtifacts(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			backend := &githubPendingCIBackend{current: pendingCICurrentStoreStub{
+			backend := &Backend{current: currentStoreStub{
 				request: test.current, err: test.err, otherCleanup: test.otherCleanup,
 			}}
 			scope, err := backend.cleanupScope(
@@ -408,13 +405,13 @@ func TestPendingCIObserveRequiresCurrentSnapshotBeforeMutation(t *testing.T) {
 	request := pendingci.Request{
 		ID: 41, Revision: 7, RepositoryID: "9001", PullRequest: 198,
 	}
-	backend := &githubPendingCIBackend{current: pendingCICurrentStoreStub{
+	backend := &Backend{current: currentStoreStub{
 		request: pendingci.Request{ID: 42, Revision: 1},
 	}}
 	if err := backend.requireCurrent(t.Context(), request); !errors.Is(err, storage.ErrConflict) {
 		t.Fatalf("currentness error = %v, want conflict", err)
 	}
-	backend.current = pendingCICurrentStoreStub{request: request}
+	backend.current = currentStoreStub{request: request}
 	if err := backend.requireCurrent(t.Context(), request); err != nil {
 		t.Fatalf("matching snapshot rejected: %v", err)
 	}
@@ -439,9 +436,9 @@ func TestPendingCICleanupAcquiresRepositoryOwnership(t *testing.T) {
 	request.RepositoryID = "9001"
 	request.Lifecycle = pendingci.LifecycleCancelled
 	request.CleanupPending = true
-	reconciler := newPendingCIReconciler(
+	reconciler := newReconciler(
 		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
-		pendingCICoordinatorStub{err: coordinationErr}, defaultPendingCITiming(),
+		coordinatorStub{err: coordinationErr}, defaultTiming(),
 	)
 	err := reconciler.Process(context.Background(), request)
 	if !errors.Is(err, coordinationErr) {
@@ -449,17 +446,17 @@ func TestPendingCICleanupAcquiresRepositoryOwnership(t *testing.T) {
 	}
 }
 
-type pendingCICurrentStoreStub struct {
+type currentStoreStub struct {
 	request      pendingci.Request
 	err          error
 	otherCleanup bool
 }
 
-type pendingCICoordinatorStub struct {
+type coordinatorStub struct {
 	err error
 }
 
-func (stub pendingCICoordinatorStub) Exclusive(
+func (stub coordinatorStub) Exclusive(
 	context.Context,
 	string,
 	func() error,
@@ -467,7 +464,7 @@ func (stub pendingCICoordinatorStub) Exclusive(
 	return stub.err
 }
 
-func (store pendingCICurrentStoreStub) GetArmed(
+func (store currentStoreStub) GetArmed(
 	context.Context,
 	string,
 	int,
@@ -475,7 +472,7 @@ func (store pendingCICurrentStoreStub) GetArmed(
 	return store.request, store.err
 }
 
-func (store pendingCICurrentStoreStub) HasPendingCleanup(
+func (store currentStoreStub) HasPendingCleanup(
 	context.Context,
 	pendingci.CleanupFilter,
 ) (bool, error) {

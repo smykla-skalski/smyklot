@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -15,21 +15,21 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// handlePendingCIWebhook applies only durable state transitions. Webhook
+// HandleWebhook applies only durable state transitions. Webhook
 // payloads are wake-up hints; the reconciler reads live pull-request and check
 // state before it ever decides to merge.
-func (s *server) handlePendingCIWebhook(
+func (g *Gate) HandleWebhook(
 	ctx context.Context,
 	notification *webhook.PendingCINotification,
 	deliveryID string,
 ) error {
 	repositoryID := storage.RepositoryID(notification.Metadata.RepositoryID)
-	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
-		return s.applyPendingCINotification(ctx, notification, deliveryID)
+	return g.Coordinator.Exclusive(ctx, repositoryID, func() error {
+		return g.applyPendingCINotification(ctx, notification, deliveryID)
 	})
 }
 
-func (s *server) applyPendingCINotification(
+func (g *Gate) applyPendingCINotification(
 	ctx context.Context,
 	notification *webhook.PendingCINotification,
 	deliveryID string,
@@ -38,13 +38,13 @@ func (s *server) applyPendingCINotification(
 		// A repository can be added while reaction polling is disabled. Its first
 		// pull request is enough reason to refresh the catalog and provision the
 		// required context even when the webhook arrived before the catalog knew it.
-		s.WakePendingCIGates()
+		g.WakeGates()
 	}
 	occurredAt := time.Now().UTC()
 	var changed int64
 
 	for _, signal := range notification.Signals {
-		count, err := s.applyPendingCISignal(
+		count, err := g.applyPendingCISignal(
 			ctx, notification.Metadata, occurredAt, notification.Event, deliveryID, signal,
 		)
 		if err != nil {
@@ -53,7 +53,7 @@ func (s *server) applyPendingCINotification(
 		changed += count
 	}
 	if changed > 0 {
-		s.pendingCI.Wake()
+		g.Scheduler.Wake()
 		logging.From(ctx).Info("pending CI requests notified", "requests", changed)
 	} else {
 		logging.From(ctx).Debug("pending CI webhook matched no armed request")
@@ -62,7 +62,7 @@ func (s *server) applyPendingCINotification(
 	return nil
 }
 
-func (s *server) applyPendingCISignal(
+func (g *Gate) applyPendingCISignal(
 	ctx context.Context,
 	metadata webhook.Metadata,
 	occurredAt time.Time,
@@ -73,13 +73,13 @@ func (s *server) applyPendingCISignal(
 	repositoryID := storage.RepositoryID(metadata.RepositoryID)
 	switch signal.Kind {
 	case webhook.SignalWakePullRequest:
-		changed, err := s.wakePendingCIPullRequest(
+		changed, err := g.wakePendingCIPullRequest(
 			ctx, repositoryID, occurredAt, eventName, deliveryID, signal,
 		)
 		if err != nil {
 			return 0, err
 		}
-		if err := s.ensureWebhookPendingCIBaseline(ctx, metadata, signal.PullRequest); err != nil {
+		if err := g.ensureWebhookPendingCIBaseline(ctx, metadata, signal.PullRequest); err != nil {
 			return 0, err
 		}
 		if changed {
@@ -88,7 +88,7 @@ func (s *server) applyPendingCISignal(
 
 		return 0, nil
 	case webhook.SignalPullRequestDone, webhook.SignalLabelRemoved:
-		changed, err := s.wakePendingCIPullRequest(
+		changed, err := g.wakePendingCIPullRequest(
 			ctx, repositoryID, occurredAt, eventName, deliveryID, signal,
 		)
 		if changed {
@@ -97,13 +97,13 @@ func (s *server) applyPendingCISignal(
 
 		return 0, err
 	case webhook.SignalWakeHead:
-		return s.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
+		return g.Store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
 		})
 	case webhook.SignalReauthorize:
-		changed, err := s.reauthorizePendingCI(
+		changed, err := g.reauthorizePendingCI(
 			ctx,
 			repositoryID,
 			occurredAt,
@@ -116,8 +116,8 @@ func (s *server) applyPendingCISignal(
 
 		return 0, err
 	case webhook.SignalRerequestCheck:
-		if s.pendingCIChecks != nil {
-			_, err := s.pendingCIChecks.RefreshRerequest(
+		if g.Checks != nil {
+			_, err := g.Checks.RefreshRerequest(
 				ctx, repositoryID, signal.HeadSHA, signal.AppID, signal.CheckRunID,
 				signal.CheckName, signal.ExternalID, eventName == webhook.EventCheckRun,
 			)
@@ -126,7 +126,7 @@ func (s *server) applyPendingCISignal(
 			}
 		}
 
-		return s.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
+		return g.Store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
 			EventName: eventName, EventKey: signal.EventKey,
 			DeliveryID: deliveryID, OccurredAt: occurredAt,
@@ -136,7 +136,7 @@ func (s *server) applyPendingCISignal(
 	}
 }
 
-func (s *server) wakePendingCIPullRequest(
+func (g *Gate) wakePendingCIPullRequest(
 	ctx context.Context,
 	repositoryID string,
 	occurredAt time.Time,
@@ -147,22 +147,22 @@ func (s *server) wakePendingCIPullRequest(
 	if signal.MatchHead {
 		expectedHead = signal.HeadSHA
 	}
-	return s.store.Wake(ctx, pendingci.WakeRequest{
+	return g.Store.Wake(ctx, pendingci.WakeRequest{
 		RepositoryID: repositoryID, PullRequest: signal.PullRequest,
 		EventName: eventName, EventKey: signal.EventKey, DeliveryID: deliveryID,
 		ExpectedHeadSHA: expectedHead, OccurredAt: occurredAt,
 	})
 }
 
-func (s *server) ensureWebhookPendingCIBaseline(
+func (g *Gate) ensureWebhookPendingCIBaseline(
 	ctx context.Context,
 	metadata webhook.Metadata,
 	pullRequest int,
 ) error {
-	if s.panel == nil || s.pendingCIChecks == nil || pullRequest <= 0 {
+	if !g.Panelled || g.Checks == nil || pullRequest <= 0 {
 		return nil
 	}
-	target, repository, eligible, err := s.webhookPendingCIBaselineControls(
+	target, repository, eligible, err := g.webhookPendingCIBaselineControls(
 		ctx,
 		metadata,
 		pullRequest,
@@ -174,7 +174,7 @@ func (s *server) ensureWebhookPendingCIBaseline(
 	if err != nil {
 		return err
 	}
-	client, owner, name, err := s.pendingCIClient(installationID, repository.FullName)
+	client, owner, name, err := g.pendingCIClient(installationID, repository.FullName)
 	if err != nil {
 		return err
 	}
@@ -189,10 +189,10 @@ func (s *server) ensureWebhookPendingCIBaseline(
 	if repository.PendingCIBranchPatternsOverride != nil {
 		patterns = *repository.PendingCIBranchPatternsOverride
 	}
-	if !pendingCIBranchIncluded(state.BaseBranch, repository.DefaultBranch, patterns) {
+	if !branchIncluded(state.BaseBranch, repository.DefaultBranch, patterns) {
 		return nil
 	}
-	_, err = s.pendingCIChecks.EnsureBaseline(
+	_, err = g.Checks.EnsureBaseline(
 		ctx,
 		target,
 		repository,
@@ -206,14 +206,14 @@ func (s *server) ensureWebhookPendingCIBaseline(
 	return nil
 }
 
-func (s *server) webhookPendingCIBaselineControls(
+func (g *Gate) webhookPendingCIBaselineControls(
 	ctx context.Context,
 	metadata webhook.Metadata,
 	pullRequest int,
 ) (storage.Target, storage.Repository, bool, error) {
 	targetID := storage.InstallationID(metadata.InstallationID)
 	repositoryID := storage.RepositoryID(metadata.RepositoryID)
-	target, repository, err := s.readRepositoryControls(ctx, targetID, repositoryID)
+	target, repository, err := readControls(ctx, g.Store, targetID, repositoryID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return storage.Target{}, storage.Repository{}, false, nil
 	}
@@ -221,7 +221,7 @@ func (s *server) webhookPendingCIBaselineControls(
 		return storage.Target{}, storage.Repository{}, false,
 			fmt.Errorf("read pull request baseline controls: %w", err)
 	}
-	gate, err := s.store.GetPendingCIRepositoryGate(ctx, repositoryID)
+	gate, err := g.Store.GetPendingCIRepositoryGate(ctx, repositoryID)
 	if err != nil {
 		return storage.Target{}, storage.Repository{}, false,
 			fmt.Errorf("read pull request baseline gate: %w", err)
@@ -237,7 +237,7 @@ func (s *server) webhookPendingCIBaselineControls(
 	if !enabled || !target.Available || !repository.Available || !target.Grants("checks") {
 		return target, repository, false, nil
 	}
-	armed, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
+	armed, err := g.Store.GetArmed(ctx, repositoryID, pullRequest)
 	if err == nil && armed.ArtifactKind == pendingci.ArtifactCheck {
 		return target, repository, false, nil
 	}
@@ -249,7 +249,7 @@ func (s *server) webhookPendingCIBaselineControls(
 	return target, repository, true, nil
 }
 
-type pendingCIReauthorizationCandidate struct {
+type reauthorizationCandidate struct {
 	slot       pendingci.CheckSlot
 	request    pendingci.Request
 	client     *github.Client
@@ -257,22 +257,22 @@ type pendingCIReauthorizationCandidate struct {
 	repository string
 }
 
-func (s *server) reauthorizePendingCI(
+func (g *Gate) reauthorizePendingCI(
 	ctx context.Context,
 	repositoryID string,
 	authorizedAt time.Time,
 	deliveryID string,
 	signal webhook.PendingCISignal,
 ) (bool, error) {
-	candidate, found, err := s.pendingCIReauthorizationCandidate(ctx, repositoryID, signal)
+	candidate, found, err := g.reauthorizationCandidate(ctx, repositoryID, signal)
 	if err != nil || !found {
 		return false, err
 	}
-	allowed, err := s.preparePendingCIReauthorization(ctx, candidate, signal)
+	allowed, err := g.preparePendingCIReauthorization(ctx, candidate, signal)
 	if err != nil || !allowed {
 		return false, err
 	}
-	updated, err := s.store.Reauthorize(ctx, pendingci.ReauthorizeRequest{
+	updated, err := g.Store.Reauthorize(ctx, pendingci.ReauthorizeRequest{
 		RepositoryID: repositoryID, PullRequest: candidate.slot.PullRequest,
 		HeadSHA: signal.HeadSHA, BaseBranch: candidate.request.CandidateBaseBranch,
 		CheckSlotID: candidate.slot.ID, Actor: signal.Actor, EventKey: signal.EventKey,
@@ -284,16 +284,14 @@ func (s *server) reauthorizePendingCI(
 	// Reauthorization made the durable request due. Wake the scheduler before
 	// repairing the external check so a transient GitHub failure cannot leave
 	// the request asleep until an unrelated event arrives.
-	s.pendingCI.Wake()
-	target, repositorySettings, err := s.readRepositoryControls(
-		ctx,
-		updated.TargetID,
-		updated.RepositoryID,
+	g.Scheduler.Wake()
+	target, repositorySettings, err := readControls(
+		ctx, g.Store, updated.TargetID, updated.RepositoryID,
 	)
 	if err != nil {
 		return false, err
 	}
-	if _, err := s.pendingCIChecks.EnsureAuthorized(
+	if _, err := g.Checks.EnsureAuthorized(
 		ctx,
 		target,
 		repositorySettings,
@@ -308,52 +306,52 @@ func (s *server) reauthorizePendingCI(
 	return true, nil
 }
 
-func (s *server) pendingCIReauthorizationCandidate(
+func (g *Gate) reauthorizationCandidate(
 	ctx context.Context,
 	repositoryID string,
 	signal webhook.PendingCISignal,
-) (pendingCIReauthorizationCandidate, bool, error) {
-	slot, err := s.store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
+) (reauthorizationCandidate, bool, error) {
+	slot, err := g.Store.GetCheckSlotByHead(ctx, repositoryID, signal.HeadSHA)
 	if errors.Is(err, storage.ErrNotFound) {
-		return pendingCIReauthorizationCandidate{}, false, nil
+		return reauthorizationCandidate{}, false, nil
 	}
 	if err != nil {
-		return pendingCIReauthorizationCandidate{}, false,
+		return reauthorizationCandidate{}, false,
 			fmt.Errorf("read requested-action check slot: %w", err)
 	}
 	if signal.PullRequest > 0 && signal.PullRequest != slot.PullRequest {
-		return pendingCIReauthorizationCandidate{}, false, nil
+		return reauthorizationCandidate{}, false, nil
 	}
 	if slot.CheckRunID == nil || *slot.CheckRunID != signal.CheckRunID ||
 		slot.AppID != signal.AppID || slot.Name != signal.CheckName ||
 		slot.ExternalID != signal.ExternalID {
-		return pendingCIReauthorizationCandidate{}, false, nil
+		return reauthorizationCandidate{}, false, nil
 	}
-	request, err := s.store.GetArmed(ctx, repositoryID, slot.PullRequest)
+	request, err := g.Store.GetArmed(ctx, repositoryID, slot.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
-		return pendingCIReauthorizationCandidate{}, false, nil
+		return reauthorizationCandidate{}, false, nil
 	}
 	if err != nil {
-		return pendingCIReauthorizationCandidate{}, false,
+		return reauthorizationCandidate{}, false,
 			fmt.Errorf("read requested-action pending CI request: %w", err)
 	}
 	if request.CheckSlotID == nil || *request.CheckSlotID != slot.ID ||
 		request.CandidateHeadSHA != signal.HeadSHA {
-		return pendingCIReauthorizationCandidate{}, false, nil
+		return reauthorizationCandidate{}, false, nil
 	}
-	client, owner, repository, err := s.pendingCIRepositoryClient(slot)
+	client, owner, repository, err := g.pendingCIRepositoryClient(slot)
 	if err != nil {
-		return pendingCIReauthorizationCandidate{}, false, err
+		return reauthorizationCandidate{}, false, err
 	}
 
-	return pendingCIReauthorizationCandidate{
+	return reauthorizationCandidate{
 		slot: slot, request: request, client: client, owner: owner, repository: repository,
 	}, true, nil
 }
 
-func (s *server) preparePendingCIReauthorization(
+func (g *Gate) preparePendingCIReauthorization(
 	ctx context.Context,
-	candidate pendingCIReauthorizationCandidate,
+	candidate reauthorizationCandidate,
 	signal webhook.PendingCISignal,
 ) (bool, error) {
 	client := candidate.client
@@ -396,10 +394,10 @@ func (s *server) preparePendingCIReauthorization(
 	if err != nil {
 		return false, fmt.Errorf("read requested-action base protection: %w", err)
 	}
-	if !pendingCIRequiredContextOwned(required, candidate.slot.Name, candidate.slot.AppID) {
+	if !requiredContextOwned(required, candidate.slot.Name, candidate.slot.AppID) {
 		return false, nil
 	}
-	botConfig, err := s.serviceConfigWithoutCatalogRefresh(
+	botConfig, err := g.Config.Config(
 		ctx,
 		client,
 		candidate.request.TargetID,
@@ -414,7 +412,7 @@ func (s *server) preparePendingCIReauthorization(
 	if err != nil {
 		return false, fmt.Errorf("read requested-action pull request approvals: %w", err)
 	}
-	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: s.cfg.botUsername}
+	runtime := &bot.RuntimeConfig{CommentAuthor: signal.Actor, BotUsername: g.BotUsername}
 	if bot.PendingCIApprovalAllowed(runtime, botConfig, info) != nil {
 		return false, nil
 	}
@@ -427,21 +425,21 @@ func (s *server) preparePendingCIReauthorization(
 	return true, nil
 }
 
-func (s *server) pendingCIRepositoryClient(
+func (g *Gate) pendingCIRepositoryClient(
 	slot pendingci.CheckSlot,
 ) (*github.Client, string, string, error) {
-	return s.pendingCIClient(slot.InstallationID, slot.RepositoryFullName)
+	return g.pendingCIClient(slot.InstallationID, slot.RepositoryFullName)
 }
 
-func (s *server) pendingCIClient(
+func (g *Gate) pendingCIClient(
 	installationID int64,
 	fullName string,
 ) (*github.Client, string, string, error) {
-	token, err := s.tokens.InstallationToken(installationID)
+	token, err := g.Tokens.InstallationToken(installationID)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
-	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	client, err := github.NewClient(token, g.APIBaseURL)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}

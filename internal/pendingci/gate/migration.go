@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -19,10 +19,10 @@ const (
 	orphanPendingCIComment      = "⚠️ This pending CI request was cancelled because Smyklot could not recover its authorized command after a service restart. Please reissue the after-CI command."
 )
 
-// drainLegacyPendingCILabels turns pre-durable labels into terminal cleanup
+// DrainLegacyLabels turns pre-durable labels into terminal cleanup
 // records. It never guesses an authorized head and never imports a PR that has
 // any durable request history.
-func (s *server) drainLegacyPendingCILabels(
+func (g *Gate) DrainLegacyLabels(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,
@@ -43,7 +43,7 @@ func (s *server) drainLegacyPendingCILabels(
 		if _, cleaned := skip[pullRequest]; cleaned {
 			continue
 		}
-		headSHA, baseBranch, err := pendingCIMigrationRefs(pr)
+		headSHA, baseBranch, err := migrationRefs(pr)
 		if err != nil {
 			return err
 		}
@@ -57,10 +57,10 @@ func (s *server) drainLegacyPendingCILabels(
 		}
 
 		var result pendingci.LegacyDrainResult
-		err = s.pendingCICoordinator.Exclusive(
+		err = g.Coordinator.Exclusive(
 			ctx, storage.RepositoryID(repository.ID), func() error {
 				var drainErr error
-				result, drainErr = s.store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
+				result, drainErr = g.Store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
 					TargetID: targetID, InstallationID: installationID,
 					RepositoryID:       storage.RepositoryID(repository.ID),
 					RepositoryFullName: bot.RepoFullName(repository.Owner, repository.Name),
@@ -78,7 +78,7 @@ func (s *server) drainLegacyPendingCILabels(
 			continue
 		}
 
-		s.pendingCI.Wake()
+		g.Scheduler.Wake()
 		if err := client.PostComment(
 			ctx, repository.Owner, repository.Name, pullRequest, legacyPendingCIDrainComment,
 		); err != nil {
@@ -92,10 +92,10 @@ func (s *server) drainLegacyPendingCILabels(
 	return nil
 }
 
-// reconcilePendingCIServiceArtifacts repairs durable ownership fences and
+// ReconcileServiceArtifacts repairs durable ownership fences and
 // cancels artifacts that have no durable authorization. The returned pull
 // requests must not be re-imported from the stale GitHub list in this sweep.
-func (s *server) reconcilePendingCIServiceArtifacts(
+func (g *Gate) ReconcileServiceArtifacts(
 	ctx context.Context,
 	client *github.Client,
 	repository github.Repository,
@@ -107,7 +107,7 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 	var cleanupErr error
 	for _, pr := range prs {
 		legacy := bot.PullRequestHasLabel(pr, github.LegacyLabelPendingCIServiceOwner)
-		labels := pendingCIMethodLabels(pr)
+		labels := methodLabels(pr)
 		if !inspectAll && !legacy && len(labels) == 0 {
 			continue
 		}
@@ -119,8 +119,8 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 
 			continue
 		}
-		knownReaction, err := pendingCIKnownServiceReaction(
-			ctx, client, repository, pullRequest, s.cfg.botUsername,
+		knownReaction, err := knownServiceReaction(
+			ctx, client, repository, pullRequest, g.BotUsername,
 			inspectAll && !legacy && len(labels) == 0,
 		)
 		if err != nil {
@@ -131,7 +131,7 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 		if inspectAll && !legacy && len(labels) == 0 && !knownReaction {
 			continue
 		}
-		wasCleaned, err := s.reconcilePendingCIServiceArtifact(
+		wasCleaned, err := g.reconcilePendingCIServiceArtifact(
 			ctx, client, repository, repositoryID, pullRequest,
 			labels, legacy, knownReaction,
 		)
@@ -142,7 +142,7 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 		}
 		if wasCleaned {
 			cleaned[pullRequest] = struct{}{}
-			s.explainOrphanPendingCICleanup(
+			g.explainOrphanPendingCICleanup(
 				ctx, client, repository, pullRequest, len(labels) > 0,
 			)
 		}
@@ -151,7 +151,7 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 	return cleaned, cleanupErr
 }
 
-func pendingCIMethodLabels(pr map[string]interface{}) []string {
+func methodLabels(pr map[string]interface{}) []string {
 	candidates := bot.PendingCILabels(pr)
 	labels := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
@@ -161,7 +161,7 @@ func pendingCIMethodLabels(pr map[string]interface{}) []string {
 	return labels
 }
 
-func pendingCIKnownServiceReaction(
+func knownServiceReaction(
 	ctx context.Context,
 	client *github.Client,
 	repository github.Repository,
@@ -183,7 +183,7 @@ func pendingCIKnownServiceReaction(
 	return found, nil
 }
 
-func (s *server) reconcilePendingCIServiceArtifact(
+func (g *Gate) reconcilePendingCIServiceArtifact(
 	ctx context.Context,
 	client *github.Client,
 	repository github.Repository,
@@ -194,9 +194,9 @@ func (s *server) reconcilePendingCIServiceArtifact(
 	knownReaction bool,
 ) (bool, error) {
 	cleaned := false
-	err := s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+	err := g.Coordinator.Exclusive(ctx, repositoryID, func() error {
 		var err error
-		cleaned, err = s.reconcilePendingCIServiceArtifactLocked(
+		cleaned, err = g.reconcilePendingCIServiceArtifactLocked(
 			ctx, client, repository, repositoryID, pullRequest,
 			labels, legacy, knownReaction,
 		)
@@ -207,7 +207,7 @@ func (s *server) reconcilePendingCIServiceArtifact(
 	return cleaned, err
 }
 
-func (s *server) reconcilePendingCIServiceArtifactLocked(
+func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 	ctx context.Context,
 	client *github.Client,
 	repository github.Repository,
@@ -217,7 +217,7 @@ func (s *server) reconcilePendingCIServiceArtifactLocked(
 	legacy bool,
 	knownReaction bool,
 ) (bool, error) {
-	request, err := s.store.GetArmed(ctx, repositoryID, pullRequest)
+	request, err := g.Store.GetArmed(ctx, repositoryID, pullRequest)
 	if err == nil {
 		return false, migrateArmedPendingCIServiceArtifact(
 			ctx, client, repository, request, legacy,
@@ -226,7 +226,7 @@ func (s *server) reconcilePendingCIServiceArtifactLocked(
 	if !errors.Is(err, storage.ErrNotFound) {
 		return false, fmt.Errorf("read pending CI service request: %w", err)
 	}
-	pending, err := s.store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
+	pending, err := g.Store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
 		RepositoryID: repositoryID, PullRequest: pullRequest,
 		ArtifactsPendingOnly: true,
 	})
@@ -240,7 +240,7 @@ func (s *server) reconcilePendingCIServiceArtifactLocked(
 	if !serviceOwned {
 		serviceOwned, err = client.HasPullRequestReaction(
 			ctx, repository.Owner, repository.Name, pullRequest,
-			s.cfg.botUsername, github.ReactionPendingCIService,
+			g.BotUsername, github.ReactionPendingCIService,
 		)
 		if err != nil {
 			return false, fmt.Errorf("read pending CI service reaction: %w", err)
@@ -250,7 +250,7 @@ func (s *server) reconcilePendingCIServiceArtifactLocked(
 		return false, nil
 	}
 	if err := cleanupOrphanPendingCIServiceArtifacts(
-		ctx, client, repository, pullRequest, labels, legacy, s.cfg.botUsername,
+		ctx, client, repository, pullRequest, labels, legacy, g.BotUsername,
 	); err != nil {
 		return false, err
 	}
@@ -326,7 +326,7 @@ func cleanupOrphanPendingCIServiceArtifacts(
 	)
 }
 
-func (s *server) explainOrphanPendingCICleanup(
+func (g *Gate) explainOrphanPendingCICleanup(
 	ctx context.Context,
 	client *github.Client,
 	repository github.Repository,
@@ -346,7 +346,7 @@ func (s *server) explainOrphanPendingCICleanup(
 	}
 }
 
-func pendingCIMigrationRefs(pr map[string]interface{}) (string, string, error) {
+func migrationRefs(pr map[string]interface{}) (string, string, error) {
 	head, _ := pr["head"].(map[string]interface{})
 	base, _ := pr["base"].(map[string]interface{})
 	headSHA, _ := head["sha"].(string)

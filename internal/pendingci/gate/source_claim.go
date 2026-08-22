@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-type pendingCISourceClaimStore interface {
+type sourceClaimStore interface {
 	ClaimSourceRevision(
 		context.Context,
 		pendingci.SourceRevisionRequest,
@@ -18,22 +18,22 @@ type pendingCISourceClaimStore interface {
 	CancelBySource(context.Context, pendingci.CancelRequest) (*pendingci.Request, error)
 }
 
-type pendingCISourceClaimResult struct {
+type sourceClaimResult struct {
 	Source    pendingci.SourceRevisionResult
 	Cancelled *pendingci.Request
 }
 
-// claimPendingCISource serializes mutable comment ordering with activation.
+// ClaimSource serializes mutable comment ordering with activation.
 // An edit therefore wins before activation preflight or waits until the
 // request is armed and can be terminalized normally.
-func claimPendingCISource(
+func ClaimSource(
 	ctx context.Context,
-	store pendingCISourceClaimStore,
+	store sourceClaimStore,
 	exclusive bot.Exclusive,
 	source pendingci.SourceRevisionRequest,
 	cancellation *pendingci.CancelRequest,
-) (pendingCISourceClaimResult, error) {
-	var result pendingCISourceClaimResult
+) (sourceClaimResult, error) {
+	var result sourceClaimResult
 	err := exclusive.Exclusive(ctx, source.RepositoryID, func() error {
 		var err error
 		result.Source, err = store.ClaimSourceRevision(ctx, source)
@@ -47,13 +47,13 @@ func claimPendingCISource(
 		return err
 	})
 	if err != nil {
-		return pendingCISourceClaimResult{}, fmt.Errorf("coordinate pending CI source: %w", err)
+		return sourceClaimResult{}, fmt.Errorf("coordinate pending CI source: %w", err)
 	}
 
 	return result, nil
 }
 
-func pendingCISourceCancellation(
+func SourceCancellation(
 	event *webhook.IssueCommentEvent,
 	repositoryID string,
 ) *pendingci.CancelRequest {

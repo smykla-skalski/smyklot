@@ -19,16 +19,12 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	s.runtimePathIndexInterval = values.PathIndexInterval
 	s.runtimeMu.Unlock()
 	s.logLevel.Set(values.LogLevel)
-	quietPeriodChanged := s.pendingCIReconciler != nil &&
-		s.pendingCIReconciler.SetPassingQuiet(values.PendingCIQuietPeriod)
+	s.gate.RetuneQuietPeriod(values.PendingCIQuietPeriod)
 	if pollIntervalChanged {
 		select {
 		case s.pollIntervalChanged <- struct{}{}:
 		default:
 		}
-	}
-	if quietPeriodChanged && s.pendingCI != nil {
-		s.pendingCI.RetunePassingQuiet(values.PendingCIQuietPeriod)
 	}
 }
 

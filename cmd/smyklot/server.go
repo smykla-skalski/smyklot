@@ -19,6 +19,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync/apply"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -148,14 +149,14 @@ type server struct {
 	configs *repoCache[repositoryConfigFile]
 	owners  *repoCache[string]
 
-	deliveries           *deliveryDispatcher
-	jobs                 chan job
-	pendingCI            *pendingCIScheduler
-	pendingCIReconciler  *pendingCIReconciler
+	deliveries *deliveryDispatcher
+	jobs       chan job
+
+	// gate is the whole pending CI runtime, which used to be seven fields on
+	// this struct. It is one because the order they have to be built in is a
+	// fact about them rather than about the service
+	gate                 *gate.Gate
 	pendingCICoordinator bot.Exclusive
-	pendingCIHandoff     *pendingCIHandoff
-	pendingCIChecks      *githubPendingCIChecks
-	pendingCIGates       *pendingCIGateReconciler
 	pendingCIGateChanged chan struct{}
 
 	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
@@ -248,7 +249,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		runtimePathIndexInterval: cfg.pathIndexInterval,
 		pollIntervalChanged:      make(chan struct{}, 1),
 		pendingCIGateChanged:     make(chan struct{}, 1),
-		migrationRetryDelay:      pendingCIRetryDelay,
+		migrationRetryDelay:      gate.RetryDelay,
 		registry:                 registry,
 		metrics:                  metrics.New(registry),
 		configs:                  newRepoConfigCache(),
@@ -271,35 +272,25 @@ func newServer(cfg *serveConfig) (*server, error) {
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
 	pendingCICoordinator := bot.NewCoordinator()
-	srv.pendingCIChecks = &githubPendingCIChecks{
-		store: srv.store, tokens: srv.tokens, apiBaseURL: cfg.apiBaseURL,
-		now: func() time.Time { return time.Now().UTC() }, syncer: bot.NewCoordinator(),
-	}
-	srv.pendingCIGates = &pendingCIGateReconciler{
-		store: srv.store, checks: srv.pendingCIChecks,
-		now: func() time.Time { return time.Now().UTC() },
-	}
 	srv.pendingCICoordinator = pendingCICoordinator
-	pendingCIBackend := &githubPendingCIBackend{
-		server: srv, current: srv.store,
-		source: githubPendingCISourceValidator{server: srv},
-	}
-	pendingCITiming := defaultPendingCITiming()
-	pendingCITiming.PassingQuiet = cfg.pendingCIQuietPeriod
-	pendingCIReconciler := newPendingCIReconciler(
-		srv.store,
-		pendingCIBackend,
-		pendingCIBackend,
-		pendingCICoordinator,
-		pendingCITiming,
-	)
-	srv.pendingCIReconciler = pendingCIReconciler
-	srv.pendingCI = newPendingCIScheduler(srv.store, pendingCIReconciler, srv.logger)
-	srv.pendingCIGates.wake = srv.pendingCI.Wake
-	srv.pendingCI.RetunePassingQuiet(cfg.pendingCIQuietPeriod)
-	srv.pendingCIHandoff = &pendingCIHandoff{
-		store: srv.store, coordinator: pendingCICoordinator, wake: srv.pendingCI.Wake,
-	}
+	srv.gate = gate.New(gate.Dependencies{
+		Store:       srv.store,
+		Gates:       srv.store,
+		Checks:      srv.store,
+		Transitions: srv.store,
+		Leases:      srv.store,
+		Handoffs:    srv.store,
+		Current:     srv.store,
+		Config:      repositoryConfigAdapter{server: srv},
+		Coordinator: pendingCICoordinator,
+		Tokens:      srv.tokens,
+		APIBaseURL:  cfg.apiBaseURL,
+		BotUsername: cfg.botUsername,
+		QuietPeriod: cfg.pendingCIQuietPeriod,
+		Panelled:    cfg.panel != nil,
+		WakeGates:   srv.WakePendingCIGates,
+		Logger:      srv.logger,
+	})
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()
 		cancelDeliveryRetry()
@@ -474,7 +465,7 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 	go func() {
 		defer running.Done()
 
-		s.pendingCI.Run(ctx)
+		s.gate.Scheduler.Run(ctx)
 	}()
 
 	running.Add(1)
@@ -634,7 +625,7 @@ func (s *server) execute(j job) {
 			err = s.handleIssueComment(ctx, j.comment, j.key, j.claimID)
 		}
 	} else if j.notification != nil {
-		err = s.handlePendingCIWebhook(ctx, j.notification, j.deliveryID)
+		err = s.gate.HandleWebhook(ctx, j.notification, j.deliveryID)
 	} else {
 		err = errors.New("delivery job has no executable event")
 	}
@@ -749,9 +740,9 @@ func (s *server) handleIssueComment(
 		Revision: event.Comment.UpdatedAt, Sequence: event.SourceSequence(),
 		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
 	}
-	claim, err := claimPendingCISource(
+	claim, err := gate.ClaimSource(
 		ctx, s.store, s.pendingCICoordinator, source,
-		pendingCISourceCancellation(event, source.RepositoryID),
+		gate.SourceCancellation(event, source.RepositoryID),
 	)
 	if err != nil {
 		return fmt.Errorf("claim issue comment revision: %w", err)
@@ -762,7 +753,7 @@ func (s *server) handleIssueComment(
 		return nil
 	}
 	if claim.Cancelled != nil {
-		s.pendingCI.Wake()
+		s.gate.Wake()
 	}
 
 	rc := runtimeConfigFor(event, s.cfg)

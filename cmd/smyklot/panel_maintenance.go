@@ -45,8 +45,8 @@ func (s *server) maintainPanel(ctx context.Context) {
 func (s *server) refreshPanelCatalog(ctx context.Context) error {
 	_, err := s.SyncCatalog(ctx)
 	if err == nil {
-		if s.pendingCI != nil {
-			s.pendingCI.Wake()
+		if s.gate != nil {
+			s.gate.Wake()
 		}
 		s.WakePendingCIGates()
 	}

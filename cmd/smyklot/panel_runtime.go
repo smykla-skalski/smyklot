@@ -72,10 +72,8 @@ func (s *server) initPanel() error {
 		Assets:                   assets,
 	}, adminpanel.Dependencies{
 		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
-		Gates: s,
-		PendingCI: newPendingCIControl(
-			s.store, s.pendingCICoordinator, s.pendingCI.Wake,
-		),
+		Gates:     s,
+		PendingCI: s.gate.NewControl(s.store),
 	})
 	if err != nil {
 		return fmt.Errorf("initialize panel: %w", err)
@@ -325,8 +323,8 @@ func (s *server) reconcileCatalogSnapshots(
 			)
 		},
 	)
-	if err == nil && s.pendingCI != nil {
-		s.pendingCI.Wake()
+	if err == nil && s.gate != nil {
+		s.gate.Wake()
 	}
 
 	return err

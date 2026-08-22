@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 )
@@ -33,12 +35,18 @@ func TestPendingCIRequestCancelsAfterInstallationDisappearsWithoutRefreshing(t *
 	coordinator := bot.NewCoordinator()
 	srv := &server{
 		store: store, panel: &adminpanel.Server{}, pendingCICoordinator: coordinator,
+		gate: gate.New(gate.Dependencies{
+			Store: store, Gates: store, Checks: store, Transitions: store,
+			Leases: store, Handoffs: store, Current: store,
+			Coordinator: coordinator, Panelled: true,
+			Logger: slog.New(slog.DiscardHandler),
+		}),
 	}
 	if err := srv.reconcileCatalogSnapshots(t.Context(), nil); err != nil {
 		t.Fatal(err)
 	}
 
-	backend := &githubPendingCIBackend{server: srv}
+	backend := srv.gate.Backend()
 	done := make(chan error, 1)
 	go func() {
 		done <- coordinator.Exclusive(t.Context(), "repository:7", func() error {
@@ -49,7 +57,7 @@ func TestPendingCIRequestCancelsAfterInstallationDisappearsWithoutRefreshing(t *
 			if observeErr != nil {
 				return observeErr
 			}
-			if observation.CancelReason != pendingCIRepositoryDisabledReason {
+			if observation.CancelReason != gate.RepositoryDisabledReason {
 				return fmt.Errorf("cancel reason = %q", observation.CancelReason)
 			}
 

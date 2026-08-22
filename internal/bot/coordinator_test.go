@@ -1,16 +1,14 @@
-package main
+package bot
 
 import (
 	"context"
 	"testing"
 	"time"
-
-	"github.com/smykla-skalski/smyklot/internal/bot"
 )
 
 func TestPendingCICoordinatorSerializesRepositoryWork(t *testing.T) {
 	t.Parallel()
-	coordinator := bot.NewCoordinator()
+	coordinator := NewCoordinator()
 	firstStarted := make(chan struct{})
 	releaseFirst := make(chan struct{})
 	firstDone := make(chan error, 1)
@@ -73,7 +71,7 @@ func TestPendingCICoordinatorSerializesRepositoryWork(t *testing.T) {
 
 func TestPendingCICoordinatorHonorsCancellation(t *testing.T) {
 	t.Parallel()
-	coordinator := bot.NewCoordinator()
+	coordinator := NewCoordinator()
 	release := make(chan struct{})
 	started := make(chan struct{})
 	done := make(chan error, 1)

@@ -353,8 +353,8 @@ func (s *server) reconcileSweepInstallation(
 	if err := s.reconcileInstallationSnapshot(ctx, snapshot); err != nil {
 		return nil, err
 	}
-	if s.pendingCI != nil {
-		s.pendingCI.Wake()
+	if s.gate != nil {
+		s.gate.Wake()
 	}
 	if s.panel != nil {
 		s.panel.Announce(snapshot.TargetID, "")
@@ -427,7 +427,7 @@ func (s *server) sweepRepo(
 	if err != nil {
 		return bot.NewGitHubError(bot.ErrGetPRs, err)
 	}
-	cleaned, err := s.reconcilePendingCIServiceArtifacts(
+	cleaned, err := s.gate.ReconcileServiceArtifacts(
 		ctx, client, repo, prs, !pollReactions,
 	)
 	if err != nil {
@@ -442,7 +442,7 @@ func (s *server) sweepRepo(
 		return nil
 	}
 
-	if err := s.drainLegacyPendingCILabels(
+	if err := s.gate.DrainLegacyLabels(
 		ctx, client, targetID, installationID, repo, prs, cleaned,
 	); err != nil {
 		return err
@@ -488,7 +488,7 @@ func (s *server) reconcileInactivePendingCIGate(
 			return readErr
 		}
 
-		return s.pendingCIGates.Reconcile(
+		return s.gate.Gates.Reconcile(
 			ctx, client, freshTarget, freshRepository, prs, false,
 		)
 	})
@@ -519,7 +519,7 @@ func (s *server) reconcileActivePendingCIGate(
 		}
 		enabled = storage.RepositoryEnabled(freshTarget, freshRepository)
 
-		return s.pendingCIGates.Reconcile(
+		return s.gate.Gates.Reconcile(
 			ctx, client, freshTarget, freshRepository, prs, enabled,
 		)
 	})
@@ -557,7 +557,7 @@ func (s *server) handoffPendingCIToAction(
 	repo github.Repository,
 ) ([]map[string]interface{}, error) {
 	const reason = "repository switched to the GitHub Action runner"
-	_, err := s.pendingCIHandoff.CancelRepository(
+	_, err := s.gate.Handoff.CancelRepository(
 		ctx, storage.RepositoryID(repo.ID), reason, time.Now().UTC(),
 	)
 	if err != nil {
@@ -568,7 +568,7 @@ func (s *server) handoffPendingCIToAction(
 		return nil, bot.NewGitHubError(bot.ErrGetPRs, err)
 	}
 
-	_, err = s.reconcilePendingCIServiceArtifacts(ctx, client, repo, prs, true)
+	_, err = s.gate.ReconcileServiceArtifacts(ctx, client, repo, prs, true)
 
 	return prs, err
 }

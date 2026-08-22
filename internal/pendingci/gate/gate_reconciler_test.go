@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func TestPendingCICheckMaintenancePermissionEndsAfterDrain(t *testing.T) {
 		{name: "labels drained", desired: storage.PendingCIModeLabels, want: false},
 	}
 	for _, test := range tests {
-		if got := pendingCIMustMaintainChecks(test.desired, test.draining); got != test.want {
+		if got := mustMaintainChecks(test.desired, test.draining); got != test.want {
 			t.Errorf("%s: maintain checks = %t, want %t", test.name, got, test.want)
 		}
 	}
@@ -38,13 +38,13 @@ func TestPendingCICheckMaintenancePermissionEndsAfterDrain(t *testing.T) {
 
 func TestPendingCIPolicyBlockDoesNotRetryTheFullSweep(t *testing.T) {
 	t.Parallel()
-	store, target, repository, now := pendingCIGateTestStore(t)
+	store, target, repository, now := gateTestStore(t)
 	target.Permissions = map[string]string{
 		"checks":       "write",
 		"merge_queues": "read",
 		"statuses":     "read",
 	}
-	reconciler := &pendingCIGateReconciler{store: store, now: func() time.Time { return now }}
+	reconciler := &GateReconciler{store: store, now: func() time.Time { return now }}
 	if err := reconciler.Reconcile(
 		t.Context(), nil, target, repository, nil, true,
 	); err != nil {
@@ -62,9 +62,9 @@ func TestPendingCIPolicyBlockDoesNotRetryTheFullSweep(t *testing.T) {
 
 func TestPendingCIChecksRequireMergeQueueReadPermission(t *testing.T) {
 	t.Parallel()
-	store, target, repository, now := pendingCIGateTestStore(t)
+	store, target, repository, now := gateTestStore(t)
 	delete(target.Permissions, "merge_queues")
-	reconciler := &pendingCIGateReconciler{store: store, now: func() time.Time { return now }}
+	reconciler := &GateReconciler{store: store, now: func() time.Time { return now }}
 	if err := reconciler.Reconcile(
 		t.Context(), nil, target, repository, nil, true,
 	); err != nil {
@@ -82,9 +82,9 @@ func TestPendingCIChecksRequireMergeQueueReadPermission(t *testing.T) {
 
 func TestPendingCIChecksRequireCommitStatusReadPermission(t *testing.T) {
 	t.Parallel()
-	store, target, repository, now := pendingCIGateTestStore(t)
+	store, target, repository, now := gateTestStore(t)
 	delete(target.Permissions, "statuses")
-	reconciler := &pendingCIGateReconciler{store: store, now: func() time.Time { return now }}
+	reconciler := &GateReconciler{store: store, now: func() time.Time { return now }}
 	if err := reconciler.Reconcile(
 		t.Context(), nil, target, repository, nil, true,
 	); err != nil {
@@ -102,7 +102,7 @@ func TestPendingCIChecksRequireCommitStatusReadPermission(t *testing.T) {
 
 func TestInactiveGateRemovesOwnedRulesetBeforeArtifactCleanup(t *testing.T) {
 	t.Parallel()
-	store, target, repository, now := pendingCIGateTestStore(t)
+	store, target, repository, now := gateTestStore(t)
 	armed, err := store.Arm(t.Context(), pendingci.ArmRequest{
 		TargetID: target.ID, InstallationID: 77,
 		RepositoryID: repository.ID, RepositoryFullName: repository.FullName,
@@ -131,7 +131,7 @@ func TestInactiveGateRemovesOwnedRulesetBeforeArtifactCleanup(t *testing.T) {
 	_, err = store.UpdatePendingCIRepositoryGate(t.Context(), storage.PendingCIGateChange{
 		RepositoryID: repository.ID, ExpectedRevision: gate.Revision,
 		EffectiveMode: storage.PendingCIEffectiveChecks, Readiness: storage.PendingCIReady,
-		Reason: pendingCIChecksReadyReason, AppID: &appID, RulesetID: &rulesetID,
+		Reason: checksReadyReason, AppID: &appID, RulesetID: &rulesetID,
 		RulesetFingerprint: "owned", ObservedAt: now,
 	})
 	if err != nil {
@@ -153,7 +153,7 @@ func TestInactiveGateRemovesOwnedRulesetBeforeArtifactCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	reconciler := &pendingCIGateReconciler{store: store, now: func() time.Time { return now }}
+	reconciler := &GateReconciler{store: store, now: func() time.Time { return now }}
 	if err := reconciler.Reconcile(
 		t.Context(), client, target, repository, nil, false,
 	); err != nil {
@@ -171,7 +171,7 @@ func TestInactiveGateRemovesOwnedRulesetBeforeArtifactCleanup(t *testing.T) {
 	}
 }
 
-func pendingCIGateTestStore(
+func gateTestStore(
 	t *testing.T,
 ) (storage.Store, storage.Target, storage.Repository, time.Time) {
 	t.Helper()
@@ -225,9 +225,9 @@ func TestMergeQueueGuardIgnoresNonEnforcingRulesets(t *testing.T) {
 			})
 		case "/repos/owner/repo/rulesets":
 			_ = json.NewEncoder(w).Encode([]map[string]any{
-				{"id": int64(1), "target": pendingCIRulesetBranch, "enforcement": "evaluate"},
-				{"id": int64(2), "target": pendingCIRulesetBranch, "enforcement": "disabled"},
-				{"id": int64(3), "target": "tag", "enforcement": pendingCIRulesetActive},
+				{"id": int64(1), "target": rulesetBranch, "enforcement": "evaluate"},
+				{"id": int64(2), "target": rulesetBranch, "enforcement": "disabled"},
+				{"id": int64(3), "target": "tag", "enforcement": rulesetActive},
 			})
 		default:
 			t.Errorf("non-enforcing ruleset was read: %s %s", r.Method, r.URL.RequestURI())
@@ -377,16 +377,16 @@ func TestLabelModeDetectsInheritedSmyklotRequirementOutsideDefaultBranch(t *test
 		switch r.URL.Path {
 		case "/repos/owner/repo/rulesets":
 			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": int64(91), "name": "release", "target": pendingCIRulesetBranch,
-				"enforcement": pendingCIRulesetActive, "source_type": "Organization",
+				"id": int64(91), "name": "release", "target": rulesetBranch,
+				"enforcement": rulesetActive, "source_type": "Organization",
 			}})
 		case "/repos/owner/repo/rulesets/91":
 			if r.URL.Query().Get("includes_parents") != "true" {
 				t.Error("inherited ruleset was read without its parent")
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id": int64(91), "name": "release", "target": pendingCIRulesetBranch,
-				"enforcement": pendingCIRulesetActive,
+				"id": int64(91), "name": "release", "target": rulesetBranch,
+				"enforcement": rulesetActive,
 				"conditions": map[string]any{"ref_name": map[string]any{
 					"include": []string{"refs/heads/release/*"}, "exclude": []string{},
 				}},
@@ -417,7 +417,13 @@ func TestLabelModeDetectsInheritedSmyklotRequirementOutsideDefaultBranch(t *test
 
 func TestPullRequestOpenedWakesGateReconciliation(t *testing.T) {
 	t.Parallel()
-	srv := &server{pendingCIGateChanged: make(chan struct{}, 1)}
+	woken := make(chan struct{}, 1)
+	srv := &Gate{WakeGates: func() {
+		select {
+		case woken <- struct{}{}:
+		default:
+		}
+	}}
 	err := srv.applyPendingCINotification(
 		context.Background(),
 		&webhook.PendingCINotification{
@@ -429,7 +435,7 @@ func TestPullRequestOpenedWakesGateReconciliation(t *testing.T) {
 		t.Fatal(err)
 	}
 	select {
-	case <-srv.pendingCIGateChanged:
+	case <-woken:
 	default:
 		t.Fatal("pull_request.opened did not wake pending CI gate reconciliation")
 	}
@@ -460,7 +466,7 @@ func TestPendingCIBranchIncludedUsesRawRulesetRefs(t *testing.T) {
 		{branch: "stable/_internal", want: false},
 	}
 	for _, test := range tests {
-		if got := pendingCIBranchIncluded(test.branch, "main", patterns); got != test.want {
+		if got := branchIncluded(test.branch, "main", patterns); got != test.want {
 			t.Errorf("branch %q included = %t, want %t", test.branch, got, test.want)
 		}
 	}
@@ -493,7 +499,7 @@ func TestPendingCICheckRenewalKeepsOneGenerationSuffix(t *testing.T) {
 		ExternalID: "smyklot:merge-after-ci:github:repository:20:abc:g2",
 		Generation: 2,
 	}
-	if got := pendingCIRenewedExternalID(slot); got !=
+	if got := renewedExternalID(slot); got !=
 		"smyklot:merge-after-ci:github:repository:20:abc:g3" {
 		t.Fatalf("renewed external ID = %q", got)
 	}
@@ -502,9 +508,9 @@ func TestPendingCICheckRenewalKeepsOneGenerationSuffix(t *testing.T) {
 func TestPendingCIRulesetBindsTheStableContextToTheApp(t *testing.T) {
 	t.Parallel()
 	patterns := storage.DefaultPendingCIBranchPatterns()
-	ruleset := pendingCIRuleset(patterns, 17)
+	ruleset := ruleset(patterns, 17)
 	if ruleset.Name != storage.PendingCIRulesetName ||
-		ruleset.Enforcement != pendingCIRulesetActive {
+		ruleset.Enforcement != rulesetActive {
 		t.Fatalf("ruleset identity = %#v", ruleset)
 	}
 	statusChecks := ruleset.Rules.RequiredStatusChecks

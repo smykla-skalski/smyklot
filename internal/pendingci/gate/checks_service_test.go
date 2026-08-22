@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -18,17 +18,17 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
 )
 
-type pendingCICheckTokensStub struct{}
+type checkTokensStub struct{}
 
-func (pendingCICheckTokensStub) AppToken() (string, error) {
+func (checkTokensStub) AppToken() (string, error) {
 	return "app-token", nil
 }
 
-func (pendingCICheckTokensStub) InstallationToken(int64) (string, error) {
+func (checkTokensStub) InstallationToken(int64) (string, error) {
 	return "installation-token", nil
 }
 
-type pendingCICheckAPICalls struct {
+type checkAPICalls struct {
 	t           *testing.T
 	listCalls   atomic.Int64
 	createCalls atomic.Int64
@@ -36,7 +36,7 @@ type pendingCICheckAPICalls struct {
 	patchStates []string
 }
 
-func (calls *pendingCICheckAPICalls) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (calls *checkAPICalls) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/app":
 		_ = json.NewEncoder(w).Encode(map[string]any{"id": int64(17)})
@@ -104,7 +104,7 @@ func (calls *pendingCICheckAPICalls) ServeHTTP(w http.ResponseWriter, r *http.Re
 func TestPendingCICheckCreationIsSerializedPerHead(t *testing.T) {
 	t.Parallel()
 
-	calls := &pendingCICheckAPICalls{t: t}
+	calls := &checkAPICalls{t: t}
 	api := httptest.NewServer(calls)
 	defer api.Close()
 
@@ -134,8 +134,8 @@ func TestPendingCICheckCreationIsSerializedPerHead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checks := &githubPendingCIChecks{
-		store: store, tokens: pendingCICheckTokensStub{}, apiBaseURL: api.URL,
+	checks := &Checks{
+		store: store, tokens: checkTokensStub{}, apiBaseURL: api.URL,
 		now: func() time.Time { return now }, syncer: bot.NewCoordinator(),
 	}
 	target := storage.Target{ID: "installation:77", InstallationID: "77"}
@@ -191,8 +191,8 @@ func TestPendingCICheckCreationIsSerializedPerHead(t *testing.T) {
 
 func verifyRerequestRefreshesAppliedCheck(
 	t *testing.T,
-	checks *githubPendingCIChecks,
-	calls *pendingCICheckAPICalls,
+	checks *Checks,
+	calls *checkAPICalls,
 	repository storage.Repository,
 	store pendingci.CheckStore,
 ) {
@@ -224,7 +224,7 @@ func verifyRerequestRefreshesAppliedCheck(
 
 func verifyClosedPullRequestSlotReassignment(
 	t *testing.T,
-	checks *githubPendingCIChecks,
+	checks *Checks,
 	repository storage.Repository,
 	target storage.Target,
 ) {
@@ -242,14 +242,14 @@ func verifyClosedPullRequestSlotReassignment(
 
 func verifyCompletedBaselineRenewal(
 	t *testing.T,
-	checks *githubPendingCIChecks,
-	calls *pendingCICheckAPICalls,
+	checks *Checks,
+	calls *checkAPICalls,
 	target storage.Target,
 	repository storage.Repository,
 	now time.Time,
 ) {
 	t.Helper()
-	checks.now = func() time.Time { return now.Add(pendingCICompletedRenewAfter) }
+	checks.now = func() time.Time { return now.Add(completedRenewAfter) }
 	renewed, err := checks.EnsureBaseline(
 		t.Context(), target, repository, 42, "head",
 	)
@@ -266,8 +266,8 @@ func verifyCompletedBaselineRenewal(
 
 func verifyArmFailurePreservesPriorAuthorization(
 	t *testing.T,
-	checks *githubPendingCIChecks,
-	calls *pendingCICheckAPICalls,
+	checks *Checks,
+	calls *checkAPICalls,
 	target storage.Target,
 	repository storage.Repository,
 	store pendingci.CheckStore,
@@ -279,7 +279,7 @@ func verifyArmFailurePreservesPriorAuthorization(
 	}
 	slotID := slot.ID
 	command := &bot.PendingCICommand{
-		Store: pendingCICommandStoreStub{request: pendingci.Request{
+		Store: commandStoreStub{request: pendingci.Request{
 			RepositoryID: repository.ID, PullRequest: 42, HeadSHA: "head",
 			MergeMethod: pendingci.MergeMethodSquash, Requester: "prior",
 			ArtifactKind: pendingci.ArtifactCheck, CheckSlotID: &slotID,
@@ -300,17 +300,17 @@ func verifyArmFailurePreservesPriorAuthorization(
 	}
 }
 
-// pendingCICommandStoreStub answers the one read the check rollback makes.
+// commandStoreStub answers the one read the check rollback makes.
 //
 // The command layer lives in internal/bot now, and its own stub with it. This
 // is the narrowest thing that satisfies bot.PendingCICommandStore: everything
 // but GetArmed is unreachable from the path under test, and a method that
 // returned a plausible value would hide a call this test does not expect.
-type pendingCICommandStoreStub struct {
+type commandStoreStub struct {
 	request pendingci.Request
 }
 
-func (store pendingCICommandStoreStub) GetArmed(
+func (store commandStoreStub) GetArmed(
 	context.Context,
 	string,
 	int,
@@ -318,35 +318,35 @@ func (store pendingCICommandStoreStub) GetArmed(
 	return store.request, nil
 }
 
-func (store pendingCICommandStoreStub) CheckArm(
+func (store commandStoreStub) CheckArm(
 	context.Context,
 	pendingci.ArmRequest,
 ) error {
 	panic("check rollback does not check an arm")
 }
 
-func (store pendingCICommandStoreStub) Arm(
+func (store commandStoreStub) Arm(
 	context.Context,
 	pendingci.ArmRequest,
 ) (pendingci.ArmResult, error) {
 	panic("check rollback does not arm")
 }
 
-func (store pendingCICommandStoreStub) CancelBySource(
+func (store commandStoreStub) CancelBySource(
 	context.Context,
 	pendingci.CancelRequest,
 ) (*pendingci.Request, error) {
 	panic("check rollback does not cancel by source")
 }
 
-func (store pendingCICommandStoreStub) CancelByIntent(
+func (store commandStoreStub) CancelByIntent(
 	context.Context,
 	pendingci.CancelIntentRequest,
 ) (pendingci.CancelIntentResult, error) {
 	panic("check rollback does not cancel by intent")
 }
 
-func (store pendingCICommandStoreStub) FinishPR(
+func (store commandStoreStub) FinishPR(
 	context.Context,
 	pendingci.FinishPRRequest,
 ) (*pendingci.Request, error) {

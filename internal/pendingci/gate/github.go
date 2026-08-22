@@ -1,4 +1,4 @@
-package main
+package gate
 
 import (
 	"context"
@@ -12,37 +12,52 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
+	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 )
 
-type githubPendingCIBackend struct {
-	server  *server
-	current pendingCICurrentStore
-	source  pendingCISourceValidator
+// Backend is live GitHub, as the reconciler sees it.
+//
+// The fields below are what it used to reach through a *server for. Nine
+// dependencies is a lot; it is also all of them, which is the point - the
+// struct it hung off had forty and every one was one dot away.
+type Backend struct {
+	current currentStore
+	source  sourceValidator
+
+	config      RepositoryConfig
+	checkRuns   *Checks
+	store       Store
+	tokens      *githubapp.TokenStore
+	apiBaseURL  string
+	botUsername string
+	panelled    bool
+	wakeGates   func()
+	quietPeriod func() time.Duration
 }
 
-type pendingCICurrentStore interface {
+type currentStore interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 }
 
-type pendingCICleanupScope struct {
+type cleanupScope struct {
 	label          bool
 	check          bool
 	sourceReaction bool
 	serviceFence   bool
 }
 
-func (backend *githubPendingCIBackend) WakePendingCIGates() {
-	backend.server.WakePendingCIGates()
+func (backend *Backend) WakePendingCIGates() {
+	backend.wakeGates()
 }
 
 var errNoRequiredStatusChecks = errors.New("base branch has no required status checks")
 
 const (
-	pendingCIRepositoryDisabledReason = "repository disabled in Smyklot"
-	pendingCIBranchExcludedReason     = "base branch is outside Smyklot merge-after-CI checks"
+	RepositoryDisabledReason = "repository disabled in Smyklot"
+	branchExcludedReason     = "base branch is outside Smyklot merge-after-CI checks"
 )
 
-func (backend *githubPendingCIBackend) Observe(
+func (backend *Backend) Observe(
 	ctx context.Context,
 	request pendingci.Request,
 ) (pendingci.Observation, error) {
@@ -132,17 +147,15 @@ func (backend *githubPendingCIBackend) Observe(
 	}, nil
 }
 
-func (backend *githubPendingCIBackend) unavailableObservation(
+func (backend *Backend) unavailableObservation(
 	ctx context.Context,
 	request pendingci.Request,
 	observedAt time.Time,
 ) (pendingci.Observation, bool, error) {
-	if backend.server.panel == nil {
+	if !backend.panelled {
 		return pendingci.Observation{}, false, nil
 	}
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx, request.TargetID, request.RepositoryID,
-	)
+	target, repository, err := readControls(ctx, backend.store, request.TargetID, request.RepositoryID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return pendingci.Observation{}, false, fmt.Errorf(
 			"read pending CI repository availability: %w",
@@ -157,11 +170,11 @@ func (backend *githubPendingCIBackend) unavailableObservation(
 	return pendingci.Observation{
 		HeadSHA: request.HeadSHA, BaseBranch: request.BaseBranch,
 		State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
-		CancelReason: pendingCIRepositoryDisabledReason,
+		CancelReason: RepositoryDisabledReason,
 	}, true, nil
 }
 
-func (backend *githubPendingCIBackend) prepareObservation(
+func (backend *Backend) prepareObservation(
 	ctx context.Context,
 	request pendingci.Request,
 	state github.PullRequestState,
@@ -189,7 +202,7 @@ func (backend *githubPendingCIBackend) prepareObservation(
 	}
 	if !included {
 		observation := pullRequestObservation(state, true, observedAt)
-		observation.CancelReason = pendingCIBranchExcludedReason
+		observation.CancelReason = branchExcludedReason
 
 		return true, &observation, nil
 	}
@@ -214,20 +227,18 @@ func (backend *githubPendingCIBackend) prepareObservation(
 	return true, nil, nil
 }
 
-func (backend *githubPendingCIBackend) ensureReauthorizationCheck(
+func (backend *Backend) ensureReauthorizationCheck(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
 	if request.CandidateHeadSHA == "" || request.CheckSlotID == nil {
 		return errors.New("pending CI reauthorization has no candidate check")
 	}
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx, request.TargetID, request.RepositoryID,
-	)
+	target, repository, err := readControls(ctx, backend.store, request.TargetID, request.RepositoryID)
 	if err != nil {
 		return fmt.Errorf("read reauthorization check settings: %w", err)
 	}
-	slot, err := backend.server.pendingCIChecks.EnsureReauthorization(
+	slot, err := backend.checkRuns.EnsureReauthorization(
 		ctx, target, repository, request.PullRequest, request.CandidateHeadSHA,
 	)
 	if err != nil {
@@ -240,23 +251,21 @@ func (backend *githubPendingCIBackend) ensureReauthorizationCheck(
 	return nil
 }
 
-func (backend *githubPendingCIBackend) checkBranchIncluded(
+func (backend *Backend) checkBranchIncluded(
 	ctx context.Context,
 	request pendingci.Request,
 	baseBranch string,
 ) (bool, error) {
-	if backend.server.panel == nil {
+	if !backend.panelled {
 		return true, nil
 	}
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx, request.TargetID, request.RepositoryID,
-	)
+	target, repository, err := readControls(ctx, backend.store, request.TargetID, request.RepositoryID)
 	if err != nil {
 		return false, fmt.Errorf("read pending CI branch policy: %w", err)
 	}
 	_, patterns, _ := storage.EffectivePendingCISettings(target, repository, 0)
 
-	return pendingCIBranchIncluded(baseBranch, repository.DefaultBranch, patterns), nil
+	return branchIncluded(baseBranch, repository.DefaultBranch, patterns), nil
 }
 
 func pullRequestObservation(
@@ -271,19 +280,18 @@ func pullRequestObservation(
 	}
 }
 
-func (backend *githubPendingCIBackend) ensureAuthorizedCheck(
+func (backend *Backend) ensureAuthorizedCheck(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx,
+	target, repository, err := readControls(ctx, backend.store,
 		request.TargetID,
 		request.RepositoryID,
 	)
 	if err != nil {
 		return fmt.Errorf("read authorized check settings: %w", err)
 	}
-	slot, err := backend.server.pendingCIChecks.EnsureAuthorized(
+	slot, err := backend.checkRuns.EnsureAuthorized(
 		ctx,
 		target,
 		repository,
@@ -302,15 +310,14 @@ func (backend *githubPendingCIBackend) ensureAuthorizedCheck(
 	return nil
 }
 
-func (backend *githubPendingCIBackend) passingQuiet(
+func (backend *Backend) passingQuiet(
 	ctx context.Context,
 	request pendingci.Request,
 ) (*time.Duration, error) {
-	if backend.server.panel == nil {
+	if !backend.panelled {
 		return nil, nil
 	}
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx,
+	target, repository, err := readControls(ctx, backend.store,
 		request.TargetID,
 		request.RepositoryID,
 	)
@@ -320,13 +327,13 @@ func (backend *githubPendingCIBackend) passingQuiet(
 	_, _, quiet := storage.EffectivePendingCISettings(
 		target,
 		repository,
-		backend.server.pendingCIReconciler.currentTiming().PassingQuiet,
+		backend.quietPeriod(),
 	)
 
 	return &quiet, nil
 }
 
-func (backend *githubPendingCIBackend) requireCurrent(
+func (backend *Backend) requireCurrent(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -341,7 +348,7 @@ func (backend *githubPendingCIBackend) requireCurrent(
 	return nil
 }
 
-func (backend *githubPendingCIBackend) MergeAtHead(
+func (backend *Backend) MergeAtHead(
 	ctx context.Context,
 	request pendingci.Request,
 	headSHA string,
@@ -400,7 +407,7 @@ func mergePendingPRAtHeadWithoutQueue(
 	return client.MergePRAtHead(ctx, owner, repository, pullRequest, method, headSHA)
 }
 
-func (backend *githubPendingCIBackend) SatisfyCheck(
+func (backend *Backend) SatisfyCheck(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -416,11 +423,11 @@ func (backend *githubPendingCIBackend) SatisfyCheck(
 	if request.CheckSlotID == nil {
 		return errors.New("pending CI check request has no durable check slot")
 	}
-	slot, err := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	slot, err := backend.store.GetCheckSlot(ctx, *request.CheckSlotID)
 	if err != nil {
 		return fmt.Errorf("read pending CI check slot: %w", err)
 	}
-	_, err = backend.server.pendingCIChecks.EnsureMergeReady(ctx, slot)
+	_, err = backend.checkRuns.EnsureMergeReady(ctx, slot)
 
 	return err
 }
@@ -457,7 +464,7 @@ func preflightPendingCICheckMerge(
 	return nil
 }
 
-func (backend *githubPendingCIBackend) RestoreBlockingCheck(
+func (backend *Backend) RestoreBlockingCheck(
 	ctx context.Context,
 	request pendingci.Request,
 ) error {
@@ -467,7 +474,7 @@ func (backend *githubPendingCIBackend) RestoreBlockingCheck(
 	repository := storage.Repository{
 		ID: request.RepositoryID, FullName: request.RepositoryFullName,
 	}
-	_, err := backend.server.pendingCIChecks.EnsureAuthorized(
+	_, err := backend.checkRuns.EnsureAuthorized(
 		ctx, target, repository, request.PullRequest, request.HeadSHA,
 		request.MergeMethod, request.AuthorizedBy,
 	)
@@ -475,13 +482,12 @@ func (backend *githubPendingCIBackend) RestoreBlockingCheck(
 	return err
 }
 
-func (backend *githubPendingCIBackend) RequireReauthorizationCheck(
+func (backend *Backend) RequireReauthorizationCheck(
 	ctx context.Context,
 	request pendingci.Request,
 	headSHA string,
 ) (pendingci.CheckSlot, error) {
-	target, repository, err := backend.server.readRepositoryControls(
-		ctx,
+	target, repository, err := readControls(ctx, backend.store,
 		request.TargetID,
 		request.RepositoryID,
 	)
@@ -489,7 +495,7 @@ func (backend *githubPendingCIBackend) RequireReauthorizationCheck(
 		return pendingci.CheckSlot{}, fmt.Errorf("read reauthorization settings: %w", err)
 	}
 
-	return backend.server.pendingCIChecks.EnsureReauthorization(
+	return backend.checkRuns.EnsureReauthorization(
 		ctx,
 		target,
 		repository,
@@ -498,14 +504,14 @@ func (backend *githubPendingCIBackend) RequireReauthorizationCheck(
 	)
 }
 
-func (backend *githubPendingCIBackend) GetPendingCICheckSlot(
+func (backend *Backend) GetPendingCICheckSlot(
 	ctx context.Context,
 	id int64,
 ) (pendingci.CheckSlot, error) {
-	return backend.server.store.GetCheckSlot(ctx, id)
+	return backend.store.GetCheckSlot(ctx, id)
 }
 
-func (backend *githubPendingCIBackend) PendingCICheckSlotIsCurrent(
+func (backend *Backend) PendingCICheckSlotIsCurrent(
 	ctx context.Context,
 	request pendingci.Request,
 	slot pendingci.CheckSlot,
@@ -521,7 +527,7 @@ func (backend *githubPendingCIBackend) PendingCICheckSlotIsCurrent(
 	return current.CheckSlotID != nil && *current.CheckSlotID == slot.ID, nil
 }
 
-func (backend *githubPendingCIBackend) RestoreRetiredPendingCICheck(
+func (backend *Backend) RestoreRetiredPendingCICheck(
 	ctx context.Context,
 	slot pendingci.CheckSlot,
 ) error {
@@ -531,7 +537,7 @@ func (backend *githubPendingCIBackend) RestoreRetiredPendingCICheck(
 	repository := storage.Repository{
 		ID: slot.RepositoryID, FullName: slot.RepositoryFullName,
 	}
-	_, err := backend.server.pendingCIChecks.EnsureBaseline(
+	_, err := backend.checkRuns.EnsureBaseline(
 		ctx,
 		target,
 		repository,
@@ -542,7 +548,7 @@ func (backend *githubPendingCIBackend) RestoreRetiredPendingCICheck(
 	return err
 }
 
-func (backend *githubPendingCIBackend) CleanupArtifacts(
+func (backend *Backend) CleanupArtifacts(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
@@ -550,7 +556,7 @@ func (backend *githubPendingCIBackend) CleanupArtifacts(
 	return backend.cleanupArtifactsExclusive(ctx, request, lifecycle)
 }
 
-func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
+func (backend *Backend) cleanupArtifactsExclusive(
 	ctx context.Context,
 	request pendingci.Request,
 	lifecycle pendingci.Lifecycle,
@@ -575,7 +581,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 		if request.CheckSlotID == nil {
 			cleanupErr = errors.Join(cleanupErr, errors.New("pending CI check cleanup has no slot"))
 		} else {
-			slot, slotErr := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+			slot, slotErr := backend.store.GetCheckSlot(ctx, *request.CheckSlotID)
 			if slotErr == nil {
 				target := storage.Target{
 					ID: slot.TargetID, InstallationID: fmt.Sprint(slot.InstallationID),
@@ -583,7 +589,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 				repositorySettings := storage.Repository{
 					ID: slot.RepositoryID, FullName: slot.RepositoryFullName,
 				}
-				_, slotErr = backend.server.pendingCIChecks.EnsureBaseline(
+				_, slotErr = backend.checkRuns.EnsureBaseline(
 					ctx, target, repositorySettings, slot.PullRequest, slot.HeadSHA,
 				)
 			}
@@ -595,7 +601,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 			"remove pending CI service fence",
 			client.RemovePullRequestReactionByUser(
 				ctx, owner, repository, request.PullRequest,
-				backend.server.cfg.botUsername, github.ReactionPendingCIService,
+				backend.botUsername, github.ReactionPendingCIService,
 			),
 		))
 	}
@@ -605,7 +611,7 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 			"remove pending CI reaction",
 			client.RemoveReactionByUser(
 				ctx, owner, repository, commentID,
-				github.ReactionPendingCI, backend.server.cfg.botUsername,
+				github.ReactionPendingCI, backend.botUsername,
 			),
 		))
 	}
@@ -619,25 +625,25 @@ func (backend *githubPendingCIBackend) cleanupArtifactsExclusive(
 	return cleanupErr
 }
 
-func (backend *githubPendingCIBackend) cleanupScope(
+func (backend *Backend) cleanupScope(
 	ctx context.Context,
 	request pendingci.Request,
-) (pendingCICleanupScope, error) {
+) (cleanupScope, error) {
 	current, err := backend.current.GetArmed(ctx, request.RepositoryID, request.PullRequest)
 	if errors.Is(err, storage.ErrNotFound) {
-		return pendingCICleanupScope{
+		return cleanupScope{
 			label:          request.ArtifactKind != pendingci.ArtifactCheck,
 			check:          request.ArtifactKind == pendingci.ArtifactCheck,
 			sourceReaction: request.SourceCommentID > 0, serviceFence: true,
 		}, nil
 	}
 	if err != nil {
-		return pendingCICleanupScope{}, fmt.Errorf(
+		return cleanupScope{}, fmt.Errorf(
 			"read replacement pending CI request: %w", err,
 		)
 	}
 
-	return pendingCICleanupScope{
+	return cleanupScope{
 		label: request.ArtifactKind != pendingci.ArtifactCheck && current.Label != request.Label,
 		check: request.ArtifactKind == pendingci.ArtifactCheck &&
 			!sameOptionalInt64(current.CheckSlotID, request.CheckSlotID),
@@ -646,11 +652,11 @@ func (backend *githubPendingCIBackend) cleanupScope(
 	}, nil
 }
 
-func (backend *githubPendingCIBackend) checkGateReady(
+func (backend *Backend) checkGateReady(
 	ctx context.Context,
 	request pendingci.Request,
 ) (bool, string, error) {
-	gate, err := backend.server.store.GetPendingCIRepositoryGate(ctx, request.RepositoryID)
+	gate, err := backend.store.GetPendingCIRepositoryGate(ctx, request.RepositoryID)
 	if err != nil {
 		return false, "", fmt.Errorf("read pending CI check readiness: %w", err)
 	}
@@ -666,7 +672,7 @@ func (backend *githubPendingCIBackend) checkGateReady(
 	return true, "", nil
 }
 
-func (backend *githubPendingCIBackend) client(
+func (backend *Backend) client(
 	_ context.Context,
 	request pendingci.Request,
 ) (*github.Client, string, string, error) {
@@ -674,11 +680,11 @@ func (backend *githubPendingCIBackend) client(
 	if !found || owner == "" || repository == "" || strings.Contains(repository, "/") {
 		return nil, "", "", fmt.Errorf("invalid repository name %q", request.RepositoryFullName)
 	}
-	token, err := backend.server.tokens.InstallationToken(request.InstallationID)
+	token, err := backend.tokens.InstallationToken(request.InstallationID)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
-	client, err := github.NewClient(token, backend.server.cfg.apiBaseURL)
+	client, err := github.NewClient(token, backend.apiBaseURL)
 	if err != nil {
 		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
@@ -686,25 +692,23 @@ func (backend *githubPendingCIBackend) client(
 	return client, owner, repository, nil
 }
 
-func (backend *githubPendingCIBackend) cancelReason(
+func (backend *Backend) cancelReason(
 	ctx context.Context,
 	client *github.Client,
 	request pendingci.Request,
 	owner, repository string,
 ) (string, error) {
-	if backend.server.panel != nil {
-		target, repo, err := backend.server.readRepositoryControls(
-			ctx, request.TargetID, request.RepositoryID,
-		)
+	if backend.panelled {
+		target, repo, err := readControls(ctx, backend.store, request.TargetID, request.RepositoryID)
 		if err != nil {
 			return "", err
 		}
 		if !target.Available || !repo.Available ||
 			!storage.RepositoryEnabled(target, repo) {
-			return pendingCIRepositoryDisabledReason, nil
+			return RepositoryDisabledReason, nil
 		}
 	}
-	botConfig, err := backend.server.serviceConfigWithoutCatalogRefresh(
+	botConfig, err := backend.config.Config(
 		ctx, client, request.TargetID, request.RepositoryID, owner, repository,
 	)
 	if err != nil {
@@ -717,7 +721,7 @@ func (backend *githubPendingCIBackend) cancelReason(
 	return "", nil
 }
 
-func (backend *githubPendingCIBackend) checks(
+func (backend *Backend) checks(
 	ctx context.Context,
 	client *github.Client,
 	request pendingci.Request,
@@ -750,13 +754,13 @@ func (backend *githubPendingCIBackend) checks(
 	if request.CheckSlotID == nil {
 		return nil, errors.New("pending CI check request has no durable check slot")
 	}
-	slot, err := backend.server.store.GetCheckSlot(ctx, *request.CheckSlotID)
+	slot, err := backend.store.GetCheckSlot(ctx, *request.CheckSlotID)
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI check slot: %w", err)
 	}
 	appID := slot.AppID
 	if request.RequiredChecksOnly {
-		required = pendingCIExternalRequiredChecks(required, slot.Name, appID)
+		required = externalRequiredChecks(required, slot.Name, appID)
 	}
 	if request.RequiredChecksOnly && len(required) == 0 {
 		return nil, errNoRequiredStatusChecks
