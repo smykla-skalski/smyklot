@@ -22,8 +22,10 @@ import {
   REPOSITORIES,
   REPOSITORY_DETAIL,
   SYNC_CONFIGS,
+  SYNC_FILES_CONTEXT,
   SYNC_OVERRIDES,
   SYNC_PLAN,
+  SYNC_STATUS,
   TARGET,
   USERS,
 } from './fixtures.js';
@@ -105,6 +107,8 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     fetchSyncConfig: async (targetId: string, kind: string) =>
       SYNC_CONFIGS.get(`${targetId}/${kind}`) ?? emptySyncConfig(kind),
     fetchSyncPlan: async () => ({ plan: SYNC_PLAN }),
+    fetchSyncStatus: async () => SYNC_STATUS,
+    fetchSyncFilesContext: async () => SYNC_FILES_CONTEXT,
     fetchSyncOverride: async (_targetId: string, repositoryId: string, kind: string) =>
       SYNC_OVERRIDES.get(`${repositoryId}/${kind}`) ?? {
         kind,

@@ -3,7 +3,7 @@
 
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
-  import { NOW } from '../support/fixtures.js';
+  import { NOW, SYNC_STATUS } from '../support/fixtures.js';
   import type { SyncConfig, SyncPlan } from '#lib/types.js';
 
   const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
@@ -72,12 +72,16 @@
 
   const base = {
     targetId: '2001',
+    section: 'overview' as const,
     readOnly: false,
     fetchConfig: async (_id: string, kind: string) => config(kind),
     saveConfig: async (_id: string, kind: string) => config(kind),
     fetchPlan: async () => ({ plan: PLAN }),
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},
+    fetchStatus: async () => SYNC_STATUS,
+    sectionHref: (section: string) => `#/sync/${section}`,
+    onOpenSection: () => {},
     rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
     onOpenRuleset: () => {},
     fileHref: (path: string) => `#/sync/files/${path}`,

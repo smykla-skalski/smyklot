@@ -28,8 +28,11 @@
 -->
 <Story name="Open on a green">
   {#snippet template(args)}
-    <div style="position: relative; min-height: 480px;">
-      <LabelColorPicker {...args} />
+    <div class="picker-stage">
+      <div class="picker-anchor">
+        <span class="picker-trigger" style:--swatch={args.color} aria-hidden="true"></span>
+        <LabelColorPicker {...args} />
+      </div>
     </div>
   {/snippet}
 </Story>
@@ -37,8 +40,33 @@
 <!-- A grey keeps the hue it arrived with - the rail does not snap to red. -->
 <Story name="Open on a grey" args={{ color: '#6b7280' }}>
   {#snippet template(args)}
-    <div style="position: relative; min-height: 480px;">
-      <LabelColorPicker {...args} />
+    <div class="picker-stage">
+      <div class="picker-anchor">
+        <span class="picker-trigger" style:--swatch={args.color} aria-hidden="true"></span>
+        <LabelColorPicker {...args} />
+      </div>
     </div>
   {/snippet}
 </Story>
+
+<style>
+  .picker-stage {
+    min-height: 480px;
+  }
+
+  .picker-anchor {
+    height: 30px;
+    position: relative;
+    width: 30px;
+  }
+
+  .picker-trigger {
+    background: var(--swatch);
+    border: 2px solid var(--surface-base);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--border-control);
+    display: block;
+    height: 30px;
+    width: 30px;
+  }
+</style>

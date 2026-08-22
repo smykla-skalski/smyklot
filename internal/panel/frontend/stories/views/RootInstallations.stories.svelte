@@ -51,6 +51,11 @@
 
 <Story name="Loading">
   {#snippet template(args)}
-    <Seeded><RootInstallations {...args} /></Seeded>
+    <Seeded>
+      <RootInstallations
+        {...args}
+        api={stubApi({ fetchRootInstallations: () => new Promise(() => {}) })}
+      />
+    </Seeded>
   {/snippet}
 </Story>

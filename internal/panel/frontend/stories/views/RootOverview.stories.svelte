@@ -93,6 +93,8 @@
 <!-- Nothing has answered yet. -->
 <Story name="Loading">
   {#snippet template(args)}
-    <Seeded><RootOverview {...args} /></Seeded>
+    <Seeded>
+      <RootOverview {...args} api={stubApi({ fetchRootOverview: () => new Promise(() => {}) })} />
+    </Seeded>
   {/snippet}
 </Story>
