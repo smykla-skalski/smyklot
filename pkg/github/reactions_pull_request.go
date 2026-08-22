@@ -296,7 +296,7 @@ func (c *Client) RemovePullRequestCommentReactionsByUser(
 		return err
 	}
 	for _, comment := range comments {
-		if err := c.removeCommentReaction(
+		if err := c.removeOneCommentReaction(
 			ctx, owner, repo, comment.GetID(), username, reactionType,
 		); err != nil {
 			return err
@@ -352,7 +352,7 @@ func (c *Client) commentReactionPager(
 	)
 }
 
-func (c *Client) removeCommentReaction(
+func (c *Client) removeOneCommentReaction(
 	ctx context.Context,
 	owner, repo string,
 	commentID int64,
