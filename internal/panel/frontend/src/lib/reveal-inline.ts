@@ -9,3 +9,18 @@ export function revealInline(container: HTMLElement, item: HTMLElement): void {
     container.scrollLeft += box.right - frame.right;
   }
 }
+
+/** Reveal the current item now and whenever its scroll container changes size. */
+export function observeInlineSelection(
+  container: HTMLElement,
+  selector = "[aria-current='page']",
+): () => void {
+  const reveal = (): void => {
+    const item = container.querySelector<HTMLElement>(selector);
+    if (item !== null) revealInline(container, item);
+  };
+  const observer = new ResizeObserver(reveal);
+  observer.observe(container);
+  reveal();
+  return () => observer.disconnect();
+}

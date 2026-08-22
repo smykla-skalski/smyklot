@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { revealInline } from '../src/lib/reveal-inline';
+import { observeInlineSelection, revealInline } from '../src/lib/reveal-inline';
 
 function rectangle(left: number, right: number): DOMRect {
   return { left, right } as DOMRect;
 }
 
 describe('revealInline [Unit]', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('scrolls a clipped item in from the trailing edge', () => {
     const container = document.createElement('div');
     const item = document.createElement('a');
@@ -42,5 +43,38 @@ describe('revealInline [Unit]', () => {
     revealInline(container, item);
 
     expect(container.scrollLeft).toBe(40);
+  });
+
+  it('reveals the selected item after its container becomes narrower', () => {
+    let resize!: () => void;
+    const disconnectSpy = vi.fn();
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resize = callback;
+        }
+        observe(): void {}
+        disconnect = disconnectSpy;
+      },
+    );
+    const container = document.createElement('nav');
+    const item = document.createElement('a');
+    item.setAttribute('aria-current', 'page');
+    container.append(item);
+    let frameRight = 640;
+    container.getBoundingClientRect = () => rectangle(0, frameRight);
+    item.getBoundingClientRect = () =>
+      rectangle(520 - container.scrollLeft, 620 - container.scrollLeft);
+
+    const stop = observeInlineSelection(container);
+    expect(container.scrollLeft).toBe(0);
+
+    frameRight = 320;
+    resize();
+    expect(container.scrollLeft).toBe(300);
+
+    stop();
+    expect(disconnectSpy).toHaveBeenCalledOnce();
   });
 });
