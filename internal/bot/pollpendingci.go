@@ -48,8 +48,8 @@ func processPendingCIPRs(
 	return nil
 }
 
-// PendingCIPR holds data about a PR waiting for CI
-type PendingCIPR struct {
+// pendingCIPR holds data about a PR waiting for CI
+type pendingCIPR struct {
 	PRData       map[string]interface{}
 	Method       github.MergeMethod
 	Label        string
@@ -57,8 +57,8 @@ type PendingCIPR struct {
 }
 
 // filterPendingCIPRs filters PRs that have pending-ci labels
-func filterPendingCIPRs(prs []map[string]interface{}) []PendingCIPR {
-	var result []PendingCIPR
+func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
+	var result []pendingCIPR
 
 	for _, pr := range prs {
 		labels := PendingCILabels(pr)
@@ -91,12 +91,12 @@ func PullRequestHasLabel(pr map[string]interface{}, wanted string) bool {
 // PendingCILabels returns every pending-CI label on one pull request. Action
 // polling intentionally consumes only the first; upgrade cleanup needs all of
 // them so no stale method label survives the cutover.
-func PendingCILabels(pr map[string]interface{}) []PendingCIPR {
+func PendingCILabels(pr map[string]interface{}) []pendingCIPR {
 	labels, ok := pr["labels"].([]interface{})
 	if !ok {
 		return nil
 	}
-	result := make([]PendingCIPR, 0, len(labels))
+	result := make([]pendingCIPR, 0, len(labels))
 	for _, item := range labels {
 		labelMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -110,7 +110,7 @@ func PendingCILabels(pr map[string]interface{}) []PendingCIPR {
 		if label == "" {
 			continue
 		}
-		result = append(result, PendingCIPR{
+		result = append(result, pendingCIPR{
 			PRData: pr, Method: method, Label: label, RequiredOnly: requiredOnly,
 		})
 	}
@@ -133,7 +133,7 @@ func processPendingCIPR(
 	client *github.Client,
 	bc *config.Config,
 	repoOwner, repoName string,
-	pr PendingCIPR,
+	pr pendingCIPR,
 	botUsername string,
 ) error {
 	prNumber := ExtractPRNumber(pr.PRData)
@@ -150,7 +150,7 @@ func processPendingCIPR(
 	if err != nil {
 		return fmt.Errorf("failed to get PR head ref: %w", err)
 	}
-	actionOwned, err := PendingCIActionOwns(
+	actionOwned, err := pendingCIActionOwns(
 		ctx, client, repoOwner, repoName, prNumber, pr.Label, headRef, botUsername,
 	)
 	if err != nil {
@@ -225,12 +225,12 @@ func handlePendingCIPassed(
 	bc *config.Config,
 	repoOwner, repoName string,
 	prNumber int,
-	pr PendingCIPR,
+	pr pendingCIPR,
 	botUsername string,
 	headRef string,
 ) error {
 	logging.From(ctx).Info("CI passed, merging")
-	actionOwned, err := PendingCIActionOwns(
+	actionOwned, err := pendingCIActionOwns(
 		ctx, client, repoOwner, repoName, prNumber, pr.Label, headRef, botUsername,
 	)
 	if err != nil {

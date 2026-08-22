@@ -22,12 +22,12 @@ type RuntimeConfig struct {
 	APIBaseURL          string // GitHub API base URL; empty uses the public API
 }
 
-// IsBotAlreadyApproved checks if the bot has already approved the PR.
+// isBotAlreadyApproved checks if the bot has already approved the PR.
 // Returns true if bot already approved, false otherwise.
 //
 // The botUsername parameter should be provided from RuntimeConfig.BotUsername
 // to avoid calling GetAuthenticatedUser which fails with GitHub App tokens.
-func IsBotAlreadyApproved(info *github.PRInfo, botUsername string) bool {
+func isBotAlreadyApproved(info *github.PRInfo, botUsername string) bool {
 	for _, approver := range info.ApprovedBy {
 		if approver == botUsername {
 			return true

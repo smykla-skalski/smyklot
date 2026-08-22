@@ -95,7 +95,7 @@ func TestPendingCICommandSuppressesStaleCleanupSideEffects(t *testing.T) {
 		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
 		Wake: func() {},
 	}
-	accepted, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
+	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
 		called = true
 
 		return nil
@@ -126,7 +126,7 @@ func TestPendingCICommandKeepsCleanupUnderRepositoryOwnership(t *testing.T) {
 	releaseCleanup := make(chan struct{})
 	cleanupDone := make(chan error, 1)
 	go func() {
-		_, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
+		_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
 			close(cleanupStarted)
 			<-releaseCleanup
 
@@ -184,7 +184,7 @@ func TestPendingCIReactionCleanupFinishesCurrentRequest(t *testing.T) {
 		Wake: func() {},
 	}
 	called := false
-	accepted, err := command.CancelAndRun(t.Context(), 198, "cleanup reaction", func() error {
+	accepted, err := command.cancelAndRun(t.Context(), 198, "cleanup reaction", func() error {
 		called = true
 
 		return nil
@@ -214,7 +214,7 @@ func TestPendingCICleanupWakesDurableCleanupAfterExternalFailure(t *testing.T) {
 		Now:  func() time.Time { return time.Date(2026, 8, 15, 12, 0, 0, 0, time.UTC) },
 		Wake: func() { woke = true },
 	}
-	_, err := command.CancelAndRun(t.Context(), 198, "cleanup command", func() error {
+	_, err := command.cancelAndRun(t.Context(), 198, "cleanup command", func() error {
 		return externalErr
 	})
 	if !errors.Is(err, externalErr) {

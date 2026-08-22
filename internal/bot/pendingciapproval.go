@@ -8,7 +8,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-const SelfApprovalNotAllowed = "(self-approval not allowed)"
+const selfApprovalNotAllowed = "(self-approval not allowed)"
 
 type pendingCIApprover interface {
 	ApprovePR(context.Context, string, string, int) error
@@ -22,7 +22,7 @@ func PendingCIApprovalAllowed(
 	if !botConfig.AllowSelfApproval && info.Author == runtime.CommentAuthor {
 		return feedback.NewUnauthorized(
 			runtime.CommentAuthor,
-			[]string{SelfApprovalNotAllowed},
+			[]string{selfApprovalNotAllowed},
 		)
 	}
 
@@ -33,7 +33,7 @@ func PendingCIApprovalRequired(
 	runtime *RuntimeConfig,
 	info *github.PRInfo,
 ) bool {
-	botApproved := IsBotAlreadyApproved(info, runtime.BotUsername)
+	botApproved := isBotAlreadyApproved(info, runtime.BotUsername)
 	for _, login := range info.ApprovedBy {
 		if login == runtime.CommentAuthor {
 			return false
@@ -43,7 +43,7 @@ func PendingCIApprovalRequired(
 	return !botApproved
 }
 
-func ApprovePendingCI(
+func approvePendingCI(
 	ctx context.Context,
 	approver pendingCIApprover,
 	runtime *RuntimeConfig,

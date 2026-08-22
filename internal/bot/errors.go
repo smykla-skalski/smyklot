@@ -7,8 +7,8 @@ import (
 
 // Sentinel errors for common failure cases.
 var (
-	// ErrMissingEnvVar is returned when a required environment variable is missing
-	ErrMissingEnvVar = errors.New("required environment variable is missing")
+	// errMissingEnvVar is returned when a required environment variable is missing
+	errMissingEnvVar = errors.New("required environment variable is missing")
 
 	// ErrInvalidInput is returned when invalid input is provided
 	ErrInvalidInput = errors.New("invalid input provided")
@@ -22,26 +22,26 @@ var (
 	// ErrPermissionCheck is returned when the permission check fails
 	ErrPermissionCheck = errors.New("permission check failed")
 
-	// ErrPostComment is returned when posting a comment fails
-	ErrPostComment = errors.New("failed to post comment")
+	// errPostComment is returned when posting a comment fails
+	errPostComment = errors.New("failed to post comment")
 
-	// ErrAddReaction is returned when adding a reaction fails
-	ErrAddReaction = errors.New("failed to add reaction")
+	// errAddReaction is returned when adding a reaction fails
+	errAddReaction = errors.New("failed to add reaction")
 
-	// ErrApprovePR is returned when approving a PR fails
-	ErrApprovePR = errors.New("failed to approve PR")
+	// errApprovePR is returned when approving a PR fails
+	errApprovePR = errors.New("failed to approve PR")
 
-	// ErrMergePR is returned when merging a PR fails
-	ErrMergePR = errors.New("failed to merge PR")
+	// errMergePR is returned when merging a PR fails
+	errMergePR = errors.New("failed to merge PR")
 
-	// ErrGetCodeowners is returned when fetching CODEOWNERS from GitHub fails
-	ErrGetCodeowners = errors.New("failed to fetch CODEOWNERS from GitHub")
+	// errGetCodeowners is returned when fetching CODEOWNERS from GitHub fails
+	errGetCodeowners = errors.New("failed to fetch CODEOWNERS from GitHub")
 
-	// ErrInitPermissions is returned when initializing permissions fails
-	ErrInitPermissions = errors.New("failed to initialize permissions")
+	// errInitPermissions is returned when initializing permissions fails
+	errInitPermissions = errors.New("failed to initialize permissions")
 
-	// ErrStepSummary is returned when step summary operations fail
-	ErrStepSummary = errors.New("failed to write step summary")
+	// errStepSummary is returned when step summary operations fail
+	errStepSummary = errors.New("failed to write step summary")
 
 	// ErrConfigLoad is returned when loading configuration fails
 	ErrConfigLoad = errors.New("failed to load configuration")
@@ -65,29 +65,29 @@ var (
 	)
 )
 
-// EnvVarError represents an error related to environment variable validation.
-type EnvVarError struct {
+// envVarError represents an error related to environment variable validation.
+type envVarError struct {
 	Op      error
 	VarName string
 }
 
-func NewEnvVarError(op error, varName string) error {
-	return &EnvVarError{
+func newEnvVarError(op error, varName string) error {
+	return &envVarError{
 		Op:      op,
 		VarName: varName,
 	}
 }
 
-func (e *EnvVarError) Error() string {
+func (e *envVarError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Op, e.VarName)
 }
 
-func (e *EnvVarError) Unwrap() error {
+func (e *envVarError) Unwrap() error {
 	return e.Op
 }
 
-func (e *EnvVarError) Is(target error) bool {
-	var envVarErr *EnvVarError
+func (e *envVarError) Is(target error) bool {
+	var envVarErr *envVarError
 	if errors.As(target, &envVarErr) {
 		return true
 	}
@@ -95,22 +95,22 @@ func (e *EnvVarError) Is(target error) bool {
 	return errors.Is(e.Op, target)
 }
 
-// InputError represents an error with parsing or validating input.
-type InputError struct {
+// inputError represents an error with parsing or validating input.
+type inputError struct {
 	Op      error
 	Input   string
 	Details string
 }
 
 func NewInputError(op error, input, details string) error {
-	return &InputError{
+	return &inputError{
 		Op:      op,
 		Input:   input,
 		Details: details,
 	}
 }
 
-func (e *InputError) Error() string {
+func (e *inputError) Error() string {
 	if e.Details != "" {
 		return fmt.Sprintf("%s: %s (%s)", e.Op, e.Input, e.Details)
 	}
@@ -118,12 +118,12 @@ func (e *InputError) Error() string {
 	return fmt.Sprintf("%s: %s", e.Op, e.Input)
 }
 
-func (e *InputError) Unwrap() error {
+func (e *inputError) Unwrap() error {
 	return e.Op
 }
 
-func (e *InputError) Is(target error) bool {
-	var inputErr *InputError
+func (e *inputError) Is(target error) bool {
+	var inputErr *inputError
 	if errors.As(target, &inputErr) {
 		return true
 	}
@@ -131,20 +131,20 @@ func (e *InputError) Is(target error) bool {
 	return errors.Is(e.Op, target)
 }
 
-// GitHubError represents an error from GitHub API operations.
-type GitHubError struct {
+// gitHubError represents an error from GitHub API operations.
+type gitHubError struct {
 	Op  error
 	Err error
 }
 
 func NewGitHubError(op, err error) error {
-	return &GitHubError{
+	return &gitHubError{
 		Op:  op,
 		Err: err,
 	}
 }
 
-func (e *GitHubError) Error() string {
+func (e *gitHubError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %v", e.Op, e.Err)
 	}
@@ -152,7 +152,7 @@ func (e *GitHubError) Error() string {
 	return e.Op.Error()
 }
 
-func (e *GitHubError) Unwrap() error {
+func (e *gitHubError) Unwrap() error {
 	if e.Err != nil {
 		return e.Err
 	}
@@ -160,20 +160,20 @@ func (e *GitHubError) Unwrap() error {
 	return e.Op
 }
 
-// ConfigError represents an error from configuration loading.
-type ConfigError struct {
+// configError represents an error from configuration loading.
+type configError struct {
 	Op  error
 	Err error
 }
 
 func NewConfigError(op, err error) error {
-	return &ConfigError{
+	return &configError{
 		Op:  op,
 		Err: err,
 	}
 }
 
-func (e *ConfigError) Error() string {
+func (e *configError) Error() string {
 	if e.Err != nil {
 		return fmt.Sprintf("%s: %v", e.Op, e.Err)
 	}
@@ -181,7 +181,7 @@ func (e *ConfigError) Error() string {
 	return e.Op.Error()
 }
 
-func (e *ConfigError) Unwrap() error {
+func (e *configError) Unwrap() error {
 	if e.Err != nil {
 		return e.Err
 	}
@@ -192,10 +192,10 @@ func (e *ConfigError) Unwrap() error {
 // Is matches on the operation, since Unwrap walks to the cause instead.
 //
 // Without this a caller cannot tell one configuration failure from another -
-// errors.Is would follow Unwrap past Op and never see it. GitHubError and
-// InputError already do this.
-func (e *ConfigError) Is(target error) bool {
-	var configErr *ConfigError
+// errors.Is would follow Unwrap past Op and never see it. gitHubError and
+// inputError already do this.
+func (e *configError) Is(target error) bool {
+	var configErr *configError
 	if errors.As(target, &configErr) {
 		return true
 	}
@@ -203,8 +203,8 @@ func (e *ConfigError) Is(target error) bool {
 	return errors.Is(e.Op, target)
 }
 
-func (e *GitHubError) Is(target error) bool {
-	var ghErr *GitHubError
+func (e *gitHubError) Is(target error) bool {
+	var ghErr *gitHubError
 	if errors.As(target, &ghErr) {
 		return true
 	}

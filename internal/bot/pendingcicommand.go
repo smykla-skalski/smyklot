@@ -11,7 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type PendingCICommandStore interface {
+type pendingCICommandStore interface {
 	CheckArm(context.Context, pendingci.ArmRequest) error
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
@@ -47,14 +47,14 @@ func (command *PendingCICommand) armedArtifactOwnership(
 
 type CommandEnvironment struct {
 	PendingCI           *PendingCICommand
-	PendingCIActivation PendingCIActivationGuard
-	PendingCIMode       PendingCIModeResolver
+	PendingCIActivation pendingCIActivationGuard
+	PendingCIMode       pendingCIModeResolver
 }
 
 // PendingCICommand translates an already-authorized command into durable
 // domain state. It knows neither parsing nor reconciliation policy.
 type PendingCICommand struct {
-	Store              PendingCICommandStore
+	Store              pendingCICommandStore
 	Wake               func()
 	Coordinator        Exclusive
 	TargetID           string
@@ -66,7 +66,7 @@ type PendingCICommand struct {
 	SourceSequence     int
 	SourceOrder        int64
 	Now                func() time.Time
-	Checks             PendingCIChecks
+	Checks             pendingCIChecks
 }
 
 func (command *PendingCICommand) arm(
@@ -152,9 +152,9 @@ func (command *PendingCICommand) armRequest(
 	}
 }
 
-// CancelAndRun keeps durable cancellation and its external cleanup in one
+// cancelAndRun keeps durable cancellation and its external cleanup in one
 // repository-owned operation. A newer command cannot arm between the two.
-func (command *PendingCICommand) CancelAndRun(
+func (command *PendingCICommand) cancelAndRun(
 	ctx context.Context,
 	pullRequest int,
 	reason string,

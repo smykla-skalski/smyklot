@@ -67,7 +67,7 @@ func pendingCIServiceOwnedForState(
 	return owned, nil
 }
 
-func PendingCIActionOwns(
+func pendingCIActionOwns(
 	ctx context.Context,
 	reader pendingCIOwnershipReader,
 	owner, repository string,
@@ -94,7 +94,7 @@ func PendingCIActionOwns(
 	return !serviceOwned, nil
 }
 
-func PendingCIRequiredChecks(
+func pendingCIRequiredChecks(
 	ctx context.Context,
 	reader pendingCIRequirementReader,
 	owner, repository, baseBranch string,

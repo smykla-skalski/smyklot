@@ -41,7 +41,7 @@ type PendingCIActivationRequest struct {
 	ArtifactKind       pendingci.ArtifactKind
 }
 
-type PendingCIActivationErrors struct {
+type pendingCIActivationErrors struct {
 	Approval  error
 	Label     error
 	Reaction  error
@@ -52,17 +52,17 @@ type PendingCIActivationErrors struct {
 	StoodDown bool
 }
 
-// ActivatePendingCI makes external artifacts and durable command replacement
+// activatePendingCI makes external artifacts and durable command replacement
 // one repository-owned operation. Each rollback preserves artifacts still
 // owned by the prior durable request.
-func ActivatePendingCI(
+func activatePendingCI(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard PendingCIActivationGuard,
+	guard pendingCIActivationGuard,
 	request PendingCIActivationRequest,
-) (PendingCIActivationErrors, error) {
-	var failures PendingCIActivationErrors
+) (pendingCIActivationErrors, error) {
+	var failures pendingCIActivationErrors
 	err := command.exclusive(ctx, func() error {
 		return activatePendingCIExclusive(
 			ctx, artifacts, command, guard, request, &failures,
@@ -76,9 +76,9 @@ func activatePendingCIExclusive(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard PendingCIActivationGuard,
+	guard pendingCIActivationGuard,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) error {
 	ownership, stopped, err := preparePendingCIActivation(
 		ctx, command, guard, request, failures,
@@ -105,7 +105,7 @@ func pendingCIApprovalFailed(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) bool {
 	info, err := artifacts.GetPRInfo(
 		ctx, request.Owner, request.Repository, request.PullRequest,
@@ -130,7 +130,7 @@ func addPendingCIServiceReaction(
 	artifacts pendingCIArtifacts,
 	request PendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) (bool, error) {
 	if ownership.serviceFence {
 		return false, nil
@@ -153,10 +153,10 @@ func persistPendingCIActivation(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard PendingCIActivationGuard,
+	guard pendingCIActivationGuard,
 	request PendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) error {
 	if err := revalidatePendingCIActivation(ctx, guard, request, failures); err != nil ||
 		failures.StoodDown {
@@ -198,7 +198,7 @@ func persistPendingCICheckActivation(
 	command *PendingCICommand,
 	request PendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) error {
 	if command.Checks == nil {
 		failures.Check = errors.New("pending CI Check Run service is unavailable")
@@ -291,9 +291,9 @@ func RestorePendingCICheckAfterArmFailure(
 func preparePendingCIActivation(
 	ctx context.Context,
 	command *PendingCICommand,
-	guard PendingCIActivationGuard,
+	guard pendingCIActivationGuard,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) (pendingCIArtifactOwnership, bool, error) {
 	if guard == nil {
 		return pendingCIArtifactOwnership{}, true,
@@ -327,9 +327,9 @@ func preparePendingCIActivation(
 
 func revalidatePendingCIActivation(
 	ctx context.Context,
-	guard PendingCIActivationGuard,
+	guard pendingCIActivationGuard,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) error {
 	allowed, err := guard.AllowsActivation(
 		ctx,
@@ -349,7 +349,7 @@ func classifyPendingCIArmFailure(
 	ctx context.Context,
 	command *PendingCICommand,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) {
 	if errors.Is(failures.Command, pendingci.ErrStaleSourceRevision) {
 		failures.Command = nil
@@ -366,7 +366,7 @@ func handlePendingCIArmFailure(
 	command *PendingCICommand,
 	request PendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) error {
 	resolveAmbiguousPendingCI(ctx, command, request, failures)
 	rollbackErr := rollbackPendingCIArtifacts(
@@ -384,7 +384,7 @@ func resolveAmbiguousPendingCI(
 	ctx context.Context,
 	command *PendingCICommand,
 	request PendingCIActivationRequest,
-	failures *PendingCIActivationErrors,
+	failures *pendingCIActivationErrors,
 ) {
 	if !errors.Is(failures.Command, pendingci.ErrAmbiguousSourceRevision) {
 		return

@@ -65,7 +65,7 @@ func TestPendingCIActivationRollsBackOnlyUnownedArtifacts(t *testing.T) {
 				Coordinator: NewCoordinator(), RepositoryID: "repository:7",
 				Now: func() time.Time { return time.Now().UTC() },
 			}
-			failures, err := ActivatePendingCI(
+			failures, err := activatePendingCI(
 				t.Context(), artifacts, command, allowPendingCIActivation,
 				PendingCIActivationRequest{
 					Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -110,7 +110,7 @@ func TestPendingCIActivationKeepsOwnershipWhenMethodRollbackFails(t *testing.T) 
 		Now: func() time.Time { return time.Now().UTC() },
 	}
 
-	_, err := ActivatePendingCI(
+	_, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -140,7 +140,7 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -170,7 +170,7 @@ func TestPendingCIActivationStopsWhenWaitingReactionCannotBePublished(t *testing
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -213,7 +213,7 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -225,7 +225,7 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if failures != (PendingCIActivationErrors{}) {
+	if failures != (pendingCIActivationErrors{}) {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{
@@ -252,7 +252,7 @@ func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testi
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -291,7 +291,7 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -329,7 +329,7 @@ func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() },
 	}
 
-	_, err := ActivatePendingCI(
+	_, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -361,7 +361,7 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -414,7 +414,7 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 	activationDone := make(chan error, 1)
 	go func() {
 		close(activationAttempted)
-		_, err := ActivatePendingCI(
+		_, err := activatePendingCI(
 			t.Context(), artifacts, command, allowPendingCIActivation,
 			PendingCIActivationRequest{
 				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
@@ -480,12 +480,12 @@ func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 	type activationResult struct {
-		failures PendingCIActivationErrors
+		failures pendingCIActivationErrors
 		err      error
 	}
 	activationDone := make(chan activationResult, 1)
 	go func() {
-		failures, err := ActivatePendingCI(
+		failures, err := activatePendingCI(
 			t.Context(), artifacts, command, guard, PendingCIActivationRequest{
 				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 				Owner:   "owner", Repository: "repository", PullRequest: 198,
@@ -534,7 +534,7 @@ func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
 		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
 		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
-	failures, err := ActivatePendingCI(
+	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},

@@ -11,7 +11,7 @@ type Exclusive interface {
 	Exclusive(context.Context, string, func() error) error
 }
 
-type PendingCIChecks interface {
+type pendingCIChecks interface {
 	EnsureBaseline(
 		ctx context.Context,
 		target storage.Target,

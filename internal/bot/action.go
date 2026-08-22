@@ -118,13 +118,13 @@ func InstallationToken(rc *RuntimeConfig) (string, error) {
 
 // WriteStepSummary writes the effective configuration to GitHub Actions step summary.
 func WriteStepSummary(rc *RuntimeConfig, bc *config.Config) error {
-	// Rendered before anything is opened, so AppendStepSummary stays the one
+	// Rendered before anything is opened, so appendStepSummary stays the one
 	// place that knows how to write to the summary
 	var rendered strings.Builder
 
 	tmpl, err := template.New(summaryTemplateName).Parse(stepSummaryTemplate)
 	if err != nil {
-		return NewGitHubError(ErrStepSummary, err)
+		return NewGitHubError(errStepSummary, err)
 	}
 
 	var allowedCommands string
@@ -156,8 +156,8 @@ func WriteStepSummary(rc *RuntimeConfig, bc *config.Config) error {
 	}
 
 	if err := tmpl.Execute(&rendered, data); err != nil {
-		return NewGitHubError(ErrStepSummary, err)
+		return NewGitHubError(errStepSummary, err)
 	}
 
-	return AppendStepSummary(rendered.String())
+	return appendStepSummary(rendered.String())
 }

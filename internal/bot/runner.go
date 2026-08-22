@@ -43,7 +43,7 @@ func ActionStandsDown(ctx context.Context, bc *config.Config) bool {
 		return false
 	}
 
-	if err := AppendStepSummary(fmt.Sprintf(standDownSummary, bc.EffectiveRunner())); err != nil {
+	if err := appendStepSummary(fmt.Sprintf(standDownSummary, bc.EffectiveRunner())); err != nil {
 		logging.From(ctx).Warn("failed to write step summary", "error", err)
 	}
 
@@ -69,7 +69,7 @@ func ReportUnusableRepoConfig(ctx context.Context, cause error) error {
 		return cause
 	}
 
-	if err := AppendStepSummary(fmt.Sprintf(unusableConfigSummary, cause)); err != nil {
+	if err := appendStepSummary(fmt.Sprintf(unusableConfigSummary, cause)); err != nil {
 		logging.From(ctx).Warn("failed to write step summary", "error", err)
 	}
 

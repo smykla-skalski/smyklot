@@ -57,7 +57,7 @@ func FetchCodeowners(
 ) (string, error) {
 	content, err := client.GetCodeowners(ctx, repoOwner, repoName)
 	if err != nil {
-		return "", NewGitHubError(ErrGetCodeowners, err)
+		return "", NewGitHubError(errGetCodeowners, err)
 	}
 
 	// Log if CODEOWNERS is missing
@@ -76,7 +76,7 @@ func FetchCodeowners(
 func CheckerFromCodeowners(content string, client *github.Client) (*permissions.Checker, error) {
 	checker, err := permissions.NewCheckerFromContent(content, client)
 	if err != nil {
-		return nil, NewGitHubError(ErrInitPermissions, err)
+		return nil, NewGitHubError(errInitPermissions, err)
 	}
 
 	return checker, nil
@@ -187,7 +187,7 @@ func processPR(
 	rc := &RuntimeConfig{
 		CommentBody:   title, // Use PR title as body
 		CommentID:     strconv.Itoa(prNumber),
-		CommentAction: CommentActionCreated,
+		CommentAction: commentActionCreated,
 		PRNumber:      strconv.Itoa(prNumber),
 		RepoOwner:     repoOwner,
 		RepoName:      repoName,
@@ -197,7 +197,7 @@ func processPR(
 
 	// Process reactions if not disabled
 	if !bc.DisableReactions {
-		if err := HandleReactions(
+		if err := handleReactions(
 			ctx, client, rc, bc, checker, prNumber, prNumber, environment,
 		); err != nil {
 			return fmt.Errorf("failed to process reactions on PR #%d: %w", prNumber, err)

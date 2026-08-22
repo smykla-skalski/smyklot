@@ -26,7 +26,7 @@ func PostFeedback(
 			prNum,
 			message,
 		); err != nil {
-			return NewGitHubError(ErrPostComment, err)
+			return NewGitHubError(errPostComment, err)
 		}
 	}
 
@@ -48,7 +48,7 @@ func PostFeedback(
 		commentID,
 		reaction,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return NewGitHubError(errAddReaction, err)
 	}
 
 	return nil
@@ -63,7 +63,7 @@ func addEyesReaction(ctx context.Context, client *github.Client, rc *RuntimeConf
 		commentID,
 		github.ReactionEyes,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return NewGitHubError(errAddReaction, err)
 	}
 
 	return nil
@@ -135,7 +135,7 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 			prNum,
 			fb.Message,
 		); err != nil {
-			return NewGitHubError(ErrPostComment, err)
+			return NewGitHubError(errPostComment, err)
 		}
 	}
 
@@ -157,7 +157,7 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 		commentID,
 		reaction,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return NewGitHubError(errAddReaction, err)
 	}
 
 	return nil

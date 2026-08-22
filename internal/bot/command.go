@@ -39,8 +39,8 @@ const (
 	EnvBotUsername         = "SMYKLOT_BOT_USERNAME"
 	EnvAPIBaseURL          = "SMYKLOT_GITHUB_API_URL"
 	rootPath               = "/"
-	CommentActionCreated   = "created"
-	CommentActionDeleted   = "deleted"
+	commentActionCreated   = "created"
+	commentActionDeleted   = "deleted"
 	summaryTemplateName    = "summary"
 	errInvalidPRNum        = "invalid PR number"
 	errInvalidComment      = "invalid comment ID"
@@ -125,7 +125,7 @@ func ExecuteCommentWithEnvironment(
 	// Handle deleted comments
 	//
 	// A deleted comment is never executed, so this branch always returns
-	if rc.CommentAction == CommentActionDeleted {
+	if rc.CommentAction == commentActionDeleted {
 		deletedCommands := deletedCommandsToReport(bc, parsedCmd)
 		if len(deletedCommands) == 0 {
 			return nil
@@ -172,13 +172,13 @@ func ExecuteCommentWithEnvironment(
 		rc.RepoName,
 	)
 	if err != nil {
-		return NewGitHubError(ErrGetCodeowners, err)
+		return NewGitHubError(errGetCodeowners, err)
 	}
 
 	// Initialize permission checker from content
 	checker, err := permissions.NewCheckerFromContent(codeownersContent, client)
 	if err != nil {
-		return NewGitHubError(ErrInitPermissions, err)
+		return NewGitHubError(errInitPermissions, err)
 	}
 
 	// Handle help command immediately (no permission check needed)
@@ -191,7 +191,7 @@ func ExecuteCommentWithEnvironment(
 	// Handle reaction-based approvals/merges if enabled
 	// Only process reactions if no command was found in the comment
 	if !bc.DisableReactions && !parsedCmd.IsValid {
-		if err := HandleReactions(
+		if err := handleReactions(
 			ctx, client, rc, bc, checker, prNum, commentIDNum, environment,
 		); err != nil {
 			return err
@@ -225,7 +225,7 @@ func ExecuteCommentWithEnvironment(
 
 	// Execute all commands and collect feedback
 	var feedbacks []*feedback.Feedback
-	isNewComment := rc.CommentAction == CommentActionCreated || rc.CommentAction == ""
+	isNewComment := rc.CommentAction == commentActionCreated || rc.CommentAction == ""
 
 	for _, cmdType := range parsedCmd.Commands {
 		var fb *feedback.Feedback
@@ -306,7 +306,7 @@ func ExecuteCommentWithEnvironment(
 // ValidateConfig validates that all required configuration is present
 func ValidateConfig(rc *RuntimeConfig) error {
 	if rc.Token == "" {
-		return NewEnvVarError(ErrMissingEnvVar, EnvGitHubToken)
+		return newEnvVarError(errMissingEnvVar, EnvGitHubToken)
 	}
 
 	return ValidateCommentInput(rc)
@@ -332,7 +332,7 @@ func ValidateCommentInput(rc *RuntimeConfig) error {
 
 	for _, field := range requiredFields {
 		if field.value == "" {
-			return NewEnvVarError(ErrMissingEnvVar, field.envVar)
+			return newEnvVarError(errMissingEnvVar, field.envVar)
 		}
 	}
 
@@ -380,12 +380,12 @@ func executeApprove(ctx context.Context, client *github.Client, rc *RuntimeConfi
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{SelfApprovalNotAllowed},
+			[]string{selfApprovalNotAllowed},
 		), nil
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	if IsBotAlreadyApproved(info, rc.BotUsername) {
+	if isBotAlreadyApproved(info, rc.BotUsername) {
 		// Bot already approved - return feedback (filtered for new comments)
 		return feedback.NewAlreadyApproved(rc.BotUsername), nil
 	}
@@ -436,7 +436,7 @@ func executeMerge(
 	}
 	if environment.PendingCI != nil {
 		var result *feedback.Feedback
-		accepted, err := environment.PendingCI.CancelAndRun(
+		accepted, err := environment.PendingCI.cancelAndRun(
 			ctx,
 			prNum,
 			"superseded by an immediate merge command",
@@ -483,7 +483,7 @@ func executeMerge(
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := IsBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR (avoid redundant bot approval)
 	userAlreadyApproved := false
@@ -625,7 +625,7 @@ func executePendingCIMerge(
 		// The Action has no durable reconciler, so it delegates the wait to
 		// GitHub labels. The service resolves App-bound requirements in its
 		// activation guard, where it can exclude only Smyklot's own check.
-		requiredChecks, err := PendingCIRequiredChecks(
+		requiredChecks, err := pendingCIRequiredChecks(
 			ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
 		)
 		if err != nil {
@@ -657,7 +657,7 @@ func executePendingCIMerge(
 
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.PendingCI == nil {
-		if failure := ApprovePendingCI(
+		if failure := approvePendingCI(
 			ctx, client, rc, prNum, PendingCIApprovalRequired(rc, info),
 		); failure != nil {
 			return failure, nil
@@ -682,7 +682,7 @@ func executePendingCIMerge(
 		if mode == storage.PendingCIModeChecks {
 			artifactKind = pendingci.ArtifactCheck
 		}
-		failures, coordinationErr := ActivatePendingCI(
+		failures, coordinationErr := activatePendingCI(
 			ctx, client, environment.PendingCI, environment.PendingCIActivation,
 			PendingCIActivationRequest{
 				Runtime: rc, Owner: rc.RepoOwner, Repository: rc.RepoName,
@@ -752,12 +752,12 @@ func executeImmediateMerge(
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
 		return feedback.NewUnauthorized(
 			rc.CommentAuthor,
-			[]string{SelfApprovalNotAllowed},
+			[]string{selfApprovalNotAllowed},
 		), nil
 	}
 
 	// Check if bot already approved the PR
-	botAlreadyApproved := IsBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR
 	userAlreadyApproved := false
@@ -1020,7 +1020,7 @@ func executeCoordinatedCleanup(
 
 		return result, true, err
 	}
-	accepted, err := environment.PendingCI.CancelAndRun(
+	accepted, err := environment.PendingCI.cancelAndRun(
 		ctx, prNum, reason, operation,
 	)
 

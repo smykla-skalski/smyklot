@@ -77,55 +77,55 @@ var _ = Describe("Main Pending CI Functions [Unit]", func() {
 		})
 	})
 
-	Describe("IsBotAlreadyApproved", func() {
+	Describe("isBotAlreadyApproved", func() {
 		It("should return true when bot has approved", func() {
 			info := &github.PRInfo{
 				ApprovedBy: []string{"user1", "smyklot[bot]", "user2"},
 			}
-			Expect(IsBotAlreadyApproved(info, "smyklot[bot]")).To(BeTrue())
+			Expect(isBotAlreadyApproved(info, "smyklot[bot]")).To(BeTrue())
 		})
 
 		It("should return false when bot has not approved", func() {
 			info := &github.PRInfo{
 				ApprovedBy: []string{"user1", "user2"},
 			}
-			Expect(IsBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
+			Expect(isBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
 		})
 
 		It("should return false for empty approvers list", func() {
 			info := &github.PRInfo{
 				ApprovedBy: []string{},
 			}
-			Expect(IsBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
+			Expect(isBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
 		})
 
 		It("should handle different bot usernames", func() {
 			info := &github.PRInfo{
 				ApprovedBy: []string{"custom-bot"},
 			}
-			Expect(IsBotAlreadyApproved(info, "custom-bot")).To(BeTrue())
-			Expect(IsBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
+			Expect(isBotAlreadyApproved(info, "custom-bot")).To(BeTrue())
+			Expect(isBotAlreadyApproved(info, "smyklot[bot]")).To(BeFalse())
 		})
 	})
 
 	Describe("shouldEnableAutoMerge", func() {
 		It("should return true for merge queue error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("merge queue is required"))
+			err := NewGitHubError(errMergePR, githubError("merge queue is required"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return true for status checks error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("required status check"))
+			err := NewGitHubError(errMergePR, githubError("required status check"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return true for branch protection error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("branch protection rules"))
+			err := NewGitHubError(errMergePR, githubError("branch protection rules"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return false for other errors", func() {
-			err := NewGitHubError(ErrMergePR, githubError("some other error"))
+			err := NewGitHubError(errMergePR, githubError("some other error"))
 			Expect(shouldEnableAutoMerge(err)).To(BeFalse())
 		})
 	})

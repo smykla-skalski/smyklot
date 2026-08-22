@@ -36,7 +36,7 @@ func TestPendingCIRequiredOnlyRejectsRequiredWorkflows(t *testing.T) {
 		StatusChecks: []github.RequiredCheck{{Context: "build"}}, RequiredWorkflow: true,
 	}}
 
-	_, err := PendingCIRequiredChecks(
+	_, err := pendingCIRequiredChecks(
 		t.Context(), reader, "owner", "repo", "main", true,
 	)
 	if !errors.Is(err, ErrRequiredWorkflowsUnsupported) {
@@ -50,7 +50,7 @@ func TestPendingCIAllChecksAllowsRequiredWorkflows(t *testing.T) {
 		RequiredWorkflow: true,
 	}}
 
-	required, err := PendingCIRequiredChecks(
+	required, err := pendingCIRequiredChecks(
 		t.Context(), reader, "owner", "repo", "main", false,
 	)
 	if err != nil {

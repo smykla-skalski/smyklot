@@ -7,10 +7,10 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-type PendingCIActivationGuard interface {
+type pendingCIActivationGuard interface {
 	AllowsActivation(context.Context, pendingci.ArtifactKind, string, bool) (bool, error)
 }
 
-type PendingCIModeResolver interface {
+type pendingCIModeResolver interface {
 	PendingCIMode(context.Context, string) (storage.PendingCIMode, error)
 }

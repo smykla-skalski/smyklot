@@ -10,8 +10,8 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/permissions"
 )
 
-// HandleReactions processes reaction-based approvals and merges.
-func HandleReactions(
+// handleReactions processes reaction-based approvals and merges.
+func handleReactions(
 	ctx context.Context,
 	client *github.Client,
 	rc *RuntimeConfig,
@@ -250,18 +250,18 @@ func handleReactionApprove(
 			commentID,
 			err,
 			feedback.NewApprovalFailed,
-			ErrApprovePR,
+			errApprovePR,
 		)
 	}
 
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == approver {
-		fb := feedback.NewUnauthorized(approver, []string{SelfApprovalNotAllowed})
+		fb := feedback.NewUnauthorized(approver, []string{selfApprovalNotAllowed})
 		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals)
-	if IsBotAlreadyApproved(info, rc.BotUsername) {
+	if isBotAlreadyApproved(info, rc.BotUsername) {
 		// Bot already approved - skip approval but still add label
 		_ = client.AddLabel(
 			ctx,
@@ -283,7 +283,7 @@ func handleReactionApprove(
 			commentID,
 			err,
 			feedback.NewApprovalFailed,
-			ErrApprovePR,
+			errApprovePR,
 		)
 	}
 
@@ -322,13 +322,13 @@ func handleReactionMerge(
 			commentID,
 			err,
 			feedback.NewMergeFailed,
-			ErrMergePR,
+			errMergePR,
 		)
 	}
 
 	// Prevent self-approval unless explicitly allowed (merge also approves)
 	if !bc.AllowSelfApproval && info.Author == author {
-		fb := feedback.NewUnauthorized(author, []string{SelfApprovalNotAllowed})
+		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
 		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, github.ReactionError)
 	}
 
@@ -338,7 +338,7 @@ func handleReactionMerge(
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := IsBotAlreadyApproved(info, rc.BotUsername)
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
 	// Check if user already approved the PR (avoid redundant bot approval)
 	userAlreadyApproved := false
@@ -360,7 +360,7 @@ func handleReactionMerge(
 				commentID,
 				err,
 				feedback.NewApprovalFailed,
-				ErrApprovePR,
+				errApprovePR,
 			)
 		}
 	}
@@ -384,7 +384,7 @@ func handleReactionMerge(
 					commentID,
 					err,
 					feedback.NewAutoMergeFailed,
-					ErrMergePR,
+					errMergePR,
 				)
 			}
 
@@ -410,7 +410,7 @@ func handleReactionMerge(
 			commentID,
 			err,
 			feedback.NewMergeFailed,
-			ErrMergePR,
+			errMergePR,
 		)
 	}
 
