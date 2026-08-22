@@ -54,7 +54,6 @@ type Gate struct {
 	BotUsername string
 	Panelled    bool
 	WakeGates   func()
-	Logger      *slog.Logger
 }
 
 func (g *Gate) PassingQuiet() time.Duration {
@@ -100,7 +99,6 @@ func New(deps Dependencies) *Gate {
 		BotUsername: deps.BotUsername,
 		Panelled:    deps.Panelled,
 		WakeGates:   deps.WakeGates,
-		Logger:      deps.Logger,
 	}
 
 	gate.Checks = &Checks{

@@ -25,7 +25,6 @@ var (
 )
 
 type Pipeline struct {
-	secret  []byte
 	inbox   Inbox
 	handle  Handler
 	opts    resolved
@@ -68,7 +67,7 @@ func New(secret []byte, inbox Inbox, handle Handler, opts Options) (*Pipeline, e
 	finalizeCtx, cancelFinalize := context.WithCancel(context.Background())
 
 	pipeline := &Pipeline{
-		secret: secret, inbox: inbox, handle: handle, opts: resolvedOpts,
+		inbox: inbox, handle: handle, opts: resolvedOpts,
 		jobs:           make(chan Delivery, resolvedOpts.QueueDepth),
 		woken:          make(chan struct{}, 1),
 		jobCtx:         context.Background(),

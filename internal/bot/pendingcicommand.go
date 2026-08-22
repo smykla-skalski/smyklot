@@ -11,7 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type pendingCICommandStore interface {
+type PendingCICommandStore interface {
 	CheckArm(context.Context, pendingci.ArmRequest) error
 	Arm(context.Context, pendingci.ArmRequest) (pendingci.ArmResult, error)
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
@@ -47,14 +47,14 @@ func (command *PendingCICommand) armedArtifactOwnership(
 
 type CommandEnvironment struct {
 	PendingCI           *PendingCICommand
-	PendingCIActivation pendingCIActivationGuard
-	PendingCIMode       pendingCIModeResolver
+	PendingCIActivation PendingCIActivationGuard
+	PendingCIMode       PendingCIModeResolver
 }
 
 // PendingCICommand translates an already-authorized command into durable
 // domain state. It knows neither parsing nor reconciliation policy.
 type PendingCICommand struct {
-	Store              pendingCICommandStore
+	Store              PendingCICommandStore
 	Wake               func()
 	Coordinator        Exclusive
 	TargetID           string
@@ -66,7 +66,7 @@ type PendingCICommand struct {
 	SourceSequence     int
 	SourceOrder        int64
 	Now                func() time.Time
-	Checks             pendingCIChecks
+	Checks             PendingCIChecks
 }
 
 func (command *PendingCICommand) arm(

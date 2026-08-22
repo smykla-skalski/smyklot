@@ -59,7 +59,7 @@ func activatePendingCI(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard pendingCIActivationGuard,
+	guard PendingCIActivationGuard,
 	request PendingCIActivationRequest,
 ) (pendingCIActivationErrors, error) {
 	var failures pendingCIActivationErrors
@@ -76,7 +76,7 @@ func activatePendingCIExclusive(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard pendingCIActivationGuard,
+	guard PendingCIActivationGuard,
 	request PendingCIActivationRequest,
 	failures *pendingCIActivationErrors,
 ) error {
@@ -153,7 +153,7 @@ func persistPendingCIActivation(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	command *PendingCICommand,
-	guard pendingCIActivationGuard,
+	guard PendingCIActivationGuard,
 	request PendingCIActivationRequest,
 	ownership pendingCIArtifactOwnership,
 	failures *pendingCIActivationErrors,
@@ -291,7 +291,7 @@ func RestorePendingCICheckAfterArmFailure(
 func preparePendingCIActivation(
 	ctx context.Context,
 	command *PendingCICommand,
-	guard pendingCIActivationGuard,
+	guard PendingCIActivationGuard,
 	request PendingCIActivationRequest,
 	failures *pendingCIActivationErrors,
 ) (pendingCIArtifactOwnership, bool, error) {
@@ -327,7 +327,7 @@ func preparePendingCIActivation(
 
 func revalidatePendingCIActivation(
 	ctx context.Context,
-	guard pendingCIActivationGuard,
+	guard PendingCIActivationGuard,
 	request PendingCIActivationRequest,
 	failures *pendingCIActivationErrors,
 ) error {

@@ -48,8 +48,8 @@ func processPendingCIPRs(
 	return nil
 }
 
-// pendingCIPR holds data about a PR waiting for CI
-type pendingCIPR struct {
+// PendingCIPR holds data about a PR waiting for CI
+type PendingCIPR struct {
 	PRData       map[string]interface{}
 	Method       github.MergeMethod
 	Label        string
@@ -57,8 +57,8 @@ type pendingCIPR struct {
 }
 
 // filterPendingCIPRs filters PRs that have pending-ci labels
-func filterPendingCIPRs(prs []map[string]interface{}) []pendingCIPR {
-	var result []pendingCIPR
+func filterPendingCIPRs(prs []map[string]interface{}) []PendingCIPR {
+	var result []PendingCIPR
 
 	for _, pr := range prs {
 		labels := PendingCILabels(pr)
@@ -91,12 +91,12 @@ func PullRequestHasLabel(pr map[string]interface{}, wanted string) bool {
 // PendingCILabels returns every pending-CI label on one pull request. Action
 // polling intentionally consumes only the first; upgrade cleanup needs all of
 // them so no stale method label survives the cutover.
-func PendingCILabels(pr map[string]interface{}) []pendingCIPR {
+func PendingCILabels(pr map[string]interface{}) []PendingCIPR {
 	labels, ok := pr["labels"].([]interface{})
 	if !ok {
 		return nil
 	}
-	result := make([]pendingCIPR, 0, len(labels))
+	result := make([]PendingCIPR, 0, len(labels))
 	for _, item := range labels {
 		labelMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -110,7 +110,7 @@ func PendingCILabels(pr map[string]interface{}) []pendingCIPR {
 		if label == "" {
 			continue
 		}
-		result = append(result, pendingCIPR{
+		result = append(result, PendingCIPR{
 			PRData: pr, Method: method, Label: label, RequiredOnly: requiredOnly,
 		})
 	}
@@ -133,7 +133,7 @@ func processPendingCIPR(
 	client *github.Client,
 	bc *config.Config,
 	repoOwner, repoName string,
-	pr pendingCIPR,
+	pr PendingCIPR,
 	botUsername string,
 ) error {
 	prNumber := ExtractPRNumber(pr.PRData)
@@ -225,7 +225,7 @@ func handlePendingCIPassed(
 	bc *config.Config,
 	repoOwner, repoName string,
 	prNumber int,
-	pr pendingCIPR,
+	pr PendingCIPR,
 	botUsername string,
 	headRef string,
 ) error {

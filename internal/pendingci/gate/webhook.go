@@ -230,10 +230,7 @@ func (g *Gate) webhookPendingCIBaselineControls(
 		gate.EffectiveMode != storage.PendingCIEffectiveChecks {
 		return target, repository, false, nil
 	}
-	enabled := target.RepositoryDefaultEnabled
-	if repository.EnabledOverride != nil {
-		enabled = *repository.EnabledOverride
-	}
+	enabled := storage.RepositoryEnabled(target, repository)
 	if !enabled || !target.Available || !repository.Available || !target.Grants("checks") {
 		return target, repository, false, nil
 	}

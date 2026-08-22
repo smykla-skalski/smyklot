@@ -344,7 +344,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
+				pr := PendingCIPR{
 					PRData: map[string]interface{}{"number": float64(42)},
 					Method: github.MergeMethodMerge,
 					Label:  github.LabelPendingCIMerge,
@@ -397,7 +397,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				}))
 				client, err := github.NewClient("test-token", server.URL)
 				Expect(err).NotTo(HaveOccurred())
-				pr := pendingCIPR{
+				pr := PendingCIPR{
 					PRData: map[string]interface{}{"number": float64(42)},
 					Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 				}
@@ -476,7 +476,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
+				pr := PendingCIPR{
 					PRData: map[string]interface{}{"number": float64(42)},
 					Method: github.MergeMethodMerge,
 					Label:  github.LabelPendingCIMerge,
@@ -549,7 +549,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
+				pr := PendingCIPR{
 					PRData: map[string]interface{}{"number": float64(42)},
 					Method: github.MergeMethodMerge,
 					Label:  github.LabelPendingCIMerge,
@@ -631,7 +631,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
+				pr := PendingCIPR{
 					PRData: map[string]interface{}{"number": float64(42)},
 					Method: github.MergeMethodSquash,
 					Label:  github.LabelPendingCISquash,

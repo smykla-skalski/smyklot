@@ -103,14 +103,8 @@ func (s *server) proposeConfigMigration(
 
 // repositoryEnabled reports a repository Smyklot has been left switched on for.
 func repositoryEnabled(target storage.Target, repository storage.Repository) bool {
-	if !target.Available || !repository.Available {
-		return false
-	}
-	if repository.EnabledOverride != nil {
-		return *repository.EnabledOverride
-	}
-
-	return target.RepositoryDefaultEnabled
+	return target.Available && repository.Available &&
+		storage.RepositoryEnabled(target, repository)
 }
 
 // stopIfRefused turns a refusal from GitHub into a durable state rather than

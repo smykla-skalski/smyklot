@@ -11,6 +11,7 @@ package bot
 import (
 	"context"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -485,14 +486,7 @@ func executeMerge(
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
 	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
-	// Check if user already approved the PR (avoid redundant bot approval)
-	userAlreadyApproved := false
-	for _, approver := range info.ApprovedBy {
-		if approver == rc.CommentAuthor {
-			userAlreadyApproved = true
-			break
-		}
-	}
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
 
 	// Approve the PR if neither bot nor user has already approved
 	if !botAlreadyApproved && !userAlreadyApproved {
@@ -759,15 +753,7 @@ func executeImmediateMerge(
 	// Check if bot already approved the PR
 	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
-	// Check if user already approved the PR
-	userAlreadyApproved := false
-	for _, approver := range info.ApprovedBy {
-		if approver == rc.CommentAuthor {
-			userAlreadyApproved = true
-
-			break
-		}
-	}
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
 
 	// Approve the PR if neither bot nor user has already approved
 	if !botAlreadyApproved && !userAlreadyApproved {

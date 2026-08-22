@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"slices"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -340,14 +341,7 @@ func handleReactionMerge(
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
 	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
 
-	// Check if user already approved the PR (avoid redundant bot approval)
-	userAlreadyApproved := false
-	for _, approver := range info.ApprovedBy {
-		if approver == author {
-			userAlreadyApproved = true
-			break
-		}
-	}
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
 
 	// Approve the PR if neither bot nor user has already approved
 	if !botAlreadyApproved && !userAlreadyApproved {

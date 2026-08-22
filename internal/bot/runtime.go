@@ -1,6 +1,10 @@
 package bot
 
-import "github.com/smykla-skalski/smyklot/pkg/github"
+import (
+	"slices"
+
+	"github.com/smykla-skalski/smyklot/pkg/github"
+)
 
 const DefaultBotUsername = "smyklot[bot]"
 
@@ -28,11 +32,5 @@ type RuntimeConfig struct {
 // The botUsername parameter should be provided from RuntimeConfig.BotUsername
 // to avoid calling GetAuthenticatedUser which fails with GitHub App tokens.
 func isBotAlreadyApproved(info *github.PRInfo, botUsername string) bool {
-	for _, approver := range info.ApprovedBy {
-		if approver == botUsername {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(info.ApprovedBy, botUsername)
 }

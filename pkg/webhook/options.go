@@ -124,11 +124,7 @@ func (r resolved) decorate(delivery Delivery) Delivery {
 		return delivery
 	}
 
-	arguments := make([]any, 0, len(attrs))
-	for _, attr := range attrs {
-		arguments = append(arguments, attr)
-	}
-	delivery.Logger = delivery.Logger.With(arguments...)
+	delivery.Logger = slog.New(delivery.Logger.Handler().WithAttrs(attrs))
 
 	return delivery
 }

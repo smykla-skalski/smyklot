@@ -111,56 +111,18 @@ func handleUnauthorized(
 
 // postCombinedFeedback posts combined feedback with appropriate reaction
 func postCombinedFeedback(ctx context.Context, client *github.Client, rc *RuntimeConfig, prNum, commentID int, fb *feedback.Feedback) error {
-	// Map feedback type to reaction
-	var reaction github.ReactionType
+	reaction := github.ReactionSuccess
 	switch fb.Type {
-	case feedback.Success:
-		reaction = github.ReactionSuccess
 	case feedback.Error:
 		reaction = github.ReactionError
 	case feedback.Warning:
 		reaction = github.ReactionWarning
 	case feedback.Pending:
 		reaction = github.ReactionPendingCI
-	default:
-		reaction = github.ReactionSuccess
+	case feedback.Success:
 	}
 
-	// Post comment if there's a message
-	if fb.RequiresComment() {
-		if err := client.PostComment(
-			ctx,
-			rc.RepoOwner,
-			rc.RepoName,
-			prNum,
-			fb.Message,
-		); err != nil {
-			return NewGitHubError(errPostComment, err)
-		}
-	}
-
-	// Remove eyes reaction before adding final status reaction
-	_ = client.RemoveReactionByUser(
-		ctx,
-		rc.RepoOwner,
-		rc.RepoName,
-		commentID,
-		github.ReactionEyes,
-		rc.BotUsername,
-	)
-
-	// Add reaction
-	if err := client.AddReaction(
-		ctx,
-		rc.RepoOwner,
-		rc.RepoName,
-		commentID,
-		reaction,
-	); err != nil {
-		return NewGitHubError(errAddReaction, err)
-	}
-
-	return nil
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, reaction)
 }
 
 // postNotMergeable posts feedback when PR is not mergeable.
