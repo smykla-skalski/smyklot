@@ -337,6 +337,12 @@ export const INSTALLATIONS: RootInstallation[] = [
   }),
 ];
 
+/** The seeded organisation as an unowned Root reads it before temporary elevation. */
+export const ROOT_INSTALLATION: RootInstallation = {
+  ...INSTALLATIONS[0]!,
+  owned_by_viewer: false,
+};
+
 export const RUNTIME: RootRuntimeSettings = {
   behavior_defaults: { deployment: CONFIG, override: null, effective: CONFIG },
   log_level: { deployment: 'info', override: null, effective: 'info' },

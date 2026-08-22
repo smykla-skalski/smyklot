@@ -21,7 +21,6 @@ import {
   OVERVIEW,
   REPOSITORIES,
   REPOSITORY_DETAIL,
-  ROOT_TARGET,
   SYNC_CONFIGS,
   SYNC_FILES_CONTEXT,
   SYNC_OVERRIDES,
@@ -100,7 +99,7 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     suggestUsers: async () => [],
     fetchRootOverview: async () => OVERVIEW,
     fetchRootInstallations: async () => INSTALLATIONS,
-    fetchRootTargetSettings: async () => ROOT_TARGET,
+    fetchRootTargetSettings: async () => TARGET,
     fetchRootRepositories: async () => page(REPOSITORIES),
     fetchRootRepository: async () => REPOSITORY_DETAIL,
     fetchRootElevation: async () => {

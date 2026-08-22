@@ -4,7 +4,7 @@
 
   import RootInstallationView from '#lib/components/RootInstallationView.svelte';
   import { fixtureApi } from '../support/api.js';
-  import { INSTALLATIONS } from '../support/fixtures.js';
+  import { ROOT_INSTALLATION, ROOT_TARGET } from '../support/fixtures.js';
 
   /*
    * The Root console's reading of one installation. It takes its `api` as a prop, so
@@ -12,12 +12,12 @@
    * `InstallationView` does, and each reaches its own set. `fixtureApi` answers all of
    * them from the mock's data, which is the point of having one.
    */
-  const installation = INSTALLATIONS[0]!;
+  const installation = ROOT_INSTALLATION;
 
   const base = {
     installation,
     view: 'repositories' as const,
-    api: fixtureApi(),
+    api: fixtureApi({ fetchRootTargetSettings: async () => ROOT_TARGET }),
     actorLogin: 'bart',
     historySection: 'audit' as const,
     onHistorySection: fn(),

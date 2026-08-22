@@ -8,6 +8,7 @@ import {
   FAILURES,
   INVITATIONS,
   REPOSITORIES,
+  ROOT_INSTALLATION,
   ROOT_TARGET,
   SYNC_CONFIGS,
   SYNC_FILES_CONTEXT,
@@ -30,6 +31,7 @@ const installationViewStory = readFileSync(
   new URL('../stories/views/InstallationView.stories.svelte', import.meta.url),
   'utf8',
 );
+const preview = readFileSync(new URL('../.storybook/preview.ts', import.meta.url), 'utf8');
 
 function storyBody(name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
@@ -57,7 +59,7 @@ describe('catalogue fixtures [Unit]', () => {
   });
 
   it('answers every read needed to open the root installation views', async () => {
-    const api = fixtureApi();
+    const api = fixtureApi({ fetchRootTargetSettings: async () => ROOT_TARGET });
     const [target, repositories, users, invitations, audit, failures] = await Promise.all([
       api.fetchRootTargetSettings(TARGET.id),
       api.fetchRootRepositories(TARGET.id, {
@@ -92,6 +94,8 @@ describe('catalogue fixtures [Unit]', () => {
     ]);
 
     expect(target).toEqual(ROOT_TARGET);
+    expect(ROOT_INSTALLATION.id).toBe(target.id);
+    expect(ROOT_INSTALLATION.owned_by_viewer).toBe(false);
     expect(target.access_source).toBe('root');
     expect(target.capabilities).toEqual({ read: true, write: false, manage_target_users: false });
     expect(repositories.items).toHaveLength(REPOSITORIES.length);
@@ -103,6 +107,12 @@ describe('catalogue fixtures [Unit]', () => {
       status: 404,
       code: 'not_found',
     });
+  });
+
+  it('freezes every catalogue story at the fixture instant', () => {
+    expect(preview).toContain("import { NOW } from '../stories/support/fixtures.js'");
+    expect(preview).toContain('Date.now = () => NOW');
+    expect(preview).toContain('Date.now = liveNow');
   });
 
   it('keeps the settled sync story settled across the whole fleet', () => {

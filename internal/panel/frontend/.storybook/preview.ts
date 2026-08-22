@@ -1,6 +1,7 @@
 import type { Preview } from '@storybook/sveltekit';
 
 import PanelShell from './PanelShell.svelte';
+import { NOW } from '../stories/support/fixtures.js';
 
 // The panel's one global stylesheet. The app pulls it in from `+layout.svelte`;
 // nothing renders recognisably without it, and it carries the four `@font-face`
@@ -17,6 +18,17 @@ import '../src/app.css';
  * half the panel's colours are never looked at.
  */
 const preview: Preview = {
+  /* Every catalogue fixture is derived from NOW. Freeze only the story iframe's
+     wall clock so relative labels and countdowns describe that same instant, then
+     restore it before Storybook switches stories. */
+  beforeEach: () => {
+    const liveNow = Date.now;
+    Date.now = () => NOW;
+    return () => {
+      Date.now = liveNow;
+    };
+  },
+
   globalTypes: {
     theme: {
       description: 'Panel theme',
