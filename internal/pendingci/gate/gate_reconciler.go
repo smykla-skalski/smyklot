@@ -390,6 +390,13 @@ func gateBlockReason(cause error) string {
 	}
 
 	path := apiErr.Path
+	if strings.Contains(path, "/check-runs") {
+		return checkRunBlockReason(apiErr)
+	}
+	if !strings.Contains(path, "/rulesets") && !strings.Contains(path, "/protection") {
+		return cause.Error()
+	}
+
 	detail := strings.ToLower(apiErr.Detail)
 	switch {
 	case apiErr.Retryable():
@@ -413,6 +420,20 @@ func gateBlockReason(cause error) string {
 	default:
 		return "Smyklot could not check this repository's protection settings. " +
 			"Check the GitHub App's access and try again."
+	}
+}
+
+func checkRunBlockReason(apiErr *github.APIError) string {
+	switch {
+	case apiErr.Retryable():
+		return "GitHub is temporarily unavailable while Smyklot prepares baseline checks. " +
+			"Smyklot will retry."
+	case apiErr.StatusCode == http.StatusForbidden:
+		return "Smyklot cannot manage this repository's baseline checks. " +
+			"Check the GitHub App's checks access."
+	default:
+		return "Smyklot could not prepare a baseline check for this pull request. " +
+			"Refresh the repository and try again."
 	}
 }
 

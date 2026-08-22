@@ -84,6 +84,15 @@ func TestPendingCIGateBlockReasonHidesGitHubRequestDetails(t *testing.T) {
 				"Smyklot will retry.",
 		},
 		{
+			name: "stale baseline commit",
+			cause: fmt.Errorf("ensure baseline check: %w", github.NewAPIError(
+				github.ErrAPIRequest, http.StatusUnprocessableEntity, http.MethodPost,
+				"/repos/owner/private/check-runs", errors.New("No commit found for SHA: stale"),
+			)),
+			want: "Smyklot could not prepare a baseline check for this pull request. " +
+				"Refresh the repository and try again.",
+		},
+		{
 			name:  "domain policy",
 			cause: errors.New("checks write approval is missing"),
 			want:  "checks write approval is missing",
