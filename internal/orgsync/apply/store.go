@@ -1,0 +1,39 @@
+package apply
+
+import (
+	"context"
+	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/storage"
+)
+
+// Store is the part of the durable store org sync reads and writes.
+//
+// It is spelled out here rather than taken as storage.Store because the point
+// of the package boundary is that this subsystem cannot reach the panel's
+// tables, the delivery inbox or the pending CI state by accident. Seventeen
+// methods is what it turned out to use, and a new one has to be added here
+// before it can be called.
+type Store interface {
+	ListSyncConfigs(context.Context, string) ([]orgsync.Config, error)
+	ListSyncRepositoryOverrides(context.Context, string) ([]orgsync.RepositoryOverride, error)
+	ListSyncRepositoryState(context.Context, string) ([]orgsync.RepositoryState, error)
+	RecordSyncRepositoryState(context.Context, []orgsync.RepositoryState) error
+
+	GetLiveSyncPlan(context.Context, string) (orgsync.Plan, []orgsync.Action, error)
+	CreateSyncPlan(context.Context, orgsync.PlanCreate) (orgsync.Plan, error)
+	LeaseSyncPlan(context.Context, time.Time, time.Time) (orgsync.PlanLease, error)
+	FinishSyncPlan(context.Context, orgsync.PlanOutcome) error
+	RecordSyncActionOutcome(context.Context, orgsync.ActionOutcome) error
+	RecordSyncAudit(context.Context, orgsync.AuditEntry) error
+
+	ListSyncRepositoryPathScans(context.Context, string) ([]orgsync.RepositoryPathScan, error)
+	SetSyncRepositoryPaths(context.Context, orgsync.RepositoryPaths) error
+	TouchSyncRepositoryPaths(context.Context, string, time.Time) error
+	PruneSyncRepositoryPaths(context.Context, string) (int64, error)
+
+	GetTarget(context.Context, string) (storage.Target, error)
+	GetRepository(context.Context, string, string) (storage.Repository, error)
+	ListRepositories(context.Context, string) ([]storage.Repository, error)
+}

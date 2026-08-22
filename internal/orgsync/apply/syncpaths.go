@@ -1,4 +1,4 @@
-package main
+package apply
 
 import (
 	"context"
@@ -30,7 +30,7 @@ import (
 // is recorded on the row and said in the panel rather than left to look like a
 // repository holding fewer files than it does.
 
-// refreshSyncPaths keeps the panel's path finder answering with what exists.
+// RefreshPaths keeps the panel's path finder answering with what exists.
 //
 // Typing a path into an empty box is guessing: somebody is asked for a string
 // that has to match, character for character, something they cannot see. This
@@ -51,20 +51,26 @@ import (
 // installation in one tick.
 const pathIndexConcurrency = 8
 
-// Never fatal. It feeds a control that helps somebody type; a reconcile that
-// failed because a tree could not be read would stop the sync it is beside for
-// the sake of an autocomplete.
-func (s *server) refreshSyncPaths(
+// RefreshPaths is never fatal. It feeds a control that helps somebody type; a
+// reconcile that failed because a tree could not be read would stop the sync it
+// is beside for the sake of an autocomplete.
+//
+// processInterval is how often a repository is rechecked when neither the
+// account nor the repository overrides it. It arrives as an argument rather
+// than as a field because it is a live runtime setting the service owns, and
+// this is the one place the whole subsystem reads it.
+func (s *Engine) RefreshPaths(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,
+	processInterval time.Duration,
 ) {
 	// An installation that has never configured sync gets no index at all.
 	//
 	// This is the majority of them, and the cost of indexing one is not small:
 	// a ref read per repository per interval, and a whole tree wherever a
 	// branch has moved - up to 500 requests for one repository, against an
-	// installation's 15,000 an hour. `planInstallationSync` already returns
+	// installation's 15,000 an hour. `PlanInstallation` already returns
 	// after a single table read for these; this is the same door, and reading
 	// the same table is what opens it.
 	//
@@ -135,7 +141,7 @@ func (s *server) refreshSyncPaths(
 		}
 
 		interval := pathIndexInterval(
-			s.pathIndexInterval(), target.PathIndexIntervalOverride,
+			processInterval, target.PathIndexIntervalOverride,
 			repository.PathIndexIntervalOverride,
 		)
 
@@ -206,7 +212,7 @@ func pathIndexInterval(process time.Duration, target, repository *time.Duration)
 // Every failure here is a warning and a return: this feeds a control that helps
 // somebody type a path, and one repository that cannot be read is a finder with
 // less to offer rather than a sweep that stopped.
-func (s *server) refreshRepositoryPaths(
+func (s *Engine) refreshRepositoryPaths(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,

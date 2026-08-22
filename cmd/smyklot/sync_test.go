@@ -14,6 +14,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/orgsync/apply"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -144,7 +145,7 @@ var _ = Describe("Org sync [Unit]", func() {
 	plan := func(target storage.Target) {
 		GinkgoHelper()
 
-		Expect(service.planInstallationSync(
+		Expect(service.sync.PlanInstallation(
 			GinkgoT().Context(), client(), target.ID, orgsync.TriggerReconcile,
 		)).To(Succeed())
 	}
@@ -321,7 +322,7 @@ var _ = Describe("Org sync [Unit]", func() {
 				GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(settled).To(HaveLen(1))
-			settled[0].AppliedAt = time.Now().UTC().Add(-syncRecheckInterval - time.Minute)
+			settled[0].AppliedAt = time.Now().UTC().Add(-apply.RecheckInterval - time.Minute)
 			Expect(service.store.RecordSyncRepositoryState(
 				GinkgoT().Context(), settled)).To(Succeed())
 
@@ -465,7 +466,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			computed, _ := livePlan(target)
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.labelWrites).To(HaveLen(1))
 			Expect(stub.labelWrites[0]).To(HavePrefix("POST /repos/smykla-skalski/smyklot/labels"))
@@ -486,7 +487,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, _ := livePlan(target)
 			approve(computed)
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
@@ -507,7 +508,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, _ := livePlan(target)
 			approve(computed)
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(syncAuditActions(service, target)).
 				To(ContainElement(string(orgsync.AuditFinished)))
@@ -524,7 +525,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(computed.Counts).To(Equal(orgsync.Counts{Delete: 1}))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.labelWrites).To(HaveLen(1))
 			Expect(stub.labelWrites[0]).To(HavePrefix("DELETE "))
@@ -544,7 +545,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			approve(computed)
 
 			stub.brokenRepo = "smyklot"
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			failed, _, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
@@ -581,7 +582,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, err := service.SyncCatalog(GinkgoT().Context())
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(HaveOccurred())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(HaveOccurred())
 
 			// Nothing was written to GitHub, and the plan keeps its lease rather
 			// than being closed: granting the permission back is all it needs
@@ -605,7 +606,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].Kind).To(Equal(orgsync.KindSettings))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.settingsWrites).To(HaveLen(1))
 
@@ -640,7 +641,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions).To(HaveLen(1))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.settingsWrites).To(HaveLen(1))
 
@@ -674,7 +675,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions).To(HaveLen(2))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			// The settings request carries the setting the endpoint takes, and
 			// nothing it does not
@@ -703,7 +704,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].Subject).To(Equal(orgsync.SettingsSubject))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 			Expect(stub.dependabotWrites).To(BeEmpty())
 		})
 
@@ -741,7 +742,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.rulesetWrites).To(HaveLen(1))
 			Expect(stub.rulesetWrites[0]).To(
@@ -920,7 +921,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationDelete))
 			approve(computed)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.rulesetWrites).To(HaveLen(1))
 			Expect(stub.rulesetWrites[0]).To(
@@ -965,7 +966,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 			Expect(stub.labelWrites).To(BeEmpty())
 		})
 
@@ -981,7 +982,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			stub.brokenRepo = "smyklot"
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			applied, actions, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
@@ -1032,7 +1033,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, _ := livePlan(target)
 			approve(computed)
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 		}
 
 		It("proposes a file the repository does not have", func() {
@@ -1130,7 +1131,7 @@ var _ = Describe("Org sync [Unit]", func() {
 				"branchtree": `{"tree":[],"truncated":false}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(HaveLen(1))
 			Expect(stub.createdTrees[0]).NotTo(ContainSubstring(".renovaterc"))
@@ -1167,7 +1168,7 @@ var _ = Describe("Org sync [Unit]", func() {
 				"branchtree": `{"tree":[],"truncated":false}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(BeEmpty())
 			Expect(stub.createdCommits).To(BeEmpty())
@@ -1206,7 +1207,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			stub.migrationTipTree = "human-tree"
 			stub.createdTreeSHA = "newtree"
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			// Built from the branch's own tree, so what is on it survives
 			Expect(stub.createdTrees).To(HaveLen(1))
@@ -1297,7 +1298,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					orgsync.BlobID([]byte("# Contributing\n"))),
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			// Built past the merged tip, on the default branch, so the commit
 			// carries something and the proposal opens. Built on the tip, the
@@ -1344,7 +1345,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			}
 			stub.createdTreeSHA = "basetree"
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdCommits).To(BeEmpty())
 			Expect(stub.createdPRs).To(BeEmpty())
@@ -1376,7 +1377,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			// The stub answers a delete with a 500, so an apply that tried one
 			// would fail here rather than pass quietly
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			// On the default branch, not on the merged tip: what merged is in
 			// the default branch, so a commit built on the tip again would
@@ -1419,7 +1420,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					`"mode":"040000","sha":"d1"}],"truncated":false}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(BeEmpty())
 
@@ -1452,7 +1453,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					`"mode":"040000","sha":"d1"}],"truncated":false}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(BeEmpty())
 
@@ -1495,7 +1496,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					`"mode":"100644","sha":"b1","size":3}]}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(HaveLen(1))
 			Expect(stub.createdTrees[0]).NotTo(ContainSubstring("docs/old.md"))
@@ -1550,7 +1551,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					`"mode":"100644","sha":"b1","size":3}],"truncated":false}`,
 			}
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdTrees).To(BeEmpty())
 
@@ -1582,7 +1583,7 @@ var _ = Describe("Org sync [Unit]", func() {
 					Error: "the process died here",
 				})).To(Succeed())
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			applied, planActions, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
@@ -1607,7 +1608,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			stub.branchPRs = `[{"number":9,"state":"open"}]`
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(stub.createdPRs).To(BeEmpty())
 			Expect(stub.editedPRs).To(HaveLen(1))
@@ -1707,7 +1708,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			stub.refuseEmptyPR = true
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(Succeed())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			applied, actions, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
@@ -1844,7 +1845,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, err := service.SyncCatalog(GinkgoT().Context())
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(service.applySyncPlans(GinkgoT().Context())).To(HaveOccurred())
+			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(HaveOccurred())
 
 			// Nothing built and nothing pushed: the commit is what GitHub
 			// refuses, and a branch left behind would be a proposal for a change
@@ -2137,7 +2138,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			refresh = func(target storage.Target) {
 				GinkgoHelper()
 
-				service.refreshSyncPaths(GinkgoT().Context(), client(), target.ID)
+				service.sync.RefreshPaths(
+					GinkgoT().Context(), client(), target.ID, service.pathIndexInterval(),
+				)
 			}
 		})
 

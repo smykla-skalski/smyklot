@@ -1,4 +1,4 @@
-package main
+package apply
 
 import (
 	"context"
@@ -25,13 +25,13 @@ import (
 // same state.
 const syncPlanTTL = 2 * time.Hour
 
-// planInstallationSync computes what one installation's repositories would need.
+// PlanInstallation computes what one installation's repositories would need.
 //
 // It writes a plan only when there is something to do. A reconcile that found
 // nothing is not an event, and recording one every tick would fill the audit
 // with roughly a hundred and seventy-five thousand rows a year per installation
 // saying that nothing happened.
-func (s *server) planInstallationSync(
+func (s *Engine) PlanInstallation(
 	ctx context.Context,
 	client *github.Client,
 	targetID string,
@@ -213,7 +213,7 @@ func activeSyncKinds(
 // configurations arrive ordered by kind, so the answer is at least the same one
 // every time.
 //
-// Never called with nothing: planInstallationSync returns before this when no
+// Never called with nothing: PlanInstallation returns before this when no
 // kind is active, and MaxFunc has no answer for an empty slice.
 func syncActor(active []orgsync.Config) string {
 	return slices.MaxFunc(active, func(one, other orgsync.Config) int {
@@ -231,7 +231,7 @@ type syncInventory struct {
 }
 
 // syncInventoryFor reads the rest of the catalog around state already in hand.
-func (s *server) syncInventoryFor(
+func (s *Engine) syncInventoryFor(
 	ctx context.Context,
 	targetID string,
 	applied []orgsync.RepositoryState,
@@ -290,7 +290,7 @@ func syncScopesFor(active []orgsync.Config, held syncInventory) map[orgsync.Kind
 // Cleared rather than deleted. The row is what a repository has for a kind, and
 // a repository that later comes back into scope is planned again on the next
 // sweep either way.
-func (s *server) clearStaleSyncProblems(
+func (s *Engine) clearStaleSyncProblems(
 	ctx context.Context,
 	scopes map[orgsync.Kind]syncScope,
 	held syncInventory,
@@ -355,7 +355,7 @@ func clearedState(state orgsync.RepositoryState, now time.Time) orgsync.Reposito
 }
 
 // planSyncActions asks each repository in scope what it would take to match.
-func (s *server) planSyncActions(
+func (s *Engine) planSyncActions(
 	ctx context.Context,
 	client *github.Client,
 	active []orgsync.Config,
@@ -705,7 +705,7 @@ func newSyncPlanID() string {
 	return "sync-" + hex.EncodeToString(raw[:])
 }
 
-// syncRecheckInterval is how long a repository's recorded state counts as
+// RecheckInterval is how long a repository's recorded state counts as
 // evidence that it still matches.
 //
 // The record says what a repository looked like when it was last read, which is
@@ -719,7 +719,7 @@ func newSyncPlanID() string {
 // hundred requests every six hours against a budget of five thousand an hour;
 // what it buys is the difference between noticing a hand-made change by the
 // same evening and never.
-const syncRecheckInterval = 6 * time.Hour
+const RecheckInterval = 6 * time.Hour
 
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
@@ -798,7 +798,7 @@ func (s syncScope) covers(repository storage.Repository) bool {
 	// Settled, and how long ago decides whether that is still evidence. The
 	// record answers what this repository looked like when it was read, and
 	// nothing on GitHub stops somebody changing it by hand afterwards.
-	return s.now.Sub(state.AppliedAt) >= syncRecheckInterval
+	return s.now.Sub(state.AppliedAt) >= RecheckInterval
 }
 
 // digestFor is what a repository would record once it matches, and what covers

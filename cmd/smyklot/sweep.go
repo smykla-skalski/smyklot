@@ -311,7 +311,7 @@ func (s *server) reconcileInstallationSync(
 
 	targetID := storage.InstallationID(installation.ID)
 
-	if err := s.planInstallationSync(
+	if err := s.sync.PlanInstallation(
 		ctx, client, targetID, orgsync.TriggerReconcile,
 	); err != nil {
 		return err
@@ -319,9 +319,9 @@ func (s *server) reconcileInstallationSync(
 
 	// After the plan rather than before it: this feeds a control that helps
 	// somebody type a path, and nothing here is planned from it.
-	s.refreshSyncPaths(ctx, client, targetID)
+	s.sync.RefreshPaths(ctx, client, targetID, s.pathIndexInterval())
 
-	return s.applySyncPlans(ctx)
+	return s.sync.ApplyPlans(ctx)
 }
 
 func (s *server) reconcileSweepInstallation(

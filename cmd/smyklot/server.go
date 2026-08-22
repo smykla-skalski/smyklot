@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/orgsync/apply"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -136,6 +137,11 @@ type server struct {
 	// failures holds the deliveries that were accepted and then failed, which
 	// GitHub's own delivery log records as successes
 	failures *failureLog
+
+	// sync plans and applies one installation's org-wide file, label, ruleset
+	// and settings synchronization. It reads a store, a token and a base URL,
+	// and nothing else this struct holds
+	sync *apply.Engine
 
 	// configs and owners hold the two files every repository is read for. The
 	// sweep touches both for every repository on every tick
@@ -261,6 +267,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		cancelDeliveryRetry()
 		return nil, err
 	}
+	srv.sync = apply.New(srv.store, tokens, cfg.apiBaseURL)
 	srv.deliveryStore = srv.store
 	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
 	pendingCICoordinator := bot.NewCoordinator()

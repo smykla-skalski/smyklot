@@ -1,4 +1,4 @@
-package main
+package apply
 
 import (
 	"context"
@@ -32,7 +32,7 @@ var (
 // approved. Re-reading the configuration here would apply what it says now
 // rather than what was agreed, which is the whole failure the plan and apply
 // split exists to prevent.
-func (s *server) applyLabelAction(
+func (s *Engine) applyLabelAction(
 	ctx context.Context,
 	client *github.Client,
 	owner, name string,

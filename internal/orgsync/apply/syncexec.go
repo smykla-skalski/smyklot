@@ -1,4 +1,4 @@
-package main
+package apply
 
 import (
 	"context"
@@ -24,12 +24,12 @@ import (
 // are still pending for whoever picks it up.
 const syncLease = 15 * time.Minute
 
-// applySyncPlans applies whatever plan is due, one per call.
+// ApplyPlans applies whatever plan is due, one per call.
 //
 // One, because the database holds one live plan per installation and the work
 // is almost entirely waiting on GitHub. Draining a queue here would let one
 // installation's large plan delay every other installation's small one.
-func (s *server) applySyncPlans(ctx context.Context) error {
+func (s *Engine) ApplyPlans(ctx context.Context) error {
 	now := time.Now().UTC()
 
 	lease, err := s.store.LeaseSyncPlan(ctx, now, now.Add(syncLease))
@@ -82,7 +82,7 @@ func (s *server) applySyncPlans(ctx context.Context) error {
 // it is off by default and it is the one thing that destroys something somebody
 // may have made by hand. A reader scanning actions should not have to notice a
 // count to learn that anything was removed.
-func (s *server) recordSyncOutcomeAudit(
+func (s *Engine) recordSyncOutcomeAudit(
 	ctx context.Context,
 	plan orgsync.Plan,
 	outcome orgsync.Outcome,
@@ -113,7 +113,7 @@ func (s *server) recordSyncOutcomeAudit(
 }
 
 // applySyncPlan drives one plan's work through GitHub.
-func (s *server) applySyncPlan(
+func (s *Engine) applySyncPlan(
 	ctx context.Context,
 	lease orgsync.PlanLease,
 ) (orgsync.Outcome, error) {
@@ -168,7 +168,7 @@ func (s *server) applySyncPlan(
 
 // abandonRepositoryWork records every action for a repository that cannot be
 // reached, so nothing is left pending for a later lease to retry for ever.
-func (s *server) abandonRepositoryWork(
+func (s *Engine) abandonRepositoryWork(
 	ctx context.Context,
 	outcome *orgsync.Outcome,
 	work orgsync.RepositoryWork,
@@ -189,7 +189,7 @@ func (s *server) abandonRepositoryWork(
 // unwound: undoing a settings change because a later ruleset failed leaves a
 // repository in a state nobody chose, which is worse than the partial state it
 // would replace.
-func (s *server) applyRepositoryWork(
+func (s *Engine) applyRepositoryWork(
 	ctx context.Context,
 	client *github.Client,
 	repository storage.Repository,
@@ -259,7 +259,7 @@ func syncTargetFor(repository storage.Repository) syncTarget {
 // looking pending: the plan would be leased again and every applied action
 // retried, and retrying a create GitHub has already honoured is a 422 that
 // fails a repository for having succeeded.
-func (s *server) applyKind(
+func (s *Engine) applyKind(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -312,7 +312,7 @@ func (s *server) applyKind(
 // has already happened, and abandoning the rest of the plan because the note
 // about it could not be filed would turn one lost record into a repository left
 // half-synchronised.
-func (s *server) recordSyncAction(
+func (s *Engine) recordSyncAction(
 	ctx context.Context,
 	action orgsync.Action,
 	state orgsync.ActionState,
@@ -339,7 +339,7 @@ func (s *server) recordSyncAction(
 // paths one at a time. It is safe to replay: the branch is named after what the
 // files should say, so a second run builds the same tree, finds nothing to
 // commit and adopts the pull request that is already open.
-func (s *server) applyFileKind(
+func (s *Engine) applyFileKind(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -396,7 +396,7 @@ func (s *server) applyFileKind(
 }
 
 // applyAction performs one action against GitHub.
-func (s *server) applyAction(
+func (s *Engine) applyAction(
 	ctx context.Context,
 	client *github.Client,
 	target syncTarget,
@@ -476,7 +476,7 @@ func (i syncDigestIndex) of(repositoryID string, kind orgsync.Kind) string {
 
 // syncDigests reads what an installation has configured, once per plan rather
 // than once per repository.
-func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIndex, error) {
+func (s *Engine) syncDigests(ctx context.Context, targetID string) (syncDigestIndex, error) {
 	configs, err := s.store.ListSyncConfigs(ctx, targetID)
 	if err != nil {
 		return syncDigestIndex{}, fmt.Errorf("read sync configuration: %w", err)
@@ -506,7 +506,7 @@ func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 }
 
 // installationClient mints a client for one installation.
-func (s *server) installationClient(installationID string) (*github.Client, error) {
+func (s *Engine) installationClient(installationID string) (*github.Client, error) {
 	id, err := strconv.ParseInt(installationID, 10, 64)
 	if err != nil || id <= 0 {
 		return nil, fmt.Errorf("%w: installation id %q", bot.ErrGitHubClient, installationID)
@@ -517,7 +517,7 @@ func (s *server) installationClient(installationID string) (*github.Client, erro
 		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
-	client, err := github.NewClient(token, s.cfg.apiBaseURL)
+	client, err := github.NewClient(token, s.apiBaseURL)
 	if err != nil {
 		return nil, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
