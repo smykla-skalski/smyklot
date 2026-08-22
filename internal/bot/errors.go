@@ -65,36 +65,6 @@ var (
 	)
 )
 
-// envVarError represents an error related to environment variable validation.
-type envVarError struct {
-	Op      error
-	VarName string
-}
-
-func newEnvVarError(op error, varName string) error {
-	return &envVarError{
-		Op:      op,
-		VarName: varName,
-	}
-}
-
-func (e *envVarError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Op, e.VarName)
-}
-
-func (e *envVarError) Unwrap() error {
-	return e.Op
-}
-
-func (e *envVarError) Is(target error) bool {
-	var envVarErr *envVarError
-	if errors.As(target, &envVarErr) {
-		return true
-	}
-
-	return errors.Is(e.Op, target)
-}
-
 // inputError represents an error with parsing or validating input.
 type inputError struct {
 	Op      error
@@ -123,11 +93,6 @@ func (e *inputError) Unwrap() error {
 }
 
 func (e *inputError) Is(target error) bool {
-	var inputErr *inputError
-	if errors.As(target, &inputErr) {
-		return true
-	}
-
 	return errors.Is(e.Op, target)
 }
 

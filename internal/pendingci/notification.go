@@ -288,19 +288,9 @@ func parsePullRequest(
 	if source.Action == "" || payload.Number <= 0 {
 		return nil, fmt.Errorf("pull request payload is missing action or number")
 	}
-	key := fmt.Sprintf(
-		"%s:%d:%d:%s:%s:%s:%s",
-		webhook.EventPullRequest,
-		source.Repository.ID,
-		payload.Number,
-		source.Action,
-		payload.PullRequest.Head.SHA,
-		payload.PullRequest.UpdatedAt,
-		payload.Label.Name,
-	)
 	signal := Signal{
 		Kind: SignalWakePullRequest, PullRequest: payload.Number,
-		HeadSHA: payload.PullRequest.Head.SHA, EventKey: key,
+		HeadSHA: payload.PullRequest.Head.SHA,
 	}
 	switch source.Action {
 	case "closed":
@@ -316,6 +306,17 @@ func parsePullRequest(
 			Event: webhook.EventPullRequest, Action: source.Action, Source: source,
 		}, nil
 	}
+
+	signal.EventKey = fmt.Sprintf(
+		"%s:%d:%d:%s:%s:%s:%s",
+		webhook.EventPullRequest,
+		source.Repository.ID,
+		payload.Number,
+		source.Action,
+		payload.PullRequest.Head.SHA,
+		payload.PullRequest.UpdatedAt,
+		payload.Label.Name,
+	)
 
 	return &Notification{
 		Event: webhook.EventPullRequest, Action: source.Action, Source: source,

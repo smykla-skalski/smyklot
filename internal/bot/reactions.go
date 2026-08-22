@@ -63,7 +63,6 @@ func handleReactions(
 
 	// Build maps for quick lookup
 	reactionMap := make(map[github.ReactionType]bool)
-	labelMap := make(map[string]bool)
 	permitted := make([]github.Reaction, 0, len(reactions))
 
 	for _, reaction := range reactions {
@@ -84,10 +83,6 @@ func handleReactions(
 		reactionMap[reaction.Type] = true
 	}
 
-	for _, label := range labels {
-		labelMap[label] = true
-	}
-
 	// Handle removed reactions (reconciliation)
 	if err := handleRemovedReactions(
 		ctx,
@@ -96,7 +91,7 @@ func handleReactions(
 		bc,
 		prNum,
 		reactionMap,
-		labelMap,
+		labels,
 	); err != nil {
 		return err
 	}
@@ -138,10 +133,11 @@ func handleRemovedReactions(
 	bc *config.Config,
 	prNum int,
 	reactionMap map[github.ReactionType]bool,
-	labelMap map[string]bool,
+	labels []string,
 ) error {
 	// Check if approve reaction was removed
-	if labelMap[github.LabelReactionApprove] && !reactionMap[github.ReactionApprove] {
+	if slices.Contains(labels, github.LabelReactionApprove) &&
+		!reactionMap[github.ReactionApprove] {
 		// Approve reaction was removed, unapprove the PR
 		if err := client.DismissReviewByUsername(
 			ctx,
@@ -165,7 +161,8 @@ func handleRemovedReactions(
 	}
 
 	// Check if merge reaction was removed
-	if labelMap[github.LabelReactionMerge] && !reactionMap[github.ReactionMerge] {
+	if slices.Contains(labels, github.LabelReactionMerge) &&
+		!reactionMap[github.ReactionMerge] {
 		// Get PR info to check if it's already merged
 		info, err := client.GetPRInfo(
 			ctx,
@@ -205,7 +202,8 @@ func handleRemovedReactions(
 	}
 
 	// Check if cleanup reaction was removed
-	if labelMap[github.LabelReactionCleanup] && !reactionMap[github.ReactionCleanup] {
+	if slices.Contains(labels, github.LabelReactionCleanup) &&
+		!reactionMap[github.ReactionCleanup] {
 		// Cleanup reaction was removed, just remove the label
 		// (no action needed since cleanup is one-time operation)
 		_ = client.RemoveLabel(

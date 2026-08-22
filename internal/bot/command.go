@@ -307,7 +307,7 @@ func ExecuteCommentWithEnvironment(
 // ValidateConfig validates that all required configuration is present
 func ValidateConfig(rc *RuntimeConfig) error {
 	if rc.Token == "" {
-		return newEnvVarError(errMissingEnvVar, EnvGitHubToken)
+		return NewInputError(errMissingEnvVar, EnvGitHubToken, "")
 	}
 
 	return ValidateCommentInput(rc)
@@ -333,7 +333,7 @@ func ValidateCommentInput(rc *RuntimeConfig) error {
 
 	for _, field := range requiredFields {
 		if field.value == "" {
-			return newEnvVarError(errMissingEnvVar, field.envVar)
+			return NewInputError(errMissingEnvVar, field.envVar, "")
 		}
 	}
 

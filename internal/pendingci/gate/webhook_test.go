@@ -6,7 +6,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
-	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
@@ -20,12 +19,6 @@ func (s *wakingStore) Wake(context.Context, pendingci.WakeRequest) (bool, error)
 	s.woke = true
 
 	return true, nil
-}
-
-func (s *wakingStore) GetPendingCIRepositoryGate(
-	context.Context, string,
-) (storage.PendingCIRepositoryGate, error) {
-	return storage.PendingCIRepositoryGate{}, storage.ErrNotFound
 }
 
 func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
