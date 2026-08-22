@@ -120,6 +120,16 @@ type Options struct {
 	Logger   *slog.Logger
 	Observer Observer
 
+	// Attrs contributes log attributes only the consumer can know - the pull
+	// request a delivery is about, say, which is a different field in every
+	// event and not a concept this package has.
+	//
+	// It is called once per delivery, before anything logs about it, and what
+	// it returns is on every line the pipeline and the handler produce for
+	// that delivery. That is the point: an attribute attached in one place is
+	// an attribute nothing has to remember to repeat.
+	Attrs func(Delivery) []slog.Attr
+
 	// Now is the clock. Tests pass a fake one.
 	Now func() time.Time
 }
@@ -197,4 +207,23 @@ func (r resolved) finalized(delivery Delivery, outcome Outcome) {
 	if r.Observer.Finalized != nil {
 		r.Observer.Finalized(delivery, outcome)
 	}
+}
+
+// decorate hangs the consumer's attributes on a delivery's logger.
+func (r resolved) decorate(delivery Delivery) Delivery {
+	if r.Attrs == nil {
+		return delivery
+	}
+	attrs := r.Attrs(delivery)
+	if len(attrs) == 0 {
+		return delivery
+	}
+
+	arguments := make([]any, 0, len(attrs))
+	for _, attr := range attrs {
+		arguments = append(arguments, attr)
+	}
+	delivery.Logger = delivery.Logger.With(arguments...)
+
+	return delivery
 }

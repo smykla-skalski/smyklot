@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -93,15 +91,6 @@ const (
 	// installation's 5000 an hour, and it is worth it. Deliveries arriving
 	// together still share one read, which is the burst this ever protected
 	repoConfigTTL = 30 * time.Second
-
-	// maxDeliveryIDLength caps the unverified delivery identifier before it
-	// reaches a log line. GitHub's are UUIDs, well under this
-	maxDeliveryIDLength = 64
-
-	// eventOther is the metric label for any event the service does not
-	// execute. The event header is not covered by the signature, so passing it
-	// through would let a caller mint a new time series per request
-	eventOther = "other"
 )
 
 // server executes PR commands from GitHub webhook deliveries.
@@ -111,10 +100,9 @@ type server struct {
 	store  storage.Store
 	panel  *adminpanel.Server
 
-	deliveryStore deliveryState
-	logger        *slog.Logger
-	logLevel      *slog.LevelVar
-	redactor      *logging.Redactor
+	logger   *slog.Logger
+	logLevel *slog.LevelVar
+	redactor *logging.Redactor
 
 	runtimeMu           sync.RWMutex
 	runtimeBotConfig    *config.Config
@@ -149,8 +137,7 @@ type server struct {
 	configs *repoCache[repositoryConfigFile]
 	owners  *repoCache[string]
 
-	deliveries *deliveryDispatcher
-	jobs       chan job
+	deliveries *webhook.Pipeline
 
 	// gate is the whole pending CI runtime, which used to be seven fields on
 	// this struct. It is one because the order they have to be built in is a
@@ -158,11 +145,6 @@ type server struct {
 	gate                 *gate.Gate
 	pendingCICoordinator bot.Exclusive
 	pendingCIGateChanged chan struct{}
-
-	// queueMu makes worker shutdown idempotent. The dispatcher is stopped before
-	// jobs is closed, so it can never send to a closed channel.
-	queueMu     sync.Mutex
-	queueClosed bool
 
 	// catalogMu orders complete GitHub catalog snapshots and the per-installation
 	// snapshots discovered by the sweep. Network reads are covered too, so an
@@ -174,37 +156,6 @@ type server struct {
 	// why it is cached rather than read per keystroke.
 	candidatesMu sync.Mutex
 	candidates   map[string]candidateRoster
-
-	// jobCtx outlives the request that enqueued a job and survives shutdown
-	// being signalled, so a delivery already in the queue still completes
-	jobCtx context.Context
-
-	// deliveryRetryCtx owns outcome writes that outlive their worker attempt.
-	// The mutex prevents Close from racing a new retry into the WaitGroup.
-	deliveryRetryCtx    context.Context
-	cancelDeliveryRetry context.CancelFunc
-	deliveryRetryMu     sync.Mutex
-	deliveryRetryClosed bool
-	deliveryRetries     sync.WaitGroup
-}
-
-// job is one delivery waiting to be executed.
-type job struct {
-	eventName    string
-	action       string
-	source       webhook.Source
-	pullRequest  int
-	comment      *webhook.IssueCommentEvent
-	notification *pendingci.Notification
-	key          string
-	deliveryID   string
-	claimID      int64
-	attempt      int
-	payload      []byte
-
-	// logger already carries this delivery's identifiers, so every line the
-	// work produces can be traced back to the delivery that caused it
-	logger *slog.Logger
 }
 
 func newServer(cfg *serveConfig) (*server, error) {
@@ -234,7 +185,6 @@ func newServer(cfg *serveConfig) (*server, error) {
 		out = os.Stdout
 	}
 
-	deliveryRetryCtx, cancelDeliveryRetry := context.WithCancel(context.Background())
 	level := &slog.LevelVar{}
 	level.Set(cfg.logLevel)
 	resolvedConfig := config.Resolve(cfg.botConfig)
@@ -256,21 +206,13 @@ func newServer(cfg *serveConfig) (*server, error) {
 		owners:                   newRepoCache(codeownersTTL, bot.FetchCodeowners),
 		readiness:                newReadiness(),
 		failures:                 newFailureLog(maxRecordedFailures),
-		jobs:                     make(chan job, queueDepth),
-		jobCtx:                   context.Background(),
-		deliveryRetryCtx:         deliveryRetryCtx,
-		cancelDeliveryRetry:      cancelDeliveryRetry,
 	}
 
-	metrics.RegisterQueue(registry, func() float64 { return float64(len(srv.jobs)) }, queueDepth)
 	metrics.RegisterReadiness(registry, func() bool { return srv.readiness.state().Ready })
 	if err := srv.initStorage(context.Background()); err != nil {
-		cancelDeliveryRetry()
 		return nil, err
 	}
 	srv.sync = apply.New(srv.store, tokens, cfg.apiBaseURL)
-	srv.deliveryStore = srv.store
-	srv.deliveries = newDeliveryDispatcher(srv.deliveryStore, srv.jobs, srv.deliveryJob, srv.logger)
 	pendingCICoordinator := bot.NewCoordinator()
 	srv.pendingCICoordinator = pendingCICoordinator
 	srv.gate = gate.New(gate.Dependencies{
@@ -293,7 +235,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 	})
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()
-		cancelDeliveryRetry()
+
+		return nil, err
+	}
+
+	// Last, because the pipeline's observer reports through the panel and its
+	// handler runs the pending CI runtime: everything it touches has to exist
+	// before a delivery can arrive.
+	if err := srv.initDeliveries(redactor, registry); err != nil {
+		_ = srv.store.Close()
+
 		return nil, err
 	}
 
@@ -302,8 +253,6 @@ func newServer(cfg *serveConfig) (*server, error) {
 
 // Close releases durable service resources.
 func (s *server) Close() error {
-	s.stopDeliveryFinalizationRetries()
-
 	return s.store.Close()
 }
 
@@ -319,8 +268,9 @@ func (s *server) handler() http.Handler {
 		writeText(w, http.StatusOK, "ok\n")
 	})
 
-	verify := webhook.Middleware(s.cfg.webhookSecret, webhook.WithErrorHandler(s.rejectUnsigned))
-	mux.Handle("POST "+s.cfg.webhookPath, verify(http.HandlerFunc(s.handleDelivery)))
+	// The pipeline verifies every request it is handed; nothing else on this
+	// listener has a signature to check.
+	mux.Handle("POST "+s.cfg.webhookPath, s.deliveries.Receiver())
 
 	// At the root rather than under the panel, and served whether or not a
 	// panel is configured: a schema is published documentation, and its address
@@ -339,35 +289,17 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// rejectUnsigned answers a delivery whose signature does not check out.
-//
-// Counted rather than only refused: a service quietly rejecting everything
-// because its secret was rotated looks exactly like a service nobody is using,
-// and this is the one number that tells them apart.
-func (s *server) rejectUnsigned(w http.ResponseWriter, r *http.Request, err error) {
-	event := eventLabel(r.Header.Get(webhook.EventHeader))
-
-	s.count(event, metrics.OutcomeUnsigned)
-	s.logger.Warn("rejected delivery with bad signature",
-		"delivery_id", safeDeliveryID(r.Header.Get(webhook.DeliveryHeader)),
-		"event", event,
-		"error", err)
-
-	http.Error(w, "invalid signature", http.StatusUnauthorized)
-}
-
 // Run serves until ctx is cancelled, then drains what is already in flight.
 func (s *server) Run(ctx context.Context) error {
-	// Work already accepted must survive the shutdown signal, or a rolling
-	// update leaves a pull request approved but never merged
-	s.jobCtx = context.WithoutCancel(ctx)
-
 	// A listener that dies must stop the sweep and the probe too, not leave
 	// them running on behalf of a service that is no longer serving
 	runCtx, stopBackground := context.WithCancel(ctx)
 	defer stopBackground()
 
-	workers := s.startWorkers()
+	// Work already accepted survives the shutdown signal - the pipeline's
+	// workers outlive the context that stops it leasing - or a rolling update
+	// leaves a pull request approved but never merged.
+	s.deliveries.Start(runCtx)
 	background := s.startBackground(runCtx)
 
 	webhooks := s.newHTTPServer(s.cfg.listenAddress, s.handler())
@@ -380,12 +312,13 @@ func (s *server) Run(ctx context.Context) error {
 
 	shutdownErr := s.serveUntilDone(ctx, webhooks, admin)
 
-	// Stop accepting first, then drain. Shutdown abandons a handler that is
-	// still running once its deadline passes, so closeQueue rather than a bare
-	// close: a late handler must be refused, not met with a closed channel
+	// Stop accepting first, then drain. A delivery that arrives after this is
+	// still claimed - the row is what survives a restart - it is simply not
+	// queued.
 	stopBackground()
-	s.closeQueue()
-	s.drain(workers)
+	if err := s.deliveries.Shutdown(context.Background()); err != nil {
+		s.logger.Error("gave up waiting for in-flight deliveries", "error", err)
+	}
 	<-background
 
 	return shutdownErr
@@ -486,221 +419,15 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 	return stopped
 }
 
-// handleDelivery decides what a verified delivery deserves and answers GitHub.
-//
-// It answers before the work runs. GitHub gives a delivery ten seconds and does
-// not retry one that times out, so executing inline would lose commands
-// whenever a merge took longer than that.
-func (s *server) handleDelivery(w http.ResponseWriter, r *http.Request) {
-	eventName := r.Header.Get(webhook.EventHeader)
-	event := eventLabel(eventName)
-
-	// GitHub sends a ping when the webhook is first configured, and expects an
-	// answer before it will send anything else
-	if eventName == webhook.EventPing {
-		s.ignore(w, event, http.StatusOK)
-
-		return
-	}
-
-	if eventName != webhook.EventIssueComment && !pendingci.Supports(eventName) {
-		s.ignore(w, event, http.StatusNoContent)
-
-		return
-	}
-
-	deliveryID := safeDeliveryID(r.Header.Get(webhook.DeliveryHeader))
-
-	// Attached once, here, so every later line about this delivery carries it
-	ctx := logging.With(logging.Into(r.Context(), s.logger), "delivery_id", deliveryID, "event", event)
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.reject(ctx, w, event, "cannot read body", err)
-
-		return
-	}
-
-	j, actionable, err := s.decodeWebhookJob(eventName, body)
-	if err != nil {
-		s.reject(ctx, w, event, "malformed payload", err)
-
-		return
-	}
-
-	if !actionable {
-		s.ignore(w, event, http.StatusNoContent)
-
-		return
-	}
-
-	ctx = logging.With(ctx,
-		"repo", j.source.Repository.FullName,
-		"pr", j.pullRequest,
-		"action", j.action,
-	)
-	j.deliveryID = deliveryID
-	j.payload = body
-	j.logger = logging.From(ctx)
-	s.dispatch(ctx, w, j)
-}
-
-// ignore answers a delivery that carried nothing to execute.
-func (s *server) ignore(w http.ResponseWriter, event string, status int) {
-	s.count(event, metrics.OutcomeIgnored)
-	w.WriteHeader(status)
-}
-
-// reject answers a delivery that could not be read or used.
-func (s *server) reject(ctx context.Context, w http.ResponseWriter, event, message string, cause error) {
-	s.count(event, metrics.OutcomeInvalid)
-	logging.From(ctx).Error(message, "error", cause)
-	http.Error(w, message, http.StatusBadRequest)
-}
-
-// dispatch claims a delivery and queues it, or explains why it did neither.
-func (s *server) dispatch(ctx context.Context, w http.ResponseWriter, j job) {
-	// Claiming before queueing is what makes a redelivery harmless: the second
-	// copy never reaches a worker
-	j.key = deliveryClaimKey(j.eventName, j.deliveryID, j.key)
-	claim, err := s.beginDelivery(ctx, &j)
-	if err != nil {
-		s.count(j.eventName, metrics.OutcomeRefused)
-		logging.From(ctx).Error("delivery claim failed", "error", err)
-		http.Error(w, "not accepted", http.StatusServiceUnavailable)
-
-		return
-	}
-	if claim == storage.DeliveryClaimInProgress {
-		s.count(j.eventName, metrics.OutcomeDuplicate)
-		logging.From(ctx).Info("delivery is still being processed")
-		w.WriteHeader(http.StatusAccepted)
-
-		return
-	}
-	if claim == storage.DeliveryClaimRetained {
-		s.count(j.eventName, metrics.OutcomeDuplicate)
-		logging.From(ctx).Info("delivery already handled")
-		w.WriteHeader(http.StatusOK)
-
-		return
-	}
-
-	s.deliveries.Wake()
-	s.count(j.eventName, metrics.OutcomeAccepted)
-	w.WriteHeader(http.StatusAccepted)
-}
-
-// closeQueue stops the workers once every in-flight send has finished.
-func (s *server) closeQueue() {
-	s.queueMu.Lock()
-	if s.queueClosed {
-		s.queueMu.Unlock()
-		return
-	}
-
-	s.queueClosed = true
-	s.queueMu.Unlock()
-	s.deliveries.Stop()
-	close(s.jobs)
-}
-
-// execute runs one delivery, releasing its claim if the work did not take
-// effect.
-func (s *server) execute(j job) {
-	ctx, cancel := context.WithTimeout(logging.Into(s.jobCtx, j.logger), jobTimeout)
-	defer cancel()
-
-	s.metrics.DeliveriesInFlight.Inc()
-	defer s.metrics.DeliveriesInFlight.Dec()
-
-	started := time.Now()
-	executed := true
-	var err error
-	if j.comment != nil {
-		if s.panel != nil {
-			executed, err = s.repositoryEnabled(ctx, j.comment)
-		}
-		if err == nil && executed {
-			err = s.handleIssueComment(ctx, j.comment, j.key, j.claimID)
-		}
-	} else if j.notification != nil {
-		err = s.gate.HandleWebhook(ctx, j.notification, j.deliveryID)
-	} else {
-		err = errors.New("delivery job has no executable event")
-	}
-	elapsed := time.Since(started)
-
-	s.metrics.DeliveryDuration.WithLabelValues(j.action).Observe(elapsed.Seconds())
-
-	if err != nil {
-		if retryableDelivery(err, j.attempt) {
-			finalize := func(finalizationCtx context.Context) error {
-				return s.retryDelivery(finalizationCtx, j, err)
-			}
-			finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
-			finishErr := finalize(finalizationCtx)
-			cancelFinalization()
-			if finishErr != nil {
-				logging.From(ctx).Error("delivery retry could not be persisted", "error", finishErr)
-				s.retryDeliveryFinalization(j, "retry", finalize)
-			}
-			s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultFailure).Inc()
-			logging.From(ctx).Warn(
-				"delivery execution will be retried",
-				"error", err,
-				"duration", elapsed.String(),
-				"attempt", j.attempt,
-				"max_attempts", maxDeliveryAttempts,
-			)
-
-			return
-		}
-
-		finalize := func(finalizationCtx context.Context) error {
-			return s.failDelivery(finalizationCtx, j, err)
-		}
-		finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
-		finishErr := finalize(finalizationCtx)
-		cancelFinalization()
-		if finishErr != nil {
-			logging.From(ctx).Error("delivery failure could not be persisted", "error", finishErr)
-			s.retryDeliveryFinalization(j, "failure", finalize)
-		}
-		s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultFailure).Inc()
-		s.recordFailure(j, err)
-		logging.From(ctx).Error("delivery failed", "error", err, "duration", elapsed.String())
-
-		return
-	}
-
-	finalize := func(finalizationCtx context.Context) error {
-		return s.completeDelivery(finalizationCtx, j)
-	}
-	finalizationCtx, cancelFinalization := deliveryFinalizationContext(ctx)
-	finishErr := finalize(finalizationCtx)
-	cancelFinalization()
-	if finishErr != nil {
-		logging.From(ctx).Error("delivery completion could not be persisted", "error", finishErr)
-		s.retryDeliveryFinalization(j, "success", finalize)
-	}
-	s.metrics.Deliveries.WithLabelValues(j.action, metrics.ResultSuccess).Inc()
-	if executed {
-		logging.From(ctx).Info("delivery executed", "duration", elapsed.String())
-	} else {
-		logging.From(ctx).Info("delivery ignored: repository is disabled", "duration", elapsed.String())
-	}
-}
-
 // recordFailure keeps a failed delivery readable after the log line scrolls
 // away.
-func (s *server) recordFailure(j job, cause error) {
+func (s *server) recordFailure(delivery webhook.Delivery, cause error) {
 	s.failures.Record(deliveryFailure{
 		Time:        time.Now(),
-		DeliveryID:  j.deliveryID,
-		Repository:  j.source.Repository.FullName,
-		PullRequest: j.pullRequest,
-		Action:      j.action,
+		DeliveryID:  delivery.ID,
+		Repository:  delivery.Source.Repository.FullName,
+		PullRequest: deliveryPullRequest(delivery),
+		Action:      deliveryAction(delivery),
 		Reason:      s.redactor.Error(cause),
 	})
 }
@@ -784,54 +511,6 @@ func (s *server) handleIssueComment(
 	return bot.ExecuteCommentWithEnvironment(
 		ctx, client, rc, bc, s.commandEnvironment(client, event, claim.Source.SourceOrder),
 	)
-}
-
-// eventLabel reduces an event name to a value safe to use as a metric label.
-//
-// The event header is not covered by the signature, so passing it through would
-// let any caller that can reach the port mint a new time series per request.
-func eventLabel(name string) string {
-	switch name {
-	case webhook.EventIssueComment, webhook.EventCheckRun, webhook.EventCheckSuite,
-		webhook.EventStatus, webhook.EventPullRequest, webhook.EventPing:
-		return name
-
-	default:
-		return eventOther
-	}
-}
-
-// safeDeliveryID reduces a delivery identifier to what can appear in a log
-// line.
-//
-// The signature covers the body, not the headers, so this one field arrives
-// unverified even on a delivery that passed verification. A newline in it would
-// let the caller forge log entries; GitHub's own identifiers are UUIDs and
-// survive this untouched.
-func safeDeliveryID(id string) string {
-	if len(id) > maxDeliveryIDLength {
-		id = id[:maxDeliveryIDLength]
-	}
-
-	clean := strings.Map(func(r rune) rune {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-':
-			return r
-		default:
-			return -1
-		}
-	}, id)
-
-	if clean == "" {
-		return "unknown"
-	}
-
-	return clean
-}
-
-// count records what became of one webhook request.
-func (s *server) count(event, outcome string) {
-	s.metrics.WebhookRequests.WithLabelValues(event, outcome).Inc()
 }
 
 // runtimeConfigFor translates a delivery into what the executor expects.

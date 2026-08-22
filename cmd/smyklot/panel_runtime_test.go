@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -20,7 +21,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
-	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
 type runtimePanelEvent struct {
@@ -564,10 +564,9 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		public := httptest.NewServer(service.handler())
 		DeferCleanup(public.Close)
-		workers := service.startWorkers()
+		service.deliveries.Start(GinkgoT().Context())
 		DeferCleanup(func() {
-			service.closeQueue()
-			workers.Wait()
+			Expect(service.deliveries.Shutdown(context.Background())).To(Succeed())
 		})
 		body := commandDelivery("/approve")
 		response := postDelivery(public, stub, "issue_comment", "disabled-delivery", body, nil)
@@ -661,10 +660,9 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		stub.installationsRelease = make(chan struct{})
 		catalogCalls := stub.countCalls(http.MethodGet, "/app/installations")
 
-		workers := service.startWorkers()
+		service.deliveries.Start(GinkgoT().Context())
 		DeferCleanup(func() {
-			service.closeQueue()
-			workers.Wait()
+			Expect(service.deliveries.Shutdown(context.Background())).To(Succeed())
 		})
 		public := httptest.NewServer(service.handler())
 		DeferCleanup(public.Close)
@@ -696,45 +694,43 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(stub.countCalls(http.MethodGet, "/app/installations") - catalogCalls).To(Equal(1))
 	})
 
-	It("persists accepted work even when the in-memory queue is full", func() {
+	// Acceptance is durable whether or not anything is running to execute it:
+	// the row is written by the request, and the queue is fed from the row.
+	// Nothing is started here, so nothing leases - and the delivery is still
+	// there afterwards.
+	It("persists accepted work with no dispatcher running", func() {
 		stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 		_, err := service.SyncCatalog(GinkgoT().Context())
 		Expect(err).NotTo(HaveOccurred())
 
-		for range cap(service.jobs) {
-			service.jobs <- job{}
-		}
+		public := httptest.NewServer(service.handler())
+		DeferCleanup(public.Close)
 
 		payload := commandDelivery("/approve")
-		event, err := webhook.ParseIssueComment(payload)
-		Expect(err).NotTo(HaveOccurred())
-		delivery := job{
-			eventName:   webhook.EventIssueComment,
-			action:      event.Action,
-			source:      issueCommentSource(event),
-			pullRequest: event.Issue.Number,
-			comment:     event,
-			key:         event.ContentKey(),
-			deliveryID:  "queue-full-redelivery",
-			payload:     payload,
-			logger:      service.logger,
-		}
-		response := httptest.NewRecorder()
-		service.dispatch(GinkgoT().Context(), response, delivery)
-		Expect(response.Code).To(Equal(http.StatusAccepted))
+		const deliveryID = "queue-full-redelivery"
 
-		inProgress := httptest.NewRecorder()
-		service.dispatch(GinkgoT().Context(), inProgress, delivery)
-		Expect(inProgress.Code).To(Equal(http.StatusAccepted))
+		response := postDelivery(public, stub, "issue_comment", deliveryID, payload, nil)
+		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 
-		lease, err := service.deliveryStore.LeaseDelivery(
+		// The same delivery again: claimed once, so the second is a duplicate.
+		again := postDelivery(public, stub, "issue_comment", deliveryID, payload, nil)
+		Expect(again.StatusCode).To(Equal(http.StatusAccepted))
+
+		lease, err := service.store.LeaseDelivery(
 			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(lease.Work).NotTo(BeNil())
-		Expect(lease.Work.DeliveryID).To(Equal(delivery.deliveryID))
+		Expect(lease.Work.DeliveryID).To(Equal(deliveryID))
 		Expect(lease.Work.Payload).To(Equal(payload))
+
+		// Exactly one row, which is what the claim is for.
+		second, err := service.store.LeaseDelivery(
+			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.Work).To(BeNil())
 	})
 
 	It("rejects an installation without an immutable account identity", func() {

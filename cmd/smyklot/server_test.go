@@ -286,10 +286,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		workers := srv.startWorkers()
+		srv.deliveries.Start(GinkgoT().Context())
 		DeferCleanup(func() {
-			srv.closeQueue()
-			workers.Wait()
+			Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
 		})
 
 		service = httptest.NewServer(srv.handler())
@@ -513,10 +512,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 			second, err := newServer(serviceConfig())
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(second.Close)
-			workers := second.startWorkers()
+			second.deliveries.Start(GinkgoT().Context())
 			DeferCleanup(func() {
-				second.closeQueue()
-				workers.Wait()
+				Expect(second.deliveries.Shutdown(context.Background())).To(Succeed())
 			})
 
 			Eventually(func() int {
@@ -943,13 +941,13 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 
 		It("should persist it rather than panic or lose it", func() {
-			srv.closeQueue()
+			Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
 
 			resp := post(webhook.EventIssueComment, deliveryOne, commandDelivery("/approve"), nil)
 			Expect(resp.StatusCode).To(Equal(http.StatusAccepted))
 
 			Consistently(stub.total, 200*time.Millisecond).Should(BeZero())
-			lease, err := srv.deliveryStore.LeaseDelivery(
+			lease, err := srv.store.LeaseDelivery(
 				GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
 			)
 			Expect(err).NotTo(HaveOccurred())
@@ -957,9 +955,9 @@ var _ = Describe("Webhook service [Unit]", func() {
 			Expect(lease.Work.DeliveryID).To(Equal(deliveryOne))
 		})
 
-		It("should be safe to close the queue more than once", func() {
-			srv.closeQueue()
-			Expect(srv.closeQueue).NotTo(Panic())
+		It("should be safe to shut down more than once", func() {
+			Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
+			Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
 		})
 	})
 

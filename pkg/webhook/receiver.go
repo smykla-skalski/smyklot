@@ -73,6 +73,8 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		),
 	}
 
+	delivery = p.opts.decorate(delivery)
+
 	if p.opts.Screen != nil {
 		wanted, screenErr := p.opts.Screen(delivery)
 		if screenErr != nil {

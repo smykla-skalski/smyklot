@@ -69,6 +69,61 @@ linters:
           deny:
             - pkg: github.com/google/go-github
               desc: only pkg/github may name the GitHub library; add a method to pkg/github.Client instead
+        # pkg/webhook is a library any GitHub App can import, and the only thing
+        # that keeps it one is a check. It was carved out of this service, so
+        # every smyklot type it used to reach for is still one import away - the
+        # panel it announced to, the storage identifiers it namespaced with, the
+        # metrics registry it counted into. `run.tests: true` matters here too:
+        # the last coupling to go was a test importing internal/githubtest for
+        # one payload fixture.
+        webhook-library:
+          list-mode: lax
+          files:
+            - "**/pkg/webhook/**"
+          allow:
+            - github.com/smykla-skalski/smyklot/pkg/webhook
+          deny:
+            - pkg: github.com/smykla-skalski/smyklot/
+              desc: pkg/webhook is a standalone library; take what it needs as a parameter, a callback or an option rather than importing the service
+            - pkg: github.com/prometheus/client_golang
+              desc: the library reports through webhook.Observer; a registry here would put its opinion about metric namespaces into every consumer
+        # internal/bot is what the Action, the cron poll and the service all
+        # stand on, and it is the layer that has to work with none of the rest
+        # of them present: a repository running the Action has no panel, no
+        # store to sweep and no worker to schedule. That only stays true while
+        # nothing here imports upwards. It would not announce itself if it
+        # stopped - the pending CI cycle this split removed compiled perfectly
+        # well for as long as cmd was the only place the two halves met.
+        bot-foundation:
+          list-mode: lax
+          files:
+            - "**/internal/bot/**"
+          deny:
+            - pkg: github.com/smykla-skalski/smyklot/internal/panel
+              desc: internal/bot runs where there is no panel; say what you need in an interface
+            - pkg: github.com/smykla-skalski/smyklot/internal/pendingci/gate
+              desc: internal/bot declares what it needs of the pending CI runtime and the gate implements it
+            - pkg: github.com/smykla-skalski/smyklot/internal/orgsync/apply
+              desc: org sync is a service worker; nothing an Action run reaches should name it
+        # The two workers the service starts share a store and nothing else.
+        # Neither has ever needed the other, and the first import between them
+        # would be somebody borrowing one helper - after which a sweep cannot be
+        # read one worker at a time, which is the only way anybody reads it. The
+        # panel is denied for a related reason: both of these run whether or not
+        # a deployment has one, and both report through the store it reads them
+        # from.
+        service-workers:
+          list-mode: lax
+          files:
+            - "**/internal/pendingci/gate/**"
+            - "**/internal/orgsync/apply/**"
+          deny:
+            - pkg: github.com/smykla-skalski/smyklot/internal/panel
+              desc: a worker records what it did in storage.Store; the panel reads it from there
+            - pkg: github.com/smykla-skalski/smyklot/internal/pendingci/gate
+              desc: the two service workers are independent; say what you need in an interface
+            - pkg: github.com/smykla-skalski/smyklot/internal/orgsync/apply
+              desc: the two service workers are independent; say what you need in an interface
 
     cyclop:
       max-complexity: 30

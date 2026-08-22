@@ -208,10 +208,9 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 
 			srv.configs = newRepoCache(configTTL, fetchRepositoryConfig)
 
-			workers := srv.startWorkers()
+			srv.deliveries.Start(GinkgoT().Context())
 			DeferCleanup(func() {
-				srv.closeQueue()
-				workers.Wait()
+				Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
 			})
 
 			service = httptest.NewServer(srv.handler())

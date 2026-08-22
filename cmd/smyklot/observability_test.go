@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -107,10 +108,9 @@ var _ = Describe("Service observability [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		workers := srv.startWorkers()
+		srv.deliveries.Start(GinkgoT().Context())
 		DeferCleanup(func() {
-			srv.closeQueue()
-			workers.Wait()
+			Expect(srv.deliveries.Shutdown(context.Background())).To(Succeed())
 		})
 
 		service = httptest.NewServer(srv.handler())
@@ -179,18 +179,9 @@ var _ = Describe("Service observability [Unit]", func() {
 			Expect(logs.find("delivery executed")).To(HaveKeyWithValue("delivery_id", "abcinjected"))
 		})
 
-		DescribeTable("should reduce an identifier to what cannot forge a log line",
-			func(raw, expected string) {
-				Expect(safeDeliveryID(raw)).To(Equal(expected))
-			},
-			Entry("a real GitHub identifier survives untouched",
-				"7d1b0f00-1234-11ef-9f6b-0242ac120002", "7d1b0f00-1234-11ef-9f6b-0242ac120002"),
-			Entry("a newline is removed", "abc\ninjected", "abcinjected"),
-			Entry("a carriage return is removed", "abc\r\nlevel=ERROR", "abclevelERROR"),
-			Entry("an empty identifier becomes a placeholder", "", "unknown"),
-			Entry("nothing usable becomes a placeholder", "\n\t", "unknown"),
-			Entry("an overlong identifier is cut", strings.Repeat("a", 200), strings.Repeat("a", 64)),
-		)
+		// The scrubbing itself is proven where it lives, in pkg/webhook. What
+		// this spec adds is that the scrubbed value is the one that reaches
+		// the log.
 	})
 
 	Describe("readiness", func() {

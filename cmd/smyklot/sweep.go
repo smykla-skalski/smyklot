@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
@@ -14,43 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
 )
-
-// startWorkers launches the pool that executes queued deliveries.
-func (s *server) startWorkers() *sync.WaitGroup {
-	var workers sync.WaitGroup
-
-	for range workerCount {
-		workers.Add(1)
-
-		go func() {
-			defer workers.Done()
-
-			for j := range s.jobs {
-				s.execute(j)
-			}
-		}()
-	}
-	s.deliveries.Start(s.jobCtx)
-
-	return &workers
-}
-
-// drain waits for queued deliveries to finish, giving up rather than blocking a
-// shutdown forever.
-func (s *server) drain(workers *sync.WaitGroup) {
-	drained := make(chan struct{})
-
-	go func() {
-		workers.Wait()
-		close(drained)
-	}()
-
-	select {
-	case <-drained:
-	case <-time.After(drainTimeout):
-		s.logger.Error("gave up waiting for in-flight deliveries", "timeout", drainTimeout.String())
-	}
-}
 
 // pollLoop sweeps on an interval until ctx is cancelled.
 //

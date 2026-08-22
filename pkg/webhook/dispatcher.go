@@ -73,11 +73,11 @@ func (p *Pipeline) decode(work Work) (Delivery, error) {
 		"action", source.Action,
 	)
 
-	return Delivery{
+	return p.opts.decorate(Delivery{
 		Event: work.Event, ID: work.DeliveryID, Source: source,
 		Payload: work.Payload, Key: work.Key, ClaimID: work.ClaimID,
 		Attempt: work.Attempt, Logger: logger,
-	}, nil
+	}), nil
 }
 
 // rejectInvalid settles a row whose payload will not parse.
