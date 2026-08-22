@@ -15,6 +15,19 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
+// RepoConfigPaths are the places a repository's own configuration may live, in
+// the order they are looked for.
+//
+// The first match wins, so a repository that has both a TOML file and the
+// legacy YAML one is read as TOML and told about the other. The legacy path is
+// last for exactly that reason: it is what a repository migrates away from.
+var RepoConfigPaths = []string{
+	".smyklot.toml",
+	".smyklot/config.toml",
+	".github/.smyklot.toml",
+	".github/smyklot.yaml",
+}
+
 // Format is how a configuration document is written.
 type Format string
 

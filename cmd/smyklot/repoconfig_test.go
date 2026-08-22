@@ -1,4 +1,4 @@
-package github_test
+package main
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -49,7 +50,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+			found, err := findRepoConfig(context.Background(), client, "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Found()).To(BeTrue())
 			Expect(found.Path).To(Equal(path))
@@ -72,11 +73,11 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+		found, err := findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Path).To(Equal(".smyklot.toml"))
 		Expect(found.Superseded).To(BeEmpty())
-		Expect(asked).To(Equal(github.RepoConfigPaths))
+		Expect(asked).To(Equal(config.RepoConfigPaths))
 	})
 
 	// TOML wins over the legacy file, so a half-finished migration leaves the
@@ -97,7 +98,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+		found, err := findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Path).To(Equal(".github/.smyklot.toml"))
 
@@ -123,7 +124,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+		found, err := findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Path).To(Equal(".smyklot.toml"))
 	})
@@ -137,8 +138,8 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			found, err := client.FindRepoConfig(
-				context.Background(), "acme", "web", "config/smyklot.toml",
+			found, err := findRepoConfig(
+				context.Background(), client, "acme", "web", "config/smyklot.toml",
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found.Path).To(Equal("config/smyklot.toml"))
@@ -154,14 +155,14 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.FindRepoConfig(
-				context.Background(), "acme", "web", ".github/.smyklot.toml",
+			_, err = findRepoConfig(
+				context.Background(), client, "acme", "web", ".github/.smyklot.toml",
 			)
 			Expect(err).NotTo(HaveOccurred())
 
-			Expect(asked).To(HaveLen(len(github.RepoConfigPaths)))
+			Expect(asked).To(HaveLen(len(config.RepoConfigPaths)))
 			Expect(asked[0]).To(Equal(".github/.smyklot.toml"))
-			Expect(asked).To(ConsistOf(github.RepoConfigPaths))
+			Expect(asked).To(ConsistOf(config.RepoConfigPaths))
 		})
 	})
 
@@ -176,10 +177,10 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		found, err := client.FindRepoConfig(context.Background(), "acme", "web", "")
+		found, err := findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Found()).To(BeFalse())
-		Expect(asked).To(Equal(github.RepoConfigPaths))
+		Expect(asked).To(Equal(config.RepoConfigPaths))
 	})
 
 	// What is watched has to cover what is searched, or a file changes and the
@@ -202,12 +203,12 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		standard, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+		standard, err := repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(standard).NotTo(ContainSubstring("config="))
 
-		chosen, err := client.RepoConfigFingerprint(
-			context.Background(), "acme", "web", "config/smyklot.toml",
+		chosen, err := repoConfigFingerprint(
+			context.Background(), client, "acme", "web", "config/smyklot.toml",
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(chosen).To(ContainSubstring("config=d"))
@@ -231,10 +232,10 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = client.FindRepoConfig(context.Background(), "acme", "web", "")
+		_, err = findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+		_, err = repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(queries).NotTo(BeEmpty())
@@ -260,12 +261,12 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		found, err := client.FindRepoConfigAtCommit(
-			context.Background(), "acme", "web", "", "base-commit",
+		found, err := findRepoConfigAtCommit(
+			context.Background(), client, "acme", "web", "", "base-commit",
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(found.Path).To(Equal(".github/smyklot.yaml"))
-		Expect(queries).To(HaveLen(len(github.RepoConfigPaths)))
+		Expect(queries).To(HaveLen(len(config.RepoConfigPaths)))
 		Expect(queries).To(ConsistOf(
 			"base-commit", "base-commit", "base-commit", "base-commit",
 		))
@@ -283,7 +284,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 		client, err := github.NewClient("test-token", server.URL)
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = client.FindRepoConfig(context.Background(), "acme", "web", "")
+		_, err = findRepoConfig(context.Background(), client, "acme", "web", "")
 		Expect(err).To(HaveOccurred())
 		Expect(asked).To(HaveLen(1))
 	})
@@ -308,7 +309,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+			fingerprint, err := repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fingerprint).To(ContainSubstring(".github=bbb"))
 			Expect(fingerprint).NotTo(ContainSubstring("aaa"))
@@ -327,7 +328,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+			fingerprint, err := repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 
 			return fingerprint
@@ -365,7 +366,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			fingerprint, err := client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+			fingerprint, err := repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fingerprint).To(BeEmpty())
 		})
@@ -379,7 +380,7 @@ var _ = Describe("Repository configuration discovery [Unit]", func() {
 			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = client.RepoConfigFingerprint(context.Background(), "acme", "web", "")
+			_, err = repoConfigFingerprint(context.Background(), client, "acme", "web", "")
 			Expect(err).To(HaveOccurred())
 		})
 	})

@@ -211,7 +211,7 @@ func (c *Client) EnableAutoMerge(
 // Returns the decoded content of .github/CODEOWNERS file.
 // Returns empty string (not error) if file doesn't exist (404).
 func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string, error) {
-	decoded, err := c.getFileContent(ctx, owner, repo, ".github/CODEOWNERS", maxCodeownersSize)
+	decoded, err := c.GetFileContent(ctx, owner, repo, ".github/CODEOWNERS", "", maxCodeownersSize)
 	if err != nil {
 		return "", err
 	}
@@ -219,19 +219,12 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 	return string(decoded), nil
 }
 
-// getFileContent reads a file through the contents API.
+// GetFileContent reads a file through the contents API, at ref when one is
+// given and from the default branch otherwise.
 //
 // Returns nil content (not an error) when the file does not exist, so callers
 // can treat "no such file" as "nothing configured".
-func (c *Client) getFileContent(
-	ctx context.Context,
-	owner, repo, filePath string,
-	maxSize int,
-) ([]byte, error) {
-	return c.getFileContentAtRef(ctx, owner, repo, filePath, "", maxSize)
-}
-
-func (c *Client) getFileContentAtRef(
+func (c *Client) GetFileContent(
 	ctx context.Context,
 	owner, repo, filePath, ref string,
 	maxSize int,
@@ -280,6 +273,29 @@ func (c *Client) getFileContentAtRef(
 	}
 
 	return decoded, nil
+}
+
+// DirectoryEntry is one entry the contents API lists for a directory.
+type DirectoryEntry struct {
+	Name string `json:"name"`
+	SHA  string `json:"sha"`
+}
+
+// ListDirectory lists one directory through the contents API, dirPath empty
+// for the repository root.
+//
+// A directory that does not exist is returned as the 404 it is, unlike
+// GetFileContent.
+func (c *Client) ListDirectory(
+	ctx context.Context,
+	owner, repo, dirPath string,
+) ([]DirectoryEntry, error) {
+	path := fmt.Sprintf("/repos/%s/%s/contents", owner, repo)
+	if dirPath != "" {
+		path += "/" + dirPath
+	}
+
+	return doJSON[[]DirectoryEntry](ctx, c, http.MethodGet, path, nil)
 }
 
 // Ping reports whether the GitHub API answers and accepts these credentials.

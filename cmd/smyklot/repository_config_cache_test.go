@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -165,9 +166,9 @@ func TestRepositoryWithNoConfigIsCachedToo(t *testing.T) {
 
 	fingerprints, probes := stub.counts()
 
-	if probes != len(github.RepoConfigPaths) {
+	if probes != len(config.RepoConfigPaths) {
 		t.Errorf("probed %d paths over four ticks, want %d - one sweep of the candidates",
-			probes, len(github.RepoConfigPaths))
+			probes, len(config.RepoConfigPaths))
 	}
 
 	if fingerprints != 4 {

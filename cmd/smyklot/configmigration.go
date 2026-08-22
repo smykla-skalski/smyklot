@@ -392,7 +392,7 @@ func (s *server) buildConfigMigration(
 	// Re-read from the immutable commit this tree is built from. The sweep's
 	// cached file may describe an older default-branch tip; using those bytes
 	// here would delete a maintainer's newer YAML while writing stale TOML.
-	found, err := client.FindRepoConfigAtCommit(ctx, repo.Owner, repo.Name, "", base)
+	found, err := findRepoConfigAtCommit(ctx, client, repo.Owner, repo.Name, "", base)
 	if err != nil {
 		return configMigrationBuild{}, err
 	}

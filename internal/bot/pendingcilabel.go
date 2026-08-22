@@ -35,7 +35,7 @@ const (
 )
 
 const (
-	// ReactionPendingCI marks a command comment whose work is waiting for CI.
+	// ReactionPendingCI represents waiting for CI (👀)
 	ReactionPendingCI = github.ReactionEyes
 
 	// ReactionPendingCIService fences a service-owned wait from the Action

@@ -54,7 +54,7 @@ func fetchRepositoryConfig(
 	// from what is searched
 	const preferred = ""
 
-	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository, preferred)
+	fingerprint, err := repoConfigFingerprint(ctx, client, owner, repository, preferred)
 	if err != nil {
 		return repositoryConfigFile{}, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
@@ -65,7 +65,7 @@ func fetchRepositoryConfig(
 		return *previous, nil
 	}
 
-	found, err := client.FindRepoConfig(ctx, owner, repository, preferred)
+	found, err := findRepoConfig(ctx, client, owner, repository, preferred)
 	if err != nil {
 		return repositoryConfigFile{}, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
@@ -78,7 +78,7 @@ func fetchRepositoryConfig(
 	return repositoryConfigFileFrom(found, fingerprint), nil
 }
 
-func repositoryConfigFileFrom(found github.RepoConfig, fingerprint string) repositoryConfigFile {
+func repositoryConfigFileFrom(found foundRepoConfig, fingerprint string) repositoryConfigFile {
 	if len(bytes.TrimSpace(found.Content)) == 0 {
 		return repositoryConfigFile{
 			status:      storage.RepositoryFileValid,
@@ -109,7 +109,7 @@ func repositoryConfigFileFrom(found github.RepoConfig, fingerprint string) repos
 }
 
 // parseRepositoryConfig reads a found file in whichever format its name says.
-func parseRepositoryConfig(found github.RepoConfig) (config.Patch, error) {
+func parseRepositoryConfig(found foundRepoConfig) (config.Patch, error) {
 	format, err := config.FormatOf(found.Path)
 	if err != nil {
 		return config.Patch{}, err

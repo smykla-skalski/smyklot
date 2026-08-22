@@ -32,7 +32,7 @@ func effectiveConfig(
 	// This costs one request per candidate path and does not cache, which is
 	// what the Action is: one comment, one process, then exit. The service is
 	// the one that reads this on a timer, and it goes through repoCache.
-	found, err := client.FindRepoConfig(ctx, owner, repo, "")
+	found, err := findRepoConfig(ctx, client, owner, repo, "")
 	if err != nil {
 		return nil, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
@@ -52,7 +52,7 @@ func effectiveConfig(
 
 // loadRepoConfig layers a found configuration file over base, reading it in
 // whichever format its name says it is written in.
-func loadRepoConfig(base *config.Config, found github.RepoConfig) (*config.Config, error) {
+func loadRepoConfig(base *config.Config, found foundRepoConfig) (*config.Config, error) {
 	format, err := config.FormatOf(found.Path)
 	if err != nil {
 		return nil, err

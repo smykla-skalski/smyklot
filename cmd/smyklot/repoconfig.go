@@ -1,4 +1,4 @@
-package github
+package main
 
 import (
 	"context"
@@ -7,27 +7,42 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+
+	"github.com/smykla-skalski/smyklot/pkg/config"
+	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-// RepoConfigPaths are the places a repository's own configuration may live, in
-// the order they are looked for.
+const maxRepoConfigSize = 64 * 1024
+
+// foundRepoConfig is a repository's own configuration file, as found.
 //
-// The first match wins, so a repository that has both a TOML file and the
-// legacy YAML one is read as TOML and told about the other. The legacy path is
-// last for exactly that reason: it is what a repository migrates away from.
-var RepoConfigPaths = []string{
-	".smyklot.toml",
-	".smyklot/config.toml",
-	".github/.smyklot.toml",
-	repoConfigPath,
+// The path is carried alongside the bytes because the caller has to know which
+// file it got: the format is decided by the name, and telling the decoder is
+// what keeps a TOML syntax error from being reported as bad YAML.
+type foundRepoConfig struct {
+	// Path is the file the content came from, relative to the repository root.
+	// Empty when the repository has no configuration file.
+	Path string
+
+	// Content is the file's decoded bytes, nil when no file was found.
+	Content []byte
+
+	// Superseded are the other paths that also hold a configuration file, in
+	// search order. They are read by nothing and reported to the repository,
+	// which is the point: a repository that migrated to TOML and left the
+	// YAML behind has a file it believes is in charge and is not.
+	Superseded []string
 }
 
-// FindRepoConfig returns the repository's configuration file, and any others
+// Found reports whether the repository has a configuration file at all.
+func (c foundRepoConfig) Found() bool { return c.Path != "" }
+
+// findRepoConfig returns the repository's configuration file, and any others
 // it passed over.
 //
 // preferred is the path an operator set in the panel, and is looked at first
 // when it is not empty. A repository with no configuration file at all gets a
-// zero RepoConfig back rather than an error.
+// zero foundRepoConfig back rather than an error.
 //
 // Every candidate is asked for, not just those up to the first hit, so a
 // repository carrying two configuration files is told which one is in charge
@@ -37,39 +52,42 @@ var RepoConfigPaths = []string{
 // answer until it moves again. Probing on every sweep tick instead would cost
 // an organization of two hundred repositories twelve thousand requests an hour
 // against a budget of five thousand.
-func (c *Client) FindRepoConfig(
+func findRepoConfig(
 	ctx context.Context,
+	client *github.Client,
 	owner, repo, preferred string,
-) (RepoConfig, error) {
-	return c.findRepoConfig(ctx, owner, repo, preferred, "")
+) (foundRepoConfig, error) {
+	return findRepoConfigAtRef(ctx, client, owner, repo, preferred, "")
 }
 
-// FindRepoConfigAtCommit reads configuration from one immutable commit.
+// findRepoConfigAtCommit reads configuration from one immutable commit.
 //
-// This is deliberately separate from FindRepoConfig. Commands are authorized
+// This is deliberately separate from findRepoConfig. Commands are authorized
 // from the default branch GitHub serves, never a caller-selected ref. The
-// migration uses this method only after resolving that default branch to a
+// migration uses this function only after resolving that default branch to a
 // commit, so the bytes it converts and the tree it deletes them from are one
 // atomic repository snapshot.
-func (c *Client) FindRepoConfigAtCommit(
+func findRepoConfigAtCommit(
 	ctx context.Context,
+	client *github.Client,
 	owner, repo, preferred, commit string,
-) (RepoConfig, error) {
+) (foundRepoConfig, error) {
 	if commit == "" {
-		return RepoConfig{}, fmt.Errorf("configuration commit must not be empty")
+		return foundRepoConfig{}, fmt.Errorf("configuration commit must not be empty")
 	}
 
-	return c.findRepoConfig(ctx, owner, repo, preferred, commit)
+	return findRepoConfigAtRef(ctx, client, owner, repo, preferred, commit)
 }
 
-func (c *Client) findRepoConfig(
+func findRepoConfigAtRef(
 	ctx context.Context,
+	client *github.Client,
 	owner, repo, preferred, ref string,
-) (RepoConfig, error) {
-	var found RepoConfig
+) (foundRepoConfig, error) {
+	var found foundRepoConfig
 
 	for _, path := range candidatePaths(preferred) {
-		content, err := c.getFileContentAtRef(ctx, owner, repo, path, ref, maxRepoConfigSize)
+		content, err := client.GetFileContent(ctx, owner, repo, path, ref, maxRepoConfigSize)
 		if err != nil {
 			// Before anything is found this is the read failing, and the file
 			// is fail-closed. After, the answer is already in hand and the
@@ -77,7 +95,7 @@ func (c *Client) findRepoConfig(
 			// there stops the search rather than taking a repository offline
 			// over a file it is not even using.
 			if !found.Found() {
-				return RepoConfig{}, err
+				return foundRepoConfig{}, err
 			}
 
 			return found, nil
@@ -86,7 +104,7 @@ func (c *Client) findRepoConfig(
 		switch {
 		case content == nil:
 		case !found.Found():
-			found = RepoConfig{Path: path, Content: content}
+			found = foundRepoConfig{Path: path, Content: content}
 		default:
 			found.Superseded = append(found.Superseded, path)
 		}
@@ -101,16 +119,16 @@ func (c *Client) findRepoConfig(
 func candidatePaths(preferred string) []string {
 	preferred = strings.TrimSpace(strings.TrimPrefix(preferred, "/"))
 	if preferred == "" {
-		return RepoConfigPaths
+		return config.RepoConfigPaths
 	}
 
 	// One loop covers both cases. When the chosen path is not one of the
 	// standard ones the filter copies them all through, which is the same list
 	// a plain concatenation would have produced.
-	paths := make([]string, 0, len(RepoConfigPaths)+1)
+	paths := make([]string, 0, len(config.RepoConfigPaths)+1)
 	paths = append(paths, preferred)
 
-	for _, path := range RepoConfigPaths {
+	for _, path := range config.RepoConfigPaths {
 		if path != preferred {
 			paths = append(paths, path)
 		}
@@ -128,7 +146,7 @@ func candidatePaths(preferred string) []string {
 // would go on reading the old one. Nothing passes a preferred path today, and
 // the first thing to do so would otherwise have found that out in production.
 func configRoots(preferred string) []string {
-	roots := make([]string, 0, len(RepoConfigPaths)+1)
+	roots := make([]string, 0, len(config.RepoConfigPaths)+1)
 
 	for _, path := range candidatePaths(preferred) {
 		root, _, _ := strings.Cut(path, "/")
@@ -140,7 +158,7 @@ func configRoots(preferred string) []string {
 	return roots
 }
 
-// RepoConfigFingerprint identifies the state of everything a configuration file
+// repoConfigFingerprint identifies the state of everything a configuration file
 // could be read from, in one request.
 //
 // It exists to be a cache validator. Reading the configuration means a request
@@ -161,21 +179,17 @@ func configRoots(preferred string) []string {
 //
 // A repository with no commits, or one Smyklot cannot read, fingerprints as
 // empty, which never compares equal - so it is re-read rather than assumed.
-func (c *Client) RepoConfigFingerprint(
+func repoConfigFingerprint(
 	ctx context.Context,
+	client *github.Client,
 	owner, repo, preferred string,
 ) (string, error) {
 	roots := configRoots(preferred)
 
-	path := fmt.Sprintf("/repos/%s/%s/contents", owner, repo)
-
-	entries, err := doJSON[[]struct {
-		Name string `json:"name"`
-		SHA  string `json:"sha"`
-	}](ctx, c, http.MethodGet, path, nil)
+	entries, err := client.ListDirectory(ctx, owner, repo, "")
 	if err != nil {
 		// An empty repository answers 404 here and has no configuration file.
-		var apiErr *APIError
+		var apiErr *github.APIError
 		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 			return "", nil
 		}
