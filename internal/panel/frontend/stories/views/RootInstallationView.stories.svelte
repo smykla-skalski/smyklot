@@ -37,8 +37,8 @@
 <!--
   What the Root console shows before it has elevated into an installation, which is
   what a Root sees first and most often: the identity, the tabs, the way back to the
-  catalogue, and a body saying this view is not theirs to read yet. The button that
-  changes that is the only thing on the page that acts.
+  catalogue, and readable diagnostics with every write control locked. The access
+  button is the only thing on the page that acts.
 
   The back link is an anchor rather than a button because it is an address, and a
   colleague should be able to open it in a new tab.

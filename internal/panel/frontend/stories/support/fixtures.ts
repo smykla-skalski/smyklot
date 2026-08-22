@@ -155,6 +155,14 @@ export const INVITATIONS = MOCK.invitations;
 /** The organisation installation the mock seeds, not a second description of it. */
 export const TARGET: PanelTarget = MOCK.targets[0]!.value;
 
+/** The same installation as a Root sees it before requesting temporary write access. */
+export const ROOT_TARGET: PanelTarget = {
+  ...TARGET,
+  effective_role: 'none',
+  access_source: 'root',
+  capabilities: { read: true, write: false, manage_target_users: false },
+};
+
 /**
  * What each sync kind has configured, keyed the way the mock keys it.
  *

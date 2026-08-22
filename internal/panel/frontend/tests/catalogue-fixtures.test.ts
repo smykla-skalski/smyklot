@@ -4,12 +4,18 @@ import { describe, expect, it } from 'vitest';
 
 import { fixtureApi } from '../stories/support/api';
 import {
+  AUDIT,
+  FAILURES,
+  INVITATIONS,
+  REPOSITORIES,
+  ROOT_TARGET,
   SYNC_CONFIGS,
   SYNC_FILES_CONTEXT,
   SYNC_PLAN,
   SYNC_STATUS,
   SYNC_STATUS_IN_STEP,
   TARGET,
+  USERS,
 } from '../stories/support/fixtures';
 
 const syncViewStory = readFileSync(
@@ -48,6 +54,55 @@ describe('catalogue fixtures [Unit]', () => {
     expect(context.covered).toBe(
       status.repositories.filter((row) => row.cells.files.state !== 'off').length,
     );
+  });
+
+  it('answers every read needed to open the root installation views', async () => {
+    const api = fixtureApi();
+    const [target, repositories, users, invitations, audit, failures] = await Promise.all([
+      api.fetchRootTargetSettings(TARGET.id),
+      api.fetchRootRepositories(TARGET.id, {
+        query: '',
+        sort: 'name_asc',
+        limit: 20,
+        state: 'all',
+        files: [],
+        setting: { mode: 'all' },
+      }),
+      api.fetchRootTargetUsers(TARGET.id, {
+        query: '',
+        sort: 'name_asc',
+        limit: 20,
+        roles: [],
+        statuses: [],
+      }),
+      api.fetchRootTargetInvitations(TARGET.id, {
+        query: '',
+        sort: 'created_newest',
+        limit: 20,
+        roles: [],
+        statuses: [],
+      }),
+      api.fetchRootTargetAudit(TARGET.id, { query: '', sort: 'newest', limit: 20 }),
+      api.fetchRootTargetFailures(TARGET.id, {
+        query: '',
+        sort: 'newest',
+        limit: 20,
+        kind: 'all',
+      }),
+    ]);
+
+    expect(target).toEqual(ROOT_TARGET);
+    expect(target.access_source).toBe('root');
+    expect(target.capabilities).toEqual({ read: true, write: false, manage_target_users: false });
+    expect(repositories.items).toHaveLength(REPOSITORIES.length);
+    expect(users.items).toHaveLength(USERS.length);
+    expect(invitations.items).toHaveLength(INVITATIONS.length);
+    expect(audit.items).toHaveLength(AUDIT.length);
+    expect(failures.items).toHaveLength(FAILURES.length);
+    await expect(api.fetchRootElevation(TARGET.id)).rejects.toMatchObject({
+      status: 404,
+      code: 'not_found',
+    });
   });
 
   it('keeps the settled sync story settled across the whole fleet', () => {
