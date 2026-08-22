@@ -202,9 +202,9 @@ func TestPendingCIActivationStopsWhenWaitingReactionCannotBePublished(t *testing
 func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 	t.Parallel()
 	artifacts := &pendingCIArtifactsStub{labels: []string{
-		github.LabelPendingCIMerge,
-		github.LabelPendingCISquash,
-		github.LegacyLabelPendingCIRebase,
+		LabelPendingCIMerge,
+		LabelPendingCISquash,
+		LegacyLabelPendingCIRebase,
 		"unrelated",
 	}}
 	command := &PendingCICommand{
@@ -219,7 +219,7 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			Owner:   "owner", Repository: "repository", PullRequest: 198,
 			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 		},
 	)
 	if err != nil {
@@ -229,8 +229,8 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 		t.Fatalf("activation failures = %+v", failures)
 	}
 	if !equalStrings(artifacts.removedLabels, []string{
-		github.LabelPendingCIMerge,
-		github.LegacyLabelPendingCIRebase,
+		LabelPendingCIMerge,
+		LegacyLabelPendingCIRebase,
 	}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
 	}
@@ -238,8 +238,8 @@ func TestPendingCIActivationRemovesActionOwnedConflictingLabels(t *testing.T) {
 
 func TestPendingCIActivationKeepsCurrentLabelWhenIncomingCommandIsStale(t *testing.T) {
 	t.Parallel()
-	currentLabel := github.LabelPendingCIMerge
-	incomingLabel := github.LabelPendingCISquash
+	currentLabel := LabelPendingCIMerge
+	incomingLabel := LabelPendingCISquash
 	artifacts := &pendingCIArtifactsStub{labels: []string{currentLabel}}
 	command := &PendingCICommand{
 		Store: pendingCICommandStoreStub{
@@ -297,7 +297,7 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			Owner:   "owner", Repository: "repository", PullRequest: 198,
 			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 		},
 	)
 	if err != nil {
@@ -316,7 +316,7 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 
 func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 	t.Parallel()
-	methodLabel := github.LabelPendingCISquash
+	methodLabel := LabelPendingCISquash
 	missing := &github.APIError{StatusCode: 404}
 	artifacts := &pendingCIArtifactsStub{
 		removeLabelErrors: map[string]error{methodLabel: missing},
@@ -349,7 +349,7 @@ func TestPendingCIActivationRollbackTreatsMissingLabelsAsClean(t *testing.T) {
 func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	t.Parallel()
 	current := pendingci.Request{
-		ID: 7, Label: github.LabelPendingCIMerge, SourceCommentID: 202,
+		ID: 7, Label: LabelPendingCIMerge, SourceCommentID: 202,
 	}
 	artifacts := &pendingCIArtifactsStub{}
 	command := &PendingCICommand{
@@ -367,7 +367,7 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			Owner:   "owner", Repository: "repository", PullRequest: 198,
 			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 		},
 	)
 	if err != nil {
@@ -376,7 +376,7 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	if !failures.Ambiguous || failures.Command != nil {
 		t.Fatalf("activation failures = %+v", failures)
 	}
-	if !equalStrings(artifacts.removedLabels, []string{github.LabelPendingCISquash}) {
+	if !equalStrings(artifacts.removedLabels, []string{LabelPendingCISquash}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
 	}
 }
@@ -420,7 +420,7 @@ func TestPendingCIActivationSerializesApprovalWithCleanup(t *testing.T) {
 				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 				Owner:   "owner", Repository: "repository", PullRequest: 198,
 				CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-				Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+				Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 			},
 		)
 		activationDone <- err
@@ -490,7 +490,7 @@ func TestPendingCIActivationRechecksOwnershipAfterHandoff(t *testing.T) {
 				Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 				Owner:   "owner", Repository: "repository", PullRequest: 198,
 				CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-				Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+				Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 			},
 		)
 		activationDone <- activationResult{failures: failures, err: err}
@@ -540,7 +540,7 @@ func TestPendingCIActivationStopsWhenApprovalFails(t *testing.T) {
 			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
 			Owner:   "owner", Repository: "repository", PullRequest: 198,
 			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
-			Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
 		},
 	)
 	if err != nil {

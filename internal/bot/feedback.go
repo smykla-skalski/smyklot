@@ -118,7 +118,7 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 	case feedback.Warning:
 		reaction = github.ReactionWarning
 	case feedback.Pending:
-		reaction = github.ReactionPendingCI
+		reaction = ReactionPendingCI
 	case feedback.Success:
 	}
 

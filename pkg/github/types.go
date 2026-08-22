@@ -209,12 +209,8 @@ const (
 	// ReactionCleanup represents cleanup command (❤️)
 	ReactionCleanup ReactionType = "heart"
 
-	// ReactionPendingCI represents waiting for CI (👀)
-	ReactionPendingCI ReactionType = "eyes"
-
-	// ReactionPendingCIService fences a service-owned wait from the Action
-	// runner without adding a second label to the pull request.
-	ReactionPendingCIService ReactionType = "hooray"
+	// ReactionHooray represents celebration (🎉)
+	ReactionHooray ReactionType = "hooray"
 )
 
 // Reaction represents a reaction on a comment
@@ -225,47 +221,6 @@ type Reaction struct {
 	// User is the username of the user who reacted
 	User string
 }
-
-const (
-	// LabelReactionApprove indicates PR was approved via 👍 reaction
-	LabelReactionApprove = "smyklot:reaction-approve"
-
-	// LabelReactionMerge indicates PR was merged via 🚀 reaction
-	LabelReactionMerge = "smyklot:reaction-merge"
-
-	// LabelReactionCleanup indicates cleanup was triggered via ❤️ reaction
-	LabelReactionCleanup = "smyklot:reaction-cleanup"
-
-	// LegacyLabelPendingCIServiceOwner is removed from pull requests created by
-	// older service versions. New requests use only their method label.
-	LegacyLabelPendingCIServiceOwner = "smyklot:pending:ci:service"
-
-	// LabelPendingCIMerge indicates PR is waiting for CI before merge
-	LabelPendingCIMerge = "smyklot:pending:ci"
-
-	// LabelPendingCISquash indicates PR is waiting for CI before squash merge
-	LabelPendingCISquash = "smyklot:pending:ci:squash"
-
-	// LabelPendingCIRebase indicates PR is waiting for CI before rebase merge
-	LabelPendingCIRebase = "smyklot:pending:ci:rebase"
-
-	// LabelPendingCIMergeRequired indicates PR is waiting for required CI only before merge
-	LabelPendingCIMergeRequired = "smyklot:pending:ci:required"
-
-	// LabelPendingCISquashRequired indicates PR is waiting for required CI only before squash merge
-	LabelPendingCISquashRequired = "smyklot:pending:ci:squash:required"
-
-	// LabelPendingCIRebaseRequired indicates PR is waiting for required CI only before rebase merge
-	LabelPendingCIRebaseRequired = "smyklot:pending:ci:rebase:required"
-
-	// Legacy pending-CI labels remain readable during the organization migration.
-	LegacyLabelPendingCIMerge          = "smyklot:pending-ci"
-	LegacyLabelPendingCISquash         = "smyklot:pending-ci:squash"
-	LegacyLabelPendingCIRebase         = "smyklot:pending-ci:rebase"
-	LegacyLabelPendingCIMergeRequired  = "smyklot:pending-ci:required"
-	LegacyLabelPendingCISquashRequired = "smyklot:pending-ci:squash:required"
-	LegacyLabelPendingCIRebaseRequired = "smyklot:pending-ci:rebase:required"
-)
 
 // MergeMethod represents the type of merge method to use
 type MergeMethod string

@@ -254,7 +254,7 @@ func handlePendingCIPassed(
 	_ = client.RemoveLabel(ctx, repoOwner, repoName, prNumber, pr.Label)
 
 	// Update pending CI reaction from 👀 to 👍
-	_ = client.UpdatePendingCIReaction(ctx, repoOwner, repoName, prNumber, botUsername)
+	_ = settlePendingCIReaction(ctx, client, repoOwner, repoName, prNumber, botUsername)
 
 	// Post success feedback
 	// We don't know who requested the merge, so use a generic message
@@ -294,6 +294,64 @@ func mergeHeadChanged(err error) bool {
 	}
 
 	return true
+}
+
+// settlePendingCIReaction finds comments with the bot's "eyes" reaction and replaces with "+1"
+//
+// This is used after a pending-ci merge succeeds to update the visual feedback.
+// It searches all comments on the PR, finds ones with "eyes" reaction from the bot,
+// removes the "eyes" reaction, and adds a "+1" (thumbs up) reaction.
+func settlePendingCIReaction(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo string,
+	prNumber int,
+	botUsername string,
+) error {
+	// Get all comments on the PR
+	comments, err := client.GetPRComments(ctx, owner, repo, prNumber)
+	if err != nil {
+		return err
+	}
+
+	// Check each comment for bot's "eyes" reaction
+	for _, comment := range comments {
+		commentIDFloat, ok := comment["id"].(float64)
+		if !ok {
+			continue
+		}
+
+		commentID := int(commentIDFloat)
+
+		// Get reactions for this comment
+		reactions, err := client.GetCommentReactions(ctx, owner, repo, commentID)
+		if err != nil {
+			continue // Skip comments we can't get reactions for
+		}
+
+		// Check if bot has an "eyes" reaction on this comment
+		hasBotEyesReaction := false
+
+		for _, reaction := range reactions {
+			if reaction.User == botUsername && reaction.Type == ReactionPendingCI {
+				hasBotEyesReaction = true
+
+				break
+			}
+		}
+
+		if hasBotEyesReaction {
+			// Remove the "eyes" reaction
+			_ = client.RemoveReactionByUser(
+				ctx, owner, repo, commentID, ReactionPendingCI, botUsername,
+			)
+
+			// Add "+1" (thumbs up) reaction
+			_ = client.AddReaction(ctx, owner, repo, commentID, github.ReactionSuccess)
+		}
+	}
+
+	return nil
 }
 
 // postPendingCIError posts error feedback and removes a request that cannot be completed.

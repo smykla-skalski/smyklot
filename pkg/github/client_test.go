@@ -158,7 +158,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 
 			err = client.RemoveReactionByUser(
 				context.Background(), "owner", "repo", 123,
-				github.ReactionPendingCI, "smyklot[bot]",
+				github.ReactionEyes, "smyklot[bot]",
 			)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(deleted).To(Equal([]string{

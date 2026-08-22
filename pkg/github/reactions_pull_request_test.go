@@ -23,16 +23,16 @@ func TestPullRequestServiceReactionLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := client.AddPullRequestReaction(
-		t.Context(), "owner", "repo", 42, github.ReactionPendingCIService,
+		t.Context(), "owner", "repo", 42, github.ReactionHooray,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if state.added != github.ReactionPendingCIService {
+	if state.added != github.ReactionHooray {
 		t.Fatalf("added reaction = %q", state.added)
 	}
 	found, err := client.HasPullRequestReaction(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestPullRequestServiceReactionLifecycle(t *testing.T) {
 	}
 	if err := client.RemovePullRequestReactionByUser(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestPullRequestServiceReactionRemovalRestartsAfterPageShift(t *testing.T) {
 	}
 	if err := client.RemovePullRequestReactionByUser(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func (state *pullRequestReactionState) recordAddedReaction(
 
 func TestHasPullRequestCommentReactionFindsBotReactionOnLaterPages(t *testing.T) {
 	t.Parallel()
-	server := httptest.NewServer(http.HandlerFunc(paginatedPendingCIReactionHandler))
+	server := httptest.NewServer(http.HandlerFunc(paginatedReactionHandler))
 	defer server.Close()
 
 	client, err := github.NewClient("test-token", server.URL)
@@ -193,7 +193,7 @@ func TestHasPullRequestCommentReactionFindsBotReactionOnLaterPages(t *testing.T)
 	}
 	found, err := client.HasPullRequestCommentReaction(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -203,18 +203,18 @@ func TestHasPullRequestCommentReactionFindsBotReactionOnLaterPages(t *testing.T)
 	}
 }
 
-func paginatedPendingCIReactionHandler(w http.ResponseWriter, r *http.Request) {
+func paginatedReactionHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/repos/owner/repo/issues/42/comments":
-		writePendingCICommentPage(w, r)
+		writeCommentPage(w, r)
 	case "/repos/owner/repo/issues/comments/101/reactions":
-		writePendingCIReactionPage(w, r)
+		writeReactionPage(w, r)
 	default:
-		writeEmptyPendingCIReactionPage(w, r)
+		writeEmptyReactionPage(w, r)
 	}
 }
 
-func writePendingCICommentPage(w http.ResponseWriter, r *http.Request) {
+func writeCommentPage(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page != 1 {
 		_ = json.NewEncoder(w).Encode([]map[string]int{{"id": 101}})
@@ -228,7 +228,7 @@ func writePendingCICommentPage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(comments)
 }
 
-func writePendingCIReactionPage(w http.ResponseWriter, r *http.Request) {
+func writeReactionPage(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page != 1 {
 		_ = json.NewEncoder(w).Encode([]map[string]any{{
@@ -247,7 +247,7 @@ func writePendingCIReactionPage(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(reactions)
 }
 
-func writeEmptyPendingCIReactionPage(w http.ResponseWriter, r *http.Request) {
+func writeEmptyReactionPage(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("page") == "1" {
 		_ = json.NewEncoder(w).Encode([]map[string]any{})
 
@@ -279,7 +279,7 @@ func TestHasPullRequestCommentReactionIgnoresOtherReactions(t *testing.T) {
 	}
 	found, err := client.HasPullRequestCommentReaction(
 		context.Background(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -322,7 +322,7 @@ func TestRemovePullRequestCommentReactionsByUserRemovesEveryMatch(t *testing.T) 
 	}
 	if err := client.RemovePullRequestCommentReactionsByUser(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
-		github.ReactionPendingCIService,
+		github.ReactionHooray,
 	); err != nil {
 		t.Fatal(err)
 	}

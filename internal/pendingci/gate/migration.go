@@ -106,7 +106,7 @@ func (g *Gate) ReconcileServiceArtifacts(
 	cleaned := make(map[int]struct{})
 	var cleanupErr error
 	for _, pr := range prs {
-		legacy := bot.PullRequestHasLabel(pr, github.LegacyLabelPendingCIServiceOwner)
+		legacy := bot.PullRequestHasLabel(pr, bot.LegacyLabelPendingCIServiceOwner)
 		labels := methodLabels(pr)
 		if !inspectAll && !legacy && len(labels) == 0 {
 			continue
@@ -174,7 +174,7 @@ func knownServiceReaction(
 	}
 	found, err := client.HasPullRequestReaction(
 		ctx, repository.Owner, repository.Name, pullRequest,
-		botUsername, github.ReactionPendingCIService,
+		botUsername, bot.ReactionPendingCIService,
 	)
 	if err != nil {
 		return false, fmt.Errorf("inspect pending CI service reaction: %w", err)
@@ -240,7 +240,7 @@ func (g *Gate) reconcilePendingCIServiceArtifactLocked(
 	if !serviceOwned {
 		serviceOwned, err = client.HasPullRequestReaction(
 			ctx, repository.Owner, repository.Name, pullRequest,
-			g.botUsername, github.ReactionPendingCIService,
+			g.botUsername, bot.ReactionPendingCIService,
 		)
 		if err != nil {
 			return false, fmt.Errorf("read pending CI service reaction: %w", err)
@@ -270,7 +270,7 @@ func migrateArmedPendingCIServiceArtifact(
 	}
 	if err := client.AddPullRequestReaction(
 		ctx, repository.Owner, repository.Name,
-		request.PullRequest, github.ReactionPendingCIService,
+		request.PullRequest, bot.ReactionPendingCIService,
 	); err != nil {
 		return fmt.Errorf("migrate pending CI service fence: %w", err)
 	}
@@ -279,7 +279,7 @@ func migrateArmedPendingCIServiceArtifact(
 		"remove legacy pending CI service label",
 		client.RemoveLabel(
 			ctx, repository.Owner, repository.Name, request.PullRequest,
-			github.LegacyLabelPendingCIServiceOwner,
+			bot.LegacyLabelPendingCIServiceOwner,
 		),
 	)
 }
@@ -303,13 +303,13 @@ func cleanupOrphanPendingCIServiceArtifacts(
 	}
 	if err := client.RemovePullRequestReactionByUser(
 		ctx, repository.Owner, repository.Name, pullRequest,
-		botUsername, github.ReactionPendingCIService,
+		botUsername, bot.ReactionPendingCIService,
 	); err != nil {
 		return fmt.Errorf("remove orphan pending CI service fence: %w", err)
 	}
 	if err := client.RemovePullRequestCommentReactionsByUser(
 		ctx, repository.Owner, repository.Name, pullRequest,
-		botUsername, github.ReactionPendingCIService,
+		botUsername, bot.ReactionPendingCIService,
 	); err != nil {
 		return fmt.Errorf("remove legacy pending CI service reaction: %w", err)
 	}
@@ -321,7 +321,7 @@ func cleanupOrphanPendingCIServiceArtifacts(
 		"remove legacy pending CI service label",
 		client.RemoveLabel(
 			ctx, repository.Owner, repository.Name, pullRequest,
-			github.LegacyLabelPendingCIServiceOwner,
+			bot.LegacyLabelPendingCIServiceOwner,
 		),
 	)
 }

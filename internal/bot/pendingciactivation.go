@@ -137,7 +137,7 @@ func addPendingCIServiceReaction(
 	}
 	failures.Reaction = artifacts.AddPullRequestReaction(
 		ctx, request.Owner, request.Repository,
-		request.PullRequest, github.ReactionPendingCIService,
+		request.PullRequest, ReactionPendingCIService,
 	)
 	if failures.Reaction == nil {
 		return false, nil
@@ -476,7 +476,7 @@ func rollbackPendingCIArtifacts(
 	if !ownership.serviceFence {
 		if err := artifacts.RemovePullRequestReactionByUser(
 			ctx, request.Owner, request.Repository,
-			request.PullRequest, request.Runtime.BotUsername, github.ReactionPendingCIService,
+			request.PullRequest, request.Runtime.BotUsername, ReactionPendingCIService,
 		); err != nil {
 			rollbackErr = errors.Join(
 				rollbackErr,

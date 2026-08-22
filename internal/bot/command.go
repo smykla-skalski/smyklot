@@ -666,7 +666,7 @@ func executePendingCIMerge(
 			return nil, nil
 		}
 		_ = client.AddReaction(
-			ctx, rc.RepoOwner, rc.RepoName, commentID, github.ReactionPendingCI,
+			ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCI,
 		)
 		if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
 			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
@@ -790,21 +790,21 @@ func getPendingCILabel(method github.MergeMethod, requiredOnly bool) string {
 	if requiredOnly {
 		switch method {
 		case github.MergeMethodSquash:
-			return github.LabelPendingCISquashRequired
+			return LabelPendingCISquashRequired
 		case github.MergeMethodRebase:
-			return github.LabelPendingCIRebaseRequired
+			return LabelPendingCIRebaseRequired
 		default:
-			return github.LabelPendingCIMergeRequired
+			return LabelPendingCIMergeRequired
 		}
 	}
 
 	switch method {
 	case github.MergeMethodSquash:
-		return github.LabelPendingCISquash
+		return LabelPendingCISquash
 	case github.MergeMethodRebase:
-		return github.LabelPendingCIRebase
+		return LabelPendingCIRebase
 	default:
-		return github.LabelPendingCIMerge
+		return LabelPendingCIMerge
 	}
 }
 

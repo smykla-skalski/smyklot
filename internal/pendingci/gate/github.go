@@ -91,7 +91,7 @@ func (backend *Backend) Observe(
 	}
 	if err := client.AddPullRequestReaction(
 		ctx, owner, repository, request.PullRequest,
-		github.ReactionPendingCIService,
+		bot.ReactionPendingCIService,
 	); err != nil {
 		return pendingci.Observation{}, fmt.Errorf(
 			"restore pending CI service handoff fence: %w", err,
@@ -596,7 +596,7 @@ func (backend *Backend) cleanupArtifactsExclusive(
 			"remove pending CI service fence",
 			client.RemovePullRequestReactionByUser(
 				ctx, owner, repository, request.PullRequest,
-				backend.botUsername, github.ReactionPendingCIService,
+				backend.botUsername, bot.ReactionPendingCIService,
 			),
 		))
 	}
@@ -606,7 +606,7 @@ func (backend *Backend) cleanupArtifactsExclusive(
 			"remove pending CI reaction",
 			client.RemoveReactionByUser(
 				ctx, owner, repository, commentID,
-				github.ReactionPendingCI, backend.botUsername,
+				bot.ReactionPendingCI, backend.botUsername,
 			),
 		))
 	}

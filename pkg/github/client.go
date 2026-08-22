@@ -618,61 +618,6 @@ func (c *Client) DeleteComment(ctx context.Context, owner, repo string, commentI
 	return wrapError(ErrAPIRequest, http.MethodDelete, path, err)
 }
 
-// UpdatePendingCIReaction finds comments with the bot's "eyes" reaction and replaces with "+1"
-//
-// This is used after a pending-ci merge succeeds to update the visual feedback.
-// It searches all comments on the PR, finds ones with "eyes" reaction from the bot,
-// removes the "eyes" reaction, and adds a "+1" (thumbs up) reaction.
-func (c *Client) UpdatePendingCIReaction(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-	botUsername string,
-) error {
-	// Get all comments on the PR
-	comments, err := c.GetPRComments(ctx, owner, repo, prNumber)
-	if err != nil {
-		return err
-	}
-
-	// Check each comment for bot's "eyes" reaction
-	for _, comment := range comments {
-		commentIDFloat, ok := comment["id"].(float64)
-		if !ok {
-			continue
-		}
-
-		commentID := int(commentIDFloat)
-
-		// Get reactions for this comment
-		reactions, err := c.GetCommentReactions(ctx, owner, repo, commentID)
-		if err != nil {
-			continue // Skip comments we can't get reactions for
-		}
-
-		// Check if bot has an "eyes" reaction on this comment
-		hasBotEyesReaction := false
-
-		for _, reaction := range reactions {
-			if reaction.User == botUsername && reaction.Type == ReactionPendingCI {
-				hasBotEyesReaction = true
-
-				break
-			}
-		}
-
-		if hasBotEyesReaction {
-			// Remove the "eyes" reaction
-			_ = c.RemoveReactionByUser(ctx, owner, repo, commentID, ReactionPendingCI, botUsername)
-
-			// Add "+1" (thumbs up) reaction
-			_ = c.AddReaction(ctx, owner, repo, commentID, ReactionSuccess)
-		}
-	}
-
-	return nil
-}
-
 // HasWritePermission checks if the user has write/admin permission to the repository
 func (c *Client) HasWritePermission(ctx context.Context, owner, repo, username string) (bool, error) {
 	path := fmt.Sprintf("/repos/%s/%s/collaborators/%s/permission", owner, repo, username)

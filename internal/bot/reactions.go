@@ -11,6 +11,17 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/permissions"
 )
 
+const (
+	// LabelReactionApprove indicates PR was approved via 👍 reaction
+	LabelReactionApprove = "smyklot:reaction-approve"
+
+	// LabelReactionMerge indicates PR was merged via 🚀 reaction
+	LabelReactionMerge = "smyklot:reaction-merge"
+
+	// LabelReactionCleanup indicates cleanup was triggered via ❤️ reaction
+	LabelReactionCleanup = "smyklot:reaction-cleanup"
+)
+
 // handleReactions processes reaction-based approvals and merges.
 func handleReactions(
 	ctx context.Context,
@@ -136,7 +147,7 @@ func handleRemovedReactions(
 	labels []string,
 ) error {
 	// Check if approve reaction was removed
-	if slices.Contains(labels, github.LabelReactionApprove) &&
+	if slices.Contains(labels, LabelReactionApprove) &&
 		!reactionMap[github.ReactionApprove] {
 		// Approve reaction was removed, unapprove the PR
 		if err := client.DismissReviewByUsername(
@@ -156,12 +167,12 @@ func handleRemovedReactions(
 			rc.RepoOwner,
 			rc.RepoName,
 			prNum,
-			github.LabelReactionApprove,
+			LabelReactionApprove,
 		)
 	}
 
 	// Check if merge reaction was removed
-	if slices.Contains(labels, github.LabelReactionMerge) &&
+	if slices.Contains(labels, LabelReactionMerge) &&
 		!reactionMap[github.ReactionMerge] {
 		// Get PR info to check if it's already merged
 		info, err := client.GetPRInfo(
@@ -197,12 +208,12 @@ func handleRemovedReactions(
 			rc.RepoOwner,
 			rc.RepoName,
 			prNum,
-			github.LabelReactionMerge,
+			LabelReactionMerge,
 		)
 	}
 
 	// Check if cleanup reaction was removed
-	if slices.Contains(labels, github.LabelReactionCleanup) &&
+	if slices.Contains(labels, LabelReactionCleanup) &&
 		!reactionMap[github.ReactionCleanup] {
 		// Cleanup reaction was removed, just remove the label
 		// (no action needed since cleanup is one-time operation)
@@ -211,7 +222,7 @@ func handleRemovedReactions(
 			rc.RepoOwner,
 			rc.RepoName,
 			prNum,
-			github.LabelReactionCleanup,
+			LabelReactionCleanup,
 		)
 	}
 
@@ -256,7 +267,7 @@ func handleReactionApprove(
 			rc.RepoOwner,
 			rc.RepoName,
 			prNum,
-			github.LabelReactionApprove,
+			LabelReactionApprove,
 		)
 		return nil
 	}
@@ -281,7 +292,7 @@ func handleReactionApprove(
 		rc.RepoOwner,
 		rc.RepoName,
 		prNum,
-		github.LabelReactionApprove,
+		LabelReactionApprove,
 	)
 
 	// Post success feedback
@@ -375,7 +386,7 @@ func handleReactionMerge(
 				rc.RepoOwner,
 				rc.RepoName,
 				prNum,
-				github.LabelReactionMerge,
+				LabelReactionMerge,
 			)
 
 			// Post auto-merge enabled feedback
@@ -401,7 +412,7 @@ func handleReactionMerge(
 		rc.RepoOwner,
 		rc.RepoName,
 		prNum,
-		github.LabelReactionMerge,
+		LabelReactionMerge,
 	)
 
 	// Post success feedback
@@ -442,7 +453,7 @@ func handleReactionCleanup(
 		rc.RepoOwner,
 		rc.RepoName,
 		prNum,
-		github.LabelReactionCleanup,
+		LabelReactionCleanup,
 	)
 
 	return nil

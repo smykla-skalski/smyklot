@@ -53,12 +53,12 @@ func pendingCIServiceOwnedForState(
 	botUsername string,
 	state github.PullRequestState,
 ) (bool, error) {
-	if HasLabel(state.Labels, github.LegacyLabelPendingCIServiceOwner) {
+	if HasLabel(state.Labels, LegacyLabelPendingCIServiceOwner) {
 		return true, nil
 	}
 	owned, err := reader.HasPullRequestReaction(
 		ctx, owner, repository, pullRequest, botUsername,
-		github.ReactionPendingCIService,
+		ReactionPendingCIService,
 	)
 	if err != nil {
 		return false, fmt.Errorf("read pending CI service ownership: %w", err)
