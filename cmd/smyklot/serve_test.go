@@ -110,7 +110,7 @@ var _ = Describe("Serve configuration [Unit]", func() {
 		Expect(cfg.pollInterval).To(Equal(defaultPollInterval))
 		Expect(cfg.pendingCIQuietPeriod).To(Equal(defaultPendingCIQuietPeriod))
 		Expect(cfg.pathIndexInterval).To(Equal(defaultPathIndexInterval))
-		Expect(cfg.botUsername).To(Equal(defaultBotUsername))
+		Expect(cfg.botUsername).To(Equal(bot.DefaultBotUsername))
 		Expect(cfg.database).To(Equal(defaultState))
 	})
 

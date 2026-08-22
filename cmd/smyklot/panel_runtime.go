@@ -524,7 +524,7 @@ func installationSnapshot(
 		}
 		fullName := repository.FullName
 		if fullName == "" {
-			fullName = repoFullName(repository.Owner, repository.Name)
+			fullName = bot.RepoFullName(repository.Owner, repository.Name)
 		}
 		snapshot.Repositories = append(snapshot.Repositories, storage.RepositorySnapshot{
 			ID:            storage.RepositoryID(repository.ID),

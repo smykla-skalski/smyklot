@@ -278,7 +278,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
-			botUsername:   defaultBotUsername,
+			botUsername:   bot.DefaultBotUsername,
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     botConfig,
@@ -493,7 +493,7 @@ var _ = Describe("Webhook service [Unit]", func() {
 				return &serveConfig{
 					database: statePath, listenAddress: "127.0.0.1:0",
 					webhookPath: defaultWebhookPath, webhookSecret: []byte(testSecret),
-					apiBaseURL: endpoint.URL, botUsername: defaultBotUsername,
+					apiBaseURL: endpoint.URL, botUsername: bot.DefaultBotUsername,
 					appClientID: "Iv1.test", appPrivateKey: githubtest.AppPrivateKey(),
 					botConfig: config.Default(), logWriter: io.Discard,
 				}

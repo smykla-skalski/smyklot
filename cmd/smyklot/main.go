@@ -13,22 +13,21 @@ import (
 )
 
 const (
-	appName            = "smyklot"      // The binary's own name, in usage output
-	defaultBotUsername = "smyklot[bot]" // Default GitHub App bot username
-	flagToken          = "token"
-	flagCommentBody    = "comment-body"
-	flagCommentID      = "comment-id"
-	flagPRNumber       = "pr-number"
-	flagRepoOwner      = "repo-owner"
-	flagRepoName       = "repo-name"
-	flagCommentAuthor  = "comment-author"
-	descToken          = "GitHub API token" //nolint:gosec // Flag description, not a credential
-	descCommentBody    = "PR comment body"
-	descCommentID      = "PR comment ID"
-	descPRNumber       = "Pull request number"
-	descRepoOwner      = "Repository owner"
-	descRepoName       = "Repository name"
-	descCommentAuthor  = "Comment author username"
+	appName           = "smyklot" // The binary's own name, in usage output
+	flagToken         = "token"
+	flagCommentBody   = "comment-body"
+	flagCommentID     = "comment-id"
+	flagPRNumber      = "pr-number"
+	flagRepoOwner     = "repo-owner"
+	flagRepoName      = "repo-name"
+	flagCommentAuthor = "comment-author"
+	descToken         = "GitHub API token" //nolint:gosec // Flag description, not a credential
+	descCommentBody   = "PR comment body"
+	descCommentID     = "PR comment ID"
+	descPRNumber      = "Pull request number"
+	descRepoOwner     = "Repository owner"
+	descRepoName      = "Repository name"
+	descCommentAuthor = "Comment author username"
 )
 
 var rootCmd = &cobra.Command{
@@ -173,7 +172,7 @@ func loadRuntimeConfig(cmd *cobra.Command) *bot.RuntimeConfig {
 	// Load bot username with default for GitHub App
 	loadEnvIfEmpty(&rc.BotUsername, bot.EnvBotUsername)
 	if rc.BotUsername == "" {
-		rc.BotUsername = defaultBotUsername
+		rc.BotUsername = bot.DefaultBotUsername
 	}
 
 	return rc

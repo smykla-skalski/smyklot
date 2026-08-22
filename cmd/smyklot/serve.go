@@ -316,7 +316,7 @@ func loadServeConfig(cmd *cobra.Command) (*serveConfig, error) {
 	}
 
 	if cfg.botUsername == "" {
-		cfg.botUsername = defaultBotUsername
+		cfg.botUsername = bot.DefaultBotUsername
 	}
 
 	if len(cfg.webhookSecret) == 0 {

@@ -359,7 +359,7 @@ func (backend *githubPendingCIBackend) MergeAtHead(
 		)
 	}
 
-	return mergePendingPRAtHead(
+	return bot.MergePendingPRAtHead(
 		ctx, client, owner, repository, request.PullRequest, method, headSHA,
 	)
 }

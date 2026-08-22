@@ -32,11 +32,11 @@ func (s *server) drainLegacyPendingCILabels(
 	skip map[int]struct{},
 ) error {
 	for _, pr := range prs {
-		candidates := pendingCILabels(pr)
+		candidates := bot.PendingCILabels(pr)
 		if len(candidates) == 0 {
 			continue
 		}
-		pullRequest := extractPRNumber(pr)
+		pullRequest := bot.ExtractPRNumber(pr)
 		if pullRequest == 0 {
 			return fmt.Errorf("drain legacy pending CI label: invalid pull request number")
 		}
@@ -50,9 +50,9 @@ func (s *server) drainLegacyPendingCILabels(
 		labels := make([]pendingci.LegacyPendingCILabel, 0, len(candidates))
 		for _, candidate := range candidates {
 			labels = append(labels, pendingci.LegacyPendingCILabel{
-				MergeMethod:        pendingci.MergeMethod(candidate.method),
-				RequiredChecksOnly: candidate.requiredOnly,
-				Label:              candidate.label,
+				MergeMethod:        pendingci.MergeMethod(candidate.Method),
+				RequiredChecksOnly: candidate.RequiredOnly,
+				Label:              candidate.Label,
 			})
 		}
 
@@ -63,7 +63,7 @@ func (s *server) drainLegacyPendingCILabels(
 				result, drainErr = s.store.DrainLegacy(ctx, pendingci.LegacyDrainRequest{
 					TargetID: targetID, InstallationID: installationID,
 					RepositoryID:       storage.RepositoryID(repository.ID),
-					RepositoryFullName: repoFullName(repository.Owner, repository.Name),
+					RepositoryFullName: bot.RepoFullName(repository.Owner, repository.Name),
 					PullRequest:        pullRequest, HeadSHA: headSHA,
 					BaseBranch: baseBranch, Labels: labels, DrainedAt: time.Now().UTC(),
 				})
@@ -106,12 +106,12 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 	cleaned := make(map[int]struct{})
 	var cleanupErr error
 	for _, pr := range prs {
-		legacy := pullRequestHasLabel(pr, github.LegacyLabelPendingCIServiceOwner)
+		legacy := bot.PullRequestHasLabel(pr, github.LegacyLabelPendingCIServiceOwner)
 		labels := pendingCIMethodLabels(pr)
 		if !inspectAll && !legacy && len(labels) == 0 {
 			continue
 		}
-		pullRequest := extractPRNumber(pr)
+		pullRequest := bot.ExtractPRNumber(pr)
 		if pullRequest == 0 {
 			cleanupErr = errors.Join(cleanupErr, errors.New(
 				"reconcile pending CI service artifacts: invalid pull request number",
@@ -152,10 +152,10 @@ func (s *server) reconcilePendingCIServiceArtifacts(
 }
 
 func pendingCIMethodLabels(pr map[string]interface{}) []string {
-	candidates := pendingCILabels(pr)
+	candidates := bot.PendingCILabels(pr)
 	labels := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
-		labels = append(labels, candidate.label)
+		labels = append(labels, candidate.Label)
 	}
 
 	return labels

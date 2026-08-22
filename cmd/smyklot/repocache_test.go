@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -145,7 +146,7 @@ func TestRepoCacheKeepsIdentityAcrossRepositoryRename(t *testing.T) {
 		repository string,
 		_ *string,
 	) (string, error) {
-		name := repoFullName(owner, repository)
+		name := bot.RepoFullName(owner, repository)
 		loadCalls = append(loadCalls, name)
 		if name == "new/repository" {
 			return "action", nil

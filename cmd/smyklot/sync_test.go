@@ -11,6 +11,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -45,7 +46,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
-			botUsername:   defaultBotUsername,
+			botUsername:   bot.DefaultBotUsername,
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),

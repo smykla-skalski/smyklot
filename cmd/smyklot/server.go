@@ -246,7 +246,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		registry:                 registry,
 		metrics:                  metrics.New(registry),
 		configs:                  newRepoConfigCache(),
-		owners:                   newRepoCache(codeownersTTL, fetchCodeowners),
+		owners:                   newRepoCache(codeownersTTL, bot.FetchCodeowners),
 		readiness:                newReadiness(),
 		failures:                 newFailureLog(maxRecordedFailures),
 		jobs:                     make(chan job, queueDepth),

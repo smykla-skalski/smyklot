@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -8,51 +8,49 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
 var _ = Describe("Poll Pending CI [Unit]", func() {
-	Describe("bot.ParsePendingCILabel", func() {
+	Describe("ParsePendingCILabel", func() {
 		It("should parse smyklot:pending-ci label as merge method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCIMerge)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCIMerge)
 			Expect(method).To(Equal(github.MergeMethodMerge))
 			Expect(requiredOnly).To(BeFalse())
 			Expect(label).To(Equal(github.LabelPendingCIMerge))
 		})
 
 		It("should parse smyklot:pending-ci:squash label as squash method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCISquash)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCISquash)
 			Expect(method).To(Equal(github.MergeMethodSquash))
 			Expect(requiredOnly).To(BeFalse())
 			Expect(label).To(Equal(github.LabelPendingCISquash))
 		})
 
 		It("should parse smyklot:pending-ci:rebase label as rebase method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCIRebase)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCIRebase)
 			Expect(method).To(Equal(github.MergeMethodRebase))
 			Expect(requiredOnly).To(BeFalse())
 			Expect(label).To(Equal(github.LabelPendingCIRebase))
 		})
 
 		It("should parse smyklot:pending-ci:required label as required merge method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCIMergeRequired)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCIMergeRequired)
 			Expect(method).To(Equal(github.MergeMethodMerge))
 			Expect(requiredOnly).To(BeTrue())
 			Expect(label).To(Equal(github.LabelPendingCIMergeRequired))
 		})
 
 		It("should parse smyklot:pending-ci:squash:required label as required squash method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCISquashRequired)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCISquashRequired)
 			Expect(method).To(Equal(github.MergeMethodSquash))
 			Expect(requiredOnly).To(BeTrue())
 			Expect(label).To(Equal(github.LabelPendingCISquashRequired))
 		})
 
 		It("should parse smyklot:pending-ci:rebase:required label as required rebase method", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelPendingCIRebaseRequired)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelPendingCIRebaseRequired)
 			Expect(method).To(Equal(github.MergeMethodRebase))
 			Expect(requiredOnly).To(BeTrue())
 			Expect(label).To(Equal(github.LabelPendingCIRebaseRequired))
@@ -72,7 +70,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				{github.LegacyLabelPendingCIRebaseRequired, github.MergeMethodRebase, true},
 			}
 			for _, testCase := range cases {
-				method, required, label := bot.ParsePendingCILabel(testCase.label)
+				method, required, label := ParsePendingCILabel(testCase.label)
 				Expect(method).To(Equal(testCase.method))
 				Expect(required).To(Equal(testCase.required))
 				Expect(label).To(Equal(testCase.label))
@@ -80,14 +78,14 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 
 		It("should return empty string for non-pending-ci labels", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel("some-other-label")
+			method, requiredOnly, label := ParsePendingCILabel("some-other-label")
 			Expect(method).To(Equal(github.MergeMethod("")))
 			Expect(requiredOnly).To(BeFalse())
 			Expect(label).To(BeEmpty())
 		})
 
 		It("should return empty string for reaction labels", func() {
-			method, requiredOnly, label := bot.ParsePendingCILabel(github.LabelReactionApprove)
+			method, requiredOnly, label := ParsePendingCILabel(github.LabelReactionApprove)
 			Expect(method).To(Equal(github.MergeMethod("")))
 			Expect(requiredOnly).To(BeFalse())
 			Expect(label).To(BeEmpty())
@@ -113,9 +111,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 			result := filterPendingCIPRs(prs)
 			Expect(result).To(HaveLen(1))
-			Expect(extractPRNumber(result[0].prData)).To(Equal(1))
-			Expect(result[0].method).To(Equal(github.MergeMethodMerge))
-			Expect(result[0].label).To(Equal(github.LabelPendingCIMerge))
+			Expect(ExtractPRNumber(result[0].PRData)).To(Equal(1))
+			Expect(result[0].Method).To(Equal(github.MergeMethodMerge))
+			Expect(result[0].Label).To(Equal(github.LabelPendingCIMerge))
 		})
 
 		It("should filter PRs with pending-ci squash label", func() {
@@ -130,7 +128,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 			result := filterPendingCIPRs(prs)
 			Expect(result).To(HaveLen(1))
-			Expect(result[0].method).To(Equal(github.MergeMethodSquash))
+			Expect(result[0].Method).To(Equal(github.MergeMethodSquash))
 		})
 
 		It("should filter PRs with pending-ci rebase label", func() {
@@ -145,7 +143,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 			result := filterPendingCIPRs(prs)
 			Expect(result).To(HaveLen(1))
-			Expect(result[0].method).To(Equal(github.MergeMethodRebase))
+			Expect(result[0].Method).To(Equal(github.MergeMethodRebase))
 		})
 
 		It("should return empty slice when no PRs have pending-ci labels", func() {
@@ -172,7 +170,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			}}
 
 			Expect(filterPendingCIPRs(prs)).To(HaveLen(1))
-			Expect(pendingCILabels(prs[0])).To(HaveLen(1))
+			Expect(PendingCILabels(prs[0])).To(HaveLen(1))
 		})
 
 		It("should handle PRs without labels field", func() {
@@ -212,7 +210,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			result := filterPendingCIPRs(prs)
 			Expect(result).To(HaveLen(1))
 			// First label wins
-			Expect(result[0].method).To(Equal(github.MergeMethodMerge))
+			Expect(result[0].Method).To(Equal(github.MergeMethodMerge))
 		})
 
 		It("should filter multiple PRs with different pending-ci labels", func() {
@@ -242,24 +240,24 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 	})
 
-	Describe("extractPRNumber", func() {
+	Describe("ExtractPRNumber", func() {
 		It("should extract PR number from PR data", func() {
 			pr := map[string]interface{}{
 				"number": float64(42),
 			}
-			Expect(extractPRNumber(pr)).To(Equal(42))
+			Expect(ExtractPRNumber(pr)).To(Equal(42))
 		})
 
 		It("should return 0 for missing number field", func() {
 			pr := map[string]interface{}{}
-			Expect(extractPRNumber(pr)).To(Equal(0))
+			Expect(ExtractPRNumber(pr)).To(Equal(0))
 		})
 
 		It("should return 0 for invalid number type", func() {
 			pr := map[string]interface{}{
 				"number": "not-a-number",
 			}
-			Expect(extractPRNumber(pr)).To(Equal(0))
+			Expect(ExtractPRNumber(pr)).To(Equal(0))
 		})
 	})
 
@@ -346,10 +344,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
-					prData: map[string]interface{}{"number": float64(42)},
-					method: github.MergeMethodMerge,
-					label:  github.LabelPendingCIMerge,
+				pr := PendingCIPR{
+					PRData: map[string]interface{}{"number": float64(42)},
+					Method: github.MergeMethodMerge,
+					Label:  github.LabelPendingCIMerge,
 				}
 
 				err = processPendingCIPR(context.Background(), client, bc, "owner", "repo", pr, "smyklot[bot]")
@@ -399,9 +397,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				}))
 				client, err := github.NewClient("test-token", server.URL)
 				Expect(err).NotTo(HaveOccurred())
-				pr := pendingCIPR{
-					prData: map[string]interface{}{"number": float64(42)},
-					method: github.MergeMethodSquash, label: github.LabelPendingCISquash,
+				pr := PendingCIPR{
+					PRData: map[string]interface{}{"number": float64(42)},
+					Method: github.MergeMethodSquash, Label: github.LabelPendingCISquash,
 				}
 
 				err = processPendingCIPR(
@@ -478,10 +476,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
-					prData: map[string]interface{}{"number": float64(42)},
-					method: github.MergeMethodMerge,
-					label:  github.LabelPendingCIMerge,
+				pr := PendingCIPR{
+					PRData: map[string]interface{}{"number": float64(42)},
+					Method: github.MergeMethodMerge,
+					Label:  github.LabelPendingCIMerge,
 				}
 
 				err = processPendingCIPR(context.Background(), client, bc, "owner", "repo", pr, "smyklot[bot]")
@@ -551,10 +549,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
-					prData: map[string]interface{}{"number": float64(42)},
-					method: github.MergeMethodMerge,
-					label:  github.LabelPendingCIMerge,
+				pr := PendingCIPR{
+					PRData: map[string]interface{}{"number": float64(42)},
+					Method: github.MergeMethodMerge,
+					Label:  github.LabelPendingCIMerge,
 				}
 
 				err = processPendingCIPR(context.Background(), client, bc, "owner", "repo", pr, "smyklot[bot]")
@@ -633,10 +631,10 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				Expect(err).NotTo(HaveOccurred())
 
 				bc := config.Default()
-				pr := pendingCIPR{
-					prData: map[string]interface{}{"number": float64(42)},
-					method: github.MergeMethodSquash,
-					label:  github.LabelPendingCISquash,
+				pr := PendingCIPR{
+					PRData: map[string]interface{}{"number": float64(42)},
+					Method: github.MergeMethodSquash,
+					Label:  github.LabelPendingCISquash,
 				}
 
 				err = processPendingCIPR(context.Background(), client, bc, "owner", "repo", pr, "smyklot[bot]")

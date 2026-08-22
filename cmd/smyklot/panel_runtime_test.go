@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -47,7 +48,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
-			botUsername:   defaultBotUsername,
+			botUsername:   bot.DefaultBotUsername,
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),
@@ -83,7 +84,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
-			botUsername:   defaultBotUsername,
+			botUsername:   bot.DefaultBotUsername,
 			appClientID:   "Iv1.test",
 			appPrivateKey: githubtest.AppPrivateKey(),
 			botConfig:     config.Default(),

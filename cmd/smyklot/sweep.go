@@ -264,13 +264,13 @@ func (s *server) sweepInstallation(
 	var sweepErr error
 	for _, repo := range repos {
 		// The repository is named here rather than added to the context,
-		// because pollAllPRs adds it for the lines below that
+		// because bot.PollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(
 			ctx, client, storage.InstallationID(installation.ID), installation.ID, repo,
 			pollReactions,
 		); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
-				"repo", repoFullName(repo.Owner, repo.Name), "error", err)
+				"repo", bot.RepoFullName(repo.Owner, repo.Name), "error", err)
 			sweepErr = errors.Join(sweepErr, err)
 		}
 	}
@@ -399,7 +399,7 @@ func (s *server) sweepRepo(
 	// that.
 	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
 		logging.From(ctx).Warn("could not propose the configuration migration",
-			"repo", repoFullName(repo.Owner, repo.Name), "error", err)
+			"repo", bot.RepoFullName(repo.Owner, repo.Name), "error", err)
 	}
 	var target storage.Target
 	var repository storage.Repository
@@ -414,7 +414,7 @@ func (s *server) sweepRepo(
 
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
-	if bot.ServiceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
+	if bot.ServiceStandsDown(logging.With(ctx, "repo", bot.RepoFullName(repo.Owner, repo.Name)), bc) {
 		prs, err := s.handoffPendingCIToAction(ctx, client, repo)
 		if err != nil {
 			return err
@@ -422,7 +422,7 @@ func (s *server) sweepRepo(
 		return s.reconcileInactivePendingCIGate(ctx, client, target, repository, prs)
 	}
 
-	ctx = logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name))
+	ctx = logging.With(ctx, "repo", bot.RepoFullName(repo.Owner, repo.Name))
 	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
 	if err != nil {
 		return bot.NewGitHubError(bot.ErrGetPRs, err)
@@ -458,13 +458,13 @@ func (s *server) sweepRepo(
 
 	// The checker is built fresh rather than cached with the content, so it
 	// always holds the client carrying the current installation token
-	checker, err := checkerFromCodeowners(codeowners, client)
+	checker, err := bot.CheckerFromCodeowners(codeowners, client)
 	if err != nil {
 		return err
 	}
 	logging.From(ctx).Info("polling PR reactions")
 
-	return processAllPRs(
+	return bot.ProcessAllPRs(
 		ctx, client, checker, bc, repo.Owner, repo.Name, s.cfg.botUsername, prs,
 		s.reactionCommandEnvironment(storage.RepositoryID(repo.ID)), false,
 	)

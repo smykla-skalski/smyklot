@@ -158,7 +158,7 @@ func (c *repoCache[T]) Get(
 	client *github.Client,
 	owner, repo string,
 ) (T, error) {
-	return c.GetByKey(ctx, client, repoFullName(owner, repo), owner, repo)
+	return c.GetByKey(ctx, client, bot.RepoFullName(owner, repo), owner, repo)
 }
 
 // GetByKey decouples immutable cache identity from mutable GitHub lookup

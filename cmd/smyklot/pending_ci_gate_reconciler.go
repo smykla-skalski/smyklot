@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -52,7 +53,7 @@ func (reconciler *pendingCIGateReconciler) Reconcile(
 	if err != nil {
 		return fmt.Errorf("read pending CI repository gate: %w", err)
 	}
-	owner, name, err := parseRepo(repository.FullName)
+	owner, name, err := bot.ParseRepo(repository.FullName)
 	if err != nil {
 		return reconciler.block(ctx, gate, pendingCIGatePolicy(err))
 	}

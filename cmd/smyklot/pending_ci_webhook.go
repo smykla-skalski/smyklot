@@ -359,7 +359,7 @@ func (s *server) preparePendingCIReauthorization(
 	client := candidate.client
 	owner := candidate.owner
 	repository := candidate.repository
-	checker, err := newPermissionChecker(ctx, client, owner, repository)
+	checker, err := bot.NewPermissionChecker(ctx, client, owner, repository)
 	if err != nil {
 		return false, err
 	}

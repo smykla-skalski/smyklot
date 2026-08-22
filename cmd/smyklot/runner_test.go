@@ -198,7 +198,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 				webhookPath:   defaultWebhookPath,
 				webhookSecret: []byte(testSecret),
 				apiBaseURL:    endpoint.URL,
-				botUsername:   defaultBotUsername,
+				botUsername:   bot.DefaultBotUsername,
 				appClientID:   "Iv1.test",
 				appPrivateKey: githubtest.AppPrivateKey(),
 				botConfig:     config.Default(),
