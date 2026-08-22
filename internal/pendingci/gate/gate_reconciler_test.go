@@ -93,6 +93,45 @@ func TestPendingCIGateBlockReasonHidesGitHubRequestDetails(t *testing.T) {
 				"Refresh the repository and try again.",
 		},
 		{
+			name: "check runs repository ruleset plan",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/acme/check-runs/rulesets", errors.New("Upgrade to GitHub Pro"),
+			),
+			want: "GitHub rulesets require GitHub Pro for private repositories. " +
+				"Upgrade the account or make this repository public.",
+		},
+		{
+			name: "rulesets repository required checks",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/acme/rulesets/branches/main/protection/required_status_checks",
+				errors.New("Resource not accessible by integration"),
+			),
+			want: "Smyklot cannot read this repository's required status checks. " +
+				"Check the GitHub App's administration access and the repository owner's GitHub plan.",
+		},
+		{
+			name: "check runs branch required checks",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/acme/private/branches/check-runs/protection/required_status_checks",
+				errors.New("Resource not accessible by integration"),
+			),
+			want: "Smyklot cannot read this repository's required status checks. " +
+				"Check the GitHub App's administration access and the repository owner's GitHub plan.",
+		},
+		{
+			name: "effective branch rules",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/acme/private/rules/branches/main?per_page=100&page=1",
+				errors.New("Resource not accessible by integration"),
+			),
+			want: "Smyklot cannot read this repository's rulesets. " +
+				"Check the GitHub App's administration access and the repository owner's GitHub plan.",
+		},
+		{
 			name:  "domain policy",
 			cause: errors.New("checks write approval is missing"),
 			want:  "checks write approval is missing",
