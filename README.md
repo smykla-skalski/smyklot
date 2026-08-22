@@ -626,37 +626,6 @@ mise run deps
 mise run test
 ```
 
-### Project structure
-
-```text
-smyklot/
-├── cmd/
-│   └── smyklot/             # Cobra commands (run, poll, serve, store) and the service
-├── pkg/                     # Importable by other projects
-│   ├── commands/            # Command parser (slash, mention, bare)
-│   ├── config/              # Configuration management (Viper)
-│   ├── feedback/            # User feedback system (reactions, comments)
-│   ├── github/              # GitHub API client
-│   ├── githubapp/           # App and installation token minting
-│   ├── logging/             # slog logger, on the context, with secrets redacted
-│   ├── metrics/             # Prometheus collectors, on a registry it owns
-│   ├── permissions/         # CODEOWNERS parser & permission checker
-│   └── webhook/             # The webhook pipeline: verify, dedupe, queue, retry
-├── internal/
-│   ├── bot/                 # One pull request, one command, one answer
-│   ├── orgsync/             # Org-wide label, ruleset, settings and file sync
-│   │   └── apply/           # Planning and applying it, per installation
-│   ├── panel/               # The admin panel, and its SvelteKit frontend
-│   ├── pendingci/           # Merge-after-CI: the domain and its policy
-│   │   └── gate/            # The runtime that holds a PR open until CI settles
-│   └── storage/             # The port, one SQL core, two engines
-├── .github/workflows/       # GitHub Actions workflows
-├── .goreleaser.yml          # GoReleaser config for releases
-├── .mise.toml               # Tool versions and native tasks
-├── Dockerfile               # Docker image for GitHub Actions
-└── go.mod                   # Go module definition
-```
-
 ### Available tasks
 
 ```bash
