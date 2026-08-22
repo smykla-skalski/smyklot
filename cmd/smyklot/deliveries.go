@@ -313,9 +313,14 @@ func deliveryPullRequest(delivery webhook.Delivery) int {
 	}
 
 	notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
-	if err != nil || len(notification.Signals) == 0 {
+	if err != nil {
 		return 0
 	}
 
-	return notification.Signals[0].PullRequest
+	signals := relevantPendingCISignals(notification.Signals)
+	if len(signals) != 1 {
+		return 0
+	}
+
+	return signals[0].PullRequest
 }

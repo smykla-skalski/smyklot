@@ -35,16 +35,16 @@ var _ = Describe("Metrics [Unit]", func() {
 	}
 
 	It("reports a delivery outcome under its labels", func() {
-		met.WebhookRequests.WithLabelValues("issue_comment", metrics.OutcomeAccepted).Inc()
+		met.WebhookRequests.WithLabelValues("issue_comment", "accepted").Inc()
 
 		Expect(scrape()).To(ContainSubstring(
 			`smyklot_webhook_requests_total{event="issue_comment",outcome="accepted"} 1`))
 	})
 
 	It("keeps a rejected delivery apart from an accepted one", func() {
-		met.WebhookRequests.WithLabelValues("issue_comment", metrics.OutcomeUnsigned).Inc()
-		met.WebhookRequests.WithLabelValues("issue_comment", metrics.OutcomeAccepted).Inc()
-		met.WebhookRequests.WithLabelValues("issue_comment", metrics.OutcomeAccepted).Inc()
+		met.WebhookRequests.WithLabelValues("issue_comment", "unsigned").Inc()
+		met.WebhookRequests.WithLabelValues("issue_comment", "accepted").Inc()
+		met.WebhookRequests.WithLabelValues("issue_comment", "accepted").Inc()
 
 		Expect(scrape()).To(ContainSubstring(`outcome="unsigned"} 1`))
 		Expect(scrape()).To(ContainSubstring(`outcome="accepted"} 2`))

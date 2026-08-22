@@ -153,10 +153,11 @@ func (p *Pipeline) run(delivery Delivery) {
 		return
 	}
 
+	_, retryable := p.opts.Retry(err, 1)
 	p.finalize(ctx, delivery, OutcomeFailed, func(finalizeCtx context.Context) error {
 		return p.inbox.Fail(finalizeCtx, Failure{
 			ClaimID: delivery.ClaimID, Stage: StageExecute,
-			Reason: err.Error(), Retryable: false, At: p.opts.Now(),
+			Reason: err.Error(), Retryable: retryable, At: p.opts.Now(),
 		})
 	})
 	delivery.Logger.Error("delivery failed", "error", err, "duration", elapsed.String())

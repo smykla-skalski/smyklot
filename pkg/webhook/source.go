@@ -1,6 +1,9 @@
 package webhook
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type Repository struct {
 	ID       int64
@@ -33,7 +36,7 @@ type sourcePayload struct {
 func ParseSource(body []byte) (Source, error) {
 	var payload sourcePayload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return Source{}, ErrMalformedPayload
+		return Source{}, fmt.Errorf("%w: %w", ErrMalformedPayload, err)
 	}
 	if payload.Installation.ID == 0 {
 		return Source{}, ErrNoInstallation

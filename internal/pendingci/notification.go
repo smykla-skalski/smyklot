@@ -42,15 +42,6 @@ type Notification struct {
 	Signals []Signal
 }
 
-func Supports(event string) bool {
-	switch event {
-	case webhook.EventCheckRun, webhook.EventCheckSuite, webhook.EventStatus, webhook.EventPullRequest:
-		return true
-	default:
-		return false
-	}
-}
-
 // ParseNotification normalizes CI and pull-request deliveries into
 // wake-up signals. It does not decide pending-CI state or trust the payload as
 // current GitHub truth; the reconciler performs that live read later.

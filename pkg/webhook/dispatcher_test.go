@@ -70,6 +70,7 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		inbox    *countingInbox
 		handled  chan webhook.Delivery
 		fail     error
+		retry    webhook.Retryable
 		pipeline *webhook.Pipeline
 	)
 
@@ -77,6 +78,7 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		inbox = &countingInbox{MemoryInbox: webhook.NewMemoryInbox(webhook.MemoryInboxOptions{})}
 		handled = make(chan webhook.Delivery, 8)
 		fail = nil
+		retry = nil
 	})
 
 	start := func() {
@@ -91,6 +93,7 @@ var _ = Describe("Dispatcher [Unit]", func() {
 			},
 			webhook.Options{
 				Events:   []string{webhook.EventIssueComment},
+				Retry:    retry,
 				Workers:  1,
 				Timeouts: webhook.Timeouts{Drain: time.Second},
 			},
@@ -161,6 +164,30 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		_, failed, retried := inbox.outcomes()
 		Expect(retried).To(BeEmpty())
 		Expect(failed[0].Retryable).To(BeFalse())
+	})
+
+	// Retryable records whether the failure was the kind that could succeed on
+	// another attempt, not whether one is left. An operator reading the failure
+	// log filters on it to tell a wrong configuration apart from a bad hour at
+	// GitHub, and a transient failure that used up its budget is still the
+	// second kind.
+	It("should record a spent transient failure as retryable", func() {
+		fail = errors.New("connection reset")
+		retry = func(_ error, attempt int) (time.Duration, bool) {
+			return time.Millisecond, attempt < 2
+		}
+		start()
+		post("d1", "/approve")
+
+		Eventually(func() []webhook.Failure {
+			_, failed, _ := inbox.outcomes()
+
+			return failed
+		}).Should(HaveLen(1))
+
+		_, failed, retried := inbox.outcomes()
+		Expect(retried).To(HaveLen(1))
+		Expect(failed[0].Retryable).To(BeTrue())
 	})
 
 	It("should fail a stored payload it cannot decode, without running it", func() {

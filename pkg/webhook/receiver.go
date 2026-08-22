@@ -130,7 +130,12 @@ func (rec receiver) claim(w http.ResponseWriter, r *http.Request, delivery Deliv
 }
 
 func (p *Pipeline) unsigned(w http.ResponseWriter, r *http.Request, err error) {
-	p.opts.received(r.Header.Get(EventHeader), OutcomeUnsigned)
-	p.opts.Logger.Warn("rejected an unsigned delivery", "error", err)
+	event := r.Header.Get(EventHeader)
+
+	p.opts.received(event, OutcomeUnsigned)
+	p.opts.Logger.Warn("rejected an unsigned delivery",
+		"delivery_id", sanitizeDeliveryID(r.Header.Get(DeliveryHeader)),
+		"event", eventLabel(event, p.opts.known),
+		"error", err)
 	http.Error(w, "invalid signature", http.StatusUnauthorized)
 }

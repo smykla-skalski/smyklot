@@ -18,29 +18,6 @@ import (
 // service's series from anything else on the same cluster.
 const namespace = "smyklot"
 
-// What happened to a webhook request, as the outcome label.
-const (
-	// OutcomeAccepted means the delivery was claimed and queued
-	OutcomeAccepted = "accepted"
-
-	// OutcomeDuplicate means the delivery repeated one already claimed
-	OutcomeDuplicate = "duplicate"
-
-	// OutcomeRefused means the queue was full. A rising count here is the
-	// signal to raise the worker count or the queue depth
-	OutcomeRefused = "refused"
-
-	// OutcomeIgnored means the delivery carried nothing to execute
-	OutcomeIgnored = "ignored"
-
-	// OutcomeInvalid means the payload could not be parsed or used
-	OutcomeInvalid = "invalid"
-
-	// OutcomeUnsigned means the signature was missing or wrong. Anything but
-	// zero here is either a misconfigured secret or someone probing the port
-	OutcomeUnsigned = "unsigned"
-)
-
 // How a piece of work ended, as the result label.
 const (
 	// ResultSuccess means the work ran to completion
