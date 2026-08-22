@@ -743,6 +743,10 @@
     display: grid;
     gap: var(--space-3);
     grid-template-rows: auto 1fr auto auto;
+    /* The 1fr column must be allowed to BE a quarter: left at min-width auto,
+       a fleet's worth of strip slots sets the track's floor and all four
+       cards march past the frame together. */
+    min-width: 0;
     padding: var(--space-4);
     position: relative;
     text-decoration: none;
@@ -818,10 +822,16 @@
     gap: var(--space-2);
   }
 
+  /* A track per slot and wrapping rows, so the strip carries any fleet: one
+     row of stretched slots for a handful of repositories, more rows of
+     uniform ones for dozens. Flexed slots shrank with the fleet instead -
+     at 80 repositories they were 2px of border and the cards overflowed the
+     frame, because the un-wrappable run set the column's min-content. */
   .kind-strip {
-    display: flex;
+    display: grid;
     flex: 1;
     gap: 3px;
+    grid-template-columns: repeat(auto-fit, minmax(12px, 1fr));
   }
 
   /* 12px whole: at tablet widths 9px slots read as slivers, and half-pixel
@@ -831,7 +841,7 @@
     border: 1px solid color-mix(in srgb, var(--border-control) 55%, transparent);
     border-radius: 3px;
     block-size: 12px;
-    flex: 1;
+    box-sizing: border-box;
   }
 
   .kind-strip .is-change {
