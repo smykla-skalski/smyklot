@@ -1,8 +1,6 @@
 package webhook_test
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -80,49 +78,4 @@ var _ = Describe("IssueCommentEvent.Actionable [Unit]", func() {
 		Entry("on an issue rather than a PR", "created", "User", false, false),
 		Entry("an action nothing handles", "pinned", "User", true, false),
 	)
-})
-
-var _ = Describe("IssueCommentEvent.ContentKey [Unit]", func() {
-	key := func(action, body, updatedAt string) string {
-		GinkgoHelper()
-
-		event, err := webhook.ParseIssueComment(
-			delivery(action, body, "User", true, updatedAt),
-		)
-		Expect(err).NotTo(HaveOccurred())
-
-		return event.ContentKey()
-	}
-
-	// Synthetic callers without an X-GitHub-Delivery header still need stable
-	// content identity for an exact retry.
-	It("should be stable across a redelivery of the same event", func() {
-		Expect(key("created", "/approve", "2026-08-08T10:00:00Z")).
-			To(Equal(key("created", "/approve", "2026-08-08T10:00:00Z")))
-	})
-
-	It("should change when the comment is edited", func() {
-		Expect(key("edited", "/merge", "2026-08-08T10:05:00Z")).
-			NotTo(Equal(key("created", "/approve", "2026-08-08T10:00:00Z")))
-	})
-
-	It("should distinguish two edits within the same timestamp", func() {
-		Expect(key("edited", "/merge after ci", "2026-08-08T10:05:00Z")).
-			NotTo(Equal(key("edited", "/squash after ci", "2026-08-08T10:05:00Z")))
-	})
-
-	// Deleting a comment is a separate event from creating it, and both are
-	// reported
-	It("should distinguish a deletion from the creation it follows", func() {
-		Expect(key("deleted", "/approve", "2026-08-08T10:00:00Z")).
-			NotTo(Equal(key("created", "/approve", "2026-08-08T10:00:00Z")))
-	})
-
-	It("should name the repository and the comment", func() {
-		Expect(key("created", "/approve", "2026-08-08T10:00:00Z")).
-			To(HavePrefix(fmt.Sprintf(
-				"issue_comment:created:%s/%s:%d:2026-08-08T10:00:00Z:",
-				testOwner, testRepo, testCommentID,
-			)))
-	})
 })

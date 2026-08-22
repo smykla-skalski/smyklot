@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
@@ -21,11 +22,5 @@ func CleanupGitHubError(operation string, err error) error {
 }
 
 func HasLabel(labels []string, wanted string) bool {
-	for _, label := range labels {
-		if label == wanted {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(labels, wanted)
 }

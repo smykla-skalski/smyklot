@@ -183,7 +183,7 @@ func (scheduler *Scheduler) wait(ctx context.Context, availableAt *time.Time) bo
 		return true
 	}
 	timer := time.NewTimer(delay)
-	defer stopTimer(timer)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
 		return false
@@ -191,14 +191,5 @@ func (scheduler *Scheduler) wait(ctx context.Context, availableAt *time.Time) bo
 		return true
 	case <-timer.C:
 		return true
-	}
-}
-
-func stopTimer(timer *time.Timer) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
 	}
 }

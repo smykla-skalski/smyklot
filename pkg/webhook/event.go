@@ -1,7 +1,6 @@
 package webhook
 
 import (
-	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 
@@ -127,25 +126,6 @@ func (e *IssueCommentEvent) Actionable() bool {
 	}
 
 	return e.Comment.User.Type != userTypeBot
-}
-
-// ContentKey identifies the event content when no delivery GUID is available.
-//
-// The service normally uses X-GitHub-Delivery, which GitHub guarantees remains
-// stable across redelivery. This fallback cannot distinguish content that
-// cycles within GitHub's second-granularity updated_at timestamp.
-func (e *IssueCommentEvent) ContentKey() string {
-	bodyDigest := sha256.Sum256([]byte(e.Comment.Body))
-
-	return fmt.Sprintf(
-		"%s:%s:%s:%d:%s:%x",
-		EventIssueComment,
-		e.Action,
-		e.Repository.FullName,
-		e.Comment.ID,
-		e.Comment.UpdatedAt,
-		bodyDigest,
-	)
 }
 
 // SourceSequence orders actions that GitHub reports with the same comment

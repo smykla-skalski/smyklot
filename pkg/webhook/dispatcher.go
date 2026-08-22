@@ -96,7 +96,7 @@ func (p *Pipeline) wait(ctx context.Context, availableAt *time.Time) bool {
 		delay = 0
 	}
 	timer := time.NewTimer(delay)
-	defer stopTimer(timer)
+	defer timer.Stop()
 
 	select {
 	case <-ctx.Done():
@@ -223,20 +223,11 @@ func (p *Pipeline) retryFinalization(
 			timer := time.NewTimer(finalizationRetryDelay)
 			select {
 			case <-retryCtx.Done():
-				stopTimer(timer)
+				timer.Stop()
 
 				return
 			case <-timer.C:
 			}
 		}
 	}()
-}
-
-func stopTimer(timer *time.Timer) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
 }

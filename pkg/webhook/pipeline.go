@@ -8,6 +8,8 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+
+	ghwebhook "github.com/jferrl/go-githubauth/webhook"
 )
 
 var (
@@ -73,9 +75,9 @@ func New(secret []byte, inbox Inbox, handle Handler, opts Options) (*Pipeline, e
 		finalizeCtx:    finalizeCtx,
 		cancelFinalize: cancelFinalize,
 	}
-	pipeline.handler = Middleware(secret, WithErrorHandler(pipeline.unsigned))(
-		receiver{pipeline: pipeline},
-	)
+	pipeline.handler = ghwebhook.Middleware(
+		secret, ghwebhook.WithErrorHandler(pipeline.unsigned),
+	)(receiver{pipeline: pipeline})
 
 	return pipeline, nil
 }

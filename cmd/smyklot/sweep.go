@@ -49,11 +49,11 @@ func (s *server) pollLoop(ctx context.Context) {
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			stopTimer(timer)
+			timer.Stop()
 
 			return
 		case <-s.pollIntervalChanged:
-			stopTimer(timer)
+			timer.Stop()
 			interval = s.pollInterval()
 			s.logPollInterval(interval)
 		case <-timer.C:
@@ -70,7 +70,7 @@ func (s *server) migrationLoop(ctx context.Context) {
 			timer := time.NewTimer(s.migrationRetryDelay)
 			select {
 			case <-ctx.Done():
-				stopTimer(timer)
+				timer.Stop()
 
 				return
 			case <-timer.C:
@@ -99,15 +99,6 @@ func (s *server) logPollInterval(interval time.Duration) {
 		return
 	}
 	s.logger.Info("sweeping reactions", "interval", interval.String())
-}
-
-func stopTimer(timer *time.Timer) {
-	if !timer.Stop() {
-		select {
-		case <-timer.C:
-		default:
-		}
-	}
 }
 
 // runSweep sweeps once and records how it went.
