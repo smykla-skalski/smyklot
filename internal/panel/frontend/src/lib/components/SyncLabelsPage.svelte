@@ -45,7 +45,7 @@
           const input = queued;
           queued = null;
           if (!(await save(input))) {
-            queued = null;
+            if (queued !== null) continue;
             return;
           }
           onSaved();
@@ -124,8 +124,8 @@
   let rows = $derived(toRows(config));
   let patterns = $derived<string[]>([...(config?.excludes ?? [])]);
 
-  const enabled = $derived(config?.enabled ?? false);
-  const allowRemoval = $derived(config?.allow_removal ?? false);
+  let enabled = $derived(config?.enabled ?? false);
+  let allowRemoval = $derived(config?.allow_removal ?? false);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
   const frozen = $derived(readOnly || unreadable || config === null);
@@ -144,6 +144,8 @@
 
   function push(overrides: Partial<LabelsSaveInput> = {}): void {
     if (config === null) return;
+    if (overrides.enabled !== undefined) enabled = overrides.enabled;
+    if (overrides.allow_removal !== undefined) allowRemoval = overrides.allow_removal;
     queueSave({
       enabled,
       labels: toLabels(rows),

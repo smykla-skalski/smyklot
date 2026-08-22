@@ -206,6 +206,7 @@
   }
 
   async function toggleRow(entry: SyncFileMergeEntry): Promise<void> {
+    if (savingMerge) return;
     if (openRepo === entry.repository_id) {
       overrideFetchGeneration += 1;
       openRepo = null;
@@ -502,6 +503,7 @@
             class="object-row"
             class:is-open={openRepo === entry.repository_id}
             aria-expanded={openRepo === entry.repository_id}
+            disabled={savingMerge}
             onclick={() => void toggleRow(entry)}
           >
             <span class="object-main">
@@ -773,8 +775,8 @@
   /* The hover pill has rounded corners; a hairline crossing its edge reads
      as a crack in it. The hovered row hides the separator under it and the
      one its neighbour would draw over it. */
-  .adjuster:has(> .object-row:hover),
-  .adjuster:has(+ .adjuster > .object-row:hover) {
+  .adjuster:has(> .object-row:hover:not(:disabled)),
+  .adjuster:has(+ .adjuster > .object-row:hover:not(:disabled)) {
     border-bottom-color: transparent;
   }
 
@@ -802,8 +804,13 @@
     width: calc(100% + (var(--space-3) * 2));
   }
 
-  .object-row:hover {
+  .object-row:hover:not(:disabled) {
     background: var(--table-row-hover);
+  }
+
+  .object-row:disabled {
+    cursor: progress;
+    opacity: 0.65;
   }
 
   .row-chev {

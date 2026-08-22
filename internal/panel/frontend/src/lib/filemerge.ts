@@ -35,7 +35,9 @@ function clone<T>(value: T): T {
 
 /** The JSONPath spelling the service stores for an array rule. */
 export function arrayRulePath(keys: readonly string[]): string {
-  const escaped = keys.map((key) => key.replaceAll('\\', '\\\\').replaceAll('.', '\\.'));
+  const escaped = keys.map((key) =>
+    key.replaceAll('\\', '\\\\').replaceAll('.', '\\.').replaceAll('[', '\\['),
+  );
   return `$.${escaped.join('.')}`;
 }
 
