@@ -1,0 +1,76 @@
+# CodeQL, as an advanced-setup workflow rather than GitHub's default setup.
+#
+# Default setup broke the day go.mod moved to Go 1.27: its Go autobuild runs
+# whatever Go the runner image carries (1.26.6) under GOTOOLCHAIN=local, so the
+# toolchain directive is forbidden from downloading the version the module
+# requires and every analysis dies in the build step. Default setup offers no
+# way to provision a toolchain, which is exactly what an advanced workflow is
+# for: Go is installed from go.mod itself, so the next toolchain bump moves
+# this workflow with it instead of breaking it.
+#
+# Default setup must be switched off in the repository's code-security settings
+# for these results to upload - GitHub refuses SARIF from an advanced workflow
+# while default setup is enabled.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, like the default setup this replaces.
+    - cron: '41 6 * * 1'
+
+permissions: {}
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      # github/codeql-action reads the workflow files themselves for the
+      # `actions` language, and job status for every language.
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: go
+            build-mode: autobuild
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The version comes from go.mod, so the analysis always builds with the
+      # toolchain the module names - the drift that broke default setup cannot
+      # recur. Go only: the other languages are analyzed without a build.
+      - name: Set up Go
+        if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Autobuild
+        if: matrix.build-mode == 'autobuild'
+        uses: github/codeql-action/autobuild@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        with:
+          category: '/language:${{ matrix.language }}'
