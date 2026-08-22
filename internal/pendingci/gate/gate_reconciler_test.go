@@ -75,6 +75,15 @@ func TestPendingCIGateBlockReasonHidesGitHubRequestDetails(t *testing.T) {
 				"Smyklot will retry.",
 		},
 		{
+			name: "secondary rate limit",
+			cause: github.NewAPIError(
+				github.ErrAPIRequest, http.StatusForbidden, http.MethodGet,
+				"/repos/owner/private/rulesets", errors.New("secondary rate limit"),
+			),
+			want: "GitHub is temporarily unavailable while Smyklot checks repository protection. " +
+				"Smyklot will retry.",
+		},
+		{
 			name:  "domain policy",
 			cause: errors.New("checks write approval is missing"),
 			want:  "checks write approval is missing",

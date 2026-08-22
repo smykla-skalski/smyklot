@@ -392,6 +392,9 @@ func gateBlockReason(cause error) string {
 	path := apiErr.Path
 	detail := strings.ToLower(apiErr.Detail)
 	switch {
+	case apiErr.Retryable():
+		return "GitHub is temporarily unavailable while Smyklot checks repository protection. " +
+			"Smyklot will retry."
 	case apiErr.StatusCode == http.StatusForbidden &&
 		strings.Contains(path, "/rulesets") &&
 		strings.Contains(detail, "upgrade to github pro"):
@@ -407,9 +410,6 @@ func gateBlockReason(cause error) string {
 	case apiErr.StatusCode == http.StatusForbidden:
 		return "GitHub refused Smyklot access while checking repository protection. " +
 			"Check the GitHub App's repository access and permissions."
-	case apiErr.Retryable():
-		return "GitHub is temporarily unavailable while Smyklot checks repository protection. " +
-			"Smyklot will retry."
 	default:
 		return "Smyklot could not check this repository's protection settings. " +
 			"Check the GitHub App's access and try again."
