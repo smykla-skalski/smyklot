@@ -166,11 +166,6 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		Expect(failed[0].Retryable).To(BeFalse())
 	})
 
-	// Retryable records whether the failure was the kind that could succeed on
-	// another attempt, not whether one is left. An operator reading the failure
-	// log filters on it to tell a wrong configuration apart from a bad hour at
-	// GitHub, and a transient failure that used up its budget is still the
-	// second kind.
 	It("should record a spent transient failure as retryable", func() {
 		fail = errors.New("connection reset")
 		retry = func(_ error, attempt int) (time.Duration, bool) {

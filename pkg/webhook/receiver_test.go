@@ -130,9 +130,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		Expect(response.Code).To(Equal(http.StatusNoContent))
 		Expect(observed.received).To(Equal([]string{webhook.OutcomeIgnored}))
 
-		// Most of what GitHub sends is answered here, and Attrs is where the
-		// consumer decodes the body a second time to name the pull request. A
-		// delivery nobody wants should not pay for a log line nobody writes.
 		Expect(attrs).To(BeZero())
 	})
 
