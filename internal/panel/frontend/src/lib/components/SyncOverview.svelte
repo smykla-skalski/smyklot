@@ -453,7 +453,7 @@
   }
 
   .tile.is-settled {
-    color: color-mix(in srgb, var(--text-muted) 42%, transparent);
+    color: color-mix(in srgb, var(--text-muted) 75%, transparent);
   }
 
   .tile.is-change {

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { deltaE, oklch, over } from './color';
+import { contrast, deltaE, oklch, over } from './color';
 import { palettes, type Palette } from './theme';
 
 /**
@@ -149,6 +149,19 @@ const SURFACES: readonly {
 ];
 
 describe('sync surfaces [Unit]', () => {
+  it('keeps settled checkmarks distinguishable in every palette', () => {
+    const source = sourceOf('SyncOverview.svelte');
+    const share = source.match(/\.tile\.is-settled\s*\{[^}]*var\(--text-muted\)\s+(?<share>\d+)%/s)
+      ?.groups?.share;
+    expect(share).toBeDefined();
+
+    for (const palette of palettes) {
+      const ground = palette.color('tile-face');
+      const ink = over(palette.color('text-muted'), ground, Number(share) / 100);
+      expect(contrast(ink, ground), palette.name).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   /**
    * The ground each row names is the ground its component actually has.
    *

@@ -44,4 +44,7 @@
 <Story name="With help" args={{ help: 'The GitHub account that will be invited' }} />
 
 <!-- The server refused this login, and the reason sits under the field that caused it. -->
-<Story name="Refused" args={{ value: 'bart', refused: true }} />
+<Story
+  name="Refused"
+  args={{ value: 'bart', refused: true, help: 'You cannot change your own access' }}
+/>

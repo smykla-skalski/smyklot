@@ -8,6 +8,7 @@
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
   import { invalidateRootInstallationSettings } from '../query-client';
+  import { revealInline } from '../reveal-inline';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -88,6 +89,17 @@
     detailFailure ?? (detailQuery.error === null ? null : message(detailQuery.error)),
   );
   let elevationFailure = $state<string | null>(null);
+  let installationNavigation = $state<HTMLElement | null>(null);
+
+  $effect(() => {
+    const current = view;
+    const navigation = installationNavigation;
+    if (navigation === null) return;
+    const activeLink = navigation.querySelector<HTMLElement>("[aria-current='page']");
+    if (activeLink === null) return;
+    void current;
+    revealInline(navigation, activeLink);
+  });
   /* Whatever the address names, so a reload keeps the reader in the dialog they
      were reading rather than dropping them back onto the installation. */
   const elevationModalOpen = $derived(dialogRoute.isOpen(ELEVATION_DIALOG));
@@ -309,6 +321,7 @@
   <nav
     class="installation-navigation band-trim-kids"
     aria-label={`Root views for ${installation.account.display_name}`}
+    bind:this={installationNavigation}
   >
     {#each ['settings', 'repositories', 'users', 'history'] as section (section)}
       {@const item = section as RootInstallationView}

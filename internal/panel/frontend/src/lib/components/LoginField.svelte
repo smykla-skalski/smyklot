@@ -38,6 +38,7 @@
   let field = $state<HTMLInputElement | null>(null);
   let generation = 0;
   let accepted = $state<string | null>(null);
+  const helpId = $derived(`${id}-help`);
   const choices = $derived(
     items.map((account) => ({
       value: account.login,
@@ -93,8 +94,8 @@
   }
 </script>
 
-<label class="form-field login-field" for={id}>
-  <span>{label}</span>
+<div class="form-field login-field">
+  <label for={id}>{label}</label>
   <Combobox.Root
     type="single"
     items={choices}
@@ -111,6 +112,8 @@
       spellcheck="false"
       autocapitalize="none"
       placeholder="octocat"
+      aria-invalid={refused ? 'true' : undefined}
+      aria-describedby={help === undefined ? undefined : helpId}
       oninput={typed}
       required
     />
@@ -131,9 +134,9 @@
     </Combobox.Portal>
   </Combobox.Root>
   {#if help !== undefined}
-    <small class="identity-help" class:refused>{help}</small>
+    <small id={helpId} class="identity-help" class:refused>{help}</small>
   {/if}
-</label>
+</div>
 
 <style>
   .form-field {
@@ -142,7 +145,7 @@
     gap: 0.4rem;
   }
 
-  .form-field > span {
+  .form-field > label {
     font: 600 0.75rem / 1 var(--sans);
   }
 

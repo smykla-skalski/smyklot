@@ -1,5 +1,6 @@
 <script lang="ts">
   import { plainClick } from '#lib/follow.js';
+  import { revealInline } from '#lib/reveal-inline.js';
   import { tick } from 'svelte';
 
   /**
@@ -199,6 +200,7 @@
   async function place(motion: Motion, spread: boolean): Promise<void> {
     const link = nav?.querySelector<HTMLElement>("[aria-current='page']");
     if (link === null || link === undefined || nav === null) return;
+    revealInline(nav, link);
     /* The word reserves its bold width, so the ink is the same rect whether or
        not the label is currently the bold one - which is what keeps a spread
        from measuring one width on the way out and another on the way back. */
@@ -207,7 +209,10 @@
     if (box.width === 0) return;
     if (motion !== 'spread') share();
     const before = shown();
-    resting = { left: box.left - nav.getBoundingClientRect().left, width: box.width };
+    resting = {
+      left: box.left - nav.getBoundingClientRect().left + nav.scrollLeft,
+      width: box.width,
+    };
     bar = resting;
     if (motion === 'none' || before.width === 0) return;
     // The rect is written by the template, so the bar has to hold its new size
@@ -288,6 +293,9 @@
      high against the field they sit next to. */
   .section-tabs {
     box-shadow: 0 1px 0 var(--border-subtle);
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
     position: relative;
   }
 
