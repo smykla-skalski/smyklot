@@ -10,6 +10,15 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
+func parseNotification(event string, body []byte) (*pendingci.Notification, error) {
+	source, err := webhook.ParseSource(body)
+	if err != nil {
+		return nil, err
+	}
+
+	return pendingci.ParseNotification(event, source, body)
+}
+
 const pendingCICommon = `
 "repository": {
   "id": 9001,
@@ -31,7 +40,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
   "updated_at": "2026-08-15T12:00:00Z",
   "pull_requests": [{"number": 198}, {"number": 199}]
 },` + pendingCICommon + `}`)
-		notification, err := pendingci.ParseNotification(webhook.EventCheckRun, body)
+		notification, err := parseNotification(webhook.EventCheckRun, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Source.Repository.ID).To(Equal(int64(9001)))
 		Expect(notification.Source.InstallationID).To(Equal(int64(77)))
@@ -44,7 +53,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 			EventKey:    notification.Key,
 		}))
 
-		redelivery, err := pendingci.ParseNotification(webhook.EventCheckRun, body)
+		redelivery, err := parseNotification(webhook.EventCheckRun, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(redelivery.Key).To(Equal(notification.Key))
 	})
@@ -63,7 +72,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 "requested_action": {"identifier": "reauthorize"},
 "sender": {"login": "maintainer"},` + pendingCICommon + `}`)
 
-		notification, err := pendingci.ParseNotification(webhook.EventCheckRun, body)
+		notification, err := parseNotification(webhook.EventCheckRun, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Action).To(Equal("requested_action"))
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
@@ -86,7 +95,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
   "updated_at": "2026-08-15T12:01:00Z",
   "pull_requests": []
 },` + pendingCICommon + `}`)
-		notification, err := pendingci.ParseNotification(webhook.EventCheckSuite, body)
+		notification, err := parseNotification(webhook.EventCheckSuite, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
 			Kind: pendingci.SignalWakeHead, HeadSHA: "fork-head", EventKey: notification.Key,
@@ -104,7 +113,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
   "app": {"id": 17},
   "pull_requests": [{"number": 198}]
 },` + pendingCICommon + `}`)
-		runNotification, err := pendingci.ParseNotification(
+		runNotification, err := parseNotification(
 			webhook.EventCheckRun, checkRun,
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -123,7 +132,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
   "app": {"id": 17},
   "pull_requests": []
 },` + pendingCICommon + `}`)
-		suiteNotification, err := pendingci.ParseNotification(
+		suiteNotification, err := parseNotification(
 			webhook.EventCheckSuite, checkSuite,
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -139,7 +148,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 "context": "ci/build",
 "state": "success",
 "updated_at": "2026-08-15T12:02:00Z",` + pendingCICommon + `}`)
-		notification, err := pendingci.ParseNotification(webhook.EventStatus, body)
+		notification, err := parseNotification(webhook.EventStatus, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Action).To(Equal("success"))
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
@@ -160,20 +169,20 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 "label": {"name": "` + label + `"},` + pendingCICommon + `}`)
 		}
 
-		synchronized, err := pendingci.ParseNotification(
+		synchronized, err := parseNotification(
 			webhook.EventPullRequest,
 			payload("synchronize", "", false),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(synchronized.Signals[0].Kind).To(Equal(pendingci.SignalWakePullRequest))
-		opened, err := pendingci.ParseNotification(
+		opened, err := parseNotification(
 			webhook.EventPullRequest,
 			payload("opened", "", false),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(opened.Signals[0].Kind).To(Equal(pendingci.SignalWakePullRequest))
 
-		closed, err := pendingci.ParseNotification(
+		closed, err := parseNotification(
 			webhook.EventPullRequest,
 			payload("closed", "", true),
 		)
@@ -181,7 +190,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(closed.Signals[0].Kind).To(Equal(pendingci.SignalPullRequestDone))
 		Expect(closed.Signals[0].Merged).To(BeTrue())
 
-		unlabeled, err := pendingci.ParseNotification(
+		unlabeled, err := parseNotification(
 			webhook.EventPullRequest,
 			payload("unlabeled", "smyklot:pending:ci:squash", false),
 		)
@@ -191,13 +200,13 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 	})
 
 	It("rejects missing event identity and common metadata", func() {
-		_, err := pendingci.ParseNotification(
+		_, err := parseNotification(
 			webhook.EventStatus,
 			[]byte(`{"sha":"abc","context":"build","state":"success"}`),
 		)
 		Expect(err).To(MatchError(webhook.ErrNoInstallation))
 
-		_, err = pendingci.ParseNotification(
+		_, err = parseNotification(
 			webhook.EventCheckRun,
 			[]byte(`{"action":"completed",`+pendingCICommon+`}`),
 		)

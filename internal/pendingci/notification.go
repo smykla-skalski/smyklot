@@ -45,13 +45,15 @@ type Notification struct {
 // ParseNotification normalizes CI and pull-request deliveries into
 // wake-up signals. It does not decide pending-CI state or trust the payload as
 // current GitHub truth; the reconciler performs that live read later.
-func ParseNotification(event string, body []byte) (*Notification, error) {
-	source, err := webhook.ParseSource(body)
-	if err != nil {
-		return nil, err
-	}
-
-	var notification *Notification
+func ParseNotification(
+	event string,
+	source webhook.Source,
+	body []byte,
+) (*Notification, error) {
+	var (
+		notification *Notification
+		err          error
+	)
 	switch event {
 	case webhook.EventCheckRun:
 		notification, err = parseCheckRun(source, body)

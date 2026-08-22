@@ -152,7 +152,7 @@ func (i deliveryInbox) reason(text string) string {
 
 func (s *server) screenDelivery(delivery webhook.Delivery) (bool, error) {
 	if delivery.Event != webhook.EventIssueComment {
-		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
+		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 		if err != nil {
 			return false, err
 		}
@@ -181,7 +181,7 @@ func (s *server) executeDelivery(ctx context.Context, delivery webhook.Delivery)
 	defer s.metrics.DeliveriesInFlight.Dec()
 
 	if delivery.Event != webhook.EventIssueComment {
-		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
+		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 		if err != nil {
 			return err
 		}
@@ -255,7 +255,7 @@ func deliveryAction(delivery webhook.Delivery) string {
 		return delivery.Source.Action
 	}
 
-	notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
+	notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 	if err != nil {
 		return ""
 	}
@@ -312,7 +312,7 @@ func deliveryPullRequest(delivery webhook.Delivery) int {
 		return event.Issue.Number
 	}
 
-	notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
+	notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 	if err != nil {
 		return 0
 	}
