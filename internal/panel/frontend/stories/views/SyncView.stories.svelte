@@ -3,8 +3,8 @@
 
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
-  import { NOW, SYNC_STATUS, SYNC_STATUS_IN_STEP } from '../support/fixtures.js';
-  import type { SyncConfig, SyncPlan } from '#lib/types.js';
+  import { NOW, SYNC_PLAN, SYNC_STATUS, SYNC_STATUS_IN_STEP } from '../support/fixtures.js';
+  import type { SyncConfig } from '#lib/types.js';
 
   const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
 
@@ -42,33 +42,8 @@
     ...over,
   });
 
-  const PLAN: SyncPlan = {
-    id: 'plan-1',
-    trigger: 'manual',
-    state: 'computed',
-    digest: 'sha256:9f2c',
-    counts: { create: 2, update: 1, delete: 0 },
-    actions: [
-      {
-        repository: 'smyklot',
-        kind: 'labels',
-        operation: 'create',
-        subject: 'bug',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'labels',
-        operation: 'update',
-        subject: 'chore',
-        before: 'ededed',
-        after: 'cfd3d7',
-        state: 'pending',
-      },
-    ],
-    computed_at: at(-5 * 60_000),
-    expires_at: at(55 * 60_000),
-  };
+  const PLAN = SYNC_PLAN;
+  if (PLAN === null) throw new Error('the catalogue seed must include a sync plan');
 
   const base = {
     targetId: '2001',

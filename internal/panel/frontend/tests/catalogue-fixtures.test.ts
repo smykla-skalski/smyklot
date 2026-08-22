@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { fixtureApi } from '../stories/support/api';
 import {
   SYNC_FILES_CONTEXT,
+  SYNC_PLAN,
   SYNC_STATUS,
   SYNC_STATUS_IN_STEP,
   TARGET,
@@ -47,6 +48,22 @@ describe('catalogue fixtures [Unit]', () => {
     );
     expect(new Set(states)).toEqual(new Set(['in_step']));
     expect(storyBody('Already in step')).toContain('fetchStatus={async () => SYNC_STATUS_IN_STEP}');
+  });
+
+  it('keeps the plan story coherent with the fleet status', () => {
+    expect(SYNC_PLAN).not.toBeNull();
+    if (SYNC_PLAN === null) return;
+    const planned = Object.values(SYNC_PLAN.counts).reduce((total, count) => total + count, 0);
+    const reported = SYNC_STATUS.repositories.reduce(
+      (total, row) =>
+        total +
+        Object.values(row.cells).reduce((rowTotal, cell) => rowTotal + (cell.changes ?? 0), 0),
+      0,
+    );
+
+    expect(SYNC_PLAN.actions).toHaveLength(planned);
+    expect(reported).toBe(planned);
+    expect(syncViewStory).toContain('fetchPlan: async () => ({ plan: PLAN })');
   });
 
   it('opens the unreadable story on a surface that displays the warning', () => {
