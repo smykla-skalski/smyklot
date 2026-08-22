@@ -55,6 +55,89 @@ describe('Rail [Component]', () => {
   });
 });
 
+describe('the rail identity tiles', () => {
+  beforeEach(() => {
+    // The account menu's Popover portals into the shell.
+    document.body.innerHTML = '<main class="app-shell"></main>';
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        matches: false,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      })),
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  const account = (login: string, avatarUrl: string | null) => ({
+    id: `acct-${login}`,
+    provider: 'github',
+    subject_id: login,
+    login,
+    display_name: login,
+    avatar_url: avatarUrl,
+  });
+
+  const target = (login: string, avatarUrl: string | null) =>
+    ({
+      id: `ws-${login}`,
+      account: account(login, avatarUrl),
+    }) as never;
+
+  const props = {
+    selectedId: null,
+    targetHref: () => '#',
+    onSelectTarget: vi.fn(),
+    rootMode: false,
+    rootEnabled: false,
+    rootEntryHref: '/root',
+    onEnterRoot: vi.fn(),
+    inboxHref: '/inbox',
+    inboxActive: false,
+    onSelectInbox: vi.fn(),
+    unreadCount: 0,
+    theme: 'system',
+    onSelectTheme: vi.fn(),
+    onSignOut: vi.fn(),
+  } as const;
+
+  // The shell redesign replaced IdentityBar's real avatars with generated
+  // marks unconditionally, which lost every profile picture in production.
+  // The mark is the fallback, never the identity.
+  it('shows the real avatar on a workspace tile and on the user tile', () => {
+    const { container } = render(Rail, {
+      ...props,
+      viewer: {
+        account: account('bartsmykla', 'https://avatars.example/u/1'),
+        system_role: 'none',
+        status: 'active',
+        target_count: 1,
+      } as never,
+      targets: [target('smykla-skalski', 'https://avatars.example/o/2')],
+    });
+
+    const sources = [...container.querySelectorAll('img.avatar')].map((img) =>
+      img.getAttribute('src'),
+    );
+    expect(sources).toContain('https://avatars.example/o/2');
+    expect(sources).toContain('https://avatars.example/u/1');
+  });
+
+  it('falls back to the generated mark when the account has no picture', () => {
+    const { container } = render(Rail, {
+      ...props,
+      viewer: null,
+      targets: [target('smykla-skalski', null)],
+    });
+
+    expect(container.querySelector('img.avatar')).toBeNull();
+    expect(container.querySelector('.rail-ws .t')?.textContent).toBe('SS');
+  });
+});
+
 describe('the workspace identity', () => {
   it('reads initials from up to two words of the name', () => {
     expect(workspaceInitials('Smykla Skalski')).toBe('SS');

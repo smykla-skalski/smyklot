@@ -64,13 +64,24 @@ export const DEFAULT_CONFIG: ConfigValues = {
   allow_self_approval: false,
 };
 
+/**
+ * Where the mock keeps a fixture account's profile picture. Production
+ * accounts carry GitHub avatar URLs; the signed-in user and the workspaces
+ * carry one here too, so the panel's image path renders in dev rather than
+ * only ever the monogram fallback. Roster and seeded users stay bare - the
+ * fallback needs exercising somewhere.
+ */
+export function devAvatarUrl(login: string): string {
+  return `/__avatar/${login}.svg`;
+}
+
 export const VIEWER: PanelAccount = {
   id: '1001',
   provider: 'github:https://api.github.com',
   subject_id: '1001',
   login: 'bart',
   display_name: 'Bart Smykla',
-  avatar_url: null,
+  avatar_url: devAvatarUrl('bart'),
 };
 
 /**
@@ -409,6 +420,8 @@ export function seed(
     type: 'User',
     repositoryDefaultEnabled: true,
     targetPatch: { disable_bare_commands: true },
+    /* Deliberately bare: one rail tile keeps showing the generated mark. */
+    avatar: false,
   });
   personal.repositories = [
     repositorySeed(personal.value, {
@@ -1286,6 +1299,8 @@ export function targetSeed(input: {
   type: 'Organization' | 'User';
   repositoryDefaultEnabled: boolean;
   targetPatch: ConfigPatch;
+  /** Off for a workspace that should exercise the generated-mark fallback. */
+  avatar?: boolean;
 }): MockTarget {
   const account: PanelAccount = {
     id: input.id,
@@ -1293,7 +1308,7 @@ export function targetSeed(input: {
     subject_id: input.id,
     login: input.login,
     display_name: input.displayName,
-    avatar_url: null,
+    avatar_url: input.avatar === false ? null : devAvatarUrl(input.login),
   };
   const resolved = resolveConfig(input.targetPatch, {}, {}, false);
   return {

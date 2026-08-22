@@ -871,6 +871,17 @@ async function handle(
       return;
     }
   }
+  /* Fixture profile pictures. Production accounts carry GitHub avatar URLs;
+     the mock serves its own so the panel exercises the image path rather than
+     only ever the monogram fallback - which is how losing every real avatar
+     once went unseen in dev. */
+  const avatar = path.match(/^\/__avatar\/(?<login>[a-z0-9-]+)\.svg$/u);
+  if (avatar && method === 'GET') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'image/svg+xml');
+    res.end(devAvatarSVG(avatar.groups?.login ?? ''));
+    return;
+  }
   const publicInvitation = path.match(/^\/api\/v1\/invites\/(?<token>[^/]+)$/);
   if (publicInvitation && method === 'GET') {
     try {
@@ -3073,6 +3084,24 @@ function writeWebSocket(socket: Duplex, event: Record<string, unknown>): void {
 
 function route(path: string): string {
   return `${BASE}${path}`;
+}
+
+/**
+ * A recognisable stand-in portrait: the account's initial on one neutral
+ * ground, the same for every login - fixture pictures must never bring a
+ * palette of their own into the shell. The initial alone tells them apart,
+ * and the flat grey is what says "image rendered" against the tinted
+ * monogram fallback.
+ */
+function devAvatarSVG(login: string): string {
+  const letter = (login[0] ?? '?').toUpperCase();
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<rect width="64" height="64" fill="#3d434b"/>` +
+    `<text x="32" y="43" text-anchor="middle" font-family="sans-serif" font-size="30" ` +
+    `font-weight="700" fill="#e6e8eb">${letter}</text>` +
+    `</svg>`
+  );
 }
 
 async function readBody<T>(req: IncomingMessage): Promise<T> {

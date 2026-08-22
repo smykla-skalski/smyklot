@@ -28,6 +28,7 @@
 
   import type { PanelTarget, PanelViewer } from '../types';
   import type { ThemeDisplay } from '../preferences';
+  import Avatar from './Avatar.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
@@ -218,7 +219,16 @@
       aria-current={!rootMode && !inboxActive && target.id === selectedId ? 'true' : undefined}
       onclick={(event) => selectFromClick(event, target)}
     >
-      <span class="t">{workspaceInitials(nameOf(target))}</span>
+      <!-- The real profile picture when the account carries one; the generated
+           mark is the fallback, not the identity. Avatar owns the broken-image
+           retry, so a failing URL lands on its monogram rather than a glyph. -->
+      {#if target.account.avatar_url !== null}
+        <span class="t is-avatar"
+          ><Avatar account={target.account} size={36} shape="workspace" /></span
+        >
+      {:else}
+        <span class="t">{workspaceInitials(nameOf(target))}</span>
+      {/if}
     </a>
   {/each}
 
@@ -268,9 +278,13 @@
                   selectFromClick(event, target);
                 }}
               >
-                <span class="ws-mini" data-h={workspaceHue(target.account.login)}>
-                  <span class="t">{workspaceInitials(nameOf(target))}</span>
-                </span>
+                {#if target.account.avatar_url !== null}
+                  <Avatar account={target.account} size={20} shape="workspace" />
+                {:else}
+                  <span class="ws-mini" data-h={workspaceHue(target.account.login)}>
+                    <span class="t">{workspaceInitials(nameOf(target))}</span>
+                  </span>
+                {/if}
                 <ClippedLabel class="mi-label" text={nameOf(target)} />
               </a>
             {/each}
@@ -334,7 +348,11 @@
           data-tip={viewerTip}
           aria-label="Account menu for {viewerName}"
         >
-          <span class="t">{workspaceInitials(viewerName)}</span>
+          {#if viewer.account.avatar_url !== null}
+            <span class="t is-avatar"><Avatar account={viewer.account} size={36} /></span>
+          {:else}
+            <span class="t">{workspaceInitials(viewerName)}</span>
+          {/if}
         </button>
       {/snippet}
       <div class="console-menu account-menu" role="none">
@@ -437,7 +455,7 @@
   }
 
   /* ---------- Workspace identity paint ----------
-     Workspaces have no avatars, so the mark is generated - and the rail stays
+     A workspace without a profile picture wears a generated mark - and the rail stays
      calm: at rest every tile wears plain rail material, because eleven
      simultaneous colours are noise, not a plan. The identity wakes exactly
      twice: on HOVER the tile lights in its own colour, and on the SELECTED
@@ -463,6 +481,17 @@
     position: relative;
     text-box: trim-both cap alphabetic;
     z-index: 1;
+  }
+
+  /* A real avatar IS the tile: it fills the face inside the 1px edge, above
+     the aurora, and takes the tile's own rounding - a second, tighter radius
+     inside the tile read as a picture floating on a box. */
+  .rail-tile .t.is-avatar {
+    display: inline-flex;
+  }
+
+  .rail-ws .t.is-avatar :global(.avatar) {
+    border-radius: 9px;
   }
 
   .rail-ws:hover {
