@@ -14,9 +14,18 @@ function rect(left: number, width: number): DOMRect {
 }
 
 describe('SectionTabs [Component]', () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    Reflect.deleteProperty(document, 'fonts');
+    vi.restoreAllMocks();
+  });
 
   it('does not reveal the active tab again when another tab is hovered', async () => {
+    let releaseFonts!: () => void;
+    const fontsReady = new Promise<void>((resolve) => (releaseFonts = resolve));
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      value: { ready: fontsReady },
+    });
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
@@ -46,6 +55,12 @@ describe('SectionTabs [Component]', () => {
 
     (nav as HTMLElement).scrollLeft = 280;
     await fireEvent.mouseEnter(files as HTMLAnchorElement);
+    await tick();
+
+    expect((nav as HTMLElement).scrollLeft).toBe(280);
+
+    releaseFonts();
+    await fontsReady;
     await tick();
 
     expect((nav as HTMLElement).scrollLeft).toBe(280);

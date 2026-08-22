@@ -234,11 +234,18 @@
     if (currentNav === null) return;
     void current;
     revealCurrent();
-    // Fonts can move the selected tab after its first measurement.
+    const scrollAtRegistration = currentNav.scrollLeft;
+    let currentEffect = true;
+    // Fonts can move the selected tab after its first measurement. Preserve any
+    // scroll the reader made while they were loading; only the bar needs a new rect.
     void document.fonts?.ready.then(() => {
-      revealCurrent();
+      if (!currentEffect) return;
+      if (currentNav.scrollLeft === scrollAtRegistration) revealCurrent();
       void place('none', hovered === active);
     });
+    return () => {
+      currentEffect = false;
+    };
   });
 
   $effect(() => {
