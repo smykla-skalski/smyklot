@@ -69,6 +69,31 @@ fi
 
 echo "every Go suite is named exactly once by the go matrix in $workflow"
 
+# Being named by the matrix is not the same as being run. Ginkgo specs are
+# registered by Describe at init and executed by one RunSpecs bootstrap; a
+# package that has the first and not the second compiles, reports ok, and runs
+# nothing. It looks identical to a package whose specs all pass. This is how
+# seven specs rode along unexecuted after their file moved out of a package
+# that had a bootstrap into one that did not.
+orphaned=""
+for directory in $(git ls-files '*_test.go' | xargs -n1 dirname | sort -u); do
+  if ! grep -lq 'onsi/ginkgo' "$directory"/*_test.go 2>/dev/null; then
+    continue
+  fi
+  if ! grep -q 'RunSpecs(' "$directory"/*_test.go 2>/dev/null; then
+    orphaned="$orphaned  $directory"$'\n'
+  fi
+done
+
+if [ -n "$orphaned" ]; then
+  echo "these packages register Ginkgo specs that nothing executes:" >&2
+  printf '%s' "$orphaned" >&2
+  echo "add a suite bootstrap calling RunSpecs, or the specs never run" >&2
+  exit 1
+fi
+
+echo "every package holding Ginkgo specs has a bootstrap that runs them"
+
 # The browser matrix names files rather than directories, and it has a second
 # way to go wrong the Go one does not: a file named twice runs twice, on two
 # runners, and the only symptom is a job that got slower for no reason anybody

@@ -1,6 +1,7 @@
 package pendingci_test
 
 import (
+	"bytes"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -58,6 +59,14 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		redelivery, err := parseNotification(webhook.EventCheckRun, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(redelivery.Signals[0].EventKey).To(Equal(notification.Signals[0].EventKey))
+
+		// And a different check run is a different key, which is the property
+		// the durable dedupe rests on - stability alone is true of a constant
+		other, err := parseNotification(
+			webhook.EventCheckRun, bytes.Replace(body, []byte(`"id": 501`), []byte(`"id": 502`), 1),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(other.Signals[0].EventKey).NotTo(Equal(notification.Signals[0].EventKey))
 	})
 
 	It("correlates a requested reauthorization action to the exact check run", func() {
