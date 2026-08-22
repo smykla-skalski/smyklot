@@ -662,7 +662,9 @@
   --table-row-hover: color-mix(in srgb, #ffffff 6.8%, transparent);
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, transparent);
 
-  --drift: #92c1ff;
+  /* Clears AA on the 14% drift-tinted board tile. The former #92c1ff
+     landed at 4.47:1 once it also contributed to the tile background. */
+  --drift: #9ac7ff;
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
   --diff-del-ink: var(--danger);
