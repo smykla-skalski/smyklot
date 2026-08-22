@@ -289,11 +289,8 @@ func MergePendingPRAtHead(
 
 func mergeHeadChanged(err error) bool {
 	var apiErr *github.APIError
-	if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusConflict {
-		return false
-	}
 
-	return true
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusConflict
 }
 
 // settlePendingCIReaction finds comments with the bot's "eyes" reaction and replaces with "+1"
