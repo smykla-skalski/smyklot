@@ -72,7 +72,7 @@
    * piece. Below, the two decisions that shape what the list means: whether
    * unlisted labels are removed, and the patterns left alone either way.
    */
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
 
   import type { SyncConfig, SyncLabel } from '../types';
   import type { SyncSection } from '../routes';
@@ -119,13 +119,15 @@
       hadDesc: label.description !== undefined,
     }));
 
-  /* Derived from what is saved, then written over as somebody edits - a save
-     landing from anywhere reseeds it. */
-  let rows = $derived(toRows(config));
-  let patterns = $derived<string[]>([...(config?.excludes ?? [])]);
-
-  let enabled = $derived(config?.enabled ?? false);
-  let allowRemoval = $derived(config?.allow_removal ?? false);
+  /* One draft per mounted page. SyncView remounts this component when the
+     initial config arrives; after that, parent config advances only to carry
+     the next revision. Keeping the draft in state prevents such a response
+     from resetting an edit queued behind it. */
+  const initialConfig = untrack(() => config);
+  let rows = $state<Row[]>(toRows(initialConfig));
+  let patterns = $state<string[]>([...(initialConfig?.excludes ?? [])]);
+  let enabled = $state(initialConfig?.enabled ?? false);
+  let allowRemoval = $state(initialConfig?.allow_removal ?? false);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
   const frozen = $derived(readOnly || unreadable || config === null);

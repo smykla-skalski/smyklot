@@ -124,4 +124,41 @@ describe('SyncLabelsPage [Component]', () => {
 
     expect(sent[1]).toMatchObject({ enabled: true, labels: [] });
   });
+
+  it('keeps the newest draft while a prior response refreshes config', async () => {
+    let releaseFirst!: (landed: boolean) => void;
+    const first = new Promise<boolean>((resolve) => (releaseFirst = resolve));
+    const sent: LabelsSaveInput[] = [];
+    const onSave = vi.fn((wanted: LabelsSaveInput) => {
+      sent.push(wanted);
+      return sent.length === 1 ? first : Promise.resolve(true);
+    });
+    const props = {
+      config: config(),
+      readOnly: false,
+      problem: null,
+      sectionHref: () => '#',
+      onOpenSection: vi.fn(),
+      onSave,
+    };
+    const page = render(SyncLabelsPage, props);
+
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
+    await fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Remove labels this list does not name' }),
+    );
+    expect(sent).toHaveLength(1);
+
+    // The PUT has landed and advanced the parent's revision, but its plan
+    // refresh is still holding the first onSave promise open.
+    await page.rerender({
+      ...props,
+      config: config({ enabled: true, allow_removal: false, revision: 2 }),
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
+    releaseFirst(true);
+    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
+
+    expect(sent[1]).toMatchObject({ enabled: true, allow_removal: true, labels: [] });
+  });
 });

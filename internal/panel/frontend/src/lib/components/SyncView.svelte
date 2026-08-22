@@ -327,14 +327,16 @@
     onDiscard={(planId) => void onDiscard(planId)}
   />
 {:else if section === 'labels'}
-  <SyncLabelsPage
-    {config}
-    {readOnly}
-    problem={error}
-    {sectionHref}
-    {onOpenSection}
-    onSave={saveLabels}
-  />
+  {#key config === null}
+    <SyncLabelsPage
+      {config}
+      {readOnly}
+      problem={error}
+      {sectionHref}
+      {onOpenSection}
+      onSave={saveLabels}
+    />
+  {/key}
 {:else if section === 'rulesets'}
   {#if rulesetName !== null}
     <SyncRulesetPage
