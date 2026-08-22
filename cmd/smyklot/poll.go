@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -87,7 +88,7 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 
 	client, err := github.NewClient(token, rc.APIBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	// Layer the repository's own configuration over the workflow's, the same
@@ -96,13 +97,13 @@ func runPoll(cmd *cobra.Command, _ []string) error {
 	// repository that has moved to the service
 	bc, err = effectiveConfig(ctx, client, repoOwner, repoName, bc)
 	if err != nil {
-		return reportUnusableRepoConfig(ctx, err)
+		return bot.ReportUnusableRepoConfig(ctx, err)
 	}
 
 	// Decided before CODEOWNERS is read, the way the service's sweep decides
 	// it. A repository on the service runs this workflow every five minutes,
 	// and reading a file it will not use is the whole cost of that tick
-	if actionStandsDown(ctx, bc) {
+	if bot.ActionStandsDown(ctx, bc) {
 		return nil
 	}
 
@@ -207,7 +208,7 @@ func fetchCodeowners(
 ) (string, error) {
 	content, err := client.GetCodeowners(ctx, repoOwner, repoName)
 	if err != nil {
-		return "", NewGitHubError(ErrGetCodeowners, err)
+		return "", bot.NewGitHubError(bot.ErrGetCodeowners, err)
 	}
 
 	// Log if CODEOWNERS is missing
@@ -226,7 +227,7 @@ func fetchCodeowners(
 func checkerFromCodeowners(content string, client *github.Client) (*permissions.Checker, error) {
 	checker, err := permissions.NewCheckerFromContent(content, client)
 	if err != nil {
-		return nil, NewGitHubError(ErrInitPermissions, err)
+		return nil, bot.NewGitHubError(bot.ErrInitPermissions, err)
 	}
 
 	return checker, nil
@@ -252,7 +253,7 @@ func pollAllPRs(
 	// Get all open PRs
 	prs, err := client.GetOpenPRs(ctx, repoOwner, repoName)
 	if err != nil {
-		return NewGitHubError(ErrGetPRs, err)
+		return bot.NewGitHubError(bot.ErrGetPRs, err)
 	}
 
 	return processAllPRs(

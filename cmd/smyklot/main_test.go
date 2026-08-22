@@ -4,6 +4,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -111,22 +112,22 @@ var _ = Describe("Main Pending CI Functions [Unit]", func() {
 
 	Describe("shouldEnableAutoMerge", func() {
 		It("should return true for merge queue error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("merge queue is required"))
+			err := bot.NewGitHubError(bot.ErrMergePR, githubError("merge queue is required"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return true for status checks error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("required status check"))
+			err := bot.NewGitHubError(bot.ErrMergePR, githubError("required status check"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return true for branch protection error", func() {
-			err := NewGitHubError(ErrMergePR, githubError("branch protection rules"))
+			err := bot.NewGitHubError(bot.ErrMergePR, githubError("branch protection rules"))
 			Expect(shouldEnableAutoMerge(err)).To(BeTrue())
 		})
 
 		It("should return false for other errors", func() {
-			err := NewGitHubError(ErrMergePR, githubError("some other error"))
+			err := bot.NewGitHubError(bot.ErrMergePR, githubError("some other error"))
 			Expect(shouldEnableAutoMerge(err)).To(BeFalse())
 		})
 	})

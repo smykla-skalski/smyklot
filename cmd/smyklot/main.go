@@ -18,6 +18,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
@@ -44,7 +45,6 @@ const (
 	envInstallationID      = "GITHUB_INSTALLATION_ID"
 	envBotUsername         = "SMYKLOT_BOT_USERNAME"
 	envAPIBaseURL          = "SMYKLOT_GITHUB_API_URL"
-	envStepSummary         = "GITHUB_STEP_SUMMARY"
 	commentActionCreated   = "created"
 	commentActionDeleted   = "deleted"
 	rootPath               = "/"
@@ -242,7 +242,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	// Create a GitHub client
 	client, err := github.NewClient(token, rc.APIBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	// Layer the repository's own configuration over the workflow's
@@ -253,7 +253,7 @@ func run(cmd *cobra.Command, _ []string) error {
 
 	bc, err = effectiveConfig(ctx, client, rc.RepoOwner, rc.RepoName, base)
 	if err != nil {
-		if errors.Is(err, ErrRepoConfigInvalid) {
+		if errors.Is(err, bot.ErrRepoConfigInvalid) {
 			return reportInvalidRepoConfig(ctx, client, rc, base, err)
 		}
 
@@ -263,7 +263,7 @@ func run(cmd *cobra.Command, _ []string) error {
 	// The service handles this repository unless the file says otherwise, and
 	// two entry points acting on one comment is what that setting exists to
 	// stop
-	if actionStandsDown(ctx, bc) {
+	if bot.ActionStandsDown(ctx, bc) {
 		return nil
 	}
 
@@ -324,12 +324,12 @@ func executeCommentWithEnvironment(
 	// Convert string IDs to integers
 	prNum, err := strconv.Atoi(rc.PRNumber)
 	if err != nil {
-		return NewInputError(ErrInvalidInput, rc.PRNumber, errInvalidPRNum)
+		return bot.NewInputError(bot.ErrInvalidInput, rc.PRNumber, errInvalidPRNum)
 	}
 
 	commentIDNum, err := strconv.Atoi(rc.CommentID)
 	if err != nil {
-		return NewInputError(ErrInvalidInput, rc.CommentID, errInvalidComment)
+		return bot.NewInputError(bot.ErrInvalidInput, rc.CommentID, errInvalidComment)
 	}
 
 	// Clean up any previous error reactions (in case comment was edited)
@@ -349,13 +349,13 @@ func executeCommentWithEnvironment(
 		rc.RepoName,
 	)
 	if err != nil {
-		return NewGitHubError(ErrGetCodeowners, err)
+		return bot.NewGitHubError(bot.ErrGetCodeowners, err)
 	}
 
 	// Initialize permission checker from content
 	checker, err := permissions.NewCheckerFromContent(codeownersContent, client)
 	if err != nil {
-		return NewGitHubError(ErrInitPermissions, err)
+		return bot.NewGitHubError(bot.ErrInitPermissions, err)
 	}
 
 	// Handle help command immediately (no permission check needed)
@@ -392,7 +392,7 @@ func executeCommentWithEnvironment(
 		rc.RepoName,
 	)
 	if err != nil {
-		return NewGitHubError(ErrPermissionCheck, err)
+		return bot.NewGitHubError(bot.ErrPermissionCheck, err)
 	}
 
 	// Handle unauthorized users
@@ -526,7 +526,7 @@ func loadRuntimeConfig(cmd *cobra.Command) *RuntimeConfig {
 func loadBotConfig(cmd *cobra.Command) (*config.Config, error) {
 	bc, err := config.LoadProcess(cmd.Flags())
 	if err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
+		return nil, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
 
 	// The one thing Smyklot cannot migrate for anyone. A repository's
@@ -553,7 +553,7 @@ func loadEnvIfEmpty(target *string, envVar string) {
 // validateConfig validates that all required configuration is present
 func validateConfig(rc *RuntimeConfig) error {
 	if rc.Token == "" {
-		return NewEnvVarError(ErrMissingEnvVar, envGitHubToken)
+		return bot.NewEnvVarError(bot.ErrMissingEnvVar, envGitHubToken)
 	}
 
 	return validateCommentInput(rc)
@@ -579,14 +579,14 @@ func validateCommentInput(rc *RuntimeConfig) error {
 
 	for _, field := range requiredFields {
 		if field.value == "" {
-			return NewEnvVarError(ErrMissingEnvVar, field.envVar)
+			return bot.NewEnvVarError(bot.ErrMissingEnvVar, field.envVar)
 		}
 	}
 
 	// Validate comment body length to prevent DoS
 	if len(rc.CommentBody) > maxCommentBodyLength {
-		return NewInputError(
-			ErrInvalidInput,
+		return bot.NewInputError(
+			bot.ErrInvalidInput,
 			rc.CommentBody,
 			errCommentTooLong,
 		)
@@ -594,16 +594,16 @@ func validateCommentInput(rc *RuntimeConfig) error {
 
 	// Validate repository owner and name format
 	if !githubNamePattern.MatchString(rc.RepoOwner) {
-		return NewInputError(
-			ErrInvalidInput,
+		return bot.NewInputError(
+			bot.ErrInvalidInput,
 			rc.RepoOwner,
 			errInvalidRepoName,
 		)
 	}
 
 	if !githubNamePattern.MatchString(rc.RepoName) {
-		return NewInputError(
-			ErrInvalidInput,
+		return bot.NewInputError(
+			bot.ErrInvalidInput,
 			rc.RepoName,
 			errInvalidRepoName,
 		)
@@ -630,7 +630,7 @@ func postFeedback(
 			prNum,
 			message,
 		); err != nil {
-			return NewGitHubError(ErrPostComment, err)
+			return bot.NewGitHubError(bot.ErrPostComment, err)
 		}
 	}
 
@@ -652,7 +652,7 @@ func postFeedback(
 		commentID,
 		reaction,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return bot.NewGitHubError(bot.ErrAddReaction, err)
 	}
 
 	return nil
@@ -667,7 +667,7 @@ func addEyesReaction(ctx context.Context, client *github.Client, rc *RuntimeConf
 		commentID,
 		github.ReactionEyes,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return bot.NewGitHubError(bot.ErrAddReaction, err)
 	}
 
 	return nil
@@ -697,7 +697,7 @@ func postOperationFailure(
 		return err
 	}
 
-	return NewGitHubError(sentinelErr, operationErr)
+	return bot.NewGitHubError(sentinelErr, operationErr)
 }
 
 // checkUserPermission checks if a user has permission to approve/merge
@@ -1353,7 +1353,7 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 			prNum,
 			fb.Message,
 		); err != nil {
-			return NewGitHubError(ErrPostComment, err)
+			return bot.NewGitHubError(bot.ErrPostComment, err)
 		}
 	}
 
@@ -1375,7 +1375,7 @@ func postCombinedFeedback(ctx context.Context, client *github.Client, rc *Runtim
 		commentID,
 		reaction,
 	); err != nil {
-		return NewGitHubError(ErrAddReaction, err)
+		return bot.NewGitHubError(bot.ErrAddReaction, err)
 	}
 
 	return nil
@@ -1408,12 +1408,12 @@ func handleDeletedComment(
 	// Convert PR number and comment ID
 	prNum, err := strconv.Atoi(rc.PRNumber)
 	if err != nil {
-		return NewInputError(ErrInvalidInput, rc.PRNumber, errInvalidPRNum)
+		return bot.NewInputError(bot.ErrInvalidInput, rc.PRNumber, errInvalidPRNum)
 	}
 
 	commentIDNum, err := strconv.Atoi(rc.CommentID)
 	if err != nil {
-		return NewInputError(ErrInvalidInput, rc.CommentID, errInvalidComment)
+		return bot.NewInputError(bot.ErrInvalidInput, rc.CommentID, errInvalidComment)
 	}
 
 	// Post feedback about deleted comment
@@ -1691,7 +1691,7 @@ func handleReactionApprove(
 			commentID,
 			err,
 			feedback.NewApprovalFailed,
-			ErrApprovePR,
+			bot.ErrApprovePR,
 		)
 	}
 
@@ -1724,7 +1724,7 @@ func handleReactionApprove(
 			commentID,
 			err,
 			feedback.NewApprovalFailed,
-			ErrApprovePR,
+			bot.ErrApprovePR,
 		)
 	}
 
@@ -1763,7 +1763,7 @@ func handleReactionMerge(
 			commentID,
 			err,
 			feedback.NewMergeFailed,
-			ErrMergePR,
+			bot.ErrMergePR,
 		)
 	}
 
@@ -1801,7 +1801,7 @@ func handleReactionMerge(
 				commentID,
 				err,
 				feedback.NewApprovalFailed,
-				ErrApprovePR,
+				bot.ErrApprovePR,
 			)
 		}
 	}
@@ -1825,7 +1825,7 @@ func handleReactionMerge(
 					commentID,
 					err,
 					feedback.NewAutoMergeFailed,
-					ErrMergePR,
+					bot.ErrMergePR,
 				)
 			}
 
@@ -1851,7 +1851,7 @@ func handleReactionMerge(
 			commentID,
 			err,
 			feedback.NewMergeFailed,
-			ErrMergePR,
+			bot.ErrMergePR,
 		)
 	}
 
@@ -1980,7 +1980,7 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 	// Convert installation ID to int64
 	installationID, err := strconv.ParseInt(rc.InstallationID, 10, 64)
 	if err != nil {
-		return "", NewInputError(ErrInvalidInput, rc.InstallationID, errInvalidInstallID)
+		return "", bot.NewInputError(bot.ErrInvalidInput, rc.InstallationID, errInvalidInstallID)
 	}
 
 	// Minting goes through the same store the service uses. Two implementations
@@ -1990,53 +1990,26 @@ func getInstallationToken(rc *RuntimeConfig) (string, error) {
 	tokens, err := githubapp.NewTokenStore(
 		clientID, []byte(rc.GitHubAppPrivateKey), rc.APIBaseURL, githubapp.DefaultMintTimeout)
 	if err != nil {
-		return "", NewGitHubError(ErrGitHubAppAuth, err)
+		return "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	token, err := tokens.InstallationToken(installationID)
 	if err != nil {
-		return "", NewGitHubError(ErrGitHubAppAuth, err)
+		return "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	return token, nil
 }
 
-// appendStepSummary adds one note to the GitHub Actions step summary.
-//
-// This is the only place the summary file is opened. Outside Actions there is
-// no such file, and nothing is written.
-func appendStepSummary(note string) error {
-	summaryFile := os.Getenv(envStepSummary)
-	if summaryFile == "" {
-		// Not running in GitHub Actions, skip
-		return nil
-	}
-
-	//nolint:gosec // summaryFile is from the trusted GitHub Actions environment
-	file, err := os.OpenFile(summaryFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return NewGitHubError(ErrStepSummary, err)
-	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	if _, err := file.WriteString(note); err != nil {
-		return NewGitHubError(ErrStepSummary, err)
-	}
-
-	return nil
-}
-
 // writeStepSummary writes the effective configuration to GitHub Actions step summary.
 func writeStepSummary(rc *RuntimeConfig, bc *config.Config) error {
-	// Rendered before anything is opened, so appendStepSummary stays the one
+	// Rendered before anything is opened, so bot.AppendStepSummary stays the one
 	// place that knows how to write to the summary
 	var rendered strings.Builder
 
 	tmpl, err := template.New(summaryTemplateName).Parse(stepSummaryTemplate)
 	if err != nil {
-		return NewGitHubError(ErrStepSummary, err)
+		return bot.NewGitHubError(bot.ErrStepSummary, err)
 	}
 
 	var allowedCommands string
@@ -2068,8 +2041,8 @@ func writeStepSummary(rc *RuntimeConfig, bc *config.Config) error {
 	}
 
 	if err := tmpl.Execute(&rendered, data); err != nil {
-		return NewGitHubError(ErrStepSummary, err)
+		return bot.NewGitHubError(bot.ErrStepSummary, err)
 	}
 
-	return appendStepSummary(rendered.String())
+	return bot.AppendStepSummary(rendered.String())
 }

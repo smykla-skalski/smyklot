@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -58,11 +59,11 @@ func (checks *githubPendingCIChecks) AppID(ctx context.Context) (int64, error) {
 	}
 	token, err := checks.tokens.AppToken()
 	if err != nil {
-		return 0, NewGitHubError(ErrGitHubAppAuth, err)
+		return 0, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewAppClient(token, checks.apiBaseURL)
 	if err != nil {
-		return 0, NewGitHubError(ErrGitHubClient, err)
+		return 0, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	checks.appID, err = client.AppID(ctx)
 	if err != nil {
@@ -409,11 +410,11 @@ func (checks *githubPendingCIChecks) client(
 ) (*github.Client, string, string, error) {
 	token, err := checks.tokens.InstallationToken(slot.InstallationID)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, checks.apiBaseURL)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubClient, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	owner, repository, found := strings.Cut(slot.RepositoryFullName, "/")
 	if !found || owner == "" || repository == "" || strings.Contains(repository, "/") {

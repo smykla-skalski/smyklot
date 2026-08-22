@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -693,11 +694,11 @@ func (backend *githubPendingCIBackend) client(
 	}
 	token, err := backend.server.tokens.InstallationToken(request.InstallationID)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, backend.server.cfg.apiBaseURL)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubClient, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	return client, owner, repository, nil

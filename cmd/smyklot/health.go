@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
@@ -156,12 +157,12 @@ func (s *server) probe(parent context.Context) {
 func (s *server) pingGitHub(ctx context.Context) error {
 	token, err := s.tokens.AppToken()
 	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
+		return bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	client, err := github.NewAppClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	return client.Ping(ctx)

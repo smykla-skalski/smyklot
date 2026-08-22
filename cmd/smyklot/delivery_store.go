@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -168,7 +169,7 @@ func (s *server) failDelivery(ctx context.Context, j job, cause error) error {
 		ClaimID:   j.claimID,
 		Stage:     "execute",
 		Reason:    reason,
-		Retryable: !errors.Is(cause, ErrRepoConfigInvalid),
+		Retryable: !errors.Is(cause, bot.ErrRepoConfigInvalid),
 		FailedAt:  time.Now().UTC(),
 	})
 	if err == nil {
@@ -209,7 +210,7 @@ func deliveryRetryDelay(attempt int) time.Duration {
 }
 
 func retryableDelivery(cause error, attempt int) bool {
-	if attempt >= maxDeliveryAttempts || errors.Is(cause, ErrRepoConfigInvalid) {
+	if attempt >= maxDeliveryAttempts || errors.Is(cause, bot.ErrRepoConfigInvalid) {
 		return false
 	}
 

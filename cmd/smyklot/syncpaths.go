@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -306,7 +307,7 @@ func namedRepository(fullName string) (string, string, error) {
 	owner, repo := splitFullName(fullName)
 	if owner == "" {
 		return "", "", fmt.Errorf(
-			"%w: repository name %q has no owner", ErrInvalidInput, fullName)
+			"%w: repository name %q has no owner", bot.ErrInvalidInput, fullName)
 	}
 
 	return owner, repo, nil

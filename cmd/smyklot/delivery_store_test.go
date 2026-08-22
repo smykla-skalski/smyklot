@@ -10,6 +10,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/smykla-skalski/smyklot/internal/bot"
 )
 
 type classifiedDeliveryError bool
@@ -68,7 +69,7 @@ var _ = Describe("Delivery persistence [Unit]", func() {
 		Entry("temporary transport failure", errors.New("connection reset"), 1, true),
 		Entry("provider-classified transient failure", classifiedDeliveryError(true), 1, true),
 		Entry("provider-classified permanent failure", classifiedDeliveryError(false), 1, false),
-		Entry("invalid repository configuration", ErrRepoConfigInvalid, 1, false),
+		Entry("invalid repository configuration", bot.ErrRepoConfigInvalid, 1, false),
 		Entry("attempt budget exhausted", errors.New("still unavailable"), maxDeliveryAttempts, false),
 	)
 })

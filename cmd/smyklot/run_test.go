@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -41,7 +42,7 @@ var runEnv = []string{
 	envInstallationID,
 	envBotUsername,
 	envAPIBaseURL,
-	envStepSummary,
+	bot.EnvStepSummary,
 	envDisableDeletedComments,
 	envRunner,
 	config.EnvConfig,
@@ -292,7 +293,7 @@ var _ = Describe("Repository configuration [Unit]", func() {
 			recorder := &commentRecorder{repoConfig: "- a list, not a mapping\n"}
 
 			_, err := runCommentOn(recorder, "created", "/approve", nil)
-			Expect(err).To(MatchError(ErrRepoConfigInvalid))
+			Expect(err).To(MatchError(bot.ErrRepoConfigInvalid))
 
 			posted := recorder.posted()
 			Expect(posted).To(HaveLen(1))
@@ -304,7 +305,7 @@ var _ = Describe("Repository configuration [Unit]", func() {
 			recorder := &commentRecorder{repoConfig: "- a list, not a mapping\n"}
 
 			_, err := runCommentOn(recorder, "created", "just thinking out loud", nil)
-			Expect(err).To(MatchError(ErrRepoConfigInvalid))
+			Expect(err).To(MatchError(bot.ErrRepoConfigInvalid))
 			Expect(recorder.posted()).To(BeEmpty())
 		})
 	})

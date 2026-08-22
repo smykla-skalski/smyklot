@@ -15,6 +15,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -208,7 +209,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	tokens, err := githubapp.NewTokenStore(
 		cfg.appClientID, cfg.appPrivateKey, cfg.apiBaseURL, githubapp.DefaultMintTimeout)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	// The two values that must never reach a log line or the failures
@@ -718,12 +719,12 @@ func (s *server) handleIssueComment(
 ) error {
 	token, err := s.tokens.InstallationToken(event.Installation.ID)
 	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
+		return bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	current, err := issueCommentIsCurrent(ctx, client, event)
 	if err != nil {
@@ -769,7 +770,7 @@ func (s *server) handleIssueComment(
 		event.Repository.Name,
 	)
 	if err != nil {
-		if errors.Is(err, ErrRepoConfigInvalid) {
+		if errors.Is(err, bot.ErrRepoConfigInvalid) {
 			return reportInvalidRepoConfig(ctx, client, rc, s.botConfig(), err)
 		}
 
@@ -778,7 +779,7 @@ func (s *server) handleIssueComment(
 
 	// A repository that has rolled back to the Action is left to it, without
 	// the service being redeployed to learn that
-	if serviceStandsDown(ctx, bc) {
+	if bot.ServiceStandsDown(ctx, bc) {
 		return nil
 	}
 

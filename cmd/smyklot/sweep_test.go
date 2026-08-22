@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -549,7 +550,7 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 		})
 		Expect(err).NotTo(HaveOccurred())
 
-		Expect(srv.sweep(GinkgoT().Context())).To(MatchError(ErrListInstallations))
+		Expect(srv.sweep(GinkgoT().Context())).To(MatchError(bot.ErrListInstallations))
 	})
 })
 

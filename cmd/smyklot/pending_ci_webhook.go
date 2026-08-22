@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -371,7 +372,7 @@ func (s *server) preparePendingCIReauthorization(
 		repository,
 	)
 	if err != nil {
-		return false, NewGitHubError(ErrPermissionCheck, err)
+		return false, bot.NewGitHubError(bot.ErrPermissionCheck, err)
 	}
 	if !authorized {
 		return false, nil
@@ -438,11 +439,11 @@ func (s *server) pendingCIClient(
 ) (*github.Client, string, string, error) {
 	token, err := s.tokens.InstallationToken(installationID)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return nil, "", "", NewGitHubError(ErrGitHubClient, err)
+		return nil, "", "", bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	owner, repository, found := strings.Cut(fullName, "/")
 	if !found || owner == "" || repository == "" || strings.Contains(repository, "/") {

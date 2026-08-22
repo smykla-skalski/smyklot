@@ -1,4 +1,4 @@
-package main
+package bot
 
 import (
 	"context"
@@ -33,17 +33,17 @@ func standsDown(ctx context.Context, bc *config.Config, self config.Runner) bool
 	return true
 }
 
-// actionStandsDown reports whether the Action should leave this comment alone.
+// ActionStandsDown reports whether the Action should leave this comment alone.
 //
 // Nothing is posted to the pull request. If the service is running it has
 // already reacted, and a second reaction is the duplicate this exists to
 // prevent. The job summary carries the reason instead.
-func actionStandsDown(ctx context.Context, bc *config.Config) bool {
+func ActionStandsDown(ctx context.Context, bc *config.Config) bool {
 	if !standsDown(ctx, bc, config.RunnerAction) {
 		return false
 	}
 
-	if err := appendStepSummary(fmt.Sprintf(standDownSummary, bc.EffectiveRunner())); err != nil {
+	if err := AppendStepSummary(fmt.Sprintf(standDownSummary, bc.EffectiveRunner())); err != nil {
 		logging.From(ctx).Warn("failed to write step summary", "error", err)
 	}
 
@@ -54,7 +54,7 @@ func actionStandsDown(ctx context.Context, bc *config.Config) bool {
 // file cannot be read, since a sweep has no one comment to answer.
 const unusableConfigSummary = "\n## Smyklot\n\nStopped: `.github/smyklot.yaml` could not be used.\n\n```text\n%s\n```\n"
 
-// reportUnusableRepoConfig stops a sweep and says why where the run can be
+// ReportUnusableRepoConfig stops a sweep and says why where the run can be
 // read.
 //
 // A broken file stops the sweep rather than letting it fall back to defaults,
@@ -64,12 +64,12 @@ const unusableConfigSummary = "\n## Smyklot\n\nStopped: `.github/smyklot.yaml` c
 // request at once, so commenting on all of them to report one broken file would
 // be the wrong kind of loud. The job summary carries it instead, and the run
 // fails so a repository does not lose reaction commands quietly.
-func reportUnusableRepoConfig(ctx context.Context, cause error) error {
+func ReportUnusableRepoConfig(ctx context.Context, cause error) error {
 	if !errors.Is(cause, ErrRepoConfigInvalid) {
 		return cause
 	}
 
-	if err := appendStepSummary(fmt.Sprintf(unusableConfigSummary, cause)); err != nil {
+	if err := AppendStepSummary(fmt.Sprintf(unusableConfigSummary, cause)); err != nil {
 		logging.From(ctx).Warn("failed to write step summary", "error", err)
 	}
 
@@ -78,11 +78,11 @@ func reportUnusableRepoConfig(ctx context.Context, cause error) error {
 	return cause
 }
 
-// serviceStandsDown reports whether the service should leave a repository to
+// ServiceStandsDown reports whether the service should leave a repository to
 // the Action.
 //
 // This is the rollback path: a repository sets runner to action and the service
 // stops touching it, without the service being redeployed or reconfigured.
-func serviceStandsDown(ctx context.Context, bc *config.Config) bool {
+func ServiceStandsDown(ctx context.Context, bc *config.Config) bool {
 	return standsDown(ctx, bc, config.RunnerService)
 }

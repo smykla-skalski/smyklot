@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/panelassets"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -125,11 +126,11 @@ func (s *server) ResolveUser(
 	}
 	token, err := s.tokens.InstallationToken(installationID)
 	if err != nil {
-		return storage.Account{}, NewGitHubError(ErrGitHubAppAuth, err)
+		return storage.Account{}, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return storage.Account{}, NewGitHubError(ErrGitHubClient, err)
+		return storage.Account{}, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	user, err := client.GetUser(ctx, login)
 	if err != nil {
@@ -185,11 +186,11 @@ func (s *server) ListTargetCandidates(
 	}
 	token, err := s.tokens.InstallationToken(installationID)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubClient, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	members, err := client.ListOrganizationMembers(ctx, target.Account.Login)
 	if err != nil {
@@ -278,15 +279,15 @@ func (s *server) syncPanelCatalogLocked(ctx context.Context) ([]string, error) {
 func (s *server) syncCatalog(ctx context.Context) ([]string, error) {
 	appToken, err := s.tokens.AppToken()
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	appClient, err := github.NewAppClient(appToken, s.cfg.apiBaseURL)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubClient, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	installations, err := appClient.ListInstallations(ctx)
 	if err != nil {
-		return nil, NewGitHubError(ErrListInstallations, err)
+		return nil, bot.NewGitHubError(bot.ErrListInstallations, err)
 	}
 
 	syncedAt := time.Now().UTC()
@@ -397,15 +398,15 @@ func (s *server) loadInstallationSnapshot(
 ) (storage.InstallationSnapshot, error) {
 	token, err := s.tokens.InstallationToken(installation.ID)
 	if err != nil {
-		return storage.InstallationSnapshot{}, NewGitHubError(ErrGitHubAppAuth, err)
+		return storage.InstallationSnapshot{}, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return storage.InstallationSnapshot{}, NewGitHubError(ErrGitHubClient, err)
+		return storage.InstallationSnapshot{}, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 	repositories, err := client.ListInstallationRepos(ctx)
 	if err != nil {
-		return storage.InstallationSnapshot{}, NewGitHubError(ErrListRepos, err)
+		return storage.InstallationSnapshot{}, bot.NewGitHubError(bot.ErrListRepos, err)
 	}
 
 	return completeInstallationSnapshot(

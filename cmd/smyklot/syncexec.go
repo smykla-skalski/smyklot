@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -508,17 +509,17 @@ func (s *server) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 func (s *server) installationClient(installationID string) (*github.Client, error) {
 	id, err := strconv.ParseInt(installationID, 10, 64)
 	if err != nil || id <= 0 {
-		return nil, fmt.Errorf("%w: installation id %q", ErrGitHubClient, installationID)
+		return nil, fmt.Errorf("%w: installation id %q", bot.ErrGitHubClient, installationID)
 	}
 
 	token, err := s.tokens.InstallationToken(id)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubAppAuth, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return nil, NewGitHubError(ErrGitHubClient, err)
+		return nil, bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	return client, nil

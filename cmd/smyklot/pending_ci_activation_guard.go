@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -47,7 +48,7 @@ func (guard githubPendingCIActivationGuard) AllowsActivation(
 		return false, fmt.Errorf("read repository configuration: %w", err)
 	}
 
-	if serviceStandsDown(ctx, botConfig) {
+	if bot.ServiceStandsDown(ctx, botConfig) {
 		return false, nil
 	}
 	mode, err := guard.PendingCIMode(ctx, baseBranch)

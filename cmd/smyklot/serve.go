@@ -16,6 +16,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/panel"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage/open"
@@ -553,7 +554,7 @@ func applyLogFlags(cmd *cobra.Command, cfg *serveConfig) error {
 
 	cfg.logFormat, err = logging.ParseFormat(rawFormat)
 	if err != nil {
-		return NewInputError(logging.ErrUnknownLogFormat, rawFormat, err.Error())
+		return bot.NewInputError(logging.ErrUnknownLogFormat, rawFormat, err.Error())
 	}
 
 	level, err := cmd.Flags().GetString(flagLogLevel)
@@ -565,7 +566,7 @@ func applyLogFlags(cmd *cobra.Command, cfg *serveConfig) error {
 
 	cfg.logLevel, err = logging.ParseLevel(rawLevel)
 	if err != nil {
-		return NewInputError(logging.ErrUnknownLogLevel, rawLevel, err.Error())
+		return bot.NewInputError(logging.ErrUnknownLogLevel, rawLevel, err.Error())
 	}
 
 	return nil
@@ -649,7 +650,7 @@ func flagOrEnvDuration(
 
 	parsed, err := time.ParseDuration(raw)
 	if err != nil {
-		return 0, NewInputError(invalid, raw, err.Error())
+		return 0, bot.NewInputError(invalid, raw, err.Error())
 	}
 
 	return parsed, nil

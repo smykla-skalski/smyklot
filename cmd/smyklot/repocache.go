@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/pkg/commands"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -33,7 +34,7 @@ func effectiveConfig(
 	// the one that reads this on a timer, and it goes through repoCache.
 	found, err := client.FindRepoConfig(ctx, owner, repo, "")
 	if err != nil {
-		return nil, NewConfigError(ErrConfigLoad, err)
+		return nil, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
 	if !found.Found() {
 		return base, nil
@@ -43,7 +44,7 @@ func effectiveConfig(
 	// someone edits it. Callers tell the repository so, rather than retrying
 	cfg, err := loadRepoConfig(base, found)
 	if err != nil {
-		return nil, NewConfigError(ErrRepoConfigInvalid, err)
+		return nil, bot.NewConfigError(bot.ErrRepoConfigInvalid, err)
 	}
 
 	return cfg, nil

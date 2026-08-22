@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -55,7 +56,7 @@ func fetchRepositoryConfig(
 
 	fingerprint, err := client.RepoConfigFingerprint(ctx, owner, repository, preferred)
 	if err != nil {
-		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
+		return repositoryConfigFile{}, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
 
 	// An empty fingerprint is "could not tell", and never compares equal, so a
@@ -66,7 +67,7 @@ func fetchRepositoryConfig(
 
 	found, err := client.FindRepoConfig(ctx, owner, repository, preferred)
 	if err != nil {
-		return repositoryConfigFile{}, NewConfigError(ErrConfigLoad, err)
+		return repositoryConfigFile{}, bot.NewConfigError(bot.ErrConfigLoad, err)
 	}
 	if !found.Found() {
 		return repositoryConfigFile{
@@ -91,7 +92,7 @@ func repositoryConfigFileFrom(found github.RepoConfig, fingerprint string) repos
 	if err != nil {
 		return repositoryConfigFile{
 			status:      storage.RepositoryFileInvalid,
-			err:         NewConfigError(ErrRepoConfigInvalid, err),
+			err:         bot.NewConfigError(bot.ErrRepoConfigInvalid, err),
 			path:        found.Path,
 			superseded:  found.Superseded,
 			fingerprint: fingerprint,

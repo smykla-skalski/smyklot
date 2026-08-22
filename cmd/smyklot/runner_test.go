@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -68,8 +69,8 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			summary := filepath.Join(GinkgoT().TempDir(), "summary.md")
 
 			Expect(standsDown("", map[string]string{
-				envRunner:      "",
-				envStepSummary: summary,
+				envRunner:          "",
+				bot.EnvStepSummary: summary,
 			})).To(BeTrue())
 
 			written, err := os.ReadFile(summary) //nolint:gosec // path built by the spec
@@ -84,7 +85,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			recorder := &commentRecorder{repoConfig: "runner: workflow\n"}
 
 			_, err := runCommentOn(recorder, "deleted", "/approve", nil)
-			Expect(err).To(MatchError(ErrRepoConfigInvalid))
+			Expect(err).To(MatchError(bot.ErrRepoConfigInvalid))
 
 			Expect(recorder.posted()).To(HaveLen(1))
 			Expect(recorder.posted()[0].Body).To(ContainSubstring("smyklot.yaml"))
@@ -97,7 +98,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 				envRunner: "workflow",
 			})
 
-			Expect(err).To(MatchError(ErrConfigLoad))
+			Expect(err).To(MatchError(bot.ErrConfigLoad))
 			Expect(err).To(MatchError(ContainSubstring("workflow")))
 		})
 	})
@@ -146,7 +147,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			stub := newGitHubStub()
 			stub.repoConfig = "- a list, not a mapping\n"
 
-			Expect(runSweep(stub, nil)).To(MatchError(ErrRepoConfigInvalid))
+			Expect(runSweep(stub, nil)).To(MatchError(bot.ErrRepoConfigInvalid))
 			Expect(stub.countCalls(http.MethodGet, codeownersPath)).To(BeZero())
 		})
 
@@ -156,7 +157,7 @@ var _ = Describe("Choosing an entry point [Unit]", func() {
 			stub := newGitHubStub()
 			stub.repoConfig = "- a list, not a mapping\n"
 
-			Expect(runSweep(stub, map[string]string{envStepSummary: summary})).To(HaveOccurred())
+			Expect(runSweep(stub, map[string]string{bot.EnvStepSummary: summary})).To(HaveOccurred())
 
 			written, err := os.ReadFile(summary) //nolint:gosec // path built by the spec
 			Expect(err).NotTo(HaveOccurred())

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -199,17 +200,17 @@ func (s *server) sweepMode(ctx context.Context, pollReactions bool) error {
 
 	appToken, err := s.tokens.AppToken()
 	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
+		return bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	appClient, err := github.NewAppClient(appToken, s.cfg.apiBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	installations, err := appClient.ListInstallations(ctx)
 	if err != nil {
-		return NewGitHubError(ErrListInstallations, err)
+		return bot.NewGitHubError(bot.ErrListInstallations, err)
 	}
 
 	var sweepErr error
@@ -247,12 +248,12 @@ func (s *server) sweepInstallation(
 ) error {
 	token, err := s.tokens.InstallationToken(installation.ID)
 	if err != nil {
-		return NewGitHubError(ErrGitHubAppAuth, err)
+		return bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
 	}
 
 	client, err := github.NewClient(token, s.cfg.apiBaseURL)
 	if err != nil {
-		return NewGitHubError(ErrGitHubClient, err)
+		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
 	repos, err := s.reconcileSweepInstallation(ctx, client, installation)
@@ -333,7 +334,7 @@ func (s *server) reconcileSweepInstallation(
 
 	repos, err := client.ListInstallationRepos(ctx)
 	if err != nil {
-		return nil, NewGitHubError(ErrListRepos, err)
+		return nil, bot.NewGitHubError(bot.ErrListRepos, err)
 	}
 	if s.panel == nil {
 		return repos, nil
@@ -413,7 +414,7 @@ func (s *server) sweepRepo(
 
 	// Checked before CODEOWNERS is read, so a repository left to the Action
 	// costs the sweep one request rather than two
-	if serviceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
+	if bot.ServiceStandsDown(logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name)), bc) {
 		prs, err := s.handoffPendingCIToAction(ctx, client, repo)
 		if err != nil {
 			return err
@@ -424,7 +425,7 @@ func (s *server) sweepRepo(
 	ctx = logging.With(ctx, "repo", repoFullName(repo.Owner, repo.Name))
 	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
 	if err != nil {
-		return NewGitHubError(ErrGetPRs, err)
+		return bot.NewGitHubError(bot.ErrGetPRs, err)
 	}
 	cleaned, err := s.reconcilePendingCIServiceArtifacts(
 		ctx, client, repo, prs, !pollReactions,
@@ -564,7 +565,7 @@ func (s *server) handoffPendingCIToAction(
 	}
 	prs, err := client.GetOpenPRs(ctx, repo.Owner, repo.Name)
 	if err != nil {
-		return nil, NewGitHubError(ErrGetPRs, err)
+		return nil, bot.NewGitHubError(bot.ErrGetPRs, err)
 	}
 
 	_, err = s.reconcilePendingCIServiceArtifacts(ctx, client, repo, prs, true)
