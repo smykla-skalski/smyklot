@@ -178,10 +178,6 @@ var _ = Describe("Service observability [Unit]", func() {
 
 			Expect(logs.find("delivery executed")).To(HaveKeyWithValue("delivery_id", "abcinjected"))
 		})
-
-		// The scrubbing itself is proven where it lives, in pkg/webhook. What
-		// this spec adds is that the scrubbed value is the one that reaches
-		// the log.
 	})
 
 	Describe("readiness", func() {

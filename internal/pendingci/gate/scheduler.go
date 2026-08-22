@@ -194,12 +194,6 @@ func (scheduler *Scheduler) wait(ctx context.Context, availableAt *time.Time) bo
 	}
 }
 
-// stopTimer stops a timer and drains it if it had already fired.
-//
-// Deliberately a copy of the one the sweep keeps rather than a shared helper:
-// it is the stdlib's own drain idiom and there is nothing here for two copies
-// to drift apart on. A package this one imports for seven lines would be the
-// worse trade.
 func stopTimer(timer *time.Timer) {
 	if !timer.Stop() {
 		select {

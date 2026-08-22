@@ -5,9 +5,6 @@ import (
 	"testing"
 )
 
-// The delivery header is not covered by the signature, so its value is whatever
-// the caller sent. It reaches log lines, metric labels and database rows, and a
-// newline in a log line is a forged log line.
 func TestSanitizeDeliveryID(t *testing.T) {
 	t.Parallel()
 	tests := []struct{ name, raw, want string }{
@@ -37,19 +34,21 @@ func TestSanitizeDeliveryID(t *testing.T) {
 	}
 }
 
-// An event name outside the configured set must never reach a metric label, or
-// one made-up header is one time series.
 func TestEventLabel(t *testing.T) {
 	t.Parallel()
+
+	// Given a pipeline configured for issue comments alone
 	known := map[string]struct{}{EventIssueComment: {}}
 
+	// Then a configured event, and ping, are their own labels
 	if got := eventLabel(EventIssueComment, known); got != EventIssueComment {
 		t.Fatalf("a configured event = %q", got)
 	}
-	// Answered by the pipeline itself, so it is always its own label.
 	if got := eventLabel(EventPing, known); got != EventPing {
 		t.Fatalf("ping = %q", got)
 	}
+
+	// And anything else is not
 	if got := eventLabel("<script>alert(1)</script>", known); got != eventOther {
 		t.Fatalf("an unknown event = %q, want %q", got, eventOther)
 	}

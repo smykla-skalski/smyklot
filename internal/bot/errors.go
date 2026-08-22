@@ -60,10 +60,6 @@ var (
 	// ErrListRepos is returned when listing an installation's repositories fails
 	ErrListRepos = errors.New("failed to list installation repositories")
 
-	// ErrRequiredWorkflowsUnsupported is returned when a repository asks to
-	// merge on its required checks alone and one of them is a required
-	// workflow. GitHub reports those separately from status checks and does
-	// not say which context each produces, so there is nothing to wait for
 	ErrRequiredWorkflowsUnsupported = errors.New(
 		"required-only merge-after-CI does not support required workflow rules",
 	)

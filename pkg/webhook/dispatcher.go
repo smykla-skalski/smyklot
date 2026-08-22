@@ -6,16 +6,8 @@ import (
 	"time"
 )
 
-// invalidPayload is what a leased row that will not parse is failed with. The
-// payload itself is not repeated into the reason: it is untrusted, and it is
-// already on the row.
 const invalidPayload = "stored webhook payload is invalid"
 
-// lease turns committed inbox rows into bounded worker jobs.
-//
-// The HTTP side only wakes this loop; queue pressure can therefore delay
-// execution but can never discard an acknowledged webhook, because the work is
-// in the inbox rather than in memory.
 func (p *Pipeline) lease(ctx context.Context) {
 	for {
 		now := p.opts.Now()
@@ -55,11 +47,6 @@ func (p *Pipeline) lease(ctx context.Context) {
 	}
 }
 
-// decode rebuilds a Delivery from a leased row.
-//
-// The row stores the raw body rather than a decoded struct, so this is where
-// the payload is read - by whichever process leased it, which need not be the
-// one that accepted it.
 func (p *Pipeline) decode(work Work) (Delivery, error) {
 	source, err := ParseSource(work.Payload)
 	if err != nil {
@@ -80,11 +67,6 @@ func (p *Pipeline) decode(work Work) (Delivery, error) {
 	}), nil
 }
 
-// rejectInvalid settles a row whose payload will not parse.
-//
-// Non-retryable, and the handler is never called: a body that is not JSON now
-// will not be JSON on the next attempt, and the row is retained so a redelivery
-// of the same thing does not start the cycle again.
 func (p *Pipeline) rejectInvalid(ctx context.Context, work Work, cause error) {
 	p.opts.Logger.Error("stored delivery could not be decoded",
 		"delivery_id", work.DeliveryID, "claim_id", work.ClaimID, "error", cause)
@@ -99,8 +81,6 @@ func (p *Pipeline) rejectInvalid(ctx context.Context, work Work, cause error) {
 	}
 }
 
-// wait sleeps until there is something to do: a wake from an accepted delivery,
-// the instant the inbox said work becomes available, or shutdown.
 func (p *Pipeline) wait(ctx context.Context, availableAt *time.Time) bool {
 	if availableAt == nil {
 		select {
@@ -128,7 +108,6 @@ func (p *Pipeline) wait(ctx context.Context, availableAt *time.Time) bool {
 	}
 }
 
-// work is one worker: it runs deliveries until the queue closes.
 func (p *Pipeline) work() {
 	defer p.workers.Done()
 
@@ -137,7 +116,6 @@ func (p *Pipeline) work() {
 	}
 }
 
-// run executes one delivery and records what happened.
 func (p *Pipeline) run(delivery Delivery) {
 	ctx, cancel := context.WithTimeout(p.jobCtx, p.opts.Timeouts.Job)
 	defer cancel()
@@ -184,12 +162,6 @@ func (p *Pipeline) run(delivery Delivery) {
 	delivery.Logger.Error("delivery failed", "error", err, "duration", elapsed.String())
 }
 
-// finalize records an outcome, and keeps trying in the background if the inbox
-// will not take it.
-//
-// A claim stays owned until its outcome is written, so a transient database
-// stall delays redelivery instead of stranding the claim for the rest of the
-// process lifetime. Shutdown joins these before the caller closes its store.
 func (p *Pipeline) finalize(
 	ctx context.Context,
 	delivery Delivery,
@@ -212,8 +184,6 @@ func (p *Pipeline) finalize(
 	p.retryFinalization(delivery, outcome, write)
 }
 
-// retryFinalization keeps writing an outcome until it lands or the pipeline
-// shuts down.
 func (p *Pipeline) retryFinalization(
 	delivery Delivery,
 	outcome Outcome,
@@ -262,7 +232,6 @@ func (p *Pipeline) retryFinalization(
 	}()
 }
 
-// stopTimer stops a timer and drains it if it had already fired.
 func stopTimer(timer *time.Timer) {
 	if !timer.Stop() {
 		select {

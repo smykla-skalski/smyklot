@@ -5,9 +5,6 @@ import (
 	"net/http"
 )
 
-// receiver answers GitHub. It verifies, screens and claims, and it does all of
-// that before any work runs: GitHub gives a delivery ten seconds and does not
-// retry one that times out.
 type receiver struct {
 	pipeline *Pipeline
 }
@@ -16,8 +13,6 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p := rec.pipeline
 	event := r.Header.Get(EventHeader)
 
-	// GitHub sends a ping when a webhook is first configured and will not send
-	// anything else until it is answered.
 	if event == EventPing {
 		p.opts.received(event, OutcomeIgnored)
 		w.WriteHeader(http.StatusOK)
@@ -25,10 +20,6 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// An event nobody subscribed to is answered before it costs a parse or a
-	// row. Not before the signature check, though - that has already read the
-	// body, and answering an unsigned request differently by event would tell
-	// whoever sent it which events this deployment listens for.
 	if !p.opts.accepts(event) {
 		p.opts.received(event, OutcomeIgnored)
 		w.WriteHeader(http.StatusNoContent)
@@ -95,10 +86,6 @@ func (rec receiver) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rec.claim(w, r, delivery)
 }
 
-// claim takes ownership of a delivery, or explains why it did not.
-//
-// Claiming before queueing is what makes a redelivery harmless: the second copy
-// never reaches a handler.
 func (rec receiver) claim(w http.ResponseWriter, r *http.Request, delivery Delivery) {
 	p := rec.pipeline
 
@@ -142,8 +129,6 @@ func (rec receiver) claim(w http.ResponseWriter, r *http.Request, delivery Deliv
 	}
 }
 
-// unsigned answers a delivery whose signature did not check out. The handler
-// never sees the body, so an unsigned delivery cannot change anything.
 func (p *Pipeline) unsigned(w http.ResponseWriter, r *http.Request, err error) {
 	p.opts.received(r.Header.Get(EventHeader), OutcomeUnsigned)
 	p.opts.Logger.Warn("rejected an unsigned delivery", "error", err)

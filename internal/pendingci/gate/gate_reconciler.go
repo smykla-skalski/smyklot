@@ -19,9 +19,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-// gateStore is what reconciling branch protection reads and writes. Five
-// methods rather than storage.Store, for the reason the package boundary
-// exists: nothing here should be able to reach the panel's tables.
 type gateStore interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	ListQueue(context.Context, pendingci.QueueFilter) ([]pendingci.Request, error)

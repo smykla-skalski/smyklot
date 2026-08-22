@@ -12,12 +12,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// The payload builders live here rather than in internal/githubtest.
-//
-// This package is a library any GitHub App can import, and a library whose own
-// tests reach into the application it was carved out of has not finished
-// leaving. depguard enforces that, tests included; these twenty lines are what
-// the rule costs.
 const (
 	testInstallation = 4242
 	testRepoID       = 31337
@@ -84,15 +78,12 @@ func issueCommentPayload(event issueComment) []byte {
 	)
 }
 
-// comment is the ordinary case: a created comment on a pull request, by a
-// person.
 func comment(body string) []byte {
 	return issueCommentPayload(issueComment{
 		Action: webhook.ActionCreated, Body: body, IsPullRequest: true,
 	})
 }
 
-// signed builds a request GitHub could have sent.
 func signed(event, deliveryID string, body []byte) *http.Request {
 	mac := hmac.New(sha256.New, []byte(testSecret))
 	mac.Write(body)

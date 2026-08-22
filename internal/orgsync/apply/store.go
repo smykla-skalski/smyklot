@@ -8,13 +8,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-// Store is the part of the durable store org sync reads and writes.
-//
-// It is spelled out here rather than taken as storage.Store because the point
-// of the package boundary is that this subsystem cannot reach the panel's
-// tables, the delivery inbox or the pending CI state by accident. Seventeen
-// methods is what it turned out to use, and a new one has to be added here
-// before it can be called.
 type Store interface {
 	ListSyncConfigs(context.Context, string) ([]orgsync.Config, error)
 	ListSyncRepositoryOverrides(context.Context, string) ([]orgsync.RepositoryOverride, error)

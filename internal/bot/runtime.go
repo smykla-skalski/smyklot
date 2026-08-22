@@ -2,9 +2,6 @@ package bot
 
 import "github.com/smykla-skalski/smyklot/pkg/github"
 
-// DefaultBotUsername is the login a GitHub App's comments and reviews are
-// written under, and what the bot recognises as its own so it does not answer
-// itself. A deployment registered under another name overrides it.
 const DefaultBotUsername = "smyklot[bot]"
 
 // RuntimeConfig holds the runtime configuration for the action

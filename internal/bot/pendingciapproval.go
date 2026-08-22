@@ -8,9 +8,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-// SelfApprovalNotAllowed is what a pull request is told when its own author
-// asked for the approval. The reason is spelled out rather than left as a
-// silent no-op, because a command that appears to do nothing reads as a bug.
 const SelfApprovalNotAllowed = "(self-approval not allowed)"
 
 type pendingCIApprover interface {

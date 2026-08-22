@@ -73,11 +73,6 @@ func (checks *Checks) AppID(ctx context.Context) (int64, error) {
 	return checks.appID, nil
 }
 
-// CheckSlot reads one check slot back.
-//
-// The command layer needs a slot it already holds the id of, and used to reach
-// through this type's store field to get it. A method keeps that field this
-// type's own.
 func (checks *Checks) CheckSlot(
 	ctx context.Context,
 	id int64,

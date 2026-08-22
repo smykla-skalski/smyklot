@@ -6,35 +6,17 @@ import (
 	"time"
 )
 
-// Defaults for a MemoryInbox.
 const (
-	// DefaultTTL is how long a settled delivery is remembered. GitHub gives up
-	// redelivering long before this, and holding keys longer only costs memory.
-	DefaultTTL = time.Hour
-
-	// DefaultMaxEntries caps memory when deliveries arrive faster than they
-	// expire.
+	DefaultTTL        = time.Hour
 	DefaultMaxEntries = 10000
 )
 
-// MemoryInboxOptions sizes a MemoryInbox. Every zero value is a working
-// default.
 type MemoryInboxOptions struct {
 	TTL        time.Duration
 	MaxEntries int
-
-	// Now is the clock. Tests pass a fake one so expiry and backoff can be
-	// checked without waiting for them.
-	Now func() time.Time
+	Now        func() time.Time
 }
 
-// MemoryInbox is an Inbox that keeps everything in memory.
-//
-// A restart loses every claim, so a delivery that was in flight is neither run
-// nor redelivered - which is the failure a durable inbox exists to prevent, and
-// the reason this is not the default. It is here for two callers: an App small
-// enough that a lost delivery is a shrug, and this package's own tests, which
-// exercise the whole claim-lease-retry loop without a database.
 type MemoryInbox struct {
 	ttl time.Duration
 	max int
@@ -51,22 +33,13 @@ type memoryRow struct {
 	key       string
 	work      Work
 	claimedAt time.Time
-
-	// settledAt is zero while the delivery is still live. A settled row is kept
-	// so a redelivery is recognised rather than run again, and dropped once its
-	// TTL is up.
 	settledAt time.Time
-
-	// forgotten marks a retryable failure: the delivery is over, but GitHub is
-	// welcome to send it again.
 	forgotten bool
 
 	nextAttemptAt time.Time
 	leaseUntil    time.Time
 }
 
-// NewMemoryInbox returns an in-memory Inbox. See MemoryInbox for what that
-// costs.
 func NewMemoryInbox(opts MemoryInboxOptions) *MemoryInbox {
 	if opts.TTL <= 0 {
 		opts.TTL = DefaultTTL
@@ -94,8 +67,6 @@ func (m *MemoryInbox) Claim(_ context.Context, claim Claim) (ClaimResult, error)
 		case existing.settledAt.IsZero():
 			return ClaimResult{Disposition: InProgress}, nil
 		case existing.forgotten:
-			// A retryable failure is not retained: this is GitHub trying
-			// again, which is exactly what "retryable" meant.
 			delete(m.byKey, existing.key)
 			delete(m.rows, existing.id)
 		default:
@@ -145,7 +116,6 @@ func (m *MemoryInbox) Lease(_ context.Context, now, leaseExpiresAt time.Time) (L
 
 			continue
 		}
-		// Oldest first, so a delivery cannot be starved by newer arrivals.
 		if ready == nil || row.id < ready.id {
 			ready = row
 		}
@@ -196,18 +166,10 @@ func (m *MemoryInbox) Retry(_ context.Context, retry Retry) error {
 	return nil
 }
 
-// expired reports whether a settled row has outlived its TTL.
 func (m *MemoryInbox) expired(row *memoryRow, now time.Time) bool {
 	return !row.settledAt.IsZero() && now.Sub(row.settledAt) >= m.ttl
 }
 
-// evict makes room for one more delivery, dropping settled rows past their TTL
-// first and the oldest settled row only if that was not enough.
-//
-// A live delivery is never dropped: forgetting one would let a redelivery run
-// beside the copy still executing, which is the whole thing the claim prevents.
-//
-// Callers must hold the mutex.
 func (m *MemoryInbox) evict(now time.Time) {
 	if len(m.rows) < m.max {
 		return

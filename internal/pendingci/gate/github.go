@@ -15,11 +15,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 )
 
-// Backend is live GitHub, as the reconciler sees it.
-//
-// The fields below are what it used to reach through a *server for. Nine
-// dependencies is a lot; it is also all of them, which is the point - the
-// struct it hung off had forty and every one was one dot away.
 type Backend struct {
 	current currentStore
 	source  sourceValidator

@@ -6,67 +6,23 @@ import (
 	"time"
 )
 
-// Handler runs one delivery. Returning an error hands it to the retry policy;
-// returning nil completes it.
-//
-// A handler is called at most once per attempt but may be called more than once
-// per delivery, so it has to be safe to repeat.
 type Handler func(ctx context.Context, delivery Delivery) error
 
-// Screen decides whether a parsed delivery is worth persisting.
-//
-// It runs before the claim, and that is the point of it: most of what GitHub
-// sends is noise - a comment the App itself wrote, a comment on an issue that
-// is not a pull request, a check run nobody subscribed to - and a screen that
-// says no costs one parse instead of one row. A false answers 204; an error
-// answers 400.
 type Screen func(delivery Delivery) (bool, error)
 
-// Observer receives what a deployment wants to count.
-//
-// Callbacks rather than a metrics registry: a Prometheus dependency here would
-// put this library's opinion about namespaces into every consumer's process.
-// Every field is optional, and each is called from the goroutine that did the
-// work, so a slow one slows the pipeline.
 type Observer struct {
-	// Received fires once per HTTP request, with the sanitized event name and
-	// one of the Outcome* request outcomes.
-	Received func(event, outcome string)
-
-	// Executed fires when the handler returns, before the outcome is written.
-	// It is where a latency histogram belongs: finalization can be retried out
-	// of band and would otherwise distort the measurement.
-	Executed func(delivery Delivery, elapsed time.Duration, err error)
-
-	// Finalized fires once the outcome has reached the inbox, and only then. A
-	// consumer that has to tell somebody a delivery finished does it here, so
-	// it cannot announce work the inbox does not agree happened.
+	Received  func(event, outcome string)
+	Executed  func(delivery Delivery, elapsed time.Duration, err error)
 	Finalized func(delivery Delivery, outcome Outcome)
 }
 
-// Timeouts bound every stage a delivery passes through. Every zero value is a
-// working default.
 type Timeouts struct {
-	// Job caps one handler call.
-	Job time.Duration
-
-	// Finalization gives the outcome write its own window after the handler's
-	// context has already expired, so a delivery that timed out still records
-	// that it did.
+	Job          time.Duration
 	Finalization time.Duration
-
-	// Lease is how long a leased delivery is reserved. Zero derives it from
-	// Job, Workers and QueueDepth: one lease has to cover the longest possible
-	// wait behind the bounded handoff plus its own execution, or a delivery
-	// sitting in a full queue gets leased a second time while the first copy is
-	// still waiting.
-	Lease time.Duration
-
-	// Drain caps how long Shutdown waits for queued work.
-	Drain time.Duration
+	Lease        time.Duration
+	Drain        time.Duration
 }
 
-// Defaults, applied to any zero field of Options or Timeouts.
 const (
 	defaultWorkers      = 8
 	defaultQueueDepth   = 256
@@ -74,68 +30,23 @@ const (
 	defaultFinalization = 5 * time.Second
 	defaultDrain        = 30 * time.Second
 
-	// leaseRetryDelay is how long the lease loop waits after the inbox refuses
-	// to answer, so a database stall does not become a spin.
-	leaseRetryDelay = time.Second
-
-	// finalizationRetryDelay paces the out-of-band retry that keeps a claim
-	// owned until its outcome is recorded.
+	leaseRetryDelay        = time.Second
 	finalizationRetryDelay = time.Second
 )
 
-// Options are the pipeline's knobs.
-//
-// A struct rather than a pile of With* functions, because that is what this
-// repository already does and because a reader can see the whole surface at
-// once. Every zero value is a working default.
 type Options struct {
-	// Events are the events worth doing anything with. Anything else is
-	// answered 204 as soon as the signature checks out, without the payload
-	// being parsed, screened or claimed.
-	//
-	// It also fixes the metric label set: the event header is not covered by
-	// the signature, so a name that is not on this list is reported as "other"
-	// rather than minting a time series per request. Empty accepts every event
-	// except ping, which the pipeline answers itself.
-	Events []string
-
-	// Screen filters a delivery before it costs a row. Without one, every
-	// delivery whose event is in scope is claimed.
-	Screen Screen
-
-	// Retry replaces DefaultRetry.
-	Retry Retryable
-
-	// Workers bounds how many deliveries run at once. The work is almost
-	// entirely waiting on the GitHub API, so this belongs well above the core
-	// count.
-	Workers int
-
-	// QueueDepth bounds how many leased deliveries wait for a worker. Past
-	// this the lease loop stops leasing, which leaves the work in the inbox
-	// rather than in memory.
+	Events     []string
+	Screen     Screen
+	Retry      Retryable
+	Workers    int
 	QueueDepth int
-
-	Timeouts Timeouts
-	Logger   *slog.Logger
-	Observer Observer
-
-	// Attrs contributes log attributes only the consumer can know - the pull
-	// request a delivery is about, say, which is a different field in every
-	// event and not a concept this package has.
-	//
-	// It is called once per delivery, before anything logs about it, and what
-	// it returns is on every line the pipeline and the handler produce for
-	// that delivery. That is the point: an attribute attached in one place is
-	// an attribute nothing has to remember to repeat.
-	Attrs func(Delivery) []slog.Attr
-
-	// Now is the clock. Tests pass a fake one.
-	Now func() time.Time
+	Timeouts   Timeouts
+	Logger     *slog.Logger
+	Observer   Observer
+	Attrs      func(Delivery) []slog.Attr
+	Now        func() time.Time
 }
 
-// resolved is Options with every default filled in, so nothing downstream has
-// to ask whether a field was set.
 type resolved struct {
 	Options
 
@@ -180,8 +91,6 @@ func (o Options) resolve() resolved {
 	return resolved{Options: o, known: known}
 }
 
-// accepts reports whether a delivery of this event is worth reading a body for.
-// An empty Events list accepts everything.
 func (r resolved) accepts(event string) bool {
 	if len(r.known) == 0 {
 		return true
@@ -209,7 +118,6 @@ func (r resolved) finalized(delivery Delivery, outcome Outcome) {
 	}
 }
 
-// decorate hangs the consumer's attributes on a delivery's logger.
 func (r resolved) decorate(delivery Delivery) Delivery {
 	if r.Attrs == nil {
 		return delivery

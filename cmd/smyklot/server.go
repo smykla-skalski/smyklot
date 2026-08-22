@@ -127,9 +127,6 @@ type server struct {
 	// GitHub's own delivery log records as successes
 	failures *failureLog
 
-	// sync plans and applies one installation's org-wide file, label, ruleset
-	// and settings synchronization. It reads a store, a token and a base URL,
-	// and nothing else this struct holds
 	sync *apply.Engine
 
 	// configs and owners hold the two files every repository is read for. The
@@ -139,9 +136,6 @@ type server struct {
 
 	deliveries *webhook.Pipeline
 
-	// gate is the whole pending CI runtime, which used to be seven fields on
-	// this struct. It is one because the order they have to be built in is a
-	// fact about them rather than about the service
 	gate                 *gate.Gate
 	pendingCICoordinator bot.Exclusive
 	pendingCIGateChanged chan struct{}
@@ -239,9 +233,6 @@ func newServer(cfg *serveConfig) (*server, error) {
 		return nil, err
 	}
 
-	// Last, because the pipeline's observer reports through the panel and its
-	// handler runs the pending CI runtime: everything it touches has to exist
-	// before a delivery can arrive.
 	if err := srv.initDeliveries(redactor, registry); err != nil {
 		_ = srv.store.Close()
 
@@ -268,8 +259,6 @@ func (s *server) handler() http.Handler {
 		writeText(w, http.StatusOK, "ok\n")
 	})
 
-	// The pipeline verifies every request it is handed; nothing else on this
-	// listener has a signature to check.
 	mux.Handle("POST "+s.cfg.webhookPath, s.deliveries.Receiver())
 
 	// At the root rather than under the panel, and served whether or not a
@@ -296,9 +285,6 @@ func (s *server) Run(ctx context.Context) error {
 	runCtx, stopBackground := context.WithCancel(ctx)
 	defer stopBackground()
 
-	// Work already accepted survives the shutdown signal - the pipeline's
-	// workers outlive the context that stops it leasing - or a rolling update
-	// leaves a pull request approved but never merged.
 	s.deliveries.Start(runCtx)
 	background := s.startBackground(runCtx)
 
@@ -312,9 +298,6 @@ func (s *server) Run(ctx context.Context) error {
 
 	shutdownErr := s.serveUntilDone(ctx, webhooks, admin)
 
-	// Stop accepting first, then drain. A delivery that arrives after this is
-	// still claimed - the row is what survives a restart - it is simply not
-	// queued.
 	stopBackground()
 	if err := s.deliveries.Shutdown(context.Background()); err != nil {
 		s.logger.Error("gave up waiting for in-flight deliveries", "error", err)

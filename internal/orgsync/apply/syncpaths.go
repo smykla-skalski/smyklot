@@ -54,11 +54,6 @@ const pathIndexConcurrency = 8
 // RefreshPaths is never fatal. It feeds a control that helps somebody type; a
 // reconcile that failed because a tree could not be read would stop the sync it
 // is beside for the sake of an autocomplete.
-//
-// processInterval is how often a repository is rechecked when neither the
-// account nor the repository overrides it. It arrives as an argument rather
-// than as a field because it is a live runtime setting the service owns, and
-// this is the one place the whole subsystem reads it.
 func (s *Engine) RefreshPaths(
 	ctx context.Context,
 	client *github.Client,

@@ -300,12 +300,6 @@ func verifyArmFailurePreservesPriorAuthorization(
 	}
 }
 
-// commandStoreStub answers the one read the check rollback makes.
-//
-// The command layer lives in internal/bot now, and its own stub with it. This
-// is the narrowest thing that satisfies bot.PendingCICommandStore: everything
-// but GetArmed is unreachable from the path under test, and a method that
-// returned a plausible value would hide a call this test does not expect.
 type commandStoreStub struct {
 	request pendingci.Request
 }

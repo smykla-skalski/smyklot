@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
@@ -17,13 +18,8 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// maxStoredFailureReason is the width of the column a reason is written to.
-// Trimming here rather than in the library, which does not know the column
-// exists.
 const maxStoredFailureReason = 2048
 
-// initDeliveries builds the webhook pipeline and hands it this service's
-// answers: what is worth a row, what to run, what to retry, and what to count.
 func (s *server) initDeliveries(
 	redactor *logging.Redactor,
 	registry prometheus.Registerer,
@@ -60,13 +56,6 @@ func (s *server) initDeliveries(
 	return nil
 }
 
-// deliveryInbox adapts the durable store to the webhook library's port.
-//
-// It is the only translation between GitHub's numeric identifiers and the
-// namespaced ones the store keys on, and the only place a stored reason is
-// redacted. Both belong here rather than in pkg/webhook: the library does not
-// know what this deployment's identifiers look like, and it does not know what
-// a secret looks like either.
 type deliveryInbox struct {
 	store    storage.DeliveryStore
 	redactor *logging.Redactor
@@ -95,12 +84,6 @@ func (i deliveryInbox) Claim(
 	return webhook.ClaimResult{ID: result.ID, Disposition: disposition(result.Disposition)}, nil
 }
 
-// disposition converts what the store decided into what the pipeline
-// understands.
-//
-// Spelled out rather than converted between two string types that happen to
-// agree today: an unknown value has to become something, and the pipeline
-// refuses a delivery it cannot place rather than running it twice.
 func disposition(stored storage.DeliveryClaimDisposition) webhook.Disposition {
 	switch stored {
 	case storage.DeliveryClaimAccepted:
@@ -156,7 +139,6 @@ func (i deliveryInbox) Retry(ctx context.Context, retry webhook.Retry) error {
 	})
 }
 
-// reason makes an error safe to store: redacted, then cut to the column.
 func (i deliveryInbox) reason(text string) string {
 	if i.redactor != nil {
 		text = i.redactor.String(text)
@@ -168,12 +150,6 @@ func (i deliveryInbox) reason(text string) string {
 	return text
 }
 
-// screenDelivery decides whether a delivery is worth a row.
-//
-// Most of what GitHub sends is noise - a comment the bot itself wrote, a
-// comment on an issue that is not a pull request, a check run that produces no
-// signal this service acts on - and saying no here costs one parse instead of
-// one row and one execution.
 func (s *server) screenDelivery(delivery webhook.Delivery) (bool, error) {
 	if delivery.Event != webhook.EventIssueComment {
 		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Payload)
@@ -191,12 +167,6 @@ func (s *server) screenDelivery(delivery webhook.Delivery) (bool, error) {
 	if !event.Actionable() {
 		return false, nil
 	}
-
-	// Everything about the comment that does not depend on how the process
-	// authenticated. The service knows all of it from the payload before it
-	// mints a token, so a delivery that could never execute is refused without
-	// doing any work - and the token itself is deliberately not checked here,
-	// because there is not one yet.
 	if err := bot.ValidateCommentInput(runtimeConfigFor(event, s.cfg)); err != nil {
 		return false, err
 	}
@@ -204,8 +174,6 @@ func (s *server) screenDelivery(delivery webhook.Delivery) (bool, error) {
 	return true, nil
 }
 
-// executeDelivery runs one delivery. Which handler it belongs to is this
-// service's business; the library only knows that something has to run.
 func (s *server) executeDelivery(ctx context.Context, delivery webhook.Delivery) error {
 	ctx = logging.Into(ctx, delivery.Logger)
 
@@ -242,12 +210,6 @@ func (s *server) executeDelivery(ctx context.Context, delivery webhook.Delivery)
 	return s.handleIssueComment(ctx, event, delivery.Key, delivery.ClaimID)
 }
 
-// retryDelivery is the default policy plus the one error this service knows
-// will not come right.
-//
-// A repository whose configuration file does not parse will not parse on the
-// next attempt either, and the pull request has already been told. Retrying it
-// eight times only delays the moment it shows up on the panel.
 func retryDelivery(cause error, attempt int) (time.Duration, bool) {
 	if errors.Is(cause, bot.ErrRepoConfigInvalid) {
 		return 0, false
@@ -256,7 +218,6 @@ func retryDelivery(cause error, attempt int) (time.Duration, bool) {
 	return webhook.DefaultRetry(cause, attempt)
 }
 
-// deliveryObserver is what the service counts and who it tells.
 func (s *server) deliveryObserver() webhook.Observer {
 	return webhook.Observer{
 		Received: func(event, outcome string) {
@@ -275,8 +236,6 @@ func (s *server) deliveryObserver() webhook.Observer {
 			s.metrics.Deliveries.WithLabelValues(action, result).Inc()
 		},
 
-		// The panel shows what a delivery did, so it is told once the inbox
-		// agrees the delivery is done. A retry is not done.
 		Finalized: func(delivery webhook.Delivery, outcome webhook.Outcome) {
 			if outcome == webhook.OutcomeRetrying || s.panel == nil {
 				return
@@ -289,12 +248,6 @@ func (s *server) deliveryObserver() webhook.Observer {
 	}
 }
 
-// deliveryAction is the histogram's label.
-//
-// A status event has no top-level action, and this histogram has always been
-// labelled with its state instead. Kept here rather than pushed into the
-// library, which has no reason to know that one event reports itself
-// differently from the others.
 func deliveryAction(delivery webhook.Delivery) string {
 	if delivery.Event != webhook.EventStatus {
 		return delivery.Source.Action
@@ -308,11 +261,6 @@ func deliveryAction(delivery webhook.Delivery) string {
 	return notification.Action
 }
 
-// relevantPendingCISignals drops the signals this service does not act on.
-//
-// It stays here rather than in internal/pendingci because it reads
-// storage.PendingCICheckName, and the storage package imports pendingci - so
-// the filter cannot live where the signals do.
 func relevantPendingCISignals(signals []pendingci.Signal) []pendingci.Signal {
 	relevant := make([]pendingci.Signal, 0, len(signals))
 	for _, signal := range signals {
@@ -333,11 +281,6 @@ func relevantPendingCISignals(signals []pendingci.Signal) []pendingci.Signal {
 	return relevant
 }
 
-// serviceEvents are the deliveries this service acts on.
-//
-// One list rather than two: it decides what is worth reading and it fixes the
-// metric label set, so an event outside it is counted as "other" rather than
-// minting a time series per made-up header.
 func serviceEvents() []string {
 	return []string{
 		webhook.EventIssueComment,
@@ -348,13 +291,6 @@ func serviceEvents() []string {
 	}
 }
 
-// deliveryAttrs is what the log lines about a delivery carry beyond what the
-// pipeline already knows.
-//
-// The pull request is a different field in every event, so it is this
-// service's to find. Attached here rather than in each handler, because a
-// delivery's identifiers belong on every line about it and an attribute added
-// in two places prints twice.
 func deliveryAttrs(delivery webhook.Delivery) []slog.Attr {
 	pullRequest := deliveryPullRequest(delivery)
 	if pullRequest == 0 {
@@ -364,10 +300,6 @@ func deliveryAttrs(delivery webhook.Delivery) []slog.Attr {
 	return []slog.Attr{slog.Int("pr", pullRequest)}
 }
 
-// deliveryPullRequest is the pull request a delivery is about.
-//
-// Zero when there is not one to name: a check_suite covers a head rather than
-// one pull request, and inventing a number would be worse than leaving it out.
 func deliveryPullRequest(delivery webhook.Delivery) int {
 	if delivery.Event == webhook.EventIssueComment {
 		event, err := webhook.ParseIssueComment(delivery.Payload)

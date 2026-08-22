@@ -8,8 +8,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 )
 
-// ControlStore is what an operator transition writes. Exported because the
-// panel's wiring supplies it and the runtime does not hold it.
 type ControlStore interface {
 	Get(context.Context, int64) (pendingci.Request, error)
 	CheckNow(context.Context, pendingci.CheckNowRequest) (pendingci.Request, error)

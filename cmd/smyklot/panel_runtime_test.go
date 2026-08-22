@@ -694,11 +694,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(stub.countCalls(http.MethodGet, "/app/installations") - catalogCalls).To(Equal(1))
 	})
 
-	// Acceptance is durable whether or not anything is running to execute it:
-	// the row is written by the request, and the queue is fed from the row.
-	// Nothing is started here, so nothing leases - and the delivery is still
-	// there afterwards.
-	It("persists accepted work with no dispatcher running", func() {
+	It("persists accepted work exactly once with no dispatcher running", func() {
 		stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 		stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 		_, err := service.SyncCatalog(GinkgoT().Context())
@@ -713,7 +709,6 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		response := postDelivery(public, stub, "issue_comment", deliveryID, payload, nil)
 		Expect(response.StatusCode).To(Equal(http.StatusAccepted))
 
-		// The same delivery again: claimed once, so the second is a duplicate.
 		again := postDelivery(public, stub, "issue_comment", deliveryID, payload, nil)
 		Expect(again.StatusCode).To(Equal(http.StatusAccepted))
 
@@ -725,7 +720,6 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(lease.Work.DeliveryID).To(Equal(deliveryID))
 		Expect(lease.Work.Payload).To(Equal(payload))
 
-		// Exactly one row, which is what the claim is for.
 		second, err := service.store.LeaseDelivery(
 			GinkgoT().Context(), time.Now().UTC(), time.Now().UTC().Add(jobTimeout),
 		)

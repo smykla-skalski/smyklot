@@ -12,7 +12,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
 
-// recordingObserver captures what the pipeline counted.
 type recordingObserver struct {
 	received []string
 }
@@ -21,7 +20,6 @@ func (r *recordingObserver) Received(_, outcome string) {
 	r.received = append(r.received, outcome)
 }
 
-// erroringInbox is a store that will not answer.
 type erroringInbox struct{ webhook.Inbox }
 
 func (erroringInbox) Claim(context.Context, webhook.Claim) (webhook.ClaimResult, error) {
@@ -43,8 +41,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		screen = nil
 	})
 
-	// Built per spec rather than in BeforeEach, because half of these change an
-	// option and the screen is one of them.
 	build := func(store webhook.Inbox) *webhook.Pipeline {
 		GinkgoHelper()
 		pipeline, err := webhook.New(
@@ -73,7 +69,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		return response
 	}
 
-	// GitHub will not send anything else until the ping is answered.
 	It("should answer a ping without reading anything", func() {
 		response := serve(signed(webhook.EventPing, "d1", []byte(`{"zen":"hi"}`)))
 
@@ -81,8 +76,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		Expect(observed.received).To(Equal([]string{webhook.OutcomeIgnored}))
 	})
 
-	// An event nobody subscribed to costs no row. The payload here is one the
-	// parser would refuse, which is how the spec knows it was never parsed.
 	It("should refuse an event outside its list before parsing it", func() {
 		response := serve(signed(webhook.EventCheckRun, "d1", []byte("not json")))
 
@@ -114,7 +107,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		Expect(observed.received).To(Equal([]string{webhook.OutcomeInvalid}))
 	})
 
-	// Nothing to mint a token for, so there is nothing an App could do with it.
 	It("should reject a payload carrying no installation", func() {
 		body := []byte(`{"action":"created","repository":{"id":1,"name":"r","owner":{"login":"o"}}}`)
 
@@ -149,7 +141,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		)
 		Expect(first.Code).To(Equal(http.StatusAccepted))
 
-		// The same delivery id again, which is what a GitHub redelivery is.
 		second := httptest.NewRecorder()
 		pipeline.Receiver().ServeHTTP(
 			second, signed(webhook.EventIssueComment, "d1", comment("/approve")),
@@ -173,8 +164,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		Expect(observed.received).To(Equal([]string{webhook.OutcomeRefused}))
 	})
 
-	// The event header is not covered by the signature, so an unbounded value
-	// must never reach a metric label.
 	It("should count an unknown event as other", func() {
 		counted := make([]string, 0, 1)
 		pipeline, err := webhook.New(
@@ -197,8 +186,6 @@ var _ = Describe("Receiver [Unit]", func() {
 		Expect(counted).To(Equal([]string{"other"}))
 	})
 
-	// A caller with no X-GitHub-Delivery still has to deduplicate, which is
-	// what the body digest is for.
 	It("should deduplicate a header-less delivery by its body", func() {
 		pipeline := build(inbox)
 		body := comment("/approve")
@@ -214,7 +201,6 @@ var _ = Describe("Receiver [Unit]", func() {
 			To(Equal([]string{webhook.OutcomeAccepted, webhook.OutcomeDuplicate}))
 	})
 
-	// A delivery id with a newline in it would otherwise forge a log line.
 	It("should scrub the delivery header before it is used", func() {
 		pipeline := build(inbox)
 		pipeline.Start(GinkgoT().Context())

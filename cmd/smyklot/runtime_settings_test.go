@@ -13,9 +13,6 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
-// What the service does with a settings change, rather than what the pending CI
-// runtime does with the one value it is handed: that half is proven next to the
-// scheduler it has to wake, in internal/pendingci/gate.
 func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	t.Parallel()
 	store, err := open.Store(t.Context(), filepath.Join(t.TempDir(), "runtime.db"))

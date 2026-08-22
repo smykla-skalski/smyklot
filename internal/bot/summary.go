@@ -2,9 +2,6 @@ package bot
 
 import "os"
 
-// EnvStepSummary is where GitHub Actions tells a step to write its summary.
-// Outside Actions it is unset, which is how AppendStepSummary knows there is
-// nowhere to write.
 const EnvStepSummary = "GITHUB_STEP_SUMMARY"
 
 // AppendStepSummary adds one note to the GitHub Actions step summary.

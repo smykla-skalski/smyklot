@@ -9,12 +9,10 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 )
 
-// The quiet period is the one runtime setting an operator can change while the
-// process is running, and it has to reach two places: the reconciler decides
-// with it, and the scheduler has to be told to look again rather than sleep out
-// its tick with the old value.
 func TestRetuneQuietPeriodReachesReconcilerAndScheduler(t *testing.T) {
 	t.Parallel()
+
+	// Given a runtime holding the default quiet period
 	reconciler := newReconciler(
 		&reconcilerTestStore{}, reconcilerTestObserver{}, &reconcilerTestEffects{},
 		bot.NewCoordinator(), defaultTiming(),
@@ -25,7 +23,11 @@ func TestRetuneQuietPeriodReachesReconcilerAndScheduler(t *testing.T) {
 	)
 	gate := &Gate{Reconciler: reconciler, Scheduler: scheduler}
 
-	if !gate.RetuneQuietPeriod(45 * time.Second) {
+	// When an operator retunes it
+	changed := gate.RetuneQuietPeriod(45 * time.Second)
+
+	// Then the reconciler decides with the new value and the scheduler is woken
+	if !changed {
 		t.Fatal("retune reported no change")
 	}
 	if got := gate.PassingQuiet(); got != 45*time.Second {
@@ -37,8 +39,7 @@ func TestRetuneQuietPeriodReachesReconcilerAndScheduler(t *testing.T) {
 		t.Fatal("scheduler was not woken after a quiet-period change")
 	}
 
-	// The same value twice is not a change, and waking on it would turn a
-	// panel that saves without editing into a wake per save.
+	// And the same value again is not a change
 	if gate.RetuneQuietPeriod(45 * time.Second) {
 		t.Fatal("retune reported a change for the value already in force")
 	}
