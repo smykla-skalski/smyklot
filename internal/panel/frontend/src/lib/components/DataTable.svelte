@@ -436,6 +436,14 @@
        folding them together would shift one of them by 32px on a page nobody would
        think to re-check. */
     height: var(--table-empty-height, 12rem);
+    /* The height is a floor, never a ceiling. A real table already treats a
+       cell's height that way (and ignores min-block-size), but the stacked
+       and pinned layouts turn this row into a flex box, where the fixed
+       height WINS over taller content: a notice with an action button stood
+       223px tall in a 144px cell, spilled both ways, and the card clipped
+       its button. max-content is inert in table layout and lifts the flex
+       cell to its content, so both grammars agree. */
+    min-block-size: max-content;
     text-align: center;
   }
 </style>
