@@ -69,6 +69,20 @@ linters:
           deny:
             - pkg: github.com/google/go-github
               desc: only pkg/github may name the GitHub library; add a method to pkg/github.Client instead
+        # The other half of that seam. pkg/github carried sixteen labels
+        # spelled "smyklot:", the paths this bot's configuration file lives at
+        # and one method that was three of its own calls in a loop - each
+        # because the client was where the call already was. An import is what
+        # the next one looks like.
+        github-library:
+          list-mode: lax
+          files:
+            - "**/pkg/github/**"
+          allow:
+            - github.com/smykla-skalski/smyklot/pkg/github
+          deny:
+            - pkg: github.com/smykla-skalski/smyklot/
+              desc: pkg/github is a GitHub client, not a Smyklot one; take what it needs as a parameter rather than importing the rest of the service
         # pkg/webhook is a library any GitHub App can import, and the only thing
         # that keeps it one is a check. It was carved out of this service, so
         # every smyklot type it used to reach for is still one import away - the

@@ -1,7 +1,7 @@
-// Package github provides a GitHub API client for Smyklot operations.
+// Package github is a GitHub API client over REST v3 and GraphQL.
 //
-// It supports PR operations (approve, merge, info), comment posting, and
-// emoji reactions through the GitHub REST API v3.
+// It knows GitHub and nothing about the application calling it; depguard
+// denies it every other package in this module.
 package github
 
 import (
@@ -24,7 +24,6 @@ const (
 	maxIdleConnsPerHost = 10
 	idleConnTimeout     = 90 * time.Second
 	maxCodeownersSize   = 1024 * 1024 // 1MB
-	maxRepoConfigSize   = 64 * 1024   // 64KB
 
 	// schemeToken authenticates as a user or an App installation
 	schemeToken = "token"
@@ -220,10 +219,9 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 }
 
 // GetFileContent reads a file through the contents API, at ref when one is
-// given and from the default branch otherwise.
-//
-// Returns nil content (not an error) when the file does not exist, so callers
-// can treat "no such file" as "nothing configured".
+// given and from the default branch otherwise. Returns nil content (not an
+// error) when the file does not exist, so callers can treat "no such file" as
+// "nothing configured".
 func (c *Client) GetFileContent(
 	ctx context.Context,
 	owner, repo, filePath, ref string,
@@ -282,9 +280,7 @@ type DirectoryEntry struct {
 }
 
 // ListDirectory lists one directory through the contents API, dirPath empty
-// for the repository root.
-//
-// A directory that does not exist is returned as the 404 it is, unlike
+// for the repository root. An absent directory is returned as its 404, unlike
 // GetFileContent.
 func (c *Client) ListDirectory(
 	ctx context.Context,
