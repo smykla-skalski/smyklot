@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { fixtureApi } from '../stories/support/api';
 import {
+  SYNC_CONFIGS,
   SYNC_FILES_CONTEXT,
   SYNC_PLAN,
   SYNC_STATUS,
@@ -64,6 +65,16 @@ describe('catalogue fixtures [Unit]', () => {
     expect(SYNC_PLAN.actions).toHaveLength(planned);
     expect(reported).toBe(planned);
     expect(syncViewStory).toContain('fetchPlan: async () => ({ plan: PLAN })');
+    expect(syncViewStory).toContain('SYNC_CONFIGS.get(`${TARGET.id}/${kind}`)');
+
+    const desiredLabels = new Set(
+      (SYNC_CONFIGS.get(`${TARGET.id}/labels`)?.labels ?? []).map((label) => label.name),
+    );
+    const plannedLabels = SYNC_PLAN.actions
+      .filter((action) => action.kind === 'labels' && action.operation !== 'delete')
+      .map((action) => action.subject);
+    expect(plannedLabels.length).toBeGreaterThan(0);
+    expect(plannedLabels.every((label) => desiredLabels.has(label))).toBe(true);
   });
 
   it('opens the unreadable story on a surface that displays the warning', () => {

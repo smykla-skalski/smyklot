@@ -3,42 +3,20 @@
 
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
-  import { NOW, SYNC_PLAN, SYNC_STATUS, SYNC_STATUS_IN_STEP } from '../support/fixtures.js';
+  import {
+    emptySyncConfig,
+    SYNC_CONFIGS,
+    SYNC_PLAN,
+    SYNC_STATUS,
+    SYNC_STATUS_IN_STEP,
+    TARGET,
+  } from '../support/fixtures.js';
   import type { SyncConfig } from '#lib/types.js';
 
-  const at = (offsetMs: number) => new Date(NOW + offsetMs).toISOString();
-
-  /* The files pane reads its own shape out of `document`, where labels and rulesets
-     read theirs off named fields - so a fixture that answered every kind with the same
-     empty document left the third tab drawing an empty form. This is the smallest
-     document that makes it a picture of something; `Views/SyncFilesPage` is where its
-     own states are laid out. */
-  const FILES_DOCUMENT = {
-    files: [
-      {
-        path: 'CONTRIBUTING.md',
-        content: '# Contributing\n\nOpen a pull request against `{{DEFAULT_BRANCH}}`.\n',
-      },
-    ],
-    retired: ['.github/stale.yml'],
-  };
-
+  /* Plan, status and desired documents all come from one mock seed. A story that
+     restates any one of them can describe changes its own editors do not request. */
   const config = (kind: string, over: Partial<SyncConfig> = {}): SyncConfig => ({
-    kind,
-    enabled: true,
-    labels: [
-      { name: 'bug', color: 'd73a4a', description: 'Something is broken' },
-      { name: 'chore', color: 'cfd3d7' },
-    ],
-    allow_removal: false,
-    excludes: [],
-    revision: 4,
-    updated_by: 'bart',
-    updated_at: at(-2 * 60 * 60_000),
-    digest: 'sha256:9f2c',
-    document: kind === 'files' ? FILES_DOCUMENT : {},
-    unreadable: false,
-    unavailable: '',
+    ...(SYNC_CONFIGS.get(`${TARGET.id}/${kind}`) ?? emptySyncConfig(kind)),
     ...over,
   });
 
@@ -46,7 +24,7 @@
   if (PLAN === null) throw new Error('the catalogue seed must include a sync plan');
 
   const base = {
-    targetId: '2001',
+    targetId: TARGET.id,
     section: 'overview' as const,
     readOnly: false,
     fetchConfig: async (_id: string, kind: string) => config(kind),
