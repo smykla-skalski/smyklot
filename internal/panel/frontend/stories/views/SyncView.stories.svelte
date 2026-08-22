@@ -6,6 +6,7 @@
   import {
     emptySyncConfig,
     SYNC_CONFIGS,
+    SYNC_FILES_CONTEXT,
     SYNC_PLAN,
     SYNC_STATUS,
     SYNC_STATUS_IN_STEP,
@@ -39,7 +40,7 @@
     onOpenRuleset: () => {},
     fileHref: (path: string) => `#/sync/files/${path}`,
     onOpenFile: () => {},
-    fetchFilesContext: async () => ({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+    fetchFilesContext: async () => SYNC_FILES_CONTEXT,
     fetchOverride: async () => {
       throw new Error('not in this story');
     },
