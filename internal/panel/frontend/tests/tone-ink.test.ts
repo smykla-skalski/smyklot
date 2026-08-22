@@ -44,6 +44,25 @@ function componentStyles(): [string, string][] {
 const NOT_THEME_COLOUR: Record<string, string> = {
   'BrandMark.svelte #09152b':
     'the logo artwork is drawn on its own ground, which the mark carries into any palette',
+  'Rail.svelte #fff':
+    'the selected workspace mark holds its ground at L 50 whatever the hue, so white letters ' +
+    'clear it in every palette - the identity paint is not the theme to decide',
+  'ApplyBar.svelte #000':
+    "the apply bar's end-melt is a mask-image ramp: #000 there is the alpha channel's " +
+    '"fully kept", not a colour any palette owns',
+  /* The colour picker draws COLOUR SPACE, not theme: the saturation/value
+     area's white-to-hue and transparent-to-black gradients, the hue rail's
+     spectrum, and the knobs' white rings are physics in every palette. */
+  'LabelColorPicker.svelte #000000': 'the value axis of the saturation/value area',
+  'LabelColorPicker.svelte #ffffff': 'the saturation axis, and the knob rings that ride any hue',
+  'LabelColorPicker.svelte #ff0000': 'the hue rail starts and ends on red',
+  'LabelColorPicker.svelte #ffff00': "the hue rail's spectrum",
+  'LabelColorPicker.svelte #00ff00': "the hue rail's spectrum",
+  'LabelColorPicker.svelte #00ffff': "the hue rail's spectrum",
+  'LabelColorPicker.svelte #0000ff': "the hue rail's spectrum",
+  'LabelColorPicker.svelte #ff00ff': "the hue rail's spectrum",
+  'LabelColorPicker.svelte #1b1f24':
+    "the check's dark ink on a pale swatch - decided by the swatch's own luminance, not the theme",
 };
 
 /**

@@ -1,66 +1,33 @@
-<script module lang="ts">
-  import type { Language } from '#lib/syntax.js';
-
-  export interface CodeLine {
-    text: string;
-    /** This installation overrides this line: it wears the managed bar. */
-    overridden?: boolean;
-    /** The line's number in the file. */
-    number?: number;
-  }
-
-  /**
-   * A whole file's text, cut into the lines this draws.
-   *
-   * Here rather than in each caller because the trailing-newline rule is easy
-   * to write twice and get right once: a file ends with one, and splitting on
-   * it leaves a final empty piece that would be drawn as a line which is there
-   * and is not. The editor and the file page had a copy each.
-   */
-  export function codeLines(text: string, overridden: readonly number[] = []): CodeLine[] {
-    const marked = new Set(overridden);
-
-    return text
-      .split('\n')
-      .slice(0, text.endsWith('\n') ? -1 : undefined)
-      .map((line, at) => ({ text: line, number: at + 1, overridden: marked.has(at + 1) }));
-  }
-</script>
-
 <script lang="ts">
   /**
-   * A file, coloured and read rather than edited.
-   *
-   * Two things are said at once here and each gets its own channel, because
-   * colour alone is one channel and this surface is read by people who cannot
-   * separate all of it. The language is said in ink; a line this installation
-   * decides is said in a ground and in a bar down the gutter, so an override is
-   * legible with the ink turned off.
-   *
-   * Nothing here is `innerHTML`: a token is an element and its text is text, so
-   * a value containing a `<` is a value.
+   * A read-only code window: the template a repository is held to, or the
+   * copy it ends up with. Every line numbered, tokenized by the file's own
+   * language, and - where a set of line numbers is handed in - wearing the
+   * managed gutter bar on the lines an adjustment rewrote.
    */
-  import { tokenize } from '#lib/syntax.js';
+  import { tokenizeLine, type CodeLang } from '../code-tokens';
 
   const {
-    lines,
-    language,
-    label,
+    text,
+    lang = 'json',
+    overridden = null,
   }: {
-    lines: readonly CodeLine[];
-    language: Language;
-    /** Names the block for assistive tech - the path, usually. */
-    label: string;
+    text: string;
+    lang?: CodeLang;
+    /** 1-indexed lines to mark as overridden - the blue gutter bar. */
+    overridden?: ReadonlySet<number> | null;
   } = $props();
+
+  const lines = $derived(text.replace(/\n$/, '').split('\n'));
 </script>
 
-<div class="code" role="figure" aria-label={label}>
-  <pre>{#each lines as line, at (at)}<div
+<div class="code">
+  <pre>{#each lines as line, index (index)}<div
         class="ln"
-        class:is-overridden={line.overridden === true}><span class="no">{line.number ?? ''}</span
+        class:is-overridden={overridden?.has(index + 1) === true}><span class="no">{index + 1}</span
         ><span class="src"
-          >{#each tokenize(line.text, language) as piece, index (index)}<span
-              class="tok-{piece.kind}">{piece.text}</span
+          >{#each tokenizeLine(lang, line) as piece, at (at)}<span class={piece.cls ?? ''}
+              >{piece.text}</span
             >{/each}</span
         ></div>{/each}</pre>
 </div>
@@ -70,23 +37,25 @@
     background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-ctl);
+    font-family: var(--mono);
     font-size: var(--font-size-compact);
-    line-height: 1.65;
+    /* Whole per line, or N lines compound the fraction. */
+    line-height: round(1.65em, 1px);
     overflow-x: auto;
     padding: var(--space-3) 0;
   }
 
-  pre {
-    font-family: var(--mono);
+  .code pre {
+    font: inherit;
     margin: 0;
   }
 
   .ln {
     display: grid;
-    grid-template-columns: 3rem 1fr;
+    grid-template-columns: 3rem 1fr auto;
   }
 
-  .no {
+  .ln > .no {
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
     opacity: 0.6;
@@ -95,7 +64,7 @@
     user-select: none;
   }
 
-  .src {
+  .ln > .src {
     padding-inline-end: var(--space-3);
     white-space: pre;
   }
@@ -108,28 +77,27 @@
     color: var(--code-const);
   }
 
-  .tok-string {
+  .tok-str {
     color: var(--code-string);
   }
 
-  .tok-comment {
+  .tok-com {
     color: var(--code-comment);
     font-style: italic;
   }
 
-  .tok-punct {
+  .tok-pun {
     color: var(--code-punct);
   }
 
-  .tok-heading {
+  .tok-head {
     color: var(--code-key);
     font-weight: 600;
   }
 
-  /* A line this installation decides, wearing the same gutter bar an editor
-     puts beside a setting it has overridden. */
+  /* Overridden lines wear the managed bar in the gutter. */
   .ln.is-overridden {
-    background: color-mix(in srgb, var(--managed-bar) 5%, transparent);
+    background: color-mix(in srgb, var(--brand-action) 5%, transparent);
   }
 
   .ln.is-overridden > .no {

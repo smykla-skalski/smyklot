@@ -1,133 +1,269 @@
 <script lang="ts">
   /**
-   * The one surface on the sync pages a person types code into.
+   * The composed copy as an editable surface: CodeMirror, dressed to sit
+   * where a CodeBlock sits - same font, same line grid, same managed gutter
+   * bar on the lines an adjustment rewrote. JSON only, because that is the
+   * one language the merge can be derived back from.
    *
-   * A coloured `CodeBlock` underneath and a transparent `<textarea>` over it,
-   * sharing one set of font metrics. The editor is the same picture as the
-   * reader because it IS the reader: a change to how a string is coloured, or
-   * to the bar an overridden line wears, lands on both at once, and there is no
-   * second highlighter to disagree with the first.
-   *
-   * The alternative was CodeMirror 6, which the proposal named before
-   * `CodeBlock` existed. It would have brought its own highlighter, its own
-   * theme to keep in step with these tokens, and ~130 KB to a dependency tree
-   * that carries five runtime packages - to do what forty lines and the
-   * component already here do. The native textarea also brings undo, spell
-   * checking off, selection, and the platform's own keyboard for free.
-   *
-   * The textarea is the scroller and the picture below follows it. Two
-   * independent scrollers is how an overlay editor comes to draw one line and
-   * hold another.
+   * The editor mounts inside a shadow root. That is not decoration: the
+   * panel serves `style-src 'self'`, under which the style element
+   * CodeMirror injects into a document head is parsed and thrown away -
+   * silently, like every CSP style refusal. In a shadow root its style
+   * module rides `adoptedStyleSheets`, which is script writing to the
+   * CSSOM, and CSP does not govern that. (Spelled "style element" here
+   * because svelte2tsx scans script comments for tags.)
    */
-  import CodeBlock, { codeLines } from './CodeBlock.svelte';
-  import type { Language } from '#lib/syntax.js';
+  import { defaultKeymap, history, historyKeymap, undo, undoDepth } from '@codemirror/commands';
+  import { json } from '@codemirror/lang-json';
+  import { markdown } from '@codemirror/lang-markdown';
+  import { yaml } from '@codemirror/lang-yaml';
+  import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+  import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
+  import {
+    Decoration,
+    EditorView,
+    GutterMarker,
+    MatchDecorator,
+    ViewPlugin,
+    gutterLineClass,
+    keymap,
+    lineNumbers,
+    type DecorationSet,
+    type ViewUpdate,
+  } from '@codemirror/view';
+  import { tags } from '@lezer/highlight';
+  import { untrack } from 'svelte';
+  import type { CodeLang } from '../code-tokens';
+  import type { Attachment } from 'svelte/attachments';
 
-  let {
-    value = $bindable(''),
-    language,
-    label,
-    overridden = [],
-    disabled = false,
-    rows = 14,
+  const {
+    value,
+    lang = 'json',
+    readOnly = false,
+    overridden = null,
+    onChange,
+    onHistory,
   }: {
-    value?: string;
-    language: Language;
-    /** Names the field - the path being edited. */
-    label: string;
-    /** Line numbers, 1-based, this installation's own rather than the template's. */
-    overridden?: readonly number[];
-    disabled?: boolean;
-    /** How tall it stands before it starts scrolling. */
-    rows?: number;
+    value: string;
+    lang?: CodeLang;
+    readOnly?: boolean;
+    /** 1-indexed lines to mark as overridden - the blue gutter bar. */
+    overridden?: ReadonlySet<number> | null;
+    onChange: (text: string) => void;
+    /** How many steps the editor's own history can take back. */
+    onHistory?: (depth: number) => void;
   } = $props();
 
-  let frame = $state<HTMLDivElement | null>(null);
-
-  /* `codeLines`, because the picture under the caret is drawn by `CodeBlock`
-     and cutting the text differently from it is how the two come to disagree
-     about how many lines there are. It owns the trailing-newline rule. */
-  const lines = $derived(codeLines(value, overridden));
-
-  /** The picture follows the caret rather than scrolling on its own. */
-  function follow(event: Event): void {
-    const area = event.currentTarget as HTMLTextAreaElement;
-    const code = frame?.querySelector<HTMLElement>('.code');
-    if (code === null || code === undefined) return;
-    code.scrollLeft = area.scrollLeft;
-    code.scrollTop = area.scrollTop;
+  /** The visible twin of Ctrl/Cmd+Z - a page button steps the same history. */
+  export function undoEdit(): void {
+    if (view !== null) undo(view);
   }
+
+  /* The same inks CodeBlock's tokenizer classes wear, on lezer's tags. */
+  const inks = HighlightStyle.define([
+    { tag: tags.propertyName, color: 'var(--code-key)' },
+    { tag: tags.string, color: 'var(--code-string)' },
+    { tag: [tags.number, tags.bool, tags.null], color: 'var(--code-const)' },
+    { tag: [tags.punctuation, tags.separator, tags.bracket], color: 'var(--code-punct)' },
+    { tag: tags.comment, color: 'var(--code-comment)', fontStyle: 'italic' },
+    { tag: tags.atom, color: 'var(--code-const)' },
+    { tag: tags.heading, color: 'var(--code-key)', fontWeight: '600' },
+    { tag: tags.emphasis, fontStyle: 'italic' },
+    { tag: tags.strong, fontWeight: '600' },
+  ]);
+
+  /* lang-json is strict JSON, so the comments the templates carry parse as
+     errors and would sit unstyled. The service reads them as comments; so
+     does this ink. Strings are matched first so a // inside one stays a
+     string. */
+  const commentInk = new MatchDecorator({
+    regexp: /("(?:[^"\\]|\\.)*")|(\/\/.*)/g,
+    decorate: (add, from, to, match) => {
+      if (match[2] !== undefined) {
+        add(from + (match[1]?.length ?? 0), to, Decoration.mark({ class: 'cm-jsonc-comment' }));
+      }
+    },
+  });
+
+  const commentPlugin = ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = commentInk.createDeco(view);
+      }
+      update(update: ViewUpdate) {
+        this.decorations = commentInk.updateDeco(update, this.decorations);
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
+
+  const overriddenLine = Decoration.line({ class: 'cm-overridden' });
+
+  class OverriddenNumber extends GutterMarker {
+    elementClass = 'cm-overridden-no';
+  }
+
+  const overriddenNumber = new OverriddenNumber();
+
+  function markLines(state: EditorState, set: ReadonlySet<number> | null): Extension {
+    const lines = [...(set ?? [])]
+      .filter((at) => at >= 1 && at <= state.doc.lines)
+      .sort((a, b) => a - b);
+    const decos = new RangeSetBuilder<Decoration>();
+    const numbers = new RangeSetBuilder<GutterMarker>();
+    for (const at of lines) {
+      const line = state.doc.line(at);
+      decos.add(line.from, line.from, overriddenLine);
+      numbers.add(line.from, line.from, overriddenNumber);
+    }
+    return [EditorView.decorations.of(decos.finish()), gutterLineClass.of(numbers.finish())];
+  }
+
+  function frozen(held: boolean): Extension {
+    return [EditorState.readOnly.of(held), EditorView.editable.of(!held)];
+  }
+
+  const surface = EditorView.theme({
+    '&': {
+      fontFamily: 'var(--mono)',
+      fontSize: 'var(--font-size-compact)',
+    },
+    '.cm-scroller': {
+      fontFamily: 'inherit',
+      lineHeight: 'round(1.65em, 1px)',
+      overflowX: 'auto',
+      padding: 'var(--space-3) 0',
+    },
+    '.cm-content': {
+      caretColor: 'var(--text)',
+      padding: '0',
+    },
+    '.cm-line': {
+      padding: '0 var(--space-3) 0 0',
+    },
+    '.cm-gutters': {
+      background: 'transparent',
+      border: 'none',
+      color: 'var(--text-muted)',
+    },
+    '.cm-lineNumbers .cm-gutterElement': {
+      boxSizing: 'border-box',
+      fontVariantNumeric: 'tabular-nums',
+      minWidth: '3rem',
+      opacity: '0.6',
+      padding: '0 0.75rem',
+      userSelect: 'none',
+    },
+    '&.cm-focused': {
+      outline: 'none',
+    },
+    '.cm-jsonc-comment': {
+      color: 'var(--code-comment)',
+      fontStyle: 'italic',
+    },
+    '.cm-overridden': {
+      background: 'color-mix(in srgb, var(--brand-action) 5%, transparent)',
+    },
+    '.cm-lineNumbers .cm-gutterElement.cm-overridden-no': {
+      borderInlineStart: '3px solid var(--managed-bar)',
+      color: 'var(--brand-action-text)',
+      opacity: '1',
+      paddingInlineStart: 'calc(0.75rem - 3px)',
+    },
+  });
+
+  /* The language never changes for a mounted surface - a path keeps its
+     extension - so it is not a compartment. lang-json is strict, which is
+     why the json surface also carries the comment ink above. */
+  function language(): Extension {
+    if (lang === 'yaml') return yaml();
+    if (lang === 'markdown') return markdown();
+    return [json(), commentPlugin];
+  }
+
+  const holds = new Compartment();
+  const marks = new Compartment();
+
+  let view: EditorView | null = null;
+
+  const editor: Attachment = (host) => {
+    /* Re-runs of the attachment reuse the root - a host can attach one only
+       once in its lifetime. */
+    const shadow = host.shadowRoot ?? (host as HTMLElement).attachShadow({ mode: 'open' });
+    const state = EditorState.create({
+      doc: untrack(() => value),
+      extensions: [
+        lineNumbers(),
+        history(),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        untrack(() => language()),
+        syntaxHighlighting(inks),
+        holds.of(frozen(untrack(() => readOnly))),
+        marks.of([]),
+        EditorView.updateListener.of((update) => {
+          if (update.docChanged) onChange(update.state.doc.toString());
+          onHistory?.(undoDepth(update.state));
+        }),
+        surface,
+      ],
+    });
+    const created = new EditorView({ state, parent: shadow, root: shadow });
+    created.dispatch({
+      effects: marks.reconfigure(
+        markLines(
+          created.state,
+          untrack(() => overridden),
+        ),
+      ),
+    });
+    view = created;
+    return () => {
+      created.destroy();
+      view = null;
+    };
+  };
+
+  /* The skill-book pattern: the instance is created once, and each piece of
+     state it mirrors gets its own effect that dispatches rather than
+     recreating the editor. */
+  $effect(() => {
+    const next = value;
+    const held = view;
+    if (held !== null && next !== held.state.doc.toString()) {
+      held.dispatch({ changes: { from: 0, to: held.state.doc.length, insert: next } });
+    }
+  });
+
+  $effect(() => {
+    const held = frozen(readOnly);
+    view?.dispatch({ effects: holds.reconfigure(held) });
+  });
+
+  $effect(() => {
+    const set = overridden;
+    const held = view;
+    if (held !== null) held.dispatch({ effects: marks.reconfigure(markLines(held.state, set)) });
+  });
 </script>
 
-<div class="editor" bind:this={frame} style:--editor-rows={rows}>
-  <!-- Decoration for the field over it: everything here is said again in the
-       textarea's own value, which is what a screen reader reads. -->
-  <div class="mirror" aria-hidden="true">
-    <CodeBlock {lines} {language} {label} />
-  </div>
-  <textarea
-    class="input"
-    aria-label={label}
-    spellcheck="false"
-    autocomplete="off"
-    autocapitalize="off"
-    wrap="off"
-    {disabled}
-    bind:value
-    onscroll={follow}></textarea>
-</div>
+<div class="code-editor" {@attach editor}></div>
 
 <style>
-  .editor {
-    /* One number for both layers: the picture and the field are the same box,
-       and a height set on either alone is how they come apart. */
-    block-size: calc(var(--editor-rows) * 1.65em + 2 * var(--space-3) + 2px);
-    font-size: var(--font-size-compact);
-    position: relative;
-  }
-
-  .mirror,
-  .input {
-    inset: 0;
-    position: absolute;
-  }
-
-  /* The textarea scrolls; the picture is moved to match, so it must not have a
-     scroller of its own to disagree with. */
-  .mirror :global(.code) {
-    block-size: 100%;
-    overflow: hidden;
-  }
-
-  .input {
-    background: none;
-    border: 1px solid transparent;
+  /* The CodeBlock's shell, worn by the host; the editor inside inherits the
+     font through the shadow boundary via the custom properties. */
+  .code-editor {
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-ctl);
-    /* Visible caret, invisible text: the colours below it are the picture. */
-    caret-color: var(--text-primary);
-    color: transparent;
     font-family: var(--mono);
-    font-size: inherit;
-    line-height: 1.65;
-    overflow: auto;
-    /* The gutter is a column of the picture, so the field's text starts where
-       that column ends. */
-    padding: var(--space-3) var(--space-3) var(--space-3) 3rem;
-    resize: none;
-    white-space: pre;
+    font-size: var(--font-size-compact);
+    line-height: round(1.65em, 1px);
   }
 
-  .input::selection {
-    /* The text is transparent, so a selection is drawn as a ground alone. */
-    background: color-mix(in srgb, var(--brand-action) 30%, transparent);
-  }
-
-  .input:focus-visible {
+  .code-editor:focus-within {
     border-color: var(--focus);
     outline: 2px solid var(--focus);
     outline-offset: -1px;
-  }
-
-  .input:disabled {
-    cursor: not-allowed;
   }
 </style>

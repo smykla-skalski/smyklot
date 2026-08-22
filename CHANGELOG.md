@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.45.0](https://github.com/smykla-skalski/smyklot/compare/v1.44.0...v1.45.0) (2026-08-21)
+
+### Features
+
+* **panel:** the shell redesign ([#292](https://github.com/smykla-skalski/smyklot/issues/292)) ([d9c1edb](https://github.com/smykla-skalski/smyklot/commit/d9c1edbc77313c4ab494e0e39a430fff8339d4b9)), closes [#e6ede9](https://github.com/smykla-skalski/smyklot/issues/e6ede9)
+
 ## [1.44.0](https://github.com/smykla-skalski/smyklot/compare/v1.43.1...v1.44.0) (2026-08-19)
 
 ### Features

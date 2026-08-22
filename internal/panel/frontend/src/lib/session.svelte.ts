@@ -58,8 +58,8 @@ import {
   type RootInstallationView,
   type RootRoute,
   type RootSection,
+  type SyncSection,
   type RouteDialog,
-  type SyncPage,
 } from './routes';
 import type { NotificationPage, PanelTarget, PanelViewer } from './types';
 
@@ -91,9 +91,6 @@ export class PanelSession {
   /** Set from the stream's handshake; see `StreamLiveness`. */
   private readonly stream: StreamLiveness;
   sessionEnded = $state<SessionEnded | null>(null);
-  identityBar = $state<ReturnType<typeof import('./components/IdentityBar.svelte').default> | null>(
-    null,
-  );
 
   theme = $state<ThemeDisplay>('system');
   sidebarCollapsed = $state(false);
@@ -251,22 +248,6 @@ export class PanelSession {
     return route.repository ?? null;
   }
 
-  /**
-   * Which section of sync the address names, and what it is opened on.
-   *
-   * The overview when the address names no section, which is what the bare
-   * `/sync` means - so a caller never has to tell "not on sync" apart from "on
-   * sync, no section chosen". Sync has no Root address, so this answers for a
-   * workspace only.
-   */
-  get currentSyncPage(): SyncPage {
-    const route = this.parsedRoute;
-    if (route === null || 'personal' in route || 'rootView' in route)
-      return { section: 'overview' };
-
-    return route.sync ?? { section: 'overview' };
-  }
-
   syncRouteContext(): void {
     // Nothing is recorded from a page that failed to load. The address still names a view
     // and the chrome still shows it, but a reader who pasted a broken link was never on
@@ -324,7 +305,11 @@ export class PanelSession {
     const view = this.currentView;
     const route: InstallationRoute = { account: '', view };
     if (view === 'history') route.section = this.currentHistorySection;
-    if (view === 'sync') route.sync = this.currentSyncPage;
+    if (view === 'sync') {
+      route.sync = this.currentSyncSection;
+      route.syncRuleset = this.currentSyncRuleset ?? undefined;
+      route.syncFile = this.currentSyncFile ?? undefined;
+    }
 
     return panelDocumentTitle(route);
   }
@@ -413,7 +398,16 @@ export class PanelSession {
 
   async selectTarget(targetId: string): Promise<void> {
     const target = this.targets.find((t) => t.id === targetId);
-    if (target === undefined || (this.selectedId === targetId && !this.isInbox)) return;
+    /* The selected workspace is still one press away from elsewhere: from the
+       inbox or the Root console its tile is the way back to its pages - and
+       from a record inside it, the same press is the way back to the view,
+       for the reason selectView gives. */
+    const alreadyThere =
+      this.selectedId === targetId &&
+      !this.isInbox &&
+      !this.isRootMode &&
+      this.currentRepository === null;
+    if (target === undefined || alreadyThere) return;
     await this.openTarget(target);
   }
 
@@ -440,6 +434,99 @@ export class PanelSession {
     void this.navigate(this.routeFor(target, 'history', section));
   }
 
+  // --- Sync sections ---
+
+  /** The sync section the address names; the bare view is the overview. */
+  get currentSyncSection(): SyncSection {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync' && route.sync !== undefined) {
+      return route.sync;
+    }
+    return 'overview';
+  }
+
+  selectSyncSection(section: SyncSection): void {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    if (
+      this.currentView === 'sync' &&
+      this.currentSyncSection === section &&
+      this.currentSyncRuleset === null
+    ) {
+      return;
+    }
+    void this.navigate(this.syncRoute(target, section));
+  }
+
+  /** The ruleset page the address names, or null on the list and everywhere else. */
+  get currentSyncRuleset(): string | null {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync') {
+      return route.syncRuleset ?? null;
+    }
+    return null;
+  }
+
+  /** Opening a ruleset is a place to come back from, so it pushes. */
+  selectSyncRuleset(name: string): void {
+    const target = this.selectedTarget;
+    if (target === null || this.currentSyncRuleset === name) return;
+    const account = target.account.login;
+    void this.navigate({ account, view: 'sync', sync: 'rulesets', syncRuleset: name });
+  }
+
+  syncRulesetHref(name: string): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress({
+      account: target.account.login,
+      view: 'sync',
+      sync: 'rulesets',
+      syncRuleset: name,
+    });
+  }
+
+  /** The template page the address names, or null on the list and everywhere else. */
+  get currentSyncFile(): string | null {
+    const route = this.parsedRoute;
+    if (route !== null && 'view' in route && route.view === 'sync') {
+      return route.syncFile ?? null;
+    }
+    return null;
+  }
+
+  /** Opening a template is a place to come back from, so it pushes. */
+  selectSyncFile(path: string): void {
+    const target = this.selectedTarget;
+    if (target === null || this.currentSyncFile === path) return;
+    const account = target.account.login;
+    void this.navigate({ account, view: 'sync', sync: 'files', syncFile: path });
+  }
+
+  syncFileHref(path: string): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress({
+      account: target.account.login,
+      view: 'sync',
+      sync: 'files',
+      syncFile: path,
+    });
+  }
+
+  syncSectionHref(section: SyncSection): string {
+    const target = this.selectedTarget;
+    if (target === null) return '#';
+    return panelAddress(this.syncRoute(target, section));
+  }
+
+  private syncRoute(target: PanelTarget, section: SyncSection): PanelRoute {
+    const account = target.account.login;
+    return section === 'overview'
+      ? { account, view: 'sync' }
+      : { account, view: 'sync', sync: section };
+  }
+
   // --- One repository ---
 
   /** Opening a repository is a place to come back from, so it pushes. */
@@ -464,24 +551,6 @@ export class PanelSession {
   closeRepository(): void {
     void this.navigate(this.repositoryRoute(null));
     this.resetPageScroll();
-  }
-
-  /**
-   * Where one of sync's sections lives.
-   *
-   * No Root branch, unlike the repository's: configuring what an organization's
-   * repositories carry is the installation's own business, so sync has no
-   * address in the console at all.
-   */
-  syncHref(page: SyncPage): string {
-    const target = this.selectedTarget;
-    /* Inert rather than broken, the way `historyHref` and `accessHref` beside
-       it answer the same question. An empty login is not a value `resolve`
-       refuses - it only refuses a leading or trailing slash - so it built
-       `/i//sync`, a link that looks live and 404s. */
-    if (target === null) return '#';
-
-    return panelAddress({ account: target.account.login, view: 'sync', sync: page });
   }
 
   repositoryHref(name: string, section: RepositorySection = 'file'): string {

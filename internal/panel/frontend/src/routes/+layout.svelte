@@ -15,14 +15,22 @@
   import { applyDocumentTheme } from '#lib/preferences.js';
   import { prefText } from '#lib/preferences-sync.js';
   import type { PanelTarget } from '#lib/types.js';
-  import type { PanelView, RootSection } from '#lib/routes.js';
+  import {
+    SYNC_SECTIONS,
+    panelViewSection,
+    routeSegmentLabel,
+    type PanelView,
+    type RootSection,
+    type SyncSection,
+  } from '#lib/routes.js';
   import type { ThemeDisplay } from '#lib/preferences.js';
 
   import Button from '#lib/components/Button.svelte';
   import ErrorPage from '#lib/components/ErrorPage.svelte';
-  import IdentityBar from '#lib/components/IdentityBar.svelte';
   import PageFooter from '#lib/components/PageFooter.svelte';
   import Plate from '#lib/components/Plate.svelte';
+  import Rail from '#lib/components/Rail.svelte';
+  import Sidebar, { type SidebarPage } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
   import NightPage from '#lib/components/NightPage.svelte';
   import PanelBoot from '#lib/components/PanelBoot.svelte';
@@ -206,7 +214,116 @@
     if (!legacyInboxRoute(page.url.search) || session.isInbox) return;
     void goto(session.inboxHref(), { replace: true });
   });
+
+  // --- The shell's two columns ---
+  /* Below 64rem the sidebar is a drawer over the content; the rail's pages
+     toggle opens it, and any navigation, the scrim or Escape closes it. */
+  let drawerOpen = $state(false);
+
+  $effect(() => {
+    void page.url.pathname;
+    drawerOpen = false;
+  });
+
+  function closeDrawerOnEscape(event: KeyboardEvent): void {
+    if (event.key === 'Escape' && drawerOpen) drawerOpen = false;
+  }
+
+  /* The waiting plan's scale, spoken quietly on the sidebar's Plan row. Only a
+     computed plan is waiting on anyone - an applied or expired one is history. */
+  const syncPlanQuery = createQuery(
+    () => ({
+      queryKey: ['sync-plan', session.selectedTarget?.id],
+      queryFn: () => api.fetchSyncPlan(session.selectedTarget?.id ?? ''),
+      enabled:
+        session.isInvitation === false &&
+        session.viewer !== null &&
+        !session.isRootMode &&
+        session.selectedTarget !== null,
+    }),
+    () => queryClient,
+  );
+  const planCount = $derived.by((): number | undefined => {
+    const plan = syncPlanQuery.data?.plan;
+    if (plan === null || plan === undefined || plan.state !== 'computed') return undefined;
+    return plan.counts.create + plan.counts.update + plan.counts.delete;
+  });
+
+  /* The workspace console's map. Users wears the Access label the section
+     grammar already gives it, and stays lit on the invitations view. */
+  const WORKSPACE_ORDER = ['settings', 'repositories', 'sync', 'users', 'history'] as const;
+  const workspaceIcon = {
+    settings: 'sliders',
+    repositories: 'repositories',
+    sync: 'refresh',
+    users: 'users',
+    history: 'history',
+  } as const;
+
+  const syncKids = $derived(
+    SYNC_SECTIONS.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      href: session.syncSectionHref(section),
+      active:
+        !session.isInbox &&
+        session.currentView === 'sync' &&
+        session.currentSyncSection === section,
+      count: section === 'plan' ? planCount : undefined,
+      signal: section === 'plan' && planCount !== undefined,
+    })),
+  );
+
+  const workspacePages = $derived.by((): SidebarPage[] =>
+    WORKSPACE_ORDER.filter(
+      (view) =>
+        view !== 'users' || session.selectedTarget?.capabilities.manage_target_users === true,
+    ).map((view) => ({
+      id: view,
+      label: routeSegmentLabel(panelViewSection(view)),
+      icon: workspaceIcon[view],
+      href: session.viewHref(view),
+      active:
+        !session.isInbox &&
+        (session.currentView === view ||
+          (view === 'users' && session.currentView === 'invitations')),
+      kids: view === 'sync' ? syncKids : undefined,
+    })),
+  );
+
+  const ROOT_ORDER = [
+    'overview',
+    'queue',
+    'installations',
+    'access',
+    'history',
+    'settings',
+  ] as const satisfies readonly RootSection[];
+  const rootIcon = {
+    overview: 'system',
+    queue: 'pending',
+    installations: 'repositories',
+    access: 'users',
+    history: 'history',
+    settings: 'sliders',
+  } as const;
+
+  const rootPages = $derived.by((): SidebarPage[] =>
+    ROOT_ORDER.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      icon: rootIcon[section],
+      href: session.rootHrefFor(section),
+      active: !session.isInbox && session.rootValue === section,
+    })),
+  );
+
+  const showSidebar = $derived(
+    session.viewer !== null && (session.isRootMode || session.selectedTarget !== null),
+  );
 </script>
+
+<svelte:window onkeydown={closeDrawerOnEscape} />
 
 <svelte:head>
   {#if !session.signedOut}
@@ -245,39 +362,57 @@
       class="app-shell"
       class:sidebar-collapsed={session.effectiveSidebarCollapsed}
       class:root-mode={session.isRootMode}
+      class:side-open={drawerOpen}
     >
-      <IdentityBar
-        bind:this={session.identityBar}
+      <Rail
         viewer={session.viewer}
         targets={session.targets}
         selectedId={session.selectedId}
         targetHref={(t: PanelTarget) => session.targetHref(t)}
         onSelectTarget={(targetId: string) => void session.selectTarget(targetId)}
-        onSignOut={() => void session.signOut()}
-        view={session.currentView}
-        viewHref={(v: PanelView) => session.viewHref(v)}
-        onSelectView={(v: PanelView) => session.selectView(v)}
-        showUsers={session.selectedTarget?.capabilities.manage_target_users === true}
-        showViews={session.selectedTarget !== null || session.isRootMode}
-        showNavigation={session.viewer !== null &&
-          (session.isRootMode || session.selectedTarget !== null)}
-        collapsed={session.effectiveSidebarCollapsed}
-        onToggleCollapsed={() => session.toggleSidebar()}
-        theme={session.theme}
-        onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
         rootMode={session.isRootMode}
-        rootValue={session.rootValue}
-        rootHrefFor={(s: RootSection) => session.rootHrefFor(s)}
-        onSelectRoot={(s: RootSection) => session.selectRootSection(s)}
+        rootEnabled={session.viewer !== null && session.viewer.system_role !== 'none'}
         rootEntryHref={session.rootEntryHref()}
         onEnterRoot={() => session.enterRoot()}
-        returnHref={session.returnHref()}
-        onReturnToPanel={() => session.returnToPanel()}
         inboxHref={session.inboxHref()}
         inboxActive={session.isInbox}
         onSelectInbox={() => session.openInbox()}
         unreadCount={notificationUnread}
+        theme={session.theme}
+        onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
+        onSignOut={() => void session.signOut()}
+        pagesOpen={drawerOpen}
+        onTogglePages={() => (drawerOpen = !drawerOpen)}
       />
+
+      {#if showSidebar}
+        <Sidebar
+          kicker={session.isRootMode ? 'Root console' : 'Workspace'}
+          title={session.isRootMode
+            ? 'Operations'
+            : (session.selectedTarget?.account.display_name ??
+              session.selectedTarget?.account.login ??
+              '')}
+          pages={session.isRootMode ? rootPages : workspacePages}
+          collapsed={session.effectiveSidebarCollapsed}
+          onToggleCollapsed={() => session.toggleSidebar()}
+          onSelectPage={(pageRow) => {
+            drawerOpen = false;
+            if (session.isRootMode) session.selectRootSection(pageRow.id as RootSection);
+            else session.selectView(pageRow.id as PanelView);
+          }}
+          onSelectKid={(pageRow, kid) => {
+            drawerOpen = false;
+            if (pageRow.id === 'sync') session.selectSyncSection(kid.id as SyncSection);
+          }}
+        />
+      {/if}
+
+      {#if drawerOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions
+             (Escape already closes the drawer; the scrim is a pointer affordance) -->
+        <div class="side-scrim" onclick={() => (drawerOpen = false)}></div>
+      {/if}
 
       <div class="workspace" class:table-scroll-view={session.tableScrollView}>
         <div id="panel-content" class="workspace-content" tabindex="-1">

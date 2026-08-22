@@ -131,12 +131,19 @@ function element(own: Declarations, inherited: Map<string, Paint>): Map<string, 
       const channels = (color: string): number[] =>
         [1, 3, 5].map((offset) => Number.parseInt(color.slice(offset, offset + 2), 16));
       const [topChannels, baseChannels] = [channels(top.color), channels(base.color)];
-      const mixed = topChannels.map(
-        (channel, index) => channel * share + (baseChannels[index] ?? 0) * (1 - share),
-      );
+      /* Premultiplied, the way CSS actually mixes: a veil mixed over
+         `transparent` keeps its own hue at a low alpha. The naive average
+         dragged the colour toward transparent's black stand-in, which read
+         a 5% ink veil as near-black. */
+      const alpha = top.alpha * share + base.alpha * (1 - share);
+      const mixed = topChannels.map((channel, index) => {
+        const premultiplied =
+          channel * top.alpha * share + (baseChannels[index] ?? 0) * base.alpha * (1 - share);
+        return alpha === 0 ? 0 : premultiplied / alpha;
+      });
       return {
         color: `#${mixed.map((channel) => Math.round(channel).toString(16).padStart(2, '0')).join('')}`,
-        alpha: top.alpha * share + base.alpha * (1 - share),
+        alpha,
       };
     }
 

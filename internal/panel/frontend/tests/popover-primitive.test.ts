@@ -84,7 +84,7 @@ describe('the components that float a layer', () => {
   const genericUsers = [
     'FilterMenu.svelte',
     'HistoryDisplayMenu.svelte',
-    'IdentityBar.svelte',
+    'Rail.svelte',
     'RolePicker.svelte',
   ];
 

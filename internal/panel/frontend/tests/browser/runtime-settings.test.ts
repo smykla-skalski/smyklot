@@ -59,18 +59,26 @@ describe('Root merge-after-CI timing', () => {
          a panel with a live stream refusing to refetch anything. */
       await page.routeWebSocket(/\/api\/v1\/events/u, (socket) => socket.close());
       await page.goto(`${panel.origin}/root/settings`, { waitUntil: 'domcontentloaded' });
-      const source = page.getByRole('group', {
-        name: 'Merge-after-CI quiet period source',
+
+      /* Overriding pins what the deployment resolves to today - 30 seconds. */
+      const pinned = runtimeUpdate(page);
+      const overrideButton = page.getByRole('button', {
+        name: 'Override the deployment quiet period',
       });
-      await source.waitFor({ state: 'visible', timeout: 30_000 });
-      await source.getByText('Custom', { exact: true }).click();
+      await overrideButton.waitFor({ state: 'visible', timeout: 30_000 });
+      await overrideButton.click();
+      expect((await pinned).postDataJSON()).toMatchObject({
+        merge_after_ci_quiet_period_seconds: 30,
+      });
 
-      const form = page.getByRole('form', { name: 'Custom merge-after-CI quiet period' });
-      await form.getByRole('spinbutton', { name: 'Merge-after-CI quiet period' }).fill('2');
-      await form
-        .getByRole('combobox', { name: 'Merge-after-CI quiet period unit' })
-        .selectOption('minutes');
+      const amount = page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' });
+      await amount.waitFor({ state: 'visible' });
+      await amount.fill('2');
 
+      /* A refetch arriving under the reader must not take away what they have
+         typed. The clock jump past the staleness plus a visibility change is
+         the panel's fallback refetch - the stream is refused above, so nothing
+         else would provoke one. */
       const readsBeforeRefetch = settingsUptimes.length;
       const uptimeBeforeRefetch = settingsUptimes.at(-1) ?? -1;
       expect(readsBeforeRefetch).toBeGreaterThan(0);
@@ -89,38 +97,41 @@ describe('Root merge-after-CI timing', () => {
       });
       expect(settingsUptimes.length).toBeGreaterThan(readsBeforeRefetch);
       expect(settingsUptimes.at(-1) ?? -1).toBeGreaterThan(uptimeBeforeRefetch);
-      await expect
-        .poll(() =>
-          form.getByRole('spinbutton', { name: 'Merge-after-CI quiet period' }).inputValue(),
-        )
-        .toBe('2');
-      await expect
-        .poll(() =>
-          form.getByRole('combobox', { name: 'Merge-after-CI quiet period unit' }).inputValue(),
-        )
-        .toBe('minutes');
+      await expect.poll(() => amount.inputValue()).toBe('2');
 
-      const applied = runtimeUpdate(page);
-      await form.getByRole('button', { name: 'Apply' }).click();
-      const applyRequest = await applied;
-      expect(applyRequest.postDataJSON()).toMatchObject({
-        merge_after_ci_quiet_period_seconds: 120,
-      });
-      await page.getByText('Effective: 2 minutes').waitFor({ state: 'visible' });
+      /* Picking a unit saves at once: 2 minutes is 120 seconds on the wire. */
+      const applied = page.waitForRequest(
+        (request) =>
+          request.method() === 'PUT' &&
+          new URL(request.url()).pathname === '/api/v1/root/settings' &&
+          (request.postDataJSON() as { merge_after_ci_quiet_period_seconds: number })
+            .merge_after_ci_quiet_period_seconds === 120,
+      );
+      await page.getByRole('button', { name: 'Merge-after-CI quiet period unit' }).click();
+      await page.getByRole('option', { name: 'minutes' }).click();
+      await applied;
+      await expect.poll(() => amount.inputValue()).toBe('2');
 
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByText('Effective: 2 minutes').waitFor({ state: 'visible' });
+      const amountBack = page.getByRole('textbox', {
+        name: 'Merge-after-CI quiet period amount',
+      });
+      await amountBack.waitFor({ state: 'visible', timeout: 30_000 });
+      expect(await amountBack.inputValue()).toBe('2');
+
+      /* The x hands the setting back to the deployment. */
       const restored = runtimeUpdate(page);
-      await page
-        .getByRole('button', {
-          name: /Overrides the deployment configuration .* restores 30 seconds/u,
-        })
+      const quietRow = page
+        .locator('.policy-row')
+        .filter({ has: page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' }) });
+      await quietRow
+        .getByRole('button', { name: 'Stop overriding - follow the deployment configuration' })
         .click();
       const restoreRequest = await restored;
       expect(restoreRequest.postDataJSON()).toMatchObject({
         merge_after_ci_quiet_period_seconds: null,
       });
-      await page.getByText('Effective: 30 seconds').waitFor({ state: 'visible' });
+      await page.getByText('Follows the deployment - 30 seconds').waitFor({ state: 'visible' });
       expect(crashes).toEqual([]);
     } finally {
       await page.close();

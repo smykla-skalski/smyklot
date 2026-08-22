@@ -1,4 +1,5 @@
-import type { DurationUnit } from '#lib/components/DurationField.svelte';
+/** The units a duration can be given in; a caller offers whichever suit it. */
+export type DurationUnit = 'seconds' | 'minutes' | 'hours' | 'days';
 
 /**
  * A number of seconds, said the way somebody would say it.

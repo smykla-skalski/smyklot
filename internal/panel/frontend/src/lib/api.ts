@@ -46,6 +46,8 @@ import type {
   SyncOverrideRow,
   SyncPathIndex,
   SyncPlan,
+  SyncFilesContext,
+  SyncStatus,
   TargetSettingsInput,
   InvitationDays,
   InvitationSignIn,
@@ -186,6 +188,9 @@ export interface PanelApi {
   ): Promise<SyncOverride>;
   fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
+  discardSyncPlan(targetId: string, planId: string): Promise<void>;
+  fetchSyncStatus(targetId: string): Promise<SyncStatus>;
+  fetchSyncFilesContext(targetId: string): Promise<SyncFilesContext>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
@@ -818,6 +823,14 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plan`);
     },
 
+    fetchSyncStatus(targetId: string): Promise<SyncStatus> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/status`);
+    },
+
+    fetchSyncFilesContext(targetId: string): Promise<SyncFilesContext> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/files/context`);
+    },
+
     // The digest goes back with the approval. It is what says the plan on the
     // screen is the plan in the database, so approving without it would agree
     // to whatever the configuration says by the time the request lands.
@@ -825,6 +838,16 @@ export function createPanelApi(
       return postJson(
         `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}/approval`,
         { digest },
+      );
+    },
+
+    // Named rather than approved-away: a discarded plan asks nothing on
+    // GitHub, and the next sweep computes a fresh one from whatever the
+    // configuration says by then.
+    async discardSyncPlan(targetId: string, planId: string): Promise<void> {
+      await jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}`,
+        { method: 'DELETE' },
       );
     },
 

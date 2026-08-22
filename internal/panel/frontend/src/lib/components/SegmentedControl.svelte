@@ -222,7 +222,9 @@
     --seg-track: var(--segment-track);
     --seg-hover: var(--segment-hover);
     --seg-pressed: var(--segment-pressed);
-    --seg-border: var(--rule);
+    /* --border-control, not the hairline: the shell redesign strengthened
+       the track's edge to the control border every field wears. */
+    --seg-border: var(--border-control);
     --seg-shadow: var(--segment-shadow);
     --seg-muted: var(--text-muted);
     --seg-text: var(--text);

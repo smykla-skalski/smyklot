@@ -23,6 +23,7 @@
     | 'github'
     | 'globe'
     | 'history'
+    | 'undo'
     | 'info'
     | 'link'
     | 'link-off'
@@ -100,6 +101,7 @@
     github: 0.5,
     globe: 3,
     history: [4, 3.48],
+    undo: [4, 3.48],
     info: 3.5,
     link: 2,
     'link-off': 2,
@@ -194,6 +196,9 @@
     <circle cx="9" cy="8" r="3" />
     <circle cx="17" cy="9" r="2.5" />
     <path d="M3.5 19c.5-3.2 2.4-5 5.5-5s5 1.8 5.5 5M14 14.5c3.5-.5 5.6 1 6.5 4.5" />
+  {:else if name === 'undo'}
+    <path d="M4 5v5h5" />
+    <path d="M5.4 15.5A8 8 0 1 0 6 7.2L4 10" />
   {:else if name === 'history'}
     <path d="M4 5v5h5" />
     <path d="M5.4 15.5A8 8 0 1 0 6 7.2L4 10" />

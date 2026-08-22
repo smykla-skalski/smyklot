@@ -50,6 +50,8 @@ import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.t
    nothing. They are their own module so the Storybook catalogue can read the same data
    this serves, and so importing them never drags `node:fs` into a browser. */
 import {
+  KNOWN_PATHS,
+  PSEUDO_REPO_NAMES,
   capabilitiesFor,
   cycled,
   DEFAULT_CONFIG,
@@ -1102,6 +1104,64 @@ async function handle(
       return;
     }
 
+    const syncStatusMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/status$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncStatusMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncStatusMatch[1] ?? '');
+      /* An installation the seed never drew is a fleet nothing covers yet,
+         not an error - the overview renders the empty answer. */
+      respond(
+        res,
+        200,
+        state.syncStatus.get(targetId) ?? {
+          checked_at: new Date().toISOString(),
+          repositories: [],
+        },
+      );
+      return;
+    }
+
+    const syncFilesContextMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/files\/context$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncFilesContextMatch && method === 'GET') {
+      const targetId = decodeURIComponent(syncFilesContextMatch[1] ?? '');
+      const status = state.syncStatus.get(targetId);
+      const rows = status?.repositories ?? [];
+      const covered = rows.filter((row) => row.cells.files.state !== 'off').length;
+      const merges: Array<{
+        repository: string;
+        repository_id: string;
+        path: string;
+        merge: Record<string, unknown>;
+      }> = [];
+      for (const [key, override] of state.syncOverrides) {
+        const [repositoryId, kind] = key.split('/');
+        if (kind !== 'files' || repositoryId === undefined) continue;
+        const held = override.document.merges;
+        if (!Array.isArray(held)) continue;
+        const name =
+          PSEUDO_REPO_NAMES[repositoryId] ??
+          state.targets
+            .flatMap((target) => target.repositories)
+            .find((repository) => repository.detail.repository.id === repositoryId)?.detail
+            .repository.name ??
+          repositoryId;
+        for (const merge of held as Array<Record<string, unknown>>) {
+          if (typeof merge.path !== 'string') continue;
+          merges.push({ repository: name, repository_id: repositoryId, path: merge.path, merge });
+        }
+      }
+      respond(res, 200, {
+        repositories: rows.length,
+        covered,
+        known_paths: KNOWN_PATHS,
+        merges,
+      });
+      return;
+    }
+
     const syncApprovalMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)\/approval$/.exec(
       path.slice(route('').length),
     );
@@ -1126,6 +1186,21 @@ async function handle(
       };
       state.syncPlans.set(targetId, approved);
       respond(res, 200, { plan: approved });
+      return;
+    }
+
+    const syncDiscardMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncDiscardMatch && method === 'DELETE') {
+      const targetId = decodeURIComponent(syncDiscardMatch[1] ?? '');
+      const planId = decodeURIComponent(syncDiscardMatch[2] ?? '');
+      const plan = state.syncPlans.get(targetId);
+      if (!plan || plan.id !== planId) {
+        throw new MockApiError(404, 'not_found', 'there is no such plan to discard');
+      }
+      state.syncPlans.delete(targetId);
+      respond(res, 200, { plan: { ...plan, state: 'discarded' } });
       return;
     }
 
@@ -1602,6 +1677,15 @@ async function handle(
           input.path_index_interval_seconds_override ?? null;
       }
       target.value.config_patch = structuredClone(input.config_patch);
+      if (input.pending_ci_mode_default !== undefined)
+        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
+      if (input.pending_ci_branch_patterns_default !== undefined)
+        target.value.pending_ci_branch_patterns_default = structuredClone(
+          input.pending_ci_branch_patterns_default,
+        );
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        target.value.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       target.value.revision += 1;
       recomputeTarget(target);
       addAudit(target, 'target.settings.updated', 'updated account defaults');
@@ -1631,6 +1715,16 @@ async function handle(
       }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
+      if (input.pending_ci_mode_override !== undefined)
+        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
+      if (input.pending_ci_branch_patterns_override !== undefined)
+        stored.detail.pending_ci_branch_patterns_override =
+          input.pending_ci_branch_patterns_override === null
+            ? null
+            : structuredClone(input.pending_ci_branch_patterns_override);
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        stored.detail.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       stored.detail.revision += 1;
       stored.detail.repository.updated_at = new Date().toISOString();
       recomputeTarget(target);
@@ -1813,6 +1907,15 @@ async function handle(
           input.path_index_interval_seconds_override ?? null;
       }
       target.value.config_patch = structuredClone(input.config_patch);
+      if (input.pending_ci_mode_default !== undefined)
+        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
+      if (input.pending_ci_branch_patterns_default !== undefined)
+        target.value.pending_ci_branch_patterns_default = structuredClone(
+          input.pending_ci_branch_patterns_default,
+        );
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        target.value.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       target.value.revision += 1;
       recomputeTarget(target);
       addAudit(target, 'target.settings.updated', 'updated account defaults');
@@ -1842,6 +1945,16 @@ async function handle(
       }
       stored.detail.config_patch = structuredClone(input.config_patch);
       stored.detail.ignore_repository_file = input.ignore_repository_file;
+      if (input.pending_ci_mode_override !== undefined)
+        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
+      if (input.pending_ci_branch_patterns_override !== undefined)
+        stored.detail.pending_ci_branch_patterns_override =
+          input.pending_ci_branch_patterns_override === null
+            ? null
+            : structuredClone(input.pending_ci_branch_patterns_override);
+      if (input.pending_ci_quiet_period_seconds_override !== undefined)
+        stored.detail.pending_ci_quiet_period_seconds_override =
+          input.pending_ci_quiet_period_seconds_override;
       stored.detail.revision += 1;
       stored.detail.repository.updated_at = new Date().toISOString();
       recomputeTarget(target);

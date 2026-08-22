@@ -31,7 +31,7 @@ describe('the theme switch', () => {
   it('is what the sidebar and the pages outside the panel both render', () => {
     // `NightPage` is the shell the invitation and the error pages share, so it is the one
     // place outside the sidebar that renders a switch.
-    for (const file of ['IdentityBar.svelte', 'NightPage.svelte']) {
+    for (const file of ['Rail.svelte', 'NightPage.svelte']) {
       expect(read(file)).toMatch(/<ThemeSwitch\b/u);
     }
   });
@@ -40,7 +40,7 @@ describe('the theme switch', () => {
     // A page outside the panel has no account behind it, so "system" there is an offer to follow
     // something it will forget. It asks for a theme outright instead; the sidebar still offers it.
     expect(read('NightPage.svelte')).toMatch(/<ThemeSwitch[^>]*\ssystem=\{false\}/su);
-    expect(read('IdentityBar.svelte')).not.toMatch(/<ThemeSwitch[^>]*\ssystem=/su);
+    expect(read('Rail.svelte')).not.toMatch(/<ThemeSwitch[^>]*\ssystem=/su);
   });
 
   it('is on every page outside the panel, without exception', () => {

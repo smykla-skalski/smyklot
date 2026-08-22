@@ -371,6 +371,17 @@
       flex: 1 1 6rem;
     }
 
+    /* The owner gives before the page does: on the narrowest phones the
+       unshrinkable owner + number pair ran 4px past the screen. */
+    .pr-owner {
+      flex: 0 1 auto;
+      min-width: 0;
+      overflow: clip;
+      overflow-clip-margin: 0.4em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .row-chevron {
       order: 1;
     }

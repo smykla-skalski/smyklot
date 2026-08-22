@@ -7,7 +7,7 @@ import {
   PANEL_VIEWS,
   REPOSITORY_SECTIONS,
   ROOT_INSTALLATION_VIEWS,
-  SYNC_TAB_SECTIONS,
+  WRITTEN_SYNC_SECTIONS,
 } from './lib/routes.ts';
 
 /**
@@ -123,15 +123,17 @@ const MATCHERS = {
   rootInstallationView: oneOf(ROOT_INSTALLATION_VIEWS),
 
   /**
-   * The sections of sync whose address is one plain segment.
-   *
-   * Rulesets and files are deliberately not among them: each names one of its
-   * own, so each is a directory of its own in the route tree. If this accepted
-   * them, `/sync/files` would match both that directory's route and this one,
-   * and which page answered would be a matter of how SvelteKit happens to sort
-   * two routes of different depths.
+   * The sync sections written into an address; the overview leaves the bare
+   * view, the way a repository's `file` pane does.
    */
-  syncSection: oneOf(SYNC_TAB_SECTIONS),
+  syncSection: oneOf(WRITTEN_SYNC_SECTIONS),
+
+  /**
+   * A template's path in an address: one or more non-empty segments, slashes
+   * and all - a rest parameter is handed the whole tail as one string. Empty
+   * is refused, so the bare files section stays on the section route.
+   */
+  syncFilePath: matching('^[^/]+(?:/[^/]+)*$'),
 };
 
 /** One half of every matcher, keyed the way `MATCHERS` is. */

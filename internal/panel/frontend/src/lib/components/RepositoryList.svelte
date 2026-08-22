@@ -779,9 +779,12 @@
   }
 
   async function setBypass(repositoryId: string, ignored: boolean): Promise<void> {
-    await save(repositoryId, (detail) =>
+    const updated = await save(repositoryId, (detail) =>
       repositorySettingsInput(detail, { ignore_repository_file: ignored }),
     );
+    /* The settings page shows its saved receipt only when this resolves, so a
+       refused write must reject rather than settle quietly. */
+    if (updated === null) throw new Error('save refused');
   }
 
   // A refused migration is durable and never expires, so this is the only way
@@ -809,9 +812,10 @@
   }
 
   async function setConfig(repositoryId: string, configPatch: ConfigPatch): Promise<void> {
-    await save(repositoryId, (detail) =>
+    const updated = await save(repositoryId, (detail) =>
       repositorySettingsInput(detail, { config_patch: configPatch }),
     );
+    if (updated === null) throw new Error('save refused');
   }
 
   async function setPendingCI(
@@ -820,13 +824,14 @@
     patterns: PendingCIBranchPatterns | null,
     quiet: number | null,
   ): Promise<void> {
-    await save(repositoryId, (detail) =>
+    const updated = await save(repositoryId, (detail) =>
       repositorySettingsInput(detail, {
         pending_ci_mode_override: mode,
         pending_ci_branch_patterns_override: patterns,
         pending_ci_quiet_period_seconds_override: quiet,
       }),
     );
+    if (updated === null) throw new Error('save refused');
   }
 
   async function setPathIndex(repositoryId: string, seconds: number | null): Promise<void> {
@@ -1749,6 +1754,8 @@
       align-items: center;
       border: 0;
       display: flex;
+      flex-wrap: wrap;
+      min-inline-size: 0;
       justify-content: space-between;
       padding: var(--space-2) 0;
     }

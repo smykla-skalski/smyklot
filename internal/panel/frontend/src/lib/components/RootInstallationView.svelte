@@ -573,9 +573,15 @@
   }
 
   .installation-navigation {
-    /* The island hugs its tabs (mock .pill-nav is inline-flex) — align-self stops
-       a column parent's default stretch from widening it to the full row. */
-    align-self: flex-start;
+    /* The island hugs its tabs (mock .pill-nav is inline-flex) — justify-self
+       stops the grid's default stretch from widening it to the full row. */
+    justify-self: start;
+    /* Stated, not inferred: a scroll container's content-based block size is
+       indefinite, so the grid sized this row to the SCROLLBAR - ten pixels -
+       and the tabs painted over the page below. Only browsers with classic
+       scrollbars showed it, which is why it survived every overlay-scrollbar
+       Mac it was built on. */
+    block-size: max-content;
     background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-inset));
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);

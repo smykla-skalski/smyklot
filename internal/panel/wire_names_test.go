@@ -74,6 +74,10 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	// The repository the probe list names, which `routePlaceholders` shares
 	// with the authorization matrix. Without it in the catalog every address
 	// below it answers 404 and is skipped, so six probes proved nothing.
+	// The ownership travels with the snapshot, exactly as the harness's own
+	// seeding writes it. Reconciling without it wiped the signed-in owner's
+	// link, so every target-scoped probe answered 404 - and the count floor
+	// below was riding that without anybody meaning it to.
 	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
 		TargetID:       target,
 		InstallationID: "10",
@@ -89,6 +93,18 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 		Repositories: []storage.RepositorySnapshot{
 			{ID: "repository-20", Name: "smyklot", FullName: "smykla-skalski/smyklot"},
 			{ID: repository, Name: "docs", FullName: "smykla-skalski/docs"},
+		},
+		Ownership: storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourceOrganizationAdmin,
+			Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{{
+				ID:          "github:test:user:1",
+				Provider:    "github:test",
+				SubjectID:   "1",
+				Login:       "owner",
+				DisplayName: "Panel Owner",
+			}},
+			SyncedAt: harness.now,
 		},
 		SyncedAt: harness.now,
 	}); err != nil {
@@ -147,6 +163,8 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/sync/overrides/labels",
 		"/panel/api/v1/targets/" + target + "/sync/paths",
 		"/panel/api/v1/targets/" + target + "/sync/plan",
+		"/panel/api/v1/targets/" + target + "/sync/status",
+		"/panel/api/v1/targets/" + target + "/sync/files/context",
 		"/panel/api/v1/targets/" + target + "/audit",
 		"/panel/api/v1/targets/" + target + "/failures",
 		"/panel/api/v1/root/overview",

@@ -53,6 +53,53 @@ describe('panel routes', () => {
     });
   });
 
+  it('parses sync sections and refuses what is not one', () => {
+    // The bare view is the overview - the section is not written into the path.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'plan',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/labels')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'labels',
+    });
+    // `overview` is never written, so an address naming it does not resolve.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/overview')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan/extra')).toBeNull();
+  });
+
+  it('parses one ruleset page and refuses names anywhere else', () => {
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/main-protection')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'rulesets',
+      syncRuleset: 'main-protection',
+    });
+    // Encoded names come back decoded, like a repository's do.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/main%20guard')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'rulesets',
+      syncRuleset: 'main guard',
+    });
+    // Only rulesets lists named objects - a name after any other section is
+    // an address that does not resolve.
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/labels/anything')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'rulesets',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/a/b')).toBeNull();
+  });
+
   it('parses Root routes without treating them as installations', () => {
     expect(parsePanelRoute('', '/root')).toEqual({ rootView: 'overview' });
     expect(parsePanelRoute('/panel', '/panel/root/installations')).toEqual({

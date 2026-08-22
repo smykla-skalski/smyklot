@@ -15,14 +15,22 @@ class TestResizeObserver {
  * What this pane saves is the only thing that makes a repository's own
  * customization survive a sync. Drop it and the plain template is written over
  * exactly the file it described - the failure this whole port exists to stop.
+ *
+ * Saves ride a typing rest rather than a button, so every test that expects
+ * one advances the clock past it - and every test that expects none advances
+ * the clock too, or it would prove only that the save had not happened YET.
  */
 describe('RepositorySyncPane [Component]', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.stubGlobal('ResizeObserver', TestResizeObserver);
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
 
   function override(over: Partial<SyncOverride> = {}): SyncOverride {
     return {
@@ -50,8 +58,17 @@ describe('RepositorySyncPane [Component]', () => {
 
   const base = { readOnly: false, saving: false, now, onSave: () => {} };
 
-  async function save(): Promise<void> {
-    await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  /** Rests past the save debounce, so anything queued lands. */
+  async function rest(): Promise<void> {
+    await vi.advanceTimersByTimeAsync(1_000);
+  }
+
+  /** Adds one leave-alone pattern through the in-place entry editor. */
+  async function addExclude(value: string): Promise<void> {
+    await fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+    const input = screen.getByLabelText('Pattern');
+    await fireEvent.input(input, { target: { value } });
+    await fireEvent.keyDown(input, { key: 'Enter' });
   }
 
   it('says so where a repository takes every file as it is written', () => {
@@ -87,7 +104,7 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.change(screen.getByLabelText('What this repository sets'), {
       target: { value: '{"timezone": "Europe/Warsaw"}' },
     });
-    await save();
+    await rest();
 
     expect(sent).toHaveLength(1);
     expect(sent[0].document.merges).toEqual([
@@ -101,29 +118,31 @@ describe('RepositorySyncPane [Component]', () => {
    * JSON, so the refusal happens here where the box is.
    */
   it('refuses to save what is not a JSON object', async () => {
+    const { sent, onSave } = saved();
     render(RepositorySyncPane, {
       ...base,
       stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
+      onSave,
     });
 
     await fireEvent.change(screen.getByLabelText('What this repository sets'), {
       target: { value: '{"timezone": ' },
     });
+    await rest();
 
     expect(screen.getByRole('alert').textContent).toContain('not a JSON object');
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    expect(sent).toHaveLength(0);
   });
 
   it('sends the files this repository wants left alone', async () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'renovate.json\nCONTRIBUTING.md' },
-    });
-    await save();
+    await addExclude('renovate.json');
+    await addExclude('CONTRIBUTING.md');
+    await rest();
 
-    expect(sent[0].document.excludes).toEqual(['renovate.json', 'CONTRIBUTING.md']);
+    expect(sent.at(-1)?.document.excludes).toEqual(['renovate.json', 'CONTRIBUTING.md']);
   });
 
   /**
@@ -135,18 +154,19 @@ describe('RepositorySyncPane [Component]', () => {
     const { sent, onSave } = saved();
     render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'LICENSE' },
-    });
-    await save();
+    await addExclude('LICENSE');
+    await rest();
 
     expect(sent[0].enabled).toBeNull();
   });
 
-  it('offers no save until something changes', () => {
-    render(RepositorySyncPane, { ...base, stored: override() });
+  it('saves nothing until something changes', async () => {
+    const { sent, onSave } = saved();
+    render(RepositorySyncPane, { ...base, stored: override(), onSave });
 
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    await rest();
+
+    expect(sent).toHaveLength(0);
   });
 
   /**
@@ -154,7 +174,8 @@ describe('RepositorySyncPane [Component]', () => {
    * way, whatever order their keys arrived in. Comparing the raw text put Save
    * live the moment the page loaded, for a document nobody had touched.
    */
-  it('offers no save for a document whose keys arrived in another order', () => {
+  it('saves nothing for a document whose keys arrived in another order', async () => {
+    const { sent, onSave } = saved();
     render(RepositorySyncPane, {
       ...base,
       stored: override({
@@ -163,9 +184,12 @@ describe('RepositorySyncPane [Component]', () => {
           merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }],
         },
       }),
+      onSave,
     });
 
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    await rest();
+
+    expect(sent).toHaveLength(0);
   });
 
   /**
@@ -181,10 +205,8 @@ describe('RepositorySyncPane [Component]', () => {
       onSave,
     });
 
-    await fireEvent.change(screen.getByLabelText('Files to leave alone here'), {
-      target: { value: 'LICENSE' },
-    });
-    await save();
+    await addExclude('LICENSE');
+    await rest();
 
     expect(sent[0].document.something_later).toEqual({ deep: true });
   });
@@ -197,7 +219,9 @@ describe('RepositorySyncPane [Component]', () => {
     render(RepositorySyncPane, { ...base, stored: override({ unreadable: true }) });
 
     expect(screen.getByRole('alert').textContent).toContain('cannot read');
-    expect(screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('button', { name: 'Adjust a file' }).hasAttribute('disabled')).toBe(
+      true,
+    );
   });
 
   it('offers nothing to change to somebody who may only read', () => {
@@ -207,7 +231,6 @@ describe('RepositorySyncPane [Component]', () => {
       stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
     });
 
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Adjust a file' })).toBeNull();
   });
 
@@ -225,19 +248,20 @@ describe('RepositorySyncPane [Component]', () => {
       }),
     });
 
-    const notice = screen.getByRole('status');
-    expect(notice.textContent).toContain('are not being synced here');
-    expect(notice.textContent).toContain('docs is not a directory in this repository');
+    /* Scoped by class: the saved receipt is a quiet status of its own now. */
+    const notice = document.querySelector('.sync-pane-standdown');
+    expect(notice?.textContent).toContain('are not being synced here');
+    expect(notice?.textContent).toContain('docs is not a directory in this repository');
 
     // And when it was found, so a fix saved a minute ago can be told from one
     // this notice already knows about.
-    expect(notice.textContent).toContain('3 minutes ago');
+    expect(notice?.textContent).toContain('3 minutes ago');
   });
 
   it('says nothing where the planner found nothing wrong', () => {
     render(RepositorySyncPane, { ...base, stored: override() });
 
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(document.querySelector('.sync-pane-standdown')).toBeNull();
   });
 
   /**
@@ -263,7 +287,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.change(screen.getByLabelText('List'), {
         target: { value: '$.packageRules' },
       });
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {
@@ -309,8 +333,10 @@ describe('RepositorySyncPane [Component]', () => {
         onSave,
       });
 
-      await fireEvent.click(screen.getByRole('radio', { name: 'On' }));
-      await save();
+      await fireEvent.click(
+        screen.getByRole('checkbox', { name: 'Drop repeated entries from renovate.json' }),
+      );
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {
@@ -343,7 +369,7 @@ describe('RepositorySyncPane [Component]', () => {
 
       // The second: the first removes the adjustment, this one the rule inside it.
       await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         { path: 'renovate.json', overrides: { extends: ['config:base'] } },
@@ -379,7 +405,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.change(screen.getByLabelText('What this repository writes'), {
         target: { value: '### Project setup' },
       });
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {
@@ -413,7 +439,7 @@ describe('RepositorySyncPane [Component]', () => {
       });
 
       await fireEvent.click(screen.getByRole('radio', { name: 'Append to document' }));
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         { path: 'CONTRIBUTING.md', sections: [{ action: 'append', content: 'Read this' }] },
@@ -425,7 +451,7 @@ describe('RepositorySyncPane [Component]', () => {
      * carrying both is refused. A row repointed at a `.md` file would otherwise
      * save what it held as a JSON row and be refused by the planner instead.
      */
-    it('leaves the keys behind when a row becomes a Markdown row', async () => {
+    it('holds a row retyped to Markdown until a section says how', async () => {
       const { sent, onSave } = saved();
       render(RepositorySyncPane, {
         ...base,
@@ -447,9 +473,13 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.change(screen.getByLabelText('File'), {
         target: { value: 'CONTRIBUTING.md' },
       });
-      await save();
+      await rest();
 
-      expect(sent[0].document.merges).toEqual([{ path: 'CONTRIBUTING.md' }]);
+      /* A bare Markdown row says nothing yet, so the rest saves nothing and
+         the refusal is spoken where the row is. The keys being left behind is
+         proven by the sibling below, which completes the section and saves. */
+      expect(sent).toHaveLength(0);
+      expect(screen.getByRole('alert').textContent).toContain('no section says how');
     });
 
     /*
@@ -529,7 +559,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.change(screen.getByLabelText('File'), {
         target: { value: '.github/settings.yml' },
       });
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {
@@ -574,7 +604,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.change(screen.getByLabelText('What this repository writes'), {
         target: { value: 'Run `mise install`' },
       });
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {
@@ -598,13 +628,11 @@ describe('RepositorySyncPane [Component]', () => {
         return screen.getByRole('alert').textContent ?? '';
       }
 
-      function savable(): boolean {
-        return !screen.getByRole('button', { name: 'Save' }).hasAttribute('disabled');
-      }
-
       it('will not save a list rule with no list named', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: { merges: [{ path: 'renovate.json', overrides: { a: [1] } }] },
           }),
@@ -613,7 +641,8 @@ describe('RepositorySyncPane [Component]', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
 
         expect(refusal()).toContain('names no list');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       /*
@@ -622,8 +651,10 @@ describe('RepositorySyncPane [Component]', () => {
        * with - for every template, always.
        */
       it('will not save a list rule the overrides do not set', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -638,12 +669,15 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('No override sets $.packageRules');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       it('will not save a list rule pointing at something that is not a list', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -658,12 +692,15 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('is not a list');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       it('will not save two rules for one list', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -681,15 +718,18 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('two rules for $.extends');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       /* A shallow merge replaces a top-level key whole, so nothing below one
          is ever merged and a rule pointing there describes work that cannot
          happen. */
       it('will not save a nested list rule under a shallow merge', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -705,24 +745,30 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('below the top level');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       it('will not save a section with no heading', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
         });
 
         await fireEvent.click(screen.getByRole('button', { name: 'Edit a section' }));
 
         expect(refusal()).toContain('needs the heading it addresses');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
       it('will not save a patch that finds nothing', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -736,44 +782,56 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('substitutes nothing');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
-      it('will not save a Markdown row that says nothing', () => {
+      it('will not save a Markdown row that says nothing', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
         });
 
         expect(refusal()).toContain('no section says how');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
-      it('will not save a row that merges nothing', () => {
+      it('will not save a row that merges nothing', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
         });
 
         expect(refusal()).toContain('sets nothing and has no list rule');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
-      it('will not save a file with no extension the engine can merge', () => {
+      it('will not save a file with no extension the engine can merge', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: { merges: [{ path: 'LICENSE', overrides: { a: 1 } }] },
           }),
         });
 
         expect(refusal()).toContain('no extension this can merge');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
 
-      it('will not save one file adjusted twice', () => {
+      it('will not save one file adjusted twice', async () => {
+        const { sent, onSave } = saved();
         render(RepositorySyncPane, {
           ...base,
+          onSave,
           stored: override({
             document: {
               merges: [
@@ -785,7 +843,8 @@ describe('RepositorySyncPane [Component]', () => {
         });
 
         expect(refusal()).toContain('adjusted twice');
-        expect(savable()).toBe(false);
+        await rest();
+        expect(sent).toHaveLength(0);
       });
     });
 
@@ -809,7 +868,7 @@ describe('RepositorySyncPane [Component]', () => {
 
       await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
       await fireEvent.change(screen.getByLabelText('List'), { target: { value: '$.extends' } });
-      await save();
+      await rest();
 
       expect(sent[0].document.merges).toEqual([
         {

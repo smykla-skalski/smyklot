@@ -262,6 +262,15 @@ func (s *Server) Handler() http.Handler {
 		s.putSyncOverride,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/status", s.getSyncStatus)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/sync/files/context",
+		s.getSyncFilesContext,
+	)
+	mux.HandleFunc(
+		"DELETE "+base+"/api/v1/targets/{target}/sync/plans/{plan}",
+		s.deleteSyncPlan,
+	)
 	mux.HandleFunc(
 		"POST "+base+"/api/v1/targets/{target}/sync/plans/{plan}/approval",
 		s.postSyncPlanApproval,

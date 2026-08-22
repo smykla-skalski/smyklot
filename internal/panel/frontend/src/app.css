@@ -68,7 +68,10 @@
   --primitive-dark-text: #f3f6f7;
   --primitive-dark-secondary: #c4cdd4;
   --primitive-dark-muted: #95a1ab;
-  --primitive-light-sidebar: #eef2f0;
+  /* #e6ede9, not the old #eef2f0: that sat 1.6 dE00 from the canvas and the
+     column read as content. The zone has to be a zone - 3.8 dE00 from the
+     canvas, with hover/press/thumb/border laddered off it. */
+  --primitive-light-sidebar: #e6ede9;
   --primitive-dark-sidebar: #10151b;
   --primitive-petrol-800: #115e59;
   --primitive-petrol-700: #0f766e;
@@ -220,7 +223,7 @@
 
   /* Component tokens. */
   --sidebar-bg: var(--primitive-light-sidebar);
-  --sidebar-border: #dbe2df;
+  --sidebar-border: #c9d4cf;
   --sidebar-text: var(--primitive-light-text);
   /* On #eef2f0: secondary 8.1:1, muted 5.8:1 (nav rows read at a glance). */
   --sidebar-text-secondary: #3d4b47;
@@ -231,15 +234,22 @@
      measured at 7.65 against the selection's 6.48 - so the selected row would
      stop being the loudest thing in the column. That is a bigger change than a
      hover, and not one to make sideways. */
-  --sidebar-item-hover: #e2e8e5;
-  --sidebar-item-pressed: #d6deda;
+  --sidebar-item-hover: #dae3de;
+  --sidebar-item-pressed: #cdd8d2;
   --sidebar-item-active-text: #0d5c55;
+  /* A count that demands attention (a waiting plan), on sidebar material -
+     the content signal tint is mixed for the page's cards and does not read
+     here. Ink veil over transparent so it survives the hover band too. */
+  --sidebar-count-signal-bg: color-mix(in srgb, #14498f 10%, transparent);
+  --sidebar-count-signal-ink: #14498f;
   /* Selected nav item is a raised thumb, same language as segmented controls. */
   --sidebar-thumb: #ffffff;
   /* The ring at 6% read 2.78 against the sidebar, under both the 3.74 fill and the 5.09 a press on
      a neighbouring row moves: pressing an unselected row was louder than the selection it sat
      beside. At 14% the edge reads 6.25 and the order is right again. */
   --sidebar-thumb-shadow: 0 1px 3px rgb(24 33 31 / 16%), 0 0 0 0.5px rgb(24 33 31 / 14%);
+  /* A pressed thumb LANDS rather than sinks: the throw leaves, the ring stays. */
+  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(24 33 31 / 14%);
   /* Popovers and menus anchored to the sidebar follow its context, not the page. */
   --sidebar-popover-bg: #ffffff;
   --sidebar-popover-border: #d9e0dd;
@@ -262,12 +272,6 @@
   --sidebar-seg-hover: color-mix(in srgb, var(--sidebar-menu-text) 5.5%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: color-mix(in srgb, var(--sidebar-menu-text) 11%, var(--sidebar-seg-track));
   --sidebar-seg-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 12%);
-  --switcher-card-bg: #ffffff;
-  --switcher-card-border: #b3c0ba;
-  --switcher-card-hover: #fafbfa;
-  --sidebar-root-accent: #6d54bd;
-  --role-chip-bg: #efeaf9;
-  --role-chip-text: #5b459f;
   /* Unread dot and count pill: one vivid alert red for every sidebar context.
      The muted danger tone reads as wine on light and vanishes on the dark
      purple root sidebar; this red holds 4.9:1 under white ink and stays over
@@ -294,13 +298,84 @@
      2.52 dE00 here. It used to be --surface-raised, which is 1.19 from the row - under half a
      state - and is also what the filler paints, so a hovered row and a dead cell were the same
      colour. */
-  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--surface-base));
+  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.4%, transparent);
   /* A row that can be pressed acknowledges the press, like every other control.
      The step from hover is the one the controls use - 5.3% to 10.9% there, so
-     roughly double - rather than a figure picked for this one surface. */
-  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--surface-base));
+     roughly double - rather than a figure picked for this one surface.
+     Mixed over TRANSPARENT, not the surface: a flat surface-base mix vanished
+     on canvas-toned strips (1.2 dE00 vs 2.5 on white) - the veil has to ride
+     whatever ground the row actually has. */
+  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, transparent);
   --dialog-bg: var(--surface-base);
   --dialog-border: var(--border-subtle);
+
+  /* Drift: the one blue that means "something existing would change". The
+     slate --info is a caption tone and reads grey at tile size, so drift
+     carries its own ink. Diff speaks the state tones with glyphs beside the
+     colour: change = drift, remove = danger. */
+  --drift: #14498f;
+  --diff-chg-ink: var(--drift);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
+  --diff-del-ink: var(--danger);
+  /* True green for ADD - the success tone is teal and reads as brand on a
+     code surface. Grounds are designed FOR code, not reused notice tints. */
+  --verb-add: #176a29;
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #e4f3e6;
+  --diff-del-bg: #fbe9e9;
+  /* Word-level emphasis inside a changed line: one state-step deeper. */
+  --diff-add-word: #c2e5c8;
+  --diff-del-word: #f4cbcb;
+
+  /* Code colour is a property of the language, not of the console, so it is
+     declared per theme. Verified for 4.5:1 on --surface-base and
+     --surface-inset in both themes. */
+  --code-key: #0550ae;
+  --code-const: #6d3fc0;
+  --code-string: #8f3a1c;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+
+  /* The managed-row gutter bar, worn by any line an adjustment rewrote.
+     Brand: management is the product acting. And the finder's matched
+     characters: brand-action-text, the palette's "to be read" brand ink. */
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
+
+  /* Matrix cell states. In step is quiet; attention states speak. */
+  --cell-instep: var(--text-muted);
+  --cell-pending: var(--diff-chg-ink);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-refused: var(--danger);
+  --cell-refused-bg: var(--danger-tint);
+  --cell-off: var(--border-control);
+
+  /* Switch (instant boolean). On = brand, like every other "the product is
+     acting" control. */
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --switch-thumb: #ffffff;
+
+  /* Board tile material: a unit of the managed population. Raised off the
+     well by a lightness step and a top edge; never worn by navigation or
+     actions. Derived from the surfaces so all four palettes follow. */
+  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
+  --tile-edge: rgb(255 255 255 / 85%);
+  --tile-border: var(--border-subtle);
+  --tile-shadow: 0 1px 2px var(--shadow-color), 0 0.5px 0 var(--tile-edge) inset;
+  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
+  --well-shadow: inset 0 1px 2px rgb(0 0 0 / 12%);
 
   /* Compatibility aliases while components migrate to semantic names. */
   --ink: var(--canvas);
@@ -343,7 +418,7 @@
      table header indents its label by exactly this, so the word over a column
      starts where that column's controls start rather than where its cells do. */
   --inherit-marker-size: 26px;
-  --inherit-marker-gap: 0.35rem;
+  --inherit-marker-gap: 6px;
   --inherit-marker-offset: calc(var(--inherit-marker-size) + var(--inherit-marker-gap));
 
   /* Below micro: for type that has to fit inside something small rather than be
@@ -373,8 +448,7 @@
 
   --control-height: 40px;
   --control-height-compact: 34px;
-
-  /* Chips and the dashed add-chip beside them. A third height rather than a
+  /* A chip and a small chip each keep one declared height rather than a
      third recipe: both were built out of padding, so each one ended up as tall
      as whatever it happened to hold - 27.59px for a chip carrying a clear
      button against 23.8px for the add-chip beside it, neither of them a whole
@@ -386,7 +460,8 @@
   --icon-sm: 0.875rem;
   --icon-md: 1.125rem;
   --icon-lg: 1.375rem;
-  --sidebar-width: 15rem;
+  /* 228px, the approved shell's pages column beside the 60px rail. */
+  --sidebar-width: 228px;
   --sidebar-width-collapsed: 4.5rem;
   /* 1120px, the column the design draws inside its pane. Capped rather than proportional: at
      100rem the pane kept growing with the display and every card in it grew with the pane, so a
@@ -407,6 +482,10 @@
   --press-scale-disc: 0.9;
   --press-scale-compact: 0.96;
   --press-scale-surface: 0.995;
+  /* The shell's press grammar: 1px straight down, and the hold reads as
+     DEPTH - the well's exact inset recipe, not a harsher one. The pressed
+     fill carries the state; the crease only confirms it. */
+  --pressed-inset: inset 0 1px 2px rgb(24 33 31 / 12%);
   --duration-press: 100ms;
   --duration-fast: 160ms;
   --duration-normal: 220ms;
@@ -474,78 +553,6 @@
 
   /* Input and checkbox boundaries at ~3:1 against the surface. */
   --border-strong: #9aa89f;
-
-  --pending-inverse: #a9bfcc;
-
-  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
-     brand colour - "you are here" is not "you can act". Hover previews the
-     same affordance in the border's voice; counts are quiet neutral pills. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-
-  /* Switch: an instant boolean. On wears brand, like every control that says
-     the product is acting; off is an inset track behind a strong border. */
-  --switch-track-off: var(--surface-inset);
-  --switch-track-off-border: var(--border-strong);
-  --switch-track-on: var(--brand-action);
-  --switch-thumb: #ffffff;
-
-  /* Syntax is a property of the LANGUAGE, not of the console, so these are
-     declared per theme and never re-decided per palette. Each clears 4.5:1 on
-     --surface-base, on --surface-inset and on both diff grounds below. */
-  --code-key: #0550ae;
-  --code-const: #6d3fc0;
-  --code-string: #8f3a1c;
-  /* A step deeper than the muted ink it is otherwise: --text-muted is tuned
-     against this theme's surfaces, and the removal ground is lighter than any
-     of them, where it lands at 4.36:1 - under AA on the one line a reader is
-     most likely to be squinting at. */
-  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
-  --code-punct: var(--text-secondary);
-
-  /* Drift is the ink for "something that exists would change". The app's
-     --info is a caption slate and reads plain grey at tile size, which is the
-     size this is read at. --verb-add is a true green because --success is a
-     teal, and a teal on a code surface reads as the brand acting. */
-  --drift: #14498f;
-  --verb-add: #176a29;
-
-  /* One ink per verb, shared by the plan's counts, its rows and its groups, so
-     "add" is the same green wherever a plan says it. The grounds are drawn for
-     code rather than borrowed from the notice tints: a tint tuned to sit under
-     a sentence has too little separation under a line of syntax. */
-  --diff-add-ink: var(--verb-add);
-  --diff-del-ink: var(--danger);
-  --diff-chg-ink: var(--drift);
-  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
-
-  /* The managed gutter bar, worn by any setting this installation manages:
-     management is the product acting, so it wears brand. */
-  --managed-bar: var(--brand-action);
-
-  /* One repository's state on the board. Settled is quiet - only the states
-     that want a person speak. */
-  --cell-instep: var(--text-muted);
-  --cell-pending: var(--diff-chg-ink);
-  --cell-pending-bg: var(--diff-chg-bg);
-  --cell-refused: var(--danger);
-  --cell-refused-bg: var(--danger-tint);
-  --cell-off: var(--border-control);
-
-  /* Board material: a unit of the managed population, raised off its well by
-     a lightness step and a top edge. Never worn by navigation or an action. */
-  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
-  --tile-edge: rgb(255 255 255 / 85%);
-  --tile-border: var(--border-subtle);
-  --tile-shadow: 0 1px 2px var(--shadow-color), 0 0.5px 0 var(--tile-edge) inset;
-  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
-
-  /* The characters a finder query matched, inside a path. */
-  --match-ink: var(--brand-action-text);
 }
 
 :root[data-theme='dark'] {
@@ -613,12 +620,16 @@
   --sidebar-item-hover: #1a242d;
   --sidebar-item-pressed: #223039;
   --sidebar-item-active-text: #a1f7e6;
+  --sidebar-count-signal-bg: color-mix(in srgb, #92c1ff 14%, transparent);
+  --sidebar-count-signal-ink: #92c1ff;
+  --pressed-inset: inset 0 1px 2px rgb(0 0 0 / 40%), inset 0 -1px 0 rgb(255 255 255 / 4%);
   /* Lifted from #2a333e. The dark sidebar has no room below it - it sits 0.02 in OKLCh lightness
      above the canvas - so its hover and press have to move up, toward the thumb. That left a
      pressed *unselected* row 3.33 dE00 from the selected one, 73% of the way across a 9.63 gap.
      Raising the thumb restores the margin: press now stops 5.22 short of it. */
   --sidebar-thumb: #333b46;
   --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 42%), 0 0 0 0.5px rgb(255 255 255 / 4%);
+  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 4%);
   --sidebar-popover-bg: #1b222b;
   --sidebar-popover-border: #333d49;
   --sidebar-menu-text: var(--primitive-dark-text);
@@ -637,12 +648,6 @@
   --sidebar-seg-pressed: #000000;
   /* Inset for the same reason as --segment-shadow above. */
   --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
-  --switcher-card-bg: #171e26;
-  --switcher-card-border: #39434f;
-  --switcher-card-hover: #1c242e;
-  --sidebar-root-accent: #c4b5fd;
-  --role-chip-bg: #2a2440;
-  --role-chip-text: #c4b5fd;
   /* Same alert pair as light: the vivid red carries its own contrast, so it
      does not follow the theme's pale danger tone. */
   --unread-badge-bg: #d03339;
@@ -654,8 +659,55 @@
   --table-footer-bg: var(--surface-inset);
   /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
      every other control here. 5.09 dE00. */
-  --table-row-hover: color-mix(in srgb, #ffffff 6.8%, var(--surface-base));
-  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
+  --table-row-hover: color-mix(in srgb, #ffffff 6.8%, transparent);
+  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, transparent);
+
+  --drift: #92c1ff;
+  --diff-chg-ink: var(--drift);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
+  --diff-del-ink: var(--danger);
+  --verb-add: #8ce0a2;
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #14301f;
+  --diff-del-bg: #3c1f24;
+  --diff-add-word: #1f4c32;
+  --diff-del-word: #5c2e35;
+  --code-key: #82b3f0;
+  --code-const: #c5a3f2;
+  --code-string: #ffb187;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
+  --cell-instep: var(--text-muted);
+  --cell-pending: var(--diff-chg-ink);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-refused: var(--danger);
+  --cell-refused-bg: var(--danger-tint);
+  --cell-off: var(--border-control);
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --switch-thumb: #10151b;
+  --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
+  --tile-edge: rgb(255 255 255 / 9%);
+  --tile-border: var(--border-control);
+  --tile-shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 0.5px 0 var(--tile-edge) inset;
+  /* A recess in the card, not a hole in the page: darkened from the card's
+     own surface, with a readable inner top shadow and a bottom rim light -
+     the light theme's debossed read, restated for dark. */
+  --tile-well: color-mix(in srgb, black 20%, var(--surface-base));
+  --well-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 rgb(255 255 255 / 5%);
 
   /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
      primitive, which sits 0.02 above the canvas in OKLCh lightness and so left the control no room
@@ -679,31 +731,6 @@
   --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
 
   --border-strong: #5b6a78;
-
-  --pending-inverse: #526b7a;
-
-  /* The switch thumb is the one near-black in this theme: it rides the bright
-     brand track when on, so a light thumb would vanish into it. */
-  --switch-thumb: #10151b;
-
-  /* The same code roles, lifted for a dark ground. Only the two literal inks
-     and the two grounds change - the roles and their names do not. */
-  --code-key: #82b3f0;
-  --code-const: #c5a3f2;
-  --code-string: #ffb187;
-
-  --drift: #92c1ff;
-  --verb-add: #8ce0a2;
-
-  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
-
-  /* A dark tile is lifted off its well rather than pressed into it, so the
-     well goes below the canvas and the edge is a thin highlight. */
-  --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
-  --tile-edge: rgb(255 255 255 / 9%);
-  --tile-border: var(--border-control);
-  --tile-shadow: 0 1px 2px rgb(0 0 0 / 45%), 0 0.5px 0 var(--tile-edge) inset;
-  --tile-well: color-mix(in srgb, black 34%, var(--canvas));
 }
 
 *,
@@ -754,15 +781,30 @@ body {
   padding: var(--space-6) var(--space-4) 2.5rem;
 }
 
+/* Three columns, one job each: the rail is the account's consoles, the
+   sidebar is the active console's map, the pane opens with content. The two
+   chrome columns size themselves (the sidebar animates its own inline-size),
+   so the tracks are auto rather than tokens the grid would have to ease. */
 .app-shell {
   display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   min-height: 100dvh;
-  transition: grid-template-columns var(--duration-normal) var(--ease-standard);
 }
 
-.app-shell.sidebar-collapsed {
-  grid-template-columns: var(--sidebar-width-collapsed) minmax(0, 1fr);
+/* Below 64rem the sidebar is a drawer over the content, out of flow - its
+   track has to go with it, or the pane falls into an auto column sized to
+   its own max-content and the layout moves with the content. */
+@media (max-width: 64rem) {
+  .app-shell {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .side-scrim {
+    background: var(--scrim);
+    inset: 0;
+    position: fixed;
+    z-index: 30;
+  }
 }
 
 .app-shell.root-mode {
@@ -789,8 +831,8 @@ body {
      AA - which is what a resting segment label sits on. This is the same weight in the shell's own
      hue: 4.60:1 on the inset against the panel's 4.58:1 on its own. */
   --text-muted: #6c6876;
-  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--surface-base));
-  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--surface-base));
+  --table-row-hover: color-mix(in srgb, var(--text-primary) 5.3%, transparent);
+  --table-row-pressed: color-mix(in srgb, var(--text-primary) 10.9%, transparent);
   /* Aliases substitute where they are declared, so the :root copies were
      computed against panel values and inherit here already resolved.
      Re-declaring them on the shell makes them re-resolve against the Root
@@ -872,6 +914,44 @@ body {
   --popover-border: var(--border-subtle);
   --dialog-bg: var(--surface-base);
   --dialog-border: var(--border-subtle);
+  /* Re-resolved where the console swaps the palette: a var() inside a custom
+     property resolves where the property is DECLARED, so every derived token
+     is restated at the swap element and picks up the violet set. */
+  --diff-chg-ink: var(--drift);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
+  --diff-del-ink: var(--danger);
+  --diff-add-ink: var(--verb-add);
+  --diff-add-bg: #e4f3e6;
+  --diff-del-bg: #fbe9e9;
+  --diff-add-word: #c2e5c8;
+  --diff-del-word: #f4cbcb;
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
+  --cell-instep: var(--text-muted);
+  --cell-pending: var(--diff-chg-ink);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-refused: var(--danger);
+  --cell-refused-bg: var(--danger-tint);
+  --cell-off: var(--border-control);
+  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
+     brand colour - "you are here" is not "you can act". Hover previews the
+     same affordance in the border's voice; counts are quiet neutral pills. */
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
+  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
+  --tile-border: var(--border-subtle);
+  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
+  --well-shadow: inset 0 1px 2px rgb(0 0 0 / 12%);
   --sidebar-bg: #15121d;
   --sidebar-border: #322b40;
   --sidebar-text: #f5f2fa;
@@ -884,6 +964,10 @@ body {
      landed 3.30 dE00 from the selected thumb. It now stops 5.25 short. */
   --sidebar-thumb: #3d3550;
   --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 5%);
+  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 5%);
+  /* Declared on the shell so both Root themes get them: this sidebar is dark in either. */
+  --sidebar-count-signal-bg: color-mix(in srgb, #a7c7f2 14%, transparent);
+  --sidebar-count-signal-ink: #a7c7f2;
   --sidebar-popover-bg: #221d2f;
   --sidebar-popover-border: #3f3656;
   --sidebar-menu-text: #f5f2fa;
@@ -900,37 +984,6 @@ body {
   --sidebar-seg-hover: color-mix(in srgb, black 36%, var(--sidebar-seg-track));
   --sidebar-seg-pressed: color-mix(in srgb, black 66%, var(--sidebar-seg-track));
   --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
-  --switcher-card-bg: #1d1928;
-  --switcher-card-border: #473e5e;
-  --switcher-card-hover: #272133;
-  --sidebar-root-accent: #c4b5fd;
-  --role-chip-bg: #372e50;
-  --role-chip-text: #cfc0ff;
-
-  /* A var() inside a custom property resolves where the property is DECLARED,
-     so every derived token above rides the panel palette unless restated at
-     the element this class swaps the palette on. Restating the expression is
-     what makes the switch and the tab bar go violet with the console. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-  --switch-track-off: var(--surface-inset);
-  --switch-track-off-border: var(--border-strong);
-  --switch-track-on: var(--brand-action);
-  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
-  --code-punct: var(--text-secondary);
-  --diff-chg-bg: color-mix(in srgb, var(--drift) 9%, var(--surface-base));
-  --managed-bar: var(--brand-action);
-  --cell-instep: var(--text-muted);
-  --cell-pending-bg: var(--diff-chg-bg);
-  --cell-off: var(--border-control);
-  --tile-face: color-mix(in srgb, var(--surface-base) 92%, #ffffff);
-  --tile-border: var(--border-subtle);
-  --tile-well: color-mix(in srgb, var(--text-primary) 4.5%, var(--surface-inset));
-  --match-ink: var(--brand-action-text);
   background: var(--canvas);
 }
 
@@ -958,40 +1011,22 @@ body {
   --brand-action-tint: #2e2544;
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
-  --table-row-hover: color-mix(in srgb, #ffffff 6.7%, var(--surface-base));
-  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, var(--surface-base));
+  --table-row-hover: color-mix(in srgb, #ffffff 6.7%, transparent);
+  --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, transparent);
   /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
      thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
      same argument --brand-action is re-declared for above. */
   --segment-thumb: #302b39;
   --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
   --segment-pressed: var(--canvas);
-
-  /* Same re-resolution as the light Root block above. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-  --switch-track-off: var(--surface-inset);
-  --switch-track-off-border: var(--border-strong);
-  --switch-track-on: var(--brand-action);
-  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
-  --code-punct: var(--text-secondary);
-  --managed-bar: var(--brand-action);
-  --cell-instep: var(--text-muted);
-  --cell-off: var(--border-control);
-  --tile-border: var(--border-subtle);
-  --match-ink: var(--brand-action-text);
-  /* These four are the dark THEME's expressions, restated because the light
-     Root block above matches a dark Root console too - same specificity, and
-     it is written later - so without them a dark console would take the light
-     console's tile material and its change ground. */
-  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
-  --cell-pending-bg: var(--diff-chg-bg);
   --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
-  --tile-well: color-mix(in srgb, black 34%, var(--canvas));
+  --tile-border: var(--border-control);
+  --tile-well: color-mix(in srgb, black 20%, var(--surface-base));
+  --well-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 rgb(255 255 255 / 5%);
+  --diff-add-bg: #14301f;
+  --diff-del-bg: #3c1f24;
+  --diff-add-word: #1f4c32;
+  --diff-del-word: #5c2e35;
 }
 
 .workspace {
@@ -1263,49 +1298,6 @@ body {
 .table-card :is(th, td) {
   overflow-x: clip;
   overflow-y: visible;
-}
-
-/*
- * A list of rounded rows, ruled between one and the next.
- * ------------------------------------------------------
- * Not a table: a run of links or cards laid out by the caller, each rounding
- * itself so a hover can be a pill. Three lists wrote this by hand and each got
- * a different part of it wrong.
- *
- * The rule is drawn INSIDE the row rather than as its top border, because a
- * border belongs to a rounded box and curves up at both of its ends - a
- * straight line between two rows, finished like a pill. It is inset by the
- * row's own padding, so it runs from the first column to the last: full-bleed
- * it reached the corners the hover ground curves away from, and both ends
- * stood outside the pill the moment one appeared.
- *
- * And a row under the pointer has no rule touching it, above or below. A
- * separator divides two rows that are alike, and the hovered one is not: with
- * the lines left on, a pill was drawn with one line resting against its top
- * and another against its bottom, and the eye read three shapes where the hand
- * had picked out one.
- *
- * `--row-rule-inset` is the row's horizontal padding. It defaults to the
- * commonest one rather than to nothing, because a rule that reaches the corner
- * is the defect this exists to prevent.
- */
-.ruled-rows > * {
-  position: relative;
-}
-
-.ruled-rows > * + *::before {
-  background: var(--border-subtle);
-  block-size: 1px;
-  content: '';
-  inset-block-start: 0;
-  inset-inline: var(--row-rule-inset, var(--space-3));
-  position: absolute;
-  transition: background-color var(--duration-fast) var(--ease-standard);
-}
-
-.ruled-rows > *:hover::before,
-.ruled-rows > *:hover + *::before {
-  background: transparent;
 }
 
 /*
@@ -2014,13 +2006,13 @@ input[type='radio']:not(:disabled) {
   border-radius: var(--r-ctl);
   color: var(--text);
   display: inline-flex;
-  font: 600 var(--font-size-compact) / 1 var(--sans);
-  gap: 0.45rem;
+  font: 500 var(--font-size-control) / 1 var(--sans);
+  gap: var(--space-2);
   /* Every control in the content panes is 34px (the mock's --ctl-h); contexts
      that need the tall variant opt in through --local-control-height. */
   height: var(--local-control-height, var(--control-height-compact));
   justify-content: center;
-  padding: 0 0.9rem;
+  padding: 0 var(--space-3);
   text-decoration: none;
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -2127,11 +2119,13 @@ select:disabled {
   border-color: var(--danger);
 }
 
+/* Same inline padding as every other button - the design draws quiet and
+   bordered buttons on one grid, and the narrower 8px made every quiet
+   control's column measure off the mock by the difference. */
 .btn-quiet {
   background: transparent;
   border-color: transparent;
   color: var(--dim);
-  padding: 0 0.5rem;
 }
 
 /* No flat fill: --strip-lift is 0.5 dE00 from the surface this sits on, so the hover was not
@@ -2142,9 +2136,24 @@ select:disabled {
 }
 
 .btn-row {
-  font-size: var(--font-size-control);
   min-height: var(--control-height-compact);
   padding: 0 0.625rem;
+}
+
+/* The menu's own frame, worn by the content of every menu-shaped popover.
+   The popover primitive is bare on purpose; this is the 4px mat the design
+   draws menu rows on, and the width band that makes long option labels
+   ellipsize instead of stretching the layer to the text. `.menu-search`
+   bleeds to the edges with negative margins that assume exactly this pad. */
+.menu-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  max-inline-size: min(24rem, calc(100vw - 24px));
+  min-inline-size: 13rem;
+  padding: var(--space-1);
+  /* Rows breathe 2px apart, so a hovered row and its chosen neighbour never
+     read as one fused pill. */
+  row-gap: 2px;
 }
 
 .chip {
@@ -2156,6 +2165,8 @@ select:disabled {
   display: inline-flex;
   font: 600 var(--font-size-compact) / 1 var(--sans);
   gap: 0.35rem;
+  /* A declared height, not an outcome of padding: a chip stood as tall as
+     whatever it happened to hold, and none of those heights was whole. */
   min-block-size: var(--control-height-chip);
   padding: 0 0.55rem;
   white-space: nowrap;
@@ -2261,113 +2272,6 @@ select:disabled {
 
 .chip-absent .chip-dot {
   background: var(--dim);
-}
-
-/* A chip that adds one - the shape a value will have, offered before it has a
-   value. Dashed like `.chip-absent` and for the same reason: what is drawn is a
-   place for something rather than something. It is a control, so it resets the
-   UA button face itself; `.btn` is worn by anchors here and cannot be reused
-   for a shape this small. */
-/* What a list says where its rows would have been.
-   ------------------------------------------------------------------------
-   One class rather than five: the sync pages each wrote their own -
-   `.settings-empty`, `.files-empty`, `.rulesets-empty`, `.labels-empty`,
-   `.actors-empty` - with the same three declarations under different names.
-   That is a cosmetic duplication until you notice what it cost: the browser
-   sweep that types a query nothing matches and looks for an answer knows the
-   shared markup by class, so a page inventing its own name reads to it as a
-   page with no empty state at all. `tests/browser/empty-states.test.ts` found
-   the sync settings page silent that way, and the copy had been there all
-   along. */
-.empty-note {
-  color: var(--dim);
-  font-size: var(--font-size-meta);
-  margin: 0;
-  max-inline-size: 66ch;
-  /* Room, because this stands where the rows would have been. One line of copy
-     against the edge of the pane reads as a seam rather than as the answer to
-     what was asked, which is the whole point of writing one. */
-  padding-block: var(--space-4);
-}
-
-/* An entry somebody typed, with a way to take it back off.
-   ------------------------------------------------------------------------
-   Distinct from `.chip`, which reports a state nobody can edit and is sized to
-   sit inside a line of text. This one is a CONTROL - it carries a remove, it
-   stands beside the `.add-chip` that makes another, and a reader reaches for
-   it - so it is the height every other control in a content pane has.
-
-   One recipe because there were two: an alias chip at 32px in the settings
-   editor and a chip-shaped one at 24px on the sync pages, both being "a string
-   with an x", neither matching the 24px add-chip they each stood next to. Three
-   heights in a row that a reader takes in as one thing. */
-.word-chip {
-  align-items: center;
-  background: var(--strip-lift);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-chip);
-  display: inline-flex;
-  font: 500 var(--font-size-control) / 1 var(--mono);
-  gap: 0.4375rem;
-  min-block-size: var(--control-height-compact);
-  padding: 0 0.375rem 0 0.875rem;
-  white-space: nowrap;
-}
-
-/* The remove inside one. A circle rather than the chip's own corner, so the two
-   are told apart by shape where a pointer is between them. */
-.word-chip .chip-x {
-  align-items: center;
-  background: none;
-  border: 0;
-  border-radius: 50%;
-  color: var(--dim);
-  cursor: pointer;
-  display: inline-flex;
-  block-size: 1.25rem;
-  inline-size: 1.25rem;
-  justify-content: center;
-  padding: 0;
-}
-
-.word-chip .chip-x:hover:not(:disabled) {
-  background: var(--stop-tint);
-  color: var(--stop);
-}
-
-.add-chip {
-  align-items: center;
-  appearance: none;
-  background: none;
-  border: 0;
-  border-radius: var(--r-chip);
-  color: var(--brand-action-text);
-  cursor: pointer;
-  display: inline-flex;
-  font: 600 var(--font-size-compact) / 1 var(--sans);
-  gap: 0.3rem;
-  /* The chip it makes is a control, so this is too - it used to be 24px
-     beside a 32px chip in the one row they share. */
-  min-block-size: var(--control-height-compact);
-  outline: 1px dashed color-mix(in srgb, currentcolor 45%, transparent);
-  outline-offset: -1px;
-  padding: 0 0.55rem;
-  white-space: nowrap;
-}
-
-.add-chip:hover {
-  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
-  outline-color: currentcolor;
-}
-
-.add-chip:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.add-chip:disabled {
-  color: var(--dim);
-  cursor: not-allowed;
 }
 
 /* The panel has no links to speak of - it is built from buttons - so this is a
@@ -2611,18 +2515,6 @@ code {
   text-transform: uppercase;
 }
 
-/* The words naming a control on the sync forms, whether they sit beside it or
-   above it.
-   Here because four of those forms had written these same two declarations out
-   for themselves, and a fifth copy is how one of them comes to sit at a
-   different size from the control above it on the same page. Not merged with
-   .entry-field-label: that one shouts a field's name in small caps over its
-   box, which is a different job and deliberately a different size. */
-.sync-form-label {
-  font-size: 0.875rem;
-  font-weight: 600;
-}
-
 /* A template or a patch is read as code, so it is shown as code: proportional
    type turns an aligned table in a Markdown file into a ragged one. */
 .entry-code {
@@ -2668,16 +2560,7 @@ code {
 /* And for a container whose LINES ARE NOT ITS OWN - a cell filled by a caller's
    snippet, a modal heading, a name assembled from whatever a row was handed.
    Every child gets the band, because there is no element here to hang a class
-   on: the markup belongs to somebody else.
-   ---------------------------------------------------------------------------
-   Nine components had written this as a descendant selector of their own -
-   `.pr-name > :global(*)`, `:global(.modal-panel h2)`, `.fact dt` - which is
-   the same rule nine times, and one of them reaching through `:global` into
-   another component's markup to set it. Asked for on the container instead, so
-   a tenth gets it by wearing the class.
-
-   `> *` rather than a descendant: a band is what a LINE has, and trimming every
-   node at every depth would trim the wrapper as well as the words in it. */
+   on: the markup belongs to somebody else. */
 .band-trim-kids > * {
   text-box: trim-both cap alphabetic;
 }
@@ -2697,15 +2580,6 @@ code {
 
 .band-trim-stack > :last-child {
   text-box: trim-end cap alphabetic;
-}
-
-/* A stack of one, where those two rules are the same element: they set the same
-   property, so the later simply wins and the line keeps its leading above the
-   capitals. It reads as the whole stack sitting 2.16px low - which is what four
-   policy rows with a name and no description did, on a page where the rows that
-   DID carry a description were exact. */
-.band-trim-stack > :only-child {
-  text-box: trim-both cap alphabetic;
 }
 
 /* Two labels that are always a word beside a mark, wherever they are used.
@@ -2916,10 +2790,8 @@ thead th .icon-button:active:not(:disabled) {
 }
 
 @media (max-width: 48rem) {
-  .app-shell {
-    display: block;
-  }
-
+  /* The rail stays at every width - it is the way back. The drawer already
+     owns the pages column here; the shell keeps its two remaining tracks. */
   .workspace {
     min-height: calc(100dvh - 3.75rem);
     padding-top: var(--space-4);

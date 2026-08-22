@@ -13,10 +13,9 @@
    * customization it described.
    */
   import { canonicalStringify } from '#lib/preferences-sync.js';
-  import { asList, lines, patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
+  import { patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
   import { asArrayStrategy } from '#lib/merge.js';
-  import { OFF, ON, SWITCH } from '#lib/form-switch.js';
   import type {
     SyncArrayRule,
     SyncFileMerge,
@@ -26,8 +25,10 @@
   } from '#lib/types.js';
 
   import Button from './Button.svelte';
-  import InheritControl from './InheritControl.svelte';
+  import Icon from './Icon.svelte';
+  import PatternEntries from './PatternEntries.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import Switch from './Switch.svelte';
 
   const {
     stored,
@@ -128,11 +129,6 @@
   /* Two lines rather than one, because what goes in the box is a fragment of a
      document and the heading it opens with is the part people get wrong. */
   const SECTION_CONTENT_PLACEHOLDER = '### Prerequisites\n\nRun `mise install`';
-
-  const ENABLEMENT = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-  ] as const;
 
   /**
    * One adjustment as it is being edited.
@@ -493,10 +489,12 @@
     drafts = patchedAt(drafts, index, {
       merge: { ...drafts[index].merge, ...change },
     });
+    queueSave();
   }
 
   function setText(index: number, text: string): void {
     drafts = patchedAt(drafts, index, { text });
+    queueSave();
   }
 
   function add(): void {
@@ -505,6 +503,7 @@
 
   function remove(index: number): void {
     drafts = withoutAt(drafts, index);
+    queueSave();
   }
 
   /* The rows inside a row. Each list is edited through the merge it belongs to,
@@ -569,6 +568,7 @@
     }
 
     drafts = patchedAt(drafts, index, { merge });
+    queueSave();
   }
 
   function replaceSection(index: number, at: number, section: SyncSection): void {
@@ -650,15 +650,52 @@
 
   const rowKey = rowKeys('merge');
 
-  function enablementValue(): string | null {
-    if (wanted === null) return null;
+  /* ---------- Saved change by change, after a typing rest ---------- */
 
-    return wanted ? 'enabled' : 'disabled';
+  const SAVE_REST_MS = 900;
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function queueSave(): void {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      if (disabled || !changed || malformed >= 0 || incomplete !== null) return;
+      onSave(wanted, payload);
+    }, SAVE_REST_MS);
   }
+
+  function setWanted(next: boolean | null): void {
+    wanted = next;
+    queueSave();
+  }
+
+  /* The receipt keys off the save the parent runs: shown when a save this
+     pane queued lands without a problem. */
+  let savedOn = $state(false);
+  let savedTimer: ReturnType<typeof setTimeout> | undefined;
+  let wasSaving = false;
+
+  $effect(() => {
+    if (saving) {
+      wasSaving = true;
+      return;
+    }
+    if (!wasSaving) return;
+    wasSaving = false;
+    if (saveProblem !== null) return;
+    savedOn = true;
+    clearTimeout(savedTimer);
+    savedTimer = setTimeout(() => (savedOn = false), 1400);
+  });
 </script>
 
-<section class="sync-pane">
-  <p class="form-lead">
+<section class="sync-pane card group-card">
+  <div class="group-head">
+    <h3 class="group-name">File sync</h3>
+    <span class="save-whisper" class:is-on={savedOn} role="status"
+      ><Icon name="check" size={12} /><span class="t">Saved</span></span
+    >
+  </div>
+  <p class="group-note">
     Whether the organization's files are kept in step here, and what this repository changes about
     them. Nothing reaches GitHub until a plan is approved
   </p>
@@ -687,36 +724,61 @@
     </p>
   {/if}
 
-  <div class="sync-pane-row">
-    <span class="sync-form-label">File sync</span>
-    <span class="sync-pane-spacer"></span>
-    <InheritControl
-      label="File sync"
-      source="the installation"
-      sourcePronoun="it"
-      inheritedLabel="whatever the installation says"
-      value={enablementValue()}
-      options={ENABLEMENT}
-      {disabled}
-      onSelect={(selection) => (wanted = selection === 'enabled')}
-      onRestore={() => (wanted = null)}
-    />
+  <div class="policy-rows">
+    <div class="policy-row">
+      <span class="setting-say">
+        <span class="setting-name">File sync</span>
+        <span class="setting-why"
+          >Whether the organization's files are written in this repository at all</span
+        >
+      </span>
+      {#if wanted === null}
+        <span class="policy-value">
+          <span class="setting-unmanaged">Follows the installation</span>
+        </span>
+        <button
+          class="setting-clear"
+          title="Answer for this repository"
+          {disabled}
+          onclick={() => setWanted(true)}
+        >
+          <Icon name="plus" size={10} />
+        </button>
+      {:else}
+        <span class="policy-value">
+          <span class="value-word" class:is-on={wanted}>{wanted ? 'On' : 'Off'}</span>
+          <Switch checked={wanted} label="File sync" {disabled} onToggle={setWanted} />
+        </span>
+        <button
+          class="setting-clear"
+          title="Stop answering - follow the installation"
+          {disabled}
+          onclick={() => setWanted(null)}
+        >
+          <Icon name="close" size={10} />
+        </button>
+      {/if}
+    </div>
+    <div class="policy-row policy-block">
+      <span class="setting-say">
+        <span class="setting-name">Files to leave alone here</span>
+        <span class="setting-why"
+          >Paths or patterns, where * stands for any run of characters. These narrow what the
+          installation synchronizes; they never widen it</span
+        >
+      </span>
+      <div class="pattern-line">
+        <PatternEntries
+          patterns={excludes}
+          readOnly={disabled}
+          onChange={(next) => {
+            excludes = next;
+            queueSave();
+          }}
+        />
+      </div>
+    </div>
   </div>
-
-  <label class="entry-field">
-    <span class="entry-field-label">Files to leave alone here</span>
-    <textarea
-      rows="2"
-      {disabled}
-      aria-describedby="repository-sync-excludes-note"
-      value={lines(excludes)}
-      placeholder="renovate.json"
-      onchange={(event) => (excludes = asList(event.currentTarget.value))}></textarea>
-  </label>
-  <p class="form-note" id="repository-sync-excludes-note">
-    One path or pattern per line. These narrow what the installation synchronizes; they never widen
-    it.
-  </p>
 
   {#if drafts.length === 0}
     <p class="form-note">This repository takes every file as the organization writes it.</p>
@@ -920,14 +982,12 @@
           <div class="sync-pane-row">
             <span class="sync-form-label">Drop repeated entries</span>
             <span class="sync-pane-spacer"></span>
-            <SegmentedControl
-              name="repository-sync-deduplicate-{index}"
+            <Switch
+              checked={draft.merge.deduplicate === true}
+              bare
               label="Drop repeated entries from {draft.merge.path || 'this file'}"
-              compact
-              options={SWITCH}
-              value={draft.merge.deduplicate === true ? ON : OFF}
               {disabled}
-              onSelect={(selection) => patch(index, { deduplicate: selection === ON })}
+              onToggle={(next) => patch(index, { deduplicate: next ? true : undefined })}
             />
           </div>
         {/if}
@@ -952,24 +1012,230 @@
   {/if}
 
   {#if !readOnly}
-    <div class="form-actions">
-      <Button tone="quiet" {disabled} onclick={add}>Adjust a file</Button>
-      <button
-        class="btn btn-signal"
-        type="button"
-        disabled={disabled || !changed || malformed >= 0 || incomplete !== null}
-        onclick={() => onSave(wanted, payload)}
-      >
-        <span class="button-label">{saving ? 'Saving' : 'Save'}</span>
-      </button>
-    </div>
+    <button class="add-chip add-entry" type="button" {disabled} onclick={add}>
+      <Icon name="plus" size={12} />
+      <span class="t">Adjust a file</span>
+    </button>
   {/if}
 </section>
 
 <style>
-  .sync-pane {
+  .sync-pane.card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    display: block;
+    padding: var(--space-5);
+  }
+
+  .group-head {
+    align-items: end;
     display: flex;
-    flex-direction: column;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+  }
+
+  .group-name {
+    font-size: var(--font-size-title);
+    font-weight: 600;
+    margin: 0;
+    min-block-size: 12px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .save-whisper {
+    align-items: center;
+    background: var(--success-tint);
+    block-size: 20px;
+    border-radius: var(--radius-chip);
+    color: var(--success);
+    display: inline-flex;
+    font-size: var(--font-size-micro);
+    font-weight: 600;
+    gap: 4px;
+    margin-inline-start: auto;
+    opacity: 0;
+    padding: 0 0.5rem;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .save-whisper.is-on {
+    opacity: 1;
+  }
+
+  .save-whisper .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .group-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    line-height: round(1.5em, 1px);
+    margin: 0 0 var(--space-2);
+    max-width: 72ch;
+  }
+
+  .policy-rows {
+    display: grid;
+    margin-bottom: var(--space-2);
+  }
+
+  .policy-row {
+    align-items: center;
+    display: grid;
+    gap: var(--space-2) var(--space-4);
+    grid-template-columns: 1fr auto auto;
+    margin-inline: calc(var(--space-2) * -1);
+    min-block-size: 48px;
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows. */
+    padding: var(--space-5) var(--space-2);
+    position: relative;
+  }
+
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
+  }
+
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
+  }
+
+  .policy-row:not(:last-child)::after {
+    background: var(--border-subtle);
+    block-size: 1px;
+    bottom: 0;
+    content: '';
+    inset-inline: var(--space-2);
+    position: absolute;
+  }
+
+  .setting-say {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .setting-name {
+    font-size: var(--font-size-meta);
+    font-weight: 600;
+    min-block-size: 10px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-why {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    min-block-size: 9px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .policy-value {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    justify-self: end;
+  }
+
+  .value-word {
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: var(--font-size-micro);
+    font-variant-numeric: tabular-nums;
+    min-inline-size: 1.9rem;
+    text-align: end;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .value-word.is-on {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .setting-unmanaged {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    font-style: normal;
+    /* Ink-true, so the padding around the hairlines measures to the glyphs
+       rather than to the line box's leading. */
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-clear {
+    align-items: center;
+    background: transparent;
+    block-size: 26px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    inline-size: 26px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .setting-clear:hover {
+    background: var(--interactive-hover-layer);
+    color: var(--text-primary);
+  }
+
+  .setting-clear:active {
+    background: var(--interactive-pressed);
+  }
+
+  .policy-row .setting-clear {
+    opacity: 0.45;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .policy-row:hover .setting-clear,
+  .policy-row:focus-within .setting-clear {
+    opacity: 1;
+  }
+
+  /* A block row keeps the grid for its say and lays its entries on a
+     full-width second line. The extra breathing room lives INSIDE the row,
+     above the entries - the block padding stays the shared 8px so the air
+     around every hairline is the same on both sides. */
+  .pattern-line {
+    grid-column: 1 / -1;
+    margin-block: var(--space-1) 0;
+  }
+
+  .add-chip {
+    align-items: center;
+    background: var(--control-bg);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-chip);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--font-size-compact);
+    font-weight: 500;
+    gap: 0.35rem;
+    justify-self: start;
+    min-block-size: 30px;
+    padding-block: 0;
+    padding-inline: 0.7rem;
+  }
+
+  .add-chip:hover {
+    background: var(--control-bg-hover);
+    border-style: solid;
+    color: var(--text-primary);
+  }
+
+  .add-chip:active {
+    background: var(--control-bg-pressed);
+  }
+
+  .add-chip .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .add-entry {
+    margin-top: var(--space-3);
   }
 
   /* The global rule has no margin. These notes sit directly under the control
@@ -1039,5 +1305,42 @@
     border-top: 1px solid var(--rule);
     margin-top: var(--space-3);
     padding-top: var(--space-3);
+  }
+
+  /* On a phone the head's parts cannot share one line, the say keeps the
+     line and the control moves under it, and the text fields lose their
+     12rem floor rather than holding the page wide. */
+  @media (max-width: 30rem) {
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
+
+    .sync-merge-path,
+    .sync-merge-heading,
+    .sync-merge-find,
+    .sync-merge-list {
+      min-width: 0;
+    }
   }
 </style>

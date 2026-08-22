@@ -1,15 +1,6 @@
-<script module lang="ts">
-  import type { DurationUnit } from './DurationField.svelte';
-
-  /* The same three a whole installation offers, so the two pages read alike. */
-  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
-</script>
-
 <script lang="ts">
-  import { untrack } from 'svelte';
-
   import { BOOLEAN_FIELDS } from '../config';
-  import { durationParts, durationSeconds, formatDuration, type DurationParts } from '../duration';
+  import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
@@ -21,17 +12,12 @@
     RepositorySummary,
     SyncOverride,
   } from '../types';
-  import Chip, { type ChipTone } from './Chip.svelte';
-  import Button from './Button.svelte';
+  import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
-  import HelpTip from './HelpTip.svelte';
   import Icon from './Icon.svelte';
-  import InheritControl from './InheritControl.svelte';
-  import BackLink from './BackLink.svelte';
-  import PageHeader from './PageHeader.svelte';
-  import DurationField from './DurationField.svelte';
-  import Plate from './Plate.svelte';
-  import Switch from './Switch.svelte';
+  import PanePath from './PanePath.svelte';
+  import PatternEntries from './PatternEntries.svelte';
+  import Popover from './Popover.svelte';
   import RepositorySyncPane from './RepositorySyncPane.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
@@ -40,21 +26,27 @@
    *
    * This was a dialog until it was three panes with a save bar in each, which is
    * a screen someone works in rather than something standing over the list for a
-   * moment. It reads as any other page of the panel does - a way back, a header
-   * with the switch beside it, then the pane - and it is addressable, so a link
-   * points at the pane a colleague was asked to look at.
+   * moment. It reads as any other object page of the panel does - a way back, a
+   * mono title with the switch beside it, then the pane - and it is addressable,
+   * so a link points at the pane a colleague was asked to look at.
    */
 
-  const FILE_MODE_OPTIONS = [
-    { value: 'observe', label: 'Observe' },
-    { value: 'bypass', label: 'Bypass' },
+  const FILE_STATUS_PILLS = {
+    valid: 'pill-success',
+    missing: 'pill-muted',
+    invalid: 'pill-danger',
+    bypassed: 'pill-warning',
+  } as const satisfies Record<RepositoryFileStatus, string>;
+  const GATE_PILLS = {
+    ready: 'pill-success',
+    provisioning: 'pill-muted',
+    draining: 'pill-warning',
+    blocked: 'pill-danger',
+  } as const;
+  const PENDING_CI_CHOICES = [
+    { value: 'checks', label: 'Checks' },
+    { value: 'labels', label: 'Labels' },
   ] as const;
-  const FILE_STATUS_TONES = {
-    valid: 'clear',
-    missing: 'neutral',
-    invalid: 'stop',
-    bypassed: 'warning',
-  } as const satisfies Record<RepositoryFileStatus, ChipTone>;
 
   const {
     repository,
@@ -69,7 +61,7 @@
     onBypass,
     onSaveConfig,
     onSavePendingCI,
-    onSavePathIndex = async () => {},
+    onSavePathIndex,
     onResetMigration,
     sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
@@ -88,8 +80,9 @@
     backHref: string;
     onBack: () => void;
     onSection: (section: RepositorySection) => void;
-    onBypass: (bypass: boolean) => void;
-    /* The editor awaits this to know when its save bar can settle, so the
+    /** Rejects when the save was refused - the receipt only shows on success. */
+    onBypass: (bypass: boolean) => void | Promise<void>;
+    /* The editor awaits this to know whether its receipt may show, so the
        promise is part of the contract rather than something to fire and drop. */
     onSaveConfig: (patch: ConfigPatch) => Promise<void>;
     onSavePendingCI: (
@@ -97,8 +90,8 @@
       patterns: PendingCIBranchPatterns | null,
       quiet: number | null,
     ) => Promise<void>;
-    /** How often this repository's file list is checked; null inherits. */
-    onSavePathIndex?: (seconds: number | null) => Promise<void>;
+    /** How often this repository's file list is read again; null inherits. */
+    onSavePathIndex: (seconds: number | null) => Promise<void>;
     onResetMigration: () => void;
     /**
      * The panes this surface offers, in the order the switch shows them.
@@ -125,114 +118,190 @@
 
   const disabled = $derived(readOnly || busy);
   const titleId = 'repository-page-title';
-  const PENDING_CI_MODE_OPTIONS = [
-    { value: 'checks', label: 'Checks' },
-    { value: 'labels', label: 'Labels' },
-  ] as const;
-  const GATE_TONES = {
-    ready: 'clear',
-    provisioning: 'neutral',
-    draining: 'warning',
-    blocked: 'stop',
-  } as const satisfies Record<'ready' | 'provisioning' | 'draining' | 'blocked', ChipTone>;
-  let savingPendingCI = $state(false);
-  let pendingCIMode = $state<PendingCIMode | null>(null);
-  let overridePendingCIPatterns = $state(false);
-  let pendingCIIncludes = $state('');
-  let pendingCIExcludes = $state('');
-  let pendingCIQuiet = $state('');
-  let pathIndexCustom = $state(false);
-  let pathIndexDraft = $state<DurationParts>({ amount: 1, unit: 'hours' });
-  let savingPathIndex = $state(false);
 
-  /* What the field was last filled from, so a re-read is told from a change.
-     `undefined` is "never filled", which is not the same as a repository that
-     inherits. The guard used to be `savingPathIndex` alone, and every other
-     save on this page replaces `detail` - so saving anything else while an
-     interval was half typed put the server's value back under the hand. */
-  let seededPathIndex: number | null | undefined = undefined;
+  /* ---------- The saved receipts ---------- */
 
-  $effect(() => {
-    if (detail === undefined || savingPathIndex) return;
-    const seconds = detail.path_index_interval_seconds_override;
-    if (seconds === seededPathIndex) return;
-    seededPathIndex = seconds;
-    untrack(() => {
-      pathIndexCustom = seconds !== null;
-      /* What this repository inherits, resolved through the installation and
-         the process rather than a literal hour: a deployment running fifteen
-         minutes prefills fifteen minutes. */
-      pathIndexDraft = durationParts(
-        seconds ?? detail.path_index_interval_seconds_inherited,
-        PATH_INDEX_UNITS,
-      );
-    });
-  });
+  let mergeSavedOn = $state(false);
+  let fileSavedOn = $state(false);
+  let mergeTimer: ReturnType<typeof setTimeout> | undefined;
+  let fileTimer: ReturnType<typeof setTimeout> | undefined;
 
-  /* Applied only where the field is asking for a number: an emptied box binds
-     to null and a value past the float range to Infinity, and both used to save
-     silently - as 0, which is "check every sweep", and as inheriting. */
-  async function applyPathIndex(): Promise<void> {
-    const seconds = durationSeconds(pathIndexDraft);
-    if (seconds === null) return;
-    await savePathIndex(seconds);
-  }
-
-  /* Inheriting is a value rather than an absence, so switching it off writes a
-     null and the installation's answer applies again. */
-  async function savePathIndex(seconds: number | null): Promise<void> {
-    if (detail === undefined || savingPathIndex) return;
-    savingPathIndex = true;
-    try {
-      await onSavePathIndex(seconds);
-    } finally {
-      savingPathIndex = false;
+  function whisper(card: 'merge' | 'file'): void {
+    if (card === 'merge') {
+      mergeSavedOn = true;
+      clearTimeout(mergeTimer);
+      mergeTimer = setTimeout(() => (mergeSavedOn = false), 1400);
+    } else {
+      fileSavedOn = true;
+      clearTimeout(fileTimer);
+      fileTimer = setTimeout(() => (fileSavedOn = false), 1400);
     }
   }
 
-  $effect(() => {
-    if (detail === undefined || savingPendingCI) return;
-    pendingCIMode = detail.pending_ci_mode_override;
-    overridePendingCIPatterns = detail.pending_ci_branch_patterns_override !== null;
-    const patterns =
-      detail.pending_ci_branch_patterns_override ?? detail.pending_ci_branch_patterns_inherited;
-    pendingCIIncludes = patterns.include.join('\n');
-    pendingCIExcludes = patterns.exclude.join('\n');
-    pendingCIQuiet = detail.pending_ci_quiet_period_seconds_override?.toString() ?? '';
-  });
+  /* ---------- Merge after CI, saved change by change ---------- */
 
-  function pendingCILines(value: string): string[] {
-    return value
-      .split('\n')
-      .map((line) => line.trim())
-      .filter((line) => line !== '');
-  }
+  let savingPendingCI = $state(false);
 
-  async function savePendingCI(): Promise<void> {
+  async function pushPendingCI(change: {
+    mode?: PendingCIMode | null;
+    patterns?: PendingCIBranchPatterns | null;
+    quiet?: number | null;
+  }): Promise<void> {
     if (detail === undefined || savingPendingCI) return;
-    const includes = pendingCILines(pendingCIIncludes);
-    if (overridePendingCIPatterns && includes.length === 0) return;
-    const quiet = pendingCIQuiet.trim() === '' ? null : Number(pendingCIQuiet);
-    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
     savingPendingCI = true;
     try {
       await onSavePendingCI(
-        pendingCIMode,
-        overridePendingCIPatterns
-          ? { include: includes, exclude: pendingCILines(pendingCIExcludes) }
-          : null,
-        quiet,
+        change.mode !== undefined ? change.mode : detail.pending_ci_mode_override,
+        change.patterns !== undefined
+          ? change.patterns
+          : detail.pending_ci_branch_patterns_override,
+        change.quiet !== undefined ? change.quiet : detail.pending_ci_quiet_period_seconds_override,
       );
+      whisper('merge');
+    } catch {
+      /* The page's failure line reports it. */
     } finally {
       savingPendingCI = false;
     }
   }
 
+  function overrideMode(): void {
+    if (detail === undefined) return;
+    void pushPendingCI({ mode: detail.pending_ci_mode_inherited });
+  }
+
+  function overridePatterns(): void {
+    if (detail === undefined) return;
+    /* A JSON clone, not structuredClone: the detail arrives as a $state proxy,
+       which structuredClone refuses to clone. */
+    void pushPendingCI({
+      patterns: JSON.parse(
+        JSON.stringify(detail.pending_ci_branch_patterns_inherited),
+      ) as PendingCIBranchPatterns,
+    });
+  }
+
+  function setIncludes(next: string[]): void {
+    if (detail === undefined || detail.pending_ci_branch_patterns_override === null) return;
+    if (next.length === 0) return;
+    void pushPendingCI({
+      patterns: { include: next, exclude: detail.pending_ci_branch_patterns_override.exclude },
+    });
+  }
+
+  function setExcludes(next: string[]): void {
+    if (detail === undefined || detail.pending_ci_branch_patterns_override === null) return;
+    void pushPendingCI({
+      patterns: { include: detail.pending_ci_branch_patterns_override.include, exclude: next },
+    });
+  }
+
+  /* ---------- The quiet-period seconds, saved after a typing rest ---------- */
+
+  const SAVE_REST_MS = 900;
+  let quietDraft = $state<string | null>(null);
+  let quietTimer: ReturnType<typeof setTimeout> | undefined;
+  const quietShown = $derived(
+    quietDraft ?? detail?.pending_ci_quiet_period_seconds_override?.toString() ?? '',
+  );
+
+  function typeQuiet(value: string): void {
+    quietDraft = value;
+    clearTimeout(quietTimer);
+    quietTimer = setTimeout(saveQuiet, SAVE_REST_MS);
+  }
+
+  function saveQuiet(): void {
+    clearTimeout(quietTimer);
+    quietTimer = undefined;
+    if (detail === undefined || quietDraft === null) return;
+    const trimmed = quietDraft.trim();
+    const quiet = trimmed === '' ? null : Number(trimmed);
+    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
+    if (quiet === detail.pending_ci_quiet_period_seconds_override) {
+      quietDraft = null;
+      return;
+    }
+    quietDraft = null;
+    void pushPendingCI({ quiet });
+  }
+
+  /* ---------- The path-index interval, an amount beside a unit ---------- */
+
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
+  const UNIT_SECONDS: Record<DurationUnit, number> = {
+    seconds: 1,
+    minutes: 60,
+    hours: 3_600,
+    days: 86_400,
+  };
+  let savingPathIndex = $state(false);
+  let indexAmountDraft = $state<string | null>(null);
+  let indexUnitDraft = $state<DurationUnit | null>(null);
+  let indexTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function indexParts(): { amount: number; unit: DurationUnit } {
+    const seconds =
+      detail?.path_index_interval_seconds_override ??
+      detail?.path_index_interval_seconds_inherited ??
+      3_600;
+    return durationParts(seconds, PATH_INDEX_UNITS);
+  }
+
+  const indexAmountShown = $derived(indexAmountDraft ?? indexParts().amount.toString());
+  const indexUnitShown = $derived(indexUnitDraft ?? indexParts().unit);
+
+  function typeIndexAmount(value: string): void {
+    indexAmountDraft = value;
+    indexUnitDraft = indexUnitShown;
+    clearTimeout(indexTimer);
+    indexTimer = setTimeout(saveIndexDraft, SAVE_REST_MS);
+  }
+
+  function pickIndexUnit(unit: DurationUnit): void {
+    indexAmountDraft = indexAmountShown;
+    indexUnitDraft = unit;
+    saveIndexDraft();
+  }
+
+  function saveIndexDraft(): void {
+    clearTimeout(indexTimer);
+    indexTimer = undefined;
+    if (indexAmountDraft === null || indexUnitDraft === null) return;
+    const seconds = Math.round(Number(indexAmountDraft) * UNIT_SECONDS[indexUnitDraft]);
+    if (!Number.isFinite(seconds) || seconds < 60) return;
+    indexAmountDraft = null;
+    indexUnitDraft = null;
+    void pushPathIndex(seconds);
+  }
+
+  async function pushPathIndex(seconds: number | null): Promise<void> {
+    if (detail === undefined || savingPathIndex) return;
+    savingPathIndex = true;
+    try {
+      await onSavePathIndex(seconds);
+      whisper('merge');
+    } catch {
+      /* The page's failure line reports it. */
+    } finally {
+      savingPathIndex = false;
+    }
+  }
+
+  async function setBypass(bypass: boolean): Promise<void> {
+    try {
+      await onBypass(bypass);
+      whisper('file');
+    } catch {
+      /* The page's failure line reports it. */
+    }
+  }
+
   /* The repository-file pane lists the behavior settings this repository
      actually overrides, the way the approved design draws it: the file card, the
-     bypass control, then whatever this repo has changed, with its own save bar.
-     Someone reading the file pane is asking "what does this repository do
-     differently", and the answer belongs on the same screen as the file. */
+     bypass control, then whatever this repo has changed. Someone reading the
+     file pane is asking "what does this repository do differently", and the
+     answer belongs on the same screen as the file. */
   function overriddenBehaviorKeys(one: RepositoryDetail): ConfigKey[] {
     return BOOLEAN_FIELDS.map((field) => field.key).filter((key) =>
       Object.hasOwn(one.config_patch, key),
@@ -275,22 +344,28 @@
   function sectionLabel(pane: RepositorySection): string {
     return SECTION_LABELS[pane];
   }
+
+  function capitalize(value: string): string {
+    return value.slice(0, 1).toUpperCase() + value.slice(1);
+  }
 </script>
 
-<section class="repository-page" aria-labelledby={titleId}>
-  <BackLink href={backHref} label="Repositories" onNavigate={onBack} />
+<div class="view-frame">
+  <section class="repository-page" aria-labelledby={titleId}>
+    <PanePath segments={[{ label: 'Repositories', href: backHref, onSelect: onBack }]} />
 
-  <PageHeader
-    id={titleId}
-    title={repository.name}
-    description="Repository settings override workspace defaults and repository-file values"
-  >
-    {#snippet actions()}
-      {#if detail !== undefined}
+    <header class="object-head">
+      <h2 class="mono-title" id={titleId}>{repository.name}</h2>
+      <p class="object-sub">
+        Repository settings override workspace defaults and repository-file values
+      </p>
+    </header>
+
+    {#if detail !== undefined}
+      <div class="pane-tools">
         <SegmentedControl
           name="repository-{repository.id}-section"
           label="Settings for {repository.name}"
-          compact
           options={sections.map((pane) => ({
             value: pane,
             label: SECTION_LABELS[pane],
@@ -299,185 +374,297 @@
           value={section}
           onSelect={(next) => onSection(next as RepositorySection)}
         />
-      {/if}
-    {/snippet}
-  </PageHeader>
-
-  {#if failure !== null}
-    <p class="form-error repository-page-error" role="alert">{failure}</p>
-  {/if}
-
-  {#if detail === undefined}
-    <p class="detail-loading dim" role="status">Reading repository settings…</p>
-  {:else}
-    <Plate label="File list refresh">
-      {#snippet status()}
-        <span class="dim">
-          <!-- The inherited value is always a number now, resolved through
-               every level above, so the bare word "Inherited" - which said
-               nothing about what would happen - is gone. -->
-          {pathIndexCustom
-            ? formatDuration(pathIndexDraft)
-            : `Inherited - ${formatDuration(detail.path_index_interval_seconds_inherited)}`}
-        </span>
-      {/snippet}
-      <p class="dim">
-        How often this repository's file list is checked, so the path finder offers what it holds.
-        Only the commit its branch points at is read unless something moved
-      </p>
-      <div class="path-index-editor">
-        <Switch
-          label="Set this for this repository"
-          checked={pathIndexCustom}
-          disabled={readOnly || savingPathIndex}
-          onChange={(on) => {
-            if (!on) {
-              pathIndexCustom = false;
-              void savePathIndex(null);
-
-              return;
-            }
-            pathIndexCustom = true;
-          }}
-        />
-        {#if pathIndexCustom}
-          <DurationField
-            label="File list refresh interval"
-            bind:amount={pathIndexDraft.amount}
-            bind:unit={pathIndexDraft.unit}
-            units={PATH_INDEX_UNITS}
-            disabled={readOnly || savingPathIndex}
-            onApply={() => void applyPathIndex()}
-          />
-        {/if}
       </div>
-    </Plate>
+    {/if}
 
-    <Plate label="Merge after CI">
-      {#snippet status()}
-        {#if detail.pending_ci_gate !== undefined}
-          <Chip small tone={GATE_TONES[detail.pending_ci_gate.readiness]} dot>
-            {detail.pending_ci_gate.readiness.slice(0, 1).toUpperCase() +
-              detail.pending_ci_gate.readiness.slice(1)}
-          </Chip>
-        {/if}
-      {/snippet}
-      <form
-        class="pending-ci-form"
-        onsubmit={(event) => {
-          event.preventDefault();
-          void savePendingCI();
-        }}
-      >
-        <div class="pending-ci-row">
-          <div>
-            <strong>Repository protection</strong>
-            <p>
-              {pendingCIMode === null
-                ? `Inherited ${detail.pending_ci_mode_inherited} mode`
-                : 'This repository overrides the workspace mode'}
-            </p>
+    {#if failure !== null}
+      <p class="form-error repository-page-error" role="alert">{failure}</p>
+    {/if}
+
+    {#if detail === undefined}
+      <p class="detail-loading" role="status">Reading repository settings…</p>
+    {:else}
+      <section class="card group-card" aria-labelledby="repository-merge-ci">
+        <div class="group-head">
+          <h3 class="group-name" id="repository-merge-ci">Merge after CI</h3>
+          <span class="save-whisper" class:is-on={mergeSavedOn} role="status"
+            ><Icon name="check" size={12} /><span class="t">Saved</span></span
+          >
+          {#if detail.pending_ci_gate !== undefined}
+            <span class="pill {GATE_PILLS[detail.pending_ci_gate.readiness]}"
+              ><span class="t">{capitalize(detail.pending_ci_gate.readiness)}</span></span
+            >
+          {/if}
+        </div>
+        <div class="policy-rows">
+          <div class="policy-row">
+            <span class="setting-say">
+              <span class="setting-name">Repository protection</span>
+              <span class="setting-why"
+                >Checks mode creates an app-bound required check and merges the exact authorized
+                head</span
+              >
+            </span>
+            {#if detail.pending_ci_mode_override === null}
+              <span class="policy-value">
+                <span class="setting-unmanaged"
+                  >Follows workspace - {detail.pending_ci_mode_inherited}</span
+                >
+              </span>
+              <button
+                class="setting-clear"
+                title="Override the workspace mode"
+                disabled={disabled || savingPendingCI}
+                onclick={overrideMode}
+              >
+                <Icon name="plus" size={10} />
+              </button>
+            {:else}
+              <span class="policy-value">
+                <Popover
+                  role="listbox"
+                  label="Repository protection choices"
+                  align="end"
+                  itemSelector=".menu-item"
+                >
+                  {#snippet trigger(attributes)}
+                    <button
+                      {...attributes}
+                      class="value-select"
+                      type="button"
+                      aria-label="Repository protection"
+                      disabled={disabled || savingPendingCI}
+                    >
+                      <span class="t"
+                        >{detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}</span
+                      >
+                    </button>
+                  {/snippet}
+                  <div class="menu-list">
+                    {#each PENDING_CI_CHOICES as option (option.value)}
+                      <button
+                        class="menu-item"
+                        role="option"
+                        aria-selected={detail.pending_ci_mode_override === option.value}
+                        onclick={() => void pushPendingCI({ mode: option.value })}
+                      >
+                        <span class="menu-check">
+                          {#if detail.pending_ci_mode_override === option.value}<Icon
+                              name="check"
+                              size={16}
+                            />{/if}
+                        </span>
+                        <ClippedLabel class="mi-label" text={option.label} />
+                      </button>
+                    {/each}
+                  </div>
+                </Popover>
+              </span>
+              <button
+                class="setting-clear"
+                title="Stop overriding - follow workspace settings"
+                disabled={disabled || savingPendingCI}
+                onclick={() => void pushPendingCI({ mode: null })}
+              >
+                <Icon name="close" size={10} />
+              </button>
+            {/if}
           </div>
-          <InheritControl
-            label="Merge after CI representation"
-            source="workspace settings"
-            inheritedValue={detail.pending_ci_mode_inherited}
-            inheritedLabel={detail.pending_ci_mode_inherited}
-            value={pendingCIMode}
-            options={PENDING_CI_MODE_OPTIONS}
-            disabled={disabled || savingPendingCI}
-            onSelect={(value) => (pendingCIMode = value as PendingCIMode)}
-            onRestore={() => (pendingCIMode = null)}
-          />
+          <div
+            class="policy-row"
+            class:policy-block={detail.pending_ci_branch_patterns_override !== null}
+          >
+            <span class="setting-say">
+              <span class="setting-name">Protected refs</span>
+              <span class="setting-why"
+                >Raw GitHub ruleset patterns, such as <code>~DEFAULT_BRANCH</code></span
+              >
+            </span>
+            {#if detail.pending_ci_branch_patterns_override === null}
+              <span class="policy-value">
+                <span class="setting-unmanaged"
+                  >Follows workspace - {detail.pending_ci_branch_patterns_inherited.include.join(
+                    ', ',
+                  )}</span
+                >
+              </span>
+              <button
+                class="setting-clear"
+                title="Override the protected branch patterns"
+                disabled={disabled || savingPendingCI}
+                onclick={overridePatterns}
+              >
+                <Icon name="plus" size={10} />
+              </button>
+            {:else}
+              <span class="policy-value"></span>
+              <button
+                class="setting-clear"
+                title="Stop overriding - follow workspace settings"
+                disabled={disabled || savingPendingCI}
+                onclick={() => void pushPendingCI({ patterns: null })}
+              >
+                <Icon name="close" size={10} />
+              </button>
+              <div class="pattern-line">
+                <PatternEntries
+                  patterns={detail.pending_ci_branch_patterns_override.include}
+                  readOnly={disabled || savingPendingCI}
+                  onChange={setIncludes}
+                />
+              </div>
+            {/if}
+          </div>
+          {#if detail.pending_ci_branch_patterns_override !== null}
+            <div class="policy-row policy-block">
+              <span class="setting-say">
+                <span class="setting-name">Excluded refs</span>
+                <span class="setting-why"
+                  >Optional patterns that should keep the inherited merge behavior</span
+                >
+              </span>
+              <div class="pattern-line">
+                <PatternEntries
+                  patterns={detail.pending_ci_branch_patterns_override.exclude}
+                  readOnly={disabled || savingPendingCI}
+                  onChange={setExcludes}
+                />
+              </div>
+            </div>
+          {/if}
+          <div class="policy-row">
+            <span class="setting-say">
+              <label class="setting-name" for="repository-quiet-{repository.id}"
+                >Stable passing window</label
+              >
+              <span class="setting-why">Seconds; leave blank to inherit</span>
+            </span>
+            <span class="policy-value">
+              <input
+                id="repository-quiet-{repository.id}"
+                class="num-inline"
+                inputmode="numeric"
+                placeholder={detail.pending_ci_quiet_period_seconds_inherited?.toString() ??
+                  'Global default'}
+                value={quietShown}
+                disabled={readOnly}
+                oninput={(event) => typeQuiet(event.currentTarget.value)}
+                onblur={saveQuiet}
+              />
+            </span>
+          </div>
+          <div class="policy-row">
+            <span class="setting-say">
+              <span class="setting-name">Path index</span>
+              <span class="setting-why"
+                >How often this repository's file list is read again for the finder and the plans</span
+              >
+            </span>
+            {#if detail.path_index_interval_seconds_override === null}
+              <span class="policy-value">
+                <span class="setting-unmanaged"
+                  >Follows the installation - every {formatDuration(
+                    durationParts(detail.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
+                  )}</span
+                >
+              </span>
+              <button
+                class="setting-clear"
+                title="Answer for this repository"
+                disabled={disabled || savingPathIndex}
+                onclick={() => void pushPathIndex(detail.path_index_interval_seconds_inherited)}
+              >
+                <Icon name="plus" size={10} />
+              </button>
+            {:else}
+              <span class="policy-value">
+                <input
+                  class="num-inline num-short"
+                  inputmode="numeric"
+                  aria-label="Path index interval amount"
+                  value={indexAmountShown}
+                  disabled={readOnly}
+                  oninput={(event) => typeIndexAmount(event.currentTarget.value)}
+                  onblur={saveIndexDraft}
+                />
+                <Popover
+                  role="listbox"
+                  label="Path index interval unit"
+                  align="end"
+                  itemSelector=".menu-item"
+                >
+                  {#snippet trigger(attributes)}
+                    <button
+                      {...attributes}
+                      class="value-select"
+                      type="button"
+                      aria-label="Path index interval unit"
+                      disabled={disabled || savingPathIndex}
+                    >
+                      <span class="t">{indexUnitShown}</span>
+                    </button>
+                  {/snippet}
+                  <div class="menu-list">
+                    {#each PATH_INDEX_UNITS as unit (unit)}
+                      <button
+                        class="menu-item"
+                        role="option"
+                        aria-selected={indexUnitShown === unit}
+                        onclick={() => pickIndexUnit(unit)}
+                      >
+                        <span class="menu-check">
+                          {#if indexUnitShown === unit}<Icon name="check" size={16} />{/if}
+                        </span>
+                        <ClippedLabel class="mi-label" text={unit} />
+                      </button>
+                    {/each}
+                  </div>
+                </Popover>
+              </span>
+              <button
+                class="setting-clear"
+                title="Stop answering - follow the installation"
+                disabled={disabled || savingPathIndex}
+                onclick={() => void pushPathIndex(null)}
+              >
+                <Icon name="close" size={10} />
+              </button>
+            {/if}
+          </div>
         </div>
         {#if detail.pending_ci_gate !== undefined}
-          <p
-            class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'}
-            class="gate-note band-trim"
-          >
+          <p class="gate-note" class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'}>
             {detail.pending_ci_gate.reason}
           </p>
         {/if}
-        <label class="override-check">
-          <input
-            type="checkbox"
-            bind:checked={overridePendingCIPatterns}
-            disabled={disabled || savingPendingCI}
-          />
-          Override protected branch patterns
-        </label>
-        <div class="pending-ci-grid">
-          <label>
-            <span>Protected refs</span>
-            <textarea
-              rows="3"
-              bind:value={pendingCIIncludes}
-              disabled={disabled || savingPendingCI || !overridePendingCIPatterns}></textarea>
-            <small>One raw GitHub ruleset pattern per line.</small>
-          </label>
-          <label>
-            <span>Excluded refs</span>
-            <textarea
-              rows="3"
-              bind:value={pendingCIExcludes}
-              disabled={disabled || savingPendingCI || !overridePendingCIPatterns}></textarea>
-          </label>
-          <label>
-            <span>Stable passing window</span>
-            <input
-              type="number"
-              min="0"
-              max="86400"
-              step="1"
-              bind:value={pendingCIQuiet}
-              disabled={disabled || savingPendingCI}
-              placeholder={detail.pending_ci_quiet_period_seconds_inherited.toString()}
-            />
-            <small>Seconds; leave blank to inherit.</small>
-          </label>
-        </div>
-        <div class="pending-ci-actions">
-          <Button type="submit" tone="brand" disabled={disabled || savingPendingCI}>
-            {savingPendingCI ? 'Saving…' : 'Save merge settings'}
-          </Button>
-        </div>
-      </form>
-    </Plate>
-    <div
-      class="repository-detail-content"
-      role="group"
-      aria-label="{sectionLabel(section)} settings for {repository.name}"
-    >
-      {#if section === 'file'}
-        <Plate label="Repository file">
-          {#snippet status()}
-            <div class="pane-status">
-              <Chip small tone={FILE_STATUS_TONES[detail.repository.config_file_status]} dot>
-                {detail.repository.config_file_status.slice(0, 1).toUpperCase() +
-                  detail.repository.config_file_status.slice(1)}
-              </Chip>
-              <HelpTip
-                id="repository-file-help-{repository.id}"
-                label="About the repository file"
-                text="Settings Smyklot reads from the repository itself, which override account defaults"
-              />
+      </section>
+
+      <div
+        class="repository-detail-content"
+        role="group"
+        aria-label="{sectionLabel(section)} settings for {repository.name}"
+      >
+        {#if section === 'file'}
+          <section class="card group-card" aria-labelledby="repository-file-head">
+            <div class="group-head">
+              <h3 class="group-name" id="repository-file-head">Repository file</h3>
+              <span class="save-whisper" class:is-on={fileSavedOn} role="status"
+                ><Icon name="check" size={12} /><span class="t">Saved</span></span
+              >
+              <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
+                ><span class="t">{capitalize(detail.repository.config_file_status)}</span></span
+              >
             </div>
-          {/snippet}
-          <div class="file-pane">
+            <p class="group-note">
+              Settings Smyklot reads from the repository itself, which override account defaults
+            </p>
             <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
               <!-- 14px glyph in an 18px slot, the same pairing every other icon
                  slot in the product uses. -->
               <span class="file-card-icon status-{detail.repository.config_file_status}">
                 <Icon name="file" size={14} />
               </span>
-              <!-- Every line trimmed, and for one reason: the card centres this
-                   copy block as a BOX, so the block's box has to equal its ink
-                   or the centring is of something the reader cannot see. One
-                   untrimmed line carried its own leading and descender room and
-                   pulled the block 2.49px off the icon beside it - measured by
-                   the alignment sweep once the repository page was added to the
-                   routes it walks. -->
-              <div class="f-copy band-trim-kids">
+              <div class="f-copy">
                 <strong>Configuration path</strong>
                 <!-- The file is looked for in four places plus a chosen one, so
                    this names the one that won rather than the one that used to
@@ -508,73 +695,63 @@
                 {/if}
               </div>
             </div>
-            <div class="override-row">
-              <span class="o-label">
-                <!-- Trimmed, so the words centre against the 18px help slot on
-                   their caps rather than on a taller line box. -->
-                <span class="cap-trim">Bypass file</span>
-                <HelpTip
-                  id="repository-bypass-help-{repository.id}"
-                  label="About bypassing the repository file"
-                  text="Repository-file settings are ignored and the exception is recorded in Audit"
-                />
-              </span>
-              <SegmentedControl
-                name="repository-bypass-{repository.id}"
-                label="Repository file handling"
-                options={FILE_MODE_OPTIONS}
-                value={detail.ignore_repository_file ? 'bypass' : 'observe'}
-                {disabled}
-                compact
-                onSelect={(value) => onBypass(value === 'bypass')}
-              />
+            <div class="policy-rows">
+              <div class="policy-row">
+                <span class="setting-say">
+                  <span class="setting-name">Bypass file</span>
+                  <span class="setting-why"
+                    >Repository-file settings are ignored and the exception is recorded in Audit</span
+                  >
+                </span>
+                <span class="policy-value">
+                  <SegmentedControl
+                    name="repository-bypass-{repository.id}"
+                    label="Repository file handling"
+                    options={[
+                      { value: 'observe', label: 'Observe' },
+                      { value: 'bypass', label: 'Bypass' },
+                    ]}
+                    value={detail.ignore_repository_file ? 'bypass' : 'observe'}
+                    {disabled}
+                    compact
+                    onSelect={(value) => void setBypass(value === 'bypass')}
+                  />
+                </span>
+              </div>
             </div>
             {#if overriddenBehaviorKeys(detail).length > 0}
-              <ConfigEditor
-                patch={detail.config_patch}
-                inherited={detail.inherited_config}
-                scope="repository"
-                idPrefix="{repository.id}-file"
-                section="behavior"
-                only={overriddenBehaviorKeys(detail)}
-                {disabled}
-                onSave={onSaveConfig}
-              />
+              <div class="file-overrides">
+                <ConfigEditor
+                  patch={detail.config_patch}
+                  inherited={detail.inherited_config}
+                  scope="repository"
+                  idPrefix="{repository.id}-file"
+                  section="behavior"
+                  only={overriddenBehaviorKeys(detail)}
+                  {disabled}
+                  onSave={onSaveConfig}
+                />
+              </div>
             {/if}
-          </div>
-        </Plate>
-      {:else if section === 'sync'}
-        {#if syncOverride === undefined && syncReadProblem !== null}
-          <!-- A read that failed is not a read still going, and the two read
-               identically in a dim line saying "Reading…". -->
-          <p class="form-error" role="alert">{syncReadProblem}</p>
-        {:else if syncOverride === undefined}
-          <p class="detail-loading dim" role="status">Reading what this repository adjusts…</p>
+          </section>
+        {:else if section === 'sync'}
+          {#if syncOverride === undefined && syncReadProblem !== null}
+            <!-- A read that failed is not a read still going, and the two read
+                 identically in a dim line saying "Reading…". -->
+            <p class="form-error" role="alert">{syncReadProblem}</p>
+          {:else if syncOverride === undefined}
+            <p class="detail-loading" role="status">Reading what this repository adjusts…</p>
+          {:else}
+            <RepositorySyncPane
+              stored={syncOverride}
+              {readOnly}
+              {now}
+              saving={syncSaving}
+              saveProblem={syncSaveProblem}
+              onSave={onSaveSync}
+            />
+          {/if}
         {:else}
-          <RepositorySyncPane
-            stored={syncOverride}
-            {readOnly}
-            {now}
-            saving={syncSaving}
-            saveProblem={syncSaveProblem}
-            onSave={onSaveSync}
-          />
-        {/if}
-      {:else}
-        {@const count = sectionCount(detail, section)}
-        <Plate label={section === 'behavior' ? 'Behavior overrides' : 'Command overrides'}>
-          {#snippet status()}
-            <div class="pane-status">
-              {#if count > 0}
-                <Chip small>{count} {count === 1 ? 'override' : 'overrides'}</Chip>
-              {/if}
-              <HelpTip
-                id="repository-overrides-{repository.id}-{section}"
-                label="About repository overrides"
-                text="Only settings changed here override configuration defaults from Settings and repository-file settings"
-              />
-            </div>
-          {/snippet}
           <ConfigEditor
             patch={detail.config_patch}
             inherited={detail.inherited_config}
@@ -584,126 +761,396 @@
             {disabled}
             onSave={onSaveConfig}
           />
-        </Plate>
-      {/if}
-    </div>
-  {/if}
-</section>
+        {/if}
+      </div>
+    {/if}
+  </section>
+</div>
 
 <style>
+  .view-frame {
+    margin-inline: auto;
+    max-width: var(--content-max);
+  }
+
   .repository-page {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    gap: var(--space-4);
     min-width: 0;
   }
 
-  /* The same way back the console's installation page draws, so the two detail
-     pages read as one anatomy: a chevron, a word, and the list it returns to. */
-  /* The page is titled by the repository name, which is code, so it sets in
-     mono. `PageHeader` stamps the id on the heading itself. */
-  :global(#repository-page-title) {
+  .object-head {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .mono-title {
     font-family: var(--mono);
+    font-size: 1.375rem;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+
+  .object-sub {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+    line-height: round(1.5em, 1px);
+    margin: 0;
+    max-width: 64ch;
+  }
+
+  .pane-tools {
+    display: flex;
+    justify-content: flex-start;
+    /* On a phone the four panes cannot share the width; the strip scrolls
+       inside itself rather than handing the page a wider viewport. */
+    overflow-x: auto;
   }
 
   .repository-page-error {
-    margin: 0 0 var(--space-3);
+    margin: 0;
   }
 
   .detail-loading {
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
     margin: 0;
-    padding: var(--space-4);
+    padding: var(--space-4) 0;
   }
 
   .repository-detail-content {
+    display: grid;
+    gap: var(--space-4);
     min-width: 0;
   }
 
-  .pending-ci-form,
-  .pending-ci-grid,
-  .pending-ci-grid label {
+  .card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    padding: var(--space-5);
+  }
+
+  .group-head {
+    align-items: end;
+    display: flex;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
+  }
+
+  .group-name {
+    font-size: var(--font-size-title);
+    font-weight: 600;
+    margin: 0;
+    min-block-size: 12px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .group-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin: 0 0 var(--space-2);
+    max-width: 60ch;
+  }
+
+  .save-whisper {
+    align-items: center;
+    background: var(--success-tint);
+    block-size: 20px;
+    border-radius: var(--radius-chip);
+    color: var(--success);
+    display: inline-flex;
+    font-size: var(--font-size-micro);
+    font-weight: 600;
+    gap: 4px;
+    margin-inline-start: auto;
+    opacity: 0;
+    padding: 0 0.5rem;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .save-whisper.is-on {
+    opacity: 1;
+  }
+
+  .save-whisper .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .pill {
+    align-items: center;
+    block-size: 20px;
+    border-radius: var(--radius-chip);
+    display: inline-flex;
+    font-size: var(--font-size-micro);
+    font-weight: 600;
+    gap: 0.25rem;
+    line-height: 1;
+    padding: 0 0.5rem;
+  }
+
+  .pill .t {
+    display: block;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .pill-success {
+    background: var(--success-tint);
+    color: var(--success);
+  }
+
+  .pill-warning {
+    background: var(--warning-tint);
+    color: var(--warning);
+  }
+
+  .pill-danger {
+    background: var(--danger-tint);
+    color: var(--danger);
+  }
+
+  .pill-muted {
+    background: var(--surface-inset);
+    color: var(--text-muted);
+  }
+
+  .policy-rows {
+    display: grid;
+  }
+
+  .policy-row {
+    align-items: center;
+    display: grid;
+    gap: var(--space-2) var(--space-4);
+    grid-template-columns: 1fr auto auto;
+    margin-inline: calc(var(--space-2) * -1);
+    min-block-size: 48px;
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows, since the card
+       edge already carries that inset. */
+    padding: var(--space-5) var(--space-2);
+    position: relative;
+  }
+
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
+  }
+
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
+  }
+
+  /* Every row owns the drawn hairline under itself; the last one stands
+     down, so the card ends on its own padding. */
+  .policy-row:not(:last-child)::after {
+    background: var(--border-subtle);
+    block-size: 1px;
+    bottom: 0;
+    content: '';
+    inset-inline: var(--space-2);
+    position: absolute;
+  }
+
+  .setting-say {
     display: grid;
     gap: var(--space-3);
   }
 
-  .pending-ci-form {
-    padding: var(--space-4);
+  .setting-name {
+    font-size: var(--font-size-meta);
+    font-weight: 600;
+    min-block-size: 10px;
+    text-box: trim-both cap alphabetic;
   }
 
-  .pending-ci-row {
+  .setting-why {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    min-block-size: 9px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-why code {
+    font-family: var(--mono);
+    font-size: var(--font-size-micro);
+  }
+
+  .policy-value {
     align-items: center;
     display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
+    gap: var(--space-3);
+    justify-self: end;
   }
 
-  .pending-ci-row p,
-  .gate-note,
-  .pending-ci-grid small {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0.25rem 0 0;
+  .setting-unmanaged {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    font-style: normal;
+    /* Ink-true, so the padding around the hairlines measures to the glyphs
+       rather than to the line box's leading. */
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-clear {
+    align-items: center;
+    background: transparent;
+    block-size: 26px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: inline-flex;
+    inline-size: 26px;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .setting-clear:hover {
+    background: var(--interactive-hover-layer);
+    color: var(--text-primary);
+  }
+
+  .setting-clear:active {
+    background: var(--interactive-pressed);
+  }
+
+  .policy-row .setting-clear {
+    opacity: 0.45;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .policy-row:hover .setting-clear,
+  .policy-row:focus-within .setting-clear {
+    opacity: 1;
+  }
+
+  .value-select {
+    align-items: center;
+    appearance: none;
+    background:
+      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
+        5px no-repeat,
+      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
+        5px no-repeat,
+      var(--control-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-ctl);
+    color: var(--text-primary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--font-size-control);
+    min-block-size: 28px;
+    padding: 0 1.5rem 0 var(--space-2);
+  }
+
+  /* Ink-true, so the chosen word shares the row's centre with the say
+     beside it rather than riding its line box's leading. */
+  .value-select .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .value-select[data-state='open'] {
+    background:
+      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
+        5px no-repeat,
+      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
+        5px no-repeat,
+      var(--control-bg-pressed);
+  }
+
+  .menu-item {
+    align-items: center;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    block-size: 32px;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    font-size: var(--font-size-control);
+    gap: var(--space-2);
+    inline-size: 100%;
+    padding-inline: var(--space-3);
+    text-align: start;
+  }
+
+  .menu-item:hover {
+    background: var(--interactive-hover-layer);
+  }
+
+  .menu-item:focus-visible {
+    background: var(--interactive-hover-layer);
+    outline: none;
+  }
+
+  .menu-item:active {
+    background: var(--interactive-pressed);
+  }
+
+  .menu-check {
+    display: inline-flex;
+    flex: none;
+    inline-size: 16px;
+    justify-content: center;
+  }
+
+  .menu-item :global(.mi-label) {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A block row keeps the grid for its say and lays its entries on a
+     full-width second line. The extra breathing room lives INSIDE the row,
+     above the entries - the block padding stays the shared 8px so the air
+     around every hairline is the same on both sides. */
+  .pattern-line {
+    grid-column: 1 / -1;
+    margin-block: var(--space-1) 0;
+  }
+
+  .num-inline {
+    background: var(--input-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-ctl);
+    color: var(--text-primary);
+    font-family: var(--mono);
+    font-size: var(--font-size-control);
+    min-block-size: 28px;
+    padding: 0 var(--space-2);
+    text-align: end;
+    width: 8.5rem;
+  }
+
+  .num-inline.num-short {
+    width: 5rem;
+  }
+
+  .num-inline::placeholder {
+    color: var(--text-muted);
+  }
+
+  .num-inline:focus-visible {
+    border-color: var(--brand-action);
+    outline: 2px solid var(--brand);
   }
 
   .gate-note {
     background: var(--surface-inset);
-    border-radius: var(--radius-control);
+    border-radius: var(--r-ctl);
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
+    /* Ink-true with even padding, so the words sit on the note's centre. */
+    line-height: round(1.5em, 1px);
+    margin: var(--space-3) 0 0;
     padding: var(--space-3);
+    text-box: trim-both cap alphabetic;
   }
 
   .gate-note.gate-problem {
     color: var(--danger);
-  }
-
-  .override-check {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .pending-ci-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .pending-ci-grid label:last-child {
-    grid-column: 1 / -1;
-    max-width: 20rem;
-  }
-
-  .pending-ci-grid :is(textarea, input[type='number']) {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    color: var(--text);
-    font: var(--font-size-body) / 1.4 var(--mono);
-    padding: 0.625rem 0.75rem;
-  }
-
-  /* A single-line field takes the panel's compact height like every other one.
-     The padding above is a textarea's, and on an input it made a 43px control
-     standing beside 34px buttons. */
-  .pending-ci-grid input {
-    block-size: var(--control-height-compact);
-    padding-block: 0;
-  }
-
-  .pending-ci-actions {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  @media (max-width: 40rem) {
-    .pending-ci-row {
-      align-items: start;
-      flex-direction: column;
-    }
-
-    .pending-ci-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .pending-ci-grid label:last-child {
-      grid-column: auto;
-    }
   }
 
   /* The card keeps its 71px stature whatever its copy measures: trimming the two
@@ -716,6 +1163,7 @@
     border-radius: var(--radius-surface);
     display: flex;
     gap: var(--space-3);
+    margin-bottom: var(--space-2);
     min-height: 4.4375rem;
     padding: var(--space-3) var(--space-4);
   }
@@ -728,7 +1176,7 @@
     background: color-mix(in srgb, currentcolor 10%, transparent);
     border: 1px solid color-mix(in srgb, currentcolor 24%, transparent);
     border-radius: var(--radius-control);
-    color: var(--dim);
+    color: var(--text-muted);
     display: inline-flex;
     flex: none;
     height: 2.25rem;
@@ -762,28 +1210,35 @@
     display: block;
     font-size: var(--font-size-meta);
     line-height: 1;
+    text-box: trim-both cap alphabetic;
   }
 
   .f-copy code {
-    color: var(--dim);
+    color: var(--text-muted);
     display: block;
     font-size: var(--font-size-compact);
     line-height: 1;
     margin-top: 0.8rem;
+    overflow-wrap: anywhere;
+    text-box: trim-both cap alphabetic;
   }
 
+  /* Trimmed like the two lines above it, and for the same reason: the card
+     centres its copy block as a BOX, so the block's box has to equal its ink or
+     the centring is of something the reader cannot see. */
   .f-copy p {
     color: var(--danger);
     font-size: var(--font-size-compact);
     line-height: 1;
     margin: 0.5rem 0 0;
+    text-box: trim-both cap alphabetic;
   }
 
   /* A file the repository still carries and Smyklot is not reading is worth
      saying, and is not a failure - so it wears the dim tone the path above it
      wears rather than the danger tone the parse error does. */
   .f-copy p.f-note {
-    color: var(--dim);
+    color: var(--text-muted);
   }
 
   /* An inline continuation of the sentence above it, not a control in its own
@@ -794,7 +1249,7 @@
   .f-again {
     background: none;
     border: 0;
-    color: var(--text);
+    color: var(--text-primary);
     cursor: pointer;
     font: inherit;
     margin-left: 0.35rem;
@@ -804,62 +1259,60 @@
   }
 
   .f-again:disabled {
-    color: var(--dim);
+    color: var(--text-muted);
     cursor: default;
     text-decoration: none;
   }
 
-  /* The file pane's override rows wear the same boxed shape as the bypass row
-     above them, not the flush list style the Behavior pane uses - on this pane
-     they are cards in a stack, not rows in a table. 0.875rem is the pane's stack
-     rhythm, not the editor's own. */
-  .file-pane :global(.config-editor) {
-    margin-top: 0.875rem;
+  /* The overridden behavior rows continue the card's own row list under the
+     bypass row, separated by the same drawn hairline the rows use - so the
+     rows on either side of that line keep the full separator rhythm. */
+  .file-overrides {
+    border-top: 1px solid var(--border-subtle);
   }
 
-  .file-pane :global(.config-editor .rows-plain) {
-    display: grid;
-    gap: var(--space-3);
+  .policy-rows:has(+ .file-overrides) > .policy-row:last-child {
+    padding-block-end: var(--space-5);
   }
 
-  .file-pane :global(.config-editor .row) {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .file-pane .override-row {
-    align-items: center;
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-top: 0.875rem;
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .o-label {
-    align-items: center;
-    display: inline-flex;
-    font-size: 0.875rem;
-    font-weight: 600;
-    gap: 0.45rem;
-  }
-
-  /* The status corner of a pane's plate: whatever the pane has to report, then
-     its help. The same shape the account's own Settings plate uses, because
-     these are the same settings one level down. */
-  .pane-status {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
+  .file-overrides :global(.policy-rows > .policy-row:first-child) {
+    padding-block-start: var(--space-5);
   }
 
   .file-problem strong,
   .form-error {
     color: var(--stop);
+  }
+
+  /* On a phone the head's three parts cannot share one line - the tally or
+     pill drops under the title instead of holding the card wide. */
+  @media (max-width: 30rem) {
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    /* The say keeps the line and the control moves under it - beside it,
+       the copy was down to a word a line while the control still ran off
+       the screen and took the layout viewport with it. */
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
   }
 </style>

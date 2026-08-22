@@ -80,8 +80,14 @@ describe('relativeBucket', () => {
     expect(relativeBucket(0, 23 * HOUR + 59 * MINUTE)).toEqual({ kind: 'hours', hours: 23 });
   });
 
-  it('falls back to a date a day out or more', () => {
-    expect(relativeBucket(0, DAY)).toEqual({ kind: 'date' });
+  it('counts whole days below a week', () => {
+    // Elapsed days, never "yesterday": 48 whole hours is two days in any zone.
+    expect(relativeBucket(0, DAY)).toEqual({ kind: 'days', days: 1 });
+    expect(relativeBucket(0, 3 * DAY + 5 * HOUR)).toEqual({ kind: 'days', days: 3 });
+  });
+
+  it('falls back to a date a week out or more', () => {
+    expect(relativeBucket(0, 7 * DAY)).toEqual({ kind: 'date' });
   });
 
   // A last-seen stamp ahead of the reader's clock means skew, not the future,

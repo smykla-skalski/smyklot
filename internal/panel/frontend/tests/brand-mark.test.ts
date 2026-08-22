@@ -30,42 +30,29 @@ describe('the brand mark', () => {
     expect(holders).toEqual(['BrandMark.svelte']);
   });
 
-  it('is the only component importing the halo', () => {
-    // The rail names the same file in a comment, sizing its collapsed overlay against the halo's
-    // drawn geometry, so this asks who *imports* it rather than who mentions it.
+  it('is imported only where the mark itself is drawn', () => {
+    // This asks who *imports* the halo rather than who mentions it in a comment. Two sites: the
+    // wordmark component, and the shell's rail, which opens with the bare mark the way the
+    // approved shell does - a 34px icon with no wordmark beside it.
     const importers = sources
       .filter(([, source]) =>
         /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo\.svg\x27/.test(source),
       )
       .map(([file]) => file);
 
-    expect(importers).toEqual(['BrandMark.svelte']);
+    expect(importers).toEqual(['BrandMark.svelte', 'Rail.svelte']);
   });
 
-  it('is what the sidebar and the pages outside the panel both render', () => {
+  it('is what the pages outside the panel render', () => {
     // `NightPage` is the shell the invitation and the error pages share, so it stands the mark
-    // up for both of them.
-    // `BrandRow` is the sidebar's top, split out of `IdentityBar`; the mark went with it.
-    for (const file of ['BrandRow.svelte', 'NightPage.svelte']) {
-      expect(read(file)).toMatch(/<BrandMark\b/u);
-    }
+    // up for both of them. Inside the panel the shell's mark is the rail's bare halo - an icon
+    // with no wordmark - which the importer check above covers.
+    expect(read('NightPage.svelte')).toMatch(/<BrandMark\b/u);
   });
 
-  it('is the page heading only in the sidebar', () => {
+  it('never takes the page heading from the page', () => {
     // Two `h1`s on the invitation page would leave the reader guessing which one names it, so the
     // mark steps down there and the invitation's own title takes the heading.
-    expect(read('BrandRow.svelte')).toMatch(/<BrandMark[^>]*\sheading\b/u);
     expect(read('InvitationPage.svelte')).not.toMatch(/<BrandMark[^>]*\sheading\b/u);
-  });
-
-  it('keeps the rail styling the rail owns, reaching into the child', () => {
-    // The collapsed sidebar hides the copy, centres the mark and scales the icon under a press.
-    // Those depend on `.collapsed`, which is on the sidebar itself, so they stay in
-    // `IdentityBar` and now cross TWO component boundaries to land - through `BrandRow`
-    // and into `BrandMark`.
-    const rail = read('IdentityBar.svelte');
-    for (const selector of [':global(.mark-icon)', ':global(.mark-copy)', ':global(.mark)']) {
-      expect(rail).toContain(selector);
-    }
   });
 });

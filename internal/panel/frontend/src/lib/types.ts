@@ -803,6 +803,9 @@ export interface SyncRulesetCodeScanningTool {
 export interface SyncFile {
   path: string;
   content: string;
+  /** When this template last changed, written by the panel on save. */
+  updated_at?: string;
+  updated_by?: string;
 }
 
 /**
@@ -980,6 +983,64 @@ export interface SyncConfigInput {
    * else is sent as it is, so a kind is configurable before it has one.
    */
   document?: Record<string, unknown>;
+}
+
+/** The kinds sync manages, in the order every surface lists them. */
+export const SYNC_KINDS = ['labels', 'settings', 'rulesets', 'files'] as const;
+export type SyncKind = (typeof SYNC_KINDS)[number];
+
+/**
+ * One repository's answer for one kind: quiet when in step, a count when a
+ * plan would change it, a refusal with its reason on the repository, or
+ * switched off there.
+ */
+export interface SyncCell {
+  state: 'in_step' | 'pending' | 'refused' | 'off';
+  /** Pending only: how many of the plan's changes land here for this kind. */
+  changes?: number;
+}
+
+/** One repository on the board, with its per-kind cells. */
+export interface SyncRepositoryStatus {
+  repository: string;
+  cells: Record<SyncKind, SyncCell>;
+  /** Pending only: how many of the changes are removals. */
+  removals?: number;
+  /** Refused only: the repository's own word about why, in words. */
+  reason?: string;
+}
+
+/**
+ * The fleet: every repository sync covers and where each one stands. What the
+ * overview's board, legend, out-of-step list and kind strips are drawn from.
+ */
+export interface SyncStatus {
+  checked_at: string;
+  repositories: SyncRepositoryStatus[];
+}
+
+/**
+ * What the files pages need beyond the document: the path index the finder
+ * matches over, and every repository adjustment of every template, so the
+ * list can count adjusters and the file page can show them.
+ */
+export interface SyncFilesContext {
+  /** How many repositories the installation covers. */
+  repositories: number;
+  /** How many of them file sync reaches - the rest switched it off. */
+  covered: number;
+  /** Every path any repository holds, deduped, with how many hold it. */
+  known_paths: Array<{ path: string; repositories: number }>;
+  merges: SyncFileMergeEntry[];
+}
+
+/** One repository's adjustment of one template. */
+export interface SyncFileMergeEntry {
+  repository: string;
+  repository_id: string;
+  path: string;
+  /** The stored merge, whole - strategy, overrides, arrays, sections. */
+  merge: Record<string, unknown>;
 }
 
 /** One change a plan would make. */

@@ -75,7 +75,8 @@ async function rest(): Promise<Reading> {
 beforeAll(async () => {
   panel = await startPanel();
   page = await panel.browser.newPage({ viewport: VIEWPORT });
-  await visit(page, `${panel.origin}/i/smykla-skalski/sync`);
+  // History still draws the strip; the sync section moved to the shell's rail.
+  await visit(page, `${panel.origin}/i/smykla-skalski/history`);
   await page.locator('.section-tabs [aria-current="page"]').waitFor({ state: 'visible' });
   await page.waitForTimeout(SETTLE_MS);
 }, 120_000);

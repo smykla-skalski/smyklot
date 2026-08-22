@@ -207,7 +207,7 @@ func syncPathIndex(rows []orgsync.RepositoryPaths) map[string]any {
 	// repositories nothing has ever looked at would put a ceiling there that no
 	// path can reach.
 	answer := map[string]any{
-		"paths": paths, "repositories": len(rows), "partial": partial,
+		"paths": paths, repositoriesKey: len(rows), "partial": partial,
 	}
 	if !observed.IsZero() {
 		answer["observed_at"] = observed

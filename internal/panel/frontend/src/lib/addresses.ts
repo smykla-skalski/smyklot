@@ -2,6 +2,7 @@ import { resolve } from '$app/paths';
 import type { RouteId } from '$app/types';
 
 import {
+  decodeSegments,
   dialogSegments,
   isDialogHost,
   parseDialogSegments,
@@ -11,7 +12,7 @@ import {
 import {
   HISTORY_SECTIONS,
   REPOSITORY_SECTIONS,
-  SYNC_TAB_SECTIONS,
+  WRITTEN_SYNC_SECTIONS,
   isScopedPanelView,
   isRootInstallationView,
   type HistorySection,
@@ -19,7 +20,6 @@ import {
   type RepositoryPage,
   type RepositorySection,
   type RootRoute,
-  type SyncPage,
   type SyncSection,
 } from './routes.ts';
 
@@ -58,11 +58,29 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
-  /* Every sync address is written from its own routes, including the bare one:
-     `[view=panelView]` would also match it, and two routes that can answer one
-     address is exactly what the sections were split up to avoid. */
-  if (route.view === 'sync') {
-    return syncAddress(account, route.sync ?? { section: 'overview' });
+  /* One ruleset's own page, a level below its list. */
+  if (route.view === 'sync' && route.sync === 'rulesets' && route.syncRuleset !== undefined) {
+    return resolve('/i/[account]/sync/rulesets/[ruleset]', {
+      account,
+      ruleset: encodeURIComponent(route.syncRuleset),
+    });
+  }
+
+  /* One template's own page - the path IS the address, slash for slash. */
+  if (route.view === 'sync' && route.sync === 'files' && route.syncFile !== undefined) {
+    return resolve('/i/[account]/sync/files/[...file=syncFilePath]', {
+      account,
+      file: route.syncFile.split('/').map(encodeURIComponent).join('/'),
+    });
+  }
+
+  /* The overview is the bare view - an address that names it as well is one a
+     reader would have to be told to ignore. */
+  if (route.view === 'sync' && route.sync !== undefined && route.sync !== 'overview') {
+    return resolve('/i/[account]/sync/[section=syncSection]', {
+      account,
+      section: route.sync,
+    });
   }
 
   if (route.dialog !== undefined && isDialogHost(route.view)) {
@@ -149,52 +167,6 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
 }
 
 /**
- * One section of sync, and the one thing it is opened on.
- *
- * Three route ids for six sections, because two of them can name one of their
- * own: a ruleset by name, a file by path. A file's path keeps its separators -
- * they are what a path is - and each of its segments is encoded on its own, so
- * the address the Go server decodes is the address the router matched. Writing
- * the whole path through `encodeURIComponent` would turn every separator into
- * `%2F`, which the server decodes back into a path its manifest cannot match.
- */
-function syncAddress(account: string, page: SyncPage): string {
-  const item = page.item ?? '';
-
-  if (page.section === 'files') {
-    return resolve('/i/[account]/sync/files/[...path]', { account, path: encodePath(item) });
-  }
-
-  if (page.section === 'rulesets') {
-    return resolve('/i/[account]/sync/rulesets/[[name]]', {
-      account,
-      name: item === '' ? undefined : encodeURIComponent(item),
-    });
-  }
-
-  return resolve('/i/[account]/sync/[[section=syncSection]]', {
-    account,
-    // The section the page opens on is the bare address, as `file` is for a
-    // repository.
-    section: page.section === 'overview' ? undefined : page.section,
-  });
-}
-
-/**
- * A path as an address's tail: separators kept, everything between them encoded.
- *
- * `resolve` throws on a value with a leading or trailing separator, and an empty
- * tail is the files list rather than a file, so both ends are trimmed first.
- */
-function encodePath(path: string): string {
-  return path
-    .split('/')
-    .filter((segment) => segment !== '')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-}
-
-/**
  * Whether a route names one repository rather than the list.
  *
  * An unnamed one is the list: the panel carries a repository on the route it is a place
@@ -253,14 +225,24 @@ export function panelRouteAt(
       return withView(account, params.view, undefined, dialogAt(params.view, params.rest));
     case '/i/[account]/history/[[section=historySection]]':
       return withView(account, 'history', asSection(section));
+    case '/i/[account]/sync/[section=syncSection]':
+      return { account, view: 'sync', sync: asSyncSection(section) };
+    case '/i/[account]/sync/rulesets/[ruleset]':
+      return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
+    case '/i/[account]/sync/files/[...file=syncFilePath]': {
+      /* A rest parameter arrives raw, the way the dialog paths do - decoded
+         segment by segment, so a path with an encoded character in a name
+         comes back as the name. */
+      const segments = decodeSegments((params.file ?? '').split('/'));
+      return {
+        account,
+        view: 'sync',
+        sync: 'files',
+        syncFile: segments === null ? '' : segments.join('/'),
+      };
+    }
     case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':
       return { account, view: 'repositories', repository: repositoryAt(params) };
-    case '/i/[account]/sync/[[section=syncSection]]':
-      return { account, view: 'sync', sync: { section: syncSectionAt(section) } };
-    case '/i/[account]/sync/rulesets/[[name]]':
-      return { account, view: 'sync', sync: opened('rulesets', params.name) };
-    case '/i/[account]/sync/files/[...path]':
-      return { account, view: 'sync', sync: opened('files', params.path) };
 
     case '/root':
       return { rootView: 'overview' };
@@ -329,20 +311,9 @@ function asSection(value: string | undefined): HistorySection | undefined {
   return HISTORY_SECTIONS.find((section) => section === value);
 }
 
-/**
- * The section a plain sync address names, which is the overview when it names
- * none - the same rule that leaves a repository's `file` pane unwritten.
- */
-function syncSectionAt(value: string | undefined): SyncSection {
-  return SYNC_TAB_SECTIONS.find((section) => section === value) ?? 'overview';
-}
-
-/**
- * A section opened on one of its own, or on its list when the address named
- * nothing. The router has already decoded what `panelAddress` encoded.
- */
-function opened(section: SyncSection, item: string | undefined): SyncPage {
-  return item === undefined || item === '' ? { section } : { section, item };
+/** The written sections only: the overview never reaches this route. */
+function asSyncSection(value: string | undefined): SyncSection | undefined {
+  return WRITTEN_SYNC_SECTIONS.find((section) => section === value);
 }
 
 /**

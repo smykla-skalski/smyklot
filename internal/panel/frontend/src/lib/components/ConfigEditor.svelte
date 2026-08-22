@@ -8,7 +8,6 @@
     effectiveValue,
     fieldEnabled,
     fieldRawValue,
-    patchesEqual,
     reconcilePatchDraft,
     setExplicitPatchValue,
     toggleAllowedCommand,
@@ -17,33 +16,17 @@
   import type { BooleanField } from '../config';
   import { COMMANDS } from '../types';
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../types';
-  import Select from './Select.svelte';
-  import ChangedMarker from './ChangedMarker.svelte';
-  import AliasChip from './AliasChip.svelte';
-  import CheckTile from './CheckTile.svelte';
-  import SaveBar from './SaveBar.svelte';
-  import HelpTip from './HelpTip.svelte';
+  import Button from './Button.svelte';
   import Icon from './Icon.svelte';
-  import InheritControl from './InheritControl.svelte';
+  import Popover from './Popover.svelte';
+  import Switch from './Switch.svelte';
 
-  const VALUE_OPTIONS = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-  ] as const;
-  const CUSTOM_OPTIONS = [{ value: 'custom', label: 'Custom' }] as const;
-  /* The linked-value control names its inheritance source per scope. */
+  /* The linked-value rows name their inheritance source per scope. */
   const SOURCE_BY_SCOPE = {
     target: 'the application defaults',
     repository: 'workspace defaults',
     runtime: 'the deployment configuration',
   } as const;
-
-  const ALL_KEYS: readonly ConfigKey[] = [
-    ...BOOLEAN_FIELDS.map((field) => field.key),
-    'command_prefix',
-    'allowed_commands',
-    'command_aliases',
-  ];
 
   const {
     patch,
@@ -64,9 +47,11 @@
     /** Render only these behavior rows. Used by the repository-file pane, which
      *  shows the overrides in effect rather than the whole settings list. */
     only?: readonly ConfigKey[];
+    /** Rejects when the save was refused - the receipt only shows on success. */
     onSave: (next: ConfigPatch) => Promise<void>;
   } = $props();
 
+  const source = $derived(SOURCE_BY_SCOPE[scope]);
   const shownFields = $derived(
     only === undefined
       ? BOOLEAN_FIELDS
@@ -77,20 +62,31 @@
   let draft = $state<ConfigPatch>(initialPatch);
   let receivedPatch = $state<ConfigPatch>(clonePatch(initialPatch));
   let saving = $state(false);
+  let picking = $state(false);
+  let aliasOpen = $state(false);
   let aliasName = $state('');
-  let aliasCommand = $state('approve');
-  let composerOpen = $state(false);
 
   const editorDisabled = $derived(disabled || saving);
+  const overriddenFields = $derived(shownFields.filter((field) => Object.hasOwn(draft, field.key)));
+  const restFields = $derived(shownFields.filter((field) => !Object.hasOwn(draft, field.key)));
   const aliasEntries = $derived(
     Object.entries(effectiveValue(draft, inherited, 'command_aliases')),
   );
-  const savedAliases = $derived(patch.command_aliases ?? inherited.command_aliases);
   const allowedList = $derived(effectiveValue(draft, inherited, 'allowed_commands'));
   const allowedCount = $derived(allowedList.length === 0 ? COMMANDS.length : allowedList.length);
-
-  const changedKeys = $derived(ALL_KEYS.filter((key) => !singleKeyEqual(draft, patch, key)));
-  const dirty = $derived(changedKeys.length > 0);
+  const commandKeys: readonly ConfigKey[] = [
+    'command_prefix',
+    'allowed_commands',
+    'command_aliases',
+  ];
+  const commandsOverridden = $derived(
+    commandKeys.filter((key) => Object.hasOwn(draft, key)).length,
+  );
+  const cleanAlias = $derived(aliasName.trim());
+  const aliasTaken = $derived(
+    cleanAlias !== '' &&
+      Object.hasOwn(effectiveValue(draft, inherited, 'command_aliases'), cleanAlias),
+  );
 
   $effect(() => {
     const incoming = clonePatch(patch);
@@ -100,110 +96,112 @@
     draft = nextDraft;
   });
 
-  function singleKeyEqual(left: ConfigPatch, right: ConfigPatch, key: ConfigKey): boolean {
-    const a = Object.hasOwn(left, key) ? ({ [key]: left[key] } as ConfigPatch) : {};
-    const b = Object.hasOwn(right, key) ? ({ [key]: right[key] } as ConfigPatch) : {};
-    return patchesEqual(a, b);
+  /* ---------- The saved receipts, one per card ---------- */
+
+  let behaviorSavedOn = $state(false);
+  let commandsSavedOn = $state(false);
+  let behaviorTimer: ReturnType<typeof setTimeout> | undefined;
+  let commandsTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function whisper(card: 'behavior' | 'commands'): void {
+    if (card === 'behavior') {
+      behaviorSavedOn = true;
+      clearTimeout(behaviorTimer);
+      behaviorTimer = setTimeout(() => (behaviorSavedOn = false), 1400);
+    } else {
+      commandsSavedOn = true;
+      clearTimeout(commandsTimer);
+      commandsTimer = setTimeout(() => (commandsSavedOn = false), 1400);
+    }
   }
 
-  function hasOverride(key: ConfigKey): boolean {
-    return Object.hasOwn(draft, key);
+  async function push(card: 'behavior' | 'commands'): Promise<void> {
+    if (saving) return;
+    saving = true;
+    try {
+      await onSave(clonePatch(draft));
+      whisper(card);
+    } catch {
+      /* The parent reports the refusal; the draft keeps what was asked so the
+         next change carries it again. */
+    } finally {
+      saving = false;
+    }
   }
 
-  function keyChanged(key: ConfigKey): boolean {
-    return changedKeys.includes(key);
+  /* ---------- Behavior ---------- */
+
+  function toggleBoolean(field: BooleanField, enabled: boolean): void {
+    draft = setExplicitPatchValue(draft, field.key, fieldRawValue(field, enabled));
+    void push('behavior');
   }
 
-  function useDefault(key: ConfigKey): void {
-    if (!hasOverride(key)) return;
+  function clearField(key: ConfigKey, card: 'behavior' | 'commands'): void {
+    if (!Object.hasOwn(draft, key)) return;
     const next = { ...draft };
     delete next[key];
     draft = next;
+    void push(card);
   }
 
-  function useCustom(key: ConfigKey): void {
-    if (hasOverride(key)) return;
-    draft = { ...draft, [key]: cloneValue(inherited[key]) };
+  /* Overriding pins what inheritance resolves to today; the switch beside it
+     is how a different value is chosen. */
+  function manage(field: BooleanField): void {
+    draft = setExplicitPatchValue(draft, field.key, cloneValue(inherited[field.key]));
+    picking = false;
+    void push('behavior');
   }
 
-  function selectBoolean(field: BooleanField, selection: string): void {
-    draft = setExplicitPatchValue(draft, field.key, fieldRawValue(field, selection === 'enabled'));
-  }
+  /* ---------- Commands ---------- */
 
-  function booleanOverrideValue(field: BooleanField): string | null {
-    if (!hasOverride(field.key)) return null;
-    const raw = effectiveValue(draft, inherited, field.key);
-    return fieldEnabled(field, raw) ? 'enabled' : 'disabled';
-  }
+  let prefixTimer: ReturnType<typeof setTimeout> | undefined;
+  const SAVE_REST_MS = 900;
 
-  function inheritedBooleanValue(field: BooleanField): string {
-    return fieldEnabled(field, inherited[field.key]) ? 'enabled' : 'disabled';
-  }
-
-  function inheritedAllowedLabel(): string {
-    const list = inherited.allowed_commands;
-    const count = list.length === 0 ? COMMANDS.length : list.length;
-    return `${count} command${count === 1 ? '' : 's'}`;
-  }
-
-  function inheritedAliasLabel(): string {
-    const count = Object.keys(inherited.command_aliases).length;
-    return count === 0 ? 'no aliases' : `${count} alias${count === 1 ? '' : 'es'}`;
-  }
-
-  function setPrefix(value: string): void {
+  function typePrefix(value: string): void {
     draft = updatePatchValue(draft, inherited, 'command_prefix', value);
+    clearTimeout(prefixTimer);
+    prefixTimer = setTimeout(() => void push('commands'), SAVE_REST_MS);
+  }
+
+  function flushPrefix(): void {
+    if (prefixTimer === undefined) return;
+    clearTimeout(prefixTimer);
+    prefixTimer = undefined;
+    void push('commands');
   }
 
   function toggleCommand(command: string): void {
-    const current = effectiveValue(draft, inherited, 'allowed_commands');
-    const next = toggleAllowedCommand(current, command, COMMANDS);
+    const next = toggleAllowedCommand(allowedList, command, COMMANDS);
     draft = updatePatchValue(draft, inherited, 'allowed_commands', next);
-  }
-
-  function openComposer(): void {
-    composerOpen = true;
-  }
-
-  function closeComposer(): void {
-    composerOpen = false;
-    aliasName = '';
+    void push('commands');
   }
 
   function addAlias(): void {
-    const name = aliasName.trim();
-    if (name === '') return;
+    if (cleanAlias === '' || aliasTaken) return;
     const current = effectiveValue(draft, inherited, 'command_aliases');
     draft = updatePatchValue(draft, inherited, 'command_aliases', {
       ...current,
-      [name]: aliasCommand,
+      [cleanAlias]: 'approve',
     });
-    closeComposer();
+    aliasName = '';
+    aliasOpen = false;
+    void push('commands');
+  }
+
+  function retargetAlias(name: string, command: string): void {
+    const current = effectiveValue(draft, inherited, 'command_aliases');
+    draft = updatePatchValue(draft, inherited, 'command_aliases', {
+      ...current,
+      [name]: command,
+    });
+    void push('commands');
   }
 
   function removeAlias(name: string): void {
     const next = { ...effectiveValue(draft, inherited, 'command_aliases') };
     delete next[name];
     draft = updatePatchValue(draft, inherited, 'command_aliases', next);
-  }
-
-  function discard(): void {
-    draft = clonePatch(patch);
-    closeComposer();
-  }
-
-  async function save(): Promise<void> {
-    if (editorDisabled || !dirty) return;
-    saving = true;
-    try {
-      await onSave(clonePatch(draft));
-    } finally {
-      saving = false;
-    }
-  }
-
-  function guardUnload(event: BeforeUnloadEvent): void {
-    if (dirty) event.preventDefault();
+    void push('commands');
   }
 
   function cloneValue<T>(value: T): T {
@@ -211,547 +209,797 @@
   }
 </script>
 
-<svelte:window onbeforeunload={guardUnload} />
+{#snippet clearButton(key: ConfigKey, card: 'behavior' | 'commands', what: string)}
+  <button
+    class="setting-clear"
+    title="Stop overriding - follow {source}"
+    aria-label="Stop overriding {what}"
+    disabled={editorDisabled}
+    onclick={() => clearField(key, card)}
+  >
+    <Icon name="close" size={10} />
+  </button>
+{/snippet}
 
 <div class="config-editor">
   {#if section === 'all' || section === 'behavior'}
-    <section class="editor-section" aria-labelledby="config-{scope}-{idPrefix}-behavior">
-      {#if section === 'all'}
-        <header class="group-heading">
-          <h3 id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
-          <p>How Smyklot replies and which safeguards apply</p>
-        </header>
-      {:else}
-        <h3 class="visually-hidden" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
-      {/if}
-
-      <div class="rows rows-plain">
-        {#each shownFields as field (field.key)}
-          {@const changed = keyChanged(field.key)}
-          <div class="row" class:changed>
-            <span class="row-label">
-              <!-- Inside the label, not beside it: the marker belongs to the
-                   name it marks, so it rides the label's own 0.45rem gap
-                   instead of the row's wider one. -->
-              {#if changed}
-                <ChangedMarker />
-              {/if}
-              <span class="label-text band-trim">{field.label}</span>
-              <HelpTip
-                id="config-{scope}-{idPrefix}-{field.key}-tooltip"
-                label="About {field.label.toLowerCase()}"
-                text={field.help}
-                align="start"
+    {#if only !== undefined}
+      <!-- The repository-file pane's list: just the rows in effect, no card of
+           its own - the pane already stands inside one. -->
+      <div class="policy-rows">
+        {#each overriddenFields as field (field.key)}
+          {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
+          <div class="policy-row">
+            <span class="setting-say">
+              <span class="setting-name">{field.label}</span>
+              <span class="setting-why">{field.help}</span>
+            </span>
+            <span class="policy-value">
+              <span class="value-word" class:is-on={on}>{on ? 'On' : 'Off'}</span>
+              <Switch
+                checked={on}
+                label={field.label}
+                disabled={editorDisabled}
+                onToggle={(next) => toggleBoolean(field, next)}
               />
             </span>
-            <span class="visually-hidden" id="config-{scope}-{idPrefix}-{field.key}-help">
-              {field.help}
-            </span>
-            <span class="row-spacer"></span>
-            <InheritControl
-              label={field.label}
-              source={SOURCE_BY_SCOPE[scope]}
-              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
-              inheritedValue={inheritedBooleanValue(field)}
-              inheritedLabel={inheritedBooleanValue(field) === 'enabled' ? 'Enabled' : 'Disabled'}
-              value={booleanOverrideValue(field)}
-              options={VALUE_OPTIONS}
-              disabled={editorDisabled}
-              onSelect={(selection) => selectBoolean(field, selection)}
-              onRestore={() => useDefault(field.key)}
-            />
+            {@render clearButton(field.key, 'behavior', field.label)}
           </div>
         {/each}
       </div>
-    </section>
+    {:else}
+      <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-behavior">
+        <div class="group-head">
+          <h3 class="group-name" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
+          <span class="save-whisper" class:is-on={behaviorSavedOn} role="status"
+            ><Icon name="check" size={12} /><span class="t">Saved</span></span
+          >
+          <span class="group-tally"
+            >{overriddenFields.length} of {shownFields.length} overridden</span
+          >
+        </div>
+        <p class="group-note">How Smyklot replies and which safeguards apply</p>
+        {#if overriddenFields.length > 0}
+          <div class="policy-rows">
+            {#each overriddenFields as field (field.key)}
+              {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
+              <div class="policy-row">
+                <span class="setting-say">
+                  <span class="setting-name">{field.label}</span>
+                  <span class="setting-why">{field.help}</span>
+                </span>
+                <span class="policy-value">
+                  <span class="value-word" class:is-on={on}>{on ? 'On' : 'Off'}</span>
+                  <Switch
+                    checked={on}
+                    label={field.label}
+                    disabled={editorDisabled}
+                    onToggle={(next) => toggleBoolean(field, next)}
+                  />
+                </span>
+                {@render clearButton(field.key, 'behavior', field.label)}
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if restFields.length > 0}
+          {@const names = restFields.map((field) => field.label)}
+          <div class="group-rest" class:is-open={picking}>
+            {#if picking}
+              <span class="rest-say"
+                ><span class="rest-count">{restFields.length} follow {source}</span> - pick one to override:</span
+              >
+              <span class="rest-picks">
+                {#each restFields as field (field.key)}
+                  <button class="add-chip" disabled={editorDisabled} onclick={() => manage(field)}>
+                    <Icon name="plus" size={12} />
+                    <span class="t">{field.label}</span>
+                  </button>
+                {/each}
+                <Button tone="quiet" onclick={() => (picking = false)}>Cancel</Button>
+              </span>
+            {:else}
+              <span class="rest-say"
+                ><span class="rest-count">{restFields.length} follow {source}</span> - {names.join(
+                  ', ',
+                )}</span
+              >
+              <Button tone="quiet" disabled={editorDisabled} onclick={() => (picking = true)}>
+                {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+                Override one
+              </Button>
+            {/if}
+          </div>
+        {/if}
+      </section>
+    {/if}
   {/if}
 
   {#if only === undefined && (section === 'all' || section === 'commands')}
-    <section class="editor-section" aria-labelledby="config-{scope}-{idPrefix}-commands">
-      {#if section === 'all'}
-        <header class="group-heading">
-          <h3 id="config-{scope}-{idPrefix}-commands">Commands</h3>
-          <p>How commands are invoked and which words trigger them</p>
-        </header>
-      {:else}
-        <h3 class="visually-hidden" id="config-{scope}-{idPrefix}-commands">Commands</h3>
-      {/if}
-
-      <div class="rows">
-        <div class="row-group" class:changed={keyChanged('command_prefix')}>
-          <div class="row-line">
-            <span class="row-label">
-              <label class="band-trim" for="config-{scope}-{idPrefix}-prefix">Prefix</label>
-              <HelpTip
-                id="config-{scope}-{idPrefix}-prefix-tooltip"
-                label="About the command prefix"
-                text="Characters required before a command when prefix invocation is used. Editing the {scope ===
-                'target'
-                  ? 'built-in default'
-                  : 'inherited value'} creates an override"
-                align="start"
-              />
-            </span>
-            <span class="row-spacer"></span>
-            {#if keyChanged('command_prefix')}
-              <ChangedMarker />
-            {/if}
+    <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-commands">
+      <div class="group-head">
+        <h3 class="group-name" id="config-{scope}-{idPrefix}-commands">Commands</h3>
+        <span class="save-whisper" class:is-on={commandsSavedOn} role="status"
+          ><Icon name="check" size={12} /><span class="t">Saved</span></span
+        >
+        <span class="group-tally">{commandsOverridden} of 3 overridden</span>
+      </div>
+      <p class="group-note">How commands are invoked and which words trigger them</p>
+      <div class="policy-rows">
+        <div class="policy-row">
+          <span class="setting-say">
+            <label class="setting-name" for="config-{scope}-{idPrefix}-prefix">Prefix</label>
+            <span class="setting-why"
+              >Characters required before a command when prefix invocation is used. Editing the
+              inherited value creates an override</span
+            >
+          </span>
+          <span class="policy-value">
             <input
               id="config-{scope}-{idPrefix}-prefix"
-              class="prefix-input mono"
+              class="prefix-inline"
               value={effectiveValue(draft, inherited, 'command_prefix')}
-              disabled={editorDisabled}
-              oninput={(event) => setPrefix(event.currentTarget.value)}
+              {disabled}
+              oninput={(event) => typePrefix(event.currentTarget.value)}
+              onblur={flushPrefix}
             />
-            <InheritControl
-              label="Command prefix source"
-              source={SOURCE_BY_SCOPE[scope]}
-              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
-              inheritedLabel={`"${inherited.command_prefix}"`}
-              value={hasOverride('command_prefix') ? 'custom' : null}
-              options={CUSTOM_OPTIONS}
-              disabled={editorDisabled}
-              onSelect={() => useCustom('command_prefix')}
-              onRestore={() => useDefault('command_prefix')}
-            />
-          </div>
+          </span>
+          {#if Object.hasOwn(draft, 'command_prefix')}
+            {@render clearButton('command_prefix', 'commands', 'the command prefix')}
+          {/if}
         </div>
 
-        <div class="row-group" class:changed={keyChanged('allowed_commands')}>
-          <div class="row-line">
-            <span class="row-label">
-              <span class="label-text band-trim">Allowed commands</span>
-              <HelpTip
-                id="config-{scope}-{idPrefix}-commands-tooltip"
-                label="About allowed commands"
-                text="The command words Smyklot accepts. At least one must remain enabled. Editing the selection creates an override"
-                align="start"
-              />
-            </span>
-            <span class="row-spacer"></span>
-            {#if keyChanged('allowed_commands')}
-              <ChangedMarker />
-            {/if}
-            <InheritControl
-              label="Allowed commands source"
-              source={SOURCE_BY_SCOPE[scope]}
-              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
-              inheritedLabel={inheritedAllowedLabel()}
-              value={hasOverride('allowed_commands') ? 'custom' : null}
-              options={CUSTOM_OPTIONS}
-              disabled={editorDisabled}
-              onSelect={() => useCustom('allowed_commands')}
-              onRestore={() => useDefault('allowed_commands')}
-            />
-          </div>
-          <div class="row-body">
-            <div class="cmd-flow">
-              {#each COMMANDS as command (command)}
-                {@const checked = commandIsAllowed(allowedList, command)}
-                <CheckTile
-                  label={command}
-                  {checked}
-                  disabled={editorDisabled || (checked && allowedCount === 1)}
-                  onchange={() => toggleCommand(command)}
-                />
-              {/each}
-            </div>
-          </div>
-        </div>
-
-        <div class="row-group" class:changed={keyChanged('command_aliases')}>
-          <div class="row-line">
-            <span class="row-label" id="config-{scope}-{idPrefix}-aliases-heading">
-              <span class="label-text band-trim">Aliases</span>
-              <HelpTip
-                id="config-{scope}-{idPrefix}-aliases-tooltip"
-                label="About command aliases"
-                text="Extra command words mapped to canonical commands. Changing an alias creates an override"
-                align="start"
-              />
-            </span>
-            <span class="row-spacer"></span>
-            {#if keyChanged('command_aliases')}
-              <ChangedMarker />
-            {/if}
-            <InheritControl
-              label="Command aliases source"
-              source={SOURCE_BY_SCOPE[scope]}
-              sourcePronoun={scope === 'repository' ? 'them' : 'it'}
-              inheritedLabel={inheritedAliasLabel()}
-              value={hasOverride('command_aliases') ? 'custom' : null}
-              options={CUSTOM_OPTIONS}
-              disabled={editorDisabled}
-              onSelect={() => useCustom('command_aliases')}
-              onRestore={() => {
-                useDefault('command_aliases');
-                closeComposer();
-              }}
-            />
-          </div>
-          <div
-            class="row-body alias-flow"
-            role="group"
-            aria-labelledby="config-{scope}-{idPrefix}-aliases-heading"
-          >
-            {#each aliasEntries as [name, command] (name)}
-              <AliasChip
-                from={name}
-                to={command}
-                added={savedAliases[name] !== command}
-                disabled={editorDisabled}
-                onRemove={() => removeAlias(name)}
-              />
-            {:else}
-              <span class="alias-empty band-trim">No aliases yet</span>
-            {/each}
-
-            {#if composerOpen}
-              <form
-                class="composer"
-                aria-label="Add command alias"
-                onsubmit={(event) => {
-                  event.preventDefault();
-                  addAlias();
-                }}
-              >
-                <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias">Alias</label>
-                <input
-                  id="config-{scope}-{idPrefix}-alias"
-                  class="mono"
-                  placeholder="alias"
-                  bind:value={aliasName}
-                  disabled={editorDisabled}
-                  onkeydown={(event) => {
-                    if (event.key === 'Escape') closeComposer();
-                  }}
-                />
-                <span class="chip-arrow" aria-hidden="true">→</span>
-                <label class="visually-hidden" for="config-{scope}-{idPrefix}-alias-command">
-                  Command
-                </label>
-                <Select
-                  id="config-{scope}-{idPrefix}-alias-command"
-                  class="mono"
-                  bind:value={aliasCommand}
-                  disabled={editorDisabled}
-                >
-                  {#each COMMANDS as command (command)}
-                    <option value={command}>{command}</option>
-                  {/each}
-                </Select>
-                <button
-                  type="submit"
-                  class="composer-ok band-trim"
-                  disabled={editorDisabled || aliasName.trim() === ''}
-                >
-                  Add
-                </button>
-                <button
-                  type="button"
-                  class="composer-cancel"
-                  aria-label="Cancel adding alias"
-                  onclick={closeComposer}
-                >
-                  <Icon name="close" size={13} />
-                </button>
-              </form>
-            {:else}
+        <div class="policy-row policy-block">
+          <span class="setting-say">
+            <span class="setting-name">Allowed commands</span>
+            <span class="setting-why"
+              >The command words Smyklot accepts. At least one must remain on</span
+            >
+          </span>
+          <span class="policy-value">
+            <span class="value-word is-on">{allowedCount} of {COMMANDS.length}</span>
+          </span>
+          {#if Object.hasOwn(draft, 'allowed_commands')}
+            {@render clearButton('allowed_commands', 'commands', 'allowed commands')}
+          {/if}
+          <div class="chip-line" role="group" aria-label="Allowed commands">
+            {#each COMMANDS as command (command)}
+              {@const on = commandIsAllowed(allowedList, command)}
               <button
-                class="add-chip"
-                type="button"
-                disabled={editorDisabled}
-                onclick={openComposer}
+                class="cmd-chip"
+                class:is-on={on}
+                aria-pressed={on}
+                disabled={editorDisabled || (on && allowedCount === 1)}
+                onclick={() => toggleCommand(command)}
               >
-                <Icon name="plus" size={13} />
-                <span class="band-trim">Add alias</span>
+                <Icon name={on ? 'check' : 'plus'} size={10} />
+                <span class="t">{command}</span>
               </button>
-            {/if}
+            {/each}
+          </div>
+        </div>
+
+        <div class="policy-row policy-block">
+          <span class="setting-say">
+            <span class="setting-name" id="config-{scope}-{idPrefix}-aliases">Aliases</span>
+            <span class="setting-why">Extra command words mapped to the commands they invoke</span>
+          </span>
+          <span class="policy-value">
+            <span class="value-word" class:is-on={aliasEntries.length > 0}
+              >{aliasEntries.length === 0 ? 'none' : aliasEntries.length}</span
+            >
+          </span>
+          {#if Object.hasOwn(draft, 'command_aliases')}
+            {@render clearButton('command_aliases', 'commands', 'command aliases')}
+          {/if}
+          <div class="chip-line" role="group" aria-labelledby="config-{scope}-{idPrefix}-aliases">
+            {#each aliasEntries as [name, command] (name)}
+              <span class="alias-chip">
+                <span class="t">{name}</span>
+                <span class="alias-arrow" aria-hidden="true">→</span>
+                <Popover
+                  role="listbox"
+                  label="Command {name} invokes"
+                  align="start"
+                  itemSelector=".menu-item"
+                >
+                  {#snippet trigger(attributes)}
+                    <button
+                      {...attributes}
+                      class="alias-target"
+                      type="button"
+                      disabled={editorDisabled}
+                      aria-label="Command {name} invokes"
+                    >
+                      <span class="t">{command}</span>
+                    </button>
+                  {/snippet}
+                  <div class="menu-list">
+                    {#each COMMANDS as candidate (candidate)}
+                      <button
+                        class="menu-item"
+                        role="option"
+                        aria-selected={candidate === command}
+                        onclick={() => retargetAlias(name, candidate)}
+                      >
+                        <span class="menu-check">
+                          {#if candidate === command}<Icon name="check" size={16} />{/if}
+                        </span>
+                        <span class="mi-label">{candidate}</span>
+                      </button>
+                    {/each}
+                  </div>
+                </Popover>
+                <button
+                  aria-label="Remove alias {name}"
+                  disabled={editorDisabled}
+                  onclick={() => removeAlias(name)}
+                >
+                  <Icon name="close" size={8} />
+                </button>
+              </span>
+            {/each}
+            <Popover role="dialog" label="Name the alias" align="start" bind:open={aliasOpen}>
+              {#snippet trigger(attributes)}
+                <button {...attributes} class="add-chip" disabled={editorDisabled}>
+                  <Icon name="plus" size={12} />
+                  <span class="t">Add an alias</span>
+                </button>
+              {/snippet}
+              <div class="name-menu">
+                <div class="menu-search">
+                  <Icon name="search" size={12} />
+                  <input
+                    placeholder="ship"
+                    aria-label="Name for the new alias"
+                    spellcheck="false"
+                    bind:value={aliasName}
+                    onkeydown={(event) => {
+                      if (event.key === 'Enter') addAlias();
+                    }}
+                  />
+                </div>
+                <div class="menu-hint">
+                  {aliasTaken ? 'That word is taken' : 'Enter adds it as approve · retarget after'}
+                </div>
+              </div>
+            </Popover>
           </div>
         </div>
       </div>
     </section>
-  {/if}
-
-  {#if dirty}
-    <SaveBar
-      count={changedKeys.length}
-      {saving}
-      disabled={editorDisabled}
-      inline={scope === 'repository'}
-      onSave={save}
-      onDiscard={discard}
-    />
   {/if}
 </div>
 
 <style>
   .config-editor {
-    container-type: inline-size;
+    display: grid;
+    gap: var(--space-4);
   }
 
-  .editor-section + .editor-section {
-    margin-top: 1.375rem;
+  .card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    padding: var(--space-5);
   }
 
-  .group-heading {
-    margin: 0 0.125rem 0.625rem;
+  .group-head {
+    align-items: end;
+    display: flex;
+    gap: var(--space-3);
+    justify-content: space-between;
+    margin-bottom: var(--space-2);
   }
 
-  .group-heading h3 {
-    color: var(--brand-action);
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    letter-spacing: 0.1em;
+  .group-name {
+    font-size: var(--font-size-title);
+    font-weight: 600;
     margin: 0;
-    text-transform: uppercase;
+    min-block-size: 12px;
+    text-box: trim-both cap alphabetic;
   }
 
-  .group-heading p {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-    margin: 0.1875rem 0 0;
+  .group-tally {
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: var(--font-size-micro);
+    font-variant-numeric: tabular-nums;
+    min-block-size: 8px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .save-whisper {
+    align-items: center;
+    background: var(--success-tint);
+    block-size: 20px;
+    border-radius: var(--radius-chip);
+    color: var(--success);
+    display: inline-flex;
+    font-size: var(--font-size-micro);
+    font-weight: 600;
+    gap: 4px;
+    margin-inline-start: auto;
+    opacity: 0;
+    padding: 0 0.5rem;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .save-whisper.is-on {
+    opacity: 1;
+  }
+
+  .save-whisper .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .group-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin: 0 0 var(--space-2);
     max-width: 60ch;
   }
 
-  .rows {
-    border: 1px solid var(--rule);
-    border-radius: var(--r-ctl);
+  .policy-rows {
+    display: grid;
   }
 
-  .rows > :first-child {
-    border-radius: calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px) 0 0;
+  .policy-row {
+    align-items: center;
+    display: grid;
+    gap: var(--space-2) var(--space-4);
+    grid-template-columns: 1fr auto auto;
+    /* The halo hangs outside the text column, so row text keeps the card
+       head's left edge. Whole numbers: 48 floor, 8px block padding. */
+    margin-inline: calc(var(--space-2) * -1);
+    min-block-size: 48px;
+    /* The air around a drawn hairline is the card's own padding, on both
+       sides; the edge rows shed it where no line follows, since the card
+       edge already carries that inset. */
+    padding: var(--space-5) var(--space-2);
+    position: relative;
   }
 
-  .rows > :last-child {
-    border-radius: 0 0 calc(var(--r-ctl) - 1px) calc(var(--r-ctl) - 1px);
+  .policy-row:first-child {
+    padding-block-start: var(--space-2);
   }
 
-  /* Behavior rows sit on inset hairlines that follow the plate's content padding —
-     no outer box, and the separators never run full-bleed. */
-  .rows-plain {
-    border: 0;
-    border-radius: 0;
+  .policy-row:last-child {
+    padding-block-end: var(--space-2);
   }
 
-  .rows-plain > :first-child,
-  .rows-plain > :last-child {
-    border-radius: 0;
+  /* The remainder is a summary line, not a row - its boundary keeps the
+     compact rhythm so the card does not end on a slab of air. */
+  .policy-rows:has(+ .group-rest) > .policy-row:last-child {
+    padding-block-end: var(--space-2);
   }
 
-  .rows-plain .row {
+  /* A drawn hairline, not a border: a border on a radiused row curves at
+     its tips and makes sibling rows measure one pixel apart. Every row owns
+     the line under itself, so the unmanaged remainder needs none of its own
+     and a card with no overridden rows shows no line at all. */
+  .policy-row::after {
+    background: var(--border-subtle);
+    block-size: 1px;
+    bottom: 0;
+    content: '';
+    inset-inline: var(--space-2);
+    position: absolute;
+  }
+
+  .policy-row:last-child::after {
+    content: none;
+  }
+
+  .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
+    content: '';
+  }
+
+  .setting-say {
+    display: grid;
     gap: var(--space-3);
-    min-height: 0;
-    padding-block: 0.7rem;
-    padding-inline: 0;
   }
 
-  .rows-plain > .row:first-child {
-    padding-top: 0.15rem;
-  }
-
-  .rows-plain > .row:last-child {
-    padding-bottom: 0.15rem;
-  }
-
-  .row,
-  .row-line {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-height: 3.25rem;
-    padding: var(--space-2) 0.875rem;
-  }
-
-  .row,
-  .row-group {
-    background: var(--strip);
-    transition: background-color 160ms ease-out;
-  }
-
-  .row + .row,
-  .row-group + .row-group {
-    border-top: 1px solid var(--rule);
-  }
-
-  .row-body {
-    padding: 0 0.875rem 0.875rem;
-  }
-
-  .row-label {
-    align-items: center;
-    display: flex;
-    font-size: 0.875rem;
+  .setting-name {
+    font-size: var(--font-size-meta);
     font-weight: 600;
-    gap: 0.45rem;
+    min-block-size: 10px;
+    text-box: trim-both cap alphabetic;
   }
 
-  .row-label label {
+  .setting-why {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    min-block-size: 9px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .policy-value {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    justify-self: end;
+  }
+
+  /* The value said in a word beside the control, so a scan reads the
+     policy without decoding thumb positions. */
+  .value-word {
+    color: var(--text-muted);
+    font-family: var(--mono);
+    font-size: var(--font-size-micro);
+    font-variant-numeric: tabular-nums;
+    min-inline-size: 1.9rem;
+    text-align: end;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .value-word.is-on {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+
+  .setting-clear {
+    align-items: center;
+    background: transparent;
+    block-size: 26px;
+    border: 0;
+    border-radius: 50%;
+    color: var(--text-muted);
     cursor: pointer;
+    display: inline-flex;
+    inline-size: 26px;
+    justify-content: center;
+    padding: 0;
   }
 
-  .row-spacer {
-    flex: 1;
+  .setting-clear:hover {
+    background: var(--interactive-hover-layer);
+    color: var(--text-primary);
   }
 
-  /* Unsaved reads as a warning, not as information: the mock tints the row and
-     rings the marker in --warning, and an unsaved edit is something you are
-     being asked to resolve. */
-  .row.changed,
-  .row-group.changed {
-    background: color-mix(in srgb, var(--warning) 4%, var(--surface-base));
+  .setting-clear:active {
+    background: var(--interactive-pressed);
   }
 
-  .prefix-input {
-    background: var(--strip-lift);
-    border: 1px solid var(--border-strong);
+  .policy-row .setting-clear {
+    opacity: 0.45;
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+
+  .policy-row:hover .setting-clear,
+  .policy-row:focus-within .setting-clear {
+    opacity: 1;
+  }
+
+  /* ---------- The command rows' own controls ---------- */
+
+  .prefix-inline {
+    background: var(--input-bg);
+    border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
-    color: var(--text);
-    flex: none;
+    color: var(--text-primary);
+    font-family: var(--mono);
     font-size: var(--font-size-control);
-    height: var(--control-height-compact);
-    margin-right: 0.25rem;
+    min-block-size: 28px;
+    padding: 0;
     text-align: center;
     width: 4.5rem;
   }
 
-  .prefix-input:focus-visible {
+  .prefix-inline:focus-visible {
     border-color: var(--brand-action);
     outline: 2px solid var(--brand);
   }
 
-  .cmd-flow {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .alias-flow {
+  /* A block row keeps the grid for its first line and lays its chips on a
+     full-width second one. The extra breathing room lives INSIDE the row,
+     above the chips - the block padding stays the shared 8px so the air
+     around every hairline is the same on both sides. */
+  .chip-line {
     align-items: center;
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
+    grid-column: 1 / -1;
+    margin-block: var(--space-1) 0;
   }
 
-  .alias-empty {
-    color: var(--dim);
-    font-size: var(--font-size-meta);
-  }
-
-  /* `.add-chip` is in `app.css` and this restated it, height included - so
-     raising the shared control left this one page behind at 24px beside the
-     34px chip it adds to. The local copy said in a comment that it was keeping
-     the shared height, which is exactly what a second copy cannot do. */
-  .composer {
+  .cmd-chip {
     align-items: center;
-    background: var(--strip-lift);
-    border: 1px solid var(--brand-action);
-    border-radius: var(--r-chip);
-    display: inline-flex;
-    gap: 0.375rem;
-    min-height: 2rem;
-    padding: 2px 4px 2px 2px;
-  }
-
-  .composer:focus-within {
-    box-shadow: 0 0 0 1px var(--brand-action);
-  }
-
-  .composer input,
-  .composer :global(select) {
-    background: var(--strip);
-    border: 0;
-    border-radius: var(--r-chip);
-    color: var(--text);
-    font-size: var(--font-size-control);
-    height: 1.625rem;
-  }
-
-  .composer input {
-    padding: 0 0.625rem;
-    width: 6rem;
-  }
-
-  .composer input:focus {
-    outline: none;
-  }
-
-  .composer :global(select) {
-    padding: 0 0.375rem;
-  }
-
-  .composer-ok {
-    background: var(--admin);
-    border: 0;
-    border-radius: var(--r-chip);
-    color: var(--on-admin);
+    background: var(--control-bg);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-chip);
+    color: var(--text-muted);
     cursor: pointer;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
-    height: 1.625rem;
-    padding: 0 0.75rem;
+    display: inline-flex;
+    font-family: var(--mono);
+    font-size: var(--font-size-compact);
+    gap: 0.35rem;
+    min-block-size: 30px;
+    padding-block: 0;
+    padding-inline: 0.7rem;
   }
 
-  .composer-cancel {
+  .cmd-chip:hover:not(:disabled) {
+    background: var(--control-bg-hover);
+    color: var(--text-primary);
+  }
+
+  .cmd-chip:active:not(:disabled) {
+    background: var(--control-bg-pressed);
+  }
+
+  .cmd-chip.is-on {
+    border-style: solid;
+    color: var(--text-primary);
+  }
+
+  .cmd-chip:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
+
+  .cmd-chip .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .alias-chip {
+    align-items: center;
+    background: var(--surface-inset);
+    block-size: 30px;
+    border-radius: var(--radius-chip);
+    color: var(--text-secondary);
+    display: inline-flex;
+    font-family: var(--mono);
+    font-size: var(--font-size-compact);
+    gap: 0.35rem;
+    line-height: 1;
+    padding: 0 var(--space-2) 0 0.7rem;
+  }
+
+  .alias-chip .t {
+    display: block;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .alias-arrow {
+    color: var(--text-muted);
+    /* Ink-true like its neighbours, so the chip's three parts share one
+       centre instead of the arrow riding its line box's leading. */
+    line-height: 1;
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* The command half is the pressable half: it opens the retarget menu. */
+  .alias-target {
+    background: none;
+    border: 0;
+    border-radius: var(--radius-chip);
+    color: var(--text-primary);
+    cursor: pointer;
+    font: inherit;
+    margin: -0.25rem;
+    padding: 0.25rem;
+  }
+
+  .alias-target:hover:not(:disabled) {
+    background: var(--interactive-hover-layer);
+  }
+
+  .alias-target[data-state='open'] {
+    background: var(--interactive-pressed);
+  }
+
+  /* A 20px disc folded around an 8px glyph, the patch-chip x. */
+  .alias-chip > button:last-child {
     align-items: center;
     background: none;
     border: 0;
     border-radius: 50%;
-    color: var(--dim);
+    color: inherit;
     cursor: pointer;
     display: inline-flex;
-    height: 1.5rem;
+    margin: -0.375rem 0;
+    opacity: 0.65;
+    padding: 0.375rem;
+  }
+
+  .alias-chip > button:last-child:hover {
+    background: var(--interactive-hover-layer);
+    opacity: 1;
+  }
+
+  .alias-chip > button:last-child:active {
+    background: var(--interactive-pressed);
+  }
+
+  .add-chip {
+    align-items: center;
+    background: var(--control-bg);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-chip);
+    color: var(--text-secondary);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: var(--font-size-compact);
+    font-weight: 500;
+    gap: 0.35rem;
+    min-block-size: 30px;
+    padding-block: 0;
+    padding-inline: 0.7rem;
+  }
+
+  .add-chip:hover {
+    background: var(--control-bg-hover);
+    border-style: solid;
+    color: var(--text-primary);
+  }
+
+  .add-chip:active {
+    background: var(--control-bg-pressed);
+  }
+
+  .add-chip .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* ---------- The menus ---------- */
+
+  .menu-item {
+    align-items: center;
+    background: none;
+    border: 0;
+    border-radius: 6px;
+    block-size: 32px;
+    color: var(--text-primary);
+    cursor: pointer;
+    display: flex;
+    font-size: var(--font-size-control);
+    gap: var(--space-2);
+    inline-size: 100%;
+    padding-inline: var(--space-3);
+    text-align: start;
+  }
+
+  .menu-item:hover {
+    background: var(--interactive-hover-layer);
+  }
+
+  .menu-item:focus-visible {
+    background: var(--interactive-hover-layer);
+    outline: none;
+  }
+
+  .menu-item:active {
+    background: var(--interactive-pressed);
+  }
+
+  .menu-check {
+    display: inline-flex;
+    flex: none;
+    inline-size: 16px;
     justify-content: center;
+  }
+
+  .mi-label {
+    font-family: var(--mono);
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The menu's 4px mat - `.menu-search` bleeds to the edges with negative
+     margins that assume exactly this pad. */
+  .name-menu {
+    display: grid;
+    inline-size: 16rem;
+    padding: var(--space-1);
+  }
+
+  .menu-search {
+    align-items: center;
+    block-size: 36px;
+    box-shadow: 0 1px 0 var(--border-subtle);
+    color: var(--text-muted);
+    display: flex;
+    gap: var(--space-2);
+    margin: calc(var(--space-1) * -1) calc(var(--space-1) * -1) var(--space-1);
+    padding: 0 var(--space-3);
+  }
+
+  .menu-search input {
+    background: none;
+    block-size: 100%;
+    border: 0;
+    color: var(--text-primary);
+    flex: 1;
+    font-size: var(--font-size-control);
+    outline: none;
     padding: 0;
-    width: 1.5rem;
   }
 
-  .composer-cancel:hover {
-    background: var(--well);
-    color: var(--text);
+  .menu-search input::placeholder {
+    color: var(--text-muted);
   }
 
-  /* Inline, the bar is not a floating slab: no vertical padding of its own, the
-     approved 12px gap, and the trailing inset that lines its Save up with the
-     rows' right edge. */
+  .menu-hint {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-variant-numeric: tabular-nums;
+    line-height: 16px;
+    padding: var(--space-1) var(--space-3) var(--space-2);
+  }
 
-  /* The inline bar carries no status dot: it sits directly under the row it
-     belongs to, and the row already has its unsaved marker. */
+  /* ---------- The un-overridden remainder ---------- */
 
-  /* Regular weight inline: the count is a sentence under the row, not a label
-     on a dark slab where 600 is what keeps it legible. */
+  .group-rest {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+    justify-content: space-between;
+    /* Bleeds like the rows above it. Its separator is the last row's own
+       bottom hairline, so the gaps around that line stay the row rhythm -
+       and a card with nothing overridden shows no line under its title. */
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2) var(--space-2) 0;
+    position: relative;
+  }
 
-  /* Full-strength text, like the mock's ghost button - a Discard that reads as
-     disabled is a Discard nobody dares press. It also wears the button's own
-     box here, so it stands the same 34px as the Save beside it. */
+  .rest-say {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    /* Ink-true, like the rows above it, so the air across the hairline
+       between the last row and this line reads equal. */
+    text-box: trim-both cap alphabetic;
+  }
 
-  /* On a phone the row's parts do not fit on one line. The control holds a fixed
-     width - a segmented control does not shrink - and the label is the only part
-     that gives, so it collapsed to a one-word column while the control still ran
-     past the screen and took the page's layout viewport with it: Chrome widens
-     the viewport to fit the overflow and zooms the whole page out to compensate,
-     so one row too wide shrank every glyph on the page.
+  .rest-count {
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
 
-     Wrapped rather than stacked with `flex-direction`, because the prefix row's
-     input and its control still belong on one line together; it is only the
-     label that needs the width to itself. */
+  .rest-picks {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: flex-end;
+  }
+
+  /* On a phone the head's three parts cannot share one line - the tally or
+     pill drops under the title instead of holding the card wide. */
   @media (max-width: 30rem) {
-    .row,
-    .row-line {
+    .group-head {
       flex-wrap: wrap;
     }
 
-    .row-label {
-      flex: 1 0 100%;
+    .group-rest {
+      flex-wrap: wrap;
     }
 
-    /* It exists to push the control to the far end of a shared line. On its own
-       line there is no far end, and the control reads as belonging to the label
-       above it only if it starts where the label starts. */
-    .row-spacer {
-      display: none;
+    /* The say keeps the line and the control moves under it - beside it,
+       the copy was down to a word a line while the control still ran off
+       the screen and took the layout viewport with it. */
+    .policy-row {
+      grid-template-columns: minmax(0, 1fr) auto;
     }
-  }
 
-  @media (prefers-reduced-motion: reduce) {
+    .policy-row .setting-say {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .policy-row .setting-clear {
+      grid-column: 2;
+      grid-row: 1;
+      opacity: 1;
+    }
+
+    .policy-row .policy-value {
+      flex-wrap: wrap;
+      grid-column: 1 / -1;
+      justify-self: start;
+    }
   }
 </style>

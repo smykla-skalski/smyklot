@@ -17,10 +17,7 @@ import { describe, expect, it } from 'vitest';
  * centre both boxes. Checked as source, because the runtime here has no DOM and no cascade.
  */
 
-const tabs = readFileSync(
-  new URL('../src/lib/components/ViewTabs.svelte', import.meta.url),
-  'utf8',
-);
+const tabs = readFileSync(new URL('../src/lib/components/Sidebar.svelte', import.meta.url), 'utf8');
 
 /**
  * Every character a regular expression reads as syntax.
@@ -42,25 +39,20 @@ function rule(selector: string): string {
 describe('a sidebar navigation row', () => {
   it('trims the label to its glyph bounds', () => {
     // The box the row centres has to BE the letters, or centring it centres something else.
-    //
-    // Asked for in the markup now: `.band-trim` in `app.css` is the one place the panel
-    // declares this, so what a row has to prove is that its label wears it. A rule of its own
-    // would pass this test and still be a copy of the shared one.
-    for (const label of tabs.matchAll(/class="navigation-label([^"]*)"/gu)) {
-      expect(label[1]).toMatch(/\bband-trim\b/u);
-    }
-    expect(tabs).toMatch(/class="navigation-label[^"]*\bband-trim\b/u);
+    expect(rule('.tree-row .t')).toMatch(/text-box:\s*trim-both cap alphabetic/u);
+    expect(rule('.tree-kid .t')).toMatch(/text-box:\s*trim-both cap alphabetic/u);
   });
 
   it('gives the label no height of its own', () => {
     // A fixed height is a guess at what the text measures, and it is the guess that made the
     // letters sit low in the first place.
-    expect(rule('.navigation-label')).not.toMatch(/(^|[^-])height:/u);
+    expect(rule('.tree-row .t')).not.toMatch(/(^|[^-])height:/u);
+    expect(rule('.tree-kid .t')).not.toMatch(/(^|[^-])height:/u);
   });
 
   it('pads the row evenly', () => {
     // Uneven vertical padding is an optical nudge wearing a layout property.
-    const padding = /padding:\s*([^;]+);/u.exec(rule('a'))?.[1]?.trim() ?? '';
+    const padding = /padding:\s*([^;]+);/u.exec(rule('.tree-row'))?.[1]?.trim() ?? '';
 
     expect(padding.length).toBeGreaterThan(0);
     const parts = padding.split(/\s+/u);
@@ -71,7 +63,7 @@ describe('a sidebar navigation row', () => {
     // This is where the descender nudge was found out: three of Settings, Repositories, Access and
     // History carry one and the fourth does not, so it moved most of the column and left the rest.
     // It has since been dropped everywhere, which the sweep below holds to.
-    expect(rule('.navigation-icon')).not.toContain('--ink-nudge');
+    expect(tabs).not.toContain('--ink-nudge');
     expect(tabs).not.toContain('use:inkAlign');
   });
 });

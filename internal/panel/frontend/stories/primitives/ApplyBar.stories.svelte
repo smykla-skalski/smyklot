@@ -2,42 +2,38 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
   import ApplyBar from '#lib/components/ApplyBar.svelte';
+  import Button from '#lib/components/Button.svelte';
 
   const { Story } = defineMeta({
     title: 'Primitives/ApplyBar',
     component: ApplyBar,
-    args: { changes: 14, repositories: 3, removals: 1, asPullRequests: true },
   });
 </script>
 
 <!--
-  The last thing read before something reaches GitHub, so it names the blast
-  radius twice: in the sentence, and in the button. "Apply" alone is a button
-  that cannot be checked against what it is about to do.
+  The sticky decision bar. At rest it is a plain card; glued to the viewport
+  it turns to glass, rows dissolve into their own surface before they pass
+  under its edge, and a halo radiates up. Scroll the story to watch the
+  melt - the page above carries `timeline-scope: --bar-slot`.
 -->
-<Story name="Playground">
-  {#snippet template(args)}
-    <ApplyBar {...args} />
-  {/snippet}
-</Story>
-
-<!-- Nothing is being taken away, so nothing is said in the danger ink. -->
-<Story name="Additions only">
+<Story name="Seated and glued">
   {#snippet template()}
-    <ApplyBar changes={6} repositories={2} />
-  {/snippet}
-</Story>
-
-<!-- One repository, one change: the sentence and the button both say so. -->
-<Story name="A single repository">
-  {#snippet template()}
-    <ApplyBar changes={1} repositories={1} removals={1} />
-  {/snippet}
-</Story>
-
-<!-- In flight: the act is named in the present tense and the control goes quiet. -->
-<Story name="Applying">
-  {#snippet template()}
-    <ApplyBar changes={14} repositories={3} removals={1} asPullRequests applying />
+    <div style="timeline-scope: --bar-slot; max-width: 60rem;">
+      {#each Array.from({ length: 30 }, (_, at) => at) as row (row)}
+        <p style="padding: 0.5rem 0; border-bottom: 1px solid var(--border-subtle);">
+          Row {row + 1} slides under the glued bar
+        </p>
+      {/each}
+      <ApplyBar>
+        <span style="flex: 1; color: var(--text-secondary); font-size: var(--font-size-meta);"
+          >Nothing reaches GitHub until you apply</span
+        >
+        <Button tone="quiet">Discard</Button>
+        <Button tone="signal">Apply to 3 repositories</Button>
+      </ApplyBar>
+      {#each Array.from({ length: 6 }, (_, at) => at) as row (row)}
+        <p style="padding: 0.5rem 0;">After the bar, row {row + 1}</p>
+      {/each}
+    </div>
   {/snippet}
 </Story>

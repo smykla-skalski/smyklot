@@ -115,7 +115,7 @@ const SURFACES: readonly {
 }[] = [
   {
     what: 'a board tile',
-    file: 'SyncBoard.svelte',
+    file: 'SyncOverview.svelte',
     className: 'tile',
     ground: 'tile-face',
     paints: 'declared',
@@ -124,28 +124,27 @@ const SURFACES: readonly {
     // Transparent by design: the legend sits inside the board's own plate, and a second ground
     // under it would draw a band across a card that is meant to read as one surface.
     what: 'a legend row',
-    file: 'SyncBoard.svelte',
+    file: 'SyncOverview.svelte',
     className: 'legend-row',
     ground: 'surface-base',
     paints: 'inherited',
-    from: { file: 'SyncBoard.svelte', declares: 'background: var(--surface-base)' },
+    from: { file: 'SyncOverview.svelte', declares: 'background: var(--surface-base)' },
   },
   {
     what: 'a kind card',
-    file: 'SyncKindCard.svelte',
+    file: 'SyncOverview.svelte',
     className: 'kind-card',
     ground: 'surface-base',
     paints: 'declared',
   },
   {
-    // A row inside somebody else's plate. `--strip` is `--surface-base` in both consoles, which is
-    // the fact this row rests on and the reason the alias is named rather than the token.
+    // A row inside the files card's own plate, which is what paints the ground under it.
     what: 'a named object row',
-    file: 'ObjectRow.svelte',
+    file: 'SyncFilesPage.svelte',
     className: 'object-row',
     ground: 'surface-base',
     paints: 'inherited',
-    from: { file: 'app.css', declares: 'background: var(--strip)' },
+    from: { file: 'SyncFilesPage.svelte', declares: 'background: var(--surface-base)' },
   },
 ];
 
@@ -230,9 +229,11 @@ describe('sync surfaces [Unit]', () => {
         new URL(`../src/lib/components/${file}`, import.meta.url),
         'utf8',
       );
-      if (!source.includes('--interactive-hover-layer')) missing.push(`${file}: no hover layer`);
+      if (!source.includes(':hover')) missing.push(`${file}: no hover`);
       if (!source.includes(':active')) missing.push(`${file}: no press`);
-      if (!source.includes('--press-scale')) missing.push(`${file}: no press scale`);
+      /* The panel's press voice: the inset shadow and the 1px seat, the same
+         pair every pressed control in the product wears - not a scale. */
+      if (!source.includes('--pressed-inset')) missing.push(`${file}: no press depth`);
     }
     expect(missing).toEqual([]);
   });
