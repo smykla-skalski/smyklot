@@ -212,7 +212,7 @@ export interface CleanupState {
  *
  * What is being tidied is the LABEL and the REACTIONS, on every lifecycle - the pending-CI label,
  * the service's handoff fence, and the bot's reaction on the comment that armed it
- * (`cleanupArtifactsExclusive` in `cmd/smyklot/pending_ci_github.go`). It said "the branch
+ * (`cleanupArtifactsExclusive` in `internal/pendingci/gate/github.go`). It said "the branch
  * and the reaction", and nothing in this path has ever touched a branch: deleting one is a
  * repository setting the org sync manages, a different subsystem entirely. So the sentence named a
  * side effect the service does not have, and a reader watching a cancelled request sit at "Pending"
