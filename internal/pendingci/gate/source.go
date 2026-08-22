@@ -13,13 +13,13 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-type SourceValidator struct {
+type sourceValidator struct {
 	config RepositoryConfig
 }
 
 // CancellationReason re-reads the mutable command during fallback polling.
 // Webhooks stay the fast path; this closes missed edit and delete deliveries.
-func (validator SourceValidator) CancellationReason(
+func (validator sourceValidator) CancellationReason(
 	ctx context.Context,
 	client *github.Client,
 	request pendingci.Request,

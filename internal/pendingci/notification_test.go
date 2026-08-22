@@ -50,12 +50,14 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 			PullRequest: 198,
 			HeadSHA:     "abc123",
 			MatchHead:   true,
-			EventKey:    notification.Key,
+			EventKey:    notification.Signals[0].EventKey,
 		}))
+		Expect(notification.Signals[0].EventKey).NotTo(BeEmpty())
+		Expect(notification.Signals[1].EventKey).To(Equal(notification.Signals[0].EventKey))
 
 		redelivery, err := parseNotification(webhook.EventCheckRun, body)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(redelivery.Key).To(Equal(notification.Key))
+		Expect(redelivery.Signals[0].EventKey).To(Equal(notification.Signals[0].EventKey))
 	})
 
 	It("correlates a requested reauthorization action to the exact check run", func() {
@@ -77,7 +79,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(notification.Action).To(Equal("requested_action"))
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
 			Kind: pendingci.SignalReauthorize, PullRequest: 198, HeadSHA: "new-head",
-			EventKey: notification.Key, Actor: "maintainer", CheckRunID: 701,
+			EventKey: notification.Signals[0].EventKey, Actor: "maintainer", CheckRunID: 701,
 			CheckName:  "Smyklot / merge after CI",
 			ExternalID: "smyklot:merge-after-ci:9001:new-head",
 			AppID:      17, ActionID: "reauthorize",
@@ -98,7 +100,8 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		notification, err := parseNotification(webhook.EventCheckSuite, body)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
-			Kind: pendingci.SignalWakeHead, HeadSHA: "fork-head", EventKey: notification.Key,
+			Kind: pendingci.SignalWakeHead, HeadSHA: "fork-head",
+			EventKey: notification.Signals[0].EventKey,
 		}))
 	})
 
@@ -119,7 +122,8 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(runNotification.Signals).To(ConsistOf(pendingci.Signal{
 			Kind: pendingci.SignalRerequestCheck, PullRequest: 198,
-			HeadSHA: "head", MatchHead: true, EventKey: runNotification.Key,
+			HeadSHA: "head", MatchHead: true,
+			EventKey:   runNotification.Signals[0].EventKey,
 			CheckRunID: 701, CheckName: "Smyklot / merge after CI",
 			ExternalID: "smyklot:merge-after-ci:9001:head", AppID: 17,
 		}))
@@ -138,7 +142,7 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(suiteNotification.Signals).To(ConsistOf(pendingci.Signal{
 			Kind: pendingci.SignalRerequestCheck, HeadSHA: "head",
-			EventKey: suiteNotification.Key, CheckRunID: 801, AppID: 17,
+			EventKey: suiteNotification.Signals[0].EventKey, CheckRunID: 801, AppID: 17,
 		}))
 	})
 
@@ -152,7 +156,8 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notification.Action).To(Equal("success"))
 		Expect(notification.Signals).To(ConsistOf(pendingci.Signal{
-			Kind: pendingci.SignalWakeHead, HeadSHA: "legacy-head", EventKey: notification.Key,
+			Kind: pendingci.SignalWakeHead, HeadSHA: "legacy-head",
+			EventKey: notification.Signals[0].EventKey,
 		}))
 	})
 

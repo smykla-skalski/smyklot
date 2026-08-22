@@ -37,7 +37,6 @@ type Signal struct {
 type Notification struct {
 	Event   string
 	Action  string
-	Key     string
 	Source  webhook.Source
 	Signals []Signal
 }
@@ -154,7 +153,7 @@ func requestedCheckActionNotification(
 	}
 
 	return &Notification{
-		Event: webhook.EventCheckRun, Action: "requested_action", Key: key,
+		Event: webhook.EventCheckRun, Action: "requested_action",
 		Source: source, Signals: signals,
 	}, nil
 }
@@ -230,7 +229,7 @@ func checkNotification(
 	}
 
 	return &Notification{
-		Event: event, Action: action, Key: key, Source: source, Signals: signals,
+		Event: event, Action: action, Source: source, Signals: signals,
 	}, nil
 }
 
@@ -261,7 +260,7 @@ func parseStatus(
 	)
 
 	return &Notification{
-		Event: webhook.EventStatus, Action: payload.State, Key: key, Source: source,
+		Event: webhook.EventStatus, Action: payload.State, Source: source,
 		Signals: []Signal{{Kind: SignalWakeHead, HeadSHA: payload.SHA, EventKey: key}},
 	}, nil
 }
@@ -314,12 +313,12 @@ func parsePullRequest(
 		"unlocked", "enqueued", "dequeued":
 	default:
 		return &Notification{
-			Event: webhook.EventPullRequest, Action: source.Action, Key: key, Source: source,
+			Event: webhook.EventPullRequest, Action: source.Action, Source: source,
 		}, nil
 	}
 
 	return &Notification{
-		Event: webhook.EventPullRequest, Action: source.Action, Key: key, Source: source,
+		Event: webhook.EventPullRequest, Action: source.Action, Source: source,
 		Signals: []Signal{signal},
 	}, nil
 }

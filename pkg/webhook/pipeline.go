@@ -33,8 +33,6 @@ type Pipeline struct {
 	jobs  chan Delivery
 	woken chan struct{}
 
-	jobCtx context.Context
-
 	lifecycleMu sync.Mutex
 	cancelLease context.CancelFunc
 	leaseDone   chan struct{}
@@ -70,7 +68,6 @@ func New(secret []byte, inbox Inbox, handle Handler, opts Options) (*Pipeline, e
 		inbox: inbox, handle: handle, opts: resolvedOpts,
 		jobs:           make(chan Delivery, resolvedOpts.QueueDepth),
 		woken:          make(chan struct{}, 1),
-		jobCtx:         context.Background(),
 		finalizeCtx:    finalizeCtx,
 		cancelFinalize: cancelFinalize,
 	}

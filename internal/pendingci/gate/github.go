@@ -17,7 +17,7 @@ import (
 
 type Backend struct {
 	current currentStore
-	source  SourceValidator
+	source  sourceValidator
 
 	config      RepositoryConfig
 	checkRuns   *Checks

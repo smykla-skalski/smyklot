@@ -404,13 +404,13 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 
 // recordFailure keeps a failed delivery readable after the log line scrolls
 // away.
-func (s *server) recordFailure(delivery webhook.Delivery, cause error) {
+func (s *server) recordFailure(delivery webhook.Delivery, action string, cause error) {
 	s.failures.Record(deliveryFailure{
 		Time:        time.Now(),
 		DeliveryID:  delivery.ID,
 		Repository:  delivery.Source.Repository.FullName,
 		PullRequest: deliveryPullRequest(delivery),
-		Action:      deliveryAction(delivery),
+		Action:      action,
 		Reason:      s.redactor.Error(cause),
 	})
 }

@@ -232,7 +232,7 @@ func (s *server) deliveryObserver() webhook.Observer {
 			if err != nil {
 				result = metrics.ResultFailure
 				if _, again := retryDelivery(err, delivery.Attempt); !again {
-					s.recordFailure(delivery, err)
+					s.recordFailure(delivery, action, err)
 				}
 			}
 			s.metrics.Deliveries.WithLabelValues(action, result).Inc()

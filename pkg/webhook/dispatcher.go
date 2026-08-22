@@ -117,7 +117,7 @@ func (p *Pipeline) work() {
 }
 
 func (p *Pipeline) run(delivery Delivery) {
-	ctx, cancel := context.WithTimeout(p.jobCtx, p.opts.Timeouts.Job)
+	ctx, cancel := context.WithTimeout(context.Background(), p.opts.Timeouts.Job)
 	defer cancel()
 
 	started := p.opts.Now()

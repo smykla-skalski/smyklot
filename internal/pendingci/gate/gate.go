@@ -104,7 +104,7 @@ func New(deps Dependencies) *Gate {
 
 	backend := &Backend{
 		current:     deps.Current,
-		source:      SourceValidator{config: deps.Config},
+		source:      sourceValidator{config: deps.Config},
 		config:      deps.Config,
 		checkRuns:   gate.Checks,
 		store:       deps.Store,
