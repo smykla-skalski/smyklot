@@ -96,6 +96,8 @@ func (c *Client) removeCommentReactions(
 // GetPRReactions retrieves all reactions on a pull request's own body.
 //
 // These are the reactions on the description, not on any of its comments.
+//
+//nolint:dupl // paginate-and-convert is the idiom every list read here follows
 func (c *Client) GetPRReactions(ctx context.Context, owner, repo string, prNumber int) ([]Reaction, error) {
 	op := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, prNumber)
 

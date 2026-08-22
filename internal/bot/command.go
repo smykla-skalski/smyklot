@@ -853,22 +853,11 @@ func executeCleanup(ctx context.Context, client *github.Client, rc *RuntimeConfi
 
 	// Delete all bot's comments (except the triggering one for now)
 	for _, comment := range comments {
-		user, ok := comment["user"].(map[string]interface{})
-		if !ok {
+		if comment.User.Login != botUsername {
 			continue
 		}
 
-		username, ok := user["login"].(string)
-		if !ok || username != botUsername {
-			continue
-		}
-
-		id, ok := comment["id"].(float64)
-		if !ok {
-			continue
-		}
-
-		commentIDInt := int(id)
+		commentIDInt := int(comment.ID)
 
 		// Skip the triggering comment for now (delete it last)
 		if commentIDInt == commentID {

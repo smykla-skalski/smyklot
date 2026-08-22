@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
+
+	gogithub "github.com/google/go-github/v90/github"
 )
 
 // IssueCommentState is the live mutable state used to reject stale webhook
@@ -17,6 +20,55 @@ type IssueCommentState struct {
 		Login string `json:"login"`
 		Type  string `json:"type"`
 	} `json:"user"`
+}
+
+// GetPRComments retrieves every comment on a pull request, oldest first.
+//
+// Every page of them: GitHub answers thirty, and the comment a caller is
+// looking for is usually one of the newest.
+//
+//nolint:dupl // paginate-and-convert is the idiom every list read here follows
+func (c *Client) GetPRComments(
+	ctx context.Context,
+	owner, repo string,
+	prNumber int,
+) ([]IssueCommentState, error) {
+	op := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
+
+	raw, err := paginate(ctx, op,
+		func(ctx context.Context, opts *gogithub.ListOptions) (
+			[]*gogithub.IssueComment,
+			*gogithub.Response,
+			error,
+		) {
+			return c.gh.Issues.ListComments(
+				ctx, owner, repo, prNumber,
+				&gogithub.IssueListCommentsOptions{ListOptions: *opts},
+			)
+		})
+	if err != nil {
+		return nil, err
+	}
+
+	return convertIssueComments(raw), nil
+}
+
+func convertIssueComments(raw []*gogithub.IssueComment) []IssueCommentState {
+	comments := make([]IssueCommentState, 0, len(raw))
+
+	for _, item := range raw {
+		comment := IssueCommentState{ID: item.GetID(), Body: item.GetBody()}
+		if item.UpdatedAt != nil {
+			comment.UpdatedAt = item.GetUpdatedAt().Format(time.RFC3339)
+		}
+
+		comment.User.Login = item.GetUser().GetLogin()
+		comment.User.Type = item.GetUser().GetType()
+
+		comments = append(comments, comment)
+	}
+
+	return comments
 }
 
 // GetIssueComment reads one comment directly rather than trusting the mutable

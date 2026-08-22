@@ -608,19 +608,6 @@ func (c *Client) GetPRInfo(ctx context.Context, owner, repo string, prNumber int
 	return info, nil
 }
 
-// GetPRComments retrieves all comments on a pull request
-//
-// Returns a slice of comment data including ID, user, and body.
-func (c *Client) GetPRComments(
-	ctx context.Context,
-	owner, repo string,
-	prNumber int,
-) ([]map[string]interface{}, error) {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
-
-	return doJSON[[]map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-}
-
 // DeleteComment deletes a comment from a pull request
 func (c *Client) DeleteComment(ctx context.Context, owner, repo string, commentID int) error {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d", owner, repo, commentID)

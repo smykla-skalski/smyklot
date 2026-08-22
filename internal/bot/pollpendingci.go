@@ -316,12 +316,7 @@ func settlePendingCIReaction(
 
 	// Check each comment for bot's "eyes" reaction
 	for _, comment := range comments {
-		commentIDFloat, ok := comment["id"].(float64)
-		if !ok {
-			continue
-		}
-
-		commentID := int(commentIDFloat)
+		commentID := int(comment.ID)
 
 		// Get reactions for this comment
 		reactions, err := client.GetCommentReactions(ctx, owner, repo, commentID)
