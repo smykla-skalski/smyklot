@@ -27,7 +27,7 @@
     "@storybook/addon-svelte-csf": "5.1.2",
     "@storybook/sveltekit": "10.5.9",
     "@sveltejs/adapter-static": "4.0.0-next.4",
-    "@sveltejs/kit": "3.0.0-next.23",
+    "@sveltejs/kit": "3.0.0-next.24",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
     "@testing-library/svelte": "5.4.2",
     "@tsconfig/svelte": "5.0.8",
