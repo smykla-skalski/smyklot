@@ -17,6 +17,12 @@ import {
 } from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import {
+  adoptSyncConfigSettings,
+  buildSyncConfigEditorEnvelope,
+  stageSyncConfigControl,
+  syncConfigDraftEnvelope,
+} from '../src/lib/sync-config-settings';
+import {
   adoptTargetDefaults,
   stageTargetDefaultsControl,
   targetDefaultsDraftDocument,
@@ -27,7 +33,7 @@ import type {
   InstallationSettingsBatchResponse,
   SyncOverride,
 } from '../src/lib/types';
-import { REPOSITORY_DETAIL, TARGET } from '../stories/support/fixtures';
+import { emptySyncConfig, REPOSITORY_DETAIL, TARGET } from '../stories/support/fixtures';
 
 function registry(): SettingsDraftRegistry {
   const drafts = new SettingsDraftRegistry({ storage: null, now: () => 1, writerId: 'test' });
@@ -45,6 +51,7 @@ describe('installation settings save coordinator [Unit]', () => {
     const targetId = TARGET.id;
     const repositoryId = REPOSITORY_DETAIL.repository.id;
     const override = emptyOverride();
+    const syncConfig = emptySyncConfig('settings');
 
     adoptTargetDefaults(drafts, TARGET);
     const targetDocument = {
@@ -81,6 +88,15 @@ describe('installation settings save coordinator [Unit]', () => {
       `repositories.${repositoryId}.sync.files.enabled`,
     );
 
+    adoptSyncConfigSettings(drafts, targetId, syncConfig);
+    stageSyncConfigControl(
+      drafts,
+      targetId,
+      syncConfig,
+      { ...buildSyncConfigEditorEnvelope(syncConfig), enabled: true },
+      'sync.settings.enabled',
+    );
+
     const save = vi.fn(
       async (
         sentTargetId: string,
@@ -89,19 +105,38 @@ describe('installation settings save coordinator [Unit]', () => {
         expect(sentTargetId).toBe(targetId);
         expect(input.target?.expected_revision).toBe(TARGET.revision);
         expect(input.repositories).toHaveLength(1);
+        expect(input.sync_configs).toHaveLength(1);
         expect(input.sync_overrides).toHaveLength(1);
         const { expected_revision: _targetRevision, ...savedTarget } = input.target!;
         const { expected_revision: _repositoryRevision, ...savedRepository } =
           input.repositories![0]!;
         const { expected_revision: _overrideRevision, ...savedOverride } =
           input.sync_overrides![0]!;
+        const { expected_revision: _syncRevision, ...savedSyncConfig } = input.sync_configs![0]!;
         void _targetRevision;
         void _repositoryRevision;
         void _overrideRevision;
+        void _syncRevision;
         return {
           checkpoint_id: '91',
           target: { target_id: targetId, ...savedTarget, revision: TARGET.revision + 1 },
           repositories: [{ ...savedRepository, revision: REPOSITORY_DETAIL.revision + 1 }],
+          sync_configs: [
+            {
+              target_id: targetId,
+              kind: savedSyncConfig.kind,
+              enabled: savedSyncConfig.enabled,
+              document:
+                savedSyncConfig.kind === 'labels'
+                  ? {
+                      labels: savedSyncConfig.labels,
+                      allow_removal: savedSyncConfig.allow_removal,
+                      excludes: savedSyncConfig.excludes,
+                    }
+                  : savedSyncConfig.document,
+              revision: syncConfig.revision + 1,
+            },
+          ],
           sync_overrides: [
             { target_id: targetId, ...savedOverride, revision: override.revision + 1 },
           ],
@@ -194,5 +229,53 @@ describe('installation settings save coordinator [Unit]', () => {
     expect(
       targetDefaultsDraftDocument(drafts, TARGET).pending_ci_quiet_period_seconds_override,
     ).toBe(75);
+  });
+
+  it('rebases one dirty Sync control without replacing concurrent document changes', async () => {
+    const drafts = registry();
+    const targetId = TARGET.id;
+    const config = {
+      ...emptySyncConfig('settings'),
+      enabled: false,
+      revision: 3,
+      document: { merge_method: 'squash' },
+    };
+    adoptSyncConfigSettings(drafts, targetId, config);
+    stageSyncConfigControl(
+      drafts,
+      targetId,
+      config,
+      { ...buildSyncConfigEditorEnvelope(config), enabled: true },
+      'sync.settings.enabled',
+    );
+    const latest = {
+      target_id: targetId,
+      kind: 'settings' as const,
+      enabled: false,
+      document: { merge_method: 'merge', future_setting: true },
+      revision: 4,
+    };
+    const save = vi.fn(async () => {
+      throw new PanelApiError(409, 'settings_conflict', 'Settings changed elsewhere.', undefined, [
+        {
+          resource: 'sync_config',
+          target_id: targetId,
+          kind: 'settings',
+          expected_revision: config.revision,
+          actual_revision: latest.revision,
+          latest,
+        },
+      ]);
+    });
+
+    await expect(saveInstallationDrafts(drafts, targetId, save)).resolves.toEqual({
+      saved: false,
+    });
+    expect(rebaseInstallationConflicts(drafts, targetId)).toBe(1);
+    const rebased = syncConfigDraftEnvelope(drafts, targetId, config);
+    expect(rebased).toMatchObject({ kind: 'settings', enabled: true });
+    if (rebased.kind === 'labels') return;
+    expect(rebased.document_text).toContain('"merge_method": "merge"');
+    expect(rebased.document_text).toContain('"future_setting": true');
   });
 });

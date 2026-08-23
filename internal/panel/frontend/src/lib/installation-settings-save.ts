@@ -21,6 +21,14 @@ import type {
 } from './settings-drafts.svelte';
 import type { SettingsJson, SettingsResource } from './settings-draft-storage';
 import {
+  parseSyncConfigEditorEnvelope,
+  syncConfigBatchInput,
+  syncConfigCommittedResource,
+  syncConfigResource,
+  syncConfigSavedControls,
+  type SyncConfigEditorEnvelope,
+} from './sync-config-settings';
+import {
   parseTargetDefaultsDocument,
   targetDefaultsCommittedState,
   targetDefaultsResource,
@@ -30,6 +38,7 @@ import type {
   InstallationSettingsBatchInput,
   InstallationSettingsBatchResponse,
   InstallationSettingsConflict,
+  SyncKind,
 } from './types';
 
 export type SaveInstallationSettings = (
@@ -134,7 +143,38 @@ function mergeDirtyControls(
   if (resource.type === 'sync-override' && resource.kind === 'files') {
     return mergeSyncOverride(resource.repositoryId, latestBase, draftValue, dirtyControlIds);
   }
+  if (resource.type === 'sync-config') {
+    return mergeSyncConfig(resource.kind, latestBase, draftValue, dirtyControlIds);
+  }
   return null;
+}
+
+function mergeSyncConfig(
+  kind: SyncKind,
+  latestBase: SettingsJson,
+  draftValue: SettingsJson,
+  ids: readonly string[],
+): SettingsJson | null {
+  const latest = parseSyncConfigEditorEnvelope(latestBase, kind);
+  const draft = parseSyncConfigEditorEnvelope(draftValue, kind);
+  if (latest === null || draft === null || latest.kind !== draft.kind) return null;
+
+  for (const id of ids) {
+    if (id === `sync.${kind}.enabled`) latest.enabled = draft.enabled;
+    else if (latest.kind === 'labels' && draft.kind === 'labels') {
+      if (id === 'sync.labels.labels') latest.labels = draft.labels.map((label) => ({ ...label }));
+      else if (id === 'sync.labels.allow_removal') latest.allow_removal = draft.allow_removal;
+      else if (id === 'sync.labels.excludes') latest.excludes = [...draft.excludes];
+      else return null;
+    } else if (
+      latest.kind !== 'labels' &&
+      draft.kind !== 'labels' &&
+      id === `sync.${kind}.document`
+    ) {
+      latest.document_text = draft.document_text;
+    } else return null;
+  }
+  return latest as SyncConfigEditorEnvelope;
 }
 
 function mergeTargetDefaults(
@@ -268,6 +308,7 @@ function serializeInstallationAttempt(
 ): SerializedBatch {
   const input: InstallationSettingsBatchInput = {};
   const repositories: NonNullable<InstallationSettingsBatchInput['repositories']> = [];
+  const syncConfigs: NonNullable<InstallationSettingsBatchInput['sync_configs']> = [];
   const syncOverrides: NonNullable<InstallationSettingsBatchInput['sync_overrides']> = [];
 
   for (const entry of [...attempt.entries].sort((left, right) =>
@@ -309,12 +350,18 @@ function serializeInstallationAttempt(
       continue;
     }
     if (resource.type === 'sync-config') {
-      return { ok: false, problem: 'This Sync configuration draft cannot be saved yet.' };
+      const envelope = parseSyncConfigEditorEnvelope(entry.value, resource.kind);
+      if (envelope === null) return { ok: false, problem: 'Sync configuration is not valid.' };
+      const serialized = syncConfigBatchInput(entry.expectedRevision, envelope);
+      if (!serialized.ok) return serialized;
+      syncConfigs.push(serialized.input);
+      continue;
     }
     return { ok: false, problem: 'Runtime settings need the Root settings save.' };
   }
 
   if (repositories.length > 0) input.repositories = repositories;
+  if (syncConfigs.length > 0) input.sync_configs = syncConfigs;
   if (syncOverrides.length > 0) input.sync_overrides = syncOverrides;
   return { ok: true, input };
 }
@@ -327,6 +374,9 @@ function committedResources(
   if (response.target !== undefined) committed.push(targetDefaultsCommittedState(response.target));
   for (const state of response.repositories ?? []) {
     committed.push(repositorySettingsCommittedResource(targetId, state));
+  }
+  for (const state of response.sync_configs ?? []) {
+    committed.push(syncConfigCommittedResource(state));
   }
   for (const state of response.sync_overrides ?? []) {
     committed.push(syncOverrideCommittedResource(state));
@@ -375,7 +425,15 @@ function settingsConflict(conflict: InstallationSettingsConflict): SettingsSaveC
         },
       ];
     case 'sync_config':
-      return [];
+      return [
+        {
+          resource: syncConfigResource(conflict.target_id, conflict.kind),
+          actualRevision: conflict.actual_revision,
+          ...(conflict.latest === undefined
+            ? {}
+            : { latestBase: syncConfigCommittedResource(conflict.latest).value }),
+        },
+      ];
   }
 }
 
@@ -396,6 +454,10 @@ function savedProjection(
   if (resource.type === 'sync-override' && resource.kind === 'files') {
     const envelope = parseSyncOverrideEditorEnvelope(latestBase);
     return envelope === null ? null : syncOverrideSavedControls(resource.repositoryId, envelope);
+  }
+  if (resource.type === 'sync-config') {
+    const envelope = parseSyncConfigEditorEnvelope(latestBase, resource.kind);
+    return envelope === null ? null : syncConfigSavedControls(envelope);
   }
   return null;
 }
