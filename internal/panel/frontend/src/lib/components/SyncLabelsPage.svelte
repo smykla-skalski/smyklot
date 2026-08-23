@@ -361,7 +361,15 @@
   <div class="card label-card">
     <div class="card-head">
       <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
-      <Button disabled={frozen} onclick={addLabel}>
+      <Button
+        disabled={frozen}
+        onclick={(event) => {
+          /* The document listener closes editors pressed from outside a row.
+             This press creates one, so it must not close its own new editor. */
+          event.stopPropagation();
+          addLabel();
+        }}
+      >
         {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
         Add a label
       </Button>
@@ -593,7 +601,10 @@
        gap from BOTH sides, so a 12px gap left neighbouring fields touching
        edge to edge. 24 keeps an 8px seam between two open boxes. */
     gap: var(--space-3) var(--space-6);
-    grid-template-columns: auto 11rem minmax(0, 1fr) auto;
+    /* Names get more room as the card grows, without taking the description's
+       whole measure. A valid name can still be 50 wide characters, so both
+       text tracks wrap below instead of ever painting across a neighbour. */
+    grid-template-columns: auto clamp(11rem, 30%, 22rem) minmax(0, 1fr) auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 40px;
     padding: 0.5rem var(--space-2);
@@ -623,6 +634,8 @@
     font-size: var(--font-size-meta);
     font-weight: 600;
     line-height: 20px;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
   }
 
   .label-desc {
@@ -630,6 +643,7 @@
     font-size: var(--font-size-meta);
     line-height: 20px;
     min-inline-size: 0;
+    overflow-wrap: anywhere;
   }
 
   /* Each SEGMENT is its own editor. The hover says so per segment - the
@@ -892,6 +906,7 @@
     .label-row .label-name,
     .label-row .label-desc {
       justify-self: start;
+      max-inline-size: 100%;
     }
 
     .label-row .label-tail {
