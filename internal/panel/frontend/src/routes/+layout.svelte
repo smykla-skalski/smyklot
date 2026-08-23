@@ -19,6 +19,13 @@
     staysInSyncDraftInstallation,
     SyncDraftScope,
   } from '#lib/sync-drafts.svelte.js';
+  import {
+    setSettingsDraftRegistry,
+    SettingsDraftRegistry,
+    type SettingsLocation,
+    type SettingsScope,
+  } from '#lib/settings-drafts.svelte.js';
+  import { SettingsDraftAttentionController } from '#lib/settings-draft-attention.js';
   import { SYNC_KINDS, type PanelTarget } from '#lib/types.js';
   import {
     ACCESS_SECTIONS,
@@ -43,6 +50,9 @@
   import Rail from '#lib/components/Rail.svelte';
   import Sidebar, { type SidebarPage } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
+  import SettingsDraftAttention, {
+    type SettingsDraftAttentionKind,
+  } from '#lib/components/SettingsDraftAttention.svelte';
   import SyncSaveComposer from '#lib/components/SyncSaveComposer.svelte';
   import NightPage from '#lib/components/NightPage.svelte';
   import PanelBoot from '#lib/components/PanelBoot.svelte';
@@ -64,6 +74,65 @@
   setPanelSession(session);
   const syncDraftScope = new SyncDraftScope();
   setSyncDraftScope(syncDraftScope);
+  const settingsDraftRegistry = new SettingsDraftRegistry();
+  setSettingsDraftRegistry(settingsDraftRegistry);
+  const ROOT_SETTINGS_SCOPE = { type: 'root' } as const satisfies SettingsScope;
+
+  let attentionNotice = $state<'restored' | 'inactive' | null>(null);
+  let dismissedStorageProblem = $state<string | null>(null);
+  const viewerAccountId = $derived(session.viewer?.account.id ?? null);
+  const settingsDraftsReady = $derived(
+    viewerAccountId === null || settingsDraftRegistry.accountId === viewerAccountId,
+  );
+  const dirtyTargetIds = $derived.by(() => new Set(settingsDraftRegistry.dirtyTargetIds));
+  const rootDirty = $derived(settingsDraftRegistry.hasDirty(ROOT_SETTINGS_SCOPE));
+  const selectedSettingsScope = $derived.by((): SettingsScope | null => {
+    const targetId = session.selectedTarget?.id;
+    return targetId === undefined ? null : { type: 'installation', targetId };
+  });
+  const hasSettingsAttention = $derived(settingsDraftRegistry.timestamps().attentionAt !== null);
+  const shellDocumentTitle = $derived(
+    hasSettingsAttention ? `Unsaved · ${session.documentTitle}` : session.documentTitle,
+  );
+  const visibleStorageProblem = $derived(
+    settingsDraftRegistry.storageProblem !== null &&
+      settingsDraftRegistry.storageProblem !== dismissedStorageProblem
+      ? settingsDraftRegistry.storageProblem
+      : null,
+  );
+  const shownAttentionKind = $derived.by((): SettingsDraftAttentionKind | null => {
+    if (visibleStorageProblem !== null) return 'storage-problem';
+    return settingsDraftRegistry.dirty ? attentionNotice : null;
+  });
+
+  function selectedSettingsDirtyAt(location: SettingsLocation): boolean {
+    return (
+      selectedSettingsScope !== null &&
+      settingsDraftRegistry.dirtyAt(selectedSettingsScope, location)
+    );
+  }
+
+  function markEveryDirtySettingsScope(): boolean {
+    let marked = false;
+    for (const targetId of settingsDraftRegistry.dirtyTargetIds) {
+      marked = settingsDraftRegistry.markAttention({ type: 'installation', targetId }) || marked;
+    }
+    return settingsDraftRegistry.markAttention(ROOT_SETTINGS_SCOPE) || marked;
+  }
+
+  function dismissSettingsAttention(): void {
+    if (shownAttentionKind === 'storage-problem') {
+      dismissedStorageProblem = settingsDraftRegistry.storageProblem;
+      return;
+    }
+    attentionNotice = null;
+  }
+
+  const settingsDraftAttentionController = new SettingsDraftAttentionController(document, () => {
+    untrack(() => {
+      if (markEveryDirtySettingsScope()) attentionNotice = 'inactive';
+    });
+  });
   const viewerQuery = createQuery(
     () => ({
       queryKey: ['viewer'],
@@ -117,6 +186,44 @@
       targetsError: targetsQuery.error,
     };
     untrack(() => session.syncQueries(state));
+  });
+
+  $effect(() => {
+    const accountId = viewerAccountId;
+    untrack(() => {
+      if (settingsDraftRegistry.accountId === accountId) return;
+      attentionNotice = null;
+      dismissedStorageProblem = null;
+      const restored = settingsDraftRegistry.hydrate(accountId);
+      if (restored.restoredResources > 0) {
+        markEveryDirtySettingsScope();
+        attentionNotice = 'restored';
+      }
+    });
+  });
+
+  $effect(() => {
+    const problem = settingsDraftRegistry.storageProblem;
+    if (
+      dismissedStorageProblem !== null &&
+      (problem === null || problem !== dismissedStorageProblem)
+    ) {
+      dismissedStorageProblem = null;
+    }
+  });
+
+  $effect(() => {
+    const timestamps = settingsDraftRegistry.timestamps();
+    settingsDraftAttentionController.update({
+      dirty: settingsDraftRegistry.dirty,
+      lastChangedAt: timestamps.lastChangedAt,
+      attentionAt: timestamps.attentionAt,
+    });
+  });
+
+  $effect(() => () => {
+    settingsDraftAttentionController.dispose();
+    settingsDraftRegistry.dispose();
   });
 
   // --- Target resolution: watches the route's account param ---
@@ -333,6 +440,10 @@
         session.currentSyncSection === section,
       count: section === 'plan' ? planCount : undefined,
       signal: section === 'plan' && planCount !== undefined,
+      dirty:
+        section !== 'overview' &&
+        section !== 'plan' &&
+        selectedSettingsDirtyAt({ section: 'sync', path: [section] }),
     })),
   );
 
@@ -376,6 +487,12 @@
                 ? session.historyHref('audit')
                 : session.viewHref(view),
         active: !session.isInbox && panelViewSection(session.currentView) === section,
+        dirty:
+          section === 'defaults'
+            ? selectedSettingsDirtyAt({ section: 'defaults' })
+            : section === 'repositories'
+              ? selectedSettingsDirtyAt({ section: 'repositories' })
+              : undefined,
         kids:
           section === 'sync'
             ? syncKids
@@ -450,6 +567,9 @@
       label: routeSegmentLabel(section),
       href: session.rootRuntimeHref(section),
       active: !session.isInbox && session.currentRootRoute.rootView === `runtime-${section}`,
+      dirty:
+        section === 'settings' &&
+        settingsDraftRegistry.dirtyAt(ROOT_SETTINGS_SCOPE, { section: 'runtime' }),
     })),
   );
 
@@ -487,6 +607,7 @@
       icon: rootIcon[section],
       href: session.rootHrefFor(section),
       active: !session.isInbox && session.rootValue === section,
+      dirty: section === 'installations' ? dirtyTargetIds.size > 0 : undefined,
       kids:
         section === 'queue'
           ? queueKids
@@ -511,7 +632,7 @@
 
 <svelte:head>
   {#if !session.signedOut}
-    <title>{session.documentTitle}</title>
+    <title>{shellDocumentTitle}</title>
   {/if}
 </svelte:head>
 
@@ -562,6 +683,8 @@
         inboxActive={session.isInbox}
         onSelectInbox={() => session.openInbox()}
         unreadCount={notificationUnread}
+        {dirtyTargetIds}
+        {rootDirty}
         theme={session.theme}
         onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
         onSignOut={signOut}
@@ -632,6 +755,14 @@
 
       <div class="workspace" class:table-scroll-view={session.tableScrollView}>
         <div id="panel-content" class="workspace-content" tabindex="-1">
+          {#if shownAttentionKind !== null}
+            <SettingsDraftAttention
+              kind={shownAttentionKind}
+              count={settingsDraftRegistry.dirtyControlCount}
+              problem={visibleStorageProblem}
+              onDismiss={dismissSettingsAttention}
+            />
+          {/if}
           {#if session.failure !== null}
             <Plate label="Problem" tone="alarm">
               <p>{session.failure.message}</p>
@@ -650,6 +781,8 @@
               </div>
               <p class="visually-hidden" role="status">Loading panel</p>
             </Plate>
+          {:else if session.viewer !== null && !settingsDraftsReady}
+            <p class="visually-hidden" role="status">Restoring unsaved settings</p>
           {:else if session.viewer !== null}
             {@render children()}
           {/if}
