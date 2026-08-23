@@ -61,6 +61,9 @@ export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 /** The tables the Root console's access page is split into. */
 export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
 
+/** The three addressable pages nested under Root Runtime. */
+export const ROOT_RUNTIME_SECTIONS = ['service', 'database', 'settings'] as const;
+
 /**
  * The panes of one repository's own page.
  *
@@ -129,6 +132,7 @@ export type RootInstallationView = (typeof ROOT_INSTALLATION_VIEWS)[number];
 export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
+export type RootRuntimeSection = (typeof ROOT_RUNTIME_SECTIONS)[number];
 export type RootSection = 'overview' | 'queue' | 'installations' | 'access' | 'history' | 'runtime';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
@@ -136,7 +140,14 @@ export type RootRoute =
       rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations';
       dialog?: RouteDialog;
     }
-  | { rootView: 'history-audit' | 'history-failures' | 'runtime' }
+  | {
+      rootView:
+        | 'history-audit'
+        | 'history-failures'
+        | 'runtime-settings'
+        | 'runtime-service'
+        | 'runtime-database';
+    }
   /**
    * Work the service has accepted and will do later, on a schedule it chooses.
    *
@@ -387,12 +398,19 @@ export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
   if (route.rootView === 'installation') return 'installations';
   if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
+  if (
+    route.rootView === 'runtime-settings' ||
+    route.rootView === 'runtime-service' ||
+    route.rootView === 'runtime-database'
+  )
+    return 'runtime';
   return route.rootView;
 }
 
 export function rootSectionRoute(section: RootSection): RootRoute {
   if (section === 'access') return { rootView: 'access-users' };
   if (section === 'history') return { rootView: 'history-audit' };
+  if (section === 'runtime') return { rootView: 'runtime-settings' };
   return { rootView: section };
 }
 
@@ -467,7 +485,13 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
   if (parts.length === 2 && (parts[1] === 'runtime' || parts[1] === 'settings')) {
-    return { rootView: 'runtime' };
+    return { rootView: 'runtime-settings' };
+  }
+  if (parts.length === 3 && parts[1] === 'runtime') {
+    if (parts[2] === 'settings') return { rootView: 'runtime-settings' };
+    if (parts[2] === 'service') return { rootView: 'runtime-service' };
+    if (parts[2] === 'database') return { rootView: 'runtime-database' };
+    return null;
   }
   if (parts.length >= 3 && parts[1] === 'access') {
     /* The Root console's tables take the same dialog grammar as an

@@ -7,7 +7,10 @@ import {
   panelViewSection,
   parseInvitationToken,
   parsePanelRoute,
+  ROOT_RUNTIME_SECTIONS,
   resolvePanelRoute,
+  rootSection,
+  rootSectionRoute,
   routeSegmentLabel,
   type PanelRoute,
 } from '../src/lib/routes';
@@ -115,7 +118,16 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/history/failures')).toEqual({
       rootView: 'history-failures',
     });
-    expect(parsePanelRoute('', '/root/runtime')).toEqual({ rootView: 'runtime' });
+    expect(parsePanelRoute('', '/root/runtime')).toEqual({ rootView: 'runtime-settings' });
+    expect(parsePanelRoute('', '/root/runtime/settings')).toEqual({
+      rootView: 'runtime-settings',
+    });
+    expect(parsePanelRoute('', '/root/runtime/service')).toEqual({
+      rootView: 'runtime-service',
+    });
+    expect(parsePanelRoute('', '/root/runtime/database')).toEqual({
+      rootView: 'runtime-database',
+    });
     expect(parsePanelRoute('', '/root/installations/smykla-skalski/repositories')).toEqual({
       rootView: 'installation',
       account: 'smykla-skalski',
@@ -133,7 +145,7 @@ describe('panel routes', () => {
       account: 'acme',
       view: 'defaults',
     });
-    expect(parsePanelRoute('', '/root/settings')).toEqual({ rootView: 'runtime' });
+    expect(parsePanelRoute('', '/root/settings')).toEqual({ rootView: 'runtime-settings' });
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -151,6 +163,8 @@ describe('panel routes', () => {
     expect(parsePanelRoute('/panel', '/panel/too/many/parts')).toBeNull();
     expect(parsePanelRoute('', '/root/access/owners')).toBeNull();
     expect(parsePanelRoute('', '/root/history/unknown')).toBeNull();
+    expect(parsePanelRoute('', '/root/runtime/unknown')).toBeNull();
+    expect(parsePanelRoute('', '/root/settings/database')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/smykla-skalski/unknown')).toBeNull();
   });
 
@@ -201,7 +215,9 @@ describe('panel document titles', () => {
     [{ rootView: 'access-invitations' }, 'Invitations | Access | Root Console | SMYKLOT'],
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
     [{ rootView: 'history-failures' }, 'Failures | History | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime' }, 'Runtime | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-service' }, 'Service | Runtime | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-database' }, 'Database | Runtime | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-settings' }, 'Settings | Runtime | Root Console | SMYKLOT'],
     [
       { rootView: 'installation', account: 'acme', view: 'repositories' },
       'Repositories | Root Console | SMYKLOT',
@@ -223,6 +239,14 @@ describe('panel document titles', () => {
     expect(panelViewSection('users')).toBe('access');
     expect(panelViewSection('history')).toBe('history');
     expect(routeSegmentLabel('root-console')).toBe('Root Console');
+  });
+
+  it('orders and groups the Runtime leaves while opening the section on settings', () => {
+    expect(ROOT_RUNTIME_SECTIONS).toEqual(['service', 'database', 'settings']);
+    expect(rootSection({ rootView: 'runtime-service' })).toBe('runtime');
+    expect(rootSection({ rootView: 'runtime-database' })).toBe('runtime');
+    expect(rootSection({ rootView: 'runtime-settings' })).toBe('runtime');
+    expect(rootSectionRoute('runtime')).toEqual({ rootView: 'runtime-settings' });
   });
 });
 

@@ -33,7 +33,7 @@ const IDLE_MS = 2000;
 
 /** `{account}` is whichever workspace the mock seeded, read rather than named. */
 const ADDRESSES = [
-  '/i/{account}/settings',
+  '/i/{account}/defaults',
   '/i/{account}/repositories',
   '/i/{account}/access/users',
   '/i/{account}/history/audit',
@@ -42,7 +42,9 @@ const ADDRESSES = [
   '/root/installations',
   '/root/access/users',
   '/root/history/audit',
-  '/root/settings',
+  '/root/runtime/service',
+  '/root/runtime/database',
+  '/root/runtime/settings',
 ] as const;
 
 interface Measurement {
@@ -120,7 +122,7 @@ async function walk(): Promise<Measurement> {
     const mounted = page.waitForRequest((request) => request.url().includes('/api/'), {
       timeout: 30_000,
     });
-    await page.goto(`${panel.origin}/i/${panel.account}/settings`, {
+    await page.goto(`${panel.origin}/i/${panel.account}/defaults`, {
       waitUntil: 'domcontentloaded',
     });
     await mounted;
@@ -131,7 +133,7 @@ async function walk(): Promise<Measurement> {
       `/i/${panel.account}/access/users`,
       '/inbox',
       '/root',
-      '/root/settings',
+      '/root/runtime/settings',
     ]) {
       const link = page.locator(`a[href$="${path}"]`).first();
       if ((await link.count()) === 0) throw new Error(`nothing in the panel links to ${path}`);

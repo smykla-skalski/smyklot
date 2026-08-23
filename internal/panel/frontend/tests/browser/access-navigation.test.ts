@@ -45,7 +45,7 @@ beforeAll(async () => {
   });
   const plainPointer = await inspectPointerStyles(
     page,
-    sidebarLink(page, 'Settings', 'tree-row'),
+    sidebarLink(page, 'Defaults', 'tree-row'),
     false,
   );
   const selectedPointer = await inspectPointerStyles(
@@ -91,7 +91,7 @@ beforeAll(async () => {
 
   const rootInstallation = await panel.browser.newPage({ viewport: VIEWPORT });
   try {
-    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/settings`, {
+    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/defaults`, {
       ready: '#root-page-heading',
     });
     await sidebarLink(rootInstallation, 'Audit', 'tree-kid').click();
@@ -165,7 +165,7 @@ async function inspectPointerStyles(
   selected: boolean,
 ): Promise<{ hover: boolean; press: boolean }> {
   const box = await link.boundingBox();
-  if (box === null) throw new Error('Settings has no sidebar box');
+  if (box === null) throw new Error('Sidebar link has no box');
   await target.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await target.waitForTimeout(100);
   const hover = await pointerStyleVisible(link, false, selected);

@@ -23,12 +23,14 @@
   import {
     ACCESS_SECTIONS,
     HISTORY_SECTIONS,
+    ROOT_RUNTIME_SECTIONS,
     SYNC_SECTIONS,
     panelViewSection,
     routeSegmentLabel,
     type PanelSection,
     type PanelView,
     type RootInstallationView,
+    type RootRuntimeSection,
     type RootSection,
     type SyncSection,
   } from '#lib/routes.js';
@@ -442,6 +444,15 @@
     })),
   );
 
+  const rootRuntimeKids = $derived(
+    ROOT_RUNTIME_SECTIONS.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      href: session.rootRuntimeHref(section),
+      active: !session.isInbox && session.currentRootRoute.rootView === `runtime-${section}`,
+    })),
+  );
+
   const rootInstallationKids = $derived.by(() => {
     const route = session.currentRootRoute;
     if (route.rootView !== 'installation') return undefined;
@@ -483,9 +494,11 @@
             ? rootAccessKids
             : section === 'history'
               ? rootHistoryKids
-              : section === 'installations'
-                ? rootInstallationKids
-                : undefined,
+              : section === 'runtime'
+                ? rootRuntimeKids
+                : section === 'installations'
+                  ? rootInstallationKids
+                  : undefined,
     })),
   );
 
@@ -596,6 +609,8 @@
               session.selectRootAccessSection(kid.id as 'users' | 'invitations');
             else if (pageRow.id === 'history')
               session.selectRootHistorySection(kid.id as 'audit' | 'failures');
+            else if (pageRow.id === 'runtime')
+              session.selectRootRuntimeSection(kid.id as RootRuntimeSection);
             else if (pageRow.id === 'installations') {
               const route = session.currentRootRoute;
               if (route.rootView !== 'installation') return;

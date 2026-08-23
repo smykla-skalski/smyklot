@@ -47,7 +47,7 @@ interface Thumb {
 const MENUS = [
   {
     name: "the account menu's theme switch",
-    path: (account: string) => `/i/${account}/settings`,
+    path: (account: string) => `/i/${account}/defaults`,
     trigger: 'button[aria-label^="Account menu for"]',
   },
   {

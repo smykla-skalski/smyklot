@@ -102,7 +102,9 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     id: '/root/queue/request/[id]',
     params: { id: 'req-1' },
   },
-  { route: { rootView: 'runtime' }, id: '/root/runtime', params: {} },
+  { route: { rootView: 'runtime-service' }, id: '/root/runtime/service', params: {} },
+  { route: { rootView: 'runtime-database' }, id: '/root/runtime/database', params: {} },
+  { route: { rootView: 'runtime-settings' }, id: '/root/runtime/settings', params: {} },
   {
     route: { rootView: 'history-audit' },
     id: '/root/history/[[section=historySection]]',
@@ -200,7 +202,9 @@ describe('panel addresses [Unit]', () => {
     expect(
       panelRouteAt('/i/[account]/[view=panelView]', { account: 'acme', view: 'settings' }),
     ).toEqual({ account: 'acme', view: 'defaults', section: undefined, dialog: undefined });
-    expect(panelRouteAt('/root/settings', {})).toEqual({ rootView: 'runtime' });
+    expect(panelRouteAt('/root/runtime', {})).toEqual({ rootView: 'runtime-settings' });
+    expect(panelRouteAt('/root/settings', {})).toEqual({ rootView: 'runtime-settings' });
+    expect(panelRouteAt('/root/runtime/service', {})).toEqual({ rootView: 'runtime-service' });
     expect(panelRouteAt('/root/installations/[account]/settings', { account: 'acme' })).toEqual({
       rootView: 'installation',
       account: 'acme',

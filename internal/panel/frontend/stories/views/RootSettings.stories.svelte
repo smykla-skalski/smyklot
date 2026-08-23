@@ -8,6 +8,7 @@
   const KEY = ['root-settings'] as const;
 
   const base = {
+    section: 'settings' as const,
     rootRole: 'Super Root',
     fetchSettings: async () => RUNTIME,
     updateSettings: async () => RUNTIME,
@@ -20,12 +21,49 @@
   });
 </script>
 
+<!-- Read-only process and deployment facts live on their own Runtime leaf. -->
+<Story name="Service" args={{ section: 'service' }}>
+  {#snippet template(args)}
+    <Seeded seed={[[KEY, RUNTIME]]}><RootSettings {...args} /></Seeded>
+  {/snippet}
+</Story>
+
+<!-- The database has its own address and page; no editable runtime controls follow it. -->
+<Story name="Database" args={{ section: 'database' }}>
+  {#snippet template(args)}
+    <Seeded seed={[[KEY, RUNTIME]]}><RootSettings {...args} /></Seeded>
+  {/snippet}
+</Story>
+
+<!-- The database answering slowly, reported on the dedicated database page. -->
+<Story name="Database degraded" args={{ section: 'database' }}>
+  {#snippet template(args)}
+    <Seeded
+      seed={[
+        [
+          KEY,
+          {
+            ...RUNTIME,
+            service: {
+              ...RUNTIME.service,
+              storage: 'degraded',
+              database: { ...RUNTIME.service.database, state: 'degraded', latency_ms: 210 },
+            },
+          },
+        ],
+      ]}
+    >
+      <RootSettings {...args} />
+    </Seeded>
+  {/snippet}
+</Story>
+
 <!--
   The deployment's own settings, and what each one resolves to. Every value here is
   either the deployment's or an override the console has set on top of it - the
   precedence chain that decides which is written out in CLAUDE.md.
 -->
-<Story name="All from the deployment">
+<Story name="Settings - all from the deployment">
   {#snippet template(args)}
     <Seeded seed={[[KEY, RUNTIME]]}><RootSettings {...args} /></Seeded>
   {/snippet}
@@ -36,7 +74,7 @@
   and the log level is louder than the deployment asked for. The chain marker beside
   each says it is no longer inheriting.
 -->
-<Story name="With overrides">
+<Story name="Settings - with overrides">
   {#snippet template(args)}
     <Seeded
       seed={[
@@ -74,30 +112,7 @@
   {/snippet}
 </Story>
 
-<!-- The database answering slowly, which the service card reports rather than hides. -->
-<Story name="Database degraded">
-  {#snippet template(args)}
-    <Seeded
-      seed={[
-        [
-          KEY,
-          {
-            ...RUNTIME,
-            service: {
-              ...RUNTIME.service,
-              storage: 'degraded',
-              database: { ...RUNTIME.service.database, state: 'degraded', latency_ms: 210 },
-            },
-          },
-        ],
-      ]}
-    >
-      <RootSettings {...args} />
-    </Seeded>
-  {/snippet}
-</Story>
-
-<Story name="Loading">
+<Story name="Settings - loading">
   {#snippet template(args)}
     <Seeded><RootSettings {...args} fetchSettings={() => new Promise(() => {})} /></Seeded>
   {/snippet}

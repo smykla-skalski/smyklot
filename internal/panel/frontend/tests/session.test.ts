@@ -218,6 +218,24 @@ describe('PanelSession [Unit]', () => {
     });
   });
 
+  it('navigates between the three Runtime leaves', () => {
+    const session = createSession();
+    session.viewer = { system_role: 'root' } as PanelViewer;
+    routePage.url = at('/root/runtime/database');
+    routePage.params = {};
+    routePage.route = { id: '/root/runtime/database' };
+
+    expect(session.rootValue).toBe('runtime');
+    expect(session.rootRuntimeHref('service')).toBe(`${basePath}/root/runtime/service`);
+    expect(session.rootRuntimeHref('database')).toBe(`${basePath}/root/runtime/database`);
+    expect(session.rootRuntimeHref('settings')).toBe(`${basePath}/root/runtime/settings`);
+
+    session.selectRootRuntimeSection('service');
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root/runtime/service`, {
+      replace: false,
+    });
+  });
+
   it('keeps each side of the crossing pointing at its own page', () => {
     const session = createSession();
     session.viewer = { system_role: 'root' } as PanelViewer;

@@ -63,7 +63,7 @@ const targets = new Map<string, Target>();
 /** Every addressable page, named as the reader would say it. */
 function routes(account: string): ReadonlyArray<readonly [string, string]> {
   return [
-    ['settings', `/i/${account}/settings`],
+    ['defaults', `/i/${account}/defaults`],
     ['repositories', `/i/${account}/repositories`],
     ['users', `/i/${account}/access/users`],
     ['invitations', `/i/${account}/access/invitations`],
@@ -93,8 +93,10 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     ['Root access invitations', `/root/access/invitations`],
     ['Root audit history', `/root/history/audit`],
     ['Root failure history', `/root/history/failures`],
-    ['Root settings', `/root/settings`],
-    ['a Root installation', `/root/installations/${account}/settings`],
+    ['Root service and deployment', `/root/runtime/service`],
+    ['Root database', `/root/runtime/database`],
+    ['Root runtime settings', `/root/runtime/settings`],
+    ['a Root installation', `/root/installations/${account}/defaults`],
     ['a Root installation’s repositories', `/root/installations/${account}/repositories`],
     ['a Root installation’s users', `/root/installations/${account}/access/users`],
     ['a Root installation’s invitations', `/root/installations/${account}/access/invitations`],
@@ -296,7 +298,7 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
   });
 
   try {
-    await visit(page, `${panel.origin}/i/${panel.account}/settings`);
+    await visit(page, `${panel.origin}/i/${panel.account}/defaults`);
 
     const measurement = await page.evaluate((target: string) => {
       const control = document.querySelector(target);

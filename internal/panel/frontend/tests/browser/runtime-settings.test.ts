@@ -58,7 +58,7 @@ describe('Root merge-after-CI timing', () => {
          that connected - which is exactly how this looked when it first failed,
          a panel with a live stream refusing to refetch anything. */
       await page.routeWebSocket(/\/api\/v1\/events/u, (socket) => socket.close());
-      await page.goto(`${panel.origin}/root/settings`, { waitUntil: 'domcontentloaded' });
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
 
       /* Overriding pins what the deployment resolves to today - 30 seconds. */
       const pinned = runtimeUpdate(page);
@@ -133,6 +133,68 @@ describe('Root merge-after-CI timing', () => {
       });
       await page.getByText('Follows the deployment - 30 seconds').waitFor({ state: 'visible' });
       expect(crashes).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+});
+
+describe('Root Runtime routes', () => {
+  it('orders and isolates service, database, and editable settings leaves', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await visit(page, `${panel.origin}/root/runtime/settings`, { ready: '#root-page-heading' });
+      const runtimeKids = page.locator('.tree-kids[data-label="Runtime"] .tree-kid');
+      expect(await runtimeKids.locator('.row-visual > .t').allTextContents()).toEqual([
+        'Service',
+        'Database',
+        'Settings',
+      ]);
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Runtime settings');
+      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(0);
+      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(0);
+      expect(await page.locator('.service-grid').count()).toBe(0);
+
+      await runtimeKids.filter({ hasText: 'Service' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/service');
+      await page.locator('#root-service').waitFor({ state: 'visible' });
+
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Service and deployment');
+      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(2);
+      expect(await page.getByRole('heading', { name: 'Runtime', exact: true }).count()).toBe(0);
+      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(0);
+      expect(await page.locator('.service-grid').count()).toBe(1);
+
+      await runtimeKids.filter({ hasText: 'Database' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/database');
+      await page.locator('#root-database').waitFor({ state: 'visible' });
+
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Database');
+      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(2);
+      expect(await page.getByRole('heading', { name: 'Runtime', exact: true }).count()).toBe(0);
+      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(0);
+      expect(await page.locator('.service-grid').count()).toBe(1);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('redirects old and bare Runtime addresses directly to settings with their query', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await page.goto(`${panel.origin}/root/runtime?from=section`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
+      expect(new URL(page.url()).search).toBe('?from=section');
+
+      await page.goto(`${panel.origin}/root/settings?from=bookmark`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
+      expect(new URL(page.url()).search).toBe('?from=bookmark');
     } finally {
       await page.close();
     }

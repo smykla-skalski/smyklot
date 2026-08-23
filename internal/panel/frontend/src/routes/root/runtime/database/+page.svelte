@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { getPanelSession } from '#lib/session.svelte.js';
   import RootSettings from '#lib/components/RootSettings.svelte';
+  import { getPanelSession } from '#lib/session.svelte.js';
 
   const session = getPanelSession();
 </script>
@@ -11,6 +11,7 @@
   aria-labelledby="root-page-heading"
 >
   <RootSettings
+    section="database"
     rootRole={session.rootRole}
     fetchSettings={session.api.fetchRootRuntimeSettings}
     updateSettings={session.api.updateRootRuntimeSettings}

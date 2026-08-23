@@ -2742,6 +2742,10 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/history/audit",
 		"/panel/root/history/failures",
 		"/panel/root/settings",
+		"/panel/root/runtime",
+		"/panel/root/runtime/service",
+		"/panel/root/runtime/database",
+		"/panel/root/runtime/settings",
 		// Every dialog the panel gives an address to. A link to one, and a reload
 		// of one, has to answer with the shell rather than the not-found page.
 		"/panel/i/smykla-skalski/repositories/api-gateway",
@@ -2824,6 +2828,8 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/unknown",
 		"/panel/root/access/owners",
 		"/panel/root/history/unknown",
+		"/panel/root/runtime/unknown",
+		"/panel/root/settings/database",
 		"/panel/root/installations/smykla-skalski/unknown",
 		"/panel/@smykla-skalski/repositories",
 		"/panel/invite/too-short",

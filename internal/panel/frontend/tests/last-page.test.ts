@@ -80,7 +80,22 @@ describe('the page each side was left on [Unit]', () => {
     expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
 
     writeLastPage('console', '/root/settings', {}, storage);
-    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime' });
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
+
+    writeLastPage('console', '/root/runtime', {}, storage);
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
+  });
+
+  it('reads back each addressable Runtime leaf', () => {
+    const storage = memoryStorage();
+    writeLastPage('console', '/root/runtime/service', {}, storage);
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-service' });
+
+    writeLastPage('console', '/root/runtime/database', {}, storage);
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-database' });
+
+    writeLastPage('console', '/root/runtime/settings', {}, storage);
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
   });
 
   it('reads a page stored under the other side as nothing remembered', () => {

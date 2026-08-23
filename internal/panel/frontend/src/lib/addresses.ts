@@ -116,8 +116,12 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/queue/recent');
     case 'queue-request':
       return resolve('/root/queue/request/[id]', { id: encodeURIComponent(route.request) });
-    case 'runtime':
-      return resolve('/root/runtime');
+    case 'runtime-settings':
+      return resolve('/root/runtime/settings');
+    case 'runtime-service':
+      return resolve('/root/runtime/service');
+    case 'runtime-database':
+      return resolve('/root/runtime/database');
     case 'history-audit':
     case 'history-failures':
       return resolve('/root/history/[[section=historySection]]', {
@@ -280,7 +284,12 @@ export function panelRouteAt(
       return { rootView: 'queue-request', request: params.id ?? '' };
     case '/root/runtime':
     case '/root/settings':
-      return { rootView: 'runtime' };
+    case '/root/runtime/settings':
+      return { rootView: 'runtime-settings' };
+    case '/root/runtime/service':
+      return { rootView: 'runtime-service' };
+    case '/root/runtime/database':
+      return { rootView: 'runtime-database' };
     case '/root/history/[[section=historySection]]':
       return { rootView: section === 'failures' ? 'history-failures' : 'history-audit' };
 
