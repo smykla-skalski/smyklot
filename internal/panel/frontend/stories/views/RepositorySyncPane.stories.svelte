@@ -58,15 +58,13 @@
     component: RepositorySyncPane,
     argTypes: {
       readOnly: { control: 'boolean' },
-      saving: { control: 'boolean' },
     },
     args: {
       stored: STORED,
+      repositoryId: 'repository-1',
       readOnly: false,
-      saving: false,
       now: NOW,
-      saveProblem: null,
-      onSave: fn(),
+      onChange: fn(),
     },
   });
 </script>
@@ -110,13 +108,9 @@
   }}
 />
 
-<!-- Somebody else saved first. The pane says so and keeps what was typed. -->
-<Story
-  name="Save refused"
-  args={{ saveProblem: 'this repository changed; reload and try again' }}
-/>
+<Story name="Unsaved document" args={{ dirtyDocument: true }} />
 
-<Story name="Saving" args={{ saving: true }} />
+<Story name="Unsaved enablement" args={{ dirtyEnabled: true }} />
 
 <!--
   A document written by a newer build of the service. Nothing here was shown, so

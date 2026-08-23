@@ -1,11 +1,19 @@
 <script lang="ts">
-  import { BOOLEAN_FIELDS } from '../config';
+  import { BOOLEAN_FIELDS, CONFIG_KEYS } from '../config';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
+  import {
+    buildRepositorySettingsDocument,
+    type RepositorySettingsControlId,
+    type RepositorySettingsDocument,
+  } from '../repository-settings';
+  import type {
+    SyncOverrideControlId,
+    SyncOverrideEditorEnvelope,
+  } from '../repository-sync-override-settings';
   import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
     ConfigPatch,
-    PendingCIBranchPatterns,
     PendingCIMode,
     RepositoryDetail,
     RepositoryFileStatus,
@@ -58,18 +66,15 @@
     backHref,
     onBack,
     onSection,
-    onBypass,
-    onSaveConfig,
-    onSavePendingCI,
-    onSavePathIndex,
+    onChange,
     onResetMigration,
     sections = REPOSITORY_SECTIONS,
     syncOverride = undefined,
-    syncSaving = false,
+    syncEnvelope = undefined,
     syncReadProblem = null,
-    syncSaveProblem = null,
     now = 0,
-    onSaveSync = () => {},
+    onChangeSync = () => {},
+    dirtyControls = [],
   }: {
     repository: RepositorySummary;
     detail: RepositoryDetail | undefined;
@@ -80,18 +85,10 @@
     backHref: string;
     onBack: () => void;
     onSection: (section: RepositorySection) => void;
-    /** Rejects when the save was refused - the receipt only shows on success. */
-    onBypass: (bypass: boolean) => void | Promise<void>;
-    /* The editor awaits this to know whether its receipt may show, so the
-       promise is part of the contract rather than something to fire and drop. */
-    onSaveConfig: (patch: ConfigPatch) => Promise<void>;
-    onSavePendingCI: (
-      mode: PendingCIMode | null,
-      patterns: PendingCIBranchPatterns | null,
-      quiet: number | null,
-    ) => Promise<void>;
-    /** How often this repository's file list is read again; null inherits. */
-    onSavePathIndex: (seconds: number | null) => Promise<void>;
+    onChange: (
+      next: RepositorySettingsDocument,
+      controls: readonly RepositorySettingsControlId[],
+    ) => void;
     onResetMigration: () => void;
     /**
      * The panes this surface offers, in the order the switch shows them.
@@ -105,125 +102,154 @@
     sections?: readonly RepositorySection[];
     /** Undefined until the pane is opened and the read comes back. */
     syncOverride?: SyncOverride | undefined;
-    syncSaving?: boolean;
-    /* Two problems, because they belong to different things: a read that did
-       not answer leaves the pane with nothing to draw, and a save that was
-       refused leaves it drawing what the reader typed. */
+    syncEnvelope?: SyncOverrideEditorEnvelope | undefined;
     syncReadProblem?: string | null;
-    syncSaveProblem?: string | null;
     /** The clock the pane's relative times are read against. */
     now?: number;
-    onSaveSync?: (enabled: boolean | null, document: Record<string, unknown>) => void;
+    onChangeSync?: (next: SyncOverrideEditorEnvelope, control: SyncOverrideControlId) => void;
+    dirtyControls?: readonly string[];
   } = $props();
 
-  const disabled = $derived(readOnly || busy);
+  const disabled = $derived(readOnly);
+  const dirtyControlSet = $derived(new Set(dirtyControls));
+  const dirtyConfigKeys = $derived(CONFIG_KEYS.filter((key) => controlDirty(configControl(key))));
   const titleId = 'repository-page-title';
 
-  /* ---------- The saved receipts ---------- */
-
-  let mergeSavedOn = $state(false);
-  let fileSavedOn = $state(false);
-  let mergeTimer: ReturnType<typeof setTimeout> | undefined;
-  let fileTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function whisper(card: 'merge' | 'file'): void {
-    if (card === 'merge') {
-      mergeSavedOn = true;
-      clearTimeout(mergeTimer);
-      mergeTimer = setTimeout(() => (mergeSavedOn = false), 1400);
-    } else {
-      fileSavedOn = true;
-      clearTimeout(fileTimer);
-      fileTimer = setTimeout(() => (fileSavedOn = false), 1400);
-    }
+  function controlId(suffix: string): RepositorySettingsControlId {
+    return `repositories.${repository.id}.${suffix}` as RepositorySettingsControlId;
   }
 
-  /* ---------- Merge after CI, saved change by change ---------- */
-
-  let savingPendingCI = $state(false);
-
-  async function pushPendingCI(change: {
-    mode?: PendingCIMode | null;
-    patterns?: PendingCIBranchPatterns | null;
-    quiet?: number | null;
-  }): Promise<void> {
-    if (detail === undefined || savingPendingCI) return;
-    savingPendingCI = true;
-    try {
-      await onSavePendingCI(
-        change.mode !== undefined ? change.mode : detail.pending_ci_mode_override,
-        change.patterns !== undefined
-          ? change.patterns
-          : detail.pending_ci_branch_patterns_override,
-        change.quiet !== undefined ? change.quiet : detail.pending_ci_quiet_period_seconds_override,
-      );
-      whisper('merge');
-    } catch {
-      /* The page's failure line reports it. */
-    } finally {
-      savingPendingCI = false;
-    }
+  function configControl(key: ConfigKey): RepositorySettingsControlId {
+    return controlId(`config_patch.${key}`);
   }
+
+  function controlDirty(control: string): boolean {
+    return dirtyControlSet.has(control);
+  }
+
+  function stage(
+    next: RepositorySettingsDocument,
+    ...controls: RepositorySettingsControlId[]
+  ): void {
+    onChange(next, controls);
+  }
+
+  function currentDocument(): RepositorySettingsDocument | null {
+    return detail === undefined ? null : buildRepositorySettingsDocument(detail);
+  }
+
+  /* ---------- Merge after CI, staged change by change ---------- */
 
   function overrideMode(): void {
-    if (detail === undefined) return;
-    void pushPendingCI({ mode: detail.pending_ci_mode_inherited });
+    const document = currentDocument();
+    if (detail === undefined || document === null) return;
+    stage(
+      { ...document, pending_ci_mode_override: detail.pending_ci_mode_inherited },
+      controlId('pending_ci_mode_override'),
+    );
   }
 
   function overridePatterns(): void {
-    if (detail === undefined) return;
+    const document = currentDocument();
+    if (detail === undefined || document === null) return;
     /* A JSON clone, not structuredClone: the detail arrives as a $state proxy,
        which structuredClone refuses to clone. */
-    void pushPendingCI({
-      patterns: JSON.parse(
-        JSON.stringify(detail.pending_ci_branch_patterns_inherited),
-      ) as PendingCIBranchPatterns,
-    });
+    const patterns = {
+      include: [...detail.pending_ci_branch_patterns_inherited.include],
+      exclude: [...detail.pending_ci_branch_patterns_inherited.exclude],
+    };
+    stage(
+      { ...document, pending_ci_branch_patterns_override: patterns },
+      controlId('pending_ci_branch_patterns_override.include'),
+      controlId('pending_ci_branch_patterns_override.exclude'),
+    );
   }
 
   function setIncludes(next: string[]): void {
-    if (detail === undefined || detail.pending_ci_branch_patterns_override === null) return;
+    const document = currentDocument();
+    if (
+      detail === undefined ||
+      document === null ||
+      detail.pending_ci_branch_patterns_override === null
+    )
+      return;
     if (next.length === 0) return;
-    void pushPendingCI({
-      patterns: { include: next, exclude: detail.pending_ci_branch_patterns_override.exclude },
-    });
+    stage(
+      {
+        ...document,
+        pending_ci_branch_patterns_override: {
+          include: next,
+          exclude: detail.pending_ci_branch_patterns_override.exclude,
+        },
+      },
+      controlId('pending_ci_branch_patterns_override.include'),
+    );
   }
 
   function setExcludes(next: string[]): void {
-    if (detail === undefined || detail.pending_ci_branch_patterns_override === null) return;
-    void pushPendingCI({
-      patterns: { include: detail.pending_ci_branch_patterns_override.include, exclude: next },
-    });
+    const document = currentDocument();
+    if (
+      detail === undefined ||
+      document === null ||
+      detail.pending_ci_branch_patterns_override === null
+    )
+      return;
+    stage(
+      {
+        ...document,
+        pending_ci_branch_patterns_override: {
+          include: detail.pending_ci_branch_patterns_override.include,
+          exclude: next,
+        },
+      },
+      controlId('pending_ci_branch_patterns_override.exclude'),
+    );
   }
 
-  /* ---------- The quiet-period seconds, saved after a typing rest ---------- */
+  function setPatterns(
+    patterns: RepositorySettingsDocument['pending_ci_branch_patterns_override'],
+  ): void {
+    const document = currentDocument();
+    if (document === null) return;
+    stage(
+      { ...document, pending_ci_branch_patterns_override: patterns },
+      controlId('pending_ci_branch_patterns_override.include'),
+      controlId('pending_ci_branch_patterns_override.exclude'),
+    );
+  }
 
-  const SAVE_REST_MS = 900;
+  function setMode(mode: PendingCIMode | null): void {
+    const document = currentDocument();
+    if (document === null) return;
+    stage({ ...document, pending_ci_mode_override: mode }, controlId('pending_ci_mode_override'));
+  }
+
+  /* ---------- The quiet-period seconds, staged while typing ---------- */
+
   let quietDraft = $state<string | null>(null);
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
   const quietShown = $derived(
     quietDraft ?? detail?.pending_ci_quiet_period_seconds_override?.toString() ?? '',
   );
 
   function typeQuiet(value: string): void {
     quietDraft = value;
-    clearTimeout(quietTimer);
-    quietTimer = setTimeout(saveQuiet, SAVE_REST_MS);
+    const document = currentDocument();
+    if (document === null) return;
+    const trimmed = value.trim();
+    const quiet = trimmed === '' ? null : Number(trimmed);
+    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
+    stage(
+      { ...document, pending_ci_quiet_period_seconds_override: quiet },
+      controlId('pending_ci_quiet_period_seconds_override'),
+    );
   }
 
-  function saveQuiet(): void {
-    clearTimeout(quietTimer);
-    quietTimer = undefined;
-    if (detail === undefined || quietDraft === null) return;
+  function finishQuiet(): void {
+    if (quietDraft === null) return;
     const trimmed = quietDraft.trim();
     const quiet = trimmed === '' ? null : Number(trimmed);
     if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
-    if (quiet === detail.pending_ci_quiet_period_seconds_override) {
-      quietDraft = null;
-      return;
-    }
     quietDraft = null;
-    void pushPendingCI({ quiet });
   }
 
   /* ---------- The path-index interval, an amount beside a unit ---------- */
@@ -235,10 +261,8 @@
     hours: 3_600,
     days: 86_400,
   };
-  let savingPathIndex = $state(false);
   let indexAmountDraft = $state<string | null>(null);
   let indexUnitDraft = $state<DurationUnit | null>(null);
-  let indexTimer: ReturnType<typeof setTimeout> | undefined;
 
   function indexParts(): { amount: number; unit: DurationUnit } {
     const seconds =
@@ -254,47 +278,57 @@
   function typeIndexAmount(value: string): void {
     indexAmountDraft = value;
     indexUnitDraft = indexUnitShown;
-    clearTimeout(indexTimer);
-    indexTimer = setTimeout(saveIndexDraft, SAVE_REST_MS);
+    stageIndexDraft(value, indexUnitShown);
   }
 
   function pickIndexUnit(unit: DurationUnit): void {
     indexAmountDraft = indexAmountShown;
     indexUnitDraft = unit;
-    saveIndexDraft();
+    if (stageIndexDraft(indexAmountShown, unit)) {
+      indexAmountDraft = null;
+      indexUnitDraft = null;
+    }
   }
 
-  function saveIndexDraft(): void {
-    clearTimeout(indexTimer);
-    indexTimer = undefined;
+  function stageIndexDraft(amount: string, unit: DurationUnit): boolean {
+    const document = currentDocument();
+    if (document === null) return false;
+    const seconds = Math.round(Number(amount) * UNIT_SECONDS[unit]);
+    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 604_800) return false;
+    stage(
+      { ...document, path_index_interval_seconds_override: seconds },
+      controlId('path_index_interval_seconds_override'),
+    );
+    return true;
+  }
+
+  function finishIndexDraft(): void {
     if (indexAmountDraft === null || indexUnitDraft === null) return;
-    const seconds = Math.round(Number(indexAmountDraft) * UNIT_SECONDS[indexUnitDraft]);
-    if (!Number.isFinite(seconds) || seconds < 60) return;
-    indexAmountDraft = null;
-    indexUnitDraft = null;
-    void pushPathIndex(seconds);
-  }
-
-  async function pushPathIndex(seconds: number | null): Promise<void> {
-    if (detail === undefined || savingPathIndex) return;
-    savingPathIndex = true;
-    try {
-      await onSavePathIndex(seconds);
-      whisper('merge');
-    } catch {
-      /* The page's failure line reports it. */
-    } finally {
-      savingPathIndex = false;
+    if (stageIndexDraft(indexAmountDraft, indexUnitDraft)) {
+      indexAmountDraft = null;
+      indexUnitDraft = null;
     }
   }
 
-  async function setBypass(bypass: boolean): Promise<void> {
-    try {
-      await onBypass(bypass);
-      whisper('file');
-    } catch {
-      /* The page's failure line reports it. */
-    }
+  function setPathIndex(seconds: number | null): void {
+    const document = currentDocument();
+    if (document === null) return;
+    stage(
+      { ...document, path_index_interval_seconds_override: seconds },
+      controlId('path_index_interval_seconds_override'),
+    );
+  }
+
+  function setBypass(bypass: boolean): void {
+    const document = currentDocument();
+    if (document === null) return;
+    stage({ ...document, ignore_repository_file: bypass }, controlId('ignore_repository_file'));
+  }
+
+  function setConfig(patch: ConfigPatch, key: ConfigKey): void {
+    const document = currentDocument();
+    if (document === null) return;
+    stage({ ...document, config_patch: patch }, configControl(key));
   }
 
   /* The repository-file pane lists the behavior settings this repository
@@ -387,9 +421,6 @@
       <section class="card group-card" aria-labelledby="repository-merge-ci">
         <div class="group-head">
           <h3 class="group-name" id="repository-merge-ci">Merge after CI</h3>
-          <span class="save-whisper" class:is-on={mergeSavedOn} role="status"
-            ><Icon name="check" size={12} /><span class="t">Saved</span></span
-          >
           {#if detail.pending_ci_gate !== undefined}
             <span class="pill {GATE_PILLS[detail.pending_ci_gate.readiness]}"
               ><span class="t">{capitalize(detail.pending_ci_gate.readiness)}</span></span
@@ -397,7 +428,13 @@
           {/if}
         </div>
         <div class="policy-rows">
-          <div class="policy-row">
+          <div
+            class={[
+              'policy-row',
+              { 'is-unsaved': controlDirty(controlId('pending_ci_mode_override')) },
+            ]}
+            data-unsaved={controlDirty(controlId('pending_ci_mode_override')) || undefined}
+          >
             <span class="setting-say">
               <span class="setting-name">Repository protection</span>
               <span class="setting-why"
@@ -414,7 +451,7 @@
               <button
                 class="setting-clear"
                 title="Override the workspace mode"
-                disabled={disabled || savingPendingCI}
+                {disabled}
                 onclick={overrideMode}
               >
                 <Icon name="plus" size={10} />
@@ -433,7 +470,7 @@
                       class="value-select"
                       type="button"
                       aria-label="Repository protection"
-                      disabled={disabled || savingPendingCI}
+                      {disabled}
                     >
                       <span class="t"
                         >{detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}</span
@@ -446,7 +483,7 @@
                         class="menu-item"
                         role="option"
                         aria-selected={detail.pending_ci_mode_override === option.value}
-                        onclick={() => void pushPendingCI({ mode: option.value })}
+                        onclick={() => setMode(option.value)}
                       >
                         <span class="menu-check">
                           {#if detail.pending_ci_mode_override === option.value}<Icon
@@ -463,16 +500,25 @@
               <button
                 class="setting-clear"
                 title="Stop overriding - follow workspace settings"
-                disabled={disabled || savingPendingCI}
-                onclick={() => void pushPendingCI({ mode: null })}
+                {disabled}
+                onclick={() => setMode(null)}
               >
                 <Icon name="close" size={10} />
               </button>
             {/if}
           </div>
           <div
-            class="policy-row"
+            class={[
+              'policy-row',
+              {
+                'is-unsaved': controlDirty(
+                  controlId('pending_ci_branch_patterns_override.include'),
+                ),
+              },
+            ]}
             class:policy-block={detail.pending_ci_branch_patterns_override !== null}
+            data-unsaved={controlDirty(controlId('pending_ci_branch_patterns_override.include')) ||
+              undefined}
           >
             <span class="setting-say">
               <span class="setting-name">Protected refs</span>
@@ -491,7 +537,7 @@
               <button
                 class="setting-clear"
                 title="Override the protected branch patterns"
-                disabled={disabled || savingPendingCI}
+                {disabled}
                 onclick={overridePatterns}
               >
                 <Icon name="plus" size={10} />
@@ -501,22 +547,34 @@
               <button
                 class="setting-clear"
                 title="Stop overriding - follow workspace settings"
-                disabled={disabled || savingPendingCI}
-                onclick={() => void pushPendingCI({ patterns: null })}
+                {disabled}
+                onclick={() => setPatterns(null)}
               >
                 <Icon name="close" size={10} />
               </button>
               <div class="pattern-line">
                 <PatternEntries
                   patterns={detail.pending_ci_branch_patterns_override.include}
-                  readOnly={disabled || savingPendingCI}
+                  readOnly={disabled}
                   onChange={setIncludes}
                 />
               </div>
             {/if}
           </div>
           {#if detail.pending_ci_branch_patterns_override !== null}
-            <div class="policy-row policy-block">
+            <div
+              class={[
+                'policy-row policy-block',
+                {
+                  'is-unsaved': controlDirty(
+                    controlId('pending_ci_branch_patterns_override.exclude'),
+                  ),
+                },
+              ]}
+              data-unsaved={controlDirty(
+                controlId('pending_ci_branch_patterns_override.exclude'),
+              ) || undefined}
+            >
               <span class="setting-say">
                 <span class="setting-name">Excluded refs</span>
                 <span class="setting-why"
@@ -526,13 +584,22 @@
               <div class="pattern-line">
                 <PatternEntries
                   patterns={detail.pending_ci_branch_patterns_override.exclude}
-                  readOnly={disabled || savingPendingCI}
+                  readOnly={disabled}
                   onChange={setExcludes}
                 />
               </div>
             </div>
           {/if}
-          <div class="policy-row">
+          <div
+            class={[
+              'policy-row',
+              {
+                'is-unsaved': controlDirty(controlId('pending_ci_quiet_period_seconds_override')),
+              },
+            ]}
+            data-unsaved={controlDirty(controlId('pending_ci_quiet_period_seconds_override')) ||
+              undefined}
+          >
             <span class="setting-say">
               <label class="setting-name" for="repository-quiet-{repository.id}"
                 >Stable passing window</label
@@ -549,11 +616,18 @@
                 value={quietShown}
                 disabled={readOnly}
                 oninput={(event) => typeQuiet(event.currentTarget.value)}
-                onblur={saveQuiet}
+                onblur={finishQuiet}
               />
             </span>
           </div>
-          <div class="policy-row">
+          <div
+            class={[
+              'policy-row',
+              { 'is-unsaved': controlDirty(controlId('path_index_interval_seconds_override')) },
+            ]}
+            data-unsaved={controlDirty(controlId('path_index_interval_seconds_override')) ||
+              undefined}
+          >
             <span class="setting-say">
               <span class="setting-name">Path index</span>
               <span class="setting-why"
@@ -571,8 +645,8 @@
               <button
                 class="setting-clear"
                 title="Answer for this repository"
-                disabled={disabled || savingPathIndex}
-                onclick={() => void pushPathIndex(detail.path_index_interval_seconds_inherited)}
+                {disabled}
+                onclick={() => setPathIndex(detail.path_index_interval_seconds_inherited)}
               >
                 <Icon name="plus" size={10} />
               </button>
@@ -585,7 +659,7 @@
                   value={indexAmountShown}
                   disabled={readOnly}
                   oninput={(event) => typeIndexAmount(event.currentTarget.value)}
-                  onblur={saveIndexDraft}
+                  onblur={finishIndexDraft}
                 />
                 <Popover
                   role="listbox"
@@ -599,7 +673,7 @@
                       class="value-select"
                       type="button"
                       aria-label="Path index interval unit"
-                      disabled={disabled || savingPathIndex}
+                      {disabled}
                     >
                       <span class="t">{indexUnitShown}</span>
                     </button>
@@ -624,8 +698,8 @@
               <button
                 class="setting-clear"
                 title="Stop answering - follow the installation"
-                disabled={disabled || savingPathIndex}
-                onclick={() => void pushPathIndex(null)}
+                {disabled}
+                onclick={() => setPathIndex(null)}
               >
                 <Icon name="close" size={10} />
               </button>
@@ -648,9 +722,6 @@
           <section class="card group-card" aria-labelledby="repository-file-head">
             <div class="group-head">
               <h3 class="group-name" id="repository-file-head">Repository file</h3>
-              <span class="save-whisper" class:is-on={fileSavedOn} role="status"
-                ><Icon name="check" size={12} /><span class="t">Saved</span></span
-              >
               <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
                 ><span class="t">{capitalize(detail.repository.config_file_status)}</span></span
               >
@@ -688,7 +759,12 @@
                     {detail.config_migration === 'declined'
                       ? 'The TOML migration was closed, so Smyklot will not ask again'
                       : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
-                    <button type="button" class="f-again" {disabled} onclick={onResetMigration}>
+                    <button
+                      type="button"
+                      class="f-again"
+                      disabled={readOnly || busy}
+                      onclick={onResetMigration}
+                    >
                       Let it ask
                     </button>
                   </p>
@@ -696,7 +772,13 @@
               </div>
             </div>
             <div class="policy-rows">
-              <div class="policy-row">
+              <div
+                class={[
+                  'policy-row',
+                  { 'is-unsaved': controlDirty(controlId('ignore_repository_file')) },
+                ]}
+                data-unsaved={controlDirty(controlId('ignore_repository_file')) || undefined}
+              >
                 <span class="setting-say">
                   <span class="setting-name">Bypass file</span>
                   <span class="setting-why"
@@ -714,7 +796,7 @@
                     value={detail.ignore_repository_file ? 'bypass' : 'observe'}
                     {disabled}
                     compact
-                    onSelect={(value) => void setBypass(value === 'bypass')}
+                    onSelect={(value) => setBypass(value === 'bypass')}
                   />
                 </span>
               </div>
@@ -729,7 +811,8 @@
                   section="behavior"
                   only={overriddenBehaviorKeys(detail)}
                   {disabled}
-                  onSave={onSaveConfig}
+                  dirtyKeys={dirtyConfigKeys}
+                  onChange={setConfig}
                 />
               </div>
             {/if}
@@ -744,11 +827,13 @@
           {:else}
             <RepositorySyncPane
               stored={syncOverride}
+              repositoryId={repository.id}
+              envelope={syncEnvelope}
               {readOnly}
               {now}
-              saving={syncSaving}
-              saveProblem={syncSaveProblem}
-              onSave={onSaveSync}
+              dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}
+              dirtyDocument={controlDirty(`repositories.${repository.id}.sync.files.document`)}
+              onChange={onChangeSync}
             />
           {/if}
         {:else}
@@ -759,7 +844,8 @@
             idPrefix={repository.id}
             {section}
             {disabled}
-            onSave={onSaveConfig}
+            dirtyKeys={dirtyConfigKeys}
+            onChange={setConfig}
           />
         {/if}
       </div>
@@ -854,30 +940,6 @@
     max-width: 60ch;
   }
 
-  .save-whisper {
-    align-items: center;
-    background: var(--success-tint);
-    block-size: 20px;
-    border-radius: var(--radius-chip);
-    color: var(--success);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 4px;
-    margin-inline-start: auto;
-    opacity: 0;
-    padding: 0 0.5rem;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .save-whisper.is-on {
-    opacity: 1;
-  }
-
-  .save-whisper .t {
-    text-box: trim-both cap alphabetic;
-  }
-
   .pill {
     align-items: center;
     block-size: 20px;
@@ -931,6 +993,11 @@
        edge already carries that inset. */
     padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   .policy-row:first-child {

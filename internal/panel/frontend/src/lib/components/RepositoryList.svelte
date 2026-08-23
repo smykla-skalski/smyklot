@@ -23,7 +23,23 @@
   import type { VirtualRenderRow } from '../virtual-rows.js';
   import { formatRelative, formatTimestamp } from '../format';
   import { availableRepositorySections, type RepositorySection } from '../routes';
+  import {
+    adoptRepositorySettings,
+    overlayRepositorySettingsDocument,
+    repositorySettingsDraftDocument,
+    stageRepositorySettingsControl,
+    type RepositorySettingsControlId,
+    type RepositorySettingsDocument,
+  } from '../repository-settings';
+  import {
+    adoptSyncOverrideSettings,
+    stageSyncOverrideControl,
+    syncOverrideDraftEnvelope,
+    type SyncOverrideControlId,
+    type SyncOverrideEditorEnvelope,
+  } from '../repository-sync-override-settings';
   import { getPanelSession } from '../session.svelte';
+  import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
   import { pressableRow, rowOpensOn } from '../table-row';
   import {
     decodeRepositorySettingFilter,
@@ -34,24 +50,18 @@
     prefText,
     type PrefsAccessor,
   } from '../preferences-sync';
-  import { shouldReloadRepositoryAfterSaveFailure } from '../repository';
   import type { RepositoryFailureSource } from '../repository';
   import type {
-    ConfigPatch,
     ConfigKey,
     Page,
     RepositoryDetail,
     RepositoryFileStatus,
     RepositoryPageRequest,
-    PendingCIBranchPatterns,
-    PendingCIMode,
-    RepositorySettingsInput,
     RepositorySettingFilter,
     RepositorySort,
     RepositoryStateFilter,
     RepositorySummary,
     SyncOverride,
-    SyncOverrideInput,
   } from '../types';
   import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
@@ -173,11 +183,9 @@
     defaultEnabled,
     fetchPage,
     onLoad,
-    onUpdate,
     onResetConfigMigration,
     onChanged,
     onLoadSyncOverride = null,
-    onSaveSyncOverride = null,
     readOnly = false,
     prefs = EPHEMERAL_PREFS,
   }: {
@@ -185,7 +193,6 @@
     defaultEnabled: boolean;
     fetchPage: (request: RepositoryPageRequest) => Promise<Page<RepositorySummary>>;
     onLoad: (repositoryId: string) => Promise<RepositoryDetail>;
-    onUpdate: (repositoryId: string, input: RepositorySettingsInput) => Promise<RepositoryDetail>;
     onResetConfigMigration: (targetId: string, repositoryId: string) => Promise<RepositoryDetail>;
     onChanged: (targetId: string, detail: RepositoryDetail) => void;
     /**
@@ -200,8 +207,6 @@
      * pane whose every save is a 404.
      */
     onLoadSyncOverride?: ((repositoryId: string) => Promise<SyncOverride>) | null;
-    onSaveSyncOverride?:
-      ((repositoryId: string, input: SyncOverrideInput) => Promise<SyncOverride>) | null;
     readOnly?: boolean;
     prefs?: PrefsAccessor;
   } = $props();
@@ -211,6 +216,11 @@
      repository has one address in each surface, and the session is what knows
      which surface this is being drawn in. */
   const session = getPanelSession();
+  const drafts = getSettingsDraftRegistry();
+  const settingsScope = $derived({
+    type: 'installation',
+    targetId,
+  } as const satisfies SettingsScope);
 
   // Table state deliberately captures the preferences at mount; remote
   // changes apply on the next remount instead of mid-interaction.
@@ -257,11 +267,8 @@
   let details = $state<Record<string, RepositoryDetail>>({});
   let failures = $state<Record<string, RepositoryFailure>>({});
 
-  /* Whether a save is in flight and what went wrong, which are this page's own
-     and belong to the moment. What a repository says about the files is server
-     state and is read as one - see syncOverrideQuery. */
-  let savingOverride = $state<Record<string, boolean>>({});
-  let overrideProblem = $state<Record<string, string | null>>({});
+  /* The one immediate repository command is configuration migration reset.
+     Ordinary settings only stage into the application-wide draft registry. */
   let pendingEnablement = $state<Record<string, RepositoryEnablement>>({});
   const working = new SvelteSet<string>();
   const queryClient = useQueryClient();
@@ -388,16 +395,32 @@
       return onLoadSyncOverride(activeRepositoryId);
     },
   }));
+  const activeRepositoryDetail = $derived.by(() => {
+    if (activeRepositoryId === null) return undefined;
+    const canonical = details[activeRepositoryId];
+    if (canonical === undefined) return undefined;
+    return overlayRepositorySettingsDocument(
+      canonical,
+      repositorySettingsDraftDocument(drafts, targetId, canonical),
+    );
+  });
   const activeRepository = $derived(
     activeRepositoryId === null
       ? null
-      : (repositories.find((repository) => repository.id === activeRepositoryId) ??
+      : (activeRepositoryDetail?.repository ??
+          repositories.find((repository) => repository.id === activeRepositoryId) ??
           (repositoryDetailQuery.data?.repository.id === activeRepositoryId
             ? repositoryDetailQuery.data.repository
             : null) ??
           details[activeRepositoryId]?.repository ??
           null),
   );
+  const activeSyncEnvelope = $derived.by(() => {
+    const repositoryId = activeRepositoryId;
+    const stored = syncOverrideQuery.data;
+    if (repositoryId === null || stored === undefined || stored.unreadable) return undefined;
+    return syncOverrideDraftEnvelope(drafts, targetId, repositoryId, stored);
+  });
   const syncReadProblem = $derived(
     syncOverrideQuery.error === null ? null : errorMessage(syncOverrideQuery.error),
   );
@@ -484,6 +507,13 @@
   $effect(() => {
     const value = search.trim();
     untrack(() => void debouncedSearch(value));
+  });
+
+  $effect(() => {
+    const repositoryId = activeRepositoryId;
+    const stored = syncOverrideQuery.data;
+    if (repositoryId === null || stored === undefined || stored.unreadable) return;
+    untrack(() => adoptSyncOverrideSettings(drafts, targetId, repositoryId, stored));
   });
 
   $effect(() => {
@@ -679,38 +709,8 @@
     return detail;
   }
 
-  /**
-   * Saves what a repository says about the files.
-   *
-   * The revision it sends is the one the read produced, so what the save
-   * answers with is put where the read looks rather than left to a refetch.
-   */
-  async function saveSyncOverride(
-    repositoryId: string,
-    enabled: boolean | null,
-    document: Record<string, unknown>,
-  ): Promise<void> {
-    const current = syncOverrideQuery.data;
-    if (onSaveSyncOverride === null || current === undefined) return;
-
-    savingOverride = { ...savingOverride, [repositoryId]: true };
-    overrideProblem = { ...overrideProblem, [repositoryId]: null };
-    try {
-      const saved = await onSaveSyncOverride(repositoryId, {
-        enabled,
-        document,
-        expected_revision: current.revision,
-      });
-
-      queryClient.setQueryData(syncOverrideKey(repositoryId), saved);
-    } catch (cause) {
-      overrideProblem = { ...overrideProblem, [repositoryId]: errorMessage(cause) };
-    } finally {
-      savingOverride = { ...savingOverride, [repositoryId]: false };
-    }
-  }
-
   function rememberDetail(detail: RepositoryDetail, requested: string): void {
+    adoptRepositorySettings(drafts, targetId, detail);
     details = { ...details, [detail.repository.id]: detail };
     namedRepositories = { ...namedRepositories, [requested]: detail.repository.id };
   }
@@ -719,72 +719,30 @@
     working.delete(repositoryId);
   }
 
-  async function save(
-    repositoryId: string,
-    change: (detail: RepositoryDetail) => RepositorySettingsInput,
-  ): Promise<RepositoryDetail | null> {
-    if (working.has(repositoryId)) return null;
-    working.add(repositoryId);
-    clearFailure(repositoryId);
-    try {
-      let detail = details[repositoryId];
-      if (detail === undefined) {
-        try {
-          detail = await loadDetail(repositoryId);
-        } catch (error) {
-          setFailure(repositoryId, error, 'read');
-          return null;
-        }
-      }
-      const updated = await onUpdate(repositoryId, change(detail));
-      rememberDetail(updated, updated.repository.name);
-      queryClient.setQueriesData<RepositoryDetail>(
-        { queryKey: ['repository', targetId] },
-        (current) =>
-          current?.repository.id === repositoryId || current === detail ? updated : current,
-      );
-      onChanged(targetId, updated);
-      return updated;
-    } catch (error) {
-      if (shouldReloadRepositoryAfterSaveFailure(error)) {
-        try {
-          await loadDetail(repositoryId);
-        } catch {
-          // Keep the original write failure visible. A later catalog event or
-          // expansion can retry the detail read.
-        }
-      }
-      setFailure(repositoryId, error, 'write');
-      return null;
-    } finally {
-      finishWorking(repositoryId);
-    }
-  }
-
   async function setEnabled(repository: RepositorySummary, value: string): Promise<void> {
+    if (readOnly) return;
     if (value !== 'inherit' && value !== 'enabled' && value !== 'disabled') return;
-    if (value === enabledValue(repository)) return;
+    if (value === draftedEnablement(repository)) return;
 
     pendingEnablement = { ...pendingEnablement, [repository.id]: value };
     try {
+      const detail = details[repository.id] ?? (await loadDetail(repository.id));
       const enabledOverride = value === 'inherit' ? null : value === 'enabled';
-      await save(repository.id, (detail) =>
-        repositorySettingsInput(detail, { enabled_override: enabledOverride }),
+      stageRepositoryDocument(
+        repository.id,
+        {
+          ...repositorySettingsDraftDocument(drafts, targetId, detail),
+          enabled_override: enabledOverride,
+        },
+        [`repositories.${repository.id}.enabled_override`],
       );
+    } catch (error) {
+      setFailure(repository.id, error, 'read');
     } finally {
       const next = { ...pendingEnablement };
       delete next[repository.id];
       pendingEnablement = next;
     }
-  }
-
-  async function setBypass(repositoryId: string, ignored: boolean): Promise<void> {
-    const updated = await save(repositoryId, (detail) =>
-      repositorySettingsInput(detail, { ignore_repository_file: ignored }),
-    );
-    /* The settings page shows its saved receipt only when this resolves, so a
-       refused write must reject rather than settle quietly. */
-    if (updated === null) throw new Error('save refused');
   }
 
   // A refused migration is durable and never expires, so this is the only way
@@ -811,50 +769,38 @@
     }
   }
 
-  async function setConfig(repositoryId: string, configPatch: ConfigPatch): Promise<void> {
-    const updated = await save(repositoryId, (detail) =>
-      repositorySettingsInput(detail, { config_patch: configPatch }),
-    );
-    if (updated === null) throw new Error('save refused');
-  }
-
-  async function setPendingCI(
+  function stageRepositoryDocument(
     repositoryId: string,
-    mode: PendingCIMode | null,
-    patterns: PendingCIBranchPatterns | null,
-    quiet: number | null,
-  ): Promise<void> {
-    const updated = await save(repositoryId, (detail) =>
-      repositorySettingsInput(detail, {
-        pending_ci_mode_override: mode,
-        pending_ci_branch_patterns_override: patterns,
-        pending_ci_quiet_period_seconds_override: quiet,
-      }),
-    );
-    if (updated === null) throw new Error('save refused');
+    next: RepositorySettingsDocument,
+    controls: readonly RepositorySettingsControlId[],
+  ): void {
+    const canonical = details[repositoryId];
+    if (canonical === undefined) return;
+    for (const control of controls) {
+      if (!stageRepositorySettingsControl(drafts, targetId, canonical, next, control)) {
+        setFailure(repositoryId, new Error('This repository setting is not valid'), 'write');
+        return;
+      }
+    }
+    clearFailure(repositoryId);
   }
 
-  async function setPathIndex(repositoryId: string, seconds: number | null): Promise<void> {
-    await save(repositoryId, (detail) =>
-      repositorySettingsInput(detail, { path_index_interval_seconds_override: seconds }),
-    );
-  }
-
-  function repositorySettingsInput(
-    detail: RepositoryDetail,
-    overrides: Partial<RepositorySettingsInput>,
-  ): RepositorySettingsInput {
-    return {
-      enabled_override: detail.repository.enabled_override,
-      pending_ci_mode_override: detail.pending_ci_mode_override,
-      pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
-      pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
-      path_index_interval_seconds_override: detail.path_index_interval_seconds_override,
-      config_patch: detail.config_patch,
-      ignore_repository_file: detail.ignore_repository_file,
-      expected_revision: detail.revision,
-      ...overrides,
-    };
+  function stageSyncEnvelope(
+    repositoryId: string,
+    next: SyncOverrideEditorEnvelope,
+    control: SyncOverrideControlId,
+  ): void {
+    const stored = syncOverrideQuery.data;
+    if (stored === undefined || stored.unreadable) return;
+    if (!stageSyncOverrideControl(drafts, targetId, repositoryId, stored, next, control)) {
+      setFailure(
+        repositoryId,
+        new Error('This repository file sync setting is not valid'),
+        'write',
+      );
+      return;
+    }
+    clearFailure(repositoryId);
   }
 
   function setFailure(repositoryId: string, error: unknown, source: RepositoryFailureSource): void {
@@ -877,6 +823,21 @@
   function enabledValue(repository: RepositorySummary): RepositoryEnablement {
     if (repository.enabled_override === null) return 'inherit';
     return repository.enabled_override ? 'enabled' : 'disabled';
+  }
+
+  function draftedEnablement(repository: RepositorySummary): RepositoryEnablement {
+    const detail = details[repository.id];
+    if (detail === undefined) return enabledValue(repository);
+    const enabled = repositorySettingsDraftDocument(drafts, targetId, detail).enabled_override;
+    return enabled === null ? 'inherit' : enabled ? 'enabled' : 'disabled';
+  }
+
+  function repositoryDirty(repositoryId: string): boolean {
+    return drafts.dirtyAt(settingsScope, { section: 'repositories', path: [repositoryId] });
+  }
+
+  function controlDirty(controlId: string): boolean {
+    return drafts.isControlDirty(settingsScope, controlId);
   }
 
   function optionLabel(sections: readonly FilterSection[], value: string): string {
@@ -932,7 +893,7 @@
   {@const repository = activeRepository}
   <RepositorySettings
     {repository}
-    detail={details[repository.id]}
+    detail={activeRepositoryDetail}
     section={activeSection}
     failure={failures[repository.id]?.message ?? null}
     {readOnly}
@@ -940,18 +901,18 @@
     backHref={session.repositoriesHref()}
     onBack={closeRepository}
     onSection={(section) => session.selectRepositorySection(section)}
-    onBypass={(bypass) => setBypass(repository.id, bypass)}
-    onSaveConfig={(patch) => setConfig(repository.id, patch)}
-    onSavePendingCI={(mode, patterns, quiet) => setPendingCI(repository.id, mode, patterns, quiet)}
-    onSavePathIndex={(seconds) => setPathIndex(repository.id, seconds)}
+    onChange={(next, controls) => stageRepositoryDocument(repository.id, next, controls)}
     onResetMigration={() => resetConfigMigration(repository.id)}
     sections={availableSections}
     syncOverride={syncOverrideQuery.data}
-    syncSaving={savingOverride[repository.id] === true}
+    syncEnvelope={activeSyncEnvelope}
     {syncReadProblem}
-    syncSaveProblem={overrideProblem[repository.id] ?? null}
     {now}
-    onSaveSync={(enabled, document) => void saveSyncOverride(repository.id, enabled, document)}
+    onChangeSync={(next, control) => stageSyncEnvelope(repository.id, next, control)}
+    dirtyControls={drafts
+      .dirtyControls(settingsScope)
+      .filter(({ id }) => id.startsWith(`repositories.${repository.id}.`))
+      .map(({ id }) => id)}
   />
 {:else}
   <section class="plate repository-panel" aria-labelledby="repositories-heading">
@@ -1051,9 +1012,14 @@
           columnCount={5}
           bind:body={repositoryScroll}
           rowAttrs={(virtualRow) => ({
-            class: ['repository-row data-row', virtualRow.virtual && 'virtual-row']
+            class: [
+              'repository-row data-row',
+              virtualRow.virtual && 'virtual-row',
+              repositoryDirty(repositoryAt(virtualRow.index).id) && 'is-unsaved',
+            ]
               .filter(Boolean)
               .join(' '),
+            'data-unsaved': repositoryDirty(repositoryAt(virtualRow.index).id) || undefined,
             style: virtualRow.virtual
               ? `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`
               : '--row-y:0px',
@@ -1224,11 +1190,17 @@
                 <span class="cap-trim">{formatRelative(repository.updated_at, now)}</span>
               </time>
             </td>
-            <td data-label="Enablement">
+            <td
+              data-label="Enablement"
+              class:is-unsaved={controlDirty(`repositories.${repository.id}.enabled_override`)}
+              data-unsaved={controlDirty(`repositories.${repository.id}.enabled_override`) ||
+                undefined}
+            >
               {#if !repository.available}
                 <Chip small>Unavailable</Chip>
               {:else}
-                {@const enablement = pendingEnablement[repository.id] ?? enabledValue(repository)}
+                {@const enablement =
+                  pendingEnablement[repository.id] ?? draftedEnablement(repository)}
                 <InheritControl
                   label="Enablement for {repository.full_name}"
                   source="Unconfigured repositories in Settings"
@@ -1236,7 +1208,7 @@
                   inheritedLabel={defaultEnabled ? 'Enabled' : 'Disabled'}
                   value={enablement === 'inherit' ? null : enablement}
                   options={REPOSITORY_VALUE_OPTIONS}
-                  disabled={readOnly || working.has(repository.id)}
+                  disabled={readOnly || pendingEnablement[repository.id] !== undefined}
                   onSelect={(value) => void setEnabled(repository, value)}
                   onRestore={() => void setEnabled(repository, 'inherit')}
                 />
@@ -1587,6 +1559,14 @@
      the row is a way in. */
   :global(.repository-row) {
     cursor: pointer;
+  }
+
+  :global(.repository-row.is-unsaved) {
+    box-shadow: inset 2px 0 var(--brand-action);
+  }
+
+  :global(.repository-row td.is-unsaved) {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
   }
 
   /* The row's way in, at the end of the row where a reader looks for one. */

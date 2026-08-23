@@ -37,11 +37,10 @@
     backHref: '#/repositories',
     onBack: fn(),
     onSection: fn(),
-    onBypass: fn(),
-    onSaveConfig: async () => {},
+    onChange: fn(),
     onResetMigration: fn(),
     now: NOW,
-    onSaveSync: fn(),
+    onChangeSync: fn(),
   };
 
   const { Story } = defineMeta({
@@ -98,7 +97,7 @@
 
 <Story name="Read only" args={{ readOnly: true }} />
 
-<Story name="Saving" args={{ busy: true }} />
+<Story name="Resetting migration" args={{ busy: true }} />
 
 <!-- The detail has not arrived yet; the panes stand in for it. -->
 <Story name="Loading" args={{ detail: undefined }} />
@@ -128,9 +127,7 @@
      as a repository that says nothing. -->
 <Story name="Sync still reading" args={{ section: 'sync', syncOverride: undefined }} />
 
-<!-- A read that did not answer leaves the pane empty; a refused save leaves it
-     drawing what the reader typed. They are two problems and the component takes
-     them separately. -->
+<!-- A read that did not answer leaves the pane empty. -->
 <Story
   name="Sync unreadable"
   args={{
@@ -141,17 +138,12 @@
 />
 
 <Story
-  name="Sync save refused"
+  name="Sync with unsaved document"
   args={{
     section: 'sync',
     syncOverride: SYNC_OVERRIDE,
-    syncSaveProblem: 'GitHub refused the write: 403',
+    dirtyControls: [`repositories.${REPOSITORY.id}.sync.files.document`],
   }}
-/>
-
-<Story
-  name="Sync saving"
-  args={{ section: 'sync', syncOverride: SYNC_OVERRIDE, syncSaving: true }}
 />
 
 <!--

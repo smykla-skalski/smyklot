@@ -47,25 +47,9 @@
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchRepository(session.selectedTarget.id, repositoryId);
   }
-  function updateRepository(
-    repositoryId: string,
-    input: Parameters<PanelSession['api']['updateRepositorySettings']>[2],
-  ) {
-    if (session.selectedTarget === null) throw new Error('select an installation first');
-    return session.api.updateRepositorySettings(session.selectedTarget.id, repositoryId, input);
-  }
-
   function loadSyncOverride(repositoryId: string) {
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchSyncOverride(session.selectedTarget.id, repositoryId, 'files');
-  }
-
-  function saveSyncOverride(
-    repositoryId: string,
-    input: Parameters<PanelSession['api']['saveSyncOverride']>[3],
-  ) {
-    if (session.selectedTarget === null) throw new Error('select an installation first');
-    return session.api.saveSyncOverride(session.selectedTarget.id, repositoryId, 'files', input);
   }
 
   function chunkError(error: unknown): string {
@@ -121,12 +105,10 @@
             defaultEnabled={session.selectedTarget.repository_default_enabled}
             fetchPage={fetchRepositories}
             onLoad={loadRepository}
-            onUpdate={updateRepository}
             onResetConfigMigration={(targetId, repositoryId) =>
               session.api.resetConfigMigration(targetId, repositoryId)}
             onChanged={(targetId) => session.repositoryChanged(targetId)}
             onLoadSyncOverride={loadSyncOverride}
-            onSaveSyncOverride={saveSyncOverride}
             readOnly={!session.selectedTarget.capabilities.write}
             prefs={session.prefs}
           />

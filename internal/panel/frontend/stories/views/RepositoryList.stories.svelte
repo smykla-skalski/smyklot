@@ -25,7 +25,6 @@
     fetchPage: () =>
       Promise.resolve({ items: REPOSITORIES, next_cursor: null, total: REPOSITORIES.length }),
     onLoad: () => Promise.resolve(REPOSITORY_DETAIL),
-    onUpdate: () => Promise.resolve(REPOSITORY_DETAIL),
     onResetConfigMigration: () => Promise.resolve(REPOSITORY_DETAIL),
     onChanged: fn(),
     /* `onLoadSyncOverride !== null` is what decides whether the opened repository is
@@ -34,7 +33,6 @@
        exist. An installation's own page passes them; the Root view of somebody else's
        does not, and `Without sync` below is that surface. */
     onLoadSyncOverride: () => Promise.resolve(SYNC_OVERRIDE),
-    onSaveSyncOverride: () => Promise.resolve(SYNC_OVERRIDE),
   };
 
   const SYNC_OVERRIDE: SyncOverride = {
@@ -92,4 +90,4 @@
   switch inside an opened repository shows three rather than four - `RepositoryList`
   reads that off these two being absent rather than being told separately.
 -->
-<Story name="Without sync" args={{ onLoadSyncOverride: null, onSaveSyncOverride: null }} />
+<Story name="Without sync" args={{ onLoadSyncOverride: null }} />

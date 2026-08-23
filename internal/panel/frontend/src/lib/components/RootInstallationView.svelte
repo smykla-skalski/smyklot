@@ -11,7 +11,6 @@
     PanelTarget,
     RepositoryDetail,
     RepositoryPageRequest,
-    RepositorySettingsInput,
     RootElevation,
     RootInstallation,
   } from '../types';
@@ -171,13 +170,6 @@
     return api.fetchRootRepository(installation.id, repositoryId);
   }
 
-  function updateRepository(
-    repositoryId: string,
-    input: RepositorySettingsInput,
-  ): Promise<RepositoryDetail> {
-    return api.updateRootRepositorySettings(installation.id, repositoryId, input);
-  }
-
   function resetConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
     return api.resetRootConfigMigration(targetId, repositoryId);
   }
@@ -314,7 +306,6 @@
       defaultEnabled={target.repository_default_enabled}
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
-      onUpdate={updateRepository}
       onResetConfigMigration={resetConfigMigration}
       onChanged={repositoryChanged}
       readOnly={!canWrite}
