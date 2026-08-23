@@ -1092,7 +1092,7 @@
           </td>
           <td data-label="When">
             <time
-              class="table-time"
+              class="table-time band-trim"
               datetime={failure.occurred_at}
               title={formatTimestamp(failure.occurred_at)}
             >

@@ -52,7 +52,7 @@ describe('a sidebar navigation row', () => {
 
   it('pads the row evenly', () => {
     // Uneven vertical padding is an optical nudge wearing a layout property.
-    const padding = /padding:\s*([^;]+);/u.exec(rule('.tree-row'))?.[1]?.trim() ?? '';
+    const padding = /padding:\s*([^;]+);/u.exec(rule('.tree-row > .row-visual'))?.[1]?.trim() ?? '';
 
     expect(padding.length).toBeGreaterThan(0);
     const parts = padding.split(/\s+/u);

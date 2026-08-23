@@ -302,6 +302,7 @@
         >
           <a
             class="tree-row"
+            class:is-active={page.active && activeKid === undefined}
             href={page.href}
             data-tip={page.label}
             aria-current={page.active && activeKid === undefined ? 'page' : undefined}

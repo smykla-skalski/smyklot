@@ -235,7 +235,7 @@
             {monogram(installation.account.display_name, installation.account.login)}
           </span>
         </span>
-        <span>
+        <span class="band-trim-stack">
           <h2 id="root-page-heading">{installation.account.display_name}</h2>
           <p>@{installation.account.login} · GitHub installation #{installation.installation_id}</p>
         </span>

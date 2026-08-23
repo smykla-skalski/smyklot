@@ -37,6 +37,7 @@ let page: Page;
 let panel: Panel;
 let landed: Selection;
 let moved: Selection;
+let requestParentSelected: boolean;
 
 beforeAll(async () => {
   panel = await startPanel();
@@ -56,6 +57,11 @@ beforeAll(async () => {
   await page.locator('.tree a.tree-row:not(.is-active)').first().click();
   await page.waitForTimeout(SETTLE_MS);
   moved = await measure(page);
+
+  await visit(page, `${panel.origin}/root/queue/request/pending-ci-0`);
+  const requestParent = page.locator('.tree-page.is-active > .tree-row.is-active');
+  await requestParent.waitFor({ state: 'visible' });
+  requestParentSelected = (await requestParent.textContent())?.includes('Queue') === true;
 }, 60_000);
 
 afterAll(async () => {
@@ -124,5 +130,9 @@ describe("the Root console sidebar's selection", () => {
     expect(moved.label, 'choosing another section selected nothing').not.toBe(landed.label);
     expect(Math.abs(moved.thumb.top - moved.row.top)).toBeLessThan(0.05);
     expect(Math.abs(moved.thumb.height - moved.row.height)).toBeLessThan(0.05);
+  });
+
+  it('selects the parent row while a detail route has no selected child', () => {
+    expect(requestParentSelected).toBe(true);
   });
 });
