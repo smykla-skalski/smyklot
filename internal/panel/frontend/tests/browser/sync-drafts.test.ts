@@ -16,7 +16,7 @@ afterAll(async () => {
 function batchSave(request: Request): boolean {
   return (
     request.method() === 'PUT' &&
-    /\/api\/v1\/targets\/[^/]+\/settings\/batch$/u.test(new URL(request.url()).pathname)
+    /\/api\/v1\/targets\/[^/]+\/settings$/u.test(new URL(request.url()).pathname)
   );
 }
 
@@ -66,9 +66,94 @@ describe('installation Sync drafts', () => {
         return history.items[0];
       });
       expect(audit).toMatchObject({
-        action: 'installation.settings.updated',
+        action: 'installation.settings.saved',
         settings_checkpoint_id: answer.checkpoint_id,
       });
+      const checkpointProof = await page.evaluate(async (checkpointId) => {
+        const source = (await (
+          await fetch(`/api/v1/targets/2001/settings/checkpoints/${checkpointId}`)
+        ).json()) as {
+          action: string;
+          items: Array<{
+            kind: string;
+            sync_kind?: string;
+            after: {
+              state: { document: Record<string, unknown>; revision: number } | null;
+            };
+            current: { revision: number } | null;
+          }>;
+        };
+        const rootInspection = (await (
+          await fetch(`/api/v1/root/installations/2001/settings/checkpoints/${checkpointId}`)
+        ).json()) as { id: string };
+        const labels = source.items.find(
+          (item) => item.kind === 'sync_config' && item.sync_kind === 'labels',
+        );
+        if (labels?.after.state === null || labels?.after === undefined) {
+          throw new Error('saved labels checkpoint item is missing');
+        }
+        const document = labels.after.state.document;
+        const nested = JSON.parse(String(document.document)) as Record<string, unknown>;
+        const changed = await fetch('/api/v1/targets/2001/settings', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sync_configs: [
+              {
+                kind: 'labels',
+                enabled: document.enabled,
+                labels: nested.labels,
+                allow_removal: false,
+                excludes: nested.excludes,
+                expected_revision: labels.after.state.revision,
+              },
+            ],
+          }),
+        });
+        if (!changed.ok) throw new Error(`second save failed with ${changed.status}`);
+        const changedAnswer = (await changed.json()) as {
+          sync_configs: Array<{ revision: number }>;
+        };
+        const restored = await fetch(
+          `/api/v1/targets/2001/settings/checkpoints/${checkpointId}/restore`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              state: 'after',
+              selections: [
+                {
+                  kind: 'sync_config',
+                  sync_kind: 'labels',
+                  expected_revision: changedAnswer.sync_configs[0]?.revision,
+                },
+              ],
+            }),
+          },
+        );
+        if (!restored.ok) throw new Error(`restore failed with ${restored.status}`);
+        const restoredAnswer = (await restored.json()) as { checkpoint_id?: string };
+        const latest = (await (await fetch('/api/v1/targets/2001/audit?limit=1')).json()) as {
+          items: Array<{ action: string; settings_checkpoint_id?: string }>;
+        };
+        return {
+          sourceAction: source.action,
+          sourceKinds: source.items.map((item) => `${item.kind}:${item.sync_kind ?? ''}`),
+          rootCheckpointId: rootInspection.id,
+          restoredCheckpointId: restoredAnswer.checkpoint_id,
+          latestAudit: latest.items[0],
+        };
+      }, answer.checkpoint_id!);
+      expect(checkpointProof).toMatchObject({
+        sourceAction: 'installation.settings.saved',
+        sourceKinds: expect.arrayContaining(['sync_config:labels', 'sync_config:settings']),
+        rootCheckpointId: answer.checkpoint_id,
+        latestAudit: {
+          action: 'installation.settings.restored',
+          settings_checkpoint_id: checkpointProof.restoredCheckpointId,
+        },
+      });
+      expect(checkpointProof.restoredCheckpointId).toBeTruthy();
 
       await page.locator(`a[href="/i/${panel.account}/sync/labels"]`).click();
       await flip(page, 'Remove labels this list does not name');

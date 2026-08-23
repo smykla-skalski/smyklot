@@ -239,36 +239,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories", s.getRepositories)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}", s.getRepository)
 	mux.HandleFunc(
-		"PUT "+base+"/api/v1/targets/{target}/repositories/{repository}/settings",
-		s.putRepositorySettings,
-	)
-	mux.HandleFunc(
 		"POST "+base+"/api/v1/targets/{target}/repositories/{repository}/config-migration",
 		s.postRepositoryConfigMigrationReset,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/config/{kind}", s.getSyncConfig)
-	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/sync/config/{kind}", s.putSyncConfig)
-	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/sync/config", s.putSyncConfigs)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/targets/{target}/sync/config/checkpoints/{checkpoint}",
-		s.getSyncConfigCheckpoint,
-	)
-	mux.HandleFunc(
-		"POST "+base+"/api/v1/targets/{target}/sync/config/checkpoints/{checkpoint}/restore",
-		s.postSyncConfigRestore,
-	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/paths", s.listSyncPaths)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/targets/{target}/sync/overrides/{kind}",
-		s.listSyncOverrides,
-	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/repositories/{repository}/sync/{kind}",
 		s.getSyncOverride,
-	)
-	mux.HandleFunc(
-		"PUT "+base+"/api/v1/targets/{target}/repositories/{repository}/sync/{kind}",
-		s.putSyncOverride,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/status", s.getSyncStatus)
@@ -299,10 +277,13 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base string) {
-	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
 	mux.HandleFunc(
-		"PUT "+base+"/api/v1/targets/{target}/settings/batch",
+		"PUT "+base+"/api/v1/targets/{target}/settings",
 		s.putInstallationSettingsBatch,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/settings/checkpoints/baseline",
+		s.getInstallationSettingsBaseline,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/settings/checkpoints/{checkpoint}",
@@ -320,8 +301,20 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
 	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
 	mux.HandleFunc("DELETE "+base+"/api/v1/root/pending-ci/{request}", s.deleteRootPendingCI)
-	mux.HandleFunc("GET "+base+"/api/v1/root/settings", s.getRootRuntimeSettings)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/settings", s.putRootRuntimeSettings)
+	mux.HandleFunc("GET "+base+"/api/v1/root/runtime/settings", s.getRootRuntimeSettings)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/runtime/settings", s.putRootRuntimeSettings)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/baseline",
+		s.getRootSettingsBaseline,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}",
+		s.getRootSettingsCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}/restore",
+		s.postRootSettingsRestore,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/access/users/{account}", s.putRootUser)
@@ -355,10 +348,6 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/repositories/{repository}",
 		s.getRootRepository,
-	)
-	mux.HandleFunc(
-		"PUT "+base+"/api/v1/root/installations/{target}/repositories/{repository}/settings",
-		s.putRootRepositorySettings,
 	)
 	mux.HandleFunc(
 		"POST "+base+"/api/v1/root/installations/{target}/repositories/{repository}/config-migration",
@@ -400,7 +389,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"DELETE "+base+"/api/v1/root/installations/{target}/invitations/{invitation}",
 		s.deleteRootTargetInvitation,
 	)
-	s.registerRootSyncHistoryRoutes(mux, base)
+	s.registerRootTargetAuditRoute(mux, base)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/failures",
 		s.getRootTargetFailures,
@@ -414,11 +403,11 @@ func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base
 	)
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/root/installations/{target}/settings",
-		s.putRootTargetSettings,
+		s.putRootInstallationSettingsBatch,
 	)
 	mux.HandleFunc(
-		"PUT "+base+"/api/v1/root/installations/{target}/settings/batch",
-		s.putRootInstallationSettingsBatch,
+		"GET "+base+"/api/v1/root/installations/{target}/settings/checkpoints/baseline",
+		s.getRootInstallationSettingsBaseline,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/settings/checkpoints/{checkpoint}",
@@ -430,18 +419,10 @@ func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base
 	)
 }
 
-func (s *Server) registerRootSyncHistoryRoutes(mux *http.ServeMux, base string) {
+func (s *Server) registerRootTargetAuditRoute(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/audit",
 		s.getRootTargetAudit,
-	)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/sync/config/checkpoints/{checkpoint}",
-		s.getRootSyncConfigCheckpoint,
-	)
-	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/sync/config/checkpoints/{checkpoint}/restore",
-		s.postRootSyncConfigRestore,
 	)
 }
 

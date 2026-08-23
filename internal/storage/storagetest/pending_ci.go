@@ -369,11 +369,12 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		changedAt := now.Add(time.Second)
 		patterns := storage.PendingCIBranchPatterns{Include: []string{"refs/heads/release/*"}}
-		_, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID: arm.TargetID, RepositoryID: arm.RepositoryID,
-			ActorAccountID:                  "account:pending-ci",
-			PendingCIBranchPatternsOverride: &patterns,
-			ExpectedRevision:                repository.Revision, ChangedAt: changedAt,
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: arm.TargetID, ActorAccountID: "account:pending-ci", ChangedAt: changedAt,
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: arm.RepositoryID, PendingCIBranchPatternsOverride: &patterns,
+				ExpectedRevision: repository.Revision,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		lease, err = store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
@@ -387,23 +388,28 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		seedCheckCatalog(ctx, store, now)
 		labelMode := storage.PendingCIModeLabels
 		enabled := true
-		repository, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID: "installation:77", RepositoryID: "repository-20",
-			ActorAccountID: "account:pending-ci", EnabledOverride: &enabled,
-			PendingCIModeOverride: &labelMode, ExpectedRevision: 1,
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: "installation:77", ActorAccountID: "account:pending-ci",
 			ChangedAt: now.Add(time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repository-20", EnabledOverride: &enabled,
+				PendingCIModeOverride: &labelMode, ExpectedRevision: 1,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository := saved.Repositories[0]
 		arm := pendingCIArm(now.Add(2*time.Minute), 203, 106, "label-repository-head")
 		arm.RepositoryFullName = "owner/repo"
 		deferred := deferRequest(ctx, store, arm)
 		disabled := false
 		changedAt := now.Add(3 * time.Minute)
-		_, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID: arm.TargetID, RepositoryID: arm.RepositoryID,
-			ActorAccountID: "account:pending-ci", EnabledOverride: &disabled,
-			PendingCIModeOverride: &labelMode, ExpectedRevision: repository.Revision,
-			ChangedAt: changedAt,
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: arm.TargetID, ActorAccountID: "account:pending-ci", ChangedAt: changedAt,
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: arm.RepositoryID, EnabledOverride: &disabled,
+				PendingCIModeOverride: &labelMode, ExpectedRevision: repository.Revision,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		lease, err := store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))
@@ -415,20 +421,27 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 	It("wakes deferred label requests when an inherited target is disabled", func() {
 		ctx, store, now := runtime()
 		seedCheckCatalog(ctx, store, now)
-		target, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 			TargetID: "installation:77", ActorAccountID: "account:pending-ci",
-			RepositoryDefaultEnabled: true, PendingCIModeDefault: storage.PendingCIModeLabels,
-			ExpectedRevision: 1, ChangedAt: now.Add(time.Minute),
+			ChangedAt: now.Add(time.Minute),
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true, PendingCIModeDefault: storage.PendingCIModeLabels,
+				ExpectedRevision: 1,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Target).NotTo(BeNil())
+		target := *saved.Target
 		arm := pendingCIArm(now.Add(2*time.Minute), 204, 107, "label-target-head")
 		arm.RepositoryFullName = "owner/repo"
 		deferred := deferRequest(ctx, store, arm)
 		changedAt := now.Add(3 * time.Minute)
-		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-			TargetID: arm.TargetID, ActorAccountID: "account:pending-ci",
-			RepositoryDefaultEnabled: false, PendingCIModeDefault: storage.PendingCIModeLabels,
-			ExpectedRevision: target.Revision, ChangedAt: changedAt,
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: arm.TargetID, ActorAccountID: "account:pending-ci", ChangedAt: changedAt,
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: false, PendingCIModeDefault: storage.PendingCIModeLabels,
+				ExpectedRevision: target.Revision,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		lease, err := store.LeaseDue(ctx, changedAt, changedAt.Add(time.Minute))

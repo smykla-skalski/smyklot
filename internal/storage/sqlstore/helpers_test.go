@@ -8,7 +8,7 @@ import (
 
 // A row a strict decoder would refuse must not take the page with it.
 // collectRows abandons a listing on the first row it cannot scan, and
-// UpdateRepositorySettings reads the row back inside its own transaction, so a
+// SaveInstallationSettings reads the row back inside its own transaction, so a
 // refusal here would leave an installation whose repositories will not render
 // and cannot be repaired from the panel that exists to repair them.
 func TestUnmarshalPatchDoesNotFailThePageOverOneRow(t *testing.T) {

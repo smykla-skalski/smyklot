@@ -77,14 +77,15 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
 		Expect(err).NotTo(HaveOccurred())
 
-		_, err = service.store.UpdateTargetSettings(
+		_, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.TargetSettingsChange{
-				TargetID:                 target.ID,
-				ActorAccountID:           target.Account.ID,
-				RepositoryDefaultEnabled: true,
-				ExpectedRevision:         target.Revision,
-				ChangedAt:                time.Now().UTC(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID,
+				ChangedAt: time.Now().UTC(),
+				Target: &storage.InstallationTargetSettingsChange{
+					RepositoryDefaultEnabled: true,
+					ExpectedRevision:         target.Revision,
+				},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -481,15 +482,15 @@ var _ = Describe("Configuration migration [Unit]", func() {
 		found := repository(targetID)
 		target, err := service.store.GetTarget(GinkgoT().Context(), targetID)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = service.store.UpdateRepositorySettings(
+		_, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.RepositorySettingsChange{
-				TargetID:             targetID,
-				RepositoryID:         found.ID,
-				ActorAccountID:       target.Account.ID,
-				IgnoreRepositoryFile: true,
-				ExpectedRevision:     found.Revision,
-				ChangedAt:            time.Now().UTC(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: targetID, ActorAccountID: target.Account.ID,
+				ChangedAt: time.Now().UTC(),
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID: found.ID, IgnoreRepositoryFile: true,
+					ExpectedRevision: found.Revision,
+				}},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())

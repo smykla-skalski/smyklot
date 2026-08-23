@@ -105,8 +105,10 @@
   }
 
   function actionLabel(action: string): string {
-    if (action === 'target.settings.updated') return 'Workspace settings changed';
-    if (action === 'repository.settings.updated') return 'Repository settings changed';
+    if (action === 'installation.settings.saved') return 'Installation settings saved';
+    if (action === 'installation.settings.restored') return 'Installation settings restored';
+    if (action === 'runtime.settings.saved') return 'Runtime settings saved';
+    if (action === 'runtime.settings.restored') return 'Runtime settings restored';
     return action
       .split('.')
       .map((part) => part[0]?.toLocaleUpperCase() + part.slice(1))

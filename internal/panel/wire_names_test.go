@@ -59,10 +59,8 @@ func TestPanelResponsesUseWireNames(t *testing.T) {
 // seedPanelWireNameRows gives the sync reads something to answer with.
 //
 // An empty list carries no field names, so a probe against one asserts that
-// nothing was spelled wrong in nothing. `/sync/paths` and
-// `/sync/overrides/{kind}` both answer `{"...": []}` on a bare harness, which
-// is how four new names - `path`, `repositories`, `repository_id` and
-// `repository_name` - sat in this list proving none of themselves.
+// nothing was spelled wrong in nothing. The path index therefore gets one row
+// before its wire names are checked.
 func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	t.Helper()
 
@@ -121,13 +119,12 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 		t.Fatal(err)
 	}
 
-	if _, err := harness.store.SetSyncRepositoryOverride(
-		t.Context(), orgsync.RepositoryOverrideChange{
-			RepositoryID: repository,
-			Kind:         orgsync.KindLabels,
-			Document:     []byte(`{}`),
-			ActorID:      "github:test:user:1",
-			Now:          harness.now,
+	if _, err := harness.store.SaveInstallationSettings(
+		t.Context(), storage.SaveInstallationSettingsRequest{
+			TargetID: target, ActorAccountID: "github:test:user:1", ChangedAt: harness.now,
+			SyncOverrides: []storage.InstallationSyncOverrideChange{{
+				RepositoryID: repository, Kind: orgsync.KindLabels, Document: []byte(`{}`),
+			}},
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -151,6 +148,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/invites/" + token,
 		"/panel/api/v1/targets",
 		"/panel/api/v1/targets/" + target,
+		"/panel/api/v1/targets/" + target + "/settings/checkpoints/baseline",
 		"/panel/api/v1/targets/" + target + "/settings/checkpoints/1",
 		"/panel/api/v1/targets/" + target + "/repositories",
 		"/panel/api/v1/targets/" + target + "/repositories/" + repository,
@@ -159,10 +157,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/users/" + account + "/decisions",
 		"/panel/api/v1/targets/" + target + "/user-suggestions",
 		"/panel/api/v1/targets/" + target + "/invitations",
-		"/panel/api/v1/targets/" + target + "/sync/config",
 		"/panel/api/v1/targets/" + target + "/sync/config/labels",
-		"/panel/api/v1/targets/" + target + "/sync/config/checkpoints/1",
-		"/panel/api/v1/targets/" + target + "/sync/overrides/labels",
 		"/panel/api/v1/targets/" + target + "/sync/paths",
 		"/panel/api/v1/targets/" + target + "/sync/plan",
 		"/panel/api/v1/targets/" + target + "/sync/status",
@@ -176,9 +171,12 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/root/access/invitations",
 		"/panel/api/v1/root/history/audit",
 		"/panel/api/v1/root/history/failures",
-		"/panel/api/v1/root/settings",
+		"/panel/api/v1/root/runtime/settings",
+		"/panel/api/v1/root/runtime/settings/checkpoints/baseline",
+		"/panel/api/v1/root/runtime/settings/checkpoints/1",
 		"/panel/api/v1/root/installations/" + target + "/elevation",
 		"/panel/api/v1/root/installations/" + target + "/settings",
+		"/panel/api/v1/root/installations/" + target + "/settings/checkpoints/baseline",
 		"/panel/api/v1/root/installations/" + target + "/settings/checkpoints/1",
 		"/panel/api/v1/root/installations/" + target + "/repositories",
 		"/panel/api/v1/root/installations/" + target + "/repositories/" + repository,
@@ -187,7 +185,6 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/root/installations/" + target + "/user-suggestions",
 		"/panel/api/v1/root/installations/" + target + "/invitations",
 		"/panel/api/v1/root/installations/" + target + "/audit",
-		"/panel/api/v1/root/installations/" + target + "/sync/config/checkpoints/1",
 		"/panel/api/v1/root/installations/" + target + "/failures",
 	}
 }

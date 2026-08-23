@@ -60,6 +60,38 @@ func TestInstallationSettingsBatchAuthorizationAndSameOrigin(t *testing.T) {
 	requireResponse(t, response, "cross-origin batch", http.StatusForbidden)
 }
 
+func TestInstallationSettingsRejectsLegacyFlatDocuments(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	const flatDocument = `{"repository_default_enabled":true,
+		"pending_ci_mode_default":"labels",
+		"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
+		"pending_ci_quiet_period_seconds_override":null,
+		"path_index_interval_seconds_override":null,"config_patch":{},"expected_revision":1}`
+
+	ordinary := harness.request(
+		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(flatDocument), session,
+	)
+	requireResponse(t, ordinary, "flat installation settings", http.StatusBadRequest,
+		`"code":"invalid_request"`)
+
+	_, snapshot := seedNonOwnedInstallation(t, harness)
+	started := harness.request(
+		t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+snapshot.TargetID+"/elevation",
+		strings.NewReader(`{"acknowledged":true,"reason":"verify canonical settings input"}`),
+		session,
+	)
+	requireResponse(t, started, "start Root settings elevation", http.StatusCreated)
+	root := harness.request(
+		t, http.MethodPut,
+		"/panel/api/v1/root/installations/"+snapshot.TargetID+"/settings",
+		strings.NewReader(flatDocument), session,
+	)
+	requireResponse(t, root, "flat Root installation settings", http.StatusBadRequest,
+		`"code":"invalid_request"`)
+}
+
 func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	rootSession := harness.signIn(t)
@@ -68,7 +100,7 @@ func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "/panel/api/v1/root/installations/" + target.ID + "/settings/batch"
+	path := "/panel/api/v1/root/installations/" + target.ID + "/settings"
 	body := targetInstallationSettingsBatchBody(t, target, true)
 
 	blocked := harness.request(t, http.MethodPut, path, bytes.NewReader(body), rootSession)
@@ -89,7 +121,7 @@ func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) 
 	history := harness.request(t, http.MethodGet,
 		"/panel/api/v1/root/history/audit?category=configuration&limit=100", nil, rootSession)
 	requireResponse(t, history, "Root batch history", http.StatusOK,
-		`"elevation_id":"`+elevation.ID+`"`, `"action":"target.settings.updated"`)
+		`"elevation_id":"`+elevation.ID+`"`, `"action":"installation.settings.saved"`)
 }
 
 func TestInstallationSettingsBatchRejectsMalformedResourcesBeforeWrite(t *testing.T) {
@@ -173,22 +205,4 @@ func TestInstallationSettingsBatchRejectsUnavailableRepository(t *testing.T) {
 	)
 	requireResponse(t, response, "unavailable repository", http.StatusNotFound,
 		`"code":"not_found"`)
-}
-
-func TestInstallationSettingsCompatibilityEndpointsRemainAvailable(t *testing.T) {
-	harness := newPanelHarness(t, "owner")
-	session := harness.signIn(t)
-	target := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/settings", strings.NewReader(`{
-			"repository_default_enabled":true,"pending_ci_mode_default":"labels",
-			"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
-			"pending_ci_quiet_period_seconds_override":null,
-			"path_index_interval_seconds_override":null,
-			"config_patch":{},"expected_revision":1}`), session)
-	requireResponse(t, target, "target compatibility endpoint", http.StatusOK, `"revision":2`)
-	labels := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config/labels",
-		strings.NewReader(`{"enabled":false,"labels":[],"allow_removal":false,
-			"excludes":[],"expected_revision":0}`), session)
-	requireResponse(t, labels, "Sync compatibility endpoint", http.StatusOK, `"revision":1`)
 }

@@ -1,6 +1,5 @@
 import { defineParams } from '@sveltejs/kit/params';
 
-import { DIALOG_HOST_VIEWS } from './lib/route-dialogs.ts';
 import {
   ACCESS_SECTIONS,
   DIRECT_PANEL_VIEWS,
@@ -52,17 +51,6 @@ function matching<T extends string = string>(pattern: string) {
 const MATCHERS = {
   /** The tables the Root console's access page is split into. */
   accessSection: oneOf(ACCESS_SECTIONS),
-
-  /**
-   * The views that have anything after them in an address.
-   *
-   * Defaults, sync and history host no dialog, so nothing follows them and the route
-   * that takes a trailing segment must not match them. That is the whole point of a
-   * separate matcher: an address like `/i/acme/defaults/anything` resolves to no route
-   * at all, and the server answers 404 with the panel's own page rather than 200 with
-   * a not-found drawn after the shell has booted.
-   */
-  dialogHostView: oneOf(DIALOG_HOST_VIEWS),
 
   /**
    * What a view may carry after it: nothing, or the one or two segments of a dialog

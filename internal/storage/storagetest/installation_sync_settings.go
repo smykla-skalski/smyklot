@@ -2,7 +2,6 @@ package storagetest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -47,8 +46,7 @@ func declareMixedInstallationSyncSettingsSpec(
 			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Items[0].Action).To(Equal("installation.settings.updated"))
-		Expect(audit.Items[0].SyncConfigCheckpointID).To(BeNil())
+		Expect(audit.Items[0].Action).To(Equal("installation.settings.saved"))
 		syncAudit, err := store.ListAudit(ctx, target.TargetID, storage.AuditPageRequest{
 			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
 			Change:             storage.AuditChangeSync,
@@ -58,23 +56,6 @@ func declareMixedInstallationSyncSettingsSpec(
 			"SettingsCheckpointID", HaveValue(Equal(*result.CheckpointID)),
 		)))
 		assertInstallationSettingsPlanState(ctx, store, target.TargetID, orgsync.PlanStale)
-
-		_, err = store.GetSyncConfigCheckpoint(ctx, target.TargetID, 1)
-		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-		original := checkpoint
-		legacy, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
-			TargetID: target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(`{"labels":[{"name":"bug"}]}`), Revision: 1,
-			ActorID: account.ID, Now: now.Add(2 * time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(legacy.Revision).To(Equal(int64(2)))
-		legacyCheckpoint, err := store.GetSyncConfigCheckpoint(ctx, target.TargetID, 2)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(legacyCheckpoint.Action).To(Equal(orgsync.CheckpointSaved))
-		Expect(readInstallationCheckpoint(
-			ctx, store, *result.CheckpointID, target.TargetID,
-		)).To(Equal(original))
 	})
 }
 
@@ -130,17 +111,11 @@ func declareInstallationSyncNoopSpec(
 func declareInstallationSyncRevisionSpec(
 	runtime func() (context.Context, storage.Store, time.Time),
 ) {
-	It("continues revisions retained only by generic deletion checkpoints", func() {
+	It("continues revisions retained by canonical deletion checkpoints", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallationSettingsBatch(ctx, store, now)
-		checkpoint, err := store.CreateSettingsCheckpoint(ctx, storage.SettingsCheckpointCreate{
-			Scope: storage.SettingsCheckpointScopeInstallation, TargetID: target.TargetID,
-			ActorAccountID: account.ID, Action: storage.SettingsCheckpointActionSave,
-			CreatedAt: now, Items: deletedInstallationSyncItems(),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		result, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
-			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now.Add(time.Minute),
+		created, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now,
 			SyncConfigs: []storage.InstallationSyncConfigChange{{
 				Kind: orgsync.KindFiles, Enabled: true, Document: []byte(`{"files":[]}`),
 			}},
@@ -149,11 +124,43 @@ func declareInstallationSyncRevisionSpec(
 			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(result.SyncConfigs).To(ConsistOf(HaveField("Revision", int64(8))))
-		Expect(result.SyncOverrides).To(ConsistOf(HaveField("Revision", int64(10))))
+		Expect(created.SyncConfigs).To(ConsistOf(HaveField("Revision", int64(1))))
+		Expect(created.SyncOverrides).To(ConsistOf(HaveField("Revision", int64(1))))
+		baseline, err := store.InspectInstallationSettingsBaseline(ctx, target.TargetID)
+		Expect(err).NotTo(HaveOccurred())
+		selections := installationRestoreSelectionsForSide(
+			storage.SettingsCheckpointRestoreAfter, baseline,
+		)
+		Expect(selections).To(HaveLen(2))
+		deleted, err := store.RestoreInstallationSettings(ctx,
+			storage.RestoreInstallationSettingsRequest{
+				TargetID: target.TargetID, CheckpointID: baseline.Checkpoint.ID,
+				ActorAccountID: account.ID, ChangedAt: now.Add(time.Minute),
+				Side: storage.SettingsCheckpointRestoreAfter, Selections: selections,
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deleted.CheckpointID).NotTo(BeNil())
+		deletionCheckpoint := readInstallationCheckpoint(
+			ctx, store, *deleted.CheckpointID, target.TargetID,
+		)
+
+		result, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(2 * time.Minute),
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindFiles, Enabled: true, Document: []byte(`{"files":[]}`),
+			}},
+			SyncOverrides: []storage.InstallationSyncOverrideChange{{
+				RepositoryID: "repo-1", Kind: orgsync.KindFiles,
+			}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SyncConfigs).To(ConsistOf(HaveField("Revision", int64(2))))
+		Expect(result.SyncOverrides).To(ConsistOf(HaveField("Revision", int64(2))))
 		Expect(readInstallationCheckpoint(
-			ctx, store, checkpoint.ID, target.TargetID,
-		)).To(Equal(checkpoint))
+			ctx, store, *deleted.CheckpointID, target.TargetID,
+		)).To(Equal(deletionCheckpoint))
 	})
 }
 
@@ -213,8 +220,9 @@ func assertMixedInstallationSyncCheckpoint(
 	enabled bool,
 ) {
 	GinkgoHelper()
-	Expect(checkpoint.Items).To(HaveLen(6))
+	Expect(checkpoint.Items).To(HaveLen(7))
 	Expect(checkpointItemKinds(checkpoint.Items)).To(Equal([]storage.SettingsCheckpointItemKind{
+		storage.SettingsCheckpointItemRepository,
 		storage.SettingsCheckpointItemRepository,
 		storage.SettingsCheckpointItemSyncConfig,
 		storage.SettingsCheckpointItemSyncConfig,
@@ -222,65 +230,37 @@ func assertMixedInstallationSyncCheckpoint(
 		storage.SettingsCheckpointItemSyncOverride,
 		storage.SettingsCheckpointItemTarget,
 	}))
-	Expect(checkpoint.Items[1].SyncKind).To(Equal(orgsync.KindFiles))
-	Expect(checkpoint.Items[2].SyncKind).To(Equal(orgsync.KindLabels))
-	Expect(checkpoint.Items[3]).To(And(
+	Expect(checkpoint.Items[0].RepositoryID).To(Equal("repo-1"))
+	Expect(checkpoint.Items[0].Before.Digest).To(Equal(checkpoint.Items[0].After.Digest))
+	Expect(checkpoint.Items[2].SyncKind).To(Equal(orgsync.KindFiles))
+	Expect(checkpoint.Items[3].SyncKind).To(Equal(orgsync.KindLabels))
+	Expect(checkpoint.Items[4]).To(And(
 		HaveField("RepositoryID", "repo-1"), HaveField("SyncKind", orgsync.KindLabels),
 	))
-	Expect(checkpoint.Items[4]).To(And(
+	Expect(checkpoint.Items[5]).To(And(
 		HaveField("RepositoryID", "repo-2"), HaveField("SyncKind", orgsync.KindRulesets),
 	))
-	for _, index := range []int{1, 2, 3, 4} {
+	for _, index := range []int{2, 3, 4, 5} {
 		Expect(checkpoint.Items[index].Before).To(BeNil())
 		Expect(checkpoint.Items[index].After).NotTo(BeNil())
 		Expect(checkpoint.Items[index].After.Revision).To(Equal(int64(1)))
 	}
 	labels := decodeSettingsDocument[storage.SyncConfigSettingsDocument](
-		checkpoint.Items[2].After.Document,
+		checkpoint.Items[3].After.Document,
 	)
 	Expect(labels).To(Equal(storage.SyncConfigSettingsDocument{
 		Enabled: true, Document: string(labelsDocument),
 	}))
 	labelOverride := decodeSettingsDocument[storage.SyncOverrideSettingsDocument](
-		checkpoint.Items[3].After.Document,
+		checkpoint.Items[4].After.Document,
 	)
 	Expect(labelOverride).To(Equal(storage.SyncOverrideSettingsDocument{
 		Enabled: &enabled, Document: `{}`,
 	}))
 	rulesetOverride := decodeSettingsDocument[storage.SyncOverrideSettingsDocument](
-		checkpoint.Items[4].After.Document,
+		checkpoint.Items[5].After.Document,
 	)
 	Expect(rulesetOverride.Document).To(Equal(`{}`))
-}
-
-func deletedInstallationSyncItems() []storage.SettingsCheckpointItem {
-	config := installationSyncCheckpointState(storage.SyncConfigSettingsDocument{
-		Enabled: true, Document: `{"files":[]}`,
-	}, 7)
-	override := installationSyncCheckpointState(storage.SyncOverrideSettingsDocument{
-		Document: `{}`,
-	}, 9)
-
-	return []storage.SettingsCheckpointItem{
-		{
-			Kind: storage.SettingsCheckpointItemSyncConfig, SyncKind: orgsync.KindFiles,
-			DocumentVersion: storage.SettingsCheckpointDocumentVersion, Before: &config,
-		},
-		{
-			Kind:         storage.SettingsCheckpointItemSyncOverride,
-			RepositoryID: "repo-1", RepositoryFullName: "smykla-skalski/smyklot",
-			SyncKind:        orgsync.KindFiles,
-			DocumentVersion: storage.SettingsCheckpointDocumentVersion, Before: &override,
-		},
-	}
-}
-
-func installationSyncCheckpointState(document any, revision int64) storage.SettingsCheckpointState {
-	GinkgoHelper()
-	encoded, err := json.Marshal(document)
-	Expect(err).NotTo(HaveOccurred())
-
-	return storage.NewSettingsCheckpointState(encoded, revision)
 }
 
 func syncConfigKinds(configs []orgsync.Config) []orgsync.Kind {

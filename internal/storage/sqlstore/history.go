@@ -15,7 +15,6 @@ SELECT
     ae.target_id,
     ae.repository_id,
     ae.repository_full_name,
-    ae.sync_config_checkpoint_id,
 	ae.settings_checkpoint_id,
     ae.action,
     ae.summary,
@@ -119,21 +118,32 @@ func auditFilters(
 	}
 	switch page.Change {
 	case "", storage.AuditChangeAll:
-	case storage.AuditChangeEnablement:
-		clauses = append(clauses, "ae.action IN ('repository.enabled', 'repository.disabled')")
 	case storage.AuditChangeRepository:
-		clauses = append(clauses, "ae.action LIKE 'repository.%' AND ae.action NOT IN ('repository.enabled', 'repository.disabled')")
-	case storage.AuditChangeAccount:
-		clauses = append(clauses, "ae.action LIKE 'target.%'")
-	case storage.AuditChangeSync:
-		clauses = append(clauses, `(
-ae.action LIKE 'sync.config.%'
+		clauses = append(clauses, `((ae.action LIKE 'repository.%')
 OR EXISTS (
     SELECT 1
     FROM settings_checkpoint_items item
     WHERE item.checkpoint_id = ae.settings_checkpoint_id
-      AND item.item_kind IN ('sync_config', 'sync_override')
+      AND item.item_kind = 'repository'
+	      AND COALESCE(item.before_digest, '') <> COALESCE(item.after_digest, '')
 ))`)
+	case storage.AuditChangeAccount:
+		clauses = append(clauses, `(ae.action LIKE 'target.%'
+OR EXISTS (
+    SELECT 1
+    FROM settings_checkpoint_items item
+    WHERE item.checkpoint_id = ae.settings_checkpoint_id
+      AND item.item_kind = 'target'
+	      AND COALESCE(item.before_digest, '') <> COALESCE(item.after_digest, '')
+))`)
+	case storage.AuditChangeSync:
+		clauses = append(clauses, `EXISTS (
+    SELECT 1
+    FROM settings_checkpoint_items item
+    WHERE item.checkpoint_id = ae.settings_checkpoint_id
+      AND item.item_kind IN ('sync_config', 'sync_override')
+	      AND COALESCE(item.before_digest, '') <> COALESCE(item.after_digest, '')
+)`)
 	default:
 		return nil, nil, fmt.Errorf("unsupported audit change %q", page.Change)
 	}
@@ -144,7 +154,7 @@ OR EXISTS (
 func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	var entry storage.AuditEntry
 	var repositoryID, repositoryFullName, avatarURL sql.NullString
-	var syncConfigCheckpointID, settingsCheckpointID sql.NullInt64
+	var settingsCheckpointID sql.NullInt64
 	var createdAt, accountUpdatedAt StoredTime
 
 	err := scanner.Scan(
@@ -152,7 +162,6 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 		&entry.TargetID,
 		&repositoryID,
 		&repositoryFullName,
-		&syncConfigCheckpointID,
 		&settingsCheckpointID,
 		&entry.Action,
 		&entry.Summary,
@@ -171,9 +180,6 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 
 	entry.RepositoryID = stringPointer(repositoryID)
 	entry.RepositoryFullName = stringPointer(repositoryFullName)
-	if syncConfigCheckpointID.Valid {
-		entry.SyncConfigCheckpointID = &syncConfigCheckpointID.Int64
-	}
 	if settingsCheckpointID.Valid {
 		entry.SettingsCheckpointID = &settingsCheckpointID.Int64
 	}

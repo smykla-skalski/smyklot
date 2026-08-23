@@ -1,19 +1,21 @@
 import type {
-  InstallationSettingsCheckpoint,
-  InstallationSettingsCheckpointItem,
-  InstallationSettingsCheckpointState,
+  SettingsCheckpoint,
+  SettingsCheckpointItem,
+  SettingsCheckpointState,
   SyncKind,
 } from './types';
 
-export function settingsCheckpointActionLabel(
-  action: InstallationSettingsCheckpoint['action'],
-): string {
-  if (action === 'installation.settings.restored') return 'Restored';
-  if (action === 'installation.settings.baseline') return 'Baseline captured';
+export function settingsCheckpointActionLabel(action: SettingsCheckpoint['action']): string {
+  if (action === 'installation.settings.restored' || action === 'runtime.settings.restored') {
+    return 'Restored';
+  }
+  if (action === 'installation.settings.baseline' || action === 'runtime.settings.baseline') {
+    return 'Initial snapshot';
+  }
   return 'Saved';
 }
 
-export function settingsCheckpointItemLabel(item: InstallationSettingsCheckpointItem): string {
+export function settingsCheckpointItemLabel(item: SettingsCheckpointItem): string {
   const syncKind =
     item.sync_kind === undefined
       ? 'Sync'
@@ -27,6 +29,8 @@ export function settingsCheckpointItemLabel(item: InstallationSettingsCheckpoint
       return `${syncKind} Sync`;
     case 'sync_override':
       return `${item.repository_full_name ?? 'Repository'} · ${syncKind} override`;
+    case 'runtime':
+      return 'Runtime settings';
   }
 }
 
@@ -99,7 +103,7 @@ function syncSummary(kind: SyncKind, enabled: boolean, document: Record<string, 
 }
 
 function syncConfigSummary(
-  item: InstallationSettingsCheckpointItem,
+  item: SettingsCheckpointItem,
   document: Record<string, unknown>,
 ): string {
   if (item.sync_kind === undefined) return 'Stored Sync configuration';
@@ -117,9 +121,21 @@ function syncOverrideSummary(document: Record<string, unknown>): string {
   return `${enabled} · ${fields} ${fields === 1 ? 'stored field' : 'stored fields'}`;
 }
 
+function runtimeSummary(document: Record<string, unknown>): string {
+  const overrides = [
+    document.bot_config,
+    document.log_level,
+    document.poll_interval,
+    document.pending_ci_quiet_period,
+    document.path_index_interval,
+    document.session_ttl,
+  ].filter((value) => value !== null).length;
+  return `${overrides} ${overrides === 1 ? 'override' : 'overrides'} · Current deployment fills the rest`;
+}
+
 export function settingsCheckpointSummary(
-  item: InstallationSettingsCheckpointItem,
-  state: InstallationSettingsCheckpointState | null,
+  item: SettingsCheckpointItem,
+  state: SettingsCheckpointState | null,
 ): string {
   if (state === null) return 'Not configured';
   switch (item.kind) {
@@ -131,5 +147,7 @@ export function settingsCheckpointSummary(
       return syncConfigSummary(item, state.document);
     case 'sync_override':
       return syncOverrideSummary(state.document);
+    case 'runtime':
+      return runtimeSummary(state.document);
   }
 }

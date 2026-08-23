@@ -451,6 +451,7 @@ export interface RootRuntimeSettings {
     effective_seconds: number;
   };
   revision: number;
+  checkpoint_id?: string;
   updated_at?: string;
   updated_by?: PanelAccount;
   service: {
@@ -600,27 +601,6 @@ export interface RepositoryPageRequest {
   setting: RepositorySettingFilter;
 }
 
-export interface TargetSettingsInput {
-  repository_default_enabled: boolean;
-  pending_ci_mode_default?: PendingCIMode;
-  pending_ci_branch_patterns_default?: PendingCIBranchPatterns;
-  pending_ci_quiet_period_seconds_override?: number | null;
-  path_index_interval_seconds_override?: number | null;
-  config_patch: ConfigPatch;
-  expected_revision: number;
-}
-
-export interface RepositorySettingsInput {
-  enabled_override: boolean | null;
-  pending_ci_mode_override?: PendingCIMode | null;
-  pending_ci_branch_patterns_override?: PendingCIBranchPatterns | null;
-  pending_ci_quiet_period_seconds_override?: number | null;
-  path_index_interval_seconds_override?: number | null;
-  config_patch: ConfigPatch;
-  ignore_repository_file: boolean;
-  expected_revision: number;
-}
-
 /** A complete installation-defaults document in one atomic settings save. */
 export interface InstallationTargetSettingsInput {
   repository_default_enabled: boolean;
@@ -716,57 +696,71 @@ export interface InstallationSettingsBatchResponse {
   sync_overrides?: InstallationSyncOverrideSettingsState[];
 }
 
-export type InstallationSettingsCheckpointItemKind =
-  'target' | 'repository' | 'sync_config' | 'sync_override';
+export type SettingsCheckpointItemKind =
+  'target' | 'repository' | 'sync_config' | 'sync_override' | 'runtime';
 
-export interface InstallationSettingsCheckpointState {
+export interface SettingsCheckpointState {
   document: Record<string, unknown>;
   digest: string;
   revision: number;
 }
 
-export interface InstallationSettingsCheckpointIncompatibility {
+export interface SettingsCheckpointIncompatibility {
   code: string;
   reason: string;
 }
 
-export interface InstallationSettingsCheckpointItem {
-  kind: InstallationSettingsCheckpointItemKind;
+export type SettingsCheckpointRestoreSide = 'before' | 'after';
+
+export interface SettingsCheckpointSide {
+  /** False only when this checkpoint never captured this side, as with a baseline's Before. */
+  available: boolean;
+  /** Null with available=true is a captured absence for an optional Sync resource. */
+  state: SettingsCheckpointState | null;
+  differs: boolean;
+  restorable: boolean;
+  incompatibility?: SettingsCheckpointIncompatibility;
+}
+
+export interface SettingsCheckpointItem {
+  kind: SettingsCheckpointItemKind;
   repository_id?: string;
   repository_full_name?: string;
   sync_kind?: SyncKind;
   document_version: number;
-  before: InstallationSettingsCheckpointState | null;
-  after: InstallationSettingsCheckpointState | null;
-  current: InstallationSettingsCheckpointState | null;
+  before: SettingsCheckpointSide;
+  after: SettingsCheckpointSide;
+  current: SettingsCheckpointState | null;
   changed: boolean;
-  differs: boolean;
-  restorable: boolean;
-  incompatibility?: InstallationSettingsCheckpointIncompatibility;
 }
 
-export interface InstallationSettingsCheckpoint {
+export interface SettingsCheckpoint {
   id: string;
   action:
     | 'installation.settings.saved'
     | 'installation.settings.restored'
-    | 'installation.settings.baseline';
+    | 'installation.settings.baseline'
+    | 'runtime.settings.saved'
+    | 'runtime.settings.restored'
+    | 'runtime.settings.baseline';
   actor: PanelAccount;
   restored_from_id?: string;
+  restored_side?: SettingsCheckpointRestoreSide;
   created_at: string;
-  affected_kinds: InstallationSettingsCheckpointItemKind[];
-  items: InstallationSettingsCheckpointItem[];
+  affected_kinds: SettingsCheckpointItemKind[];
+  items: SettingsCheckpointItem[];
 }
 
-export interface InstallationSettingsRestoreSelection {
-  kind: InstallationSettingsCheckpointItemKind;
+export interface SettingsRestoreSelection {
+  kind: SettingsCheckpointItemKind;
   repository_id?: string;
   sync_kind?: SyncKind;
   expected_revision: number;
 }
 
-export interface InstallationSettingsRestoreInput {
-  selections: InstallationSettingsRestoreSelection[];
+export interface SettingsRestoreInput {
+  state: SettingsCheckpointRestoreSide;
+  selections: SettingsRestoreSelection[];
 }
 
 export type InstallationSettingsConflict =
@@ -813,7 +807,6 @@ export interface AuditEntry {
   elevation_id?: string;
   action: string;
   summary: string;
-  sync_config_checkpoint_id?: string;
   settings_checkpoint_id?: string;
   repository_full_name?: string;
   created_at: string;
@@ -848,7 +841,7 @@ export type HistorySort =
   | 'repository_asc'
   | 'repository_desc';
 export type AuditScope = 'all' | 'account' | 'repositories';
-export type AuditChange = 'all' | 'enablement' | 'repository' | 'account' | 'sync';
+export type AuditChange = 'all' | 'repository' | 'account' | 'sync';
 export type FailureKind = 'all' | 'retryable' | 'permanent';
 
 export interface HistoryRequest {
@@ -1105,17 +1098,6 @@ export interface SyncPathIndex {
  * this list answers, and ids would mean a request per row to turn each one back
  * into a word.
  */
-export interface SyncOverrideRow extends SyncOverride {
-  repository_id: string;
-  repository_name: string;
-}
-
-export interface SyncOverrideInput {
-  enabled: boolean | null;
-  document: Record<string, unknown>;
-  expected_revision: number;
-}
-
 /** An installation's label sync configuration, as saved. */
 export interface SyncConfig {
   kind: string;
@@ -1149,74 +1131,9 @@ export interface SyncConfig {
   unavailable: string;
 }
 
-/** What a save sends. The revision is what it believes it is replacing. */
-export interface SyncConfigInput {
-  enabled: boolean;
-  expected_revision: number;
-  /**
-   * The label set and what may be done to it, for the labels kind. Optional
-   * because they describe that kind alone: a settings save that had to send
-   * empty ones would be sending three values nothing reads.
-   */
-  labels?: SyncLabel[];
-  allow_removal?: boolean;
-  excludes?: string[];
-  /**
-   * The kind's own document, for every kind but labels. Labels travel in the
-   * typed fields above because the panel has a form built out of them; anything
-   * else is sent as it is, so a kind is configurable before it has one.
-   */
-  document?: Record<string, unknown>;
-}
-
 /** The kinds sync manages, in the order every surface lists them. */
 export const SYNC_KINDS = ['labels', 'settings', 'rulesets', 'files'] as const;
 export type SyncKind = (typeof SYNC_KINDS)[number];
-
-/** One changed kind in an atomic installation-wide save. */
-export interface SyncConfigBatchChange extends SyncConfigInput {
-  kind: SyncKind;
-}
-
-export interface SyncConfigBatchInput {
-  changes: SyncConfigBatchChange[];
-}
-
-/** The complete resulting state, plus the history snapshot created for a real change. */
-export interface SyncConfigBatchResponse {
-  configs: SyncConfig[];
-  checkpoint_id?: string;
-}
-
-export interface SyncConfigCheckpointState {
-  enabled: boolean;
-  document: Record<string, unknown>;
-  digest: string;
-  revision: number;
-}
-
-export interface SyncConfigCheckpointKind {
-  kind: SyncKind;
-  before: SyncConfigCheckpointState | null;
-  after: SyncConfigCheckpointState | null;
-  current: SyncConfigCheckpointState | null;
-  changed: boolean;
-  differs_from_current: boolean;
-}
-
-export interface SyncConfigCheckpoint {
-  id: string;
-  action: 'sync.config.saved' | 'sync.config.restored' | 'sync.config.baseline';
-  actor: PanelAccount;
-  restored_from_id?: string;
-  created_at: string;
-  affected_kinds: SyncKind[];
-  kinds: SyncConfigCheckpointKind[];
-}
-
-export interface SyncConfigRestoreInput {
-  kinds: Array<{ kind: SyncKind; expected_revision: number }>;
-}
 
 /**
  * One repository's answer for one kind: quiet when in step, a count when a

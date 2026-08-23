@@ -9,8 +9,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const actionSyncOverrideSettings = "sync.override.updated"
-
 func (s *Store) writeInstallationSyncSettings(
 	ctx context.Context,
 	tx *transaction,
@@ -195,27 +193,4 @@ func (s *Store) readInstallationSyncSettingsResult(
 	}
 
 	return nil
-}
-
-func installationSyncSettingsAudit(
-	work installationSettingsWork,
-) (string, string, *string, *string, bool) {
-	for _, config := range work.syncConfigs {
-		if config.changed {
-			return actionSyncConfigSaved, syncConfigSummary("Saved", []orgsync.Kind{
-				config.prepared.change.Kind,
-			}), nil, nil, true
-		}
-	}
-	for _, override := range work.syncOverrides {
-		if override.changed {
-			id := override.repository.ID
-			fullName := override.repository.FullName
-			return actionSyncOverrideSettings,
-				fmt.Sprintf("Updated %s sync override", override.prepared.change.Kind),
-				&id, &fullName, true
-		}
-	}
-
-	return "", "", nil, nil, false
 }

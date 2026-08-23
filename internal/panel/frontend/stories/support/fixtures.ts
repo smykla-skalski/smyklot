@@ -276,7 +276,7 @@ const notification = (
   actor: { ...ACCOUNT, id: '1001', login: 'bart', display_name: 'Bart Smykla' },
   elevation_id: 'elev-8f2c1d9e',
   audit_event_id: 'audit-4a7b',
-  action: 'target.settings.updated',
+  action: 'installation.settings.saved',
   reason: 'Investigating a stuck delivery',
   created_at: at(-2 * 60 * 60_000),
   ...over,
@@ -287,7 +287,7 @@ export const NOTIFICATIONS: NotificationPage = {
     notification({ id: 'n-1' }),
     notification({
       id: 'n-2',
-      action: 'repository.settings.updated',
+      action: 'installation.settings.restored',
       created_at: at(-26 * 60 * 60_000),
       read_at: at(-25 * 60 * 60_000),
     }),

@@ -87,14 +87,12 @@ func requireWritesContinue(t *testing.T, ctx context.Context, store storage.Stor
 
 	// audit_entries, app_audit_events and, because the write is elevated,
 	// security_notifications.
-	if _, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-		TargetID:                 "github:installation:100",
-		ActorAccountID:           "github:root",
-		ElevationID:              &elevation,
-		SessionTokenHash:         "seed-root-session",
-		RepositoryDefaultEnabled: false,
-		ExpectedRevision:         2,
-		ChangedAt:                after,
+	if _, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+		TargetID: "github:installation:100", ActorAccountID: "github:root",
+		ElevationID: &elevation, SessionTokenHash: "seed-root-session", ChangedAt: after,
+		Target: &storage.InstallationTargetSettingsChange{
+			RepositoryDefaultEnabled: false, ExpectedRevision: 2,
+		},
 	}); err != nil {
 		t.Errorf("write after the copy: %v", err)
 	}

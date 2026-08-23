@@ -44,5 +44,53 @@ END`)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(raw.Close()).To(Succeed())
 		},
+		RejectSettingsCheckpoints: func(ctx context.Context) {
+			raw, err := sql.Open("sqlite", path)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = raw.ExecContext(ctx, `
+CREATE TRIGGER reject_settings_checkpoint
+BEFORE INSERT ON settings_checkpoints
+BEGIN
+    SELECT RAISE(ABORT, 'settings checkpoint write rejected');
+END`)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(raw.Close()).To(Succeed())
+		},
+		CountSettingsCheckpoints: func(ctx context.Context) int64 {
+			raw, err := sql.Open("sqlite", path)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			var count int64
+			Expect(raw.QueryRowContext(
+				ctx,
+				"SELECT COUNT(*) FROM settings_checkpoints",
+			).Scan(&count)).To(Succeed())
+
+			return count
+		},
+		RewriteSettingsCheckpointItem: func(
+			ctx context.Context,
+			rewrite storagetest.SettingsCheckpointItemRewrite,
+		) {
+			raw, err := sql.Open("sqlite", path)
+			Expect(err).NotTo(HaveOccurred())
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			result, err := raw.ExecContext(ctx, `
+UPDATE settings_checkpoint_items
+SET document_version = ?, after_document = ?, after_digest = ?
+WHERE checkpoint_id = ? AND item_kind = ? AND repository_id = ? AND sync_kind = ?`,
+				rewrite.DocumentVersion,
+				string(rewrite.AfterDocument),
+				storage.DigestSettingsCheckpointDocument(rewrite.AfterDocument),
+				rewrite.CheckpointID,
+				rewrite.Identity.Kind,
+				rewrite.Identity.RepositoryID,
+				rewrite.Identity.SyncKind,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			updated, err := result.RowsAffected()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated).To(Equal(int64(1)))
+		},
 	})
 })

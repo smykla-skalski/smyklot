@@ -196,7 +196,7 @@ func (s *Server) syncConfigSettingsBatchConflict(
 	if config.Revision == change.ExpectedRevision {
 		return conflict, false, nil
 	}
-	if validateHistoricalSyncDocument(change.Kind, config.Document) == nil {
+	if _, validationErr := validatedSyncDocument(config.Kind, config.Document); validationErr == nil {
 		conflict.Latest, _ = json.Marshal(installationSyncConfigSettingsState{
 			TargetID: targetID, Kind: config.Kind, Enabled: config.Enabled,
 			Document: config.Document, Revision: config.Revision,

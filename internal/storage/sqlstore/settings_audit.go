@@ -64,18 +64,17 @@ SELECT COUNT(*) FROM repositories WHERE target_id = ? AND id = ?`,
 }
 
 type auditInsert struct {
-	TargetID               string
-	RepositoryID           *string
-	RepositoryFullName     *string
-	SyncConfigCheckpointID *int64
-	SettingsCheckpointID   *int64
-	ActorAccountID         string
-	ElevationID            *string
-	SourceKind             *string
-	SourceID               *int64
-	Action                 string
-	Summary                string
-	CreatedAt              time.Time
+	TargetID             string
+	RepositoryID         *string
+	RepositoryFullName   *string
+	SettingsCheckpointID *int64
+	ActorAccountID       string
+	ElevationID          *string
+	SourceKind           *string
+	SourceID             *int64
+	Action               string
+	Summary              string
+	CreatedAt            time.Time
 }
 
 func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, error) {
@@ -83,15 +82,14 @@ func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, erro
 	err := tx.QueryRowContext(ctx, `
 INSERT INTO audit_entries (
     target_id, repository_id, repository_full_name,
-    sync_config_checkpoint_id, settings_checkpoint_id,
+    settings_checkpoint_id,
     actor_account_id, action, summary, created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		entry.TargetID,
 		entry.RepositoryID,
 		entry.RepositoryFullName,
-		entry.SyncConfigCheckpointID,
 		entry.SettingsCheckpointID,
 		entry.ActorAccountID,
 		entry.Action,

@@ -13,7 +13,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const installationSettingsBatchPath = "/panel/api/v1/targets/github:installation:10/settings/batch"
+const installationSettingsBatchPath = "/panel/api/v1/targets/github:installation:10/settings"
 
 type installationBatchRevisions struct {
 	target, repository, files, labels, override int64
@@ -140,15 +140,16 @@ func requireInstallationSettingsCheckpoint(
 	checkpointID int64,
 ) {
 	t.Helper()
-	checkpoint, err := harness.store.GetSettingsCheckpoint(t.Context(), storage.SettingsCheckpointRef{
-		ID: checkpointID, Scope: storage.SettingsCheckpointScopeInstallation,
-		TargetID: "github:installation:10",
-	})
+	inspection, err := harness.store.InspectInstallationSettingsCheckpoint(
+		t.Context(), storage.SettingsCheckpointRef{
+			ID: checkpointID, Scope: storage.SettingsCheckpointScopeInstallation,
+			TargetID: "github:installation:10",
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(checkpoint.Items) != 5 {
-		t.Fatalf("checkpoint items = %d, want 5", len(checkpoint.Items))
+	if len(inspection.Checkpoint.Items) != 5 {
+		t.Fatalf("checkpoint items = %d, want 5", len(inspection.Checkpoint.Items))
 	}
 	audit, err := harness.store.ListAudit(t.Context(), "github:installation:10", storage.AuditPageRequest{
 		HistoryPageRequest: storage.HistoryPageRequest{Limit: 100},
@@ -254,20 +255,23 @@ func TestInstallationSettingsBatchMapsTransactionDocumentRace(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seed := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config/files",
-		strings.NewReader(`{"enabled":true,"document":{"files":[{
-			"path":"renovate.json","content":"{}"}]},"expected_revision":0}`), session)
+		installationSettingsBatchPath,
+		strings.NewReader(`{"sync_configs":[{"kind":"files","enabled":true,
+			"document":{"files":[{"path":"renovate.json","content":"{}"}]},
+			"expected_revision":0}]}`), session)
 	requireResponse(t, seed, "seed files config", http.StatusOK, `"revision":1`)
 	serialization := &recordingPendingCIController{fakePendingCIController: harness.pendingCI}
 	serialization.beforeSave = func() error {
-		_, err := harness.store.SetSyncConfigs(t.Context(), orgsync.ConfigBatchChange{
-			TargetID: "github:installation:10", ActorID: "github:test:user:1",
-			Now: harness.now.Add(1), Changes: []orgsync.ConfigPatch{{
-				Kind: orgsync.KindFiles, Enabled: true,
-				Document: []byte(`{"files":[{"path":"other.json","content":"{}"}]}`),
-				Revision: 1,
-			}},
-		})
+		_, err := harness.store.SaveInstallationSettings(
+			t.Context(), storage.SaveInstallationSettingsRequest{
+				TargetID: "github:installation:10", ActorAccountID: "github:test:user:1",
+				ChangedAt: harness.now.Add(1), SyncConfigs: []storage.InstallationSyncConfigChange{{
+					Kind: orgsync.KindFiles, Enabled: true,
+					Document:         []byte(`{"files":[{"path":"other.json","content":"{}"}]}`),
+					ExpectedRevision: 1,
+				}},
+			},
+		)
 		return err
 	}
 	harness.server.pendingCI = serialization
@@ -336,29 +340,30 @@ func TestInstallationSettingsBatchReportsAllStaleResources(t *testing.T) {
 	)
 	requireResponse(t, seed, "seed mixed batch", http.StatusOK)
 
-	targetUpdate := `{
+	targetUpdate := `{"target":{
 		"repository_default_enabled":false,"pending_ci_mode_default":"checks",
 		"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
 		"pending_ci_quiet_period_seconds_override":0,
 		"path_index_interval_seconds_override":null,
-		"config_patch":{"quiet_success":false},"expected_revision":2}`
+		"config_patch":{"quiet_success":false},"expected_revision":2}}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/settings",
+		installationSettingsBatchPath,
 		strings.NewReader(targetUpdate), session), "concurrent target", http.StatusOK)
-	repositoryUpdate := `{
+	repositoryUpdate := `{"repositories":[{"repository_id":"repository-20",
 		"enabled_override":true,"pending_ci_mode_override":null,
 		"pending_ci_branch_patterns_override":null,
 		"pending_ci_quiet_period_seconds_override":null,
 		"path_index_interval_seconds_override":null,
 		"config_patch":{"command_prefix":"!"},"ignore_repository_file":false,
-		"expected_revision":2}`
+		"expected_revision":2}]}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/repositories/repository-20/settings",
+		installationSettingsBatchPath,
 		strings.NewReader(repositoryUpdate), session), "concurrent repository", http.StatusOK)
-	labelsUpdate := `{"enabled":true,"labels":[{"name":"ci/skip","color":"00ff00"}],
-		"allow_removal":false,"excludes":[],"expected_revision":1}`
+	labelsUpdate := `{"sync_configs":[{"kind":"labels","enabled":true,
+		"labels":[{"name":"ci/skip","color":"00ff00"}],
+		"allow_removal":false,"excludes":[],"expected_revision":1}]}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config/labels",
+		installationSettingsBatchPath,
 		strings.NewReader(labelsUpdate), session), "concurrent labels", http.StatusOK)
 	subscriber, unsubscribe := harness.server.events.subscribe("", "settings-conflict")
 	t.Cleanup(unsubscribe)
@@ -393,42 +398,4 @@ func TestInstallationSettingsBatchReportsAllStaleResources(t *testing.T) {
 		t.Fatalf("conflict announced %#v", event)
 	default:
 	}
-}
-
-func TestInstallationSettingsBatchConflictReportsAbsentRevisionZero(t *testing.T) {
-	harness := newPanelHarness(t, "owner")
-	session := harness.signIn(t)
-	files := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config",
-		strings.NewReader(`{"changes":[{"kind":"files","enabled":false,
-			"document":{"files":[]},"expected_revision":0}]}`), session)
-	requireResponse(t, files, "seed earlier checkpoint", http.StatusOK, `"checkpoint_id":`)
-	var earlier syncConfigBatchResponse
-	if err := json.Unmarshal(files.Body.Bytes(), &earlier); err != nil || earlier.CheckpointID == nil {
-		t.Fatalf("earlier checkpoint = %#v, error %v", earlier, err)
-	}
-	seed := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config/labels",
-		strings.NewReader(`{"enabled":false,"labels":[],"allow_removal":false,
-			"excludes":[],"expected_revision":0}`), session)
-	requireResponse(t, seed, "seed labels", http.StatusOK, `"revision":1`)
-	checkpointID, err := strconv.ParseInt(*earlier.CheckpointID, 10, 64)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := harness.store.RestoreSyncConfigCheckpoint(t.Context(), orgsync.ConfigRestore{
-		TargetID: "github:installation:10", CheckpointID: checkpointID,
-		Kinds:     []orgsync.Kind{orgsync.KindLabels},
-		Revisions: map[orgsync.Kind]int64{orgsync.KindLabels: 1},
-		ActorID:   "github:test:user:1", Now: harness.now.Add(1),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	body := `{"sync_configs":[{"kind":"labels","enabled":true,
-		"labels":[],"allow_removal":false,"excludes":[],"expected_revision":1}]}`
-	conflicted := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(body), session,
-	)
-	requireResponse(t, conflicted, "absent labels conflict", http.StatusConflict,
-		`"actual_revision":0`, `"revision":0`, `"document":{}`)
 }

@@ -15,6 +15,15 @@ import (
 
 const allFilter = "all"
 
+func stringID(id *int64) *string {
+	if id == nil {
+		return nil
+	}
+	formatted := strconv.FormatInt(*id, 10)
+
+	return &formatted
+}
+
 type accountResponse struct {
 	ID          string  `json:"id"`
 	Provider    string  `json:"provider"`
@@ -178,14 +187,13 @@ type repositoryDetailResponse struct {
 }
 
 type auditResponse struct {
-	ID                     string          `json:"id"`
-	Actor                  accountResponse `json:"actor"`
-	Action                 string          `json:"action"`
-	Summary                string          `json:"summary"`
-	RepositoryFullName     *string         `json:"repository_full_name,omitempty"`
-	SyncConfigCheckpointID *string         `json:"sync_config_checkpoint_id,omitempty"`
-	SettingsCheckpointID   *string         `json:"settings_checkpoint_id,omitempty"`
-	CreatedAt              time.Time       `json:"created_at"`
+	ID                   string          `json:"id"`
+	Actor                accountResponse `json:"actor"`
+	Action               string          `json:"action"`
+	Summary              string          `json:"summary"`
+	RepositoryFullName   *string         `json:"repository_full_name,omitempty"`
+	SettingsCheckpointID *string         `json:"settings_checkpoint_id,omitempty"`
+	CreatedAt            time.Time       `json:"created_at"`
 }
 
 type failureResponse struct {
@@ -470,14 +478,13 @@ func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 	items := make([]auditResponse, 0, len(page.Items))
 	for _, entry := range page.Items {
 		items = append(items, auditResponse{
-			ID:                     strconv.FormatInt(entry.ID, 10),
-			Actor:                  accountDTO(entry.Actor),
-			Action:                 entry.Action,
-			Summary:                entry.Summary,
-			RepositoryFullName:     entry.RepositoryFullName,
-			SyncConfigCheckpointID: stringID(entry.SyncConfigCheckpointID),
-			SettingsCheckpointID:   stringID(entry.SettingsCheckpointID),
-			CreatedAt:              entry.CreatedAt,
+			ID:                   strconv.FormatInt(entry.ID, 10),
+			Actor:                accountDTO(entry.Actor),
+			Action:               entry.Action,
+			Summary:              entry.Summary,
+			RepositoryFullName:   entry.RepositoryFullName,
+			SettingsCheckpointID: stringID(entry.SettingsCheckpointID),
+			CreatedAt:            entry.CreatedAt,
 		})
 	}
 

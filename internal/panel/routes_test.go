@@ -149,7 +149,6 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 	for _, path := range []string{
 		"/inbox",
 		"/root",
-		"/root/settings",
 		"/root/runtime",
 		"/root/runtime/service",
 		"/root/runtime/database",
@@ -172,7 +171,7 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		// serves the shell for it. The matcher is generated from one list, and
 		// a second copy of that list is how the sync view came to answer 404.
 		"/root/installations/acme/repositories/api-gateway/sync",
-		"/i/acme/settings",
+		"/i/acme/defaults",
 		"/i/acme/history",
 		"/i/acme/history/failures",
 		"/i/acme/repositories/api-gateway",
@@ -188,8 +187,8 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/i/acme/sync/rulesets/main-branch-protection",
 		"/i/acme/sync/files",
 		"/i/acme/sync/files/.github/workflows/test.yaml",
-		"/i/acme/users/add",
-		"/i/acme/invitations/inv-1/revoke",
+		"/i/acme/access/users/add",
+		"/i/acme/access/invitations/inv-1/revoke",
 		"/invite/" + token,
 	} {
 		if !table.matches(path) {
@@ -203,6 +202,7 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/queue/nonsense",
 		"/root/history/nonsense",
 		"/root/runtime/unknown",
+		"/root/settings",
 		"/root/settings/database",
 		"/root/installations/acme",
 		"/root/installations//repositories",
@@ -212,6 +212,9 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/i/acme/repositories//file",
 		"/i/acme/repositories/api-gateway/file/extra",
 		"/i/acme/inbox",
+		"/i/acme/settings",
+		"/i/acme/users/add",
+		"/i/acme/invitations/inv-1/revoke",
 		// A view that hosts no dialog has no route with anything after it, and
 		// history's section has to be one of the two there are.
 		"/i/acme/settings/anything",
@@ -222,6 +225,8 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/i/acme/sync/rulesets/main/extra",
 		"/i/acme/history/everything",
 		"/root/installations/acme/settings/anything",
+		"/root/installations/acme/settings",
+		"/root/installations/acme/users/octocat/history",
 		"/root/installations/acme/history/everything",
 		"/invite/" + strings.Repeat("a", 42),
 		"/invite/" + strings.Repeat("!", 43),

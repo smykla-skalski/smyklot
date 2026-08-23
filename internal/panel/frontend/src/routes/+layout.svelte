@@ -6,6 +6,7 @@
 
   import { initializePanel } from '#lib/boot.js';
   import { createPanelApi } from '#lib/api.js';
+  import { panelAddress } from '#lib/addresses.js';
   import { readPanelBuild } from '#lib/base.js';
   import { basePath } from '#lib/paths.js';
   import { legacyInboxRoute } from '#lib/dialog-route.svelte.js';
@@ -18,6 +19,8 @@
     rebaseInstallationConflicts,
     saveInstallationDrafts,
   } from '#lib/installation-settings-save.js';
+  import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
+  import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import {
     setSettingsDraftRegistry,
     SettingsDraftRegistry,
@@ -74,8 +77,6 @@
   setPanelSession(session);
   const settingsDraftRegistry = new SettingsDraftRegistry();
   setSettingsDraftRegistry(settingsDraftRegistry);
-  const ROOT_SETTINGS_SCOPE = { type: 'root' } as const satisfies SettingsScope;
-
   let attentionNotice = $state<'restored' | 'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
@@ -84,7 +85,22 @@
     viewerAccountId === null || settingsDraftRegistry.accountId === viewerAccountId,
   );
   const dirtyTargetIds = $derived.by(() => new Set(settingsDraftRegistry.dirtyTargetIds));
+  const firstDirtyControl = $derived.by(
+    () =>
+      settingsDraftRegistry
+        .dirtyControls()
+        .toSorted((left, right) => left.changedAt - right.changedAt)[0],
+  );
+  const settingsAttentionHref = $derived(settingsReviewHref(firstDirtyControl));
   const rootDirty = $derived(settingsDraftRegistry.hasDirty(ROOT_SETTINGS_SCOPE));
+  const rootDirtyControls = $derived.by((): SettingsDirtyControl[] =>
+    settingsDraftRegistry
+      .dirtyControls(ROOT_SETTINGS_SCOPE)
+      .toSorted((left, right) => left.changedAt - right.changedAt),
+  );
+  const rootSettingsOperation = $derived(settingsDraftRegistry.operation(ROOT_SETTINGS_SCOPE));
+  const rootSettingsConflict = $derived(settingsDraftRegistry.hasConflicts(ROOT_SETTINGS_SCOPE));
+  const rootProblemControl = $derived(rootDirtyControls[0]);
   const selectedSettingsScope = $derived.by((): SettingsScope | null => {
     const targetId = session.selectedTarget?.id;
     return targetId === undefined ? null : { type: 'installation', targetId };
@@ -383,6 +399,57 @@
     await queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] });
   }
 
+  async function saveRootSettings(): Promise<void> {
+    const result = await saveRootSettingsDraft(
+      settingsDraftRegistry,
+      api.fetchRootRuntimeSettings,
+      api.saveRootRuntimeSettings,
+    );
+    if (!result.saved || result.settings === undefined) return;
+    queryClient.setQueryData(['root-settings'], result.settings);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+      queryClient.invalidateQueries({ queryKey: ['audit', 'root'] }),
+    ]);
+  }
+
+  async function updateRootSettingsDraft(): Promise<void> {
+    if (resolvingSettingsConflict) return;
+    resolvingSettingsConflict = true;
+    await tick();
+    try {
+      const latest = await api.fetchRootRuntimeSettings();
+      queryClient.setQueryData(['root-settings'], latest);
+      rebaseRootSettingsConflict(settingsDraftRegistry, latest);
+      settingsDraftRegistry.resolveExternalConflicts(ROOT_SETTINGS_SCOPE);
+      if (!settingsDraftRegistry.hasConflicts(ROOT_SETTINGS_SCOPE)) {
+        settingsDraftRegistry.dismissProblem(ROOT_SETTINGS_SCOPE);
+      }
+    } catch (cause) {
+      const attempt = settingsDraftRegistry.beginSave(ROOT_SETTINGS_SCOPE);
+      if (attempt !== null) {
+        settingsDraftRegistry.failSave(
+          attempt,
+          cause instanceof Error ? cause.message : String(cause),
+        );
+      }
+    } finally {
+      resolvingSettingsConflict = false;
+    }
+  }
+
+  function discardRootSettings(): void {
+    settingsDraftRegistry.discardScope(ROOT_SETTINGS_SCOPE);
+  }
+
+  function dismissRootSettingsNotice(): void {
+    settingsDraftRegistry.dismissNotice(ROOT_SETTINGS_SCOPE);
+  }
+
+  function openRootSettingsProblem(): void {
+    session.selectRootRuntimeSection('settings');
+  }
+
   async function updateSelectedSettingsDraft(): Promise<void> {
     const targetId = session.selectedTarget?.id;
     if (targetId === undefined || selectedSettingsScope === null) return;
@@ -413,6 +480,29 @@
     }
     if (control.location.section === 'repositories') return session.viewHref('repositories');
     if (control.location.section === 'defaults') return session.viewHref('defaults');
+    return undefined;
+  }
+
+  function settingsReviewHref(control: SettingsDirtyControl | undefined): string | undefined {
+    if (control === undefined) return undefined;
+    if (control.resource.type === 'runtime') return session.rootRuntimeHref('settings');
+
+    const targetId = control.resource.targetId;
+    const target = session.targets.find((candidate) => candidate.id === targetId);
+    if (target === undefined) return undefined;
+    const account = target.account.login;
+    if (control.location.section === 'repositories') {
+      return panelAddress({ account, view: 'repositories' });
+    }
+    if (control.location.section === 'defaults') {
+      return panelAddress({ account, view: 'defaults' });
+    }
+    if (control.location.section === 'sync') {
+      const section = syncSection(control) ?? 'overview';
+      return section === 'overview'
+        ? panelAddress({ account, view: 'sync' })
+        : panelAddress({ account, view: 'sync', sync: section });
+    }
     return undefined;
   }
 
@@ -626,6 +716,11 @@
   const rootInstallationKids = $derived.by(() => {
     const route = session.currentRootRoute;
     if (route.rootView !== 'installation') return undefined;
+    const target = session.targets.find(
+      (candidate) => candidate.account.login.toLowerCase() === route.account.toLowerCase(),
+    );
+    const scope: SettingsScope | null =
+      target === undefined ? null : { type: 'installation', targetId: target.id };
     const leaves = [
       { id: 'defaults', view: 'defaults' },
       { id: 'repositories', view: 'repositories' },
@@ -647,6 +742,10 @@
         route.view === leaf.view &&
         (leaf.view !== 'history' ||
           ('section' in leaf && session.currentHistorySection === leaf.section)),
+      dirty:
+        scope !== null && (leaf.id === 'defaults' || leaf.id === 'repositories')
+          ? settingsDraftRegistry.dirtyAt(scope, { section: leaf.id })
+          : undefined,
     }));
   });
 
@@ -657,7 +756,12 @@
       icon: rootIcon[section],
       href: session.rootHrefFor(section),
       active: !session.isInbox && session.rootValue === section,
-      dirty: section === 'installations' ? dirtyTargetIds.size > 0 : undefined,
+      dirty:
+        section === 'installations'
+          ? dirtyTargetIds.size > 0
+          : section === 'runtime'
+            ? rootDirty
+            : undefined,
       kids:
         section === 'queue'
           ? queueKids
@@ -809,6 +913,7 @@
             kind={shownAttentionKind}
             count={settingsDraftRegistry.dirtyControlCount}
             problem={visibleStorageProblem}
+            reviewHref={settingsAttentionHref}
             onDismiss={dismissSettingsAttention}
           />
         </div>
@@ -856,6 +961,24 @@
             onResolveConflict={() => void updateSelectedSettingsDraft()}
             onDismiss={dismissSelectedSettingsNotice}
             onOpenProblem={openSettingsProblem}
+          />
+        {:else if session.isRootMode}
+          <SettingsSaveComposer
+            count={rootDirtyControls.length}
+            saving={rootSettingsOperation.saving}
+            resolving={resolvingSettingsConflict}
+            problem={rootSettingsOperation.problem}
+            problemHref={rootProblemControl === undefined
+              ? undefined
+              : session.rootRuntimeHref('settings')}
+            problemLabel={rootProblemControl === undefined ? undefined : 'Runtime settings'}
+            notice={rootSettingsOperation.notice}
+            conflict={rootSettingsConflict}
+            onSave={() => void saveRootSettings()}
+            onDiscard={discardRootSettings}
+            onResolveConflict={() => void updateRootSettingsDraft()}
+            onDismiss={dismissRootSettingsNotice}
+            onOpenProblem={openRootSettingsProblem}
           />
         {/if}
         <PageFooter {build} />

@@ -28,96 +28,6 @@ type Config struct {
 	UpdatedAt time.Time
 }
 
-// ConfigChange writes one kind's configuration.
-type ConfigChange struct {
-	TargetID string
-	Kind     Kind
-	Enabled  bool
-	Document []byte
-	ActorID  string
-	Now      time.Time
-
-	// Revision is what the writer believes it is changing, or zero for a first
-	// write. A mismatch is a conflict rather than a silent overwrite: two
-	// people editing the same label set from two tabs is the ordinary case, not
-	// the exotic one.
-	Revision int64
-}
-
-// ConfigBatchChange saves one or more kinds as one user action.
-//
-// Changes carry only kind-specific values. The installation, actor, and clock
-// live on the batch so callers cannot accidentally attribute two halves of one
-// save to different people or moments.
-type ConfigBatchChange struct {
-	TargetID         string
-	ActorID          string
-	ElevationID      *string
-	SessionTokenHash string
-	Now              time.Time
-	Changes          []ConfigPatch
-}
-
-// ConfigPatch is one kind inside an atomic configuration save.
-type ConfigPatch struct {
-	Kind     Kind
-	Enabled  bool
-	Document []byte
-	Revision int64
-}
-
-// ConfigWrite is the state after one save or restore. CheckpointID is nil when
-// every requested value already matched storage and nothing was written.
-type ConfigWrite struct {
-	Configs      []Config
-	CheckpointID *int64
-}
-
-// ConfigCheckpoint is one immutable, restorable installation state.
-type ConfigCheckpoint struct {
-	ID             int64
-	TargetID       string
-	ActorID        string
-	Action         CheckpointAction
-	RestoredFromID *int64
-	CreatedAt      time.Time
-	PreviousItems  []ConfigCheckpointItem
-	Items          []ConfigCheckpointItem
-}
-
-// CheckpointAction records why a snapshot exists. Baselines are migration or
-// first-write anchors and never appear as user audit events.
-type CheckpointAction string
-
-const (
-	CheckpointBaseline CheckpointAction = "baseline"
-	CheckpointSaved    CheckpointAction = "save"
-	CheckpointRestored CheckpointAction = "restore"
-)
-
-// ConfigCheckpointItem is one configured kind in a checkpoint. A missing kind
-// means that kind had never been configured at that point.
-type ConfigCheckpointItem struct {
-	Kind     Kind
-	Enabled  bool
-	Document []byte
-	Digest   string
-	Revision int64
-}
-
-// ConfigRestore restores selected kinds from one checkpoint. Revisions name
-// the current rows the caller inspected; zero means the kind is absent now.
-type ConfigRestore struct {
-	TargetID         string
-	CheckpointID     int64
-	Kinds            []Kind
-	Revisions        map[Kind]int64
-	ActorID          string
-	ElevationID      *string
-	SessionTokenHash string
-	Now              time.Time
-}
-
 // RepositoryOverride is a repository's own answer for one kind. Enabled is nil
 // where the repository has not given one and inherits the installation's.
 type RepositoryOverride struct {
@@ -163,18 +73,6 @@ func (o RepositoryOverride) AdjustsNothing() bool {
 // whether to show one. Disagreeing means a refusal the panel states for ever.
 func (o *RepositoryOverride) Disabled() bool {
 	return o != nil && o.Enabled != nil && !*o.Enabled
-}
-
-// RepositoryOverrideChange writes one, or clears it back to inheriting by
-// passing a nil Enabled and an empty Document.
-type RepositoryOverrideChange struct {
-	RepositoryID string
-	Kind         Kind
-	Enabled      *bool
-	Document     []byte
-	ActorID      string
-	Now          time.Time
-	Revision     int64
 }
 
 // RepositoryState is what is known about one repository for one kind: what it
@@ -364,15 +262,6 @@ type Store interface {
 	GetSyncConfig(context.Context, string, Kind) (Config, error)
 	ListSyncConfigs(context.Context, string) ([]Config, error)
 
-	// SetSyncConfig writes a configuration and invalidates every live plan
-	// computed from the old one, in the same transaction. Saving a label
-	// colour while a plan is on screen has to invalidate that plan atomically,
-	// or the plan stays approvable and applies work nobody reviewed.
-	SetSyncConfig(context.Context, ConfigChange) (Config, error)
-	SetSyncConfigs(context.Context, ConfigBatchChange) (ConfigWrite, error)
-	GetSyncConfigCheckpoint(context.Context, string, int64) (ConfigCheckpoint, error)
-	RestoreSyncConfigCheckpoint(context.Context, ConfigRestore) (ConfigWrite, error)
-
 	// GetSyncRepositoryOverride reads what one repository says about one kind,
 	// answering ErrNotFound where it has said nothing.
 	//
@@ -386,9 +275,6 @@ type Store interface {
 	) (RepositoryOverride, error)
 
 	ListSyncRepositoryOverrides(context.Context, string) ([]RepositoryOverride, error)
-	SetSyncRepositoryOverride(
-		context.Context, RepositoryOverrideChange,
-	) (RepositoryOverride, error)
 
 	// ListSyncRepositoryPaths reads every path an installation's repositories
 	// are known to hold, one row per repository.

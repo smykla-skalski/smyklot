@@ -118,7 +118,7 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/history/failures')).toEqual({
       rootView: 'history-failures',
     });
-    expect(parsePanelRoute('', '/root/runtime')).toEqual({ rootView: 'runtime-settings' });
+    expect(parsePanelRoute('', '/root/runtime')).toEqual({ rootView: 'runtime-service' });
     expect(parsePanelRoute('', '/root/runtime/settings')).toEqual({
       rootView: 'runtime-settings',
     });
@@ -135,17 +135,12 @@ describe('panel routes', () => {
     });
   });
 
-  it('reads legacy settings addresses as their canonical destinations', () => {
-    expect(parsePanelRoute('', '/i/acme/settings')).toEqual({
-      account: 'acme',
-      view: 'defaults',
-    });
-    expect(parsePanelRoute('', '/root/installations/acme/settings')).toEqual({
-      rootView: 'installation',
-      account: 'acme',
-      view: 'defaults',
-    });
-    expect(parsePanelRoute('', '/root/settings')).toEqual({ rootView: 'runtime-settings' });
+  it('rejects removed compatibility addresses', () => {
+    expect(parsePanelRoute('', '/i/acme/settings')).toBeNull();
+    expect(parsePanelRoute('', '/root/installations/acme/settings')).toBeNull();
+    expect(parsePanelRoute('', '/root/settings')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/users')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/invitations')).toBeNull();
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -246,7 +241,7 @@ describe('panel document titles', () => {
     expect(rootSection({ rootView: 'runtime-service' })).toBe('runtime');
     expect(rootSection({ rootView: 'runtime-database' })).toBe('runtime');
     expect(rootSection({ rootView: 'runtime-settings' })).toBe('runtime');
-    expect(rootSectionRoute('runtime')).toEqual({ rootView: 'runtime-settings' });
+    expect(rootSectionRoute('runtime')).toEqual({ rootView: 'runtime-service' });
   });
 });
 

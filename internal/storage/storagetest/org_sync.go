@@ -46,13 +46,43 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	) orgsync.Config {
 		GinkgoHelper()
 
-		config, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
-			TargetID: target, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(document), ActorID: actor, Now: now, Revision: revision,
+		result, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target, ActorAccountID: actor, ChangedAt: now,
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindLabels, Enabled: true, Document: []byte(document),
+				ExpectedRevision: revision,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SyncConfigs).To(HaveLen(1))
 
-		return config
+		return result.SyncConfigs[0]
+	}
+
+	writeOverride := func(
+		ctx context.Context,
+		store storage.Store,
+		actor string,
+		now time.Time,
+		repositoryID string,
+		kind orgsync.Kind,
+		enabled *bool,
+		document []byte,
+		revision int64,
+	) orgsync.RepositoryOverride {
+		GinkgoHelper()
+
+		result, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target, ActorAccountID: actor, ChangedAt: now,
+			SyncOverrides: []storage.InstallationSyncOverrideChange{{
+				RepositoryID: repositoryID, Kind: kind, Enabled: enabled,
+				Document: document, ExpectedRevision: revision,
+			}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SyncOverrides).To(HaveLen(1))
+
+		return result.SyncOverrides[0]
 	}
 
 	planFor := func(
@@ -135,232 +165,15 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 
-	// Two people editing the same label set from two tabs is the ordinary
-	// case, and the one who saved second should be told rather than win
-	It("refuses a write against a revision that has moved", func() {
-		ctx, store, now := runtime()
-		account := seed(ctx, store, now)
-		writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
-
-		_, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
-			TargetID: target, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(`{"labels":[{}]}`), ActorID: account.ID, Now: now, Revision: 0,
-		})
-		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
-	})
-
-	It("saves several kinds as one audited immutable checkpoint", func() {
-		ctx, store, now := runtime()
-		account := seed(ctx, store, now)
-		changes := []orgsync.ConfigPatch{
-			{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`)},
-			{Kind: orgsync.KindSettings, Enabled: false, Document: []byte(`{"settings":{}}`)},
-		}
-
-		written, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now, Changes: changes,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(written.Configs).To(HaveLen(2))
-		Expect(written.CheckpointID).NotTo(BeNil())
-
-		checkpoint, err := store.GetSyncConfigCheckpoint(ctx, target, *written.CheckpointID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(checkpoint.Action).To(Equal(orgsync.CheckpointSaved))
-		Expect(checkpoint.Items).To(HaveLen(2))
-		Expect(checkpoint.PreviousItems).To(BeEmpty())
-		Expect(checkpoint.ActorID).To(Equal(account.ID))
-
-		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-			Change:             storage.AuditChangeSync,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Items).To(HaveLen(1))
-		Expect(audit.Items[0].Action).To(Equal("sync.config.saved"))
-		Expect(audit.Items[0].SyncConfigCheckpointID).To(Equal(written.CheckpointID))
-
-		rootAudit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-			Categories:         []storage.AuditCategory{storage.AuditCategoryConfiguration},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(rootAudit.Items).To(HaveLen(1))
-		Expect(rootAudit.Items[0].Action).To(Equal("sync.config.saved"))
-		Expect(rootAudit.Items[0].TargetID).To(HaveValue(Equal(target)))
-		Expect(rootAudit.Items[0].SyncConfigCheckpointID).To(Equal(written.CheckpointID))
-
-		for index := range changes {
-			changes[index].Revision = 1
-		}
-		unchanged, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute), Changes: changes,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(unchanged.CheckpointID).To(BeNil())
-
-		audit, err = store.ListAudit(ctx, target, storage.AuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-			Change:             storage.AuditChangeSync,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Total).To(Equal(1))
-	})
-
-	It("rolls every kind back when one expected revision is stale", func() {
-		ctx, store, now := runtime()
-		account := seed(ctx, store, now)
-		writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
-
-		_, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute),
-			Changes: []orgsync.ConfigPatch{
-				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[{}]}`), Revision: 1},
-				{Kind: orgsync.KindSettings, Enabled: true, Document: []byte(`{"settings":{}}`), Revision: 1},
-			},
-		})
-		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
-
-		labels, err := store.GetSyncConfig(ctx, target, orgsync.KindLabels)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(labels.Document)).To(Equal(`{"labels":[]}`))
-		Expect(labels.Revision).To(Equal(int64(1)))
-		_, err = store.GetSyncConfig(ctx, target, orgsync.KindSettings)
-		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-
-		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-			Change:             storage.AuditChangeSync,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Total).To(Equal(1))
-	})
-
-	It("restores selected kinds and keeps the source checkpoint immutable", func() {
-		ctx, store, now := runtime()
-		account := seed(ctx, store, now)
-
-		original, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now,
-			Changes: []orgsync.ConfigPatch{
-				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`)},
-				{Kind: orgsync.KindSettings, Enabled: true, Document: []byte(`{"settings":{}}`)},
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute),
-			Changes: []orgsync.ConfigPatch{
-				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[{}]}`), Revision: 1},
-				{Kind: orgsync.KindFiles, Enabled: true, Document: []byte(`{"files":[]}`)},
-			},
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		restored, err := store.RestoreSyncConfigCheckpoint(ctx, orgsync.ConfigRestore{
-			TargetID: target, CheckpointID: *original.CheckpointID,
-			Kinds: []orgsync.Kind{orgsync.KindLabels, orgsync.KindFiles},
-			Revisions: map[orgsync.Kind]int64{
-				orgsync.KindLabels: 2,
-				orgsync.KindFiles:  1,
-			},
-			ActorID: account.ID, Now: now.Add(2 * time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(restored.CheckpointID).NotTo(BeNil())
-
-		labels, err := store.GetSyncConfig(ctx, target, orgsync.KindLabels)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(string(labels.Document)).To(Equal(`{"labels":[]}`))
-		Expect(labels.Revision).To(Equal(int64(3)))
-		_, err = store.GetSyncConfig(ctx, target, orgsync.KindFiles)
-		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-
-		source, err := store.GetSyncConfigCheckpoint(ctx, target, *original.CheckpointID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(source.Action).To(Equal(orgsync.CheckpointSaved))
-		Expect(source.RestoredFromID).To(BeNil())
-		Expect(source.Items).To(HaveLen(2))
-
-		result, err := store.GetSyncConfigCheckpoint(ctx, target, *restored.CheckpointID)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(result.Action).To(Equal(orgsync.CheckpointRestored))
-		Expect(result.RestoredFromID).To(HaveValue(Equal(*original.CheckpointID)))
-		Expect(result.Items).To(HaveLen(2))
-		Expect(result.PreviousItems).To(HaveLen(3))
-
-		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-			Change:             storage.AuditChangeSync,
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Total).To(Equal(3))
-		Expect(audit.Items[0].Action).To(Equal("sync.config.restored"))
-		Expect(audit.Items[0].SyncConfigCheckpointID).To(Equal(restored.CheckpointID))
-	})
-
-	It("never reuses a revision after restoring a kind through absence", func() {
-		ctx, store, now := runtime()
-		account := seed(ctx, store, now)
-		absent, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now,
-			Changes: []orgsync.ConfigPatch{{
-				Kind: orgsync.KindSettings, Enabled: true, Document: []byte(`{"settings":{}}`),
-			}},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		present, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
-			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute),
-			Changes: []orgsync.ConfigPatch{{
-				Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`),
-			}},
-		})
-		Expect(err).NotTo(HaveOccurred())
-
-		_, err = store.RestoreSyncConfigCheckpoint(ctx, orgsync.ConfigRestore{
-			TargetID: target, CheckpointID: *absent.CheckpointID,
-			Kinds:     []orgsync.Kind{orgsync.KindLabels},
-			Revisions: map[orgsync.Kind]int64{orgsync.KindLabels: 1},
-			ActorID:   account.ID, Now: now.Add(2 * time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		restored, err := store.RestoreSyncConfigCheckpoint(ctx, orgsync.ConfigRestore{
-			TargetID: target, CheckpointID: *present.CheckpointID,
-			Kinds:     []orgsync.Kind{orgsync.KindLabels},
-			Revisions: map[orgsync.Kind]int64{orgsync.KindLabels: 0},
-			ActorID:   account.ID, Now: now.Add(3 * time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		var labels orgsync.Config
-		for _, config := range restored.Configs {
-			if config.Kind == orgsync.KindLabels {
-				labels = config
-				break
-			}
-		}
-		Expect(labels.Revision).To(Equal(int64(2)))
-
-		_, err = store.SetSyncConfig(ctx, orgsync.ConfigChange{
-			TargetID: target, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(`{"labels":[{"name":"stale"}]}`), Revision: 1,
-			ActorID: account.ID, Now: now.Add(4 * time.Minute),
-		})
-		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
-	})
-
 	Describe("repository overrides", func() {
 		It("keeps a repository's own answer, and tells it from inheriting", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)
 			no := false
 
-			written, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
-					ActorID: account.ID, Now: now,
-				})
-			Expect(err).NotTo(HaveOccurred())
+			written := writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindLabels, &no, nil, 0,
+			)
 			Expect(written.Enabled).To(HaveValue(BeFalse()))
 
 			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
@@ -371,12 +184,10 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			// Cleared back to inheriting, which is a third state and not the
 			// same as saying no
-			cleared, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: nil,
-					ActorID: account.ID, Now: now, Revision: written.Revision,
-				})
-			Expect(err).NotTo(HaveOccurred())
+			cleared := writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindLabels, nil, nil,
+				written.Revision,
+			)
 			Expect(cleared.Enabled).To(BeNil())
 
 			listed, err = store.ListSyncRepositoryOverrides(ctx, target)
@@ -394,13 +205,18 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			// whether a repository has settled.
 			document := []byte(`{"merges":[{"path":"renovate.json",` +
 				`"overrides":{"timezone":"Europe/Warsaw"}}]}`)
-
-			written, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindFiles, Document: document,
-					ActorID: account.ID, Now: now,
-				})
+			_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+				TargetID: target, ActorAccountID: account.ID, ChangedAt: now,
+				SyncConfigs: []storage.InstallationSyncConfigChange{{
+					Kind: orgsync.KindFiles, Enabled: true,
+					Document: []byte(`{"files":[{"path":"renovate.json","content":"{}"}]}`),
+				}},
+			})
 			Expect(err).NotTo(HaveOccurred())
+
+			written := writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindFiles, nil, document, 0,
+			)
 			Expect(string(written.Document)).To(Equal(string(document)))
 
 			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
@@ -415,12 +231,9 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			account := seed(ctx, store, now)
 			yes := true
 
-			written, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindFiles, Enabled: &yes,
-					ActorID: account.ID, Now: now,
-				})
-			Expect(err).NotTo(HaveOccurred())
+			written := writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindFiles, &yes, nil, 0,
+			)
 			Expect(string(written.Document)).To(Equal("{}"))
 
 			listed, err := store.ListSyncRepositoryOverrides(ctx, target)
@@ -433,12 +246,9 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			account := seed(ctx, store, now)
 			no := false
 
-			_, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
-					ActorID: account.ID, Now: now,
-				})
-			Expect(err).NotTo(HaveOccurred())
+			writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindLabels, &no, nil, 0,
+			)
 
 			read, err := store.GetSyncRepositoryOverride(
 				ctx, target, repoA, orgsync.KindLabels)
@@ -467,14 +277,11 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			account := seed(ctx, store, now)
 			no := false
 
-			_, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
-					RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
-					ActorID: account.ID, Now: now,
-				})
-			Expect(err).NotTo(HaveOccurred())
+			writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindLabels, &no, nil, 0,
+			)
 
-			_, err = store.GetSyncRepositoryOverride(
+			_, err := store.GetSyncRepositoryOverride(
 				ctx, "github:test:target:absent", repoA, orgsync.KindLabels)
 			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		})
@@ -484,11 +291,13 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			seed(ctx, store, now)
 			yes := true
 
-			_, err := store.SetSyncRepositoryOverride(
-				ctx, orgsync.RepositoryOverrideChange{
+			_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+				TargetID: target, ActorAccountID: testAccount(now).ID, ChangedAt: now,
+				SyncOverrides: []storage.InstallationSyncOverrideChange{{
 					RepositoryID: "github:repository:404", Kind: orgsync.KindLabels,
-					Enabled: &yes, ActorID: testAccount(now).ID, Now: now,
-				})
+					Enabled: &yes,
+				}},
+			})
 			Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		})
 	})
@@ -753,7 +562,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			planFor(ctx, store, "plan-1", account.ID, config.Digest, now, nil)
 
 			writeConfig(ctx, store, account.ID, now.Add(time.Minute),
-				`{"labels":[{"name":"bug"}]}`, config.Revision)
+				`{"labels":[{"name":"bug","color":"d73a4a"}]}`, config.Revision)
 
 			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
@@ -778,7 +587,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 
 			// Somebody saves while the work is running.
 			writeConfig(ctx, store, account.ID, now.Add(time.Minute),
-				`{"labels":[{"name":"bug"}]}`, config.Revision)
+				`{"labels":[{"name":"bug","color":"d73a4a"}]}`, config.Revision)
 
 			err := store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
 				PlanID: "plan-1", State: orgsync.PlanApplied, Now: now,
@@ -808,11 +617,9 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
 			no := false
 
-			_, err := store.SetSyncRepositoryOverride(ctx, orgsync.RepositoryOverrideChange{
-				RepositoryID: repoA, Kind: orgsync.KindLabels, Enabled: &no,
-				ActorID: account.ID, Now: now,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			writeOverride(
+				ctx, store, account.ID, now, repoA, orgsync.KindLabels, &no, nil, 0,
+			)
 
 			read, _, err := store.GetSyncPlan(ctx, target, "plan-1")
 			Expect(err).NotTo(HaveOccurred())
@@ -1410,8 +1217,11 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			ctx, store, now := runtime()
 			seed(ctx, store, now)
 
-			_, err := store.SetSyncConfig(ctx, orgsync.ConfigChange{
-				TargetID: target, Kind: "workflows", ActorID: testAccount(now).ID, Now: now,
+			_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+				TargetID: target, ActorAccountID: testAccount(now).ID, ChangedAt: now,
+				SyncConfigs: []storage.InstallationSyncConfigChange{{
+					Kind: "workflows", Document: []byte(`{}`),
+				}},
 			})
 			Expect(err).To(HaveOccurred())
 		})

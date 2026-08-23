@@ -29,25 +29,22 @@ import type {
   PendingCIRequest,
   TargetUserAccess,
   RepositoryDetail,
-  RepositorySettingsInput,
   RepositorySummary,
   RootElevation,
   RootElevationInput,
   RootInstallation,
   RootOverview,
   SyncConfig,
-  SyncConfigBatchInput,
-  SyncConfigBatchResponse,
-  SyncConfigCheckpoint,
-  SyncConfigCheckpointState,
-  SyncConfigInput,
-  SyncConfigRestoreInput,
   SyncKind,
   SyncOverride,
-  SyncOverrideInput,
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
-  TargetSettingsInput,
+  SettingsCheckpoint,
+  SettingsCheckpointIncompatibility,
+  SettingsCheckpointItem,
+  SettingsCheckpointItemKind,
+  SettingsCheckpointState,
+  SettingsRestoreInput,
   UpdateTargetUserInput,
   UpdateRootUserInput,
   InvitationDays,
@@ -64,6 +61,7 @@ import type {
   InstallationTargetSettingsState,
 } from '../src/lib/types.ts';
 import { SYNC_KINDS } from '../src/lib/types.ts';
+import { CONFIG_KEYS } from '../src/lib/config.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
 /* The fixtures, which used to be nine hundred lines of this file and reachable by
    nothing. They are their own module so the Storybook catalogue can read the same data
@@ -81,7 +79,6 @@ import {
   mockRepositoryPaths,
   mockRepositoryScanAge,
   mockSyncConfig,
-  syncConfigCheckpointState,
   ROOT_READ_CAPABILITIES,
   mockRootOwns,
   rootPanelUsers,
@@ -1000,39 +997,6 @@ async function handle(
       return;
     }
     const syncPath = path.slice(route('').length);
-    const syncCheckpointMatch =
-      /^\/api\/v1\/(?:targets|root\/installations)\/([^/]+)\/sync\/config\/checkpoints\/([^/]+)(\/restore)?$/.exec(
-        syncPath,
-      );
-    if (syncCheckpointMatch) {
-      const target = findTarget(state, decodeURIComponent(syncCheckpointMatch[1] ?? ''));
-      const checkpointId = decodeURIComponent(syncCheckpointMatch[2] ?? '');
-      const key = `${target.value.id}/${checkpointId}`;
-      const checkpoint = state.syncCheckpoints.get(key);
-      if (checkpoint === undefined) {
-        throw new MockApiError(404, 'not_found', 'Sync configuration snapshot not found');
-      }
-      if (method === 'GET' && syncCheckpointMatch[3] === undefined) {
-        respond(res, 200, checkpointWithCurrent(state, target.value.id, checkpoint));
-        return;
-      }
-      if (method === 'POST' && syncCheckpointMatch[3] === '/restore') {
-        const input = await readBody<SyncConfigRestoreInput>(req);
-        const result = restoreMockCheckpoint(state, target, checkpoint, input);
-        respond(res, 200, result);
-        return;
-      }
-    }
-
-    const syncBatchMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config$/.exec(syncPath);
-    if (syncBatchMatch && method === 'PUT') {
-      const target = findTarget(state, decodeURIComponent(syncBatchMatch[1] ?? ''));
-      const input = await readBody<SyncConfigBatchInput>(req);
-      const result = saveMockSyncConfigs(state, target, input);
-      respond(res, 200, result);
-      return;
-    }
-
     const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/([^/]+)$/.exec(syncPath);
     if (syncConfigMatch) {
       // Keyed by installation and kind together, because an installation
@@ -1042,27 +1006,6 @@ async function handle(
       const config = mockSyncConfig(state, `${targetId}/${kind}`, kind);
       if (method === 'GET') {
         respond(res, 200, config);
-        return;
-      }
-      if (method === 'PUT') {
-        const input = await readBody<SyncConfigInput>(req);
-        if (input.expected_revision !== config.revision) {
-          throw new MockApiError(409, 'conflict', 'the label set changed; reload and try again');
-        }
-        state.sync.set(`${targetId}/${kind}`, {
-          ...config,
-          enabled: input.enabled,
-          labels: input.labels ?? [],
-          allow_removal: input.allow_removal ?? false,
-          excludes: input.excludes ?? [],
-          // Kept as it is sent, like the server keeps it: the kinds that have
-          // no form here are configured entirely through this field, and a
-          // mock that dropped it would show every save as a no-op.
-          document: input.document ?? config.document,
-          revision: config.revision + 1,
-          updated_at: new Date().toISOString(),
-        });
-        respond(res, 200, mockSyncConfig(state, `${targetId}/${kind}`, kind));
         return;
       }
     }
@@ -1097,30 +1040,6 @@ async function handle(
     // Every repository's answer about one kind, which is what the page about a
     // shared file reads: "who adjusts this" is a question about the whole
     // installation.
-    const syncOverridesMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/overrides\/([^/]+)$/.exec(
-      path.slice(route('').length),
-    );
-    if (syncOverridesMatch && method === 'GET') {
-      const targetId = decodeURIComponent(syncOverridesMatch[1] ?? '');
-      const kind = decodeURIComponent(syncOverridesMatch[2] ?? '');
-      const owned = new Map(
-        findTarget(state, targetId).repositories.map((repository) => [
-          repository.detail.repository.id,
-          repository.detail.repository.name,
-        ]),
-      );
-      respond(res, 200, {
-        overrides: [...state.syncOverrides.entries()]
-          .filter(([key, override]) => override.kind === kind && owned.has(key.split('/')[0] ?? ''))
-          .map(([key, override]) => ({
-            repository_id: key.split('/')[0] ?? '',
-            repository_name: owned.get(key.split('/')[0] ?? '') ?? '',
-            ...override,
-          })),
-      });
-      return;
-    }
-
     const syncOverrideMatch =
       /^\/api\/v1\/targets\/([^/]+)\/repositories\/([^/]+)\/sync\/([^/]+)$/.exec(
         path.slice(route('').length),
@@ -1140,23 +1059,6 @@ async function handle(
       };
       if (method === 'GET') {
         respond(res, 200, override);
-        return;
-      }
-      if (method === 'PUT') {
-        const input = await readBody<SyncOverrideInput>(req);
-        if (input.expected_revision !== override.revision) {
-          throw new MockApiError(409, 'conflict', 'this repository changed; reload and try again');
-        }
-        const saved: SyncOverride = {
-          ...override,
-          enabled: input.enabled,
-          document: input.document,
-          revision: override.revision + 1,
-          updated_by: 'bart',
-          updated_at: new Date().toISOString(),
-        };
-        state.syncOverrides.set(key, saved);
-        respond(res, 200, saved);
         return;
       }
     }
@@ -1288,53 +1190,37 @@ async function handle(
       respond(res, 200, rootOverviewValue(state));
       return;
     }
-    if (path === route('/api/v1/root/settings') && method === 'GET') {
+    if (path === route('/api/v1/root/runtime/settings') && method === 'GET') {
       respond(res, 200, rootRuntimeSettingsValue(state));
       return;
     }
-    if (path === route('/api/v1/root/settings') && method === 'PUT') {
+    if (path === route('/api/v1/root/runtime/settings') && method === 'PUT') {
       const input = await readBody<RootRuntimeSettingsInput>(req);
-      if (input.expected_revision !== state.runtime.revision) {
-        throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
-      }
-      const pathIndexPresent = Object.hasOwn(input, 'path_index_interval_seconds');
-      const pathIndex = input.path_index_interval_seconds;
-      if (
-        pathIndexPresent &&
-        pathIndex !== null &&
-        (!Number.isInteger(pathIndex) || pathIndex < 0 || pathIndex > DEV_MAX_PATH_INDEX_SECONDS)
-      ) {
-        throw new MockApiError(
-          400,
-          'invalid_runtime_settings',
-          'file list refresh interval must be between 0 seconds and 7 days',
-        );
-      }
-      const quietPeriodPresent = Object.hasOwn(input, 'merge_after_ci_quiet_period_seconds');
-      const quietPeriod = input.merge_after_ci_quiet_period_seconds;
-      if (
-        quietPeriodPresent &&
-        quietPeriod !== null &&
-        (!Number.isInteger(quietPeriod) || quietPeriod < 1 || quietPeriod > 86_400)
-      ) {
-        throw new MockApiError(
-          400,
-          'invalid_runtime_settings',
-          'merge-after-CI quiet period must be between 1 second and 24 hours',
-        );
-      }
-      state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
-      state.runtime.logLevelOverride = input.log_level;
-      state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
-      if (quietPeriodPresent) state.runtime.pendingCIQuietPeriodOverride = quietPeriod;
-      if (pathIndexPresent) state.runtime.pathIndexIntervalOverride = pathIndex;
-      state.runtime.sessionTTLOverride = input.session_ttl_seconds;
-      state.runtime.revision += 1;
-      state.runtime.updatedAt = new Date().toISOString();
-      state.runtime.updatedBy = VIEWER;
-      const value = rootRuntimeSettingsValue(state);
-      broadcast(state, { type: 'resync' });
-      respond(res, 200, value);
+      respond(res, 200, saveMockRootRuntimeSettings(state, input));
+      return;
+    }
+    const rootRuntimeCheckpoint = path.match(
+      /^\/api\/v1\/root\/runtime\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
+    );
+    if (
+      rootRuntimeCheckpoint &&
+      method === 'GET' &&
+      rootRuntimeCheckpoint.groups?.restore === undefined
+    ) {
+      const checkpoint = findMockRootRuntimeCheckpoint(
+        state,
+        rootRuntimeCheckpoint.groups?.checkpoint ?? '',
+      );
+      respond(res, 200, inspectMockRootRuntimeCheckpoint(state, checkpoint));
+      return;
+    }
+    if (rootRuntimeCheckpoint?.groups?.restore !== undefined && method === 'POST') {
+      const checkpoint = findMockRootRuntimeCheckpoint(
+        state,
+        rootRuntimeCheckpoint.groups?.checkpoint ?? '',
+      );
+      const input = await readBody<SettingsRestoreInput>(req);
+      respond(res, 200, restoreMockRootRuntimeSettings(state, checkpoint, input));
       return;
     }
     if (path === route('/api/v1/root/access/users') && method === 'GET') {
@@ -1403,15 +1289,15 @@ async function handle(
       return;
     }
 
-    const targetSettingsBatch = path.match(
-      /^\/api\/v1\/targets\/(?<target>[^/]+)\/settings\/batch$/,
-    );
-    const rootTargetSettingsBatch = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings\/batch$/,
-    );
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
     const rootTargetSettings = path.match(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings$/,
+    );
+    const targetSettingsCheckpoint = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
+    );
+    const rootTargetSettingsCheckpoint = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
     );
     const rootElevation = path.match(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/elevation$/,
@@ -1468,12 +1354,6 @@ async function handle(
     const rootRepository = path.match(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
     );
-    const repositorySettings = path.match(
-      /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
-    );
-    const rootRepositorySettings = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/settings$/,
-    );
     const repositoryConfigMigration = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
     );
@@ -1499,11 +1379,40 @@ async function handle(
     const installationInvitation = invitation ?? rootScopedInvitation;
     const installationAudit = audit ?? rootTargetAudit;
     const installationFailures = failures ?? rootTargetFailures;
-    const installationSettingsBatch = targetSettingsBatch ?? rootTargetSettingsBatch;
+    const installationSettings = targetSettings ?? rootTargetSettings;
+    const installationSettingsCheckpoint = targetSettingsCheckpoint ?? rootTargetSettingsCheckpoint;
 
-    if (installationSettingsBatch && method === 'PUT') {
-      const target = findTarget(state, installationSettingsBatch.groups?.target ?? '');
-      if (rootTargetSettingsBatch !== null) requireRootWrite(state, target);
+    if (
+      installationSettingsCheckpoint !== null &&
+      method === 'GET' &&
+      installationSettingsCheckpoint.groups?.restore === undefined
+    ) {
+      const target = findTarget(state, installationSettingsCheckpoint.groups?.target ?? '');
+      const checkpoint = findMockInstallationSettingsCheckpoint(
+        state,
+        target.value.id,
+        installationSettingsCheckpoint.groups?.checkpoint ?? '',
+      );
+      respond(res, 200, inspectMockInstallationSettingsCheckpoint(state, target, checkpoint));
+      return;
+    }
+
+    if (installationSettingsCheckpoint?.groups?.restore !== undefined && method === 'POST') {
+      const target = findTarget(state, installationSettingsCheckpoint.groups?.target ?? '');
+      if (rootTargetSettingsCheckpoint !== null) requireRootWrite(state, target);
+      const checkpoint = findMockInstallationSettingsCheckpoint(
+        state,
+        target.value.id,
+        installationSettingsCheckpoint.groups?.checkpoint ?? '',
+      );
+      const input = await readBody<SettingsRestoreInput>(req);
+      respond(res, 200, restoreMockInstallationSettings(state, target, checkpoint, input));
+      return;
+    }
+
+    if (installationSettings && method === 'PUT') {
+      const target = findTarget(state, installationSettings.groups?.target ?? '');
+      if (rootTargetSettings !== null) requireRootWrite(state, target);
       const input = await readBody<InstallationSettingsBatchInput>(req);
       respond(res, 200, saveMockInstallationSettings(state, target, input));
       return;
@@ -1747,32 +1656,6 @@ async function handle(
       respond(res, 200, rootTargetValue(state, target));
       return;
     }
-    if (rootTargetSettings && method === 'PUT') {
-      const target = findTarget(state, rootTargetSettings.groups?.target ?? '');
-      requireRootWrite(state, target);
-      const input = await readBody<TargetSettingsInput>(req);
-      requireRevision(target.value.revision, input.expected_revision);
-      target.value.repository_default_enabled = input.repository_default_enabled;
-      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
-        target.value.path_index_interval_seconds_override =
-          input.path_index_interval_seconds_override ?? null;
-      }
-      target.value.config_patch = structuredClone(input.config_patch);
-      if (input.pending_ci_mode_default !== undefined)
-        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
-      if (input.pending_ci_branch_patterns_default !== undefined)
-        target.value.pending_ci_branch_patterns_default = structuredClone(
-          input.pending_ci_branch_patterns_default,
-        );
-      if (input.pending_ci_quiet_period_seconds_override !== undefined)
-        target.value.pending_ci_quiet_period_seconds_override =
-          input.pending_ci_quiet_period_seconds_override;
-      target.value.revision += 1;
-      recomputeTarget(target);
-      addAudit(target, 'target.settings.updated', 'updated account defaults');
-      respond(res, 200, rootTargetValue(state, target));
-      return;
-    }
     if (rootRepositories && method === 'GET') {
       const target = findTarget(state, rootRepositories.groups?.target ?? '');
       respond(res, 200, repositoryPage(target.repositories, parsed.searchParams));
@@ -1781,41 +1664,6 @@ async function handle(
     if (rootRepository && method === 'GET') {
       const target = findTarget(state, rootRepository.groups?.target ?? '');
       respond(res, 200, findRepository(target, rootRepository.groups?.repository ?? '').detail);
-      return;
-    }
-    if (rootRepositorySettings && method === 'PUT') {
-      const target = findTarget(state, rootRepositorySettings.groups?.target ?? '');
-      requireRootWrite(state, target);
-      const stored = findRepository(target, rootRepositorySettings.groups?.repository ?? '');
-      const input = await readBody<RepositorySettingsInput>(req);
-      requireRevision(stored.detail.revision, input.expected_revision);
-      stored.detail.repository.enabled_override = input.enabled_override;
-      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
-        stored.detail.path_index_interval_seconds_override =
-          input.path_index_interval_seconds_override ?? null;
-      }
-      stored.detail.config_patch = structuredClone(input.config_patch);
-      stored.detail.ignore_repository_file = input.ignore_repository_file;
-      if (input.pending_ci_mode_override !== undefined)
-        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
-      if (input.pending_ci_branch_patterns_override !== undefined)
-        stored.detail.pending_ci_branch_patterns_override =
-          input.pending_ci_branch_patterns_override === null
-            ? null
-            : structuredClone(input.pending_ci_branch_patterns_override);
-      if (input.pending_ci_quiet_period_seconds_override !== undefined)
-        stored.detail.pending_ci_quiet_period_seconds_override =
-          input.pending_ci_quiet_period_seconds_override;
-      stored.detail.revision += 1;
-      stored.detail.repository.updated_at = new Date().toISOString();
-      recomputeTarget(target);
-      addAudit(
-        target,
-        'repository.settings.updated',
-        'updated repository settings for',
-        stored.detail.repository.full_name,
-      );
-      respond(res, 200, stored.detail);
       return;
     }
     if (rootRepositoryConfigMigration && method === 'POST') {
@@ -1978,32 +1826,6 @@ async function handle(
       return;
     }
 
-    if (targetSettings && method === 'PUT') {
-      const target = findTarget(state, targetSettings.groups?.target ?? '');
-      const input = await readBody<TargetSettingsInput>(req);
-      requireRevision(target.value.revision, input.expected_revision);
-      target.value.repository_default_enabled = input.repository_default_enabled;
-      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
-        target.value.path_index_interval_seconds_override =
-          input.path_index_interval_seconds_override ?? null;
-      }
-      target.value.config_patch = structuredClone(input.config_patch);
-      if (input.pending_ci_mode_default !== undefined)
-        target.value.pending_ci_mode_default = input.pending_ci_mode_default;
-      if (input.pending_ci_branch_patterns_default !== undefined)
-        target.value.pending_ci_branch_patterns_default = structuredClone(
-          input.pending_ci_branch_patterns_default,
-        );
-      if (input.pending_ci_quiet_period_seconds_override !== undefined)
-        target.value.pending_ci_quiet_period_seconds_override =
-          input.pending_ci_quiet_period_seconds_override;
-      target.value.revision += 1;
-      recomputeTarget(target);
-      addAudit(target, 'target.settings.updated', 'updated account defaults');
-      broadcast(state, { type: 'target.changed', target_id: target.value.id });
-      respond(res, 200, target.value);
-      return;
-    }
     if (repositories && method === 'GET') {
       const target = findTarget(state, repositories.groups?.target ?? '');
       respond(res, 200, repositoryPage(target.repositories, parsed.searchParams));
@@ -2012,45 +1834,6 @@ async function handle(
     if (repository && method === 'GET') {
       const target = findTarget(state, repository.groups?.target ?? '');
       respond(res, 200, findRepository(target, repository.groups?.repository ?? '').detail);
-      return;
-    }
-    if (repositorySettings && method === 'PUT') {
-      const target = findTarget(state, repositorySettings.groups?.target ?? '');
-      const stored = findRepository(target, repositorySettings.groups?.repository ?? '');
-      const input = await readBody<RepositorySettingsInput>(req);
-      requireRevision(stored.detail.revision, input.expected_revision);
-      stored.detail.repository.enabled_override = input.enabled_override;
-      if (Object.hasOwn(input, 'path_index_interval_seconds_override')) {
-        stored.detail.path_index_interval_seconds_override =
-          input.path_index_interval_seconds_override ?? null;
-      }
-      stored.detail.config_patch = structuredClone(input.config_patch);
-      stored.detail.ignore_repository_file = input.ignore_repository_file;
-      if (input.pending_ci_mode_override !== undefined)
-        stored.detail.pending_ci_mode_override = input.pending_ci_mode_override;
-      if (input.pending_ci_branch_patterns_override !== undefined)
-        stored.detail.pending_ci_branch_patterns_override =
-          input.pending_ci_branch_patterns_override === null
-            ? null
-            : structuredClone(input.pending_ci_branch_patterns_override);
-      if (input.pending_ci_quiet_period_seconds_override !== undefined)
-        stored.detail.pending_ci_quiet_period_seconds_override =
-          input.pending_ci_quiet_period_seconds_override;
-      stored.detail.revision += 1;
-      stored.detail.repository.updated_at = new Date().toISOString();
-      recomputeTarget(target);
-      addAudit(
-        target,
-        'repository.settings.updated',
-        'updated repository settings for',
-        stored.detail.repository.full_name,
-      );
-      broadcast(state, {
-        type: 'repository.changed',
-        target_id: target.value.id,
-        repository_id: stored.detail.repository.id,
-      });
-      respond(res, 200, stored.detail);
       return;
     }
     if (repositoryConfigMigration && method === 'POST') {
@@ -2093,13 +1876,17 @@ async function handle(
               (scope === 'repositories' && entry.repository_full_name !== undefined);
             const matchesChange =
               change === 'all' ||
-              (change === 'enablement' &&
-                ['repository.enabled', 'repository.disabled'].includes(entry.action)) ||
               (change === 'repository' &&
-                entry.action.startsWith('repository.') &&
-                !['repository.enabled', 'repository.disabled'].includes(entry.action)) ||
-              (change === 'account' && entry.action.startsWith('target.')) ||
-              (change === 'sync' && entry.action.startsWith('sync.config.'));
+                (entry.action.startsWith('repository.') ||
+                  mockAuditCheckpointChangedKind(state, target.value.id, entry, ['repository']))) ||
+              (change === 'account' &&
+                (entry.action.startsWith('target.') ||
+                  mockAuditCheckpointChangedKind(state, target.value.id, entry, ['target']))) ||
+              (change === 'sync' &&
+                mockAuditCheckpointChangedKind(state, target.value.id, entry, [
+                  'sync_config',
+                  'sync_override',
+                ]));
             return matchesScope && matchesChange;
           },
         ),
@@ -2171,45 +1958,20 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   return target;
 }
 
-function allMockSyncConfigs(state: MockState, targetId: string): SyncConfig[] {
-  return SYNC_KINDS.map((kind) => mockSyncConfig(state, `${targetId}/${kind}`, kind));
-}
-
-function syncStateMap(configs: SyncConfig[]): Map<SyncKind, SyncConfigCheckpointState> {
-  return new Map(
-    configs.map((config) => [config.kind as SyncKind, syncConfigCheckpointState(config)]),
-  );
-}
-
-function checkpointWithCurrent(
-  state: MockState,
-  targetId: string,
-  checkpoint: SyncConfigCheckpoint,
-): SyncConfigCheckpoint {
-  const current = syncStateMap(allMockSyncConfigs(state, targetId));
-  return {
-    ...structuredClone(checkpoint),
-    kinds: checkpoint.kinds.map((item) => {
-      const currentState = current.get(item.kind) ?? null;
-      return {
-        ...structuredClone(item),
-        current: structuredClone(currentState),
-        differs_from_current: item.after?.digest !== currentState?.digest,
-      };
-    }),
-  };
-}
-
-function changedMockSyncConfig(config: SyncConfig, input: SyncConfigInput): SyncConfig {
+function changedMockSyncConfig(
+  config: SyncConfig,
+  input: InstallationSyncConfigSettingsInput,
+): SyncConfig {
   const now = new Date().toISOString();
   const nextRevision = config.revision + 1;
+  const labels = input.kind === 'labels';
   return {
     ...config,
     enabled: input.enabled,
-    labels: structuredClone(input.labels ?? config.labels),
-    allow_removal: input.allow_removal ?? config.allow_removal,
-    excludes: structuredClone(input.excludes ?? config.excludes),
-    document: structuredClone(input.document ?? config.document),
+    labels: labels ? structuredClone(input.labels) : config.labels,
+    allow_removal: labels ? input.allow_removal : config.allow_removal,
+    excludes: labels ? structuredClone(input.excludes) : config.excludes,
+    document: labels ? config.document : structuredClone(input.document),
     revision: nextRevision,
     updated_by: VIEWER.login,
     updated_at: now,
@@ -2227,6 +1989,7 @@ interface MockInstallationSettingsPlan {
 }
 
 interface MockPreparedChange<T> {
+  before: T | null;
   changed: boolean;
   conflict: InstallationSettingsConflict | null;
   next: T;
@@ -2261,11 +2024,42 @@ function saveMockInstallationSettings(
     plan.repositories.some(({ changed }) => changed) ||
     plan.syncConfigs.some(({ changed }) => changed) ||
     plan.syncOverrides.some(({ changed }) => changed);
-  const audit = changed ? mockInstallationSettingsAudit(plan) : null;
-  const checkpointId = changed
-    ? `checkpoint-settings-${Date.now()}-${target.audit.length + 1}`
-    : undefined;
+  const before = changed ? mockInstallationSettingsSnapshot(state, target) : null;
+  if (changed) ensureMockInstallationSettingsBaseline(state, target);
+  applyMockInstallationSettingsPlan(state, target, plan);
+  const checkpoint =
+    before === null
+      ? null
+      : createMockInstallationSettingsCheckpoint(
+          state,
+          target,
+          'installation.settings.saved',
+          before,
+          mockInstallationSettingsSnapshot(state, target),
+        );
+  const response = mockInstallationSettingsResponse(state, target, plan);
+  if (checkpoint !== null) {
+    response.checkpoint_id = checkpoint.id;
+    addAudit(
+      target,
+      checkpoint.action,
+      mockInstallationSettingsAuditSummary(
+        'Saved',
+        checkpoint.items.filter(({ changed }) => changed).length,
+      ),
+      undefined,
+      checkpoint.id,
+    );
+    broadcast(state, { type: 'target.changed', target_id: target.value.id });
+  }
+  return response;
+}
 
+function applyMockInstallationSettingsPlan(
+  state: MockState,
+  target: MockTarget,
+  plan: MockInstallationSettingsPlan,
+): void {
   if (plan.target?.changed === true) target.value = plan.target.next;
   for (const change of plan.repositories) {
     if (change.changed) change.stored.detail = change.next;
@@ -2279,7 +2073,13 @@ function saveMockInstallationSettings(
   if (plan.target?.changed === true || plan.repositories.some(({ changed }) => changed)) {
     recomputeTarget(target);
   }
+}
 
+function mockInstallationSettingsResponse(
+  state: MockState,
+  target: MockTarget,
+  plan: MockInstallationSettingsPlan,
+): InstallationSettingsBatchResponse {
   const response: InstallationSettingsBatchResponse = {};
   if (plan.target !== undefined) response.target = mockInstallationTargetState(target.value);
   if (plan.repositories.length > 0) {
@@ -2308,11 +2108,6 @@ function saveMockInstallationSettings(
           left.repository_id.localeCompare(right.repository_id) ||
           left.kind.localeCompare(right.kind),
       );
-  }
-  if (audit !== null && checkpointId !== undefined) {
-    response.checkpoint_id = checkpointId;
-    addAudit(target, audit.action, audit.summary, audit.repository, undefined, checkpointId);
-    broadcast(state, { type: 'target.changed', target_id: target.value.id });
   }
   return response;
 }
@@ -2354,6 +2149,7 @@ function prepareMockTargetSettings(
   const changed = !sameMockDocument(current, proposed);
   if (changed) Object.assign(next, proposed, { revision: next.revision + 1 });
   return {
+    before: structuredClone(target.value),
     changed,
     next,
     conflict:
@@ -2398,6 +2194,7 @@ function prepareMockRepositorySettings(
     next.repository.updated_at = new Date().toISOString();
   }
   return {
+    before: structuredClone(stored.detail),
     changed,
     stored,
     next,
@@ -2421,7 +2218,8 @@ function prepareMockSyncConfigSettings(
   input: InstallationSyncConfigSettingsInput,
 ): MockPreparedChange<SyncConfig> & { key: string } {
   const key = `${targetId}/${input.kind}`;
-  const current = structuredClone(state.sync.get(key) ?? emptyMockSyncConfig(input.kind));
+  const stored = state.sync.get(key);
+  const current = structuredClone(stored ?? emptyMockSyncConfig(input.kind));
   const proposed =
     input.kind === 'labels'
       ? {
@@ -2434,6 +2232,7 @@ function prepareMockSyncConfigSettings(
     current.enabled !== input.enabled ||
     !sameMockDocument(mockSyncConfigDocument(current), proposed);
   return {
+    before: stored === undefined ? null : structuredClone(stored),
     changed,
     key,
     next: changed ? changedMockSyncConfig(current, input) : current,
@@ -2458,9 +2257,8 @@ function prepareMockSyncOverrideSettings(
 ): MockPreparedChange<SyncOverride> & { key: string; repository: MockRepository } {
   const repository = findRepository(target, input.repository_id);
   const key = `${input.repository_id}/${input.kind}`;
-  const current = structuredClone(
-    state.syncOverrides.get(key) ?? emptyMockSyncOverride(input.kind),
-  );
+  const stored = state.syncOverrides.get(key);
+  const current = structuredClone(stored ?? emptyMockSyncOverride(input.kind));
   const changed =
     current.enabled !== input.enabled || !sameMockDocument(current.document, input.document);
   const next: SyncOverride = changed
@@ -2474,6 +2272,7 @@ function prepareMockSyncOverrideSettings(
       }
     : current;
   return {
+    before: stored === undefined ? null : structuredClone(stored),
     changed,
     key,
     repository,
@@ -2558,45 +2357,175 @@ function compareMockSettingsConflicts(
   return key(left).localeCompare(key(right));
 }
 
-function mockInstallationSettingsAudit(plan: MockInstallationSettingsPlan): {
-  action: string;
-  summary: string;
-  repository?: string;
-} {
-  const targetChanged = plan.target?.changed === true;
-  const repositories = plan.repositories.filter(({ changed }) => changed);
-  const syncConfigs = plan.syncConfigs.filter(({ changed }) => changed);
-  const syncOverrides = plan.syncOverrides.filter(({ changed }) => changed);
-  const count =
-    (targetChanged ? 1 : 0) + repositories.length + syncConfigs.length + syncOverrides.length;
-  if (count === 1 && targetChanged) {
-    return { action: 'target.settings.updated', summary: 'Updated account defaults' };
-  }
-  if (count === 1 && repositories.length === 1) {
-    return {
-      action: 'repository.settings.updated',
-      summary: 'Updated repository settings',
-      repository: repositories[0]!.stored.detail.repository.full_name,
-    };
-  }
-  if (count === 1 && syncConfigs.length === 1) {
-    return {
-      action: 'sync.config.saved',
-      summary: `Saved ${syncConfigs[0]!.next.kind} sync configuration`,
-    };
-  }
-  if (count === 1 && syncOverrides.length === 1) {
-    const override = syncOverrides[0]!;
-    return {
-      action: 'sync.override.updated',
-      summary: `Updated ${override.next.kind} sync override`,
-      repository: override.repository.detail.repository.full_name,
-    };
-  }
-  return {
-    action: 'installation.settings.updated',
-    summary: `Updated ${count} installation settings`,
+interface MockInstallationSnapshotEntry {
+  kind: SettingsCheckpointItem['kind'];
+  repository_id?: string;
+  repository_full_name?: string;
+  sync_kind?: SyncKind;
+  state: SettingsCheckpointState;
+}
+
+type MockInstallationSettingsSnapshot = Map<string, MockInstallationSnapshotEntry>;
+
+function mockInstallationSettingsSnapshot(
+  state: MockState,
+  target: MockTarget,
+): MockInstallationSettingsSnapshot {
+  const snapshot: MockInstallationSettingsSnapshot = new Map();
+  const add = (entry: MockInstallationSnapshotEntry): void => {
+    snapshot.set(mockInstallationCheckpointIdentity(entry), entry);
   };
+  add({
+    kind: 'target',
+    state: mockInstallationCheckpointState(
+      mockInstallationTargetCheckpointDocument(target.value),
+      target.value.revision,
+    ),
+  });
+  for (const repository of target.repositories) {
+    add({
+      kind: 'repository',
+      repository_id: repository.detail.repository.id,
+      repository_full_name: repository.detail.repository.full_name,
+      state: mockInstallationCheckpointState(
+        mockInstallationRepositoryCheckpointDocument(repository.detail),
+        repository.detail.revision,
+      ),
+    });
+  }
+  for (const [key, config] of state.sync) {
+    if (!key.startsWith(`${target.value.id}/`)) continue;
+    add({
+      kind: 'sync_config',
+      sync_kind: config.kind as SyncKind,
+      state: mockInstallationCheckpointState(
+        mockInstallationSyncConfigCheckpointDocument(config),
+        config.revision,
+      ),
+    });
+  }
+  for (const repository of target.repositories) {
+    for (const kind of SYNC_KINDS) {
+      const repositoryId = repository.detail.repository.id;
+      const override = state.syncOverrides.get(`${repositoryId}/${kind}`);
+      if (override === undefined) continue;
+      add({
+        kind: 'sync_override',
+        repository_id: repositoryId,
+        repository_full_name: repository.detail.repository.full_name,
+        sync_kind: override.kind as SyncKind,
+        state: mockInstallationCheckpointState(
+          mockInstallationSyncOverrideCheckpointDocument(override),
+          override.revision,
+        ),
+      });
+    }
+  }
+  return snapshot;
+}
+
+function ensureMockInstallationSettingsBaseline(
+  state: MockState,
+  target: MockTarget,
+): SettingsCheckpoint {
+  const existing = [...state.installationSettings.checkpoints.entries()].find(
+    ([key, checkpoint]) =>
+      key.startsWith(`${target.value.id}\u0000`) &&
+      checkpoint.action === 'installation.settings.baseline',
+  )?.[1];
+  if (existing !== undefined) return existing;
+  return createMockInstallationSettingsCheckpoint(
+    state,
+    target,
+    'installation.settings.baseline',
+    new Map(),
+    mockInstallationSettingsSnapshot(state, target),
+    undefined,
+    undefined,
+    false,
+  );
+}
+
+function createMockInstallationSettingsCheckpoint(
+  state: MockState,
+  target: MockTarget,
+  action:
+    | 'installation.settings.baseline'
+    | 'installation.settings.saved'
+    | 'installation.settings.restored',
+  before: MockInstallationSettingsSnapshot,
+  after: MockInstallationSettingsSnapshot,
+  restoredFromId?: string,
+  restoredSide?: SettingsRestoreInput['state'],
+  beforeCaptured = true,
+): SettingsCheckpoint {
+  const keys = [...new Set([...before.keys(), ...after.keys()])].sort();
+  const items = keys.map((key) => {
+    const earlier = before.get(key);
+    const later = after.get(key);
+    const identity = later ?? earlier;
+    if (identity === undefined) throw new Error('empty installation checkpoint identity');
+    return mockInstallationCheckpointItem(
+      identity,
+      earlier?.state ?? null,
+      later?.state ?? null,
+      beforeCaptured,
+      true,
+    );
+  });
+
+  const id = String(state.installationSettings.checkpointCounter);
+  state.installationSettings.checkpointCounter += 1;
+  const checkpoint: SettingsCheckpoint = {
+    id,
+    action,
+    actor: VIEWER,
+    ...(restoredFromId === undefined ? {} : { restored_from_id: restoredFromId }),
+    ...(restoredSide === undefined ? {} : { restored_side: restoredSide }),
+    created_at: new Date().toISOString(),
+    affected_kinds: [...new Set(items.filter(({ changed }) => changed).map(({ kind }) => kind))],
+    items,
+  };
+  state.installationSettings.checkpoints.set(
+    mockInstallationCheckpointKey(target.value.id, id),
+    structuredClone(checkpoint),
+  );
+  return checkpoint;
+}
+
+function mockInstallationCheckpointItem(
+  identity: Pick<
+    MockInstallationSnapshotEntry,
+    'kind' | 'repository_id' | 'repository_full_name' | 'sync_kind'
+  >,
+  before: SettingsCheckpointState | null,
+  after: SettingsCheckpointState | null,
+  beforeAvailable = true,
+  afterAvailable = true,
+): SettingsCheckpointItem {
+  const optional = identity.kind === 'sync_config' || identity.kind === 'sync_override';
+  const side = (
+    available: boolean,
+    value: SettingsCheckpointState | null,
+    current: SettingsCheckpointState | null,
+  ) => ({
+    available,
+    state: structuredClone(value),
+    differs: available && !sameMockCheckpointState(value, current),
+    restorable: available && (value !== null || optional),
+  });
+  return {
+    ...identity,
+    document_version: 1,
+    before: side(beforeAvailable, before, after),
+    after: side(afterAvailable, after, after),
+    current: structuredClone(after),
+    changed: beforeAvailable && afterAvailable && !sameMockCheckpointState(before, after),
+  };
+}
+
+function mockInstallationSettingsAuditSummary(verb: 'Saved' | 'Restored', count: number): string {
+  return `${verb} ${count} installation ${count === 1 ? 'setting' : 'settings'}`;
 }
 
 function mockInstallationTargetDocument(target: PanelTarget) {
@@ -2620,6 +2549,653 @@ function mockInstallationRepositoryDocument(detail: RepositoryDetail) {
     config_patch: detail.config_patch,
     ignore_repository_file: detail.ignore_repository_file,
   };
+}
+
+function mockInstallationTargetCheckpointDocument(target: PanelTarget): Record<string, unknown> {
+  return {
+    repository_default_enabled: target.repository_default_enabled,
+    pending_ci_mode_default: target.pending_ci_mode_default,
+    pending_ci_branch_patterns_default: structuredClone(target.pending_ci_branch_patterns_default),
+    pending_ci_quiet_period_override: mockInstallationCheckpointDuration(
+      target.pending_ci_quiet_period_seconds_override,
+    ),
+    path_index_interval_override: mockInstallationCheckpointDuration(
+      target.path_index_interval_seconds_override,
+    ),
+    config_patch: structuredClone(target.config_patch),
+  };
+}
+
+function mockInstallationRepositoryCheckpointDocument(
+  detail: RepositoryDetail,
+): Record<string, unknown> {
+  return {
+    enabled_override: detail.repository.enabled_override,
+    pending_ci_mode_override: detail.pending_ci_mode_override,
+    pending_ci_branch_patterns_override: structuredClone(
+      detail.pending_ci_branch_patterns_override,
+    ),
+    pending_ci_quiet_period_override: mockInstallationCheckpointDuration(
+      detail.pending_ci_quiet_period_seconds_override,
+    ),
+    path_index_interval_override: mockInstallationCheckpointDuration(
+      detail.path_index_interval_seconds_override,
+    ),
+    config_patch: structuredClone(detail.config_patch),
+    ignore_repository_file: detail.ignore_repository_file,
+  };
+}
+
+function mockInstallationSyncConfigCheckpointDocument(config: SyncConfig): Record<string, unknown> {
+  return {
+    enabled: config.enabled,
+    document: canonicalStringify(mockSyncConfigDocument(config)),
+  };
+}
+
+function mockInstallationSyncOverrideCheckpointDocument(
+  override: SyncOverride,
+): Record<string, unknown> {
+  return {
+    enabled: override.enabled,
+    document: canonicalStringify(override.document),
+  };
+}
+
+function mockInstallationCheckpointDuration(seconds: number | null): number | null {
+  return seconds === null ? null : seconds * 1_000_000_000;
+}
+
+function mockInstallationCheckpointState(
+  document: Record<string, unknown>,
+  revision: number,
+): SettingsCheckpointState {
+  const copy = structuredClone(document);
+  return {
+    document: copy,
+    digest: `sha256:${createHash('sha256').update(canonicalStringify(copy)).digest('hex')}`,
+    revision,
+  };
+}
+
+function mockInstallationCheckpointIdentity(
+  item: Pick<SettingsCheckpointItem, 'kind' | 'repository_id' | 'sync_kind'>,
+): string {
+  return [item.kind, item.repository_id ?? '', item.sync_kind ?? ''].join('\u0000');
+}
+
+function mockInstallationCheckpointKey(targetId: string, checkpointId: string): string {
+  return `${targetId}\u0000${checkpointId}`;
+}
+
+function mockAuditCheckpointChangedKind(
+  state: MockState,
+  targetId: string,
+  entry: AuditEntry,
+  kinds: readonly SettingsCheckpointItemKind[],
+): boolean {
+  if (entry.settings_checkpoint_id === undefined) return false;
+  const checkpoint = state.installationSettings.checkpoints.get(
+    mockInstallationCheckpointKey(targetId, entry.settings_checkpoint_id),
+  );
+  return checkpoint?.items.some((item) => item.changed && kinds.includes(item.kind)) ?? false;
+}
+
+function findMockInstallationSettingsCheckpoint(
+  state: MockState,
+  targetId: string,
+  encodedCheckpointId: string,
+): SettingsCheckpoint {
+  let checkpointId: string;
+  try {
+    checkpointId = decodeURIComponent(encodedCheckpointId);
+  } catch {
+    throw new MockApiError(404, 'not_found', 'settings checkpoint not found');
+  }
+  if (checkpointId === 'baseline') {
+    const target = findTarget(state, encodeURIComponent(targetId));
+    return ensureMockInstallationSettingsBaseline(state, target);
+  }
+  const checkpoint = state.installationSettings.checkpoints.get(
+    mockInstallationCheckpointKey(targetId, checkpointId),
+  );
+  if (checkpoint === undefined) {
+    throw new MockApiError(404, 'not_found', 'settings checkpoint not found');
+  }
+  return checkpoint;
+}
+
+function inspectMockInstallationSettingsCheckpoint(
+  state: MockState,
+  target: MockTarget,
+  checkpoint: SettingsCheckpoint,
+): SettingsCheckpoint {
+  const inspection = structuredClone(checkpoint);
+  const seen = new Set(inspection.items.map(mockInstallationCheckpointIdentity));
+  for (const entry of mockInstallationSettingsSnapshot(state, target).values()) {
+    if (entry.kind !== 'sync_config' && entry.kind !== 'sync_override') continue;
+    if (seen.has(mockInstallationCheckpointIdentity(entry))) continue;
+    inspection.items.push(
+      mockInstallationCheckpointItem(
+        entry,
+        null,
+        null,
+        checkpoint.action !== 'installation.settings.baseline',
+        true,
+      ),
+    );
+  }
+  inspection.items = inspection.items.map((item) => {
+    const { current, incompatibility } = mockInstallationCheckpointCurrent(state, target, item);
+    return {
+      ...item,
+      current: structuredClone(current),
+      before: inspectMockInstallationCheckpointSide(item, item.before, current, incompatibility),
+      after: inspectMockInstallationCheckpointSide(item, item.after, current, incompatibility),
+    };
+  });
+  inspection.items.sort((left, right) =>
+    mockInstallationCheckpointIdentity(left).localeCompare(
+      mockInstallationCheckpointIdentity(right),
+    ),
+  );
+  return inspection;
+}
+
+function inspectMockInstallationCheckpointSide(
+  item: SettingsCheckpointItem,
+  side: SettingsCheckpointItem['before'],
+  current: SettingsCheckpointState | null,
+  incompatibility?: SettingsCheckpointIncompatibility,
+): SettingsCheckpointItem['before'] {
+  const historicalRestorable =
+    side.state !== null || item.kind === 'sync_config' || item.kind === 'sync_override';
+  return {
+    ...side,
+    state: structuredClone(side.state),
+    differs: side.available && !sameMockCheckpointState(side.state, current),
+    restorable: side.available && incompatibility === undefined && historicalRestorable,
+    ...(incompatibility === undefined ? {} : { incompatibility }),
+  };
+}
+
+function mockInstallationCheckpointCurrent(
+  state: MockState,
+  target: MockTarget,
+  item: Pick<SettingsCheckpointItem, 'kind' | 'repository_id' | 'sync_kind'>,
+): {
+  current: SettingsCheckpointState | null;
+  incompatibility?: SettingsCheckpointIncompatibility;
+} {
+  if (item.kind === 'target') {
+    return {
+      current: mockInstallationCheckpointState(
+        mockInstallationTargetCheckpointDocument(target.value),
+        target.value.revision,
+      ),
+    };
+  }
+  if (item.kind === 'repository') {
+    const repository = target.repositories.find(
+      ({ detail }) => detail.repository.id === item.repository_id,
+    );
+    if (repository === undefined) {
+      return {
+        current: null,
+        incompatibility: {
+          code: 'repository_unavailable',
+          reason: 'This repository is no longer available in this installation',
+        },
+      };
+    }
+    const current = mockInstallationCheckpointState(
+      mockInstallationRepositoryCheckpointDocument(repository.detail),
+      repository.detail.revision,
+    );
+    return repository.detail.repository.available
+      ? { current }
+      : {
+          current,
+          incompatibility: {
+            code: 'repository_unavailable',
+            reason: 'This repository is no longer available in this installation',
+          },
+        };
+  }
+  if (item.kind === 'sync_config' && item.sync_kind !== undefined) {
+    const config = state.sync.get(`${target.value.id}/${item.sync_kind}`);
+    return {
+      current:
+        config === undefined
+          ? null
+          : mockInstallationCheckpointState(
+              mockInstallationSyncConfigCheckpointDocument(config),
+              config.revision,
+            ),
+    };
+  }
+  if (
+    item.kind === 'sync_override' &&
+    item.repository_id !== undefined &&
+    item.sync_kind !== undefined
+  ) {
+    const repository = target.repositories.find(
+      ({ detail }) => detail.repository.id === item.repository_id,
+    );
+    if (repository === undefined || !repository.detail.repository.available) {
+      return {
+        current: null,
+        incompatibility: {
+          code: 'repository_unavailable',
+          reason: 'This repository is no longer available in this installation',
+        },
+      };
+    }
+    const override = state.syncOverrides.get(`${item.repository_id}/${item.sync_kind}`);
+    return {
+      current:
+        override === undefined
+          ? null
+          : mockInstallationCheckpointState(
+              mockInstallationSyncOverrideCheckpointDocument(override),
+              override.revision,
+            ),
+    };
+  }
+  return {
+    current: null,
+    incompatibility: {
+      code: 'resource_unavailable',
+      reason: 'This resource is not part of installation settings',
+    },
+  };
+}
+
+function sameMockCheckpointState(
+  left: SettingsCheckpointState | null,
+  right: SettingsCheckpointState | null,
+): boolean {
+  if (left === null || right === null) return left === right;
+  return left.digest === right.digest;
+}
+
+function restoreMockInstallationSettings(
+  state: MockState,
+  target: MockTarget,
+  source: SettingsCheckpoint,
+  input: SettingsRestoreInput,
+): InstallationSettingsBatchResponse {
+  const inspection = inspectMockInstallationSettingsCheckpoint(state, target, source);
+  const selections = validateMockInstallationRestoreSelections(input);
+  const items = new Map(
+    inspection.items.map((item) => [mockInstallationCheckpointIdentity(item), item]),
+  );
+  const batch: InstallationSettingsBatchInput = {};
+  const removals: Array<{
+    key: string;
+    item: SettingsCheckpointItem;
+  }> = [];
+
+  for (const selection of selections) {
+    const key = mockInstallationCheckpointIdentity(selection);
+    const item = items.get(key);
+    if (item === undefined) {
+      blockedMockInstallationRestore('selected resource is not represented by the checkpoint');
+    }
+    const selectedSide = item[input.state];
+    if (!selectedSide.restorable) {
+      blockedMockInstallationRestore(
+        selectedSide.incompatibility?.reason ?? 'the selected settings cannot be restored',
+      );
+    }
+    const actualRevision = item.current?.revision ?? 0;
+    if (selection.expected_revision !== actualRevision) {
+      throw new MockApiError(
+        409,
+        'settings_conflict',
+        'settings changed in another session; inspect the checkpoint again',
+      );
+    }
+    if (sameMockCheckpointState(selectedSide.state, item.current)) continue;
+    if (selectedSide.state === null) {
+      if (item.kind !== 'sync_config' && item.kind !== 'sync_override') {
+        blockedMockInstallationRestore('the selected checkpoint state is incomplete');
+      }
+      removals.push({ key, item });
+      continue;
+    }
+    appendMockInstallationRestoreInput(batch, selection, selectedSide.state.document);
+  }
+
+  const plan = mockInstallationRestorePlan(state, target, batch);
+  const changed =
+    plan.target?.changed === true ||
+    plan.repositories.some(({ changed }) => changed) ||
+    plan.syncConfigs.some(({ changed }) => changed) ||
+    plan.syncOverrides.some(({ changed }) => changed);
+  const effectiveRemovals = removals.filter(({ item }) => item.current !== null);
+  if (!changed && effectiveRemovals.length === 0) {
+    throw new MockApiError(
+      409,
+      'settings_restore_noop',
+      'the selected settings already match the checkpoint',
+    );
+  }
+
+  ensureMockInstallationSettingsBaseline(state, target);
+  const before = mockInstallationSettingsSnapshot(state, target);
+  applyMockInstallationSettingsPlan(state, target, plan);
+  for (const { item } of effectiveRemovals) {
+    if (item.kind === 'sync_config' && item.sync_kind !== undefined) {
+      state.sync.delete(`${target.value.id}/${item.sync_kind}`);
+    } else if (
+      item.kind === 'sync_override' &&
+      item.repository_id !== undefined &&
+      item.sync_kind !== undefined
+    ) {
+      state.syncOverrides.delete(`${item.repository_id}/${item.sync_kind}`);
+    }
+  }
+  const checkpoint = createMockInstallationSettingsCheckpoint(
+    state,
+    target,
+    'installation.settings.restored',
+    before,
+    mockInstallationSettingsSnapshot(state, target),
+    source.id,
+    input.state,
+  );
+  const response = mockInstallationSettingsResponse(state, target, plan);
+  response.checkpoint_id = checkpoint.id;
+  addAudit(
+    target,
+    checkpoint.action,
+    mockInstallationSettingsAuditSummary(
+      'Restored',
+      checkpoint.items.filter(({ changed }) => changed).length,
+    ),
+    undefined,
+    checkpoint.id,
+  );
+  broadcast(state, { type: 'target.changed', target_id: target.value.id });
+  return response;
+}
+
+function validateMockInstallationRestoreSelections(
+  input: SettingsRestoreInput,
+): SettingsRestoreInput['selections'] {
+  if (input.state !== 'before' && input.state !== 'after') {
+    invalidMockSettingsBatch('settings restore state must be before or after');
+  }
+  if (!Array.isArray(input.selections) || input.selections.length === 0) {
+    invalidMockSettingsBatch('settings restore needs at least one selected resource');
+  }
+  if (input.selections.length > 4096) {
+    invalidMockSettingsBatch('settings restore selects too many resources');
+  }
+  const seen = new Set<string>();
+  for (const selection of input.selections) {
+    validateMockRevision(selection.expected_revision);
+    const repository = selection.repository_id?.trim() ?? '';
+    const syncKind = selection.sync_kind;
+    const valid =
+      (selection.kind === 'target' && repository === '' && syncKind === undefined) ||
+      (selection.kind === 'repository' && repository !== '' && syncKind === undefined) ||
+      (selection.kind === 'sync_config' &&
+        repository === '' &&
+        syncKind !== undefined &&
+        SYNC_KINDS.includes(syncKind)) ||
+      (selection.kind === 'sync_override' &&
+        repository !== '' &&
+        syncKind !== undefined &&
+        SYNC_KINDS.includes(syncKind));
+    const key = mockInstallationCheckpointIdentity(selection);
+    if (!valid || seen.has(key)) {
+      invalidMockSettingsBatch('restore selections must be known and unique');
+    }
+    seen.add(key);
+  }
+  return input.selections;
+}
+
+function mockInstallationRestorePlan(
+  state: MockState,
+  target: MockTarget,
+  batch: InstallationSettingsBatchInput,
+): MockInstallationSettingsPlan {
+  const hasResources =
+    batch.target !== undefined ||
+    (batch.repositories?.length ?? 0) > 0 ||
+    (batch.sync_configs?.length ?? 0) > 0 ||
+    (batch.sync_overrides?.length ?? 0) > 0;
+  if (!hasResources) {
+    return { repositories: [], syncConfigs: [], syncOverrides: [] };
+  }
+  validateMockInstallationSettingsBatch(batch);
+  return prepareMockInstallationSettings(state, target, batch);
+}
+
+function blockedMockInstallationRestore(message: string): never {
+  throw new MockApiError(409, 'settings_restore_blocked', message);
+}
+
+function appendMockInstallationRestoreInput(
+  batch: InstallationSettingsBatchInput,
+  selection: SettingsRestoreInput['selections'][number],
+  document: Record<string, unknown>,
+): void {
+  switch (selection.kind) {
+    case 'target':
+      batch.target = {
+        repository_default_enabled: mockCheckpointBoolean(document.repository_default_enabled),
+        pending_ci_mode_default: mockCheckpointPendingCIMode(document.pending_ci_mode_default),
+        pending_ci_branch_patterns_default: mockCheckpointBranchPatterns(
+          document.pending_ci_branch_patterns_default,
+        ),
+        pending_ci_quiet_period_seconds_override: mockCheckpointSeconds(
+          document.pending_ci_quiet_period_override,
+        ),
+        path_index_interval_seconds_override: mockCheckpointSeconds(
+          document.path_index_interval_override,
+        ),
+        config_patch: mockCheckpointConfigPatch(document.config_patch),
+        expected_revision: selection.expected_revision,
+      };
+      return;
+    case 'repository':
+      if (selection.repository_id === undefined) {
+        blockedMockInstallationRestore('repository selection is incomplete');
+      }
+      (batch.repositories ??= []).push({
+        repository_id: selection.repository_id,
+        enabled_override: mockCheckpointNullableBoolean(document.enabled_override),
+        pending_ci_mode_override: mockCheckpointNullablePendingCIMode(
+          document.pending_ci_mode_override,
+        ),
+        pending_ci_branch_patterns_override: mockCheckpointNullableBranchPatterns(
+          document.pending_ci_branch_patterns_override,
+        ),
+        pending_ci_quiet_period_seconds_override: mockCheckpointSeconds(
+          document.pending_ci_quiet_period_override,
+        ),
+        path_index_interval_seconds_override: mockCheckpointSeconds(
+          document.path_index_interval_override,
+        ),
+        config_patch: mockCheckpointConfigPatch(document.config_patch),
+        ignore_repository_file: mockCheckpointBoolean(document.ignore_repository_file),
+        expected_revision: selection.expected_revision,
+      });
+      return;
+    case 'sync_config': {
+      if (selection.sync_kind === undefined) {
+        blockedMockInstallationRestore('Sync selection is incomplete');
+      }
+      const enabled = mockCheckpointBoolean(document.enabled);
+      const nested = mockCheckpointNestedDocument(document.document);
+      if (selection.sync_kind === 'labels') {
+        (batch.sync_configs ??= []).push({
+          kind: 'labels',
+          enabled,
+          labels: mockCheckpointLabels(nested.labels),
+          allow_removal: mockCheckpointBoolean(nested.allow_removal),
+          excludes: mockCheckpointStrings(nested.excludes),
+          expected_revision: selection.expected_revision,
+        });
+      } else {
+        (batch.sync_configs ??= []).push({
+          kind: selection.sync_kind,
+          enabled,
+          document: nested,
+          expected_revision: selection.expected_revision,
+        });
+      }
+      return;
+    }
+    case 'sync_override':
+      if (selection.repository_id === undefined || selection.sync_kind === undefined) {
+        blockedMockInstallationRestore('repository Sync selection is incomplete');
+      }
+      (batch.sync_overrides ??= []).push({
+        repository_id: selection.repository_id,
+        kind: selection.sync_kind,
+        enabled: mockCheckpointNullableBoolean(document.enabled),
+        document: mockCheckpointNestedDocument(document.document),
+        expected_revision: selection.expected_revision,
+      });
+      return;
+    default:
+      blockedMockInstallationRestore('unsupported installation settings selection');
+  }
+}
+
+function mockCheckpointBoolean(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+  }
+  return value;
+}
+
+function mockCheckpointNullableBoolean(value: unknown): boolean | null {
+  if (value === null) return null;
+  return mockCheckpointBoolean(value);
+}
+
+function mockCheckpointPendingCIMode(value: unknown): 'labels' | 'checks' {
+  if (value !== 'labels' && value !== 'checks') {
+    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+  }
+  return value;
+}
+
+function mockCheckpointNullablePendingCIMode(value: unknown): 'labels' | 'checks' | null {
+  return value === null ? null : mockCheckpointPendingCIMode(value);
+}
+
+function mockCheckpointBranchPatterns(value: unknown): { include: string[]; exclude: string[] } {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+  }
+  const patterns = value as Record<string, unknown>;
+  return {
+    include: mockCheckpointStrings(patterns.include),
+    exclude: mockCheckpointStrings(patterns.exclude),
+  };
+}
+
+function mockCheckpointNullableBranchPatterns(
+  value: unknown,
+): { include: string[]; exclude: string[] } | null {
+  return value === null ? null : mockCheckpointBranchPatterns(value);
+}
+
+function mockCheckpointSeconds(value: unknown): number | null {
+  if (value === null) return null;
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value % 1_000_000_000 !== 0
+  ) {
+    blockedMockInstallationRestore('the selected checkpoint contains an invalid duration');
+  }
+  return value / 1_000_000_000;
+}
+
+function mockCheckpointConfigPatch(value: unknown): ConfigPatch {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+  }
+  const patch = value as Record<string, unknown>;
+  for (const [key, held] of Object.entries(patch)) {
+    if (!CONFIG_KEYS.includes(key as ConfigKey) || !isMockConfigValue(key as ConfigKey, held)) {
+      blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+    }
+  }
+  return structuredClone(patch) as ConfigPatch;
+}
+
+function isMockConfigValue(key: ConfigKey, value: unknown): boolean {
+  if (key === 'allowed_commands') return Array.isArray(value) && value.every(isStringValue);
+  if (key === 'command_aliases') {
+    return (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.values(value).every(isStringValue)
+    );
+  }
+  if (key === 'command_prefix') return typeof value === 'string';
+  return typeof value === 'boolean';
+}
+
+function mockCheckpointNestedDocument(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') {
+    blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+  }
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+    }
+    return parsed as Record<string, unknown>;
+  } catch (error) {
+    if (error instanceof MockApiError) throw error;
+    blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+  }
+}
+
+function mockCheckpointStrings(value: unknown): string[] {
+  if (!Array.isArray(value) || !value.every(isStringValue)) {
+    blockedMockInstallationRestore('the selected checkpoint contains an invalid string list');
+  }
+  return structuredClone(value);
+}
+
+function mockCheckpointLabels(
+  value: unknown,
+): Extract<InstallationSyncConfigSettingsInput, { kind: 'labels' }>['labels'] {
+  if (!Array.isArray(value)) {
+    blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+  }
+  const labels = value.map((entry) => {
+    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
+      blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+    }
+    const label = entry as Record<string, unknown>;
+    if (
+      typeof label.name !== 'string' ||
+      typeof label.color !== 'string' ||
+      (label.description !== undefined && typeof label.description !== 'string')
+    ) {
+      blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+    }
+    return {
+      name: label.name,
+      color: label.color,
+      ...(label.description === undefined ? {} : { description: label.description }),
+    };
+  });
+  return labels;
 }
 
 function mockSyncConfigDocument(config: SyncConfig): Record<string, unknown> {
@@ -2715,143 +3291,6 @@ function invalidMockSettingsBatch(message: string): never {
   throw new MockApiError(400, 'invalid_request', message);
 }
 
-function mockCheckpoint(
-  id: string,
-  action: SyncConfigCheckpoint['action'],
-  before: Map<SyncKind, SyncConfigCheckpointState>,
-  after: Map<SyncKind, SyncConfigCheckpointState>,
-  affectedKinds: SyncKind[],
-  restoredFromId?: string,
-): SyncConfigCheckpoint {
-  const affected = new Set(affectedKinds);
-  return {
-    id,
-    action,
-    actor: VIEWER,
-    ...(restoredFromId === undefined ? {} : { restored_from_id: restoredFromId }),
-    created_at: new Date().toISOString(),
-    affected_kinds: affectedKinds,
-    kinds: SYNC_KINDS.map((kind) => {
-      const beforeState = before.get(kind) ?? null;
-      const afterState = after.get(kind) ?? null;
-      return {
-        kind,
-        before: structuredClone(beforeState),
-        after: structuredClone(afterState),
-        current: structuredClone(afterState),
-        changed: affected.has(kind),
-        differs_from_current: false,
-      };
-    }),
-  };
-}
-
-function saveMockSyncConfigs(
-  state: MockState,
-  target: MockTarget,
-  input: SyncConfigBatchInput,
-): SyncConfigBatchResponse {
-  if (input.changes.length === 0) {
-    throw new MockApiError(400, 'invalid_request', 'save needs at least one Sync section');
-  }
-  const seen = new Set<SyncKind>();
-  for (const change of input.changes) {
-    if (!SYNC_KINDS.includes(change.kind) || seen.has(change.kind)) {
-      throw new MockApiError(400, 'invalid_request', 'Sync sections must be known and unique');
-    }
-    seen.add(change.kind);
-    const current = mockSyncConfig(state, `${target.value.id}/${change.kind}`, change.kind);
-    if (current.revision !== change.expected_revision) {
-      throw new MockApiError(409, 'conflict', `${change.kind} changed; reload and try again`);
-    }
-  }
-
-  const before = syncStateMap(allMockSyncConfigs(state, target.value.id));
-  for (const change of input.changes) {
-    const key = `${target.value.id}/${change.kind}`;
-    state.sync.set(key, changedMockSyncConfig(mockSyncConfig(state, key, change.kind), change));
-  }
-  const configs = allMockSyncConfigs(state, target.value.id);
-  const after = syncStateMap(configs);
-  const checkpointId = `checkpoint-sync-${Date.now()}`;
-  state.syncCheckpoints.set(
-    `${target.value.id}/${checkpointId}`,
-    mockCheckpoint(checkpointId, 'sync.config.saved', before, after, [...seen]),
-  );
-  addAudit(target, 'sync.config.saved', 'saved Sync configuration', undefined, checkpointId);
-  broadcast(state, { type: 'audit.changed', target_id: target.value.id });
-  return { configs: structuredClone(configs), checkpoint_id: checkpointId };
-}
-
-function configFromCheckpointState(
-  current: SyncConfig,
-  checkpointState: SyncConfigCheckpointState,
-): SyncConfig {
-  const labels = Array.isArray(checkpointState.document.labels)
-    ? (structuredClone(checkpointState.document.labels) as SyncConfig['labels'])
-    : [];
-  const excludes = Array.isArray(checkpointState.document.excludes)
-    ? (structuredClone(checkpointState.document.excludes) as string[])
-    : [];
-  return {
-    ...current,
-    enabled: checkpointState.enabled,
-    labels: current.kind === 'labels' ? labels : [],
-    allow_removal:
-      current.kind === 'labels' ? checkpointState.document.allow_removal === true : false,
-    excludes: current.kind === 'labels' ? excludes : [],
-    document: structuredClone(checkpointState.document),
-    digest: `sha256:mock-restored-${current.kind}-${Date.now()}`,
-    revision: current.revision + 1,
-    updated_by: VIEWER.login,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-function restoreMockCheckpoint(
-  state: MockState,
-  target: MockTarget,
-  checkpoint: SyncConfigCheckpoint,
-  input: SyncConfigRestoreInput,
-): SyncConfigBatchResponse {
-  if (input.kinds.length === 0) {
-    throw new MockApiError(400, 'invalid_request', 'restore needs at least one Sync section');
-  }
-  const seen = new Set<SyncKind>();
-  for (const selection of input.kinds) {
-    if (!SYNC_KINDS.includes(selection.kind) || seen.has(selection.kind)) {
-      throw new MockApiError(400, 'invalid_request', 'Sync sections must be known and unique');
-    }
-    seen.add(selection.kind);
-    const current = mockSyncConfig(state, `${target.value.id}/${selection.kind}`, selection.kind);
-    if (current.revision !== selection.expected_revision) {
-      throw new MockApiError(409, 'conflict', `${selection.kind} changed; reload and try again`);
-    }
-    if (checkpoint.kinds.find((item) => item.kind === selection.kind)?.after === null) {
-      throw new MockApiError(400, 'invalid_request', `${selection.kind} was not configured`);
-    }
-  }
-
-  const before = syncStateMap(allMockSyncConfigs(state, target.value.id));
-  for (const selection of input.kinds) {
-    const historical = checkpoint.kinds.find((item) => item.kind === selection.kind)?.after;
-    if (historical === undefined || historical === null) continue;
-    const key = `${target.value.id}/${selection.kind}`;
-    const current = mockSyncConfig(state, key, selection.kind);
-    state.sync.set(key, configFromCheckpointState(current, historical));
-  }
-  const configs = allMockSyncConfigs(state, target.value.id);
-  const after = syncStateMap(configs);
-  const restoredId = `checkpoint-restore-${Date.now()}`;
-  state.syncCheckpoints.set(
-    `${target.value.id}/${restoredId}`,
-    mockCheckpoint(restoredId, 'sync.config.restored', before, after, [...seen], checkpoint.id),
-  );
-  addAudit(target, 'sync.config.restored', 'restored Sync configuration', undefined, restoredId);
-  broadcast(state, { type: 'audit.changed', target_id: target.value.id });
-  return { configs: structuredClone(configs), checkpoint_id: restoredId };
-}
-
 function rootInstallationValue(target: MockTarget): RootInstallation {
   const login = target.value.account.login;
   const permissionPending = login === 'team-01';
@@ -2888,6 +3327,435 @@ function rootInstallationValue(target: MockTarget): RootInstallation {
       stale: available && /^team-(0[3-9]|10)$/.test(login),
     },
   };
+}
+
+const ROOT_RUNTIME_INPUT_KEYS = [
+  'bot_config',
+  'log_level',
+  'reaction_poll_interval_seconds',
+  'merge_after_ci_quiet_period_seconds',
+  'path_index_interval_seconds',
+  'session_ttl_seconds',
+  'expected_revision',
+] as const;
+const ROOT_RUNTIME_LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
+const ROOT_RUNTIME_NANOSECONDS_PER_SECOND = 1_000_000_000;
+const ROOT_RUNTIME_MAX_SESSION_SECONDS = 30 * 24 * 60 * 60;
+
+function saveMockRootRuntimeSettings(
+  state: MockState,
+  input: RootRuntimeSettingsInput,
+): RootRuntimeSettings {
+  validateMockRootRuntimeSettingsInput(input);
+  if (input.expected_revision !== state.runtime.revision) {
+    throw new MockApiError(409, 'conflict', 'runtime settings changed; reload and try again');
+  }
+
+  const before = mockRootRuntimeCheckpointState(state);
+  const nextDocument = mockRootRuntimeDocumentFromInput(input);
+  if (sameMockDocument(before.document, nextDocument)) return rootRuntimeSettingsValue(state);
+
+  ensureMockRootRuntimeBaseline(state);
+  applyMockRootRuntimeDocument(state, nextDocument);
+  state.runtime.revision += 1;
+  state.runtime.updatedAt = new Date().toISOString();
+  state.runtime.updatedBy = VIEWER;
+  const after = mockRootRuntimeCheckpointState(state);
+  const checkpoint = createMockRootRuntimeCheckpoint(
+    state,
+    'runtime.settings.saved',
+    before,
+    after,
+  );
+  addMockRootRuntimeAudit(state, checkpoint, 'Saved runtime settings');
+  broadcast(state, { type: 'resync' });
+
+  return { ...rootRuntimeSettingsValue(state), checkpoint_id: checkpoint.id };
+}
+
+function restoreMockRootRuntimeSettings(
+  state: MockState,
+  source: SettingsCheckpoint,
+  input: SettingsRestoreInput,
+): RootRuntimeSettings {
+  if (
+    (input.state !== 'before' && input.state !== 'after') ||
+    !Array.isArray(input.selections) ||
+    input.selections.length !== 1 ||
+    input.selections[0]?.kind !== 'runtime' ||
+    !Number.isSafeInteger(input.selections[0].expected_revision) ||
+    input.selections[0].expected_revision < 0
+  ) {
+    throw new MockApiError(
+      400,
+      'invalid_request',
+      'Root restore must select runtime settings at their current revision',
+    );
+  }
+  if (input.selections[0].expected_revision !== state.runtime.revision) {
+    throw new MockApiError(
+      409,
+      'conflict',
+      'settings changed in another session; inspect the checkpoint again',
+    );
+  }
+  const historical = source.items.find((item) => item.kind === 'runtime')?.[input.state];
+  if (historical === undefined || !historical.restorable || historical.state === null) {
+    throw new MockApiError(
+      409,
+      'settings_restore_blocked',
+      'the selected settings cannot be restored',
+    );
+  }
+
+  const before = mockRootRuntimeCheckpointState(state);
+  if (before.digest === historical.state.digest) {
+    throw new MockApiError(
+      409,
+      'settings_restore_noop',
+      'the selected settings already match the checkpoint',
+    );
+  }
+  const restoredInput = mockRootRuntimeInputFromDocument(
+    historical.state.document,
+    state.runtime.revision,
+  );
+  validateMockRootRuntimeSettingsInput(restoredInput);
+  applyMockRootRuntimeDocument(state, historical.state.document);
+  state.runtime.revision += 1;
+  state.runtime.updatedAt = new Date().toISOString();
+  state.runtime.updatedBy = VIEWER;
+  const after = mockRootRuntimeCheckpointState(state);
+  const checkpoint = createMockRootRuntimeCheckpoint(
+    state,
+    'runtime.settings.restored',
+    before,
+    after,
+    source.id,
+    input.state,
+  );
+  addMockRootRuntimeAudit(state, checkpoint, 'Restored runtime settings');
+  broadcast(state, { type: 'resync' });
+
+  return { ...rootRuntimeSettingsValue(state), checkpoint_id: checkpoint.id };
+}
+
+function inspectMockRootRuntimeCheckpoint(
+  state: MockState,
+  checkpoint: SettingsCheckpoint,
+): SettingsCheckpoint {
+  const inspection = structuredClone(checkpoint);
+  const current = mockRootRuntimeCheckpointState(state);
+  inspection.items = inspection.items.map((item) => ({
+    ...item,
+    current: structuredClone(current),
+    before: {
+      ...item.before,
+      differs: item.before.available && !sameMockCheckpointState(item.before.state, current),
+      restorable: item.before.available && item.before.state !== null,
+    },
+    after: {
+      ...item.after,
+      differs: item.after.available && !sameMockCheckpointState(item.after.state, current),
+      restorable: item.after.available && item.after.state !== null,
+    },
+  }));
+  return inspection;
+}
+
+function findMockRootRuntimeCheckpoint(
+  state: MockState,
+  encodedCheckpointId: string,
+): SettingsCheckpoint {
+  let checkpointId: string;
+  try {
+    checkpointId = decodeURIComponent(encodedCheckpointId);
+  } catch {
+    throw new MockApiError(404, 'not_found', 'settings checkpoint not found');
+  }
+  if (checkpointId === 'baseline') return ensureMockRootRuntimeBaseline(state);
+  const checkpoint = state.runtime.checkpoints.get(checkpointId);
+  if (checkpoint === undefined) {
+    throw new MockApiError(404, 'not_found', 'settings checkpoint not found');
+  }
+  return checkpoint;
+}
+
+function createMockRootRuntimeCheckpoint(
+  state: MockState,
+  action: 'runtime.settings.baseline' | 'runtime.settings.saved' | 'runtime.settings.restored',
+  before: SettingsCheckpointState | null,
+  after: SettingsCheckpointState,
+  restoredFromId?: string,
+  restoredSide?: SettingsRestoreInput['state'],
+  beforeCaptured = true,
+): SettingsCheckpoint {
+  const id = String(state.runtime.checkpointCounter);
+  state.runtime.checkpointCounter += 1;
+  const checkpoint: SettingsCheckpoint = {
+    id,
+    action,
+    actor: VIEWER,
+    ...(restoredFromId === undefined ? {} : { restored_from_id: restoredFromId }),
+    ...(restoredSide === undefined ? {} : { restored_side: restoredSide }),
+    created_at: new Date().toISOString(),
+    affected_kinds: action === 'runtime.settings.baseline' ? [] : ['runtime'],
+    items: [
+      {
+        kind: 'runtime',
+        document_version: 1,
+        before: {
+          available: beforeCaptured,
+          state: structuredClone(before),
+          differs: beforeCaptured && !sameMockCheckpointState(before, after),
+          restorable: beforeCaptured && before !== null,
+        },
+        after: {
+          available: true,
+          state: structuredClone(after),
+          differs: false,
+          restorable: true,
+        },
+        current: structuredClone(after),
+        changed: beforeCaptured && !sameMockCheckpointState(before, after),
+      },
+    ],
+  };
+  state.runtime.checkpoints.set(id, structuredClone(checkpoint));
+  return checkpoint;
+}
+
+function ensureMockRootRuntimeBaseline(state: MockState): SettingsCheckpoint {
+  const existing = [...state.runtime.checkpoints.values()].find(
+    ({ action }) => action === 'runtime.settings.baseline',
+  );
+  if (existing !== undefined) return existing;
+  const current = mockRootRuntimeCheckpointState(state);
+  return createMockRootRuntimeCheckpoint(
+    state,
+    'runtime.settings.baseline',
+    null,
+    current,
+    undefined,
+    undefined,
+    false,
+  );
+}
+
+function addMockRootRuntimeAudit(
+  state: MockState,
+  checkpoint: SettingsCheckpoint,
+  summary: string,
+): void {
+  state.runtime.audit.unshift({
+    id: `root-runtime-${checkpoint.id}`,
+    category: 'runtime',
+    actor: VIEWER,
+    action: checkpoint.action,
+    summary,
+    settings_checkpoint_id: checkpoint.id,
+    created_at: checkpoint.created_at,
+  });
+}
+
+function mockRootRuntimeCheckpointState(state: MockState): SettingsCheckpointState {
+  const document = mockRootRuntimeDocument(state);
+  return {
+    document,
+    digest: mockRootRuntimeDigest(document),
+    revision: state.runtime.revision,
+  };
+}
+
+function mockRootRuntimeDocument(state: MockState): Record<string, unknown> {
+  return {
+    bot_config: copyOptionalConfig(state.runtime.behaviorOverride),
+    log_level: state.runtime.logLevelOverride,
+    poll_interval: mockRootRuntimeDuration(state.runtime.pollIntervalOverride),
+    pending_ci_quiet_period: mockRootRuntimeDuration(state.runtime.pendingCIQuietPeriodOverride),
+    session_ttl: mockRootRuntimeDuration(state.runtime.sessionTTLOverride),
+    path_index_interval: mockRootRuntimeDuration(state.runtime.pathIndexIntervalOverride),
+  };
+}
+
+function mockRootRuntimeDocumentFromInput(
+  input: RootRuntimeSettingsInput,
+): Record<string, unknown> {
+  return {
+    bot_config: copyOptionalConfig(input.bot_config),
+    log_level: input.log_level,
+    poll_interval: mockRootRuntimeDuration(input.reaction_poll_interval_seconds),
+    pending_ci_quiet_period: mockRootRuntimeDuration(input.merge_after_ci_quiet_period_seconds),
+    session_ttl: mockRootRuntimeDuration(input.session_ttl_seconds),
+    path_index_interval: mockRootRuntimeDuration(input.path_index_interval_seconds),
+  };
+}
+
+function mockRootRuntimeInputFromDocument(
+  document: Record<string, unknown>,
+  expectedRevision: number,
+): RootRuntimeSettingsInput {
+  return {
+    bot_config: mockRootRuntimeConfig(document.bot_config),
+    log_level: mockRootRuntimeLogLevel(document.log_level),
+    reaction_poll_interval_seconds: mockRootRuntimeSeconds(document.poll_interval),
+    merge_after_ci_quiet_period_seconds: mockRootRuntimeSeconds(document.pending_ci_quiet_period),
+    path_index_interval_seconds: mockRootRuntimeSeconds(document.path_index_interval),
+    session_ttl_seconds: mockRootRuntimeSeconds(document.session_ttl),
+    expected_revision: expectedRevision,
+  };
+}
+
+function applyMockRootRuntimeDocument(state: MockState, document: Record<string, unknown>): void {
+  const input = mockRootRuntimeInputFromDocument(document, state.runtime.revision);
+  state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
+  state.runtime.logLevelOverride = input.log_level;
+  state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
+  state.runtime.pendingCIQuietPeriodOverride = input.merge_after_ci_quiet_period_seconds;
+  state.runtime.pathIndexIntervalOverride = input.path_index_interval_seconds;
+  state.runtime.sessionTTLOverride = input.session_ttl_seconds;
+}
+
+function mockRootRuntimeDuration(seconds: number | null): number | null {
+  return seconds === null ? null : seconds * ROOT_RUNTIME_NANOSECONDS_PER_SECOND;
+}
+
+function mockRootRuntimeSeconds(value: unknown): number | null {
+  if (value === null) return null;
+  if (
+    typeof value !== 'number' ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value % ROOT_RUNTIME_NANOSECONDS_PER_SECOND !== 0
+  ) {
+    throw new MockApiError(
+      409,
+      'settings_restore_blocked',
+      'the selected settings cannot be restored',
+    );
+  }
+  return value / ROOT_RUNTIME_NANOSECONDS_PER_SECOND;
+}
+
+function mockRootRuntimeConfig(value: unknown): ConfigValues | null {
+  if (value === null) return null;
+  if (!isMockRootRuntimeConfig(value)) {
+    throw new MockApiError(
+      409,
+      'settings_restore_blocked',
+      'the selected settings cannot be restored',
+    );
+  }
+  return copyConfig(value);
+}
+
+function mockRootRuntimeLogLevel(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string' || !ROOT_RUNTIME_LOG_LEVELS.has(value)) {
+    throw new MockApiError(
+      409,
+      'settings_restore_blocked',
+      'the selected settings cannot be restored',
+    );
+  }
+  return value;
+}
+
+function mockRootRuntimeDigest(document: Record<string, unknown>): string {
+  return `sha256:${createHash('sha256').update(canonicalStringify(document)).digest('hex')}`;
+}
+
+function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): void {
+  if (
+    input === null ||
+    typeof input !== 'object' ||
+    Object.keys(input).length !== ROOT_RUNTIME_INPUT_KEYS.length ||
+    ROOT_RUNTIME_INPUT_KEYS.some((key) => !Object.hasOwn(input, key)) ||
+    !Number.isSafeInteger(input.expected_revision) ||
+    input.expected_revision < 0
+  ) {
+    invalidMockRootRuntimeSettings('every runtime setting and expected revision is required');
+  }
+  if (input.bot_config !== null && !isMockRootRuntimeConfig(input.bot_config)) {
+    invalidMockRootRuntimeSettings('behavior defaults are invalid');
+  }
+  if (
+    input.log_level !== null &&
+    (typeof input.log_level !== 'string' || !ROOT_RUNTIME_LOG_LEVELS.has(input.log_level))
+  ) {
+    invalidMockRootRuntimeSettings('log level is invalid');
+  }
+  validateMockRootRuntimeDuration(
+    input.reaction_poll_interval_seconds,
+    0,
+    86_400,
+    'reaction sweep interval',
+    true,
+  );
+  validateMockRootRuntimeDuration(
+    input.merge_after_ci_quiet_period_seconds,
+    0,
+    86_400,
+    'merge-after-CI quiet period',
+  );
+  validateMockRootRuntimeDuration(
+    input.path_index_interval_seconds,
+    0,
+    DEV_MAX_PATH_INDEX_SECONDS,
+    'file list refresh interval',
+  );
+  validateMockRootRuntimeDuration(
+    input.session_ttl_seconds,
+    60,
+    ROOT_RUNTIME_MAX_SESSION_SECONDS,
+    'session lifetime',
+  );
+}
+
+function validateMockRootRuntimeDuration(
+  value: number | null,
+  minimum: number,
+  maximum: number,
+  label: string,
+  zeroIsOptional = false,
+): void {
+  if (value === null) return;
+  if (
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > maximum ||
+    (value === 0 ? !zeroIsOptional && minimum > 0 : value < minimum)
+  ) {
+    invalidMockRootRuntimeSettings(`${label} is outside the supported range`);
+  }
+}
+
+function isMockRootRuntimeConfig(value: unknown): value is ConfigValues {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (Object.keys(candidate).length !== CONFIG_KEYS.length) return false;
+  return CONFIG_KEYS.every((key) => {
+    const held = candidate[key];
+    if (key === 'allowed_commands') return Array.isArray(held) && held.every(isStringValue);
+    if (key === 'command_aliases') {
+      return (
+        held !== null &&
+        typeof held === 'object' &&
+        !Array.isArray(held) &&
+        Object.values(held).every(isStringValue)
+      );
+    }
+    if (key === 'command_prefix') return typeof held === 'string';
+    return typeof held === 'boolean';
+  });
+}
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+function invalidMockRootRuntimeSettings(message: string): never {
+  throw new MockApiError(400, 'invalid_runtime_settings', message);
 }
 
 function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
@@ -3130,7 +3998,7 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
       id: 'root-runtime-1',
       category: 'runtime',
       actor: VIEWER,
-      action: 'runtime.settings.updated',
+      action: 'runtime.settings.saved',
       summary: 'Updated panel session lifetime',
       created_at: new Date(now - 7 * 60_000).toISOString(),
     },
@@ -3174,7 +4042,7 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
     },
   ];
 
-  return [...installationEvents, ...systemEvents].sort(
+  return [...installationEvents, ...state.runtime.audit, ...systemEvents].sort(
     (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
   );
 }
@@ -3458,15 +4326,13 @@ function addAudit(
   action: string,
   summary: string,
   repository?: string,
-  syncCheckpointId?: string,
   settingsCheckpointId?: string,
 ): void {
-  const entry: AuditEntry & { settings_checkpoint_id?: string } = {
+  const entry: AuditEntry = {
     id: `audit-${Date.now()}`,
     actor: VIEWER,
     action,
     summary,
-    ...(syncCheckpointId === undefined ? {} : { sync_config_checkpoint_id: syncCheckpointId }),
     ...(settingsCheckpointId === undefined ? {} : { settings_checkpoint_id: settingsCheckpointId }),
     repository_full_name: repository,
     created_at: new Date().toISOString(),

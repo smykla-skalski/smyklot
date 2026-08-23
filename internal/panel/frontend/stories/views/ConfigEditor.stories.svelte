@@ -19,7 +19,7 @@
       idPrefix: 'story',
       section: 'all',
       disabled: false,
-      onSave: async () => {},
+      onChange: () => {},
     },
   });
 </script>

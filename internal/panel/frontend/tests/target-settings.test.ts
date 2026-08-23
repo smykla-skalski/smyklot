@@ -91,19 +91,8 @@ describe('TargetSettings shared drafts [Component]', () => {
       resolve(process.cwd(), 'src/lib/components/TargetSettings.svelte'),
       'utf8',
     );
-    const installation = readFileSync(
-      resolve(process.cwd(), 'src/lib/components/InstallationView.svelte'),
-      'utf8',
-    );
-    const rootInstallation = readFileSync(
-      resolve(process.cwd(), 'src/lib/components/RootInstallationView.svelte'),
-      'utf8',
-    );
-
     expect(component).not.toContain('onUpdate');
     expect(component).not.toContain('setTimeout');
     expect(component).not.toContain('save-whisper');
-    expect(installation).not.toContain('updateTargetSettings');
-    expect(rootInstallation).not.toContain('updateRootTargetSettings');
   });
 });

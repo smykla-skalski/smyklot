@@ -16,100 +16,46 @@ afterAll(async () => {
 function runtimeUpdate(page: Page): Promise<Request> {
   return page.waitForRequest(
     (request) =>
-      request.method() === 'PUT' && new URL(request.url()).pathname === '/api/v1/root/settings',
+      request.method() === 'PUT' &&
+      new URL(request.url()).pathname === '/api/v1/root/runtime/settings',
   );
 }
 
-describe('Root merge-after-CI timing', () => {
-  it('applies and restores the quiet period through the development API', async () => {
+describe('Root runtime settings drafts', () => {
+  it('persists raw input across routes and reloads, then saves the full document once', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     const crashes: string[] = [];
-    const settingsUptimes: number[] = [];
+    const writes: Request[] = [];
     page.on('pageerror', (error) => crashes.push(error.message));
-    await page.route('**/api/v1/root/settings', async (route) => {
-      if (route.request().method() !== 'GET') {
-        await route.continue();
-        return;
+    page.on('request', (request) => {
+      if (
+        request.method() === 'PUT' &&
+        new URL(request.url()).pathname === '/api/v1/root/runtime/settings'
+      ) {
+        writes.push(request);
       }
-      const response = await route.fetch();
-      const body = (await response.json()) as { service: { uptime_seconds: number } };
-      body.service.uptime_seconds += settingsUptimes.length + 1;
-      settingsUptimes.push(body.service.uptime_seconds);
-      await route.fulfill({ response, json: body });
     });
 
     try {
-      /* No stream, which is what makes the refetch below happen at all.
-         --------------------------------------------------------------
-         What this measures is that a refetch arriving under the reader does not
-         take away what they have typed, and the way it provokes one is to move
-         the clock past the staleness and raise a visibility change. Both of
-         those are the panel's fallback: while the stream is up it is told when
-         something changes, so nothing is stale on a timer and focus refetches
-         nothing - and this waited thirty seconds for a request that was never
-         going to be made.
-
-         Refusing the socket puts the panel back on the clock, which is the state
-         this was always testing. It also covers the fallback itself: with the
-         stream gone the panel has to start catching up on its own again.
-
-         `routeWebSocket`, not `route`: the latter is HTTP only and lets the
-         handshake straight through, so a socket "blocked" that way is a socket
-         that connected - which is exactly how this looked when it first failed,
-         a panel with a live stream refusing to refetch anything. */
-      await page.routeWebSocket(/\/api\/v1\/events/u, (socket) => socket.close());
       await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
 
-      /* Overriding pins what the deployment resolves to today - 30 seconds. */
-      const pinned = runtimeUpdate(page);
       const overrideButton = page.getByRole('button', {
         name: 'Override the deployment quiet period',
       });
       await overrideButton.waitFor({ state: 'visible', timeout: 30_000 });
       await overrideButton.click();
-      expect((await pinned).postDataJSON()).toMatchObject({
-        merge_after_ci_quiet_period_seconds: 30,
-      });
 
       const amount = page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' });
       await amount.waitFor({ state: 'visible' });
       await amount.fill('2');
-
-      /* A refetch arriving under the reader must not take away what they have
-         typed. The clock jump past the staleness plus a visibility change is
-         the panel's fallback refetch - the stream is refused above, so nothing
-         else would provoke one. */
-      const readsBeforeRefetch = settingsUptimes.length;
-      const uptimeBeforeRefetch = settingsUptimes.at(-1) ?? -1;
-      expect(readsBeforeRefetch).toBeGreaterThan(0);
-      const refetched = page.waitForResponse(
-        (response) =>
-          response.request().method() === 'GET' &&
-          new URL(response.url()).pathname === '/api/v1/root/settings',
-      );
-      await page.evaluate(() => {
-        Date.now = () => new Date().getTime() + 31_000;
-        window.dispatchEvent(new Event('visibilitychange'));
-      });
-      await refetched;
-      await page.evaluate(() => {
-        Date.now = () => new Date().getTime();
-      });
-      expect(settingsUptimes.length).toBeGreaterThan(readsBeforeRefetch);
-      expect(settingsUptimes.at(-1) ?? -1).toBeGreaterThan(uptimeBeforeRefetch);
-      await expect.poll(() => amount.inputValue()).toBe('2');
-
-      /* Picking a unit saves at once: 2 minutes is 120 seconds on the wire. */
-      const applied = page.waitForRequest(
-        (request) =>
-          request.method() === 'PUT' &&
-          new URL(request.url()).pathname === '/api/v1/root/settings' &&
-          (request.postDataJSON() as { merge_after_ci_quiet_period_seconds: number })
-            .merge_after_ci_quiet_period_seconds === 120,
-      );
       await page.getByRole('button', { name: 'Merge-after-CI quiet period unit' }).click();
       await page.getByRole('option', { name: 'minutes' }).click();
-      await applied;
+      expect(writes).toHaveLength(0);
+
+      await page.getByRole('link', { name: 'Service' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/service');
+      await page.getByRole('link', { name: 'Settings' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
       await expect.poll(() => amount.inputValue()).toBe('2');
 
       await page.reload({ waitUntil: 'domcontentloaded' });
@@ -118,21 +64,88 @@ describe('Root merge-after-CI timing', () => {
       });
       await amountBack.waitFor({ state: 'visible', timeout: 30_000 });
       expect(await amountBack.inputValue()).toBe('2');
+      expect(writes).toHaveLength(0);
 
-      /* The x hands the setting back to the deployment. */
-      const restored = runtimeUpdate(page);
+      const saved = runtimeUpdate(page);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      const savedRequest = await saved;
+      expect(savedRequest.postDataJSON()).toEqual({
+        bot_config: null,
+        log_level: null,
+        reaction_poll_interval_seconds: null,
+        merge_after_ci_quiet_period_seconds: 120,
+        path_index_interval_seconds: null,
+        session_ttl_seconds: null,
+        expected_revision: 0,
+      });
+      await page.getByText('Settings saved').waitFor({ state: 'visible' });
+      expect(writes).toHaveLength(1);
+
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      const savedAmount = page.getByRole('textbox', {
+        name: 'Merge-after-CI quiet period amount',
+      });
+      await savedAmount.waitFor({ state: 'visible', timeout: 30_000 });
+      expect(await savedAmount.inputValue()).toBe('2');
+
       const quietRow = page
         .locator('.policy-row')
         .filter({ has: page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' }) });
       await quietRow
         .getByRole('button', { name: 'Stop overriding - follow the deployment configuration' })
         .click();
+      expect(writes).toHaveLength(1);
+      const restored = runtimeUpdate(page);
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
       const restoreRequest = await restored;
       expect(restoreRequest.postDataJSON()).toMatchObject({
         merge_after_ci_quiet_period_seconds: null,
+        expected_revision: 1,
       });
       await page.getByText('Follows the deployment - 30 seconds').waitFor({ state: 'visible' });
+      expect(writes).toHaveLength(2);
       expect(crashes).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('keeps invalid raw duration text and blocks Save before the wire', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const writes: Request[] = [];
+    page.on('request', (request) => {
+      if (
+        request.method() === 'PUT' &&
+        new URL(request.url()).pathname === '/api/v1/root/runtime/settings'
+      ) {
+        writes.push(request);
+      }
+    });
+
+    try {
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();
+      const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
+      await amount.fill('1e');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+      await page
+        .getByText('Session lifetime must be between 1 minute and 30 days')
+        .first()
+        .waitFor();
+      expect(writes).toHaveLength(0);
+      expect(await amount.getAttribute('aria-invalid')).toBe('true');
+
+      await page.getByRole('link', { name: 'Database' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/database');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.getByRole('link', { name: 'Settings' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
+      expect(
+        await page.getByRole('textbox', { name: 'Session lifetime amount' }).inputValue(),
+      ).toBe('1e');
+      expect(writes).toHaveLength(0);
+      await page.getByRole('button', { name: 'Discard' }).click();
     } finally {
       await page.close();
     }
@@ -180,21 +193,15 @@ describe('Root Runtime routes', () => {
     }
   });
 
-  it('redirects old and bare Runtime addresses directly to settings with their query', async () => {
+  it('redirects the bare Runtime address to Service with its query', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
 
     try {
       await page.goto(`${panel.origin}/root/runtime?from=section`, {
         waitUntil: 'domcontentloaded',
       });
-      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
+      await page.waitForURL((url) => url.pathname === '/root/runtime/service');
       expect(new URL(page.url()).search).toBe('?from=section');
-
-      await page.goto(`${panel.origin}/root/settings?from=bookmark`, {
-        waitUntil: 'domcontentloaded',
-      });
-      await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
-      expect(new URL(page.url()).search).toBe('?from=bookmark');
     } finally {
       await page.close();
     }

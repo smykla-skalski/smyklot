@@ -65,13 +65,13 @@ func declareConcurrencySpecs(current func() (context.Context, storage.Store, tim
 		ctx, store, now := current()
 		account, initial := seedInstallation(ctx, store, now)
 
-		results := race(func(_ int) (storage.Target, error) {
-			return store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-				TargetID:                 initial.TargetID,
-				ActorAccountID:           account.ID,
-				RepositoryDefaultEnabled: true,
-				ExpectedRevision:         1,
-				ChangedAt:                now,
+		results := race(func(_ int) (storage.SaveInstallationSettingsResult, error) {
+			return store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+				TargetID: initial.TargetID, ActorAccountID: account.ID, ChangedAt: now,
+				Target: &storage.InstallationTargetSettingsChange{
+					RepositoryDefaultEnabled: true,
+					ExpectedRevision:         1,
+				},
 			})
 		})
 
@@ -79,7 +79,8 @@ func declareConcurrencySpecs(current func() (context.Context, storage.Store, tim
 		for _, result := range results {
 			if result.err == nil {
 				applied++
-				Expect(result.value.Revision).To(Equal(int64(2)))
+				Expect(result.value.Target).NotTo(BeNil())
+				Expect(result.value.Target.Revision).To(Equal(int64(2)))
 
 				continue
 			}
@@ -142,12 +143,11 @@ func verifyConcurrentRuntimeSettingsCreate(
 	account := testAccount(now)
 	Expect(store.UpsertAccount(ctx, account)).To(Succeed())
 
-	results := race(func(index int) (storage.RuntimeSettings, error) {
+	results := race(func(index int) (storage.SaveRuntimeSettingsResult, error) {
 		quiet := time.Duration(index) * time.Second
 
-		return store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+		return store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			PendingCIQuietPeriod:          &quiet,
-			EffectivePollInterval:         5 * time.Minute,
 			EffectivePendingCIQuietPeriod: quiet,
 			EffectiveSessionTTL:           time.Hour,
 			ExpectedRevision:              0,
@@ -160,7 +160,7 @@ func verifyConcurrentRuntimeSettingsCreate(
 	for _, result := range results {
 		if result.err == nil {
 			applied++
-			Expect(result.value.Revision).To(Equal(int64(1)))
+			Expect(result.value.Settings.Revision).To(Equal(int64(1)))
 
 			continue
 		}

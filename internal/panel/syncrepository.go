@@ -15,24 +15,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-// syncOverrideRequest is what one repository says about one kind of sync.
-//
-// Both halves in one request, because they are one row and one revision.
-// Sending them separately would let saving the switch write the last document
-// this browser happened to be holding over one somebody else had just saved.
-type syncOverrideRequest struct {
-	// Enabled is a three-state answer: on, off, or absent, which inherits the
-	// installation's. Present tells the third from a browser that forgot to
-	// send the field.
-	Enabled nullableBool `json:"enabled"`
-
-	// Document is what this repository adjusts, as the kind spells it. Empty
-	// adjusts nothing.
-	Document json.RawMessage `json:"document,omitempty"`
-
-	ExpectedRevision *int64 `json:"expected_revision"`
-}
-
 // syncOverrideDTO is what the panel reads back.
 type syncOverrideDTO struct {
 	Kind       string          `json:"kind"`
@@ -216,87 +198,6 @@ func syncPathIndex(rows []orgsync.RepositoryPaths) map[string]any {
 	return answer
 }
 
-// syncOverrideRowDTO is one repository's answer, in a list of all of them.
-//
-// The name travels with it because the caller is a page about a file rather
-// than about a repository: "three repositories adjust renovate.json" is
-// answered by this list, and answering it with ids would mean a request per row
-// to turn each one back into a word.
-type syncOverrideRowDTO struct {
-	RepositoryID   string `json:"repository_id"`
-	RepositoryName string `json:"repository_name"`
-
-	syncOverrideDTO
-}
-
-// listSyncOverrides reads every repository's answer about one kind.
-//
-// One request rather than one per repository. The page that needs this is the
-// one about a shared file, which asks "who adjusts this, and how" - a question
-// about the whole installation that the per-repository endpoint can only answer
-// by being asked two hundred times.
-//
-// Repositories the installation no longer holds are left out by the store's own
-// join, so a name is always a repository somebody can still open.
-func (s *Server) listSyncOverrides(w http.ResponseWriter, r *http.Request) {
-	_, target, _, ok := s.requireTarget(w, r, false)
-	if !ok {
-		return
-	}
-	kind, ok := s.syncKind(w, r)
-	if !ok {
-		return
-	}
-
-	overrides, err := s.store.ListSyncRepositoryOverrides(r.Context(), target.ID)
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
-	repositories, err := s.store.ListRepositories(r.Context(), target.ID)
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
-	names := make(map[string]string, len(repositories))
-	for _, repository := range repositories {
-		names[repository.ID] = repository.Name
-	}
-
-	rows := make([]syncOverrideRowDTO, 0, len(overrides))
-	editors := make(map[string]string)
-	for _, override := range overrides {
-		if override.Kind != kind {
-			continue
-		}
-		name, known := names[override.RepositoryID]
-		if !known {
-			continue
-		}
-		updatedBy, known := editors[override.UpdatedBy]
-		if !known {
-			updatedBy, err = s.syncEditorLogin(r.Context(), override.UpdatedBy)
-			if err != nil {
-				s.writeStorageError(w, err)
-
-				return
-			}
-			editors[override.UpdatedBy] = updatedBy
-		}
-		rows = append(rows, syncOverrideRowDTO{
-			RepositoryID:    override.RepositoryID,
-			RepositoryName:  name,
-			syncOverrideDTO: syncOverrideToDTO(kind, &override, updatedBy),
-		})
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"overrides": rows})
-}
-
 // getSyncOverride reads what one repository says about one kind.
 func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
@@ -326,9 +227,7 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reporting an unreadable state row, because on a read it is the one thing
-	// this page exists to show.
-	s.answerSyncOverride(w, r, target.ID, repository.ID, kind, saved, true)
+	s.answerSyncOverride(w, r, target.ID, repository.ID, kind, saved)
 }
 
 // answerSyncOverride answers with what this repository says about one kind and
@@ -337,20 +236,12 @@ func (s *Server) getSyncOverride(w http.ResponseWriter, r *http.Request) {
 // Two rows and one question. The override is what somebody asked for; the state
 // row is what came of it, and a pane showing only the first would show a
 // repository that looks configured and is being skipped.
-//
-// reportUnreadableState is what separates the two callers. On a read, a refusal
-// this page could not read is the one thing it exists to show, so the request
-// fails. After a save it is a second read on the way out of a write that has
-// already committed, and failing there would answer 500 for a change that
-// landed - which the form reads as a failed save, so it keeps the revision it
-// came in with and every retry is answered 409 for the person's own change.
 func (s *Server) answerSyncOverride(
 	w http.ResponseWriter,
 	r *http.Request,
 	targetID, repositoryID string,
 	kind orgsync.Kind,
 	override *orgsync.RepositoryOverride,
-	reportUnreadableState bool,
 ) {
 	updatedBy := ""
 	if override != nil {
@@ -381,15 +272,13 @@ func (s *Server) answerSyncOverride(
 	case errors.Is(err, storage.ErrNotFound):
 		// Nothing has planned this repository for this kind yet, which is the
 		// ordinary answer on a fresh installation and says nothing is wrong.
-	case err != nil && reportUnreadableState:
+	case err != nil:
 		// Reported rather than left out. A refusal this page could not read is
 		// the one thing it exists to show, and rendering the pane without it
 		// would say the repository is fine.
 		s.writeStorageError(w, err)
 
 		return
-	case err != nil:
-		// Left out, because the save this is answering has already landed.
 	default:
 		dto.Problem = state.Problem
 		if state.Problem != "" {
@@ -398,134 +287,6 @@ func (s *Server) answerSyncOverride(
 	}
 
 	writeJSON(w, http.StatusOK, dto)
-}
-
-// putSyncOverride saves it.
-//
-// Validated against the installation's own configuration for the kind, because
-// that is what the adjustment has to fit: one naming a file nobody synchronizes
-// reads as configured and quietly does nothing, which is the same silence every
-// other mistyped name here is refused for.
-func (s *Server) putSyncOverride(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	account, target, _, ok := s.requireTarget(w, r, true)
-	if !ok {
-		return
-	}
-	repository, ok := s.repository(w, r, target)
-	if !ok {
-		return
-	}
-	kind, ok := s.syncKind(w, r)
-	if !ok {
-		return
-	}
-
-	// The ordinary bound, because a repository's adjustments are not templates.
-	// FileOverride bounds neither how many merges it carries nor how large an
-	// overrides object is, so the larger bound would buy a per-repository row of
-	// several megabytes that the planner then refuses to compose anyway.
-	var input syncOverrideRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if !input.Enabled.Present || input.ExpectedRevision == nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_request",
-			"a repository's answer needs to say whether the kind runs and what it replaces")
-
-		return
-	}
-
-	document, err := s.syncOverrideDocument(
-		r, target.ID, repository.ID, kind, input.Document)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_sync_override", err.Error())
-
-		return
-	}
-
-	saved, err := s.store.SetSyncRepositoryOverride(r.Context(), orgsync.RepositoryOverrideChange{
-		RepositoryID: repository.ID,
-		Kind:         kind,
-		Enabled:      input.Enabled.Value,
-		Document:     document,
-		ActorID:      account.ID,
-		Now:          s.now().UTC(),
-		Revision:     *input.ExpectedRevision,
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
-	s.Announce(target.ID, repository.ID)
-
-	// Carrying whatever refusal still stands, which a save does not clear. The
-	// planner is what decides that, and it has not looked yet - saying so with
-	// the time it was last looked at is honest, where dropping the notice would
-	// tell somebody their fix worked before anything had tried it.
-	// Not reporting an unreadable state row: the save has already committed.
-	s.answerSyncOverride(w, r, target.ID, repository.ID, kind, &saved, false)
-}
-
-// syncOverrideDocument checks a repository's adjustments against what the
-// installation synchronizes, and answers what to store.
-func (s *Server) syncOverrideDocument(
-	r *http.Request,
-	targetID, repositoryID string,
-	kind orgsync.Kind,
-	document json.RawMessage,
-) ([]byte, error) {
-	if kind != orgsync.KindFiles {
-		// Every other kind is the same everywhere the installation switches it
-		// on, so a repository's answer about one is the switch and nothing else.
-		// Refusing a document for them beats storing one nothing reads.
-		if len(document) > 0 && string(document) != string(emptyDocument) {
-			return nil, fmt.Errorf(
-				"%w: a repository can switch %s off, and there is nothing about them to adjust",
-				orgsync.ErrInvalidConfig, kind)
-		}
-
-		return nil, nil
-	}
-
-	var adjustments orgsync.FileOverride
-	if err := decodeStrictly(document, &adjustments); err != nil {
-		return nil, err
-	}
-
-	keeping := s.alreadyAdjusted(r, targetID, repositoryID)
-
-	// An adjustment is checked against the files the installation
-	// synchronizes, so those are read where this save introduces one to check
-	// and not otherwise.
-	//
-	// Two things are not introduced. What a repository wants left alone names
-	// paths rather than fitting them, and an adjustment it already had was
-	// checked when it was saved. Neither should turn on a page that may be
-	// unreadable for reasons on somebody else's screen: taking the one control
-	// that narrows sync away because of a problem elsewhere would take it away
-	// at the worst moment, and the form always re-sends the whole document, so
-	// every save carried every stored adjustment back through this.
-	var config orgsync.FileConfig
-
-	if adjustsBeyond(adjustments, keeping) {
-		read, err := s.syncFileConfig(r, targetID)
-		if err != nil {
-			return nil, err
-		}
-
-		config = read
-	}
-
-	if err := adjustments.ValidateAgainst(config, keeping); err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(adjustments)
 }
 
 // adjustsBeyond reports a save naming a path this repository was not already
@@ -538,29 +299,6 @@ func adjustsBeyond(adjustments orgsync.FileOverride, keeping []string) bool {
 	}
 
 	return false
-}
-
-// alreadyAdjusted is what this repository's saved answer adjusts.
-//
-// Nothing where there is no row, or where the row holds a document this
-// version cannot read. That is the safe direction: the save is then checked as
-// though every adjustment in it were new.
-func (s *Server) alreadyAdjusted(
-	r *http.Request,
-	targetID, repositoryID string,
-) []string {
-	stored, err := s.store.GetSyncRepositoryOverride(
-		r.Context(), targetID, repositoryID, orgsync.KindFiles)
-	if err != nil {
-		return nil
-	}
-
-	var saved orgsync.FileOverride
-	if err := json.Unmarshal(stored.Document, &saved); err != nil {
-		return nil
-	}
-
-	return saved.Adjusted()
 }
 
 // syncFileConfig reads what the installation synchronizes.

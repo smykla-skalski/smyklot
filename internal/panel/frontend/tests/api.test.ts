@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { PanelApiError, createPanelApi } from '../src/lib/api';
-import type { ConfigSources, ConfigValues, PanelTarget, RepositoryDetail } from '../src/lib/types';
+import type {
+  ConfigSources,
+  ConfigValues,
+  PanelTarget,
+  RepositoryDetail,
+  SettingsCheckpoint,
+} from '../src/lib/types';
 
 interface RecordedCall {
   url: string;
@@ -221,30 +227,6 @@ describe('targets and repositories', () => {
     );
   });
 
-  it('uses full replacement PUTs with optimistic revisions', async () => {
-    const updatedTarget = { ...TARGET, repository_default_enabled: true, revision: 2 };
-    const updatedDetail = { ...DETAIL, revision: 2 };
-    const stub = stubFetch([jsonResponse(200, updatedTarget), jsonResponse(200, updatedDetail)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.updateTargetSettings('2001', {
-      repository_default_enabled: true,
-      config_patch: { quiet_success: true },
-      expected_revision: 1,
-    });
-    await api.updateRepositorySettings('2001', '4001', {
-      enabled_override: true,
-      config_patch: { allowed_commands: [] },
-      ignore_repository_file: false,
-      expected_revision: 1,
-    });
-
-    expect(stub.calls[0]?.init?.method).toBe('PUT');
-    expect(stub.calls[0]?.init?.headers).toEqual({ 'Content-Type': 'application/json' });
-    expect(JSON.parse(String(stub.calls[0]?.init?.body))).toMatchObject({ expected_revision: 1 });
-    expect(stub.calls[1]?.url).toBe('/panel/api/v1/targets/2001/repositories/4001/settings');
-  });
-
   it('saves every installation settings resource through one literal-preserving PUT', async () => {
     const answer =
       '{"checkpoint_id":"checkpoint.1","sync_configs":[{"target_id":"target/1",' +
@@ -279,8 +261,8 @@ describe('targets and repositories', () => {
     await api.saveRootInstallationSettings('target/1', input);
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/targets/target%2F1/settings/batch',
-      '/panel/api/v1/root/installations/target%2F1/settings/batch',
+      '/panel/api/v1/targets/target%2F1/settings',
+      '/panel/api/v1/root/installations/target%2F1/settings',
     ]);
     expect(stub.calls.every((call) => call.init?.method === 'PUT')).toBe(true);
     expect(JSON.parse(String(stub.calls[0]?.init?.body))).toEqual(input);
@@ -343,109 +325,6 @@ describe('targets and repositories', () => {
     expect(stub.calls[0]?.url).toBe('/panel/api/v1/targets/a%2Fb/repositories/%2E%2E');
   });
 
-  it('saves changed Sync kinds in one installation request', async () => {
-    const response = {
-      configs: [],
-      checkpoint_id: 'checkpoint.1',
-    };
-    const stub = stubFetch([jsonResponse(200, response)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(
-      api.saveSyncConfigs('target/1', {
-        changes: [
-          {
-            kind: 'labels',
-            enabled: true,
-            labels: [{ name: 'ci/green', color: '00ff00' }],
-            allow_removal: false,
-            excludes: [],
-            expected_revision: 4,
-          },
-          {
-            kind: 'settings',
-            enabled: true,
-            document: { visibility: 'private' },
-            expected_revision: 7,
-          },
-        ],
-      }),
-    ).resolves.toEqual(response);
-
-    expect(stub.calls[0]?.url).toBe('/panel/api/v1/targets/target%2F1/sync/config');
-    expect(stub.calls[0]?.init?.method).toBe('PUT');
-    expect(JSON.parse(String(stub.calls[0]?.init?.body))).toMatchObject({
-      changes: [
-        { kind: 'labels', expected_revision: 4 },
-        { kind: 'settings', expected_revision: 7 },
-      ],
-    });
-  });
-
-  it('preserves the invalid Sync kind from a batch error', async () => {
-    const stub = stubFetch([
-      jsonResponse(400, {
-        error: {
-          code: 'invalid_sync_config',
-          message: 'a label name is required',
-          kind: 'labels',
-        },
-      }),
-    ]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(
-      api.saveSyncConfigs('target.1', {
-        changes: [
-          {
-            kind: 'labels',
-            enabled: true,
-            labels: [],
-            allow_removal: false,
-            excludes: [],
-            expected_revision: 1,
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({
-      status: 400,
-      code: 'invalid_sync_config',
-      kind: 'labels',
-    });
-  });
-
-  it('inspects and restores a selected Sync checkpoint', async () => {
-    const checkpoint = {
-      id: 'checkpoint/1',
-      action: 'sync.config.saved',
-      actor: VIEWER.account,
-      created_at: '2026-08-23T08:00:00Z',
-      affected_kinds: ['labels'],
-      kinds: [],
-    };
-    const restored = { configs: [], checkpoint_id: 'checkpoint.2' };
-    const stub = stubFetch([jsonResponse(200, checkpoint), jsonResponse(200, restored)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await expect(api.fetchSyncConfigCheckpoint('target/1', 'checkpoint/1')).resolves.toEqual(
-      checkpoint,
-    );
-    await expect(
-      api.restoreSyncConfigCheckpoint('target/1', 'checkpoint/1', {
-        kinds: [{ kind: 'labels', expected_revision: 7 }],
-      }),
-    ).resolves.toEqual(restored);
-
-    expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/targets/target%2F1/sync/config/checkpoints/checkpoint%2F1',
-      '/panel/api/v1/targets/target%2F1/sync/config/checkpoints/checkpoint%2F1/restore',
-    ]);
-    expect(stub.calls[1]?.init?.method).toBe('POST');
-    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
-      kinds: [{ kind: 'labels', expected_revision: 7 }],
-    });
-  });
-
   it('inspects and restores selected installation settings', async () => {
     const checkpoint =
       '{"id":"checkpoint/1","action":"installation.settings.saved",' +
@@ -453,11 +332,12 @@ describe('targets and repositories', () => {
       '"subject_id":"1001","login":"ada","display_name":"Ada Lovelace",' +
       '"avatar_url":null},"created_at":"2026-08-23T08:00:00Z",' +
       '"affected_kinds":["sync_config"],"items":[{"kind":"sync_config",' +
-      '"sync_kind":"files","document_version":1,"before":null,' +
-      '"after":{"document":{"app_id":12345678901234567890},"digest":"after",' +
-      '"revision":7},"current":{"document":{"app_id":12345678901234567890},' +
-      '"digest":"after","revision":7},"changed":true,"differs":false,' +
-      '"restorable":true}]}';
+      '"sync_kind":"files","document_version":1,"before":{"available":true,' +
+      '"state":null,"differs":true,"restorable":true},"after":{"available":true,' +
+      '"state":{"document":{"app_id":12345678901234567890},"digest":"after",' +
+      '"revision":7},"differs":false,"restorable":true},"current":{"document":' +
+      '{"app_id":12345678901234567890},"digest":"after","revision":7},' +
+      '"changed":true}]}';
     const restored = { sync_configs: [], checkpoint_id: 'checkpoint/2' };
     const stub = stubFetch([
       new Response(checkpoint, { status: 200, headers: { 'content-type': 'application/json' } }),
@@ -468,11 +348,12 @@ describe('targets and repositories', () => {
     const inspected = await api.fetchInstallationSettingsCheckpoint('target/1', 'checkpoint/1');
     await expect(
       api.restoreInstallationSettingsCheckpoint('target/1', 'checkpoint/1', {
+        state: 'before',
         selections: [{ kind: 'sync_config', sync_kind: 'files', expected_revision: 7 }],
       }),
     ).resolves.toEqual(restored);
 
-    expect(JSON.stringify(inspected.items[0]?.after?.document)).toBe(
+    expect(JSON.stringify(inspected.items[0]?.after.state?.document)).toBe(
       '{"app_id":12345678901234567890}',
     );
     expect(stub.calls.map((call) => call.url)).toEqual([
@@ -481,39 +362,15 @@ describe('targets and repositories', () => {
     ]);
     expect(stub.calls[1]?.init?.method).toBe('POST');
     expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      state: 'before',
       selections: [{ kind: 'sync_config', sync_kind: 'files', expected_revision: 7 }],
     });
   });
 });
 
 describe('Root installation access', () => {
-  it('inspects and restores Sync checkpoints through Root routes', async () => {
-    const checkpoint = {
-      id: 'checkpoint/1',
-      action: 'sync.config.saved',
-      actor: VIEWER.account,
-      created_at: '2026-08-23T08:00:00Z',
-      affected_kinds: ['labels'],
-      kinds: [],
-    };
-    const restored = { configs: [], checkpoint_id: 'checkpoint/2' };
-    const stub = stubFetch([jsonResponse(200, checkpoint), jsonResponse(200, restored)]);
-    const api = createPanelApi('/panel', stub.fetch);
-
-    await api.fetchRootSyncConfigCheckpoint('target/1', 'checkpoint/1');
-    await api.restoreRootSyncConfigCheckpoint('target/1', 'checkpoint/1', {
-      kinds: [{ kind: 'labels', expected_revision: 2 }],
-    });
-
-    expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/root/installations/target%2F1/sync/config/checkpoints/checkpoint%2F1',
-      '/panel/api/v1/root/installations/target%2F1/sync/config/checkpoints/checkpoint%2F1/restore',
-    ]);
-    expect(stub.calls[1]?.init?.method).toBe('POST');
-  });
-
   it('inspects and restores installation settings through Root routes', async () => {
-    const checkpoint = {
+    const checkpoint: SettingsCheckpoint = {
       id: 'checkpoint/1',
       action: 'installation.settings.saved',
       actor: VIEWER.account,
@@ -527,6 +384,7 @@ describe('Root installation access', () => {
 
     await api.fetchRootInstallationSettingsCheckpoint('target/1', 'checkpoint/1');
     await api.restoreRootInstallationSettingsCheckpoint('target/1', 'checkpoint/1', {
+      state: 'after',
       selections: [{ kind: 'target', expected_revision: 2 }],
     });
 
@@ -535,6 +393,10 @@ describe('Root installation access', () => {
       '/panel/api/v1/root/installations/target%2F1/settings/checkpoints/checkpoint%2F1/restore',
     ]);
     expect(stub.calls[1]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      state: 'after',
+      selections: [{ kind: 'target', expected_revision: 2 }],
+    });
   });
 
   it('runs the Root catalog synchronization endpoint', async () => {
@@ -684,8 +546,6 @@ describe('Root installation access', () => {
       jsonResponse(200, TARGET),
       jsonResponse(200, { items: [REPOSITORY], next_cursor: null, total: 1 }),
       jsonResponse(200, DETAIL),
-      jsonResponse(200, TARGET),
-      jsonResponse(200, DETAIL),
       jsonResponse(404, { error: { code: 'not_found', message: 'not active' } }),
       jsonResponse(201, elevation),
       jsonResponse(200, { ...elevation, ended_at: '2026-08-10T10:05:00Z' }),
@@ -710,17 +570,6 @@ describe('Root installation access', () => {
     await api.fetchRootTargetSettings('target.1');
     await api.fetchRootRepositories('target.1', repositoryPage);
     await api.fetchRootRepository('target.1', 'repo.1');
-    await api.updateRootTargetSettings('target.1', {
-      repository_default_enabled: true,
-      config_patch: {},
-      expected_revision: 1,
-    });
-    await api.updateRootRepositorySettings('target.1', 'repo.1', {
-      enabled_override: true,
-      config_patch: {},
-      ignore_repository_file: false,
-      expected_revision: 1,
-    });
     await expect(api.fetchRootElevation('target.1')).rejects.toMatchObject({
       status: 404,
       code: 'not_found',
@@ -746,22 +595,20 @@ describe('Root installation access', () => {
       '/panel/api/v1/root/installations/target%2E1/settings',
       '/panel/api/v1/root/installations/target%2E1/repositories?sort=name_asc&limit=20&state=all',
       '/panel/api/v1/root/installations/target%2E1/repositories/repo%2E1',
-      '/panel/api/v1/root/installations/target%2E1/settings',
-      '/panel/api/v1/root/installations/target%2E1/repositories/repo%2E1/settings',
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/installations/target%2E1/elevation',
       '/panel/api/v1/root/elevations/elevation%2E1',
       '/panel/api/v1/root/access/users?cursor=20&q=ada&sort=role_desc&limit=20&system_role=root&system_role=super_root&status=active&status=banned',
       '/panel/api/v1/root/access/users/account%2E1',
     ]);
-    expect(stub.calls[8]?.init?.method).toBe('POST');
-    expect(JSON.parse(String(stub.calls[8]?.init?.body))).toEqual({
+    expect(stub.calls[6]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[6]?.init?.body))).toEqual({
       acknowledged: true,
       reason: 'Investigating a failed delivery',
     });
-    expect(stub.calls[9]?.init?.method).toBe('DELETE');
-    expect(stub.calls[11]?.init?.method).toBe('PUT');
-    expect(JSON.parse(String(stub.calls[11]?.init?.body))).toEqual({
+    expect(stub.calls[7]?.init?.method).toBe('DELETE');
+    expect(stub.calls[9]?.init?.method).toBe('PUT');
+    expect(JSON.parse(String(stub.calls[9]?.init?.body))).toEqual({
       system_role: 'root',
       expected_revision: 2,
     });
@@ -977,7 +824,7 @@ describe('Root runtime settings', () => {
 
     await expect(api.fetchRootRuntimeSettings()).resolves.toEqual(runtime);
     await expect(
-      api.updateRootRuntimeSettings({
+      api.saveRootRuntimeSettings({
         bot_config: null,
         log_level: 'debug',
         reaction_poll_interval_seconds: 90,
@@ -989,8 +836,8 @@ describe('Root runtime settings', () => {
     ).resolves.toEqual(updated);
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/root/settings',
-      '/panel/api/v1/root/settings',
+      '/panel/api/v1/root/runtime/settings',
+      '/panel/api/v1/root/runtime/settings',
     ]);
     expect(stub.calls[1]?.init?.method).toBe('PUT');
     expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
@@ -1003,6 +850,112 @@ describe('Root runtime settings', () => {
       expected_revision: 3,
     });
   });
+
+  it('inspects and restores Root runtime checkpoints through the canonical route', async () => {
+    const checkpoint: SettingsCheckpoint = {
+      id: 'checkpoint/1',
+      action: 'runtime.settings.saved',
+      actor: VIEWER.account,
+      created_at: '2026-08-23T08:00:00Z',
+      affected_kinds: ['runtime'],
+      items: [
+        {
+          kind: 'runtime',
+          document_version: 1,
+          before: {
+            available: true,
+            state: null,
+            differs: true,
+            restorable: true,
+          },
+          after: {
+            available: true,
+            state: {
+              document: {
+                bot_config: null,
+                log_level: 'debug',
+                poll_interval: null,
+                pending_ci_quiet_period: 45_000_000_000,
+                path_index_interval: null,
+                session_ttl: null,
+              },
+              digest: 'after',
+              revision: 4,
+            },
+            differs: true,
+            restorable: true,
+          },
+          current: null,
+          changed: true,
+        },
+      ],
+    };
+    const restored = { revision: 5, checkpoint_id: 'checkpoint/2' };
+    const stub = stubFetch([jsonResponse(200, checkpoint), jsonResponse(200, restored)]);
+    const api = createPanelApi('/panel', stub.fetch);
+    const inspected = structuredClone(checkpoint);
+    inspected.items[0]!.after.state!.document.pending_ci_quiet_period = {
+      rawJSON: '45000000000',
+    };
+
+    await expect(api.fetchRootRuntimeSettingsCheckpoint('checkpoint/1')).resolves.toEqual(
+      inspected,
+    );
+    await expect(
+      api.restoreRootRuntimeSettingsCheckpoint('checkpoint/1', {
+        state: 'after',
+        selections: [{ kind: 'runtime', expected_revision: 4 }],
+      }),
+    ).resolves.toEqual(restored);
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/runtime/settings/checkpoints/checkpoint%2F1',
+      '/panel/api/v1/root/runtime/settings/checkpoints/checkpoint%2F1/restore',
+    ]);
+    expect(stub.calls[1]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      state: 'after',
+      selections: [{ kind: 'runtime', expected_revision: 4 }],
+    });
+  });
+});
+
+describe('settings checkpoint baselines', () => {
+  it('fetches each baseline from its canonical settings route', async () => {
+    const installationBaseline: SettingsCheckpoint = {
+      id: 'installation-baseline',
+      action: 'installation.settings.baseline',
+      actor: VIEWER.account,
+      created_at: '2026-08-23T07:00:00Z',
+      affected_kinds: [],
+      items: [],
+    };
+    const runtimeBaseline: SettingsCheckpoint = {
+      ...installationBaseline,
+      id: 'runtime-baseline',
+      action: 'runtime.settings.baseline',
+    };
+    const stub = stubFetch([
+      jsonResponse(200, installationBaseline),
+      jsonResponse(200, installationBaseline),
+      jsonResponse(200, runtimeBaseline),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(api.fetchInstallationSettingsBaseline('target/1')).resolves.toEqual(
+      installationBaseline,
+    );
+    await expect(api.fetchRootInstallationSettingsBaseline('target/1')).resolves.toEqual(
+      installationBaseline,
+    );
+    await expect(api.fetchRootRuntimeSettingsBaseline()).resolves.toEqual(runtimeBaseline);
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets/target%2F1/settings/checkpoints/baseline',
+      '/panel/api/v1/root/installations/target%2F1/settings/checkpoints/baseline',
+      '/panel/api/v1/root/runtime/settings/checkpoints/baseline',
+    ]);
+  });
 });
 
 describe('security notifications', () => {
@@ -1013,7 +966,7 @@ describe('security notifications', () => {
       actor: VIEWER.account,
       elevation_id: 'elevation.1',
       audit_event_id: '25',
-      action: 'target.settings.updated',
+      action: 'installation.settings.saved',
       reason: 'Production incident',
       created_at: '2026-08-10T10:00:00Z',
     };

@@ -87,20 +87,9 @@ describe('RepositorySettings shared drafts [Component]', () => {
       resolve(process.cwd(), 'src/lib/components/RepositoryList.svelte'),
       'utf8',
     );
-    const installation = readFileSync(
-      resolve(process.cwd(), 'src/lib/components/InstallationView.svelte'),
-      'utf8',
-    );
-    const rootInstallation = readFileSync(
-      resolve(process.cwd(), 'src/lib/components/RootInstallationView.svelte'),
-      'utf8',
-    );
-
     expect(settings).not.toContain('setTimeout');
     expect(settings).not.toContain('save-whisper');
     expect(list).not.toContain('onUpdate');
     expect(list).not.toContain('onSaveSyncOverride');
-    expect(installation).not.toContain('updateRepositorySettings');
-    expect(rootInstallation).not.toContain('updateRootRepositorySettings');
   });
 });

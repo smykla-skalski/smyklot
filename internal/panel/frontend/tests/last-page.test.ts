@@ -68,7 +68,7 @@ describe('the page each side was left on [Unit]', () => {
     expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
   });
 
-  it('migrates pages remembered under the legacy settings vocabulary', () => {
+  it('drops pages remembered under removed route vocabulary', () => {
     const storage = memoryStorage();
     writeLastPage(
       'workspace',
@@ -77,13 +77,10 @@ describe('the page each side was left on [Unit]', () => {
       storage,
     );
 
-    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
-
-    writeLastPage('console', '/root/settings', {}, storage);
-    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
+    expect(readLastWorkspacePage(storage)).toBeNull();
 
     writeLastPage('console', '/root/runtime', {}, storage);
-    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-service' });
   });
 
   it('reads back each addressable Runtime leaf', () => {

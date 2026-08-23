@@ -12,7 +12,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const actionInstallationSettings = "installation.settings.updated"
+const actionInstallationSettingsSaved = "installation.settings.saved"
 
 type preparedInstallationSettings struct {
 	request       storage.SaveInstallationSettingsRequest
@@ -41,6 +41,7 @@ type installationSettingsWork struct {
 	syncConfigs      []syncConfigSettingsWork
 	syncOverrides    []syncOverrideSettingsWork
 	items            []storage.SettingsCheckpointItem
+	snapshotBefore   []storage.SettingsCheckpointItem
 	inclusionChanged bool
 	syncChanged      bool
 }
@@ -94,6 +95,12 @@ func (s *Store) SaveInstallationSettings(
 	if len(work.items) == 0 {
 		return installationSettingsResult(work), nil
 	}
+	work.snapshotBefore, err = captureInstallationSettingsSnapshot(
+		ctx, tx, request.TargetID,
+	)
+	if err != nil {
+		return storage.SaveInstallationSettingsResult{}, err
+	}
 
 	elevation, err := s.elevatedWrite(
 		ctx, tx, request.ElevationID, request.SessionTokenHash,
@@ -112,9 +119,9 @@ func (s *Store) SaveInstallationSettings(
 		return storage.SaveInstallationSettingsResult{}, err
 	}
 	if elevation != nil {
-		action, _, _, _ := installationSettingsAudit(work)
 		if err := insertElevatedNotifications(
-			ctx, tx, *elevation, auditEventID, action, request.ChangedAt,
+			ctx, tx, *elevation, auditEventID, actionInstallationSettingsSaved,
+			request.ChangedAt,
 		); err != nil {
 			return storage.SaveInstallationSettingsResult{}, err
 		}

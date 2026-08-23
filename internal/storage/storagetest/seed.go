@@ -49,8 +49,6 @@ func SeededTables() []string {
 		"pending_ci_repository_gates",
 		"pending_ci_check_slots",
 		"root_elevations",
-		"sync_config_checkpoints",
-		"sync_config_checkpoint_items",
 		"settings_checkpoints",
 		"settings_checkpoint_items",
 		"audit_entries",
@@ -232,35 +230,34 @@ func (s *seeder) seedTargetAccess() error {
 	return err
 }
 
-// seedSettings fills audit_entries through both settings paths, and leaves the
-// repository holding a config patch so the jsonb column carries a document.
+// seedSettings fills audit_entries through the installation settings save and
+// leaves the repository holding a config patch so the jsonb column carries a
+// document.
 func (s *seeder) seedSettings() error {
 	quiet := true
-	if _, err := s.store.UpdateTargetSettings(s.ctx, storage.TargetSettingsChange{
-		TargetID:                 s.target.TargetID,
-		ActorAccountID:           s.root.ID,
-		ElevationID:              &s.elevation.ID,
-		SessionTokenHash:         s.session.TokenHash,
-		RepositoryDefaultEnabled: true,
-		ConfigPatch:              config.Patch{QuietSuccess: &quiet},
-		ExpectedRevision:         1,
-		ChangedAt:                s.now.Add(2 * time.Minute),
+	if _, err := s.store.SaveInstallationSettings(s.ctx, storage.SaveInstallationSettingsRequest{
+		TargetID: s.target.TargetID, ActorAccountID: s.root.ID,
+		ElevationID: &s.elevation.ID, SessionTokenHash: s.session.TokenHash,
+		ChangedAt: s.now.Add(2 * time.Minute),
+		Target: &storage.InstallationTargetSettingsChange{
+			RepositoryDefaultEnabled: true,
+			ConfigPatch:              config.Patch{QuietSuccess: &quiet},
+			ExpectedRevision:         1,
+		},
 	}); err != nil {
 		return err
 	}
 
 	enabled := true
 	prefix := "/smyklot"
-	_, err := s.store.UpdateRepositorySettings(s.ctx, storage.RepositorySettingsChange{
-		TargetID:         s.target.TargetID,
-		RepositoryID:     "repo-1",
-		ActorAccountID:   s.root.ID,
-		ElevationID:      &s.elevation.ID,
-		SessionTokenHash: s.session.TokenHash,
-		EnabledOverride:  &enabled,
-		ConfigPatch:      config.Patch{CommandPrefix: &prefix},
-		ExpectedRevision: 1,
-		ChangedAt:        s.now.Add(3 * time.Minute),
+	_, err := s.store.SaveInstallationSettings(s.ctx, storage.SaveInstallationSettingsRequest{
+		TargetID: s.target.TargetID, ActorAccountID: s.root.ID,
+		ElevationID: &s.elevation.ID, SessionTokenHash: s.session.TokenHash,
+		ChangedAt: s.now.Add(3 * time.Minute),
+		Repositories: []storage.InstallationRepositorySettingsChange{{
+			RepositoryID: "repo-1", EnabledOverride: &enabled,
+			ConfigPatch: config.Patch{CommandPrefix: &prefix}, ExpectedRevision: 1,
+		}},
 	})
 
 	return err
@@ -300,13 +297,12 @@ func (s *seeder) seedRuntimeSettings() error {
 	pendingCIQuietPeriod := 45 * time.Second
 	sessionTTL := 12 * time.Hour
 
-	_, err := s.store.UpdateRuntimeSettings(s.ctx, storage.RuntimeSettingsChange{
+	_, err := s.store.SaveRuntimeSettings(s.ctx, storage.RuntimeSettingsChange{
 		BotConfig:                     botConfig,
 		LogLevel:                      &logLevel,
 		PollInterval:                  &pollInterval,
 		PendingCIQuietPeriod:          &pendingCIQuietPeriod,
 		SessionTTL:                    &sessionTTL,
-		EffectivePollInterval:         pollInterval,
 		EffectivePendingCIQuietPeriod: pendingCIQuietPeriod,
 		EffectiveSessionTTL:           sessionTTL,
 		ExpectedRevision:              0,
@@ -435,51 +431,64 @@ func (s *seeder) seedPendingCI() error {
 func (s *seeder) seedOrgSync() error {
 	document := []byte(`{"labels":[{"name":"seeded","color":"d73a4a"}]}`)
 
-	original, err := s.store.SetSyncConfigs(s.ctx, orgsync.ConfigBatchChange{
-		TargetID: s.target.TargetID, ActorID: s.owner.ID, Now: s.now,
-		Changes: []orgsync.ConfigPatch{{
-			Kind: orgsync.KindLabels, Enabled: true, Document: document,
-		}},
-	})
+	original, err := s.store.SaveInstallationSettings(
+		s.ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: s.target.TargetID, ActorAccountID: s.owner.ID, ChangedAt: s.now,
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindLabels, Enabled: true, Document: document,
+			}},
+		},
+	)
 	if err != nil {
 		return err
 	}
-	config := original.Configs[0]
-	if _, err := s.store.SetSyncConfig(s.ctx, orgsync.ConfigChange{
-		TargetID: s.target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
-		Document: []byte(`{"labels":[{"name":"temporary","color":"000000"}]}`),
-		Revision: 1, ActorID: s.owner.ID, Now: s.now,
-	}); err != nil {
+	config := original.SyncConfigs[0]
+	if _, err := s.store.SaveInstallationSettings(
+		s.ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: s.target.TargetID, ActorAccountID: s.owner.ID,
+			ChangedAt: s.now.Add(time.Second),
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindLabels, Enabled: true,
+				Document:         []byte(`{"labels":[{"name":"temporary","color":"000000"}]}`),
+				ExpectedRevision: 1,
+			}},
+		},
+	); err != nil {
 		return err
 	}
-	if _, err := s.store.RestoreSyncConfigCheckpoint(s.ctx, orgsync.ConfigRestore{
-		TargetID: s.target.TargetID, CheckpointID: *original.CheckpointID,
-		Kinds:     []orgsync.Kind{orgsync.KindLabels},
-		Revisions: map[orgsync.Kind]int64{orgsync.KindLabels: 2},
-		ActorID:   s.owner.ID, Now: s.now,
-	}); err != nil {
+	inspection, err := s.store.InspectInstallationSettingsCheckpoint(
+		s.ctx, installationCheckpointRef(s.target.TargetID, *original.CheckpointID),
+	)
+	if err != nil {
+		return err
+	}
+	if _, err := s.store.RestoreInstallationSettings(
+		s.ctx, storage.RestoreInstallationSettingsRequest{
+			TargetID: s.target.TargetID, CheckpointID: *original.CheckpointID,
+			Side:           storage.SettingsCheckpointRestoreAfter,
+			ActorAccountID: s.owner.ID, ChangedAt: s.now.Add(2 * time.Second),
+			DeploymentPendingCIQuietPeriod: 30 * time.Second,
+			Selections:                     restoreSelectionsAllowingAbsence(inspection),
+		},
+	); err != nil {
 		return err
 	}
 
 	disabled := false
-	if _, err := s.store.SetSyncRepositoryOverride(
-		s.ctx, orgsync.RepositoryOverrideChange{
-			RepositoryID: "repo-2", Kind: orgsync.KindLabels, Enabled: &disabled,
-			ActorID: s.owner.ID, Now: s.now,
-		}); err != nil {
-		return err
-	}
-
-	// A second override, carrying a document rather than an answer about
-	// whether the kind runs. Both halves of the row are filled, so a copy
-	// between engines is proven on one that has something in every column
-	// rather than on one that is empty on both sides.
-	if _, err := s.store.SetSyncRepositoryOverride(
-		s.ctx, orgsync.RepositoryOverrideChange{
-			RepositoryID: "repo-1", Kind: orgsync.KindFiles,
-			Document: []byte(`{"excludes":["renovate.json"]}`),
-			ActorID:  s.owner.ID, Now: s.now,
-		}); err != nil {
+	if _, err := s.store.SaveInstallationSettings(
+		s.ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: s.target.TargetID, ActorAccountID: s.owner.ID,
+			ChangedAt: s.now.Add(3 * time.Second),
+			SyncOverrides: []storage.InstallationSyncOverrideChange{
+				{RepositoryID: "repo-2", Kind: orgsync.KindLabels, Enabled: &disabled},
+				{
+					RepositoryID: "repo-1",
+					Kind:         orgsync.KindFiles,
+					Document:     []byte(`{"excludes":["renovate.json"]}`),
+				},
+			},
+		},
+	); err != nil {
 		return err
 	}
 

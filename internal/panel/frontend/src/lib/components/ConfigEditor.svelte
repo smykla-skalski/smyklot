@@ -37,7 +37,6 @@
     section = 'all',
     only,
     dirtyKeys = [],
-    onSave,
     onChange,
   }: {
     patch: ConfigPatch;
@@ -51,10 +50,8 @@
     only?: readonly ConfigKey[];
     /** Keys whose draft values differ from their saved values. */
     dirtyKeys?: readonly ConfigKey[];
-    /** Legacy immediate-save path for settings surfaces not migrated to shared drafts yet. */
-    onSave?: (next: ConfigPatch) => Promise<void>;
-    /** Shared-draft path. Changes are reported synchronously and never saved here. */
-    onChange?: (next: ConfigPatch, changedKey: ConfigKey) => void;
+    /** Changes are staged synchronously and never saved by the editor. */
+    onChange: (next: ConfigPatch, changedKey: ConfigKey) => void;
   } = $props();
 
   const source = $derived(SOURCE_BY_SCOPE[scope]);
@@ -63,18 +60,16 @@
       ? BOOLEAN_FIELDS
       : BOOLEAN_FIELDS.filter((field) => only.includes(field.key)),
   );
-  const staged = $derived(onChange !== undefined);
   const dirtyKeySet = $derived(new Set(dirtyKeys));
 
   const initialPatch = clonePatch(untrack(() => patch));
   let draft = $state<ConfigPatch>(initialPatch);
   let receivedPatch = $state<ConfigPatch>(clonePatch(initialPatch));
-  let saving = $state(false);
   let picking = $state(false);
   let aliasOpen = $state(false);
   let aliasName = $state('');
 
-  const editorDisabled = $derived(disabled || saving);
+  const editorDisabled = $derived(disabled);
   const overriddenFields = $derived(shownFields.filter((field) => Object.hasOwn(draft, field.key)));
   const restFields = $derived(shownFields.filter((field) => !Object.hasOwn(draft, field.key)));
   const aliasEntries = $derived(
@@ -104,60 +99,23 @@
     draft = nextDraft;
   });
 
-  /* ---------- The saved receipts, one per card ---------- */
-
-  let behaviorSavedOn = $state(false);
-  let commandsSavedOn = $state(false);
-  let behaviorTimer: ReturnType<typeof setTimeout> | undefined;
-  let commandsTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function whisper(card: 'behavior' | 'commands'): void {
-    if (card === 'behavior') {
-      behaviorSavedOn = true;
-      clearTimeout(behaviorTimer);
-      behaviorTimer = setTimeout(() => (behaviorSavedOn = false), 1400);
-    } else {
-      commandsSavedOn = true;
-      clearTimeout(commandsTimer);
-      commandsTimer = setTimeout(() => (commandsSavedOn = false), 1400);
-    }
-  }
-
-  async function push(card: 'behavior' | 'commands'): Promise<void> {
-    if (saving || onSave === undefined) return;
-    saving = true;
-    try {
-      await onSave(clonePatch(draft));
-      whisper(card);
-    } catch {
-      /* The parent reports the refusal; the draft keeps what was asked so the
-         next change carries it again. */
-    } finally {
-      saving = false;
-    }
-  }
-
-  function report(card: 'behavior' | 'commands', changedKey: ConfigKey): void {
-    if (onChange !== undefined) {
-      onChange(clonePatch(draft), changedKey);
-      return;
-    }
-    void push(card);
+  function report(changedKey: ConfigKey): void {
+    onChange(clonePatch(draft), changedKey);
   }
 
   /* ---------- Behavior ---------- */
 
   function toggleBoolean(field: BooleanField, enabled: boolean): void {
     draft = setExplicitPatchValue(draft, field.key, fieldRawValue(field, enabled));
-    report('behavior', field.key);
+    report(field.key);
   }
 
-  function clearField(key: ConfigKey, card: 'behavior' | 'commands'): void {
+  function clearField(key: ConfigKey): void {
     if (!Object.hasOwn(draft, key)) return;
     const next = { ...draft };
     delete next[key];
     draft = next;
-    report(card, key);
+    report(key);
   }
 
   /* Overriding pins what inheritance resolves to today; the switch beside it
@@ -165,35 +123,20 @@
   function manage(field: BooleanField): void {
     draft = setExplicitPatchValue(draft, field.key, cloneValue(inherited[field.key]));
     picking = false;
-    report('behavior', field.key);
+    report(field.key);
   }
 
   /* ---------- Commands ---------- */
 
-  let prefixTimer: ReturnType<typeof setTimeout> | undefined;
-  const SAVE_REST_MS = 900;
-
   function typePrefix(value: string): void {
     draft = updatePatchValue(draft, inherited, 'command_prefix', value);
-    if (staged) {
-      report('commands', 'command_prefix');
-      return;
-    }
-    clearTimeout(prefixTimer);
-    prefixTimer = setTimeout(() => void push('commands'), SAVE_REST_MS);
-  }
-
-  function flushPrefix(): void {
-    if (prefixTimer === undefined) return;
-    clearTimeout(prefixTimer);
-    prefixTimer = undefined;
-    report('commands', 'command_prefix');
+    report('command_prefix');
   }
 
   function toggleCommand(command: string): void {
     const next = toggleAllowedCommand(allowedList, command, COMMANDS);
     draft = updatePatchValue(draft, inherited, 'allowed_commands', next);
-    report('commands', 'allowed_commands');
+    report('allowed_commands');
   }
 
   function addAlias(): void {
@@ -205,7 +148,7 @@
     });
     aliasName = '';
     aliasOpen = false;
-    report('commands', 'command_aliases');
+    report('command_aliases');
   }
 
   function retargetAlias(name: string, command: string): void {
@@ -214,14 +157,14 @@
       ...current,
       [name]: command,
     });
-    report('commands', 'command_aliases');
+    report('command_aliases');
   }
 
   function removeAlias(name: string): void {
     const next = { ...effectiveValue(draft, inherited, 'command_aliases') };
     delete next[name];
     draft = updatePatchValue(draft, inherited, 'command_aliases', next);
-    report('commands', 'command_aliases');
+    report('command_aliases');
   }
 
   function cloneValue<T>(value: T): T {
@@ -229,13 +172,13 @@
   }
 </script>
 
-{#snippet clearButton(key: ConfigKey, card: 'behavior' | 'commands', what: string)}
+{#snippet clearButton(key: ConfigKey, what: string)}
   <button
     class="setting-clear"
     title="Stop overriding - follow {source}"
     aria-label="Stop overriding {what}"
     disabled={editorDisabled}
-    onclick={() => clearField(key, card)}
+    onclick={() => clearField(key)}
   >
     <Icon name="close" size={10} />
   </button>
@@ -266,7 +209,7 @@
                 onToggle={(next) => toggleBoolean(field, next)}
               />
             </span>
-            {@render clearButton(field.key, 'behavior', field.label)}
+            {@render clearButton(field.key, field.label)}
           </div>
         {/each}
       </div>
@@ -274,11 +217,6 @@
       <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-behavior">
         <div class="group-head">
           <h3 class="group-name" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
-          {#if !staged}
-            <span class="save-whisper" class:is-on={behaviorSavedOn} role="status"
-              ><Icon name="check" size={12} /><span class="t">Saved</span></span
-            >
-          {/if}
           <span class="group-tally"
             >{overriddenFields.length} of {shownFields.length} overridden</span
           >
@@ -305,7 +243,7 @@
                     onToggle={(next) => toggleBoolean(field, next)}
                   />
                 </span>
-                {@render clearButton(field.key, 'behavior', field.label)}
+                {@render clearButton(field.key, field.label)}
               </div>
             {/each}
           </div>
@@ -347,11 +285,6 @@
     <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-commands">
       <div class="group-head">
         <h3 class="group-name" id="config-{scope}-{idPrefix}-commands">Commands</h3>
-        {#if !staged}
-          <span class="save-whisper" class:is-on={commandsSavedOn} role="status"
-            ><Icon name="check" size={12} /><span class="t">Saved</span></span
-          >
-        {/if}
         <span class="group-tally">{commandsOverridden} of 3 overridden</span>
       </div>
       <p class="group-note">How commands are invoked and which words trigger them</p>
@@ -374,11 +307,10 @@
               value={effectiveValue(draft, inherited, 'command_prefix')}
               {disabled}
               oninput={(event) => typePrefix(event.currentTarget.value)}
-              onblur={flushPrefix}
             />
           </span>
           {#if Object.hasOwn(draft, 'command_prefix')}
-            {@render clearButton('command_prefix', 'commands', 'the command prefix')}
+            {@render clearButton('command_prefix', 'the command prefix')}
           {/if}
         </div>
 
@@ -400,7 +332,7 @@
             <span class="value-word is-on">{allowedCount} of {COMMANDS.length}</span>
           </span>
           {#if Object.hasOwn(draft, 'allowed_commands')}
-            {@render clearButton('allowed_commands', 'commands', 'allowed commands')}
+            {@render clearButton('allowed_commands', 'allowed commands')}
           {/if}
           <div class="chip-line" role="group" aria-label="Allowed commands">
             {#each COMMANDS as command (command)}
@@ -437,7 +369,7 @@
             >
           </span>
           {#if Object.hasOwn(draft, 'command_aliases')}
-            {@render clearButton('command_aliases', 'commands', 'command aliases')}
+            {@render clearButton('command_aliases', 'command aliases')}
           {/if}
           <div class="chip-line" role="group" aria-labelledby="config-{scope}-{idPrefix}-aliases">
             {#each aliasEntries as [name, command] (name)}
@@ -553,30 +485,6 @@
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
     min-block-size: 8px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .save-whisper {
-    align-items: center;
-    background: var(--success-tint);
-    block-size: 20px;
-    border-radius: var(--radius-chip);
-    color: var(--success);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 4px;
-    margin-inline-start: auto;
-    opacity: 0;
-    padding: 0 0.5rem;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .save-whisper.is-on {
-    opacity: 1;
-  }
-
-  .save-whisper .t {
     text-box: trim-both cap alphabetic;
   }
 

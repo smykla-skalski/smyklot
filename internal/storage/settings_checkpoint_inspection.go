@@ -32,23 +32,32 @@ type SettingsCheckpointIncompatibility struct {
 	Reason string
 }
 
+// SettingsCheckpointInspectionSide describes one captured side independently.
+// Available distinguishes a captured absence from a side that never existed,
+// such as Before on a baseline.
+type SettingsCheckpointInspectionSide struct {
+	Available       bool
+	State           *SettingsCheckpointState
+	Differs         bool
+	Restorable      bool
+	Incompatibility *SettingsCheckpointIncompatibility
+}
+
 // SettingsCheckpointInspectionItem combines immutable history with the
 // current canonical state. Current is nil when the aggregate is absent.
 type SettingsCheckpointInspectionItem struct {
 	Identity           SettingsCheckpointItemIdentity
 	RepositoryFullName string
 	DocumentVersion    int
-	Before             *SettingsCheckpointState
-	After              *SettingsCheckpointState
+	Before             SettingsCheckpointInspectionSide
+	After              SettingsCheckpointInspectionSide
 	Current            *SettingsCheckpointState
-	Differs            bool
-	Restorable         bool
-	Incompatibility    *SettingsCheckpointIncompatibility
+	Changed            bool
 }
 
-// InstallationSettingsCheckpointInspection is one installation checkpoint
-// interpreted against the current installation state.
-type InstallationSettingsCheckpointInspection struct {
+// SettingsCheckpointInspection is one immutable checkpoint interpreted
+// against the current state of its scope.
+type SettingsCheckpointInspection struct {
 	Checkpoint SettingsCheckpoint
 	Items      []SettingsCheckpointInspectionItem
 }
@@ -61,7 +70,7 @@ type SettingsCheckpointRestoreSelection struct {
 }
 
 // RestoreInstallationSettingsRequest restores selected installation settings
-// from the After side of one immutable checkpoint.
+// from one complete side of an immutable checkpoint.
 type RestoreInstallationSettingsRequest struct {
 	TargetID                       string
 	CheckpointID                   int64
@@ -70,6 +79,7 @@ type RestoreInstallationSettingsRequest struct {
 	SessionTokenHash               string
 	ChangedAt                      time.Time
 	DeploymentPendingCIQuietPeriod time.Duration
+	Side                           SettingsCheckpointRestoreSide
 	Selections                     []SettingsCheckpointRestoreSelection
 }
 
@@ -78,6 +88,9 @@ func (request RestoreInstallationSettingsRequest) Validate() error {
 	if strings.TrimSpace(request.TargetID) == "" || request.CheckpointID <= 0 ||
 		strings.TrimSpace(request.ActorAccountID) == "" || request.ChangedAt.IsZero() {
 		return errors.New("settings restore target, checkpoint, actor, and time are required")
+	}
+	if !request.Side.Valid() {
+		return errors.New("settings restore needs a valid checkpoint side")
 	}
 	if len(request.Selections) == 0 {
 		return errors.New("settings restore needs at least one selected resource")

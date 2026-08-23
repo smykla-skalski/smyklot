@@ -63,12 +63,10 @@ func TestTableListCoversSchema(t *testing.T) {
 }
 
 func TestCheckpointCopyOrdersParentsBeforeRestoreChildren(t *testing.T) {
-	for _, table := range []string{"sync_config_checkpoints", "settings_checkpoints"} {
-		query := tableReadQuery(table)
-		want := `SELECT * FROM "` + table + `" ORDER BY id ASC`
-		if query != want {
-			t.Errorf("%s copy query = %q, want %q", table, query, want)
-		}
+	query := tableReadQuery("settings_checkpoints")
+	want := `SELECT * FROM "settings_checkpoints" ORDER BY id ASC`
+	if query != want {
+		t.Errorf("settings checkpoint copy query = %q, want %q", query, want)
 	}
 	if query := tableReadQuery("accounts"); query != `SELECT * FROM "accounts"` {
 		t.Fatalf("ordinary copy query = %q", query)

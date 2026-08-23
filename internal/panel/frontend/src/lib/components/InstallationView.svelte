@@ -177,6 +177,7 @@
             fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>
               session.api.fetchFailures(session.selectedTarget!.id, request)}
             fetchSettingsCheckpoint={session.api.fetchInstallationSettingsCheckpoint}
+            fetchSettingsBaseline={session.api.fetchInstallationSettingsBaseline}
             restoreSettingsCheckpoint={session.api.restoreInstallationSettingsCheckpoint}
             readOnly={!session.selectedTarget.capabilities.write}
             hasUnsavedSettingsDrafts={settingsDrafts.hasDirty({

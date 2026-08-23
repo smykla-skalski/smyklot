@@ -700,7 +700,9 @@ target_id, kind, enabled, document, digest, revision, updated_by, updated_at
 		}
 	}
 
-	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrations); err != nil {
+	// Apply only the historical migration under test. The current schema later
+	// removes this superseded checkpoint implementation.
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrationsBefore(t, 39)); err != nil {
 		t.Fatalf("apply the sync config history migration: %v", err)
 	}
 

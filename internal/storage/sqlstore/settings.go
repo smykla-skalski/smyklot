@@ -12,41 +12,8 @@ import (
 )
 
 const (
-	actionTargetSettings     = "target.settings.updated"
-	actionRepositorySettings = "repository.settings.updated"
-	actionConfigMigration    = "repository.config_migration.reset"
+	actionConfigMigration = "repository.config_migration.reset"
 )
-
-// UpdateTargetSettings keeps the single-resource port while using the shared
-// installation settings transaction.
-func (s *Store) UpdateTargetSettings(
-	ctx context.Context,
-	change storage.TargetSettingsChange,
-) (storage.Target, error) {
-	result, err := s.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
-		TargetID: change.TargetID, ActorAccountID: change.ActorAccountID,
-		ElevationID: change.ElevationID, SessionTokenHash: change.SessionTokenHash,
-		ChangedAt: change.ChangedAt,
-		Target: &storage.InstallationTargetSettingsChange{
-			RepositoryDefaultEnabled:       change.RepositoryDefaultEnabled,
-			PendingCIModeDefault:           change.PendingCIModeDefault,
-			PendingCIBranchPatternsDefault: change.PendingCIBranchPatternsDefault,
-			PendingCIQuietPeriodOverride:   change.PendingCIQuietPeriodOverride,
-			PathIndexIntervalOverride:      change.PathIndexIntervalOverride,
-			ConfigPatch:                    change.ConfigPatch, ExpectedRevision: change.ExpectedRevision,
-			RetunePendingCIQuietPeriod:     change.RetunePendingCIQuietPeriod,
-			DeploymentPendingCIQuietPeriod: change.DeploymentPendingCIQuietPeriod,
-		},
-	})
-	if err != nil {
-		return storage.Target{}, err
-	}
-	if result.Target == nil {
-		return storage.Target{}, errors.New("target settings save returned no target")
-	}
-
-	return *result.Target, nil
-}
 
 func prepareTargetSettings(
 	change storage.TargetSettingsChange,
@@ -74,38 +41,6 @@ func prepareTargetSettings(
 	}
 
 	return change, patch, branchPatterns, nil
-}
-
-// UpdateRepositorySettings keeps the single-resource port while using the
-// shared installation settings transaction.
-func (s *Store) UpdateRepositorySettings(
-	ctx context.Context,
-	change storage.RepositorySettingsChange,
-) (storage.Repository, error) {
-	result, err := s.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
-		TargetID: change.TargetID, ActorAccountID: change.ActorAccountID,
-		ElevationID: change.ElevationID, SessionTokenHash: change.SessionTokenHash,
-		ChangedAt: change.ChangedAt,
-		Repositories: []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: change.RepositoryID, EnabledOverride: change.EnabledOverride,
-			PendingCIModeOverride:           change.PendingCIModeOverride,
-			PendingCIBranchPatternsOverride: change.PendingCIBranchPatternsOverride,
-			PendingCIQuietPeriodOverride:    change.PendingCIQuietPeriodOverride,
-			PathIndexIntervalOverride:       change.PathIndexIntervalOverride,
-			ConfigPatch:                     change.ConfigPatch, IgnoreRepositoryFile: change.IgnoreRepositoryFile,
-			ExpectedRevision:               change.ExpectedRevision,
-			RetunePendingCIQuietPeriod:     change.RetunePendingCIQuietPeriod,
-			DeploymentPendingCIQuietPeriod: change.DeploymentPendingCIQuietPeriod,
-		}},
-	})
-	if err != nil {
-		return storage.Repository{}, err
-	}
-	if len(result.Repositories) != 1 {
-		return storage.Repository{}, errors.New("repository settings save returned no repository")
-	}
-
-	return result.Repositories[0], nil
 }
 
 // UpdateRepositoryFileState records a repository-file observation without

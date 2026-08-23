@@ -234,15 +234,10 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const accessView =
     rawSection === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[3]) : undefined;
   if (rawSection === 'access' && parts.length > 3 && accessView === undefined) return null;
-  /* `settings` is the compatibility spelling kept as a redirect route. Read it
-     into the canonical vocabulary here too, so the mock server and old
-     session-stored route parameters still recognize the page. */
-  const rawView =
-    rawSection === 'access'
-      ? (accessView ?? 'users')
-      : rawSection === 'settings'
-        ? 'defaults'
-        : rawSection;
+  if (rawSection !== 'access' && !DIRECT_PANEL_VIEWS.some((view) => view === rawSection)) {
+    return null;
+  }
+  const rawView = rawSection === 'access' ? (accessView ?? 'users') : rawSection;
   if (!isScopedPanelView(rawView)) return null;
 
   /* Everything past the view is history's table, a repository's page, or a
@@ -410,7 +405,7 @@ export function rootSection(route: RootRoute): RootSection {
 export function rootSectionRoute(section: RootSection): RootRoute {
   if (section === 'access') return { rootView: 'access-users' };
   if (section === 'history') return { rootView: 'history-audit' };
-  if (section === 'runtime') return { rootView: 'runtime-settings' };
+  if (section === 'runtime') return { rootView: 'runtime-service' };
   return { rootView: section };
 }
 
@@ -484,9 +479,7 @@ function parseTrailingSync(
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
-  if (parts.length === 2 && (parts[1] === 'runtime' || parts[1] === 'settings')) {
-    return { rootView: 'runtime-settings' };
-  }
+  if (parts.length === 2 && parts[1] === 'runtime') return { rootView: 'runtime-service' };
   if (parts.length === 3 && parts[1] === 'runtime') {
     if (parts[2] === 'settings') return { rootView: 'runtime-settings' };
     if (parts[2] === 'service') return { rootView: 'runtime-service' };
@@ -533,8 +526,10 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   const accessView =
     rawView === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[4]) : undefined;
   if (rawView === 'access' && parts.length > 4 && accessView === undefined) return null;
-  const view =
-    rawView === 'access' ? (accessView ?? 'users') : rawView === 'settings' ? 'defaults' : rawView;
+  if (rawView !== 'access' && !DIRECT_ROOT_INSTALLATION_VIEWS.some((view) => view === rawView)) {
+    return null;
+  }
+  const view = rawView === 'access' ? (accessView ?? 'users') : rawView;
   if (!isRootInstallationView(view)) return null;
   const trailing = parts.slice(rawView === 'access' ? 5 : 4);
   const repository = parseTrailingRepository(view, trailing);

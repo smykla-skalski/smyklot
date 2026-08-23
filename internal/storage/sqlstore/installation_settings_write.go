@@ -209,52 +209,33 @@ func (s *Store) recordInstallationSettings(
 	request storage.SaveInstallationSettingsRequest,
 	work installationSettingsWork,
 ) (int64, int64, error) {
+	after, err := captureInstallationSettingsSnapshot(ctx, tx, request.TargetID)
+	if err != nil {
+		return 0, 0, err
+	}
+	items := completeInstallationSettingsCheckpoint(work.snapshotBefore, after)
 	checkpointID, err := s.createSettingsCheckpoint(ctx, tx, storage.SettingsCheckpointCreate{
 		Scope: storage.SettingsCheckpointScopeInstallation, TargetID: request.TargetID,
 		ActorAccountID: request.ActorAccountID, Action: storage.SettingsCheckpointActionSave,
-		CreatedAt: request.ChangedAt, Items: work.items,
+		CreatedAt: request.ChangedAt, Items: items,
 	})
 	if err != nil {
 		return 0, 0, err
 	}
-	action, summary, repositoryID, repositoryFullName := installationSettingsAudit(work)
 	sourceKind := settingsCheckpointSourceKind
 	auditEventID, err := insertAudit(ctx, tx, auditInsert{
-		TargetID: request.TargetID, RepositoryID: repositoryID,
-		RepositoryFullName: repositoryFullName, SettingsCheckpointID: &checkpointID,
+		TargetID: request.TargetID, SettingsCheckpointID: &checkpointID,
 		ActorAccountID: request.ActorAccountID, ElevationID: request.ElevationID,
 		SourceKind: &sourceKind, SourceID: &checkpointID,
-		Action: action, Summary: summary, CreatedAt: request.ChangedAt,
+		Action:    actionInstallationSettingsSaved,
+		Summary:   fmt.Sprintf("Saved %d installation settings", len(work.items)),
+		CreatedAt: request.ChangedAt,
 	})
 	if err != nil {
 		return 0, 0, err
 	}
 
 	return checkpointID, auditEventID, nil
-}
-
-func installationSettingsAudit(
-	work installationSettingsWork,
-) (string, string, *string, *string) {
-	if len(work.items) == 1 && work.target != nil && work.target.changed {
-		return actionTargetSettings, "Updated account defaults", nil, nil
-	}
-	if len(work.items) == 1 {
-		for _, repository := range work.repositories {
-			if repository.changed {
-				id := repository.current.ID
-				fullName := repository.current.FullName
-
-				return actionRepositorySettings, "Updated repository settings", &id, &fullName
-			}
-		}
-		if action, summary, repositoryID, fullName, ok := installationSyncSettingsAudit(work); ok {
-			return action, summary, repositoryID, fullName
-		}
-	}
-
-	return actionInstallationSettings,
-		fmt.Sprintf("Updated %d installation settings", len(work.items)), nil, nil
 }
 
 func installationSettingsResult(

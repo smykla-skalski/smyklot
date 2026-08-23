@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -66,6 +67,7 @@ type runtimeSettingsResponse struct {
 	UpdatedAt            *time.Time                   `json:"updated_at,omitempty"`
 	UpdatedBy            *accountResponse             `json:"updated_by,omitempty"`
 	Service              runtimeServiceResponse       `json:"service"`
+	CheckpointID         *string                      `json:"checkpoint_id,omitempty"`
 }
 
 func runtimeSettingsDTO(
@@ -112,6 +114,22 @@ func runtimeSettingsDTO(
 		response.UpdatedBy = &updatedBy
 	}
 	response.Service = runtimeServiceDTO(database, cfg, startedAt, now)
+
+	return response
+}
+
+func runtimeSettingsSaveDTO(
+	result storage.SaveRuntimeSettingsResult,
+	database storage.DatabaseStatus,
+	cfg Config,
+	effective RuntimeValues,
+	startedAt, now time.Time,
+) runtimeSettingsResponse {
+	response := runtimeSettingsDTO(result.Settings, database, cfg, effective, startedAt, now)
+	if result.CheckpointID != nil {
+		checkpointID := strconv.FormatInt(*result.CheckpointID, 10)
+		response.CheckpointID = &checkpointID
+	}
 
 	return response
 }

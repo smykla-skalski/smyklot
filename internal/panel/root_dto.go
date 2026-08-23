@@ -218,18 +218,17 @@ type pendingCIDetailResponse struct {
 }
 
 type rootAuditResponse struct {
-	ID                     string                `json:"id"`
-	Category               storage.AuditCategory `json:"category"`
-	TargetID               *string               `json:"target_id,omitempty"`
-	Installation           *accountResponse      `json:"installation,omitempty"`
-	Actor                  accountResponse       `json:"actor"`
-	Subject                *accountResponse      `json:"subject,omitempty"`
-	ElevationID            *string               `json:"elevation_id,omitempty"`
-	SyncConfigCheckpointID *string               `json:"sync_config_checkpoint_id,omitempty"`
-	SettingsCheckpointID   *string               `json:"settings_checkpoint_id,omitempty"`
-	Action                 string                `json:"action"`
-	Summary                string                `json:"summary"`
-	CreatedAt              time.Time             `json:"created_at"`
+	ID                   string                `json:"id"`
+	Category             storage.AuditCategory `json:"category"`
+	TargetID             *string               `json:"target_id,omitempty"`
+	Installation         *accountResponse      `json:"installation,omitempty"`
+	Actor                accountResponse       `json:"actor"`
+	Subject              *accountResponse      `json:"subject,omitempty"`
+	ElevationID          *string               `json:"elevation_id,omitempty"`
+	SettingsCheckpointID *string               `json:"settings_checkpoint_id,omitempty"`
+	Action               string                `json:"action"`
+	Summary              string                `json:"summary"`
+	CreatedAt            time.Time             `json:"created_at"`
 }
 
 type rootPanelUserResponse struct {
@@ -381,9 +380,8 @@ func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse
 		item := rootAuditResponse{
 			ID: strconv.FormatInt(event.ID, 10), Category: event.Category,
 			TargetID: event.TargetID, Actor: accountDTO(event.Actor), ElevationID: event.ElevationID,
-			SyncConfigCheckpointID: stringID(event.SyncConfigCheckpointID),
-			SettingsCheckpointID:   stringID(event.SettingsCheckpointID),
-			Action:                 event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
+			SettingsCheckpointID: stringID(event.SettingsCheckpointID),
+			Action:               event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
 		}
 		if event.Target != nil {
 			target := accountDTO(*event.Target)

@@ -22,7 +22,7 @@ const (
 	SettingsCheckpointScopeInstallation SettingsCheckpointScope = "installation"
 )
 
-// SettingsCheckpointAction records why a settings delta exists.
+// SettingsCheckpointAction records why a complete settings snapshot exists.
 type SettingsCheckpointAction string
 
 const (
@@ -30,6 +30,20 @@ const (
 	SettingsCheckpointActionSave     SettingsCheckpointAction = "save"
 	SettingsCheckpointActionRestore  SettingsCheckpointAction = "restore"
 )
+
+// SettingsCheckpointRestoreSide names the complete point-in-time state a
+// restore selected from its immutable source checkpoint.
+type SettingsCheckpointRestoreSide string
+
+const (
+	SettingsCheckpointRestoreBefore SettingsCheckpointRestoreSide = "before"
+	SettingsCheckpointRestoreAfter  SettingsCheckpointRestoreSide = "after"
+)
+
+// Valid reports whether the side can be selected for restoration.
+func (side SettingsCheckpointRestoreSide) Valid() bool {
+	return side == SettingsCheckpointRestoreBefore || side == SettingsCheckpointRestoreAfter
+}
 
 // SettingsCheckpointItemKind is the bounded set of resources the settings
 // coordinator can save together. Each kind has a fixed discriminator shape;
@@ -74,7 +88,7 @@ func DigestSettingsCheckpointDocument(document []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// SettingsCheckpointItem is one changed resource in an immutable checkpoint.
+// SettingsCheckpointItem is one resource in an immutable checkpoint.
 // Repository and Sync fields are typed discriminators, not values callers must
 // rediscover by decoding the document.
 type SettingsCheckpointItem struct {
@@ -99,19 +113,21 @@ type RuntimeSettingsDocument struct {
 	PathIndexInterval    *time.Duration `json:"path_index_interval"`
 }
 
-// SettingsCheckpointCreate is either a complete baseline or a sparse delta to
-// persist. Every present side is a complete resource document.
+// SettingsCheckpointCreate is one complete point-in-time snapshot. Every
+// present side is a complete resource document; an omitted optional resource
+// is captured as absence by the complete snapshot boundary.
 type SettingsCheckpointCreate struct {
 	Scope          SettingsCheckpointScope
 	TargetID       string
 	ActorAccountID string
 	Action         SettingsCheckpointAction
 	RestoredFromID *int64
+	RestoredSide   SettingsCheckpointRestoreSide
 	CreatedAt      time.Time
 	Items          []SettingsCheckpointItem
 }
 
-// SettingsCheckpoint is one immutable settings delta read from persistence.
+// SettingsCheckpoint is one immutable settings snapshot read from persistence.
 type SettingsCheckpoint struct {
 	ID             int64
 	Scope          SettingsCheckpointScope
@@ -119,6 +135,7 @@ type SettingsCheckpoint struct {
 	ActorAccountID string
 	Action         SettingsCheckpointAction
 	RestoredFromID *int64
+	RestoredSide   SettingsCheckpointRestoreSide
 	CreatedAt      time.Time
 	Items          []SettingsCheckpointItem
 }
@@ -139,7 +156,11 @@ func (create SettingsCheckpointCreate) Validate() error {
 	if strings.TrimSpace(create.ActorAccountID) == "" || create.CreatedAt.IsZero() {
 		return errors.New("settings checkpoint actor and creation time are required")
 	}
-	if err := validateSettingsCheckpointAction(create.Action, create.RestoredFromID); err != nil {
+	if err := validateSettingsCheckpointAction(
+		create.Action,
+		create.RestoredFromID,
+		create.RestoredSide,
+	); err != nil {
 		return err
 	}
 
@@ -149,19 +170,23 @@ func (create SettingsCheckpointCreate) Validate() error {
 func validateSettingsCheckpointAction(
 	action SettingsCheckpointAction,
 	restoredFromID *int64,
+	restoredSide SettingsCheckpointRestoreSide,
 ) error {
 	switch action {
 	case SettingsCheckpointActionBaseline:
-		if restoredFromID != nil {
-			return errors.New("baseline settings checkpoint cannot name a restore source")
+		if restoredFromID != nil || restoredSide != "" {
+			return errors.New("baseline settings checkpoint cannot name a restore source or side")
 		}
 	case SettingsCheckpointActionSave:
-		if restoredFromID != nil {
-			return errors.New("saved settings checkpoint cannot name a restore source")
+		if restoredFromID != nil || restoredSide != "" {
+			return errors.New("saved settings checkpoint cannot name a restore source or side")
 		}
 	case SettingsCheckpointActionRestore:
 		if restoredFromID == nil || *restoredFromID <= 0 {
 			return errors.New("restored settings checkpoint needs a restore source")
+		}
+		if !restoredSide.Valid() {
+			return errors.New("restored settings checkpoint needs a valid restore side")
 		}
 	default:
 		return fmt.Errorf("unsupported settings checkpoint action %q", action)
@@ -240,14 +265,7 @@ func (item SettingsCheckpointItem) validate(scope SettingsCheckpointScope) error
 	if err := validateSettingsCheckpointState("before", item.Before); err != nil {
 		return err
 	}
-	if err := validateSettingsCheckpointState("after", item.After); err != nil {
-		return err
-	}
-	if item.Before != nil && item.After != nil && item.Before.Digest == item.After.Digest {
-		return errors.New("before and after documents are unchanged")
-	}
-
-	return nil
+	return validateSettingsCheckpointState("after", item.After)
 }
 
 func (item SettingsCheckpointItem) validateDiscriminators(scope SettingsCheckpointScope) error {

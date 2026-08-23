@@ -12,11 +12,13 @@
     kind,
     count = 0,
     problem = null,
+    reviewHref,
     onDismiss,
   }: {
     kind: SettingsDraftAttentionKind;
     count?: number;
     problem?: string | null;
+    reviewHref?: string;
     onDismiss: () => void;
   } = $props();
 
@@ -57,7 +59,10 @@
       <strong>{heading}</strong>
       <span>{detail}</span>
     </div>
-    <span class="attention-dismiss">
+    <span class="attention-actions">
+      {#if reviewHref !== undefined && kind !== 'storage-problem'}
+        <Button tone="brand" row href={reviewHref} onclick={onDismiss}>Review</Button>
+      {/if}
       <Button tone="quiet" row onclick={onDismiss}>Dismiss</Button>
     </span>
   </Callout>
@@ -105,9 +110,11 @@
     color: var(--text);
   }
 
-  .attention-dismiss {
+  .attention-actions {
     align-self: center;
+    display: flex;
     flex: 0 0 auto;
+    gap: var(--space-1);
   }
 
   @keyframes attention-arrive {
@@ -118,7 +125,7 @@
   }
 
   @media (max-width: 36rem) {
-    .attention-dismiss {
+    .attention-actions {
       align-self: start;
     }
   }

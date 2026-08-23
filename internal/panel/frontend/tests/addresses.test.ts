@@ -192,26 +192,9 @@ describe('panel addresses [Unit]', () => {
     }
   });
 
-  it('normalizes legacy settings routes and stored parameters', () => {
-    expect(panelRouteAt('/i/[account]/settings', { account: 'acme' })).toEqual({
-      account: 'acme',
-      view: 'defaults',
-      section: undefined,
-      dialog: undefined,
-    });
-    expect(
-      panelRouteAt('/i/[account]/[view=panelView]', { account: 'acme', view: 'settings' }),
-    ).toEqual({ account: 'acme', view: 'defaults', section: undefined, dialog: undefined });
-    expect(panelRouteAt('/root/runtime', {})).toEqual({ rootView: 'runtime-settings' });
-    expect(panelRouteAt('/root/settings', {})).toEqual({ rootView: 'runtime-settings' });
+  it('opens the Runtime parent on its first leaf', () => {
+    expect(panelRouteAt('/root/runtime', {})).toEqual({ rootView: 'runtime-service' });
     expect(panelRouteAt('/root/runtime/service', {})).toEqual({ rootView: 'runtime-service' });
-    expect(panelRouteAt('/root/installations/[account]/settings', { account: 'acme' })).toEqual({
-      rootView: 'installation',
-      account: 'acme',
-      view: 'defaults',
-      section: undefined,
-      dialog: undefined,
-    });
   });
 
   it('carries a name through the address without decoding it twice', () => {

@@ -399,6 +399,7 @@
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
       fetchSettingsCheckpoint={api.fetchRootInstallationSettingsCheckpoint}
+      fetchSettingsBaseline={api.fetchRootInstallationSettingsBaseline}
       restoreSettingsCheckpoint={api.restoreRootInstallationSettingsCheckpoint}
       readOnly={!canWrite}
       hasUnsavedSettingsDrafts={settingsDrafts.hasDirty(settingsScope)}

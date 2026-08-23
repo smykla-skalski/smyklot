@@ -1,9 +1,17 @@
 package storage
 
 import (
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
+)
+
+const (
+	MinRuntimePollInterval = time.Second
+	MaxRuntimePollInterval = 24 * time.Hour
+	MaxRuntimeSessionTTL   = 30 * 24 * time.Hour
 )
 
 // MaxPathIndexInterval is as rarely as a repository's file list may be checked.
@@ -47,10 +55,49 @@ type RuntimeSettingsChange struct {
 	PendingCIQuietPeriod          *time.Duration
 	SessionTTL                    *time.Duration
 	PathIndexInterval             *time.Duration
-	EffectivePollInterval         time.Duration
 	EffectivePendingCIQuietPeriod time.Duration
 	EffectiveSessionTTL           time.Duration
 	ExpectedRevision              int64
 	ActorAccountID                string
 	ChangedAt                     time.Time
+}
+
+// SaveRuntimeSettingsResult returns the canonical singleton together with the
+// immutable checkpoint created by a real change. A nil checkpoint is a no-op.
+type SaveRuntimeSettingsResult struct {
+	Settings     RuntimeSettings
+	CheckpointID *int64
+}
+
+// RestoreRuntimeSettingsRequest restores the runtime state captured by one
+// Root checkpoint. Effective values are resolved by the panel against the
+// current deployment before the store applies process-wide side effects.
+type RestoreRuntimeSettingsRequest struct {
+	CheckpointID                  int64
+	Side                          SettingsCheckpointRestoreSide
+	ExpectedRevision              int64
+	ActorAccountID                string
+	ChangedAt                     time.Time
+	Runner                        config.Runner
+	EffectivePendingCIQuietPeriod time.Duration
+	EffectiveSessionTTL           time.Duration
+}
+
+// Validate checks the Root restore envelope before the store takes locks.
+func (request RestoreRuntimeSettingsRequest) Validate() error {
+	if request.CheckpointID <= 0 || request.ExpectedRevision < 0 ||
+		strings.TrimSpace(request.ActorAccountID) == "" || request.ChangedAt.IsZero() {
+		return errors.New("runtime restore checkpoint, revision, actor, and time are required")
+	}
+	if !request.Side.Valid() {
+		return errors.New("runtime restore needs a valid checkpoint side")
+	}
+	if _, err := config.ParseRunner(string(request.Runner)); err != nil {
+		return errors.New("runtime restore runner is invalid")
+	}
+	if request.EffectivePendingCIQuietPeriod < 0 || request.EffectiveSessionTTL < time.Minute {
+		return errors.New("runtime restore effective values are invalid")
+	}
+
+	return nil
 }

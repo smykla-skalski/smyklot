@@ -43,8 +43,6 @@ var tables = []string{
 	"pending_ci_repository_gates",
 	"pending_ci_check_slots",
 	"root_elevations",
-	"sync_config_checkpoints",
-	"sync_config_checkpoint_items",
 	"settings_checkpoints",
 	"settings_checkpoint_items",
 	"audit_entries",
@@ -317,7 +315,7 @@ func copyTable(
 
 func tableReadQuery(table string) string {
 	query := "SELECT * FROM " + quote(table)
-	if table == "sync_config_checkpoints" || table == "settings_checkpoints" {
+	if table == "settings_checkpoints" {
 		// A restore points at an older checkpoint in this same table. Immediate
 		// foreign keys require the parent to arrive before the child regardless
 		// of the source engine's physical row order.

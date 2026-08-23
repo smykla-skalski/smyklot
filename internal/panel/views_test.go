@@ -30,7 +30,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	installation := browserPanelViews(t, "PANEL_VIEWS")
 
 	for _, view := range installation {
-		if !table.matches("/i/acme/" + view) {
+		if !table.matches(installationViewPath("/i/acme", view)) {
 			t.Errorf("the browser has a %q view and a reload of it is refused", view)
 		}
 	}
@@ -41,7 +41,7 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	// unavailable reads as a fault rather than a boundary.
 	console := browserPanelViews(t, "ROOT_INSTALLATION_VIEWS")
 	for _, view := range console {
-		if !table.matches("/root/installations/acme/" + view) {
+		if !table.matches(installationViewPath("/root/installations/acme", view)) {
 			t.Errorf("the console has a %q view and a reload of it is refused", view)
 		}
 	}
@@ -50,10 +50,18 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 		if slices.Contains(console, view) {
 			continue
 		}
-		if table.matches("/root/installations/acme/" + view) {
+		if table.matches(installationViewPath("/root/installations/acme", view)) {
 			t.Errorf("the console renders no %q view and its address is served anyway", view)
 		}
 	}
+}
+
+func installationViewPath(base, view string) string {
+	if view == "users" || view == "invitations" {
+		return base + "/access/" + view
+	}
+
+	return base + "/" + view
 }
 
 // browserPanelViews reads a view list out of the frontend source.

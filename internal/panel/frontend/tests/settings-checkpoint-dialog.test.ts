@@ -1,14 +1,15 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsCheckpointDialog from '../src/lib/components/SettingsCheckpointDialog.svelte';
 import { settingsCheckpointSummary } from '../src/lib/settings-checkpoint-summary';
 import type {
-  InstallationSettingsCheckpoint,
-  InstallationSettingsCheckpointItem,
-  InstallationSettingsCheckpointState,
-  InstallationSettingsRestoreInput,
+  SettingsCheckpoint,
+  SettingsCheckpointItem,
+  SettingsCheckpointSide,
+  SettingsCheckpointState,
+  SettingsRestoreInput,
 } from '../src/lib/types';
 
 const actor = {
@@ -20,27 +21,47 @@ const actor = {
   avatar_url: null,
 };
 
-function state(
-  document: Record<string, unknown>,
-  revision: number,
-): InstallationSettingsCheckpointState {
+class TestResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+
+function state(document: Record<string, unknown>, revision: number): SettingsCheckpointState {
   return { document, revision, digest: `digest-${revision}` };
 }
 
+function side(
+  value: SettingsCheckpointState | null,
+  differs: boolean,
+  restorable = true,
+  incompatibility?: SettingsCheckpointSide['incompatibility'],
+): SettingsCheckpointSide {
+  return {
+    available: true,
+    state: value,
+    differs,
+    restorable,
+    ...(incompatibility === undefined ? {} : { incompatibility }),
+  };
+}
+
+function unavailableSide(): SettingsCheckpointSide {
+  return { available: false, state: null, differs: false, restorable: false };
+}
+
 function item(
-  value: Partial<InstallationSettingsCheckpointItem> &
-    Pick<InstallationSettingsCheckpointItem, 'kind' | 'before' | 'after' | 'current'>,
-): InstallationSettingsCheckpointItem {
+  value: Partial<SettingsCheckpointItem> &
+    Pick<SettingsCheckpointItem, 'kind' | 'before' | 'after' | 'current'>,
+): SettingsCheckpointItem {
   return {
     document_version: 1,
     changed: true,
-    differs: true,
-    restorable: true,
     ...value,
   };
 }
 
-function checkpoint(): InstallationSettingsCheckpoint {
+function checkpoint(): SettingsCheckpoint {
   return {
     id: 'checkpoint-1',
     action: 'installation.settings.saved',
@@ -50,21 +71,27 @@ function checkpoint(): InstallationSettingsCheckpoint {
     items: [
       item({
         kind: 'target',
-        before: state(
-          {
-            repository_default_enabled: false,
-            pending_ci_mode_default: 'checks',
-            config_patch: {},
-          },
-          6,
+        before: side(
+          state(
+            {
+              repository_default_enabled: false,
+              pending_ci_mode_default: 'checks',
+              config_patch: {},
+            },
+            6,
+          ),
+          false,
         ),
-        after: state(
-          {
-            repository_default_enabled: true,
-            pending_ci_mode_default: 'labels',
-            config_patch: { quiet_success: true },
-          },
-          7,
+        after: side(
+          state(
+            {
+              repository_default_enabled: true,
+              pending_ci_mode_default: 'labels',
+              config_patch: { quiet_success: true },
+            },
+            7,
+          ),
+          true,
         ),
         current: state(
           {
@@ -79,46 +106,48 @@ function checkpoint(): InstallationSettingsCheckpoint {
         kind: 'repository',
         repository_id: 'repo-1',
         repository_full_name: 'smykla-skalski/smyklot',
-        before: null,
-        after: state(
-          { enabled_override: true, ignore_repository_file: false, config_patch: {} },
-          2,
+        before: side(null, true),
+        after: side(
+          state({ enabled_override: true, ignore_repository_file: false, config_patch: {} }, 2),
+          false,
         ),
         current: state(
           { enabled_override: true, ignore_repository_file: false, config_patch: {} },
           2,
         ),
-        differs: false,
       }),
       item({
         kind: 'sync_config',
         sync_kind: 'labels',
-        before: null,
-        after: state(
+        before: side(null, true),
+        after: side(
+          state(
+            {
+              enabled: true,
+              document: JSON.stringify({
+                labels: [{ name: 'ci/green' }],
+                allow_removal: true,
+                excludes: [],
+              }),
+            },
+            3,
+          ),
+          true,
+          false,
           {
-            enabled: true,
-            document: JSON.stringify({
-              labels: [{ name: 'ci/green' }],
-              allow_removal: true,
-              excludes: [],
-            }),
+            code: 'document_version',
+            reason: 'This stored document is no longer compatible',
           },
-          3,
         ),
         current: state({ enabled: false, document: '{}' }, 4),
-        restorable: false,
-        incompatibility: {
-          code: 'document_version',
-          reason: 'This stored document is no longer compatible.',
-        },
       }),
       item({
         kind: 'sync_override',
         repository_id: 'repo-2',
         repository_full_name: 'smykla-skalski/website',
         sync_kind: 'files',
-        before: null,
-        after: state({ enabled: null, document: JSON.stringify({ files: [] }) }, 1),
+        before: side(null, false),
+        after: side(state({ enabled: null, document: JSON.stringify({ files: [] }) }, 1), true),
         current: null,
       }),
     ],
@@ -129,51 +158,74 @@ function mount(
   over: {
     readOnly?: boolean;
     hasUnsavedDrafts?: boolean;
-    restore?: (input: InstallationSettingsRestoreInput) => Promise<{ checkpoint_id: string }>;
+    checkpoint?: SettingsCheckpoint;
+    restore?: (input: SettingsRestoreInput) => Promise<{ checkpoint_id: string }>;
   } = {},
 ) {
-  const restore = vi.fn(
-    async (_targetId: string, _checkpointId: string, input: InstallationSettingsRestoreInput) =>
-      over.restore?.(input) ?? { checkpoint_id: 'checkpoint-2' },
-  );
-  const onRestored = vi.fn();
+  const restore = vi.fn(async (_checkpointId: string, input: SettingsRestoreInput) => {
+    await over.restore?.(input);
+  });
   const onClose = vi.fn();
   render(SettingsCheckpointDialog, {
     target: document.querySelector('.app-shell') as HTMLElement,
     props: {
       open: true,
-      targetId: 'target-1',
+      identity: 'target-1',
       checkpointId: 'checkpoint-1',
       readOnly: over.readOnly ?? false,
       hasUnsavedDrafts: over.hasUnsavedDrafts ?? false,
       returnFocus: null,
-      fetchCheckpoint: async () => checkpoint(),
+      fetchCheckpoint: async () => over.checkpoint ?? checkpoint(),
       restoreCheckpoint: restore,
-      onRestored,
       onClose,
     },
   });
-  return { restore, onRestored, onClose };
+  return { restore, onClose };
 }
 
 describe('SettingsCheckpointDialog [Component]', () => {
   beforeEach(() => {
     document.body.innerHTML = '<main class="app-shell"></main>';
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
   });
 
-  it('summarises the four fixed resource kinds without a generic diff', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('summarises the five supported resource kinds without a generic diff', () => {
     const [target, repository, syncConfig, syncOverride] = checkpoint().items;
-    expect(settingsCheckpointSummary(target!, target!.after)).toBe(
+    const runtime = item({
+      kind: 'runtime',
+      before: side(null, false),
+      after: side(
+        state(
+          {
+            bot_config: null,
+            log_level: 'debug',
+            poll_interval: null,
+            pending_ci_quiet_period: 30_000_000_000,
+            path_index_interval: null,
+            session_ttl: null,
+          },
+          4,
+        ),
+        true,
+      ),
+      current: null,
+    });
+    expect(settingsCheckpointSummary(target!, target!.after.state)).toBe(
       'Repositories on by default · Pending CI labels · 1 policy override',
     );
-    expect(settingsCheckpointSummary(repository!, repository!.after)).toBe(
+    expect(settingsCheckpointSummary(repository!, repository!.after.state)).toBe(
       'Enabled · Repository file read · 0 policy overrides',
     );
-    expect(settingsCheckpointSummary(syncConfig!, syncConfig!.after)).toBe(
+    expect(settingsCheckpointSummary(syncConfig!, syncConfig!.after.state)).toBe(
       'On · 1 label · removal allowed · 0 exclusions',
     );
-    expect(settingsCheckpointSummary(syncOverride!, syncOverride!.after)).toBe(
+    expect(settingsCheckpointSummary(syncOverride!, syncOverride!.after.state)).toBe(
       'Inherits enablement · 1 stored field',
+    );
+    expect(settingsCheckpointSummary(runtime, runtime.after.state)).toBe(
+      '2 overrides · Current deployment fills the rest',
     );
   });
 
@@ -195,8 +247,12 @@ describe('SettingsCheckpointDialog [Component]', () => {
     );
     expect(screen.getByText('This stored document is no longer compatible')).toBeTruthy();
 
-    await fireEvent.click(screen.getAllByText('View stored state')[0] as HTMLElement);
+    const rawToggle = screen.getByRole('button', {
+      name: 'View stored state for Installation defaults',
+    });
+    await fireEvent.click(rawToggle);
     expect(screen.getAllByText(/"before":/)[0]?.textContent).toContain('"current"');
+    expect(rawToggle.getAttribute('aria-controls')).toBe('settings-checkpoint-raw-target::');
 
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Restore Installation defaults' }));
     await fireEvent.click(
@@ -208,7 +264,7 @@ describe('SettingsCheckpointDialog [Component]', () => {
   });
 
   it('restores selected resources once and only after confirmation', async () => {
-    const { restore, onRestored, onClose } = mount();
+    const { restore, onClose } = mount();
     await screen.findByText('Saved by Bart Smykla');
 
     await fireEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
@@ -217,7 +273,8 @@ describe('SettingsCheckpointDialog [Component]', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
     await waitFor(() => expect(restore).toHaveBeenCalledOnce());
-    expect(restore.mock.calls[0]?.[2]).toEqual({
+    expect(restore.mock.calls[0]?.[1]).toEqual({
+      state: 'after',
       selections: [
         { kind: 'target', expected_revision: 11 },
         {
@@ -228,8 +285,97 @@ describe('SettingsCheckpointDialog [Component]', () => {
         },
       ],
     });
-    expect(onRestored).toHaveBeenCalledOnce();
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('recalculates selections and serializes a Before restore', async () => {
+    const { restore } = mount();
+    await screen.findByText('Saved by Bart Smykla');
+
+    expect(screen.getByRole('checkbox', { name: 'Restore Installation defaults' })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Restore smykla-skalski/smyklot' })).toHaveProperty(
+      'checked',
+      false,
+    );
+
+    await fireEvent.click(screen.getByRole('radio', { name: 'Before change' }));
+    expect(screen.getByRole('checkbox', { name: 'Restore Installation defaults' })).toHaveProperty(
+      'checked',
+      false,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Restore smykla-skalski/smyklot' })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect(screen.getByRole('checkbox', { name: 'Restore Labels Sync' })).toHaveProperty(
+      'checked',
+      true,
+    );
+    expect(screen.queryByText('This stored document is no longer compatible')).toBeNull();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
+    await waitFor(() => expect(restore).toHaveBeenCalledOnce());
+    expect(restore.mock.calls[0]?.[1]).toEqual({
+      state: 'before',
+      selections: [
+        { kind: 'repository', repository_id: 'repo-1', expected_revision: 2 },
+        { kind: 'sync_config', sync_kind: 'labels', expected_revision: 4 },
+      ],
+    });
+  });
+
+  it('does not offer an unavailable Before side for a baseline', async () => {
+    const baseline: SettingsCheckpoint = {
+      id: 'baseline-1',
+      action: 'installation.settings.baseline',
+      actor,
+      created_at: '2026-08-23T07:00:00Z',
+      affected_kinds: ['target'],
+      items: [
+        item({
+          kind: 'target',
+          before: unavailableSide(),
+          after: side(
+            state(
+              {
+                repository_default_enabled: false,
+                pending_ci_mode_default: 'checks',
+                config_patch: {},
+              },
+              1,
+            ),
+            true,
+          ),
+          current: state(
+            {
+              repository_default_enabled: true,
+              pending_ci_mode_default: 'checks',
+              config_patch: {},
+            },
+            3,
+          ),
+        }),
+      ],
+    };
+    const { restore } = mount({ checkpoint: baseline });
+    await screen.findByText('Initial snapshot by Bart Smykla');
+
+    expect(screen.queryByRole('radio', { name: 'Before change' })).toBeNull();
+    expect(screen.getByRole('radio', { name: 'Initial state' })).toHaveProperty('checked', true);
+    expect(screen.getByText('Restore the settings captured when history began')).toBeTruthy();
+    expect(screen.getByText('Not captured')).toBeTruthy();
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
+    await waitFor(() => expect(restore).toHaveBeenCalledOnce());
+    expect(restore.mock.calls[0]?.[1]).toEqual({
+      state: 'after',
+      selections: [{ kind: 'target', expected_revision: 3 }],
+    });
   });
 
   it('keeps inspection available while drafts block restore', async () => {
@@ -237,9 +383,7 @@ describe('SettingsCheckpointDialog [Component]', () => {
     await screen.findByText('Saved by Bart Smykla');
 
     expect(
-      screen.getByText(
-        'Save or discard this installation’s unsaved settings before restoring history',
-      ),
+      screen.getByText('Save or discard unsaved settings before restoring history'),
     ).toBeTruthy();
     expect(
       screen.getByText('Repositories on by default · Pending CI labels · 1 policy override'),

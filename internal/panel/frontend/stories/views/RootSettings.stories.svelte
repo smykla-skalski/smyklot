@@ -11,7 +11,6 @@
     section: 'settings' as const,
     rootRole: 'Super Root',
     fetchSettings: async () => RUNTIME,
-    updateSettings: async () => RUNTIME,
   };
 
   const { Story } = defineMeta({

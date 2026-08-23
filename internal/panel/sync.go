@@ -14,17 +14,12 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-// syncConfigRequest is a saved label configuration.
-//
-// Revision is required rather than optional. Two people editing the same label
-// set from two tabs is the ordinary case, and a write with no opinion about
-// what it is replacing is a write that silently wins.
+// syncConfigRequest carries one kind's fields into the shared settings batch
+// validator. Labels use typed fields; other kinds pass their document through.
 type syncConfigRequest struct {
-	Enabled          *bool           `json:"enabled"`
-	Labels           []orgsync.Label `json:"labels"`
-	AllowRemoval     bool            `json:"allow_removal"`
-	Excludes         []string        `json:"excludes"`
-	ExpectedRevision *int64          `json:"expected_revision"`
+	Labels       []orgsync.Label `json:"labels"`
+	AllowRemoval bool            `json:"allow_removal"`
+	Excludes     []string        `json:"excludes"`
 
 	// Document is a kind whose shape the panel has no form for, sent through
 	// untouched. Labels use the typed fields above; everything else arrives
@@ -161,74 +156,6 @@ func (s *Server) getSyncConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, syncConfigAnswer(config, target, updatedBy))
 }
 
-// putSyncConfig saves it.
-//
-// Validated here rather than at apply time, because every rule it checks is one
-// GitHub would answer with a 422 that abandons the rest of that repository's
-// labels. Answering now puts the message beside the field somebody typed.
-func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	account, target, _, ok := s.requireTarget(w, r, true)
-	if !ok {
-		return
-	}
-	kind, ok := s.syncKind(w, r)
-	if !ok {
-		return
-	}
-
-	var input syncConfigRequest
-	if !decodeJSONWithin(w, r, &input, bodyBoundFor(kind)) {
-		return
-	}
-	if input.Enabled == nil || input.ExpectedRevision == nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_request",
-			"a sync configuration needs to say whether it is enabled and what it replaces")
-
-		return
-	}
-
-	document, err := syncDocumentFor(kind, input)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
-
-		return
-	}
-
-	written, err := s.store.SetSyncConfigs(r.Context(), orgsync.ConfigBatchChange{
-		TargetID: target.ID,
-		ActorID:  account.ID,
-		Now:      s.now().UTC(),
-		Changes: []orgsync.ConfigPatch{{
-			Kind: kind, Enabled: *input.Enabled, Document: document,
-			Revision: *input.ExpectedRevision,
-		}},
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
-	var saved orgsync.Config
-	for _, config := range written.Configs {
-		if config.Kind == kind {
-			saved = config
-			break
-		}
-	}
-	if saved.Kind == "" {
-		s.writeInternal(w, fmt.Errorf("saved %s sync configuration is missing", kind))
-		return
-	}
-	if written.CheckpointID != nil {
-		s.Announce(target.ID, "")
-	}
-	writeJSON(w, http.StatusOK, syncConfigAnswer(saved, target, account.Login))
-}
-
 // syncPlanKey is the JSON key a plan arrives under, and the wildcard the route
 // names it by.
 const syncPlanKey = "plan"
@@ -257,15 +184,23 @@ func syncDocumentFor(kind orgsync.Kind, input syncConfigRequest) ([]byte, error)
 
 		return json.Marshal(config)
 
+	default:
+		return validatedSyncDocument(kind, input.Document)
+	}
+}
+
+// validatedSyncDocument applies the current strict schema and domain rules to
+// a stored or incoming document, and returns its canonical representation.
+func validatedSyncDocument(kind orgsync.Kind, document json.RawMessage) ([]byte, error) {
+	switch kind {
+	case orgsync.KindLabels:
+		return validatedDocument[orgsync.LabelConfig](document)
 	case orgsync.KindSettings:
-		return validatedDocument[orgsync.SettingsConfig](input.Document)
-
+		return validatedDocument[orgsync.SettingsConfig](document)
 	case orgsync.KindRulesets:
-		return validatedDocument[orgsync.RulesetConfig](input.Document)
-
+		return validatedDocument[orgsync.RulesetConfig](document)
 	case orgsync.KindFiles:
-		return validatedDocument[orgsync.FileConfig](input.Document)
-
+		return validatedDocument[orgsync.FileConfig](document)
 	default:
 		return nil, fmt.Errorf("%w: Smyklot cannot synchronize %s yet",
 			orgsync.ErrInvalidConfig, kind)

@@ -41,7 +41,7 @@ func marshalPatch(patch config.Patch) (string, error) {
 // is strict. A stored row is not a document: it is written only by marshalPatch
 // after the panel has validated it, and a row that somehow could not be decoded
 // strictly would take the whole page with it. collectRows abandons a listing on
-// the first row it cannot scan, and UpdateRepositorySettings reads the row back
+// the first row it cannot scan, and SaveInstallationSettings reads the row back
 // inside its own transaction - so a strict decode here turns one bad row into
 // an installation whose repositories will not render and cannot be repaired
 // from the panel that exists to repair them.

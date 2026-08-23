@@ -14,6 +14,5 @@
     section="database"
     rootRole={session.rootRole}
     fetchSettings={session.api.fetchRootRuntimeSettings}
-    updateSettings={session.api.updateRootRuntimeSettings}
   />
 </section>

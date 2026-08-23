@@ -99,10 +99,13 @@ func TestPendingCICheckModeRequiresTheExactBaseBranchContext(t *testing.T) {
 		t.Fatal(err)
 	}
 	disabled := false
-	_, err = store.UpdateRepositorySettings(t.Context(), storage.RepositorySettingsChange{
-		TargetID: "installation:77", RepositoryID: "repository-20",
-		ActorAccountID: "account:77", EnabledOverride: &disabled,
-		ExpectedRevision: repositorySettings.Revision, ChangedAt: now.Add(time.Minute),
+	_, err = store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
+		TargetID: "installation:77", ActorAccountID: "account:77",
+		ChangedAt: now.Add(time.Minute),
+		Repositories: []storage.InstallationRepositorySettingsChange{{
+			RepositoryID: "repository-20", EnabledOverride: &disabled,
+			ExpectedRevision: repositorySettings.Revision,
+		}},
 	})
 	if err != nil {
 		t.Fatal(err)

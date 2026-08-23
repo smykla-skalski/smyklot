@@ -3,10 +3,10 @@
   import { fn } from 'storybook/test';
 
   import SettingsCheckpointDialog from '#lib/components/SettingsCheckpointDialog.svelte';
-  import type { InstallationSettingsCheckpoint } from '#lib/types.js';
+  import type { SettingsCheckpoint } from '#lib/types.js';
   import { ACCOUNT } from '../support/fixtures.js';
 
-  const checkpoint: InstallationSettingsCheckpoint = {
+  const checkpoint: SettingsCheckpoint = {
     id: 'checkpoint-42',
     action: 'installation.settings.saved',
     actor: ACCOUNT,
@@ -17,22 +17,32 @@
         kind: 'target',
         document_version: 1,
         before: {
-          document: {
-            repository_default_enabled: false,
-            pending_ci_mode_default: 'checks',
-            config_patch: {},
+          available: true,
+          state: {
+            document: {
+              repository_default_enabled: false,
+              pending_ci_mode_default: 'checks',
+              config_patch: {},
+            },
+            digest: 'target-before',
+            revision: 3,
           },
-          digest: 'target-before',
-          revision: 3,
+          differs: false,
+          restorable: true,
         },
         after: {
-          document: {
-            repository_default_enabled: true,
-            pending_ci_mode_default: 'checks',
-            config_patch: { quiet_success: true },
+          available: true,
+          state: {
+            document: {
+              repository_default_enabled: true,
+              pending_ci_mode_default: 'checks',
+              config_patch: { quiet_success: true },
+            },
+            digest: 'target-after',
+            revision: 4,
           },
-          digest: 'target-after',
-          revision: 4,
+          differs: true,
+          restorable: true,
         },
         current: {
           document: {
@@ -44,23 +54,26 @@
           revision: 8,
         },
         changed: true,
-        differs: true,
-        restorable: true,
       },
       {
         kind: 'repository',
         repository_id: 'repo-1',
         repository_full_name: 'smykla-skalski/smyklot',
         document_version: 1,
-        before: null,
+        before: { available: true, state: null, differs: true, restorable: true },
         after: {
-          document: {
-            enabled_override: true,
-            ignore_repository_file: false,
-            config_patch: {},
+          available: true,
+          state: {
+            document: {
+              enabled_override: true,
+              ignore_repository_file: false,
+              config_patch: {},
+            },
+            digest: 'repository-after',
+            revision: 2,
           },
-          digest: 'repository-after',
-          revision: 2,
+          differs: false,
+          restorable: true,
         },
         current: {
           document: {
@@ -72,25 +85,32 @@
           revision: 2,
         },
         changed: true,
-        differs: false,
-        restorable: true,
       },
       {
         kind: 'sync_config',
         sync_kind: 'labels',
         document_version: 0,
-        before: null,
+        before: { available: true, state: null, differs: true, restorable: true },
         after: {
-          document: {
-            enabled: true,
-            document: JSON.stringify({
-              labels: [{ name: 'ci/green' }],
-              allow_removal: true,
-              excludes: [],
-            }),
+          available: true,
+          state: {
+            document: {
+              enabled: true,
+              document: JSON.stringify({
+                labels: [{ name: 'ci/green' }],
+                allow_removal: true,
+                excludes: [],
+              }),
+            },
+            digest: 'labels-after',
+            revision: 3,
           },
-          digest: 'labels-after',
-          revision: 3,
+          differs: true,
+          restorable: false,
+          incompatibility: {
+            code: 'document_version',
+            reason: 'This snapshot uses an unsupported document version',
+          },
         },
         current: {
           document: { enabled: false, document: '{}' },
@@ -98,25 +118,18 @@
           revision: 5,
         },
         changed: true,
-        differs: true,
-        restorable: false,
-        incompatibility: {
-          code: 'document_version',
-          reason: 'This snapshot uses an unsupported document version.',
-        },
       },
     ],
   };
 
   const base = {
     open: true,
-    targetId: 'target-1',
+    identity: 'target-1',
     checkpointId: checkpoint.id,
     readOnly: false,
     hasUnsavedDrafts: false,
     fetchCheckpoint: async () => checkpoint,
-    restoreCheckpoint: async () => ({ checkpoint_id: 'checkpoint-43' }),
-    onRestored: fn(),
+    restoreCheckpoint: async () => {},
     onClose: fn(),
   };
 
@@ -129,7 +142,4 @@
 
 <Story name="Restore available" />
 <Story name="Unsaved settings" args={{ hasUnsavedDrafts: true }} />
-<Story
-  name="Inspection only"
-  args={{ readOnly: true, restoreCheckpoint: undefined, onRestored: undefined }}
-/>
+<Story name="Inspection only" args={{ readOnly: true, restoreCheckpoint: undefined }} />

@@ -11,37 +11,9 @@ import (
 )
 
 const settingsCheckpointColumns = `
-    id, scope, target_id, actor_account_id, action, restored_from_id, created_at`
+    id, scope, target_id, actor_account_id, action, restored_from_id, restored_side, created_at`
 
 const settingsCheckpointSourceKind = "settings_checkpoint"
-
-// CreateSettingsCheckpoint inserts one immutable sparse settings delta.
-func (s *Store) CreateSettingsCheckpoint(
-	ctx context.Context,
-	create storage.SettingsCheckpointCreate,
-) (storage.SettingsCheckpoint, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return storage.SettingsCheckpoint{}, fmt.Errorf("begin settings checkpoint: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	checkpointID, err := s.createSettingsCheckpoint(ctx, tx, create)
-	if err != nil {
-		return storage.SettingsCheckpoint{}, err
-	}
-	checkpoint, err := getSettingsCheckpoint(ctx, tx, storage.SettingsCheckpointRef{
-		ID: checkpointID, Scope: create.Scope, TargetID: create.TargetID,
-	})
-	if err != nil {
-		return storage.SettingsCheckpoint{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return storage.SettingsCheckpoint{}, fmt.Errorf("commit settings checkpoint: %w", err)
-	}
-
-	return checkpoint, nil
-}
 
 // createSettingsCheckpoint is the transaction-level primitive the settings
 // coordinator uses after it has written every changed aggregate.
@@ -64,10 +36,11 @@ func (s *Store) createSettingsCheckpoint(
 	var checkpointID int64
 	err := tx.QueryRowContext(ctx, `
 INSERT INTO settings_checkpoints (
-    scope, target_id, actor_account_id, action, restored_from_id, created_at
-) VALUES (?, ?, ?, ?, ?, ?)
+    scope, target_id, actor_account_id, action, restored_from_id, restored_side, created_at
+) VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING id`, create.Scope, targetID, create.ActorAccountID, create.Action,
-		create.RestoredFromID, create.CreatedAt).Scan(&checkpointID)
+		create.RestoredFromID, optionalRestoreSide(create.RestoredSide), create.CreatedAt).
+		Scan(&checkpointID)
 	if err != nil {
 		return 0, fmt.Errorf("insert settings checkpoint: %w", err)
 	}
@@ -93,14 +66,26 @@ func validateSettingsRestoreSource(
 	if create.RestoredFromID == nil {
 		return nil
 	}
-	_, err := getSettingsCheckpointHeader(ctx, tx, storage.SettingsCheckpointRef{
+	source, err := getSettingsCheckpointHeader(ctx, tx, storage.SettingsCheckpointRef{
 		ID: *create.RestoredFromID, Scope: create.Scope, TargetID: create.TargetID,
 	})
 	if err != nil {
 		return fmt.Errorf("read settings restore source: %w", err)
 	}
+	if source.Action == storage.SettingsCheckpointActionBaseline &&
+		create.RestoredSide == storage.SettingsCheckpointRestoreBefore {
+		return fmt.Errorf("%w: baseline has no before state", storage.ErrSettingsRestoreBlocked)
+	}
 
 	return nil
+}
+
+func optionalRestoreSide(side storage.SettingsCheckpointRestoreSide) any {
+	if side == "" {
+		return nil
+	}
+
+	return side
 }
 
 func insertSettingsCheckpointItem(
@@ -136,14 +121,6 @@ func settingsCheckpointStateValues(state *storage.SettingsCheckpointState) (any,
 	}
 
 	return string(state.Document), state.Revision, state.Digest
-}
-
-// GetSettingsCheckpoint reads one immutable delta inside its explicit scope.
-func (s *Store) GetSettingsCheckpoint(
-	ctx context.Context,
-	ref storage.SettingsCheckpointRef,
-) (storage.SettingsCheckpoint, error) {
-	return getSettingsCheckpoint(ctx, s.db, ref)
 }
 
 func getSettingsCheckpoint(
@@ -216,10 +193,11 @@ func scanSettingsCheckpoint(scanner rowScanner) (storage.SettingsCheckpoint, err
 	var checkpoint storage.SettingsCheckpoint
 	var targetID sql.NullString
 	var restoredFrom sql.NullInt64
+	var restoredSide sql.NullString
 	var createdAt StoredTime
 	if err := scanner.Scan(
 		&checkpoint.ID, &checkpoint.Scope, &targetID, &checkpoint.ActorAccountID,
-		&checkpoint.Action, &restoredFrom, &createdAt,
+		&checkpoint.Action, &restoredFrom, &restoredSide, &createdAt,
 	); err != nil {
 		return storage.SettingsCheckpoint{}, err
 	}
@@ -228,6 +206,9 @@ func scanSettingsCheckpoint(scanner rowScanner) (storage.SettingsCheckpoint, err
 	}
 	if restoredFrom.Valid {
 		checkpoint.RestoredFromID = &restoredFrom.Int64
+	}
+	if restoredSide.Valid {
+		checkpoint.RestoredSide = storage.SettingsCheckpointRestoreSide(restoredSide.String)
 	}
 	checkpoint.CreatedAt = createdAt.Time()
 
@@ -282,8 +263,9 @@ func checkpointCreate(checkpoint storage.SettingsCheckpoint) storage.SettingsChe
 	return storage.SettingsCheckpointCreate{
 		Scope: checkpoint.Scope, TargetID: checkpoint.TargetID,
 		ActorAccountID: checkpoint.ActorAccountID, Action: checkpoint.Action,
-		RestoredFromID: checkpoint.RestoredFromID, CreatedAt: checkpoint.CreatedAt,
-		Items: checkpoint.Items,
+		RestoredFromID: checkpoint.RestoredFromID, RestoredSide: checkpoint.RestoredSide,
+		CreatedAt: checkpoint.CreatedAt,
+		Items:     checkpoint.Items,
 	}
 }
 

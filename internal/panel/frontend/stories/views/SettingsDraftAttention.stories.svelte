@@ -11,6 +11,7 @@
       kind: 'restored',
       count: 3,
       problem: null,
+      reviewHref: '/i/smykla-skalski/repositories',
       onDismiss: fn(),
     },
   });
@@ -23,6 +24,6 @@
   args={{
     kind: 'storage-problem',
     count: 1,
-    problem: 'Browser storage is unavailable. Unsaved changes will not survive.',
+    problem: 'Browser storage is unavailable. Unsaved changes will not survive',
   }}
 />

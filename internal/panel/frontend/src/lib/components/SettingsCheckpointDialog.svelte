@@ -8,73 +8,86 @@
     settingsCheckpointSummary,
   } from '#lib/settings-checkpoint-summary.js';
   import type {
-    InstallationSettingsBatchResponse,
-    InstallationSettingsCheckpoint,
-    InstallationSettingsCheckpointItem,
-    InstallationSettingsRestoreInput,
+    SettingsCheckpoint,
+    SettingsCheckpointItem,
+    SettingsCheckpointRestoreSide,
+    SettingsRestoreInput,
   } from '#lib/types.js';
 
   import Avatar from './Avatar.svelte';
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Modal from './Modal.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
 
   const {
     open,
-    targetId,
+    identity,
     checkpointId,
     readOnly,
     hasUnsavedDrafts,
     returnFocus = null,
     fetchCheckpoint,
     restoreCheckpoint,
-    onRestored,
     onClose,
   }: {
     open: boolean;
-    targetId: string;
+    identity: string;
     checkpointId: string;
     readOnly: boolean;
     hasUnsavedDrafts: boolean;
     returnFocus?: HTMLElement | null;
-    fetchCheckpoint: (
-      targetId: string,
-      checkpointId: string,
-    ) => Promise<InstallationSettingsCheckpoint>;
-    restoreCheckpoint?: (
-      targetId: string,
-      checkpointId: string,
-      input: InstallationSettingsRestoreInput,
-    ) => Promise<InstallationSettingsBatchResponse>;
-    onRestored?: (result: InstallationSettingsBatchResponse) => void;
+    fetchCheckpoint: (checkpointId: string) => Promise<SettingsCheckpoint>;
+    restoreCheckpoint?: (checkpointId: string, input: SettingsRestoreInput) => Promise<void>;
     onClose: () => void;
   } = $props();
 
-  let checkpoint = $state<InstallationSettingsCheckpoint | null>(null);
+  let checkpoint = $state<SettingsCheckpoint | null>(null);
   let selected = $state<string[]>([]);
+  let restoreState = $state<SettingsCheckpointRestoreSide>('after');
   let loading = $state(false);
   let restoring = $state(false);
   let confirming = $state(false);
+  let showMatching = $state(false);
   let problem = $state<string | null>(null);
   let rawOpen = $state<string[]>([]);
   let generation = 0;
 
   const changedCount = $derived(checkpoint?.items.filter((item) => item.changed).length ?? 0);
-  const differingCount = $derived(checkpoint?.items.filter((item) => item.differs).length ?? 0);
+  const differingCount = $derived(
+    checkpoint?.items.filter((item) => selectedSide(item).differs).length ?? 0,
+  );
   const restorableDifferenceCount = $derived(
-    checkpoint?.items.filter((item) => item.differs && item.restorable).length ?? 0,
+    checkpoint?.items.filter((item) => {
+      const side = selectedSide(item);
+      return side.differs && side.restorable;
+    }).length ?? 0,
   );
   const canRestore = $derived(!readOnly && restoreCheckpoint !== undefined);
+  const visibleItems = $derived(
+    checkpoint?.items.filter(
+      (item) => showMatching || item.changed || selectedSide(item).differs,
+    ) ?? [],
+  );
+  const hiddenItemCount = $derived((checkpoint?.items.length ?? 0) - visibleItems.length);
+  const restoreStateOptions = $derived(
+    checkpoint?.items.some((item) => item.before.available)
+      ? [
+          { value: 'before', label: 'Before change' },
+          { value: 'after', label: 'After change' },
+        ]
+      : [{ value: 'after', label: 'Initial state' }],
+  );
 
   $effect(() => {
-    const wanted = open ? `${targetId}/${checkpointId}` : '';
+    const wanted = open ? `${identity}/${checkpointId}` : '';
     untrack(() => {
-      if (wanted !== '') void loadCheckpoint(targetId, checkpointId);
+      if (wanted !== '') void loadCheckpoint(checkpointId);
     });
   });
 
-  async function loadCheckpoint(target: string, id: string): Promise<void> {
+  async function loadCheckpoint(id: string): Promise<void> {
     const currentGeneration = (generation += 1);
     loading = true;
     problem = null;
@@ -82,11 +95,13 @@
     selected = [];
     rawOpen = [];
     confirming = false;
+    showMatching = false;
     try {
-      const loaded = await fetchCheckpoint(target, id);
+      const loaded = await fetchCheckpoint(id);
       if (generation !== currentGeneration) return;
       checkpoint = loaded;
-      selected = loaded.items.filter((item) => item.differs && item.restorable).map(itemIdentity);
+      restoreState = 'after';
+      selected = defaultSelection(loaded, restoreState);
     } catch (cause) {
       if (generation === currentGeneration) problem = messageOf(cause);
     } finally {
@@ -94,11 +109,11 @@
     }
   }
 
-  function itemIdentity(item: InstallationSettingsCheckpointItem): string {
+  function itemIdentity(item: SettingsCheckpointItem): string {
     return [item.kind, item.repository_id ?? '', item.sync_kind ?? ''].join(':');
   }
 
-  function toggleItem(item: InstallationSettingsCheckpointItem, checked: boolean): void {
+  function toggleItem(item: SettingsCheckpointItem, checked: boolean): void {
     const identity = itemIdentity(item);
     selected = checked
       ? [...selected.filter((held) => held !== identity), identity]
@@ -106,7 +121,27 @@
     confirming = false;
   }
 
-  function toggleRaw(item: InstallationSettingsCheckpointItem): void {
+  function selectedSide(item: SettingsCheckpointItem) {
+    return item[restoreState];
+  }
+
+  function defaultSelection(
+    value: SettingsCheckpoint,
+    side: SettingsCheckpointRestoreSide,
+  ): string[] {
+    return value.items
+      .filter((item) => item[side].differs && item[side].restorable)
+      .map(itemIdentity);
+  }
+
+  function selectRestoreState(value: string): void {
+    if (value !== 'before' && value !== 'after') return;
+    restoreState = value;
+    selected = checkpoint === null ? [] : defaultSelection(checkpoint, value);
+    confirming = false;
+  }
+
+  function toggleRaw(item: SettingsCheckpointItem): void {
     const identity = itemIdentity(item);
     rawOpen = rawOpen.includes(identity)
       ? rawOpen.filter((held) => held !== identity)
@@ -146,8 +181,7 @@
     restoring = true;
     problem = null;
     try {
-      const result = await restoreSelected(targetId, checkpointId, { selections });
-      onRestored?.(result);
+      await restoreSelected(held.id, { state: restoreState, selections });
       onClose();
     } catch (cause) {
       problem = messageOf(cause);
@@ -157,18 +191,31 @@
     }
   }
 
-  function itemStatus(item: InstallationSettingsCheckpointItem): string {
-    if (item.incompatibility !== undefined) return 'Cannot restore';
-    if (item.differs) return 'Differs now';
+  function itemStatus(item: SettingsCheckpointItem): string {
+    const side = selectedSide(item);
+    if (!side.available) return 'Not captured';
+    if (side.incompatibility !== undefined) return 'Cannot restore';
+    if (side.differs) return 'Differs now';
     return 'Matches current';
   }
 
-  function rawState(item: InstallationSettingsCheckpointItem): string {
+  function rawState(item: SettingsCheckpointItem): string {
     return JSON.stringify(
-      { before: item.before, after: item.after, current: item.current },
+      { before: item.before.state, after: item.after.state, current: item.current },
       null,
       2,
     );
+  }
+
+  function sideSummary(
+    item: SettingsCheckpointItem,
+    side: SettingsCheckpointItem['before'],
+  ): string {
+    return side.available ? settingsCheckpointSummary(item, side.state) : 'Not captured';
+  }
+
+  function rawStateId(item: SettingsCheckpointItem): string {
+    return `settings-checkpoint-raw-${itemIdentity(item)}`;
   }
 
   function cleanReason(reason: string): string {
@@ -209,58 +256,97 @@
       </div>
     </section>
 
+    <div class="restore-state-picker">
+      <SegmentedControl
+        name="settings-checkpoint-restore-state"
+        label="Restore state"
+        options={restoreStateOptions}
+        value={restoreState}
+        compact
+        onSelect={selectRestoreState}
+      />
+      <p>
+        {restoreState === 'before'
+          ? 'Restore the state immediately before this history entry'
+          : checkpoint.action.endsWith('.baseline')
+            ? 'Restore the settings captured when history began'
+            : 'Restore the state saved by this history entry'}
+      </p>
+    </div>
+
     <fieldset class="checkpoint-items">
       <legend>
-        <span>Saved resources</span>
+        <span>Snapshot resources</span>
         <small>{selected.length} selected</small>
       </legend>
-      {#each checkpoint.items as item (itemIdentity(item))}
-        <article class:matches={!item.differs} class="checkpoint-item">
+      {#each visibleItems as item (itemIdentity(item))}
+        {@const side = selectedSide(item)}
+        <article class:matches={!side.differs} class="checkpoint-item">
           <header>
             <div class="item-title">
               <strong>{settingsCheckpointItemLabel(item)}</strong>
-              <span class:matches={!item.differs}>{itemStatus(item)}</span>
+              <span class:matches={!side.differs}>{itemStatus(item)}</span>
             </div>
             <Switch
               bare
               checked={selected.includes(itemIdentity(item))}
               label="Restore {settingsCheckpointItemLabel(item)}"
-              disabled={!item.differs || !item.restorable || !canRestore || restoring}
+              disabled={!side.differs || !side.restorable || !canRestore || restoring}
               onToggle={(checked) => toggleItem(item, checked)}
             />
           </header>
           <div class="state-comparison">
             <div>
               <span>Before</span>
-              <p>{settingsCheckpointSummary(item, item.before)}</p>
+              <p>{sideSummary(item, item.before)}</p>
             </div>
             <div class="after-state">
               <span>After</span>
-              <p>{settingsCheckpointSummary(item, item.after)}</p>
+              <p>{sideSummary(item, item.after)}</p>
             </div>
           </div>
-          {#if item.incompatibility !== undefined}
-            <p class="incompatibility">{cleanReason(item.incompatibility.reason)}</p>
+          {#if side.incompatibility !== undefined}
+            <p class="incompatibility">{cleanReason(side.incompatibility.reason)}</p>
           {/if}
           <div class="raw-state">
             <button
               type="button"
+              aria-label="{rawOpen.includes(itemIdentity(item))
+                ? 'Hide'
+                : 'View'} stored state for {settingsCheckpointItemLabel(item)}"
               aria-expanded={rawOpen.includes(itemIdentity(item))}
+              aria-controls={rawStateId(item)}
               onclick={() => toggleRaw(item)}
             >
               {rawOpen.includes(itemIdentity(item)) ? 'Hide' : 'View'} stored state
             </button>
             {#if rawOpen.includes(itemIdentity(item))}
-              <pre>{rawState(item)}</pre>
+              <pre id={rawStateId(item)}>{rawState(item)}</pre>
             {/if}
           </div>
         </article>
       {/each}
+      {#if visibleItems.length === 0}
+        <p class="all-matching">Every resource in this snapshot matches the current settings</p>
+      {/if}
+      {#if hiddenItemCount > 0 || showMatching}
+        <div class="matching-disclosure">
+          <button
+            type="button"
+            aria-expanded={showMatching}
+            onclick={() => (showMatching = !showMatching)}
+          >
+            {showMatching
+              ? 'Hide matching resources'
+              : `Show ${hiddenItemCount} matching ${hiddenItemCount === 1 ? 'resource' : 'resources'}`}
+          </button>
+        </div>
+      {/if}
     </fieldset>
 
     {#if hasUnsavedDrafts}
       <p class="checkpoint-notice" role="status">
-        Save or discard this installation’s unsaved settings before restoring history
+        Save or discard unsaved settings before restoring history
       </p>
     {:else if !canRestore}
       <p class="checkpoint-notice">You can inspect this snapshot, but cannot restore it</p>
@@ -366,6 +452,19 @@
     color: var(--dim);
     font-size: var(--font-size-micro);
     white-space: nowrap;
+  }
+
+  .restore-state-picker {
+    align-items: center;
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .restore-state-picker p {
+    color: var(--dim);
+    font-size: var(--font-size-compact);
+    margin: 0;
   }
 
   .checkpoint-items {
@@ -477,7 +576,23 @@
     font-size: var(--font-size-compact);
   }
 
-  .raw-state > button {
+  .all-matching {
+    color: var(--dim);
+    font-size: var(--font-size-compact);
+    margin: 0;
+    padding: var(--space-4) var(--space-3);
+    text-align: center;
+  }
+
+  .matching-disclosure {
+    border-top: 1px solid var(--border-subtle);
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .raw-state > button,
+  .matching-disclosure > button {
     background: transparent;
     border: 0;
     color: var(--text-secondary);
@@ -488,7 +603,9 @@
   }
 
   .raw-state > button:hover,
-  .raw-state > button:focus-visible {
+  .raw-state > button:focus-visible,
+  .matching-disclosure > button:hover,
+  .matching-disclosure > button:focus-visible {
     text-decoration: underline;
   }
 
@@ -513,6 +630,12 @@
   }
 
   @media (max-width: 34rem) {
+    .restore-state-picker {
+      align-items: start;
+      gap: var(--space-2);
+      grid-template-columns: minmax(0, 1fr);
+    }
+
     .snapshot-provenance {
       align-items: start;
       grid-template-columns: auto minmax(0, 1fr);

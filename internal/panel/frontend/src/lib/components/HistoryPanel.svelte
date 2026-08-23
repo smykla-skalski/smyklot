@@ -31,9 +31,10 @@
     FailureKind,
     HistorySort,
     InstallationSettingsBatchResponse,
-    InstallationSettingsCheckpoint,
-    InstallationSettingsRestoreInput,
+    SettingsCheckpoint,
+    SettingsRestoreInput,
     Page,
+    RootRuntimeSettings,
   } from '../types';
   import DataTable from './DataTable.svelte';
   import Skeleton from './Skeleton.svelte';
@@ -68,7 +69,6 @@
     {
       options: [
         { value: 'all', label: 'All changes' },
-        { value: 'enablement', label: 'Enablement' },
         { value: 'repository', label: 'Repository settings' },
         { value: 'account', label: 'Account settings' },
         { value: 'sync', label: 'Sync configuration' },
@@ -138,9 +138,16 @@
     prefs = EPHEMERAL_PREFS,
     readOnly = true,
     hasUnsavedSettingsDrafts = false,
+    hasUnsavedRootSettingsDrafts = false,
+    hasUnsavedSettingsDraftsForTarget,
+    fetchSettingsBaseline,
     fetchSettingsCheckpoint,
     restoreSettingsCheckpoint,
+    fetchRootSettingsBaseline,
+    fetchRootSettingsCheckpoint,
+    restoreRootSettingsCheckpoint,
     onSettingsRestored,
+    onRootSettingsRestored,
   }: {
     targetId: string;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
@@ -151,16 +158,26 @@
     prefs?: PrefsAccessor;
     readOnly?: boolean;
     hasUnsavedSettingsDrafts?: boolean;
+    hasUnsavedRootSettingsDrafts?: boolean;
+    hasUnsavedSettingsDraftsForTarget?: (targetId: string) => boolean;
+    fetchSettingsBaseline?: (targetId: string) => Promise<SettingsCheckpoint>;
     fetchSettingsCheckpoint?: (
       targetId: string,
       checkpointId: string,
-    ) => Promise<InstallationSettingsCheckpoint>;
+    ) => Promise<SettingsCheckpoint>;
     restoreSettingsCheckpoint?: (
       targetId: string,
       checkpointId: string,
-      input: InstallationSettingsRestoreInput,
+      input: SettingsRestoreInput,
     ) => Promise<InstallationSettingsBatchResponse>;
-    onSettingsRestored?: (result: InstallationSettingsBatchResponse) => void;
+    fetchRootSettingsBaseline?: () => Promise<SettingsCheckpoint>;
+    fetchRootSettingsCheckpoint?: (checkpointId: string) => Promise<SettingsCheckpoint>;
+    restoreRootSettingsCheckpoint?: (
+      checkpointId: string,
+      input: SettingsRestoreInput,
+    ) => Promise<RootRuntimeSettings>;
+    onSettingsRestored?: (result: InstallationSettingsBatchResponse, targetId: string) => void;
+    onRootSettingsRestored?: (result: RootRuntimeSettings) => void;
   } = $props();
 
   // Table state deliberately captures the preferences at mount; remote
@@ -200,7 +217,7 @@
   let auditChange = $state<AuditChange>(
     prefOption(
       initialPrefs.get('table.history.change'),
-      ['all', 'enablement', 'repository', 'account', 'sync'],
+      ['all', 'repository', 'account', 'sync'],
       'all',
     ),
   );
@@ -223,6 +240,8 @@
   let failureScroll = $state<HTMLTableSectionElement>();
   let settingsCheckpointId = $state<string | null>(null);
   let settingsCheckpointTargetId = $state<string | null>(null);
+  let settingsCheckpointRoot = $state(false);
+  let settingsCheckpointBaseline = $state(false);
   let settingsCheckpointTrigger = $state<HTMLElement | null>(null);
 
   const hasFilters = $derived(
@@ -565,13 +584,7 @@
 
   function selectAuditChange(values: string[]): void {
     const value = values[0];
-    if (
-      value === 'all' ||
-      value === 'enablement' ||
-      value === 'repository' ||
-      value === 'account' ||
-      value === 'sync'
-    ) {
+    if (value === 'all' || value === 'repository' || value === 'account' || value === 'sync') {
       auditChange = value;
     }
   }
@@ -709,19 +722,82 @@
   }
 
   function openSettingsCheckpoint(entry: AuditEntry, trigger: HTMLElement): void {
-    if (entry.settings_checkpoint_id === undefined || fetchSettingsCheckpoint === undefined) return;
+    if (entry.settings_checkpoint_id === undefined || !canInspectSettingsCheckpoint(entry)) return;
     settingsCheckpointTrigger = trigger;
     settingsCheckpointId = entry.settings_checkpoint_id;
-    settingsCheckpointTargetId = entry.target_id ?? targetId;
+    settingsCheckpointBaseline = false;
+    settingsCheckpointRoot = context === 'root' && entry.target_id === undefined;
+    settingsCheckpointTargetId = settingsCheckpointRoot ? null : (entry.target_id ?? targetId);
+  }
+
+  function openSettingsBaseline(trigger: HTMLElement): void {
+    settingsCheckpointTrigger = trigger;
+    settingsCheckpointId = 'baseline';
+    settingsCheckpointBaseline = true;
+    settingsCheckpointRoot = context === 'root';
+    settingsCheckpointTargetId = settingsCheckpointRoot ? null : targetId;
   }
 
   function closeSettingsCheckpoint(): void {
     settingsCheckpointId = null;
     settingsCheckpointTargetId = null;
+    settingsCheckpointRoot = false;
+    settingsCheckpointBaseline = false;
   }
 
-  function settingsRestored(result: InstallationSettingsBatchResponse): void {
-    onSettingsRestored?.(result);
+  function canInspectSettingsCheckpoint(entry: AuditEntry): boolean {
+    if (context === 'root' && entry.target_id === undefined) {
+      return fetchRootSettingsCheckpoint !== undefined;
+    }
+    return fetchSettingsCheckpoint !== undefined;
+  }
+
+  async function fetchOpenedSettingsCheckpoint(checkpointId: string): Promise<SettingsCheckpoint> {
+    if (settingsCheckpointBaseline) {
+      if (settingsCheckpointRoot) {
+        if (fetchRootSettingsBaseline === undefined)
+          throw new Error('Initial settings snapshot is unavailable');
+        return fetchRootSettingsBaseline();
+      }
+      if (fetchSettingsBaseline === undefined || settingsCheckpointTargetId === null) {
+        throw new Error('Initial settings snapshot is unavailable');
+      }
+      return fetchSettingsBaseline(settingsCheckpointTargetId);
+    }
+    if (settingsCheckpointRoot) {
+      if (fetchRootSettingsCheckpoint === undefined)
+        throw new Error('Settings snapshot is unavailable');
+      return fetchRootSettingsCheckpoint(checkpointId);
+    }
+    if (fetchSettingsCheckpoint === undefined || settingsCheckpointTargetId === null) {
+      throw new Error('Settings snapshot is unavailable');
+    }
+    return fetchSettingsCheckpoint(settingsCheckpointTargetId, checkpointId);
+  }
+
+  function canRestoreOpenedSettingsCheckpoint(): boolean {
+    return settingsCheckpointRoot
+      ? restoreRootSettingsCheckpoint !== undefined
+      : restoreSettingsCheckpoint !== undefined && settingsCheckpointTargetId !== null;
+  }
+
+  async function restoreOpenedSettingsCheckpoint(
+    checkpointId: string,
+    input: SettingsRestoreInput,
+  ): Promise<void> {
+    if (settingsCheckpointRoot) {
+      if (restoreRootSettingsCheckpoint === undefined) return;
+      const result = await restoreRootSettingsCheckpoint(checkpointId, input);
+      onRootSettingsRestored?.(result);
+    } else {
+      if (restoreSettingsCheckpoint === undefined || settingsCheckpointTargetId === null) return;
+      const result = await restoreSettingsCheckpoint(
+        settingsCheckpointTargetId,
+        checkpointId,
+        input,
+      );
+      onSettingsRestored?.(result, settingsCheckpointTargetId);
+    }
     void auditQuery.refetch();
   }
 </script>
@@ -754,6 +830,14 @@
       value={search}
       onInput={(value) => (search = value)}
     />
+
+    {#if historyType === 'audit' && ((context === 'root' && fetchRootSettingsBaseline !== undefined) || (context === 'installation' && fetchSettingsBaseline !== undefined))}
+      <Button
+        tone="quiet"
+        class="baseline-trigger"
+        onclick={(event) => openSettingsBaseline(event.currentTarget)}>Initial snapshot</Button
+      >
+    {/if}
 
     <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
   </div>
@@ -942,11 +1026,11 @@
                      below is the whole of what centres the word on the tag. -->
                 <span class="category-tag band-trim" aria-hidden="true">{entry.category}</span>
               {/if}
-              {#if entry.settings_checkpoint_id !== undefined && fetchSettingsCheckpoint !== undefined}
+              {#if entry.settings_checkpoint_id !== undefined && canInspectSettingsCheckpoint(entry)}
                 <button
                   class="checkpoint-trigger band-trim"
                   type="button"
-                  aria-label={`${auditSummary(entry.summary)}. Inspect settings snapshot`}
+                  aria-label={`${auditSummary(entry.summary)}, inspect settings snapshot`}
                   onclick={(event) => openSettingsCheckpoint(entry, event.currentTarget)}
                 >
                   <span>{auditSummary(entry.summary)}</span>
@@ -1128,17 +1212,22 @@
   </div>
 </section>
 
-{#if settingsCheckpointId !== null && settingsCheckpointTargetId !== null && fetchSettingsCheckpoint !== undefined}
+{#if settingsCheckpointId !== null && (settingsCheckpointRoot || settingsCheckpointTargetId !== null)}
   <SettingsCheckpointDialog
     open
-    targetId={settingsCheckpointTargetId}
+    identity={`${settingsCheckpointRoot ? 'root' : (settingsCheckpointTargetId ?? '')}:${settingsCheckpointBaseline ? 'baseline' : 'history'}`}
     checkpointId={settingsCheckpointId}
     {readOnly}
-    hasUnsavedDrafts={hasUnsavedSettingsDrafts}
+    hasUnsavedDrafts={settingsCheckpointRoot
+      ? hasUnsavedRootSettingsDrafts
+      : settingsCheckpointTargetId !== null && hasUnsavedSettingsDraftsForTarget !== undefined
+        ? hasUnsavedSettingsDraftsForTarget(settingsCheckpointTargetId)
+        : hasUnsavedSettingsDrafts}
     returnFocus={settingsCheckpointTrigger}
-    fetchCheckpoint={fetchSettingsCheckpoint}
-    restoreCheckpoint={restoreSettingsCheckpoint}
-    onRestored={settingsRestored}
+    fetchCheckpoint={fetchOpenedSettingsCheckpoint}
+    restoreCheckpoint={canRestoreOpenedSettingsCheckpoint()
+      ? restoreOpenedSettingsCheckpoint
+      : undefined}
     onClose={closeSettingsCheckpoint}
   />
 {/if}
@@ -1166,7 +1255,7 @@
     border-radius: 0;
     display: grid;
     gap: var(--space-2);
-    grid-template-columns: auto minmax(12rem, 1fr) auto;
+    grid-template-columns: minmax(12rem, 1fr) auto auto;
     padding: 0 0 var(--space-3);
   }
 

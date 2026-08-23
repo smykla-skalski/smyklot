@@ -306,7 +306,11 @@ run = "mise install"
 description = "Format Go code"
 run = '''
 go fmt ./...
-gofmt -s -w $(git ls-files '*.go')
+git ls-files '*.go' | while IFS= read -r file; do
+  if [ -f "$file" ]; then
+    gofmt -s -w "$file"
+  fi
+done
 '''
 
 [tasks.ci]

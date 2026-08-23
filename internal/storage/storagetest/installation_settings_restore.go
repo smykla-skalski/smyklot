@@ -2,7 +2,6 @@ package storagetest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -14,13 +13,15 @@ import (
 )
 
 func declareInstallationSettingsRestoreSpecs(
+	harness Harness,
 	runtime func() (context.Context, storage.Store, time.Time),
 ) {
 	declareInstallationSettingsRestoreSpec(runtime)
 	declareInstallationSettingsRestoreConflictSpec(runtime)
-	declareInstallationSettingsInspectionCompatibilitySpec(runtime)
-	declareInstallationSettingsRestoreValidationSpec(runtime)
+	declareInstallationSettingsInspectionCompatibilitySpec(harness, runtime)
+	declareInstallationSettingsRestoreValidationSpec(harness, runtime)
 	declareInstallationSettingsBaselineAbsenceSpec(runtime)
+	declareInstallationSettingsRestoreSideSpecs(runtime)
 }
 
 func declareInstallationSettingsRestoreSpec(
@@ -34,18 +35,23 @@ func declareInstallationSettingsRestoreSpec(
 			ctx, installationCheckpointRef(target.TargetID, sourceID),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(inspection.Items).To(HaveLen(4))
+		Expect(inspection.Items).To(HaveLen(5))
+		changed := 0
 		for _, item := range inspection.Items {
-			Expect(item.Restorable).To(BeTrue())
-			Expect(item.Differs).To(BeTrue())
-			Expect(item.Incompatibility).To(BeNil())
+			Expect(item.After.Restorable).To(BeTrue())
+			Expect(item.After.Incompatibility).To(BeNil())
 			Expect(item.Current).NotTo(BeNil())
+			if item.Changed {
+				changed++
+			}
 		}
+		Expect(changed).To(Equal(4))
 
 		seedInstallationSettingsPlan(ctx, store, account, target.TargetID, now.Add(3*time.Minute))
 		result, err := store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
 				TargetID: target.TargetID, CheckpointID: sourceID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(4 * time.Minute),
 				Selections: restoreSelections(inspection),
 			},
@@ -74,7 +80,8 @@ func declareInstallationSettingsRestoreSpec(
 		)
 		Expect(restored.Action).To(Equal(storage.SettingsCheckpointActionRestore))
 		Expect(restored.RestoredFromID).To(HaveValue(Equal(sourceID)))
-		Expect(restored.Items).To(HaveLen(4))
+		Expect(restored.RestoredSide).To(Equal(storage.SettingsCheckpointRestoreAfter))
+		Expect(restored.Items).To(HaveLen(5))
 		for _, item := range restored.Items {
 			Expect(item.Before).NotTo(BeNil())
 			Expect(item.After).NotTo(BeNil())
@@ -88,6 +95,7 @@ func declareInstallationSettingsRestoreSpec(
 		_, err = store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
 				TargetID: target.TargetID, CheckpointID: sourceID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(5 * time.Minute),
 				Selections: []storage.SettingsCheckpointRestoreSelection{{
 					Identity: storage.SettingsCheckpointItemIdentity{
@@ -120,6 +128,7 @@ func declareInstallationSettingsRestoreConflictSpec(
 		_, err = store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
 				TargetID: target.TargetID, CheckpointID: sourceID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(4 * time.Minute),
 				Selections: selections,
 			},
@@ -136,6 +145,7 @@ func declareInstallationSettingsRestoreConflictSpec(
 }
 
 func declareInstallationSettingsInspectionCompatibilitySpec(
+	harness Harness,
 	runtime func() (context.Context, storage.Store, time.Time),
 ) {
 	It("keeps incompatible history visible but not selectable", func() {
@@ -145,48 +155,61 @@ func declareInstallationSettingsInspectionCompatibilitySpec(
 		Expect(err).NotTo(HaveOccurred())
 		currentRepository, err := store.GetRepository(ctx, target.TargetID, "repo-1")
 		Expect(err).NotTo(HaveOccurred())
-
-		badTarget := installationTargetDocument(currentTarget)
-		badTarget.PendingCIModeDefault = "unsupported"
-		checkpoint, err := store.CreateSettingsCheckpoint(ctx, storage.SettingsCheckpointCreate{
-			Scope: storage.SettingsCheckpointScopeInstallation, TargetID: target.TargetID,
-			ActorAccountID: account.ID, Action: storage.SettingsCheckpointActionSave,
-			CreatedAt: now, Items: []storage.SettingsCheckpointItem{
-				checkpointDocumentItem(storage.SettingsCheckpointItemTarget, "", "", 1, badTarget),
-				checkpointDocumentItem(
-					storage.SettingsCheckpointItemRepository, currentRepository.ID,
-					currentRepository.FullName, 99, installationRepositoryDocument(currentRepository),
-				),
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now,
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true, ExpectedRevision: currentTarget.Revision,
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.CheckpointID).NotTo(BeNil())
+		Expect(saved.Target).NotTo(BeNil())
+
+		badTarget := installationTargetDocument(*saved.Target)
+		badTarget.PendingCIModeDefault = "unsupported"
+		rewriteCheckpointItem(harness, ctx, *saved.CheckpointID,
+			storage.SettingsCheckpointItemIdentity{Kind: storage.SettingsCheckpointItemTarget},
+			storage.SettingsCheckpointDocumentVersion, badTarget,
+		)
+		repositoryIdentity := storage.SettingsCheckpointItemIdentity{
+			Kind: storage.SettingsCheckpointItemRepository, RepositoryID: currentRepository.ID,
+		}
+		rewriteCheckpointItem(harness, ctx, *saved.CheckpointID, repositoryIdentity,
+			storage.SettingsCheckpointDocumentVersion+1,
+			installationRepositoryDocument(currentRepository),
+		)
 		inspection, err := store.InspectInstallationSettingsCheckpoint(
-			ctx, installationCheckpointRef(target.TargetID, checkpoint.ID),
+			ctx, installationCheckpointRef(target.TargetID, *saved.CheckpointID),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(inspection.Items).To(HaveLen(2))
-		Expect(inspection.Items[0]).To(And(
-			HaveField("Restorable", false),
-			HaveField("Incompatibility.Code", "unsupported_document_version"),
-			HaveField("After.Document", Not(BeEmpty())),
+		Expect(inspection.Items).To(HaveLen(3))
+		repositoryItem := inspectedCheckpointItem(inspection, repositoryIdentity)
+		Expect(repositoryItem).To(And(
+			HaveField("After.Restorable", false),
+			HaveField("After.Incompatibility.Code", "unsupported_document_version"),
+			HaveField("After.State.Document", Not(BeEmpty())),
 		))
-		Expect(inspection.Items[1]).To(And(
-			HaveField("Restorable", false),
-			HaveField("Incompatibility.Code", "snapshot_incompatible"),
-			HaveField("After.Document", Not(BeEmpty())),
+		targetItem := inspectedCheckpointItem(inspection, storage.SettingsCheckpointItemIdentity{
+			Kind: storage.SettingsCheckpointItemTarget,
+		})
+		Expect(targetItem).To(And(
+			HaveField("After.Restorable", false),
+			HaveField("After.Incompatibility.Code", "snapshot_incompatible"),
+			HaveField("After.State.Document", Not(BeEmpty())),
 		))
 
 		_, err = store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
-				TargetID: target.TargetID, CheckpointID: checkpoint.ID,
+				TargetID: target.TargetID, CheckpointID: *saved.CheckpointID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(time.Minute),
 				Selections: []storage.SettingsCheckpointRestoreSelection{{
-					Identity: inspection.Items[1].Identity, ExpectedRevision: currentTarget.Revision,
+					Identity: targetItem.Identity, ExpectedRevision: saved.Target.Revision,
 				}},
 			},
 		)
 		Expect(errors.Is(err, storage.ErrSettingsRestoreBlocked)).To(BeTrue())
-		assertInstallationSettingsAudit(ctx, store, target.TargetID, 0, 0)
+		assertInstallationSettingsAudit(ctx, store, target.TargetID, *saved.CheckpointID, 1)
 
 		Expect(store.ReconcileInstallation(ctx, testInstallation(
 			account, now.Add(2*time.Minute), []storage.RepositorySnapshot{
@@ -194,95 +217,92 @@ func declareInstallationSettingsInspectionCompatibilitySpec(
 			},
 		))).To(Succeed())
 		inspection, err = store.InspectInstallationSettingsCheckpoint(
-			ctx, installationCheckpointRef(target.TargetID, checkpoint.ID),
+			ctx, installationCheckpointRef(target.TargetID, *saved.CheckpointID),
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(inspection.Items[0].Incompatibility.Code).To(Equal("repository_unavailable"))
+		Expect(inspectedCheckpointItem(inspection, repositoryIdentity).After.Incompatibility.Code).
+			To(Equal("repository_unavailable"))
 	})
 }
 
 func declareInstallationSettingsRestoreValidationSpec(
+	harness Harness,
 	runtime func() (context.Context, storage.Store, time.Time),
 ) {
 	It("cross-validates every selected state before writing any of them", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallationSettingsBatch(ctx, store, now)
-		currentTarget, err := store.GetTarget(ctx, target.TargetID)
-		Expect(err).NotTo(HaveOccurred())
-		restoredTarget := installationTargetDocument(currentTarget)
-		restoredTarget.RepositoryDefaultEnabled = true
-		checkpoint, err := store.CreateSettingsCheckpoint(ctx, storage.SettingsCheckpointCreate{
-			Scope: storage.SettingsCheckpointScopeInstallation, TargetID: target.TargetID,
-			ActorAccountID: account.ID, Action: storage.SettingsCheckpointActionSave,
-			CreatedAt: now, Items: []storage.SettingsCheckpointItem{
-				checkpointDocumentItem(storage.SettingsCheckpointItemTarget, "", "", 1,
-					restoredTarget),
-				checkpointSyncDocumentItem(storage.SettingsCheckpointItemSyncConfig,
-					"", "", orgsync.KindFiles, storage.SyncConfigSettingsDocument{
-						Enabled: true, Document: `{"files":[]}`,
-					}),
-				checkpointSyncDocumentItem(storage.SettingsCheckpointItemSyncOverride,
-					"repo-1", "smykla-skalski/smyklot", orgsync.KindFiles,
-					storage.SyncOverrideSettingsDocument{Document: installationFilesOverride}),
-			},
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now,
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindFiles, Enabled: true,
+				Document: []byte(installationFilesDocument),
+			}},
+			SyncOverrides: []storage.InstallationSyncOverrideChange{{
+				RepositoryID: "repo-1", Kind: orgsync.KindFiles,
+				Document: []byte(installationFilesOverride),
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.CheckpointID).NotTo(BeNil())
+		configIdentity := storage.SettingsCheckpointItemIdentity{
+			Kind: storage.SettingsCheckpointItemSyncConfig, SyncKind: orgsync.KindFiles,
+		}
+		overrideIdentity := storage.SettingsCheckpointItemIdentity{
+			Kind:         storage.SettingsCheckpointItemSyncOverride,
+			RepositoryID: "repo-1", SyncKind: orgsync.KindFiles,
+		}
+		rewriteCheckpointItem(harness, ctx, *saved.CheckpointID, configIdentity,
+			storage.SettingsCheckpointDocumentVersion,
+			storage.SyncConfigSettingsDocument{Enabled: true, Document: `{"files":[]}`},
+		)
+		rewriteCheckpointItem(harness, ctx, *saved.CheckpointID, overrideIdentity,
+			storage.SettingsCheckpointDocumentVersion,
+			storage.SyncOverrideSettingsDocument{
+				Document: `{"merges":[{"path":"package.json",` +
+					`"overrides":{"timezone":"UTC"}}]}`,
+			},
+		)
 		inspection, err := store.InspectInstallationSettingsCheckpoint(
-			ctx, installationCheckpointRef(target.TargetID, checkpoint.ID),
+			ctx, installationCheckpointRef(target.TargetID, *saved.CheckpointID),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		for _, item := range inspection.Items {
-			Expect(item.Restorable).To(BeTrue())
+			Expect(item.After.Restorable).To(BeTrue())
 		}
+		selections := restoreSelectionsAllowingAbsence(inspection)
+		Expect(selections).To(HaveLen(2))
 
 		_, err = store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
-				TargetID: target.TargetID, CheckpointID: checkpoint.ID,
+				TargetID: target.TargetID, CheckpointID: *saved.CheckpointID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(time.Minute),
-				Selections: restoreSelectionsAllowingAbsence(inspection),
+				Selections: selections,
 			},
 		)
 		Expect(errors.Is(err, orgsync.ErrInvalidConfig)).To(BeTrue())
-		currentTarget, err = store.GetTarget(ctx, target.TargetID)
+		currentTarget, err := store.GetTarget(ctx, target.TargetID)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(currentTarget).To(And(
 			HaveField("Revision", int64(1)),
 			HaveField("RepositoryDefaultEnabled", false),
 		))
-		_, err = store.GetSyncConfig(ctx, target.TargetID, orgsync.KindFiles)
-		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-		_, err = store.GetSyncRepositoryOverride(
+		config, err := store.GetSyncConfig(ctx, target.TargetID, orgsync.KindFiles)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(config).To(And(
+			HaveField("Revision", int64(1)),
+			HaveField("Document", []byte(installationFilesDocument)),
+		))
+		override, err := store.GetSyncRepositoryOverride(
 			ctx, target.TargetID, "repo-1", orgsync.KindFiles,
 		)
-		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-		assertInstallationSettingsAudit(ctx, store, target.TargetID, 0, 0)
-	})
-
-	It("keeps an invalid current Sync document visible but not selectable", func() {
-		ctx, store, now := runtime()
-		account, target := seedInstallationSettingsBatch(ctx, store, now)
-		source, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
-			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now,
-			SyncConfigs: []storage.InstallationSyncConfigChange{{
-				Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`),
-			}},
-		})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.SetSyncConfig(ctx, orgsync.ConfigChange{
-			TargetID: target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(`{"labels":[{}]}`), Revision: 1,
-			ActorID: account.ID, Now: now.Add(time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		inspection, err := store.InspectInstallationSettingsCheckpoint(
-			ctx, installationCheckpointRef(target.TargetID, *source.CheckpointID),
-		)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(inspection.Items).To(ConsistOf(And(
-			HaveField("Restorable", false),
-			HaveField("Incompatibility.Code", "current_state_invalid"),
-			HaveField("Current.Document", Not(BeEmpty())),
-		)))
+		Expect(override).To(And(
+			HaveField("Revision", int64(1)),
+			HaveField("Document", []byte(installationFilesOverride)),
+		))
+		assertInstallationSettingsAudit(ctx, store, target.TargetID, *saved.CheckpointID, 1)
 	})
 }
 
@@ -292,10 +312,9 @@ func declareInstallationSettingsBaselineAbsenceSpec(
 	It("restores Sync absence from a complete baseline with monotonic revisions", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallationSettingsBatch(ctx, store, now)
-		baseline, err := store.GetSettingsCheckpoint(ctx, installationCheckpointRef(
-			target.TargetID, 1,
-		))
+		baselineInspection, err := store.InspectInstallationSettingsBaseline(ctx, target.TargetID)
 		Expect(err).NotTo(HaveOccurred())
+		baseline := baselineInspection.Checkpoint
 		Expect(baseline.Action).To(Equal(storage.SettingsCheckpointActionBaseline))
 		enabled := true
 		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
@@ -317,10 +336,10 @@ func declareInstallationSettingsBaselineAbsenceSpec(
 		for _, item := range inspection.Items {
 			if item.Identity.Kind == storage.SettingsCheckpointItemSyncConfig ||
 				item.Identity.Kind == storage.SettingsCheckpointItemSyncOverride {
-				Expect(item.After).To(BeNil())
+				Expect(item.After.State).To(BeNil())
 				Expect(item.Current).NotTo(BeNil())
-				Expect(item.Differs).To(BeTrue())
-				Expect(item.Restorable).To(BeTrue())
+				Expect(item.After.Differs).To(BeTrue())
+				Expect(item.After.Restorable).To(BeTrue())
 				selections = append(selections, storage.SettingsCheckpointRestoreSelection{
 					Identity: item.Identity, ExpectedRevision: item.Current.Revision,
 				})
@@ -330,6 +349,7 @@ func declareInstallationSettingsBaselineAbsenceSpec(
 		restored, err := store.RestoreInstallationSettings(ctx,
 			storage.RestoreInstallationSettingsRequest{
 				TargetID: target.TargetID, CheckpointID: baseline.ID,
+				Side:           storage.SettingsCheckpointRestoreAfter,
 				ActorAccountID: account.ID, ChangedAt: now.Add(2 * time.Minute),
 				Selections: selections,
 			},
@@ -340,11 +360,17 @@ func declareInstallationSettingsBaselineAbsenceSpec(
 		checkpoint := readInstallationCheckpoint(
 			ctx, store, *restored.CheckpointID, target.TargetID,
 		)
-		Expect(checkpoint.Items).To(HaveLen(2))
+		Expect(checkpoint.Items).To(HaveLen(5))
+		changed := 0
 		for _, item := range checkpoint.Items {
 			Expect(item.Before).NotTo(BeNil())
-			Expect(item.After).To(BeNil())
+			if item.After == nil {
+				changed++
+			} else {
+				Expect(item.After.Digest).To(Equal(item.Before.Digest))
+			}
 		}
+		Expect(changed).To(Equal(2))
 		_, err = store.GetSyncConfig(ctx, target.TargetID, orgsync.KindLabels)
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		_, err = store.GetSyncRepositoryOverride(
@@ -418,11 +444,14 @@ func seedInstallationSettingsRestoreHistory(
 }
 
 func restoreSelections(
-	inspection storage.InstallationSettingsCheckpointInspection,
+	inspection storage.SettingsCheckpointInspection,
 ) []storage.SettingsCheckpointRestoreSelection {
 	GinkgoHelper()
 	selections := make([]storage.SettingsCheckpointRestoreSelection, 0, len(inspection.Items))
 	for _, item := range inspection.Items {
+		if !item.After.Differs || !item.After.Restorable {
+			continue
+		}
 		Expect(item.Current).NotTo(BeNil())
 		selections = append(selections, storage.SettingsCheckpointRestoreSelection{
 			Identity: item.Identity, ExpectedRevision: item.Current.Revision,
@@ -433,10 +462,13 @@ func restoreSelections(
 }
 
 func restoreSelectionsAllowingAbsence(
-	inspection storage.InstallationSettingsCheckpointInspection,
+	inspection storage.SettingsCheckpointInspection,
 ) []storage.SettingsCheckpointRestoreSelection {
 	selections := make([]storage.SettingsCheckpointRestoreSelection, 0, len(inspection.Items))
 	for _, item := range inspection.Items {
+		if !item.After.Differs || !item.After.Restorable {
+			continue
+		}
 		revision := int64(0)
 		if item.Current != nil {
 			revision = item.Current.Revision
@@ -453,33 +485,4 @@ func installationCheckpointRef(targetID string, checkpointID int64) storage.Sett
 	return storage.SettingsCheckpointRef{
 		ID: checkpointID, Scope: storage.SettingsCheckpointScopeInstallation, TargetID: targetID,
 	}
-}
-
-func checkpointDocumentItem(
-	kind storage.SettingsCheckpointItemKind,
-	repositoryID, repositoryFullName string,
-	documentVersion int,
-	document any,
-) storage.SettingsCheckpointItem {
-	GinkgoHelper()
-	encoded, err := json.Marshal(document)
-	Expect(err).NotTo(HaveOccurred())
-	state := storage.NewSettingsCheckpointState(encoded, 1)
-
-	return storage.SettingsCheckpointItem{
-		Kind: kind, RepositoryID: repositoryID, RepositoryFullName: repositoryFullName,
-		DocumentVersion: documentVersion, After: &state,
-	}
-}
-
-func checkpointSyncDocumentItem(
-	kind storage.SettingsCheckpointItemKind,
-	repositoryID, repositoryFullName string,
-	syncKind orgsync.Kind,
-	document any,
-) storage.SettingsCheckpointItem {
-	item := checkpointDocumentItem(kind, repositoryID, repositoryFullName, 1, document)
-	item.SyncKind = syncKind
-
-	return item
 }

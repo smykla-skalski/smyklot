@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -49,6 +50,82 @@ func validateInstallationSettingsDocument(
 	default:
 		return fmt.Errorf("unsupported settings document kind %q", kind)
 	}
+}
+
+func validateRuntimeSettingsDocument(document []byte) error {
+	value, err := decodeSettingsDocument[storage.RuntimeSettingsDocument](document)
+	if err != nil {
+		return err
+	}
+
+	return validateRuntimeSettingsDocumentValue(value)
+}
+
+func validateRuntimeSettingsDocumentValue(value storage.RuntimeSettingsDocument) error {
+	if value.LogLevel != nil && !validRuntimeLogLevel(*value.LogLevel) {
+		return fmt.Errorf("unsupported runtime log level %q", *value.LogLevel)
+	}
+	if value.BotConfig != nil {
+		if _, err := config.ParseRunner(string(value.BotConfig.Runner)); err != nil {
+			return fmt.Errorf("invalid runtime behavior defaults: %w", err)
+		}
+	}
+	if err := validateRuntimeRestoreDuration(
+		value.PollInterval,
+		storage.MinRuntimePollInterval,
+		storage.MaxRuntimePollInterval,
+		true,
+		"reaction sweep interval",
+	); err != nil {
+		return err
+	}
+	if err := validateRuntimeRestoreDuration(
+		value.PendingCIQuietPeriod,
+		pendingci.MinPassingQuiet,
+		pendingci.MaxPassingQuiet,
+		false,
+		"merge-after-CI quiet period",
+	); err != nil {
+		return err
+	}
+	if err := validateRuntimeRestoreDuration(
+		value.SessionTTL,
+		time.Minute,
+		storage.MaxRuntimeSessionTTL,
+		false,
+		"session lifetime",
+	); err != nil {
+		return err
+	}
+	return validateRuntimeRestoreDuration(
+		value.PathIndexInterval,
+		0,
+		storage.MaxPathIndexInterval,
+		false,
+		"file list refresh interval",
+	)
+}
+
+func validateRuntimeRestoreDuration(
+	value *time.Duration,
+	minimum, maximum time.Duration,
+	allowDisabled bool,
+	label string,
+) error {
+	if value == nil {
+		return nil
+	}
+	if *value%time.Second != 0 || *value < 0 || *value > maximum {
+		return fmt.Errorf("%s is outside the supported range", label)
+	}
+	if *value == 0 && allowDisabled {
+		return nil
+	}
+	if *value < minimum {
+		return fmt.Errorf("%s is below the supported range", label)
+	}
+
+	return nil
 }
 
 func decodeSettingsDocument[T any](document []byte) (T, error) {

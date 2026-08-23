@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // nullableBool keeps JSON field presence separate from its nullable value.
@@ -54,27 +53,6 @@ func (value *nullableBool) UnmarshalJSON(data []byte) error {
 	value.Value = &decoded
 
 	return nil
-}
-
-type targetSettingsRequest struct {
-	RepositoryDefaultEnabled       *bool                            `json:"repository_default_enabled"`
-	PendingCIModeDefault           *storage.PendingCIMode           `json:"pending_ci_mode_default"`
-	PendingCIBranchPatternsDefault *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
-	PendingCIQuietPeriodSeconds    nullableValue[int64]             `json:"pending_ci_quiet_period_seconds_override"`
-	PathIndexIntervalSeconds       nullableValue[int64]             `json:"path_index_interval_seconds_override"`
-	ConfigPatch                    *config.Patch                    `json:"config_patch"`
-	ExpectedRevision               *int64                           `json:"expected_revision"`
-}
-
-type repositorySettingsRequest struct {
-	EnabledOverride                 nullableBool                                   `json:"enabled_override"`
-	PendingCIModeOverride           nullableValue[storage.PendingCIMode]           `json:"pending_ci_mode_override"`
-	PendingCIBranchPatternsOverride nullableValue[storage.PendingCIBranchPatterns] `json:"pending_ci_branch_patterns_override"`
-	PendingCIQuietPeriodSeconds     nullableValue[int64]                           `json:"pending_ci_quiet_period_seconds_override"`
-	PathIndexIntervalSeconds        nullableValue[int64]                           `json:"path_index_interval_seconds_override"`
-	ConfigPatch                     *config.Patch                                  `json:"config_patch"`
-	IgnoreRepositoryFile            *bool                                          `json:"ignore_repository_file"`
-	ExpectedRevision                *int64                                         `json:"expected_revision"`
 }
 
 type configMigrationActor struct {
@@ -141,72 +119,6 @@ func (s *Server) postRootInstallationSync(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]any{"target_ids": targetIDs})
 }
 
-func (s *Server) putTargetSettings(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	account, target, access, ok := s.requireTarget(w, r, true)
-	if !ok {
-		return
-	}
-	var input targetSettingsRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if input.RepositoryDefaultEnabled == nil || input.ConfigPatch == nil || input.ExpectedRevision == nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "target settings are incomplete")
-		return
-	}
-	if err := validatePatch(*input.ConfigPatch); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
-		return
-	}
-	mode := target.PendingCIModeDefault
-	if input.PendingCIModeDefault != nil {
-		mode = *input.PendingCIModeDefault
-	}
-	patterns := target.PendingCIBranchPatternsDefault
-	if input.PendingCIBranchPatternsDefault != nil {
-		patterns = *input.PendingCIBranchPatternsDefault
-	}
-	quiet := target.PendingCIQuietPeriodOverride
-	if input.PendingCIQuietPeriodSeconds.Present {
-		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
-	}
-	if err := storage.ValidateTargetPendingCISettings(mode, patterns, quiet); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
-		return
-	}
-	pathIndex, err := pathIndexOverride(
-		target.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
-		return
-	}
-	updated, err := s.updateTargetSettings(r.Context(), storage.TargetSettingsChange{
-		TargetID:                       r.PathValue("target"),
-		ActorAccountID:                 account.ID,
-		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
-		PendingCIModeDefault:           mode,
-		PendingCIBranchPatternsDefault: patterns,
-		PendingCIQuietPeriodOverride:   quiet,
-		PathIndexIntervalOverride:      pathIndex,
-		RetunePendingCIQuietPeriod:     input.PendingCIQuietPeriodSeconds.Present,
-		DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
-		ConfigPatch:                    *input.ConfigPatch,
-		ExpectedRevision:               *input.ExpectedRevision,
-		ChangedAt:                      s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	s.pendingCI.Wake()
-	s.wakePendingCIGates()
-	s.Announce(updated.ID, "")
-	writeJSON(w, http.StatusOK, targetDTO(s.runtimeValues(), updated, access))
-}
-
 func (s *Server) getRepositories(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
@@ -236,82 +148,6 @@ func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), target, repository))
-}
-
-func (s *Server) putRepositorySettings(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	account, target, _, ok := s.requireTarget(w, r, true)
-	if !ok {
-		return
-	}
-	repository, ok := s.repository(w, r, target)
-	if !ok {
-		return
-	}
-	var input repositorySettingsRequest
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	if !input.EnabledOverride.Present || input.ConfigPatch == nil ||
-		input.IgnoreRepositoryFile == nil || input.ExpectedRevision == nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "repository settings are incomplete")
-		return
-	}
-	if err := validatePatch(*input.ConfigPatch); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_config", err.Error())
-		return
-	}
-	mode := repository.PendingCIModeOverride
-	if input.PendingCIModeOverride.Present {
-		mode = input.PendingCIModeOverride.Value
-	}
-	patterns := repository.PendingCIBranchPatternsOverride
-	if input.PendingCIBranchPatternsOverride.Present {
-		patterns = input.PendingCIBranchPatternsOverride.Value
-	}
-	quiet := repository.PendingCIQuietPeriodOverride
-	if input.PendingCIQuietPeriodSeconds.Present {
-		quiet = pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
-	}
-	if err := storage.ValidateRepositoryPendingCISettings(mode, patterns, quiet); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_pending_ci_settings", err.Error())
-		return
-	}
-	pathIndex, err := pathIndexOverride(
-		repository.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
-	if err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_path_index_interval", err.Error())
-		return
-	}
-	updated, err := s.updateRepositorySettings(r.Context(), storage.RepositorySettingsChange{
-		TargetID:                        target.ID,
-		RepositoryID:                    r.PathValue("repository"),
-		ActorAccountID:                  account.ID,
-		EnabledOverride:                 input.EnabledOverride.Value,
-		PendingCIModeOverride:           mode,
-		PendingCIBranchPatternsOverride: patterns,
-		PendingCIQuietPeriodOverride:    quiet,
-		PathIndexIntervalOverride:       pathIndex,
-		RetunePendingCIQuietPeriod:      input.PendingCIQuietPeriodSeconds.Present,
-		DeploymentPendingCIQuietPeriod:  s.cfg.PendingCIQuietPeriod,
-		ConfigPatch:                     *input.ConfigPatch,
-		IgnoreRepositoryFile:            *input.IgnoreRepositoryFile,
-		ExpectedRevision:                *input.ExpectedRevision,
-		ChangedAt:                       s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	s.pendingCI.Wake()
-	s.wakePendingCIGates()
-	if !s.attachPendingCIGate(w, r, &updated) {
-		return
-	}
-	s.Announce(target.ID, updated.ID)
-	writeJSON(w, http.StatusOK, repositoryDetailDTO(s.runtimeValues(), target, updated))
 }
 
 // pathIndexOverride reads a refresh interval off the wire, keeping what is
@@ -488,8 +324,8 @@ func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request
 	if change == "" {
 		change = storage.AuditChangeAll
 	}
-	if change != storage.AuditChangeAll && change != storage.AuditChangeEnablement &&
-		change != storage.AuditChangeRepository && change != storage.AuditChangeAccount &&
+	if change != storage.AuditChangeAll && change != storage.AuditChangeRepository &&
+		change != storage.AuditChangeAccount &&
 		change != storage.AuditChangeSync {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
 		return

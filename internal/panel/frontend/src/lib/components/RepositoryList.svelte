@@ -1166,6 +1166,11 @@
                 title={repository.name}
               >
                 <strong class="band-trim">{repository.name}</strong>
+                {#if repositoryDirty(repository.id)}
+                  <span class="repository-unsaved-marker">
+                    <Chip tone="warning" small>Unsaved changes</Chip>
+                  </span>
+                {/if}
                 {#if repository.config_override_count > 0}
                   <span class="override-chip band-trim">
                     {repository.config_override_count}
@@ -1661,6 +1666,14 @@
     overflow-clip-margin: 0.35em;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* A visible destination marker, not only the row's colour and inset. The
+     shared small chip keeps the state legible and keyed in every theme, while
+     this wrapper keeps it from shrinking away beside a long repository name. */
+  .repository-unsaved-marker {
+    display: inline-flex;
+    flex: none;
   }
 
   /* Overrides are exceptional, so they ride along with the name instead of

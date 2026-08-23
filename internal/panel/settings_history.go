@@ -16,6 +16,7 @@ import (
 const maxInstallationSettingsRestoreBody = 1 << 20
 
 type installationSettingsRestoreRequest struct {
+	State      string                                        `json:"state"`
 	Selections []installationSettingsRestoreSelectionRequest `json:"selections"`
 }
 
@@ -26,38 +27,44 @@ type installationSettingsRestoreSelectionRequest struct {
 	ExpectedRevision *int64 `json:"expected_revision"`
 }
 
-type installationSettingsCheckpointResponse struct {
-	ID             string                                       `json:"id"`
-	Action         string                                       `json:"action"`
-	Actor          accountResponse                              `json:"actor"`
-	RestoredFromID *string                                      `json:"restored_from_id,omitempty"`
-	CreatedAt      time.Time                                    `json:"created_at"`
-	AffectedKinds  []storage.SettingsCheckpointItemKind         `json:"affected_kinds"`
-	Items          []installationSettingsCheckpointItemResponse `json:"items"`
+type settingsCheckpointResponse struct {
+	ID             string                                `json:"id"`
+	Action         string                                `json:"action"`
+	Actor          accountResponse                       `json:"actor"`
+	RestoredFromID *string                               `json:"restored_from_id,omitempty"`
+	RestoredSide   storage.SettingsCheckpointRestoreSide `json:"restored_side,omitempty"`
+	CreatedAt      time.Time                             `json:"created_at"`
+	AffectedKinds  []storage.SettingsCheckpointItemKind  `json:"affected_kinds"`
+	Items          []settingsCheckpointItemResponse      `json:"items"`
 }
 
-type installationSettingsCheckpointItemResponse struct {
-	Kind               storage.SettingsCheckpointItemKind   `json:"kind"`
-	RepositoryID       string                               `json:"repository_id,omitempty"`
-	RepositoryFullName string                               `json:"repository_full_name,omitempty"`
-	SyncKind           orgsync.Kind                         `json:"sync_kind,omitempty"`
-	DocumentVersion    int                                  `json:"document_version"`
-	Before             *installationSettingsCheckpointState `json:"before"`
-	After              *installationSettingsCheckpointState `json:"after"`
-	Current            *installationSettingsCheckpointState `json:"current"`
-	Changed            bool                                 `json:"changed"`
-	Differs            bool                                 `json:"differs"`
-	Restorable         bool                                 `json:"restorable"`
-	Incompatibility    *installationSettingsIncompatibility `json:"incompatibility,omitempty"`
+type settingsCheckpointItemResponse struct {
+	Kind               storage.SettingsCheckpointItemKind `json:"kind"`
+	RepositoryID       string                             `json:"repository_id,omitempty"`
+	RepositoryFullName string                             `json:"repository_full_name,omitempty"`
+	SyncKind           orgsync.Kind                       `json:"sync_kind,omitempty"`
+	DocumentVersion    int                                `json:"document_version"`
+	Before             settingsCheckpointSideResponse     `json:"before"`
+	After              settingsCheckpointSideResponse     `json:"after"`
+	Current            *settingsCheckpointState           `json:"current"`
+	Changed            bool                               `json:"changed"`
 }
 
-type installationSettingsCheckpointState struct {
+type settingsCheckpointSideResponse struct {
+	Available       bool                               `json:"available"`
+	State           *settingsCheckpointState           `json:"state"`
+	Differs         bool                               `json:"differs"`
+	Restorable      bool                               `json:"restorable"`
+	Incompatibility *settingsCheckpointIncompatibility `json:"incompatibility,omitempty"`
+}
+
+type settingsCheckpointState struct {
 	Document json.RawMessage `json:"document"`
 	Digest   string          `json:"digest"`
 	Revision int64           `json:"revision"`
 }
 
-type installationSettingsIncompatibility struct {
+type settingsCheckpointIncompatibility struct {
 	Code   string `json:"code"`
 	Reason string `json:"reason"`
 }
@@ -86,6 +93,35 @@ func (s *Server) getRootInstallationSettingsCheckpoint(w http.ResponseWriter, r 
 	s.writeInstallationSettingsCheckpoint(w, r, root.Target)
 }
 
+func (s *Server) getInstallationSettingsBaseline(w http.ResponseWriter, r *http.Request) {
+	_, target, _, ok := s.requireTarget(w, r, false)
+	if !ok {
+		return
+	}
+	s.writeInstallationSettingsBaseline(w, r, target)
+}
+
+func (s *Server) getRootInstallationSettingsBaseline(w http.ResponseWriter, r *http.Request) {
+	root, ok := s.requireRootTarget(w, r, false)
+	if !ok {
+		return
+	}
+	s.writeInstallationSettingsBaseline(w, r, root.Target)
+}
+
+func (s *Server) writeInstallationSettingsBaseline(
+	w http.ResponseWriter,
+	r *http.Request,
+	target storage.Target,
+) {
+	inspection, err := s.store.InspectInstallationSettingsBaseline(r.Context(), target.ID)
+	if err != nil {
+		s.writeSettingsHistoryError(w, err, s.writeStorageError)
+		return
+	}
+	s.writeSettingsCheckpointInspection(w, r, inspection)
+}
+
 func (s *Server) writeInstallationSettingsCheckpoint(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -105,12 +141,20 @@ func (s *Server) writeInstallationSettingsCheckpoint(
 		s.writeSettingsHistoryError(w, err, s.writeStorageError)
 		return
 	}
+	s.writeSettingsCheckpointInspection(w, r, inspection)
+}
+
+func (s *Server) writeSettingsCheckpointInspection(
+	w http.ResponseWriter,
+	r *http.Request,
+	inspection storage.SettingsCheckpointInspection,
+) {
 	actor, err := s.store.GetAccount(r.Context(), inspection.Checkpoint.ActorAccountID)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, installationSettingsCheckpointDTO(inspection, actor))
+	writeJSON(w, http.StatusOK, settingsCheckpointDTO(inspection, actor))
 }
 
 func (s *Server) postInstallationSettingsRestore(w http.ResponseWriter, r *http.Request) {
@@ -193,6 +237,7 @@ func (s *Server) prepareInstallationSettingsRestore(
 		TargetID: targetID, CheckpointID: checkpointID, ActorAccountID: actor.accountID,
 		ElevationID: actor.elevationID, SessionTokenHash: actor.sessionTokenHash,
 		ChangedAt: s.now().UTC(), DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
+		Side:       storage.SettingsCheckpointRestoreSide(input.State),
 		Selections: make([]storage.SettingsCheckpointRestoreSelection, 0, len(input.Selections)),
 	}
 	for _, inputSelection := range input.Selections {
@@ -305,24 +350,24 @@ func (s *Server) writeSettingsHistoryError(
 	}
 }
 
-func installationSettingsCheckpointDTO(
-	inspection storage.InstallationSettingsCheckpointInspection,
+func settingsCheckpointDTO(
+	inspection storage.SettingsCheckpointInspection,
 	actor storage.Account,
-) installationSettingsCheckpointResponse {
+) settingsCheckpointResponse {
 	checkpoint := inspection.Checkpoint
-	answer := installationSettingsCheckpointResponse{
-		ID: strconv.FormatInt(checkpoint.ID, 10), Action: settingsCheckpointAction(checkpoint.Action),
+	answer := settingsCheckpointResponse{
+		ID: strconv.FormatInt(checkpoint.ID, 10), Action: settingsCheckpointAction(checkpoint),
 		Actor: accountDTO(actor), RestoredFromID: stringID(checkpoint.RestoredFromID),
-		CreatedAt: checkpoint.CreatedAt, AffectedKinds: []storage.SettingsCheckpointItemKind{},
-		Items: make([]installationSettingsCheckpointItemResponse, 0, len(inspection.Items)),
+		RestoredSide: checkpoint.RestoredSide,
+		CreatedAt:    checkpoint.CreatedAt, AffectedKinds: []storage.SettingsCheckpointItemKind{},
+		Items: make([]settingsCheckpointItemResponse, 0, len(inspection.Items)),
 	}
 	affected := map[storage.SettingsCheckpointItemKind]bool{}
 	for _, item := range inspection.Items {
-		changed := settingsCheckpointStatesDiffer(item.Before, item.After)
-		if changed {
+		if item.Changed {
 			affected[item.Identity.Kind] = true
 		}
-		answer.Items = append(answer.Items, installationSettingsCheckpointItemDTO(item, changed))
+		answer.Items = append(answer.Items, settingsCheckpointItemDTO(item))
 	}
 	for kind := range affected {
 		answer.AffectedKinds = append(answer.AffectedKinds, kind)
@@ -334,64 +379,67 @@ func installationSettingsCheckpointDTO(
 	return answer
 }
 
-func installationSettingsCheckpointItemDTO(
+func settingsCheckpointItemDTO(
 	item storage.SettingsCheckpointInspectionItem,
-	changed bool,
-) installationSettingsCheckpointItemResponse {
-	return installationSettingsCheckpointItemResponse{
+) settingsCheckpointItemResponse {
+	return settingsCheckpointItemResponse{
 		Kind: item.Identity.Kind, RepositoryID: item.Identity.RepositoryID,
 		RepositoryFullName: item.RepositoryFullName, SyncKind: item.Identity.SyncKind,
 		DocumentVersion: item.DocumentVersion,
-		Before:          installationSettingsCheckpointStateDTO(item.Before),
-		After:           installationSettingsCheckpointStateDTO(item.After),
-		Current:         installationSettingsCheckpointStateDTO(item.Current),
-		Changed:         changed, Differs: item.Differs, Restorable: item.Restorable,
-		Incompatibility: installationSettingsIncompatibilityDTO(item.Incompatibility),
+		Before:          settingsCheckpointSideDTO(item.Before),
+		After:           settingsCheckpointSideDTO(item.After),
+		Current:         settingsCheckpointStateDTO(item.Current),
+		Changed:         item.Changed,
 	}
 }
 
-func installationSettingsIncompatibilityDTO(
+func settingsCheckpointSideDTO(
+	side storage.SettingsCheckpointInspectionSide,
+) settingsCheckpointSideResponse {
+	return settingsCheckpointSideResponse{
+		Available:       side.Available,
+		State:           settingsCheckpointStateDTO(side.State),
+		Differs:         side.Differs,
+		Restorable:      side.Restorable,
+		Incompatibility: settingsCheckpointIncompatibilityDTO(side.Incompatibility),
+	}
+}
+
+func settingsCheckpointIncompatibilityDTO(
 	value *storage.SettingsCheckpointIncompatibility,
-) *installationSettingsIncompatibility {
+) *settingsCheckpointIncompatibility {
 	if value == nil {
 		return nil
 	}
 
-	return &installationSettingsIncompatibility{Code: value.Code, Reason: value.Reason}
+	return &settingsCheckpointIncompatibility{Code: value.Code, Reason: value.Reason}
 }
 
-func installationSettingsCheckpointStateDTO(
+func settingsCheckpointStateDTO(
 	state *storage.SettingsCheckpointState,
-) *installationSettingsCheckpointState {
+) *settingsCheckpointState {
 	if state == nil {
 		return nil
 	}
 
-	return &installationSettingsCheckpointState{
+	return &settingsCheckpointState{
 		Document: append(json.RawMessage(nil), state.Document...),
 		Digest:   state.Digest, Revision: state.Revision,
 	}
 }
 
-func settingsCheckpointStatesDiffer(
-	before *storage.SettingsCheckpointState,
-	after *storage.SettingsCheckpointState,
-) bool {
-	if before == nil || after == nil {
-		return before != nil || after != nil
+func settingsCheckpointAction(checkpoint storage.SettingsCheckpoint) string {
+	prefix := "installation"
+	if checkpoint.Scope == storage.SettingsCheckpointScopeRoot {
+		prefix = "runtime"
 	}
-
-	return before.Digest != after.Digest
-}
-
-func settingsCheckpointAction(action storage.SettingsCheckpointAction) string {
-	switch action {
+	switch checkpoint.Action {
 	case storage.SettingsCheckpointActionSave:
-		return "installation.settings.saved"
+		return prefix + ".settings.saved"
 	case storage.SettingsCheckpointActionRestore:
-		return "installation.settings.restored"
+		return prefix + ".settings.restored"
 	default:
-		return "installation.settings.baseline"
+		return prefix + ".settings.baseline"
 	}
 }
 

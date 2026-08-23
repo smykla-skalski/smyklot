@@ -74,6 +74,55 @@ BEFORE INSERT ON %[1]s.security_notifications
 FOR EACH ROW EXECUTE FUNCTION %[1]s.reject_security_notification();`, schema))
 			Expect(err).NotTo(HaveOccurred())
 		},
+		RejectSettingsCheckpoints: func(ctx context.Context) {
+			raw := connect(ctx)
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+
+			_, err := raw.ExecContext(ctx, fmt.Sprintf(`
+CREATE FUNCTION %[1]s.reject_settings_checkpoint() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'settings checkpoint write rejected';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER reject_settings_checkpoint
+BEFORE INSERT ON %[1]s.settings_checkpoints
+FOR EACH ROW EXECUTE FUNCTION %[1]s.reject_settings_checkpoint();`, schema))
+			Expect(err).NotTo(HaveOccurred())
+		},
+		CountSettingsCheckpoints: func(ctx context.Context) int64 {
+			raw := connect(ctx)
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			var count int64
+			Expect(raw.QueryRowContext(ctx,
+				"SELECT COUNT(*) FROM "+schema+".settings_checkpoints",
+			).Scan(&count)).To(Succeed())
+
+			return count
+		},
+		RewriteSettingsCheckpointItem: func(
+			ctx context.Context,
+			rewrite storagetest.SettingsCheckpointItemRewrite,
+		) {
+			raw := connect(ctx)
+			defer func() { Expect(raw.Close()).To(Succeed()) }()
+			result, err := raw.ExecContext(ctx, `
+UPDATE `+schema+`.settings_checkpoint_items
+SET document_version = $1, after_document = $2, after_digest = $3
+WHERE checkpoint_id = $4 AND item_kind = $5 AND repository_id = $6 AND sync_kind = $7`,
+				rewrite.DocumentVersion,
+				string(rewrite.AfterDocument),
+				storage.DigestSettingsCheckpointDocument(rewrite.AfterDocument),
+				rewrite.CheckpointID,
+				rewrite.Identity.Kind,
+				rewrite.Identity.RepositoryID,
+				rewrite.Identity.SyncKind,
+			)
+			Expect(err).NotTo(HaveOccurred())
+			updated, err := result.RowsAffected()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(updated).To(Equal(int64(1)))
+		},
 	})
 })
 

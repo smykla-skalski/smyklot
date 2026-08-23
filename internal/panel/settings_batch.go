@@ -82,8 +82,8 @@ func (s *Server) putAuthorizedInstallationSettingsBatch(
 	writeJSON(w, http.StatusOK, answer)
 }
 
-// saveInstallationSettingsBatch holds the same Pending CI exclusion as the
-// compatibility writers, but calls the storage transaction exactly once.
+// saveInstallationSettingsBatch holds the Pending CI exclusion while calling
+// the storage transaction exactly once.
 func (s *Server) saveInstallationSettingsBatch(
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,

@@ -22,18 +22,17 @@ const (
 
 // AppAuditEvent is one normalized application-wide audit event.
 type AppAuditEvent struct {
-	ID                     int64
-	Category               AuditCategory
-	TargetID               *string
-	Target                 *Account
-	Actor                  Account
-	Subject                *Account
-	ElevationID            *string
-	SyncConfigCheckpointID *int64
-	SettingsCheckpointID   *int64
-	Action                 string
-	Summary                string
-	CreatedAt              time.Time
+	ID                   int64
+	Category             AuditCategory
+	TargetID             *string
+	Target               *Account
+	Actor                Account
+	Subject              *Account
+	ElevationID          *string
+	SettingsCheckpointID *int64
+	Action               string
+	Summary              string
+	CreatedAt            time.Time
 }
 
 // RootAuditPageRequest selects one filtered app-wide audit window.

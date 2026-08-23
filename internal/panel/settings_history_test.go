@@ -17,7 +17,7 @@ import (
 
 const installationSettingsCheckpointPath = "/panel/api/v1/targets/github:installation:10/settings/checkpoints/"
 
-func TestInstallationSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) {
+func TestSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	saved := harness.request(
@@ -42,10 +42,10 @@ func TestInstallationSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) 
 		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, false)), session,
 	)
 	requireResponse(t, changedTarget, "change current target", http.StatusOK, `"revision":3`)
-	changedLabels := harness.request(t, http.MethodPut,
-		"/panel/api/v1/targets/github:installation:10/sync/config/labels",
-		strings.NewReader(`{"enabled":true,"labels":[{"name":"changed","color":"00ff00"}],
-			"allow_removal":false,"excludes":[],"expected_revision":1}`), session)
+	changedLabels := harness.request(t, http.MethodPut, installationSettingsBatchPath,
+		strings.NewReader(`{"sync_configs":[{"kind":"labels","enabled":true,
+			"labels":[{"name":"changed","color":"00ff00"}],
+			"allow_removal":false,"excludes":[],"expected_revision":1}]}`), session)
 	requireResponse(t, changedLabels, "change current labels", http.StatusOK, `"revision":2`)
 
 	path := installationSettingsCheckpointPath + *savedAnswer.CheckpointID
@@ -54,7 +54,7 @@ func TestInstallationSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) 
 		`"action":"installation.settings.saved"`, `"login":"owner"`,
 		`"kind":"target"`, `"kind":"sync_config"`, `"differs":true`,
 		`"restorable":true`, `"document":{"repository_default_enabled":true`)
-	var inspection installationSettingsCheckpointResponse
+	var inspection settingsCheckpointResponse
 	if err := json.Unmarshal(inspectionResponse.Body.Bytes(), &inspection); err != nil {
 		t.Fatal(err)
 	}
@@ -64,6 +64,7 @@ func TestInstallationSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) 
 	subscriber, unsubscribe := harness.server.events.subscribe("", "settings-restore")
 	t.Cleanup(unsubscribe)
 	restored := harness.request(t, http.MethodPost, path+"/restore", strings.NewReader(`{
+		"state":"after",
 		"selections":[
 			{"kind":"target","expected_revision":3},
 			{"kind":"sync_config","sync_kind":"labels","expected_revision":2}
@@ -96,7 +97,7 @@ func TestInstallationSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) 
 
 func assertCheckpointItem(
 	t *testing.T,
-	inspection installationSettingsCheckpointResponse,
+	inspection settingsCheckpointResponse,
 	kind storage.SettingsCheckpointItemKind,
 	syncKind orgsync.Kind,
 	currentRevision int64,
@@ -104,8 +105,9 @@ func assertCheckpointItem(
 	t.Helper()
 	for _, item := range inspection.Items {
 		if item.Kind == kind && item.SyncKind == syncKind {
-			if !item.Changed || !item.Differs || !item.Restorable || item.Current == nil ||
-				item.Current.Revision != currentRevision || item.Incompatibility != nil {
+			if !item.Changed || !item.After.Available || !item.After.Differs ||
+				!item.After.Restorable || item.After.State == nil || item.Current == nil ||
+				item.Current.Revision != currentRevision || item.After.Incompatibility != nil {
 				t.Fatalf("checkpoint item %s/%s = %#v", kind, syncKind, item)
 			}
 			return
@@ -161,7 +163,7 @@ func TestInstallationSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
 	path := installationSettingsCheckpointPath + *saved.CheckpointID + "/restore"
 
 	noop := harness.request(t, http.MethodPost, path,
-		strings.NewReader(`{"selections":[{"kind":"target","expected_revision":2}]}`), session)
+		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), session)
 	requireResponse(t, noop, "no-op settings restore", http.StatusConflict,
 		`"code":"settings_restore_noop"`)
 
@@ -173,7 +175,7 @@ func TestInstallationSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
 		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, false)), session)
 	requireResponse(t, changed, "change settings after checkpoint", http.StatusOK, `"revision":3`)
 	stale := harness.request(t, http.MethodPost, path,
-		strings.NewReader(`{"selections":[{"kind":"target","expected_revision":2}]}`), session)
+		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), session)
 	requireResponse(t, stale, "stale settings restore", http.StatusConflict,
 		`"code":"conflict"`, "inspect the checkpoint again")
 	target, err = harness.store.GetTarget(t.Context(), target.ID)
@@ -226,11 +228,11 @@ func TestInstallationSettingsCheckpointAuthorizationAndSameOrigin(t *testing.T) 
 	inspection := harness.request(t, http.MethodGet, path, nil, viewerSession)
 	requireResponse(t, inspection, "viewer settings inspection", http.StatusOK)
 	blocked := harness.request(t, http.MethodPost, path+"/restore",
-		strings.NewReader(`{"selections":[{"kind":"target","expected_revision":2}]}`), viewerSession)
+		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), viewerSession)
 	requireResponse(t, blocked, "viewer settings restore", http.StatusNotFound)
 
 	request := httptest.NewRequest(http.MethodPost, path+"/restore",
-		strings.NewReader(`{"selections":[{"kind":"target","expected_revision":2}]}`))
+		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`))
 	request.AddCookie(ownerSession)
 	request.Header.Set("Origin", "https://untrusted.example")
 	request.Header.Set("Content-Type", "application/json")
@@ -249,9 +251,9 @@ type settingsHistoryFailureStore struct {
 func (store settingsHistoryFailureStore) InspectInstallationSettingsCheckpoint(
 	ctx context.Context,
 	ref storage.SettingsCheckpointRef,
-) (storage.InstallationSettingsCheckpointInspection, error) {
+) (storage.SettingsCheckpointInspection, error) {
 	if store.inspectErr != nil {
-		return storage.InstallationSettingsCheckpointInspection{}, store.inspectErr
+		return storage.SettingsCheckpointInspection{}, store.inspectErr
 	}
 
 	return store.Store.InspectInstallationSettingsCheckpoint(ctx, ref)
@@ -299,7 +301,7 @@ func TestInstallationSettingsCheckpointMapsSafeErrors(t *testing.T) {
 				Store: realStore, restoreErr: test.err, seen: &seen,
 			}
 			response := harness.request(t, http.MethodPost, path+"/restore",
-				strings.NewReader(`{"selections":[{"kind":"target","expected_revision":1}]}`), session)
+				strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":1}]}`), session)
 			requireResponse(t, response, test.name, test.status, `"code":"`+test.code+`"`)
 			if seen.DeploymentPendingCIQuietPeriod != 30*time.Second {
 				t.Fatalf("deployment quiet period = %s", seen.DeploymentPendingCIQuietPeriod)
@@ -351,7 +353,7 @@ func TestRootInstallationSettingsRestoreDelegatesRootErrors(t *testing.T) {
 				Store: realStore, restoreErr: test.err,
 			}
 			response := harness.request(t, http.MethodPost, path,
-				strings.NewReader(`{"selections":[{"kind":"target","expected_revision":1}]}`),
+				strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":1}]}`),
 				session)
 			requireResponse(t, response, test.name, test.status,
 				`"code":"`+test.code+`"`, test.message)

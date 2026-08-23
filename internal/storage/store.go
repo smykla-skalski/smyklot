@@ -73,19 +73,28 @@ type ConfigStore interface {
 	InspectInstallationSettingsCheckpoint(
 		context.Context,
 		SettingsCheckpointRef,
-	) (InstallationSettingsCheckpointInspection, error)
+	) (SettingsCheckpointInspection, error)
+	InspectInstallationSettingsBaseline(
+		context.Context,
+		string,
+	) (SettingsCheckpointInspection, error)
 	RestoreInstallationSettings(
 		context.Context,
 		RestoreInstallationSettingsRequest,
 	) (SaveInstallationSettingsResult, error)
-	UpdateTargetSettings(context.Context, TargetSettingsChange) (Target, error)
-	UpdateRepositorySettings(context.Context, RepositorySettingsChange) (Repository, error)
 	UpdateRepositoryFileState(context.Context, RepositoryFileState) (bool, error)
 	SetRepositoryConfigMigration(context.Context, RepositoryConfigMigration) error
 	GetRuntimeSettings(context.Context) (RuntimeSettings, error)
-	UpdateRuntimeSettings(context.Context, RuntimeSettingsChange) (RuntimeSettings, error)
-	CreateSettingsCheckpoint(context.Context, SettingsCheckpointCreate) (SettingsCheckpoint, error)
-	GetSettingsCheckpoint(context.Context, SettingsCheckpointRef) (SettingsCheckpoint, error)
+	SaveRuntimeSettings(context.Context, RuntimeSettingsChange) (SaveRuntimeSettingsResult, error)
+	InspectRootSettingsCheckpoint(
+		context.Context,
+		SettingsCheckpointRef,
+	) (SettingsCheckpointInspection, error)
+	InspectRootSettingsBaseline(context.Context) (SettingsCheckpointInspection, error)
+	RestoreRuntimeSettings(
+		context.Context,
+		RestoreRuntimeSettingsRequest,
+	) (SaveRuntimeSettingsResult, error)
 }
 
 // PendingCIGateStore owns the desired/effective repository protection

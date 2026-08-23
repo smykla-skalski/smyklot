@@ -20,19 +20,21 @@ func TestInstallationSettingsRestoreRejectsMalformedSelections(t *testing.T) {
 		body string
 	}{
 		{"empty", `{}`},
-		{"empty selections", `{"selections":[]}`},
-		{"unknown field", `{"selections":[],"surprise":true}`},
-		{"missing revision", `{"selections":[{"kind":"target"}]}`},
-		{"null revision", `{"selections":[{"kind":"target","expected_revision":null}]}`},
-		{"negative revision", `{"selections":[{"kind":"target","expected_revision":-1}]}`},
-		{"unknown kind", `{"selections":[{"kind":"future","expected_revision":1}]}`},
-		{"Root kind", `{"selections":[{"kind":"runtime","expected_revision":1}]}`},
-		{"target discriminator", `{"selections":[{"kind":"target","repository_id":"repository-20","expected_revision":1}]}`},
-		{"missing repository", `{"selections":[{"kind":"repository","expected_revision":1}]}`},
-		{"missing Sync kind", `{"selections":[{"kind":"sync_config","expected_revision":0}]}`},
-		{"unknown Sync kind", `{"selections":[{"kind":"sync_config","sync_kind":"future","expected_revision":0}]}`},
-		{"override missing repository", `{"selections":[{"kind":"sync_override","sync_kind":"files","expected_revision":0}]}`},
-		{"duplicate", `{"selections":[{"kind":"target","expected_revision":1},{"kind":"target","expected_revision":1}]}`},
+		{"missing state", `{"selections":[{"kind":"target","expected_revision":1}]}`},
+		{"unknown state", `{"state":"middle","selections":[{"kind":"target","expected_revision":1}]}`},
+		{"empty selections", `{"state":"after","selections":[]}`},
+		{"unknown field", `{"state":"after","selections":[],"surprise":true}`},
+		{"missing revision", `{"state":"after","selections":[{"kind":"target"}]}`},
+		{"null revision", `{"state":"after","selections":[{"kind":"target","expected_revision":null}]}`},
+		{"negative revision", `{"state":"after","selections":[{"kind":"target","expected_revision":-1}]}`},
+		{"unknown kind", `{"state":"after","selections":[{"kind":"future","expected_revision":1}]}`},
+		{"Root kind", `{"state":"after","selections":[{"kind":"runtime","expected_revision":1}]}`},
+		{"target discriminator", `{"state":"after","selections":[{"kind":"target","repository_id":"repository-20","expected_revision":1}]}`},
+		{"missing repository", `{"state":"after","selections":[{"kind":"repository","expected_revision":1}]}`},
+		{"missing Sync kind", `{"state":"after","selections":[{"kind":"sync_config","expected_revision":0}]}`},
+		{"unknown Sync kind", `{"state":"after","selections":[{"kind":"sync_config","sync_kind":"future","expected_revision":0}]}`},
+		{"override missing repository", `{"state":"after","selections":[{"kind":"sync_override","sync_kind":"files","expected_revision":0}]}`},
+		{"duplicate", `{"state":"after","selections":[{"kind":"target","expected_revision":1},{"kind":"target","expected_revision":1}]}`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -44,7 +46,7 @@ func TestInstallationSettingsRestoreRejectsMalformedSelections(t *testing.T) {
 	}
 
 	var selections strings.Builder
-	selections.WriteString(`{"selections":[`)
+	selections.WriteString(`{"state":"after","selections":[`)
 	for index := 0; index <= storage.MaxInstallationSettingsRestoreSelections; index++ {
 		if index > 0 {
 			selections.WriteByte(',')
@@ -63,26 +65,9 @@ func TestInstallationSettingsRestoreRejectsMalformedSelections(t *testing.T) {
 func TestInstallationSettingsCheckpointCannotCrossScopeOrTarget(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
-	runtimeDocument, err := json.Marshal(storage.RuntimeSettingsDocument{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	runtimeState := storage.NewSettingsCheckpointState(runtimeDocument, 1)
-	rootCheckpoint, err := harness.store.CreateSettingsCheckpoint(
-		t.Context(), storage.SettingsCheckpointCreate{
-			Scope: storage.SettingsCheckpointScopeRoot, ActorAccountID: "github:test:user:1",
-			Action: storage.SettingsCheckpointActionSave, CreatedAt: harness.now,
-			Items: []storage.SettingsCheckpointItem{{
-				Kind:            storage.SettingsCheckpointItemRuntime,
-				DocumentVersion: storage.SettingsCheckpointDocumentVersion, After: &runtimeState,
-			}},
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	rootCheckpointID := saveRuntimeSettingsCheckpoint(t, harness, "debug", 0)
 	wrongScope := harness.request(t, http.MethodGet,
-		installationSettingsCheckpointPath+strconv.FormatInt(rootCheckpoint.ID, 10), nil, session)
+		installationSettingsCheckpointPath+strconv.FormatInt(rootCheckpointID, 10), nil, session)
 	requireResponse(t, wrongScope, "Root checkpoint through installation scope",
 		http.StatusNotFound, `"code":"not_found"`)
 
@@ -106,39 +91,23 @@ func TestInstallationSettingsInspectionExposesIncompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	document, err := json.Marshal(storage.TargetSettingsDocument{
-		RepositoryDefaultEnabled:       target.RepositoryDefaultEnabled,
-		PendingCIModeDefault:           target.PendingCIModeDefault,
-		PendingCIBranchPatternsDefault: target.PendingCIBranchPatternsDefault,
-		PendingCIQuietPeriodOverride:   target.PendingCIQuietPeriodOverride,
-		PathIndexIntervalOverride:      target.PathIndexIntervalOverride,
-		ConfigPatch:                    target.ConfigPatch,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	state := storage.NewSettingsCheckpointState(document, target.Revision)
-	checkpoint, err := harness.store.CreateSettingsCheckpoint(
-		t.Context(), storage.SettingsCheckpointCreate{
-			Scope: storage.SettingsCheckpointScopeInstallation, TargetID: target.ID,
-			ActorAccountID: "github:test:user:1", Action: storage.SettingsCheckpointActionSave,
-			CreatedAt: harness.now, Items: []storage.SettingsCheckpointItem{{
-				Kind:            storage.SettingsCheckpointItemTarget,
-				DocumentVersion: storage.SettingsCheckpointDocumentVersion + 1, After: &state,
-			}},
-		},
+	saved := saveTargetSettingsCheckpoint(
+		t, harness, session, target, !target.RepositoryDefaultEnabled,
 	)
+	checkpointID, err := strconv.ParseInt(*saved.CheckpointID, 10, 64)
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := installationSettingsCheckpointPath + strconv.FormatInt(checkpoint.ID, 10)
+	rewriteSettingsCheckpointDocumentVersion(t, harness, checkpointID,
+		storage.SettingsCheckpointItemIdentity{Kind: storage.SettingsCheckpointItemTarget})
+	path := installationSettingsCheckpointPath + *saved.CheckpointID
 	response := harness.request(t, http.MethodGet, path, nil, session)
 	requireResponse(t, response, "incompatible settings inspection", http.StatusOK,
 		`"restorable":false`, `"differs":false`,
 		`"code":"unsupported_document_version"`,
-		`"reason":"This checkpoint uses a settings format this version cannot restore."`)
+		`"reason":"This checkpoint uses a settings format this version cannot restore"`)
 	blocked := harness.request(t, http.MethodPost, path+"/restore",
-		strings.NewReader(`{"selections":[{"kind":"target","expected_revision":1}]}`), session)
+		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), session)
 	requireResponse(t, blocked, "incompatible settings restore", http.StatusConflict,
 		`"code":"settings_restore_blocked"`)
 }
@@ -163,7 +132,7 @@ func TestRootInstallationSettingsRestoreRequiresElevation(t *testing.T) {
 	inspection := harness.request(t, http.MethodGet, path, nil, rootSession)
 	requireResponse(t, inspection, "Root settings inspection", http.StatusOK,
 		`"differs":true`, `"login":"installation-owner"`)
-	body := `{"selections":[{"kind":"target","expected_revision":3}]}`
+	body := `{"state":"after","selections":[{"kind":"target","expected_revision":3}]}`
 	blocked := harness.request(t, http.MethodPost, path+"/restore",
 		strings.NewReader(body), rootSession)
 	requireResponse(t, blocked, "Root settings restore without elevation",

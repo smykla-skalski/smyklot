@@ -6,6 +6,11 @@
   import { fuzzyCandidates } from '../fuzzy';
   import { monogram } from '../identity';
   import type { RootRoute, RootInstallationView } from '../routes';
+  import {
+    getSettingsDraftRegistry,
+    type SettingsDirtyControl,
+    type SettingsScope,
+  } from '../settings-drafts.svelte';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
   import DataTable from './DataTable.svelte';
@@ -36,6 +41,7 @@
     historySection: 'audit' | 'failures';
   } = $props();
 
+  const settingsDrafts = getSettingsDraftRegistry();
   const installationsQuery = createQuery(() => ({
     queryKey: ['root-installations'],
     queryFn: () => api.fetchRootInstallations(),
@@ -105,7 +111,7 @@
   function clickRow(event: MouseEvent, installation: RootInstallation): void {
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('button, a, summary, input') !== null) return;
-    navigate(event, installation, 'defaults');
+    navigate(event, installation, dirtyInstallationView(installation.id));
   }
 
   function keyRow(event: KeyboardEvent, installation: RootInstallation): void {
@@ -113,7 +119,29 @@
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('button, a, summary, input') !== null) return;
     event.preventDefault();
-    onNavigate(installation.account.login, 'defaults');
+    onNavigate(installation.account.login, dirtyInstallationView(installation.id));
+  }
+
+  function installationSettingsScope(targetId: string): SettingsScope {
+    return { type: 'installation', targetId };
+  }
+
+  function dirtyInstallationControls(targetId: string): SettingsDirtyControl[] {
+    return settingsDrafts
+      .dirtyControls(installationSettingsScope(targetId))
+      .toSorted((left, right) => left.changedAt - right.changedAt);
+  }
+
+  function dirtyInstallationCount(targetId: string): number {
+    return dirtyInstallationControls(targetId).length;
+  }
+
+  function dirtyInstallationView(targetId: string): RootInstallationView {
+    const control = dirtyInstallationControls(targetId).find(
+      (candidate) =>
+        candidate.location.section === 'defaults' || candidate.location.section === 'repositories',
+    );
+    return control?.location.section === 'repositories' ? 'repositories' : 'defaults';
   }
 
   function deliveryTitle(installation: RootInstallation): string | undefined {
@@ -213,13 +241,21 @@
       rowKey={(installation) => installation.id}
       columns={COLUMNS}
       rowAttrs={(installation) => ({
-        class: 'installation-row data-row',
+        class: [
+          'installation-row data-row',
+          dirtyInstallationCount(installation.id) > 0 && 'is-unsaved',
+        ]
+          .filter(Boolean)
+          .join(' '),
+        'data-unsaved': dirtyInstallationCount(installation.id) > 0 || undefined,
         tabindex: 0,
         onclick: (event: MouseEvent) => clickRow(event, installation),
         onkeydown: (event: KeyboardEvent) => keyRow(event, installation),
       })}
     >
       {#snippet cells(installation)}
+        {@const dirtyCount = dirtyInstallationCount(installation.id)}
+        {@const destination = dirtyInstallationView(installation.id)}
         <th scope="row">
           <span class="installation-identity">
             <span class="installation-icon">
@@ -230,13 +266,22 @@
             <span class="band-trim-stack">
               <a
                 class="installation-link"
-                href={hrefFor(installation.account.login, 'defaults')}
-                onclick={(event) => navigate(event, installation, 'defaults')}
+                href={hrefFor(installation.account.login, destination)}
+                onclick={(event) => navigate(event, installation, destination)}
               >
                 {installation.account.display_name}
               </a>
               <small>@{installation.account.login} · #{installation.installation_id}</small>
             </span>
+            {#if dirtyCount > 0}
+              <span
+                class="installation-unsaved"
+                aria-label={`${dirtyCount} unsaved ${dirtyCount === 1 ? 'setting' : 'settings'}`}
+                title={`${dirtyCount} unsaved ${dirtyCount === 1 ? 'setting' : 'settings'}`}
+              >
+                <Chip tone="warning" small>Unsaved changes</Chip>
+              </span>
+            {/if}
           </span>
         </th>
         <td class="count-cell">
@@ -385,6 +430,10 @@
     outline-offset: -2px;
   }
 
+  :global(.installation-table-shell .installation-row.is-unsaved) {
+    box-shadow: inset 2px 0 var(--brand-action);
+  }
+
   /* Left, like every other column. The mock reads this cell as a sentence
      ("10 of 28 enabled"), not as a figure to scan down, so right-aligning it
      put the header and the value on two different edges. */
@@ -454,6 +503,12 @@
     align-items: center;
     display: inline-flex;
     gap: var(--space-2);
+    max-width: 100%;
+  }
+
+  .installation-unsaved {
+    display: inline-flex;
+    flex: none;
   }
 
   .installation-identity small {

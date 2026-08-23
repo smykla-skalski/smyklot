@@ -15,8 +15,8 @@ type installationSettingsRestorePreparation struct {
 	prepared preparedInstallationSettings
 }
 
-// RestoreInstallationSettings validates and applies selected After states as
-// one new immutable settings transaction. The source checkpoint is read only.
+// RestoreInstallationSettings validates and applies one selected complete side
+// as a new immutable settings transaction. The source checkpoint is read only.
 func (s *Store) RestoreInstallationSettings(
 	ctx context.Context,
 	request storage.RestoreInstallationSettingsRequest,
@@ -47,6 +47,12 @@ func (s *Store) RestoreInstallationSettings(
 	}
 	if len(work.items) == 0 {
 		return storage.SaveInstallationSettingsResult{}, storage.ErrSettingsRestoreNoop
+	}
+	work.snapshotBefore, err = captureInstallationSettingsSnapshot(
+		ctx, tx, request.TargetID,
+	)
+	if err != nil {
+		return storage.SaveInstallationSettingsResult{}, err
 	}
 
 	elevation, err := s.elevatedWrite(
@@ -100,6 +106,13 @@ func prepareInstallationSettingsRestore(
 	if err != nil {
 		return installationSettingsRestorePreparation{}, err
 	}
+	if inspection.Checkpoint.Action == storage.SettingsCheckpointActionBaseline &&
+		request.Side == storage.SettingsCheckpointRestoreBefore {
+		return installationSettingsRestorePreparation{}, fmt.Errorf(
+			"%w: baseline has no before state",
+			storage.ErrSettingsRestoreBlocked,
+		)
+	}
 	batch, removals, err := installationRestoreBatch(request, inspection)
 	if err != nil {
 		return installationSettingsRestorePreparation{}, err
@@ -120,7 +133,7 @@ type installationSettingsRestoreRemovals struct {
 
 func installationRestoreBatch(
 	request storage.RestoreInstallationSettingsRequest,
-	inspection storage.InstallationSettingsCheckpointInspection,
+	inspection storage.SettingsCheckpointInspection,
 ) (storage.SaveInstallationSettingsRequest, installationSettingsRestoreRemovals, error) {
 	items := make(map[string]storage.SettingsCheckpointInspectionItem, len(inspection.Items))
 	for _, item := range inspection.Items {
@@ -145,11 +158,11 @@ func installationRestoreBatch(
 				storage.ErrSettingsRestoreBlocked,
 			)
 		}
-		if err := validateInstallationRestoreSelection(selection, item); err != nil {
+		if err := validateInstallationRestoreSelection(request.Side, selection, item); err != nil {
 			return batch, removals, err
 		}
 		if err := appendInstallationRestoreSelection(
-			&batch, &removals, selection, item,
+			&batch, &removals, request.Side, selection, item,
 			request.DeploymentPendingCIQuietPeriod,
 		); err != nil {
 			return batch, removals, err
@@ -160,13 +173,15 @@ func installationRestoreBatch(
 }
 
 func validateInstallationRestoreSelection(
+	side storage.SettingsCheckpointRestoreSide,
 	selection storage.SettingsCheckpointRestoreSelection,
 	item storage.SettingsCheckpointInspectionItem,
 ) error {
-	if !item.Restorable {
+	selected := settingsCheckpointInspectionSide(item, side)
+	if !selected.Restorable {
 		code := "incompatible"
-		if item.Incompatibility != nil {
-			code = item.Incompatibility.Code
+		if selected.Incompatibility != nil {
+			code = selected.Incompatibility.Code
 		}
 
 		return fmt.Errorf("%w: %s", storage.ErrSettingsRestoreBlocked, code)
@@ -185,13 +200,18 @@ func validateInstallationRestoreSelection(
 func appendInstallationRestoreSelection(
 	batch *storage.SaveInstallationSettingsRequest,
 	removals *installationSettingsRestoreRemovals,
+	side storage.SettingsCheckpointRestoreSide,
 	selection storage.SettingsCheckpointRestoreSelection,
 	item storage.SettingsCheckpointInspectionItem,
 	deploymentQuietPeriod time.Duration,
 ) error {
+	state := settingsCheckpointInspectionSide(item, side).State
 	switch selection.Identity.Kind {
 	case storage.SettingsCheckpointItemTarget:
-		value, err := decodeSettingsDocument[storage.TargetSettingsDocument](item.After.Document)
+		if state == nil {
+			return fmt.Errorf("%w: target state is absent", storage.ErrSettingsRestoreBlocked)
+		}
+		value, err := decodeSettingsDocument[storage.TargetSettingsDocument](state.Document)
 		if err != nil {
 			return blockedRestoreDecode(err)
 		}
@@ -206,7 +226,10 @@ func appendInstallationRestoreSelection(
 			DeploymentPendingCIQuietPeriod: deploymentQuietPeriod,
 		}
 	case storage.SettingsCheckpointItemRepository:
-		value, err := decodeSettingsDocument[storage.RepositorySettingsDocument](item.After.Document)
+		if state == nil {
+			return fmt.Errorf("%w: repository state is absent", storage.ErrSettingsRestoreBlocked)
+		}
+		value, err := decodeSettingsDocument[storage.RepositorySettingsDocument](state.Document)
 		if err != nil {
 			return blockedRestoreDecode(err)
 		}
@@ -225,14 +248,25 @@ func appendInstallationRestoreSelection(
 			},
 		)
 	case storage.SettingsCheckpointItemSyncConfig:
-		return appendRestoreSyncConfig(batch, removals, selection, item.After)
+		return appendRestoreSyncConfig(batch, removals, selection, state)
 	case storage.SettingsCheckpointItemSyncOverride:
-		return appendRestoreSyncOverride(batch, removals, selection, item.After)
+		return appendRestoreSyncOverride(batch, removals, selection, state)
 	default:
 		return fmt.Errorf("%w: unsupported selected resource", storage.ErrSettingsRestoreBlocked)
 	}
 
 	return nil
+}
+
+func settingsCheckpointInspectionSide(
+	item storage.SettingsCheckpointInspectionItem,
+	side storage.SettingsCheckpointRestoreSide,
+) storage.SettingsCheckpointInspectionSide {
+	if side == storage.SettingsCheckpointRestoreBefore {
+		return item.Before
+	}
+
+	return item.After
 }
 
 func appendRestoreSyncConfig(
@@ -347,10 +381,16 @@ func (s *Store) recordInstallationSettingsRestore(
 	request storage.RestoreInstallationSettingsRequest,
 	work installationSettingsWork,
 ) (int64, int64, error) {
+	after, err := captureInstallationSettingsSnapshot(ctx, tx, request.TargetID)
+	if err != nil {
+		return 0, 0, err
+	}
+	items := completeInstallationSettingsCheckpoint(work.snapshotBefore, after)
 	checkpointID, err := s.createSettingsCheckpoint(ctx, tx, storage.SettingsCheckpointCreate{
 		Scope: storage.SettingsCheckpointScopeInstallation, TargetID: request.TargetID,
 		ActorAccountID: request.ActorAccountID, Action: storage.SettingsCheckpointActionRestore,
-		RestoredFromID: &request.CheckpointID, CreatedAt: request.ChangedAt, Items: work.items,
+		RestoredFromID: &request.CheckpointID, RestoredSide: request.Side,
+		CreatedAt: request.ChangedAt, Items: items,
 	})
 	if err != nil {
 		return 0, 0, err

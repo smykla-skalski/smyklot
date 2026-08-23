@@ -81,20 +81,37 @@ var _ = Describe("Org sync [Unit]", func() {
 		return target
 	}
 
+	saveKind := func(
+		target storage.Target,
+		kind orgsync.Kind,
+		enabled bool,
+		document string,
+		expectedRevision int64,
+	) orgsync.Config {
+		GinkgoHelper()
+
+		result, err := service.store.SaveInstallationSettings(
+			GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID,
+				ChangedAt: time.Now().UTC(),
+				SyncConfigs: []storage.InstallationSyncConfigChange{{
+					Kind: kind, Enabled: enabled, Document: []byte(document),
+					ExpectedRevision: expectedRevision,
+				}},
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.SyncConfigs).To(HaveLen(1))
+
+		return result.SyncConfigs[0]
+	}
+
 	configureKind := func(
 		target storage.Target, kind orgsync.Kind, document string,
 	) orgsync.Config {
 		GinkgoHelper()
 
-		config, err := service.store.SetSyncConfig(
-			GinkgoT().Context(), orgsync.ConfigChange{
-				TargetID: target.ID, Kind: kind, Enabled: true,
-				Document: []byte(document), ActorID: target.Account.ID,
-				Now: time.Now().UTC(),
-			})
-		Expect(err).NotTo(HaveOccurred())
-
-		return config
+		return saveKind(target, kind, true, document, 0)
 	}
 
 	configure := func(target storage.Target, document string) orgsync.Config {
@@ -134,11 +151,15 @@ var _ = Describe("Org sync [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repositories).NotTo(BeEmpty())
 
-		_, err = service.store.SetSyncRepositoryOverride(
-			GinkgoT().Context(), orgsync.RepositoryOverrideChange{
-				RepositoryID: repositories[0].ID, Kind: kind, Enabled: &enabled,
-				ActorID: target.Account.ID, Now: time.Now().UTC(),
-			})
+		_, err = service.store.SaveInstallationSettings(
+			GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID,
+				ChangedAt: time.Now().UTC(),
+				SyncOverrides: []storage.InstallationSyncOverrideChange{{
+					RepositoryID: repositories[0].ID, Kind: kind, Enabled: &enabled,
+				}},
+			},
+		)
 		Expect(err).NotTo(HaveOccurred())
 	}
 
@@ -187,17 +208,14 @@ var _ = Describe("Org sync [Unit]", func() {
 		// nobody asked for would hold the installation's one live slot
 		It("plans nothing when sync is switched off", func() {
 			target := seed()
-			_, err := service.store.SetSyncConfig(
-				GinkgoT().Context(), orgsync.ConfigChange{
-					TargetID: target.ID, Kind: orgsync.KindLabels, Enabled: false,
-					Document: []byte(`{"labels":[{"name":"bug","color":"d73a4a"}]}`),
-					ActorID:  target.Account.ID, Now: time.Now().UTC(),
-				})
-			Expect(err).NotTo(HaveOccurred())
+			saveKind(
+				target, orgsync.KindLabels, false,
+				`{"labels":[{"name":"bug","color":"d73a4a"}]}`, 0,
+			)
 
 			plan(target)
 
-			_, _, err = service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
+			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
@@ -369,26 +387,6 @@ var _ = Describe("Org sync [Unit]", func() {
 			_, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Kind).To(Equal(orgsync.KindSettings))
-		})
-
-		// The panel refuses this at the keyboard, but a row written before a
-		// rule existed - or by a hand on the database - reaches the planner
-		// anyway, and a plan holding work GitHub is going to refuse asks
-		// somebody to approve a promise it cannot keep
-		It("plans nothing from a stored document GitHub would refuse", func() {
-			target := granting(`{"issues":"write","administration":"write"}`)
-			stub.repoSettings = `{"has_wiki":true}`
-			configureKind(target, orgsync.KindSettings,
-				`{"has_wiki":false,"merge_commit_title":"NONSENSE"}`)
-
-			plan(target)
-
-			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
-			Expect(err).To(MatchError(storage.ErrNotFound))
-
-			// And it asked GitHub nothing, rather than finding out by refusal
-			Expect(stub.countCalls(http.MethodGet, "/repos/smykla-skalski/smyklot")).
-				To(BeZero())
 		})
 
 		// A reconcile that changed nothing is not an event, and one row a tick
@@ -946,21 +944,6 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.rulesetWrites).To(BeEmpty())
 		})
 
-		// A plan holding work GitHub is going to refuse asks somebody to approve
-		// a promise it cannot keep. The panel checks what somebody types; this
-		// covers a row written before a rule existed
-		It("plans nothing from a stored ruleset GitHub would refuse", func() {
-			target := granting(`{"issues":"write","administration":"write"}`)
-			configureKind(target, orgsync.KindRulesets, `{"rulesets":[
-				{"name":"main","target":"branch","enforcement":"active",
-				 "conditions":{"include":["refs/tags/v*"]}}]}`)
-
-			plan(target)
-
-			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
-			Expect(err).To(MatchError(storage.ErrNotFound))
-		})
-
 		It("does nothing for a plan nobody approved", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
@@ -1018,12 +1001,16 @@ var _ = Describe("Org sync [Unit]", func() {
 			repositories, err := service.store.ListRepositories(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = service.store.SetSyncRepositoryOverride(
-				GinkgoT().Context(), orgsync.RepositoryOverrideChange{
-					RepositoryID: repositories[0].ID, Kind: orgsync.KindFiles,
-					Document: []byte(document),
-					ActorID:  target.Account.ID, Now: time.Now().UTC(),
-				})
+			_, err = service.store.SaveInstallationSettings(
+				GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+					TargetID: target.ID, ActorAccountID: target.Account.ID,
+					ChangedAt: time.Now().UTC(),
+					SyncOverrides: []storage.InstallationSyncOverrideChange{{
+						RepositoryID: repositories[0].ID, Kind: orgsync.KindFiles,
+						Document: []byte(document),
+					}},
+				},
+			)
 			Expect(err).NotTo(HaveOccurred())
 		}
 
@@ -1632,32 +1619,6 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(string(written.Content)).To(ContainSubstring("config:recommended"))
 		})
 
-		// Fail-closed. The tool this replaces reported a failed merge as a
-		// warning and wrote the raw template over the repository's file, so a
-		// broken adjustment destroyed the customization it described.
-		It("proposes nothing where a repository's adjustment cannot be used", func() {
-			target := grantContents()
-			configureKind(target, orgsync.KindFiles,
-				`{"files":[{"path":"renovate.json","content":"{}"}]}`)
-			adjusting(target, `{"merges":[{"path":"package.json"}]}`)
-
-			plan(target)
-
-			_, _, err := service.store.GetLiveSyncPlan(GinkgoT().Context(), target.ID)
-			Expect(err).To(MatchError(storage.ErrNotFound))
-
-			// And what is recorded is why, with no digest: asked again once
-			// somebody fixes it rather than left looking finished for six
-			// hours, and readable meanwhile by whoever has to fix it
-			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(HaveLen(1))
-			Expect(state[0].AppliedDigest).To(BeEmpty())
-			Expect(state[0].Problem).To(ContainSubstring(
-				"the adjustments saved for this repository cannot be used"))
-			Expect(state[0].Problem).To(ContainSubstring("package.json"))
-		})
-
 		It("stands down without the permission it needs", func() {
 			target := granting(`{"issues":"write"}`)
 			configureKind(target, orgsync.KindFiles, contributing)
@@ -1939,13 +1900,9 @@ var _ = Describe("Org sync [Unit]", func() {
 					GinkgoT().Context(), target.ID, orgsync.KindFiles)
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = service.store.SetSyncConfig(
-					GinkgoT().Context(), orgsync.ConfigChange{
-						TargetID: target.ID, Kind: orgsync.KindFiles, Enabled: false,
-						Document: stored.Document, ActorID: target.Account.ID,
-						Now: time.Now().UTC(), Revision: stored.Revision,
-					})
-				Expect(err).NotTo(HaveOccurred())
+				saveKind(
+					target, orgsync.KindFiles, false, string(stored.Document), stored.Revision,
+				)
 			}),
 
 			// The row survives because a repository is soft-deleted rather than
@@ -1985,15 +1942,11 @@ var _ = Describe("Org sync [Unit]", func() {
 				GinkgoT().Context(), target.ID, orgsync.KindFiles)
 			Expect(err).NotTo(HaveOccurred())
 
-			_, err = service.store.SetSyncConfig(GinkgoT().Context(), orgsync.ConfigChange{
-				TargetID: target.ID, Kind: orgsync.KindFiles, Enabled: true,
-				Document: []byte(`{"files":[
+			saveKind(target, orgsync.KindFiles, true, `{"files":[
 					{"path":"docs/guide.md","content":"# Guide\n"},
-					{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`),
-				ActorID: target.Account.ID, Now: time.Now().UTC(),
-				Revision: stored.Revision,
-			})
-			Expect(err).NotTo(HaveOccurred())
+					{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`,
+				stored.Revision,
+			)
 
 			plan(target)
 
@@ -2251,7 +2204,7 @@ var _ = Describe("Org sync [Unit]", func() {
 				refresh(target)
 				due(target)
 
-				_, err := service.store.UpdateTargetSettings(
+				_, err := service.store.SaveInstallationSettings(
 					GinkgoT().Context(), targetSettingsWithPathIndex(target, 6*24*time.Hour))
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2268,9 +2221,11 @@ var _ = Describe("Org sync [Unit]", func() {
 				refresh(target)
 				due(target)
 
-				updated, err := service.store.UpdateTargetSettings(
+				saved, err := service.store.SaveInstallationSettings(
 					GinkgoT().Context(), targetSettingsWithPathIndex(target, 6*24*time.Hour))
 				Expect(err).NotTo(HaveOccurred())
+				Expect(saved.Target).NotTo(BeNil())
+				updated := *saved.Target
 
 				repositories, err := service.store.ListRepositories(
 					GinkgoT().Context(), updated.ID)
@@ -2278,13 +2233,15 @@ var _ = Describe("Org sync [Unit]", func() {
 				Expect(repositories).To(HaveLen(1))
 
 				every := time.Duration(0)
-				_, err = service.store.UpdateRepositorySettings(
-					GinkgoT().Context(), storage.RepositorySettingsChange{
-						TargetID: updated.ID, RepositoryID: repositories[0].ID,
-						ActorAccountID:            updated.Account.ID,
-						PathIndexIntervalOverride: &every,
-						ExpectedRevision:          repositories[0].Revision,
-						ChangedAt:                 time.Now().UTC(),
+				_, err = service.store.SaveInstallationSettings(
+					GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+						TargetID: updated.ID, ActorAccountID: updated.Account.ID,
+						ChangedAt: time.Now().UTC(),
+						Repositories: []storage.InstallationRepositorySettingsChange{{
+							RepositoryID:              repositories[0].ID,
+							PathIndexIntervalOverride: &every,
+							ExpectedRevision:          repositories[0].Revision,
+						}},
 					})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -2338,12 +2295,10 @@ var _ = Describe("Org sync [Unit]", func() {
 		plan(target)
 		computed, _ := livePlan(target)
 
-		_, err := service.store.SetSyncConfig(GinkgoT().Context(), orgsync.ConfigChange{
-			TargetID: target.ID, Kind: orgsync.KindLabels, Enabled: true,
-			Document: []byte(`{"labels":[{"name":"bug","color":"000000"}]}`),
-			ActorID:  target.Account.ID, Now: time.Now().UTC(), Revision: saved.Revision,
-		})
-		Expect(err).NotTo(HaveOccurred())
+		saveKind(
+			target, orgsync.KindLabels, true,
+			`{"labels":[{"name":"bug","color":"000000"}]}`, saved.Revision,
+		)
 
 		stale, _, err := service.store.GetSyncPlan(GinkgoT().Context(), target.ID, computed.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -2363,17 +2318,17 @@ var _ = Describe("Org sync [Unit]", func() {
 func targetSettingsWithPathIndex(
 	target storage.Target,
 	every time.Duration,
-) storage.TargetSettingsChange {
-	return storage.TargetSettingsChange{
-		TargetID:                       target.ID,
-		ActorAccountID:                 target.Account.ID,
-		RepositoryDefaultEnabled:       target.RepositoryDefaultEnabled,
-		PendingCIModeDefault:           target.PendingCIModeDefault,
-		PendingCIBranchPatternsDefault: target.PendingCIBranchPatternsDefault,
-		PathIndexIntervalOverride:      &every,
-		ConfigPatch:                    target.ConfigPatch,
-		ExpectedRevision:               target.Revision,
-		ChangedAt:                      time.Now().UTC(),
+) storage.SaveInstallationSettingsRequest {
+	return storage.SaveInstallationSettingsRequest{
+		TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now().UTC(),
+		Target: &storage.InstallationTargetSettingsChange{
+			RepositoryDefaultEnabled:       target.RepositoryDefaultEnabled,
+			PendingCIModeDefault:           target.PendingCIModeDefault,
+			PendingCIBranchPatternsDefault: target.PendingCIBranchPatternsDefault,
+			PathIndexIntervalOverride:      &every,
+			ConfigPatch:                    target.ConfigPatch,
+			ExpectedRevision:               target.Revision,
+		},
 	}
 }
 

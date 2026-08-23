@@ -22,4 +22,29 @@ type Harness struct {
 	// rather than leaving the change without its notifications. Engines break
 	// a write differently, so each supplies its own way.
 	RejectSecurityNotifications func(ctx context.Context)
+
+	// RejectSettingsCheckpoints makes the next settings checkpoint insert fail.
+	// Runtime settings use this after updating every mutable aggregate, so the
+	// shared spec can prove those earlier writes remain transactional.
+	RejectSettingsCheckpoints func(ctx context.Context)
+
+	// CountSettingsCheckpoints reads the table directly. The public store
+	// deliberately exposes checkpoints by identity rather than as an unbounded
+	// listing, but rollback coverage still needs to prove no row escaped.
+	CountSettingsCheckpoints func(ctx context.Context) int64
+
+	// RewriteSettingsCheckpointItem mutates immutable history only inside a
+	// test database. It lets compatibility specs model a document written by a
+	// future or older version without compiling a raw checkpoint writer into
+	// the production Store API.
+	RewriteSettingsCheckpointItem func(context.Context, SettingsCheckpointItemRewrite)
+}
+
+// SettingsCheckpointItemRewrite describes one test-only historical fixture
+// mutation. The engine harness recomputes the digest for AfterDocument.
+type SettingsCheckpointItemRewrite struct {
+	CheckpointID    int64
+	Identity        storage.SettingsCheckpointItemIdentity
+	DocumentVersion int
+	AfterDocument   []byte
 }

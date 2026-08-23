@@ -117,7 +117,7 @@ func declareScopedInstallationSyncOverrideSpec(
 func declareInstallationSyncAuditSpec(
 	runtime func() (context.Context, storage.Store, time.Time),
 ) {
-	It("records a single repository-scoped audit for one Sync override", func() {
+	It("records one canonical installation audit for a Sync override", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallationSettingsBatch(ctx, store, now)
 		result, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
@@ -133,10 +133,9 @@ func declareInstallationSyncAuditSpec(
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(audit.Items).To(ConsistOf(And(
-			HaveField("Action", "sync.override.updated"),
-			HaveField("RepositoryID", HaveValue(Equal("repo-1"))),
+			HaveField("Action", "installation.settings.saved"),
+			HaveField("RepositoryID", BeNil()),
 			HaveField("SettingsCheckpointID", HaveValue(Equal(*result.CheckpointID))),
-			HaveField("SyncConfigCheckpointID", BeNil()),
 		)))
 		assertInstallationSettingsAudit(
 			ctx, store, target.TargetID, *result.CheckpointID, 1,

@@ -115,12 +115,14 @@ describe('PanelSession [Unit]', () => {
     routePage.route = { id: '/i/[account]/history/[[section=historySection]]' };
     session.syncRouteContext();
 
-    // A pasted link naming a dialog that does not exist. The address names the
+    // A pasted link naming a repository that cannot load. The address names the
     // repositories view and the chrome shows it, but the reader was never on it, so
     // Return has to take them back to where they actually were.
-    routePage.url = at('/i/acme/repositories/bogus/bogus2');
-    routePage.params = { account: 'acme', view: 'repositories', rest: 'bogus/bogus2' };
-    routePage.route = { id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]' };
+    routePage.url = at('/i/acme/repositories/bogus');
+    routePage.params = { account: 'acme', repository: 'bogus' };
+    routePage.route = {
+      id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
+    };
     routePage.error = { message: 'Panel view not found' };
     session.syncRouteContext();
 

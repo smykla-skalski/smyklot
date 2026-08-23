@@ -454,14 +454,15 @@ func TestPanelSignInAndSettings(t *testing.T) {
 		t.Fatalf("viewer response = %d %s", viewer.Code, viewer.Body.String())
 	}
 
-	input := `{
+	input := `{"target":{
 		"repository_default_enabled":true,
 		"pending_ci_mode_default":"checks",
 		"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH","refs/heads/release/*"],"exclude":[]},
 		"pending_ci_quiet_period_seconds_override":0,
+		"path_index_interval_seconds_override":null,
 		"config_patch":{"quiet_success":true},
 		"expected_revision":1
-	}`
+	}}`
 	updated := harness.request(
 		t,
 		http.MethodPut,
@@ -472,13 +473,16 @@ func TestPanelSignInAndSettings(t *testing.T) {
 	if updated.Code != http.StatusOK {
 		t.Fatalf("target update = %d %s", updated.Code, updated.Body.String())
 	}
-	var target targetResponse
-	if err := json.Unmarshal(updated.Body.Bytes(), &target); err != nil {
+	var answer installationSettingsBatchResponse
+	if err := json.Unmarshal(updated.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}
+	target := answer.Target
+	if target == nil {
+		t.Fatalf("target update answer = %#v", answer)
+	}
 	if !target.RepositoryDefaultEnabled ||
-		!target.EffectiveConfig.QuietSuccess ||
-		target.InheritedConfig.QuietSuccess ||
+		target.ConfigPatch.QuietSuccess == nil || !*target.ConfigPatch.QuietSuccess ||
 		target.PendingCIModeDefault != storage.PendingCIModeChecks ||
 		target.PendingCIQuietPeriodSecondsOverride == nil ||
 		*target.PendingCIQuietPeriodSecondsOverride != 0 ||
@@ -494,7 +498,8 @@ func TestPanelSignInAndSettings(t *testing.T) {
 		nil,
 		session,
 	)
-	if audit.Code != http.StatusOK || !strings.Contains(audit.Body.String(), "target.settings.updated") {
+	if audit.Code != http.StatusOK ||
+		!strings.Contains(audit.Body.String(), "installation.settings.saved") {
 		t.Fatalf("audit response = %d %s", audit.Code, audit.Body.String())
 	}
 }
@@ -553,8 +558,8 @@ func TestPanelWebSocketEvents(t *testing.T) {
 		t.Fatalf("changed event = %#v", changed)
 	}
 	runtimeUpdate := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
-		strings.NewReader(`{"expected_revision":0}`), session,
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
+		strings.NewReader(rootRuntimeSettingsBody("debug", 0)), session,
 	)
 	requireResponse(t, runtimeUpdate, "runtime WebSocket update", http.StatusOK, `"revision":1`)
 	var resync panelEvent
@@ -920,12 +925,16 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 		!strings.Contains(targets.Body.String(), `"write":false`) {
 		t.Fatalf("viewer targets = %d %s", targets.Code, targets.Body.String())
 	}
-	input := `{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`
+	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := targetInstallationSettingsBatchBody(t, target, true)
 	denied := harness.request(
 		t,
 		http.MethodPut,
 		"/panel/api/v1/targets/github:installation:10/settings",
-		strings.NewReader(input),
+		bytes.NewReader(input),
 		viewerSession,
 	)
 	if denied.Code != http.StatusNotFound {
@@ -948,7 +957,7 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 		t,
 		http.MethodPut,
 		"/panel/api/v1/targets/github:installation:10/settings",
-		strings.NewReader(input),
+		bytes.NewReader(input),
 		viewerSession,
 	)
 	if updated.Code != http.StatusOK {
@@ -1195,9 +1204,13 @@ func TestPanelRootOverview(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	rootSession := harness.signIn(t)
 	seedFailure(t, harness, "overview-failure", "GitHub provider timeout", true)
+	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
+	if err != nil {
+		t.Fatal(err)
+	}
 	updated := harness.request(
 		t, http.MethodPut, "/panel/api/v1/targets/github:installation:10/settings",
-		strings.NewReader(`{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`),
+		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, true)),
 		rootSession,
 	)
 	requireResponse(t, updated, "seed Root audit", http.StatusOK, `"revision":2`)
@@ -1229,7 +1242,7 @@ func TestPanelRootOverview(t *testing.T) {
 	)
 	requireResponse(
 		t, audit, "Root audit", http.StatusOK,
-		`"category":"configuration"`, `"action":"target.settings.updated"`,
+		`"category":"configuration"`, `"action":"installation.settings.saved"`,
 		`"installation":{"id":"github:test:account:2"`,
 	)
 	failures := harness.request(
@@ -1343,12 +1356,45 @@ func TestPanelManagesPendingCIQueue(t *testing.T) {
 	}
 }
 
+func TestPanelRetiredSettingsAndSyncRoutesAreRemoved(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	target := "/panel/api/v1/targets/github:installation:10"
+	rootTarget := "/panel/api/v1/root/installations/github:installation:10"
+
+	for _, probe := range []struct {
+		method string
+		path   string
+		status int
+	}{
+		{http.MethodPut, target + "/sync/config/labels", http.StatusMethodNotAllowed},
+		{http.MethodPut, target + "/sync/config", http.StatusMethodNotAllowed},
+		{http.MethodGet, target + "/sync/config/checkpoints/1", http.StatusNotFound},
+		{http.MethodPost, target + "/sync/config/checkpoints/1/restore", http.StatusMethodNotAllowed},
+		{http.MethodGet, target + "/sync/overrides/files", http.StatusNotFound},
+		{http.MethodPut, target + "/repositories/repository-20/sync/files", http.StatusMethodNotAllowed},
+		{http.MethodPut, target + "/settings/batch", http.StatusMethodNotAllowed},
+		{http.MethodPut, target + "/repositories/repository-20/settings", http.StatusMethodNotAllowed},
+		{http.MethodPut, rootTarget + "/settings/batch", http.StatusMethodNotAllowed},
+		{http.MethodPut, rootTarget + "/repositories/repository-20/settings", http.StatusMethodNotAllowed},
+		{http.MethodGet, rootTarget + "/sync/config/checkpoints/1", http.StatusNotFound},
+		{http.MethodPost, rootTarget + "/sync/config/checkpoints/1/restore", http.StatusMethodNotAllowed},
+	} {
+		response := harness.request(
+			t, probe.method, probe.path, strings.NewReader(`{}`), session,
+		)
+		if response.Code != probe.status {
+			t.Errorf("%s %s = %d, want %d", probe.method, probe.path, response.Code, probe.status)
+		}
+	}
+}
+
 func TestPanelRootRuntimeSettings(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	rootSession := harness.signIn(t)
 
 	current := harness.request(
-		t, http.MethodGet, "/panel/api/v1/root/settings", nil, rootSession,
+		t, http.MethodGet, "/panel/api/v1/root/runtime/settings", nil, rootSession,
 	)
 	requireResponse(
 		t, current, "Root runtime settings", http.StatusOK,
@@ -1366,6 +1412,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 		"log_level":                           "debug",
 		"reaction_poll_interval_seconds":      90,
 		"merge_after_ci_quiet_period_seconds": 45,
+		"path_index_interval_seconds":         nil,
 		"session_ttl_seconds":                 3600,
 		"expected_revision":                   0,
 	})
@@ -1373,7 +1420,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	updated := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings", bytes.NewReader(content), rootSession,
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings", bytes.NewReader(content), rootSession,
 	)
 	requireResponse(
 		t, updated, "update Root runtime settings", http.StatusOK,
@@ -1389,6 +1436,30 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 		harness.runtime.values.SessionTTL != time.Hour {
 		t.Fatalf("applied runtime values = %#v", harness.runtime.values)
 	}
+	subscriber, unsubscribe := harness.server.events.subscribe("", "runtime-noop-test")
+	t.Cleanup(unsubscribe)
+	noOpContent, err := json.Marshal(map[string]any{
+		"bot_config":                          behavior,
+		"log_level":                           "debug",
+		"reaction_poll_interval_seconds":      90,
+		"merge_after_ci_quiet_period_seconds": 45,
+		"path_index_interval_seconds":         nil,
+		"session_ttl_seconds":                 3600,
+		"expected_revision":                   1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	noOp := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
+		bytes.NewReader(noOpContent), rootSession,
+	)
+	requireResponse(t, noOp, "no-op Root runtime settings", http.StatusOK, `"revision":1`)
+	select {
+	case event := <-subscriber.events:
+		t.Fatalf("no-op runtime settings announced %#v", event)
+	case <-time.After(25 * time.Millisecond):
+	}
 	shortened, err := harness.store.GetSession(
 		t.Context(), tokenHash(rootSession.Value), harness.now,
 	)
@@ -1398,7 +1469,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	if want := harness.now.Add(time.Hour); !shortened.ExpiresAt.Equal(want) {
 		t.Fatalf("session expiry = %s, want %s", shortened.ExpiresAt, want)
 	}
-	legacyContent, err := json.Marshal(map[string]any{
+	incompleteContent, err := json.Marshal(map[string]any{
 		"bot_config":                     behavior,
 		"log_level":                      "debug",
 		"reaction_poll_interval_seconds": 90,
@@ -1408,54 +1479,56 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyUpdated := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
-		bytes.NewReader(legacyContent), rootSession,
+	incomplete := harness.request(
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
+		bytes.NewReader(incompleteContent), rootSession,
 	)
 	requireResponse(
-		t, legacyUpdated, "preserve settings omitted by an older client", http.StatusOK,
-		`"merge_after_ci_quiet_period":{"deployment_seconds":30,"override_seconds":45,"effective_seconds":45}`,
-		`"revision":2`,
+		t, incomplete, "reject incomplete Root runtime settings", http.StatusBadRequest,
+		`"code":"invalid_runtime_settings"`,
+		`"message":"every runtime setting and expected revision is required"`,
 	)
 	disabledContent, err := json.Marshal(map[string]any{
 		"bot_config":                          behavior,
 		"log_level":                           "debug",
 		"reaction_poll_interval_seconds":      0,
 		"merge_after_ci_quiet_period_seconds": 45,
+		"path_index_interval_seconds":         nil,
 		"session_ttl_seconds":                 3600,
-		"expected_revision":                   2,
+		"expected_revision":                   1,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	disabled := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
 		bytes.NewReader(disabledContent), rootSession,
 	)
 	requireResponse(
 		t, disabled, "disable reaction sweep", http.StatusOK,
 		`"reaction_poll_interval":{"deployment_seconds":300,"override_seconds":0,"effective_seconds":0}`,
-		`"revision":3`,
+		`"revision":2`,
 	)
 	if harness.runtime.values.PollInterval != 0 {
 		t.Fatalf("disabled reaction sweep = %s", harness.runtime.values.PollInterval)
 	}
 
 	reset := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
 		strings.NewReader(`{
             "bot_config":null,
             "log_level":null,
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":null,
+			"path_index_interval_seconds":null,
             "session_ttl_seconds":null,
-			"expected_revision":3
+			"expected_revision":2
         }`),
 		rootSession,
 	)
 	requireResponse(
 		t, reset, "reset Root runtime settings", http.StatusOK,
-		`"override":null`, `"override_seconds":null`, `"revision":4`,
+		`"override":null`, `"override_seconds":null`, `"revision":3`,
 	)
 	if harness.runtime.values.BotConfig.QuietSuccess ||
 		harness.runtime.values.LogLevel != slog.LevelInfo ||
@@ -1475,34 +1548,36 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	}
 
 	zeroQuiet := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
 		strings.NewReader(`{
             "bot_config":null,
             "log_level":null,
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":0,
+			"path_index_interval_seconds":null,
             "session_ttl_seconds":null,
-			"expected_revision":4
+			"expected_revision":3
         }`),
 		rootSession,
 	)
 	requireResponse(
 		t, zeroQuiet, "accept zero pending-CI quiet period", http.StatusOK,
 		`"merge_after_ci_quiet_period":{"deployment_seconds":30,"override_seconds":0,"effective_seconds":0}`,
-		`"revision":5`,
+		`"revision":4`,
 	)
 	if harness.runtime.values.PendingCIQuietPeriod != 0 {
 		t.Fatalf("zero pending-CI quiet period = %s", harness.runtime.values.PendingCIQuietPeriod)
 	}
 	overMaximum := harness.request(
-		t, http.MethodPut, "/panel/api/v1/root/settings",
+		t, http.MethodPut, "/panel/api/v1/root/runtime/settings",
 		strings.NewReader(`{
             "bot_config":null,
             "log_level":null,
 			"reaction_poll_interval_seconds":null,
 			"merge_after_ci_quiet_period_seconds":86401,
+			"path_index_interval_seconds":null,
             "session_ttl_seconds":null,
-			"expected_revision":5
+			"expected_revision":4
         }`),
 		rootSession,
 	)
@@ -1517,7 +1592,8 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	)
 	requireResponse(
 		t, audit, "Root runtime audit", http.StatusOK,
-		`"category":"runtime"`, `"action":"runtime.settings.updated"`,
+		`"category":"runtime"`, `"action":"runtime.settings.saved"`,
+		`"settings_checkpoint_id":`,
 	)
 }
 
@@ -1650,9 +1726,13 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		t, settings, "Root installation settings", http.StatusOK,
 		`"access_source":"root"`, `"write":false`,
 	)
-	settingsInput := `{"repository_default_enabled":true,"config_patch":{},"expected_revision":1}`
+	targetSettings, err := harness.store.GetTarget(t.Context(), target.TargetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settingsInput := targetInstallationSettingsBatchBody(t, targetSettings, true)
 	blockedWrite := harness.request(
-		t, http.MethodPut, rootSettingsPath, strings.NewReader(settingsInput), rootSession,
+		t, http.MethodPut, rootSettingsPath, bytes.NewReader(settingsInput), rootSession,
 	)
 	requireResponse(
 		t, blockedWrite, "Root write without elevation", http.StatusForbidden,
@@ -1697,25 +1777,29 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	rootHash := tokenHash(rootSession.Value)
 	regularWrite := harness.request(
 		t, http.MethodPut, "/panel/api/v1/targets/"+target.TargetID+"/settings",
-		strings.NewReader(settingsInput), rootSession,
+		bytes.NewReader(settingsInput), rootSession,
 	)
 	requireResponse(t, regularWrite, "elevated regular-route write", http.StatusNotFound)
 	elevatedWrite := harness.request(
-		t, http.MethodPut, rootSettingsPath, strings.NewReader(settingsInput), rootSession,
+		t, http.MethodPut, rootSettingsPath, bytes.NewReader(settingsInput), rootSession,
 	)
 	requireResponse(
 		t, elevatedWrite, "elevated Root write", http.StatusOK,
-		`"access_source":"elevation"`, `"revision":2`,
+		`"target_id":"`+target.TargetID+`"`, `"revision":2`, `"checkpoint_id":`,
 	)
 	repositoryWrite := harness.request(
-		t, http.MethodPut,
-		"/panel/api/v1/root/installations/"+target.TargetID+
-			"/repositories/repository-30/settings",
-		strings.NewReader(`{"enabled_override":true,"config_patch":{},"ignore_repository_file":false,"expected_revision":1}`),
+		t, http.MethodPut, rootSettingsPath,
+		strings.NewReader(`{"repositories":[{"repository_id":"repository-30",
+			"enabled_override":true,"pending_ci_mode_override":null,
+			"pending_ci_branch_patterns_override":null,
+			"pending_ci_quiet_period_seconds_override":null,
+			"path_index_interval_seconds_override":null,"config_patch":{},
+			"ignore_repository_file":false,"expected_revision":1}]}`),
 		rootSession,
 	)
 	requireResponse(
-		t, repositoryWrite, "elevated Root repository write", http.StatusOK, `"revision":2`,
+		t, repositoryWrite, "elevated Root repository write", http.StatusOK,
+		`"repository_id":"repository-30"`, `"revision":2`,
 	)
 	proposal := 42
 	if err := harness.store.SetRepositoryConfigMigration(
@@ -1845,7 +1929,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, notifications, "Owner notifications", http.StatusOK,
 		`"unread":8`, `"elevation_id":"`+elevation.ID+`"`,
-		`"action":"target.settings.updated"`, `"action":"repository.settings.updated"`,
+		`"action":"installation.settings.saved"`,
 		`"action":"target.access.updated"`, `"action":"invitation.created"`,
 		`"action":"repository.config_migration.reset"`,
 	)
@@ -2194,7 +2278,7 @@ func TestPanelOAuthStateIsBrowserBound(t *testing.T) {
 func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
-	settingsPath := "/panel/api/v1/targets/github:installation:10/repositories/repository-20/settings"
+	settingsPath := "/panel/api/v1/targets/github:installation:10/settings"
 	armed, err := harness.store.Arm(t.Context(), pendingci.ArmRequest{
 		TargetID: "github:installation:10", InstallationID: 10,
 		RepositoryID: "repository-20", RepositoryFullName: "smykla-skalski/smyklot",
@@ -2227,15 +2311,16 @@ func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 		t,
 		http.MethodPut,
 		settingsPath,
-		strings.NewReader(`{
+		strings.NewReader(`{"repositories":[{"repository_id":"repository-20",
 			"enabled_override":false,
 			"pending_ci_mode_override":"labels",
 			"pending_ci_branch_patterns_override":{"include":["refs/heads/release/*"],"exclude":[]},
 			"pending_ci_quiet_period_seconds_override":0,
+			"path_index_interval_seconds_override":null,
 			"config_patch":{},
 			"ignore_repository_file":false,
 			"expected_revision":1
-		}`),
+		}]}`),
 		session,
 	)
 	if explicitOff.Code != http.StatusOK {
@@ -2253,7 +2338,8 @@ func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 		t,
 		http.MethodPut,
 		settingsPath,
-		strings.NewReader(`{"config_patch":{},"ignore_repository_file":false,"expected_revision":2}`),
+		strings.NewReader(`{"repositories":[{"repository_id":"repository-20",
+			"config_patch":{},"ignore_repository_file":false,"expected_revision":2}]}`),
 		session,
 	)
 	if omitted.Code != http.StatusBadRequest {
@@ -2290,21 +2376,30 @@ func TestRepositoryEnablementDistinguishesOmittedFromNull(t *testing.T) {
 		t,
 		http.MethodPut,
 		settingsPath,
-		strings.NewReader(`{
+		strings.NewReader(`{"repositories":[{"repository_id":"repository-20",
 			"enabled_override":null,
 			"pending_ci_mode_override":null,
 			"pending_ci_branch_patterns_override":null,
 			"pending_ci_quiet_period_seconds_override":null,
+			"path_index_interval_seconds_override":null,
 			"config_patch":{},
 			"ignore_repository_file":false,
 			"expected_revision":2
-		}`),
+		}]}`),
 		session,
 	)
 	if inherited.Code != http.StatusOK {
 		t.Fatalf("explicit Default = %d %s", inherited.Code, inherited.Body.String())
 	}
-	if err := json.Unmarshal(inherited.Body.Bytes(), &detail); err != nil {
+	current := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/repositories/repository-20",
+		nil, session,
+	)
+	if current.Code != http.StatusOK {
+		t.Fatalf("repository after explicit Default = %d %s", current.Code, current.Body.String())
+	}
+	if err := json.Unmarshal(current.Body.Bytes(), &detail); err != nil {
 		t.Fatal(err)
 	}
 	if detail.Repository.EnabledOverride != nil || detail.PendingCIModeOverride != nil ||
@@ -2329,7 +2424,11 @@ func seedPanelHistory(t *testing.T, harness *panelHarness, targetPath string, se
 	t.Helper()
 	for revision := int64(1); revision <= 2; revision++ {
 		input := fmt.Sprintf(
-			`{"repository_default_enabled":true,"config_patch":{"quiet_success":%t},"expected_revision":%d}`,
+			`{"target":{"repository_default_enabled":true,"pending_ci_mode_default":"labels",
+			"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
+			"pending_ci_quiet_period_seconds_override":null,
+			"path_index_interval_seconds_override":null,
+			"config_patch":{"quiet_success":%t},"expected_revision":%d}}`,
 			revision == 1,
 			revision,
 		)
@@ -2353,7 +2452,7 @@ func assertAuditPagination(t *testing.T, harness *panelHarness, targetPath strin
 	first := harness.request(
 		t,
 		http.MethodGet,
-		targetPath+"/audit?scope=account&q=defaults&sort=oldest&limit=1",
+		targetPath+"/audit?scope=account&q=installation+settings&sort=oldest&limit=1",
 		nil,
 		session,
 	)
@@ -2374,7 +2473,7 @@ func assertAuditPagination(t *testing.T, harness *panelHarness, targetPath strin
 	second := harness.request(
 		t,
 		http.MethodGet,
-		targetPath+"/audit?scope=account&q=defaults&sort=oldest&limit=1&cursor="+
+		targetPath+"/audit?scope=account&q=installation+settings&sort=oldest&limit=1&cursor="+
 			url.QueryEscape(*firstPage.NextCursor),
 		nil,
 		session,
@@ -2520,15 +2619,14 @@ func TestPanelRepositoryPaginationFilteringAndSorting(t *testing.T) {
 		t.Fatal(err)
 	}
 	enabled := true
-	if _, err := harness.store.UpdateRepositorySettings(t.Context(), storage.RepositorySettingsChange{
-		TargetID:             targetID,
-		RepositoryID:         "repository-22",
-		ActorAccountID:       target.Account.ID,
-		EnabledOverride:      &enabled,
-		ConfigPatch:          config.Patch{QuietSuccess: &enabled},
-		IgnoreRepositoryFile: false,
-		ExpectedRevision:     1,
-		ChangedAt:            harness.now.Add(2 * time.Minute),
+	if _, err := harness.store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
+		TargetID: targetID, ActorAccountID: target.Account.ID,
+		ChangedAt: harness.now.Add(2 * time.Minute),
+		Repositories: []storage.InstallationRepositorySettingsChange{{
+			RepositoryID: "repository-22", EnabledOverride: &enabled,
+			ConfigPatch:          config.Patch{QuietSuccess: &enabled},
+			IgnoreRepositoryFile: false, ExpectedRevision: 1,
+		}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -2722,11 +2820,11 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/inbox",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567",
 		"/panel/i/smykla-skalski/repositories",
-		"/panel/i/smykla-skalski/users",
-		"/panel/i/smykla-skalski/invitations",
+		"/panel/i/smykla-skalski/access/users",
+		"/panel/i/smykla-skalski/access/invitations",
 		"/panel/i/smykla-skalski/history/audit",
 		"/panel/i/smykla-skalski/history/failures",
-		"/panel/i/auth/settings",
+		"/panel/i/auth/defaults",
 		"/panel/root",
 		"/panel/root/installations",
 		"/panel/root/access",
@@ -2742,7 +2840,6 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/access/invitations",
 		"/panel/root/history/audit",
 		"/panel/root/history/failures",
-		"/panel/root/settings",
 		"/panel/root/runtime",
 		"/panel/root/runtime/service",
 		"/panel/root/runtime/database",
@@ -2751,15 +2848,15 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		// of one, has to answer with the shell rather than the not-found page.
 		"/panel/i/smykla-skalski/repositories/api-gateway",
 		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
-		"/panel/i/smykla-skalski/users/add",
-		"/panel/i/smykla-skalski/users/octocat/history",
-		"/panel/i/smykla-skalski/users/octocat/remove-access",
-		"/panel/i/smykla-skalski/invitations/inv-1/revoke",
+		"/panel/i/smykla-skalski/access/users/add",
+		"/panel/i/smykla-skalski/access/users/octocat/history",
+		"/panel/i/smykla-skalski/access/users/octocat/remove-access",
+		"/panel/i/smykla-skalski/access/invitations/inv-1/revoke",
 		"/panel/root/access/users/octocat/ban",
 		"/panel/root/access/invitations/new",
 		"/panel/root/access/invitations/inv-1/reissue",
 		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
-		"/panel/root/installations/smykla-skalski/users/octocat/history",
+		"/panel/root/installations/smykla-skalski/access/users/octocat/history",
 		// A trailing slash is not part of the address; the panel's router reads
 		// `/inbox/` as `/inbox`, and the server has to agree.
 		"/panel/inbox/",
@@ -2808,6 +2905,9 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/help",
 		"/panel/inbox/security",
 		"/panel/i/smykla-skalski/inbox",
+		"/panel/i/smykla-skalski/settings",
+		"/panel/i/smykla-skalski/users",
+		"/panel/i/smykla-skalski/invitations",
 		// A view still has to be a view, and a dialog is one segment or two.
 		"/panel/root/installations/smykla-skalski",
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
@@ -2827,10 +2927,13 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/help",
 		"/panel/i/smykla-skalski/unknown",
 		"/panel/root/unknown",
+		"/panel/root/settings",
 		"/panel/root/access/owners",
 		"/panel/root/history/unknown",
 		"/panel/root/runtime/unknown",
 		"/panel/root/settings/database",
+		"/panel/root/installations/smykla-skalski/settings",
+		"/panel/root/installations/smykla-skalski/users/octocat/history",
 		"/panel/root/installations/smykla-skalski/unknown",
 		"/panel/@smykla-skalski/repositories",
 		"/panel/invite/too-short",

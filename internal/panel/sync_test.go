@@ -20,8 +20,9 @@ func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
 	session := harness.signIn(t)
 	path := "/panel/api/v1/targets/github:installation:10/sync/config/labels"
 
-	saved := harness.request(t, http.MethodPut, path, strings.NewReader(
-		`{"enabled":true,"expected_revision":0,"labels":[]}`), session)
+	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+		`{"sync_configs":[{"kind":"labels","enabled":true,"expected_revision":0,`+
+			`"labels":[],"allow_removal":false,"excludes":[]}]}`), session)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("saving labels = %d %s", saved.Code, saved.Body.String())
 	}
@@ -45,8 +46,8 @@ func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
 	if err := json.Unmarshal(audit.Body.Bytes(), &history); err != nil {
 		t.Fatal(err)
 	}
-	if history.Total != 1 || history.Items[0].SyncConfigCheckpointID == nil {
-		t.Fatalf("compatibility save audit = %#v", history)
+	if history.Total != 1 || history.Items[0].SettingsCheckpointID == nil {
+		t.Fatalf("settings save audit = %#v", history)
 	}
 }
 

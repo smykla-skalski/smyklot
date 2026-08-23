@@ -22,11 +22,10 @@ func declareInstallationSettingsSpecs(
 	declareInstallationSettingsRollbackSpec(runtime)
 	declareInstallationSettingsFailureSpec(harness, runtime)
 	declareInstallationSettingsNoopSpec(runtime)
-	declareInstallationSettingsCompatibilitySpec(runtime)
 	declareInstallationSyncSettingsSpecs(runtime)
 	declareInstallationSyncValidationSpecs(runtime)
 	declareInstallationSyncDocumentSpecs(runtime)
-	declareInstallationSettingsRestoreSpecs(runtime)
+	declareInstallationSettingsRestoreSpecs(harness, runtime)
 }
 
 func declareAtomicInstallationSettingsSpec(
@@ -97,9 +96,11 @@ func declareAtomicInstallationSettingsSpec(
 		assertInstallationSettingsPlanState(ctx, store, target.TargetID, orgsync.PlanStale)
 
 		original := checkpoint
-		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-			TargetID: target.TargetID, ActorAccountID: account.ID,
-			RepositoryDefaultEnabled: false, ExpectedRevision: 2, ChangedAt: now.Add(2 * time.Minute),
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID, ChangedAt: now.Add(2 * time.Minute),
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: false, ExpectedRevision: 2,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(readInstallationCheckpoint(
@@ -229,6 +230,23 @@ func declareInstallationSettingsNoopSpec(
 		Expect(result.CheckpointID).NotTo(BeNil())
 		Expect(result.Target).To(HaveField("Revision", int64(2)))
 		assertInstallationSettingsAudit(ctx, store, target.TargetID, *result.CheckpointID, 1)
+		accountAudit, err := store.ListAudit(ctx, target.TargetID, storage.AuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Change:             storage.AuditChangeAccount,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(accountAudit.Items).To(HaveLen(1))
+		for _, change := range []storage.AuditChange{
+			storage.AuditChangeRepository,
+			storage.AuditChangeSync,
+		} {
+			filtered, listErr := store.ListAudit(ctx, target.TargetID, storage.AuditPageRequest{
+				HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+				Change:             change,
+			})
+			Expect(listErr).NotTo(HaveOccurred())
+			Expect(filtered.Items).To(BeEmpty())
+		}
 		assertInstallationSettingsPlanState(ctx, store, target.TargetID, orgsync.PlanComputed)
 
 		request.Target.ExpectedRevision = 2
@@ -240,39 +258,6 @@ func declareInstallationSettingsNoopSpec(
 		request.Target.ExpectedRevision = 1
 		_, err = store.SaveInstallationSettings(ctx, request)
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
-	})
-}
-
-func declareInstallationSettingsCompatibilitySpec(
-	runtime func() (context.Context, storage.Store, time.Time),
-) {
-	It("keeps single-resource settings methods and their historical audit actions", func() {
-		ctx, store, now := runtime()
-		account, target := seedInstallationSettingsBatch(ctx, store, now)
-		updatedTarget, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-			TargetID: target.TargetID, ActorAccountID: account.ID,
-			RepositoryDefaultEnabled: true, ExpectedRevision: 1, ChangedAt: now.Add(time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(updatedTarget.Revision).To(Equal(int64(2)))
-		enabled := false
-		updatedRepository, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID: target.TargetID, RepositoryID: "repo-1", ActorAccountID: account.ID,
-			EnabledOverride: &enabled, ExpectedRevision: 1, ChangedAt: now.Add(2 * time.Minute),
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(updatedRepository.Revision).To(Equal(int64(2)))
-
-		audit, err := store.ListAudit(ctx, target.TargetID, storage.AuditPageRequest{
-			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
-		})
-		Expect(err).NotTo(HaveOccurred())
-		Expect(audit.Items).To(HaveLen(2))
-		Expect(audit.Items[0].Action).To(Equal("repository.settings.updated"))
-		Expect(audit.Items[1].Action).To(Equal("target.settings.updated"))
-		for _, entry := range audit.Items {
-			Expect(entry.SettingsCheckpointID).NotTo(BeNil())
-		}
 	})
 }
 
@@ -315,12 +300,23 @@ func readInstallationCheckpoint(
 	targetID string,
 ) storage.SettingsCheckpoint {
 	GinkgoHelper()
-	checkpoint, err := store.GetSettingsCheckpoint(ctx, storage.SettingsCheckpointRef{
+	inspection, err := store.InspectInstallationSettingsCheckpoint(ctx, storage.SettingsCheckpointRef{
 		ID: checkpointID, Scope: storage.SettingsCheckpointScopeInstallation, TargetID: targetID,
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	return checkpoint
+	return inspection.Checkpoint
+}
+
+func checkpointItemKinds(
+	items []storage.SettingsCheckpointItem,
+) []storage.SettingsCheckpointItemKind {
+	kinds := make([]storage.SettingsCheckpointItemKind, len(items))
+	for index, item := range items {
+		kinds[index] = item.Kind
+	}
+
+	return kinds
 }
 
 func assertSettingsCheckpointState(

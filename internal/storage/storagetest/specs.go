@@ -48,7 +48,7 @@ func DeclareSpecs(harness Harness) {
 	declareOrgSyncSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
-	declareSettingsCheckpointSpecs(func() (context.Context, storage.Store, time.Time) {
+	declareRuntimeSettingsHistorySpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
 	declareInstallationSettingsSpecs(harness, func() (context.Context, storage.Store, time.Time) {
@@ -222,13 +222,12 @@ func DeclareSpecs(harness Harness) {
 		pollInterval := 90 * time.Second
 		pendingCIQuietPeriod := 45 * time.Second
 		sessionTTL := 2 * time.Hour
-		updated, err := store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+		saved, err := store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			BotConfig:                     botConfig,
 			LogLevel:                      &logLevel,
 			PollInterval:                  &pollInterval,
 			PendingCIQuietPeriod:          &pendingCIQuietPeriod,
 			SessionTTL:                    &sessionTTL,
-			EffectivePollInterval:         pollInterval,
 			EffectivePendingCIQuietPeriod: pendingCIQuietPeriod,
 			EffectiveSessionTTL:           sessionTTL,
 			ExpectedRevision:              0,
@@ -236,6 +235,8 @@ func DeclareSpecs(harness Harness) {
 			ChangedAt:                     now.Add(time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
+		updated := saved.Settings
+		Expect(saved.CheckpointID).NotTo(BeNil())
 		Expect(updated.Revision).To(Equal(int64(1)))
 		Expect(updated.BotConfig).NotTo(BeNil())
 		Expect(updated.BotConfig.QuietSuccess).To(BeTrue())
@@ -250,9 +251,8 @@ func DeclareSpecs(harness Harness) {
 		Expect(shortened.ExpiresAt).To(Equal(now.Add(2 * time.Hour)))
 
 		longerTTL := 8 * time.Hour
-		updated, err = store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+		saved, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			SessionTTL:                    &longerTTL,
-			EffectivePollInterval:         5 * time.Minute,
 			EffectivePendingCIQuietPeriod: 30 * time.Second,
 			EffectiveSessionTTL:           longerTTL,
 			ExpectedRevision:              1,
@@ -260,13 +260,13 @@ func DeclareSpecs(harness Harness) {
 			ChangedAt:                     now.Add(2 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
+		updated = saved.Settings
 		Expect(updated.Revision).To(Equal(int64(2)))
 		unchanged, err := store.GetSession(ctx, session.TokenHash, now.Add(2*time.Minute))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(unchanged.ExpiresAt).To(Equal(now.Add(2 * time.Hour)))
 
-		_, err = store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
-			EffectivePollInterval:         5 * time.Minute,
+		_, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			EffectivePendingCIQuietPeriod: 30 * time.Second,
 			EffectiveSessionTTL:           time.Hour,
 			ExpectedRevision:              1,
@@ -275,8 +275,7 @@ func DeclareSpecs(harness Harness) {
 		})
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 
-		reset, err := store.UpdateRuntimeSettings(ctx, storage.RuntimeSettingsChange{
-			EffectivePollInterval:         5 * time.Minute,
+		resetResult, err := store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
 			EffectivePendingCIQuietPeriod: 30 * time.Second,
 			EffectiveSessionTTL:           time.Hour,
 			ExpectedRevision:              2,
@@ -284,6 +283,7 @@ func DeclareSpecs(harness Harness) {
 			ChangedAt:                     now.Add(3 * time.Minute),
 		})
 		Expect(err).NotTo(HaveOccurred())
+		reset := resetResult.Settings
 		Expect(reset.Revision).To(Equal(int64(3)))
 		Expect(reset.BotConfig).To(BeNil())
 		Expect(reset.LogLevel).To(BeNil())
@@ -300,7 +300,34 @@ func DeclareSpecs(harness Harness) {
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(audit.Items).To(HaveLen(3))
-		Expect(audit.Items[0].Action).To(Equal("runtime.settings.updated"))
+		Expect(audit.Items[0].Action).To(Equal("runtime.settings.saved"))
+		Expect(audit.Items[0].SettingsCheckpointID).NotTo(BeNil())
+	})
+
+	It("rejects runtime states its own checkpoint reader cannot restore", func() {
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		tooFast := 500 * time.Millisecond
+		tooSlow := storage.MaxRuntimePollInterval + time.Second
+		shortSession := 30 * time.Second
+		invalidBot := config.Default()
+		invalidBot.Runner = config.Runner("unknown")
+		for _, change := range []storage.RuntimeSettingsChange{
+			{PollInterval: &tooFast},
+			{PollInterval: &tooSlow},
+			{SessionTTL: &shortSession},
+			{BotConfig: invalidBot},
+		} {
+			change.EffectivePendingCIQuietPeriod = 30 * time.Second
+			change.EffectiveSessionTTL = time.Hour
+			change.ActorAccountID = account.ID
+			change.ChangedAt = now.Add(time.Minute)
+			_, err := store.SaveRuntimeSettings(ctx, change)
+			Expect(err).To(HaveOccurred())
+		}
+		settings, err := store.GetRuntimeSettings(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(settings.Revision).To(BeZero())
 	})
 
 	It("binds elevated writes to one Root session and notifies every Owner", func() {
@@ -319,14 +346,17 @@ func DeclareSpecs(harness Harness) {
 		})
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 
-		updated, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 			TargetID: target.TargetID, ActorAccountID: root.ID,
 			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
-			RepositoryDefaultEnabled: true, ExpectedRevision: 1,
 			ChangedAt: now.Add(time.Minute),
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true, ExpectedRevision: 1,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(updated.Revision).To(Equal(int64(2)))
+		Expect(saved.Target).NotTo(BeNil())
+		Expect(saved.Target.Revision).To(Equal(int64(2)))
 
 		notifications, err := store.ListSecurityNotifications(
 			ctx, owner.ID, storage.NotificationPageRequest{Limit: 10},
@@ -626,11 +656,13 @@ func DeclareSpecs(harness Harness) {
 
 		harness.RejectSecurityNotifications(ctx)
 
-		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 			TargetID: target.TargetID, ActorAccountID: root.ID,
 			ElevationID: &elevation.ID, SessionTokenHash: session.TokenHash,
-			RepositoryDefaultEnabled: true, ExpectedRevision: 1,
 			ChangedAt: now.Add(time.Minute),
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true, ExpectedRevision: 1,
+			},
 		})
 		Expect(err).To(HaveOccurred())
 		unchanged, err := store.GetTarget(ctx, target.TargetID)
@@ -820,30 +852,34 @@ func DeclareSpecs(harness Harness) {
 		}))
 
 		quietSuccess := false
-		target, err := store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-			TargetID:                 initial.TargetID,
-			ActorAccountID:           account.ID,
-			RepositoryDefaultEnabled: true,
-			ConfigPatch:              config.Patch{QuietSuccess: &quietSuccess},
-			ExpectedRevision:         1,
-			ChangedAt:                now.Add(time.Minute),
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: initial.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(time.Minute),
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true,
+				ConfigPatch:              config.Patch{QuietSuccess: &quietSuccess},
+				ExpectedRevision:         1,
+			},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Target).NotTo(BeNil())
+		target := *saved.Target
 		Expect(target.Revision).To(Equal(int64(2)))
 
 		emptyAliases := map[string]string{}
 		disabled := false
-		repository, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID:             initial.TargetID,
-			RepositoryID:         "repo-1",
-			ActorAccountID:       account.ID,
-			EnabledOverride:      &disabled,
-			ConfigPatch:          config.Patch{CommandAliases: &emptyAliases},
-			IgnoreRepositoryFile: false,
-			ExpectedRevision:     1,
-			ChangedAt:            now.Add(2 * time.Minute),
+		saved, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: initial.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(2 * time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repo-1", EnabledOverride: &disabled,
+				ConfigPatch:          config.Patch{CommandAliases: &emptyAliases},
+				IgnoreRepositoryFile: false, ExpectedRevision: 1,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository := saved.Repositories[0]
 		Expect(repository.Revision).To(Equal(int64(2)))
 
 		refreshed := testInstallation(account, now.Add(3*time.Minute), []storage.RepositorySnapshot{
@@ -872,11 +908,10 @@ func DeclareSpecs(harness Harness) {
 		Expect(repositories[1].EnabledOverride).To(HaveValue(BeFalse()))
 		Expect(repositories[1].ConfigPatch.CommandAliases).To(HaveValue(BeEmpty()))
 
-		_, err = store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
-			TargetID:         initial.TargetID,
-			ActorAccountID:   account.ID,
-			ExpectedRevision: 1,
-			ChangedAt:        now.Add(4 * time.Minute),
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: initial.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(4 * time.Minute),
+			Target:    &storage.InstallationTargetSettingsChange{ExpectedRevision: 1},
 		})
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 
@@ -886,22 +921,22 @@ func DeclareSpecs(harness Harness) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(audit.Items).To(HaveLen(2))
 		Expect(audit.Total).To(Equal(2))
-		Expect(audit.Items[0].Action).To(Equal("repository.settings.updated"))
-		Expect(audit.Items[0].RepositoryFullName).To(HaveValue(Equal("smykla-skalski/smyklot")))
-		Expect(audit.Items[1].Action).To(Equal("target.settings.updated"))
+		for _, item := range audit.Items {
+			Expect(item.Action).To(Equal("installation.settings.saved"))
+			Expect(item.RepositoryFullName).To(BeNil())
+		}
 
 		accountAudit, err := store.ListAudit(ctx, initial.TargetID, storage.AuditPageRequest{
 			HistoryPageRequest: storage.HistoryPageRequest{
 				Limit: 10,
 				Order: storage.HistoryOldest,
-				Query: "account defaults",
+				Query: "Saved 1 installation settings",
 			},
 			Scope: storage.AuditAccount,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(accountAudit.Total).To(Equal(1))
-		Expect(accountAudit.Items).To(HaveLen(1))
-		Expect(accountAudit.Items[0].Action).To(Equal("target.settings.updated"))
+		Expect(accountAudit.Total).To(Equal(2))
+		Expect(accountAudit.Items).To(HaveLen(2))
 	})
 
 	It("records only meaningful ownership synchronization changes", func() {
@@ -968,16 +1003,17 @@ func DeclareSpecs(harness Harness) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.ConfigFileStatus).To(Equal(storage.RepositoryFileInvalid))
 
-		repository, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID:             target.TargetID,
-			RepositoryID:         "repo-1",
-			ActorAccountID:       account.ID,
-			ConfigPatch:          config.Patch{},
-			IgnoreRepositoryFile: true,
-			ExpectedRevision:     repository.Revision,
-			ChangedAt:            now.Add(2 * time.Minute),
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(2 * time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repo-1", ConfigPatch: config.Patch{},
+				IgnoreRepositoryFile: true, ExpectedRevision: repository.Revision,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository = saved.Repositories[0]
 		Expect(repository.ConfigFileStatus).To(Equal(storage.RepositoryFileBypassed))
 		Expect(repository.ConfigFileError).To(HaveValue(Equal(problem)))
 	})
@@ -1059,15 +1095,17 @@ func DeclareSpecs(harness Harness) {
 
 		// Panel-owned settings are not touched by it, and it does not contend
 		// for their revision: a sweep tick must not fail somebody's save
-		settings, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID:         target.TargetID,
-			RepositoryID:     "repo-1",
-			ActorAccountID:   testAccount(now).ID,
-			ConfigPatch:      config.Patch{},
-			ExpectedRevision: repository.Revision,
-			ChangedAt:        now.Add(time.Minute),
+		saved, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target.TargetID, ActorAccountID: testAccount(now).ID,
+			ChangedAt: now.Add(time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repo-1", ConfigPatch: config.Patch{},
+				ExpectedRevision: repository.Revision,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		settings := saved.Repositories[0]
 		Expect(settings.ConfigMigration).To(Equal(storage.ConfigMigrationDeclined))
 
 		// GitHub refusing the push is durable for a different reason than
@@ -1826,15 +1864,14 @@ func DeclareSpecs(harness Harness) {
 		Expect(store.ReconcileInstallation(ctx, installation)).To(Succeed())
 
 		enabled := true
-		_, err := store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID:             installation.TargetID,
-			RepositoryID:         "repo-beta",
-			ActorAccountID:       account.ID,
-			EnabledOverride:      &enabled,
-			ConfigPatch:          config.Patch{QuietSuccess: &enabled},
-			IgnoreRepositoryFile: false,
-			ExpectedRevision:     1,
-			ChangedAt:            now.Add(2 * time.Minute),
+		_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: installation.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(2 * time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repo-beta", EnabledOverride: &enabled,
+				ConfigPatch:          config.Patch{QuietSuccess: &enabled},
+				IgnoreRepositoryFile: false, ExpectedRevision: 1,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		stateChanged, err := store.UpdateRepositoryFileState(ctx, storage.RepositoryFileState{
@@ -1855,14 +1892,13 @@ func DeclareSpecs(harness Harness) {
 		Expect(stateChanged).To(BeTrue())
 
 		prefix := "!"
-		_, err = store.UpdateRepositorySettings(ctx, storage.RepositorySettingsChange{
-			TargetID:             installation.TargetID,
-			RepositoryID:         "repo-delta",
-			ActorAccountID:       account.ID,
-			ConfigPatch:          config.Patch{CommandPrefix: &prefix},
-			IgnoreRepositoryFile: false,
-			ExpectedRevision:     1,
-			ChangedAt:            now.Add(3 * time.Minute),
+		_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: installation.TargetID, ActorAccountID: account.ID,
+			ChangedAt: now.Add(3 * time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repo-delta", ConfigPatch: config.Patch{CommandPrefix: &prefix},
+				IgnoreRepositoryFile: false, ExpectedRevision: 1,
+			}},
 		})
 		Expect(err).NotTo(HaveOccurred())
 

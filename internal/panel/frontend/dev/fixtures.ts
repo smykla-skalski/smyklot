@@ -41,18 +41,15 @@ import type {
   RepositoryDetail,
   RepositorySummary,
   RootElevation,
+  SettingsCheckpoint,
   SyncCell,
   SyncConfig,
-  SyncConfigCheckpoint,
-  SyncConfigCheckpointState,
-  SyncKind,
   SyncOverride,
   SyncPlan,
   SyncStatus,
   SecurityNotification,
   InvitationStatus,
 } from '../src/lib/types.ts';
-import { SYNC_KINDS } from '../src/lib/types.ts';
 export const DEFAULT_CONFIG: ConfigValues = {
   quiet_success: false,
   quiet_reactions: false,
@@ -182,16 +179,20 @@ export interface MockState {
     pathIndexIntervalOverride: number | null;
     sessionTTLOverride: number | null;
     revision: number;
+    checkpointCounter: number;
+    checkpoints: Map<string, SettingsCheckpoint>;
+    audit: AuditEntry[];
     updatedAt?: string;
     updatedBy?: PanelAccount;
     startedAt: number;
   };
+  installationSettings: {
+    checkpointCounter: number;
+    checkpoints: Map<string, SettingsCheckpoint>;
+  };
   prefs: { values: Record<string, unknown>; rev: number };
   /** Label sync, per installation: what is configured and what is in flight. */
   sync: Map<string, SyncConfig>;
-  /** Immutable Sync snapshots, keyed by installation and checkpoint together. */
-  syncCheckpoints: Map<string, SyncConfigCheckpoint>;
-
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncPlans: Map<string, SyncPlan>;
@@ -333,12 +334,11 @@ export function seed(
     {
       ...auditSeed(
         'audit-1',
-        'sync.config.saved',
-        'saved Sync configuration',
+        'ownership.synced',
+        'refreshed installation ownership',
         undefined,
         iso(-12 * 60_000),
       ),
-      sync_config_checkpoint_id: 'checkpoint-sync-1',
     },
     auditSeed(
       'audit-2',
@@ -378,17 +378,15 @@ export function seed(
     },
   ];
   const auditActions = [
-    ['repository.enabled', 'enabled repository'],
-    ['repository.disabled', 'disabled repository'],
-    ['repository.settings.updated', 'updated repository settings for'],
-    ['target.settings.updated', 'updated account defaults'],
+    ['repository.config_migration.reset', 'reset migrated repository configuration for'],
+    ['target.access.updated', 'updated installation access'],
+    ['invitation.created', 'invited a workspace member'],
   ] as const;
   for (let index = 0; index < 34; index += 1) {
     const [action, summary] = cycled(auditActions, index);
-    const repository =
-      index % 4 === 3
-        ? undefined
-        : cycled(organization.repositories, index).detail.repository.full_name;
+    const repository = action.startsWith('repository.')
+      ? cycled(organization.repositories, index).detail.repository.full_name
+      : undefined;
     organization.audit.push(
       auditSeed(
         `audit-seed-${index + 4}`,
@@ -515,7 +513,14 @@ export function seed(
       pathIndexIntervalOverride: null,
       sessionTTLOverride: null,
       revision: 0,
+      checkpointCounter: 1,
+      checkpoints: new Map(),
+      audit: [],
       startedAt: now,
+    },
+    installationSettings: {
+      checkpointCounter: 1,
+      checkpoints: new Map(),
     },
     prefs,
     /* Configured and waiting, because empty was the only state this page could
@@ -523,12 +528,6 @@ export function seed(
        it is asked, and no plan was ever computed, so the label list and the plan
        list rendered nowhere and drifted out of the design unseen. */
     sync,
-    syncCheckpoints: new Map([
-      [
-        `${organization.value.id}/checkpoint-sync-1`,
-        syncCheckpointSeed(sync, organization.value.id, iso),
-      ],
-    ]),
     /* One repository that adjusts a template, because the pane that shows one
        has a card per adjustment and a form nobody can look at except empty is
        a form that drifts out of the design unseen. */
@@ -1200,7 +1199,7 @@ export function securityNotificationSeeds(
       actor,
       elevation_id: 'R7mQ2xKfLp0Zc4Vn8sTdWb1yHgJ3aEuN6iOqXr5vBkM',
       audit_event_id: '203',
-      action: 'repository.settings.updated',
+      action: 'installation.settings.restored',
       reason: 'Restore command handling during production incident',
       created_at: iso(-18 * 60_000),
     },
@@ -1210,7 +1209,7 @@ export function securityNotificationSeeds(
       actor,
       elevation_id: 'R7mQ2xKfLp0Zc4Vn8sTdWb1yHgJ3aEuN6iOqXr5vBkM',
       audit_event_id: '202',
-      action: 'target.settings.updated',
+      action: 'installation.settings.saved',
       reason: 'Restore command handling during production incident',
       created_at: iso(-24 * 60_000),
     },
@@ -1220,7 +1219,7 @@ export function securityNotificationSeeds(
       actor,
       elevation_id: 'hT4wYs9dRfB2nKmXpQ7vLc0jZgA5eU8iRoW1yNbD3xE',
       audit_event_id: '188',
-      action: 'repository.settings.updated',
+      action: 'installation.settings.restored',
       reason: 'Owner-approved support investigation',
       created_at: iso(-2 * 86_400_000),
       read_at: iso(-47 * 3_600_000),
@@ -1778,87 +1777,6 @@ export function mockSyncConfig(state: MockState, key: string, kind: string): Syn
   state.sync.set(key, fresh);
 
   return fresh;
-}
-
-export function syncConfigCheckpointState(config: SyncConfig): SyncConfigCheckpointState {
-  const document =
-    config.kind === 'labels'
-      ? {
-          labels: structuredClone(config.labels),
-          allow_removal: config.allow_removal,
-          excludes: structuredClone(config.excludes),
-        }
-      : structuredClone(config.document);
-  return {
-    enabled: config.enabled,
-    document,
-    digest: config.digest,
-    revision: config.revision,
-  };
-}
-
-function syncCheckpointSeed(
-  sync: Map<string, SyncConfig>,
-  targetId: string,
-  iso: (offsetMs: number) => string,
-): SyncConfigCheckpoint {
-  const current = new Map<SyncKind, SyncConfigCheckpointState>();
-  for (const kind of SYNC_KINDS) {
-    const config = sync.get(`${targetId}/${kind}`);
-    if (config !== undefined) current.set(kind, syncConfigCheckpointState(config));
-  }
-
-  const labelsCurrent = structuredClone(current.get('labels'));
-  const settingsCurrent = structuredClone(current.get('settings'));
-  if (labelsCurrent === undefined || settingsCurrent === undefined) {
-    throw new Error('the development Sync checkpoint needs labels and settings fixtures');
-  }
-  const labelsAfter = structuredClone(labelsCurrent);
-  const labels = Array.isArray(labelsAfter.document.labels) ? labelsAfter.document.labels : [];
-  labelsAfter.document.labels = labels.slice(0, -1);
-  labelsAfter.document.allow_removal = true;
-  labelsAfter.document.excludes = [];
-  labelsAfter.digest = 'sha256:labels-checkpoint';
-  labelsAfter.revision -= 1;
-
-  const labelsBefore = structuredClone(labelsAfter);
-  labelsBefore.document.labels = labels.slice(0, -2);
-  labelsBefore.document.allow_removal = false;
-  labelsBefore.digest = 'sha256:labels-before';
-  labelsBefore.revision -= 1;
-
-  const settingsAfter = structuredClone(settingsCurrent);
-  delete settingsAfter.document.secret_scanning;
-  settingsAfter.digest = 'sha256:settings-checkpoint';
-  settingsAfter.revision -= 1;
-
-  const settingsBefore = structuredClone(settingsAfter);
-  delete settingsBefore.document.has_wiki;
-  settingsBefore.digest = 'sha256:settings-before';
-  settingsBefore.revision -= 1;
-
-  return {
-    id: 'checkpoint-sync-1',
-    action: 'sync.config.saved',
-    actor: VIEWER,
-    created_at: iso(-12 * 60_000),
-    affected_kinds: ['labels', 'settings'],
-    kinds: SYNC_KINDS.map((kind) => {
-      const currentState = current.get(kind) ?? null;
-      const before =
-        kind === 'labels' ? labelsBefore : kind === 'settings' ? settingsBefore : currentState;
-      const after =
-        kind === 'labels' ? labelsAfter : kind === 'settings' ? settingsAfter : currentState;
-      return {
-        kind,
-        before: structuredClone(before),
-        after: structuredClone(after),
-        current: structuredClone(currentState),
-        changed: kind === 'labels' || kind === 'settings',
-        differs_from_current: kind === 'labels' || kind === 'settings',
-      };
-    }),
-  };
 }
 
 /** The two installations the mock's Root actually owns. */

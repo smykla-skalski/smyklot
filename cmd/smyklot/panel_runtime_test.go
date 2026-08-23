@@ -374,21 +374,23 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		targetPrefix := "!"
 		quietSuccess := true
-		target, err = service.store.UpdateTargetSettings(
+		saved, err := service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.TargetSettingsChange{
-				TargetID:                 target.ID,
-				ActorAccountID:           target.Account.ID,
-				RepositoryDefaultEnabled: true,
-				ConfigPatch: config.Patch{
-					CommandPrefix: &targetPrefix,
-					QuietSuccess:  &quietSuccess,
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Target: &storage.InstallationTargetSettingsChange{
+					RepositoryDefaultEnabled: true,
+					ConfigPatch: config.Patch{
+						CommandPrefix: &targetPrefix,
+						QuietSuccess:  &quietSuccess,
+					},
+					ExpectedRevision: target.Revision,
 				},
-				ExpectedRevision: target.Revision,
-				ChangedAt:        time.Now(),
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Target).NotTo(BeNil())
+		target = *saved.Target
 		repository, err := service.store.GetRepository(
 			GinkgoT().Context(),
 			target.ID,
@@ -396,20 +398,20 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 		repositoryPrefix := "#"
-		repository, err = service.store.UpdateRepositorySettings(
+		saved, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.RepositorySettingsChange{
-				TargetID:       target.ID,
-				RepositoryID:   repository.ID,
-				ActorAccountID: target.Account.ID,
-				ConfigPatch: config.Patch{
-					CommandPrefix: &repositoryPrefix,
-				},
-				ExpectedRevision: repository.Revision,
-				ChangedAt:        time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID:     repository.ID,
+					ConfigPatch:      config.Patch{CommandPrefix: &repositoryPrefix},
+					ExpectedRevision: repository.Revision,
+				}},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository = saved.Repositories[0]
 		client, err := github.NewClient("installation-token", endpoint.URL)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -427,17 +429,15 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(effective.DisableMentions).To(BeTrue())
 
 		freshPrefix := "%"
-		_, err = service.store.UpdateRepositorySettings(
+		_, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.RepositorySettingsChange{
-				TargetID:       target.ID,
-				RepositoryID:   repository.ID,
-				ActorAccountID: target.Account.ID,
-				ConfigPatch: config.Patch{
-					CommandPrefix: &freshPrefix,
-				},
-				ExpectedRevision: repository.Revision,
-				ChangedAt:        time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID:     repository.ID,
+					ConfigPatch:      config.Patch{CommandPrefix: &freshPrefix},
+					ExpectedRevision: repository.Revision,
+				}},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -468,18 +468,19 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			"github:repository:31",
 		)
 		Expect(err).NotTo(HaveOccurred())
-		repository, err = service.store.UpdateRepositorySettings(
+		saved, err := service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.RepositorySettingsChange{
-				TargetID:             target.ID,
-				RepositoryID:         repository.ID,
-				ActorAccountID:       target.Account.ID,
-				IgnoreRepositoryFile: true,
-				ExpectedRevision:     repository.Revision,
-				ChangedAt:            time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID: repository.ID, IgnoreRepositoryFile: true,
+					ExpectedRevision: repository.Revision,
+				}},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository = saved.Repositories[0]
 		client, err := github.NewClient("installation-token", endpoint.URL)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -500,18 +501,19 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repository.ConfigFileStatus).To(Equal(storage.RepositoryFileBypassed))
 
-		repository, err = service.store.UpdateRepositorySettings(
+		saved, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.RepositorySettingsChange{
-				TargetID:             target.ID,
-				RepositoryID:         repository.ID,
-				ActorAccountID:       target.Account.ID,
-				IgnoreRepositoryFile: false,
-				ExpectedRevision:     repository.Revision,
-				ChangedAt:            time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID: repository.ID, IgnoreRepositoryFile: false,
+					ExpectedRevision: repository.Revision,
+				}},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
+		Expect(saved.Repositories).To(HaveLen(1))
+		repository = saved.Repositories[0]
 		Expect(repository.ConfigFileStatus).To(Equal(storage.RepositoryFileInvalid))
 	})
 
@@ -582,14 +584,14 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 
 		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
 		Expect(err).NotTo(HaveOccurred())
-		_, err = service.store.UpdateTargetSettings(
+		_, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.TargetSettingsChange{
-				TargetID:                 target.ID,
-				ActorAccountID:           target.Account.ID,
-				RepositoryDefaultEnabled: true,
-				ExpectedRevision:         target.Revision,
-				ChangedAt:                time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Target: &storage.InstallationTargetSettingsChange{
+					RepositoryDefaultEnabled: true,
+					ExpectedRevision:         target.Revision,
+				},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())
@@ -641,14 +643,14 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(err).NotTo(HaveOccurred())
 		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
 		Expect(err).NotTo(HaveOccurred())
-		_, err = service.store.UpdateTargetSettings(
+		_, err = service.store.SaveInstallationSettings(
 			GinkgoT().Context(),
-			storage.TargetSettingsChange{
-				TargetID:                 target.ID,
-				ActorAccountID:           target.Account.ID,
-				RepositoryDefaultEnabled: true,
-				ExpectedRevision:         target.Revision,
-				ChangedAt:                time.Now(),
+			storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: target.Account.ID, ChangedAt: time.Now(),
+				Target: &storage.InstallationTargetSettingsChange{
+					RepositoryDefaultEnabled: true,
+					ExpectedRevision:         target.Revision,
+				},
 			},
 		)
 		Expect(err).NotTo(HaveOccurred())

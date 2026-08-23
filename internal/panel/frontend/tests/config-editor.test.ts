@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import ConfigEditor from '../src/lib/components/ConfigEditor.svelte';
 import { CONFIG } from '../stories/support/fixtures';
 
-describe('ConfigEditor save modes [Component]', () => {
+describe('ConfigEditor drafts [Component]', () => {
   beforeEach(() => {
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
@@ -25,26 +25,6 @@ describe('ConfigEditor save modes [Component]', () => {
 
     expect(onChange).toHaveBeenCalledOnce();
     expect(onChange).toHaveBeenCalledWith({ command_prefix: '!' }, 'command_prefix');
-  });
-
-  it('keeps the legacy save callback for settings surfaces still being migrated', async () => {
-    const onSave = vi.fn(async () => {});
-    render(ConfigEditor, {
-      patch: {},
-      inherited: CONFIG,
-      scope: 'runtime',
-      idPrefix: 'legacy',
-      section: 'commands',
-      onSave,
-    });
-
-    const prefix = screen.getByLabelText('Prefix');
-    await fireEvent.input(prefix, { target: { value: '?' } });
-    expect(onSave).not.toHaveBeenCalled();
-    await fireEvent.blur(prefix);
-
-    expect(onSave).toHaveBeenCalledOnce();
-    expect(onSave).toHaveBeenCalledWith({ command_prefix: '?' });
   });
 
   it('marks only the supplied staged rows as unsaved', () => {
