@@ -32,25 +32,28 @@ CREATE UNIQUE INDEX audit_sync_config_checkpoint_idx
     ON audit_entries (sync_config_checkpoint_id)
     WHERE sync_config_checkpoint_id IS NOT NULL;
 
--- Capture the state that exists at upgrade time without claiming that the
--- upgrade itself was a user change. An installation with no configured kind
--- gets its empty baseline on its first save.
+-- Capture every installation's state at upgrade time without claiming that
+-- the upgrade itself was a user change. Empty installations need a checkpoint
+-- too: otherwise their first saved checkpoint has no historical baseline.
 INSERT INTO sync_config_checkpoints (
     target_id, actor_account_id, action, created_at
 )
 SELECT
-    target_id,
-    (
+    target.id,
+    COALESCE((
         SELECT latest.updated_by
         FROM sync_configs latest
-        WHERE latest.target_id = held.target_id
+        WHERE latest.target_id = target.id
         ORDER BY latest.updated_at DESC, latest.kind
         LIMIT 1
-    ),
+    ), target.account_id),
     'baseline',
-    MAX(updated_at)
-FROM sync_configs held
-GROUP BY target_id;
+    COALESCE((
+        SELECT MAX(latest.updated_at)
+        FROM sync_configs latest
+        WHERE latest.target_id = target.id
+    ), target.settings_updated_at)
+FROM targets target;
 
 INSERT INTO sync_config_checkpoint_items (
     checkpoint_id, kind, enabled, document, digest, revision

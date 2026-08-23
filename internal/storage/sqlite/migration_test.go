@@ -654,6 +654,100 @@ create_count, computed_at, expires_at
 	requireNoForeignKeyViolations(t, ctx, db)
 }
 
+// TestSyncConfigHistoryMigrationBaselinesEveryTarget proves an upgrade can
+// restore the exact pre-upgrade state even when an installation had never
+// configured Sync. Empty state is still state, so it needs an immutable
+// checkpoint of its own rather than waiting for the first user save.
+func TestSyncConfigHistoryMigrationBaselinesEveryTarget(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "sync-config-history.db")
+	db := openLegacyDatabase(t, ctx, path, 38)
+	targetAt := time.Date(2026, time.August, 22, 10, 0, 0, 0, time.UTC).
+		Format(time.RFC3339Nano)
+	configAt := time.Date(2026, time.August, 22, 11, 0, 0, 0, time.UTC).
+		Format(time.RFC3339Nano)
+
+	statements := []struct {
+		query     string
+		arguments []any
+	}{
+		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES ('github:owner', 'github', 'owner', 'owner', 'Owner', ?)`, []any{targetAt}},
+		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES ('github:editor', 'github', 'editor', 'editor', 'Editor', ?)`, []any{configAt}},
+		{`INSERT INTO targets (
+id, installation_id, kind, account_id, settings_updated_at, synced_at
+) VALUES ('installation:configured', '1', 'Organization', 'github:owner', ?, ?)`,
+			[]any{targetAt, targetAt}},
+		{`INSERT INTO targets (
+id, installation_id, kind, account_id, settings_updated_at, synced_at
+) VALUES ('installation:empty', '2', 'Organization', 'github:owner', ?, ?)`,
+			[]any{targetAt, targetAt}},
+		{`INSERT INTO sync_configs (
+target_id, kind, enabled, document, digest, revision, updated_by, updated_at
+) VALUES ('installation:configured', 'labels', 1, '{"labels":[]}', 'labels-digest', 4,
+          'github:editor', ?)`, []any{configAt}},
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement.query, statement.arguments...); err != nil {
+			t.Fatalf("seed pre-history state: %v\n%s", err, statement.query)
+		}
+	}
+
+	if err := sqlstore.Migrate(ctx, db, Dialect{}, migrations); err != nil {
+		t.Fatalf("apply the sync config history migration: %v", err)
+	}
+
+	type baseline struct {
+		target, actor, created string
+		items                  int
+	}
+	rows, err := db.QueryContext(ctx, `
+SELECT checkpoint.target_id, checkpoint.actor_account_id, checkpoint.created_at,
+       COUNT(item.kind)
+FROM sync_config_checkpoints checkpoint
+LEFT JOIN sync_config_checkpoint_items item ON item.checkpoint_id = checkpoint.id
+WHERE checkpoint.action = 'baseline'
+GROUP BY checkpoint.id
+ORDER BY checkpoint.target_id`)
+	if err != nil {
+		t.Fatalf("read migrated baselines: %v", err)
+	}
+	defer rows.Close()
+	var got []baseline
+	for rows.Next() {
+		var item baseline
+		if err = rows.Scan(&item.target, &item.actor, &item.created, &item.items); err != nil {
+			t.Fatalf("scan migrated baseline: %v", err)
+		}
+		got = append(got, item)
+	}
+	if err = rows.Err(); err != nil {
+		t.Fatalf("iterate migrated baselines: %v", err)
+	}
+	if len(got) != 2 || got[0] != (baseline{
+		target: "installation:configured", actor: "github:editor", created: configAt, items: 1,
+	}) || got[1] != (baseline{
+		target: "installation:empty", actor: "github:owner", created: targetAt, items: 0,
+	}) {
+		t.Fatalf("migrated baselines = %#v", got)
+	}
+
+	var targetAudit, rootAudit int
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM audit_entries").Scan(&targetAudit); err != nil {
+		t.Fatalf("count target audit: %v", err)
+	}
+	if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM app_audit_events").Scan(&rootAudit); err != nil {
+		t.Fatalf("count Root audit: %v", err)
+	}
+	if targetAudit != 0 || rootAudit != 0 {
+		t.Fatalf("baseline migration wrote audit: target=%d root=%d", targetAudit, rootAudit)
+	}
+	requireNoForeignKeyViolations(t, ctx, db)
+}
+
 // seedAuditRelationship writes an audit event with a notification pointing at
 // it, which is the pair the rebuild has to keep together.
 func seedAuditRelationship(t *testing.T, ctx context.Context, db *sql.DB, now string) {
