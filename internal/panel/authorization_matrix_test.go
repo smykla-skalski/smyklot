@@ -46,6 +46,7 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodDelete, "/panel/api/v1/root/elevations/elevation-id"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/settings"},
 		{http.MethodPut, "/panel/api/v1/root/installations/" + target + "/settings"},
+		{http.MethodPut, "/panel/api/v1/root/installations/" + target + "/settings/batch"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/repositories"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/repositories/repository-20"},
 		{http.MethodPut, "/panel/api/v1/root/installations/" + target + "/repositories/repository-20/settings"},
@@ -121,6 +122,7 @@ func regularRouteProbes(target string) []authorizationProbe {
 
 	return []authorizationProbe{
 		{http.MethodPut, target + "/settings"},
+		{http.MethodPut, target + "/settings/batch"},
 		{http.MethodGet, target + "/users"},
 		{http.MethodPost, target + "/users"},
 		{http.MethodGet, target + "/user-suggestions"},

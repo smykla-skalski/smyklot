@@ -211,7 +211,7 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
 	s.registerRootRoutes(mux, base)
-	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
+	s.registerInstallationSettingsRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/user-suggestions",
@@ -298,6 +298,14 @@ func (s *Server) Handler() http.Handler {
 	return s.secureHeaders(mux)
 }
 
+func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/settings", s.putTargetSettings)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/targets/{target}/settings/batch",
+		s.putInstallationSettingsBatch,
+	)
+}
+
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
@@ -331,14 +339,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"DELETE "+base+"/api/v1/root/elevations/{elevation}",
 		s.deleteRootElevation,
 	)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/settings",
-		s.getRootTargetSettings,
-	)
-	mux.HandleFunc(
-		"PUT "+base+"/api/v1/root/installations/{target}/settings",
-		s.putRootTargetSettings,
-	)
+	s.registerRootInstallationSettingsRoutes(mux, base)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/repositories",
 		s.getRootRepositories,
@@ -395,6 +396,21 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/failures",
 		s.getRootTargetFailures,
+	)
+}
+
+func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/settings",
+		s.getRootTargetSettings,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/root/installations/{target}/settings",
+		s.putRootTargetSettings,
+	)
+	mux.HandleFunc(
+		"PUT "+base+"/api/v1/root/installations/{target}/settings/batch",
+		s.putRootInstallationSettingsBatch,
 	)
 }
 
