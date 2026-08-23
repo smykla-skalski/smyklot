@@ -80,6 +80,7 @@
   let attentionNotice = $state<'restored' | 'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
+  let selectedSaveProblemControl = $state<SettingsDirtyControl | null>(null);
   const viewerAccountId = $derived(session.viewer?.account.id ?? null);
   const settingsDraftsReady = $derived(
     viewerAccountId === null || settingsDraftRegistry.accountId === viewerAccountId,
@@ -119,7 +120,18 @@
   const selectedSettingsConflict = $derived(
     selectedSettingsScope !== null && settingsDraftRegistry.hasConflicts(selectedSettingsScope),
   );
-  const selectedProblemControl = $derived(selectedDirtyControls[0]);
+  const selectedProblemControl = $derived.by(() => {
+    const failed = selectedSaveProblemControl;
+    if (
+      failed !== null &&
+      selectedDirtyControls.some(
+        (control) => control.resourceKey === failed.resourceKey && control.id === failed.id,
+      )
+    ) {
+      return failed;
+    }
+    return selectedDirtyControls[0];
+  });
   const selectedProblemHref = $derived(settingsProblemHref(selectedProblemControl));
   const selectedProblemLabel = $derived(settingsProblemLabel(selectedProblemControl));
   const hasSettingsAttention = $derived(settingsDraftRegistry.timestamps().attentionAt !== null);
@@ -389,12 +401,16 @@
   async function saveSelectedSettings(): Promise<void> {
     const targetId = session.selectedTarget?.id;
     if (targetId === undefined) return;
+    selectedSaveProblemControl = null;
     const result = await saveInstallationDrafts(
       settingsDraftRegistry,
       targetId,
       api.saveInstallationSettings,
     );
-    if (!result.saved) return;
+    if (!result.saved) {
+      selectedSaveProblemControl = result.problemControl ?? null;
+      return;
+    }
     session.repositoryChanged(targetId);
     await queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] });
   }
@@ -454,6 +470,7 @@
     const targetId = session.selectedTarget?.id;
     if (targetId === undefined || selectedSettingsScope === null) return;
     const scope = selectedSettingsScope;
+    selectedSaveProblemControl = null;
     resolvingSettingsConflict = true;
     await tick();
     rebaseInstallationConflicts(settingsDraftRegistry, targetId);
@@ -465,6 +482,7 @@
   }
 
   function discardSelectedSettings(): void {
+    selectedSaveProblemControl = null;
     if (selectedSettingsScope !== null) settingsDraftRegistry.discardScope(selectedSettingsScope);
   }
 

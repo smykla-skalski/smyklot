@@ -159,6 +159,16 @@ describe('installation settings save coordinator [Unit]', () => {
     const drafts = registry();
     const targetId = TARGET.id;
     const repositoryId = REPOSITORY_DETAIL.repository.id;
+    adoptTargetDefaults(drafts, TARGET);
+    stageTargetDefaultsControl(
+      drafts,
+      TARGET,
+      {
+        ...targetDefaultsDraftDocument(drafts, TARGET),
+        repository_default_enabled: !TARGET.repository_default_enabled,
+      },
+      'defaults.repository_default_enabled',
+    );
     const override: SyncOverride = {
       ...emptyOverride(),
       document: { merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }] },
@@ -174,8 +184,16 @@ describe('installation settings save coordinator [Unit]', () => {
     );
     const save = vi.fn();
 
-    await expect(saveInstallationDrafts(drafts, targetId, save)).resolves.toEqual({
+    const result = await saveInstallationDrafts(drafts, targetId, save);
+    expect(result).toMatchObject({
       saved: false,
+      problemControl: {
+        id: `repositories.${repositoryId}.sync.files.document`,
+        location: {
+          section: 'repositories',
+          path: [repositoryId, 'sync', 'files', 'document'],
+        },
+      },
     });
     expect(save).not.toHaveBeenCalled();
     expect(drafts.hasDirty({ type: 'installation', targetId })).toBe(true);
