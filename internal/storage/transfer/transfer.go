@@ -43,6 +43,8 @@ var tables = []string{
 	"pending_ci_repository_gates",
 	"pending_ci_check_slots",
 	"root_elevations",
+	"sync_config_checkpoints",
+	"sync_config_checkpoint_items",
 	"audit_entries",
 	"access_audit_entries",
 	"app_audit_events",
@@ -55,8 +57,7 @@ var tables = []string{
 	"user_invitations",
 	"runtime_settings",
 	"user_preferences",
-	// Sync, in dependency order: what is configured, then the plans computed
-	// from it, then the actions hanging off a plan.
+	// Active Sync state, then the plans computed from it and their actions.
 	"sync_configs",
 	"sync_repository_overrides",
 	"sync_repository_paths",

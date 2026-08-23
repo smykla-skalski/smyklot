@@ -674,14 +674,15 @@ type RepositoryPage struct {
 
 // AuditEntry is one immutable panel mutation.
 type AuditEntry struct {
-	ID                 int64
-	TargetID           string
-	RepositoryID       *string
-	RepositoryFullName *string
-	Actor              Account
-	Action             string
-	Summary            string
-	CreatedAt          time.Time
+	ID                     int64
+	TargetID               string
+	RepositoryID           *string
+	RepositoryFullName     *string
+	SyncConfigCheckpointID *int64
+	Actor                  Account
+	Action                 string
+	Summary                string
+	CreatedAt              time.Time
 }
 
 // DeliveryStatus is the lifecycle of a claimed webhook delivery.
@@ -802,6 +803,7 @@ const (
 	AuditChangeEnablement AuditChange = "enablement"
 	AuditChangeRepository AuditChange = "repository"
 	AuditChangeAccount    AuditChange = "account"
+	AuditChangeSync       AuditChange = "sync"
 )
 
 // AuditPageRequest adds mutation scope to common history controls.

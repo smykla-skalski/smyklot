@@ -663,37 +663,48 @@ SELECT COUNT(*) FROM repositories WHERE target_id = ? AND id = ?`,
 }
 
 type auditInsert struct {
-	TargetID           string
-	RepositoryID       *string
-	RepositoryFullName *string
-	ActorAccountID     string
-	ElevationID        *string
-	Action             string
-	Summary            string
-	CreatedAt          time.Time
+	TargetID               string
+	RepositoryID           *string
+	RepositoryFullName     *string
+	SyncConfigCheckpointID *int64
+	ActorAccountID         string
+	ElevationID            *string
+	SourceKind             *string
+	SourceID               *int64
+	Action                 string
+	Summary                string
+	CreatedAt              time.Time
 }
 
 func insertAudit(ctx context.Context, tx runner, entry auditInsert) (int64, error) {
-	var sourceID int64
+	var auditEntryID int64
 	err := tx.QueryRowContext(ctx, `
 INSERT INTO audit_entries (
     target_id, repository_id, repository_full_name,
-    actor_account_id, action, summary, created_at
+    sync_config_checkpoint_id, actor_account_id, action, summary, created_at
 )
-VALUES (?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		entry.TargetID,
 		entry.RepositoryID,
 		entry.RepositoryFullName,
+		entry.SyncConfigCheckpointID,
 		entry.ActorAccountID,
 		entry.Action,
 		entry.Summary,
 		entry.CreatedAt,
-	).Scan(&sourceID)
+	).Scan(&auditEntryID)
 	if err != nil {
 		return 0, fmt.Errorf("insert settings audit: %w", err)
 	}
 	sourceKind := "settings"
+	sourceID := auditEntryID
+	if entry.SourceKind != nil {
+		sourceKind = *entry.SourceKind
+	}
+	if entry.SourceID != nil {
+		sourceID = *entry.SourceID
+	}
 	targetID := entry.TargetID
 	auditEventID, err := insertAppAudit(ctx, tx, appAuditInsert{
 		Category:       "configuration",

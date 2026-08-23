@@ -49,6 +49,8 @@ func SeededTables() []string {
 		"pending_ci_repository_gates",
 		"pending_ci_check_slots",
 		"root_elevations",
+		"sync_config_checkpoints",
+		"sync_config_checkpoint_items",
 		"audit_entries",
 		"access_audit_entries",
 		"app_audit_events",

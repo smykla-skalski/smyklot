@@ -149,6 +149,153 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 	})
 
+	It("saves several kinds as one audited immutable checkpoint", func() {
+		ctx, store, now := runtime()
+		account := seed(ctx, store, now)
+		changes := []orgsync.ConfigPatch{
+			{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`)},
+			{Kind: orgsync.KindSettings, Enabled: false, Document: []byte(`{"settings":{}}`)},
+		}
+
+		written, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
+			TargetID: target, ActorID: account.ID, Now: now, Changes: changes,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(written.Configs).To(HaveLen(2))
+		Expect(written.CheckpointID).NotTo(BeNil())
+
+		checkpoint, err := store.GetSyncConfigCheckpoint(ctx, target, *written.CheckpointID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checkpoint.Action).To(Equal(orgsync.CheckpointSaved))
+		Expect(checkpoint.Items).To(HaveLen(2))
+		Expect(checkpoint.ActorID).To(Equal(account.ID))
+
+		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Change:             storage.AuditChangeSync,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Items).To(HaveLen(1))
+		Expect(audit.Items[0].Action).To(Equal("sync.config.saved"))
+		Expect(audit.Items[0].SyncConfigCheckpointID).To(Equal(written.CheckpointID))
+
+		rootAudit, err := store.ListRootAudit(ctx, storage.RootAuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Categories:         []storage.AuditCategory{storage.AuditCategoryConfiguration},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rootAudit.Items).To(HaveLen(1))
+		Expect(rootAudit.Items[0].Action).To(Equal("sync.config.saved"))
+
+		for index := range changes {
+			changes[index].Revision = 1
+		}
+		unchanged, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
+			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute), Changes: changes,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(unchanged.CheckpointID).To(BeNil())
+
+		audit, err = store.ListAudit(ctx, target, storage.AuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Change:             storage.AuditChangeSync,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Total).To(Equal(1))
+	})
+
+	It("rolls every kind back when one expected revision is stale", func() {
+		ctx, store, now := runtime()
+		account := seed(ctx, store, now)
+		writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+
+		_, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
+			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute),
+			Changes: []orgsync.ConfigPatch{
+				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[{}]}`), Revision: 1},
+				{Kind: orgsync.KindSettings, Enabled: true, Document: []byte(`{"settings":{}}`), Revision: 1},
+			},
+		})
+		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
+
+		labels, err := store.GetSyncConfig(ctx, target, orgsync.KindLabels)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(labels.Document)).To(Equal(`{"labels":[]}`))
+		Expect(labels.Revision).To(Equal(int64(1)))
+		_, err = store.GetSyncConfig(ctx, target, orgsync.KindSettings)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Change:             storage.AuditChangeSync,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Total).To(Equal(1))
+	})
+
+	It("restores selected kinds and keeps the source checkpoint immutable", func() {
+		ctx, store, now := runtime()
+		account := seed(ctx, store, now)
+
+		original, err := store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
+			TargetID: target, ActorID: account.ID, Now: now,
+			Changes: []orgsync.ConfigPatch{
+				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`)},
+				{Kind: orgsync.KindSettings, Enabled: true, Document: []byte(`{"settings":{}}`)},
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = store.SetSyncConfigs(ctx, orgsync.ConfigBatchChange{
+			TargetID: target, ActorID: account.ID, Now: now.Add(time.Minute),
+			Changes: []orgsync.ConfigPatch{
+				{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[{}]}`), Revision: 1},
+				{Kind: orgsync.KindFiles, Enabled: true, Document: []byte(`{"files":[]}`)},
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		restored, err := store.RestoreSyncConfigCheckpoint(ctx, orgsync.ConfigRestore{
+			TargetID: target, CheckpointID: *original.CheckpointID,
+			Kinds: []orgsync.Kind{orgsync.KindLabels, orgsync.KindFiles},
+			Revisions: map[orgsync.Kind]int64{
+				orgsync.KindLabels: 2,
+				orgsync.KindFiles:  1,
+			},
+			ActorID: account.ID, Now: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(restored.CheckpointID).NotTo(BeNil())
+
+		labels, err := store.GetSyncConfig(ctx, target, orgsync.KindLabels)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(labels.Document)).To(Equal(`{"labels":[]}`))
+		Expect(labels.Revision).To(Equal(int64(3)))
+		_, err = store.GetSyncConfig(ctx, target, orgsync.KindFiles)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+
+		source, err := store.GetSyncConfigCheckpoint(ctx, target, *original.CheckpointID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(source.Action).To(Equal(orgsync.CheckpointSaved))
+		Expect(source.RestoredFromID).To(BeNil())
+		Expect(source.Items).To(HaveLen(2))
+
+		result, err := store.GetSyncConfigCheckpoint(ctx, target, *restored.CheckpointID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result.Action).To(Equal(orgsync.CheckpointRestored))
+		Expect(result.RestoredFromID).To(HaveValue(Equal(*original.CheckpointID)))
+		Expect(result.Items).To(HaveLen(2))
+
+		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Change:             storage.AuditChangeSync,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(audit.Total).To(Equal(3))
+		Expect(audit.Items[0].Action).To(Equal("sync.config.restored"))
+		Expect(audit.Items[0].SyncConfigCheckpointID).To(Equal(restored.CheckpointID))
+	})
+
 	Describe("repository overrides", func() {
 		It("keeps a repository's own answer, and tells it from inheriting", func() {
 			ctx, store, now := runtime()

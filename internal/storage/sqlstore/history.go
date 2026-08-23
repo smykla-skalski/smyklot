@@ -15,6 +15,7 @@ SELECT
     ae.target_id,
     ae.repository_id,
     ae.repository_full_name,
+    ae.sync_config_checkpoint_id,
     ae.action,
     ae.summary,
     ae.created_at,
@@ -123,6 +124,8 @@ func auditFilters(
 		clauses = append(clauses, "ae.action LIKE 'repository.%' AND ae.action NOT IN ('repository.enabled', 'repository.disabled')")
 	case storage.AuditChangeAccount:
 		clauses = append(clauses, "ae.action LIKE 'target.%'")
+	case storage.AuditChangeSync:
+		clauses = append(clauses, "ae.action LIKE 'sync.config.%'")
 	default:
 		return nil, nil, fmt.Errorf("unsupported audit change %q", page.Change)
 	}
@@ -133,6 +136,7 @@ func auditFilters(
 func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	var entry storage.AuditEntry
 	var repositoryID, repositoryFullName, avatarURL sql.NullString
+	var syncConfigCheckpointID sql.NullInt64
 	var createdAt, accountUpdatedAt StoredTime
 
 	err := scanner.Scan(
@@ -140,6 +144,7 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 		&entry.TargetID,
 		&repositoryID,
 		&repositoryFullName,
+		&syncConfigCheckpointID,
 		&entry.Action,
 		&entry.Summary,
 		&createdAt,
@@ -157,6 +162,9 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 
 	entry.RepositoryID = stringPointer(repositoryID)
 	entry.RepositoryFullName = stringPointer(repositoryFullName)
+	if syncConfigCheckpointID.Valid {
+		entry.SyncConfigCheckpointID = &syncConfigCheckpointID.Int64
+	}
 	entry.Actor.AvatarURL = stringPointer(avatarURL)
 
 	entry.CreatedAt = createdAt.Time()
