@@ -422,12 +422,13 @@
 
   .side-fold:hover {
     background: var(--sidebar-item-hover);
+    box-shadow: 0 1px 0 var(--sidebar-border);
     color: var(--sidebar-text);
   }
 
   .side-fold:active {
-    background: var(--sidebar-item-pressed);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    background: var(--sidebar-item-hover);
+    box-shadow: none;
     translate: 0 1px;
   }
 
@@ -470,13 +471,8 @@
     display: none;
   }
 
-  /* The selected row's pointer answers happen to the THUMB: ground and ink
-     move as one object. */
-  .tree:has(.tree-row.is-active:hover, .tree-kid.is-active:hover) .nav-thumb {
-    box-shadow: var(--sidebar-thumb-shadow-pressed);
-    translate: 0 -1px;
-  }
-
+  /* The thumb is one physical pixel tall: pressing consumes its hard edge and
+     moves its face by exactly that amount. The anchor hit target never moves. */
   .tree:has(.tree-row.is-active:active, .tree-kid.is-active:active) .nav-thumb {
     box-shadow: var(--sidebar-thumb-shadow-pressed);
     translate: 0 1px;
@@ -550,11 +546,12 @@
 
   .tree-row:hover > .row-visual {
     background: var(--sidebar-item-hover);
+    box-shadow: 0 1px 0 var(--sidebar-border);
   }
 
   .tree-row:active > .row-visual {
-    background: var(--sidebar-item-pressed);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    background: var(--sidebar-item-hover);
+    box-shadow: none;
     translate: 0 1px;
   }
 
@@ -570,13 +567,12 @@
   }
 
   .tree-row.is-active:hover > .row-visual {
-    background: transparent;
-    translate: 0 -1px;
+    background: var(--interactive-hover-layer);
+    box-shadow: none;
   }
 
   .tree-row.is-active:active > .row-visual {
-    background: var(--sidebar-item-pressed);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    background: var(--interactive-hover-layer);
     translate: 0 1px;
   }
 
@@ -620,11 +616,12 @@
 
   .tree-kid:hover > .row-visual {
     background: var(--sidebar-item-hover);
+    box-shadow: 0 1px 0 var(--sidebar-border);
   }
 
   .tree-kid:active > .row-visual {
-    background: var(--sidebar-item-pressed);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    background: var(--sidebar-item-hover);
+    box-shadow: none;
     translate: 0 1px;
   }
 
@@ -635,13 +632,12 @@
   }
 
   .tree-kid.is-active:hover > .row-visual {
-    background: transparent;
-    translate: 0 -1px;
+    background: var(--interactive-hover-layer);
+    box-shadow: none;
   }
 
   .tree-kid.is-active:active > .row-visual {
-    background: var(--sidebar-item-pressed);
-    box-shadow: inset 0 0 0 1px var(--sidebar-border);
+    background: var(--interactive-hover-layer);
     translate: 0 1px;
   }
 
@@ -732,23 +728,17 @@
       color: var(--sidebar-item-active-text);
     }
 
-    /* Standing for the selection, the page row presses like it: it lands on
-       the thumb rather than sinking into it. */
+    /* Standing for the selection, the page row uses the same neutral state
+       layers as the expanded selected row. */
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > .row-visual {
-      background: var(--sidebar-item-pressed);
-      box-shadow: inset 0 0 0 1px var(--sidebar-border);
+      background: var(--interactive-hover-layer);
+      box-shadow: none;
       translate: 0 1px;
     }
 
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > .row-visual {
-      background: transparent;
-      translate: 0 -1px;
-    }
-
-    :global(.app-shell.sidebar-collapsed)
-      .tree:has(.tree-page.is-active > .tree-row:hover)
-      .nav-thumb {
-      translate: 0 -1px;
+      background: var(--interactive-hover-layer);
+      box-shadow: none;
     }
 
     :global(.app-shell.sidebar-collapsed)

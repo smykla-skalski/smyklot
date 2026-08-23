@@ -189,17 +189,22 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
       const visualStyle = getComputedStyle(visual);
       const thumbStyle = getComputedStyle(thumb);
       const groundVisible = state.selected
-        ? thumbStyle.translate !== 'none'
+        ? thumbStyle.display !== 'none' && thumbStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
         : visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
       return (
         (!state.pressed || element.matches(':active')) &&
         linkStyle.translate === 'none' &&
         linkStyle.transform === 'none' &&
+        (state.pressed || state.selected || visualStyle.boxShadow.includes('0px 1px 0px')) &&
+        (state.pressed || !state.selected || thumbStyle.boxShadow.includes('0px 1px 0px')) &&
+        !thumbStyle.boxShadow.includes('3px') &&
         (!state.pressed || visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') &&
         (!state.pressed || visualStyle.borderRadius !== '0px') &&
-        (!state.pressed || visualStyle.boxShadow.includes('0px 0px 0px 1px inset')) &&
+        (!state.pressed || visualStyle.boxShadow === 'none') &&
         (!state.pressed || visualStyle.transitionDuration === '0s') &&
-        (!(state.selected || state.pressed) || visualStyle.translate !== 'none') &&
+        (!state.pressed || visualStyle.translate === '0px 1px') &&
+        (!state.pressed || state.selected || thumbStyle.translate === 'none') &&
+        (!state.pressed || !state.selected || thumbStyle.translate === '0px 1px') &&
         groundVisible &&
         visual.contains(label)
       );

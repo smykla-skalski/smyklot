@@ -247,8 +247,8 @@
   /* The ring at 6% read 2.78 against the sidebar, under both the 3.74 fill and the 5.09 a press on
      a neighbouring row moves: pressing an unselected row was louder than the selection it sat
      beside. At 14% the edge reads 6.25 and the order is right again. */
-  --sidebar-thumb-shadow: 0 1px 3px rgb(24 33 31 / 16%), 0 0 0 0.5px rgb(24 33 31 / 14%);
-  /* A pressed thumb LANDS rather than sinks: the throw leaves, the ring stays. */
+  --sidebar-thumb-shadow: 0 1px 0 rgb(24 33 31 / 22%), 0 0 0 0.5px rgb(24 33 31 / 14%);
+  /* The 1px hard edge is the thumb's physical height. A press consumes it. */
   --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(24 33 31 / 14%);
   /* Popovers and menus anchored to the sidebar follow its context, not the page. */
   --sidebar-popover-bg: #ffffff;
@@ -630,7 +630,7 @@
      pressed *unselected* row 3.33 dE00 from the selected one, 73% of the way across a 9.63 gap.
      Raising the thumb restores the margin: press now stops 5.22 short of it. */
   --sidebar-thumb: #333b46;
-  --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 42%), 0 0 0 0.5px rgb(255 255 255 / 4%);
+  --sidebar-thumb-shadow: 0 1px 0 rgb(0 0 0 / 65%), 0 0 0 0.5px rgb(255 255 255 / 4%);
   --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 4%);
   --sidebar-popover-bg: #1b222b;
   --sidebar-popover-border: #333d49;
@@ -967,7 +967,7 @@ body {
   /* Lifted from #352d49, for the reason the dark panel sidebar was: a pressed unselected row
      landed 3.30 dE00 from the selected thumb. It now stops 5.25 short. */
   --sidebar-thumb: #3d3550;
-  --sidebar-thumb-shadow: 0 1px 3px rgb(0 0 0 / 46%), 0 0 0 0.5px rgb(255 255 255 / 5%);
+  --sidebar-thumb-shadow: 0 1px 0 rgb(0 0 0 / 68%), 0 0 0 0.5px rgb(255 255 255 / 5%);
   --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 5%);
   /* Declared on the shell so both Root themes get them: this sidebar is dark in either. */
   --sidebar-count-signal-bg: color-mix(in srgb, #a7c7f2 14%, transparent);
