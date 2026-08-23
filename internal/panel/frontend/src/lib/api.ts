@@ -21,7 +21,9 @@ import type {
   InvitationPageRequest,
   InstallationSettingsBatchInput,
   InstallationSettingsBatchResponse,
+  InstallationSettingsCheckpoint,
   InstallationSettingsConflict,
+  InstallationSettingsRestoreInput,
   PanelUser,
   PanelUserPageRequest,
   PanelViewer,
@@ -102,6 +104,15 @@ export interface PanelApi {
   saveRootInstallationSettings(
     targetId: string,
     input: InstallationSettingsBatchInput,
+  ): Promise<InstallationSettingsBatchResponse>;
+  fetchRootInstallationSettingsCheckpoint(
+    targetId: string,
+    checkpointId: string,
+  ): Promise<InstallationSettingsCheckpoint>;
+  restoreRootInstallationSettingsCheckpoint(
+    targetId: string,
+    checkpointId: string,
+    input: InstallationSettingsRestoreInput,
   ): Promise<InstallationSettingsBatchResponse>;
   fetchRootRepositories(
     targetId: string,
@@ -184,6 +195,15 @@ export interface PanelApi {
   saveInstallationSettings(
     targetId: string,
     input: InstallationSettingsBatchInput,
+  ): Promise<InstallationSettingsBatchResponse>;
+  fetchInstallationSettingsCheckpoint(
+    targetId: string,
+    checkpointId: string,
+  ): Promise<InstallationSettingsCheckpoint>;
+  restoreInstallationSettingsCheckpoint(
+    targetId: string,
+    checkpointId: string,
+    input: InstallationSettingsRestoreInput,
   ): Promise<InstallationSettingsBatchResponse>;
   fetchRepositories(
     targetId: string,
@@ -537,6 +557,26 @@ export function createPanelApi(
       );
     },
 
+    fetchRootInstallationSettingsCheckpoint(
+      targetId: string,
+      checkpointId: string,
+    ): Promise<InstallationSettingsCheckpoint> {
+      return documentRequest(
+        `/api/v1/root/installations/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}`,
+      );
+    },
+
+    restoreRootInstallationSettingsCheckpoint(
+      targetId: string,
+      checkpointId: string,
+      input: InstallationSettingsRestoreInput,
+    ): Promise<InstallationSettingsBatchResponse> {
+      return postDocument(
+        `/api/v1/root/installations/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
+        input,
+      );
+    },
+
     fetchRootRepositories(
       targetId: string,
       repositoryPage: RepositoryPageRequest,
@@ -788,6 +828,26 @@ export function createPanelApi(
       input: InstallationSettingsBatchInput,
     ): Promise<InstallationSettingsBatchResponse> {
       return putDocument(`/api/v1/targets/${pathSegment(targetId)}/settings/batch`, input);
+    },
+
+    fetchInstallationSettingsCheckpoint(
+      targetId: string,
+      checkpointId: string,
+    ): Promise<InstallationSettingsCheckpoint> {
+      return documentRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}`,
+      );
+    },
+
+    restoreInstallationSettingsCheckpoint(
+      targetId: string,
+      checkpointId: string,
+      input: InstallationSettingsRestoreInput,
+    ): Promise<InstallationSettingsBatchResponse> {
+      return postDocument(
+        `/api/v1/targets/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
+        input,
+      );
     },
 
     fetchRepositories(

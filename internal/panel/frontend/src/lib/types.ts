@@ -716,6 +716,62 @@ export interface InstallationSettingsBatchResponse {
   sync_overrides?: InstallationSyncOverrideSettingsState[];
 }
 
+export type InstallationSettingsCheckpointItemKind =
+  | 'target'
+  | 'repository'
+  | 'sync_config'
+  | 'sync_override';
+
+export interface InstallationSettingsCheckpointState {
+  document: Record<string, unknown>;
+  digest: string;
+  revision: number;
+}
+
+export interface InstallationSettingsCheckpointIncompatibility {
+  code: string;
+  reason: string;
+}
+
+export interface InstallationSettingsCheckpointItem {
+  kind: InstallationSettingsCheckpointItemKind;
+  repository_id?: string;
+  repository_full_name?: string;
+  sync_kind?: SyncKind;
+  document_version: number;
+  before: InstallationSettingsCheckpointState | null;
+  after: InstallationSettingsCheckpointState | null;
+  current: InstallationSettingsCheckpointState | null;
+  changed: boolean;
+  differs: boolean;
+  restorable: boolean;
+  incompatibility?: InstallationSettingsCheckpointIncompatibility;
+}
+
+export interface InstallationSettingsCheckpoint {
+  id: string;
+  action:
+    | 'installation.settings.saved'
+    | 'installation.settings.restored'
+    | 'installation.settings.baseline';
+  actor: PanelAccount;
+  restored_from_id?: string;
+  created_at: string;
+  affected_kinds: InstallationSettingsCheckpointItemKind[];
+  items: InstallationSettingsCheckpointItem[];
+}
+
+export interface InstallationSettingsRestoreSelection {
+  kind: InstallationSettingsCheckpointItemKind;
+  repository_id?: string;
+  sync_kind?: SyncKind;
+  expected_revision: number;
+}
+
+export interface InstallationSettingsRestoreInput {
+  selections: InstallationSettingsRestoreSelection[];
+}
+
 export type InstallationSettingsConflict =
   | {
       resource: 'target';
@@ -761,6 +817,7 @@ export interface AuditEntry {
   action: string;
   summary: string;
   sync_config_checkpoint_id?: string;
+  settings_checkpoint_id?: string;
   repository_full_name?: string;
   created_at: string;
 }
