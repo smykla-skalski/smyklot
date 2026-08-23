@@ -411,5 +411,5 @@ func (s *Server) deleteSyncPlan(w http.ResponseWriter, r *http.Request) {
 
 	s.Announce(target.ID, "")
 
-	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: syncPlanToDTO(plan, nil)})
+	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: syncPlanToDTO(plan, nil, nil)})
 }

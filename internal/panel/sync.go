@@ -439,7 +439,14 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: syncPlanToDTO(plan, actions)})
+	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
+	writeJSON(w, http.StatusOK,
+		map[string]any{syncPlanKey: syncPlanToDTO(plan, actions, repositoryNames)})
 }
 
 // postSyncPlanApproval accepts a plan somebody has read.
@@ -461,6 +468,12 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 	if input.Digest == "" {
 		s.writeError(w, http.StatusBadRequest, "invalid_request",
 			"an approval has to say which plan it is approving")
+
+		return
+	}
+	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID)
+	if err != nil {
+		s.writeStorageError(w, err)
 
 		return
 	}
@@ -507,14 +520,35 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: syncPlanToDTO(plan, actions)})
+	writeJSON(w, http.StatusOK,
+		map[string]any{syncPlanKey: syncPlanToDTO(plan, actions, repositoryNames)})
 }
 
 func syncApprovalSummary(counts orgsync.Counts) string {
 	return strconv.Itoa(counts.Total()) + " changes approved"
 }
 
-func syncPlanToDTO(plan orgsync.Plan, actions []orgsync.Action) syncPlanDTO {
+func (s *Server) syncPlanRepositoryNames(
+	ctx context.Context,
+	targetID string,
+) (map[string]string, error) {
+	repositories, err := s.store.ListRepositories(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list sync plan repositories: %w", err)
+	}
+	names := make(map[string]string, len(repositories))
+	for _, repository := range repositories {
+		names[repository.ID] = repository.Name
+	}
+
+	return names, nil
+}
+
+func syncPlanToDTO(
+	plan orgsync.Plan,
+	actions []orgsync.Action,
+	repositoryNames map[string]string,
+) syncPlanDTO {
 	dto := syncPlanDTO{
 		ID:      plan.ID,
 		Trigger: string(plan.Trigger),
@@ -533,8 +567,12 @@ func syncPlanToDTO(plan orgsync.Plan, actions []orgsync.Action) syncPlanDTO {
 	}
 
 	for _, action := range actions {
+		repository := repositoryNames[action.RepositoryID]
+		if repository == "" {
+			repository = action.RepositoryID
+		}
 		dto.Actions = append(dto.Actions, syncActionDTO{
-			Repository: action.RepositoryID,
+			Repository: repository,
 			Kind:       string(action.Kind),
 			Operation:  string(action.Operation),
 			Subject:    action.Subject,

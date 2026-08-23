@@ -50,6 +50,35 @@ func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
 	}
 }
 
+// TestSyncPlanShowsRepositoryNames keeps stable catalog identifiers inside the
+// service. A plan is an approval surface, so its groups must name repositories
+// the reader recognizes instead of exposing github:repository-style keys.
+func TestSyncPlanShowsRepositoryNames(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	_, err := harness.store.CreateSyncPlan(t.Context(), orgsync.PlanCreate{
+		ID: "sync-plan-names", TargetID: "github:installation:10",
+		Trigger: orgsync.TriggerManual, ActorID: "github:test:user:1", Digest: "sha256:plan",
+		Actions: []orgsync.Action{{
+			RepositoryID: "repository-20", Kind: orgsync.KindLabels,
+			Operation: orgsync.OperationCreate, Subject: "ci/test", After: "#ffffff",
+			Payload: []byte(`{"name":"ci/test","color":"ffffff"}`),
+		}},
+		Now: harness.now, ExpiresAt: harness.now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	read := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/sync/plan", nil, session)
+	requireResponse(t, read, "sync plan repository name", http.StatusOK,
+		`"repository":"smyklot"`)
+	if strings.Contains(read.Body.String(), `"repository":"repository-20"`) {
+		t.Fatalf("sync plan exposed stable repository id: %s", read.Body.String())
+	}
+}
+
 // TestSyncConfigReportsADocumentItCannotRead is the guard on the difference
 // between "nothing is configured" and "nothing could be read".
 //
