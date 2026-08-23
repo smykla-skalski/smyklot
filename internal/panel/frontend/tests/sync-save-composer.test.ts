@@ -37,11 +37,12 @@ function dirtyDrafts(): SyncDraftSet {
   return drafts;
 }
 
-function mount(drafts: SyncDraftSet, onSave = vi.fn()) {
+function mount(drafts: SyncDraftSet, onSave = vi.fn(), onReload = vi.fn()) {
   return render(SyncSaveComposer, {
     drafts,
     readOnly: false,
     onSave,
+    onReload,
     sectionHref: (kind: SyncKind) => `/sync/${kind}`,
     onOpenSection: vi.fn(),
   });
@@ -78,6 +79,7 @@ describe('SyncSaveComposer [Component]', () => {
       drafts,
       readOnly: false,
       onSave: vi.fn(),
+      onReload: vi.fn(),
       sectionHref: (kind: SyncKind) => `/sync/${kind}`,
       onOpenSection: open,
     });
@@ -86,6 +88,23 @@ describe('SyncSaveComposer [Component]', () => {
     expect(link.getAttribute('href')).toBe('/sync/labels');
     await fireEvent.click(link);
     expect(open).toHaveBeenCalledWith('labels');
+    expect(drafts.dirtyCount).toBe(2);
+  });
+
+  it('loads current revisions before retrying a conflicted draft', async () => {
+    const drafts = dirtyDrafts();
+    await drafts.save(async () => {
+      throw new PanelApiError(409, 'conflict', 'settings changed in another session');
+    });
+    const save = vi.fn();
+    const reload = vi.fn();
+    mount(drafts, save, reload);
+
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    await fireEvent.click(screen.getByRole('button', { name: 'Load latest' }));
+
+    expect(reload).toHaveBeenCalledOnce();
+    expect(save).not.toHaveBeenCalled();
     expect(drafts.dirtyCount).toBe(2);
   });
 });

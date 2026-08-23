@@ -197,14 +197,14 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saved, err := s.store.SetSyncConfig(r.Context(), orgsync.ConfigChange{
+	written, err := s.store.SetSyncConfigs(r.Context(), orgsync.ConfigBatchChange{
 		TargetID: target.ID,
-		Kind:     kind,
-		Enabled:  *input.Enabled,
-		Document: document,
 		ActorID:  account.ID,
 		Now:      s.now().UTC(),
-		Revision: *input.ExpectedRevision,
+		Changes: []orgsync.ConfigPatch{{
+			Kind: kind, Enabled: *input.Enabled, Document: document,
+			Revision: *input.ExpectedRevision,
+		}},
 	})
 	if err != nil {
 		s.writeStorageError(w, err)
@@ -212,7 +212,20 @@ func (s *Server) putSyncConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.Announce(target.ID, "")
+	var saved orgsync.Config
+	for _, config := range written.Configs {
+		if config.Kind == kind {
+			saved = config
+			break
+		}
+	}
+	if saved.Kind == "" {
+		s.writeInternal(w, fmt.Errorf("saved %s sync configuration is missing", kind))
+		return
+	}
+	if written.CheckpointID != nil {
+		s.Announce(target.ID, "")
+	}
 	writeJSON(w, http.StatusOK, syncConfigAnswer(saved, target, account.Login))
 }
 

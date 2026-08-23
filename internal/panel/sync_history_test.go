@@ -79,6 +79,38 @@ func TestSyncConfigBatchSavesOneCheckpointAndNoOpWritesNothing(t *testing.T) {
 	}
 }
 
+func TestSingleKindSyncConfigUsesAuditedNoOpTransaction(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	path := "/panel/api/v1/targets/github:installation:10/sync/config/labels"
+
+	first := harness.request(t, http.MethodPut, path, strings.NewReader(`{
+		"enabled":true,"expected_revision":0,"labels":[],
+		"allow_removal":false,"excludes":[]
+	}`), session)
+	requireResponse(t, first, "single-kind save", http.StatusOK)
+	var saved syncConfigDTO
+	if err := json.Unmarshal(first.Body.Bytes(), &saved); err != nil {
+		t.Fatal(err)
+	}
+
+	second := harness.request(t, http.MethodPut, path, strings.NewReader(`{
+		"enabled":true,"expected_revision":`+strconv.FormatInt(saved.Revision, 10)+`,"labels":[],
+		"allow_removal":false,"excludes":[]
+	}`), session)
+	requireResponse(t, second, "single-kind no-op", http.StatusOK)
+
+	audit := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/audit?change=sync", nil, session)
+	var history pageResponse[auditResponse]
+	if err := json.Unmarshal(audit.Body.Bytes(), &history); err != nil {
+		t.Fatal(err)
+	}
+	if len(history.Items) != 1 || history.Items[0].SyncConfigCheckpointID == nil {
+		t.Fatalf("single-kind audit history = %#v", history.Items)
+	}
+}
+
 func TestSyncConfigBatchRejectsMalformedDuplicateAndStaleChangesAtomically(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)

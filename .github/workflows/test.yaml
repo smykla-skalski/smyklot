@@ -323,12 +323,15 @@ jobs:
           # How much the panel asks for. `cached-navigation` is here rather than
           # with the queue it was written against: what it guards is an effect
           # ring reopening the stream on every navigation, which is the same
-          # silent, unbounded class `request-budget` exists for.
+          # silent, unbounded class `request-budget` exists for. Sync drafts
+          # belong here too: they cross routes and must still produce exactly
+          # one batch request when the user finally saves.
           - area: requests
             files: >-
               tests/browser/request-budget.test.ts
               tests/browser/runtime-settings.test.ts
               tests/browser/cached-navigation.test.ts
+              tests/browser/sync-drafts.test.ts
           - area: controls
             files: >-
               tests/browser/segmented-control.test.ts

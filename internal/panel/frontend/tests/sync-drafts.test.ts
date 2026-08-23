@@ -156,6 +156,17 @@ describe('SyncDraftSet [Unit]', () => {
     expect(drafts.dirtyKinds).toEqual(['settings']);
     expect(drafts.conflict).toBe(true);
     expect(drafts.problem).toContain('another session');
+
+    await expect(drafts.refreshAfterConflict(async () => complete(2))).resolves.toBe(true);
+    expect(drafts.dirtyKinds).toEqual(['settings']);
+    expect(drafts.conflict).toBe(false);
+    expect(drafts.config('settings')?.revision).toBe(2);
+
+    const retry = vi.fn<
+      (targetId: string, input: SyncConfigBatchInput) => Promise<SyncConfigBatchResponse>
+    >(async () => ({ configs: complete(3), checkpoint_id: 'checkpoint-2' }));
+    await expect(drafts.save(retry)).resolves.toBe(true);
+    expect(retry.mock.calls[0]?.[1].changes[0]?.expected_revision).toBe(2);
   });
 
   it('links validation failures to the kind named by the server', async () => {

@@ -8,12 +8,14 @@
     drafts,
     readOnly,
     onSave,
+    onReload,
     sectionHref,
     onOpenSection,
   }: {
     drafts: SyncDraftSet;
     readOnly: boolean;
     onSave: () => void;
+    onReload: () => void;
     sectionHref: (kind: SyncKind) => string;
     onOpenSection: (kind: SyncKind) => void;
   } = $props();
@@ -31,7 +33,10 @@
 {#if count > 0 || drafts.saving || drafts.problem !== null || drafts.notice !== null}
   <aside class="sync-composer" aria-label="Sync configuration draft">
     <div class="composer-copy" aria-live="polite">
-      {#if drafts.saving}
+      {#if drafts.refreshing}
+        <strong>Loading latest Sync configuration…</strong>
+        <span>Your draft will stay unchanged.</span>
+      {:else if drafts.saving}
         <strong>Saving Sync configuration…</strong>
         <span>All changed sections will land together.</span>
       {:else if drafts.problem !== null}
@@ -60,10 +65,22 @@
 
     <div class="composer-actions">
       {#if count > 0}
-        <Button disabled={drafts.saving} onclick={() => drafts.discard()}>Discard</Button>
-        <Button tone="signal" disabled={drafts.saving || readOnly} onclick={onSave}>
-          {drafts.saving ? 'Saving…' : 'Save'}
-        </Button>
+        <Button disabled={drafts.saving || drafts.refreshing} onclick={() => drafts.discard()}
+          >Discard</Button
+        >
+        {#if drafts.conflict}
+          <Button tone="signal" disabled={drafts.refreshing} onclick={onReload}>
+            {drafts.refreshing ? 'Loading…' : 'Load latest'}
+          </Button>
+        {:else}
+          <Button
+            tone="signal"
+            disabled={drafts.saving || drafts.refreshing || readOnly}
+            onclick={onSave}
+          >
+            {drafts.saving ? 'Saving…' : 'Save'}
+          </Button>
+        {/if}
       {:else}
         <Button onclick={() => drafts.dismissNotice()}>Dismiss</Button>
       {/if}

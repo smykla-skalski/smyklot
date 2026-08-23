@@ -16,6 +16,7 @@ type SaveSyncConfigs = (
   targetId: string,
   input: SyncConfigBatchInput,
 ) => Promise<SyncConfigBatchResponse>;
+type LoadSyncConfigs = (targetId: string) => Promise<SyncConfig[]>;
 
 const kindSet = new Set<string>(SYNC_KINDS);
 
@@ -48,6 +49,7 @@ export class SyncDraftSet {
   private drafts = $state<Partial<Record<SyncKind, DraftInput>>>({});
 
   saving = $state(false);
+  refreshing = $state(false);
   problem = $state<string | null>(null);
   conflict = $state(false);
   invalidKind = $state<SyncKind | null>(null);
@@ -124,7 +126,7 @@ export class SyncDraftSet {
   }
 
   async save(saveConfigs: SaveSyncConfigs): Promise<boolean> {
-    if (this.saving || !this.dirty) return false;
+    if (this.saving || this.refreshing || !this.dirty) return false;
     const changes = this.changes();
     if (changes === null) return false;
 
@@ -150,6 +152,25 @@ export class SyncDraftSet {
       return false;
     } finally {
       this.saving = false;
+    }
+  }
+
+  async refreshAfterConflict(loadConfigs: LoadSyncConfigs): Promise<boolean> {
+    if (this.saving || this.refreshing || !this.conflict) return false;
+
+    this.refreshing = true;
+    try {
+      this.replaceSaved(await loadConfigs(this.targetId));
+      this.conflict = false;
+      this.invalidKind = null;
+      this.problem =
+        'Latest saved configuration loaded. Review your preserved draft, then save again.';
+      return true;
+    } catch (cause) {
+      this.problem = cause instanceof Error ? cause.message : String(cause);
+      return false;
+    } finally {
+      this.refreshing = false;
     }
   }
 

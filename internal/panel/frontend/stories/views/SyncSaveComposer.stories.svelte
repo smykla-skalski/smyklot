@@ -45,6 +45,7 @@
     drafts: dirty,
     readOnly: false,
     onSave: fn(),
+    onReload: fn(),
     sectionHref: (kind: SyncKind) => `#/sync/${kind}`,
     onOpenSection: fn(),
   };

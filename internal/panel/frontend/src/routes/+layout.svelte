@@ -19,7 +19,7 @@
     staysInSyncDraftInstallation,
     SyncDraftScope,
   } from '#lib/sync-drafts.svelte.js';
-  import type { PanelTarget } from '#lib/types.js';
+  import { SYNC_KINDS, type PanelTarget } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
     panelViewSection,
@@ -268,6 +268,14 @@
     }
   }
 
+  async function reloadSyncDrafts(): Promise<void> {
+    const drafts = syncDraftScope.current;
+    if (drafts === null) return;
+    await drafts.refreshAfterConflict((targetId) =>
+      Promise.all(SYNC_KINDS.map((kind) => session.api.fetchSyncConfig(targetId, kind))),
+    );
+  }
+
   function signOut(): void {
     if (!confirmDraftDeparture()) return;
     void session.signOut();
@@ -487,6 +495,7 @@
             drafts={syncDraftScope.current}
             readOnly={!session.selectedTarget.capabilities.write}
             onSave={() => void saveSyncDrafts()}
+            onReload={() => void reloadSyncDrafts()}
             sectionHref={(kind) => session.syncSectionHref(kind)}
             onOpenSection={(kind) => session.selectSyncSection(kind)}
           />
