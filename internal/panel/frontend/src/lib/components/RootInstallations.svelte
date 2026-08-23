@@ -105,7 +105,7 @@
   function clickRow(event: MouseEvent, installation: RootInstallation): void {
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('button, a, summary, input') !== null) return;
-    navigate(event, installation, 'settings');
+    navigate(event, installation, 'defaults');
   }
 
   function keyRow(event: KeyboardEvent, installation: RootInstallation): void {
@@ -113,7 +113,7 @@
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest('button, a, summary, input') !== null) return;
     event.preventDefault();
-    onNavigate(installation.account.login, 'settings');
+    onNavigate(installation.account.login, 'defaults');
   }
 
   function deliveryTitle(installation: RootInstallation): string | undefined {
@@ -230,8 +230,8 @@
             <span class="band-trim-stack">
               <a
                 class="installation-link"
-                href={hrefFor(installation.account.login, 'settings')}
-                onclick={(event) => navigate(event, installation, 'settings')}
+                href={hrefFor(installation.account.login, 'defaults')}
+                onclick={(event) => navigate(event, installation, 'defaults')}
               >
                 {installation.account.display_name}
               </a>

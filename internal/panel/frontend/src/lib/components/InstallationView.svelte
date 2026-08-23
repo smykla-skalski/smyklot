@@ -14,7 +14,7 @@
    * address that reaches all of these: a view that hosts a dialog is routed with
    * the segments that follow it, one that hosts none is routed without them, and
    * history is routed with its section. That is what makes an address like
-   * `/i/acme/settings/anything` resolve to nothing and answer 404 from the wire.
+   * `/i/acme/defaults/anything` resolve to nothing and answer 404 from the wire.
    */
   const {
     view,
@@ -110,10 +110,10 @@
 {/snippet}
 
 {#if session.selectedTarget !== null}
-  {#if view === 'settings'}
-    <div id="settings-panel">
+  {#if view === 'defaults'}
+    <div id="defaults-panel">
       {#await import('./TargetSettings.svelte')}
-        {@render loadingView('settings')}
+        {@render loadingView('workspace defaults')}
       {:then { default: TargetSettings }}
         {#key session.selectedTarget.id}
           <TargetSettings
@@ -123,7 +123,7 @@
           />
         {/key}
       {:catch error}
-        {@render failedView('settings', error)}
+        {@render failedView('workspace defaults', error)}
       {/await}
     </div>
   {:else if view === 'repositories'}

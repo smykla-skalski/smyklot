@@ -116,8 +116,8 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/queue/recent');
     case 'queue-request':
       return resolve('/root/queue/request/[id]', { id: encodeURIComponent(route.request) });
-    case 'settings':
-      return resolve('/root/settings');
+    case 'runtime':
+      return resolve('/root/runtime');
     case 'history-audit':
     case 'history-failures':
       return resolve('/root/history/[[section=historySection]]', {
@@ -239,6 +239,8 @@ export function panelRouteAt(
 
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);
+    case '/i/[account]/settings':
+      return withView(account, 'defaults');
     case '/i/[account]/access':
       return withView(account, 'users');
     case '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]':
@@ -276,8 +278,9 @@ export function panelRouteAt(
       return { rootView: 'queue-recent' };
     case '/root/queue/request/[id]':
       return { rootView: 'queue-request', request: params.id ?? '' };
+    case '/root/runtime':
     case '/root/settings':
-      return { rootView: 'settings' };
+      return { rootView: 'runtime' };
     case '/root/history/[[section=historySection]]':
       return { rootView: section === 'failures' ? 'history-failures' : 'history-audit' };
 
@@ -292,6 +295,8 @@ export function panelRouteAt(
 
     case '/root/installations/[account]/[view=rootInstallationView]':
       return rootInstallation(account, params.view);
+    case '/root/installations/[account]/settings':
+      return rootInstallation(account, 'defaults');
     case '/root/installations/[account]/access':
       return rootInstallation(account, 'users');
     case '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]':
@@ -319,7 +324,8 @@ function withView(
   section?: HistorySection,
   dialog?: RouteDialog,
 ): PanelRoute | null {
-  return isScopedPanelView(view) ? { account, view, section, dialog } : null;
+  const canonical = view === 'settings' ? 'defaults' : view;
+  return isScopedPanelView(canonical) ? { account, view: canonical, section, dialog } : null;
 }
 
 function rootInstallation(
@@ -328,8 +334,9 @@ function rootInstallation(
   section?: HistorySection,
   dialog?: RouteDialog,
 ): PanelRoute | null {
-  return isRootInstallationView(view)
-    ? { rootView: 'installation', account, view, section, dialog }
+  const canonical = view === 'settings' ? 'defaults' : view;
+  return isRootInstallationView(canonical)
+    ? { rootView: 'installation', account, view: canonical, section, dialog }
     : null;
 }
 

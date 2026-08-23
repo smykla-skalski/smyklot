@@ -7,7 +7,7 @@
   /* The approved mock's workspace map: Sync is the open page, its sections
      nested under it with the Plan count speaking as a signal. */
   const WORKSPACE_PAGES: SidebarPage[] = [
-    { id: 'settings', label: 'Settings', icon: 'sliders', href: '#/settings', active: false },
+    { id: 'defaults', label: 'Defaults', icon: 'sliders', href: '#/defaults', active: false },
     {
       id: 'repositories',
       label: 'Repositories',
@@ -46,7 +46,7 @@
     { id: 'queue', label: 'Queue', icon: 'pending', href: '#/root/queue', active: false },
     { id: 'access', label: 'Access', icon: 'users', href: '#/root/access', active: false },
     { id: 'history', label: 'History', icon: 'history', href: '#/root/history', active: false },
-    { id: 'settings', label: 'Settings', icon: 'sliders', href: '#/root/settings', active: false },
+    { id: 'runtime', label: 'Runtime', icon: 'sliders', href: '#/root/runtime', active: false },
   ];
 
   const kidActive = (kid: string): SidebarPage[] =>

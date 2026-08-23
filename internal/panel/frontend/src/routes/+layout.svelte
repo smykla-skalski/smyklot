@@ -306,14 +306,14 @@
   });
 
   const WORKSPACE_ORDER = [
-    'settings',
+    'defaults',
     'repositories',
     'sync',
     'access',
     'history',
   ] as const satisfies readonly PanelSection[];
   const workspaceIcon = {
-    settings: 'sliders',
+    defaults: 'sliders',
     repositories: 'repositories',
     sync: 'refresh',
     access: 'users',
@@ -392,7 +392,7 @@
     'installations',
     'access',
     'history',
-    'settings',
+    'runtime',
   ] as const satisfies readonly RootSection[];
   const rootIcon = {
     overview: 'system',
@@ -400,7 +400,7 @@
     installations: 'repositories',
     access: 'users',
     history: 'history',
-    settings: 'sliders',
+    runtime: 'sliders',
   } as const;
 
   const queueKids = $derived(
@@ -446,7 +446,7 @@
     const route = session.currentRootRoute;
     if (route.rootView !== 'installation') return undefined;
     const leaves = [
-      { id: 'settings', view: 'settings' },
+      { id: 'defaults', view: 'defaults' },
       { id: 'repositories', view: 'repositories' },
       { id: 'users', view: 'users' },
       { id: 'invitations', view: 'invitations' },

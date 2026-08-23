@@ -60,12 +60,27 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage(
       'workspace',
       '/i/[account]/[view=panelView]',
-      { account: 'acme', view: 'settings' },
+      { account: 'acme', view: 'defaults' },
       storage,
     );
 
     expect(readLastConsolePage(storage)).toEqual({ rootView: 'installations' });
-    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'settings' });
+    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
+  });
+
+  it('migrates pages remembered under the legacy settings vocabulary', () => {
+    const storage = memoryStorage();
+    writeLastPage(
+      'workspace',
+      '/i/[account]/[view=panelView]',
+      { account: 'acme', view: 'settings' },
+      storage,
+    );
+
+    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
+
+    writeLastPage('console', '/root/settings', {}, storage);
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime' });
   });
 
   it('reads a page stored under the other side as nothing remembered', () => {
@@ -73,7 +88,7 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage(
       'console',
       '/i/[account]/[view=panelView]',
-      { account: 'acme', view: 'settings' },
+      { account: 'acme', view: 'defaults' },
       storage,
     );
 

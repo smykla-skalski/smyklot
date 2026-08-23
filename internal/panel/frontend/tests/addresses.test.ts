@@ -20,6 +20,11 @@ import { parsePanelRoute, type PanelRoute } from '../src/lib/routes.ts';
 const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, string> }> = [
   { route: { personal: 'inbox' }, id: '/inbox', params: {} },
   {
+    route: { account: 'acme', view: 'defaults' },
+    id: '/i/[account]/[view=panelView]',
+    params: { account: 'acme', view: 'defaults' },
+  },
+  {
     route: { account: 'acme', view: 'repositories' },
     id: '/i/[account]/[view=panelView]',
     params: { account: 'acme', view: 'repositories' },
@@ -97,7 +102,7 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     id: '/root/queue/request/[id]',
     params: { id: 'req-1' },
   },
-  { route: { rootView: 'settings' }, id: '/root/settings', params: {} },
+  { route: { rootView: 'runtime' }, id: '/root/runtime', params: {} },
   {
     route: { rootView: 'history-audit' },
     id: '/root/history/[[section=historySection]]',
@@ -125,6 +130,11 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     },
     id: '/root/access/[section=accessSection]/[...rest=dialogPath]',
     params: { section: 'users', rest: 'octocat/ban' },
+  },
+  {
+    route: { rootView: 'installation', account: 'acme', view: 'defaults' },
+    id: '/root/installations/[account]/[view=rootInstallationView]',
+    params: { account: 'acme', view: 'defaults' },
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'repositories' },
@@ -178,6 +188,26 @@ describe('panel addresses [Unit]', () => {
         parsePanelRoute(basePath, address),
       );
     }
+  });
+
+  it('normalizes legacy settings routes and stored parameters', () => {
+    expect(panelRouteAt('/i/[account]/settings', { account: 'acme' })).toEqual({
+      account: 'acme',
+      view: 'defaults',
+      section: undefined,
+      dialog: undefined,
+    });
+    expect(
+      panelRouteAt('/i/[account]/[view=panelView]', { account: 'acme', view: 'settings' }),
+    ).toEqual({ account: 'acme', view: 'defaults', section: undefined, dialog: undefined });
+    expect(panelRouteAt('/root/settings', {})).toEqual({ rootView: 'runtime' });
+    expect(panelRouteAt('/root/installations/[account]/settings', { account: 'acme' })).toEqual({
+      rootView: 'installation',
+      account: 'acme',
+      view: 'defaults',
+      section: undefined,
+      dialog: undefined,
+    });
   });
 
   it('carries a name through the address without decoding it twice', () => {

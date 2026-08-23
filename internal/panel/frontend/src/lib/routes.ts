@@ -10,7 +10,7 @@ import {
 export type { RouteDialog };
 
 export const PANEL_VIEWS = [
-  'settings',
+  'defaults',
   'repositories',
   'sync',
   'users',
@@ -19,7 +19,7 @@ export const PANEL_VIEWS = [
 ] as const;
 
 /** Views written directly after an installation account in the route tree. */
-export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'] as const;
+export const DIRECT_PANEL_VIEWS = ['defaults', 'repositories', 'sync', 'history'] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
@@ -46,7 +46,7 @@ export const PERSONAL_VIEWS = ['inbox'] as const;
  * view is unavailable" looks like a fault rather than a boundary.
  */
 export const ROOT_INSTALLATION_VIEWS = [
-  'settings',
+  'defaults',
   'repositories',
   'users',
   'invitations',
@@ -54,7 +54,7 @@ export const ROOT_INSTALLATION_VIEWS = [
 ] as const;
 
 /** Root installation views written directly after the installation account. */
-export const DIRECT_ROOT_INSTALLATION_VIEWS = ['settings', 'repositories', 'history'] as const;
+export const DIRECT_ROOT_INSTALLATION_VIEWS = ['defaults', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
@@ -129,15 +129,14 @@ export type RootInstallationView = (typeof ROOT_INSTALLATION_VIEWS)[number];
 export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
-export type RootSection =
-  'overview' | 'queue' | 'installations' | 'access' | 'history' | 'settings';
+export type RootSection = 'overview' | 'queue' | 'installations' | 'access' | 'history' | 'runtime';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
   | {
       rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations';
       dialog?: RouteDialog;
     }
-  | { rootView: 'history-audit' | 'history-failures' | 'settings' }
+  | { rootView: 'history-audit' | 'history-failures' | 'runtime' }
   /**
    * Work the service has accepted and will do later, on a schedule it chooses.
    *
@@ -224,7 +223,15 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const accessView =
     rawSection === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[3]) : undefined;
   if (rawSection === 'access' && parts.length > 3 && accessView === undefined) return null;
-  const rawView = rawSection === 'access' ? (accessView ?? 'users') : rawSection;
+  /* `settings` is the compatibility spelling kept as a redirect route. Read it
+     into the canonical vocabulary here too, so the mock server and old
+     session-stored route parameters still recognize the page. */
+  const rawView =
+    rawSection === 'access'
+      ? (accessView ?? 'users')
+      : rawSection === 'settings'
+        ? 'defaults'
+        : rawSection;
   if (!isScopedPanelView(rawView)) return null;
 
   /* Everything past the view is history's table, a repository's page, or a
@@ -367,7 +374,7 @@ export function resolvePanelRoute(
     requestedAccount ?? findAccount(availableAccounts, preferredAccount) ?? availableAccounts[0];
   if (account === undefined) return null;
 
-  const view = requested?.view ?? 'settings';
+  const view = requested?.view ?? 'defaults';
   /* History always resolves to a named table, so the address bar never sits on
      a bare /history that a reload would have to guess at. */
   return view === 'history'
@@ -459,7 +466,9 @@ function parseTrailingSync(
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
-  if (parts.length === 2 && parts[1] === 'settings') return { rootView: 'settings' };
+  if (parts.length === 2 && (parts[1] === 'runtime' || parts[1] === 'settings')) {
+    return { rootView: 'runtime' };
+  }
   if (parts.length >= 3 && parts[1] === 'access') {
     /* The Root console's tables take the same dialog grammar as an
        installation's, because they list the same things. */
@@ -500,7 +509,8 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   const accessView =
     rawView === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[4]) : undefined;
   if (rawView === 'access' && parts.length > 4 && accessView === undefined) return null;
-  const view = rawView === 'access' ? (accessView ?? 'users') : rawView;
+  const view =
+    rawView === 'access' ? (accessView ?? 'users') : rawView === 'settings' ? 'defaults' : rawView;
   if (!isRootInstallationView(view)) return null;
   const trailing = parts.slice(rawView === 'access' ? 5 : 4);
   const repository = parseTrailingRepository(view, trailing);

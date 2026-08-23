@@ -60,7 +60,7 @@ describe('theme boot script', () => {
   it('falls back to the system preference when stored data is invalid', () => {
     const result = bootTheme({
       stored: { 'smyklot.panel.prefs': '{not-json' },
-      path: '/panel/i/acme/settings',
+      path: '/panel/i/acme/defaults',
       systemDark: true,
     });
 

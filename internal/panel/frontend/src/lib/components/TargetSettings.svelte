@@ -209,11 +209,11 @@
 </script>
 
 <div class="view-frame">
-  <section class="settings-page" aria-labelledby="settings-heading">
+  <section class="settings-page" aria-labelledby="defaults-heading">
     <PageHeader
-      id="settings-heading"
+      id="defaults-heading"
       eyebrow="Workspace"
-      title="Settings"
+      title="Workspace defaults"
       description="Defaults every repository inherits unless a repository overrides them"
     />
 

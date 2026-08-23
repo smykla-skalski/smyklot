@@ -47,8 +47,8 @@
 </Story>
 
 <!-- The account defaults every repository inherits until it overrides one. -->
-<Story name="Settings">
-  {#snippet template(args)}<InstallationView {...args} view="settings" />{/snippet}
+<Story name="Workspace defaults">
+  {#snippet template(args)}<InstallationView {...args} view="defaults" />{/snippet}
 </Story>
 
 <!--

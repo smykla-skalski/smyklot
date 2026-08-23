@@ -115,12 +115,25 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/history/failures')).toEqual({
       rootView: 'history-failures',
     });
-    expect(parsePanelRoute('', '/root/settings')).toEqual({ rootView: 'settings' });
+    expect(parsePanelRoute('', '/root/runtime')).toEqual({ rootView: 'runtime' });
     expect(parsePanelRoute('', '/root/installations/smykla-skalski/repositories')).toEqual({
       rootView: 'installation',
       account: 'smykla-skalski',
       view: 'repositories',
     });
+  });
+
+  it('reads legacy settings addresses as their canonical destinations', () => {
+    expect(parsePanelRoute('', '/i/acme/settings')).toEqual({
+      account: 'acme',
+      view: 'defaults',
+    });
+    expect(parsePanelRoute('', '/root/installations/acme/settings')).toEqual({
+      rootView: 'installation',
+      account: 'acme',
+      view: 'defaults',
+    });
+    expect(parsePanelRoute('', '/root/settings')).toEqual({ rootView: 'runtime' });
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -152,8 +165,8 @@ describe('panel routes', () => {
     expect(panelAddress({ account: 'smykla skalski', view: 'history' })).toBe(
       `${basePath}/i/smykla%20skalski/history`,
     );
-    expect(panelAddress({ account: 'bartsmykla', view: 'settings' })).toBe(
-      `${basePath}/i/bartsmykla/settings`,
+    expect(panelAddress({ account: 'bartsmykla', view: 'defaults' })).toBe(
+      `${basePath}/i/bartsmykla/defaults`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'users' })).toBe(
       `${basePath}/i/bartsmykla/access/users`,
@@ -175,7 +188,7 @@ describe('panel routes', () => {
 
 describe('panel document titles', () => {
   it.each([
-    [{ account: 'acme', view: 'settings' }, 'Settings | SMYKLOT'],
+    [{ account: 'acme', view: 'defaults' }, 'Defaults | SMYKLOT'],
     [{ account: 'acme', view: 'repositories' }, 'Repositories | SMYKLOT'],
     [{ account: 'acme', view: 'users' }, 'Users | Access | SMYKLOT'],
     [{ account: 'acme', view: 'invitations' }, 'Invitations | Access | SMYKLOT'],
@@ -188,7 +201,7 @@ describe('panel document titles', () => {
     [{ rootView: 'access-invitations' }, 'Invitations | Access | Root Console | SMYKLOT'],
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
     [{ rootView: 'history-failures' }, 'Failures | History | Root Console | SMYKLOT'],
-    [{ rootView: 'settings' }, 'Settings | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime' }, 'Runtime | Root Console | SMYKLOT'],
     [
       { rootView: 'installation', account: 'acme', view: 'repositories' },
       'Repositories | Root Console | SMYKLOT',
@@ -255,10 +268,10 @@ describe('resolvePanelRoute', () => {
     });
   });
 
-  it('restores the remembered installation at the settings route', () => {
+  it('restores the remembered installation at the defaults route', () => {
     expect(resolvePanelRoute(accounts, null, 'smykla-skalski')).toEqual({
       account: 'smykla-skalski',
-      view: 'settings',
+      view: 'defaults',
     });
   });
 
@@ -271,7 +284,7 @@ describe('resolvePanelRoute', () => {
   it('falls back to the first available installation', () => {
     expect(resolvePanelRoute(accounts, null, 'removed-org')).toEqual({
       account: 'bartsmykla',
-      view: 'settings',
+      view: 'defaults',
     });
   });
 
@@ -297,9 +310,9 @@ describe('personal routes', () => {
      still an account. Reading it anywhere else would take a workspace away from
      whoever owns that name. */
   it('leaves an account of the same name alone', () => {
-    expect(parsePanelRoute('', '/i/inbox/settings')).toEqual({
+    expect(parsePanelRoute('', '/i/inbox/defaults')).toEqual({
       account: 'inbox',
-      view: 'settings',
+      view: 'defaults',
     });
     expect(parsePanelRoute('', '/root/installations/inbox/repositories')).toEqual({
       rootView: 'installation',
@@ -351,6 +364,7 @@ describe('history sections are addressable', () => {
   });
 
   it('refuses a section on a view that has none, and an unknown section', () => {
+    expect(parsePanelRoute('', '/i/acme/defaults/audit')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/settings/audit')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/history/everything')).toBeNull();
   });
@@ -360,7 +374,7 @@ describe('history sections are addressable', () => {
       `${basePath}/i/acme/history/failures`,
     );
     expect(panelAddress({ account: 'acme', view: 'history' })).toBe(`${basePath}/i/acme/history`);
-    expect(panelAddress({ account: 'acme', view: 'settings' })).toBe(`${basePath}/i/acme/settings`);
+    expect(panelAddress({ account: 'acme', view: 'defaults' })).toBe(`${basePath}/i/acme/defaults`);
   });
 
   it('resolves a bare root section path to that section default', () => {

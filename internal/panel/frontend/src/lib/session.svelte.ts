@@ -94,7 +94,7 @@ export class PanelSession {
 
   theme = $state<ThemeDisplay>('system');
   sidebarCollapsed = $state(false);
-  private lastScopedView = $state<PanelView>('settings');
+  private lastScopedView = $state<PanelView>('defaults');
   private lastScopedHistorySection = $state<HistorySection>('audit');
   /**
    * The whole page each side was last on, which is where crossing to it goes back to.

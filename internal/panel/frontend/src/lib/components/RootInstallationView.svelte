@@ -317,7 +317,7 @@
         {loading ? 'Trying again…' : 'Try again'}
       </Button>
     </div>
-  {:else if target !== null && view === 'settings'}
+  {:else if target !== null && view === 'defaults'}
     <TargetSettings {target} readOnly={!canWrite} onUpdate={updateTarget} />
   {:else if target !== null && view === 'repositories'}
     <RepositoryList

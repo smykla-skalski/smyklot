@@ -349,7 +349,7 @@
 <section class="root-settings" aria-label="Root runtime settings">
   <RootPageHeader
     role={rootRole}
-    title="Settings"
+    title="Runtime settings"
     subtitle="Runtime behavior and deployment-backed defaults"
   >
     <StatusPill dot live>Changes apply live</StatusPill>

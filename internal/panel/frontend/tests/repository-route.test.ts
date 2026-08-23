@@ -131,12 +131,14 @@ describe('one repository through the Root console [Unit]', () => {
     expect(parsePanelRoute('', '/root/installations/acme/repositories/api/nonsense')).toBeNull();
   });
 
-  /* Sync is not a console view, and settings hosts nothing after it. Neither
+  /* Sync is not a console view, and defaults hosts nothing after it. Neither
      takes a repository, and the trailing segment has to stay refused rather than
      be read as one now that the repositories view reads its own. */
   it('does not let another view carry a repository', () => {
+    expect(parsePanelRoute('', '/i/acme/defaults/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/root/installations/acme/defaults/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
   });
 
