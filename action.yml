@@ -15,4 +15,4 @@ inputs:
 
 runs:
   using: 'docker'
-  image: 'docker://ghcr.io/smykla-skalski/smyklot:1.46.2'
+  image: 'docker://ghcr.io/smykla-skalski/smyklot:1.47.0'

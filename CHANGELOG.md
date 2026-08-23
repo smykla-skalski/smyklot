@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.47.0](https://github.com/smykla-skalski/smyklot/compare/v1.46.2...v1.47.0) (2026-08-23)
+
+### Features
+
+* **panel:** unify workspace setting drafts ([#312](https://github.com/smykla-skalski/smyklot/issues/312)) ([4013c5a](https://github.com/smykla-skalski/smyklot/commit/4013c5a6bb7f28b6a0fe849ad08930ced964ccbc))
+
 ## [1.46.2](https://github.com/smykla-skalski/smyklot/compare/v1.46.1...v1.46.2) (2026-08-23)
 
 ### Bug Fixes
