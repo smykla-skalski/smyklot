@@ -333,6 +333,7 @@ jobs:
               tests/browser/cached-navigation.test.ts
               tests/browser/access-navigation.test.ts
               tests/browser/sync-drafts.test.ts
+              tests/browser/settings-draft-markers.test.ts
           - area: controls
             files: >-
               tests/browser/segmented-control.test.ts
