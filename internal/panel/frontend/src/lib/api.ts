@@ -19,6 +19,9 @@ import type {
   PanelTarget,
   PanelInvitation,
   InvitationPageRequest,
+  InstallationSettingsBatchInput,
+  InstallationSettingsBatchResponse,
+  InstallationSettingsConflict,
   PanelUser,
   PanelUserPageRequest,
   PanelViewer,
@@ -65,6 +68,7 @@ export class PanelApiError extends Error {
     readonly code: string,
     message: string,
     readonly kind?: string,
+    readonly conflicts: InstallationSettingsConflict[] = [],
   ) {
     super(message);
     this.name = 'PanelApiError';
@@ -95,6 +99,10 @@ export interface PanelApi {
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
   updateRootTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
+  saveRootInstallationSettings(
+    targetId: string,
+    input: InstallationSettingsBatchInput,
+  ): Promise<InstallationSettingsBatchResponse>;
   fetchRootRepositories(
     targetId: string,
     request: RepositoryPageRequest,
@@ -173,6 +181,10 @@ export interface PanelApi {
   revokeTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation>;
   fetchUserDecisions(accountId: string, targetId: string): Promise<AccessDecision[]>;
   updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget>;
+  saveInstallationSettings(
+    targetId: string,
+    input: InstallationSettingsBatchInput,
+  ): Promise<InstallationSettingsBatchResponse>;
   fetchRepositories(
     targetId: string,
     request: RepositoryPageRequest,
@@ -515,6 +527,16 @@ export function createPanelApi(
       return putJson(`/api/v1/root/installations/${pathSegment(targetId)}/settings`, input);
     },
 
+    saveRootInstallationSettings(
+      targetId: string,
+      input: InstallationSettingsBatchInput,
+    ): Promise<InstallationSettingsBatchResponse> {
+      return putDocument(
+        `/api/v1/root/installations/${pathSegment(targetId)}/settings/batch`,
+        input,
+      );
+    },
+
     fetchRootRepositories(
       targetId: string,
       repositoryPage: RepositoryPageRequest,
@@ -759,6 +781,13 @@ export function createPanelApi(
 
     updateTargetSettings(targetId: string, input: TargetSettingsInput): Promise<PanelTarget> {
       return putJson(`/api/v1/targets/${pathSegment(targetId)}/settings`, input);
+    },
+
+    saveInstallationSettings(
+      targetId: string,
+      input: InstallationSettingsBatchInput,
+    ): Promise<InstallationSettingsBatchResponse> {
+      return putDocument(`/api/v1/targets/${pathSegment(targetId)}/settings/batch`, input);
     },
 
     fetchRepositories(
@@ -1126,8 +1155,12 @@ async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
   let message = describeStatus(response.status);
   let kind: string | undefined;
+  let conflicts: InstallationSettingsConflict[] = [];
   try {
-    const body = (await response.json()) as Partial<PanelErrorBody>;
+    const text = await response.text();
+    const body = JSON.parse(text) as Partial<PanelErrorBody>;
+    const literal = parseJson(text);
+    const preserved = literal === undefined ? body : (graftDocuments(body, literal) as typeof body);
     if (body.error?.code !== undefined) {
       code = body.error.code;
     }
@@ -1135,8 +1168,9 @@ async function readError(response: Response): Promise<PanelApiError> {
       message = body.error.message;
     }
     kind = body.error?.kind;
+    conflicts = preserved.error?.conflicts ?? [];
   } catch {
     // Proxies and crashes are not required to understand the panel envelope.
   }
-  return new PanelApiError(response.status, code, message, kind);
+  return new PanelApiError(response.status, code, message, kind, conflicts);
 }

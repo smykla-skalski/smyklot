@@ -245,6 +245,95 @@ describe('targets and repositories', () => {
     expect(stub.calls[1]?.url).toBe('/panel/api/v1/targets/2001/repositories/4001/settings');
   });
 
+  it('saves every installation settings resource through one literal-preserving PUT', async () => {
+    const answer =
+      '{"checkpoint_id":"checkpoint.1","sync_configs":[{"target_id":"target/1",' +
+      '"kind":"files","enabled":true,"document":{"app_id":12345678901234567890},' +
+      '"revision":8}]}';
+    const stub = stubFetch([
+      new Response(answer, { status: 200, headers: { 'content-type': 'application/json' } }),
+      jsonResponse(200, { checkpoint_id: 'checkpoint.2' }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+    const input = {
+      target: {
+        repository_default_enabled: true,
+        pending_ci_mode_default: 'checks' as const,
+        pending_ci_branch_patterns_default: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+        pending_ci_quiet_period_seconds_override: null,
+        path_index_interval_seconds_override: 3600,
+        config_patch: { quiet_success: true },
+        expected_revision: 4,
+      },
+      sync_configs: [
+        {
+          kind: 'files' as const,
+          enabled: true,
+          document: { templates: [] },
+          expected_revision: 7,
+        },
+      ],
+    };
+
+    const saved = await api.saveInstallationSettings('target/1', input);
+    await api.saveRootInstallationSettings('target/1', input);
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets/target%2F1/settings/batch',
+      '/panel/api/v1/root/installations/target%2F1/settings/batch',
+    ]);
+    expect(stub.calls.every((call) => call.init?.method === 'PUT')).toBe(true);
+    expect(JSON.parse(String(stub.calls[0]?.init?.body))).toEqual(input);
+    expect(JSON.stringify(saved.sync_configs?.[0]?.document)).toBe(
+      '{"app_id":12345678901234567890}',
+    );
+  });
+
+  it('keeps structured batch conflicts and their latest documents', async () => {
+    const conflict =
+      '{"error":{"code":"conflict","message":"settings changed in another session",' +
+      '"conflicts":[{"resource":"sync_config","target_id":"target.1","kind":"files",' +
+      '"expected_revision":7,"actual_revision":8,"latest":{"target_id":"target.1",' +
+      '"kind":"files","enabled":true,"document":{"app_id":12345678901234567890},' +
+      '"revision":8}}]}}';
+    const stub = stubFetch([
+      new Response(conflict, { status: 409, headers: { 'content-type': 'application/json' } }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    let failure: unknown;
+    try {
+      await api.saveInstallationSettings('target.1', {
+        sync_configs: [
+          {
+            kind: 'files',
+            enabled: true,
+            document: { templates: [] },
+            expected_revision: 7,
+          },
+        ],
+      });
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).toMatchObject({
+      status: 409,
+      code: 'conflict',
+      conflicts: [
+        {
+          resource: 'sync_config',
+          target_id: 'target.1',
+          kind: 'files',
+          expected_revision: 7,
+          actual_revision: 8,
+        },
+      ],
+    });
+    const latest = (failure as PanelApiError).conflicts[0]?.latest;
+    expect(JSON.stringify(latest)).toContain('12345678901234567890');
+  });
+
   it('encodes slashes and traversal segments as path data', async () => {
     const stub = stubFetch([jsonResponse(200, DETAIL)]);
     const api = createPanelApi('/panel', stub.fetch);

@@ -621,6 +621,135 @@ export interface RepositorySettingsInput {
   expected_revision: number;
 }
 
+/** A complete installation-defaults document in one atomic settings save. */
+export interface InstallationTargetSettingsInput {
+  repository_default_enabled: boolean;
+  pending_ci_mode_default: PendingCIMode;
+  pending_ci_branch_patterns_default: PendingCIBranchPatterns;
+  pending_ci_quiet_period_seconds_override: number | null;
+  path_index_interval_seconds_override: number | null;
+  config_patch: ConfigPatch;
+  expected_revision: number;
+}
+
+/** A complete repository-settings document in one atomic settings save. */
+export interface InstallationRepositorySettingsInput {
+  repository_id: string;
+  enabled_override: boolean | null;
+  pending_ci_mode_override: PendingCIMode | null;
+  pending_ci_branch_patterns_override: PendingCIBranchPatterns | null;
+  pending_ci_quiet_period_seconds_override: number | null;
+  path_index_interval_seconds_override: number | null;
+  config_patch: ConfigPatch;
+  ignore_repository_file: boolean;
+  expected_revision: number;
+}
+
+export type InstallationSyncConfigSettingsInput =
+  | {
+      kind: 'labels';
+      enabled: boolean;
+      labels: SyncLabel[];
+      allow_removal: boolean;
+      excludes: string[];
+      expected_revision: number;
+    }
+  | {
+      kind: Exclude<SyncKind, 'labels'>;
+      enabled: boolean;
+      document: Record<string, unknown>;
+      expected_revision: number;
+    };
+
+export interface InstallationSyncOverrideSettingsInput {
+  repository_id: string;
+  kind: SyncKind;
+  enabled: boolean | null;
+  document: Record<string, unknown>;
+  expected_revision: number;
+}
+
+export interface InstallationSettingsBatchInput {
+  target?: InstallationTargetSettingsInput;
+  repositories?: InstallationRepositorySettingsInput[];
+  sync_configs?: InstallationSyncConfigSettingsInput[];
+  sync_overrides?: InstallationSyncOverrideSettingsInput[];
+}
+
+export interface InstallationTargetSettingsState extends Omit<
+  InstallationTargetSettingsInput,
+  'expected_revision'
+> {
+  target_id: string;
+  revision: number;
+}
+
+export interface InstallationRepositorySettingsState extends Omit<
+  InstallationRepositorySettingsInput,
+  'expected_revision'
+> {
+  revision: number;
+}
+
+export interface InstallationSyncConfigSettingsState {
+  target_id: string;
+  kind: SyncKind;
+  enabled: boolean;
+  document: Record<string, unknown>;
+  revision: number;
+}
+
+export interface InstallationSyncOverrideSettingsState {
+  target_id: string;
+  repository_id: string;
+  kind: SyncKind;
+  enabled: boolean | null;
+  document: Record<string, unknown>;
+  revision: number;
+}
+
+export interface InstallationSettingsBatchResponse {
+  checkpoint_id?: string;
+  target?: InstallationTargetSettingsState;
+  repositories?: InstallationRepositorySettingsState[];
+  sync_configs?: InstallationSyncConfigSettingsState[];
+  sync_overrides?: InstallationSyncOverrideSettingsState[];
+}
+
+export type InstallationSettingsConflict =
+  | {
+      resource: 'target';
+      target_id: string;
+      expected_revision: number;
+      actual_revision: number;
+      latest?: InstallationTargetSettingsState;
+    }
+  | {
+      resource: 'repository';
+      target_id: string;
+      repository_id: string;
+      expected_revision: number;
+      actual_revision: number;
+      latest?: InstallationRepositorySettingsState;
+    }
+  | {
+      resource: 'sync_config';
+      target_id: string;
+      kind: SyncKind;
+      expected_revision: number;
+      actual_revision: number;
+      latest?: InstallationSyncConfigSettingsState;
+    }
+  | {
+      resource: 'sync_override';
+      target_id: string;
+      repository_id: string;
+      kind: SyncKind;
+      expected_revision: number;
+      actual_revision: number;
+      latest?: InstallationSyncOverrideSettingsState;
+    };
+
 export interface AuditEntry {
   id: string;
   category?: AuditCategory;
@@ -696,6 +825,7 @@ export interface PanelErrorBody {
     code: string;
     message: string;
     kind?: SyncKind;
+    conflicts?: InstallationSettingsConflict[];
   };
 }
 
