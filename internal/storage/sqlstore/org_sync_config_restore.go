@@ -49,8 +49,50 @@ ORDER BY kind`, checkpointID)
 	if err != nil {
 		return orgsync.ConfigCheckpoint{}, fmt.Errorf("read sync config checkpoint items: %w", err)
 	}
+	checkpoint.PreviousItems, err = previousSyncConfigCheckpointItems(
+		ctx, queryer, targetID, checkpointID,
+	)
+	if err != nil {
+		return orgsync.ConfigCheckpoint{}, err
+	}
 
 	return checkpoint, nil
+}
+
+func previousSyncConfigCheckpointItems(
+	ctx context.Context,
+	queryer runner,
+	targetID string,
+	checkpointID int64,
+) ([]orgsync.ConfigCheckpointItem, error) {
+	var previousID int64
+	err := queryer.QueryRowContext(ctx, `
+SELECT id
+FROM sync_config_checkpoints
+WHERE target_id = ? AND id < ?
+ORDER BY id DESC
+LIMIT 1`, targetID, checkpointID).Scan(&previousID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []orgsync.ConfigCheckpointItem{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read previous sync config checkpoint: %w", err)
+	}
+
+	rows, err := queryer.QueryContext(ctx, `
+SELECT kind, enabled, document, digest, revision
+FROM sync_config_checkpoint_items
+WHERE checkpoint_id = ?
+ORDER BY kind`, previousID)
+	if err != nil {
+		return nil, fmt.Errorf("list previous sync config checkpoint items: %w", err)
+	}
+	items, err := collectRows(rows, scanSyncConfigCheckpointItem)
+	if err != nil {
+		return nil, fmt.Errorf("read previous sync config checkpoint items: %w", err)
+	}
+
+	return items, nil
 }
 
 func scanSyncConfigCheckpoint(scanner rowScanner) (orgsync.ConfigCheckpoint, error) {

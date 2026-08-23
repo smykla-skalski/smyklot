@@ -178,12 +178,13 @@ type repositoryDetailResponse struct {
 }
 
 type auditResponse struct {
-	ID                 string          `json:"id"`
-	Actor              accountResponse `json:"actor"`
-	Action             string          `json:"action"`
-	Summary            string          `json:"summary"`
-	RepositoryFullName *string         `json:"repository_full_name,omitempty"`
-	CreatedAt          time.Time       `json:"created_at"`
+	ID                     string          `json:"id"`
+	Actor                  accountResponse `json:"actor"`
+	Action                 string          `json:"action"`
+	Summary                string          `json:"summary"`
+	RepositoryFullName     *string         `json:"repository_full_name,omitempty"`
+	SyncConfigCheckpointID *string         `json:"sync_config_checkpoint_id,omitempty"`
+	CreatedAt              time.Time       `json:"created_at"`
 }
 
 type failureResponse struct {
@@ -468,12 +469,13 @@ func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 	items := make([]auditResponse, 0, len(page.Items))
 	for _, entry := range page.Items {
 		items = append(items, auditResponse{
-			ID:                 strconv.FormatInt(entry.ID, 10),
-			Actor:              accountDTO(entry.Actor),
-			Action:             entry.Action,
-			Summary:            entry.Summary,
-			RepositoryFullName: entry.RepositoryFullName,
-			CreatedAt:          entry.CreatedAt,
+			ID:                     strconv.FormatInt(entry.ID, 10),
+			Actor:                  accountDTO(entry.Actor),
+			Action:                 entry.Action,
+			Summary:                entry.Summary,
+			RepositoryFullName:     entry.RepositoryFullName,
+			SyncConfigCheckpointID: stringID(entry.SyncConfigCheckpointID),
+			CreatedAt:              entry.CreatedAt,
 		})
 	}
 

@@ -248,6 +248,15 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/config/{kind}", s.getSyncConfig)
 	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/sync/config/{kind}", s.putSyncConfig)
+	mux.HandleFunc("PUT "+base+"/api/v1/targets/{target}/sync/config", s.putSyncConfigs)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/sync/config/checkpoints/{checkpoint}",
+		s.getSyncConfigCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/sync/config/checkpoints/{checkpoint}/restore",
+		s.postSyncConfigRestore,
+	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/paths", s.listSyncPaths)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/sync/overrides/{kind}",

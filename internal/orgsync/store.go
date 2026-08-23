@@ -79,6 +79,7 @@ type ConfigCheckpoint struct {
 	Action         CheckpointAction
 	RestoredFromID *int64
 	CreatedAt      time.Time
+	PreviousItems  []ConfigCheckpointItem
 	Items          []ConfigCheckpointItem
 }
 

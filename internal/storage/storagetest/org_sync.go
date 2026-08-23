@@ -168,6 +168,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		Expect(err).NotTo(HaveOccurred())
 		Expect(checkpoint.Action).To(Equal(orgsync.CheckpointSaved))
 		Expect(checkpoint.Items).To(HaveLen(2))
+		Expect(checkpoint.PreviousItems).To(BeEmpty())
 		Expect(checkpoint.ActorID).To(Equal(account.ID))
 
 		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
@@ -285,6 +286,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		Expect(result.Action).To(Equal(orgsync.CheckpointRestored))
 		Expect(result.RestoredFromID).To(HaveValue(Equal(*original.CheckpointID)))
 		Expect(result.Items).To(HaveLen(2))
+		Expect(result.PreviousItems).To(HaveLen(3))
 
 		audit, err := store.ListAudit(ctx, target, storage.AuditPageRequest{
 			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},

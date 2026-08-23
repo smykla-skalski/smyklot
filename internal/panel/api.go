@@ -489,7 +489,8 @@ func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request
 		change = storage.AuditChangeAll
 	}
 	if change != storage.AuditChangeAll && change != storage.AuditChangeEnablement &&
-		change != storage.AuditChangeRepository && change != storage.AuditChangeAccount {
+		change != storage.AuditChangeRepository && change != storage.AuditChangeAccount &&
+		change != storage.AuditChangeSync {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
 		return
 	}

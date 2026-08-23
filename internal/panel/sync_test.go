@@ -38,6 +38,16 @@ func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
 	if answer.UpdatedBy != "owner" {
 		t.Errorf("updated_by = %q, wanted the editor's GitHub login", answer.UpdatedBy)
 	}
+
+	audit := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/audit?change=sync", nil, session)
+	var history pageResponse[auditResponse]
+	if err := json.Unmarshal(audit.Body.Bytes(), &history); err != nil {
+		t.Fatal(err)
+	}
+	if history.Total != 1 || history.Items[0].SyncConfigCheckpointID == nil {
+		t.Fatalf("compatibility save audit = %#v", history)
+	}
 }
 
 // TestSyncConfigReportsADocumentItCannotRead is the guard on the difference
