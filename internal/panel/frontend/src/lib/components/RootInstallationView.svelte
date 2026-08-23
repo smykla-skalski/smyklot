@@ -1,12 +1,17 @@
 <script lang="ts">
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import { useInterval } from 'runed';
   import { PanelApiError, type PanelApi } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
-  import { getSettingsDraftRegistry } from '../settings-drafts.svelte';
+  import {
+    rebaseInstallationConflicts,
+    saveInstallationDrafts,
+  } from '../installation-settings-save';
+  import { invalidateRootInstallationSettings } from '../query-client';
+  import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
   import { adoptSyncConfigSettings } from '../sync-config-settings';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
@@ -25,6 +30,7 @@
   import Modal from './Modal.svelte';
   import RepositoryList from './RepositoryList.svelte';
   import ResultProblem from './ResultProblem.svelte';
+  import SettingsSaveComposer from './SettingsSaveComposer.svelte';
   import TargetSettings from './TargetSettings.svelte';
   import UserManagement from './UserManagement.svelte';
 
@@ -51,6 +57,14 @@
 
   const queryClient = useQueryClient();
   const settingsDrafts = getSettingsDraftRegistry();
+  const settingsScope = $derived<SettingsScope>({
+    type: 'installation',
+    targetId: installation.id,
+  });
+  const dirtySettingsCount = $derived(settingsDrafts.dirtyControls(settingsScope).length);
+  const settingsOperation = $derived(settingsDrafts.operation(settingsScope));
+  const settingsConflict = $derived(settingsDrafts.hasConflicts(settingsScope));
+  let resolvingSettingsConflict = $state(false);
   const detailKey = $derived(['root-installations', installation.id, 'detail'] as const);
   const detailQuery = createQuery(() => ({
     queryKey: detailKey,
@@ -188,6 +202,43 @@
       if (!config.unreadable) adoptSyncConfigSettings(settingsDrafts, installation.id, config);
     }
     void load();
+  }
+
+  async function saveSettings(): Promise<void> {
+    if (!canWrite) return;
+    const result = await saveInstallationDrafts(
+      settingsDrafts,
+      installation.id,
+      (targetId, input) => api.saveRootInstallationSettings(targetId, input),
+    );
+    if (!result.saved) return;
+    await Promise.all([
+      invalidateRootInstallationSettings(queryClient, installation.id),
+      queryClient.invalidateQueries({ queryKey: ['sync-plan', installation.id] }),
+    ]);
+  }
+
+  function discardSettings(): void {
+    settingsDrafts.discardScope(settingsScope);
+  }
+
+  async function updateSettingsDraft(): Promise<void> {
+    if (resolvingSettingsConflict) return;
+    resolvingSettingsConflict = true;
+    await tick();
+    try {
+      rebaseInstallationConflicts(settingsDrafts, installation.id);
+      settingsDrafts.resolveExternalConflicts(settingsScope);
+      if (!settingsDrafts.hasConflicts(settingsScope)) {
+        settingsDrafts.dismissProblem(settingsScope);
+      }
+    } finally {
+      resolvingSettingsConflict = false;
+    }
+  }
+
+  function dismissSettingsNotice(): void {
+    settingsDrafts.dismissNotice(settingsScope);
   }
 
   function countdown(seconds: number): string {
@@ -356,10 +407,24 @@
   {:else}
     <div class="root-loading">
       <strong>This installation view is unavailable</strong>
-      <p>Return to the installation catalog and choose a supported destination.</p>
+      <p>Return to the installation catalog and choose a supported destination</p>
     </div>
   {/if}
 </section>
+
+<SettingsSaveComposer
+  count={dirtySettingsCount}
+  saving={settingsOperation.saving}
+  resolving={resolvingSettingsConflict}
+  problem={settingsOperation.problem}
+  notice={settingsOperation.notice}
+  conflict={settingsConflict}
+  readOnly={!canWrite}
+  onSave={() => void saveSettings()}
+  onDiscard={discardSettings}
+  onResolveConflict={() => void updateSettingsDraft()}
+  onDismiss={dismissSettingsNotice}
+/>
 
 <Modal
   id={ELEVATION_DIALOG}
@@ -373,14 +438,14 @@
     <span><Icon name="warning" size={22} /></span>
     <p>
       You do not own this installation. Every change is permanently audited and every identified
-      Owner receives an in-app security notification.
+      Owner receives an in-app security notification
     </p>
   </div>
 
   <label class="acknowledgment">
     <input type="checkbox" bind:checked={elevationAcknowledged} />
     <span>
-      I understand the consequences and want to enter audited elevated access for this installation.
+      I understand the consequences and want to enter audited elevated access for this installation
     </span>
   </label>
 
