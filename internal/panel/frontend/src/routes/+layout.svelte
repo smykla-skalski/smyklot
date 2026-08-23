@@ -482,7 +482,7 @@
             {@render children()}
           {/if}
         </div>
-        {#if syncDraftScope.current !== null && session.selectedTarget !== null}
+        {#if !session.isRootMode && syncDraftScope.current !== null && session.selectedTarget !== null}
           <SyncSaveComposer
             drafts={syncDraftScope.current}
             readOnly={!session.selectedTarget.capabilities.write}

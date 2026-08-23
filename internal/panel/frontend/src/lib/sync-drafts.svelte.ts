@@ -113,6 +113,17 @@ export class SyncDraftSet {
     this.notice = null;
   }
 
+  acceptCommitted(configs: SyncConfig[], notice: string): void {
+    this.saved = {};
+    this.drafts = {};
+    this.adopt(configs);
+    this.problem = null;
+    this.conflict = false;
+    this.invalidKind = null;
+    this.notice = notice;
+    this.refresh += 1;
+  }
+
   async save(saveConfigs: SaveSyncConfigs): Promise<boolean> {
     if (this.saving || !this.dirty) return false;
     const changes = this.changes();
@@ -125,11 +136,10 @@ export class SyncDraftSet {
     this.notice = null;
     try {
       const result = await saveConfigs(this.targetId, { changes });
-      this.saved = {};
-      this.drafts = {};
-      this.adopt(result.configs);
-      this.refresh += 1;
-      this.notice = 'Saved. Reconciliation creates a plan only when repositories need changes.';
+      this.acceptCommitted(
+        result.configs,
+        'Saved. Reconciliation creates a plan only when repositories need changes.',
+      );
       return true;
     } catch (cause) {
       this.problem = cause instanceof Error ? cause.message : String(cause);

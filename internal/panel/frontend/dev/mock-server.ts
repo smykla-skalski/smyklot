@@ -35,7 +35,14 @@ import type {
   RootElevationInput,
   RootInstallation,
   RootOverview,
+  SyncConfig,
+  SyncConfigBatchInput,
+  SyncConfigBatchResponse,
+  SyncConfigCheckpoint,
+  SyncConfigCheckpointState,
   SyncConfigInput,
+  SyncConfigRestoreInput,
+  SyncKind,
   SyncOverride,
   SyncOverrideInput,
   RootRuntimeSettings,
@@ -45,6 +52,7 @@ import type {
   UpdateRootUserInput,
   InvitationDays,
 } from '../src/lib/types.ts';
+import { SYNC_KINDS } from '../src/lib/types.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
 /* The fixtures, which used to be nine hundred lines of this file and reachable by
    nothing. They are their own module so the Storybook catalogue can read the same data
@@ -62,6 +70,7 @@ import {
   mockRepositoryPaths,
   mockRepositoryScanAge,
   mockSyncConfig,
+  syncConfigCheckpointState,
   ROOT_READ_CAPABILITIES,
   mockRootOwns,
   rootPanelUsers,
@@ -976,9 +985,41 @@ async function handle(
       });
       return;
     }
-    const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/([^/]+)$/.exec(
-      path.slice(route('').length),
-    );
+    const syncPath = path.slice(route('').length);
+    const syncCheckpointMatch =
+      /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/checkpoints\/([^/]+)(\/restore)?$/.exec(
+        syncPath,
+      );
+    if (syncCheckpointMatch) {
+      const target = findTarget(state, decodeURIComponent(syncCheckpointMatch[1] ?? ''));
+      const checkpointId = decodeURIComponent(syncCheckpointMatch[2] ?? '');
+      const key = `${target.value.id}/${checkpointId}`;
+      const checkpoint = state.syncCheckpoints.get(key);
+      if (checkpoint === undefined) {
+        throw new MockApiError(404, 'not_found', 'Sync configuration snapshot not found');
+      }
+      if (method === 'GET' && syncCheckpointMatch[3] === undefined) {
+        respond(res, 200, checkpointWithCurrent(state, target.value.id, checkpoint));
+        return;
+      }
+      if (method === 'POST' && syncCheckpointMatch[3] === '/restore') {
+        const input = await readBody<SyncConfigRestoreInput>(req);
+        const result = restoreMockCheckpoint(state, target, checkpoint, input);
+        respond(res, 200, result);
+        return;
+      }
+    }
+
+    const syncBatchMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config$/.exec(syncPath);
+    if (syncBatchMatch && method === 'PUT') {
+      const target = findTarget(state, decodeURIComponent(syncBatchMatch[1] ?? ''));
+      const input = await readBody<SyncConfigBatchInput>(req);
+      const result = saveMockSyncConfigs(state, target, input);
+      respond(res, 200, result);
+      return;
+    }
+
+    const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/([^/]+)$/.exec(syncPath);
     if (syncConfigMatch) {
       // Keyed by installation and kind together, because an installation
       // configures each kind separately and the server stores them that way.
@@ -2028,7 +2069,8 @@ async function handle(
               (change === 'repository' &&
                 entry.action.startsWith('repository.') &&
                 !['repository.enabled', 'repository.disabled'].includes(entry.action)) ||
-              (change === 'account' && entry.action.startsWith('target.'));
+              (change === 'account' && entry.action.startsWith('target.')) ||
+              (change === 'sync' && entry.action.startsWith('sync.config.'));
             return matchesScope && matchesChange;
           },
         ),
@@ -2096,6 +2138,189 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   if (target === undefined)
     throw new MockApiError(404, 'not_found', 'installation target not found');
   return target;
+}
+
+function allMockSyncConfigs(state: MockState, targetId: string): SyncConfig[] {
+  return SYNC_KINDS.map((kind) => mockSyncConfig(state, `${targetId}/${kind}`, kind));
+}
+
+function syncStateMap(configs: SyncConfig[]): Map<SyncKind, SyncConfigCheckpointState> {
+  return new Map(
+    configs.map((config) => [config.kind as SyncKind, syncConfigCheckpointState(config)]),
+  );
+}
+
+function checkpointWithCurrent(
+  state: MockState,
+  targetId: string,
+  checkpoint: SyncConfigCheckpoint,
+): SyncConfigCheckpoint {
+  const current = syncStateMap(allMockSyncConfigs(state, targetId));
+  return {
+    ...structuredClone(checkpoint),
+    kinds: checkpoint.kinds.map((item) => {
+      const currentState = current.get(item.kind) ?? null;
+      return {
+        ...structuredClone(item),
+        current: structuredClone(currentState),
+        differs_from_current: item.after?.digest !== currentState?.digest,
+      };
+    }),
+  };
+}
+
+function changedMockSyncConfig(config: SyncConfig, input: SyncConfigInput): SyncConfig {
+  const now = new Date().toISOString();
+  const nextRevision = config.revision + 1;
+  return {
+    ...config,
+    enabled: input.enabled,
+    labels: structuredClone(input.labels ?? config.labels),
+    allow_removal: input.allow_removal ?? config.allow_removal,
+    excludes: structuredClone(input.excludes ?? config.excludes),
+    document: structuredClone(input.document ?? config.document),
+    revision: nextRevision,
+    updated_by: VIEWER.login,
+    updated_at: now,
+    digest: `sha256:mock-${config.kind}-${nextRevision}-${Date.now()}`,
+  };
+}
+
+function mockCheckpoint(
+  id: string,
+  action: SyncConfigCheckpoint['action'],
+  before: Map<SyncKind, SyncConfigCheckpointState>,
+  after: Map<SyncKind, SyncConfigCheckpointState>,
+  affectedKinds: SyncKind[],
+  restoredFromId?: string,
+): SyncConfigCheckpoint {
+  const affected = new Set(affectedKinds);
+  return {
+    id,
+    action,
+    actor: VIEWER,
+    ...(restoredFromId === undefined ? {} : { restored_from_id: restoredFromId }),
+    created_at: new Date().toISOString(),
+    affected_kinds: affectedKinds,
+    kinds: SYNC_KINDS.map((kind) => {
+      const beforeState = before.get(kind) ?? null;
+      const afterState = after.get(kind) ?? null;
+      return {
+        kind,
+        before: structuredClone(beforeState),
+        after: structuredClone(afterState),
+        current: structuredClone(afterState),
+        changed: affected.has(kind),
+        differs_from_current: false,
+      };
+    }),
+  };
+}
+
+function saveMockSyncConfigs(
+  state: MockState,
+  target: MockTarget,
+  input: SyncConfigBatchInput,
+): SyncConfigBatchResponse {
+  if (input.changes.length === 0) {
+    throw new MockApiError(400, 'invalid_request', 'save needs at least one Sync section');
+  }
+  const seen = new Set<SyncKind>();
+  for (const change of input.changes) {
+    if (!SYNC_KINDS.includes(change.kind) || seen.has(change.kind)) {
+      throw new MockApiError(400, 'invalid_request', 'Sync sections must be known and unique');
+    }
+    seen.add(change.kind);
+    const current = mockSyncConfig(state, `${target.value.id}/${change.kind}`, change.kind);
+    if (current.revision !== change.expected_revision) {
+      throw new MockApiError(409, 'conflict', `${change.kind} changed; reload and try again`);
+    }
+  }
+
+  const before = syncStateMap(allMockSyncConfigs(state, target.value.id));
+  for (const change of input.changes) {
+    const key = `${target.value.id}/${change.kind}`;
+    state.sync.set(key, changedMockSyncConfig(mockSyncConfig(state, key, change.kind), change));
+  }
+  const configs = allMockSyncConfigs(state, target.value.id);
+  const after = syncStateMap(configs);
+  const checkpointId = `checkpoint-sync-${Date.now()}`;
+  state.syncCheckpoints.set(
+    `${target.value.id}/${checkpointId}`,
+    mockCheckpoint(checkpointId, 'sync.config.saved', before, after, [...seen]),
+  );
+  addAudit(target, 'sync.config.saved', 'saved Sync configuration', undefined, checkpointId);
+  broadcast(state, { type: 'audit.changed', target_id: target.value.id });
+  return { configs: structuredClone(configs), checkpoint_id: checkpointId };
+}
+
+function configFromCheckpointState(
+  current: SyncConfig,
+  checkpointState: SyncConfigCheckpointState,
+): SyncConfig {
+  const labels = Array.isArray(checkpointState.document.labels)
+    ? (structuredClone(checkpointState.document.labels) as SyncConfig['labels'])
+    : [];
+  const excludes = Array.isArray(checkpointState.document.excludes)
+    ? (structuredClone(checkpointState.document.excludes) as string[])
+    : [];
+  return {
+    ...current,
+    enabled: checkpointState.enabled,
+    labels: current.kind === 'labels' ? labels : [],
+    allow_removal:
+      current.kind === 'labels' ? checkpointState.document.allow_removal === true : false,
+    excludes: current.kind === 'labels' ? excludes : [],
+    document: structuredClone(checkpointState.document),
+    digest: `sha256:mock-restored-${current.kind}-${Date.now()}`,
+    revision: current.revision + 1,
+    updated_by: VIEWER.login,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function restoreMockCheckpoint(
+  state: MockState,
+  target: MockTarget,
+  checkpoint: SyncConfigCheckpoint,
+  input: SyncConfigRestoreInput,
+): SyncConfigBatchResponse {
+  if (input.kinds.length === 0) {
+    throw new MockApiError(400, 'invalid_request', 'restore needs at least one Sync section');
+  }
+  const seen = new Set<SyncKind>();
+  for (const selection of input.kinds) {
+    if (!SYNC_KINDS.includes(selection.kind) || seen.has(selection.kind)) {
+      throw new MockApiError(400, 'invalid_request', 'Sync sections must be known and unique');
+    }
+    seen.add(selection.kind);
+    const current = mockSyncConfig(state, `${target.value.id}/${selection.kind}`, selection.kind);
+    if (current.revision !== selection.expected_revision) {
+      throw new MockApiError(409, 'conflict', `${selection.kind} changed; reload and try again`);
+    }
+    if (checkpoint.kinds.find((item) => item.kind === selection.kind)?.after === null) {
+      throw new MockApiError(400, 'invalid_request', `${selection.kind} was not configured`);
+    }
+  }
+
+  const before = syncStateMap(allMockSyncConfigs(state, target.value.id));
+  for (const selection of input.kinds) {
+    const historical = checkpoint.kinds.find((item) => item.kind === selection.kind)?.after;
+    if (historical === undefined || historical === null) continue;
+    const key = `${target.value.id}/${selection.kind}`;
+    const current = mockSyncConfig(state, key, selection.kind);
+    state.sync.set(key, configFromCheckpointState(current, historical));
+  }
+  const configs = allMockSyncConfigs(state, target.value.id);
+  const after = syncStateMap(configs);
+  const restoredId = `checkpoint-restore-${Date.now()}`;
+  state.syncCheckpoints.set(
+    `${target.value.id}/${restoredId}`,
+    mockCheckpoint(restoredId, 'sync.config.restored', before, after, [...seen], checkpoint.id),
+  );
+  addAudit(target, 'sync.config.restored', 'restored Sync configuration', undefined, restoredId);
+  broadcast(state, { type: 'audit.changed', target_id: target.value.id });
+  return { configs: structuredClone(configs), checkpoint_id: restoredId };
 }
 
 function rootInstallationValue(target: MockTarget): RootInstallation {
@@ -2698,12 +2923,19 @@ function requireRevision(current: number, expected: number): void {
   }
 }
 
-function addAudit(target: MockTarget, action: string, summary: string, repository?: string): void {
+function addAudit(
+  target: MockTarget,
+  action: string,
+  summary: string,
+  repository?: string,
+  checkpointId?: string,
+): void {
   target.audit.unshift({
     id: `audit-${Date.now()}`,
     actor: VIEWER,
     action,
     summary,
+    ...(checkpointId === undefined ? {} : { sync_config_checkpoint_id: checkpointId }),
     repository_full_name: repository,
     created_at: new Date().toISOString(),
   });

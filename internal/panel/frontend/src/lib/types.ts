@@ -630,6 +630,7 @@ export interface AuditEntry {
   elevation_id?: string;
   action: string;
   summary: string;
+  sync_config_checkpoint_id?: string;
   repository_full_name?: string;
   created_at: string;
 }
@@ -663,7 +664,7 @@ export type HistorySort =
   | 'repository_asc'
   | 'repository_desc';
 export type AuditScope = 'all' | 'account' | 'repositories';
-export type AuditChange = 'all' | 'enablement' | 'repository' | 'account';
+export type AuditChange = 'all' | 'enablement' | 'repository' | 'account' | 'sync';
 export type FailureKind = 'all' | 'retryable' | 'permanent';
 
 export interface HistoryRequest {
@@ -1000,6 +1001,36 @@ export interface SyncConfigBatchInput {
 export interface SyncConfigBatchResponse {
   configs: SyncConfig[];
   checkpoint_id?: string;
+}
+
+export interface SyncConfigCheckpointState {
+  enabled: boolean;
+  document: Record<string, unknown>;
+  digest: string;
+  revision: number;
+}
+
+export interface SyncConfigCheckpointKind {
+  kind: SyncKind;
+  before: SyncConfigCheckpointState | null;
+  after: SyncConfigCheckpointState | null;
+  current: SyncConfigCheckpointState | null;
+  changed: boolean;
+  differs_from_current: boolean;
+}
+
+export interface SyncConfigCheckpoint {
+  id: string;
+  action: 'sync.config.saved' | 'sync.config.restored' | 'sync.config.baseline';
+  actor: PanelAccount;
+  restored_from_id?: string;
+  created_at: string;
+  affected_kinds: SyncKind[];
+  kinds: SyncConfigCheckpointKind[];
+}
+
+export interface SyncConfigRestoreInput {
+  kinds: Array<{ kind: SyncKind; expected_revision: number }>;
 }
 
 /**

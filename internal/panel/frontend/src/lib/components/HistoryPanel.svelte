@@ -31,6 +31,9 @@
     FailureKind,
     HistorySort,
     Page,
+    SyncConfigBatchResponse,
+    SyncConfigCheckpoint,
+    SyncConfigRestoreInput,
   } from '../types';
   import DataTable from './DataTable.svelte';
   import Skeleton from './Skeleton.svelte';
@@ -47,6 +50,7 @@
   import SearchField from './SearchField.svelte';
   import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
+  import SyncCheckpointDialog from './SyncCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'installation' | 'root';
@@ -82,6 +86,7 @@
         { value: 'enablement', label: 'Enablement' },
         { value: 'repository', label: 'Repository settings' },
         { value: 'account', label: 'Account settings' },
+        { value: 'sync', label: 'Sync configuration' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -148,6 +153,11 @@
     onSection,
     sectionHref,
     prefs = EPHEMERAL_PREFS,
+    readOnly = true,
+    hasUnsavedSyncDrafts = false,
+    fetchSyncCheckpoint,
+    restoreSyncCheckpoint,
+    onSyncRestored,
   }: {
     targetId: string;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
@@ -159,6 +169,15 @@
     /** Where each table lives; the strip is a strip of addresses. */
     sectionHref?: (section: HistoryType) => string;
     prefs?: PrefsAccessor;
+    readOnly?: boolean;
+    hasUnsavedSyncDrafts?: boolean;
+    fetchSyncCheckpoint?: (targetId: string, checkpointId: string) => Promise<SyncConfigCheckpoint>;
+    restoreSyncCheckpoint?: (
+      targetId: string,
+      checkpointId: string,
+      input: SyncConfigRestoreInput,
+    ) => Promise<SyncConfigBatchResponse>;
+    onSyncRestored?: (result: SyncConfigBatchResponse) => void;
   } = $props();
 
   // Table state deliberately captures the preferences at mount; remote
@@ -198,7 +217,7 @@
   let auditChange = $state<AuditChange>(
     prefOption(
       initialPrefs.get('table.history.change'),
-      ['all', 'enablement', 'repository', 'account'],
+      ['all', 'enablement', 'repository', 'account', 'sync'],
       'all',
     ),
   );
@@ -219,6 +238,8 @@
   let historyResults = $state<HTMLDivElement>();
   let auditScroll = $state<HTMLTableSectionElement>();
   let failureScroll = $state<HTMLTableSectionElement>();
+  let checkpointId = $state<string | null>(null);
+  let checkpointTrigger = $state<HTMLElement | null>(null);
 
   const hasFilters = $derived(
     appliedQuery !== '' ||
@@ -572,7 +593,8 @@
       value === 'all' ||
       value === 'enablement' ||
       value === 'repository' ||
-      value === 'account'
+      value === 'account' ||
+      value === 'sync'
     ) {
       auditChange = value;
     }
@@ -708,6 +730,25 @@
     auditChange = 'all';
     auditCategories = [];
     failureKind = 'all';
+  }
+
+  function openCheckpoint(entry: AuditEntry, trigger: HTMLElement): void {
+    if (entry.sync_config_checkpoint_id === undefined || fetchSyncCheckpoint === undefined) return;
+    checkpointTrigger = trigger;
+    checkpointId = entry.sync_config_checkpoint_id;
+  }
+
+  function closeCheckpoint(): void {
+    checkpointId = null;
+  }
+
+  function syncRestored(result: SyncConfigBatchResponse): void {
+    onSyncRestored?.(result);
+    void auditQuery.refetch();
+  }
+
+  function unavailableRestore(): Promise<SyncConfigBatchResponse> {
+    return Promise.reject(new Error('this account cannot restore Sync configuration'));
   }
 </script>
 
@@ -930,7 +971,19 @@
                      below is the whole of what centres the word on the tag. -->
                 <span class="category-tag band-trim" aria-hidden="true">{entry.category}</span>
               {/if}
-              <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
+              {#if entry.sync_config_checkpoint_id !== undefined && fetchSyncCheckpoint !== undefined}
+                <button
+                  class="checkpoint-trigger band-trim"
+                  type="button"
+                  aria-label={`${auditSummary(entry.summary)}. Inspect Sync configuration snapshot`}
+                  onclick={(event) => openCheckpoint(entry, event.currentTarget)}
+                >
+                  <span>{auditSummary(entry.summary)}</span>
+                  <small>Inspect</small>
+                </button>
+              {:else}
+                <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
+              {/if}
             </span>
           </td>
           <td data-label="When">
@@ -1104,6 +1157,21 @@
   </div>
 </section>
 
+{#if checkpointId !== null && fetchSyncCheckpoint !== undefined}
+  <SyncCheckpointDialog
+    open
+    {targetId}
+    {checkpointId}
+    readOnly={readOnly || restoreSyncCheckpoint === undefined}
+    hasUnsavedDrafts={hasUnsavedSyncDrafts}
+    returnFocus={checkpointTrigger}
+    fetchCheckpoint={fetchSyncCheckpoint}
+    restoreCheckpoint={restoreSyncCheckpoint ?? unavailableRestore}
+    onRestored={syncRestored}
+    onClose={closeCheckpoint}
+  />
+{/if}
+
 <style>
   .history-panel {
     --local-control-height: var(--control-height-compact);
@@ -1214,6 +1282,37 @@
 
   :global(.history-table tbody tr) {
     transition: background-color var(--duration-fast) var(--ease-standard);
+  }
+
+  .checkpoint-trigger {
+    align-items: center;
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  .checkpoint-trigger span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .checkpoint-trigger small {
+    color: var(--accent);
+    flex: none;
+    font-size: var(--font-size-compact);
+  }
+
+  .checkpoint-trigger:hover span,
+  .checkpoint-trigger:focus-visible span {
+    text-decoration: underline;
   }
 
   @media (min-width: 64.001rem) {

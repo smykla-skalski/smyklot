@@ -324,6 +324,38 @@ describe('targets and repositories', () => {
       kind: 'labels',
     });
   });
+
+  it('inspects and restores a selected Sync checkpoint', async () => {
+    const checkpoint = {
+      id: 'checkpoint/1',
+      action: 'sync.config.saved',
+      actor: VIEWER.account,
+      created_at: '2026-08-23T08:00:00Z',
+      affected_kinds: ['labels'],
+      kinds: [],
+    };
+    const restored = { configs: [], checkpoint_id: 'checkpoint.2' };
+    const stub = stubFetch([jsonResponse(200, checkpoint), jsonResponse(200, restored)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(api.fetchSyncConfigCheckpoint('target/1', 'checkpoint/1')).resolves.toEqual(
+      checkpoint,
+    );
+    await expect(
+      api.restoreSyncConfigCheckpoint('target/1', 'checkpoint/1', {
+        kinds: [{ kind: 'labels', expected_revision: 7 }],
+      }),
+    ).resolves.toEqual(restored);
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets/target%2F1/sync/config/checkpoints/checkpoint%2F1',
+      '/panel/api/v1/targets/target%2F1/sync/config/checkpoints/checkpoint%2F1/restore',
+    ]);
+    expect(stub.calls[1]?.init?.method).toBe('POST');
+    expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
+      kinds: [{ kind: 'labels', expected_revision: 7 }],
+    });
+  });
 });
 
 describe('Root installation access', () => {

@@ -95,6 +95,7 @@ func TestValidatePrefChanges(t *testing.T) {
 		{name: "history sort", key: "table.history.sort", value: `"repository_desc"`, accepted: `"repository_desc"`},
 		{name: "history scope", key: "table.history.scope", value: `"repositories"`, accepted: `"repositories"`},
 		{name: "history change", key: "table.history.change", value: `"enablement"`, accepted: `"enablement"`},
+		{name: "Sync history change", key: "table.history.change", value: `"sync"`, accepted: `"sync"`},
 		{name: "failure kind", key: "table.history.failure_kind", value: `"retryable"`, accepted: `"retryable"`},
 		{name: "history type", key: "table.history.type", value: `"failures"`, accepted: `"failures"`},
 		{name: "users sort", key: "table.users.sort", value: `"login_newest"`, accepted: `"login_newest"`},

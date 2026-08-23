@@ -138,10 +138,10 @@
   }
 
   :global(.wide .modal-panel) {
-    max-width: 40rem;
+    max-width: 46rem;
   }
 
-  :global(.modal-panel header) {
+  :global(.modal-panel > header) {
     align-items: flex-start;
     display: flex;
     gap: 1rem;
@@ -166,7 +166,7 @@
     flex: none;
   }
 
-  :global(.modal-panel h2) {
+  :global(.modal-panel > header h2) {
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.015em;
@@ -176,7 +176,7 @@
     overflow-wrap: anywhere;
   }
 
-  :global(.modal-panel header p) {
+  :global(.modal-panel > header p) {
     color: var(--dim);
     font-size: 0.8125rem;
     line-height: 1.5;
@@ -196,7 +196,7 @@
     min-width: 0;
   }
 
-  :global(.modal-panel footer) {
+  :global(.modal-panel > footer) {
     align-items: center;
     background: var(--dialog-bg);
     display: flex;
@@ -222,9 +222,9 @@
       width: 100%;
     }
 
-    :global(.modal-panel header),
+    :global(.modal-panel > header),
     :global(.modal-body),
-    :global(.modal-panel footer) {
+    :global(.modal-panel > footer) {
       padding-left: var(--space-4);
       padding-right: var(--space-4);
     }

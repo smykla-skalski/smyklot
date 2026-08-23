@@ -43,12 +43,16 @@ import type {
   RootElevation,
   SyncCell,
   SyncConfig,
+  SyncConfigCheckpoint,
+  SyncConfigCheckpointState,
+  SyncKind,
   SyncOverride,
   SyncPlan,
   SyncStatus,
   SecurityNotification,
   InvitationStatus,
 } from '../src/lib/types.ts';
+import { SYNC_KINDS } from '../src/lib/types.ts';
 export const DEFAULT_CONFIG: ConfigValues = {
   quiet_success: false,
   quiet_reactions: false,
@@ -185,6 +189,8 @@ export interface MockState {
   prefs: { values: Record<string, unknown>; rev: number };
   /** Label sync, per installation: what is configured and what is in flight. */
   sync: Map<string, SyncConfig>;
+  /** Immutable Sync snapshots, keyed by installation and checkpoint together. */
+  syncCheckpoints: Map<string, SyncConfigCheckpoint>;
 
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
@@ -324,13 +330,16 @@ export function seed(
     }),
   );
   organization.audit = [
-    auditSeed(
-      'audit-1',
-      'repository.enabled',
-      'enabled repository',
-      'smykla-skalski/smyklot',
-      iso(-12 * 60_000),
-    ),
+    {
+      ...auditSeed(
+        'audit-1',
+        'sync.config.saved',
+        'saved Sync configuration',
+        undefined,
+        iso(-12 * 60_000),
+      ),
+      sync_config_checkpoint_id: 'checkpoint-sync-1',
+    },
     auditSeed(
       'audit-2',
       'repository.config.updated',
@@ -460,6 +469,12 @@ export function seed(
     source: 'suspended',
     capabilities: capabilitiesFor('none'),
   });
+  const sync = new Map([
+    [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
+    [`${organization.value.id}/settings`, syncSettingsSeed(iso)],
+    [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
+    [`${organization.value.id}/files`, syncFilesSeed(iso)],
+  ]);
   return {
     signedIn: true,
     forceFailure: false,
@@ -507,11 +522,12 @@ export function seed(
        be looked at in: `mockSyncConfig` invents an empty document the first time
        it is asked, and no plan was ever computed, so the label list and the plan
        list rendered nowhere and drifted out of the design unseen. */
-    sync: new Map([
-      [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
-      [`${organization.value.id}/settings`, syncSettingsSeed(iso)],
-      [`${organization.value.id}/rulesets`, syncRulesetsSeed(iso)],
-      [`${organization.value.id}/files`, syncFilesSeed(iso)],
+    sync,
+    syncCheckpoints: new Map([
+      [
+        `${organization.value.id}/checkpoint-sync-1`,
+        syncCheckpointSeed(sync, organization.value.id, iso),
+      ],
     ]),
     /* One repository that adjusts a template, because the pane that shows one
        has a card per adjustment and a form nobody can look at except empty is
@@ -1762,6 +1778,87 @@ export function mockSyncConfig(state: MockState, key: string, kind: string): Syn
   state.sync.set(key, fresh);
 
   return fresh;
+}
+
+export function syncConfigCheckpointState(config: SyncConfig): SyncConfigCheckpointState {
+  const document =
+    config.kind === 'labels'
+      ? {
+          labels: structuredClone(config.labels),
+          allow_removal: config.allow_removal,
+          excludes: structuredClone(config.excludes),
+        }
+      : structuredClone(config.document);
+  return {
+    enabled: config.enabled,
+    document,
+    digest: config.digest,
+    revision: config.revision,
+  };
+}
+
+function syncCheckpointSeed(
+  sync: Map<string, SyncConfig>,
+  targetId: string,
+  iso: (offsetMs: number) => string,
+): SyncConfigCheckpoint {
+  const current = new Map<SyncKind, SyncConfigCheckpointState>();
+  for (const kind of SYNC_KINDS) {
+    const config = sync.get(`${targetId}/${kind}`);
+    if (config !== undefined) current.set(kind, syncConfigCheckpointState(config));
+  }
+
+  const labelsCurrent = structuredClone(current.get('labels'));
+  const settingsCurrent = structuredClone(current.get('settings'));
+  if (labelsCurrent === undefined || settingsCurrent === undefined) {
+    throw new Error('the development Sync checkpoint needs labels and settings fixtures');
+  }
+  const labelsAfter = structuredClone(labelsCurrent);
+  const labels = Array.isArray(labelsAfter.document.labels) ? labelsAfter.document.labels : [];
+  labelsAfter.document.labels = labels.slice(0, -1);
+  labelsAfter.document.allow_removal = true;
+  labelsAfter.document.excludes = [];
+  labelsAfter.digest = 'sha256:labels-checkpoint';
+  labelsAfter.revision -= 1;
+
+  const labelsBefore = structuredClone(labelsAfter);
+  labelsBefore.document.labels = labels.slice(0, -2);
+  labelsBefore.document.allow_removal = false;
+  labelsBefore.digest = 'sha256:labels-before';
+  labelsBefore.revision -= 1;
+
+  const settingsAfter = structuredClone(settingsCurrent);
+  delete settingsAfter.document.secret_scanning;
+  settingsAfter.digest = 'sha256:settings-checkpoint';
+  settingsAfter.revision -= 1;
+
+  const settingsBefore = structuredClone(settingsAfter);
+  delete settingsBefore.document.has_wiki;
+  settingsBefore.digest = 'sha256:settings-before';
+  settingsBefore.revision -= 1;
+
+  return {
+    id: 'checkpoint-sync-1',
+    action: 'sync.config.saved',
+    actor: VIEWER,
+    created_at: iso(-12 * 60_000),
+    affected_kinds: ['labels', 'settings'],
+    kinds: SYNC_KINDS.map((kind) => {
+      const currentState = current.get(kind) ?? null;
+      const before =
+        kind === 'labels' ? labelsBefore : kind === 'settings' ? settingsBefore : currentState;
+      const after =
+        kind === 'labels' ? labelsAfter : kind === 'settings' ? settingsAfter : currentState;
+      return {
+        kind,
+        before: structuredClone(before),
+        after: structuredClone(after),
+        current: structuredClone(currentState),
+        changed: kind === 'labels' || kind === 'settings',
+        differs_from_current: kind === 'labels' || kind === 'settings',
+      };
+    }),
+  };
 }
 
 /** The two installations the mock's Root actually owns. */

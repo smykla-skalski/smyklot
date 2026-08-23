@@ -113,6 +113,7 @@ var prefRegistry = map[string]prefValidator{
 		string(storage.AuditChangeEnablement),
 		string(storage.AuditChangeRepository),
 		string(storage.AuditChangeAccount),
+		string(storage.AuditChangeSync),
 	),
 	prefKeyHistoryFailureKind: oneOf("all", "retryable", "permanent"),
 	prefKeyHistorySearch:      freeText(),

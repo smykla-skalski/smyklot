@@ -42,7 +42,9 @@ import type {
   SyncConfig,
   SyncConfigBatchInput,
   SyncConfigBatchResponse,
+  SyncConfigCheckpoint,
   SyncConfigInput,
+  SyncConfigRestoreInput,
   SyncOverride,
   SyncOverrideInput,
   SyncOverrideRow,
@@ -181,6 +183,12 @@ export interface PanelApi {
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig>;
   saveSyncConfigs(targetId: string, input: SyncConfigBatchInput): Promise<SyncConfigBatchResponse>;
+  fetchSyncConfigCheckpoint(targetId: string, checkpointId: string): Promise<SyncConfigCheckpoint>;
+  restoreSyncConfigCheckpoint(
+    targetId: string,
+    checkpointId: string,
+    input: SyncConfigRestoreInput,
+  ): Promise<SyncConfigBatchResponse>;
   fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
   fetchSyncOverrides(targetId: string, kind: string): Promise<{ overrides: SyncOverrideRow[] }>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
@@ -357,6 +365,13 @@ export function createPanelApi(
 
   const postJson = <T>(path: string, body: unknown): Promise<T> =>
     jsonRequest<T>(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  const postDocument = <T>(path: string, body: unknown): Promise<T> =>
+    documentRequest<T>(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -783,6 +798,26 @@ export function createPanelApi(
       input: SyncConfigBatchInput,
     ): Promise<SyncConfigBatchResponse> {
       return putDocument(`/api/v1/targets/${pathSegment(targetId)}/sync/config`, input);
+    },
+
+    fetchSyncConfigCheckpoint(
+      targetId: string,
+      checkpointId: string,
+    ): Promise<SyncConfigCheckpoint> {
+      return documentRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/config/checkpoints/${pathSegment(checkpointId)}`,
+      );
+    },
+
+    restoreSyncConfigCheckpoint(
+      targetId: string,
+      checkpointId: string,
+      input: SyncConfigRestoreInput,
+    ): Promise<SyncConfigBatchResponse> {
+      return postDocument(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/config/checkpoints/${pathSegment(checkpointId)}/restore`,
+        input,
+      );
     },
 
     /**
