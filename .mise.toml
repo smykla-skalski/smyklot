@@ -425,6 +425,7 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 #   queue-live        the queue re-sorting under a reader, and holding still
 #   repository-page   a repository opened from its row, and its three panes
 #   signed-out-layout the sign-in page, and what is not drawn behind it
+#   sync-label-layout long names stay inside their row at desktop and phone widths
 [tasks."panel:frontend:test:browser:local"]
 description = "Drive the browser suites CI leaves to a developer"
 depends = ["panel:frontend:install"]
@@ -436,7 +437,8 @@ npm run test:browser -- \
   tests/browser/queue-columns.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
-  tests/browser/signed-out-layout.test.ts
+  tests/browser/signed-out-layout.test.ts \
+  tests/browser/sync-label-layout.test.ts
 '''
 
 [tasks."panel:assets:generate"]
