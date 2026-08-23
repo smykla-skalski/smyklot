@@ -30,10 +30,10 @@
     FailureHistoryRequest,
     FailureKind,
     HistorySort,
+    InstallationSettingsBatchResponse,
+    InstallationSettingsCheckpoint,
+    InstallationSettingsRestoreInput,
     Page,
-    SyncConfigBatchResponse,
-    SyncConfigCheckpoint,
-    SyncConfigRestoreInput,
   } from '../types';
   import DataTable from './DataTable.svelte';
   import Skeleton from './Skeleton.svelte';
@@ -49,7 +49,7 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
-  import SyncCheckpointDialog from './SyncCheckpointDialog.svelte';
+  import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'installation' | 'root';
@@ -137,10 +137,10 @@
     section,
     prefs = EPHEMERAL_PREFS,
     readOnly = true,
-    hasUnsavedSyncDrafts = false,
-    fetchSyncCheckpoint,
-    restoreSyncCheckpoint,
-    onSyncRestored,
+    hasUnsavedSettingsDrafts = false,
+    fetchSettingsCheckpoint,
+    restoreSettingsCheckpoint,
+    onSettingsRestored,
   }: {
     targetId: string;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
@@ -150,14 +150,17 @@
     section?: HistoryType;
     prefs?: PrefsAccessor;
     readOnly?: boolean;
-    hasUnsavedSyncDrafts?: boolean;
-    fetchSyncCheckpoint?: (targetId: string, checkpointId: string) => Promise<SyncConfigCheckpoint>;
-    restoreSyncCheckpoint?: (
+    hasUnsavedSettingsDrafts?: boolean;
+    fetchSettingsCheckpoint?: (
       targetId: string,
       checkpointId: string,
-      input: SyncConfigRestoreInput,
-    ) => Promise<SyncConfigBatchResponse>;
-    onSyncRestored?: (result: SyncConfigBatchResponse) => void;
+    ) => Promise<InstallationSettingsCheckpoint>;
+    restoreSettingsCheckpoint?: (
+      targetId: string,
+      checkpointId: string,
+      input: InstallationSettingsRestoreInput,
+    ) => Promise<InstallationSettingsBatchResponse>;
+    onSettingsRestored?: (result: InstallationSettingsBatchResponse) => void;
   } = $props();
 
   // Table state deliberately captures the preferences at mount; remote
@@ -218,9 +221,9 @@
   let historyResults = $state<HTMLDivElement>();
   let auditScroll = $state<HTMLTableSectionElement>();
   let failureScroll = $state<HTMLTableSectionElement>();
-  let checkpointId = $state<string | null>(null);
-  let checkpointTargetId = $state<string | null>(null);
-  let checkpointTrigger = $state<HTMLElement | null>(null);
+  let settingsCheckpointId = $state<string | null>(null);
+  let settingsCheckpointTargetId = $state<string | null>(null);
+  let settingsCheckpointTrigger = $state<HTMLElement | null>(null);
 
   const hasFilters = $derived(
     appliedQuery !== '' ||
@@ -705,25 +708,21 @@
     failureKind = 'all';
   }
 
-  function openCheckpoint(entry: AuditEntry, trigger: HTMLElement): void {
-    if (entry.sync_config_checkpoint_id === undefined || fetchSyncCheckpoint === undefined) return;
-    checkpointTrigger = trigger;
-    checkpointId = entry.sync_config_checkpoint_id;
-    checkpointTargetId = entry.target_id ?? targetId;
+  function openSettingsCheckpoint(entry: AuditEntry, trigger: HTMLElement): void {
+    if (entry.settings_checkpoint_id === undefined || fetchSettingsCheckpoint === undefined) return;
+    settingsCheckpointTrigger = trigger;
+    settingsCheckpointId = entry.settings_checkpoint_id;
+    settingsCheckpointTargetId = entry.target_id ?? targetId;
   }
 
-  function closeCheckpoint(): void {
-    checkpointId = null;
-    checkpointTargetId = null;
+  function closeSettingsCheckpoint(): void {
+    settingsCheckpointId = null;
+    settingsCheckpointTargetId = null;
   }
 
-  function syncRestored(result: SyncConfigBatchResponse): void {
-    onSyncRestored?.(result);
+  function settingsRestored(result: InstallationSettingsBatchResponse): void {
+    onSettingsRestored?.(result);
     void auditQuery.refetch();
-  }
-
-  function unavailableRestore(): Promise<SyncConfigBatchResponse> {
-    return Promise.reject(new Error('this account cannot restore Sync configuration'));
   }
 </script>
 
@@ -943,12 +942,12 @@
                      below is the whole of what centres the word on the tag. -->
                 <span class="category-tag band-trim" aria-hidden="true">{entry.category}</span>
               {/if}
-              {#if entry.sync_config_checkpoint_id !== undefined && fetchSyncCheckpoint !== undefined}
+              {#if entry.settings_checkpoint_id !== undefined && fetchSettingsCheckpoint !== undefined}
                 <button
                   class="checkpoint-trigger band-trim"
                   type="button"
-                  aria-label={`${auditSummary(entry.summary)}. Inspect Sync configuration snapshot`}
-                  onclick={(event) => openCheckpoint(entry, event.currentTarget)}
+                  aria-label={`${auditSummary(entry.summary)}. Inspect settings snapshot`}
+                  onclick={(event) => openSettingsCheckpoint(entry, event.currentTarget)}
                 >
                   <span>{auditSummary(entry.summary)}</span>
                   <small>Inspect</small>
@@ -1129,18 +1128,18 @@
   </div>
 </section>
 
-{#if checkpointId !== null && checkpointTargetId !== null && fetchSyncCheckpoint !== undefined}
-  <SyncCheckpointDialog
+{#if settingsCheckpointId !== null && settingsCheckpointTargetId !== null && fetchSettingsCheckpoint !== undefined}
+  <SettingsCheckpointDialog
     open
-    targetId={checkpointTargetId}
-    {checkpointId}
-    readOnly={readOnly || restoreSyncCheckpoint === undefined}
-    hasUnsavedDrafts={hasUnsavedSyncDrafts}
-    returnFocus={checkpointTrigger}
-    fetchCheckpoint={fetchSyncCheckpoint}
-    restoreCheckpoint={restoreSyncCheckpoint ?? unavailableRestore}
-    onRestored={syncRestored}
-    onClose={closeCheckpoint}
+    targetId={settingsCheckpointTargetId}
+    checkpointId={settingsCheckpointId}
+    {readOnly}
+    hasUnsavedDrafts={hasUnsavedSettingsDrafts}
+    returnFocus={settingsCheckpointTrigger}
+    fetchCheckpoint={fetchSettingsCheckpoint}
+    restoreCheckpoint={restoreSettingsCheckpoint}
+    onRestored={settingsRestored}
+    onClose={closeSettingsCheckpoint}
   />
 {/if}
 

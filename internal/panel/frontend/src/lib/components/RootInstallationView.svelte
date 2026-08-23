@@ -12,7 +12,6 @@
   } from '../installation-settings-save';
   import { invalidateRootInstallationSettings } from '../query-client';
   import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
-  import { adoptSyncConfigSettings } from '../sync-config-settings';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -197,11 +196,15 @@
     void queryClient.invalidateQueries({ queryKey: ['root-overview'] });
   }
 
-  function syncConfigRestored(result: import('../types').SyncConfigBatchResponse): void {
-    for (const config of result.configs) {
-      if (!config.unreadable) adoptSyncConfigSettings(settingsDrafts, installation.id, config);
-    }
-    void load();
+  function settingsRestored(): void {
+    void Promise.all([
+      invalidateRootInstallationSettings(queryClient, installation.id),
+      queryClient.invalidateQueries({ queryKey: ['repository', installation.id] }),
+      queryClient.invalidateQueries({ queryKey: ['sync-override', installation.id] }),
+      queryClient.invalidateQueries({ queryKey: ['sync-plan', installation.id] }),
+      queryClient.invalidateQueries({ queryKey: ['audit', installation.id] }),
+      queryClient.invalidateQueries({ queryKey: ['audit', 'root'] }),
+    ]);
   }
 
   async function saveSettings(): Promise<void> {
@@ -395,14 +398,11 @@
       section={historySection}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
-      fetchSyncCheckpoint={api.fetchRootSyncConfigCheckpoint}
-      restoreSyncCheckpoint={api.restoreRootSyncConfigCheckpoint}
+      fetchSettingsCheckpoint={api.fetchRootInstallationSettingsCheckpoint}
+      restoreSettingsCheckpoint={api.restoreRootInstallationSettingsCheckpoint}
       readOnly={!canWrite}
-      hasUnsavedSyncDrafts={settingsDrafts.dirtyAt(
-        { type: 'installation', targetId: installation.id },
-        { section: 'sync', path: [] },
-      )}
-      onSyncRestored={syncConfigRestored}
+      hasUnsavedSettingsDrafts={settingsDrafts.hasDirty(settingsScope)}
+      onSettingsRestored={settingsRestored}
     />
   {:else}
     <div class="root-loading">

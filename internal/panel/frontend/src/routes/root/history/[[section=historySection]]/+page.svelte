@@ -22,6 +22,6 @@
     {section}
     fetchAudit={session.api.fetchRootAudit}
     fetchFailures={session.api.fetchRootFailures}
-    fetchSyncCheckpoint={session.api.fetchRootSyncConfigCheckpoint}
+    fetchSettingsCheckpoint={session.api.fetchRootInstallationSettingsCheckpoint}
   />
 </section>

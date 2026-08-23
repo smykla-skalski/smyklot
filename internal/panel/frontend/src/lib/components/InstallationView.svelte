@@ -2,8 +2,6 @@
   import { useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
   import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
-  import { adoptSyncConfigSettings } from '#lib/sync-config-settings.js';
-  import type { SyncConfigBatchResponse } from '#lib/types.js';
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
 
@@ -45,12 +43,13 @@
     return error instanceof Error ? error.message : String(error);
   }
 
-  function syncConfigRestored(targetId: string, result: SyncConfigBatchResponse): void {
-    for (const config of result.configs) {
-      if (!config.unreadable) adoptSyncConfigSettings(settingsDrafts, targetId, config);
-    }
-    session.invalidateTargetData(targetId);
-    void queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] });
+  function settingsRestored(targetId: string): void {
+    session.repositoryChanged(targetId);
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['sync-override', targetId] }),
+      queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] }),
+      queryClient.invalidateQueries({ queryKey: ['audit', 'root'] }),
+    ]);
   }
 </script>
 
@@ -129,7 +128,6 @@
             onOpenFile={(path) => session.selectSyncFile(path)}
             fetchFilesContext={session.api.fetchSyncFilesContext}
             fetchOverride={session.api.fetchSyncOverride}
-            saveOverride={session.api.saveSyncOverride}
             {clock}
           />
         {/key}
@@ -178,14 +176,14 @@
               session.api.fetchAudit(session.selectedTarget!.id, request)}
             fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>
               session.api.fetchFailures(session.selectedTarget!.id, request)}
-            fetchSyncCheckpoint={session.api.fetchSyncConfigCheckpoint}
-            restoreSyncCheckpoint={session.api.restoreSyncConfigCheckpoint}
+            fetchSettingsCheckpoint={session.api.fetchInstallationSettingsCheckpoint}
+            restoreSettingsCheckpoint={session.api.restoreInstallationSettingsCheckpoint}
             readOnly={!session.selectedTarget.capabilities.write}
-            hasUnsavedSyncDrafts={settingsDrafts.dirtyAt(
-              { type: 'installation', targetId: session.selectedTarget.id },
-              { section: 'sync', path: [] },
-            )}
-            onSyncRestored={(result) => syncConfigRestored(session.selectedTarget!.id, result)}
+            hasUnsavedSettingsDrafts={settingsDrafts.hasDirty({
+              type: 'installation',
+              targetId: session.selectedTarget.id,
+            })}
+            onSettingsRestored={() => settingsRestored(session.selectedTarget!.id)}
             prefs={session.prefs}
           />
         {/key}

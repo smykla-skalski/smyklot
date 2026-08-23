@@ -1,0 +1,135 @@
+import type {
+  InstallationSettingsCheckpoint,
+  InstallationSettingsCheckpointItem,
+  InstallationSettingsCheckpointState,
+  SyncKind,
+} from './types';
+
+export function settingsCheckpointActionLabel(
+  action: InstallationSettingsCheckpoint['action'],
+): string {
+  if (action === 'installation.settings.restored') return 'Restored';
+  if (action === 'installation.settings.baseline') return 'Baseline captured';
+  return 'Saved';
+}
+
+export function settingsCheckpointItemLabel(item: InstallationSettingsCheckpointItem): string {
+  const syncKind =
+    item.sync_kind === undefined
+      ? 'Sync'
+      : item.sync_kind[0]?.toLocaleUpperCase() + item.sync_kind.slice(1);
+  switch (item.kind) {
+    case 'target':
+      return 'Installation defaults';
+    case 'repository':
+      return item.repository_full_name ?? 'Repository settings';
+    case 'sync_config':
+      return `${syncKind} Sync`;
+    case 'sync_override':
+      return `${item.repository_full_name ?? 'Repository'} · ${syncKind} override`;
+  }
+}
+
+function countKeys(value: unknown): number {
+  return isRecord(value) ? Object.keys(value).length : 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function nestedDocument(document: Record<string, unknown>): Record<string, unknown> {
+  const value = document.document;
+  if (isRecord(value)) return value;
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function targetSummary(document: Record<string, unknown>): string {
+  const repositoryDefault =
+    document.repository_default_enabled === true
+      ? 'Repositories on by default'
+      : 'Repositories off by default';
+  const pendingCI =
+    document.pending_ci_mode_default === 'labels' ? 'Pending CI labels' : 'Pending CI checks';
+  const patches = countKeys(document.config_patch);
+  return `${repositoryDefault} · ${pendingCI} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}`;
+}
+
+function repositorySummary(document: Record<string, unknown>): string {
+  const enabled =
+    document.enabled_override === true
+      ? 'Enabled'
+      : document.enabled_override === false
+        ? 'Disabled'
+        : 'Inherits enablement';
+  const repositoryFile =
+    document.ignore_repository_file === true ? 'Repository file ignored' : 'Repository file read';
+  const patches = countKeys(document.config_patch);
+  return `${enabled} · ${repositoryFile} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}`;
+}
+
+function syncSummary(kind: SyncKind, enabled: boolean, document: Record<string, unknown>): string {
+  const prefix = enabled ? 'On' : 'Off';
+  switch (kind) {
+    case 'labels': {
+      const labels = Array.isArray(document.labels) ? document.labels.length : 0;
+      const excludes = Array.isArray(document.excludes) ? document.excludes.length : 0;
+      return `${prefix} · ${labels} ${labels === 1 ? 'label' : 'labels'} · ${document.allow_removal === true ? 'removal allowed' : 'removal blocked'} · ${excludes} ${excludes === 1 ? 'exclusion' : 'exclusions'}`;
+    }
+    case 'settings': {
+      const settings = Object.keys(document).length;
+      return `${prefix} · ${settings} managed ${settings === 1 ? 'setting' : 'settings'}`;
+    }
+    case 'rulesets': {
+      const rulesets = Array.isArray(document.rulesets) ? document.rulesets.length : 0;
+      return `${prefix} · ${rulesets} ${rulesets === 1 ? 'ruleset' : 'rulesets'} · ${document.allow_removal === true ? 'removal allowed' : 'removal blocked'}`;
+    }
+    case 'files': {
+      const files = Array.isArray(document.files) ? document.files.length : 0;
+      const retired = Array.isArray(document.retired) ? document.retired.length : 0;
+      return `${prefix} · ${files} shared ${files === 1 ? 'file' : 'files'} · ${retired} retired`;
+    }
+  }
+}
+
+function syncConfigSummary(
+  item: InstallationSettingsCheckpointItem,
+  document: Record<string, unknown>,
+): string {
+  if (item.sync_kind === undefined) return 'Stored Sync configuration';
+  return syncSummary(item.sync_kind, document.enabled === true, nestedDocument(document));
+}
+
+function syncOverrideSummary(document: Record<string, unknown>): string {
+  const enabled =
+    document.enabled === true
+      ? 'Enabled'
+      : document.enabled === false
+        ? 'Disabled'
+        : 'Inherits enablement';
+  const fields = countKeys(nestedDocument(document));
+  return `${enabled} · ${fields} ${fields === 1 ? 'stored field' : 'stored fields'}`;
+}
+
+export function settingsCheckpointSummary(
+  item: InstallationSettingsCheckpointItem,
+  state: InstallationSettingsCheckpointState | null,
+): string {
+  if (state === null) return 'Not configured';
+  switch (item.kind) {
+    case 'target':
+      return targetSummary(state.document);
+    case 'repository':
+      return repositorySummary(state.document);
+    case 'sync_config':
+      return syncConfigSummary(item, state.document);
+    case 'sync_override':
+      return syncOverrideSummary(state.document);
+  }
+}
