@@ -439,7 +439,7 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID)
+	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID, actions)
 	if err != nil {
 		s.writeStorageError(w, err)
 
@@ -471,13 +471,6 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID)
-	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
 	plan, err := s.store.ApproveSyncPlan(r.Context(), orgsync.PlanApproval{
 		TargetID: target.ID,
 		PlanID:   r.PathValue(syncPlanKey),
@@ -519,6 +512,12 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID, actions)
+	if err != nil {
+		s.writeStorageError(w, err)
+
+		return
+	}
 
 	writeJSON(w, http.StatusOK,
 		map[string]any{syncPlanKey: syncPlanToDTO(plan, actions, repositoryNames)})
@@ -531,13 +530,17 @@ func syncApprovalSummary(counts orgsync.Counts) string {
 func (s *Server) syncPlanRepositoryNames(
 	ctx context.Context,
 	targetID string,
+	actions []orgsync.Action,
 ) (map[string]string, error) {
-	repositories, err := s.store.ListRepositories(ctx, targetID)
-	if err != nil {
-		return nil, fmt.Errorf("list sync plan repositories: %w", err)
-	}
-	names := make(map[string]string, len(repositories))
-	for _, repository := range repositories {
+	names := make(map[string]string)
+	for _, action := range actions {
+		if _, found := names[action.RepositoryID]; found {
+			continue
+		}
+		repository, err := s.store.GetRepository(ctx, targetID, action.RepositoryID)
+		if err != nil {
+			return nil, fmt.Errorf("read sync plan repository: %w", err)
+		}
 		names[repository.ID] = repository.Name
 	}
 

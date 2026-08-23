@@ -114,9 +114,8 @@ export class SyncDraftSet {
   }
 
   acceptCommitted(configs: SyncConfig[], notice: string): void {
-    this.saved = {};
+    this.replaceSaved(configs);
     this.drafts = {};
-    this.adopt(configs);
     this.problem = null;
     this.conflict = false;
     this.invalidKind = null;
@@ -136,8 +135,9 @@ export class SyncDraftSet {
     this.notice = null;
     try {
       const result = await saveConfigs(this.targetId, { changes });
-      this.acceptCommitted(
+      this.acceptSaved(
         result.configs,
+        changes,
         'Saved. Reconciliation creates a plan only when repositories need changes.',
       );
       return true;
@@ -159,9 +159,42 @@ export class SyncDraftSet {
       const base = this.saved[kind];
       const draft = this.drafts[kind];
       if (base === undefined || draft === undefined) return null;
-      changes.push({ kind, ...draft, expected_revision: base.revision });
+      changes.push({ kind, ...$state.snapshot(draft), expected_revision: base.revision });
     }
     return changes;
+  }
+
+  private acceptSaved(
+    configs: SyncConfig[],
+    committed: SyncConfigBatchChange[],
+    notice: string,
+  ): void {
+    this.replaceSaved(configs);
+    for (const change of committed) {
+      const current = this.drafts[change.kind];
+      if (current !== undefined && sameInput(current, inputForChange(change))) {
+        delete this.drafts[change.kind];
+      }
+    }
+    for (const kind of this.dirtyKinds) {
+      const base = this.saved[kind];
+      const draft = this.drafts[kind];
+      if (base !== undefined && draft !== undefined && sameInput(draft, inputFor(base))) {
+        delete this.drafts[kind];
+      }
+    }
+    this.problem = null;
+    this.conflict = false;
+    this.invalidKind = null;
+    this.notice = notice;
+    this.refresh += 1;
+  }
+
+  private replaceSaved(configs: SyncConfig[]): void {
+    this.saved = {};
+    for (const config of configs) {
+      if (isSyncKind(config.kind)) this.saved[config.kind] = config;
+    }
   }
 }
 
@@ -208,6 +241,18 @@ function configWithDraft(base: SyncConfig, draft: DraftInput): SyncConfig {
         }
       : { document: draft.document ?? {} }),
   };
+}
+
+function inputForChange(change: SyncConfigBatchChange): DraftInput {
+  if (change.kind === 'labels') {
+    return {
+      enabled: change.enabled,
+      labels: change.labels,
+      allow_removal: change.allow_removal,
+      excludes: change.excludes,
+    };
+  }
+  return { enabled: change.enabled, document: change.document };
 }
 
 function sameInput(left: DraftInput, right: DraftInput): boolean {

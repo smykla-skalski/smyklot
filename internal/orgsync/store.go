@@ -50,10 +50,12 @@ type ConfigChange struct {
 // live on the batch so callers cannot accidentally attribute two halves of one
 // save to different people or moments.
 type ConfigBatchChange struct {
-	TargetID string
-	ActorID  string
-	Now      time.Time
-	Changes  []ConfigPatch
+	TargetID         string
+	ActorID          string
+	ElevationID      *string
+	SessionTokenHash string
+	Now              time.Time
+	Changes          []ConfigPatch
 }
 
 // ConfigPatch is one kind inside an atomic configuration save.
@@ -106,12 +108,14 @@ type ConfigCheckpointItem struct {
 // ConfigRestore restores selected kinds from one checkpoint. Revisions name
 // the current rows the caller inspected; zero means the kind is absent now.
 type ConfigRestore struct {
-	TargetID     string
-	CheckpointID int64
-	Kinds        []Kind
-	Revisions    map[Kind]int64
-	ActorID      string
-	Now          time.Time
+	TargetID         string
+	CheckpointID     int64
+	Kinds            []Kind
+	Revisions        map[Kind]int64
+	ActorID          string
+	ElevationID      *string
+	SessionTokenHash string
+	Now              time.Time
 }
 
 // RepositoryOverride is a repository's own answer for one kind. Enabled is nil

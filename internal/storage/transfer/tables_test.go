@@ -62,6 +62,16 @@ func TestTableListCoversSchema(t *testing.T) {
 	report(t, "tables in the copy but not in the schema, so the copy would fail on them", unknown)
 }
 
+func TestCheckpointCopyOrdersParentsBeforeRestoreChildren(t *testing.T) {
+	query := tableReadQuery("sync_config_checkpoints")
+	if query != `SELECT * FROM "sync_config_checkpoints" ORDER BY id ASC` {
+		t.Fatalf("checkpoint copy query = %q", query)
+	}
+	if query := tableReadQuery("accounts"); query != `SELECT * FROM "accounts"` {
+		t.Fatalf("ordinary copy query = %q", query)
+	}
+}
+
 // TestTableOrderSatisfiesReferences fails when a table is copied before one it
 // references, which is the other way the list can be wrong.
 //

@@ -987,7 +987,7 @@ async function handle(
     }
     const syncPath = path.slice(route('').length);
     const syncCheckpointMatch =
-      /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/checkpoints\/([^/]+)(\/restore)?$/.exec(
+      /^\/api\/v1\/(?:targets|root\/installations)\/([^/]+)\/sync\/config\/checkpoints\/([^/]+)(\/restore)?$/.exec(
         syncPath,
       );
     if (syncCheckpointMatch) {
@@ -2589,6 +2589,7 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
       ...entry,
       id: `${target.value.id}-${entry.id}`,
       category: 'configuration' as const,
+      target_id: target.value.id,
       installation: target.value.account,
     })),
   );

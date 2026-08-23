@@ -396,6 +396,14 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		s.getRootTargetAudit,
 	)
 	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/sync/config/checkpoints/{checkpoint}",
+		s.getRootSyncConfigCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/sync/config/checkpoints/{checkpoint}/restore",
+		s.postRootSyncConfigRestore,
+	)
+	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/installations/{target}/failures",
 		s.getRootTargetFailures,
 	)

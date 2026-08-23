@@ -239,6 +239,7 @@
   let auditScroll = $state<HTMLTableSectionElement>();
   let failureScroll = $state<HTMLTableSectionElement>();
   let checkpointId = $state<string | null>(null);
+  let checkpointTargetId = $state<string | null>(null);
   let checkpointTrigger = $state<HTMLElement | null>(null);
 
   const hasFilters = $derived(
@@ -736,10 +737,12 @@
     if (entry.sync_config_checkpoint_id === undefined || fetchSyncCheckpoint === undefined) return;
     checkpointTrigger = trigger;
     checkpointId = entry.sync_config_checkpoint_id;
+    checkpointTargetId = entry.target_id ?? targetId;
   }
 
   function closeCheckpoint(): void {
     checkpointId = null;
+    checkpointTargetId = null;
   }
 
   function syncRestored(result: SyncConfigBatchResponse): void {
@@ -1157,10 +1160,10 @@
   </div>
 </section>
 
-{#if checkpointId !== null && fetchSyncCheckpoint !== undefined}
+{#if checkpointId !== null && checkpointTargetId !== null && fetchSyncCheckpoint !== undefined}
   <SyncCheckpointDialog
     open
-    {targetId}
+    targetId={checkpointTargetId}
     {checkpointId}
     readOnly={readOnly || restoreSyncCheckpoint === undefined}
     hasUnsavedDrafts={hasUnsavedSyncDrafts}

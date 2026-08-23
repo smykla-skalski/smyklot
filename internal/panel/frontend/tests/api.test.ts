@@ -359,6 +359,31 @@ describe('targets and repositories', () => {
 });
 
 describe('Root installation access', () => {
+  it('inspects and restores Sync checkpoints through Root routes', async () => {
+    const checkpoint = {
+      id: 'checkpoint/1',
+      action: 'sync.config.saved',
+      actor: VIEWER.account,
+      created_at: '2026-08-23T08:00:00Z',
+      affected_kinds: ['labels'],
+      kinds: [],
+    };
+    const restored = { configs: [], checkpoint_id: 'checkpoint/2' };
+    const stub = stubFetch([jsonResponse(200, checkpoint), jsonResponse(200, restored)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await api.fetchRootSyncConfigCheckpoint('target/1', 'checkpoint/1');
+    await api.restoreRootSyncConfigCheckpoint('target/1', 'checkpoint/1', {
+      kinds: [{ kind: 'labels', expected_revision: 2 }],
+    });
+
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/root/installations/target%2F1/sync/config/checkpoints/checkpoint%2F1',
+      '/panel/api/v1/root/installations/target%2F1/sync/config/checkpoints/checkpoint%2F1/restore',
+    ]);
+    expect(stub.calls[1]?.init?.method).toBe('POST');
+  });
+
   it('runs the Root catalog synchronization endpoint', async () => {
     const stub = stubFetch([jsonResponse(200, { target_ids: ['target.1', 'target.2'] })]);
     const api = createPanelApi('/panel', stub.fetch);

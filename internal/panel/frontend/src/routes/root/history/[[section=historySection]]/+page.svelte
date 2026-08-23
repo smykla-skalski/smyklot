@@ -25,5 +25,6 @@
       s === 'audit' ? session.rootAuditHref() : session.rootFailuresHref()}
     fetchAudit={session.api.fetchRootAudit}
     fetchFailures={session.api.fetchRootFailures}
+    fetchSyncCheckpoint={session.api.fetchRootSyncConfigCheckpoint}
   />
 </section>

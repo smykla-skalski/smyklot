@@ -185,6 +185,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/root/installations/" + target + "/user-suggestions",
 		"/panel/api/v1/root/installations/" + target + "/invitations",
 		"/panel/api/v1/root/installations/" + target + "/audit",
+		"/panel/api/v1/root/installations/" + target + "/sync/config/checkpoints/1",
 		"/panel/api/v1/root/installations/" + target + "/failures",
 	}
 }

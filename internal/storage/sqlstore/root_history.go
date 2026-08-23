@@ -11,7 +11,8 @@ import (
 
 const rootAuditSelect = `
 SELECT
-    event.id, event.category, event.target_id, event.elevation_id,
+    event.id, event.category, event.target_id, event.source_kind, event.source_id,
+    event.elevation_id,
     event.action, event.summary, event.created_at,
     actor.id, actor.provider, actor.subject_id, actor.login,
     actor.display_name, actor.avatar_url, actor.updated_at,
@@ -133,7 +134,8 @@ func validAuditCategory(category storage.AuditCategory) bool {
 
 func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	var event storage.AppAuditEvent
-	var targetID, elevationID sql.NullString
+	var targetID, sourceKind, elevationID sql.NullString
+	var sourceID sql.NullInt64
 	var actorAvatar, targetAvatar, subjectAvatar sql.NullString
 	var targetIDValue, targetProvider, targetSubject, targetLogin, targetName sql.NullString
 	var subjectID, subjectProvider, subjectSubject sql.NullString
@@ -141,7 +143,7 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	var subjectLogin, subjectName sql.NullString
 	var createdAt, actorUpdated StoredTime
 	if err := scanner.Scan(
-		&event.ID, &event.Category, &targetID, &elevationID,
+		&event.ID, &event.Category, &targetID, &sourceKind, &sourceID, &elevationID,
 		&event.Action, &event.Summary, &createdAt,
 		&event.Actor.ID, &event.Actor.Provider, &event.Actor.SubjectID, &event.Actor.Login,
 		&event.Actor.DisplayName, &actorAvatar, &actorUpdated,
@@ -153,6 +155,10 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 		return storage.AppAuditEvent{}, err
 	}
 	event.ElevationID = stringPointer(elevationID)
+	event.TargetID = stringPointer(targetID)
+	if sourceKind.String == "sync_config_checkpoint" && sourceID.Valid {
+		event.SyncConfigCheckpointID = &sourceID.Int64
+	}
 	event.Actor.AvatarURL = stringPointer(actorAvatar)
 	event.CreatedAt = createdAt.Time()
 	event.Actor.UpdatedAt = actorUpdated.Time()

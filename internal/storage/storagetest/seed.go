@@ -433,11 +433,29 @@ func (s *seeder) seedPendingCI() error {
 func (s *seeder) seedOrgSync() error {
 	document := []byte(`{"labels":[{"name":"seeded","color":"d73a4a"}]}`)
 
-	config, err := s.store.SetSyncConfig(s.ctx, orgsync.ConfigChange{
-		TargetID: s.target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
-		Document: document, ActorID: s.owner.ID, Now: s.now,
+	original, err := s.store.SetSyncConfigs(s.ctx, orgsync.ConfigBatchChange{
+		TargetID: s.target.TargetID, ActorID: s.owner.ID, Now: s.now,
+		Changes: []orgsync.ConfigPatch{{
+			Kind: orgsync.KindLabels, Enabled: true, Document: document,
+		}},
 	})
 	if err != nil {
+		return err
+	}
+	config := original.Configs[0]
+	if _, err := s.store.SetSyncConfig(s.ctx, orgsync.ConfigChange{
+		TargetID: s.target.TargetID, Kind: orgsync.KindLabels, Enabled: true,
+		Document: []byte(`{"labels":[{"name":"temporary","color":"000000"}]}`),
+		Revision: 1, ActorID: s.owner.ID, Now: s.now,
+	}); err != nil {
+		return err
+	}
+	if _, err := s.store.RestoreSyncConfigCheckpoint(s.ctx, orgsync.ConfigRestore{
+		TargetID: s.target.TargetID, CheckpointID: *original.CheckpointID,
+		Kinds:     []orgsync.Kind{orgsync.KindLabels},
+		Revisions: map[orgsync.Kind]int64{orgsync.KindLabels: 2},
+		ActorID:   s.owner.ID, Now: s.now,
+	}); err != nil {
 		return err
 	}
 

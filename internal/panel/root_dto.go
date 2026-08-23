@@ -218,15 +218,17 @@ type pendingCIDetailResponse struct {
 }
 
 type rootAuditResponse struct {
-	ID           string                `json:"id"`
-	Category     storage.AuditCategory `json:"category"`
-	Installation *accountResponse      `json:"installation,omitempty"`
-	Actor        accountResponse       `json:"actor"`
-	Subject      *accountResponse      `json:"subject,omitempty"`
-	ElevationID  *string               `json:"elevation_id,omitempty"`
-	Action       string                `json:"action"`
-	Summary      string                `json:"summary"`
-	CreatedAt    time.Time             `json:"created_at"`
+	ID                     string                `json:"id"`
+	Category               storage.AuditCategory `json:"category"`
+	TargetID               *string               `json:"target_id,omitempty"`
+	Installation           *accountResponse      `json:"installation,omitempty"`
+	Actor                  accountResponse       `json:"actor"`
+	Subject                *accountResponse      `json:"subject,omitempty"`
+	ElevationID            *string               `json:"elevation_id,omitempty"`
+	SyncConfigCheckpointID *string               `json:"sync_config_checkpoint_id,omitempty"`
+	Action                 string                `json:"action"`
+	Summary                string                `json:"summary"`
+	CreatedAt              time.Time             `json:"created_at"`
 }
 
 type rootPanelUserResponse struct {
@@ -377,8 +379,9 @@ func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse
 	for _, event := range page.Items {
 		item := rootAuditResponse{
 			ID: strconv.FormatInt(event.ID, 10), Category: event.Category,
-			Actor: accountDTO(event.Actor), ElevationID: event.ElevationID,
-			Action: event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
+			TargetID: event.TargetID, Actor: accountDTO(event.Actor), ElevationID: event.ElevationID,
+			SyncConfigCheckpointID: stringID(event.SyncConfigCheckpointID),
+			Action:                 event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
 		}
 		if event.Target != nil {
 			target := accountDTO(*event.Target)

@@ -64,6 +64,13 @@ func (s *Store) SetSyncConfigs(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	elevation, err := s.elevatedWrite(
+		ctx, tx, change.ElevationID, change.SessionTokenHash,
+		change.ActorID, change.TargetID, change.Now,
+	)
+	if err != nil {
+		return orgsync.ConfigWrite{}, err
+	}
 	if err := s.lockSyncTarget(ctx, tx, change.TargetID); err != nil {
 		return orgsync.ConfigWrite{}, err
 	}
@@ -84,6 +91,7 @@ func (s *Store) SetSyncConfigs(
 
 	return s.finishSyncConfigWrite(ctx, tx, syncWriteFinish{
 		TargetID: change.TargetID, ActorID: change.ActorID, Now: change.Now,
+		ElevationID: change.ElevationID, Elevation: elevation,
 		Action: orgsync.CheckpointSaved, Changed: changed,
 	})
 }
@@ -91,6 +99,8 @@ func (s *Store) SetSyncConfigs(
 type syncWriteFinish struct {
 	TargetID     string
 	ActorID      string
+	ElevationID  *string
+	Elevation    *storage.Elevation
 	Now          time.Time
 	Action       orgsync.CheckpointAction
 	RestoredFrom *int64
@@ -123,8 +133,20 @@ func (s *Store) finishSyncConfigWrite(
 	if err != nil {
 		return orgsync.ConfigWrite{}, err
 	}
-	if err := recordSyncConfigAudit(ctx, tx, finish, checkpointID); err != nil {
+	auditEventID, err := recordSyncConfigAudit(ctx, tx, finish, checkpointID)
+	if err != nil {
 		return orgsync.ConfigWrite{}, err
+	}
+	if finish.Elevation != nil {
+		action := "sync.config.saved"
+		if finish.Action == orgsync.CheckpointRestored {
+			action = "sync.config.restored"
+		}
+		if err := insertElevatedNotifications(
+			ctx, tx, *finish.Elevation, auditEventID, action, finish.Now,
+		); err != nil {
+			return orgsync.ConfigWrite{}, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return orgsync.ConfigWrite{}, fmt.Errorf("commit sync config write: %w", err)
@@ -176,13 +198,19 @@ func (s *Store) writeSyncPatch(
 		if patch.Revision != 0 {
 			return false, storage.ErrConflict
 		}
+		revision, revisionErr := nextSyncConfigRevision(
+			ctx, tx, change.TargetID, patch.Kind,
+		)
+		if revisionErr != nil {
+			return false, revisionErr
+		}
 		digest := orgsync.DigestConfig(patch.Enabled, patch.Document)
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO sync_configs (
     target_id, kind, enabled, document, digest, revision, updated_by, updated_at
-) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 			change.TargetID, patch.Kind, patch.Enabled, patch.Document,
-			digest, change.ActorID, change.Now,
+			digest, revision, change.ActorID, change.Now,
 		)
 		if err != nil {
 			return false, fmt.Errorf("insert sync config: %w", err)
@@ -213,6 +241,28 @@ WHERE target_id = ? AND kind = ?`,
 	}
 
 	return true, nil
+}
+
+// nextSyncConfigRevision prevents an absent kind from resetting its optimistic
+// revision to one. Restore can deliberately remove a kind, but its immutable
+// checkpoints still retain the highest revision that existed before removal.
+func nextSyncConfigRevision(
+	ctx context.Context,
+	queryer rowQuerier,
+	targetID string,
+	kind orgsync.Kind,
+) (int64, error) {
+	var revision int64
+	err := queryer.QueryRowContext(ctx, `
+SELECT COALESCE(MAX(item.revision), 0) + 1
+FROM sync_config_checkpoint_items item
+JOIN sync_config_checkpoints checkpoint ON checkpoint.id = item.checkpoint_id
+WHERE checkpoint.target_id = ? AND item.kind = ?`, targetID, kind).Scan(&revision)
+	if err != nil {
+		return 0, fmt.Errorf("read next sync config revision: %w", err)
+	}
+
+	return revision, nil
 }
 
 func syncConfigForUpdate(
@@ -319,7 +369,7 @@ func recordSyncConfigAudit(
 	tx *transaction,
 	finish syncWriteFinish,
 	checkpointID int64,
-) error {
+) (int64, error) {
 	action := "sync.config.saved"
 	verb := "Saved"
 	if finish.Action == orgsync.CheckpointRestored {
@@ -327,16 +377,17 @@ func recordSyncConfigAudit(
 		verb = "Restored"
 	}
 	sourceKind := "sync_config_checkpoint"
-	_, err := insertAudit(ctx, tx, auditInsert{
+	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID: finish.TargetID, SyncConfigCheckpointID: &checkpointID,
-		ActorAccountID: finish.ActorID, SourceKind: &sourceKind, SourceID: &checkpointID,
+		ActorAccountID: finish.ActorID, ElevationID: finish.ElevationID,
+		SourceKind: &sourceKind, SourceID: &checkpointID,
 		Action: action, Summary: syncConfigSummary(verb, finish.Changed), CreatedAt: finish.Now,
 	})
 	if err != nil {
-		return fmt.Errorf("insert sync config audit: %w", err)
+		return 0, fmt.Errorf("insert sync config audit: %w", err)
 	}
 
-	return nil
+	return auditEventID, nil
 }
 
 func syncConfigSummary(verb string, kinds []orgsync.Kind) string {

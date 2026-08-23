@@ -131,6 +131,15 @@ export interface PanelApi {
   revokeRootTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation>;
   fetchRootTargetUserDecisions(accountId: string, targetId: string): Promise<AccessDecision[]>;
   fetchRootTargetAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
+  fetchRootSyncConfigCheckpoint(
+    targetId: string,
+    checkpointId: string,
+  ): Promise<SyncConfigCheckpoint>;
+  restoreRootSyncConfigCheckpoint(
+    targetId: string,
+    checkpointId: string,
+    input: SyncConfigRestoreInput,
+  ): Promise<SyncConfigBatchResponse>;
   fetchRootTargetFailures(
     targetId: string,
     request: FailureHistoryRequest,
@@ -629,6 +638,26 @@ export function createPanelApi(
           scope: history.scope ?? 'all',
           change: history.change ?? 'all',
         }),
+      );
+    },
+
+    fetchRootSyncConfigCheckpoint(
+      targetId: string,
+      checkpointId: string,
+    ): Promise<SyncConfigCheckpoint> {
+      return documentRequest(
+        `/api/v1/root/installations/${pathSegment(targetId)}/sync/config/checkpoints/${pathSegment(checkpointId)}`,
+      );
+    },
+
+    restoreRootSyncConfigCheckpoint(
+      targetId: string,
+      checkpointId: string,
+      input: SyncConfigRestoreInput,
+    ): Promise<SyncConfigBatchResponse> {
+      return postDocument(
+        `/api/v1/root/installations/${pathSegment(targetId)}/sync/config/checkpoints/${pathSegment(checkpointId)}/restore`,
+        input,
       );
     },
 

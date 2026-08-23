@@ -89,6 +89,41 @@ describe('SyncDraftSet [Unit]', () => {
     expect(drafts.dirty).toBe(false);
   });
 
+  it('keeps edits made while an earlier draft is saving', async () => {
+    const drafts = new SyncDraftSet('target-1');
+    drafts.adopt(complete());
+    drafts.stage('labels', {
+      enabled: true,
+      labels: [{ name: 'submitted', color: '00ff00' }],
+      allow_removal: false,
+      excludes: [],
+    });
+    let completeSave!: (result: SyncConfigBatchResponse) => void;
+    const save = vi.fn(
+      () =>
+        new Promise<SyncConfigBatchResponse>((resolve) => {
+          completeSave = resolve;
+        }),
+    );
+
+    const pending = drafts.save(save);
+    await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+    drafts.stage('settings', { enabled: true, document: { visibility: 'private' } });
+    drafts.stage('labels', {
+      enabled: true,
+      labels: [{ name: 'edited-later', color: 'ff0000' }],
+      allow_removal: false,
+      excludes: [],
+    });
+    completeSave({ configs: complete(2), checkpoint_id: 'checkpoint-1' });
+
+    await expect(pending).resolves.toBe(true);
+    expect(drafts.dirtyKinds).toEqual(['labels', 'settings']);
+    expect(drafts.config('labels')?.revision).toBe(2);
+    expect(drafts.config('labels')?.labels[0]?.name).toBe('edited-later');
+    expect(drafts.config('settings')?.enabled).toBe(true);
+  });
+
   it('discards every kind together', () => {
     const drafts = new SyncDraftSet('target-1');
     drafts.adopt(complete());

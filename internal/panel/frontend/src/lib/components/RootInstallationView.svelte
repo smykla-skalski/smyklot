@@ -405,8 +405,8 @@
       sectionHref={(next: HistorySection) => hrefFor(installation.account.login, 'history', next)}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
-      fetchSyncCheckpoint={api.fetchSyncConfigCheckpoint}
-      restoreSyncCheckpoint={api.restoreSyncConfigCheckpoint}
+      fetchSyncCheckpoint={api.fetchRootSyncConfigCheckpoint}
+      restoreSyncCheckpoint={api.restoreRootSyncConfigCheckpoint}
       readOnly={!canWrite}
       hasUnsavedSyncDrafts={false}
       onSyncRestored={() => void load()}

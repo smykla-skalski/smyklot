@@ -64,6 +64,8 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodPost, "/panel/api/v1/root/installations/" + target + "/invitations/" + invitation + "/reissue"},
 		{http.MethodDelete, "/panel/api/v1/root/installations/" + target + "/invitations/" + invitation},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/audit"},
+		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/sync/config/checkpoints/1"},
+		{http.MethodPost, "/panel/api/v1/root/installations/" + target + "/sync/config/checkpoints/1/restore"},
 		{http.MethodGet, "/panel/api/v1/root/installations/" + target + "/failures"},
 	}
 

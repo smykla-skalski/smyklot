@@ -624,6 +624,7 @@ export interface RepositorySettingsInput {
 export interface AuditEntry {
   id: string;
   category?: AuditCategory;
+  target_id?: string;
   installation?: PanelAccount;
   actor: PanelAccount;
   subject?: PanelAccount;

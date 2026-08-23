@@ -140,6 +140,13 @@ func (s *Store) RestoreSyncConfigCheckpoint(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	elevation, err := s.elevatedWrite(
+		ctx, tx, restore.ElevationID, restore.SessionTokenHash,
+		restore.ActorID, restore.TargetID, restore.Now,
+	)
+	if err != nil {
+		return orgsync.ConfigWrite{}, err
+	}
 	if err := s.lockSyncTarget(ctx, tx, restore.TargetID); err != nil {
 		return orgsync.ConfigWrite{}, err
 	}
@@ -167,6 +174,7 @@ func (s *Store) RestoreSyncConfigCheckpoint(
 
 	return s.finishSyncConfigWrite(ctx, tx, syncWriteFinish{
 		TargetID: restore.TargetID, ActorID: restore.ActorID, Now: restore.Now,
+		ElevationID: restore.ElevationID, Elevation: elevation,
 		Action: orgsync.CheckpointRestored, RestoredFrom: &restore.CheckpointID,
 		Changed: changed,
 	})
@@ -246,11 +254,15 @@ func (s *Store) writeRestoredSyncKind(
 	currentRevision int64,
 ) (bool, error) {
 	if missing {
-		_, err := tx.ExecContext(ctx, `
+		revision, err := nextSyncConfigRevision(ctx, tx, restore.TargetID, item.Kind)
+		if err != nil {
+			return false, err
+		}
+		_, err = tx.ExecContext(ctx, `
 INSERT INTO sync_configs (
     target_id, kind, enabled, document, digest, revision, updated_by, updated_at
-) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`, restore.TargetID, item.Kind, item.Enabled,
-			item.Document, item.Digest, restore.ActorID, restore.Now)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, restore.TargetID, item.Kind, item.Enabled,
+			item.Document, item.Digest, revision, restore.ActorID, restore.Now)
 		if err != nil {
 			return false, fmt.Errorf("insert restored sync config: %w", err)
 		}

@@ -283,7 +283,7 @@ func copyTable(
 	}
 
 	// #nosec G202 -- the table name comes from this package's own list.
-	rows, err := source.QueryContext(ctx, "SELECT * FROM "+quote(table))
+	rows, err := source.QueryContext(ctx, tableReadQuery(table))
 	if err != nil {
 		return 0, fmt.Errorf("read %q: %w", table, err)
 	}
@@ -311,6 +311,18 @@ func copyTable(
 	}
 
 	return copied, nil
+}
+
+func tableReadQuery(table string) string {
+	query := "SELECT * FROM " + quote(table)
+	if table == "sync_config_checkpoints" {
+		// A restore points at an older checkpoint in this same table. Immediate
+		// foreign keys require the parent to arrive before the child regardless
+		// of the source engine's physical row order.
+		query += " ORDER BY id ASC"
+	}
+
+	return query
 }
 
 // scanRow reads one row, converting the values the destination stores as

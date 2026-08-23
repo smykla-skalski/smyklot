@@ -69,6 +69,25 @@ func TestSyncPlanShowsRepositoryNames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := harness.store.GetAccount(t.Context(), "github:test:user:1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
+		TargetID: target.ID, InstallationID: target.InstallationID, Kind: target.Kind,
+		Account: target.Account, SyncedAt: harness.now.Add(time.Minute),
+		Ownership: storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourceOrganizationAdmin,
+			Status: storage.OwnershipStatusFresh, Owners: []storage.Account{owner},
+			SyncedAt: harness.now.Add(time.Minute),
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
 
 	read := harness.request(t, http.MethodGet,
 		"/panel/api/v1/targets/github:installation:10/sync/plan", nil, session)

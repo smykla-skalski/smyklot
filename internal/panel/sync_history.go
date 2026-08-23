@@ -203,6 +203,22 @@ func (s *Server) getSyncConfigCheckpoint(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	s.writeSyncConfigCheckpoint(w, r, target)
+}
+
+func (s *Server) getRootSyncConfigCheckpoint(w http.ResponseWriter, r *http.Request) {
+	context, ok := s.requireRootTarget(w, r, false)
+	if !ok {
+		return
+	}
+	s.writeSyncConfigCheckpoint(w, r, context.Target)
+}
+
+func (s *Server) writeSyncConfigCheckpoint(
+	w http.ResponseWriter,
+	r *http.Request,
+	target storage.Target,
+) {
 	checkpointID, ok := s.syncCheckpointID(w, r)
 	if !ok {
 		return
@@ -235,6 +251,38 @@ func (s *Server) postSyncConfigRestore(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	s.restoreSyncConfigCheckpoint(w, r, target, syncRestoreActor{
+		AccountID: account.ID, WriteError: s.writeStorageError,
+	})
+}
+
+func (s *Server) postRootSyncConfigRestore(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	context, ok := s.requireRootTarget(w, r, true)
+	if !ok {
+		return
+	}
+	s.restoreSyncConfigCheckpoint(w, r, context.Target, syncRestoreActor{
+		AccountID: context.Account.ID, ElevationID: elevationID(context.Elevation),
+		SessionTokenHash: context.SessionHash, WriteError: s.writeRootWriteError,
+	})
+}
+
+type syncRestoreActor struct {
+	AccountID        string
+	ElevationID      *string
+	SessionTokenHash string
+	WriteError       func(http.ResponseWriter, error)
+}
+
+func (s *Server) restoreSyncConfigCheckpoint(
+	w http.ResponseWriter,
+	r *http.Request,
+	target storage.Target,
+	actor syncRestoreActor,
+) {
 	checkpointID, ok := s.syncCheckpointID(w, r)
 	if !ok {
 		return
@@ -259,10 +307,11 @@ func (s *Server) postSyncConfigRestore(w http.ResponseWriter, r *http.Request) {
 
 	written, err := s.store.RestoreSyncConfigCheckpoint(r.Context(), orgsync.ConfigRestore{
 		TargetID: target.ID, CheckpointID: checkpointID, Kinds: kinds,
-		Revisions: revisions, ActorID: account.ID, Now: s.now().UTC(),
+		Revisions: revisions, ActorID: actor.AccountID, ElevationID: actor.ElevationID,
+		SessionTokenHash: actor.SessionTokenHash, Now: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeStorageError(w, err)
+		actor.WriteError(w, err)
 		return
 	}
 	answer, err := s.syncConfigBatchAnswer(r, target, written)

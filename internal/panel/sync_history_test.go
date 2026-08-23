@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -133,6 +134,17 @@ func TestSyncConfigBatchRequiresSameOrigin(t *testing.T) {
 	response := httptest.NewRecorder()
 	harness.handler.ServeHTTP(response, request)
 	requireResponse(t, response, "cross-origin batch save", http.StatusForbidden)
+
+	saved := saveSyncBatch(t, harness, session, `{
+		"changes":[{"kind":"labels","enabled":true,"expected_revision":0,"labels":[]}]}`)
+	restore := httptest.NewRequest(http.MethodPost,
+		syncConfigBatchPath+"/checkpoints/"+*saved.CheckpointID+"/restore",
+		strings.NewReader(`{"kinds":[{"kind":"labels","expected_revision":1}]}`))
+	restore.AddCookie(session)
+	restore.Header.Set("Origin", "https://attacker.example")
+	response = httptest.NewRecorder()
+	harness.handler.ServeHTTP(response, restore)
+	requireResponse(t, response, "cross-origin checkpoint restore", http.StatusForbidden)
 }
 
 func TestSyncConfigRestoreSelectsKindsAndCreatesHistory(t *testing.T) {
@@ -278,6 +290,66 @@ func TestSyncCheckpointInspectionIsReadableButRestoreNeedsWriteAccess(t *testing
 	restore := harness.request(t, http.MethodPost, path+"/restore",
 		strings.NewReader(`{"kinds":[{"kind":"labels","expected_revision":1}]}`), viewerSession)
 	requireResponse(t, restore, "viewer restore", http.StatusNotFound)
+}
+
+func TestRootSyncCheckpointInspectionAndElevatedRestore(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	rootSession := harness.signIn(t)
+	owner, target := seedNonOwnedInstallation(t, harness)
+	original, err := harness.store.SetSyncConfigs(t.Context(), orgsync.ConfigBatchChange{
+		TargetID: target.TargetID, ActorID: owner.ID, Now: harness.now,
+		Changes: []orgsync.ConfigPatch{{
+			Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = harness.store.SetSyncConfigs(t.Context(), orgsync.ConfigBatchChange{
+		TargetID: target.TargetID, ActorID: owner.ID, Now: harness.now.Add(time.Minute),
+		Changes: []orgsync.ConfigPatch{{
+			Kind: orgsync.KindLabels, Enabled: true,
+			Document: []byte(`{"labels":[{"name":"changed","color":"d73a4a"}]}`),
+			Revision: 1,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rootBase := "/panel/api/v1/root/installations/" + target.TargetID +
+		"/sync/config/checkpoints/" + strconv.FormatInt(*original.CheckpointID, 10)
+	inspection := harness.request(t, http.MethodGet, rootBase, nil, rootSession)
+	requireResponse(t, inspection, "Root checkpoint inspection", http.StatusOK,
+		`"action":"sync.config.saved"`, `"differs_from_current":true`)
+
+	globalAudit := harness.request(t, http.MethodGet,
+		"/panel/api/v1/root/history/audit?category=configuration&limit=10", nil, rootSession)
+	requireResponse(t, globalAudit, "Root checkpoint audit", http.StatusOK,
+		`"target_id":"`+target.TargetID+`"`,
+		`"sync_config_checkpoint_id":"`+strconv.FormatInt(*original.CheckpointID, 10)+`"`)
+
+	body := strings.NewReader(`{"kinds":[{"kind":"labels","expected_revision":2}]}`)
+	blocked := harness.request(t, http.MethodPost, rootBase+"/restore", body, rootSession)
+	requireResponse(t, blocked, "Root restore without elevation", http.StatusForbidden,
+		`"code":"elevation_required"`)
+
+	elevated := harness.request(t, http.MethodPost,
+		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
+		strings.NewReader(`{"acknowledged":true,"reason":"restore Sync history"}`), rootSession)
+	requireResponse(t, elevated, "start Root elevation", http.StatusCreated)
+	restored := harness.request(t, http.MethodPost, rootBase+"/restore",
+		strings.NewReader(`{"kinds":[{"kind":"labels","expected_revision":2}]}`), rootSession)
+	requireResponse(t, restored, "elevated Root restore", http.StatusOK,
+		`"checkpoint_id":`, `"revision":3`)
+
+	notifications, err := harness.store.ListSecurityNotifications(
+		t.Context(), owner.ID, storage.NotificationPageRequest{Limit: 10},
+	)
+	if err != nil || notifications.Unread != 1 ||
+		notifications.Items[0].Action != "sync.config.restored" {
+		t.Fatalf("Root restore notifications = %#v, %v", notifications, err)
+	}
 }
 
 func saveSyncBatch(
