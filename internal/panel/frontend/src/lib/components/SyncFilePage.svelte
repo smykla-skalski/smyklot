@@ -112,18 +112,10 @@
     return 'merges · deep';
   });
 
-  /* The whisper is the save receipt, one per card head - the same voice
-     the labels page answers every landed save with. */
-  let templateSavedOn = $state(false);
+  /* Repository adjustments still save independently. Installation templates
+     stage in the shared Sync draft instead. */
   let mergeSavedOn = $state(false);
-  let templateSavedTimer: ReturnType<typeof setTimeout> | undefined;
   let mergeSavedTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function whisperTemplate(): void {
-    templateSavedOn = true;
-    clearTimeout(templateSavedTimer);
-    templateSavedTimer = setTimeout(() => (templateSavedOn = false), 1400);
-  }
 
   function whisperMerge(): void {
     mergeSavedOn = true;
@@ -131,8 +123,7 @@
     mergeSavedTimer = setTimeout(() => (mergeSavedOn = false), 1400);
   }
 
-  /* How long an edit rests before it is written. Long enough to type a
-     word, short enough that the receipt answers the pause. */
+  /* Repository overrides remain independent and wait for typing to rest. */
   const SAVE_REST_MS = 900;
 
   /* ---------- The template, editable in place ---------- */
@@ -142,31 +133,13 @@
   let templateDraft = $state<string | null>(null);
   let templateUndoDepth = $state(0);
   let templateEditor = $state<CodeEditor | null>(null);
-  let savingTemplate = false;
-
   const templateText = $derived(templateDraft ?? file?.content ?? '');
 
-  async function saveTemplate(): Promise<void> {
-    const next = templateDraft;
-    if (file === null || next === null || next === file.content || savingTemplate) return;
-    savingTemplate = true;
-    const ok = await onSave(enabled, templateDocumentWithContent(stored, path, next));
-    savingTemplate = false;
-    if (ok) {
-      whisperTemplate();
-      /* The config now carries the text; further edits start a fresh draft. */
-      if (templateDraft === next) templateDraft = null;
-    }
+  function stageTemplate(text: string): void {
+    templateDraft = text;
+    if (file === null || frozen) return;
+    void onSave(enabled, templateDocumentWithContent(stored, path, text));
   }
-
-  /* Edits save themselves once the typing rests - no Save press, the
-     whisper is the receipt and the editor's own history is the way back. */
-  $effect(() => {
-    const next = templateDraft;
-    if (next === null || file === null || next === file.content || frozen) return;
-    const timer = setTimeout(() => void saveTemplate(), SAVE_REST_MS);
-    return () => clearTimeout(timer);
-  });
 
   /* ---------- One adjustment open at a time ---------- */
 
@@ -457,9 +430,6 @@
     <div class="card">
       <div class="card-head">
         <h3 class="card-title">Template</h3>
-        <span class="save-whisper" class:is-on={templateSavedOn} role="status"
-          ><Icon name="check" size={12} /><span class="t">Saved</span></span
-        >
         <div class="head-tools">
           {#if templateUndoDepth > 0}
             <Button onclick={() => templateEditor?.undoEdit()}>
@@ -475,7 +445,7 @@
         value={templateText}
         {lang}
         readOnly={frozen}
-        onChange={(text) => (templateDraft = text)}
+        onChange={stageTemplate}
         onHistory={(depth) => (templateUndoDepth = depth)}
       />
     </div>

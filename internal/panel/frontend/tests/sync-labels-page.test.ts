@@ -3,68 +3,8 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncLabelsPage from '../src/lib/components/SyncLabelsPage.svelte';
-import {
-  createLatestLabelsSave,
-  type LabelsSaveInput,
-} from '../src/lib/components/SyncLabelsPage.svelte';
+import type { LabelsSaveInput } from '../src/lib/components/SyncLabelsPage.svelte';
 import type { SyncConfig } from '../src/lib/types';
-
-function input(name: string): LabelsSaveInput {
-  return {
-    enabled: true,
-    labels: [{ name, color: '0e8a16' }],
-    allow_removal: false,
-    excludes: [],
-  };
-}
-
-describe('the labels save queue [Unit]', () => {
-  it('sends the latest edit only after the prior revision lands', async () => {
-    let releaseFirst!: () => void;
-    const firstLanded = new Promise<void>((resolve) => (releaseFirst = resolve));
-    const sent: LabelsSaveInput[] = [];
-    const save = vi.fn(async (wanted: LabelsSaveInput) => {
-      sent.push(wanted);
-      if (sent.length === 1) await firstLanded;
-      return true;
-    });
-    const receipt = vi.fn();
-    const enqueue = createLatestLabelsSave(save, receipt);
-
-    enqueue(input('first'));
-    enqueue(input('second'));
-    enqueue(input('latest'));
-
-    expect(sent.map((held) => held.labels[0]?.name)).toEqual(['first']);
-    releaseFirst();
-    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-
-    expect(sent.map((held) => held.labels[0]?.name)).toEqual(['first', 'latest']);
-    expect(receipt).toHaveBeenCalledTimes(2);
-  });
-
-  it('tries the newest waiting edit after the prior request fails', async () => {
-    let releaseFirst!: () => void;
-    const firstFinished = new Promise<void>((resolve) => (releaseFirst = resolve));
-    const sent: LabelsSaveInput[] = [];
-    const save = vi.fn(async (wanted: LabelsSaveInput) => {
-      sent.push(wanted);
-      const attempt = sent.length;
-      if (attempt === 1) await firstFinished;
-      return attempt > 1;
-    });
-    const receipt = vi.fn();
-    const enqueue = createLatestLabelsSave(save, receipt);
-
-    enqueue(input('first'));
-    enqueue(input('latest'));
-    releaseFirst();
-    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-
-    expect(sent.map((held) => held.labels[0]?.name)).toEqual(['first', 'latest']);
-    expect(receipt).toHaveBeenCalledOnce();
-  });
-});
 
 class TestResizeObserver {
   observe(): void {}
@@ -97,13 +37,11 @@ describe('SyncLabelsPage [Component]', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('keeps an optimistic toggle in a label edit queued behind it', async () => {
-    let releaseFirst!: (landed: boolean) => void;
-    const first = new Promise<boolean>((resolve) => (releaseFirst = resolve));
+  it('stages each edit immediately against the latest local draft', async () => {
     const sent: LabelsSaveInput[] = [];
     const onSave = vi.fn((wanted: LabelsSaveInput) => {
       sent.push(wanted);
-      return sent.length === 1 ? first : Promise.resolve(true);
+      return Promise.resolve(true);
     });
 
     render(SyncLabelsPage, {
@@ -117,21 +55,16 @@ describe('SyncLabelsPage [Component]', () => {
 
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
-    expect(sent).toHaveLength(1);
 
-    releaseFirst(true);
-    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
-
+    expect(sent).toHaveLength(2);
     expect(sent[1]).toMatchObject({ enabled: true, labels: [] });
   });
 
-  it('keeps the newest draft while a prior response refreshes config', async () => {
-    let releaseFirst!: (landed: boolean) => void;
-    const first = new Promise<boolean>((resolve) => (releaseFirst = resolve));
+  it('keeps the local draft while the parent refreshes its saved base', async () => {
     const sent: LabelsSaveInput[] = [];
     const onSave = vi.fn((wanted: LabelsSaveInput) => {
       sent.push(wanted);
-      return sent.length === 1 ? first : Promise.resolve(true);
+      return Promise.resolve(true);
     });
     const props = {
       config: config(),
@@ -147,18 +80,15 @@ describe('SyncLabelsPage [Component]', () => {
     await fireEvent.click(
       screen.getByRole('checkbox', { name: 'Remove labels this list does not name' }),
     );
-    expect(sent).toHaveLength(1);
 
-    // The PUT has landed and advanced the parent's revision, but its plan
-    // refresh is still holding the first onSave promise open.
+    // A background read may advance the saved base, but it must not replace the
+    // installation draft currently being edited.
     await page.rerender({
       ...props,
       config: config({ enabled: true, allow_removal: false, revision: 2 }),
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
-    releaseFirst(true);
-    await vi.waitFor(() => expect(onSave).toHaveBeenCalledTimes(2));
 
-    expect(sent[1]).toMatchObject({ enabled: true, allow_removal: true, labels: [] });
+    expect(sent[2]).toMatchObject({ enabled: true, allow_removal: true, labels: [] });
   });
 });

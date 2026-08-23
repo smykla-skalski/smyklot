@@ -28,48 +28,16 @@
     allow_removal: boolean;
     excludes: string[];
   }
-
-  /** Serializes whole-document saves and keeps only the newest waiting state. */
-  export function createLatestLabelsSave(
-    save: (input: LabelsSaveInput) => Promise<boolean>,
-    onSaved: () => void,
-  ): (input: LabelsSaveInput) => void {
-    let queued: LabelsSaveInput | null = null;
-    let running = false;
-
-    async function drain(): Promise<void> {
-      if (running) return;
-      running = true;
-      try {
-        while (queued !== null) {
-          const input = queued;
-          queued = null;
-          if (!(await save(input))) {
-            if (queued !== null) continue;
-            return;
-          }
-          onSaved();
-        }
-      } finally {
-        running = false;
-      }
-    }
-
-    return (input) => {
-      queued = input;
-      void drain();
-    };
-  }
 </script>
 
 <script lang="ts">
   /**
-   * The labels page: immediate apply, per-segment editing. Pressing a name,
+   * The labels page: staged, per-segment editing. Pressing a name,
    * a description or the colour dot swaps only that piece into its edit
    * state, in place - the in-place input is the hover ghost made real, so
-   * the swap moves nothing. Everything applies as it commits; the whisper
-   * in the card head is the receipt; pressing anywhere else closes the open
-   * piece. Below, the two decisions that shape what the list means: whether
+   * the swap moves nothing. Everything updates the installation draft as it
+   * commits; pressing anywhere else closes the open piece. Below, the two
+   * decisions that shape what the list means: whether
    * unlisted labels are removed, and the patterns left alone either way.
    */
   import { tick, untrack } from 'svelte';
@@ -98,7 +66,7 @@
     problem?: string | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    /** Saves the whole configuration; resolves true when it landed. */
+    /** Stages the whole configuration in the installation draft. */
     onSave: (input: LabelsSaveInput) => Promise<boolean>;
   } = $props();
 
@@ -148,7 +116,7 @@
     if (config === null) return;
     if (overrides.enabled !== undefined) enabled = overrides.enabled;
     if (overrides.allow_removal !== undefined) allowRemoval = overrides.allow_removal;
-    queueSave({
+    void onSave({
       enabled,
       labels: toLabels(rows),
       allow_removal: allowRemoval,
@@ -156,20 +124,6 @@
       ...overrides,
     });
   }
-
-  /* The whisper is the save receipt: one voice in the card head, on for a
-     beat after any landed save, then gone. In the head it survives every
-     row re-render and holds no column space hostage. */
-  let savedOn = $state(false);
-  let savedTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function whisper(): void {
-    savedOn = true;
-    clearTimeout(savedTimer);
-    savedTimer = setTimeout(() => (savedOn = false), 1400);
-  }
-
-  const queueSave = createLatestLabelsSave((input) => onSave(input), whisper);
 
   /* ---------- One segment edits at a time, page-wide ---------- */
 
@@ -407,17 +361,14 @@
   <div class="card label-card">
     <div class="card-head">
       <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
-      <span class="label-saved" class:is-on={savedOn} role="status"
-        ><Icon name="check" size={12} /><span class="t">Saved</span></span
-      >
       <Button disabled={frozen} onclick={addLabel}>
         {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
         Add a label
       </Button>
     </div>
     <p class="label-hint">
-      Press any name, description or colour dot to change it right here - edits save themselves as
-      you go
+      Press any name, description or colour dot to change it here. Edits stay in the draft until you
+      save them below.
     </p>
     <ul class="label-rows">
       {#each rows as row, index (index)}
@@ -834,34 +785,6 @@
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin: calc(var(--space-2) * -1) 0 var(--space-3);
-  }
-
-  /* The save receipt lives in the card head, beside Add - never inside a
-     row, where it would hold column space in every line for a word that
-     shows for a second. */
-  .label-saved {
-    align-items: center;
-    color: var(--text-muted);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    gap: 4px;
-    /* The receipt rides the right edge on its own - titles hug their text
-       now instead of stretching to push it there. */
-    margin-inline-start: auto;
-    opacity: 0;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .label-saved.is-on {
-    opacity: 1;
-  }
-
-  .label-saved :global(svg) {
-    color: var(--success);
-  }
-
-  .label-saved .t {
-    text-box: trim-both cap alphabetic;
   }
 
   /* One ring, fused to the field: the border takes the focus colour and the

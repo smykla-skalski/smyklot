@@ -693,6 +693,7 @@ export interface PanelErrorBody {
   error: {
     code: string;
     message: string;
+    kind?: SyncKind;
   };
 }
 
@@ -985,6 +986,21 @@ export interface SyncConfigInput {
 /** The kinds sync manages, in the order every surface lists them. */
 export const SYNC_KINDS = ['labels', 'settings', 'rulesets', 'files'] as const;
 export type SyncKind = (typeof SYNC_KINDS)[number];
+
+/** One changed kind in an atomic installation-wide save. */
+export interface SyncConfigBatchChange extends SyncConfigInput {
+  kind: SyncKind;
+}
+
+export interface SyncConfigBatchInput {
+  changes: SyncConfigBatchChange[];
+}
+
+/** The complete resulting state, plus the history snapshot created for a real change. */
+export interface SyncConfigBatchResponse {
+  configs: SyncConfig[];
+  checkpoint_id?: string;
+}
 
 /**
  * One repository's answer for one kind: quiet when in step, a count when a

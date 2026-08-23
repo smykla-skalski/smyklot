@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -14,6 +14,11 @@
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { applyDocumentTheme } from '#lib/preferences.js';
   import { prefText } from '#lib/preferences-sync.js';
+  import {
+    setSyncDraftScope,
+    staysInSyncDraftInstallation,
+    SyncDraftScope,
+  } from '#lib/sync-drafts.svelte.js';
   import type { PanelTarget } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
@@ -32,6 +37,7 @@
   import Rail from '#lib/components/Rail.svelte';
   import Sidebar, { type SidebarPage } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
+  import SyncSaveComposer from '#lib/components/SyncSaveComposer.svelte';
   import NightPage from '#lib/components/NightPage.svelte';
   import PanelBoot from '#lib/components/PanelBoot.svelte';
 
@@ -50,6 +56,8 @@
   const queryClient = createPanelQueryClient(streamLiveness);
   const session = new PanelSession(api, build, queryClient, streamLiveness);
   setPanelSession(session);
+  const syncDraftScope = new SyncDraftScope();
+  setSyncDraftScope(syncDraftScope);
   const viewerQuery = createQuery(
     () => ({
       queryKey: ['viewer'],
@@ -229,6 +237,42 @@
     if (event.key === 'Escape' && drawerOpen) drawerOpen = false;
   }
 
+  function confirmDraftDeparture(): boolean {
+    const drafts = syncDraftScope.current;
+    if (drafts === null || !drafts.dirty) return true;
+    if (!window.confirm('Discard your unsaved Sync configuration changes?')) return false;
+    syncDraftScope.discard();
+    return true;
+  }
+
+  beforeNavigate(({ cancel, to, willUnload }) => {
+    const drafts = syncDraftScope.current;
+    if (drafts === null || !drafts.dirty) return;
+    const target = session.targets.find((candidate) => candidate.id === drafts.targetId);
+    const staysInInstallation =
+      target !== undefined &&
+      staysInSyncDraftInstallation(to?.route.id, to?.params?.account, target.account.login);
+    if (staysInInstallation) return;
+
+    // SvelteKit turns cancellation of a document unload into the browser's
+    // native warning. For an in-app departure we can say exactly what is lost.
+    if (willUnload || !confirmDraftDeparture()) cancel();
+  });
+
+  async function saveSyncDrafts(): Promise<void> {
+    const drafts = syncDraftScope.current;
+    if (drafts === null) return;
+    if (await drafts.save(session.api.saveSyncConfigs)) {
+      session.invalidateTargetData(drafts.targetId);
+      await queryClient.invalidateQueries({ queryKey: ['sync-plan', drafts.targetId] });
+    }
+  }
+
+  function signOut(): void {
+    if (!confirmDraftDeparture()) return;
+    void session.signOut();
+  }
+
   /* The waiting plan's scale, spoken quietly on the sidebar's Plan row. Only a
      computed plan is waiting on anyone - an applied or expired one is history. */
   const syncPlanQuery = createQuery(
@@ -380,7 +424,7 @@
         unreadCount={notificationUnread}
         theme={session.theme}
         onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
-        onSignOut={() => void session.signOut()}
+        onSignOut={signOut}
         pagesOpen={drawerOpen}
         onTogglePages={() => (drawerOpen = !drawerOpen)}
       />
@@ -438,6 +482,15 @@
             {@render children()}
           {/if}
         </div>
+        {#if syncDraftScope.current !== null && session.selectedTarget !== null}
+          <SyncSaveComposer
+            drafts={syncDraftScope.current}
+            readOnly={!session.selectedTarget.capabilities.write}
+            onSave={() => void saveSyncDrafts()}
+            sectionHref={(kind) => session.syncSectionHref(kind)}
+            onOpenSection={(kind) => session.selectSyncSection(kind)}
+          />
+        {/if}
         <PageFooter {build} />
       </div>
     </main>

@@ -253,6 +253,77 @@ describe('targets and repositories', () => {
 
     expect(stub.calls[0]?.url).toBe('/panel/api/v1/targets/a%2Fb/repositories/%2E%2E');
   });
+
+  it('saves changed Sync kinds in one installation request', async () => {
+    const response = {
+      configs: [],
+      checkpoint_id: 'checkpoint.1',
+    };
+    const stub = stubFetch([jsonResponse(200, response)]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(
+      api.saveSyncConfigs('target/1', {
+        changes: [
+          {
+            kind: 'labels',
+            enabled: true,
+            labels: [{ name: 'ci/green', color: '00ff00' }],
+            allow_removal: false,
+            excludes: [],
+            expected_revision: 4,
+          },
+          {
+            kind: 'settings',
+            enabled: true,
+            document: { visibility: 'private' },
+            expected_revision: 7,
+          },
+        ],
+      }),
+    ).resolves.toEqual(response);
+
+    expect(stub.calls[0]?.url).toBe('/panel/api/v1/targets/target%2F1/sync/config');
+    expect(stub.calls[0]?.init?.method).toBe('PUT');
+    expect(JSON.parse(String(stub.calls[0]?.init?.body))).toMatchObject({
+      changes: [
+        { kind: 'labels', expected_revision: 4 },
+        { kind: 'settings', expected_revision: 7 },
+      ],
+    });
+  });
+
+  it('preserves the invalid Sync kind from a batch error', async () => {
+    const stub = stubFetch([
+      jsonResponse(400, {
+        error: {
+          code: 'invalid_sync_config',
+          message: 'a label name is required',
+          kind: 'labels',
+        },
+      }),
+    ]);
+    const api = createPanelApi('/panel', stub.fetch);
+
+    await expect(
+      api.saveSyncConfigs('target.1', {
+        changes: [
+          {
+            kind: 'labels',
+            enabled: true,
+            labels: [],
+            allow_removal: false,
+            excludes: [],
+            expected_revision: 1,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_sync_config',
+      kind: 'labels',
+    });
+  });
 });
 
 describe('Root installation access', () => {

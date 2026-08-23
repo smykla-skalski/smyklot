@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncView from '../src/lib/components/SyncView.svelte';
+import { SyncDraftSet } from '../src/lib/sync-drafts.svelte';
 import type { SyncCell, SyncConfig, SyncPlan, SyncStatus } from '../src/lib/types';
 
 /** The settings form's segmented controls measure themselves; jsdom does not. */
@@ -73,8 +74,8 @@ describe('SyncView [Component]', () => {
       targetId: 'target-1',
       section,
       readOnly: false,
+      drafts: new SyncDraftSet('target-1'),
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
-      saveConfig: () => Promise.resolve(labels),
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
@@ -137,12 +138,12 @@ describe('SyncView [Component]', () => {
       targetId: 'target-1',
       section: 'rulesets',
       readOnly: false,
+      drafts: new SyncDraftSet('target-1'),
       fetchConfig: (_id: string, kind: string) => {
         asked.push(kind);
 
         return Promise.resolve(config(kind));
       },
-      saveConfig: () => Promise.resolve(config('labels')),
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
@@ -176,12 +177,12 @@ describe('SyncView [Component]', () => {
       targetId: 'target-1',
       section: 'files',
       readOnly: false,
+      drafts: new SyncDraftSet('target-1'),
       fetchConfig: (_id: string, kind: string) => {
         asked.push(kind);
 
         return Promise.resolve(config(kind));
       },
-      saveConfig: () => Promise.resolve(config('labels')),
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),

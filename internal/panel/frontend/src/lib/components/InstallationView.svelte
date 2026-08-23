@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
+  import { getSyncDraftScope } from '#lib/sync-drafts.svelte.js';
   import type { TargetSettingsInput } from '#lib/types.js';
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
@@ -24,6 +25,7 @@
   } = $props();
 
   const session = getPanelSession();
+  const syncDraftScope = getSyncDraftScope();
   const queryClient = useQueryClient();
   const targetSettingsMutation = createMutation(() => ({
     mutationFn: ({ targetId, input }: { targetId: string; input: TargetSettingsInput }) =>
@@ -133,13 +135,14 @@
         {@render loadingView('sync')}
       {:then { default: SyncView }}
         {#key session.selectedTarget.id}
+          {@const syncDrafts = syncDraftScope.forTarget(session.selectedTarget.id)}
           <SyncView
             targetId={session.selectedTarget.id}
             section={session.currentSyncSection}
             rulesetName={session.currentSyncRuleset}
             readOnly={!session.selectedTarget.capabilities.write}
             fetchConfig={session.api.fetchSyncConfig}
-            saveConfig={session.api.saveSyncConfig}
+            drafts={syncDrafts}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}
             discardPlan={session.api.discardSyncPlan}

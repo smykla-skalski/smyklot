@@ -53,9 +53,9 @@
 </script>
 
 <!--
-  The labels page: immediate apply, per-segment editing. Press any name,
+  The labels page: staged, per-segment editing. Press any name,
   description or colour dot and only that piece becomes its editor, in
-  place; the whisper in the card head is the save receipt. Below, whether
+  place; the installation composer saves every dirty Sync section. Below, whether
   unlisted labels are removed, and the patterns left alone either way.
 -->
 <Story name="Five labels" />

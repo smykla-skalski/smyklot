@@ -40,6 +40,8 @@ import type {
   RootRuntimeSettingsInput,
   SecurityNotification,
   SyncConfig,
+  SyncConfigBatchInput,
+  SyncConfigBatchResponse,
   SyncConfigInput,
   SyncOverride,
   SyncOverrideInput,
@@ -60,6 +62,7 @@ export class PanelApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly kind?: string,
   ) {
     super(message);
     this.name = 'PanelApiError';
@@ -177,6 +180,7 @@ export interface PanelApi {
   resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail>;
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   saveSyncConfig(targetId: string, kind: string, input: SyncConfigInput): Promise<SyncConfig>;
+  saveSyncConfigs(targetId: string, input: SyncConfigBatchInput): Promise<SyncConfigBatchResponse>;
   fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
   fetchSyncOverrides(targetId: string, kind: string): Promise<{ overrides: SyncOverrideRow[] }>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
@@ -774,6 +778,13 @@ export function createPanelApi(
       );
     },
 
+    saveSyncConfigs(
+      targetId: string,
+      input: SyncConfigBatchInput,
+    ): Promise<SyncConfigBatchResponse> {
+      return putDocument(`/api/v1/targets/${pathSegment(targetId)}/sync/config`, input);
+    },
+
     /**
      * Every repository's answer about one kind, in one request.
      *
@@ -1050,6 +1061,7 @@ function graftDocuments(payload: unknown, literal: JsonValue): unknown {
 async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
   let message = describeStatus(response.status);
+  let kind: string | undefined;
   try {
     const body = (await response.json()) as Partial<PanelErrorBody>;
     if (body.error?.code !== undefined) {
@@ -1058,8 +1070,9 @@ async function readError(response: Response): Promise<PanelApiError> {
     if (body.error?.message !== undefined && body.error.message !== '') {
       message = body.error.message;
     }
+    kind = body.error?.kind;
   } catch {
     // Proxies and crashes are not required to understand the panel envelope.
   }
-  return new PanelApiError(response.status, code, message);
+  return new PanelApiError(response.status, code, message, kind);
 }

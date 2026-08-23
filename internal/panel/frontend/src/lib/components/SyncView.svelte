@@ -12,7 +12,6 @@
 
   import type {
     SyncConfig,
-    SyncConfigInput,
     SyncFilesContext,
     SyncKind,
     SyncOverride,
@@ -20,6 +19,7 @@
     SyncPlan,
     SyncStatus,
   } from '#lib/types.js';
+  import type { SyncDraftSet } from '#lib/sync-drafts.svelte.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';
@@ -40,7 +40,7 @@
     fileName = null,
     readOnly,
     fetchConfig,
-    saveConfig,
+    drafts,
     fetchPlan,
     approvePlan,
     discardPlan,
@@ -77,7 +77,7 @@
       input: SyncOverrideInput,
     ) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
-    saveConfig: (targetId: string, kind: string, input: SyncConfigInput) => Promise<SyncConfig>;
+    drafts: SyncDraftSet;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
@@ -102,7 +102,12 @@
    */
   type DocumentKind = typeof SETTINGS | typeof RULESETS | typeof FILES;
 
-  let config = $state<SyncConfig | null>(null);
+  const config = $derived(drafts.config(LABELS));
+  const documents = $derived<Record<DocumentKind, SyncConfig | null>>({
+    settings: drafts.config(SETTINGS),
+    rulesets: drafts.config(RULESETS),
+    files: drafts.config(FILES),
+  });
   let plan = $state<SyncPlan | null>(null);
   let syncStatus = $state<SyncStatus | null>(null);
   let filesContext = $state<SyncFilesContext | null>(null);
@@ -112,30 +117,12 @@
   let approving = $state(false);
   let discarding = $state(false);
 
-  /* Kept per kind rather than as a field each, because every kind after labels
-     has the same three: what is saved, whether a save is in flight, and what
-     went wrong. Three fields per kind is how the third one comes to reuse the
-     second one's by accident. */
-  let documents = $state<Record<DocumentKind, SyncConfig | null>>({
-    settings: null,
-    rulesets: null,
-    files: null,
-  });
-  let savingDocument = $state<Record<DocumentKind, boolean>>({
-    settings: false,
-    rulesets: false,
-    files: false,
-  });
-
-  /* One failure per thing that can fail, because the forms are saved
-     independently and none disables the others. A single field let a settings
-     save clear a labels failure the moment it started - the label switch had
-     already sprung back and nothing on the page said why. */
   let error = $state<string | null>(null);
-  let documentError = $state<Record<DocumentKind, string | null>>({
-    settings: null,
-    rulesets: null,
-    files: null,
+  const labelsError = $derived(drafts.invalidKind === LABELS ? drafts.problem : error);
+  const documentError = $derived<Record<DocumentKind, string | null>>({
+    settings: drafts.invalidKind === SETTINGS ? drafts.problem : null,
+    rulesets: drafts.invalidKind === RULESETS ? drafts.problem : null,
+    files: drafts.invalidKind === FILES ? drafts.problem : null,
   });
 
   /* Every document, because each is only meaningful beside the plan: a plan
@@ -144,12 +131,12 @@
      the read that caused them. */
   $effect(() => {
     const id = targetId;
+    void drafts.refresh;
     untrack(() => void load(id));
   });
 
   async function load(id: string): Promise<void> {
     error = null;
-    documentError = { settings: null, rulesets: null, files: null };
     try {
       const [
         loadedConfig,
@@ -168,8 +155,7 @@
         fetchStatus(id),
         fetchFilesContext(id),
       ]);
-      config = loadedConfig;
-      documents = { settings: loadedSettings, rulesets: loadedRulesets, files: loadedFiles };
+      drafts.adopt([loadedConfig, loadedSettings, loadedRulesets, loadedFiles]);
       plan = loadedPlan.plan;
       syncStatus = loadedStatus;
       filesContext = loadedContext;
@@ -179,31 +165,14 @@
     }
   }
 
-  /** Saves the whole labels configuration; the page whispers on true. */
+  /** Stages the whole labels configuration in the installation-wide draft. */
   async function saveLabels(input: {
     enabled: boolean;
     labels: SyncConfig['labels'];
     allow_removal: boolean;
     excludes: string[];
   }): Promise<boolean> {
-    const current = config;
-    if (current === null) return false;
-
-    error = null;
-    try {
-      config = await saveConfig(targetId, LABELS, {
-        ...input,
-        expected_revision: current.revision,
-      });
-      // Saving invalidates any plan computed from the old configuration, so the
-      // one on screen is re-read rather than left describing something that is
-      // no longer true.
-      plan = (await fetchPlan(targetId)).plan;
-      return true;
-    } catch (cause) {
-      error = messageOf(cause);
-      return false;
-    }
+    return drafts.stage(LABELS, input);
   }
 
   async function onSave(enabled: boolean): Promise<void> {
@@ -218,36 +187,16 @@
   }
 
   /**
-   * A document kind is saved whole, unlike the labels switch beside it: a
-   * repository's settings are one request that succeeds or fails together, and
-   * a ruleset is written by replacement, so a control that saved on every click
-   * would send a dozen half-formed policies and compute a plan for each.
+   * A document kind is staged whole. The bottom composer sends every dirty kind
+   * in one request, so moving between settings, rulesets and files never exposes
+   * a half-saved installation.
    */
   async function onSaveDocument(
     kind: DocumentKind,
     wanted: boolean,
     document: Record<string, unknown>,
   ): Promise<boolean> {
-    const current = documents[kind];
-    if (current === null) return false;
-
-    savingDocument = { ...savingDocument, [kind]: true };
-    documentError = { ...documentError, [kind]: null };
-    try {
-      const saved = await saveConfig(targetId, kind, {
-        enabled: wanted,
-        document,
-        expected_revision: current.revision,
-      });
-      documents = { ...documents, [kind]: saved };
-      plan = (await fetchPlan(targetId)).plan;
-      return true;
-    } catch (cause) {
-      documentError = { ...documentError, [kind]: messageOf(cause) };
-      return false;
-    } finally {
-      savingDocument = { ...savingDocument, [kind]: false };
-    }
+    return drafts.stage(kind, { enabled: wanted, document });
   }
 
   async function onApprove(planId: string, digest: string): Promise<void> {
@@ -334,7 +283,7 @@
     <SyncLabelsPage
       {config}
       {readOnly}
-      problem={error}
+      problem={labelsError}
       {sectionHref}
       {onOpenSection}
       onSave={saveLabels}
@@ -347,7 +296,7 @@
       name={rulesetName}
       {readOnly}
       problem={documentError.rulesets}
-      saving={savingDocument.rulesets}
+      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
@@ -358,7 +307,7 @@
       {plan}
       {readOnly}
       problem={documentError.rulesets}
-      saving={savingDocument.rulesets}
+      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       {rulesetHref}
@@ -375,7 +324,7 @@
       {nowMs}
       {readOnly}
       problem={documentError.files}
-      saving={savingDocument.files}
+      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
@@ -391,7 +340,7 @@
       {nowMs}
       {readOnly}
       problem={documentError.files}
-      saving={savingDocument.files}
+      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       {fileHref}
@@ -404,7 +353,7 @@
     config={documents.settings}
     {readOnly}
     problem={documentError.settings}
-    saving={savingDocument.settings}
+    saving={drafts.saving}
     {sectionHref}
     {onOpenSection}
     onSave={(wanted, document) => void onSaveDocument(SETTINGS, wanted, document)}
