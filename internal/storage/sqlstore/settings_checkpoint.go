@@ -13,6 +13,8 @@ import (
 const settingsCheckpointColumns = `
     id, scope, target_id, actor_account_id, action, restored_from_id, created_at`
 
+const settingsCheckpointSourceKind = "settings_checkpoint"
+
 // CreateSettingsCheckpoint inserts one immutable sparse settings delta.
 func (s *Store) CreateSettingsCheckpoint(
 	ctx context.Context,
@@ -170,7 +172,8 @@ ORDER BY item_kind, repository_id, sync_kind`, checkpoint.ID)
 	}
 	if err := checkpointCreate(checkpoint).Validate(); err != nil {
 		return storage.SettingsCheckpoint{}, fmt.Errorf(
-			"validate stored settings checkpoint %d: %w", checkpoint.ID, err,
+			"%w: validate stored settings checkpoint %d: %v",
+			storage.ErrSettingsCheckpointCorrupt, checkpoint.ID, err,
 		)
 	}
 
@@ -266,7 +269,8 @@ func scanSettingsCheckpointState(
 		return nil, nil
 	}
 	if !document.Valid || !revision.Valid || !digest.Valid {
-		return nil, errors.New("checkpoint state is incomplete")
+		return nil, fmt.Errorf("%w: checkpoint state is incomplete",
+			storage.ErrSettingsCheckpointCorrupt)
 	}
 
 	return &storage.SettingsCheckpointState{

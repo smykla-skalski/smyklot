@@ -176,10 +176,11 @@ func assertUnreadableInstallationSyncOverrideRollback(
 	Expect(current).To(Equal(stored))
 	_, err = store.GetSyncConfig(ctx, targetID, orgsync.KindLabels)
 	Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
-	_, err = store.GetSettingsCheckpoint(ctx, storage.SettingsCheckpointRef{
+	baseline, err := store.GetSettingsCheckpoint(ctx, storage.SettingsCheckpointRef{
 		ID: 1, Scope: storage.SettingsCheckpointScopeInstallation, TargetID: targetID,
 	})
-	Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	Expect(err).NotTo(HaveOccurred())
+	Expect(baseline.Action).To(Equal(storage.SettingsCheckpointActionBaseline))
 	assertInstallationSettingsAudit(ctx, store, targetID, 0, 0)
 	assertInstallationSettingsPlanState(ctx, store, targetID, orgsync.PlanComputed)
 }

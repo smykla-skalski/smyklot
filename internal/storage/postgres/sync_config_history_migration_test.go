@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
@@ -54,8 +55,10 @@ id, installation_id, kind, account_id, settings_updated_at, synced_at
 		},
 		{`INSERT INTO sync_configs (
 target_id, kind, enabled, document, digest, revision, updated_by, updated_at
-) VALUES ('installation:configured', 'labels', true, '{"labels":[]}', 'labels-digest', 4,
-          'github:editor', $1)`, []any{configAt}},
+) VALUES ('installation:configured', 'labels', true, '{"labels":[]}', $1, 4,
+          'github:editor', $2)`, []any{
+			orgsync.DigestConfig(true, []byte(`{"labels":[]}`)), configAt,
+		}},
 	}
 	for _, statement := range statements {
 		if _, err := db.ExecContext(ctx, statement.query, statement.arguments...); err != nil {

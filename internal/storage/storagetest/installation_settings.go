@@ -26,6 +26,7 @@ func declareInstallationSettingsSpecs(
 	declareInstallationSyncSettingsSpecs(runtime)
 	declareInstallationSyncValidationSpecs(runtime)
 	declareInstallationSyncDocumentSpecs(runtime)
+	declareInstallationSettingsRestoreSpecs(runtime)
 }
 
 func declareAtomicInstallationSettingsSpec(

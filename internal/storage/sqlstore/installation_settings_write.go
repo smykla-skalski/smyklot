@@ -218,7 +218,7 @@ func (s *Store) recordInstallationSettings(
 		return 0, 0, err
 	}
 	action, summary, repositoryID, repositoryFullName := installationSettingsAudit(work)
-	sourceKind := "settings_checkpoint"
+	sourceKind := settingsCheckpointSourceKind
 	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID: request.TargetID, RepositoryID: repositoryID,
 		RepositoryFullName: repositoryFullName, SettingsCheckpointID: &checkpointID,

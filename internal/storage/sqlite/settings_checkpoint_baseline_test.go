@@ -281,13 +281,13 @@ func readSettingsBaseline(
 ) storage.SettingsCheckpoint {
 	t.Helper()
 
-	query := `SELECT id FROM settings_checkpoints
-WHERE scope = ? AND action = 'baseline' AND target_id = ?`
-	row := store.DB().QueryRowContext(ctx, query, ref.Scope, ref.TargetID)
+	var row *sql.Row
 	if ref.Scope == storage.SettingsCheckpointScopeRoot {
-		query = `SELECT id FROM settings_checkpoints
-WHERE scope = ? AND action = 'baseline' AND target_id IS NULL`
-		row = store.DB().QueryRowContext(ctx, query, ref.Scope)
+		row = store.DB().QueryRowContext(ctx, `SELECT id FROM settings_checkpoints
+WHERE scope = ? AND action = 'baseline' AND target_id IS NULL`, ref.Scope)
+	} else {
+		row = store.DB().QueryRowContext(ctx, `SELECT id FROM settings_checkpoints
+WHERE scope = ? AND action = 'baseline' AND target_id = ?`, ref.Scope, ref.TargetID)
 	}
 	if err := row.Scan(&ref.ID); err != nil {
 		t.Fatalf("read settings baseline id: %v", err)

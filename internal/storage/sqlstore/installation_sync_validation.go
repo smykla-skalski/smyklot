@@ -45,6 +45,19 @@ func validateInstallationSyncConfigDocuments(
 ) (*orgsync.FileConfig, error) {
 	var proposedFiles *orgsync.FileConfig
 	for _, config := range configs {
+		if config.prepared.remove {
+			if config.current != nil {
+				if err := validateRestorableSyncConfig(
+					config.current.Kind, syncConfigSettingsDocument(*config.current),
+				); err != nil {
+					return nil, err
+				}
+			}
+			if config.prepared.change.Kind == orgsync.KindFiles {
+				proposedFiles = &orgsync.FileConfig{}
+			}
+			continue
+		}
 		document := config.prepared.document
 		var err error
 		switch config.prepared.change.Kind {
@@ -113,6 +126,9 @@ func validateInstallationSyncOverrideDocuments(
 			return fmt.Errorf("validate stored %s sync override for %s: %w",
 				kind, override.repository.ID, err)
 		}
+		if override.prepared.remove {
+			continue
+		}
 		if kind != orgsync.KindFiles {
 			if !bytes.Equal(override.prepared.document, []byte(emptyDocument)) {
 				return fmt.Errorf(
@@ -137,7 +153,8 @@ func validateInstallationSyncOverrideDocuments(
 // only capture and replace it after proving that its before state still has a
 // document this version understands. Exact no-ops do not overwrite anything.
 func validateCurrentInstallationSyncOverride(override syncOverrideSettingsWork) error {
-	if override.current == nil || sameSyncOverride(*override.current, override.prepared) {
+	if override.current == nil ||
+		(!override.prepared.remove && sameSyncOverride(*override.current, override.prepared)) {
 		return nil
 	}
 	if override.current.Kind != orgsync.KindFiles {

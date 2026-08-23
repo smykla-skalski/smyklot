@@ -135,7 +135,9 @@ func declareInvalidCheckpointSpec(
 			Items: []storage.SettingsCheckpointItem{item},
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(created.ID).To(Equal(int64(1)))
+		// Reconciliation creates the installation baseline first. The rejected
+		// Root checkpoint must not consume the next sequence value.
+		Expect(created.ID).To(Equal(int64(2)))
 	})
 }
 

@@ -30,31 +30,52 @@ func (s *Store) buildInstallationSyncConfigItems(
 ) (installationSettingsWork, error) {
 	for index := range work.syncConfigs {
 		entry := &work.syncConfigs[index]
-		entry.changed = entry.current == nil || entry.current.Digest != entry.prepared.digest
-		if !entry.changed {
-			entry.afterRevision = entry.current.Revision
-			continue
-		}
-		if entry.current == nil {
-			revision, err := nextSyncConfigRevision(
-				ctx, tx, targetID, entry.prepared.change.Kind,
-			)
-			if err != nil {
-				return installationSettingsWork{}, err
-			}
-			entry.afterRevision = revision
-		} else {
-			entry.afterRevision = entry.current.Revision + 1
-		}
-		item, err := syncConfigSettingsCheckpointItem(*entry)
+		item, err := s.buildInstallationSyncConfigItem(ctx, tx, targetID, entry)
 		if err != nil {
 			return installationSettingsWork{}, err
 		}
-		work.items = append(work.items, item)
-		work.syncChanged = true
+		if item != nil {
+			work.items = append(work.items, *item)
+			work.syncChanged = true
+		}
 	}
 
 	return work, nil
+}
+
+func (s *Store) buildInstallationSyncConfigItem(
+	ctx context.Context,
+	tx *transaction,
+	targetID string,
+	entry *syncConfigSettingsWork,
+) (*storage.SettingsCheckpointItem, error) {
+	if entry.prepared.remove {
+		entry.changed = entry.current != nil
+	} else {
+		entry.changed = entry.current == nil || entry.current.Digest != entry.prepared.digest
+	}
+	if !entry.changed {
+		if entry.current != nil {
+			entry.afterRevision = entry.current.Revision
+		}
+
+		return nil, nil
+	}
+	if entry.current == nil {
+		revision, err := nextSyncConfigRevision(ctx, tx, targetID, entry.prepared.change.Kind)
+		if err != nil {
+			return nil, err
+		}
+		entry.afterRevision = revision
+	} else {
+		entry.afterRevision = entry.current.Revision + 1
+	}
+	item, err := syncConfigSettingsCheckpointItem(*entry)
+	if err != nil {
+		return nil, err
+	}
+
+	return &item, nil
 }
 
 func (s *Store) buildInstallationSyncOverrideItems(
@@ -65,31 +86,54 @@ func (s *Store) buildInstallationSyncOverrideItems(
 ) (installationSettingsWork, error) {
 	for index := range work.syncOverrides {
 		entry := &work.syncOverrides[index]
-		entry.changed = entry.current == nil || !sameSyncOverride(*entry.current, entry.prepared)
-		if !entry.changed {
-			entry.afterRevision = entry.current.Revision
-			continue
-		}
-		if entry.current == nil {
-			revision, err := nextSyncOverrideRevision(
-				ctx, tx, targetID, entry.repository.ID, entry.prepared.change.Kind,
-			)
-			if err != nil {
-				return installationSettingsWork{}, err
-			}
-			entry.afterRevision = revision
-		} else {
-			entry.afterRevision = entry.current.Revision + 1
-		}
-		item, err := syncOverrideSettingsCheckpointItem(*entry)
+		item, err := s.buildInstallationSyncOverrideItem(ctx, tx, targetID, entry)
 		if err != nil {
 			return installationSettingsWork{}, err
 		}
-		work.items = append(work.items, item)
-		work.syncChanged = true
+		if item != nil {
+			work.items = append(work.items, *item)
+			work.syncChanged = true
+		}
 	}
 
 	return work, nil
+}
+
+func (s *Store) buildInstallationSyncOverrideItem(
+	ctx context.Context,
+	tx *transaction,
+	targetID string,
+	entry *syncOverrideSettingsWork,
+) (*storage.SettingsCheckpointItem, error) {
+	if entry.prepared.remove {
+		entry.changed = entry.current != nil
+	} else {
+		entry.changed = entry.current == nil || !sameSyncOverride(*entry.current, entry.prepared)
+	}
+	if !entry.changed {
+		if entry.current != nil {
+			entry.afterRevision = entry.current.Revision
+		}
+
+		return nil, nil
+	}
+	if entry.current == nil {
+		revision, err := nextSyncOverrideRevision(
+			ctx, tx, targetID, entry.repository.ID, entry.prepared.change.Kind,
+		)
+		if err != nil {
+			return nil, err
+		}
+		entry.afterRevision = revision
+	} else {
+		entry.afterRevision = entry.current.Revision + 1
+	}
+	item, err := syncOverrideSettingsCheckpointItem(*entry)
+	if err != nil {
+		return nil, err
+	}
+
+	return &item, nil
 }
 
 func syncConfigSettingsCheckpointItem(
@@ -104,6 +148,13 @@ func syncConfigSettingsCheckpointItem(
 			return storage.SettingsCheckpointItem{}, err
 		}
 		before = state
+	}
+	if work.prepared.remove {
+		return storage.SettingsCheckpointItem{
+			Kind: storage.SettingsCheckpointItemSyncConfig, SyncKind: work.prepared.change.Kind,
+			DocumentVersion: storage.SettingsCheckpointDocumentVersion,
+			Before:          before,
+		}, nil
 	}
 	after, err := syncConfigSettingsState(storage.SyncConfigSettingsDocument{
 		Enabled: work.prepared.change.Enabled, Document: string(work.prepared.document),
@@ -131,6 +182,15 @@ func syncOverrideSettingsCheckpointItem(
 			return storage.SettingsCheckpointItem{}, err
 		}
 		before = state
+	}
+	if work.prepared.remove {
+		return storage.SettingsCheckpointItem{
+			Kind:         storage.SettingsCheckpointItemSyncOverride,
+			RepositoryID: work.repository.ID, RepositoryFullName: work.repository.FullName,
+			SyncKind:        work.prepared.change.Kind,
+			DocumentVersion: storage.SettingsCheckpointDocumentVersion,
+			Before:          before,
+		}, nil
 	}
 	after, err := syncOverrideSettingsState(storage.SyncOverrideSettingsDocument{
 		Enabled: work.prepared.change.Enabled, Document: string(work.prepared.document),

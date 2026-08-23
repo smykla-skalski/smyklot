@@ -18,11 +18,13 @@ type preparedSyncConfigSettings struct {
 	change   storage.InstallationSyncConfigChange
 	document []byte
 	digest   string
+	remove   bool
 }
 
 type preparedSyncOverrideSettings struct {
 	change   storage.InstallationSyncOverrideChange
 	document []byte
+	remove   bool
 }
 
 type syncConfigSettingsWork struct {

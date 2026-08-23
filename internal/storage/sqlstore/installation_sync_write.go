@@ -42,6 +42,18 @@ func writeInstallationSyncConfig(
 	work syncConfigSettingsWork,
 ) error {
 	change := work.prepared.change
+	if work.prepared.remove {
+		result, err := tx.ExecContext(ctx, `
+DELETE FROM sync_configs
+WHERE target_id = ? AND kind = ? AND revision = ?`,
+			request.TargetID, change.Kind, change.ExpectedRevision,
+		)
+		if err != nil {
+			return fmt.Errorf("remove restored installation sync config: %w", err)
+		}
+
+		return checkInstallationSyncUpdate(result, "sync config")
+	}
 	if work.current == nil {
 		_, err := tx.ExecContext(ctx, `
 INSERT INTO sync_configs (
@@ -78,6 +90,18 @@ func writeInstallationSyncOverride(
 	work syncOverrideSettingsWork,
 ) error {
 	change := work.prepared.change
+	if work.prepared.remove {
+		result, err := tx.ExecContext(ctx, `
+DELETE FROM sync_repository_overrides
+WHERE repository_id = ? AND kind = ? AND revision = ?`,
+			work.repository.ID, change.Kind, change.ExpectedRevision,
+		)
+		if err != nil {
+			return fmt.Errorf("remove restored installation sync override: %w", err)
+		}
+
+		return checkInstallationSyncUpdate(result, "sync override")
+	}
 	if work.current == nil {
 		_, err := tx.ExecContext(ctx, `
 INSERT INTO sync_repository_overrides (
@@ -145,6 +169,9 @@ func (s *Store) readInstallationSyncSettingsResult(
 ) error {
 	result.SyncConfigs = make([]orgsync.Config, 0, len(prepared.syncConfigs))
 	for _, config := range prepared.syncConfigs {
+		if config.remove {
+			continue
+		}
 		read, err := syncConfigForUpdate(
 			ctx, tx, s.dialect, prepared.request.TargetID, config.change.Kind,
 		)
@@ -155,6 +182,9 @@ func (s *Store) readInstallationSyncSettingsResult(
 	}
 	result.SyncOverrides = make([]orgsync.RepositoryOverride, 0, len(prepared.syncOverrides))
 	for _, override := range prepared.syncOverrides {
+		if override.remove {
+			continue
+		}
 		read, err := syncOverrideForUpdate(
 			ctx, tx, s.dialect, override.change.RepositoryID, override.change.Kind,
 		)
