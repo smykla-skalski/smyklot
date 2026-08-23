@@ -109,6 +109,10 @@ func validateInstallationSyncOverrideDocuments(
 ) error {
 	for _, override := range overrides {
 		kind := override.prepared.change.Kind
+		if err := validateCurrentInstallationSyncOverride(override); err != nil {
+			return fmt.Errorf("validate stored %s sync override for %s: %w",
+				kind, override.repository.ID, err)
+		}
 		if kind != orgsync.KindFiles {
 			if !bytes.Equal(override.prepared.document, []byte(emptyDocument)) {
 				return fmt.Errorf(
@@ -129,19 +133,49 @@ func validateInstallationSyncOverrideDocuments(
 	return nil
 }
 
+// The current row was read under the transaction's row lock. A dirty write may
+// only capture and replace it after proving that its before state still has a
+// document this version understands. Exact no-ops do not overwrite anything.
+func validateCurrentInstallationSyncOverride(override syncOverrideSettingsWork) error {
+	if override.current == nil || sameSyncOverride(*override.current, override.prepared) {
+		return nil
+	}
+	if override.current.Kind != orgsync.KindFiles {
+		return validateInstallationEmptyOverride(override.current.Document)
+	}
+
+	current, err := decodeInstallationFilesOverride(override.current.Document)
+	if err != nil {
+		return err
+	}
+	// Every current path is kept so validation covers only facts intrinsic to
+	// the document. Template membership may have changed since this row landed.
+	return current.ValidateAgainst(orgsync.FileConfig{}, current.Adjusted())
+}
+
+func validateInstallationEmptyOverride(document []byte) error {
+	if err := requireInstallationSyncObject(document); err != nil {
+		return err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.DisallowUnknownFields()
+	var empty struct{}
+	if err := decoder.Decode(&empty); err != nil {
+		return fmt.Errorf("%w: stored override is not an empty object: %w",
+			orgsync.ErrInvalidConfig, err)
+	}
+
+	return nil
+}
+
 func validateInstallationFilesOverride(
 	override syncOverrideSettingsWork,
 	proposedFiles *orgsync.FileConfig,
 	currentFiles *orgsync.Config,
 ) error {
-	if err := requireInstallationSyncObject(override.prepared.document); err != nil {
+	adjustments, err := decodeInstallationFilesOverride(override.prepared.document)
+	if err != nil {
 		return err
-	}
-	var adjustments orgsync.FileOverride
-	decoder := json.NewDecoder(bytes.NewReader(override.prepared.document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&adjustments); err != nil {
-		return fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
 	}
 	keeping := installationFilesAlreadyAdjusted(override.current)
 	files := orgsync.FileConfig{}
@@ -163,6 +197,20 @@ func validateInstallationFilesOverride(
 	return adjustments.ValidateAgainst(files, keeping)
 }
 
+func decodeInstallationFilesOverride(document []byte) (orgsync.FileOverride, error) {
+	if err := requireInstallationSyncObject(document); err != nil {
+		return orgsync.FileOverride{}, err
+	}
+	var adjustments orgsync.FileOverride
+	decoder := json.NewDecoder(bytes.NewReader(document))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&adjustments); err != nil {
+		return orgsync.FileOverride{}, fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
+	}
+
+	return adjustments, nil
+}
+
 func hasInstallationFilesOverride(overrides []syncOverrideSettingsWork) bool {
 	for _, override := range overrides {
 		if override.prepared.change.Kind == orgsync.KindFiles {
@@ -177,8 +225,8 @@ func installationFilesAlreadyAdjusted(current *orgsync.RepositoryOverride) []str
 	if current == nil {
 		return nil
 	}
-	var saved orgsync.FileOverride
-	if err := json.Unmarshal(current.Document, &saved); err != nil {
+	saved, err := decodeInstallationFilesOverride(current.Document)
+	if err != nil {
 		return nil
 	}
 

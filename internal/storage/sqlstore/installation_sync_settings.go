@@ -216,7 +216,8 @@ func (s *Store) loadInstallationSyncOverrideWork(
 		if err == nil {
 			if !json.Valid(current.Document) {
 				return installationSettingsWork{}, fmt.Errorf(
-					"stored %s sync override document must be valid JSON", current.Kind,
+					"%w: stored %s sync override document must be valid JSON",
+					orgsync.ErrInvalidConfig, current.Kind,
 				)
 			}
 			entry.current = &current
