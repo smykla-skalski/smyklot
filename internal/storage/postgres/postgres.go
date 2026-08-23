@@ -92,6 +92,12 @@ func Open(ctx context.Context, dsn string) (*Store, error) {
 
 		return nil, err
 	}
+	shared := sqlstore.New(pool, Dialect{})
+	if err := shared.BackfillSettingsCheckpointBaselines(ctx, time.Now().UTC()); err != nil {
+		_ = pool.Close()
 
-	return &Store{Store: sqlstore.New(pool, Dialect{})}, nil
+		return nil, err
+	}
+
+	return &Store{Store: shared}, nil
 }

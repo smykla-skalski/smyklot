@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // SettingsCheckpointScope says which settings boundary one checkpoint belongs
@@ -25,8 +26,9 @@ const (
 type SettingsCheckpointAction string
 
 const (
-	SettingsCheckpointActionSave    SettingsCheckpointAction = "save"
-	SettingsCheckpointActionRestore SettingsCheckpointAction = "restore"
+	SettingsCheckpointActionBaseline SettingsCheckpointAction = "baseline"
+	SettingsCheckpointActionSave     SettingsCheckpointAction = "save"
+	SettingsCheckpointActionRestore  SettingsCheckpointAction = "restore"
 )
 
 // SettingsCheckpointItemKind is the bounded set of resources the settings
@@ -85,8 +87,20 @@ type SettingsCheckpointItem struct {
 	After              *SettingsCheckpointState
 }
 
-// SettingsCheckpointCreate is a sparse settings delta to persist. Items contain
-// only resources that changed, but each present side is a complete document.
+// RuntimeSettingsDocument is the complete set of persisted Root runtime
+// overrides. Deployment defaults are deliberately absent: a restore must put
+// the stored overrides back, then let the current deployment resolve them.
+type RuntimeSettingsDocument struct {
+	BotConfig            *config.Config `json:"bot_config"`
+	LogLevel             *string        `json:"log_level"`
+	PollInterval         *time.Duration `json:"poll_interval"`
+	PendingCIQuietPeriod *time.Duration `json:"pending_ci_quiet_period"`
+	SessionTTL           *time.Duration `json:"session_ttl"`
+	PathIndexInterval    *time.Duration `json:"path_index_interval"`
+}
+
+// SettingsCheckpointCreate is either a complete baseline or a sparse delta to
+// persist. Every present side is a complete resource document.
 type SettingsCheckpointCreate struct {
 	Scope          SettingsCheckpointScope
 	TargetID       string
@@ -125,26 +139,57 @@ func (create SettingsCheckpointCreate) Validate() error {
 	if strings.TrimSpace(create.ActorAccountID) == "" || create.CreatedAt.IsZero() {
 		return errors.New("settings checkpoint actor and creation time are required")
 	}
-	switch create.Action {
+	if err := validateSettingsCheckpointAction(create.Action, create.RestoredFromID); err != nil {
+		return err
+	}
+
+	return validateSettingsCheckpointItems(create.Scope, create.Action, create.Items)
+}
+
+func validateSettingsCheckpointAction(
+	action SettingsCheckpointAction,
+	restoredFromID *int64,
+) error {
+	switch action {
+	case SettingsCheckpointActionBaseline:
+		if restoredFromID != nil {
+			return errors.New("baseline settings checkpoint cannot name a restore source")
+		}
 	case SettingsCheckpointActionSave:
-		if create.RestoredFromID != nil {
+		if restoredFromID != nil {
 			return errors.New("saved settings checkpoint cannot name a restore source")
 		}
 	case SettingsCheckpointActionRestore:
-		if create.RestoredFromID == nil || *create.RestoredFromID <= 0 {
+		if restoredFromID == nil || *restoredFromID <= 0 {
 			return errors.New("restored settings checkpoint needs a restore source")
 		}
 	default:
-		return fmt.Errorf("unsupported settings checkpoint action %q", create.Action)
+		return fmt.Errorf("unsupported settings checkpoint action %q", action)
 	}
-	if len(create.Items) == 0 {
+
+	return nil
+}
+
+func validateSettingsCheckpointItems(
+	scope SettingsCheckpointScope,
+	action SettingsCheckpointAction,
+	items []SettingsCheckpointItem,
+) error {
+	if len(items) == 0 {
 		return errors.New("settings checkpoint needs at least one changed item")
 	}
 
-	seen := make(map[string]bool, len(create.Items))
-	for index, item := range create.Items {
-		if err := item.validate(create.Scope); err != nil {
+	seen := make(map[string]bool, len(items))
+	for index, item := range items {
+		if err := item.validate(scope); err != nil {
 			return fmt.Errorf("settings checkpoint item %d: %w", index, err)
+		}
+		if action == SettingsCheckpointActionBaseline &&
+			(item.Before != nil || item.After == nil) {
+			return fmt.Errorf(
+				"settings checkpoint item %d: baseline item needs only an after state",
+				index,
+			)
 		}
 		identity := item.identity()
 		if seen[identity] {

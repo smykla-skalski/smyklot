@@ -86,7 +86,7 @@ func (s *Store) ReconcileInstallation(
 
 	defer func() { _ = tx.Rollback() }()
 
-	if err := reconcileInstallation(ctx, tx, snapshot); err != nil {
+	if err := s.reconcileInstallation(ctx, tx, snapshot); err != nil {
 		return err
 	}
 
@@ -114,7 +114,7 @@ func (s *Store) ReconcileCatalog(
 		return fmt.Errorf("mark installation targets unavailable: %w", err)
 	}
 	for _, snapshot := range snapshots {
-		if err := reconcileInstallation(ctx, tx, snapshot); err != nil {
+		if err := s.reconcileInstallation(ctx, tx, snapshot); err != nil {
 			return err
 		}
 	}
@@ -123,6 +123,20 @@ func (s *Store) ReconcileCatalog(
 	}
 
 	return nil
+}
+
+func (s *Store) reconcileInstallation(
+	ctx context.Context,
+	tx *transaction,
+	snapshot storage.InstallationSnapshot,
+) error {
+	if err := reconcileInstallation(ctx, tx, snapshot); err != nil {
+		return err
+	}
+
+	return s.backfillInstallationSettingsBaseline(ctx, tx, settingsBaselineTarget{
+		id: snapshot.TargetID, actorAccountID: snapshot.Account.ID,
+	}, snapshot.SyncedAt)
 }
 
 // ListRootTargets returns the complete retained installation catalog. Root

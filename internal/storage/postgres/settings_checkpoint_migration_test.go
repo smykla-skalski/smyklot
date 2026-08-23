@@ -75,7 +75,7 @@ checkpoint_id, kind, enabled, document, digest, revision
 		Scan(&revision, &genericHeaders, &genericItems); err != nil {
 		t.Fatalf("read migrated settings history: %v", err)
 	}
-	if revision != 7 || genericHeaders != 0 || genericItems != 0 {
+	if revision != 7 || genericHeaders != 1 || genericItems != 1 {
 		t.Fatalf("migration changed history: revision=%d headers=%d items=%d",
 			revision, genericHeaders, genericItems)
 	}

@@ -7,7 +7,7 @@ CREATE TABLE settings_checkpoints (
     scope TEXT NOT NULL CHECK (scope IN ('root', 'installation')),
     target_id TEXT REFERENCES targets(id) ON DELETE CASCADE,
     actor_account_id TEXT NOT NULL REFERENCES accounts(id),
-    action TEXT NOT NULL CHECK (action IN ('save', 'restore')),
+    action TEXT NOT NULL CHECK (action IN ('baseline', 'save', 'restore')),
     restored_from_id BIGINT REFERENCES settings_checkpoints(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL,
     CHECK (
@@ -19,6 +19,18 @@ CREATE TABLE settings_checkpoints (
 
 CREATE INDEX settings_checkpoints_scope_target_idx
     ON settings_checkpoints (scope, target_id, id DESC);
+
+-- Baselines describe the complete state first observed by generic history, so
+-- later restores can reason about resources that did not exist. Partial
+-- uniqueness makes both upgrade backfill and first reconciliation safe to
+-- retry without conflating them with sparse Save and Restore history.
+CREATE UNIQUE INDEX settings_checkpoints_installation_baseline_idx
+    ON settings_checkpoints (target_id)
+    WHERE scope = 'installation' AND action = 'baseline';
+
+CREATE UNIQUE INDEX settings_checkpoints_root_baseline_idx
+    ON settings_checkpoints (scope)
+    WHERE scope = 'root' AND action = 'baseline';
 
 CREATE TABLE settings_checkpoint_items (
     checkpoint_id BIGINT NOT NULL
