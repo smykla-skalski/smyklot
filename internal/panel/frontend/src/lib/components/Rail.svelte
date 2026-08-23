@@ -48,6 +48,8 @@
     inboxActive,
     onSelectInbox,
     unreadCount,
+    dirtyTargetIds,
+    rootDirty = false,
     theme,
     onSelectTheme,
     onSignOut,
@@ -67,6 +69,10 @@
     inboxActive: boolean;
     onSelectInbox: () => void;
     unreadCount: number;
+    /** Workspace IDs whose configuration has not been saved. */
+    dirtyTargetIds?: ReadonlySet<string>;
+    /** Whether Root configuration has not been saved. */
+    rootDirty?: boolean;
     theme: ThemeDisplay;
     onSelectTheme: (theme: ThemeDisplay) => void;
     onSignOut: () => void | Promise<void>;
@@ -136,6 +142,9 @@
     return visible;
   });
   const folded = $derived(targets.filter((target) => !shown.includes(target)));
+  const foldedDirtyCount = $derived(
+    folded.filter((target) => dirtyTargetIds?.has(target.id) === true).length,
+  );
 
   let moreOpen = $state(false);
   let query = $state('');
@@ -154,6 +163,14 @@
 
   function nameOf(target: PanelTarget): string {
     return target.account.display_name || target.account.login;
+  }
+
+  function targetIsDirty(target: PanelTarget): boolean {
+    return dirtyTargetIds?.has(target.id) === true;
+  }
+
+  function dirtyTip(label: string, dirty: boolean): string {
+    return dirty ? `${label} - unsaved changes` : label;
   }
 
   function plainClick(event: MouseEvent): boolean {
@@ -186,6 +203,12 @@
 
   const unreadLabel = $derived(unreadCount > 99 ? '99+' : String(unreadCount));
   const inboxTip = $derived(unreadCount === 0 ? 'Inbox' : `Inbox - ${unreadCount} unread`);
+  const foldedTip = $derived.by(() => {
+    const label = `${folded.length} more workspace${folded.length === 1 ? '' : 's'}`;
+    if (foldedDirtyCount === 0) return label;
+    return `${label} - ${foldedDirtyCount} with unsaved changes`;
+  });
+  const rootTip = $derived(dirtyTip('Root console', rootDirty));
   const viewerName = $derived(viewer?.account.display_name || viewer?.account.login || '');
   const viewerTip = $derived(
     viewer === null ? 'Account' : `${viewerName} - @${viewer.account.login}`,
@@ -212,10 +235,11 @@
     <a
       class="rail-tile rail-ws"
       class:is-active={!rootMode && !inboxActive && target.id === selectedId}
+      class:has-dirty={targetIsDirty(target)}
       href={targetHref(target)}
       data-h={workspaceHue(target.account.login)}
-      data-tip={nameOf(target)}
-      aria-label={nameOf(target)}
+      data-tip={dirtyTip(nameOf(target), targetIsDirty(target))}
+      aria-label={dirtyTip(nameOf(target), targetIsDirty(target))}
       aria-current={!rootMode && !inboxActive && target.id === selectedId ? 'true' : undefined}
       onclick={(event) => selectFromClick(event, target)}
     >
@@ -228,6 +252,9 @@
         >
       {:else}
         <span class="t">{workspaceInitials(nameOf(target))}</span>
+      {/if}
+      {#if targetIsDirty(target)}
+        <span class="rail-dirty" aria-hidden="true">*</span>
       {/if}
     </a>
   {/each}
@@ -251,10 +278,15 @@
             {...attributes}
             class="rail-tile rail-more"
             class:menu-open={moreOpen}
+            class:has-dirty={foldedDirtyCount > 0}
             type="button"
-            data-tip={`${folded.length} more workspace${folded.length === 1 ? '' : 's'}`}
+            data-tip={foldedTip}
+            aria-label={foldedTip}
           >
             <span class="t">+{folded.length}</span>
+            {#if foldedDirtyCount > 0}
+              <span class="rail-dirty" aria-hidden="true">*</span>
+            {/if}
           </button>
         {/snippet}
         <div class="console-menu" role="none">
@@ -271,8 +303,10 @@
             {#each foldMatches as target (target.id)}
               <a
                 class="menu-item"
+                class:has-dirty={targetIsDirty(target)}
                 role="menuitem"
                 href={targetHref(target)}
+                aria-label={dirtyTip(nameOf(target), targetIsDirty(target))}
                 onclick={(event) => {
                   moreOpen = false;
                   selectFromClick(event, target);
@@ -286,6 +320,9 @@
                   </span>
                 {/if}
                 <ClippedLabel class="mi-label" text={nameOf(target)} />
+                {#if targetIsDirty(target)}
+                  <span class="rail-dirty menu-dirty" aria-hidden="true">*</span>
+                {/if}
               </a>
             {/each}
           </div>
@@ -303,13 +340,17 @@
     <a
       class="rail-tile rail-root"
       class:is-active={rootMode}
+      class:has-dirty={rootDirty}
       href={rootEntryHref}
-      data-tip="Root console"
-      aria-label="Root console"
+      data-tip={rootTip}
+      aria-label={rootTip}
       aria-current={rootMode ? 'true' : undefined}
       onclick={enterRootFromClick}
     >
       <Icon name="shield" size={18} />
+      {#if rootDirty}
+        <span class="rail-dirty" aria-hidden="true">*</span>
+      {/if}
     </a>
   {/if}
 
@@ -635,6 +676,45 @@
   .rail-badge .t {
     display: block;
     text-box: trim-both cap alphabetic;
+  }
+
+  /* The rail cannot grow when state appears. This keyed mark sits over the
+     existing tile/menu geometry and remains legible without its warning ink. */
+  .rail-dirty {
+    align-items: center;
+    background: var(--sidebar-bg);
+    block-size: 12px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    box-sizing: border-box;
+    color: var(--warning);
+    display: inline-flex;
+    font-family: var(--mono);
+    font-size: 0.625rem;
+    font-weight: 800;
+    inline-size: 12px;
+    inset-block-start: -3px;
+    inset-inline-end: -3px;
+    justify-content: center;
+    line-height: 1;
+    position: absolute;
+    text-box: trim-both cap alphabetic;
+    z-index: 3;
+  }
+
+  .menu-item.has-dirty {
+    position: relative;
+  }
+
+  .menu-item.has-dirty :global(.mi-label) {
+    padding-inline-end: 16px;
+  }
+
+  .menu-dirty {
+    background: var(--sidebar-popover-bg);
+    inset-block-start: 50%;
+    inset-inline-end: 8px;
+    translate: 0 -50%;
   }
 
   /* Rail tooltips: the name on hover, popover material. */

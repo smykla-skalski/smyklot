@@ -136,6 +136,44 @@ describe('the rail identity tiles', () => {
     expect(container.querySelector('img.avatar')).toBeNull();
     expect(container.querySelector('.rail-ws .t')?.textContent).toBe('SS');
   });
+
+  it('marks visible, folded, summary, and Root destinations without changing their names', async () => {
+    const { container } = render(Rail, {
+      ...props,
+      viewer: null,
+      targets: [target('alpha', null), target('beta', null), target('gamma', null)],
+      dirtyTargetIds: new Set(['ws-alpha', 'ws-beta']),
+      rootDirty: true,
+      rootEnabled: true,
+    });
+
+    const visible = screen.getByRole('link', { name: 'alpha - unsaved changes' });
+    expect(visible.classList.contains('has-dirty')).toBe(true);
+    expect(visible.querySelector('.rail-dirty')?.textContent).toBe('*');
+
+    const folded = screen.getByRole('button', {
+      name: '2 more workspaces - 1 with unsaved changes',
+    });
+    expect(folded.classList.contains('has-dirty')).toBe(true);
+    expect(folded.querySelector('.rail-dirty')?.textContent).toBe('*');
+
+    const root = screen.getByRole('link', { name: 'Root console - unsaved changes' });
+    expect(root.querySelector('.rail-dirty')?.textContent).toBe('*');
+
+    await fireEvent.click(folded);
+
+    const foldedDirty = await screen.findByRole('menuitem', {
+      name: 'beta - unsaved changes',
+    });
+    expect(foldedDirty.querySelector('.menu-dirty')?.textContent).toBe('*');
+    expect(screen.getByRole('menuitem', { name: 'gamma' }).classList.contains('has-dirty')).toBe(
+      false,
+    );
+
+    for (const marker of container.querySelectorAll('.rail-dirty')) {
+      expect(marker.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
 });
 
 describe('the workspace identity', () => {

@@ -10,6 +10,8 @@
     /** A count that demands attention (a waiting plan) speaks, quietly. */
     count?: number | string;
     signal?: boolean;
+    /** This destination contains configuration that has not been saved. */
+    dirty?: boolean;
   }
 
   /** A page of the active console: one row of the tree. */
@@ -20,6 +22,8 @@
     href: string;
     active: boolean;
     kids?: readonly SidebarKid[];
+    /** This page itself contains configuration that has not been saved. */
+    dirty?: boolean;
   }
 </script>
 
@@ -53,6 +57,19 @@
   const activePage = $derived(pages.find((page) => page.active));
   const activeKid = $derived(activePage?.kids?.find((kid) => kid.active));
   const selectionKey = $derived(`${activePage?.id ?? ''}:${activeKid?.id ?? ''}:${collapsed}`);
+
+  function hasDirtyKid(page: SidebarPage): boolean {
+    return page.kids?.some((kid) => kid.dirty === true) ?? false;
+  }
+
+  /**
+   * A hidden child hands its state to the nearest visible row. Expanded active
+   * groups keep the state on the precise child instead; a page's own state is
+   * always its own to show.
+   */
+  function bubblesDirty(page: SidebarPage): boolean {
+    return page.dirty === true || ((collapsed || !page.active) && hasDirtyKid(page));
+  }
 
   function plainClick(event: MouseEvent): boolean {
     return !(
@@ -296,6 +313,7 @@
           class:is-active={page.active}
           class:is-flown={flownPage === page.id}
           class:has-signal={page.kids.some((kid) => kid.signal === true)}
+          class:has-dirty={bubblesDirty(page)}
           role="none"
           onpointerover={() => flyOver(page.id)}
           onpointerout={flyOut}
@@ -311,6 +329,10 @@
             <span class="row-visual">
               <Icon name={page.icon} size={16} />
               <span class="t">{page.label}</span>
+              {#if bubblesDirty(page)}
+                <span class="dirty-mark" aria-hidden="true">*</span>
+                <span class="visually-hidden">Unsaved changes</span>
+              {/if}
             </span>
           </a>
           <!-- Always in the DOM, shown by CSS: an anchor destroyed between a
@@ -322,6 +344,7 @@
               <a
                 class="tree-kid"
                 class:is-active={kid.active}
+                class:has-dirty={kid.dirty === true}
                 href={kid.href}
                 aria-current={kid.active ? 'page' : undefined}
                 onclick={(event) => kidFromClick(event, page, kid)}
@@ -333,6 +356,10 @@
                       <span class="t">{kid.count}</span>
                     </span>
                   {/if}
+                  {#if kid.dirty === true}
+                    <span class="dirty-mark" aria-hidden="true">*</span>
+                    <span class="visually-hidden">Unsaved changes</span>
+                  {/if}
                 </span>
               </a>
             {/each}
@@ -342,6 +369,7 @@
         <a
           class="tree-row"
           class:is-active={page.active}
+          class:has-dirty={page.dirty === true}
           href={page.href}
           data-tip={page.label}
           aria-current={page.active ? 'page' : undefined}
@@ -350,6 +378,10 @@
           <span class="row-visual">
             <Icon name={page.icon} size={16} />
             <span class="t">{page.label}</span>
+            {#if page.dirty === true}
+              <span class="dirty-mark" aria-hidden="true">*</span>
+              <span class="visually-hidden">Unsaved changes</span>
+            {/if}
           </span>
         </a>
       {/if}
@@ -650,6 +682,32 @@
     margin-inline-end: -5px;
   }
 
+  /* A state mark, not a count: the asterisk keeps it meaningful without its
+     warning color and the compact keyed square stays subordinate to selection. */
+  .dirty-mark {
+    align-items: center;
+    background: var(--sidebar-bg);
+    block-size: 14px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    box-sizing: border-box;
+    color: var(--warning);
+    display: inline-flex;
+    flex: none;
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    font-weight: 800;
+    inline-size: 14px;
+    justify-content: center;
+    line-height: 1;
+    margin-inline-start: auto;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .tree-kids .dirty-mark {
+    background: var(--sidebar-popover-bg);
+  }
+
   /* In the sidebar the chip wears sidebar material - content tokens follow
      the theme, but the Root sidebar is dark in both. */
   .tab-count {
@@ -749,7 +807,7 @@
       translate: 0 1px;
     }
 
-    /* The signal that lived on a section keeps talking from the page's glyph. */
+    /* A signal is a waiting plan. Dirty state has its own keyed mark below. */
     :global(.app-shell.sidebar-collapsed) .tree-page.has-signal > .tree-row::before {
       background: var(--sidebar-count-signal-ink);
       border-radius: 50%;
@@ -758,6 +816,13 @@
       inline-size: 6px;
       inset-block-start: 6px;
       inset-inline-end: 8px;
+      position: absolute;
+    }
+
+    :global(.app-shell.sidebar-collapsed) .tree-row > .row-visual > .dirty-mark {
+      inset-block-start: -3px;
+      inset-inline-end: -3px;
+      margin: 0;
       position: absolute;
     }
 

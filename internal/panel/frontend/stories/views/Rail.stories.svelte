@@ -85,6 +85,19 @@
   {/snippet}
 </Story>
 
+<!--
+  Unsaved state reaches every scale of the rail: a visible workspace, one
+  behind the fold, the fold summary, and Root. All keep the same tile geometry.
+-->
+<Story
+  name="Unsaved settings"
+  args={{ dirtyTargetIds: new Set(['ws-0', 'ws-8']), rootDirty: true }}
+>
+  {#snippet template(args)}
+    <div class="stage short"><Rail {...args} /></div>
+  {/snippet}
+</Story>
+
 <!-- The Root console pressed: the shield wears the thumb, workspaces stay one press away. -->
 <Story name="Root console" args={{ rootMode: true }}>
   {#snippet template(args)}

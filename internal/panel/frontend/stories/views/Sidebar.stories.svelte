@@ -59,6 +59,15 @@
         : page,
     );
 
+  const DIRTY_WORKSPACE_PAGES: SidebarPage[] = WORKSPACE_PAGES.map((page) => {
+    if (page.id === 'defaults') return { ...page, dirty: true };
+    if (page.id !== 'sync') return page;
+    return {
+      ...page,
+      kids: page.kids?.map((kid) => (kid.id === 'settings' ? { ...kid, dirty: true } : kid)),
+    };
+  });
+
   const { Story } = defineMeta({
     title: 'Views/Sidebar',
     component: Sidebar,
@@ -95,6 +104,16 @@
   {/snippet}
 </Story>
 
+<!--
+  Dirty is not the Plan's signal: Defaults marks its own row, while Sync keeps
+  the mark on the precise Settings child because that group is visible.
+-->
+<Story name="Unsaved trail" args={{ pages: DIRTY_WORKSPACE_PAGES }}>
+  {#snippet template(args)}
+    <div class="stage"><Sidebar {...args} /></div>
+  {/snippet}
+</Story>
+
 <!-- The Root console's own map, same component, its palette from the shell. -->
 <Story
   name="Root console"
@@ -107,10 +126,10 @@
 
 <!--
   Folded to the 4.5rem strip: rows become centred glyphs with names as
-  tooltips, sections open as a flyout, the Plan count survives as a dot on
-  its page's glyph. Needs a shell wider than 64rem, like the app's.
+  tooltips, sections open as a flyout, and hidden child state bubbles to its
+  page glyph. Needs a shell wider than 64rem, like the app's.
 -->
-<Story name="Collapsed strip" args={{ collapsed: true }}>
+<Story name="Collapsed strip" args={{ collapsed: true, pages: DIRTY_WORKSPACE_PAGES }}>
   {#snippet template(args)}
     <div class="stage app-shell sidebar-collapsed"><Sidebar {...args} /></div>
   {/snippet}
