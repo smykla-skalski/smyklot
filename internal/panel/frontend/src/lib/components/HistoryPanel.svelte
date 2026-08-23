@@ -1285,7 +1285,7 @@
   }
 
   .checkpoint-trigger {
-    align-items: center;
+    align-items: baseline;
     background: transparent;
     border: 0;
     color: inherit;

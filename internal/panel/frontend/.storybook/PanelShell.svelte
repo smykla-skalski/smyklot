@@ -4,6 +4,7 @@
 
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
+  import { setSyncDraftScope, SyncDraftScope } from '#lib/sync-drafts.svelte.js';
   import { TARGET } from '../stories/support/fixtures.js';
   import { fixtureApi } from '../stories/support/api.js';
   import { applyDocumentTheme, resolveThemeDisplay } from '#lib/preferences.js';
@@ -46,6 +47,7 @@
    * against a fixture would show a result no service produced.
    */
   const session = new PanelSession(fixtureApi(), { version: null, serviceHost: null }, queryClient);
+  const syncDraftScope = new SyncDraftScope();
 
   /*
    * A workspace, because a session with none cannot build an address.
@@ -63,6 +65,7 @@
   session.targets = [TARGET];
   session.selectedId = TARGET.id;
   setPanelSession(session);
+  setSyncDraftScope(syncDraftScope);
 
   // The app's own function, so the toolbar and the panel can never disagree about
   // what a theme means. It writes `data-theme` on the document element and rewrites
