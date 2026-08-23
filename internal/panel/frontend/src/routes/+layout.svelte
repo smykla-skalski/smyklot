@@ -980,7 +980,7 @@
             onDismiss={dismissSelectedSettingsNotice}
             onOpenProblem={openSettingsProblem}
           />
-        {:else if session.isRootMode}
+        {:else if session.isRootMode && session.currentRootRoute.rootView !== 'installation'}
           <SettingsSaveComposer
             count={rootDirtyControls.length}
             saving={rootSettingsOperation.saving}

@@ -47,6 +47,10 @@ describe('settings draft destinations [Integration]', () => {
         `/i/${panel.account}/repositories`,
       );
 
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();
+      await page.getByText('1 changed setting').waitFor({ state: 'visible' });
+
       await page.goto(`${panel.origin}/root/installations`, { waitUntil: 'domcontentloaded' });
       const rootRepositoryHref = `/root/installations/${panel.account}/repositories`;
       const installationLink = page.locator(`a.installation-link[href="${rootRepositoryHref}"]`);
@@ -67,10 +71,15 @@ describe('settings draft destinations [Integration]', () => {
       await markedRepository.waitFor({ state: 'visible', timeout: 15_000 });
       expect(await markedRepository.getAttribute('data-unsaved')).toBe('true');
       expect(await markedRepository.innerText()).toContain('Unsaved changes');
+      expect(await page.locator('.settings-composer').count()).toBe(1);
 
       await page.getByRole('button', { name: 'Discard', exact: true }).click();
       await markedRepository.waitFor({ state: 'visible' });
       expect(await markedRepository.getAttribute('data-unsaved')).toBeNull();
+      expect(await page.locator('.settings-composer').count()).toBe(0);
+
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      await page.getByRole('button', { name: 'Discard', exact: true }).click();
     } finally {
       await page.close();
     }
