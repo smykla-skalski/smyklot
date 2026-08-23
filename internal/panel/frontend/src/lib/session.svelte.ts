@@ -430,7 +430,11 @@ export class PanelSession {
 
   selectHistorySection(section: HistorySection): void {
     const target = this.selectedTarget;
-    if (target === null || this.currentHistorySection === section) return;
+    if (
+      target === null ||
+      (this.currentView === 'history' && this.currentHistorySection === section)
+    )
+      return;
     void this.navigate(this.routeFor(target, 'history', section));
   }
 
@@ -611,9 +615,10 @@ export class PanelSession {
   }
 
   selectRootInstallationHistory(section: HistorySection): void {
-    if (this.currentRootRoute.rootView !== 'installation') return;
-    if (this.currentHistorySection === section) return;
-    const route = this.rootInstallationRoute(this.currentRootRoute.account, 'history', section);
+    const current = this.currentRootRoute;
+    if (current.rootView !== 'installation') return;
+    if (current.view === 'history' && this.currentHistorySection === section) return;
+    const route = this.rootInstallationRoute(current.account, 'history', section);
     void this.navigate(route);
   }
 

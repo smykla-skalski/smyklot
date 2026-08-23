@@ -27,6 +27,8 @@ let usersMs = Infinity;
 const apiCalls: string[] = [];
 let keptManagementView = false;
 let legacyRedirected = false;
+let historyDefaultsNavigated = false;
+let rootAuditNavigated = false;
 let plainHoverVisible = false;
 let plainPressVisible = false;
 let selectedHoverVisible = false;
@@ -82,6 +84,24 @@ beforeAll(async () => {
 
   keptManagementView =
     (await page.locator('.user-management').getAttribute('data-navigation-probe')) === 'kept';
+
+  await sidebarLink(page, 'History', 'tree-row').click();
+  await page.waitForURL((url) => url.pathname === `/i/${panel.account}/history/audit`);
+  historyDefaultsNavigated = true;
+
+  const rootInstallation = await panel.browser.newPage({ viewport: VIEWPORT });
+  try {
+    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/settings`, {
+      ready: '#root-page-heading',
+    });
+    await sidebarLink(rootInstallation, 'Audit', 'tree-kid').click();
+    await rootInstallation.waitForURL(
+      (url) => url.pathname === `/root/installations/${panel.account}/history/audit`,
+    );
+    rootAuditNavigated = true;
+  } finally {
+    await rootInstallation.close();
+  }
 
   const legacy = await panel.browser.newPage({ viewport: VIEWPORT });
   try {
@@ -211,5 +231,10 @@ describe('Access sidebar navigation [Integration]', () => {
 
   it('redirects old flat Access links to the canonical hierarchy', () => {
     expect(legacyRedirected).toBe(true);
+  });
+
+  it('opens default History leaves from outside History', () => {
+    expect(historyDefaultsNavigated, 'workspace History').toBe(true);
+    expect(rootAuditNavigated, 'Root installation Audit').toBe(true);
   });
 });
