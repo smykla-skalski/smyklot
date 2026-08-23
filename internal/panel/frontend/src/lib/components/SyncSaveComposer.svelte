@@ -59,7 +59,7 @@
         <span>{drafts.notice}</span>
       {:else}
         <strong>{count} changed Sync {noun}</strong>
-        <span>Review anywhere in this installation, then save everything together.</span>
+        <span>Review anywhere in this installation, then save everything together</span>
       {/if}
     </div>
 
