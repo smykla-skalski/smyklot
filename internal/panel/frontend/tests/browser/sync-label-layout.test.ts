@@ -16,6 +16,7 @@ interface Geometry {
 
 let panel: Panel;
 let page: Page;
+let patternEditorsAfterLabelAdd = 0;
 let rowsAddedByRepeatedPress = 0;
 
 async function geometry(): Promise<Geometry> {
@@ -47,9 +48,11 @@ beforeAll(async () => {
   page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
   await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
 
+  await page.getByRole('button', { name: 'Add', exact: true }).click();
   const initialRows = await page.locator('.label-row').count();
   const addLabel = page.getByRole('button', { name: 'Add a label' });
   await addLabel.click();
+  patternEditorsAfterLabelAdd = await page.getByRole('textbox', { name: 'Pattern' }).count();
   await addLabel.click();
   rowsAddedByRepeatedPress = (await page.locator('.label-row').count()) - initialRows;
   await page.getByRole('textbox', { name: 'Label name' }).fill(LONG_NAME);
@@ -65,6 +68,10 @@ afterAll(async () => {
 });
 
 describe('a long Sync label [Integration]', () => {
+  it('closes the pattern editor when Add a label is pressed', () => {
+    expect(patternEditorsAfterLabelAdd).toBe(0);
+  });
+
   it('replaces an unnamed new row when Add is pressed again', () => {
     expect(rowsAddedByRepeatedPress).toBe(1);
   });

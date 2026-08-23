@@ -293,7 +293,7 @@
        target by the time this document listener runs. A detached target
        has no ancestors to read; it was somebody's press, never "outside". */
     if (!target.isConnected) return;
-    if (editing !== null && !target.closest('.label-row')) closeSegment();
+    if (editing !== null && !target.closest('.label-row, .label-add')) closeSegment();
   }
 
   function keys(event: KeyboardEvent): void {
@@ -361,15 +361,7 @@
   <div class="card label-card">
     <div class="card-head">
       <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
-      <Button
-        disabled={frozen}
-        onclick={(event) => {
-          /* The document listener closes editors pressed from outside a row.
-             This press creates one, so it must not close its own new editor. */
-          event.stopPropagation();
-          addLabel();
-        }}
-      >
+      <Button class="label-add" disabled={frozen} onclick={addLabel}>
         {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
         Add a label
       </Button>
