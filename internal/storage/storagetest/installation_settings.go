@@ -23,6 +23,9 @@ func declareInstallationSettingsSpecs(
 	declareInstallationSettingsFailureSpec(harness, runtime)
 	declareInstallationSettingsNoopSpec(runtime)
 	declareInstallationSettingsCompatibilitySpec(runtime)
+	declareInstallationSyncSettingsSpecs(runtime)
+	declareInstallationSyncValidationSpecs(runtime)
+	declareInstallationSyncDocumentSpecs(runtime)
 }
 
 func declareAtomicInstallationSettingsSpec(
@@ -135,11 +138,23 @@ func declareInstallationSettingsFailureSpec(
 				{RepositoryID: "repo-1", EnabledOverride: &enabled, ExpectedRevision: 1},
 				{RepositoryID: "repo-2", IgnoreRepositoryFile: true, ExpectedRevision: 1},
 			},
+			SyncConfigs: []storage.InstallationSyncConfigChange{{
+				Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`),
+			}},
+			SyncOverrides: []storage.InstallationSyncOverrideChange{{
+				RepositoryID: "repo-1", Kind: orgsync.KindLabels, Enabled: &enabled,
+			}},
 		})
 		Expect(err).To(HaveOccurred())
 		assertUnchangedInstallationSettings(ctx, store, target.TargetID)
 		assertInstallationSettingsAudit(ctx, store, target.TargetID, 0, 0)
 		assertInstallationSettingsPlanState(ctx, store, target.TargetID, orgsync.PlanComputed)
+		_, err = store.GetSyncConfig(ctx, target.TargetID, orgsync.KindLabels)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		_, err = store.GetSyncRepositoryOverride(
+			ctx, target.TargetID, "repo-1", orgsync.KindLabels,
+		)
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 		notifications, err := store.ListSecurityNotifications(
 			ctx, owner.ID, storage.NotificationPageRequest{Limit: 10},
 		)

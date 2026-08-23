@@ -16,6 +16,8 @@ import (
 const syncCheckpointColumns = `
     id, target_id, actor_account_id, action, restored_from_id, created_at`
 
+const actionSyncConfigSaved = "sync.config.saved"
+
 // SetSyncConfig keeps the original one-kind port while using the same audited
 // transaction as a panel save that changes several kinds.
 func (s *Store) SetSyncConfig(
@@ -138,7 +140,7 @@ func (s *Store) finishSyncConfigWrite(
 		return orgsync.ConfigWrite{}, err
 	}
 	if finish.Elevation != nil {
-		action := "sync.config.saved"
+		action := actionSyncConfigSaved
 		if finish.Action == orgsync.CheckpointRestored {
 			action = "sync.config.restored"
 		}
@@ -254,10 +256,25 @@ func nextSyncConfigRevision(
 ) (int64, error) {
 	var revision int64
 	err := queryer.QueryRowContext(ctx, `
-SELECT COALESCE(MAX(item.revision), 0) + 1
-FROM sync_config_checkpoint_items item
-JOIN sync_config_checkpoints checkpoint ON checkpoint.id = item.checkpoint_id
-WHERE checkpoint.target_id = ? AND item.kind = ?`, targetID, kind).Scan(&revision)
+SELECT COALESCE(MAX(revision), 0) + 1
+FROM (
+    SELECT item.revision AS revision
+    FROM sync_config_checkpoint_items item
+    JOIN sync_config_checkpoints checkpoint ON checkpoint.id = item.checkpoint_id
+    WHERE checkpoint.target_id = ? AND item.kind = ?
+    UNION ALL
+    SELECT item.before_revision AS revision
+    FROM settings_checkpoint_items item
+    JOIN settings_checkpoints checkpoint ON checkpoint.id = item.checkpoint_id
+    WHERE checkpoint.target_id = ? AND item.item_kind = 'sync_config'
+      AND item.sync_kind = ?
+    UNION ALL
+    SELECT item.after_revision AS revision
+    FROM settings_checkpoint_items item
+    JOIN settings_checkpoints checkpoint ON checkpoint.id = item.checkpoint_id
+    WHERE checkpoint.target_id = ? AND item.item_kind = 'sync_config'
+      AND item.sync_kind = ?
+) revisions`, targetID, kind, targetID, kind, targetID, kind).Scan(&revision)
 	if err != nil {
 		return 0, fmt.Errorf("read next sync config revision: %w", err)
 	}
@@ -370,7 +387,7 @@ func recordSyncConfigAudit(
 	finish syncWriteFinish,
 	checkpointID int64,
 ) (int64, error) {
-	action := "sync.config.saved"
+	action := actionSyncConfigSaved
 	verb := "Saved"
 	if finish.Action == orgsync.CheckpointRestored {
 		action = "sync.config.restored"

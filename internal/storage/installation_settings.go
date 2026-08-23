@@ -3,6 +3,7 @@ package storage
 import (
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -16,6 +17,27 @@ type SaveInstallationSettingsRequest struct {
 	ChangedAt        time.Time
 	Target           *InstallationTargetSettingsChange
 	Repositories     []InstallationRepositorySettingsChange
+	SyncConfigs      []InstallationSyncConfigChange
+	SyncOverrides    []InstallationSyncOverrideChange
+}
+
+// InstallationSyncConfigChange replaces one installation Sync kind. Document
+// is exact JSON text because its bytes participate in the Sync digest.
+type InstallationSyncConfigChange struct {
+	Kind             orgsync.Kind
+	Enabled          bool
+	Document         []byte
+	ExpectedRevision int64
+}
+
+// InstallationSyncOverrideChange replaces one repository's answer for one
+// Sync kind. An empty Document is stored canonically as an empty JSON object.
+type InstallationSyncOverrideChange struct {
+	RepositoryID     string
+	Kind             orgsync.Kind
+	Enabled          *bool
+	Document         []byte
+	ExpectedRevision int64
 }
 
 // InstallationTargetSettingsChange replaces every panel-owned target setting.
@@ -51,9 +73,15 @@ type InstallationRepositorySettingsChange struct {
 // SaveInstallationSettingsResult is the state after one atomic save.
 // CheckpointID is nil when every requested resource already matched storage.
 type SaveInstallationSettingsResult struct {
-	Target       *Target
-	Repositories []Repository
-	CheckpointID *int64
+	Target                 *Target
+	Repositories           []Repository
+	SyncConfigs            []orgsync.Config
+	SyncOverrides          []orgsync.RepositoryOverride
+	CheckpointID           *int64
+	CatalogSettingsChanged bool
+	TargetChanged          bool
+	ChangedRepositoryIDs   []string
+	SyncChanged            bool
 }
 
 // TargetSettingsDocument is the complete restorable target-settings payload
@@ -77,4 +105,19 @@ type RepositorySettingsDocument struct {
 	PathIndexIntervalOverride       *time.Duration           `json:"path_index_interval_override"`
 	ConfigPatch                     config.Patch             `json:"config_patch"`
 	IgnoreRepositoryFile            bool                     `json:"ignore_repository_file"`
+}
+
+// SyncConfigSettingsDocument is the complete restorable state of one Sync
+// kind. Document is JSON encoded as a string so checkpoint serialization keeps
+// its exact bytes rather than compacting them and changing the Sync digest.
+type SyncConfigSettingsDocument struct {
+	Enabled  bool   `json:"enabled"`
+	Document string `json:"document"`
+}
+
+// SyncOverrideSettingsDocument is the complete restorable repository answer
+// for one Sync kind. Empty input is represented by the canonical "{}" text.
+type SyncOverrideSettingsDocument struct {
+	Enabled  *bool  `json:"enabled"`
+	Document string `json:"document"`
 }

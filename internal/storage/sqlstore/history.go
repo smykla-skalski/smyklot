@@ -126,7 +126,14 @@ func auditFilters(
 	case storage.AuditChangeAccount:
 		clauses = append(clauses, "ae.action LIKE 'target.%'")
 	case storage.AuditChangeSync:
-		clauses = append(clauses, "ae.action LIKE 'sync.config.%'")
+		clauses = append(clauses, `(
+ae.action LIKE 'sync.config.%'
+OR EXISTS (
+    SELECT 1
+    FROM settings_checkpoint_items item
+    WHERE item.checkpoint_id = ae.settings_checkpoint_id
+      AND item.item_kind IN ('sync_config', 'sync_override')
+))`)
 	default:
 		return nil, nil, fmt.Errorf("unsupported audit change %q", page.Change)
 	}

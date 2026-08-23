@@ -15,10 +15,12 @@ import (
 const actionInstallationSettings = "installation.settings.updated"
 
 type preparedInstallationSettings struct {
-	request      storage.SaveInstallationSettingsRequest
-	target       *preparedTargetSettings
-	repositories []preparedRepositorySettings
-	locksPolicy  bool
+	request       storage.SaveInstallationSettingsRequest
+	target        *preparedTargetSettings
+	repositories  []preparedRepositorySettings
+	syncConfigs   []preparedSyncConfigSettings
+	syncOverrides []preparedSyncOverrideSettings
+	locksPolicy   bool
 }
 
 type preparedTargetSettings struct {
@@ -36,8 +38,11 @@ type preparedRepositorySettings struct {
 type installationSettingsWork struct {
 	target           *targetSettingsWork
 	repositories     []repositorySettingsWork
+	syncConfigs      []syncConfigSettingsWork
+	syncOverrides    []syncOverrideSettingsWork
 	items            []storage.SettingsCheckpointItem
 	inclusionChanged bool
+	syncChanged      bool
 }
 
 type targetSettingsWork struct {
@@ -52,8 +57,8 @@ type repositorySettingsWork struct {
 	changed  bool
 }
 
-// SaveInstallationSettings writes all changed target and repository resources,
-// one checkpoint, and one audit event in the same transaction.
+// SaveInstallationSettings writes all changed installation settings, one
+// checkpoint, and one audit event in the same transaction.
 func (s *Store) SaveInstallationSettings(
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,
@@ -79,6 +84,10 @@ func (s *Store) SaveInstallationSettings(
 		return storage.SaveInstallationSettingsResult{}, err
 	}
 	work, err := loadInstallationSettingsWork(ctx, tx, prepared)
+	if err != nil {
+		return storage.SaveInstallationSettingsResult{}, err
+	}
+	work, err = s.loadInstallationSyncSettingsWork(ctx, tx, prepared, work)
 	if err != nil {
 		return storage.SaveInstallationSettingsResult{}, err
 	}
@@ -111,10 +120,11 @@ func (s *Store) SaveInstallationSettings(
 		}
 	}
 
-	result, err := readInstallationSettingsResult(ctx, tx, prepared)
+	result, err := s.readInstallationSettingsResult(ctx, tx, prepared)
 	if err != nil {
 		return storage.SaveInstallationSettingsResult{}, err
 	}
+	appendInstallationSettingsChanges(&result, work)
 	result.CheckpointID = &checkpointID
 	if err := tx.Commit(); err != nil {
 		return storage.SaveInstallationSettingsResult{}, fmt.Errorf(
@@ -134,7 +144,8 @@ func prepareInstallationSettings(
 			"installation settings target, actor, and change time are required",
 		)
 	}
-	if request.Target == nil && len(request.Repositories) == 0 {
+	if request.Target == nil && len(request.Repositories) == 0 &&
+		len(request.SyncConfigs) == 0 && len(request.SyncOverrides) == 0 {
 		return preparedInstallationSettings{}, errors.New(
 			"installation settings save needs at least one resource",
 		)
@@ -169,6 +180,9 @@ func prepareInstallationSettings(
 				prepared.repositories[index].change.RepositoryID,
 			)
 		}
+	}
+	if err := prepareInstallationSyncSettings(&prepared); err != nil {
+		return preparedInstallationSettings{}, err
 	}
 
 	return prepared, nil

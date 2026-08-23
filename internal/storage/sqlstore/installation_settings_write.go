@@ -13,6 +13,29 @@ func (s *Store) applyInstallationSettings(
 	request storage.SaveInstallationSettingsRequest,
 	work installationSettingsWork,
 ) error {
+	if err := writeInstallationCatalogSettings(ctx, tx, work); err != nil {
+		return err
+	}
+	if err := s.writeInstallationSyncSettings(ctx, tx, request, work); err != nil {
+		return err
+	}
+	if catalogSettingsChanged(work) {
+		if err := s.applyInstallationCatalogEffects(ctx, tx, request, work); err != nil {
+			return err
+		}
+	}
+	if work.inclusionChanged || work.syncChanged {
+		return invalidateLivePlans(ctx, tx, request.TargetID, request.ChangedAt)
+	}
+
+	return nil
+}
+
+func writeInstallationCatalogSettings(
+	ctx context.Context,
+	tx *transaction,
+	work installationSettingsWork,
+) error {
 	if work.target != nil && work.target.changed {
 		if err := writeTargetSettings(ctx, tx, *work.target); err != nil {
 			return err
@@ -26,25 +49,36 @@ func (s *Store) applyInstallationSettings(
 		}
 	}
 
+	return nil
+}
+
+func (s *Store) applyInstallationCatalogEffects(
+	ctx context.Context,
+	tx *transaction,
+	request storage.SaveInstallationSettingsRequest,
+	work installationSettingsWork,
+) error {
 	if err := ensurePendingCIGates(ctx, tx, request.TargetID, request.ChangedAt); err != nil {
 		return err
 	}
 	if err := s.retuneInstallationSettings(ctx, tx, work); err != nil {
 		return err
 	}
-	if err := wakeInstallationSettings(ctx, tx, request, work); err != nil {
-		return err
+
+	return wakeInstallationSettings(ctx, tx, request, work)
+}
+
+func catalogSettingsChanged(work installationSettingsWork) bool {
+	if work.target != nil && work.target.changed {
+		return true
 	}
-	// These are the two inclusion selectors held by the target/repository
-	// aggregates. Pending CI policy and command configuration do not decide a
-	// Sync plan's repository set, so changing them leaves a live plan usable.
-	if work.inclusionChanged {
-		if err := invalidateLivePlans(ctx, tx, request.TargetID, request.ChangedAt); err != nil {
-			return err
+	for _, repository := range work.repositories {
+		if repository.changed {
+			return true
 		}
 	}
 
-	return nil
+	return false
 }
 
 func writeTargetSettings(
@@ -214,6 +248,9 @@ func installationSettingsAudit(
 				return actionRepositorySettings, "Updated repository settings", &id, &fullName
 			}
 		}
+		if action, summary, repositoryID, fullName, ok := installationSyncSettingsAudit(work); ok {
+			return action, summary, repositoryID, fullName
+		}
 	}
 
 	return actionInstallationSettings,
@@ -233,11 +270,13 @@ func installationSettingsResult(
 	for _, repository := range work.repositories {
 		result.Repositories = append(result.Repositories, repository.current)
 	}
+	appendInstallationSyncSettingsResult(&result, work)
+	appendInstallationSettingsChanges(&result, work)
 
 	return result
 }
 
-func readInstallationSettingsResult(
+func (s *Store) readInstallationSettingsResult(
 	ctx context.Context,
 	tx *transaction,
 	prepared preparedInstallationSettings,
@@ -265,6 +304,26 @@ func readInstallationSettingsResult(
 		}
 		result.Repositories = append(result.Repositories, read)
 	}
+	if err := s.readInstallationSyncSettingsResult(ctx, tx, prepared, &result); err != nil {
+		return storage.SaveInstallationSettingsResult{}, err
+	}
 
 	return result, nil
+}
+
+func appendInstallationSettingsChanges(
+	result *storage.SaveInstallationSettingsResult,
+	work installationSettingsWork,
+) {
+	result.CatalogSettingsChanged = catalogSettingsChanged(work)
+	result.TargetChanged = work.target != nil && work.target.changed
+	result.SyncChanged = work.syncChanged
+	result.ChangedRepositoryIDs = make([]string, 0, len(work.repositories))
+	for _, repository := range work.repositories {
+		if repository.changed {
+			result.ChangedRepositoryIDs = append(
+				result.ChangedRepositoryIDs, repository.current.ID,
+			)
+		}
+	}
 }

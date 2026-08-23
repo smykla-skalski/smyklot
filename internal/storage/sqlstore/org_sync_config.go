@@ -179,7 +179,7 @@ func (s *Store) SetSyncRepositoryOverride(
 		return orgsync.RepositoryOverride{}, fmt.Errorf("read override repository: %w", err)
 	}
 
-	revision, err := s.writeSyncOverride(ctx, tx, change)
+	revision, err := s.writeSyncOverride(ctx, tx, targetID, change)
 	if err != nil {
 		return orgsync.RepositoryOverride{}, err
 	}
@@ -206,6 +206,7 @@ func (s *Store) SetSyncRepositoryOverride(
 func (s *Store) writeSyncOverride(
 	ctx context.Context,
 	tx *transaction,
+	targetID string,
 	change orgsync.RepositoryOverrideChange,
 ) (int64, error) {
 	var current int64
@@ -220,18 +221,24 @@ WHERE repository_id = ? AND kind = ?`+s.dialect.RowLock(),
 		if change.Revision != 0 {
 			return 0, storage.ErrConflict
 		}
+		revision, revisionErr := nextSyncOverrideRevision(
+			ctx, tx, targetID, change.RepositoryID, change.Kind,
+		)
+		if revisionErr != nil {
+			return 0, revisionErr
+		}
 
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO sync_repository_overrides (
     repository_id, kind, enabled_override, document, revision, updated_by, updated_at
-) VALUES (?, ?, ?, ?, 1, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 			change.RepositoryID, change.Kind, change.Enabled,
-			syncDocumentColumn(change.Document), change.ActorID, change.Now,
+			syncDocumentColumn(change.Document), revision, change.ActorID, change.Now,
 		); err != nil {
 			return 0, fmt.Errorf("insert sync override: %w", err)
 		}
 
-		return 1, nil
+		return revision, nil
 
 	case err != nil:
 		return 0, fmt.Errorf("read sync override revision: %w", err)
