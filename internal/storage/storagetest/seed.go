@@ -51,6 +51,8 @@ func SeededTables() []string {
 		"root_elevations",
 		"sync_config_checkpoints",
 		"sync_config_checkpoint_items",
+		"settings_checkpoints",
+		"settings_checkpoint_items",
 		"audit_entries",
 		"access_audit_entries",
 		"app_audit_events",

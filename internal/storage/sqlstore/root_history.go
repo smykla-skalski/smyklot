@@ -159,6 +159,9 @@ func scanRootAuditEvent(scanner rowScanner) (storage.AppAuditEvent, error) {
 	if sourceKind.String == "sync_config_checkpoint" && sourceID.Valid {
 		event.SyncConfigCheckpointID = &sourceID.Int64
 	}
+	if sourceKind.String == "settings_checkpoint" && sourceID.Valid {
+		event.SettingsCheckpointID = &sourceID.Int64
+	}
 	event.Actor.AvatarURL = stringPointer(actorAvatar)
 	event.CreatedAt = createdAt.Time()
 	event.Actor.UpdatedAt = actorUpdated.Time()

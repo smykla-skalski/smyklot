@@ -679,6 +679,7 @@ type AuditEntry struct {
 	RepositoryID           *string
 	RepositoryFullName     *string
 	SyncConfigCheckpointID *int64
+	SettingsCheckpointID   *int64
 	Actor                  Account
 	Action                 string
 	Summary                string

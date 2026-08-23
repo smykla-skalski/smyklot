@@ -30,6 +30,7 @@ type AppAuditEvent struct {
 	Subject                *Account
 	ElevationID            *string
 	SyncConfigCheckpointID *int64
+	SettingsCheckpointID   *int64
 	Action                 string
 	Summary                string
 	CreatedAt              time.Time

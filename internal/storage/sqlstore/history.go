@@ -16,6 +16,7 @@ SELECT
     ae.repository_id,
     ae.repository_full_name,
     ae.sync_config_checkpoint_id,
+	ae.settings_checkpoint_id,
     ae.action,
     ae.summary,
     ae.created_at,
@@ -136,7 +137,7 @@ func auditFilters(
 func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	var entry storage.AuditEntry
 	var repositoryID, repositoryFullName, avatarURL sql.NullString
-	var syncConfigCheckpointID sql.NullInt64
+	var syncConfigCheckpointID, settingsCheckpointID sql.NullInt64
 	var createdAt, accountUpdatedAt StoredTime
 
 	err := scanner.Scan(
@@ -145,6 +146,7 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 		&repositoryID,
 		&repositoryFullName,
 		&syncConfigCheckpointID,
+		&settingsCheckpointID,
 		&entry.Action,
 		&entry.Summary,
 		&createdAt,
@@ -164,6 +166,9 @@ func scanAuditEntry(scanner rowScanner) (storage.AuditEntry, error) {
 	entry.RepositoryFullName = stringPointer(repositoryFullName)
 	if syncConfigCheckpointID.Valid {
 		entry.SyncConfigCheckpointID = &syncConfigCheckpointID.Int64
+	}
+	if settingsCheckpointID.Valid {
+		entry.SettingsCheckpointID = &settingsCheckpointID.Int64
 	}
 	entry.Actor.AvatarURL = stringPointer(avatarURL)
 

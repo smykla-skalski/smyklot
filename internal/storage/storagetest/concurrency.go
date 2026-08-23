@@ -65,13 +65,13 @@ func declareConcurrencySpecs(current func() (context.Context, storage.Store, tim
 		ctx, store, now := current()
 		account, initial := seedInstallation(ctx, store, now)
 
-		results := race(func(index int) (storage.Target, error) {
+		results := race(func(_ int) (storage.Target, error) {
 			return store.UpdateTargetSettings(ctx, storage.TargetSettingsChange{
 				TargetID:                 initial.TargetID,
 				ActorAccountID:           account.ID,
-				RepositoryDefaultEnabled: index%2 == 0,
+				RepositoryDefaultEnabled: true,
 				ExpectedRevision:         1,
-				ChangedAt:                now.Add(time.Duration(index) * time.Second),
+				ChangedAt:                now,
 			})
 		})
 

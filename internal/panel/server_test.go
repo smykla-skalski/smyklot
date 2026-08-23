@@ -2329,7 +2329,8 @@ func seedPanelHistory(t *testing.T, harness *panelHarness, targetPath string, se
 	t.Helper()
 	for revision := int64(1); revision <= 2; revision++ {
 		input := fmt.Sprintf(
-			`{"repository_default_enabled":true,"config_patch":{"quiet_success":true},"expected_revision":%d}`,
+			`{"repository_default_enabled":true,"config_patch":{"quiet_success":%t},"expected_revision":%d}`,
+			revision == 1,
 			revision,
 		)
 		response := harness.request(

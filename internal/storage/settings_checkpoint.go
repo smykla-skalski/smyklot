@@ -169,7 +169,7 @@ func validateSettingsCheckpointScope(scope SettingsCheckpointScope, targetID str
 	switch scope {
 	case SettingsCheckpointScopeRoot:
 		if targetID != "" {
-			return errors.New("Root settings checkpoint cannot name an installation")
+			return errors.New("root settings checkpoint cannot name an installation")
 		}
 	case SettingsCheckpointScopeInstallation:
 		if strings.TrimSpace(targetID) == "" {
