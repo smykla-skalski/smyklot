@@ -1,6 +1,19 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
+
+  import { CONFIG_KEYS } from '../config';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
-  import type { ConfigPatch, PanelTarget, PendingCIMode, TargetSettingsInput } from '../types';
+  import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
+  import {
+    buildTargetDefaultsDocument,
+    overlayTargetDefaultsDocument,
+    parseTargetDefaultsDocument,
+    stageTargetDefaultsControl,
+    targetDefaultsDraftDocument,
+    targetDefaultsResource,
+    type TargetDefaultsControlId,
+  } from '../target-defaults-settings';
+  import type { ConfigKey, ConfigPatch, PanelTarget, PendingCIMode } from '../types';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FormError from './FormError.svelte';
@@ -16,18 +29,26 @@
   ] as const;
 
   const {
-    target,
+    target: canonicalTarget,
     readOnly = false,
-    onUpdate,
   }: {
     target: PanelTarget;
     readOnly?: boolean;
-    onUpdate: (input: TargetSettingsInput) => Promise<void>;
   } = $props();
 
-  let saving = $state(false);
+  const drafts = getSettingsDraftRegistry();
+  const resource = $derived(targetDefaultsResource(canonicalTarget.id));
+  const settingsScope = $derived({
+    type: 'installation',
+    targetId: canonicalTarget.id,
+  } as const satisfies SettingsScope);
+  const document = $derived(targetDefaultsDraftDocument(drafts, canonicalTarget));
+  const target = $derived(overlayTargetDefaultsDocument(canonicalTarget, document));
   let failure = $state<string | null>(null);
-  const frozen = $derived(readOnly || saving);
+  const frozen = $derived(readOnly);
+  const dirtyConfigKeys = $derived(
+    CONFIG_KEYS.filter((key) => controlDirty(`defaults.config_patch.${key}`)),
+  );
   const pendingCIPermissionsReady = $derived(
     target.pending_ci_permissions.checks_write &&
       target.pending_ci_permissions.administration_write,
@@ -40,70 +61,33 @@
       : { tone: 'pill-muted', word: 'Compatibility mode' },
   );
 
-  /* ---------- The saved receipts, one per card ---------- */
+  $effect(() => {
+    const revision = canonicalTarget.revision;
+    const base = buildTargetDefaultsDocument(canonicalTarget);
+    untrack(() => drafts.adoptBase(resource, revision, base));
+  });
 
-  let repoSavedOn = $state(false);
-  let mergeSavedOn = $state(false);
-  let repoTimer: ReturnType<typeof setTimeout> | undefined;
-  let mergeTimer: ReturnType<typeof setTimeout> | undefined;
+  function controlDirty(controlId: TargetDefaultsControlId): boolean {
+    return drafts.isControlDirty(settingsScope, controlId);
+  }
 
-  function whisper(card: 'repo' | 'merge'): void {
-    if (card === 'repo') {
-      repoSavedOn = true;
-      clearTimeout(repoTimer);
-      repoTimer = setTimeout(() => (repoSavedOn = false), 1400);
-    } else {
-      mergeSavedOn = true;
-      clearTimeout(mergeTimer);
-      mergeTimer = setTimeout(() => (mergeSavedOn = false), 1400);
+  function stage(nextValue: unknown, controlId: TargetDefaultsControlId): boolean {
+    const next = parseTargetDefaultsDocument(nextValue);
+    if (next === null || !stageTargetDefaultsControl(drafts, canonicalTarget, next, controlId)) {
+      failure = 'This setting is not valid';
+      return false;
     }
-  }
-
-  function settingsInput(overrides: Partial<TargetSettingsInput>): TargetSettingsInput {
-    return {
-      repository_default_enabled: target.repository_default_enabled,
-      pending_ci_mode_default: target.pending_ci_mode_default,
-      pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
-      pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
-      path_index_interval_seconds_override: target.path_index_interval_seconds_override,
-      config_patch: target.config_patch,
-      expected_revision: target.revision,
-      ...overrides,
-    };
-  }
-
-  async function push(
-    card: 'repo' | 'merge',
-    overrides: Partial<TargetSettingsInput>,
-  ): Promise<void> {
-    if (saving) return;
-    saving = true;
     failure = null;
-    try {
-      await onUpdate(settingsInput(overrides));
-      whisper(card);
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-    } finally {
-      saving = false;
-    }
+    return true;
   }
 
-  /* The behavior and command cards report through their own receipts; this
-     card's part is only to carry the change and surface a refusal. */
-  async function updateConfig(configPatch: ConfigPatch): Promise<void> {
-    failure = null;
-    try {
-      await onUpdate(settingsInput({ config_patch: configPatch }));
-    } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
-      throw error;
-    }
+  function updateConfig(configPatch: ConfigPatch, changedKey: ConfigKey): void {
+    stage({ ...document, config_patch: configPatch }, `defaults.config_patch.${changedKey}`);
   }
 
   function setMode(mode: PendingCIMode): void {
     if (mode === target.pending_ci_mode_default) return;
-    void push('merge', { pending_ci_mode_default: mode });
+    stage({ ...document, pending_ci_mode_default: mode }, 'defaults.pending_ci_mode_default');
   }
 
   function setIncludes(next: string[]): void {
@@ -111,36 +95,56 @@
       failure = 'At least one protected ref is required';
       return;
     }
-    void push('merge', {
-      pending_ci_branch_patterns_default: {
-        include: next,
-        exclude: target.pending_ci_branch_patterns_default.exclude,
+    stage(
+      {
+        ...document,
+        pending_ci_branch_patterns_default: {
+          include: next,
+          exclude: target.pending_ci_branch_patterns_default.exclude,
+        },
       },
-    });
+      'defaults.pending_ci_branch_patterns_default.include',
+    );
   }
 
   function setExcludes(next: string[]): void {
-    void push('merge', {
-      pending_ci_branch_patterns_default: {
-        include: target.pending_ci_branch_patterns_default.include,
-        exclude: next,
+    stage(
+      {
+        ...document,
+        pending_ci_branch_patterns_default: {
+          include: target.pending_ci_branch_patterns_default.include,
+          exclude: next,
+        },
       },
-    });
+      'defaults.pending_ci_branch_patterns_default.exclude',
+    );
   }
 
-  /* ---------- The quiet-period seconds, saved after a typing rest ---------- */
-
-  const SAVE_REST_MS = 900;
   let quietDraft = $state<string | null>(null);
-  let quietTimer: ReturnType<typeof setTimeout> | undefined;
   const quietShown = $derived(
     quietDraft ?? target.pending_ci_quiet_period_seconds_override?.toString() ?? '',
   );
 
   function typeQuiet(value: string): void {
     quietDraft = value;
-    clearTimeout(quietTimer);
-    quietTimer = setTimeout(saveQuiet, SAVE_REST_MS);
+    const trimmed = value.trim();
+    const quiet = trimmed === '' ? null : Number(trimmed);
+    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) {
+      failure = 'Quiet period must be whole seconds from 0 to 86400';
+      return;
+    }
+    stage(
+      { ...document, pending_ci_quiet_period_seconds_override: quiet },
+      'defaults.pending_ci_quiet_period_seconds_override',
+    );
+  }
+
+  function finishQuiet(): void {
+    if (quietDraft === null) return;
+    const trimmed = quietDraft.trim();
+    const quiet = trimmed === '' ? null : Number(trimmed);
+    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
+    quietDraft = null;
   }
 
   /* ---------- The path-index interval, an amount beside a unit ---------- */
@@ -154,7 +158,6 @@
   };
   let indexAmountDraft = $state<string | null>(null);
   let indexUnitDraft = $state<DurationUnit | null>(null);
-  let indexTimer: ReturnType<typeof setTimeout> | undefined;
 
   function indexParts(): { amount: number; unit: DurationUnit } {
     const seconds =
@@ -167,44 +170,39 @@
 
   function typeIndexAmount(value: string): void {
     indexAmountDraft = value;
-    indexUnitDraft = indexUnitShown;
-    clearTimeout(indexTimer);
-    indexTimer = setTimeout(saveIndexDraft, SAVE_REST_MS);
+    const unit = indexUnitShown;
+    indexUnitDraft = unit;
+    saveIndexDraft(value, unit);
   }
 
   function pickIndexUnit(unit: DurationUnit): void {
-    indexAmountDraft = indexAmountShown;
+    const amount = indexAmountShown;
+    indexAmountDraft = amount;
     indexUnitDraft = unit;
-    saveIndexDraft();
+    if (saveIndexDraft(amount, unit)) {
+      indexAmountDraft = null;
+      indexUnitDraft = null;
+    }
   }
 
-  function saveIndexDraft(): void {
-    clearTimeout(indexTimer);
-    indexTimer = undefined;
+  function saveIndexDraft(amount: string, unit: DurationUnit): boolean {
+    const seconds = Math.round(Number(amount) * UNIT_SECONDS[unit]);
+    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 604_800) {
+      failure = 'Path index interval must be from 1 minute to 7 days';
+      return false;
+    }
+    return stage(
+      { ...document, path_index_interval_seconds_override: seconds },
+      'defaults.path_index_interval_seconds_override',
+    );
+  }
+
+  function finishIndexDraft(): void {
     if (indexAmountDraft === null || indexUnitDraft === null) return;
-    const seconds = Math.round(Number(indexAmountDraft) * UNIT_SECONDS[indexUnitDraft]);
-    if (!Number.isFinite(seconds) || seconds < 60) return;
-    indexAmountDraft = null;
-    indexUnitDraft = null;
-    void push('repo', { path_index_interval_seconds_override: seconds });
-  }
-
-  function saveQuiet(): void {
-    clearTimeout(quietTimer);
-    quietTimer = undefined;
-    if (quietDraft === null) return;
-    const trimmed = quietDraft.trim();
-    const quiet = trimmed === '' ? null : Number(trimmed);
-    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) {
-      failure = 'Quiet period must be whole seconds from 0 to 86400';
-      return;
+    if (saveIndexDraft(indexAmountDraft, indexUnitDraft)) {
+      indexAmountDraft = null;
+      indexUnitDraft = null;
     }
-    if (quiet === target.pending_ci_quiet_period_seconds_override) {
-      quietDraft = null;
-      return;
-    }
-    quietDraft = null;
-    void push('merge', { pending_ci_quiet_period_seconds_override: quiet });
   }
 </script>
 
@@ -224,12 +222,15 @@
     <section class="card group-card" aria-labelledby="settings-repositories">
       <div class="group-head">
         <h3 class="group-name" id="settings-repositories">Repositories</h3>
-        <span class="save-whisper" class:is-on={repoSavedOn} role="status"
-          ><Icon name="check" size={12} /><span class="t">Saved</span></span
-        >
       </div>
       <div class="policy-rows">
-        <div class="policy-row">
+        <div
+          class={[
+            'policy-row',
+            { 'is-unsaved': controlDirty('defaults.repository_default_enabled') },
+          ]}
+          data-unsaved={controlDirty('defaults.repository_default_enabled') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Unconfigured repositories</span>
             <span class="setting-why"
@@ -245,11 +246,21 @@
               checked={target.repository_default_enabled}
               label="Unconfigured repositories"
               disabled={frozen}
-              onToggle={(next) => void push('repo', { repository_default_enabled: next })}
+              onToggle={(next) =>
+                stage(
+                  { ...document, repository_default_enabled: next },
+                  'defaults.repository_default_enabled',
+                )}
             />
           </span>
         </div>
-        <div class="policy-row">
+        <div
+          class={[
+            'policy-row',
+            { 'is-unsaved': controlDirty('defaults.path_index_interval_seconds_override') },
+          ]}
+          data-unsaved={controlDirty('defaults.path_index_interval_seconds_override') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Path index</span>
             <span class="setting-why"
@@ -269,10 +280,14 @@
               title="Answer for this workspace"
               disabled={frozen}
               onclick={() =>
-                void push('repo', {
-                  path_index_interval_seconds_override:
-                    target.path_index_interval_seconds_inherited,
-                })}
+                stage(
+                  {
+                    ...document,
+                    path_index_interval_seconds_override:
+                      target.path_index_interval_seconds_inherited,
+                  },
+                  'defaults.path_index_interval_seconds_override',
+                )}
             >
               <Icon name="plus" size={10} />
             </button>
@@ -283,9 +298,9 @@
                 inputmode="numeric"
                 aria-label="Path index interval amount"
                 value={indexAmountShown}
-                disabled={readOnly}
+                disabled={frozen}
                 oninput={(event) => typeIndexAmount(event.currentTarget.value)}
-                onblur={saveIndexDraft}
+                onblur={finishIndexDraft}
               />
               <Popover
                 role="listbox"
@@ -325,7 +340,11 @@
               class="setting-clear"
               title="Stop answering - follow the deployment"
               disabled={frozen}
-              onclick={() => void push('repo', { path_index_interval_seconds_override: null })}
+              onclick={() =>
+                stage(
+                  { ...document, path_index_interval_seconds_override: null },
+                  'defaults.path_index_interval_seconds_override',
+                )}
             >
               <Icon name="close" size={10} />
             </button>
@@ -337,13 +356,13 @@
     <section class="card group-card" aria-labelledby="settings-merge-ci">
       <div class="group-head">
         <h3 class="group-name" id="settings-merge-ci">Merge after CI</h3>
-        <span class="save-whisper" class:is-on={mergeSavedOn} role="status"
-          ><Icon name="check" size={12} /><span class="t">Saved</span></span
-        >
         <span class="pill {mergePill.tone}"><span class="t">{mergePill.word}</span></span>
       </div>
       <div class="policy-rows">
-        <div class="policy-row">
+        <div
+          class={['policy-row', { 'is-unsaved': controlDirty('defaults.pending_ci_mode_default') }]}
+          data-unsaved={controlDirty('defaults.pending_ci_mode_default') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Repository protection</span>
             <span class="setting-why"
@@ -391,7 +410,17 @@
             </Popover>
           </span>
         </div>
-        <div class="policy-row policy-block">
+        <div
+          class={[
+            'policy-row',
+            'policy-block',
+            {
+              'is-unsaved': controlDirty('defaults.pending_ci_branch_patterns_default.include'),
+            },
+          ]}
+          data-unsaved={controlDirty('defaults.pending_ci_branch_patterns_default.include') ||
+            undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Protected refs</span>
             <span class="setting-why"
@@ -407,7 +436,17 @@
             />
           </div>
         </div>
-        <div class="policy-row policy-block">
+        <div
+          class={[
+            'policy-row',
+            'policy-block',
+            {
+              'is-unsaved': controlDirty('defaults.pending_ci_branch_patterns_default.exclude'),
+            },
+          ]}
+          data-unsaved={controlDirty('defaults.pending_ci_branch_patterns_default.exclude') ||
+            undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Excluded refs</span>
             <span class="setting-why"
@@ -422,7 +461,16 @@
             />
           </div>
         </div>
-        <div class="policy-row">
+        <div
+          class={[
+            'policy-row',
+            {
+              'is-unsaved': controlDirty('defaults.pending_ci_quiet_period_seconds_override'),
+            },
+          ]}
+          data-unsaved={controlDirty('defaults.pending_ci_quiet_period_seconds_override') ||
+            undefined}
+        >
           <span class="setting-say">
             <label class="setting-name" for="settings-quiet-period">Stable passing window</label>
             <span class="setting-why"
@@ -436,9 +484,9 @@
               inputmode="numeric"
               placeholder={target.pending_ci_quiet_period_seconds_inherited.toString()}
               value={quietShown}
-              disabled={readOnly}
+              disabled={frozen}
               oninput={(event) => typeQuiet(event.currentTarget.value)}
-              onblur={saveQuiet}
+              onblur={finishQuiet}
             />
           </span>
         </div>
@@ -456,8 +504,9 @@
       inherited={target.inherited_config}
       scope="target"
       idPrefix={target.id}
-      disabled={readOnly}
-      onSave={updateConfig}
+      disabled={frozen}
+      dirtyKeys={dirtyConfigKeys}
+      onChange={updateConfig}
     />
   </section>
 </div>
@@ -493,30 +542,6 @@
     font-weight: 600;
     margin: 0;
     min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .save-whisper {
-    align-items: center;
-    background: var(--success-tint);
-    block-size: 20px;
-    border-radius: var(--radius-chip);
-    color: var(--success);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 4px;
-    margin-inline-start: auto;
-    opacity: 0;
-    padding: 0 0.5rem;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .save-whisper.is-on {
-    opacity: 1;
-  }
-
-  .save-whisper .t {
     text-box: trim-both cap alphabetic;
   }
 
@@ -568,6 +593,11 @@
        edge already carries that inset. */
     padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   .policy-row:first-child {

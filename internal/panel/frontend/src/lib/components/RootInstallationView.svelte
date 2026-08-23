@@ -6,7 +6,6 @@
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
-  import { invalidateRootInstallationSettings } from '../query-client';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -15,7 +14,6 @@
     RepositorySettingsInput,
     RootElevation,
     RootInstallation,
-    TargetSettingsInput,
   } from '../types';
   import FormError from './FormError.svelte';
   import StatusPill from './StatusPill.svelte';
@@ -67,11 +65,6 @@
   const endElevationMutation = createMutation(() => ({
     mutationFn: (elevationId: string) => api.endRootElevation(elevationId),
     onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
-  }));
-  const targetSettingsMutation = createMutation(() => ({
-    mutationFn: (input: TargetSettingsInput) =>
-      api.updateRootTargetSettings(installation.id, input),
-    onSettled: () => invalidateRootInstallationSettings(queryClient, installation.id),
   }));
   const target = $derived<PanelTarget | null>(detailQuery.data?.target ?? null);
   const elevation = $derived<RootElevation | null>(detailQuery.data?.elevation ?? null);
@@ -168,10 +161,6 @@
     } catch (error) {
       detailFailure = message(error);
     }
-  }
-
-  async function updateTarget(input: TargetSettingsInput): Promise<void> {
-    await targetSettingsMutation.mutateAsync(input);
   }
 
   function fetchRepositories(request: RepositoryPageRequest) {
@@ -318,7 +307,7 @@
       </Button>
     </div>
   {:else if target !== null && view === 'defaults'}
-    <TargetSettings {target} readOnly={!canWrite} onUpdate={updateTarget} />
+    <TargetSettings {target} readOnly={!canWrite} />
   {:else if target !== null && view === 'repositories'}
     <RepositoryList
       targetId={installation.id}

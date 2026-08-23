@@ -8,7 +8,7 @@
     title: 'Views/TargetSettings',
     component: TargetSettings,
     argTypes: { readOnly: { control: 'boolean' } },
-    args: { target: TARGET, readOnly: false, onUpdate: async () => {} },
+    args: { target: TARGET, readOnly: false },
   });
 </script>
 

@@ -1,12 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { CONFIG_KEYS } from '../src/lib/config';
+import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import {
   TARGET_DEFAULTS_CONTROLS,
+  adoptTargetDefaults,
   buildTargetDefaultsDocument,
   overlayTargetDefaultsDocument,
   parseTargetDefaultsDocument,
+  stageTargetDefaultsControl,
   targetDefaultsCommittedResource,
+  targetDefaultsDraftDocument,
+  targetDefaultsResource,
   targetDefaultsSavedControls,
 } from '../src/lib/target-defaults-settings';
 import type { ConfigSources, ConfigValues, PanelTarget } from '../src/lib/types';
@@ -305,5 +310,61 @@ describe('target defaults settings adapter [Unit]', () => {
       overridden: false,
       value: null,
     });
+  });
+
+  it('stages identified controls, overlays the draft, and discards back to the server base', () => {
+    const source = target();
+    const drafts = new SettingsDraftRegistry({ storage: null, now: () => 1, writerId: 'test' });
+    drafts.hydrate('viewer-1');
+    expect(adoptTargetDefaults(drafts, source)).toBe(true);
+
+    const next = {
+      ...targetDefaultsDraftDocument(drafts, source),
+      repository_default_enabled: true,
+    };
+    expect(
+      stageTargetDefaultsControl(drafts, source, next, 'defaults.repository_default_enabled'),
+    ).toBe(true);
+
+    const shown = overlayTargetDefaultsDocument(
+      source,
+      targetDefaultsDraftDocument(drafts, source),
+    );
+    expect(shown.repository_default_enabled).toBe(true);
+    expect(shown.revision).toBe(source.revision);
+    expect(drafts.dirtyControls()).toMatchObject([
+      { id: 'defaults.repository_default_enabled', saved: false, value: true },
+    ]);
+
+    expect(drafts.discardResource(targetDefaultsResource(source.id))).toBe(true);
+    expect(targetDefaultsDraftDocument(drafts, source)).toEqual(
+      buildTargetDefaultsDocument(source),
+    );
+  });
+
+  it('preserves a draft and marks a conflict when a newer canonical document arrives', () => {
+    const source = target();
+    const drafts = new SettingsDraftRegistry({ storage: null, now: () => 1, writerId: 'test' });
+    drafts.hydrate('viewer-1');
+    adoptTargetDefaults(drafts, source);
+
+    const draft = {
+      ...targetDefaultsDraftDocument(drafts, source),
+      repository_default_enabled: true,
+    };
+    stageTargetDefaultsControl(drafts, source, draft, 'defaults.repository_default_enabled');
+
+    const concurrent = {
+      ...source,
+      revision: source.revision + 1,
+      pending_ci_quiet_period_seconds_override: 60,
+    };
+    expect(adoptTargetDefaults(drafts, concurrent)).toBe(false);
+    expect(targetDefaultsDraftDocument(drafts, concurrent)).toEqual(draft);
+    expect(drafts.resource(targetDefaultsResource(source.id))?.conflict).toMatchObject({
+      type: 'revision',
+      actualRevision: source.revision + 1,
+    });
+    expect(drafts.dirtyControls()).toHaveLength(1);
   });
 });

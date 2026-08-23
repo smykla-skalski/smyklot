@@ -6,7 +6,7 @@ import type {
   PendingCIBranchPatterns,
   PendingCIMode,
 } from './types';
-import type { SettingsCommittedResource } from './settings-drafts.svelte';
+import type { SettingsCommittedResource, SettingsDraftRegistry } from './settings-drafts.svelte';
 import type { SettingsJson, SettingsLocation, SettingsResource } from './settings-draft-storage';
 
 const TARGET_DEFAULTS_KEYS = [
@@ -99,6 +99,54 @@ export const TARGET_DEFAULTS_CONTROLS: readonly TargetDefaultsControlDefinition[
 
 export function targetDefaultsResource(targetId: string): SettingsResource {
   return { type: 'target-defaults', targetId };
+}
+
+/** Adopt the latest server document without replacing a locally edited draft. */
+export function adoptTargetDefaults(registry: SettingsDraftRegistry, target: PanelTarget): boolean {
+  return registry.adoptBase(
+    targetDefaultsResource(target.id),
+    target.revision,
+    buildTargetDefaultsDocument(target),
+  );
+}
+
+/** Read the document the editor should show: its draft when dirty, otherwise the server base. */
+export function targetDefaultsDraftDocument(
+  registry: SettingsDraftRegistry,
+  target: PanelTarget,
+): TargetDefaultsDocument {
+  const stored = registry.value(targetDefaultsResource(target.id));
+  if (stored === null) return buildTargetDefaultsDocument(target);
+  const document = parseTargetDefaultsDocument(stored);
+  if (document === null) throw new TypeError('stored target defaults are invalid');
+  return document;
+}
+
+/** Stage one identified control while keeping the resource document complete. */
+export function stageTargetDefaultsControl(
+  registry: SettingsDraftRegistry,
+  target: PanelTarget,
+  nextValue: TargetDefaultsDocument,
+  controlId: TargetDefaultsControlId,
+): boolean {
+  const definition = TARGET_DEFAULTS_CONTROLS.find(({ id }) => id === controlId);
+  if (definition === undefined) return false;
+
+  const next = parseTargetDefaultsDocument(nextValue);
+  if (next === null) return false;
+  const resource = targetDefaultsResource(target.id);
+  const snapshot = registry.resource(resource);
+  const base = parseTargetDefaultsDocument(snapshot?.base ?? buildTargetDefaultsDocument(target));
+  if (base === null) return false;
+  const savedControls = targetDefaultsSavedControls(base);
+  const nextControls = targetDefaultsSavedControls(next);
+
+  return registry.stage(resource, next, {
+    id: controlId,
+    location: definition.location,
+    saved: savedControls[controlId]!,
+    value: nextControls[controlId]!,
+  });
 }
 
 /** Build the complete stored document. Revision remains resource metadata, not editable state. */

@@ -36,7 +36,9 @@
     disabled = false,
     section = 'all',
     only,
+    dirtyKeys = [],
     onSave,
+    onChange,
   }: {
     patch: ConfigPatch;
     inherited: ConfigValues;
@@ -47,8 +49,12 @@
     /** Render only these behavior rows. Used by the repository-file pane, which
      *  shows the overrides in effect rather than the whole settings list. */
     only?: readonly ConfigKey[];
-    /** Rejects when the save was refused - the receipt only shows on success. */
-    onSave: (next: ConfigPatch) => Promise<void>;
+    /** Keys whose draft values differ from their saved values. */
+    dirtyKeys?: readonly ConfigKey[];
+    /** Legacy immediate-save path for settings surfaces not migrated to shared drafts yet. */
+    onSave?: (next: ConfigPatch) => Promise<void>;
+    /** Shared-draft path. Changes are reported synchronously and never saved here. */
+    onChange?: (next: ConfigPatch, changedKey: ConfigKey) => void;
   } = $props();
 
   const source = $derived(SOURCE_BY_SCOPE[scope]);
@@ -57,6 +63,8 @@
       ? BOOLEAN_FIELDS
       : BOOLEAN_FIELDS.filter((field) => only.includes(field.key)),
   );
+  const staged = $derived(onChange !== undefined);
+  const dirtyKeySet = $derived(new Set(dirtyKeys));
 
   const initialPatch = clonePatch(untrack(() => patch));
   let draft = $state<ConfigPatch>(initialPatch);
@@ -116,7 +124,7 @@
   }
 
   async function push(card: 'behavior' | 'commands'): Promise<void> {
-    if (saving) return;
+    if (saving || onSave === undefined) return;
     saving = true;
     try {
       await onSave(clonePatch(draft));
@@ -129,11 +137,19 @@
     }
   }
 
+  function report(card: 'behavior' | 'commands', changedKey: ConfigKey): void {
+    if (onChange !== undefined) {
+      onChange(clonePatch(draft), changedKey);
+      return;
+    }
+    void push(card);
+  }
+
   /* ---------- Behavior ---------- */
 
   function toggleBoolean(field: BooleanField, enabled: boolean): void {
     draft = setExplicitPatchValue(draft, field.key, fieldRawValue(field, enabled));
-    void push('behavior');
+    report('behavior', field.key);
   }
 
   function clearField(key: ConfigKey, card: 'behavior' | 'commands'): void {
@@ -141,7 +157,7 @@
     const next = { ...draft };
     delete next[key];
     draft = next;
-    void push(card);
+    report(card, key);
   }
 
   /* Overriding pins what inheritance resolves to today; the switch beside it
@@ -149,7 +165,7 @@
   function manage(field: BooleanField): void {
     draft = setExplicitPatchValue(draft, field.key, cloneValue(inherited[field.key]));
     picking = false;
-    void push('behavior');
+    report('behavior', field.key);
   }
 
   /* ---------- Commands ---------- */
@@ -159,6 +175,10 @@
 
   function typePrefix(value: string): void {
     draft = updatePatchValue(draft, inherited, 'command_prefix', value);
+    if (staged) {
+      report('commands', 'command_prefix');
+      return;
+    }
     clearTimeout(prefixTimer);
     prefixTimer = setTimeout(() => void push('commands'), SAVE_REST_MS);
   }
@@ -167,13 +187,13 @@
     if (prefixTimer === undefined) return;
     clearTimeout(prefixTimer);
     prefixTimer = undefined;
-    void push('commands');
+    report('commands', 'command_prefix');
   }
 
   function toggleCommand(command: string): void {
     const next = toggleAllowedCommand(allowedList, command, COMMANDS);
     draft = updatePatchValue(draft, inherited, 'allowed_commands', next);
-    void push('commands');
+    report('commands', 'allowed_commands');
   }
 
   function addAlias(): void {
@@ -185,7 +205,7 @@
     });
     aliasName = '';
     aliasOpen = false;
-    void push('commands');
+    report('commands', 'command_aliases');
   }
 
   function retargetAlias(name: string, command: string): void {
@@ -194,14 +214,14 @@
       ...current,
       [name]: command,
     });
-    void push('commands');
+    report('commands', 'command_aliases');
   }
 
   function removeAlias(name: string): void {
     const next = { ...effectiveValue(draft, inherited, 'command_aliases') };
     delete next[name];
     draft = updatePatchValue(draft, inherited, 'command_aliases', next);
-    void push('commands');
+    report('commands', 'command_aliases');
   }
 
   function cloneValue<T>(value: T): T {
@@ -229,7 +249,10 @@
       <div class="policy-rows">
         {#each overriddenFields as field (field.key)}
           {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
-          <div class="policy-row">
+          <div
+            class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+            data-unsaved={dirtyKeySet.has(field.key) || undefined}
+          >
             <span class="setting-say">
               <span class="setting-name">{field.label}</span>
               <span class="setting-why">{field.help}</span>
@@ -251,9 +274,11 @@
       <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-behavior">
         <div class="group-head">
           <h3 class="group-name" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
-          <span class="save-whisper" class:is-on={behaviorSavedOn} role="status"
-            ><Icon name="check" size={12} /><span class="t">Saved</span></span
-          >
+          {#if !staged}
+            <span class="save-whisper" class:is-on={behaviorSavedOn} role="status"
+              ><Icon name="check" size={12} /><span class="t">Saved</span></span
+            >
+          {/if}
           <span class="group-tally"
             >{overriddenFields.length} of {shownFields.length} overridden</span
           >
@@ -263,7 +288,10 @@
           <div class="policy-rows">
             {#each overriddenFields as field (field.key)}
               {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
-              <div class="policy-row">
+              <div
+                class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+                data-unsaved={dirtyKeySet.has(field.key) || undefined}
+              >
                 <span class="setting-say">
                   <span class="setting-name">{field.label}</span>
                   <span class="setting-why">{field.help}</span>
@@ -319,14 +347,19 @@
     <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-commands">
       <div class="group-head">
         <h3 class="group-name" id="config-{scope}-{idPrefix}-commands">Commands</h3>
-        <span class="save-whisper" class:is-on={commandsSavedOn} role="status"
-          ><Icon name="check" size={12} /><span class="t">Saved</span></span
-        >
+        {#if !staged}
+          <span class="save-whisper" class:is-on={commandsSavedOn} role="status"
+            ><Icon name="check" size={12} /><span class="t">Saved</span></span
+          >
+        {/if}
         <span class="group-tally">{commandsOverridden} of 3 overridden</span>
       </div>
       <p class="group-note">How commands are invoked and which words trigger them</p>
       <div class="policy-rows">
-        <div class="policy-row">
+        <div
+          class={['policy-row', { 'is-unsaved': dirtyKeySet.has('command_prefix') }]}
+          data-unsaved={dirtyKeySet.has('command_prefix') || undefined}
+        >
           <span class="setting-say">
             <label class="setting-name" for="config-{scope}-{idPrefix}-prefix">Prefix</label>
             <span class="setting-why"
@@ -349,7 +382,14 @@
           {/if}
         </div>
 
-        <div class="policy-row policy-block">
+        <div
+          class={[
+            'policy-row',
+            'policy-block',
+            { 'is-unsaved': dirtyKeySet.has('allowed_commands') },
+          ]}
+          data-unsaved={dirtyKeySet.has('allowed_commands') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Allowed commands</span>
             <span class="setting-why"
@@ -379,7 +419,14 @@
           </div>
         </div>
 
-        <div class="policy-row policy-block">
+        <div
+          class={[
+            'policy-row',
+            'policy-block',
+            { 'is-unsaved': dirtyKeySet.has('command_aliases') },
+          ]}
+          data-unsaved={dirtyKeySet.has('command_aliases') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name" id="config-{scope}-{idPrefix}-aliases">Aliases</span>
             <span class="setting-why">Extra command words mapped to the commands they invoke</span>
@@ -558,6 +605,11 @@
        edge already carries that inset. */
     padding: var(--space-5) var(--space-2);
     position: relative;
+  }
+
+  .policy-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   .policy-row:first-child {

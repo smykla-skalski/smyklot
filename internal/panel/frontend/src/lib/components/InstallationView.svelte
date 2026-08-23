@@ -1,9 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { createMutation, useQueryClient } from '@tanstack/svelte-query';
+  import { useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
   import { getSyncDraftScope } from '#lib/sync-drafts.svelte.js';
-  import type { SyncConfigBatchResponse, TargetSettingsInput } from '#lib/types.js';
+  import type { SyncConfigBatchResponse } from '#lib/types.js';
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
 
@@ -39,21 +39,6 @@
     if (targetId === undefined || (view !== 'sync' && view !== 'history')) return;
     untrack(() => syncDraftScope.forTarget(targetId));
   });
-  const targetSettingsMutation = createMutation(() => ({
-    mutationFn: ({ targetId, input }: { targetId: string; input: TargetSettingsInput }) =>
-      session.api.updateTargetSettings(targetId, input),
-    onSettled: (_data, _error, { targetId }) => {
-      session.invalidateTargetData(targetId);
-      return queryClient.invalidateQueries({ queryKey: ['targets'] });
-    },
-  }));
-
-  async function updateTarget(input: TargetSettingsInput): Promise<void> {
-    const target = session.selectedTarget;
-    if (target === null) throw new Error('select an installation first');
-    await targetSettingsMutation.mutateAsync({ targetId: target.id, input });
-  }
-
   function fetchRepositories(request: Parameters<PanelSession['api']['fetchRepositories']>[1]) {
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchRepositories(session.selectedTarget.id, request);
@@ -119,7 +104,6 @@
           <TargetSettings
             target={session.selectedTarget}
             readOnly={!session.selectedTarget.capabilities.write}
-            onUpdate={updateTarget}
           />
         {/key}
       {:catch error}

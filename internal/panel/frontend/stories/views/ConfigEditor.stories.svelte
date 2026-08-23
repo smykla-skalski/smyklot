@@ -38,7 +38,10 @@
 -->
 <Story
   name="With unsaved changes"
-  args={{ patch: { quiet_success: true, allow_self_approval: true } }}
+  args={{
+    patch: { quiet_success: true, allow_self_approval: true },
+    dirtyKeys: ['quiet_success', 'allow_self_approval'],
+  }}
 />
 
 <Story name="Behaviour only" args={{ section: 'behavior' }} />
