@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsCheckpointDialog from '../src/lib/components/SettingsCheckpointDialog.svelte';
@@ -189,7 +189,14 @@ describe('SettingsCheckpointDialog [Component]', () => {
     vi.stubGlobal('ResizeObserver', TestResizeObserver);
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(async () => {
+    cleanup();
+    // Bits UI restores the body after a short hand-off window. Let that
+    // cleanup finish while jsdom still owns document instead of leaking its
+    // timer into Vitest's environment teardown.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    vi.unstubAllGlobals();
+  });
 
   it('summarises the five supported resource kinds without a generic diff', () => {
     const [target, repository, syncConfig, syncOverride] = checkpoint().items;
