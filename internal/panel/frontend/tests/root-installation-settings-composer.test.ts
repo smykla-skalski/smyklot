@@ -9,6 +9,11 @@ import {
   repositorySettingsDraftDocument,
   stageRepositorySettingsControl,
 } from '../src/lib/repository-settings';
+import {
+  adoptSyncOverrideSettings,
+  buildSyncOverrideEditorEnvelope,
+  stageSyncOverrideControl,
+} from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry, settingsDraftStorageKey } from '../src/lib/settings-drafts.svelte';
 import {
   adoptTargetDefaults,
@@ -21,6 +26,7 @@ import type {
   InstallationSettingsBatchResponse,
   PanelTarget,
   RootElevation,
+  SyncOverride,
 } from '../src/lib/types';
 import { fixtureApi } from '../stories/support/api';
 import { REPOSITORY_DETAIL, ROOT_INSTALLATION, ROOT_TARGET } from '../stories/support/fixtures';
@@ -101,6 +107,26 @@ function stageRepositoryDraft(drafts: SettingsDraftRegistry): void {
       enabled_override: false,
     },
     `repositories.${REPOSITORY_DETAIL.repository.id}.enabled_override`,
+  );
+}
+
+function stageInvalidSyncOverride(drafts: SettingsDraftRegistry): void {
+  const repositoryId = REPOSITORY_DETAIL.repository.id;
+  const override: SyncOverride = {
+    kind: 'files',
+    enabled: null,
+    document: { merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }] },
+    revision: 0,
+    unreadable: false,
+  };
+  adoptSyncOverrideSettings(drafts, ROOT_INSTALLATION.id, repositoryId, override);
+  stageSyncOverrideControl(
+    drafts,
+    ROOT_INSTALLATION.id,
+    repositoryId,
+    override,
+    { ...buildSyncOverrideEditorEnvelope(override), override_texts: ['{"timezone": '] },
+    `repositories.${repositoryId}.sync.files.document`,
   );
 }
 
@@ -206,6 +232,32 @@ describe('Root installation settings composer [Component]', () => {
 
     await waitFor(() => expect(drafts.hasDirty(scope)).toBe(false));
     expect(screen.queryByText('1 changed setting')).toBeNull();
+  });
+
+  it('links a failed Root save to the exact invalid section', async () => {
+    const drafts = registry();
+    const target = writableTarget();
+    stageTargetDraft(drafts, target);
+    stageInvalidSyncOverride(drafts);
+    const saveRootInstallationSettings = vi.fn();
+    const api = fixtureApi({
+      fetchRootTargetSettings: async () => target,
+      fetchRootElevation: async () => activeElevation(),
+      saveRootInstallationSettings,
+    });
+    render(RootInstallationViewHarness, {
+      props: viewProps(drafts, queryClient(), api),
+    });
+
+    const save = (await screen.findByRole('button', { name: 'Save' })) as HTMLButtonElement;
+    await waitFor(() => expect(save.disabled).toBe(false));
+    await fireEvent.click(save);
+
+    expect(saveRootInstallationSettings).not.toHaveBeenCalled();
+    expect(await screen.findByText('Settings were not saved')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open Repositories' }).getAttribute('href')).toBe(
+      `/__smyklot_panel_base__/root/installations/${ROOT_INSTALLATION.account.login}/repositories`,
+    );
   });
 
   it('rebases revision conflicts without losing the draft', async () => {

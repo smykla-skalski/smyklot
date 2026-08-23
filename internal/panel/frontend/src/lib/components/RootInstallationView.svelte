@@ -2,6 +2,7 @@
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
   import { useInterval } from 'runed';
+  import { panelAddress } from '../addresses';
   import { PanelApiError, type PanelApi } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
@@ -11,7 +12,11 @@
     saveInstallationDrafts,
   } from '../installation-settings-save';
   import { invalidateRootInstallationSettings } from '../query-client';
-  import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
+  import {
+    getSettingsDraftRegistry,
+    type SettingsDirtyControl,
+    type SettingsScope,
+  } from '../settings-drafts.svelte';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -64,6 +69,22 @@
   const settingsOperation = $derived(settingsDrafts.operation(settingsScope));
   const settingsConflict = $derived(settingsDrafts.hasConflicts(settingsScope));
   let resolvingSettingsConflict = $state(false);
+  let saveProblemControl = $state<SettingsDirtyControl | null>(null);
+  const dirtySettingsControls = $derived(settingsDrafts.dirtyControls(settingsScope));
+  const problemControl = $derived.by(() => {
+    const failed = saveProblemControl;
+    if (
+      failed !== null &&
+      dirtySettingsControls.some(
+        (control) => control.resourceKey === failed.resourceKey && control.id === failed.id,
+      )
+    ) {
+      return failed;
+    }
+    return dirtySettingsControls[0];
+  });
+  const problemHref = $derived(settingsProblemHref(problemControl));
+  const problemLabel = $derived(settingsProblemLabel(problemControl));
   const detailKey = $derived(['root-installations', installation.id, 'detail'] as const);
   const detailQuery = createQuery(() => ({
     queryKey: detailKey,
@@ -209,12 +230,16 @@
 
   async function saveSettings(): Promise<void> {
     if (!canWrite) return;
+    saveProblemControl = null;
     const result = await saveInstallationDrafts(
       settingsDrafts,
       installation.id,
       (targetId, input) => api.saveRootInstallationSettings(targetId, input),
     );
-    if (!result.saved) return;
+    if (!result.saved) {
+      saveProblemControl = result.problemControl ?? null;
+      return;
+    }
     await Promise.all([
       invalidateRootInstallationSettings(queryClient, installation.id),
       queryClient.invalidateQueries({ queryKey: ['sync-plan', installation.id] }),
@@ -222,11 +247,13 @@
   }
 
   function discardSettings(): void {
+    saveProblemControl = null;
     settingsDrafts.discardScope(settingsScope);
   }
 
   async function updateSettingsDraft(): Promise<void> {
     if (resolvingSettingsConflict) return;
+    saveProblemControl = null;
     resolvingSettingsConflict = true;
     await tick();
     try {
@@ -238,6 +265,34 @@
     } finally {
       resolvingSettingsConflict = false;
     }
+  }
+
+  function settingsProblemHref(control: SettingsDirtyControl | undefined): string | undefined {
+    const nextView = settingsProblemView(control);
+    return nextView === undefined
+      ? undefined
+      : panelAddress({
+          rootView: 'installation',
+          account: installation.account.login,
+          view: nextView,
+        });
+  }
+
+  function settingsProblemLabel(control: SettingsDirtyControl | undefined): string | undefined {
+    const nextView = settingsProblemView(control);
+    return nextView === 'defaults'
+      ? 'Workspace defaults'
+      : nextView === 'repositories'
+        ? 'Repositories'
+        : undefined;
+  }
+
+  function settingsProblemView(
+    control: SettingsDirtyControl | undefined,
+  ): 'defaults' | 'repositories' | undefined {
+    if (control?.location.section === 'defaults') return 'defaults';
+    if (control?.location.section === 'repositories') return 'repositories';
+    return undefined;
   }
 
   function dismissSettingsNotice(): void {
@@ -418,6 +473,8 @@
   saving={settingsOperation.saving}
   resolving={resolvingSettingsConflict}
   problem={settingsOperation.problem}
+  {problemHref}
+  {problemLabel}
   notice={settingsOperation.notice}
   conflict={settingsConflict}
   readOnly={!canWrite}
