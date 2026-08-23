@@ -34,43 +34,70 @@
 
   const {
     config,
+    savedDocument = {},
     plan,
     readOnly,
     problem = null,
-    saving,
     sectionHref,
     onOpenSection,
     rulesetHref,
     onOpenRuleset,
-    onSave,
+    onToggleEnabled,
+    onChangeDocument,
+    dirtyEnabled = false,
+    dirtyDocument = false,
   }: {
     config: SyncConfig | null;
+    savedDocument?: Record<string, unknown>;
     plan: SyncPlan | null;
     readOnly: boolean;
     problem?: string | null;
-    saving: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => void;
+    onToggleEnabled: (enabled: boolean) => void;
+    onChangeDocument: (document: Record<string, unknown>) => void;
+    dirtyEnabled?: boolean;
+    dirtyDocument?: boolean;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
   const enabled = $derived(config?.enabled ?? false);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
-  const frozen = $derived(readOnly || unreadable || saving || config === null);
+  const frozen = $derived(readOnly || unreadable || config === null);
 
   const rulesets = $derived(
     Array.isArray(stored.rulesets) ? (stored.rulesets as SyncRuleset[]) : [],
   );
   const allowRemoval = $derived(stored.allow_removal === true);
   const excludes = $derived(Array.isArray(stored.excludes) ? (stored.excludes as string[]) : []);
+  const savedRulesets = $derived(
+    Array.isArray(savedDocument.rulesets) ? (savedDocument.rulesets as SyncRuleset[]) : [],
+  );
 
-  function save(change: Partial<Record<string, unknown>>): void {
+  function stage(change: Partial<Record<string, unknown>>): void {
     if (frozen) return;
-    onSave(enabled, { ...stored, ...change });
+    onChangeDocument({ ...stored, ...change });
+  }
+
+  function same(left: unknown, right: unknown): boolean {
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  }
+
+  function rulesetDirty(ruleset: SyncRuleset): boolean {
+    return (
+      dirtyDocument &&
+      !same(
+        ruleset,
+        savedRulesets.find((saved) => saved.name === ruleset.name),
+      )
+    );
   }
 
   /* ---------- What the plan says about each ruleset ---------- */
@@ -126,7 +153,7 @@
       conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
       rules: {},
     };
-    onSave(enabled, { ...stored, rulesets: [...rulesets, born] });
+    onChangeDocument({ ...stored, rulesets: [...rulesets, born] });
     onOpenRuleset(name);
   }
 </script>
@@ -138,7 +165,7 @@
     ]}
   />
 
-  <div class="kind-head">
+  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
     <div class="kind-head-say">
       <h2 class="card-title">Rulesets</h2>
       <p class="kind-head-sub">
@@ -151,7 +178,7 @@
       label="Ruleset sync"
       word="Syncing"
       disabled={frozen}
-      onToggle={(next) => onSave(next, stored)}
+      onToggle={onToggleEnabled}
     />
   </div>
 
@@ -173,7 +200,7 @@
     </p>
   {/if}
 
-  <div class="card">
+  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
     <div class="card-head">
       <h3 class="card-title">{rulesets.length} {rulesets.length === 1 ? 'ruleset' : 'rulesets'}</h3>
       <Popover role="dialog" label="Name the ruleset" align="end" bind:open={adding}>
@@ -209,6 +236,8 @@
           {@const pending = differs(ruleset.name)}
           <a
             class="object-row"
+            class:is-unsaved={rulesetDirty(ruleset)}
+            data-unsaved={rulesetDirty(ruleset) || undefined}
             href={rulesetHref(ruleset.name)}
             onclick={(event) => open(event, ruleset.name)}
           >
@@ -247,7 +276,12 @@
 
   <div class="card">
     <div class="setting-rows">
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyDocument && !same(stored.allow_removal, savedDocument.allow_removal)}
+        data-unsaved={(dirtyDocument && !same(stored.allow_removal, savedDocument.allow_removal)) ||
+          undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Remove rulesets this list does not name</span>
           <span class="setting-why"
@@ -258,10 +292,15 @@
           checked={allowRemoval}
           label="Remove rulesets this list does not name"
           disabled={frozen}
-          onToggle={(next) => save({ allow_removal: next })}
+          onToggle={(next) => stage({ allow_removal: next })}
         />
       </div>
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyDocument && !same(stored.excludes, savedDocument.excludes)}
+        data-unsaved={(dirtyDocument && !same(stored.excludes, savedDocument.excludes)) ||
+          undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Rulesets to leave alone</span>
           <span class="setting-why"
@@ -272,7 +311,7 @@
           <PatternEntries
             patterns={excludes}
             readOnly={frozen}
-            onChange={(next) => save({ excludes: next })}
+            onChange={(next) => stage({ excludes: next })}
           />
         </span>
       </div>
@@ -310,11 +349,27 @@
     min-block-size: auto;
   }
 
+  .kind-head.is-unsaved,
+  .object-row.is-unsaved,
+  .setting-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
+  }
+
+  .kind-head.is-unsaved {
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+  }
+
   .card {
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     padding: var(--space-5);
+  }
+
+  .card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
   }
 
   .card + .card {

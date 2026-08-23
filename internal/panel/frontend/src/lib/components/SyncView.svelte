@@ -10,6 +10,17 @@
    */
   import { untrack } from 'svelte';
 
+  import { formatJson, type JsonValue } from '#lib/merge.js';
+  import { getSettingsDraftRegistry, type SettingsScope } from '#lib/settings-drafts.svelte.js';
+  import {
+    adoptSyncConfigSettings,
+    stageSyncConfigControl,
+    syncConfigDraftEnvelope,
+    syncConfigForEditor,
+    type SyncConfigControlId,
+    type SyncConfigEditorEnvelope,
+    type SyncLabelsEditorEnvelope,
+  } from '#lib/sync-config-settings.js';
   import type {
     SyncConfig,
     SyncFilesContext,
@@ -19,7 +30,6 @@
     SyncPlan,
     SyncStatus,
   } from '#lib/types.js';
-  import type { SyncDraftSet } from '#lib/sync-drafts.svelte.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';
@@ -40,7 +50,6 @@
     fileName = null,
     readOnly,
     fetchConfig,
-    drafts,
     fetchPlan,
     approvePlan,
     discardPlan,
@@ -77,7 +86,6 @@
       input: SyncOverrideInput,
     ) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
-    drafts: SyncDraftSet;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
@@ -102,12 +110,30 @@
    */
   type DocumentKind = typeof SETTINGS | typeof RULESETS | typeof FILES;
 
-  const config = $derived(drafts.config(LABELS));
-  const documents = $derived<Record<DocumentKind, SyncConfig | null>>({
-    settings: drafts.config(SETTINGS),
-    rulesets: drafts.config(RULESETS),
-    files: drafts.config(FILES),
+  type EditorState = { config: SyncConfig | null; problem: string | null };
+
+  const drafts = getSettingsDraftRegistry();
+  const settingsScope = $derived({
+    type: 'installation',
+    targetId,
+  } as const satisfies SettingsScope);
+  let canonicalConfigs = $state.raw<Partial<Record<SyncKind, SyncConfig>>>({});
+  let stageProblems = $state.raw<Partial<Record<SyncKind, string>>>({});
+
+  const editorStates = $derived.by(() => {
+    const states: Partial<Record<SyncKind, EditorState>> = {};
+    for (const kind of [LABELS, SETTINGS, RULESETS, FILES] as const) {
+      states[kind] = editorState(kind);
+    }
+    return states;
   });
+  const config = $derived(editorStates.labels?.config ?? null);
+  const documents = $derived<Record<DocumentKind, SyncConfig | null>>({
+    settings: editorStates.settings?.config ?? null,
+    rulesets: editorStates.rulesets?.config ?? null,
+    files: editorStates.files?.config ?? null,
+  });
+  const dirtyControls = $derived(drafts.dirtyControls(settingsScope).map(({ id }) => id));
   let plan = $state<SyncPlan | null>(null);
   let syncStatus = $state<SyncStatus | null>(null);
   let filesContext = $state<SyncFilesContext | null>(null);
@@ -118,11 +144,11 @@
   let discarding = $state(false);
 
   let error = $state<string | null>(null);
-  const labelsError = $derived(drafts.invalidKind === LABELS ? drafts.problem : error);
+  const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
   const documentError = $derived<Record<DocumentKind, string | null>>({
-    settings: drafts.invalidKind === SETTINGS ? drafts.problem : null,
-    rulesets: drafts.invalidKind === RULESETS ? drafts.problem : null,
-    files: drafts.invalidKind === FILES ? drafts.problem : null,
+    settings: stageProblems.settings ?? editorStates.settings?.problem ?? null,
+    rulesets: stageProblems.rulesets ?? editorStates.rulesets?.problem ?? null,
+    files: stageProblems.files ?? editorStates.files?.problem ?? null,
   });
 
   /* Every document, because each is only meaningful beside the plan: a plan
@@ -131,7 +157,22 @@
      the read that caused them. */
   $effect(() => {
     const id = targetId;
-    void drafts.refresh;
+    untrack(() => void load(id));
+  });
+
+  /* A successful application-wide save leaves its notice in the registry. The
+     committed configuration is already available there; the read refreshes the
+     plan, status and files context that are deliberately not part of a draft. */
+  let handledSaveNotice = untrack(() => drafts.operation(settingsScope).notice);
+  $effect(() => {
+    const notice = drafts.operation(settingsScope).notice;
+    if (notice === null) {
+      handledSaveNotice = null;
+      return;
+    }
+    if (notice === handledSaveNotice) return;
+    handledSaveNotice = notice;
+    const id = targetId;
     untrack(() => void load(id));
   });
 
@@ -155,7 +196,11 @@
         fetchStatus(id),
         fetchFilesContext(id),
       ]);
-      drafts.adopt([loadedConfig, loadedSettings, loadedRulesets, loadedFiles]);
+      const loaded = [loadedConfig, loadedSettings, loadedRulesets, loadedFiles];
+      canonicalConfigs = Object.fromEntries(loaded.map((config) => [config.kind, config]));
+      for (const config of loaded) {
+        if (!config.unreadable) adoptSyncConfigSettings(drafts, id, config);
+      }
       plan = loadedPlan.plan;
       syncStatus = loadedStatus;
       filesContext = loadedContext;
@@ -165,38 +210,89 @@
     }
   }
 
-  /** Stages the whole labels configuration in the installation-wide draft. */
-  async function saveLabels(input: {
-    enabled: boolean;
-    labels: SyncConfig['labels'];
-    allow_removal: boolean;
-    excludes: string[];
-  }): Promise<boolean> {
-    return drafts.stage(LABELS, input);
+  function editorState(kind: SyncKind): EditorState {
+    const canonical = canonicalConfigs[kind];
+    if (canonical === undefined) return { config: null, problem: null };
+    if (canonical.unreadable) return { config: canonical, problem: null };
+    try {
+      return {
+        config: syncConfigForEditor(
+          canonical,
+          syncConfigDraftEnvelope(drafts, targetId, canonical),
+        ),
+        problem: null,
+      };
+    } catch (cause) {
+      return { config: null, problem: messageOf(cause) };
+    }
   }
 
-  async function onSave(enabled: boolean): Promise<void> {
-    const current = config;
-    if (current === null) return;
-    await saveLabels({
-      enabled,
-      labels: current.labels,
-      allow_removal: current.allow_removal,
-      excludes: current.excludes,
-    });
+  function currentEnvelope(kind: SyncKind): SyncConfigEditorEnvelope | null {
+    const canonical = canonicalConfigs[kind];
+    if (canonical === undefined || canonical.unreadable) return null;
+    try {
+      return syncConfigDraftEnvelope(drafts, targetId, canonical);
+    } catch (cause) {
+      setStageProblem(kind, messageOf(cause));
+      return null;
+    }
   }
 
-  /**
-   * A document kind is staged whole. The bottom composer sends every dirty kind
-   * in one request, so moving between settings, rulesets and files never exposes
-   * a half-saved installation.
-   */
-  async function onSaveDocument(
-    kind: DocumentKind,
-    wanted: boolean,
-    document: Record<string, unknown>,
-  ): Promise<boolean> {
-    return drafts.stage(kind, { enabled: wanted, document });
+  function stageEnvelope(
+    kind: SyncKind,
+    envelope: SyncConfigEditorEnvelope,
+    controlId: SyncConfigControlId,
+  ): boolean {
+    const canonical = canonicalConfigs[kind];
+    if (
+      canonical === undefined ||
+      canonical.unreadable ||
+      !stageSyncConfigControl(drafts, targetId, canonical, envelope, controlId)
+    ) {
+      setStageProblem(kind, 'This Sync configuration change is not valid');
+      return false;
+    }
+    setStageProblem(kind, null);
+    return true;
+  }
+
+  function stageLabels(
+    next: {
+      enabled: boolean;
+      labels: SyncConfig['labels'];
+      allow_removal: boolean;
+      excludes: string[];
+    },
+    controlId: Extract<SyncConfigControlId, `sync.labels.${string}`>,
+  ): boolean {
+    const labels: SyncLabelsEditorEnvelope['labels'] = next.labels.map((label) => ({
+      name: label.name,
+      color: label.color,
+      ...(label.description === undefined ? {} : { description: label.description }),
+    }));
+    return stageEnvelope(LABELS, { kind: LABELS, ...next, labels }, controlId);
+  }
+
+  function stageDocument(kind: DocumentKind, document: Record<string, unknown>): boolean {
+    const current = currentEnvelope(kind);
+    if (current === null || current.kind === LABELS) return false;
+    try {
+      return stageEnvelope(
+        kind,
+        { ...current, document_text: formatJson(document as JsonValue).trimEnd() },
+        `sync.${kind}.document`,
+      );
+    } catch (cause) {
+      setStageProblem(kind, messageOf(cause));
+      return false;
+    }
+  }
+
+  function setStageProblem(kind: SyncKind, problem: string | null): void {
+    const next = { ...stageProblems };
+    if (problem === null) delete next[kind];
+    else next[kind] = problem;
+    stageProblems = next;
   }
 
   async function onApprove(planId: string, digest: string): Promise<void> {
@@ -229,16 +325,13 @@
     return cause instanceof Error ? cause.message : String(cause);
   }
 
-  /* The overview's kind switches are the same acts the forms perform: labels
-     save through the typed fields, every other kind saves its document back
-     with only the switch changed. */
+  /* The overview and each editor stage the same enablement control. Spreading
+     the envelope preserves malformed document text for the generic save to
+     reject without losing what somebody typed. */
   function toggleKind(kind: SyncKind, next: boolean): void {
-    if (kind === 'labels') {
-      void onSave(next);
-      return;
-    }
-    const current = documents[kind];
-    if (current !== null) void onSaveDocument(kind, next, current.document);
+    const current = currentEnvelope(kind);
+    if (current !== null)
+      stageEnvelope(kind, { ...current, enabled: next }, `sync.${kind}.enabled`);
   }
 </script>
 
@@ -260,6 +353,7 @@
       {sectionHref}
       {onOpenSection}
       onToggleKind={toggleKind}
+      {dirtyControls}
       {readOnly}
     />
   {/if}
@@ -286,77 +380,89 @@
       problem={labelsError}
       {sectionHref}
       {onOpenSection}
-      onSave={saveLabels}
+      onChange={stageLabels}
+      {dirtyControls}
     />
   {/key}
 {:else if section === 'rulesets'}
   {#if rulesetName !== null}
     <SyncRulesetPage
       config={documents.rulesets}
+      savedDocument={canonicalConfigs.rulesets?.document}
       name={rulesetName}
       {readOnly}
       problem={documentError.rulesets}
-      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
-      onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
+      onChangeDocument={(document) => void stageDocument(RULESETS, document)}
+      dirtyDocument={dirtyControls.includes('sync.rulesets.document')}
     />
   {:else}
     <SyncRulesetsPage
       config={documents.rulesets}
+      savedDocument={canonicalConfigs.rulesets?.document}
       {plan}
       {readOnly}
       problem={documentError.rulesets}
-      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       {rulesetHref}
       {onOpenRuleset}
-      onSave={(wanted, document) => void onSaveDocument(RULESETS, wanted, document)}
+      onToggleEnabled={(wanted) => toggleKind(RULESETS, wanted)}
+      onChangeDocument={(document) => void stageDocument(RULESETS, document)}
+      dirtyEnabled={dirtyControls.includes('sync.rulesets.enabled')}
+      dirtyDocument={dirtyControls.includes('sync.rulesets.document')}
     />
   {/if}
 {:else if section === 'files'}
   {#if fileName !== null}
     <SyncFilePage
       config={documents.files}
+      savedDocument={canonicalConfigs.files?.document}
       context={filesContext}
       path={fileName}
       {nowMs}
       {readOnly}
       problem={documentError.files}
-      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
-      onSave={(wanted, document) => onSaveDocument(FILES, wanted, document)}
+      onChangeDocument={(document) => stageDocument(FILES, document)}
+      dirtyDocument={dirtyControls.includes('sync.files.document')}
       fetchOverride={(repositoryId) => fetchOverride(targetId, repositoryId, FILES)}
       saveOverride={(repositoryId, input) => saveOverride(targetId, repositoryId, FILES, input)}
     />
   {:else}
     <SyncFilesPage
       config={documents.files}
+      savedDocument={canonicalConfigs.files?.document}
       context={filesContext}
       {plan}
       status={syncStatus}
       {nowMs}
       {readOnly}
       problem={documentError.files}
-      saving={drafts.saving}
       {sectionHref}
       {onOpenSection}
       {fileHref}
       {onOpenFile}
-      onSave={(wanted, document) => void onSaveDocument(FILES, wanted, document)}
+      onToggleEnabled={(wanted) => toggleKind(FILES, wanted)}
+      onChangeDocument={(document) => void stageDocument(FILES, document)}
+      dirtyEnabled={dirtyControls.includes('sync.files.enabled')}
+      dirtyDocument={dirtyControls.includes('sync.files.document')}
     />
   {/if}
 {:else if section === 'settings'}
   <SyncSettingsPage
     config={documents.settings}
+    savedDocument={canonicalConfigs.settings?.document}
     {readOnly}
     problem={documentError.settings}
-    saving={drafts.saving}
     {sectionHref}
     {onOpenSection}
-    onSave={(wanted, document) => void onSaveDocument(SETTINGS, wanted, document)}
+    onToggleEnabled={(wanted) => toggleKind(SETTINGS, wanted)}
+    onChangeDocument={(document) => void stageDocument(SETTINGS, document)}
+    dirtyEnabled={dirtyControls.includes('sync.settings.enabled')}
+    dirtyDocument={dirtyControls.includes('sync.settings.document')}
   />
 {:else}
   <section class="sync-page" aria-labelledby="sync-heading">

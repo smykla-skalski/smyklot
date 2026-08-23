@@ -73,38 +73,55 @@
 
   const {
     config,
+    savedDocument = {},
     name,
     readOnly,
     problem = null,
-    saving,
     sectionHref,
     onOpenSection,
-    onSave,
+    onChangeDocument,
+    dirtyDocument = false,
   }: {
     config: SyncConfig | null;
+    savedDocument?: Record<string, unknown>;
     /** Which ruleset the address names. */
     name: string;
     readOnly: boolean;
     problem?: string | null;
-    saving: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => void;
+    onChangeDocument: (document: Record<string, unknown>) => void;
+    dirtyDocument?: boolean;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
-  const enabled = $derived(config?.enabled ?? false);
-  const frozen = $derived(readOnly || config?.unreadable === true || saving || config === null);
+  const frozen = $derived(readOnly || config?.unreadable === true || config === null);
 
   const rulesets = $derived(
     Array.isArray(stored.rulesets) ? (stored.rulesets as SyncRuleset[]) : [],
   );
   const ruleset = $derived(rulesets.find((held) => held.name === name) ?? null);
+  const savedRulesets = $derived(
+    Array.isArray(savedDocument.rulesets) ? (savedDocument.rulesets as SyncRuleset[]) : [],
+  );
+  const savedRuleset = $derived(savedRulesets.find((held) => held.name === name) ?? null);
+
+  function same(left: unknown, right: unknown): boolean {
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  }
+
+  function partDirty(part: 'enforcement' | 'conditions' | 'rules' | 'bypass_actors'): boolean {
+    return dirtyDocument && !same(ruleset?.[part], savedRuleset?.[part]);
+  }
 
   /** Writes one changed ruleset back into the whole document. */
   function patch(change: Partial<SyncRuleset>): void {
     if (frozen || ruleset === null) return;
-    onSave(enabled, {
+    onChangeDocument({
       ...stored,
       rulesets: rulesets.map((held) => (held.name === name ? { ...held, ...change } : held)),
     });
@@ -122,7 +139,7 @@
 
   function deleteRuleset(): void {
     if (frozen) return;
-    onSave(enabled, {
+    onChangeDocument({
       ...stored,
       rulesets: rulesets.filter((held) => held.name !== name),
     });
@@ -440,9 +457,17 @@
   {/if}
 
   {#if ruleset !== null}
-    <div class="card group-card">
+    <div
+      class="card group-card"
+      class:is-unsaved={partDirty('enforcement')}
+      data-unsaved={partDirty('enforcement') || undefined}
+    >
       <div class="policy-rows">
-        <div class="policy-row">
+        <div
+          class="policy-row"
+          class:is-unsaved={partDirty('enforcement')}
+          data-unsaved={partDirty('enforcement') || undefined}
+        >
           <span class="setting-say">
             <span class="setting-name">Enforcement</span>
             <span class="setting-why">
@@ -469,12 +494,20 @@
       </div>
     </div>
 
-    <div class="card group-card">
+    <div
+      class="card group-card"
+      class:is-unsaved={partDirty('conditions')}
+      data-unsaved={partDirty('conditions') || undefined}
+    >
       <div class="group-head">
         <h3 class="group-name">Where it applies</h3>
       </div>
       <div class="policy-rows">
-        <div class="policy-row">
+        <div
+          class="policy-row"
+          class:is-unsaved={partDirty('conditions')}
+          data-unsaved={partDirty('conditions') || undefined}
+        >
           <span class="setting-say"><span class="setting-name">Branches it covers</span></span>
           <span class="policy-value">
             {#each include as pattern (pattern)}
@@ -519,7 +552,11 @@
             </Popover>
           </span>
         </div>
-        <div class="policy-row">
+        <div
+          class="policy-row"
+          class:is-unsaved={partDirty('conditions')}
+          data-unsaved={partDirty('conditions') || undefined}
+        >
           <span class="setting-say"><span class="setting-name">Branches it leaves out</span></span>
           <span class="policy-value">
             {#if exclude.length === 0}
@@ -571,14 +608,25 @@
       </div>
     </div>
 
-    <div class="card group-card">
+    <div
+      class="card group-card"
+      class:is-unsaved={partDirty('rules')}
+      data-unsaved={partDirty('rules') || undefined}
+    >
       <div class="group-head">
         <h3 class="group-name">What it enforces</h3>
         <span class="group-tally">{onRules.length} of {RULE_CATALOGUE.length} rules on</span>
       </div>
       <div class="policy-rows">
         {#each onRules as rule (rule.key)}
-          <div class="policy-row">
+          <div
+            class="policy-row"
+            class:is-unsaved={dirtyDocument &&
+              !same(ruleset?.rules?.[rule.key], savedRuleset?.rules?.[rule.key])}
+            data-unsaved={(dirtyDocument &&
+              !same(ruleset?.rules?.[rule.key], savedRuleset?.rules?.[rule.key])) ||
+              undefined}
+          >
             <span class="setting-say">
               <span class="setting-name">{rule.label}</span>
               {#if rule.why !== ''}
@@ -836,7 +884,11 @@
       {/if}
     </div>
 
-    <div class="card group-card">
+    <div
+      class="card group-card"
+      class:is-unsaved={partDirty('bypass_actors')}
+      data-unsaved={partDirty('bypass_actors') || undefined}
+    >
       <div class="group-head">
         <h3 class="group-name">Who may step around it</h3>
         <span class="group-tally">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
@@ -844,7 +896,11 @@
       {#if actors.length > 0}
         <div class="policy-rows">
           {#each actors as actor, at (at)}
-            <div class="policy-row">
+            <div
+              class="policy-row"
+              class:is-unsaved={partDirty('bypass_actors')}
+              data-unsaved={partDirty('bypass_actors') || undefined}
+            >
               <span class="setting-say">
                 <span class="setting-name">{actorName(actor)}</span>
                 <span class="setting-why">{actorWhy(actor)}</span>
@@ -975,6 +1031,10 @@
     padding: var(--space-5);
   }
 
+  .card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
+  }
+
   .card + .card {
     margin-top: var(--space-4);
   }
@@ -1017,6 +1077,11 @@
     min-block-size: 48px;
     padding: 0.5rem var(--space-2);
     position: relative;
+  }
+
+  .policy-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   /* Every row owns the line under itself; the last one keeps it only when

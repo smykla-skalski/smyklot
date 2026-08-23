@@ -36,6 +36,8 @@
    * cannot answer itself - what happens to a list both sides set - is asked
    * where it arises.
    */
+  import { untrack } from 'svelte';
+
   import { unifiedDiff } from '../code-tokens';
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
@@ -59,39 +61,47 @@
 
   const {
     config,
+    savedDocument = {},
     context,
     path,
     nowMs,
     readOnly,
     problem = null,
-    saving,
     sectionHref,
     onOpenSection,
-    onSave,
+    onChangeDocument,
+    dirtyDocument = false,
     fetchOverride,
     saveOverride,
   }: {
     config: SyncConfig | null;
+    savedDocument?: Record<string, unknown>;
     context: SyncFilesContext | null;
     /** Which template the address names. */
     path: string;
     nowMs: number;
     readOnly: boolean;
     problem?: string | null;
-    saving: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => Promise<boolean>;
+    onChangeDocument: (document: Record<string, unknown>) => boolean;
+    dirtyDocument?: boolean;
     fetchOverride: (repositoryId: string) => Promise<SyncOverride>;
     saveOverride: (repositoryId: string, input: SyncOverrideInput) => Promise<SyncOverride>;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
-  const enabled = $derived(config?.enabled ?? false);
-  const frozen = $derived(readOnly || config?.unreadable === true || saving || config === null);
+  const frozen = $derived(readOnly || config?.unreadable === true || config === null);
 
   const files = $derived(Array.isArray(stored.files) ? (stored.files as SyncFile[]) : []);
   const file = $derived(files.find((held) => held.path === path) ?? null);
+  const savedFiles = $derived(
+    Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
+  );
+  const savedFile = $derived(savedFiles.find((held) => held.path === path) ?? null);
+  const templateDirty = $derived(
+    dirtyDocument && (file?.content ?? '') !== (savedFile?.content ?? ''),
+  );
   const lang = $derived(langOf(path));
 
   const merges = $derived((context?.merges ?? []).filter((entry) => entry.path === path));
@@ -131,6 +141,8 @@
   /* Null while untouched, so a save elsewhere refreshing the config never
      fights an edit in progress. */
   let templateDraft = $state<string | null>(null);
+  let templateSource = untrack(() => file?.content ?? '');
+  let pendingTemplateText: string | null = null;
   let templateUndoDepth = $state(0);
   let templateEditor = $state<CodeEditor | null>(null);
   const templateText = $derived(templateDraft ?? file?.content ?? '');
@@ -138,8 +150,24 @@
   function stageTemplate(text: string): void {
     templateDraft = text;
     if (file === null || frozen) return;
-    void onSave(enabled, templateDocumentWithContent(stored, path, text));
+    pendingTemplateText = text;
+    onChangeDocument(templateDocumentWithContent(stored, path, text));
   }
+
+  $effect(() => {
+    const source = file?.content ?? '';
+    if (source === templateSource) return;
+    templateSource = source;
+    if (source === pendingTemplateText) {
+      pendingTemplateText = null;
+      return;
+    }
+    pendingTemplateText = null;
+    untrack(() => {
+      templateDraft = null;
+      templateUndoDepth = 0;
+    });
+  });
 
   /* ---------- One adjustment open at a time ---------- */
 
@@ -427,7 +455,7 @@
   {/if}
 
   {#if file !== null}
-    <div class="card">
+    <div class="card" class:is-unsaved={templateDirty} data-unsaved={templateDirty || undefined}>
       <div class="card-head">
         <h3 class="card-title">Template</h3>
         <div class="head-tools">
@@ -651,6 +679,11 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     padding: var(--space-5);
+  }
+
+  .card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   .card + .card {

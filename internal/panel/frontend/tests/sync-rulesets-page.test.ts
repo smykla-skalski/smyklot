@@ -48,9 +48,9 @@ describe('the ruleset pages [Component]', () => {
   const shared = {
     readOnly: false,
     problem: null,
-    saving: false,
     sectionHref: () => '#',
     onOpenSection: () => {},
+    onChangeDocument: () => {},
   };
 
   const listShared = {
@@ -58,6 +58,7 @@ describe('the ruleset pages [Component]', () => {
     plan: null,
     rulesetHref: (name: string) => `#/${name}`,
     onOpenRuleset: () => {},
+    onToggleEnabled: () => {},
   };
 
   it('reads the list into rows: coverage, rule count, bypass, enforcement', () => {
@@ -78,7 +79,6 @@ describe('the ruleset pages [Component]', () => {
           },
         ],
       }),
-      onSave: () => {},
     });
 
     const row = document.querySelector('.object-row') as HTMLElement;
@@ -97,7 +97,7 @@ describe('the ruleset pages [Component]', () => {
       onOpenRuleset: (name: string) => {
         opened.push(name);
       },
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -137,7 +137,7 @@ describe('the ruleset pages [Component]', () => {
           },
         ],
       }),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -169,7 +169,7 @@ describe('the ruleset pages [Component]', () => {
           },
         ],
       }),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -205,7 +205,7 @@ describe('the ruleset pages [Component]', () => {
           },
         ],
       }),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -245,7 +245,6 @@ describe('the ruleset pages [Component]', () => {
       ...shared,
       name: 'main-protection',
       config: config(boxed),
-      onSave: () => {},
     });
 
     const text = (document.body.textContent ?? '').replace(/\s+/g, ' ');
@@ -258,7 +257,6 @@ describe('the ruleset pages [Component]', () => {
       ...shared,
       name: 'renamed-away',
       config: config({ rulesets: [] }),
-      onSave: () => {},
     });
 
     expect(document.body.textContent).toContain('No ruleset by this name');

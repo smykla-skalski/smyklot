@@ -33,6 +33,7 @@
     sectionHref,
     onOpenSection,
     onToggleKind,
+    dirtyControls = [],
     readOnly = false,
   }: {
     status: SyncStatus;
@@ -43,6 +44,7 @@
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onToggleKind: (kind: SyncKind, enabled: boolean) => void;
+    dirtyControls?: readonly string[];
     readOnly?: boolean;
   } = $props();
 
@@ -149,6 +151,10 @@
     }
     event.preventDefault();
     onOpenSection(section);
+  }
+
+  function kindDirty(kind: SyncKind): boolean {
+    return dirtyControls.some((control) => control.startsWith(`sync.${kind}.`));
   }
 </script>
 
@@ -266,7 +272,12 @@
   <div class="kind-grid">
     {#each SYNC_KINDS as kind (kind)}
       {@const config = configs[kind]}
-      <div class="kind-card" class:is-off={config?.enabled === false}>
+      <div
+        class="kind-card"
+        class:is-off={config?.enabled === false}
+        class:is-unsaved={kindDirty(kind)}
+        data-unsaved={kindDirty(kind) || undefined}
+      >
         <div class="kind-card-head">
           <a
             class="kind-name"
@@ -767,6 +778,11 @@
       border-color var(--duration-fast) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard),
       translate var(--duration-press) var(--ease-standard);
+  }
+
+  .kind-card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   /* A raised fill alone measured 1.2 dE00 on the light card - invisible. The

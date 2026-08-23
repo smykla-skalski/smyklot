@@ -90,12 +90,12 @@
       plan: PLAN,
       readOnly: false,
       problem: null,
-      saving: false,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
       onOpenRuleset: fn(),
-      onSave: fn(),
+      onToggleEnabled: fn(),
+      onChangeDocument: fn(),
     },
   });
 </script>
@@ -107,6 +107,8 @@
   row's end.
 -->
 <Story name="Two rulesets" />
+
+<Story name="Unsaved rulesets" args={{ dirtyDocument: true, savedDocument: {} }} />
 
 <!-- Nothing named yet. -->
 <Story

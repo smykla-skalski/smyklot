@@ -2,7 +2,6 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
   import SyncView from '#lib/components/SyncView.svelte';
-  import { SyncDraftSet } from '#lib/sync-drafts.svelte.js';
   import Seeded from '../support/Seeded.svelte';
   import {
     emptySyncConfig,
@@ -25,16 +24,12 @@
 
   const PLAN = SYNC_PLAN;
   if (PLAN === null) throw new Error('the catalogue seed must include a sync plan');
-  const drafts = new SyncDraftSet(TARGET.id);
-  drafts.adopt(['labels', 'settings', 'rulesets', 'files'].map((kind) => config(kind)));
-
   const base = {
     targetId: TARGET.id,
     section: 'overview' as const,
     readOnly: false,
     clock: () => NOW,
     fetchConfig: async (_id: string, kind: string) => config(kind),
-    drafts,
     fetchPlan: async () => ({ plan: PLAN }),
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},

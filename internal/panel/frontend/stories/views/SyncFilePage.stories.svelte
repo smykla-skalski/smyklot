@@ -103,10 +103,9 @@
       nowMs: NOW,
       readOnly: false,
       problem: null,
-      saving: false,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
-      onSave: fn(),
+      onChangeDocument: fn(() => true),
       fetchOverride: async () => OVERRIDE,
       saveOverride: async () => OVERRIDE,
     },
@@ -121,6 +120,8 @@
   row to open its adjustment.
 -->
 <Story name="renovate.json" />
+
+<Story name="Unsaved template" args={{ dirtyDocument: true, savedDocument: {} }} />
 
 <!-- Nobody adjusts it: the template is the whole story. -->
 <Story name="No adjustments" args={{ context: { ...CONTEXT, merges: [] } }} />

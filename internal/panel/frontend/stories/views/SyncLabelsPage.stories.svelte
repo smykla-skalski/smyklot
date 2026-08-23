@@ -47,7 +47,7 @@
       problem: null,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
-      onSave: fn(async () => true),
+      onChange: fn(() => true),
     },
   });
 </script>
@@ -59,6 +59,8 @@
   unlisted labels are removed, and the patterns left alone either way.
 -->
 <Story name="Five labels" />
+
+<Story name="Unsaved labels" args={{ dirtyControls: ['sync.labels.labels'] }} />
 
 <!-- A reader without write: every control stands down, the list still reads. -->
 <Story name="Read only" args={{ readOnly: true }} />

@@ -42,10 +42,10 @@
       config: CONFIG,
       readOnly: false,
       problem: null,
-      saving: false,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
-      onSave: fn(),
+      onToggleEnabled: fn(),
+      onChangeDocument: fn(),
     },
   });
 </script>
@@ -61,6 +61,8 @@
 
 <!-- Nothing managed anywhere: every group is one sentence. -->
 <Story name="Nothing managed" args={{ config: { ...CONFIG, document: {} } }} />
+
+<Story name="Unsaved document" args={{ dirtyDocument: true, savedDocument: {} }} />
 
 <!-- A reader without write: the policy still reads, the controls stand down. -->
 <Story name="Read only" args={{ readOnly: true }} />

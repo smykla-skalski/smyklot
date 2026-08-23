@@ -159,27 +159,33 @@
 
   const {
     config,
+    savedDocument = {},
     readOnly,
     problem = null,
-    saving,
     sectionHref,
     onOpenSection,
-    onSave,
+    onToggleEnabled,
+    onChangeDocument,
+    dirtyEnabled = false,
+    dirtyDocument = false,
   }: {
     config: SyncConfig | null;
+    savedDocument?: Record<string, unknown>;
     readOnly: boolean;
     problem?: string | null;
-    saving: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => void;
+    onToggleEnabled: (enabled: boolean) => void;
+    onChangeDocument: (document: Record<string, unknown>) => void;
+    dirtyEnabled?: boolean;
+    dirtyDocument?: boolean;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
   const enabled = $derived(config?.enabled ?? false);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
-  const frozen = $derived(readOnly || unreadable || saving || config === null);
+  const frozen = $derived(readOnly || unreadable || config === null);
 
   const managedCount = $derived(SETTINGS_FIELD_KEYS.filter((key) => key in stored).length);
 
@@ -202,19 +208,35 @@
        on for a switch, the first word for a choice - the row is right there
        to say otherwise. */
     const value = field.kind === 'switch' ? true : (field.choices[0]?.value ?? '');
-    onSave(enabled, { ...stored, [field.key]: value });
+    onChangeDocument({ ...stored, [field.key]: value });
   }
 
   function unmanage(field: SettingDef): void {
     if (frozen) return;
     const next = { ...stored };
     delete next[field.key];
-    onSave(enabled, next);
+    onChangeDocument(next);
   }
 
   function setValue(field: SettingDef, value: unknown): void {
     if (frozen) return;
-    onSave(enabled, { ...stored, [field.key]: value });
+    onChangeDocument({ ...stored, [field.key]: value });
+  }
+
+  function fieldDirty(key: string): boolean {
+    return dirtyDocument && canonical(stored[key]) !== canonical(savedDocument[key]);
+  }
+
+  function groupDirty(group: SettingGroup): boolean {
+    return group.fields.some(({ key }) => fieldDirty(key));
+  }
+
+  function canonical(value: unknown): string {
+    try {
+      return JSON.stringify(value) ?? 'undefined';
+    } catch {
+      return String(value);
+    }
   }
 
   function choiceWord(field: SettingDef): string {
@@ -245,7 +267,7 @@
     ]}
   />
 
-  <div class="kind-head">
+  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
     <div class="kind-head-say">
       <h2 class="card-title">Repository settings</h2>
       <p class="kind-head-sub">
@@ -258,7 +280,7 @@
       label="Settings sync"
       word="Syncing"
       disabled={frozen}
-      onToggle={(next) => onSave(next, stored)}
+      onToggle={onToggleEnabled}
     />
   </div>
 
@@ -310,7 +332,12 @@
     {#each visibleGroups as group (group.id)}
       {@const rows = groupRows(group)}
       {@const rest = groupRest(group)}
-      <section class="card group-card" aria-labelledby="settings-group-{group.id}">
+      <section
+        class="card group-card"
+        class:is-unsaved={groupDirty(group)}
+        data-unsaved={groupDirty(group) || undefined}
+        aria-labelledby="settings-group-{group.id}"
+      >
         <div class="group-head">
           <h3 class="group-name" id="settings-group-{group.id}">{group.title}</h3>
           <span class="group-tally"
@@ -324,7 +351,11 @@
           <div class="policy-rows">
             {#each rows as field (field.key)}
               {@const managed = field.key in stored}
-              <div class="policy-row">
+              <div
+                class="policy-row"
+                class:is-unsaved={fieldDirty(field.key)}
+                data-unsaved={fieldDirty(field.key) || undefined}
+              >
                 <span class="setting-say">
                   <span class="setting-name">{field.label}</span>
                   {#if field.why !== ''}
@@ -417,7 +448,12 @@
         {/if}
         {#if rest.length > 0 && show === 'managed' && query.trim() === ''}
           {@const names = rest.map((field) => field.label)}
-          <div class="group-rest" class:is-open={picking === group.id}>
+          <div
+            class="group-rest"
+            class:is-open={picking === group.id}
+            class:is-unsaved={groupDirty(group)}
+            data-unsaved={groupDirty(group) || undefined}
+          >
             {#if picking === group.id}
               <span class="rest-say"
                 ><span class="rest-count">{rest.length} follow each repository</span> - pick one to manage:</span
@@ -485,6 +521,13 @@
     min-block-size: auto;
   }
 
+  .kind-head.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+  }
+
   .card-title {
     font-size: var(--font-size-card-title);
     font-weight: 600;
@@ -550,6 +593,10 @@
     padding: var(--space-5);
   }
 
+  .group-card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
+  }
+
   .group-head {
     align-items: end;
     display: flex;
@@ -597,6 +644,12 @@
     min-block-size: 48px;
     padding: 0.5rem var(--space-2);
     position: relative;
+  }
+
+  .policy-row.is-unsaved,
+  .group-rest.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   /* A drawn hairline, not a border: a border on a radiused row curves at

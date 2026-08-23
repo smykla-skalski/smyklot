@@ -6,6 +6,8 @@
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
+  import { getSettingsDraftRegistry } from '../settings-drafts.svelte';
+  import { adoptSyncConfigSettings } from '../sync-config-settings';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -48,6 +50,7 @@
   const ELEVATION_DIALOG = 'root-elevation';
 
   const queryClient = useQueryClient();
+  const settingsDrafts = getSettingsDraftRegistry();
   const detailKey = $derived(['root-installations', installation.id, 'detail'] as const);
   const detailQuery = createQuery(() => ({
     queryKey: detailKey,
@@ -178,6 +181,13 @@
     void queryClient.invalidateQueries({ queryKey: ['repositories', targetId] });
     void queryClient.invalidateQueries({ queryKey: ['root-installations'] });
     void queryClient.invalidateQueries({ queryKey: ['root-overview'] });
+  }
+
+  function syncConfigRestored(result: import('../types').SyncConfigBatchResponse): void {
+    for (const config of result.configs) {
+      if (!config.unreadable) adoptSyncConfigSettings(settingsDrafts, installation.id, config);
+    }
+    void load();
   }
 
   function countdown(seconds: number): string {
@@ -337,8 +347,11 @@
       fetchSyncCheckpoint={api.fetchRootSyncConfigCheckpoint}
       restoreSyncCheckpoint={api.restoreRootSyncConfigCheckpoint}
       readOnly={!canWrite}
-      hasUnsavedSyncDrafts={false}
-      onSyncRestored={() => void load()}
+      hasUnsavedSyncDrafts={settingsDrafts.dirtyAt(
+        { type: 'installation', targetId: installation.id },
+        { section: 'sync', path: [] },
+      )}
+      onSyncRestored={syncConfigRestored}
     />
   {:else}
     <div class="root-loading">
@@ -352,7 +365,7 @@
   id={ELEVATION_DIALOG}
   open={elevationModalOpen}
   title={`Elevate access to ${installation.account.display_name}`}
-  description="This grants write access for 15 minutes. It cannot be extended by activity."
+  description="This grants write access for 15 minutes. It cannot be extended by activity"
   returnFocus={elevationTrigger}
   onClose={closeElevation}
 >

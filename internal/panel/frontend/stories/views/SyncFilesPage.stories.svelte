@@ -136,12 +136,12 @@
       nowMs: NOW,
       readOnly: false,
       problem: null,
-      saving: false,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: fn(),
-      onSave: fn(),
+      onToggleEnabled: fn(),
+      onChangeDocument: fn(),
     },
   });
 </script>
@@ -153,6 +153,8 @@
   fuzzy suggestions from what the organization's repositories already hold.
 -->
 <Story name="Five templates" />
+
+<Story name="Unsaved files" args={{ dirtyDocument: true, savedDocument: {} }} />
 
 <!-- Nothing shared yet. -->
 <Story

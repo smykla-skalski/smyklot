@@ -39,9 +39,11 @@ describe('SyncLabelsPage [Component]', () => {
 
   it('stages each edit immediately against the latest local draft', async () => {
     const sent: LabelsSaveInput[] = [];
-    const onSave = vi.fn((wanted: LabelsSaveInput) => {
+    const controls: string[] = [];
+    const onChange = vi.fn((wanted: LabelsSaveInput, controlId: string) => {
       sent.push(wanted);
-      return Promise.resolve(true);
+      controls.push(controlId);
+      return true;
     });
 
     render(SyncLabelsPage, {
@@ -50,7 +52,7 @@ describe('SyncLabelsPage [Component]', () => {
       problem: null,
       sectionHref: () => '#',
       onOpenSection: vi.fn(),
-      onSave,
+      onChange,
     });
 
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
@@ -58,13 +60,14 @@ describe('SyncLabelsPage [Component]', () => {
 
     expect(sent).toHaveLength(2);
     expect(sent[1]).toMatchObject({ enabled: true, labels: [] });
+    expect(controls).toEqual(['sync.labels.enabled', 'sync.labels.labels']);
   });
 
   it('keeps the local draft while the parent refreshes its saved base', async () => {
     const sent: LabelsSaveInput[] = [];
-    const onSave = vi.fn((wanted: LabelsSaveInput) => {
+    const onChange = vi.fn((wanted: LabelsSaveInput) => {
       sent.push(wanted);
-      return Promise.resolve(true);
+      return true;
     });
     const props = {
       config: config(),
@@ -72,7 +75,7 @@ describe('SyncLabelsPage [Component]', () => {
       problem: null,
       sectionHref: () => '#',
       onOpenSection: vi.fn(),
-      onSave,
+      onChange,
     };
     const page = render(SyncLabelsPage, props);
 
@@ -81,11 +84,12 @@ describe('SyncLabelsPage [Component]', () => {
       screen.getByRole('checkbox', { name: 'Remove labels this list does not name' }),
     );
 
-    // A background read may advance the saved base, but it must not replace the
-    // installation draft currently being edited.
+    // The parent overlays the registry draft while its canonical revision
+    // advances, so the component follows that overlaid value rather than the
+    // newly fetched base.
     await page.rerender({
       ...props,
-      config: config({ enabled: true, allow_removal: false, revision: 2 }),
+      config: config({ enabled: true, allow_removal: true, revision: 2 }),
     });
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
 

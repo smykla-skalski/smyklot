@@ -47,9 +47,10 @@ describe('SyncSettingsPage [Component]', () => {
   const base = {
     readOnly: false,
     problem: null,
-    saving: false,
     sectionHref: () => '#',
     onOpenSection: () => {},
+    onToggleEnabled: () => {},
+    onChangeDocument: () => {},
   };
 
   /** One managed setting's row, by the words beside it. */
@@ -62,7 +63,7 @@ describe('SyncSettingsPage [Component]', () => {
   }
 
   it('renders only the managed settings as rows, the rest as one sentence', () => {
-    render(SyncSettingsPage, { ...base, config: config(), onSave: () => {} });
+    render(SyncSettingsPage, { ...base, config: config() });
 
     expect(document.querySelectorAll('.policy-row')).toHaveLength(2);
     expect(row('Squash merging').textContent).toContain('On');
@@ -76,7 +77,7 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config(),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -93,7 +94,7 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config(),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -111,7 +112,7 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config(),
-      onSave: (_enabled: boolean, document: Record<string, unknown>) => {
+      onChangeDocument: (document: Record<string, unknown>) => {
         sent.push(document);
       },
     });
@@ -136,7 +137,7 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config({ enabled: false }),
-      onSave: (enabled: boolean) => {
+      onToggleEnabled: (enabled: boolean) => {
         sent.push(enabled);
       },
     });
@@ -150,7 +151,6 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config({ document: {}, unreadable: true }),
-      onSave: () => {},
     });
 
     expect(screen.getByRole('alert').textContent).toContain('cannot read');
@@ -167,7 +167,6 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config({ unavailable: why }),
-      onSave: () => {},
     });
 
     expect(screen.getByRole('status').textContent).toContain('administration');
@@ -178,14 +177,13 @@ describe('SyncSettingsPage [Component]', () => {
     render(SyncSettingsPage, {
       ...base,
       config: config({ enabled: false, unavailable: why }),
-      onSave: () => {},
     });
 
     expect(screen.queryByRole('status')).toBeNull();
   });
 
   it('turns the unmanaged names into rows under Everything', async () => {
-    render(SyncSettingsPage, { ...base, config: config(), onSave: () => {} });
+    render(SyncSettingsPage, { ...base, config: config() });
 
     const everything = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
       (held) => held.value === 'everything',

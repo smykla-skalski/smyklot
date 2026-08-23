@@ -60,10 +60,9 @@
       name: 'main-protection',
       readOnly: false,
       problem: null,
-      saving: false,
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
-      onSave: fn(),
+      onChangeDocument: fn(),
     },
   });
 </script>
@@ -75,6 +74,8 @@
   Deleting waits at the bottom, on the sticky bar.
 -->
 <Story name="main-protection" />
+
+<Story name="Unsaved ruleset" args={{ dirtyDocument: true, savedDocument: {} }} />
 
 <!-- An address naming a ruleset that is gone says so rather than rendering
      an empty editor. -->

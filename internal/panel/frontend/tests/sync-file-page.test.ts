@@ -97,10 +97,9 @@ describe('SyncFilePage [Component]', () => {
         nowMs: 0,
         readOnly: false,
         problem: null,
-        saving: false,
         sectionHref: () => '#',
         onOpenSection: vi.fn(),
-        onSave: async () => true,
+        onChangeDocument: () => true,
         fetchOverride: (repositoryId: string) =>
           repositoryId === 'a' ? first.promise : second.promise,
         saveOverride: vi.fn(),

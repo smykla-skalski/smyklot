@@ -34,47 +34,74 @@
 
   const {
     config,
+    savedDocument = {},
     context,
     plan,
     status,
     nowMs,
     readOnly,
     problem = null,
-    saving,
     sectionHref,
     onOpenSection,
     fileHref,
     onOpenFile,
-    onSave,
+    onToggleEnabled,
+    onChangeDocument,
+    dirtyEnabled = false,
+    dirtyDocument = false,
   }: {
     config: SyncConfig | null;
+    savedDocument?: Record<string, unknown>;
     context: SyncFilesContext | null;
     plan: SyncPlan | null;
     status: SyncStatus | null;
     nowMs: number;
     readOnly: boolean;
     problem?: string | null;
-    saving: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     fileHref: (path: string) => string;
     onOpenFile: (path: string) => void;
-    onSave: (enabled: boolean, document: Record<string, unknown>) => void;
+    onToggleEnabled: (enabled: boolean) => void;
+    onChangeDocument: (document: Record<string, unknown>) => void;
+    dirtyEnabled?: boolean;
+    dirtyDocument?: boolean;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
   const enabled = $derived(config?.enabled ?? false);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
-  const frozen = $derived(readOnly || unreadable || saving || config === null);
+  const frozen = $derived(readOnly || unreadable || config === null);
 
   const files = $derived(Array.isArray(stored.files) ? (stored.files as SyncFile[]) : []);
   const retired = $derived(Array.isArray(stored.retired) ? (stored.retired as string[]) : []);
   const excludes = $derived(Array.isArray(stored.excludes) ? (stored.excludes as string[]) : []);
+  const savedFiles = $derived(
+    Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
+  );
 
-  function save(change: Partial<Record<string, unknown>>): void {
+  function stage(change: Partial<Record<string, unknown>>): void {
     if (frozen) return;
-    onSave(enabled, { ...stored, ...change });
+    onChangeDocument({ ...stored, ...change });
+  }
+
+  function same(left: unknown, right: unknown): boolean {
+    try {
+      return JSON.stringify(left) === JSON.stringify(right);
+    } catch {
+      return false;
+    }
+  }
+
+  function fileDirty(file: SyncFile): boolean {
+    return (
+      dirtyDocument &&
+      !same(
+        file,
+        savedFiles.find((saved) => saved.path === file.path),
+      )
+    );
   }
 
   /* ---------- One row's words ---------- */
@@ -135,7 +162,7 @@
     if (clean === '') return;
     addOpen = false;
     if (!files.some((file) => file.path === clean)) {
-      save({ files: [...files, { path: clean, content: '' }] });
+      stage({ files: [...files, { path: clean, content: '' }] });
     }
     onOpenFile(clean);
   }
@@ -166,7 +193,7 @@
     ]}
   />
 
-  <div class="kind-head">
+  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
     <div class="kind-head-say">
       <h2 class="card-title">Shared files</h2>
       <p class="kind-head-sub">
@@ -179,7 +206,7 @@
       label="File sync"
       word="Syncing"
       disabled={frozen}
-      onToggle={(next) => onSave(next, stored)}
+      onToggle={onToggleEnabled}
     />
   </div>
 
@@ -201,7 +228,7 @@
     </p>
   {/if}
 
-  <div class="card">
+  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
     <div class="card-head">
       <h3 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h3>
       <Popover
@@ -298,6 +325,8 @@
           {@const refused = refusals(file.path)}
           <a
             class="object-row"
+            class:is-unsaved={fileDirty(file)}
+            data-unsaved={fileDirty(file) || undefined}
             href={fileHref(file.path)}
             onclick={(event) => open(event, file.path)}
           >
@@ -332,7 +361,11 @@
 
   <div class="card">
     <div class="setting-rows">
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyDocument && !same(stored.retired, savedDocument.retired)}
+        data-unsaved={(dirtyDocument && !same(stored.retired, savedDocument.retired)) || undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Paths to remove</span>
           <span class="setting-why"
@@ -344,11 +377,16 @@
           <PatternEntries
             patterns={retired}
             readOnly={frozen}
-            onChange={(next) => save({ retired: next })}
+            onChange={(next) => stage({ retired: next })}
           />
         </span>
       </div>
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyDocument && !same(stored.excludes, savedDocument.excludes)}
+        data-unsaved={(dirtyDocument && !same(stored.excludes, savedDocument.excludes)) ||
+          undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Paths to leave alone</span>
           <span class="setting-why"
@@ -359,7 +397,7 @@
           <PatternEntries
             patterns={excludes}
             readOnly={frozen}
-            onChange={(next) => save({ excludes: next })}
+            onChange={(next) => stage({ excludes: next })}
           />
         </span>
       </div>
@@ -397,11 +435,27 @@
     min-block-size: auto;
   }
 
+  .kind-head.is-unsaved,
+  .object-row.is-unsaved,
+  .setting-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
+  }
+
+  .kind-head.is-unsaved {
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+  }
+
   .card {
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     padding: var(--space-5);
+  }
+
+  .card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
   }
 
   .card + .card {

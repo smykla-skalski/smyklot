@@ -59,15 +59,24 @@
     problem = null,
     sectionHref,
     onOpenSection,
-    onSave,
+    onChange,
+    dirtyControls = [],
   }: {
     config: SyncConfig | null;
     readOnly: boolean;
     problem?: string | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    /** Stages the whole configuration in the installation draft. */
-    onSave: (input: LabelsSaveInput) => Promise<boolean>;
+    /** Stages one semantic labels control in the application-wide draft. */
+    onChange: (
+      input: LabelsSaveInput,
+      controlId:
+        | 'sync.labels.enabled'
+        | 'sync.labels.labels'
+        | 'sync.labels.allow_removal'
+        | 'sync.labels.excludes',
+    ) => boolean;
+    dirtyControls?: readonly string[];
   } = $props();
 
   interface Row {
@@ -96,11 +105,13 @@
   let patterns = $state<string[]>([...(initialConfig?.excludes ?? [])]);
   let enabled = $state(initialConfig?.enabled ?? false);
   let allowRemoval = $state(initialConfig?.allow_removal ?? false);
+  let configSignature = labelsSignature(initialConfig);
   const unreadable = $derived(config?.unreadable === true);
   const unavailable = $derived(config?.unavailable ?? '');
   const frozen = $derived(readOnly || unreadable || config === null);
+  const dirtyControlSet = $derived(new Set(dirtyControls));
 
-  /* ---------- Saving: the list is the whole truth ---------- */
+  /* ---------- Staging: the list is the whole truth ---------- */
 
   function toLabels(list: Row[]): SyncLabel[] {
     return list
@@ -112,17 +123,27 @@
       }));
   }
 
-  function push(overrides: Partial<LabelsSaveInput> = {}): void {
+  function push(
+    controlId:
+      | 'sync.labels.enabled'
+      | 'sync.labels.labels'
+      | 'sync.labels.allow_removal'
+      | 'sync.labels.excludes',
+    overrides: Partial<LabelsSaveInput> = {},
+  ): void {
     if (config === null) return;
     if (overrides.enabled !== undefined) enabled = overrides.enabled;
     if (overrides.allow_removal !== undefined) allowRemoval = overrides.allow_removal;
-    void onSave({
-      enabled,
-      labels: toLabels(rows),
-      allow_removal: allowRemoval,
-      excludes: patterns.filter((pattern) => pattern.trim() !== ''),
-      ...overrides,
-    });
+    onChange(
+      {
+        enabled,
+        labels: toLabels(rows),
+        allow_removal: allowRemoval,
+        excludes: patterns.filter((pattern) => pattern.trim() !== ''),
+        ...overrides,
+      },
+      controlId,
+    );
   }
 
   /* ---------- One segment edits at a time, page-wide ---------- */
@@ -132,6 +153,30 @@
   let ghostScroll = $state(0);
   let editValue = $state('');
   let editInput: HTMLInputElement | null = $state(null);
+
+  $effect(() => {
+    const current = config;
+    const signature = labelsSignature(current);
+    if (signature === configSignature) return;
+    configSignature = signature;
+    untrack(() => {
+      rows = toRows(current);
+      patterns = [...(current?.excludes ?? [])];
+      enabled = current?.enabled ?? false;
+      allowRemoval = current?.allow_removal ?? false;
+      editing = null;
+      fieldError = null;
+    });
+  });
+
+  function labelsSignature(source: SyncConfig | null): string {
+    return JSON.stringify({
+      enabled: source?.enabled ?? false,
+      labels: source?.labels ?? [],
+      allow_removal: source?.allow_removal ?? false,
+      excludes: source?.excludes ?? [],
+    });
+  }
 
   /**
    * The letter under the pointer, read before the segment re-renders.
@@ -154,13 +199,7 @@
     return null;
   }
 
-  /* Committing is DEBOUNCED off the keyboard - the model is not written per
-     keystroke - but leaving the field, pasting, or Enter commits at once. */
-  let textTimer: ReturnType<typeof setTimeout> | undefined;
-
   function commitText(): void {
-    clearTimeout(textTimer);
-    textTimer = undefined;
     const open = editing;
     if (open === null || open.piece === 'color') return;
     const row = rows[open.index];
@@ -171,7 +210,7 @@
     rows = rows.map((held, at) =>
       at === open.index ? { ...held, [open.piece === 'name' ? 'name' : 'desc']: value } : held,
     );
-    void push();
+    push('sync.labels.labels');
   }
 
   function closeSegment(): void {
@@ -212,15 +251,12 @@
     }
   }
 
-  function typed(event: Event): void {
+  function typed(): void {
     const open = editing;
     if (open === null || open.piece === 'color') return;
     fieldError = labelFieldError(open.piece, editValue);
-    clearTimeout(textTimer);
     if (fieldError !== null) return;
-    const type = (event as InputEvent).inputType;
-    if (type === 'insertFromPaste' || type === 'insertFromDrop') commitText();
-    else textTimer = setTimeout(commitText, 700);
+    commitText();
   }
 
   function textKeys(event: KeyboardEvent): void {
@@ -254,13 +290,13 @@
 
   function applyColor(index: number, hex: string, silent: boolean): void {
     rows = rows.map((held, at) => (at === index ? { ...held, color: hex } : held));
-    if (!silent) void push();
+    if (!silent) push('sync.labels.labels');
   }
 
   function pickColor(index: number, hex: string): void {
     rows = rows.map((held, at) => (at === index ? { ...held, color: hex } : held));
     editing = null;
-    void push();
+    push('sync.labels.labels');
   }
 
   const inUse = $derived(rows.map((row) => row.color));
@@ -281,7 +317,7 @@
     if (frozen) return;
     rows = rows.filter((_, at) => at !== index);
     editing = null;
-    void push();
+    push('sync.labels.labels');
   }
 
   /* ---------- Outside is the exit ---------- */
@@ -323,7 +359,11 @@
     ]}
   />
 
-  <div class="kind-head">
+  <div
+    class="kind-head"
+    class:is-unsaved={dirtyControlSet.has('sync.labels.enabled')}
+    data-unsaved={dirtyControlSet.has('sync.labels.enabled') || undefined}
+  >
     <div class="kind-head-say">
       <h2 class="card-title">Labels</h2>
       <p class="kind-head-sub">
@@ -336,7 +376,7 @@
       label="Label sync"
       word="Syncing"
       disabled={frozen}
-      onToggle={(next) => void push({ enabled: next })}
+      onToggle={(next) => push('sync.labels.enabled', { enabled: next })}
     />
   </div>
 
@@ -358,7 +398,11 @@
     </p>
   {/if}
 
-  <div class="card label-card">
+  <div
+    class="card label-card"
+    class:is-unsaved={dirtyControlSet.has('sync.labels.labels')}
+    data-unsaved={dirtyControlSet.has('sync.labels.labels') || undefined}
+  >
     <div class="card-head">
       <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
       <Button class="label-add" disabled={frozen} onclick={addLabel}>
@@ -462,7 +506,11 @@
 
   <div class="card">
     <div class="setting-rows">
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyControlSet.has('sync.labels.allow_removal')}
+        data-unsaved={dirtyControlSet.has('sync.labels.allow_removal') || undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Remove labels this list does not name</span>
           <span class="setting-why"
@@ -474,10 +522,14 @@
           checked={allowRemoval}
           label="Remove labels this list does not name"
           disabled={frozen}
-          onToggle={(next) => void push({ allow_removal: next })}
+          onToggle={(next) => push('sync.labels.allow_removal', { allow_removal: next })}
         />
       </div>
-      <div class="setting-row">
+      <div
+        class="setting-row"
+        class:is-unsaved={dirtyControlSet.has('sync.labels.excludes')}
+        data-unsaved={dirtyControlSet.has('sync.labels.excludes') || undefined}
+      >
         <span class="setting-say">
           <span class="setting-name">Labels to leave alone</span>
           <span class="setting-why"
@@ -490,7 +542,7 @@
             readOnly={frozen}
             onChange={(next) => {
               patterns = next;
-              void push({ excludes: next });
+              push('sync.labels.excludes', { excludes: next });
             }}
           />
         </span>
@@ -532,11 +584,27 @@
     min-block-size: auto;
   }
 
+  .kind-head.is-unsaved,
+  .setting-row.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
+  }
+
+  .kind-head.is-unsaved {
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
+  }
+
   .card {
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     padding: var(--space-5);
+  }
+
+  .label-card.is-unsaved {
+    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   .card + .card {

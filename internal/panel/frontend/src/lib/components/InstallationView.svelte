@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
-  import { getSyncDraftScope } from '#lib/sync-drafts.svelte.js';
+  import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
+  import { adoptSyncConfigSettings } from '#lib/sync-config-settings.js';
   import type { SyncConfigBatchResponse } from '#lib/types.js';
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
@@ -26,19 +26,8 @@
   } = $props();
 
   const session = getPanelSession();
-  const syncDraftScope = getSyncDraftScope();
+  const settingsDrafts = getSettingsDraftRegistry();
   const queryClient = useQueryClient();
-  const syncDrafts = $derived.by(() => {
-    const targetId = session.selectedTarget?.id;
-    const drafts = syncDraftScope.current;
-    return targetId !== undefined && drafts?.targetId === targetId ? drafts : null;
-  });
-
-  $effect(() => {
-    const targetId = session.selectedTarget?.id;
-    if (targetId === undefined || (view !== 'sync' && view !== 'history')) return;
-    untrack(() => syncDraftScope.forTarget(targetId));
-  });
   function fetchRepositories(request: Parameters<PanelSession['api']['fetchRepositories']>[1]) {
     if (session.selectedTarget === null) throw new Error('select an installation first');
     return session.api.fetchRepositories(session.selectedTarget.id, request);
@@ -57,11 +46,9 @@
   }
 
   function syncConfigRestored(targetId: string, result: SyncConfigBatchResponse): void {
-    const drafts = syncDraftScope.forTarget(targetId);
-    drafts.acceptCommitted(
-      result.configs,
-      'Restored. Reconciliation creates a plan only when repositories need changes.',
-    );
+    for (const config of result.configs) {
+      if (!config.unreadable) adoptSyncConfigSettings(settingsDrafts, targetId, config);
+    }
     session.invalidateTargetData(targetId);
     void queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] });
   }
@@ -119,41 +106,36 @@
     </div>
   {:else if view === 'sync'}
     <div id="sync-panel">
-      {#if syncDrafts === null}
+      {#await import('./SyncView.svelte')}
         {@render loadingView('sync')}
-      {:else}
-        {#await import('./SyncView.svelte')}
-          {@render loadingView('sync')}
-        {:then { default: SyncView }}
-          {#key session.selectedTarget.id}
-            <SyncView
-              targetId={session.selectedTarget.id}
-              section={session.currentSyncSection}
-              rulesetName={session.currentSyncRuleset}
-              readOnly={!session.selectedTarget.capabilities.write}
-              fetchConfig={session.api.fetchSyncConfig}
-              drafts={syncDrafts}
-              fetchPlan={session.api.fetchSyncPlan}
-              approvePlan={session.api.approveSyncPlan}
-              discardPlan={session.api.discardSyncPlan}
-              fetchStatus={session.api.fetchSyncStatus}
-              sectionHref={(s) => session.syncSectionHref(s)}
-              onOpenSection={(s) => session.selectSyncSection(s)}
-              rulesetHref={(name) => session.syncRulesetHref(name)}
-              onOpenRuleset={(name) => session.selectSyncRuleset(name)}
-              fileName={session.currentSyncFile}
-              fileHref={(path) => session.syncFileHref(path)}
-              onOpenFile={(path) => session.selectSyncFile(path)}
-              fetchFilesContext={session.api.fetchSyncFilesContext}
-              fetchOverride={session.api.fetchSyncOverride}
-              saveOverride={session.api.saveSyncOverride}
-              {clock}
-            />
-          {/key}
-        {:catch error}
-          {@render failedView('sync', error)}
-        {/await}
-      {/if}
+      {:then { default: SyncView }}
+        {#key session.selectedTarget.id}
+          <SyncView
+            targetId={session.selectedTarget.id}
+            section={session.currentSyncSection}
+            rulesetName={session.currentSyncRuleset}
+            readOnly={!session.selectedTarget.capabilities.write}
+            fetchConfig={session.api.fetchSyncConfig}
+            fetchPlan={session.api.fetchSyncPlan}
+            approvePlan={session.api.approveSyncPlan}
+            discardPlan={session.api.discardSyncPlan}
+            fetchStatus={session.api.fetchSyncStatus}
+            sectionHref={(s) => session.syncSectionHref(s)}
+            onOpenSection={(s) => session.selectSyncSection(s)}
+            rulesetHref={(name) => session.syncRulesetHref(name)}
+            onOpenRuleset={(name) => session.selectSyncRuleset(name)}
+            fileName={session.currentSyncFile}
+            fileHref={(path) => session.syncFileHref(path)}
+            onOpenFile={(path) => session.selectSyncFile(path)}
+            fetchFilesContext={session.api.fetchSyncFilesContext}
+            fetchOverride={session.api.fetchSyncOverride}
+            saveOverride={session.api.saveSyncOverride}
+            {clock}
+          />
+        {/key}
+      {:catch error}
+        {@render failedView('sync', error)}
+      {/await}
     </div>
   {:else if view === 'users' || view === 'invitations'}
     <div id="access-panel">
@@ -185,32 +167,31 @@
     </div>
   {:else if view === 'history'}
     <div id="history-panel">
-      {#if syncDrafts === null}
+      {#await import('./HistoryPanel.svelte')}
         {@render loadingView('history')}
-      {:else}
-        {#await import('./HistoryPanel.svelte')}
-          {@render loadingView('history')}
-        {:then { default: HistoryPanel }}
-          {#key session.selectedTarget.id}
-            <HistoryPanel
-              targetId={session.selectedTarget.id}
-              section={session.currentHistorySection}
-              fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
-                session.api.fetchAudit(session.selectedTarget!.id, request)}
-              fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>
-                session.api.fetchFailures(session.selectedTarget!.id, request)}
-              fetchSyncCheckpoint={session.api.fetchSyncConfigCheckpoint}
-              restoreSyncCheckpoint={session.api.restoreSyncConfigCheckpoint}
-              readOnly={!session.selectedTarget.capabilities.write}
-              hasUnsavedSyncDrafts={syncDrafts.dirty}
-              onSyncRestored={(result) => syncConfigRestored(session.selectedTarget!.id, result)}
-              prefs={session.prefs}
-            />
-          {/key}
-        {:catch error}
-          {@render failedView('history', error)}
-        {/await}
-      {/if}
+      {:then { default: HistoryPanel }}
+        {#key session.selectedTarget.id}
+          <HistoryPanel
+            targetId={session.selectedTarget.id}
+            section={session.currentHistorySection}
+            fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
+              session.api.fetchAudit(session.selectedTarget!.id, request)}
+            fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>
+              session.api.fetchFailures(session.selectedTarget!.id, request)}
+            fetchSyncCheckpoint={session.api.fetchSyncConfigCheckpoint}
+            restoreSyncCheckpoint={session.api.restoreSyncConfigCheckpoint}
+            readOnly={!session.selectedTarget.capabilities.write}
+            hasUnsavedSyncDrafts={settingsDrafts.dirtyAt(
+              { type: 'installation', targetId: session.selectedTarget.id },
+              { section: 'sync', path: [] },
+            )}
+            onSyncRestored={(result) => syncConfigRestored(session.selectedTarget!.id, result)}
+            prefs={session.prefs}
+          />
+        {/key}
+      {:catch error}
+        {@render failedView('history', error)}
+      {/await}
     </div>
   {/if}
 {:else if session.failure === null}
