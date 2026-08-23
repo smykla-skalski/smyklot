@@ -177,7 +177,8 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
         linkStyle.transform === 'none' &&
         (!state.pressed || visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') &&
         (!state.pressed || visualStyle.borderRadius !== '0px') &&
-        (!state.pressed || visualStyle.boxShadow.includes('inset')) &&
+        (!state.pressed || visualStyle.boxShadow.includes('0px 0px 0px 1px inset')) &&
+        (!state.pressed || visualStyle.transitionDuration === '0s') &&
         (!(state.selected || state.pressed) || visualStyle.translate !== 'none') &&
         groundVisible &&
         visual.contains(label)

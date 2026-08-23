@@ -417,11 +417,7 @@
     inline-size: 24px;
     justify-content: center;
     padding: 0;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
+    transition: none;
   }
 
   .side-fold:hover {
@@ -431,7 +427,7 @@
 
   .side-fold:active {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
     translate: 0 1px;
   }
 
@@ -464,13 +460,10 @@
     pointer-events: none;
     position: absolute;
     transition:
-      background-color var(--duration-fast) var(--ease-standard),
       block-size 240ms cubic-bezier(0.22, 1, 0.36, 1),
       inline-size 240ms cubic-bezier(0.22, 1, 0.36, 1),
       inset-inline-start 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-radius 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
+      border-radius 240ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .tree:not(:global(.thumb-ready)) .nav-thumb {
@@ -480,7 +473,7 @@
   /* The selected row's pointer answers happen to the THUMB: ground and ink
      move as one object. */
   .tree:has(.tree-row.is-active:hover, .tree-kid.is-active:hover) .nav-thumb {
-    background: color-mix(in srgb, var(--sidebar-thumb) 92%, var(--sidebar-item-active-text));
+    box-shadow: var(--sidebar-thumb-shadow-pressed);
     translate: 0 -1px;
   }
 
@@ -499,7 +492,7 @@
     font-weight: 500;
     position: relative;
     text-decoration: none;
-    transition: color var(--duration-fast) var(--ease-standard);
+    transition: none;
   }
 
   .tree-row .t {
@@ -516,10 +509,7 @@
     inset: 0;
     pointer-events: none;
     position: absolute;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
+    transition: none;
   }
 
   .tree-row > .row-visual {
@@ -564,7 +554,7 @@
 
   .tree-row:active > .row-visual {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
     translate: 0 1px;
   }
 
@@ -586,7 +576,7 @@
 
   .tree-row.is-active:active > .row-visual {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
     translate: 0 1px;
   }
 
@@ -617,7 +607,7 @@
     font-size: var(--font-size-meta);
     position: relative;
     text-decoration: none;
-    transition: color var(--duration-fast) var(--ease-standard);
+    transition: none;
   }
 
   .tree-kid .t {
@@ -634,7 +624,7 @@
 
   .tree-kid:active > .row-visual {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
     translate: 0 1px;
   }
 
@@ -651,7 +641,7 @@
 
   .tree-kid.is-active:active > .row-visual {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
+    box-shadow: inset 0 0 0 1px var(--sidebar-border);
     translate: 0 1px;
   }
 
@@ -746,7 +736,7 @@
        the thumb rather than sinking into it. */
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > .row-visual {
       background: var(--sidebar-item-pressed);
-      box-shadow: var(--pressed-inset);
+      box-shadow: inset 0 0 0 1px var(--sidebar-border);
       translate: 0 1px;
     }
 
