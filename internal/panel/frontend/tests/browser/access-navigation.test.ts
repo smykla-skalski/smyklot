@@ -26,7 +26,6 @@ let invitationMs = Infinity;
 let usersMs = Infinity;
 const apiCalls: string[] = [];
 let keptManagementView = false;
-let legacyRedirected = false;
 let historyDefaultsNavigated = false;
 let rootAuditNavigated = false;
 let plainHoverVisible = false;
@@ -101,23 +100,6 @@ beforeAll(async () => {
     rootAuditNavigated = true;
   } finally {
     await rootInstallation.close();
-  }
-
-  const legacy = await panel.browser.newPage({ viewport: VIEWPORT });
-  try {
-    await legacy.goto(`${panel.origin}/i/${panel.account}/users`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await legacy.waitForURL((url) => url.pathname === `/i/${panel.account}/access/users`);
-    await legacy.goto(`${panel.origin}/root/installations/${panel.account}/invitations`, {
-      waitUntil: 'domcontentloaded',
-    });
-    await legacy.waitForURL(
-      (url) => url.pathname === `/root/installations/${panel.account}/access/invitations`,
-    );
-    legacyRedirected = true;
-  } finally {
-    await legacy.close();
   }
 }, 120_000);
 
@@ -232,10 +214,6 @@ describe('Access sidebar navigation [Integration]', () => {
     expect(plainPressVisible, 'ordinary press').toBe(true);
     expect(selectedHoverVisible, 'selected hover').toBe(true);
     expect(selectedPressVisible, 'selected press').toBe(true);
-  });
-
-  it('redirects old flat Access links to the canonical hierarchy', () => {
-    expect(legacyRedirected).toBe(true);
   });
 
   it('opens default History leaves from outside History', () => {

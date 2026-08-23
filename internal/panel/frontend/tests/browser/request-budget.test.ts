@@ -133,6 +133,7 @@ async function walk(): Promise<Measurement> {
       `/i/${panel.account}/access/users`,
       '/inbox',
       '/root',
+      '/root/runtime/service',
       '/root/runtime/settings',
     ]) {
       const link = page.locator(`a[href$="${path}"]`).first();

@@ -37,7 +37,7 @@ export interface Panel {
  * checked and is not.
  */
 export const PANEL_ROUTES = [
-  'i/settings',
+  'i/defaults',
   'i/repositories',
   /* One repository's own page, which is a route in its own right and was in none
      of these sweeps: it has a header, a switch, a way back and three panes, and
