@@ -75,6 +75,8 @@ type ConfigStore interface {
 	SetRepositoryConfigMigration(context.Context, RepositoryConfigMigration) error
 	GetRuntimeSettings(context.Context) (RuntimeSettings, error)
 	UpdateRuntimeSettings(context.Context, RuntimeSettingsChange) (RuntimeSettings, error)
+	CreateSettingsCheckpoint(context.Context, SettingsCheckpointCreate) (SettingsCheckpoint, error)
+	GetSettingsCheckpoint(context.Context, SettingsCheckpointRef) (SettingsCheckpoint, error)
 }
 
 // PendingCIGateStore owns the desired/effective repository protection

@@ -48,6 +48,9 @@ func DeclareSpecs(harness Harness) {
 	declareOrgSyncSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareSettingsCheckpointSpecs(func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 
 	It("describes the database it is talking to", func() {
 		status := store.Status(ctx)
