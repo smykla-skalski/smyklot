@@ -39,10 +39,18 @@ beforeAll(async () => {
   await page.locator('.user-management').evaluate((element) => {
     element.setAttribute('data-navigation-probe', 'kept');
   });
-  ({ hover: hoverStyleVisible, press: pressStyleVisible } = await inspectPointerStyles(
+  const plainPointer = await inspectPointerStyles(
     page,
     sidebarLink(page, 'Settings', 'tree-row'),
-  ));
+    false,
+  );
+  const selectedPointer = await inspectPointerStyles(
+    page,
+    sidebarLink(page, 'Users', 'tree-kid'),
+    true,
+  );
+  hoverStyleVisible = plainPointer.hover && selectedPointer.hover;
+  pressStyleVisible = plainPointer.press && selectedPointer.press;
 
   const watch = (request: { url: () => string }): void => {
     const pathname = new URL(request.url()).pathname;
@@ -130,34 +138,46 @@ async function pressEdge(
 async function inspectPointerStyles(
   target: Page,
   link: Locator,
+  selected: boolean,
 ): Promise<{ hover: boolean; press: boolean }> {
   const box = await link.boundingBox();
   if (box === null) throw new Error('Settings has no sidebar box');
   await target.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await target.waitForTimeout(100);
-  const hover = await pointerStyleVisible(link, false);
+  const hover = await pointerStyleVisible(link, false, selected);
 
   await target.mouse.down();
   await target.waitForTimeout(100);
-  const press = await pointerStyleVisible(link, true);
+  const press = await pointerStyleVisible(link, true, selected);
   await target.mouse.move(box.x + box.width + 20, box.y + box.height + 20);
   await target.mouse.up();
   return { hover, press };
 }
 
-function pointerStyleVisible(link: Locator, pressed: boolean): Promise<boolean> {
-  return link.evaluate((element, shouldBePressed) => {
-    const surface = element.querySelector<HTMLElement>('.row-surface');
-    const label = element.querySelector<HTMLElement>('.t');
-    if (surface === null || label === null) return false;
-    return (
-      (!shouldBePressed || element.matches(':active')) &&
-      (!shouldBePressed || getComputedStyle(surface).translate !== 'none') &&
-      (!shouldBePressed || getComputedStyle(label).translate !== 'none') &&
-      getComputedStyle(surface).backgroundColor !== 'rgba(0, 0, 0, 0)' &&
-      Number(getComputedStyle(label).zIndex) > Number(getComputedStyle(surface).zIndex)
-    );
-  }, pressed);
+function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean): Promise<boolean> {
+  return link.evaluate(
+    (element, state) => {
+      const surface = element.querySelector<HTMLElement>('.row-surface');
+      const label = element.querySelector<HTMLElement>('.t');
+      const thumb = element.closest('.tree')?.querySelector<HTMLElement>('.nav-thumb');
+      if (surface === null || label === null || thumb === null || thumb === undefined) return false;
+      const surfaceStyle = getComputedStyle(surface);
+      const labelStyle = getComputedStyle(label);
+      const thumbStyle = getComputedStyle(thumb);
+      const groundVisible = state.selected
+        ? thumbStyle.translate !== 'none'
+        : surfaceStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
+      return (
+        (!state.pressed || element.matches(':active')) &&
+        (!state.pressed || state.selected || surfaceStyle.translate === 'none') &&
+        (!state.pressed || state.selected || surfaceStyle.boxShadow !== 'none') &&
+        (!(state.selected || state.pressed) || labelStyle.translate !== 'none') &&
+        groundVisible &&
+        Number(labelStyle.zIndex) > Number(surfaceStyle.zIndex)
+      );
+    },
+    { pressed, selected },
+  );
 }
 
 describe('Access sidebar navigation [Integration]', () => {

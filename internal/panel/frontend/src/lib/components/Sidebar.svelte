@@ -518,9 +518,8 @@
     position: absolute;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
-    z-index: -1;
+    z-index: 0;
   }
 
   .tree-row > :global(svg),
@@ -562,7 +561,6 @@
   .tree-row:active > .row-surface {
     background: var(--sidebar-item-pressed);
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   .tree-row:active > :global(svg),
@@ -583,7 +581,6 @@
 
   .tree-row.is-active:hover > .row-surface {
     background: transparent;
-    translate: 0 -1px;
   }
 
   .tree-row.is-active:hover > :global(svg),
@@ -594,7 +591,6 @@
   .tree-row.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
-    translate: 0 1px;
   }
 
   .tree-row.is-active:active > :global(svg),
@@ -651,7 +647,6 @@
   .tree-kid:active > .row-surface {
     background: var(--sidebar-item-pressed);
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   .tree-kid:active > .t,
@@ -667,7 +662,6 @@
 
   .tree-kid.is-active:hover > .row-surface {
     background: transparent;
-    translate: 0 -1px;
   }
 
   .tree-kid.is-active:hover > .t,
@@ -678,7 +672,6 @@
   .tree-kid.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
-    translate: 0 1px;
   }
 
   .tree-kid.is-active:active > .t,
@@ -778,7 +771,6 @@
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > .row-surface {
       background: transparent;
       box-shadow: none;
-      translate: 0 1px;
     }
 
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > :global(svg) {
@@ -787,7 +779,6 @@
 
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > .row-surface {
       background: transparent;
-      translate: 0 -1px;
     }
 
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > :global(svg) {
