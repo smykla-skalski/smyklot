@@ -27,8 +27,10 @@ let usersMs = Infinity;
 const apiCalls: string[] = [];
 let keptManagementView = false;
 let legacyRedirected = false;
-let hoverStyleVisible = false;
-let pressStyleVisible = false;
+let plainHoverVisible = false;
+let plainPressVisible = false;
+let selectedHoverVisible = false;
+let selectedPressVisible = false;
 
 beforeAll(async () => {
   panel = await startPanel();
@@ -49,8 +51,10 @@ beforeAll(async () => {
     sidebarLink(page, 'Users', 'tree-kid'),
     true,
   );
-  hoverStyleVisible = plainPointer.hover && selectedPointer.hover;
-  pressStyleVisible = plainPointer.press && selectedPointer.press;
+  plainHoverVisible = plainPointer.hover;
+  plainPressVisible = plainPointer.press;
+  selectedHoverVisible = selectedPointer.hover;
+  selectedPressVisible = selectedPointer.press;
 
   const watch = (request: { url: () => string }): void => {
     const pathname = new URL(request.url()).pathname;
@@ -157,23 +161,26 @@ async function inspectPointerStyles(
 function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean): Promise<boolean> {
   return link.evaluate(
     (element, state) => {
-      const surface = element.querySelector<HTMLElement>('.row-surface');
+      const visual = element.querySelector<HTMLElement>('.row-visual');
       const label = element.querySelector<HTMLElement>('.t');
       const thumb = element.closest('.tree')?.querySelector<HTMLElement>('.nav-thumb');
-      if (surface === null || label === null || thumb === null || thumb === undefined) return false;
-      const surfaceStyle = getComputedStyle(surface);
-      const labelStyle = getComputedStyle(label);
+      if (visual === null || label === null || thumb === null || thumb === undefined) return false;
+      const linkStyle = getComputedStyle(element);
+      const visualStyle = getComputedStyle(visual);
       const thumbStyle = getComputedStyle(thumb);
       const groundVisible = state.selected
         ? thumbStyle.translate !== 'none'
-        : surfaceStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        : visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
       return (
         (!state.pressed || element.matches(':active')) &&
-        (!state.pressed || state.selected || surfaceStyle.translate === 'none') &&
-        (!state.pressed || state.selected || surfaceStyle.boxShadow !== 'none') &&
-        (!(state.selected || state.pressed) || labelStyle.translate !== 'none') &&
+        linkStyle.translate === 'none' &&
+        linkStyle.transform === 'none' &&
+        (!state.pressed || visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') &&
+        (!state.pressed || visualStyle.borderRadius !== '0px') &&
+        (!state.pressed || visualStyle.boxShadow.includes('inset')) &&
+        (!(state.selected || state.pressed) || visualStyle.translate !== 'none') &&
         groundVisible &&
-        Number(labelStyle.zIndex) > Number(surfaceStyle.zIndex)
+        visual.contains(label)
       );
     },
     { pressed, selected },
@@ -194,9 +201,11 @@ describe('Access sidebar navigation [Integration]', () => {
     expect(apiCalls).toEqual([]);
   });
 
-  it('keeps the label above the animated hover and press surfaces', () => {
-    expect(hoverStyleVisible).toBe(true);
-    expect(pressStyleVisible).toBe(true);
+  it('keeps the hit target still while its complete visual row responds', () => {
+    expect(plainHoverVisible, 'ordinary hover').toBe(true);
+    expect(plainPressVisible, 'ordinary press').toBe(true);
+    expect(selectedHoverVisible, 'selected hover').toBe(true);
+    expect(selectedPressVisible, 'selected press').toBe(true);
   });
 
   it('redirects old flat Access links to the canonical hierarchy', () => {
