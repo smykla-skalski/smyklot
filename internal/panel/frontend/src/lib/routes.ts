@@ -18,6 +18,9 @@ export const PANEL_VIEWS = [
   'history',
 ] as const;
 
+/** Views written directly after an installation account in the route tree. */
+export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'] as const;
+
 /**
  * The views that belong to the reader rather than to a workspace or the console.
  *
@@ -49,6 +52,9 @@ export const ROOT_INSTALLATION_VIEWS = [
   'invitations',
   'history',
 ] as const;
+
+/** Root installation views written directly after the installation account. */
+export const DIRECT_ROOT_INSTALLATION_VIEWS = ['settings', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
@@ -203,20 +209,28 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (personal !== undefined) return parts.length === 1 ? { personal } : null;
   if (parts.length < 3) return null;
 
-  const [namespace, encodedAccount, rawView] = parts;
+  const [namespace, encodedAccount, rawSection] = parts;
   if (
     namespace !== 'i' ||
     encodedAccount === undefined ||
     encodedAccount.length === 0 ||
-    rawView === undefined ||
-    !isScopedPanelView(rawView)
+    rawSection === undefined
   )
     return null;
+
+  /* Access is a sidebar section, not a view pretending to be one. The panel's
+     route vocabulary still uses the leaf names because that is what the
+     components render, while the address carries the hierarchy people see. */
+  const accessView =
+    rawSection === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[3]) : undefined;
+  if (rawSection === 'access' && parts.length > 3 && accessView === undefined) return null;
+  const rawView = rawSection === 'access' ? (accessView ?? 'users') : rawSection;
+  if (!isScopedPanelView(rawView)) return null;
 
   /* Everything past the view is history's table, a repository's page, or a
      dialog. Each view takes exactly one of the three, so the grammars can never
      be confused for each other. */
-  const trailing = parts.slice(3);
+  const trailing = parts.slice(rawSection === 'access' ? 4 : 3);
   const repository = parseTrailingRepository(rawView, trailing);
   if (repository === 'invalid') return null;
 
@@ -480,12 +494,15 @@ function parseRootRoute(parts: string[]): RootRoute | null {
      through to the installation default. */
   if (parts.length === 2 && parts[1] === 'history') return { rootView: 'history-audit' };
   if (parts.length === 2 && parts[1] === 'access') return { rootView: 'access-users' };
-  if (parts.length < 4 || parts[1] !== 'installations' || !isRootInstallationView(parts[3] ?? '')) {
-    return null;
-  }
+  if (parts.length < 4 || parts[1] !== 'installations') return null;
 
-  const view = parts[3] as RootInstallationView;
-  const trailing = parts.slice(4);
+  const rawView = parts[3] ?? '';
+  const accessView =
+    rawView === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[4]) : undefined;
+  if (rawView === 'access' && parts.length > 4 && accessView === undefined) return null;
+  const view = rawView === 'access' ? (accessView ?? 'users') : rawView;
+  if (!isRootInstallationView(view)) return null;
+  const trailing = parts.slice(rawView === 'access' ? 5 : 4);
   const repository = parseTrailingRepository(view, trailing);
   if (repository === 'invalid') return null;
 

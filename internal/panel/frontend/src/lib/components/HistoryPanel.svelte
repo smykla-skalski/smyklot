@@ -48,26 +48,11 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
   import SyncCheckpointDialog from './SyncCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'installation' | 'root';
-
-  /**
-   * The two tables, which are two addresses.
-   *
-   * Tabs rather than a segmented control: a segmented control changes what is
-   * on screen and saves nothing, and these survive a reload, can be linked and
-   * answer the browser's Back. Drawn as a strip of segments, the one thing a
-   * reader could not do with them was copy the address of the one they were
-   * looking at.
-   */
-  const HISTORY_TYPES = [
-    { id: 'audit', label: 'Audit' },
-    { id: 'failures', label: 'Failures' },
-  ] as const;
 
   const AUDIT_SCOPE_FILTERS = [
     {
@@ -150,8 +135,6 @@
     context = 'installation',
     rootRole = 'Root',
     section,
-    onSection,
-    sectionHref,
     prefs = EPHEMERAL_PREFS,
     readOnly = true,
     hasUnsavedSyncDrafts = false,
@@ -165,9 +148,6 @@
     context?: HistoryContext;
     rootRole?: string;
     section?: HistoryType;
-    onSection?: (section: HistoryType) => void;
-    /** Where each table lives; the strip is a strip of addresses. */
-    sectionHref?: (section: HistoryType) => string;
     prefs?: PrefsAccessor;
     readOnly?: boolean;
     hasUnsavedSyncDrafts?: boolean;
@@ -470,14 +450,6 @@
     }
   });
 
-  function selectHistoryType(value: string): void {
-    if ((value === 'audit' || value === 'failures') && value !== historyType) {
-      historyType = value;
-      sort = 'newest';
-      onSection?.(value);
-    }
-  }
-
   function selectTimeDisplay(value: TimeDisplay): void {
     timeDisplay = value;
   }
@@ -762,24 +734,21 @@
   aria-labelledby={context === 'root' ? 'root-page-heading' : 'history-heading'}
 >
   {#if context === 'root'}
-    <RootPageHeader role={rootRole} title="History" subtitle={description} />
+    <RootPageHeader
+      role={rootRole}
+      title={historyType === 'audit' ? 'Audit' : 'Failures'}
+      subtitle={description}
+    />
   {:else}
-    <PageHeader id="history-heading" title="History" {description} />
+    <PageHeader
+      id="history-heading"
+      eyebrow="History"
+      title={historyType === 'audit' ? 'Audit' : 'Failures'}
+      {description}
+    />
   {/if}
 
-  <!-- The table switch sits at the head of the controls row, left of the
-       search, the same place Access puts its Users/Invitations switch. -->
   <div class="history-tools">
-    <SectionTabs
-      items={HISTORY_TYPES.map((type) => ({
-        ...type,
-        href: sectionHref?.(type.id) ?? '#',
-      }))}
-      active={historyType}
-      label="History type"
-      onNavigate={selectHistoryType}
-    />
-
     <SearchField
       label="Search history"
       placeholder={historyType === 'audit' ? 'Search changes' : 'Search failures'}

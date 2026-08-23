@@ -53,6 +53,17 @@ function isRootInstallation(): boolean {
   return page.url.pathname.startsWith(`${basePath}/root/installations/`);
 }
 
+function installationAccessView(): string | undefined {
+  const id = page.route.id;
+  if (
+    id === '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]' ||
+    id === '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]'
+  ) {
+    return page.params.section;
+  }
+  return undefined;
+}
+
 /**
  * The address as it stands, with a different query.
  *
@@ -94,7 +105,12 @@ function dialogHostFromPage(): DialogHost | null {
   const view = page.params.view;
   if (view !== undefined && isDialogHost(view)) return view;
   const section = page.params.section;
-  if (section !== undefined) {
+  const installationView = installationAccessView();
+  if (installationView !== undefined && isDialogHost(installationView)) return installationView;
+  if (
+    section !== undefined &&
+    page.route.id === '/root/access/[section=accessSection]/[...rest=dialogPath]'
+  ) {
     const host = `access-${section}`;
     if (isDialogHost(host)) return host;
   }
@@ -108,7 +124,7 @@ function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
     return panelAddress({ rootView: host, dialog } as RootRoute);
   }
 
-  const view = page.params.view;
+  const view = page.params.view ?? installationAccessView();
   const account = page.params.account;
   if (view === undefined || account === undefined || !isDialogHost(view)) return null;
   if (isRootInstallation()) {
@@ -125,7 +141,7 @@ function bareHostPath(): string | null {
     } as RootRoute);
   }
 
-  const view = page.params.view;
+  const view = page.params.view ?? installationAccessView();
   const account = page.params.account;
   if (view === undefined || account === undefined) return null;
   return isRootInstallation()

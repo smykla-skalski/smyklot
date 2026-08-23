@@ -72,7 +72,6 @@
   import ResultProblem from './ResultProblem.svelte';
   import RolePicker, { type RolePickerOption } from './RolePicker.svelte';
   import SearchField from './SearchField.svelte';
-  import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type ManagementSection = 'users' | 'invitations';
@@ -169,8 +168,6 @@
     actorLogin,
     actorTargetRole,
     readOnly = false,
-    onSection,
-    sectionHref,
     fetchTargetUsers,
     addTargetUser,
     suggestUsers,
@@ -189,9 +186,6 @@
     actorLogin: string;
     actorTargetRole: InstallationRole;
     readOnly?: boolean;
-    onSection: (section: ManagementSection) => void;
-    /** Where each list lives; the strip is a strip of addresses. */
-    sectionHref?: (section: ManagementSection) => string;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addTargetUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
     /** Completes a login as it is typed; returns none when no roster is readable. */
@@ -466,12 +460,6 @@
           ? null
           : invitationFailure),
   );
-  /* Two lists, which are two addresses: tabs rather than a segmented control,
-     which changes what is on screen and saves nothing. */
-  const sectionOptions = $derived([
-    { id: 'users', label: 'Users', href: sectionHref?.('users') ?? '#' },
-    { id: 'invitations', label: 'Invitations', href: sectionHref?.('invitations') ?? '#' },
-  ]);
   const addRoleOptions = $derived(
     addRoles().map((role) => ({ value: role, label: roleLabel(role), icon: roleIcon(role) })),
   );
@@ -897,10 +885,6 @@
     untrack(() => (reason = ''));
   });
 
-  function selectSection(section: string): void {
-    if (section === 'users' || section === 'invitations') onSection(section);
-  }
-
   function selectUserSort(column: UserSortColumn): void {
     scrollResultsToTop(userResults);
     const target = userTable.getColumn(column);
@@ -1306,19 +1290,16 @@
 <section class="plate user-management" aria-labelledby="user-management-heading">
   <PageHeader
     id="user-management-heading"
-    title="Access"
-    description="Roles, invitations, and access decisions for this workspace"
+    eyebrow="Access"
+    title={activeSection === 'users' ? 'Users' : 'Invitations'}
+    description={activeSection === 'users'
+      ? 'Roles and access decisions for this workspace'
+      : 'Pending and completed invitations for this workspace'}
     actions={readOnly ? undefined : headerActions}
   />
 
   <div class="user-management-body">
     <div class="management-navigation">
-      <SectionTabs
-        items={sectionOptions}
-        active={activeSection}
-        label="User management lists"
-        onNavigate={selectSection}
-      />
       <div class="stable-feedback" aria-live="polite">{feedback}</div>
       {#if activeSection === 'users'}
         <SearchField

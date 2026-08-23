@@ -202,8 +202,6 @@
             targetName={session.selectedTarget.account.display_name}
             actorLogin={session.viewer?.account.login ?? ''}
             actorTargetRole={session.selectedTarget.effective_role}
-            onSection={(s: 'users' | 'invitations') => session.selectUserSection(s)}
-            sectionHref={(s: 'users' | 'invitations') => session.accessHref(s)}
             fetchTargetUsers={session.api.fetchTargetUsers}
             addTargetUser={session.api.addTargetUser}
             suggestUsers={session.api.suggestUsers}
@@ -231,8 +229,6 @@
             <HistoryPanel
               targetId={session.selectedTarget.id}
               section={session.currentHistorySection}
-              onSection={(s: 'audit' | 'failures') => session.selectHistorySection(s)}
-              sectionHref={(s: 'audit' | 'failures') => session.historyHref(s)}
               fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
                 session.api.fetchAudit(session.selectedTarget!.id, request)}
               fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>

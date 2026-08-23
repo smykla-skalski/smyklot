@@ -85,9 +85,13 @@ async function measure(target: Page): Promise<Selection> {
 
       return { top: rect.top, height: rect.height };
     };
-    const row = document.querySelector(
-      '.tree .tree-kid.is-active, .tree .tree-row.is-active, .tree .tree-page.is-active > .tree-row',
-    );
+    const kid = document.querySelector<HTMLElement>('.tree .tree-kid.is-active');
+    const row =
+      kid !== null && kid.offsetParent !== null
+        ? kid
+        : document.querySelector(
+            '.tree .tree-row.is-active, .tree .tree-page.is-active > .tree-row',
+          );
 
     return {
       thumb: box(document.querySelector('.tree .nav-thumb')),

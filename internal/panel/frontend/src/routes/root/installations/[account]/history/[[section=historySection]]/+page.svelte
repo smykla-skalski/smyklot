@@ -17,10 +17,11 @@
     rootRole={session.rootRole}
     actorLogin={session.viewer?.account.login ?? ''}
     listHref={session.rootInstallationsHref()}
-    hrefFor={(a: string, v: RootInstallationView) => session.rootInstallationHref(a, v)}
+    hrefFor={(account: string, view: RootInstallationView) =>
+      session.rootInstallationHref(account, view)}
     onList={() => session.selectRootInstallations()}
-    onNavigate={(a: string, v: RootInstallationView) => session.selectRootInstallation(a, v)}
+    onNavigate={(account: string, view: RootInstallationView) =>
+      session.selectRootInstallation(account, view)}
     historySection={session.currentHistorySection}
-    onHistorySection={(s: 'audit' | 'failures') => session.selectRootInstallationHistory(s)}
   />
 </section>

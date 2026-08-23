@@ -17,8 +17,6 @@
   <RootAccess
     rootRole={session.rootRole}
     {section}
-    onSection={(s: 'users' | 'invitations') => session.selectRootAccessSection(s)}
-    sectionHref={(s: 'users' | 'invitations') => session.rootAccessHref(s)}
     fetchUsers={session.api.fetchRootUsers}
     updateUser={session.api.updateRootUser}
     fetchInvitations={session.api.fetchRootInvitations}

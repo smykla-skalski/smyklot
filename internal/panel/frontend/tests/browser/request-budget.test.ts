@@ -35,7 +35,7 @@ const IDLE_MS = 2000;
 const ADDRESSES = [
   '/i/{account}/settings',
   '/i/{account}/repositories',
-  '/i/{account}/users',
+  '/i/{account}/access/users',
   '/i/{account}/history/audit',
   '/inbox',
   '/root',
@@ -128,7 +128,7 @@ async function walk(): Promise<Measurement> {
 
     for (const path of [
       `/i/${panel.account}/repositories`,
-      `/i/${panel.account}/users`,
+      `/i/${panel.account}/access/users`,
       '/inbox',
       '/root',
       '/root/settings',

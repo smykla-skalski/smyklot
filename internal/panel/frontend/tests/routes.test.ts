@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DIRECT_PANEL_VIEWS,
   PANEL_VIEWS,
   panelDocumentTitle,
   panelViewSection,
@@ -43,14 +44,15 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
     expect(parsePanelRoute('', '/users')).toBeNull();
     expect(parsePanelRoute('', '/invitations')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/users')).toEqual({
+    expect(parsePanelRoute('', '/i/smykla-skalski/access/users')).toEqual({
       account: 'smykla-skalski',
       view: 'users',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/invitations')).toEqual({
+    expect(parsePanelRoute('', '/i/smykla-skalski/access/invitations')).toEqual({
       account: 'smykla-skalski',
       view: 'invitations',
     });
+    expect(parsePanelRoute('', '/i/smykla-skalski/access/owners')).toBeNull();
   });
 
   it('parses sync sections and refuses what is not one', () => {
@@ -154,7 +156,7 @@ describe('panel routes', () => {
       `${basePath}/i/bartsmykla/settings`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'users' })).toBe(
-      `${basePath}/i/bartsmykla/users`,
+      `${basePath}/i/bartsmykla/access/users`,
     );
     expect(panelAddress({ rootView: 'overview' })).toBe(`${basePath}/root`);
     expect(panelAddress({ rootView: 'access-users' })).toBe(`${basePath}/root/access/users`);
@@ -166,7 +168,7 @@ describe('panel routes', () => {
       }),
     ).toBe(`${basePath}/root/installations/smykla-skalski/history`);
     expect(panelAddress({ account: 'bartsmykla', view: 'invitations' })).toBe(
-      `${basePath}/i/bartsmykla/invitations`,
+      `${basePath}/i/bartsmykla/access/invitations`,
     );
   });
 });
@@ -217,10 +219,18 @@ describe('panel document titles', () => {
  * view added everywhere else was still refused here, so the row in the
  * navigation led to the not-found page and so did a reload.
  */
-describe('the panel view matcher', () => {
-  it('accepts every view the panel has', () => {
-    for (const view of PANEL_VIEWS) {
+describe('the direct panel view matcher', () => {
+  it('accepts every view written directly after an account', () => {
+    for (const view of DIRECT_PANEL_VIEWS) {
       expect(accepts('panelView', view), `the router refuses the ${view} view`).toBe(true);
+    }
+  });
+
+  it('keeps Access leaves under the Access route', () => {
+    for (const view of PANEL_VIEWS.filter(
+      (candidate) => !(DIRECT_PANEL_VIEWS as readonly string[]).includes(candidate),
+    )) {
+      expect(accepts('panelView', view), `${view} escaped the Access route`).toBe(false);
     }
   });
 
@@ -308,7 +318,7 @@ describe('personal routes', () => {
       dialog: { name: 'root-user-action', params: { user: 'octocat', action: 'ban' } },
     });
     // The same person inside an installation still has one.
-    expect(parsePanelRoute('', '/root/installations/acme/users/octocat/history')).toEqual({
+    expect(parsePanelRoute('', '/root/installations/acme/access/users/octocat/history')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'users',

@@ -42,6 +42,14 @@ export function panelAddress(route: PanelRoute): string {
   if ('personal' in route) return resolve('/inbox');
 
   const account = encodeURIComponent(route.account);
+  if (route.view === 'users' || route.view === 'invitations') {
+    return resolve('/i/[account]/access/[section=accessSection]/[...rest=dialogPath]', {
+      account,
+      section: route.view,
+      rest: route.dialog === undefined ? '' : (dialogRest(route.view, route.dialog) ?? ''),
+    });
+  }
+
   if (route.view === 'history') {
     return resolve('/i/[account]/history/[[section=historySection]]', {
       account,
@@ -130,6 +138,17 @@ function rootAddress(route: RootRoute): string {
 
 function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }): string {
   const account = encodeURIComponent(route.account);
+  if (route.view === 'users' || route.view === 'invitations') {
+    return resolve(
+      '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+      {
+        account,
+        section: route.view,
+        rest: route.dialog === undefined ? '' : (dialogRest(route.view, route.dialog) ?? ''),
+      },
+    );
+  }
+
   if (route.view === 'history') {
     return resolve('/root/installations/[account]/history/[[section=historySection]]', {
       account,
@@ -220,6 +239,10 @@ export function panelRouteAt(
 
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);
+    case '/i/[account]/access':
+      return withView(account, 'users');
+    case '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]':
+      return withView(account, section, undefined, dialogAt(section, params.rest));
     case '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]':
       return withView(account, params.view, undefined, dialogAt(params.view, params.rest));
     case '/i/[account]/history/[[section=historySection]]':
@@ -269,6 +292,10 @@ export function panelRouteAt(
 
     case '/root/installations/[account]/[view=rootInstallationView]':
       return rootInstallation(account, params.view);
+    case '/root/installations/[account]/access':
+      return rootInstallation(account, 'users');
+    case '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]':
+      return rootInstallation(account, section, undefined, dialogAt(section, params.rest));
     case '/root/installations/[account]/[view=dialogHostView]/[...rest=dialogPath]':
       return rootInstallation(account, params.view, undefined, dialogAt(params.view, params.rest));
     case '/root/installations/[account]/history/[[section=historySection]]':

@@ -362,6 +362,7 @@
   <section class="sync-page" aria-labelledby="sync-heading">
     <PageHeader
       id="sync-heading"
+      eyebrow="Sync"
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />

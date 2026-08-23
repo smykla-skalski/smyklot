@@ -23,6 +23,7 @@
     id,
     title,
     description,
+    eyebrow,
     kicker,
     actions,
   }: {
@@ -31,6 +32,8 @@
     title: string;
     /** One line saying what the page is for. */
     description: string;
+    /** Plain section context above the title, such as Access or History. */
+    eyebrow?: string;
     /** Above the title - on the Root console, whose authority this page is under. */
     kicker?: Snippet;
     /** Live status and the controls that act on the page. Never identity. */
@@ -43,9 +46,11 @@
   centres on it. Centring against the whole heading block hung the button below the
   title as soon as a description wrapped underneath it.
 -->
-<header class="page-header" class:has-kicker={kicker !== undefined}>
+<header class="page-header" class:has-kicker={kicker !== undefined || eyebrow !== undefined}>
   {#if kicker !== undefined}
     <p class="page-kicker">{@render kicker()}</p>
+  {:else if eyebrow !== undefined}
+    <p class="page-kicker">{eyebrow}</p>
   {/if}
   <!-- The title's box IS its band, which is what lets the slot beside it centre
        natively. There used to be a measured `translateY(round(0.0382em, 1px))`

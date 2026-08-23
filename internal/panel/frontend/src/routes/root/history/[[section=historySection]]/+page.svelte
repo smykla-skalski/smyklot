@@ -20,9 +20,6 @@
     targetId="root"
     rootRole={session.rootRole}
     {section}
-    onSection={(s: 'audit' | 'failures') => session.selectRootHistorySection(s)}
-    sectionHref={(s: 'audit' | 'failures') =>
-      s === 'audit' ? session.rootAuditHref() : session.rootFailuresHref()}
     fetchAudit={session.api.fetchRootAudit}
     fetchFailures={session.api.fetchRootFailures}
     fetchSyncCheckpoint={session.api.fetchRootSyncConfigCheckpoint}

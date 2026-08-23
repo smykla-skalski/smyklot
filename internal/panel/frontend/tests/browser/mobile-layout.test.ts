@@ -31,6 +31,8 @@ interface Measured {
   layoutViewport: number;
   /** Proof the route rendered: its heading, so a 404 cannot pass this file. */
   heading: string | null;
+  /** The context row every view opens with: kicker, path, or way back. */
+  contextRow: string | null;
   /** Named only when it does not fit, so a failure says what to go and look at. */
   widest: { right: number; element: string; text: string } | null;
   /** Controls the page renders and a thumb cannot land on. */
@@ -63,8 +65,8 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
   return [
     ['settings', `/i/${account}/settings`],
     ['repositories', `/i/${account}/repositories`],
-    ['users', `/i/${account}/users`],
-    ['invitations', `/i/${account}/invitations`],
+    ['users', `/i/${account}/access/users`],
+    ['invitations', `/i/${account}/access/invitations`],
     ['audit history', `/i/${account}/history/audit`],
     ['failure history', `/i/${account}/history/failures`],
     ['sync overview', `/i/${account}/sync`],
@@ -94,6 +96,10 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     ['Root settings', `/root/settings`],
     ['a Root installation', `/root/installations/${account}/settings`],
     ['a Root installation’s repositories', `/root/installations/${account}/repositories`],
+    ['a Root installation’s users', `/root/installations/${account}/access/users`],
+    ['a Root installation’s invitations', `/root/installations/${account}/access/invitations`],
+    ['a Root installation’s audit history', `/root/installations/${account}/history/audit`],
+    ['a Root installation’s failure history', `/root/installations/${account}/history/failures`],
   ] as const;
 }
 
@@ -256,6 +262,11 @@ async function measure(path: string, width: number): Promise<Measured> {
       return {
         layoutViewport: window.innerWidth,
         heading: document.querySelector('h1, h2')?.textContent?.trim() ?? null,
+        contextRow:
+          [...document.querySelectorAll('.page-kicker, .pane-path, .back-link')]
+            .find((element) => element.checkVisibility())
+            ?.textContent?.replace(/\s+/gu, ' ')
+            .trim() ?? null,
         widest,
         unreachable: [...new Set(unreachable)],
         hiddenFilters,
@@ -394,6 +405,7 @@ describe('every page on a phone', () => {
     expect(result.heading, `${key} rendered the error page instead of the route`).not.toBe(
       'Not found',
     );
+    expect(result.contextRow, `${key} has no visible top context row`).not.toBeNull();
   });
 
   it.each(cases)('fits %s without shrinking the page', (key, width) => {

@@ -222,7 +222,8 @@
       const rowShift = new DOMMatrixReadOnly(getComputedStyle(active).transform).f;
       const top = bounds.top - origin.top - rowShift;
       const left = bounds.left - origin.left;
-      const radius = getComputedStyle(active).borderRadius;
+      const surface = active.querySelector<HTMLElement>('.row-surface');
+      const radius = getComputedStyle(surface ?? active).borderRadius;
       const parked = node.classList.contains('thumb-ready');
       const from = parked && restingTop !== null ? restingTop + offsetNow(thumb) : top;
       node.style.setProperty('--nav-thumb-top', `${top}px`);
@@ -308,6 +309,7 @@
             aria-current={page.active && activeKid === undefined ? 'page' : undefined}
             onclick={(event) => pageFromClick(event, page)}
           >
+            <span class="row-surface" aria-hidden="true"></span>
             <Icon name={page.icon} size={16} />
             <span class="t">{page.label}</span>
           </a>
@@ -324,6 +326,7 @@
                 aria-current={kid.active ? 'page' : undefined}
                 onclick={(event) => kidFromClick(event, page, kid)}
               >
+                <span class="row-surface" aria-hidden="true"></span>
                 <span class="t">{kid.label}</span>
                 {#if kid.count !== undefined}
                   <span class="tab-count" class:is-signal={kid.signal === true}>
@@ -343,6 +346,7 @@
           aria-current={page.active ? 'page' : undefined}
           onclick={(event) => pageFromClick(event, page)}
         >
+          <span class="row-surface" aria-hidden="true"></span>
           <Icon name={page.icon} size={16} />
           <span class="t">{page.label}</span>
         </a>
@@ -486,7 +490,6 @@
     align-items: center;
     /* Declared, whole: a row's height is a decision, not an outcome. */
     block-size: 34px;
-    border-radius: var(--radius-control);
     box-sizing: border-box;
     color: var(--sidebar-text-secondary);
     display: flex;
@@ -497,23 +500,55 @@
     /* Positioned so the ink paints above the thumb sliding underneath. */
     position: relative;
     text-decoration: none;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
+    transition: color var(--duration-fast) var(--ease-standard);
   }
 
   .tree-row .t {
     text-box: trim-both cap alphabetic;
   }
 
+  /* The anchor stays rectangular and stationary while this surface carries its
+     rounded ground and press movement. Otherwise Chromium hands rounded border
+     pixels to the sidebar, or moves the link out from under a held pointer. */
+  .row-surface {
+    background: transparent;
+    inset: 0;
+    pointer-events: none;
+    position: absolute;
+    transition:
+      background-color var(--duration-fast) var(--ease-standard),
+      translate var(--duration-press) var(--ease-standard),
+      box-shadow var(--duration-press) var(--ease-standard);
+  }
+
+  .tree-row > .row-surface {
+    border-radius: var(--radius-control);
+  }
+
+  .tree-kid > .row-surface {
+    border-radius: 6px;
+  }
+
+  .tree-row:focus-visible,
+  .tree-kid:focus-visible {
+    outline: none;
+  }
+
+  .tree-row:focus-visible > .row-surface,
+  .tree-kid:focus-visible > .row-surface {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
   .tree-row:hover {
-    background: var(--sidebar-item-hover);
     color: var(--sidebar-text);
   }
 
-  .tree-row:active {
+  .tree-row:hover > .row-surface {
+    background: var(--sidebar-item-hover);
+  }
+
+  .tree-row:active > .row-surface {
     background: var(--sidebar-item-pressed);
     box-shadow: var(--pressed-inset);
     translate: 0 1px;
@@ -526,17 +561,16 @@
 
   .tree-row.is-active {
     /* Ink only - the ground is the nav-thumb parked underneath. */
-    background: transparent;
     color: var(--sidebar-item-active-text);
     font-weight: 600;
   }
 
-  .tree-row.is-active:hover {
+  .tree-row.is-active:hover > .row-surface {
     background: transparent;
     translate: 0 -1px;
   }
 
-  .tree-row.is-active:active {
+  .tree-row.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
     translate: 0 1px;
@@ -564,23 +598,15 @@
   .tree-kid {
     align-items: center;
     block-size: 28px;
-    border: 1px solid transparent;
-    /* 6px, not the control radius: an 8px corner on a 28px row reads a step
-       rounder than the same corner on the 34px rows above it. */
-    border-radius: 6px;
     box-sizing: border-box;
     color: var(--sidebar-text-secondary);
     display: flex;
     font-size: var(--font-size-meta);
     gap: 0.5rem;
-    padding: 0 8px;
+    padding: 0 9px;
     position: relative;
     text-decoration: none;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
+    transition: color var(--duration-fast) var(--ease-standard);
   }
 
   .tree-kid .t {
@@ -588,11 +614,14 @@
   }
 
   .tree-kid:hover {
-    background: var(--sidebar-item-hover);
     color: var(--sidebar-text);
   }
 
-  .tree-kid:active {
+  .tree-kid:hover > .row-surface {
+    background: var(--sidebar-item-hover);
+  }
+
+  .tree-kid:active > .row-surface {
     background: var(--sidebar-item-pressed);
     box-shadow: var(--pressed-inset);
     translate: 0 1px;
@@ -600,17 +629,16 @@
 
   .tree-kid.is-active {
     /* Ink only - the thumb slides under the kid the same as under a page. */
-    background: transparent;
     color: var(--sidebar-item-active-text);
     font-weight: 600;
   }
 
-  .tree-kid.is-active:hover {
+  .tree-kid.is-active:hover > .row-surface {
     background: transparent;
     translate: 0 -1px;
   }
 
-  .tree-kid.is-active:active {
+  .tree-kid.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
     translate: 0 1px;
@@ -705,12 +733,13 @@
 
     /* Standing for the selection, the page row presses like it: it lands on
        the thumb rather than sinking into it. */
-    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active {
+    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > .row-surface {
       background: transparent;
       box-shadow: none;
+      translate: 0 1px;
     }
 
-    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover {
+    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > .row-surface {
       background: transparent;
       translate: 0 -1px;
     }
@@ -807,24 +836,29 @@
        popover. */
     :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid {
       block-size: 32px;
-      border-radius: 6px;
       color: var(--sidebar-menu-text);
       font-size: var(--font-size-control);
       gap: var(--space-2);
       padding-inline: var(--space-3);
     }
 
-    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:hover {
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:hover > .row-surface {
       background: var(--sidebar-menu-hover);
+    }
+
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:hover {
       color: var(--sidebar-menu-text);
     }
 
-    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:focus-visible {
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:focus-visible > .row-surface {
       background: var(--sidebar-menu-hover);
+    }
+
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:focus-visible {
       outline: none;
     }
 
-    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:active {
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid:active > .row-surface {
       background: var(--sidebar-menu-pressed);
     }
 
@@ -832,20 +866,23 @@
        tinted row in the console's own active ink, mixed over the popover so
        every sidebar palette lands legible without a new literal. Hover and
        press ride the veil layer, so the tint stays underneath. */
-    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid.is-active {
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid.is-active > .row-surface {
       background: color-mix(
         in srgb,
         var(--sidebar-item-active-text) 12%,
         var(--sidebar-popover-bg)
       );
       box-shadow: none;
+    }
+
+    :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid.is-active {
       color: var(--sidebar-item-active-text);
       font-weight: 600;
     }
 
     :global(.app-shell.sidebar-collapsed) .tree-kids .tree-kid::before {
       background: var(--table-row-pressed);
-      border-radius: inherit;
+      border-radius: 6px;
       content: '';
       inset: 0;
       opacity: 0;

@@ -66,6 +66,11 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', repository: 'api-gateway' },
   },
   {
+    route: { account: 'acme', view: 'users' },
+    id: '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+    params: { account: 'acme', section: 'users', rest: '' },
+  },
+  {
     route: {
       account: 'acme',
       view: 'repositories',
@@ -80,8 +85,8 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
     },
-    id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]',
-    params: { account: 'acme', view: 'users', rest: 'octocat/suspend' },
+    id: '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+    params: { account: 'acme', section: 'users', rest: 'octocat/suspend' },
   },
   { route: { rootView: 'overview' }, id: '/root', params: {} },
   { route: { rootView: 'installations' }, id: '/root/installations', params: {} },
@@ -125,6 +130,11 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     route: { rootView: 'installation', account: 'acme', view: 'repositories' },
     id: '/root/installations/[account]/[view=rootInstallationView]',
     params: { account: 'acme', view: 'repositories' },
+  },
+  {
+    route: { rootView: 'installation', account: 'acme', view: 'invitations' },
+    id: '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+    params: { account: 'acme', section: 'invitations', rest: '' },
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'history', section: 'failures' },
@@ -181,12 +191,12 @@ describe('panel addresses [Unit]', () => {
     };
     const address = panelAddress(route);
 
-    expect(address).toBe(`${basePath}/i/acme/users/a%25b/history`);
+    expect(address).toBe(`${basePath}/i/acme/access/users/a%25b/history`);
     expect(
       defined(
-        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+        panelRouteAt('/i/[account]/access/[section=accessSection]/[...rest=dialogPath]', {
           account: 'acme',
-          view: 'users',
+          section: 'users',
           rest: 'a%b/history',
         }),
       ),
@@ -243,9 +253,9 @@ describe('panel addresses [Unit]', () => {
     // the view being recorded as one the reader was on.
     expect(
       defined(
-        panelRouteAt('/i/[account]/[view=dialogHostView]/[...rest=dialogPath]', {
+        panelRouteAt('/i/[account]/access/[section=accessSection]/[...rest=dialogPath]', {
           account: 'acme',
-          view: 'users',
+          section: 'users',
           rest: 'bogus/bogus2',
         }),
       ),

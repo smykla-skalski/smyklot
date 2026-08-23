@@ -26,26 +26,31 @@ describe('SvelteKit dialog route adapter', () => {
     navigation.goto.mockImplementation((_url, options?: { state?: Record<string, unknown> }) => {
       if (options?.state !== undefined) routePage.state = options.state;
     });
-    routePage.url = at('/i/acme/users');
-    routePage.params = { account: 'acme', view: 'users' };
-    routePage.route = { id: '/i/[account]/[view=dialogHostView]/[...rest=dialogPath]' };
+    routePage.url = at('/i/acme/access/users');
+    routePage.params = { account: 'acme', section: 'users' };
+    routePage.route = {
+      id: '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+    };
     routePage.state = {};
   });
 
   it('opens a shareable path as an owned shallow entry', () => {
     dialogRoute.open('user-action', { user: 'octocat', action: 'suspend' });
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/users/octocat/suspend`, {
-      shallow: true,
-      replace: false,
-      state: expect.objectContaining({
-        dialog: {
-          name: 'user-action',
-          params: { user: 'octocat', action: 'suspend' },
-        },
-        smyklotDialogEntry: true,
-      }),
-    });
+    expect(navigation.goto).toHaveBeenCalledWith(
+      `${basePath}/i/acme/access/users/octocat/suspend`,
+      {
+        shallow: true,
+        replace: false,
+        state: expect.objectContaining({
+          dialog: {
+            name: 'user-action',
+            params: { user: 'octocat', action: 'suspend' },
+          },
+          smyklotDialogEntry: true,
+        }),
+      },
+    );
   });
 
   it('closes an owned entry with browser history so Forward can reopen it', () => {
@@ -99,16 +104,16 @@ describe('SvelteKit dialog route adapter', () => {
    * place in the list went with it.
    */
   it('closes a cold deep link without leaving the route it is on', () => {
-    routePage.url = at('/i/acme/users/octocat/suspend');
+    routePage.url = at('/i/acme/access/users/octocat/suspend');
     routePage.params = {
       account: 'acme',
-      view: 'users',
+      section: 'users',
       rest: 'octocat/suspend',
     };
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/users`, {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/access/users`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({ smyklotDialogClosed: true }),

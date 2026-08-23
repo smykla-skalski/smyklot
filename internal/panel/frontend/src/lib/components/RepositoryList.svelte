@@ -957,6 +957,7 @@
   <section class="plate repository-panel" aria-labelledby="repositories-heading">
     <PageHeader
       id="repositories-heading"
+      eyebrow="Workspace"
       title="Repositories"
       description="Enablement and settings for every repository in this workspace"
     />

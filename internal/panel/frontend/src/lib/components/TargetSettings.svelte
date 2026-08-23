@@ -6,6 +6,7 @@
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PatternEntries from './PatternEntries.svelte';
+  import PageHeader from './PageHeader.svelte';
   import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
 
@@ -209,14 +210,12 @@
 
 <div class="view-frame">
   <section class="settings-page" aria-labelledby="settings-heading">
-    <div class="kind-head">
-      <div class="kind-head-say">
-        <h2 class="card-title" id="settings-heading">Settings</h2>
-        <p class="kind-head-sub">
-          Defaults every repository inherits unless a repository overrides them
-        </p>
-      </div>
-    </div>
+    <PageHeader
+      id="settings-heading"
+      eyebrow="Workspace"
+      title="Settings"
+      description="Defaults every repository inherits unless a repository overrides them"
+    />
 
     {#if failure !== null}
       <FormError message={failure} />
@@ -472,33 +471,6 @@
   .settings-page {
     display: grid;
     gap: var(--space-4);
-  }
-
-  .kind-head {
-    align-items: start;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-  }
-
-  .kind-head-say {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .card-title {
-    font-size: var(--font-size-card-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 13px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .kind-head-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: 0;
-    max-width: 72ch;
   }
 
   .card {

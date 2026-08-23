@@ -154,6 +154,7 @@
 <section class="inbox-page" aria-labelledby="inbox-heading">
   <PageHeader
     id="inbox-heading"
+    eyebrow="Personal"
     title="Inbox"
     description="Audited Root activity on workspaces you own"
   >

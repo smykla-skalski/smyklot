@@ -54,14 +54,20 @@ export const PANEL_ROUTES = [
   'i/sync/plan',
   'i/sync/rulesets',
   'i/sync/files',
-  'i/users',
-  'i/invitations',
+  'i/access/users',
+  'i/access/invitations',
   'i/history',
   'root/settings',
   'root/queue',
   'root/queue/recent',
   'root/queue/request/pending-ci-0',
   'root/installations',
+  'root/installations/{account}/settings',
+  'root/installations/{account}/repositories',
+  'root/installations/{account}/access/users',
+  'root/installations/{account}/access/invitations',
+  'root/installations/{account}/history/audit',
+  'root/installations/{account}/history/failures',
   'root/access/users',
   'root/access/invitations',
   'root/history/audit',
@@ -70,9 +76,10 @@ export const PANEL_ROUTES = [
 
 /** One of those routes as an address, filling in the workspace that signing in found. */
 export function addressOf(panel: Panel, route: string): string {
-  return route.startsWith('i/')
-    ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
-    : `${panel.origin}/${route}`;
+  const path = route.replace('{account}', panel.account);
+  return path.startsWith('i/')
+    ? `${panel.origin}/i/${panel.account}/${path.slice(2)}`
+    : `${panel.origin}/${path}`;
 }
 
 export async function startPanel(): Promise<Panel> {

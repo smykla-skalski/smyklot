@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { plainClick } from '#lib/follow.js';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
   import { useInterval } from 'runed';
@@ -8,7 +7,6 @@
   import { formatTimestamp } from '../format';
   import { monogram } from '../identity';
   import { invalidateRootInstallationSettings } from '../query-client';
-  import { observeInlineSelection } from '../reveal-inline';
   import type { HistorySection, RootInstallationView } from '../routes';
   import type {
     PanelTarget,
@@ -36,23 +34,17 @@
     view,
     actorLogin,
     historySection,
-    onHistorySection,
     api,
     listHref,
-    hrefFor,
     onList,
-    onNavigate,
   }: {
     installation: RootInstallation;
     view: RootInstallationView;
     api: PanelApi;
     actorLogin: string;
     listHref: string;
-    hrefFor: (account: string, view: RootInstallationView, section?: HistorySection) => string;
     onList: () => void;
-    onNavigate: (account: string, view: RootInstallationView) => void;
     historySection: HistorySection;
-    onHistorySection: (section: HistorySection) => void;
   } = $props();
 
   /** Names the dialog in the address, and is the `id` the dialog carries. */
@@ -89,15 +81,6 @@
     detailFailure ?? (detailQuery.error === null ? null : message(detailQuery.error)),
   );
   let elevationFailure = $state<string | null>(null);
-  let installationNavigation = $state<HTMLElement | null>(null);
-
-  $effect(() => {
-    const current = view;
-    const navigation = installationNavigation;
-    if (navigation === null) return;
-    void current;
-    return observeInlineSelection(navigation);
-  });
   /* Whatever the address names, so a reload keeps the reader in the dialog they
      were reading rather than dropping them back onto the installation. */
   const elevationModalOpen = $derived(dialogRoute.isOpen(ELEVATION_DIALOG));
@@ -139,16 +122,6 @@
       if (error instanceof PanelApiError && [404, 409, 410].includes(error.status)) return null;
       throw error;
     }
-  }
-
-  function navigate(event: MouseEvent, next: RootInstallationView): void {
-    if (!plainClick(event)) return;
-    event.preventDefault();
-    onNavigate(installation.account.login, next);
-  }
-
-  function selectAccessSection(section: 'users' | 'invitations'): void {
-    onNavigate(installation.account.login, section);
   }
 
   function openElevation(): void {
@@ -316,26 +289,6 @@
     <FormError message={elevationFailure} />
   {/if}
 
-  <nav
-    class="installation-navigation band-trim-kids"
-    aria-label={`Root views for ${installation.account.display_name}`}
-    bind:this={installationNavigation}
-  >
-    {#each ['settings', 'repositories', 'users', 'history'] as section (section)}
-      {@const item = section as RootInstallationView}
-      <a
-        class:active={view === item || (item === 'users' && view === 'invitations')}
-        href={hrefFor(installation.account.login, item)}
-        aria-current={view === item || (item === 'users' && view === 'invitations')
-          ? 'page'
-          : undefined}
-        onclick={(event) => navigate(event, item)}
-      >
-        {item === 'users' ? 'Access' : item[0]?.toLocaleUpperCase() + item.slice(1)}
-      </a>
-    {/each}
-  </nav>
-
   {#if !ownsInstallation && elevation === null && !canElevate}
     <p class="access-hint">Fresh Owners are required before elevated access can start</p>
   {/if}
@@ -385,8 +338,6 @@
       {actorLogin}
       actorTargetRole={canWrite ? 'owner' : 'none'}
       readOnly={!canWrite}
-      onSection={selectAccessSection}
-      sectionHref={(next: 'users' | 'invitations') => hrefFor(installation.account.login, next)}
       fetchTargetUsers={api.fetchRootTargetUsers}
       addTargetUser={api.addRootTargetUser}
       suggestUsers={api.suggestRootTargetUsers}
@@ -401,8 +352,6 @@
     <HistoryPanel
       targetId={installation.id}
       section={historySection}
-      onSection={onHistorySection}
-      sectionHref={(next: HistorySection) => hrefFor(installation.account.login, 'history', next)}
       fetchAudit={(request) => api.fetchRootTargetAudit(installation.id, request)}
       fetchFailures={(request) => api.fetchRootTargetFailures(installation.id, request)}
       fetchSyncCheckpoint={api.fetchRootSyncConfigCheckpoint}
@@ -586,60 +535,6 @@
   .elevation-countdown {
     color: var(--text-primary);
     font: 700 0.9rem/1 var(--mono);
-  }
-
-  .installation-navigation {
-    /* The island hugs its tabs (mock .pill-nav is inline-flex) — justify-self
-       stops the grid's default stretch from widening it to the full row. */
-    justify-self: start;
-    /* Stated, not inferred: a scroll container's content-based block size is
-       indefinite, so the grid sized this row to the SCROLLBAR - ten pixels -
-       and the tabs painted over the page below. Only browsers with classic
-       scrollbars showed it, which is why it survived every overlay-scrollbar
-       Mac it was built on. */
-    block-size: max-content;
-    background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-inset));
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: inline-flex;
-    gap: var(--space-1);
-    /* The child views' own page headers are hidden here, so the tabs owe the
-       first card the gap a header would have carried - the same 1rem the plates
-       keep between each other. */
-    margin-bottom: var(--space-4);
-    max-width: 100%;
-    overflow-x: auto;
-    padding: var(--space-1);
-    width: fit-content;
-  }
-
-  .installation-navigation a {
-    border: 1px solid transparent;
-    border-radius: calc(var(--radius-control) - 2px);
-    color: var(--text-secondary);
-    font-size: var(--font-size-control);
-    font-weight: 650;
-    line-height: 1;
-    padding: 0.4375rem var(--space-3);
-    text-decoration: none;
-    white-space: nowrap;
-  }
-
-  .installation-navigation a:hover {
-    background: var(--interactive-hover);
-    color: var(--text-primary);
-  }
-
-  .installation-navigation a:active {
-    background: var(--interactive-pressed-bg);
-    transform: scale(0.98);
-  }
-
-  .installation-navigation a.active {
-    background: var(--surface-base);
-    border-color: color-mix(in srgb, var(--brand-action) 30%, var(--border-subtle));
-    box-shadow: 0 1px 2px var(--shadow);
-    color: var(--brand-action-text);
   }
 
   .root-loading {

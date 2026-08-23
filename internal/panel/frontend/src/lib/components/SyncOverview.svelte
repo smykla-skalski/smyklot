@@ -21,6 +21,7 @@
   import type { SyncSection } from '../routes';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
+  import PageHeader from './PageHeader.svelte';
   import Switch from './Switch.svelte';
   import { SETTINGS_FIELD_KEYS, SETTINGS_FIELD_TOTAL } from './SyncSettingsPage.svelte';
 
@@ -151,7 +152,14 @@
   }
 </script>
 
-<div class="view-frame">
+<section class="view-frame" aria-labelledby="sync-overview-heading">
+  <PageHeader
+    id="sync-overview-heading"
+    eyebrow="Sync"
+    title="Overview"
+    description="Repository alignment and the configuration each Sync kind currently applies"
+  />
+
   <!-- The verdict: the overview's first CONTENT, not a second header. One
        freshness fact, sharing the verdict's baseline. -->
   <div class="hero">
@@ -301,7 +309,7 @@
       </div>
     {/each}
   </div>
-</div>
+</section>
 
 <style>
   .view-frame {

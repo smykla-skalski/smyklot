@@ -3,8 +3,8 @@
  *
  * A dialog stands on top of a view and is nearly always about one row of it, so
  * it reads as part of that view's path rather than as a parameter bolted onto
- * it: `/i/acme/users/octocat/history`, not
- * `/i/acme/users?dialog=decision-history&user=4005`. The first says what a
+ * it: `/i/acme/access/users/octocat/history`, not
+ * `/i/acme/access/users?dialog=decision-history&user=4005`. The first says what a
  * person would say out loud, survives being pasted into a message, and is the
  * same shape as every other address the panel writes.
  *

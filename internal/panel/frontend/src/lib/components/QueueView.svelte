@@ -30,7 +30,6 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import SectionTabs from './SectionTabs.svelte';
   import SortIndicator from './SortIndicator.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
@@ -116,16 +115,11 @@
     api,
     rootRole,
     section,
-    onSection,
-    sectionHref,
     onOpenRequest,
   }: {
     api: PanelApi;
     rootRole: string;
     section: QueueSection;
-    onSection: (section: QueueSection) => void;
-    /** Where each section lives; the strip is a strip of addresses. */
-    sectionHref?: (section: QueueSection) => string;
     onOpenRequest: (requestId: string) => void;
   } = $props();
 
@@ -640,28 +634,9 @@
 
 <RootPageHeader
   role={rootRole}
-  title="Queue"
+  title={section === 'waiting' ? 'Waiting' : 'Recent'}
   subtitle="Work the service is holding until it can act"
->
-  <!-- Two addresses, so a strip of links: a segmented control changes what is
-       on screen and saves nothing, and these survive a reload and can be
-       copied. The count speaks only where it waits on the reader. -->
-  <SectionTabs
-    items={[
-      {
-        id: 'waiting',
-        label: 'Waiting',
-        href: sectionHref?.('waiting') ?? '#',
-        count: waiting.length > 0 ? String(waiting.length) : undefined,
-        signal: true,
-      },
-      { id: 'recent', label: 'Recent', href: sectionHref?.('recent') ?? '#' },
-    ]}
-    active={section}
-    label="Queue section"
-    onNavigate={(next) => onSection(next as QueueSection)}
-  />
-</RootPageHeader>
+/>
 
 <div class="queue-toolbar">
   <SearchField

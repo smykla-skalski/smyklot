@@ -331,6 +331,7 @@ jobs:
               tests/browser/request-budget.test.ts
               tests/browser/runtime-settings.test.ts
               tests/browser/cached-navigation.test.ts
+              tests/browser/access-navigation.test.ts
               tests/browser/sync-drafts.test.ts
           - area: controls
             files: >-
@@ -338,7 +339,6 @@ jobs:
               tests/browser/config-migration.test.ts
               tests/browser/repository-sync-pane.test.ts
               tests/browser/sidebar-selection.test.ts
-              tests/browser/section-tabs-bar.test.ts
               tests/browser/icon-geometry.test.ts
 
     steps:

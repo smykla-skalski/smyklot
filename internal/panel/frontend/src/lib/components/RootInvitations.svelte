@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createInfiniteQuery, type InfiniteData } from '@tanstack/svelte-query';
-  import { untrack, type Snippet } from 'svelte';
+  import { untrack } from 'svelte';
   import { useDebounce, useInterval } from 'runed';
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
@@ -92,7 +92,6 @@
     revoke,
     canManage,
     actorLogin,
-    navigation,
   }: {
     fetchPage: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
     create: (input: AddRootInvitationInput) => Promise<PanelInvitation>;
@@ -101,7 +100,6 @@
     canManage: boolean;
     /** The signed-in login, so naming yourself is answered before the press. */
     actorLogin: string;
-    navigation?: Snippet;
   } = $props();
 
   // Ticks so the pending countdown and relative Created column keep aging.
@@ -405,7 +403,6 @@
 
 <section class="root-invitations" aria-label="Root invitations">
   <div class="invitation-tools">
-    {@render navigation?.()}
     <SearchField
       label="Search Root invitations"
       placeholder="Search invitations"

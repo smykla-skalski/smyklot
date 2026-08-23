@@ -3,10 +3,10 @@ import { defineParams } from '@sveltejs/kit/params';
 import { DIALOG_HOST_VIEWS } from './lib/route-dialogs.ts';
 import {
   ACCESS_SECTIONS,
+  DIRECT_PANEL_VIEWS,
+  DIRECT_ROOT_INSTALLATION_VIEWS,
   HISTORY_SECTIONS,
-  PANEL_VIEWS,
   REPOSITORY_SECTIONS,
-  ROOT_INSTALLATION_VIEWS,
   WRITTEN_SYNC_SECTIONS,
 } from './lib/routes.ts';
 
@@ -99,7 +99,7 @@ const MATCHERS = {
    * other list and this one still refused it, so the row in the navigation led to the
    * not-found page and a reload of the address did too.
    */
-  panelView: oneOf(PANEL_VIEWS),
+  panelView: oneOf(DIRECT_PANEL_VIEWS),
 
   /**
    * The panes one repository's page can open on.
@@ -120,7 +120,7 @@ const MATCHERS = {
    * page rather than with a shell that says the view is unavailable, which reads as a
    * fault. The two lists used to be told apart by a third copy of both, written in Go.
    */
-  rootInstallationView: oneOf(ROOT_INSTALLATION_VIEWS),
+  rootInstallationView: oneOf(DIRECT_ROOT_INSTALLATION_VIEWS),
 
   /**
    * The sync sections written into an address; the overview leaves the bare

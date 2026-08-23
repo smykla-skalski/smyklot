@@ -23,14 +23,14 @@ function roundTrip(path: string): string {
 
 describe('dialog addresses on a view [Unit]', () => {
   it('separates the add dialog from a person by how many segments follow', () => {
-    expect(parsePanelRoute('', '/i/acme/users/add')).toEqual({
+    expect(parsePanelRoute('', '/i/acme/access/users/add')).toEqual({
       account: 'acme',
       view: 'users',
       dialog: { name: 'add-user', params: {} },
     });
     /* Somebody whose login is `add` is still reachable: every dialog about a
        person carries a verb, so it is two segments and never one. */
-    expect(parsePanelRoute('', '/i/acme/users/add/history')).toEqual({
+    expect(parsePanelRoute('', '/i/acme/access/users/add/history')).toEqual({
       account: 'acme',
       view: 'users',
       dialog: { name: 'decision-history', params: { user: 'add' } },
@@ -38,27 +38,29 @@ describe('dialog addresses on a view [Unit]', () => {
   });
 
   it('reads the confirmations about a person', () => {
-    expect(parsePanelRoute('', '/i/acme/users/octocat/suspend')).toEqual({
+    expect(parsePanelRoute('', '/i/acme/access/users/octocat/suspend')).toEqual({
       account: 'acme',
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
     });
     /* The panel's own word is `remove_access`; an address says it the way every
        other segment is written. */
-    expect(parsePanelRoute('', '/i/acme/users/octocat/remove-access')).toEqual({
+    expect(parsePanelRoute('', '/i/acme/access/users/octocat/remove-access')).toEqual({
       account: 'acme',
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'octocat', action: 'remove_access' } },
     });
-    expect(roundTrip('/i/acme/users/octocat/suspend')).toBe('/i/acme/users/octocat/suspend');
-    expect(roundTrip('/i/acme/users/octocat/remove-access')).toBe(
-      '/i/acme/users/octocat/remove-access',
+    expect(roundTrip('/i/acme/access/users/octocat/suspend')).toBe(
+      '/i/acme/access/users/octocat/suspend',
+    );
+    expect(roundTrip('/i/acme/access/users/octocat/remove-access')).toBe(
+      '/i/acme/access/users/octocat/remove-access',
     );
   });
 
   it('refuses a verb no dialog answers to', () => {
-    expect(parsePanelRoute('', '/i/acme/users/octocat/befriend')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/users/octocat/suspend/now')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/access/users/octocat/befriend')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/access/users/octocat/suspend/now')).toBeNull();
   });
 
   it('keeps history a section rather than a dialog', () => {
@@ -86,7 +88,7 @@ describe('dialog addresses on a view [Unit]', () => {
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'a b/c', action: 'suspend' } },
     });
-    expect(path).toBe(`${basePath}/i/acme/users/a%20b%2Fc/suspend`);
+    expect(path).toBe(`${basePath}/i/acme/access/users/a%20b%2Fc/suspend`);
     expect(parsePanelRoute(basePath, path)).toEqual({
       account: 'acme',
       view: 'users',
@@ -129,14 +131,14 @@ describe('dialog addresses in the Root console [Unit]', () => {
   });
 
   it('carries a dialog on an installation seen through the Root console', () => {
-    expect(parsePanelRoute('', '/root/installations/acme/users/octocat/suspend')).toEqual({
+    expect(parsePanelRoute('', '/root/installations/acme/access/users/octocat/suspend')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
     });
-    expect(roundTrip('/root/installations/acme/users/octocat/history')).toBe(
-      '/root/installations/acme/users/octocat/history',
+    expect(roundTrip('/root/installations/acme/access/users/octocat/history')).toBe(
+      '/root/installations/acme/access/users/octocat/history',
     );
   });
 

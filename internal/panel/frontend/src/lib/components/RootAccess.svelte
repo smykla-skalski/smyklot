@@ -45,7 +45,6 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
-  import SectionTabs from './SectionTabs.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   type AccessSection = 'users' | 'invitations';
@@ -58,12 +57,6 @@
   const ACTION_DIALOG = 'root-user-action';
   const ADD_DIALOG = 'root-add-installation-user';
 
-  /* Two lists, which are two addresses: tabs rather than a segmented control,
-     which changes what is on screen and saves nothing. */
-  const SECTIONS = [
-    { id: 'users', label: 'Users' },
-    { id: 'invitations', label: 'Invitations' },
-  ] as const;
   const ROLE_FILTERS = [
     {
       options: [
@@ -86,8 +79,6 @@
   const {
     rootRole,
     section,
-    onSection,
-    sectionHref,
     fetchUsers,
     updateUser,
     fetchInvitations,
@@ -103,9 +94,6 @@
   }: {
     rootRole: string;
     section: AccessSection;
-    onSection: (section: AccessSection) => void;
-    /** Where each list lives; the strip is a strip of addresses. */
-    sectionHref?: (section: AccessSection) => string;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
     fetchInvitations: (request: InvitationPageRequest) => Promise<Page<PanelInvitation>>;
@@ -236,10 +224,6 @@
     const value = search.trim();
     untrack(() => void debouncedSearch(value));
   });
-
-  function selectSection(value: string): void {
-    if (value === 'users' || value === 'invitations') onSection(value);
-  }
 
   function toggleSort(column: SortColumn): void {
     const pairs: Record<SortColumn, readonly [RootPanelUserSort, RootPanelUserSort]> = {
@@ -488,19 +472,10 @@
   }
 </script>
 
-{#snippet sectionSwitch()}
-  <SectionTabs
-    items={SECTIONS.map((one) => ({ ...one, href: sectionHref?.(one.id) ?? '#' }))}
-    active={section}
-    label="Root access lists"
-    onNavigate={selectSection}
-  />
-{/snippet}
-
 <section class="root-access" aria-labelledby="root-page-heading">
   <RootPageHeader
     role={rootRole}
-    title="Access"
+    title={section === 'users' ? 'Users' : 'Invitations'}
     subtitle={section === 'users'
       ? 'Every account known to Smyklot'
       : 'Pending system-level access'}
@@ -533,11 +508,9 @@
       revoke={revokeInvitation}
       canManage={canManageInvitations}
       {actorLogin}
-      navigation={sectionSwitch}
     />
   {:else}
     <div class="access-toolbar">
-      {@render sectionSwitch()}
       <span class="stable-feedback" aria-live="polite">{feedback}</span>
       <SearchField
         label="Search Root users"

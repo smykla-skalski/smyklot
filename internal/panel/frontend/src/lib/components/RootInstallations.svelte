@@ -5,7 +5,7 @@
   import { formatDateTime } from '../format';
   import { fuzzyCandidates } from '../fuzzy';
   import { monogram } from '../identity';
-  import type { HistorySection, RootRoute, RootInstallationView } from '../routes';
+  import type { RootRoute, RootInstallationView } from '../routes';
   import type { RootInstallation } from '../types';
   import Chip from './Chip.svelte';
   import DataTable from './DataTable.svelte';
@@ -24,7 +24,6 @@
     onList,
     onNavigate,
     historySection,
-    onHistorySection,
   }: {
     route: RootRoute;
     api: PanelApi;
@@ -34,8 +33,7 @@
     hrefFor: (account: string, view: RootInstallationView) => string;
     onList: () => void;
     onNavigate: (account: string, view: RootInstallationView) => void;
-    historySection: HistorySection;
-    onHistorySection: (section: HistorySection) => void;
+    historySection: 'audit' | 'failures';
   } = $props();
 
   const installationsQuery = createQuery(() => ({
@@ -160,11 +158,8 @@
         {api}
         {actorLogin}
         {listHref}
-        {hrefFor}
         {onList}
-        {onNavigate}
         {historySection}
-        {onHistorySection}
       />
     {/key}
   {:catch error}
