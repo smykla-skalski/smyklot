@@ -304,6 +304,14 @@ func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base str
 		"PUT "+base+"/api/v1/targets/{target}/settings/batch",
 		s.putInstallationSettingsBatch,
 	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/targets/{target}/settings/checkpoints/{checkpoint}",
+		s.getInstallationSettingsCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/settings/checkpoints/{checkpoint}/restore",
+		s.postInstallationSettingsRestore,
+	)
 }
 
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
@@ -411,6 +419,14 @@ func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/root/installations/{target}/settings/batch",
 		s.putRootInstallationSettingsBatch,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/installations/{target}/settings/checkpoints/{checkpoint}",
+		s.getRootInstallationSettingsCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/installations/{target}/settings/checkpoints/{checkpoint}/restore",
+		s.postRootInstallationSettingsRestore,
 	)
 }
 

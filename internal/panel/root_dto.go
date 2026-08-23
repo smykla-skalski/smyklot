@@ -226,6 +226,7 @@ type rootAuditResponse struct {
 	Subject                *accountResponse      `json:"subject,omitempty"`
 	ElevationID            *string               `json:"elevation_id,omitempty"`
 	SyncConfigCheckpointID *string               `json:"sync_config_checkpoint_id,omitempty"`
+	SettingsCheckpointID   *string               `json:"settings_checkpoint_id,omitempty"`
 	Action                 string                `json:"action"`
 	Summary                string                `json:"summary"`
 	CreatedAt              time.Time             `json:"created_at"`
@@ -381,6 +382,7 @@ func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse
 			ID: strconv.FormatInt(event.ID, 10), Category: event.Category,
 			TargetID: event.TargetID, Actor: accountDTO(event.Actor), ElevationID: event.ElevationID,
 			SyncConfigCheckpointID: stringID(event.SyncConfigCheckpointID),
+			SettingsCheckpointID:   stringID(event.SettingsCheckpointID),
 			Action:                 event.Action, Summary: event.Summary, CreatedAt: event.CreatedAt,
 		}
 		if event.Target != nil {

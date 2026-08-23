@@ -184,6 +184,7 @@ type auditResponse struct {
 	Summary                string          `json:"summary"`
 	RepositoryFullName     *string         `json:"repository_full_name,omitempty"`
 	SyncConfigCheckpointID *string         `json:"sync_config_checkpoint_id,omitempty"`
+	SettingsCheckpointID   *string         `json:"settings_checkpoint_id,omitempty"`
 	CreatedAt              time.Time       `json:"created_at"`
 }
 
@@ -475,6 +476,7 @@ func auditPageDTO(page storage.AuditPage) pageResponse[auditResponse] {
 			Summary:                entry.Summary,
 			RepositoryFullName:     entry.RepositoryFullName,
 			SyncConfigCheckpointID: stringID(entry.SyncConfigCheckpointID),
+			SettingsCheckpointID:   stringID(entry.SettingsCheckpointID),
 			CreatedAt:              entry.CreatedAt,
 		})
 	}
