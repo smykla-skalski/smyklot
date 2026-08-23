@@ -16,6 +16,7 @@ interface Geometry {
 
 let panel: Panel;
 let page: Page;
+let rowsAddedByRepeatedPress = 0;
 
 async function geometry(): Promise<Geometry> {
   return page
@@ -46,7 +47,11 @@ beforeAll(async () => {
   page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
   await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
 
-  await page.getByRole('button', { name: 'Add a label' }).click();
+  const initialRows = await page.locator('.label-row').count();
+  const addLabel = page.getByRole('button', { name: 'Add a label' });
+  await addLabel.click();
+  await addLabel.click();
+  rowsAddedByRepeatedPress = (await page.locator('.label-row').count()) - initialRows;
   await page.getByRole('textbox', { name: 'Label name' }).fill(LONG_NAME);
   await page.getByRole('textbox', { name: 'Label name' }).press('Enter');
   await page.locator('.label-row').first().locator('.label-desc').click();
@@ -60,6 +65,10 @@ afterAll(async () => {
 });
 
 describe('a long Sync label [Integration]', () => {
+  it('replaces an unnamed new row when Add is pressed again', () => {
+    expect(rowsAddedByRepeatedPress).toBe(1);
+  });
+
   it('stays in its own desktop column', async () => {
     const desktop = await geometry();
 

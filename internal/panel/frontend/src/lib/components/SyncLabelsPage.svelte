@@ -269,7 +269,7 @@
 
   function addLabel(): void {
     if (frozen) return;
-    commitText();
+    closeSegment();
     rows = [{ name: '', desc: '', color: '#0e8a16', hadDesc: false }, ...rows];
     editing = { index: 0, piece: 'name' };
     editValue = '';
