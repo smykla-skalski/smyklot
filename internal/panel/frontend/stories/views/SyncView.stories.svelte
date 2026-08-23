@@ -44,9 +44,6 @@
     fetchOverride: async () => {
       throw new Error('not in this story');
     },
-    saveOverride: async () => {
-      throw new Error('not in this story');
-    },
   };
 
   const { Story } = defineMeta({ title: 'Views/SyncView', component: SyncView, args: base });

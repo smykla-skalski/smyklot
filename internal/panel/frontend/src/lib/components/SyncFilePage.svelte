@@ -42,13 +42,17 @@
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
+  import { formatJson, parseJson, type JsonValue } from '../merge';
+  import type {
+    SyncOverrideControlId,
+    SyncOverrideEditorEnvelope,
+  } from '../repository-sync-override-settings';
   import type {
     SyncConfig,
     SyncFile,
     SyncFileMergeEntry,
     SyncFilesContext,
     SyncOverride,
-    SyncOverrideInput,
   } from '../types';
   import type { SyncSection } from '../routes';
 
@@ -71,8 +75,9 @@
     onOpenSection,
     onChangeDocument,
     dirtyDocument = false,
+    dirtyControls = [],
     fetchOverride,
-    saveOverride,
+    onChangeOverride,
   }: {
     config: SyncConfig | null;
     savedDocument?: Record<string, unknown>;
@@ -86,8 +91,17 @@
     onOpenSection: (section: SyncSection) => void;
     onChangeDocument: (document: Record<string, unknown>) => boolean;
     dirtyDocument?: boolean;
-    fetchOverride: (repositoryId: string) => Promise<SyncOverride>;
-    saveOverride: (repositoryId: string, input: SyncOverrideInput) => Promise<SyncOverride>;
+    dirtyControls?: readonly string[];
+    fetchOverride: (repositoryId: string) => Promise<{
+      stored: SyncOverride;
+      envelope: SyncOverrideEditorEnvelope | null;
+    }>;
+    onChangeOverride: (
+      repositoryId: string,
+      stored: SyncOverride,
+      next: SyncOverrideEditorEnvelope,
+      controlId: SyncOverrideControlId,
+    ) => boolean;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
@@ -121,20 +135,6 @@
     if (strategy === 'shallow-merge') return 'merges · shallow';
     return 'merges · deep';
   });
-
-  /* Repository adjustments still save independently. Installation templates
-     stage in the shared Sync draft instead. */
-  let mergeSavedOn = $state(false);
-  let mergeSavedTimer: ReturnType<typeof setTimeout> | undefined;
-
-  function whisperMerge(): void {
-    mergeSavedOn = true;
-    clearTimeout(mergeSavedTimer);
-    mergeSavedTimer = setTimeout(() => (mergeSavedOn = false), 1400);
-  }
-
-  /* Repository overrides remain independent and wait for typing to rest. */
-  const SAVE_REST_MS = 900;
 
   /* ---------- The template, editable in place ---------- */
 
@@ -176,30 +176,47 @@
   let showStored = $state(false);
   /** The open repository's whole override, fetched for its revision. */
   let held = $state<SyncOverride | null>(null);
+  /** Its registry overlay, including text that is not valid JSON yet. */
+  let heldEnvelope = $state<SyncOverrideEditorEnvelope | null>(null);
   let holdProblem = $state<string | null>(null);
+  let rawOverrideOnly = $state(false);
+  const COMPOSED_DRAFT_PREFIX = '// Smyklot composed file draft\n';
 
-  /* The composed copy is the editable surface. Edits stage here, the
-     override is derived from them, and Save writes it back. */
+  /* The composed copy is the editable surface. Edits stage here, and the
+     shared application composer writes the complete installation batch. */
   let editedText = $state<string | null>(null);
   /** The list answers given so far - stored rules, then the ask cards. */
   let answers = $state<ArrayRule[]>([]);
-  let savingMerge = $state(false);
 
-  /* What this page saved, keyed by repository, layered over a context the
-     parent has not re-read yet - null is a removed adjustment. */
-  let savedMerges = $state<Record<string, FileMergeSpec | null>>({});
+  /* What this page staged, keyed by repository, layered over a canonical
+     context the parent has not re-read yet - null is a removed adjustment. */
+  let draftMerges = $state<Record<string, FileMergeSpec | null>>({});
   let overrideFetchGeneration = 0;
 
   const adjusters = $derived(
     merges
-      .filter((entry) => savedMerges[entry.repository_id] !== null)
+      .filter((entry) => draftMerges[entry.repository_id] !== null)
       .map((entry) => {
-        const kept = savedMerges[entry.repository_id];
+        const kept = draftMerges[entry.repository_id];
         return kept === undefined || kept === null
           ? entry
           : { ...entry, merge: kept as SyncFileMergeEntry['merge'] };
       }),
   );
+
+  const anyOverrideDirty = $derived(
+    dirtyControls.some(
+      (control) => control.startsWith('repositories.') && control.endsWith('.sync.files.document'),
+    ),
+  );
+
+  function overrideDocumentControl(repositoryId: string): SyncOverrideControlId {
+    return `repositories.${repositoryId}.sync.files.document`;
+  }
+
+  function overrideDirty(repositoryId: string): boolean {
+    return dirtyControls.includes(overrideDocumentControl(repositoryId));
+  }
 
   function seedEdits(merge: FileMergeSpec): void {
     editedText = file === null ? null : composeMergedText(file.content, merge);
@@ -207,11 +224,11 @@
   }
 
   async function toggleRow(entry: SyncFileMergeEntry): Promise<void> {
-    if (savingMerge) return;
     if (openRepo === entry.repository_id) {
       overrideFetchGeneration += 1;
       openRepo = null;
       held = null;
+      heldEnvelope = null;
       editedText = null;
       return;
     }
@@ -221,12 +238,43 @@
     sideBySide = false;
     showStored = false;
     held = null;
+    heldEnvelope = null;
     holdProblem = null;
+    rawOverrideOnly = false;
     seedEdits(entry.merge as FileMergeSpec);
     try {
       const loaded = await fetchOverride(repositoryId);
       if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
-      held = loaded;
+      held = loaded.stored;
+      heldEnvelope = loaded.envelope;
+      if (loaded.envelope === null) {
+        holdProblem = loaded.stored.unreadable
+          ? 'This repository file override is stored in a form this version cannot safely edit'
+          : 'This repository file override is unavailable';
+        return;
+      }
+      const rows = envelopeMerges(loaded.envelope);
+      const index = rows.findIndex((merge) => merge.path === path);
+      if (index < 0) {
+        draftMerges = { ...draftMerges, [repositoryId]: null };
+        openRepo = null;
+        editedText = null;
+        return;
+      }
+      const merge = rows[index];
+      draftMerges = { ...draftMerges, [repositoryId]: merge };
+      const text = loaded.envelope.override_texts[index] ?? '';
+      if (text.startsWith(COMPOSED_DRAFT_PREFIX)) {
+        editedText = text.slice(COMPOSED_DRAFT_PREFIX.length);
+        answers = merge.arrays ?? [];
+      } else if (text !== '' && !validOverrideText(text)) {
+        editedText = null;
+        answers = merge.arrays ?? [];
+        rawOverrideOnly = true;
+        holdProblem = 'Finish this incomplete raw override from the repository Sync page';
+      } else {
+        seedEdits(merge);
+      }
     } catch (cause) {
       if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
       holdProblem = cause instanceof Error ? cause.message : String(cause);
@@ -276,23 +324,6 @@
     staged === null ? null : mergeSummary(specOf(staged.overrides, staged.arrays)),
   );
 
-  /* One canonical spelling for a merge, so "did anything change" never
-     hangs on key order. */
-  function canonical(value: unknown): string {
-    if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-    if (typeof value === 'object' && value !== null) {
-      const record = value as Record<string, unknown>;
-      const keys = Object.keys(record).sort();
-      return `{${keys.map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`).join(',')}}`;
-    }
-    return JSON.stringify(value) ?? 'null';
-  }
-
-  const stagedKey = $derived(staged === null ? null : canonical([staged.overrides, staged.arrays]));
-  const storedKey = $derived(
-    openMerge === null ? null : canonical([openMerge.overrides ?? {}, openMerge.arrays ?? []]),
-  );
-
   /* A trailing comma is the seam an inserted neighbour leaves on a line
      whose content did not change - the gutter should not mark it. A comma
      alone can never be a real edit: it would not parse. */
@@ -319,86 +350,233 @@
     return marked;
   });
 
-  /* ---------- Writing the open override back ---------- */
+  /* ---------- Staging the open override ---------- */
 
-  async function saveMerge(next: FileMergeSpec | null): Promise<boolean> {
-    const entry = openEntry;
-    const current = held;
-    if (entry === null || current === null || frozen) return false;
-    const all = Array.isArray(current.document.merges)
-      ? (current.document.merges as FileMergeSpec[])
+  function envelopeMerges(envelope: SyncOverrideEditorEnvelope): FileMergeSpec[] {
+    return Array.isArray(envelope.document.merges)
+      ? (envelope.document.merges as FileMergeSpec[])
       : [];
-    const others = all.filter((merge) => merge.path !== path);
-    const document = {
-      ...current.document,
-      merges: next === null ? others : [...others, next],
-    };
-    holdProblem = null;
+  }
+
+  function validOverrideText(text: string): boolean {
+    if (text.trim() === '') return true;
     try {
-      const saved = await saveOverride(entry.repository_id, {
-        enabled: current.enabled,
-        document,
-        expected_revision: current.revision,
-      });
-      savedMerges = { ...savedMerges, [entry.repository_id]: next };
-      if (openRepo === entry.repository_id) held = saved;
-      if (next === null && openRepo === entry.repository_id) {
-        openRepo = null;
-        editedText = null;
-      }
-      return true;
-    } catch (cause) {
-      if (openRepo === entry.repository_id) {
-        holdProblem = cause instanceof Error ? cause.message : String(cause);
-      }
+      const value: unknown = JSON.parse(text);
+      return typeof value === 'object' && value !== null && !Array.isArray(value);
+    } catch {
       return false;
     }
   }
 
-  /* A save that failed parks its input: the effect below will not retry the
-     same bytes on its own, only a further edit re-arms it. Without this a
-     revision conflict would knock every 900ms for ever. */
-  let stalledKey = $state<string | null>(null);
-
-  async function saveEdits(): Promise<void> {
-    if (staged === null || savingMerge) return;
-    const wanted = stagedKey;
-    const emptied = Object.keys(staged.overrides).length === 0;
-    const next = emptied ? null : specOf(staged.overrides, staged.arrays);
-    savingMerge = true;
-    const saved = await saveMerge(next);
-    savingMerge = false;
-    if (!saved) {
-      stalledKey = wanted;
-      return;
-    }
-    stalledKey = null;
-    if (saved) {
-      whisperMerge();
-      /* The stored copy now says what the editor says - the text stays the
-         user's own bytes, and the editor's history is the way back. */
-      if (next !== null) answers = next.arrays ?? [];
-    }
+  function isJsonRecord(value: JsonValue | undefined): value is Record<string, JsonValue> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !(typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value))
+    );
   }
 
-  /* Edits write themselves back once they rest, the same contract as every
-     other sync page: no Save press, the whisper answers, Ctrl/Cmd+Z (or the
-     Undo button) walks back. An edit that does not parse simply waits. */
-  $effect(() => {
-    const wanted = stagedKey;
-    const held = storedKey;
-    if (wanted === null || held === null || wanted === held) return;
-    /* No revision to write against until the override arrives. `held` is
-       state, so its arrival re-arms this effect on its own. */
-    if (frozen || savingMerge || wanted === stalledKey || heldOverride === null) return;
-    const timer = setTimeout(() => void saveEdits(), SAVE_REST_MS);
-    return () => clearTimeout(timer);
-  });
+  function sameJson(left: unknown, right: unknown): boolean {
+    if (Object.is(left, right)) return true;
+    if (typeof JSON.isRawJSON === 'function' && (JSON.isRawJSON(left) || JSON.isRawJSON(right))) {
+      const leftNumber = JSON.isRawJSON(left) ? Number(left.rawJSON) : left;
+      const rightNumber = JSON.isRawJSON(right) ? Number(right.rawJSON) : right;
+      return Object.is(leftNumber, rightNumber);
+    }
+    if (Array.isArray(left) && Array.isArray(right)) {
+      return (
+        left.length === right.length && left.every((value, index) => sameJson(value, right[index]))
+      );
+    }
+    if (typeof left === 'object' && left !== null && typeof right === 'object' && right !== null) {
+      const leftRecord = left as Record<string, unknown>;
+      const rightRecord = right as Record<string, unknown>;
+      const keys = Object.keys(leftRecord);
+      return (
+        keys.length === Object.keys(rightRecord).length &&
+        keys.every(
+          (key) => Object.hasOwn(rightRecord, key) && sameJson(leftRecord[key], rightRecord[key]),
+        )
+      );
+    }
+    return false;
+  }
 
-  const heldOverride = $derived(held);
+  /** Keep literal numbers from the prior override or the edited copy. */
+  function rawOverrideValue(
+    derived: unknown,
+    composed: JsonValue | undefined,
+    previous: JsonValue | undefined,
+    at: string[],
+    strategy: string,
+    rules: readonly ArrayRule[],
+  ): JsonValue {
+    if (previous !== undefined && sameJson(derived, previous)) return previous;
+    if (derived === null) return null;
+    if (Array.isArray(derived) && Array.isArray(composed)) {
+      const rule = rules.find((candidate) => candidate.path === arrayRulePath(at));
+      if (rule?.strategy === 'append') {
+        return derived.length === 0 ? [] : composed.slice(-derived.length);
+      }
+      if (rule?.strategy === 'prepend') return composed.slice(0, derived.length);
+      return composed;
+    }
+    if (
+      typeof derived === 'object' &&
+      derived !== null &&
+      !Array.isArray(derived) &&
+      isJsonRecord(composed)
+    ) {
+      if (strategy === 'shallow-merge' && at.length > 0) return composed;
+      const previousRecord = isJsonRecord(previous) ? previous : {};
+      return Object.fromEntries(
+        Object.entries(derived as Record<string, unknown>).map(([key, value]) => [
+          key,
+          rawOverrideValue(
+            value,
+            composed[key],
+            previousRecord[key],
+            [...at, key],
+            strategy,
+            rules,
+          ),
+        ]),
+      );
+    }
+    return (composed ?? derived) as JsonValue;
+  }
+
+  function overrideText(
+    derived: { overrides: Record<string, unknown>; arrays: ArrayRule[] },
+    text: string,
+    envelope: SyncOverrideEditorEnvelope,
+    merge: FileMergeSpec,
+  ): string {
+    const index = envelopeMerges(envelope).findIndex((row) => row.path === path);
+    const previousText = index < 0 ? '' : (envelope.override_texts[index] ?? '');
+    const composed = parseJson(text);
+    const previous = parseJson(previousText);
+    if (isJsonRecord(composed)) {
+      return formatJson(
+        rawOverrideValue(
+          derived.overrides,
+          composed,
+          previous,
+          [],
+          merge.strategy ?? 'deep-merge',
+          derived.arrays,
+        ) as Record<string, JsonValue>,
+      ).trimEnd();
+    }
+    if (isJsonRecord(previous) && sameJson(derived.overrides, previous)) return previousText;
+    return formatJson(derived.overrides as JsonValue).trimEnd();
+  }
+
+  /**
+   * Replace this file's merge and its raw text together. Keeping both arrays
+   * indexed in step preserves every other adjustment's literal text.
+   */
+  function envelopeWithMerge(
+    envelope: SyncOverrideEditorEnvelope,
+    next: FileMergeSpec | null,
+    rawText: string,
+  ): SyncOverrideEditorEnvelope {
+    const rows = envelopeMerges(envelope);
+    const texts = [...envelope.override_texts];
+    const index = rows.findIndex((merge) => merge.path === path);
+    const merges = [...rows];
+    if (index >= 0) {
+      if (next === null) {
+        merges.splice(index, 1);
+        texts.splice(index, 1);
+      } else {
+        merges[index] = next;
+        texts[index] = rawText;
+      }
+    } else if (next !== null) {
+      merges.push(next);
+      texts.push(rawText);
+    }
+    const document = { ...envelope.document };
+    if (merges.length === 0) delete document.merges;
+    else {
+      document.merges = merges as unknown as SyncOverrideEditorEnvelope['document'][string];
+    }
+    return { ...envelope, document, override_texts: texts };
+  }
+
+  function stageMergeText(text: string, nextAnswers: ArrayRule[] = answers): boolean {
+    const entry = openEntry;
+    const current = held;
+    const envelope = heldEnvelope;
+    const merge = openMerge;
+    editedText = text;
+    answers = nextAnswers;
+    if (
+      entry === null ||
+      current === null ||
+      envelope === null ||
+      merge === null ||
+      frozen ||
+      current.unreadable ||
+      file === null
+    )
+      return false;
+    const derived = deriveMerge(file.content, text, merge.strategy ?? 'deep-merge', nextAnswers);
+    const empty = derived !== null && Object.keys(derived.overrides).length === 0;
+    const next =
+      derived === null ? merge : empty ? null : specOf(derived.overrides, derived.arrays);
+    /* An unfinished composed document is intentionally invalid override text.
+       The registry can persist it, and the shared serializer then blocks Save
+       until the editor becomes valid again. */
+    const rawText =
+      derived === null
+        ? `${COMPOSED_DRAFT_PREFIX}${text}`
+        : next === null
+          ? ''
+          : overrideText(derived, text, envelope, merge);
+    const nextEnvelope = envelopeWithMerge(envelope, next, rawText);
+    holdProblem = null;
+    if (
+      !onChangeOverride(
+        entry.repository_id,
+        current,
+        nextEnvelope,
+        overrideDocumentControl(entry.repository_id),
+      )
+    ) {
+      holdProblem = 'This repository file adjustment could not be staged';
+      return false;
+    }
+    heldEnvelope = nextEnvelope;
+    draftMerges = { ...draftMerges, [entry.repository_id]: next };
+    if (next === null && openRepo === entry.repository_id) {
+      openRepo = null;
+      editedText = null;
+    }
+    return true;
+  }
+
+  const mergeFrozen = $derived(
+    frozen || held === null || held.unreadable || heldEnvelope === null || rawOverrideOnly,
+  );
 
   let resultUndoDepth = $state(0);
   let resultEditor = $state<CodeEditor | null>(null);
+  let pendingResultText: string | null = null;
+
+  function stageProgrammaticText(text: string, nextAnswers: ArrayRule[]): void {
+    if (stageMergeText(text, nextAnswers)) pendingResultText = text;
+  }
+
+  function stageEditorText(text: string): void {
+    if (text === pendingResultText) {
+      pendingResultText = null;
+      return;
+    }
+    stageMergeText(text);
+  }
 
   /** The x on a patch chip: the edited copy takes those lines back. */
   function dropKey(key: string): void {
@@ -410,12 +588,14 @@
       rule.path !== path && !rule.path.startsWith(`${path}.`);
     const arrays = staged.arrays.filter(keeps);
     answers = answers.filter(keeps);
-    editedText = composeMergedText(file.content, specOf(overrides, arrays));
+    const next = composeMergedText(file.content, specOf(overrides, arrays));
+    if (next !== null) stageProgrammaticText(next, answers);
   }
 
   function setListRule(key: string, strategy: string): void {
     const kept = answers.filter((rule) => rule.path !== key);
-    answers = strategy === 'replace' ? kept : [...kept, { path: key, strategy }];
+    const next = strategy === 'replace' ? kept : [...kept, { path: key, strategy }];
+    if (editedText !== null) stageMergeText(editedText, next);
   }
 
   const RULE_CHOICES = [
@@ -478,12 +658,13 @@
       />
     </div>
 
-    <div class="card">
+    <div
+      class="card"
+      class:is-unsaved={anyOverrideDirty}
+      data-unsaved={anyOverrideDirty || undefined}
+    >
       <div class="card-head">
         <h3 class="card-title">Repository adjustments</h3>
-        <span class="save-whisper" class:is-on={mergeSavedOn} role="status"
-          ><Icon name="check" size={12} /><span class="t">Saved</span></span
-        >
         <span class="object-sum"
           >{adjusters.length} of {context?.repositories ?? 0}
           {adjusters.length === 1 ? 'repository changes' : 'repositories change'} this file</span
@@ -495,13 +676,16 @@
       {/if}
 
       {#each adjusters as entry (entry.repository_id)}
-        <div class="adjuster">
+        <div
+          class="adjuster"
+          class:is-unsaved={overrideDirty(entry.repository_id)}
+          data-unsaved={overrideDirty(entry.repository_id) || undefined}
+        >
           <button
             type="button"
             class="object-row"
             class:is-open={openRepo === entry.repository_id}
             aria-expanded={openRepo === entry.repository_id}
-            disabled={savingMerge}
             onclick={() => void toggleRow(entry)}
           >
             <span class="object-main">
@@ -553,9 +737,9 @@
                     <CodeEditor
                       bind:this={resultEditor}
                       value={editedText}
-                      readOnly={frozen}
+                      readOnly={mergeFrozen}
                       overridden={overriddenLines}
-                      onChange={(text) => (editedText = text)}
+                      onChange={stageEditorText}
                       onHistory={(depth) => (resultUndoDepth = depth)}
                     />
                   </div>
@@ -564,9 +748,9 @@
                 <CodeEditor
                   bind:this={resultEditor}
                   value={editedText}
-                  readOnly={frozen}
+                  readOnly={mergeFrozen}
                   overridden={overriddenLines}
-                  onChange={(text) => (editedText = text)}
+                  onChange={stageEditorText}
                   onHistory={(depth) => (resultUndoDepth = depth)}
                 />
               {/if}
@@ -584,7 +768,7 @@
                       ><span class="t">{key}</span>
                       <button
                         aria-label="Stop changing {key}"
-                        disabled={frozen}
+                        disabled={mergeFrozen}
                         onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
                       ></span
                     >
@@ -594,7 +778,7 @@
                       ><span class="t">{key}</span>
                       <button
                         aria-label="Stop removing {key}"
-                        disabled={frozen}
+                        disabled={mergeFrozen}
                         onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
                       ></span
                     >
@@ -628,7 +812,7 @@
                           type="radio"
                           name="listrule-{entry.repository_id}-{question.path}"
                           checked={question.chosen === option.value}
-                          disabled={frozen || !askable(question, option.value)}
+                          disabled={mergeFrozen || !askable(question, option.value)}
                           onchange={() => setListRule(question.path, option.value)}
                         />
                         <span class="choice-dot"></span>
@@ -739,34 +923,6 @@
     color: var(--text-secondary);
   }
 
-  /* The save receipt: a healthy-state pill in the card head, on for a beat
-     after any landed save, then gone. A pill rather than muted words - the
-     saves are silent now, so the receipt is the one thing that says the
-     edit landed, and it has to be seen without being watched for. */
-  .save-whisper {
-    align-items: center;
-    background: var(--success-tint);
-    block-size: 20px;
-    border-radius: var(--radius-chip);
-    color: var(--success);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 4px;
-    margin-inline-start: auto;
-    opacity: 0;
-    padding: 0 0.5rem;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .save-whisper.is-on {
-    opacity: 1;
-  }
-
-  .save-whisper .t {
-    text-box: trim-both cap alphabetic;
-  }
-
   /* ---------- The adjuster rows ---------- */
 
   /* One list, a hairline between neighbours - the rows read as one table
@@ -785,6 +941,11 @@
 
   .adjuster > .merge-result {
     padding-block: var(--space-2) var(--space-4);
+  }
+
+  .adjuster.is-unsaved > .object-row {
+    background: color-mix(in srgb, var(--brand-action) 5%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   /* The same row the Files list stands its templates on, as a button: the
@@ -809,11 +970,6 @@
 
   .object-row:hover:not(:disabled) {
     background: var(--table-row-hover);
-  }
-
-  .object-row:disabled {
-    cursor: progress;
-    opacity: 0.65;
   }
 
   .row-chev {

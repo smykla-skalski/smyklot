@@ -11,6 +11,13 @@
   import { untrack } from 'svelte';
 
   import { formatJson, type JsonValue } from '#lib/merge.js';
+  import {
+    adoptSyncOverrideSettings,
+    stageSyncOverrideControl,
+    syncOverrideDraftEnvelope,
+    type SyncOverrideControlId,
+    type SyncOverrideEditorEnvelope,
+  } from '#lib/repository-sync-override-settings.js';
   import { getSettingsDraftRegistry, type SettingsScope } from '#lib/settings-drafts.svelte.js';
   import {
     adoptSyncConfigSettings,
@@ -26,7 +33,6 @@
     SyncFilesContext,
     SyncKind,
     SyncOverride,
-    SyncOverrideInput,
     SyncPlan,
     SyncStatus,
   } from '#lib/types.js';
@@ -62,7 +68,6 @@
     onOpenFile,
     fetchFilesContext,
     fetchOverride,
-    saveOverride,
     clock = Date.now,
   }: {
     targetId: string;
@@ -79,12 +84,6 @@
     onOpenFile: (path: string) => void;
     fetchFilesContext: (targetId: string) => Promise<SyncFilesContext>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
-    saveOverride: (
-      targetId: string,
-      repositoryId: string,
-      kind: string,
-      input: SyncOverrideInput,
-    ) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
@@ -295,6 +294,34 @@
     stageProblems = next;
   }
 
+  async function loadFilesOverride(repositoryId: string): Promise<{
+    stored: SyncOverride;
+    envelope: SyncOverrideEditorEnvelope | null;
+  }> {
+    const id = targetId;
+    const stored = await fetchOverride(id, repositoryId, FILES);
+    if (stored.unreadable) return { stored, envelope: null };
+    adoptSyncOverrideSettings(drafts, id, repositoryId, stored);
+    return {
+      stored,
+      envelope: syncOverrideDraftEnvelope(drafts, id, repositoryId, stored),
+    };
+  }
+
+  function stageFilesOverride(
+    repositoryId: string,
+    stored: SyncOverride,
+    next: SyncOverrideEditorEnvelope,
+    controlId: SyncOverrideControlId,
+  ): boolean {
+    if (stored.unreadable) return false;
+    try {
+      return stageSyncOverrideControl(drafts, targetId, repositoryId, stored, next, controlId);
+    } catch {
+      return false;
+    }
+  }
+
   async function onApprove(planId: string, digest: string): Promise<void> {
     approving = true;
     error = null;
@@ -428,8 +455,9 @@
       {onOpenSection}
       onChangeDocument={(document) => stageDocument(FILES, document)}
       dirtyDocument={dirtyControls.includes('sync.files.document')}
-      fetchOverride={(repositoryId) => fetchOverride(targetId, repositoryId, FILES)}
-      saveOverride={(repositoryId, input) => saveOverride(targetId, repositoryId, FILES, input)}
+      {dirtyControls}
+      fetchOverride={loadFilesOverride}
+      onChangeOverride={stageFilesOverride}
     />
   {:else}
     <SyncFilesPage

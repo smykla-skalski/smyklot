@@ -3,6 +3,7 @@
   import { fn } from 'storybook/test';
 
   import SyncFilePage from '#lib/components/SyncFilePage.svelte';
+  import { buildSyncOverrideEditorEnvelope } from '#lib/repository-sync-override-settings.js';
   import type { SyncConfig, SyncFilesContext, SyncOverride } from '#lib/types.js';
 
   const NOW = Date.UTC(2026, 7, 18, 12, 0, 0);
@@ -106,8 +107,11 @@
       sectionHref: (section: string) => `#/sync/${section}`,
       onOpenSection: fn(),
       onChangeDocument: fn(() => true),
-      fetchOverride: async () => OVERRIDE,
-      saveOverride: async () => OVERRIDE,
+      fetchOverride: async () => ({
+        stored: OVERRIDE,
+        envelope: buildSyncOverrideEditorEnvelope(OVERRIDE),
+      }),
+      onChangeOverride: fn(() => true),
     },
   });
 </script>

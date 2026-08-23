@@ -4,7 +4,6 @@
 
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
-  import { setSyncDraftScope, SyncDraftScope } from '#lib/sync-drafts.svelte.js';
   import { setSettingsDraftRegistry, SettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
   import { TARGET } from '../stories/support/fixtures.js';
   import { fixtureApi } from '../stories/support/api.js';
@@ -48,7 +47,6 @@
    * against a fixture would show a result no service produced.
    */
   const session = new PanelSession(fixtureApi(), { version: null, serviceHost: null }, queryClient);
-  const syncDraftScope = new SyncDraftScope();
   const settingsDraftRegistry = new SettingsDraftRegistry({ storage: null });
 
   /*
@@ -67,7 +65,6 @@
   session.targets = [TARGET];
   session.selectedId = TARGET.id;
   setPanelSession(session);
-  setSyncDraftScope(syncDraftScope);
   settingsDraftRegistry.hydrate('storybook-viewer');
   setSettingsDraftRegistry(settingsDraftRegistry);
 

@@ -7,8 +7,8 @@ import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
 import type {
   SyncCell,
   SyncConfig,
+  SyncFilesContext,
   SyncOverride,
-  SyncOverrideInput,
   SyncPlan,
   SyncStatus,
 } from '../src/lib/types';
@@ -93,22 +93,22 @@ describe('SyncView [Component]', () => {
       plan?: SyncPlan | null;
       status?: SyncStatus;
       drafts?: SettingsDraftRegistry;
-      saveOverride?: (
+      fileName?: string;
+      filesContext?: SyncFilesContext;
+      fetchOverride?: (
         targetId: string,
         repositoryId: string,
         kind: string,
-        input: SyncOverrideInput,
       ) => Promise<SyncOverride>;
     } = {},
   ) {
     const answers: Record<string, SyncConfig> = { labels, settings, rulesets, files };
     const drafts = state.drafts ?? registry();
-    const saveOverride =
-      state.saveOverride ?? vi.fn(() => Promise.reject(new Error('not in this test')));
 
     const page = render(SyncViewHarness, {
       targetId: 'target-1',
       section,
+      fileName: state.fileName,
       readOnly: false,
       drafts,
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
@@ -126,12 +126,13 @@ describe('SyncView [Component]', () => {
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: () => {},
       fetchFilesContext: () =>
-        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
-      fetchOverride: () => Promise.reject(new Error('not in this test')),
-      saveOverride,
+        Promise.resolve(
+          state.filesContext ?? { repositories: 0, covered: 0, known_paths: [], merges: [] },
+        ),
+      fetchOverride: state.fetchOverride ?? (() => Promise.reject(new Error('not in this test'))),
       clock: state.clock,
     });
-    return { page, drafts, saveOverride };
+    return { page, drafts };
   }
 
   const MISSING = 'Smyklot has not been granted administration access, which settings sync needs';
@@ -166,14 +167,12 @@ describe('SyncView [Component]', () => {
   });
 
   it('stages a per-kind switch and document without a network write', async () => {
-    const saveOverride = vi.fn(() => Promise.reject(new Error('unexpected network write')));
     const { drafts } = mount(
       config('labels'),
       config('settings', { enabled: false, document: { has_wiki: false } }),
       config('rulesets'),
       config('files'),
       'settings',
-      { saveOverride },
     );
 
     await screen.findByRole('heading', { name: 'Repository settings' });
@@ -184,12 +183,74 @@ describe('SyncView [Component]', () => {
       'sync.settings.enabled',
       'sync.settings.document',
     ]);
-    expect(saveOverride).not.toHaveBeenCalled();
     expect(
       [...document.querySelectorAll<HTMLElement>('.policy-row')]
         .find((row) => (row.textContent ?? '').includes('Wiki'))
         ?.getAttribute('data-unsaved'),
     ).toBe('true');
+  });
+
+  it('stages a repository file adjustment without a write request', async () => {
+    const merge = {
+      path: 'renovate.json',
+      strategy: 'deep-merge',
+      overrides: { timezone: 'Europe/Warsaw' },
+    };
+    const fetchOverride = vi.fn(() =>
+      Promise.resolve<SyncOverride>({
+        kind: 'files',
+        enabled: null,
+        document: { merges: [merge] },
+        revision: 3,
+        updated_by: 'bart',
+        updated_at: new Date(0).toISOString(),
+        unreadable: false,
+      }),
+    );
+    const { drafts } = mount(
+      config('labels'),
+      config('settings'),
+      config('rulesets'),
+      config('files', {
+        document: {
+          files: [{ path: 'renovate.json', content: '{ "timezone": "UTC" }' }],
+        },
+      }),
+      'files',
+      {
+        fileName: 'renovate.json',
+        filesContext: {
+          repositories: 1,
+          covered: 1,
+          known_paths: [],
+          merges: [
+            {
+              repository: 'repo-a',
+              repository_id: 'repo-1',
+              path: 'renovate.json',
+              merge,
+            },
+          ],
+        },
+        fetchOverride,
+      },
+    );
+
+    await screen.findByRole('heading', { name: 'renovate.json' });
+    await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    const remove = await screen.findByRole('button', { name: 'Stop changing timezone' });
+    await waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false));
+    await fireEvent.click(remove);
+
+    expect(fetchOverride).toHaveBeenCalledTimes(1);
+    expect(fetchOverride).toHaveBeenCalledWith('target-1', 'repo-1', 'files');
+    expect(drafts.dirtyControls().map(({ id }) => id)).toEqual([
+      'repositories.repo-1.sync.files.document',
+    ]);
+    expect(drafts.dirtyControls()[0]?.location).toEqual({
+      section: 'repositories',
+      path: ['repo-1', 'sync', 'files', 'document'],
+    });
   });
 
   it('overlays a persisted draft after the registry restarts', async () => {
@@ -278,7 +339,6 @@ describe('SyncView [Component]', () => {
       fetchFilesContext: () =>
         Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
       fetchOverride: () => Promise.reject(new Error('not in this test')),
-      saveOverride: () => Promise.reject(new Error('not in this test')),
     });
 
     await screen.findByRole('heading', { name: 'Rulesets' });
@@ -317,7 +377,6 @@ describe('SyncView [Component]', () => {
       fetchFilesContext: () =>
         Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
       fetchOverride: () => Promise.reject(new Error('not in this test')),
-      saveOverride: () => Promise.reject(new Error('not in this test')),
     });
 
     await screen.findByRole('heading', { name: 'Shared files' });
