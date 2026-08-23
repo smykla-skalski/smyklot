@@ -717,10 +717,7 @@ export interface InstallationSettingsBatchResponse {
 }
 
 export type InstallationSettingsCheckpointItemKind =
-  | 'target'
-  | 'repository'
-  | 'sync_config'
-  | 'sync_override';
+  'target' | 'repository' | 'sync_config' | 'sync_override';
 
 export interface InstallationSettingsCheckpointState {
   document: Record<string, unknown>;

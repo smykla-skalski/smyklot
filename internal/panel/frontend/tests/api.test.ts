@@ -468,9 +468,7 @@ describe('targets and repositories', () => {
     const inspected = await api.fetchInstallationSettingsCheckpoint('target/1', 'checkpoint/1');
     await expect(
       api.restoreInstallationSettingsCheckpoint('target/1', 'checkpoint/1', {
-        selections: [
-          { kind: 'sync_config', sync_kind: 'files', expected_revision: 7 },
-        ],
+        selections: [{ kind: 'sync_config', sync_kind: 'files', expected_revision: 7 }],
       }),
     ).resolves.toEqual(restored);
 
