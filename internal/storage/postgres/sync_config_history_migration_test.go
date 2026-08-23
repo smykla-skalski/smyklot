@@ -40,14 +40,18 @@ func TestSyncConfigHistoryMigrationBaselinesEveryTarget(t *testing.T) {
 VALUES ('github:owner', 'github', 'owner', 'owner', 'Owner', $1)`, []any{targetAt}},
 		{`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
 VALUES ('github:editor', 'github', 'editor', 'editor', 'Editor', $1)`, []any{configAt}},
-		{`INSERT INTO targets (
+		{
+			`INSERT INTO targets (
 id, installation_id, kind, account_id, settings_updated_at, synced_at
 ) VALUES ('installation:configured', '1', 'Organization', 'github:owner', $1, $2)`,
-			[]any{targetAt, targetAt}},
-		{`INSERT INTO targets (
+			[]any{targetAt, targetAt},
+		},
+		{
+			`INSERT INTO targets (
 id, installation_id, kind, account_id, settings_updated_at, synced_at
 ) VALUES ('installation:empty', '2', 'Organization', 'github:owner', $1, $2)`,
-			[]any{targetAt, targetAt}},
+			[]any{targetAt, targetAt},
+		},
 		{`INSERT INTO sync_configs (
 target_id, kind, enabled, document, digest, revision, updated_by, updated_at
 ) VALUES ('installation:configured', 'labels', true, '{"labels":[]}', 'labels-digest', 4,
