@@ -496,6 +496,7 @@
     font-size: var(--font-size-meta);
     font-weight: 500;
     gap: 10px;
+    isolation: isolate;
     padding: 0 10px;
     /* Positioned so the ink paints above the thumb sliding underneath. */
     position: relative;
@@ -519,6 +520,16 @@
       background-color var(--duration-fast) var(--ease-standard),
       translate var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
+    z-index: -1;
+  }
+
+  .tree-row > :global(svg),
+  .tree-row > .t,
+  .tree-kid > .t,
+  .tree-kid > .tab-count {
+    position: relative;
+    transition: translate var(--duration-press) var(--ease-standard);
+    z-index: 1;
   }
 
   .tree-row > .row-surface {
@@ -554,6 +565,11 @@
     translate: 0 1px;
   }
 
+  .tree-row:active > :global(svg),
+  .tree-row:active > .t {
+    translate: 0 1px;
+  }
+
   .tree-page.is-active > .tree-row {
     color: var(--sidebar-text);
     font-weight: 600;
@@ -570,9 +586,19 @@
     translate: 0 -1px;
   }
 
+  .tree-row.is-active:hover > :global(svg),
+  .tree-row.is-active:hover > .t {
+    translate: 0 -1px;
+  }
+
   .tree-row.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
+    translate: 0 1px;
+  }
+
+  .tree-row.is-active:active > :global(svg),
+  .tree-row.is-active:active > .t {
     translate: 0 1px;
   }
 
@@ -603,6 +629,7 @@
     display: flex;
     font-size: var(--font-size-meta);
     gap: 0.5rem;
+    isolation: isolate;
     padding: 0 9px;
     position: relative;
     text-decoration: none;
@@ -627,6 +654,11 @@
     translate: 0 1px;
   }
 
+  .tree-kid:active > .t,
+  .tree-kid:active > .tab-count {
+    translate: 0 1px;
+  }
+
   .tree-kid.is-active {
     /* Ink only - the thumb slides under the kid the same as under a page. */
     color: var(--sidebar-item-active-text);
@@ -638,9 +670,19 @@
     translate: 0 -1px;
   }
 
+  .tree-kid.is-active:hover > .t,
+  .tree-kid.is-active:hover > .tab-count {
+    translate: 0 -1px;
+  }
+
   .tree-kid.is-active:active > .row-surface {
     background: transparent;
     box-shadow: none;
+    translate: 0 1px;
+  }
+
+  .tree-kid.is-active:active > .t,
+  .tree-kid.is-active:active > .tab-count {
     translate: 0 1px;
   }
 
@@ -739,8 +781,16 @@
       translate: 0 1px;
     }
 
+    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:active > :global(svg) {
+      translate: 0 1px;
+    }
+
     :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > .row-surface {
       background: transparent;
+      translate: 0 -1px;
+    }
+
+    :global(.app-shell.sidebar-collapsed) .tree-page.is-active > .tree-row:hover > :global(svg) {
       translate: 0 -1px;
     }
 
