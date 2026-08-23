@@ -267,6 +267,85 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 				check.what, render(want), render(got))
 		}
 	}
+
+	requireSameSettingsHistory(t, ctx, source, destination)
+}
+
+// requireSameSettingsHistory compares immutable checkpoint contents through
+// the same inspection path Restore uses. Row counts prove the two checkpoint
+// tables were copied, but not that their JSON documents, revisions, digests,
+// resource discriminators, or absent sides still mean the same thing.
+func requireSameSettingsHistory(
+	t *testing.T,
+	ctx context.Context,
+	source, destination storage.Store,
+) {
+	t.Helper()
+
+	compareSettingsInspection(t, "Root settings baseline", func(store storage.Store) (
+		storage.SettingsCheckpointInspection,
+		error,
+	) {
+		return store.InspectRootSettingsBaseline(ctx)
+	}, source, destination)
+	compareSettingsInspection(t, "installation settings baseline", func(store storage.Store) (
+		storage.SettingsCheckpointInspection,
+		error,
+	) {
+		return store.InspectInstallationSettingsBaseline(ctx, "github:installation:100")
+	}, source, destination)
+
+	audit, err := source.ListRootAudit(ctx, storage.RootAuditPageRequest{
+		HistoryPageRequest: storage.HistoryPageRequest{Limit: 100},
+	})
+	if err != nil {
+		t.Fatalf("list source settings history: %v", err)
+	}
+	for _, entry := range audit.Items {
+		if entry.SettingsCheckpointID == nil {
+			continue
+		}
+		ref := storage.SettingsCheckpointRef{
+			ID:    *entry.SettingsCheckpointID,
+			Scope: storage.SettingsCheckpointScopeRoot,
+		}
+		if entry.TargetID != nil {
+			ref.Scope = storage.SettingsCheckpointScopeInstallation
+			ref.TargetID = *entry.TargetID
+		}
+		what := fmt.Sprintf("settings checkpoint %d", ref.ID)
+		compareSettingsInspection(t, what, func(store storage.Store) (
+			storage.SettingsCheckpointInspection,
+			error,
+		) {
+			if ref.Scope == storage.SettingsCheckpointScopeRoot {
+				return store.InspectRootSettingsCheckpoint(ctx, ref)
+			}
+
+			return store.InspectInstallationSettingsCheckpoint(ctx, ref)
+		}, source, destination)
+	}
+}
+
+func compareSettingsInspection(
+	t *testing.T,
+	what string,
+	read func(storage.Store) (storage.SettingsCheckpointInspection, error),
+	source, destination storage.Store,
+) {
+	t.Helper()
+
+	want, wantErr := read(source)
+	got, gotErr := read(destination)
+	if fmt.Sprint(wantErr) != fmt.Sprint(gotErr) {
+		t.Errorf("%s: sqlite returned %v, postgres returned %v", what, wantErr, gotErr)
+
+		return
+	}
+	if render(want) != render(got) {
+		t.Errorf("%s differs after the copy:\n  sqlite:   %s\n  postgres: %s",
+			what, render(want), render(got))
+	}
 }
 
 var timeType = reflect.TypeOf(time.Time{})
