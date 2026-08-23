@@ -51,6 +51,17 @@ import type {
   UpdateTargetUserInput,
   UpdateRootUserInput,
   InvitationDays,
+  InstallationRepositorySettingsInput,
+  InstallationRepositorySettingsState,
+  InstallationSettingsBatchInput,
+  InstallationSettingsBatchResponse,
+  InstallationSettingsConflict,
+  InstallationSyncConfigSettingsInput,
+  InstallationSyncConfigSettingsState,
+  InstallationSyncOverrideSettingsInput,
+  InstallationSyncOverrideSettingsState,
+  InstallationTargetSettingsInput,
+  InstallationTargetSettingsState,
 } from '../src/lib/types.ts';
 import { SYNC_KINDS } from '../src/lib/types.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
@@ -101,6 +112,7 @@ class MockApiError extends Error {
     readonly status: number,
     readonly code: string,
     message: string,
+    readonly details: Record<string, unknown> = {},
   ) {
     super(message);
     this.name = 'MockApiError';
@@ -898,7 +910,9 @@ async function handle(
       respond(res, 200, publicInvitationValue(invitation));
     } catch (error) {
       if (error instanceof MockApiError) {
-        respond(res, error.status, { error: { code: error.code, message: error.message } });
+        respond(res, error.status, {
+          error: { code: error.code, message: error.message, ...error.details },
+        });
       } else {
         respond(res, 500, { error: { code: 'internal', message: 'the mock request failed' } });
       }
@@ -1389,6 +1403,12 @@ async function handle(
       return;
     }
 
+    const targetSettingsBatch = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/settings\/batch$/,
+    );
+    const rootTargetSettingsBatch = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings\/batch$/,
+    );
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
     const rootTargetSettings = path.match(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings$/,
@@ -1479,6 +1499,15 @@ async function handle(
     const installationInvitation = invitation ?? rootScopedInvitation;
     const installationAudit = audit ?? rootTargetAudit;
     const installationFailures = failures ?? rootTargetFailures;
+    const installationSettingsBatch = targetSettingsBatch ?? rootTargetSettingsBatch;
+
+    if (installationSettingsBatch && method === 'PUT') {
+      const target = findTarget(state, installationSettingsBatch.groups?.target ?? '');
+      if (rootTargetSettingsBatch !== null) requireRootWrite(state, target);
+      const input = await readBody<InstallationSettingsBatchInput>(req);
+      respond(res, 200, saveMockInstallationSettings(state, target, input));
+      return;
+    }
 
     if (rootPendingCICheck && method === 'POST') {
       const id = rootPendingCICheck.groups?.request ?? '';
@@ -2112,7 +2141,9 @@ async function handle(
     }
   } catch (error) {
     if (error instanceof MockApiError) {
-      respond(res, error.status, { error: { code: error.code, message: error.message } });
+      respond(res, error.status, {
+        error: { code: error.code, message: error.message, ...error.details },
+      });
       return;
     }
     console.error('Smyklot panel mock failed:', error);
@@ -2184,6 +2215,504 @@ function changedMockSyncConfig(config: SyncConfig, input: SyncConfigInput): Sync
     updated_at: now,
     digest: `sha256:mock-${config.kind}-${nextRevision}-${Date.now()}`,
   };
+}
+
+interface MockInstallationSettingsPlan {
+  target?: MockPreparedChange<PanelTarget>;
+  repositories: Array<MockPreparedChange<RepositoryDetail> & { stored: MockRepository }>;
+  syncConfigs: Array<MockPreparedChange<SyncConfig> & { key: string }>;
+  syncOverrides: Array<
+    MockPreparedChange<SyncOverride> & { key: string; repository: MockRepository }
+  >;
+}
+
+interface MockPreparedChange<T> {
+  changed: boolean;
+  conflict: InstallationSettingsConflict | null;
+  next: T;
+}
+
+function saveMockInstallationSettings(
+  state: MockState,
+  target: MockTarget,
+  input: InstallationSettingsBatchInput,
+): InstallationSettingsBatchResponse {
+  validateMockInstallationSettingsBatch(input);
+  const plan = prepareMockInstallationSettings(state, target, input);
+  const conflicts = [
+    ...(plan.target?.conflict === null || plan.target?.conflict === undefined
+      ? []
+      : [plan.target.conflict]),
+    ...plan.repositories.flatMap(({ conflict }) => (conflict === null ? [] : [conflict])),
+    ...plan.syncConfigs.flatMap(({ conflict }) => (conflict === null ? [] : [conflict])),
+    ...plan.syncOverrides.flatMap(({ conflict }) => (conflict === null ? [] : [conflict])),
+  ].sort(compareMockSettingsConflicts);
+  if (conflicts.length > 0) {
+    throw new MockApiError(
+      409,
+      'settings_conflict',
+      'settings changed in another session; review the latest values',
+      { conflicts },
+    );
+  }
+
+  const changed =
+    plan.target?.changed === true ||
+    plan.repositories.some(({ changed }) => changed) ||
+    plan.syncConfigs.some(({ changed }) => changed) ||
+    plan.syncOverrides.some(({ changed }) => changed);
+  const audit = changed ? mockInstallationSettingsAudit(plan) : null;
+  const checkpointId = changed
+    ? `checkpoint-settings-${Date.now()}-${target.audit.length + 1}`
+    : undefined;
+
+  if (plan.target?.changed === true) target.value = plan.target.next;
+  for (const change of plan.repositories) {
+    if (change.changed) change.stored.detail = change.next;
+  }
+  for (const change of plan.syncConfigs) {
+    if (change.changed) state.sync.set(change.key, change.next);
+  }
+  for (const change of plan.syncOverrides) {
+    if (change.changed) state.syncOverrides.set(change.key, change.next);
+  }
+  if (plan.target?.changed === true || plan.repositories.some(({ changed }) => changed)) {
+    recomputeTarget(target);
+  }
+
+  const response: InstallationSettingsBatchResponse = {};
+  if (plan.target !== undefined) response.target = mockInstallationTargetState(target.value);
+  if (plan.repositories.length > 0) {
+    response.repositories = plan.repositories
+      .map(({ stored }) => mockInstallationRepositoryState(stored.detail))
+      .sort((left, right) => left.repository_id.localeCompare(right.repository_id));
+  }
+  if (plan.syncConfigs.length > 0) {
+    response.sync_configs = plan.syncConfigs
+      .map(({ key, next }) =>
+        mockInstallationSyncConfigState(target.value.id, state.sync.get(key) ?? next),
+      )
+      .sort((left, right) => left.kind.localeCompare(right.kind));
+  }
+  if (plan.syncOverrides.length > 0) {
+    response.sync_overrides = plan.syncOverrides
+      .map(({ key, next, repository }) =>
+        mockInstallationSyncOverrideState(
+          target.value.id,
+          repository.detail.repository.id,
+          state.syncOverrides.get(key) ?? next,
+        ),
+      )
+      .sort(
+        (left, right) =>
+          left.repository_id.localeCompare(right.repository_id) ||
+          left.kind.localeCompare(right.kind),
+      );
+  }
+  if (audit !== null && checkpointId !== undefined) {
+    response.checkpoint_id = checkpointId;
+    addAudit(target, audit.action, audit.summary, audit.repository, undefined, checkpointId);
+    broadcast(state, { type: 'target.changed', target_id: target.value.id });
+  }
+  return response;
+}
+
+function prepareMockInstallationSettings(
+  state: MockState,
+  target: MockTarget,
+  input: InstallationSettingsBatchInput,
+): MockInstallationSettingsPlan {
+  return {
+    target:
+      input.target === undefined ? undefined : prepareMockTargetSettings(target, input.target),
+    repositories: (input.repositories ?? []).map((change) =>
+      prepareMockRepositorySettings(target, change),
+    ),
+    syncConfigs: (input.sync_configs ?? []).map((change) =>
+      prepareMockSyncConfigSettings(state, target.value.id, change),
+    ),
+    syncOverrides: (input.sync_overrides ?? []).map((change) =>
+      prepareMockSyncOverrideSettings(state, target, change),
+    ),
+  };
+}
+
+function prepareMockTargetSettings(
+  target: MockTarget,
+  input: InstallationTargetSettingsInput,
+): MockPreparedChange<PanelTarget> {
+  const current = mockInstallationTargetDocument(target.value);
+  const proposed = {
+    repository_default_enabled: input.repository_default_enabled,
+    pending_ci_mode_default: input.pending_ci_mode_default,
+    pending_ci_branch_patterns_default: structuredClone(input.pending_ci_branch_patterns_default),
+    pending_ci_quiet_period_seconds_override: input.pending_ci_quiet_period_seconds_override,
+    path_index_interval_seconds_override: input.path_index_interval_seconds_override,
+    config_patch: structuredClone(input.config_patch),
+  };
+  const next = structuredClone(target.value);
+  const changed = !sameMockDocument(current, proposed);
+  if (changed) Object.assign(next, proposed, { revision: next.revision + 1 });
+  return {
+    changed,
+    next,
+    conflict:
+      target.value.revision === input.expected_revision
+        ? null
+        : {
+            resource: 'target',
+            target_id: target.value.id,
+            expected_revision: input.expected_revision,
+            actual_revision: target.value.revision,
+            latest: mockInstallationTargetState(target.value),
+          },
+  };
+}
+
+function prepareMockRepositorySettings(
+  target: MockTarget,
+  input: InstallationRepositorySettingsInput,
+): MockPreparedChange<RepositoryDetail> & { stored: MockRepository } {
+  const stored = findRepository(target, input.repository_id);
+  const proposed = {
+    enabled_override: input.enabled_override,
+    pending_ci_mode_override: input.pending_ci_mode_override,
+    pending_ci_branch_patterns_override: structuredClone(input.pending_ci_branch_patterns_override),
+    pending_ci_quiet_period_seconds_override: input.pending_ci_quiet_period_seconds_override,
+    path_index_interval_seconds_override: input.path_index_interval_seconds_override,
+    config_patch: structuredClone(input.config_patch),
+    ignore_repository_file: input.ignore_repository_file,
+  };
+  const next = structuredClone(stored.detail);
+  const changed = !sameMockDocument(mockInstallationRepositoryDocument(stored.detail), proposed);
+  if (changed) {
+    next.repository.enabled_override = proposed.enabled_override;
+    next.pending_ci_mode_override = proposed.pending_ci_mode_override;
+    next.pending_ci_branch_patterns_override = proposed.pending_ci_branch_patterns_override;
+    next.pending_ci_quiet_period_seconds_override =
+      proposed.pending_ci_quiet_period_seconds_override;
+    next.path_index_interval_seconds_override = proposed.path_index_interval_seconds_override;
+    next.config_patch = proposed.config_patch;
+    next.ignore_repository_file = proposed.ignore_repository_file;
+    next.revision += 1;
+    next.repository.updated_at = new Date().toISOString();
+  }
+  return {
+    changed,
+    stored,
+    next,
+    conflict:
+      stored.detail.revision === input.expected_revision
+        ? null
+        : {
+            resource: 'repository',
+            target_id: target.value.id,
+            repository_id: stored.detail.repository.id,
+            expected_revision: input.expected_revision,
+            actual_revision: stored.detail.revision,
+            latest: mockInstallationRepositoryState(stored.detail),
+          },
+  };
+}
+
+function prepareMockSyncConfigSettings(
+  state: MockState,
+  targetId: string,
+  input: InstallationSyncConfigSettingsInput,
+): MockPreparedChange<SyncConfig> & { key: string } {
+  const key = `${targetId}/${input.kind}`;
+  const current = structuredClone(state.sync.get(key) ?? emptyMockSyncConfig(input.kind));
+  const proposed =
+    input.kind === 'labels'
+      ? {
+          labels: structuredClone(input.labels),
+          allow_removal: input.allow_removal,
+          excludes: structuredClone(input.excludes),
+        }
+      : structuredClone(input.document);
+  const changed =
+    current.enabled !== input.enabled ||
+    !sameMockDocument(mockSyncConfigDocument(current), proposed);
+  return {
+    changed,
+    key,
+    next: changed ? changedMockSyncConfig(current, input) : current,
+    conflict:
+      current.revision === input.expected_revision
+        ? null
+        : {
+            resource: 'sync_config',
+            target_id: targetId,
+            kind: input.kind,
+            expected_revision: input.expected_revision,
+            actual_revision: current.revision,
+            latest: mockInstallationSyncConfigState(targetId, current),
+          },
+  };
+}
+
+function prepareMockSyncOverrideSettings(
+  state: MockState,
+  target: MockTarget,
+  input: InstallationSyncOverrideSettingsInput,
+): MockPreparedChange<SyncOverride> & { key: string; repository: MockRepository } {
+  const repository = findRepository(target, input.repository_id);
+  const key = `${input.repository_id}/${input.kind}`;
+  const current = structuredClone(
+    state.syncOverrides.get(key) ?? emptyMockSyncOverride(input.kind),
+  );
+  const changed =
+    current.enabled !== input.enabled || !sameMockDocument(current.document, input.document);
+  const next: SyncOverride = changed
+    ? {
+        ...current,
+        enabled: input.enabled,
+        document: structuredClone(input.document),
+        revision: current.revision + 1,
+        updated_by: VIEWER.login,
+        updated_at: new Date().toISOString(),
+      }
+    : current;
+  return {
+    changed,
+    key,
+    repository,
+    next,
+    conflict:
+      current.revision === input.expected_revision
+        ? null
+        : {
+            resource: 'sync_override',
+            target_id: target.value.id,
+            repository_id: repository.detail.repository.id,
+            kind: input.kind,
+            expected_revision: input.expected_revision,
+            actual_revision: current.revision,
+            latest: mockInstallationSyncOverrideState(
+              target.value.id,
+              repository.detail.repository.id,
+              current,
+            ),
+          },
+  };
+}
+
+function validateMockInstallationSettingsBatch(input: InstallationSettingsBatchInput): void {
+  const repositories = mockBatchArray(input.repositories, 'repositories');
+  const syncConfigs = mockBatchArray(input.sync_configs, 'Sync configurations');
+  const syncOverrides = mockBatchArray(input.sync_overrides, 'repository Sync settings');
+  const resources =
+    repositories.length +
+    syncConfigs.length +
+    syncOverrides.length +
+    (input.target === undefined ? 0 : 1);
+  if (resources === 0) invalidMockSettingsBatch('settings save needs at least one resource');
+
+  const keyed = [
+    ...(input.target === undefined
+      ? []
+      : [{ key: 'target', revision: input.target.expected_revision }]),
+    ...repositories.map((entry) => ({
+      key: entry.repository_id === '' ? '' : `repository:${entry.repository_id}`,
+      revision: entry.expected_revision,
+    })),
+    ...syncConfigs.map((entry) => ({
+      key: SYNC_KINDS.includes(entry.kind) ? `sync:${entry.kind}` : '',
+      revision: entry.expected_revision,
+    })),
+    ...syncOverrides.map((entry) => ({
+      key:
+        entry.repository_id !== '' && SYNC_KINDS.includes(entry.kind)
+          ? `override:${entry.repository_id}:${entry.kind}`
+          : '',
+      revision: entry.expected_revision,
+    })),
+  ];
+  const seen = new Set<string>();
+  for (const { key, revision } of keyed) {
+    validateMockRevision(revision);
+    if (key.length === 0 || seen.has(key)) {
+      invalidMockSettingsBatch('settings resources must be known and unique');
+    }
+    seen.add(key);
+  }
+}
+
+function validateMockRevision(revision: number): void {
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    invalidMockSettingsBatch('settings revision must be a non-negative integer');
+  }
+}
+
+function compareMockSettingsConflicts(
+  left: InstallationSettingsConflict,
+  right: InstallationSettingsConflict,
+): number {
+  const order = ['target', 'repository', 'sync_config', 'sync_override'];
+  const key = (conflict: InstallationSettingsConflict): string =>
+    [
+      order.indexOf(conflict.resource),
+      'repository_id' in conflict ? conflict.repository_id : '',
+      'kind' in conflict ? conflict.kind : '',
+    ].join('\u0000');
+  return key(left).localeCompare(key(right));
+}
+
+function mockInstallationSettingsAudit(plan: MockInstallationSettingsPlan): {
+  action: string;
+  summary: string;
+  repository?: string;
+} {
+  const targetChanged = plan.target?.changed === true;
+  const repositories = plan.repositories.filter(({ changed }) => changed);
+  const syncConfigs = plan.syncConfigs.filter(({ changed }) => changed);
+  const syncOverrides = plan.syncOverrides.filter(({ changed }) => changed);
+  const count =
+    (targetChanged ? 1 : 0) + repositories.length + syncConfigs.length + syncOverrides.length;
+  if (count === 1 && targetChanged) {
+    return { action: 'target.settings.updated', summary: 'Updated account defaults' };
+  }
+  if (count === 1 && repositories.length === 1) {
+    return {
+      action: 'repository.settings.updated',
+      summary: 'Updated repository settings',
+      repository: repositories[0]!.stored.detail.repository.full_name,
+    };
+  }
+  if (count === 1 && syncConfigs.length === 1) {
+    return {
+      action: 'sync.config.saved',
+      summary: `Saved ${syncConfigs[0]!.next.kind} sync configuration`,
+    };
+  }
+  if (count === 1 && syncOverrides.length === 1) {
+    const override = syncOverrides[0]!;
+    return {
+      action: 'sync.override.updated',
+      summary: `Updated ${override.next.kind} sync override`,
+      repository: override.repository.detail.repository.full_name,
+    };
+  }
+  return {
+    action: 'installation.settings.updated',
+    summary: `Updated ${count} installation settings`,
+  };
+}
+
+function mockInstallationTargetDocument(target: PanelTarget) {
+  return {
+    repository_default_enabled: target.repository_default_enabled,
+    pending_ci_mode_default: target.pending_ci_mode_default,
+    pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
+    pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
+    path_index_interval_seconds_override: target.path_index_interval_seconds_override,
+    config_patch: target.config_patch,
+  };
+}
+
+function mockInstallationRepositoryDocument(detail: RepositoryDetail) {
+  return {
+    enabled_override: detail.repository.enabled_override,
+    pending_ci_mode_override: detail.pending_ci_mode_override,
+    pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
+    pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
+    path_index_interval_seconds_override: detail.path_index_interval_seconds_override,
+    config_patch: detail.config_patch,
+    ignore_repository_file: detail.ignore_repository_file,
+  };
+}
+
+function mockSyncConfigDocument(config: SyncConfig): Record<string, unknown> {
+  return config.kind === 'labels'
+    ? {
+        labels: structuredClone(config.labels),
+        allow_removal: config.allow_removal,
+        excludes: structuredClone(config.excludes),
+      }
+    : structuredClone(config.document);
+}
+
+function mockInstallationTargetState(target: PanelTarget): InstallationTargetSettingsState {
+  return {
+    target_id: target.id,
+    ...structuredClone(mockInstallationTargetDocument(target)),
+    revision: target.revision,
+  };
+}
+
+function mockInstallationRepositoryState(
+  detail: RepositoryDetail,
+): InstallationRepositorySettingsState {
+  return {
+    repository_id: detail.repository.id,
+    ...structuredClone(mockInstallationRepositoryDocument(detail)),
+    revision: detail.revision,
+  };
+}
+
+function mockInstallationSyncConfigState(
+  targetId: string,
+  config: SyncConfig,
+): InstallationSyncConfigSettingsState {
+  if (!SYNC_KINDS.includes(config.kind as SyncKind)) throw new Error('mock Sync kind is invalid');
+  return {
+    target_id: targetId,
+    kind: config.kind as SyncKind,
+    enabled: config.enabled,
+    document: mockSyncConfigDocument(config),
+    revision: config.revision,
+  };
+}
+
+function mockInstallationSyncOverrideState(
+  targetId: string,
+  repositoryId: string,
+  override: SyncOverride,
+): InstallationSyncOverrideSettingsState {
+  if (!SYNC_KINDS.includes(override.kind as SyncKind)) throw new Error('mock Sync kind is invalid');
+  return {
+    target_id: targetId,
+    repository_id: repositoryId,
+    kind: override.kind as SyncKind,
+    enabled: override.enabled,
+    document: structuredClone(override.document),
+    revision: override.revision,
+  };
+}
+
+function emptyMockSyncConfig(kind: SyncKind): SyncConfig {
+  return {
+    kind,
+    enabled: false,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 0,
+    updated_by: '',
+    updated_at: new Date().toISOString(),
+    digest: '',
+    document: {},
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+function emptyMockSyncOverride(kind: SyncKind): SyncOverride {
+  return { kind, enabled: null, document: {}, revision: 0, unreadable: false };
+}
+
+function sameMockDocument(left: unknown, right: unknown): boolean {
+  return canonicalStringify(left) === canonicalStringify(right);
+}
+
+function mockBatchArray<T>(value: T[] | undefined, name: string): T[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) invalidMockSettingsBatch(`${name} must be a list`);
+  return value;
+}
+
+function invalidMockSettingsBatch(message: string): never {
+  throw new MockApiError(400, 'invalid_request', message);
 }
 
 function mockCheckpoint(
@@ -2929,17 +3458,20 @@ function addAudit(
   action: string,
   summary: string,
   repository?: string,
-  checkpointId?: string,
+  syncCheckpointId?: string,
+  settingsCheckpointId?: string,
 ): void {
-  target.audit.unshift({
+  const entry: AuditEntry & { settings_checkpoint_id?: string } = {
     id: `audit-${Date.now()}`,
     actor: VIEWER,
     action,
     summary,
-    ...(checkpointId === undefined ? {} : { sync_config_checkpoint_id: checkpointId }),
+    ...(syncCheckpointId === undefined ? {} : { sync_config_checkpoint_id: syncCheckpointId }),
+    ...(settingsCheckpointId === undefined ? {} : { settings_checkpoint_id: settingsCheckpointId }),
     repository_full_name: repository,
     created_at: new Date().toISOString(),
-  });
+  };
+  target.audit.unshift(entry);
 }
 
 function resetMockConfigMigration(

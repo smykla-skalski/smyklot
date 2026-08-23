@@ -314,14 +314,14 @@
     const { path } = draft.merge;
     const named = path === '' ? 'an adjustment' : path;
 
-    if (path === '') return 'One adjustment names no file.';
+    if (path === '') return 'One adjustment names no file';
 
     if (!MERGEABLE_PATH.test(path)) {
-      return `${path} has no extension this can merge; JSON, YAML and Markdown can.`;
+      return `${path} has no extension this can merge; JSON, YAML and Markdown can`;
     }
 
     if (drafts.filter((other) => other.merge.path === path).length > 1) {
-      return `${path} is adjusted twice.`;
+      return `${path} is adjusted twice`;
     }
 
     if (editsMarkdown(draft.merge)) return refusalInSections(named, draft.merge.sections ?? []);
@@ -329,23 +329,23 @@
     const rules = draft.merge.arrays ?? [];
 
     if ((value === undefined || Object.keys(value).length === 0) && rules.length === 0) {
-      return `${named} sets nothing and has no list rule, so nothing would be merged.`;
+      return `${named} sets nothing and has no list rule, so nothing would be merged`;
     }
 
     for (const [at, rule] of rules.entries()) {
       const which = `List rule ${at + 1} of ${named}`;
       const read = pathKeys(rule.path);
 
-      if ('refusal' in read) return `${which} ${read.refusal}.`;
+      if ('refusal' in read) return `${which} ${read.refusal}`;
 
       if (rules.filter((other) => other.path === rule.path).length > 1) {
-        return `${named} has two rules for ${rule.path}.`;
+        return `${named} has two rules for ${rule.path}`;
       }
 
       // A shallow merge replaces a top-level key with the override's value
       // whole, so nothing below one is ever merged.
       if (draft.merge.strategy === 'shallow-merge' && read.keys.length > 1) {
-        return `${rule.path} is below the top level, and a shallow merge replaces top-level keys whole.`;
+        return `${rule.path} is below the top level, and a shallow merge replaces top-level keys whole`;
       }
 
       // A rule says what to do with the repository's list where the template
@@ -357,10 +357,10 @@
       const target = valueAt(value, read.keys);
 
       if (target === undefined) {
-        return `No override sets ${rule.path}, so ${named} has no list to ${rule.strategy}.`;
+        return `No override sets ${rule.path}, so ${named} has no list to ${rule.strategy}`;
       }
 
-      if (!Array.isArray(target)) return `The override at ${rule.path} is not a list.`;
+      if (!Array.isArray(target)) return `The override at ${rule.path} is not a list`;
     }
 
     return null;
@@ -425,7 +425,7 @@
 
   function refusalInSections(named: string, sections: SyncSection[]): string | null {
     if (sections.length === 0) {
-      return `${named} is edited by its headings, and no section says how.`;
+      return `${named} is edited by its headings, and no section says how`;
     }
 
     for (const [at, section] of sections.entries()) {
@@ -433,21 +433,21 @@
       const which = `Section ${at + 1} of ${named}`;
 
       if (shape.heading && (section.heading ?? '') === '') {
-        return `${which} needs the heading it addresses, written with its # marks.`;
+        return `${which} needs the heading it addresses, written with its # marks`;
       }
 
       if (shape.content && (section.content ?? '') === '') {
-        return `${which} needs the content it writes.`;
+        return `${which} needs the content it writes`;
       }
 
       if (shape.patches) {
         const patches = section.patches ?? [];
 
-        if (patches.length === 0) return `${which} substitutes nothing.`;
+        if (patches.length === 0) return `${which} substitutes nothing`;
 
         const empty = patches.findIndex((pair) => pair.find === '');
 
-        if (empty >= 0) return `${which} has a substitution that finds nothing.`;
+        if (empty >= 0) return `${which} has a substitution that finds nothing`;
       }
     }
 
@@ -757,7 +757,7 @@
   </div>
 
   {#if drafts.length === 0}
-    <p class="form-note">This repository takes every file as the organization writes it.</p>
+    <p class="form-note">This repository takes every file as the organization writes it</p>
   {/if}
 
   {#each drafts as draft, index (rowKey(index))}

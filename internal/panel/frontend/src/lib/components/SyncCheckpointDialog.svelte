@@ -179,7 +179,7 @@
   id="sync-checkpoint-dialog"
   {open}
   title="Sync configuration history"
-  description="Inspect the saved state and restore only the sections you choose."
+  description="Inspect the saved state and restore only the sections you choose"
   variant="wide"
   {returnFocus}
   {onClose}
@@ -265,9 +265,9 @@
         Save or discard the current Sync draft before restoring history.
       </p>
     {:else if readOnly}
-      <p class="checkpoint-notice">You can inspect this snapshot, but cannot restore it.</p>
+      <p class="checkpoint-notice">You can inspect this snapshot, but cannot restore it</p>
     {:else if selected.length === 0}
-      <p class="checkpoint-notice">This snapshot already matches the current configuration.</p>
+      <p class="checkpoint-notice">This snapshot already matches the current configuration</p>
     {/if}
 
     {#if confirming}

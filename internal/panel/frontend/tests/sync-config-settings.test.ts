@@ -131,7 +131,7 @@ describe('Sync configuration settings adapter [Unit]', () => {
     expect(parseSyncConfigEditorEnvelope(malformed, 'files')).toEqual(malformed);
     expect(syncConfigBatchInput(1, malformed)).toEqual({
       ok: false,
-      problem: 'Files configuration is not a JSON object.',
+      problem: 'Files configuration is not a JSON object',
     });
   });
 

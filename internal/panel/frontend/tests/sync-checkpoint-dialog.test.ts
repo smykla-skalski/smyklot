@@ -194,7 +194,7 @@ describe('SyncCheckpointDialog [Component]', () => {
     mount({ readOnly: true });
     await screen.findByText('Saved by Bart Smykla');
 
-    expect(screen.getByText('You can inspect this snapshot, but cannot restore it.')).toBeTruthy();
+    expect(screen.getByText('You can inspect this snapshot, but cannot restore it')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Restore selected' })).toBeNull();
   });
 });

@@ -430,14 +430,14 @@
 
   function actionDescription(): string {
     if (pendingAction === 'promote_root') {
-      return 'Root can read application-wide data and use audited installation elevation.';
+      return 'Root can read application-wide data and use audited installation elevation';
     }
     if (pendingAction === 'demote_root') {
-      return 'Their installation ownership and explicit assignments remain unchanged.';
+      return 'Their installation ownership and explicit assignments remain unchanged';
     }
-    if (pendingAction === 'restore') return 'The account can sign in again with retained access.';
-    if (pendingAction === 'ban') return 'Every active session is revoked immediately.';
-    return 'Sessions, assignments, and invitations are revoked. Audit identity is retained.';
+    if (pendingAction === 'restore') return 'The account can sign in again with retained access';
+    if (pendingAction === 'ban') return 'Every active session is revoked immediately';
+    return 'Sessions, assignments, and invitations are revoked. Audit identity is retained';
   }
 
   async function confirmUserAction(): Promise<void> {
@@ -744,7 +744,7 @@
       {#snippet icon()}
         <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size={20} />
       {/snippet}
-      <span>Review the account and effect before confirming.</span>
+      <span>Review the account and effect before confirming</span>
     </Callout>
   {/if}
   {#if actionProblem !== null}<p class="action-error" role="alert">{actionProblem}</p>{/if}
@@ -754,7 +754,7 @@
   id={ADD_DIALOG}
   open={addOpen}
   title="Add installation user"
-  description="Choose the installation before assigning a Viewer, Editor, or Admin role."
+  description="Choose the installation before assigning a Viewer, Editor, or Admin role"
   returnFocus={addTrigger}
   onClose={closeAddUser}
 >
@@ -797,7 +797,7 @@
           <Button tone="quiet" onclick={() => void installationsQuery.refetch()}>Try again</Button>
         </div>
       {:else if filteredInstallations.length === 0}
-        <div class="installation-state">No installations match this search.</div>
+        <div class="installation-state">No installations match this search</div>
       {:else}
         <div class="installation-options" role="radiogroup" aria-label="Installation">
           {#each filteredInstallations as installation (installation.id)}

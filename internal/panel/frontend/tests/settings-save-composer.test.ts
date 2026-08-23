@@ -34,7 +34,7 @@ describe('SettingsSaveComposer [Component]', () => {
     render(SettingsSaveComposer, {
       ...base,
       conflict: true,
-      problem: 'Settings changed in another session.',
+      problem: 'Settings changed in another session',
       onResolveConflict,
     });
 
@@ -44,11 +44,18 @@ describe('SettingsSaveComposer [Component]', () => {
     expect(onResolveConflict).toHaveBeenCalledOnce();
   });
 
+  it('explains a conflict received from another open tab', () => {
+    render(SettingsSaveComposer, { ...base, count: 1, conflict: true });
+
+    expect(screen.getByText('Your draft is still safe')).toBeTruthy();
+    expect(screen.getByText('Settings also changed in another open tab')).toBeTruthy();
+  });
+
   it('links a validation problem to the control section without hijacking modified clicks', async () => {
     const onOpenProblem = vi.fn();
     render(SettingsSaveComposer, {
       ...base,
-      problem: 'A label name is required.',
+      problem: 'A label name is required',
       problemHref: '#/sync/labels',
       problemLabel: 'Labels',
       onOpenProblem,
@@ -76,7 +83,7 @@ describe('SettingsSaveComposer [Component]', () => {
     render(SettingsSaveComposer, {
       ...base,
       count: 0,
-      notice: 'Reconciliation found no repository changes.',
+      notice: 'Reconciliation found no repository changes',
       onDismiss,
     });
 

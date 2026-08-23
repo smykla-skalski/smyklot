@@ -54,8 +54,8 @@ export interface InstallationSettingsSaveResult {
 type SerializedBatch =
   { ok: true; input: InstallationSettingsBatchInput } | { ok: false; problem: string };
 
-const savedNotice = 'Saved. Reconciliation creates a plan only when repositories need changes.';
-const noOpNotice = 'Your draft already matches the saved settings.';
+const savedNotice = 'Saved. Reconciliation creates a plan only when repositories need changes';
+const noOpNotice = 'Your draft already matches the saved settings';
 
 /** Send every dirty resource for one installation through exactly one atomic request. */
 export async function saveInstallationDrafts(
@@ -316,17 +316,17 @@ function serializeInstallationAttempt(
   )) {
     const resource = entry.resource;
     if (resource.type !== 'runtime' && resource.targetId !== targetId) {
-      return { ok: false, problem: 'A draft belongs to a different installation.' };
+      return { ok: false, problem: 'A draft belongs to a different installation' };
     }
     if (resource.type === 'target-defaults') {
       const document = parseTargetDefaultsDocument(entry.value);
-      if (document === null) return { ok: false, problem: 'Workspace defaults are not valid.' };
+      if (document === null) return { ok: false, problem: 'Workspace defaults are not valid' };
       input.target = { ...document, expected_revision: entry.expectedRevision };
       continue;
     }
     if (resource.type === 'repository-settings') {
       const document = parseRepositorySettingsDocument(entry.value);
-      if (document === null) return { ok: false, problem: 'Repository settings are not valid.' };
+      if (document === null) return { ok: false, problem: 'Repository settings are not valid' };
       repositories.push(
         repositorySettingsBatchInput(resource.repositoryId, entry.expectedRevision, document),
       );
@@ -334,11 +334,11 @@ function serializeInstallationAttempt(
     }
     if (resource.type === 'sync-override') {
       if (resource.kind !== 'files') {
-        return { ok: false, problem: 'This repository Sync draft cannot be saved safely.' };
+        return { ok: false, problem: 'This repository Sync draft cannot be saved safely' };
       }
       const envelope = parseSyncOverrideEditorEnvelope(entry.value);
       if (envelope === null) {
-        return { ok: false, problem: 'Repository file Sync settings are not valid.' };
+        return { ok: false, problem: 'Repository file Sync settings are not valid' };
       }
       const serialized = syncOverrideBatchInput(
         resource.repositoryId,
@@ -351,13 +351,13 @@ function serializeInstallationAttempt(
     }
     if (resource.type === 'sync-config') {
       const envelope = parseSyncConfigEditorEnvelope(entry.value, resource.kind);
-      if (envelope === null) return { ok: false, problem: 'Sync configuration is not valid.' };
+      if (envelope === null) return { ok: false, problem: 'Sync configuration is not valid' };
       const serialized = syncConfigBatchInput(entry.expectedRevision, envelope);
       if (!serialized.ok) return serialized;
       syncConfigs.push(serialized.input);
       continue;
     }
-    return { ok: false, problem: 'Runtime settings need the Root settings save.' };
+    return { ok: false, problem: 'Runtime settings need the Root settings save' };
   }
 
   if (repositories.length > 0) input.repositories = repositories;

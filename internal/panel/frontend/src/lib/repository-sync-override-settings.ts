@@ -208,12 +208,12 @@ export function syncOverrideBatchInput(
   expectedRevision: number,
   envelope: SyncOverrideEditorEnvelope,
 ): SyncOverrideSerializationResult {
-  if (repositoryId.length === 0) return { ok: false, problem: 'Repository ID is missing.' };
+  if (repositoryId.length === 0) return { ok: false, problem: 'Repository ID is missing' };
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
-    return { ok: false, problem: 'Repository file sync revision is invalid.' };
+    return { ok: false, problem: 'Repository file sync revision is invalid' };
   }
   const parsed = parseSyncOverrideEditorEnvelope(envelope);
-  if (parsed === null) return { ok: false, problem: 'Repository file sync draft is invalid.' };
+  if (parsed === null) return { ok: false, problem: 'Repository file sync draft is invalid' };
   const serialized = serializeSyncOverrideDocument(parsed);
   if (!serialized.ok) return serialized;
 
@@ -234,21 +234,21 @@ export function serializeSyncOverrideDocument(
   envelope: SyncOverrideEditorEnvelope,
 ): DocumentSerializationResult {
   const document = plainSettingsRecord(envelope.document);
-  if (document === null) return { ok: false, problem: 'Repository file sync document is invalid.' };
+  if (document === null) return { ok: false, problem: 'Repository file sync document is invalid' };
   const unknown = firstUnknownKey(document, DOCUMENT_KEYS);
   if (unknown !== null) {
-    return { ok: false, problem: `This version cannot safely save document key ${unknown}.` };
+    return { ok: false, problem: `This version cannot safely save document key ${unknown}` };
   }
 
   const excludes = serializeExcludes(document.excludes);
   if (!excludes.ok) return excludes;
   const merges = document.merges;
   if (merges !== undefined && !Array.isArray(merges)) {
-    return { ok: false, problem: 'File adjustments must be a list.' };
+    return { ok: false, problem: 'File adjustments must be a list' };
   }
   const rows = merges ?? [];
   if (rows.length !== envelope.override_texts.length) {
-    return { ok: false, problem: 'File adjustment text no longer matches its row.' };
+    return { ok: false, problem: 'File adjustment text no longer matches its row' };
   }
 
   const serialized: Record<string, unknown> = {};
@@ -260,7 +260,7 @@ export function serializeSyncOverrideDocument(
     if (!saved.ok) return saved;
     const folded = saved.path.toLocaleLowerCase();
     if (seen.has(folded)) {
-      return { ok: false, problem: `${saved.path} is adjusted twice.` };
+      return { ok: false, problem: `${saved.path} is adjusted twice` };
     }
     seen.add(folded);
     savedMerges.push(saved.merge);
@@ -294,19 +294,19 @@ type MergeSerialization =
 
 function serializeMerge(row: SettingsJson, text: string, index: number): MergeSerialization {
   const named = `File adjustment ${index + 1}`;
-  if (!isRecord(row)) return { ok: false, problem: `${named} is not an object.` };
+  if (!isRecord(row)) return { ok: false, problem: `${named} is not an object` };
   const unknown = firstUnknownKey(row, MERGE_KEYS);
   if (unknown !== null) {
     return {
       ok: false,
-      problem: `${named} has a key this version cannot safely save: ${unknown}.`,
+      problem: `${named} has a key this version cannot safely save: ${unknown}`,
     };
   }
   if (typeof row.path !== 'string' || row.path.length === 0) {
-    return { ok: false, problem: `${named} names no file.` };
+    return { ok: false, problem: `${named} names no file` };
   }
   if (row.strategy !== undefined && typeof row.strategy !== 'string') {
-    return { ok: false, problem: `${row.path} has an invalid merge strategy.` };
+    return { ok: false, problem: `${row.path} has an invalid merge strategy` };
   }
   const merge = cloneUnknownRecord(row);
   if (MARKDOWN_PATH.test(row.path)) {
@@ -319,7 +319,7 @@ function serializeMerge(row: SettingsJson, text: string, index: number): MergeSe
   if (!STRUCTURED_PATH.test(row.path)) {
     return {
       ok: false,
-      problem: `${row.path} has no extension this can merge; JSON, YAML and Markdown can.`,
+      problem: `${row.path} has no extension this can merge; JSON, YAML and Markdown can`,
     };
   }
   const overrides = parseOverrideText(text, row.path);
@@ -349,7 +349,7 @@ function parseOverrideText(text: string, path: string): OverrideTextResult {
   const parsed = parseJson(text);
   if (parsed === null) return { ok: true, value: null };
   if (parsed === undefined || !isJsonRecord(parsed)) {
-    return { ok: false, problem: `What ${path} sets is not a JSON object.` };
+    return { ok: false, problem: `What ${path} sets is not a JSON object` };
   }
   return { ok: true, value: parsed };
 }
@@ -357,23 +357,23 @@ function parseOverrideText(text: string, path: string): OverrideTextResult {
 function validateStructuredShape(merge: Record<string, unknown>, path: string): string | null {
   const strategy = merge.strategy ?? '';
   if (typeof strategy !== 'string' || !STRUCTURED_STRATEGIES.has(strategy)) {
-    return `${path} has an unknown structured merge strategy.`;
+    return `${path} has an unknown structured merge strategy`;
   }
   if (merge.deduplicate !== undefined && typeof merge.deduplicate !== 'boolean') {
-    return `${path} has an invalid deduplication setting.`;
+    return `${path} has an invalid deduplication setting`;
   }
   if (merge.arrays !== undefined && !Array.isArray(merge.arrays)) {
-    return `${path} list rules must be a list.`;
+    return `${path} list rules must be a list`;
   }
   for (const [index, rule] of (merge.arrays ?? []).entries()) {
     if (!isRecord(rule) || firstUnknownKey(rule, ARRAY_RULE_KEYS) !== null) {
-      return `List rule ${index + 1} of ${path} is invalid.`;
+      return `List rule ${index + 1} of ${path} is invalid`;
     }
     if (typeof rule.path !== 'string' || typeof rule.strategy !== 'string') {
-      return `List rule ${index + 1} of ${path} is incomplete.`;
+      return `List rule ${index + 1} of ${path} is incomplete`;
     }
     if (!ARRAY_STRATEGIES.has(rule.strategy)) {
-      return `List rule ${index + 1} of ${path} has an unknown strategy.`;
+      return `List rule ${index + 1} of ${path} has an unknown strategy`;
     }
   }
   return null;
@@ -382,10 +382,10 @@ function validateStructuredShape(merge: Record<string, unknown>, path: string): 
 function validateMarkdownMerge(merge: Record<string, unknown>, path: string): string | null {
   const strategy = merge.strategy ?? '';
   if (strategy !== '' && strategy !== 'markdown') {
-    return `${path} is Markdown, which has no keys to merge; use "markdown".`;
+    return `${path} is Markdown, which has no keys to merge; use "markdown"`;
   }
   if (!Array.isArray(merge.sections) || merge.sections.length === 0) {
-    return `${path} is edited by its headings, and no section says how.`;
+    return `${path} is edited by its headings, and no section says how`;
   }
   for (const [index, section] of merge.sections.entries()) {
     const problem = validateMarkdownSection(section, index, path);
@@ -397,48 +397,48 @@ function validateMarkdownMerge(merge: Record<string, unknown>, path: string): st
 function validateMarkdownSection(section: unknown, index: number, path: string): string | null {
   const named = `Section ${index + 1} of ${path}`;
   if (!isRecord(section) || firstUnknownKey(section, SECTION_KEYS) !== null) {
-    return `${named} is invalid.`;
+    return `${named} is invalid`;
   }
   if (typeof section.action !== 'string' || !SECTION_ACTIONS.has(section.action)) {
-    return `${named} has an unknown action.`;
+    return `${named} has an unknown action`;
   }
   if (!optionalString(section.heading) || !optionalString(section.content)) {
-    return `${named} has invalid text.`;
+    return `${named} has invalid text`;
   }
   if (
     section.occurrence !== undefined &&
     (!Number.isSafeInteger(section.occurrence) || Number(section.occurrence) < 0)
   ) {
-    return `${named} has an invalid occurrence.`;
+    return `${named} has an invalid occurrence`;
   }
   if (section.patches !== undefined && !Array.isArray(section.patches)) {
-    return `${named} substitutions must be a list.`;
+    return `${named} substitutions must be a list`;
   }
   const action = section.action;
   if (action === 'append' || action === 'prepend') {
     if ((section.heading ?? '') !== '' || Number(section.occurrence ?? 0) !== 0) {
-      return `${named} addresses no heading.`;
+      return `${named} addresses no heading`;
     }
-    return nonEmptyText(section.content) ? null : `${named} needs the content it writes.`;
+    return nonEmptyText(section.content) ? null : `${named} needs the content it writes`;
   }
   if (!isMarkdownHeading(section.heading)) {
-    return `${named} needs the heading it addresses, written with its # marks.`;
+    return `${named} needs the heading it addresses, written with its # marks`;
   }
   if (action === 'delete') return null;
   if (action === 'patch') return validatePatches(section.patches, named);
-  return nonEmptyText(section.content) ? null : `${named} needs the content it writes.`;
+  return nonEmptyText(section.content) ? null : `${named} needs the content it writes`;
 }
 
 function validatePatches(value: unknown, named: string): string | null {
-  if (!Array.isArray(value) || value.length === 0) return `${named} substitutes nothing.`;
+  if (!Array.isArray(value) || value.length === 0) return `${named} substitutes nothing`;
   for (const [index, patch] of value.entries()) {
     if (!isRecord(patch) || !hasExactKeys(patch, PATCH_KEYS)) {
-      return `Substitution ${index + 1} of ${named} is invalid.`;
+      return `Substitution ${index + 1} of ${named} is invalid`;
     }
     if (typeof patch.find !== 'string' || typeof patch.replace !== 'string') {
-      return `Substitution ${index + 1} of ${named} has invalid text.`;
+      return `Substitution ${index + 1} of ${named} has invalid text`;
     }
-    if (patch.find === '') return `${named} has a substitution that finds nothing.`;
+    if (patch.find === '') return `${named} has a substitution that finds nothing`;
   }
   return null;
 }
@@ -447,9 +447,9 @@ type ExcludesResult = { ok: true; value: string[] } | { ok: false; problem: stri
 
 function serializeExcludes(value: SettingsJson | undefined): ExcludesResult {
   if (value === undefined) return { ok: true, value: [] };
-  if (!isStringArray(value)) return { ok: false, problem: 'File exclusions must be a list.' };
+  if (!isStringArray(value)) return { ok: false, problem: 'File exclusions must be a list' };
   const empty = value.findIndex((pattern) => pattern.trim() === '');
-  if (empty >= 0) return { ok: false, problem: `File exclusion ${empty + 1} is empty.` };
+  if (empty >= 0) return { ok: false, problem: `File exclusion ${empty + 1} is empty` };
   return { ok: true, value: [...value] };
 }
 

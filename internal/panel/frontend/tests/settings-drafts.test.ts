@@ -479,6 +479,9 @@ describe('SettingsDraftRegistry save transitions [Unit]', () => {
       value: { mode: 'private' },
       conflict: null,
     });
+    expect(drafts.operation(targetOne).problem).toBe('changed elsewhere');
+    drafts.dismissProblem(targetOne);
+    expect(drafts.operation(targetOne).problem).toBeNull();
     expect(drafts.beginSave(targetOne)?.entries[0]?.expectedRevision).toBe(2);
   });
 
@@ -873,10 +876,17 @@ describe('SettingsDraftRegistry cross-tab reconciliation [Unit]', () => {
     });
     expect(left.beginSave(targetOne)).toBeNull();
 
+    expect(left.resolveExternalConflicts(targetOne)).toBe(1);
+    expect(left.resource(defaults)).toMatchObject({
+      value: { mode: 'right' },
+      conflict: null,
+    });
+    expect(left.beginSave(targetOne)).not.toBeNull();
+
     right.reconcile(leftStorage.getItem(settingsDraftStorageKey('account-1')));
     expect(right.resource(defaults)).toMatchObject({
       value: { mode: 'right' },
-      conflict: { type: 'external-draft', writerId: 'left', incomingDraft: { mode: 'left' } },
+      conflict: null,
     });
   });
 });

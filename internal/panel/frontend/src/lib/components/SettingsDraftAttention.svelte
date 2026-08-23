@@ -33,17 +33,18 @@
   const detail = $derived.by(() => {
     const settings = `${count} unsaved ${count === 1 ? 'setting' : 'settings'}`;
     if (kind === 'restored') {
-      return `${settings} from an earlier session ${count === 1 ? 'is' : 'are'} still waiting.`;
+      return `${settings} from an earlier session ${count === 1 ? 'is' : 'are'} still waiting`;
     }
     if (kind === 'inactive') {
-      return `This tab was out of view for at least ${SETTINGS_DRAFT_INACTIVITY_MINUTES} minutes. ${settings} ${count === 1 ? 'is' : 'are'} still here and not saved.`;
+      return `This tab was out of view for at least ${SETTINGS_DRAFT_INACTIVITY_MINUTES} minutes. ${settings} ${count === 1 ? 'is' : 'are'} still here and not saved`;
     }
-    return problem ?? 'Browser storage is unavailable. Unsaved changes will not survive.';
+    return problem ?? 'Browser storage is unavailable. Unsaved changes will not survive';
   });
 </script>
 
-<div class="settings-draft-attention">
+<div class="settings-draft-attention" data-kind={kind}>
   <Callout
+    class="attention-surface"
     tone={kind === 'storage-problem' ? 'warning' : 'quiet'}
     role={kind === 'storage-problem' ? 'alert' : 'status'}
     aria-live={kind === 'storage-problem' ? 'assertive' : 'polite'}
@@ -64,7 +65,27 @@
 
 <style>
   .settings-draft-attention {
-    margin-bottom: var(--space-4);
+    animation: attention-arrive 160ms ease-out both;
+  }
+
+  .settings-draft-attention :global(.attention-surface) {
+    -webkit-backdrop-filter: blur(18px) saturate(118%);
+    backdrop-filter: blur(18px) saturate(118%);
+    background: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+    border-color: color-mix(in srgb, var(--text-primary) 18%, transparent);
+    box-shadow:
+      var(--shadow-popover),
+      inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+  }
+
+  .settings-draft-attention[data-kind='inactive'] :global(.attention-surface) {
+    background: color-mix(in srgb, var(--accent-tint) 82%, transparent);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  .settings-draft-attention[data-kind='storage-problem'] :global(.attention-surface) {
+    background: color-mix(in srgb, var(--warning-tint) 84%, transparent);
+    border-color: color-mix(in srgb, var(--warning) 34%, transparent);
   }
 
   .attention-mark {
@@ -89,9 +110,22 @@
     flex: 0 0 auto;
   }
 
+  @keyframes attention-arrive {
+    from {
+      opacity: 0;
+      transform: translateY(-0.5rem);
+    }
+  }
+
   @media (max-width: 36rem) {
     .attention-dismiss {
       align-self: start;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .settings-draft-attention {
+      animation: none;
     }
   }
 </style>

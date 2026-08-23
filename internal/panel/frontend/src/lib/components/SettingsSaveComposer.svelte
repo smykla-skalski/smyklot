@@ -48,13 +48,13 @@
     <div class="composer-copy" aria-live="polite">
       {#if resolving}
         <strong>Updating your draft…</strong>
-        <span>Your unsaved decisions will stay in place.</span>
+        <span>Your unsaved decisions will stay in place</span>
       {:else if saving}
         <strong>Saving settings…</strong>
-        <span>Every changed setting in this workspace will land together.</span>
-      {:else if problem !== null}
+        <span>Every changed setting in this workspace will land together</span>
+      {:else if problem !== null || conflict}
         <strong>{conflict ? 'Your draft is still safe' : 'Settings were not saved'}</strong>
-        <span>{problem}</span>
+        <span>{problem ?? 'Settings also changed in another open tab'}</span>
         {#if problemHref !== undefined && problemLabel !== undefined}
           <a href={problemHref} onclick={openProblem}>Open {problemLabel}</a>
         {/if}

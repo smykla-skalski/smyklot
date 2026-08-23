@@ -18,7 +18,7 @@
   {#snippet template({ children, ...args })}
     <Callout {...args}>
       {#snippet icon()}<Icon name="info" size={20} />{/snippet}
-      <span>Review the account and effect before confirming.</span>
+      <span>Review the account and effect before confirming</span>
     </Callout>
   {/snippet}
 </Story>
@@ -35,7 +35,7 @@
     <div class="stack">
       <Callout>
         {#snippet icon()}<Icon name="info" size={20} />{/snippet}
-        <span>Review the account and effect before confirming.</span>
+        <span>Review the account and effect before confirming</span>
       </Callout>
       <Callout tone="warning">
         {#snippet icon()}<Icon name="warning" size={18} />{/snippet}

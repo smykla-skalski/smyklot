@@ -197,7 +197,7 @@ describe('repository sync override settings adapter [Unit]', () => {
     };
     expect(serializeSyncOverrideDocument(malformed)).toEqual({
       ok: false,
-      problem: 'What renovate.json sets is not a JSON object.',
+      problem: 'What renovate.json sets is not a JSON object',
     });
 
     const duplicate: SyncOverrideEditorEnvelope = {
@@ -212,7 +212,7 @@ describe('repository sync override settings adapter [Unit]', () => {
     };
     expect(serializeSyncOverrideDocument(duplicate)).toMatchObject({
       ok: false,
-      problem: 'readme.md is adjusted twice.',
+      problem: 'readme.md is adjusted twice',
     });
 
     const unknown: SyncOverrideEditorEnvelope = {
@@ -223,7 +223,7 @@ describe('repository sync override settings adapter [Unit]', () => {
     expect(parseSyncOverrideEditorEnvelope(unknown)).toEqual(unknown);
     expect(serializeSyncOverrideDocument(unknown)).toEqual({
       ok: false,
-      problem: 'This version cannot safely save document key future.',
+      problem: 'This version cannot safely save document key future',
     });
 
     const badRule: SyncOverrideEditorEnvelope = {

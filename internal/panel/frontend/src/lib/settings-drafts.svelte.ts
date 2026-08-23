@@ -132,9 +132,9 @@ interface OperationState {
 }
 
 const cleanOperation: OperationState = { token: null, problem: null, notice: null };
-const unavailableStorage = 'Browser storage is unavailable. Unsaved changes will not survive.';
+const unavailableStorage = 'Browser storage is unavailable. Unsaved changes will not survive';
 const corruptStorage =
-  'Stored settings drafts are corrupted. They were left untouched so they can be recovered.';
+  'Stored settings drafts are corrupted. They were left untouched so they can be recovered';
 
 export class SettingsDraftRegistry {
   accountId = $state<string | null>(null);
@@ -471,7 +471,7 @@ export class SettingsDraftRegistry {
         return result === undefined || !validRevision(result.revision);
       })
     ) {
-      this.finishAttempt(attempt, 'The settings save returned an incomplete result.', null);
+      this.finishAttempt(attempt, 'The settings save returned an incomplete result', null);
       return false;
     }
 
@@ -484,17 +484,13 @@ export class SettingsDraftRegistry {
         const base = cloneSettingsJson(result.value);
         const next = this.committedState(submitted, current, result, base);
         if (next === null || !stateInvariant(next)) {
-          this.finishAttempt(
-            attempt,
-            'The settings save returned incomplete control values.',
-            null,
-          );
+          this.finishAttempt(attempt, 'The settings save returned incomplete control values', null);
           return false;
         }
         planned.push([submitted.resourceKey, next]);
       }
     } catch {
-      this.finishAttempt(attempt, 'The settings save returned invalid values.', null);
+      this.finishAttempt(attempt, 'The settings save returned invalid values', null);
       return false;
     }
 
@@ -584,6 +580,37 @@ export class SettingsDraftRegistry {
     return true;
   }
 
+  /** Keep the draft currently shown after concurrent browser tabs converge. */
+  resolveExternalConflicts(scope: SettingsScope): number {
+    if (this.isSaving(scope)) return 0;
+    this.syncFromStorage();
+    const resources = { ...this.resources };
+    const records = { ...this.records };
+    let resolved = 0;
+    for (const [key, state] of Object.entries(resources)) {
+      if (
+        !isDirty(state) ||
+        !sameSettingsScope(settingsScopeOf(state.resource), scope) ||
+        state.conflict?.type !== 'external-draft'
+      ) {
+        continue;
+      }
+      const next: ResourceState = {
+        ...state,
+        conflict: null,
+        editToken: this.nextEditToken(this.timestamp()),
+      };
+      resources[key] = next;
+      records[key] = activeRecord(key, next, this.nextVersion(key));
+      resolved += 1;
+    }
+    if (resolved === 0) return 0;
+    this.resources = resources;
+    this.records = records;
+    this.persist();
+    return resolved;
+  }
+
   operation(scope: SettingsScope): SettingsDraftOperationState {
     const operation = this.operations[settingsScopeKey(scope)] ?? cleanOperation;
     return {
@@ -602,6 +629,13 @@ export class SettingsDraftRegistry {
     const operation = this.operations[key];
     if (operation === undefined || operation.notice === null) return;
     this.operations = { ...this.operations, [key]: { ...operation, notice: null } };
+  }
+
+  dismissProblem(scope: SettingsScope): void {
+    const key = settingsScopeKey(scope);
+    const operation = this.operations[key];
+    if (operation === undefined || operation.problem === null) return;
+    this.operations = { ...this.operations, [key]: { ...operation, problem: null } };
   }
 
   reconcile(serialized: string | null): number {

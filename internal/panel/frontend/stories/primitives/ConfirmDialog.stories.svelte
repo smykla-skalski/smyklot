@@ -54,7 +54,7 @@
     <ConfirmDialog {...args}>
       <Callout>
         {#snippet icon()}<Icon name="info" size={20} />{/snippet}
-        <span>Review the account and effect before confirming.</span>
+        <span>Review the account and effect before confirming</span>
       </Callout>
     </ConfirmDialog>
   {/snippet}

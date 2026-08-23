@@ -219,10 +219,10 @@ export function syncConfigBatchInput(
   envelope: SyncConfigEditorEnvelope,
 ): SyncConfigSerializationResult {
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
-    return { ok: false, problem: 'Sync configuration revision is invalid.' };
+    return { ok: false, problem: 'Sync configuration revision is invalid' };
   }
   const parsed = parseSyncConfigEditorEnvelope(envelope);
-  if (parsed === null) return { ok: false, problem: 'Sync configuration draft is invalid.' };
+  if (parsed === null) return { ok: false, problem: 'Sync configuration draft is invalid' };
   if (parsed.kind === 'labels') {
     return {
       ok: true,
@@ -238,7 +238,7 @@ export function syncConfigBatchInput(
   }
   const document = parseDocument(parsed.document_text);
   if (document === null) {
-    return { ok: false, problem: `${kindWord(parsed.kind)} configuration is not a JSON object.` };
+    return { ok: false, problem: `${kindWord(parsed.kind)} configuration is not a JSON object` };
   }
   return {
     ok: true,
