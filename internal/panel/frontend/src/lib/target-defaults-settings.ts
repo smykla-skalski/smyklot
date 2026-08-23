@@ -2,6 +2,7 @@ import { CONFIG_KEYS } from './config';
 import type {
   ConfigKey,
   ConfigPatch,
+  InstallationTargetSettingsState,
   PanelTarget,
   PendingCIBranchPatterns,
   PendingCIMode,
@@ -244,6 +245,27 @@ export function targetDefaultsCommittedResource(target: PanelTarget): SettingsCo
   return {
     resource: targetDefaultsResource(target.id),
     revision: target.revision,
+    value,
+    savedControls: targetDefaultsSavedControls(value),
+  };
+}
+
+/** Convert the compact atomic-save state without needing inherited presentation metadata. */
+export function targetDefaultsCommittedState(
+  state: InstallationTargetSettingsState,
+): SettingsCommittedResource {
+  const value = parseTargetDefaultsDocument({
+    repository_default_enabled: state.repository_default_enabled,
+    pending_ci_mode_default: state.pending_ci_mode_default,
+    pending_ci_branch_patterns_default: state.pending_ci_branch_patterns_default,
+    pending_ci_quiet_period_seconds_override: state.pending_ci_quiet_period_seconds_override,
+    path_index_interval_seconds_override: state.path_index_interval_seconds_override,
+    config_patch: state.config_patch,
+  });
+  if (value === null) throw new TypeError('saved target defaults are invalid');
+  return {
+    resource: targetDefaultsResource(state.target_id),
+    revision: state.revision,
     value,
     savedControls: targetDefaultsSavedControls(value),
   };

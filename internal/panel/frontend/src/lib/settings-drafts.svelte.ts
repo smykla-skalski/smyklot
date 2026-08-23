@@ -553,6 +553,7 @@ export class SettingsDraftRegistry {
     expectedRevision: number,
     latestBase: SettingsJson,
     savedControls: Readonly<Record<string, SettingsJson>>,
+    rebasedDraft?: SettingsJson,
   ): boolean {
     assertRevision(expectedRevision);
     this.syncFromStorage();
@@ -568,6 +569,7 @@ export class SettingsDraftRegistry {
       ...current,
       expectedRevision,
       base: cloneSettingsJson(latestBase),
+      draft: cloneSettingsJson(rebasedDraft ?? current.draft),
       controls,
       conflict: null,
       editToken: this.nextEditToken(this.timestamp()),
