@@ -32,14 +32,7 @@ describe('the general Queue table [Integration]', () => {
               : table.getBoundingClientRect().right - region.getBoundingClientRect().right,
         };
       });
-      expect(reading.headings).toEqual([
-        'Work',
-        'State',
-        'Schedule',
-        'Estimated start',
-        'Priority',
-        'Actions',
-      ]);
+      expect(reading.headings).toEqual(['Work', 'Status', 'Timing', 'Actions']);
       expect(reading.overflow).toBeLessThanOrEqual(1);
     } finally {
       await page.close();
@@ -66,14 +59,7 @@ describe('the general Queue table [Integration]', () => {
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) {
         expect(row.right).toBeLessThanOrEqual(row.viewport + 1);
-        expect(row.labels).toEqual([
-          'Work',
-          'State',
-          'Schedule',
-          'Estimate',
-          'Priority',
-          'Actions',
-        ]);
+        expect(row.labels).toEqual(['Work', 'State', 'Timing', 'Actions']);
       }
     } finally {
       await page.close();
@@ -86,11 +72,12 @@ describe('the general Queue table [Integration]', () => {
       await visit(page, addressOf(panel, 'root/queue'), {
         ready: '.general-queue-table tbody tr',
       });
-      await page.getByRole('tab', { name: 'Approvals' }).click();
+      const views = page.getByRole('group', { name: 'Queue views' });
+      await views.getByText('Approvals', { exact: true }).click();
       await expect.poll(() => page.locator('.general-queue-table tbody .data-row').count()).toBe(1);
       await page.getByText('Review organization sync plan').waitFor({ state: 'visible' });
 
-      await page.getByRole('tab', { name: 'History' }).click();
+      await views.getByText('History', { exact: true }).click();
       await page.getByText('Refresh installation catalog').waitFor({ state: 'visible' });
     } finally {
       await page.close();

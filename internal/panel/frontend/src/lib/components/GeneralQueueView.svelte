@@ -13,12 +13,15 @@
     QueueWorkload,
   } from '#lib/types.js';
   import Button from './Button.svelte';
+  import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import QueueActionDialog from './QueueActionDialog.svelte';
   import QueueDetailDialog from './QueueDetailDialog.svelte';
   import QueueTable from './QueueTable.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
+  import Select from './Select.svelte';
 
   type Section = 'active' | 'approvals' | 'history';
 
@@ -250,7 +253,10 @@
       title="Queue"
       subtitle="Every durable task, its schedule, and what is blocking it"
     >
-      <Button onclick={() => void load()}>Refresh</Button>
+      <Button onclick={() => void load()}>
+        {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+        Refresh
+      </Button>
     </RootPageHeader>
   {:else}
     <PageHeader
@@ -258,79 +264,94 @@
       title="Queue"
       description="Background work accepted for this installation"
     >
-      {#snippet actions()}<Button onclick={() => void load()}>Refresh</Button>{/snippet}
+      {#snippet actions()}
+        <Button onclick={() => void load()}>
+          {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+          Refresh
+        </Button>
+      {/snippet}
     </PageHeader>
   {/if}
 
-  <div class="queue-toolbar">
-    <div class="queue-tabs" role="tablist" aria-label="Queue views">
-      {#each ['active', 'approvals', 'history'] as tab (tab)}
-        <button
-          type="button"
-          role="tab"
-          aria-selected={section === tab}
-          class:active={section === tab}
-          onclick={() => selectSection(tab as Section)}
-          >{tab.replace(/^./, (letter) => letter.toUpperCase())}</button
-        >
-      {/each}
+  <div class="queue-controls">
+    <div class="queue-tabs">
+      <SegmentedControl
+        name="queue-view"
+        label="Queue views"
+        variant="navigation"
+        value={section}
+        options={[
+          { value: 'active', label: 'Active' },
+          { value: 'approvals', label: 'Approvals' },
+          { value: 'history', label: 'History' },
+        ]}
+        onSelect={(value) => selectSection(value as Section)}
+      />
     </div>
-    <label>
-      <span>Workload</span>
-      <select bind:value={workload} onchange={() => (offset = 0)}>
-        <option value="all">All workloads</option>
-        {#each workloads as kind (kind)}
-          <option value={kind}>{kind.replaceAll('_', ' ')}</option>
-        {/each}
-      </select>
-    </label>
-    <label
-      ><span>State</span><select bind:value={stateFilter} onchange={() => (offset = 0)}
-        ><option value="all">All states</option>{#each states as value (value)}<option {value}
-            >{value.replaceAll('_', ' ')}</option
-          >{/each}</select
-      ></label
-    >
-    <label
-      ><span>Window</span><select bind:value={profile} onchange={() => (offset = 0)}
-        ><option value="all">All windows</option>{#each profiles as value (value)}<option {value}
-            >{value}</option
-          >{/each}</select
-      ></label
-    >
-    {#if targetId === undefined}<label
-        ><span>Installation</span><select bind:value={installation} onchange={() => (offset = 0)}
-          ><option value="all">All installations</option
-          >{#each installations as value (value)}<option {value}>{value}</option>{/each}</select
-        ></label
-      >{/if}
-    <label
-      ><span>Repository</span><select bind:value={repository} onchange={() => (offset = 0)}
-        ><option value="all">All repositories</option>{#each repositories as value (value)}<option
-            {value}>{value}</option
-          >{/each}</select
-      ></label
-    >
-    <label
-      ><span>Created</span><select bind:value={timeRange} onchange={() => (offset = 0)}
-        ><option value="all">Any time</option><option value="24h">Last 24 hours</option><option
-          value="7d">Last 7 days</option
-        ></select
-      ></label
-    >
-    <label>
-      <span>Priority</span>
-      <select bind:value={priority} onchange={() => (offset = 0)}>
-        <option value="all">All priorities</option>
-        <option value="urgent">Urgent</option>
-        <option value="high">High</option>
-        <option value="normal">Normal</option>
-        <option value="low">Low</option>
-      </select>
-    </label>
+    <div class="queue-filters" aria-label="Queue filters">
+      <label>
+        <span>Workload</span>
+        <Select bind:value={workload} onchange={() => (offset = 0)}>
+          <option value="all">All workloads</option>
+          {#each workloads as kind (kind)}
+            <option value={kind}>{kind.replaceAll('_', ' ')}</option>
+          {/each}
+        </Select>
+      </label>
+      <label>
+        <span>State</span>
+        <Select bind:value={stateFilter} onchange={() => (offset = 0)}>
+          <option value="all">All states</option>
+          {#each states as value (value)}
+            <option {value}>{value.replaceAll('_', ' ')}</option>
+          {/each}
+        </Select>
+      </label>
+      <label>
+        <span>Window</span>
+        <Select bind:value={profile} onchange={() => (offset = 0)}>
+          <option value="all">All windows</option>
+          {#each profiles as value (value)}<option {value}>{value}</option>{/each}
+        </Select>
+      </label>
+      {#if targetId === undefined}
+        <label>
+          <span>Installation</span>
+          <Select bind:value={installation} onchange={() => (offset = 0)}>
+            <option value="all">All installations</option>
+            {#each installations as value (value)}<option {value}>{value}</option>{/each}
+          </Select>
+        </label>
+      {/if}
+      <label>
+        <span>Repository</span>
+        <Select bind:value={repository} onchange={() => (offset = 0)}>
+          <option value="all">All repositories</option>
+          {#each repositories as value (value)}<option {value}>{value}</option>{/each}
+        </Select>
+      </label>
+      <label>
+        <span>Created</span>
+        <Select bind:value={timeRange} onchange={() => (offset = 0)}>
+          <option value="all">Any time</option>
+          <option value="24h">Last 24 hours</option>
+          <option value="7d">Last 7 days</option>
+        </Select>
+      </label>
+      <label>
+        <span>Priority</span>
+        <Select bind:value={priority} onchange={() => (offset = 0)}>
+          <option value="all">All priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="normal">Normal</option>
+          <option value="low">Low</option>
+        </Select>
+      </label>
+    </div>
   </div>
 
-  <p class="sr-only" aria-live="polite">{announcement}</p>
+  <p class="visually-hidden" aria-live="polite">{announcement}</p>
   {#if loading && items.length === 0}
     <Plate label="Loading"><p class="dim" role="status">Reading the durable queue…</p></Plate>
   {:else if error !== ''}
@@ -384,67 +405,38 @@
 
 <style>
   .general-queue {
-    display: grid;
-    gap: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
     min-height: 0;
+    min-width: 0;
   }
-  .queue-toolbar {
-    align-items: end;
+  .queue-controls {
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    padding-bottom: var(--space-1);
   }
   .queue-tabs {
-    align-items: center;
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
     display: flex;
-    min-height: 2.5rem;
-    padding: 0.2rem;
-    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
-  .queue-tabs button {
-    background: transparent;
-    border: 0;
-    border-radius: calc(var(--radius-control) - 2px);
-    color: var(--dim);
-    cursor: pointer;
-    flex: 1;
-    font: inherit;
-    font-size: 0.78rem;
-    font-weight: 720;
-    min-height: 2.25rem;
-    padding: 0 var(--space-3);
+  .queue-filters {
+    align-items: end;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
   }
-  .queue-tabs button:hover {
-    background: var(--control-bg-hover);
-    color: var(--text);
-  }
-  .queue-tabs button.active {
-    background: var(--control-bg);
-    box-shadow: var(--shadow-plate);
-    color: var(--text);
-  }
-  .queue-toolbar label {
+  .queue-filters label {
     display: grid;
     gap: var(--space-1);
+    min-width: 0;
   }
-  .queue-toolbar label span {
-    color: var(--dim);
-    font-size: 0.68rem;
-    font-weight: 760;
-    letter-spacing: 0.045em;
+  .queue-filters label > span {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 650;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-  }
-  select {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
-    color: var(--text);
-    font: inherit;
-    min-height: 2.5rem;
-    padding: 0 var(--space-3);
   }
   .queue-pagination {
     align-items: center;
@@ -461,18 +453,15 @@
     display: flex;
     gap: var(--space-2);
   }
-  :is(select, .queue-tabs button):focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
-  }
   @media (max-width: 36rem) {
-    .queue-toolbar {
+    .queue-filters {
       grid-template-columns: 1fr;
     }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .queue-tabs button {
-      transition: none;
+    .queue-tabs :global(fieldset) {
+      width: 100%;
+    }
+    .queue-tabs :global(label) {
+      flex: 1;
     }
   }
 </style>
