@@ -12,6 +12,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // namespace prefixes every metric, so a shared Prometheus can tell this
@@ -134,6 +135,78 @@ func RegisterQueue(reg prometheus.Registerer, depth func() float64, capacity int
 		Name:      "queue_capacity",
 		Help:      "Deliveries the queue holds before it refuses more.",
 	}).Set(float64(capacity))
+}
+
+type workQueueCollector struct {
+	read     func() (workqueue.MetricsSnapshot, error)
+	depth    *prometheus.Desc
+	oldest   *prometheus.Desc
+	latency  *prometheus.Desc
+	failures *prometheus.Desc
+	missed   *prometheus.Desc
+	running  *prometheus.Desc
+}
+
+// RegisterWorkQueue exposes the durable scheduler's retained operational state.
+func RegisterWorkQueue(
+	reg prometheus.Registerer,
+	read func() (workqueue.MetricsSnapshot, error),
+) {
+	labels := []string{"lane", "profile"}
+	reg.MustRegister(&workQueueCollector{
+		read: read,
+		depth: prometheus.NewDesc(namespace+"_work_queue_depth",
+			"Durable work waiting, by lane and schedule profile.", labels, nil),
+		oldest: prometheus.NewDesc(namespace+"_work_queue_oldest_age_seconds",
+			"Age of the oldest durable work item.", labels, nil),
+		latency: prometheus.NewDesc(namespace+"_work_queue_eligible_to_start_seconds",
+			"Largest retained delay from eligibility to execution start.", labels, nil),
+		failures: prometheus.NewDesc(namespace+"_work_queue_failures",
+			"Retained failed durable work items.", nil, nil),
+		missed: prometheus.NewDesc(namespace+"_work_queue_missed_windows",
+			"Scheduled work still waiting after its eligible instant.", nil, nil),
+		running: prometheus.NewDesc(namespace+"_work_queue_running_leases",
+			"Durable work items holding a current lease.", nil, nil),
+	})
+}
+
+func (collector *workQueueCollector) Describe(output chan<- *prometheus.Desc) {
+	for _, description := range []*prometheus.Desc{
+		collector.depth, collector.oldest, collector.latency,
+		collector.failures, collector.missed, collector.running,
+	} {
+		output <- description
+	}
+}
+
+func (collector *workQueueCollector) Collect(output chan<- prometheus.Metric) {
+	snapshot, err := collector.read()
+	if err != nil {
+		output <- prometheus.NewInvalidMetric(collector.depth, err)
+		return
+	}
+	for _, backlog := range snapshot.Backlogs {
+		labels := []string{string(backlog.Lane), backlog.ProfileID}
+		output <- prometheus.MustNewConstMetric(
+			collector.depth, prometheus.GaugeValue, float64(backlog.Depth), labels...,
+		)
+		output <- prometheus.MustNewConstMetric(
+			collector.oldest, prometheus.GaugeValue, backlog.OldestAge.Seconds(), labels...,
+		)
+		output <- prometheus.MustNewConstMetric(
+			collector.latency, prometheus.GaugeValue,
+			backlog.EligibleToStartLatency.Seconds(), labels...,
+		)
+	}
+	output <- prometheus.MustNewConstMetric(
+		collector.failures, prometheus.GaugeValue, float64(snapshot.Failures),
+	)
+	output <- prometheus.MustNewConstMetric(
+		collector.missed, prometheus.GaugeValue, float64(snapshot.MissedWindows),
+	)
+	output <- prometheus.MustNewConstMetric(
+		collector.running, prometheus.GaugeValue, float64(snapshot.RunningLeases),
+	)
 }
 
 // NewRegistry builds a registry holding this process's own series plus the Go

@@ -48,6 +48,9 @@ func DeclareSpecs(harness Harness) {
 	declareOrgSyncSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareWorkQueueSpecs(func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 	declareRuntimeSettingsHistorySpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})

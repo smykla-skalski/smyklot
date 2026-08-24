@@ -40,6 +40,11 @@ var tables = []string{
 	"target_owners",
 	"target_roles",
 	"repositories",
+	"schedule_profiles",
+	"schedule_windows",
+	"schedule_exceptions",
+	"queue_policies",
+	"queue_dispatch_state",
 	"pending_ci_repository_gates",
 	"pending_ci_check_slots",
 	"root_elevations",
@@ -65,6 +70,9 @@ var tables = []string{
 	"sync_plans",
 	"sync_plan_actions",
 	"sync_audit_entries",
+	"queue_items",
+	"queue_events",
+	"schedule_requests",
 }
 
 // Engine is what a copy needs from a store: a connection to read or write on,
@@ -211,6 +219,10 @@ func Copy(ctx context.Context, from, to Engine, options Options) (Report, error)
 
 			return Report{}, err
 		}
+	} else if err := emptyBootstrap(ctx, destination); err != nil {
+		_, _ = destination.ExecContext(context.WithoutCancel(ctx), "ROLLBACK")
+
+		return Report{}, err
 	}
 	for _, table := range tables {
 		copied, copyErr := copyTable(ctx, source, destination, to.Dialect(), table)
@@ -241,12 +253,58 @@ func Copy(ctx context.Context, from, to Engine, options Options) (Report, error)
 // requireEmpty refuses a destination that already holds service state.
 func requireEmpty(ctx context.Context, destination *sql.Conn) error {
 	for _, table := range tables {
-		count, err := countRows(ctx, destination, table)
+		count, err := countNonBootstrapRows(ctx, destination, table)
 		if err != nil {
 			return err
 		}
 		if count > 0 {
 			return fmt.Errorf("%w: table %q already holds %d rows", ErrDestinationNotEmpty, table, count)
+		}
+	}
+
+	return nil
+}
+
+var bootstrapPredicates = map[string]string{
+	"schedule_profiles":    "id = 'always-open'",
+	"schedule_windows":     "profile_id = 'always-open'",
+	"queue_policies":       "scope_id = 'root'",
+	"queue_dispatch_state": "lane IN ('webhook', 'pending_ci', 'maintenance')",
+}
+
+func countNonBootstrapRows(ctx context.Context, connection *sql.Conn, table string) (int, error) {
+	predicate, seeded := bootstrapPredicates[table]
+	if !seeded {
+		return countRows(ctx, connection, table)
+	}
+
+	// #nosec G202 -- table and predicate both come from package constants.
+	row := connection.QueryRowContext(
+		ctx,
+		"SELECT COUNT(*) FROM "+quote(table)+" WHERE NOT ("+predicate+")",
+	)
+	var count int
+	if err := row.Scan(&count); err != nil {
+		return 0, fmt.Errorf("count non-bootstrap rows in %q: %w", table, err)
+	}
+
+	return count, nil
+}
+
+// emptyBootstrap removes migration-owned defaults before copying their source
+// counterparts. They are schema bootstrap state, so a freshly migrated
+// destination is still empty for transfer purposes.
+func emptyBootstrap(ctx context.Context, destination *sql.Conn) error {
+	for _, table := range []string{
+		"queue_dispatch_state", "queue_policies", "schedule_windows", "schedule_profiles",
+	} {
+		predicate := bootstrapPredicates[table]
+		// #nosec G202 -- table and predicate both come from package constants.
+		if _, err := destination.ExecContext(
+			ctx,
+			"DELETE FROM "+quote(table)+" WHERE "+predicate,
+		); err != nil {
+			return fmt.Errorf("empty bootstrap rows in %q: %w", table, err)
 		}
 	}
 

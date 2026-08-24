@@ -3,11 +3,13 @@ package metrics_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
 )
 
@@ -87,6 +89,28 @@ var _ = Describe("Metrics [Unit]", func() {
 		depth = 7
 
 		Expect(scrape()).To(ContainSubstring("smyklot_queue_depth 7"))
+	})
+
+	It("reports durable queue health by lane and profile", func() {
+		metrics.RegisterWorkQueue(reg, func() (workqueue.MetricsSnapshot, error) {
+			return workqueue.MetricsSnapshot{
+				Backlogs: []workqueue.BacklogMetric{{
+					Lane: workqueue.LaneMaintenance, ProfileID: "weekday",
+					Depth: 4, OldestAge: 3 * time.Minute,
+					EligibleToStartLatency: 12 * time.Second,
+				}},
+				Failures: 2, MissedWindows: 1, RunningLeases: 3,
+			}, nil
+		})
+
+		body := scrape()
+		Expect(body).To(ContainSubstring(
+			`smyklot_work_queue_depth{lane="maintenance",profile="weekday"} 4`,
+		))
+		Expect(body).To(ContainSubstring("smyklot_work_queue_oldest_age_seconds"))
+		Expect(body).To(ContainSubstring("smyklot_work_queue_failures 2"))
+		Expect(body).To(ContainSubstring("smyklot_work_queue_missed_windows 1"))
+		Expect(body).To(ContainSubstring("smyklot_work_queue_running_leases 3"))
 	})
 
 	It("includes Go runtime series so a leak is visible", func() {

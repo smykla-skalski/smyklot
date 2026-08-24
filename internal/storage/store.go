@@ -8,6 +8,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // AuthStore persists short-lived authentication records and panel identities.
@@ -162,6 +163,7 @@ type Store interface {
 	pendingci.Store
 	pendingci.CheckStore
 	orgsync.Store
+	workqueue.Store
 
 	Ping(context.Context) error
 
