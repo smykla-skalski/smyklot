@@ -80,6 +80,7 @@
   let requestPriority = $state<QueuePriority>('normal');
   let requestReason = $state('');
   let requestBusy = $state(false);
+  let requestDefaultsInitialized = false;
 
   const installationKinds = new Set<QueueWorkload>([
     'pending_ci',
@@ -190,6 +191,10 @@
         policySet = schedules.policies;
         statuses = schedules.statuses;
         requests = loadedRequests;
+        if (!requestDefaultsInitialized) {
+          selectRequestKind(requestKind);
+          requestDefaultsInitialized = true;
+        }
       }
       error = '';
     } catch (cause) {
@@ -263,6 +268,15 @@
   function numberSetting(policy: QueuePolicy, key: string): number | undefined {
     const value = policy.configuration?.[key];
     return typeof value === 'number' ? value : undefined;
+  }
+
+  function selectRequestKind(kind: QueueWorkload): void {
+    requestKind = kind;
+    const policy = policies.find((candidate) => candidate.kind === kind);
+    if (policy === undefined) return;
+    requestCadence = Math.round(policy.cadence / 1_000_000_000);
+    requestPriority = policy.default_priority;
+    requestProfile = policy.profile_id;
   }
 
   function jobDetails(policy: QueuePolicy): string[] {
@@ -779,7 +793,11 @@
         </div>
         <label>
           <span>Workload</span>
-          <Select bind:value={requestKind}>
+          <Select
+            value={requestKind}
+            onchange={(event) =>
+              selectRequestKind((event.currentTarget as HTMLSelectElement).value as QueueWorkload)}
+          >
             {#each requestablePolicies as policy (policy.kind)}
               <option value={policy.kind}>{workloadTitle(policy.kind)}</option>
             {/each}
@@ -795,7 +813,7 @@
         {#if requestWindowMode === 'existing'}
           <label>
             <span>Window</span>
-            <Select bind:value={requestProfile}>
+            <Select aria-label="Window profile" bind:value={requestProfile}>
               {#each profiles as profile (profile.id)}
                 <option value={profile.id}>{profile.name}</option>
               {/each}

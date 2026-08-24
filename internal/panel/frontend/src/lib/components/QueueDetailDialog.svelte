@@ -21,7 +21,7 @@
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
   }
 
-  function absolute(value: string): string {
+  function absolute(value: string, timeZone?: string): string {
     return new Intl.DateTimeFormat(undefined, {
       year: 'numeric',
       month: 'short',
@@ -30,6 +30,7 @@
       minute: '2-digit',
       second: '2-digit',
       timeZoneName: 'short',
+      ...(timeZone === undefined ? {} : { timeZone }),
     }).format(new Date(value));
   }
 
@@ -71,12 +72,22 @@
       </div>
       <div>
         <dt>Window</dt>
-        <dd>{detail.item.profile_name ?? 'Immediate'}</dd>
+        <dd>
+          {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
+            ? ` · ${detail.item.profile_timezone}`
+            : ''}
+        </dd>
       </div>
       <div>
-        <dt>Earliest eligible</dt>
+        <dt>Viewer-local eligibility</dt>
         <dd>{absolute(detail.item.eligible_at)}</dd>
       </div>
+      {#if detail.item.profile_timezone}
+        <div>
+          <dt>Window-local eligibility</dt>
+          <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
+        </div>
+      {/if}
       <div>
         <dt>Estimated start</dt>
         <dd>

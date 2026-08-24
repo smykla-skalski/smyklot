@@ -56,6 +56,12 @@ describe('background work schedules [Integration]', () => {
       await page.getByRole('button', { name: 'Send request' }).waitFor();
       await page.getByText('Europe business hours').first().waitFor();
       await page.getByRole('button', { name: 'Withdraw' }).waitFor();
+
+      const form = page.locator('.request-form');
+      await form.getByLabel('Workload').selectOption('pending_ci');
+      await expect.poll(() => form.getByLabel('Cadence seconds').inputValue()).toBe('30');
+      await expect.poll(() => form.getByLabel('Priority').inputValue()).toBe('normal');
+      await expect.poll(() => form.getByLabel('Window profile').inputValue()).toBe('always-open');
     } finally {
       await page.close();
     }

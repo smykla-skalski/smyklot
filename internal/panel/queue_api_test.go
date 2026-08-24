@@ -61,6 +61,15 @@ func TestInstallationQueueRedactsSensitiveFailureData(t *testing.T) {
 		t.Fatalf("audited action provenance was redacted: %#v", item)
 	}
 
+	retrying := workqueue.Item{
+		Kind: workqueue.KindReactionScan, State: workqueue.StateRetrying,
+		BlockedReason: "GitHub 429 response: token scope read:org",
+	}
+	redactInstallationQueueItem(&retrying)
+	if retrying.BlockedReason == "GitHub 429 response: token scope read:org" {
+		t.Fatalf("sensitive retry data was not redacted: %#v", retrying)
+	}
+
 	events := []workqueue.Event{
 		{State: workqueue.StateFailed, Summary: "provider token expired", Details: json.RawMessage(`{"secret":true}`)},
 		{State: workqueue.StateRetrying, Summary: "rate limit response body"},

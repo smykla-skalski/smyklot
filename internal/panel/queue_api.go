@@ -264,8 +264,11 @@ func redactInstallationQueueItem(item *workqueue.Item) {
 	if item.Kind == workqueue.KindWebhookDelivery {
 		item.Details = nil
 	}
-	if item.State == workqueue.StateFailed {
+	switch item.State {
+	case workqueue.StateFailed:
 		item.BlockedReason = "Work failed. Root can inspect the retained failure detail."
+	case workqueue.StateRetrying:
+		item.BlockedReason = "Work will retry. Root can inspect the retained failure detail."
 	}
 }
 

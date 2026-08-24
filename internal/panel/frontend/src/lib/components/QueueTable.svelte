@@ -44,13 +44,14 @@
     return `in ${Math.ceil(seconds / 86_400)}d`;
   }
 
-  function shortInstant(value: string): string {
+  function shortInstant(value: string, timeZone?: string): string {
     return new Intl.DateTimeFormat(undefined, {
       day: 'numeric',
       month: 'short',
       hour: 'numeric',
       minute: '2-digit',
       timeZoneName: 'short',
+      ...(timeZone === undefined ? {} : { timeZone }),
     }).format(new Date(value));
   }
 
@@ -158,7 +159,9 @@
         <time datetime={item.eligible_at}>{absolute(item.eligible_at)}</time>
       </div>
       <span class="timing-summary">
-        {item.profile_name ?? words(item.profile_id ?? 'Window')} · {item.estimated_start_at
+        {item.profile_name ?? words(item.profile_id ?? 'Window')}{item.profile_timezone
+          ? ` · ${shortInstant(item.eligible_at, item.profile_timezone)}`
+          : ''} · {item.estimated_start_at
           ? `est. ${shortInstant(item.estimated_start_at)}`
           : 'estimate pending'} · {item.work_ahead === 0
           ? 'next in lane'

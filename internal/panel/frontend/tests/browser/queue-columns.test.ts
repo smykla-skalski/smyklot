@@ -34,6 +34,10 @@ describe('the general Queue table [Integration]', () => {
       });
       expect(reading.headings).toEqual(['Work', 'Status', 'Timing', 'Actions']);
       expect(reading.overflow).toBeLessThanOrEqual(1);
+      await page
+        .getByText(/Always Open · .*UTC · est\./)
+        .first()
+        .waitFor();
     } finally {
       await page.close();
     }
@@ -97,6 +101,8 @@ describe('the general Queue table [Integration]', () => {
       const dialog = page.getByRole('dialog', { name: 'Apply organization sync plan' });
       await dialog.waitFor({ state: 'visible' });
       await dialog.getByRole('heading', { name: 'Workload detail' }).waitFor();
+      await dialog.getByText('Viewer-local eligibility').waitFor();
+      await dialog.getByText('Window-local eligibility').waitFor();
       await dialog.getByText('3 create · 7 update · 2 delete').waitFor();
       await dialog.getByRole('heading', { name: 'Timeline' }).waitFor();
     } finally {
