@@ -50,6 +50,43 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(webhook.Cadence).To(BeZero())
 	})
 
+	It("publishes every recurring workload through the shared scheduler", func() {
+		ctx, store, now := runtime()
+		targetID, repositoryID := "installation:scheduled", "repository:scheduled"
+		claims := []workqueue.RecurringClaim{
+			{Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog"},
+			{Kind: workqueue.KindDeliveryCleanup, Title: "Clean up retained background work"},
+			{Kind: workqueue.KindAuthCleanup, Title: "Clean up expired authentication"},
+			{Kind: workqueue.KindSyncScan, TargetID: &targetID, Title: "Scan organization sync drift"},
+			{Kind: workqueue.KindPathRefresh, TargetID: &targetID, Title: "Refresh repository paths"},
+			{
+				Kind: workqueue.KindPendingCIGate, TargetID: &targetID,
+				RepositoryID: &repositoryID, Title: "Reconcile pending CI protection",
+			},
+			{
+				Kind: workqueue.KindConfigMigration, TargetID: &targetID,
+				RepositoryID: &repositoryID, Title: "Check configuration migration",
+			},
+			{
+				Kind: workqueue.KindReactionScan, TargetID: &targetID,
+				RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+			},
+		}
+		for index := range claims {
+			claims[index].Now, claims[index].LeaseDuration = now, time.Minute
+			item, err := store.EnsureRecurringWork(ctx, claims[index])
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.Kind).To(Equal(claims[index].Kind))
+			Expect(item.Lane).To(Equal(workqueue.LaneMaintenance))
+			Expect(item.State).To(Equal(workqueue.StateReady))
+		}
+		for _, kind := range workqueue.Kinds() {
+			if kind.Recurring() {
+				Expect(claims).To(ContainElement(HaveField("Kind", kind)))
+			}
+		}
+	})
+
 	It("lists target work without leaking another installation", func() {
 		ctx, store, now := runtime()
 		account, first := seedInstallation(ctx, store, now)
@@ -252,6 +289,49 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
+	})
+
+	It("recomputes recurring cadence without replacing one-off schedules", func() {
+		ctx, store, now := runtime()
+		account, _ := seedInstallation(ctx, store, now)
+		claim := workqueue.RecurringClaim{
+			Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog",
+			Now: now, LeaseDuration: time.Minute,
+		}
+		first, claimed, err := store.ClaimRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+		_, err = store.FinishRecurringWork(ctx, first.ID, "", "", now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+
+		policy, err := store.GetEffectiveQueuePolicy(ctx, claim.Kind, nil)
+		Expect(err).NotTo(HaveOccurred())
+		policy.Cadence = 10 * time.Minute
+		policy, err = store.SaveQueuePolicy(ctx, policyChange(
+			policy, account.ID, now.Add(2*time.Minute),
+		))
+		Expect(err).NotTo(HaveOccurred())
+		next := onlyQueueItem(ctx, store, workqueue.Filter{
+			Kinds: []workqueue.Kind{claim.Kind}, States: []workqueue.State{workqueue.StateScheduled},
+		})
+		Expect(next.NotBefore).To(Equal(now.Add(10 * time.Minute)))
+		Expect(next.CadenceAnchorAt).To(HaveValue(Equal(now.Add(10 * time.Minute))))
+
+		exact := now.Add(30 * time.Minute)
+		next, err = store.ApplyQueueAction(ctx, next.ID, workqueue.ItemAction{
+			Type: workqueue.ActionScheduleAt, At: exact, ExpectedRevision: next.Revision,
+			ActorID: account.ID, ChangedAt: now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		policy.Cadence = 15 * time.Minute
+		_, err = store.SaveQueuePolicy(ctx, policyChange(
+			policy, account.ID, now.Add(4*time.Minute),
+		))
+		Expect(err).NotTo(HaveOccurred())
+		next, err = store.GetQueueItem(ctx, next.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next.NotBefore).To(Equal(exact))
+		Expect(next.CadenceAnchorAt).To(HaveValue(Equal(now.Add(10 * time.Minute))))
 	})
 
 	It("supersedes recurring work whose scope disappeared after its lease", func() {
@@ -547,6 +627,34 @@ func createQueueFixture(
 }
 
 func pointer[T any](value T) *T { return &value }
+
+func policyChange(
+	policy workqueue.Policy,
+	actorID string,
+	changedAt time.Time,
+) workqueue.PolicyChange {
+	return workqueue.PolicyChange{
+		Kind: policy.Kind, TargetID: policy.TargetID, Enabled: policy.Enabled,
+		Cadence: policy.Cadence, ProfileID: policy.ProfileID,
+		DefaultPriority: policy.DefaultPriority, RetryDelay: policy.RetryDelay,
+		Retention: policy.Retention, ApprovalTTL: policy.ApprovalTTL,
+		Configuration: policy.Configuration, ExpectedRevision: policy.Revision,
+		ActorID: actorID, ChangedAt: changedAt,
+	}
+}
+
+func onlyQueueItem(
+	ctx context.Context,
+	store storage.Store,
+	filter workqueue.Filter,
+) workqueue.Item {
+	GinkgoHelper()
+	page, err := store.ListWorkQueue(ctx, filter)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(page.Items).To(HaveLen(1))
+
+	return page.Items[0]
+}
 
 func profileByID(profiles []workqueue.Profile, id string) workqueue.Profile {
 	for _, profile := range profiles {

@@ -336,6 +336,9 @@ func (s *Store) reschedulePolicyItem(
 			return err
 		}
 	}
+	if err := recomputeRecurringCadence(ctx, tx, &item, effective, now); err != nil {
+		return err
+	}
 	eligible := item.NotBefore
 	if effective.Kind.Windowed() && item.WindowMode == workqueue.WindowRespect {
 		eligible, err = workqueue.NextEligible(effectiveProfile, item.NotBefore)
@@ -352,9 +355,10 @@ func (s *Store) reschedulePolicyItem(
 		priority = item.Priority
 	}
 	if _, err := tx.ExecContext(ctx, `
-UPDATE queue_items SET profile_id = ?, priority = ?, eligible_at = ?,
+UPDATE queue_items SET profile_id = ?, priority = ?, not_before = ?,
+	cadence_anchor_at = ?, eligible_at = ?,
 	state = ?, blocked_reason = ?, revision = revision + 1, updated_at = ? WHERE id = ?`,
-		effective.ProfileID, priority, eligible,
+		effective.ProfileID, priority, item.NotBefore, item.CadenceAnchorAt, eligible,
 		state, blockedReason, now, item.ID,
 	); err != nil {
 		return fmt.Errorf("reschedule queue item for policy: %w", err)
@@ -364,4 +368,56 @@ UPDATE queue_items SET profile_id = ?, priority = ?, eligible_at = ?,
 		ItemID: item.ID, ActorID: queueEventActor(actorID), Kind: "schedule.recomputed",
 		State: state, Summary: reason, CreatedAt: now,
 	})
+}
+
+func recomputeRecurringCadence(
+	ctx context.Context,
+	tx *transaction,
+	item *workqueue.Item,
+	policy workqueue.Policy,
+	now time.Time,
+) error {
+	if !policy.Kind.Recurring() || item.SourceKind != queueSourceRecurring ||
+		item.State == workqueue.StateRetrying || item.CadenceAnchorAt == nil {
+		return nil
+	}
+	var overridden bool
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1 FROM queue_events
+    WHERE queue_item_id = ? AND kind IN ('action.next_window', 'action.schedule_at')
+)`, item.ID).Scan(&overridden); err != nil {
+		return fmt.Errorf("check recurring schedule override: %w", err)
+	}
+	if overridden {
+		return nil
+	}
+	previous, err := previousRecurringItem(ctx, tx, *item)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	previousAnchor := previous.NotBefore
+	if previous.CadenceAnchorAt != nil {
+		previousAnchor = *previous.CadenceAnchorAt
+	}
+	anchor := recurringAnchor(previousAnchor, policy.Cadence, now)
+	item.NotBefore, item.CadenceAnchorAt = anchor, &anchor
+
+	return nil
+}
+
+func previousRecurringItem(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+) (workqueue.Item, error) {
+	return scanQueueItem(tx.QueryRowContext(ctx, "SELECT"+queueItemColumns+`
+FROM queue_items
+WHERE source_kind = ? AND source_id = ? AND id <> ?
+  AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')
+ORDER BY COALESCE(cadence_anchor_at, not_before) DESC, created_at DESC
+LIMIT 1`, queueSourceRecurring, item.SourceID, item.ID))
 }

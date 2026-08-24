@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"regexp"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 type authorizationProbe struct {
@@ -113,6 +115,102 @@ func TestPanelRegularRouteRejectsNonOwnedRootMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestPanelQueueAndScheduleRoleMatrix(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	ownerSession := harness.signIn(t)
+	session := createOrdinarySession(t, harness)
+	const targetID = "github:installation:10"
+	profileID := workqueue.AlwaysOpenProfileID
+	item, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
+		ID: "queue:role-matrix", Kind: workqueue.KindReactionScan,
+		Lane: workqueue.LaneMaintenance, TargetID: pointerTo(targetID),
+		Title: "Discover pull request reactions", State: workqueue.StateScheduled,
+		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
+		ProfileID: &profileID, NotBefore: harness.now.Add(time.Hour),
+		EligibleAt: harness.now.Add(time.Hour), CreatedAt: harness.now, UpdatedAt: harness.now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	accessRevision := int64(0)
+	roles := []struct {
+		role       storage.InstallationRole
+		canControl bool
+	}{
+		{storage.InstallationRoleViewer, false},
+		{storage.InstallationRoleEditor, false},
+		{storage.InstallationRoleAdmin, true},
+		{storage.InstallationRoleOwner, true},
+	}
+	for index, expectation := range roles {
+		expectation := expectation
+		t.Run(string(expectation.role), func(t *testing.T) {
+			roleSession := queueRoleSession(
+				t, harness, expectation.role, session, ownerSession, &accessRevision,
+				harness.now.Add(time.Duration(index)*time.Minute),
+			)
+
+			base := "/panel/api/v1/targets/" + targetID
+			for _, path := range []string{base + "/queue", base + "/queue/" + item.ID, base + "/schedules"} {
+				response := harness.request(t, http.MethodGet, path, nil, roleSession)
+				requireResponse(t, response, string(expectation.role)+" inspection", http.StatusOK)
+			}
+
+			current, getErr := harness.store.GetQueueItem(t.Context(), item.ID)
+			if getErr != nil {
+				t.Fatal(getErr)
+			}
+			action := fmt.Sprintf(`{"type":"set_priority","expected_revision":%d,"priority":"high"}`, current.Revision)
+			response := harness.request(
+				t, http.MethodPost, base+"/queue/"+item.ID+"/actions",
+				strings.NewReader(action), roleSession,
+			)
+			expectedStatus := http.StatusForbidden
+			if expectation.canControl {
+				expectedStatus = http.StatusOK
+			}
+			requireResponse(t, response, string(expectation.role)+" queue control", expectedStatus)
+
+			response = harness.request(
+				t, http.MethodPost, base+"/schedule-requests", strings.NewReader(`{}`), roleSession,
+			)
+			expectedStatus = http.StatusForbidden
+			if expectation.canControl {
+				expectedStatus = http.StatusBadRequest
+			}
+			requireResponse(t, response, string(expectation.role)+" schedule request", expectedStatus)
+		})
+	}
+}
+
+func queueRoleSession(
+	t *testing.T,
+	harness *panelHarness,
+	role storage.InstallationRole,
+	ordinarySession, ownerSession *http.Cookie,
+	accessRevision *int64,
+	changedAt time.Time,
+) *http.Cookie {
+	t.Helper()
+	if role == storage.InstallationRoleOwner {
+		return ownerSession
+	}
+	updated, err := harness.store.SetTargetAccess(t.Context(), storage.TargetAccessChange{
+		TargetID: "github:installation:10", SubjectAccountID: "github:test:user:ordinary",
+		ActorAccountID: "github:test:user:1", Role: &role,
+		ExpectedRevision: *accessRevision, ChangedAt: changedAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	*accessRevision = updated.Revision
+
+	return ordinarySession
+}
+
+func pointerTo[T any](value T) *T { return &value }
 
 // routePlaceholders is what a registered pattern's wildcards stand for in a
 // probe. A pattern using one that is not here fails the completeness check
