@@ -460,6 +460,7 @@ type Store interface {
 	ArchiveScheduleProfile(context.Context, string, int64, string, time.Time) (Profile, error)
 	ListQueuePolicies(context.Context, *string) ([]Policy, error)
 	ListAllQueuePolicies(context.Context) ([]Policy, error)
+	InitializeQueuePolicies(context.Context, DeploymentDefaults, time.Time) error
 	ListQueuePolicyStatuses(context.Context, *string) ([]PolicyStatus, error)
 	GetEffectiveQueuePolicy(context.Context, Kind, *string) (Policy, error)
 	SaveQueuePolicy(context.Context, PolicyChange) (Policy, error)

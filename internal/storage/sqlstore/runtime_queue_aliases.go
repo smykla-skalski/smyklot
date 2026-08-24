@@ -16,7 +16,8 @@ func (s *Store) syncRuntimeQueueAliases(
 	current storage.RuntimeSettings,
 	change storage.RuntimeSettingsChange,
 ) error {
-	if !sameOptionalDuration(current.PollInterval, change.PollInterval) {
+	pollChanged := !sameOptionalDuration(current.PollInterval, change.PollInterval)
+	if pollChanged {
 		cadence := effectiveAliasDuration(change.PollInterval, change.EffectivePollInterval)
 		for _, kind := range []workqueue.Kind{
 			workqueue.KindReactionScan,
@@ -31,14 +32,19 @@ func (s *Store) syncRuntimeQueueAliases(
 			}
 		}
 	}
-	if !sameOptionalDuration(current.PathIndexInterval, change.PathIndexInterval) {
-		cadence := effectiveAliasDuration(
+	pathChanged := !sameOptionalDuration(current.PathIndexInterval, change.PathIndexInterval)
+	if pathChanged || (pollChanged && change.EffectivePathIndexInterval == 0) {
+		pathInterval := effectiveAliasDuration(
 			change.PathIndexInterval,
 			change.EffectivePathIndexInterval,
 		)
+		cadence := pathInterval
+		if pathInterval == 0 {
+			cadence = change.EffectivePollInterval
+		}
 		if err := s.updateRuntimeCadenceAlias(
 			ctx, tx, workqueue.KindPathRefresh,
-			cadence, false, change,
+			cadence, true, change,
 		); err != nil {
 			return err
 		}

@@ -8,6 +8,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -93,6 +94,14 @@ func (s *Server) runtimeValues() RuntimeValues {
 	values.BotConfig = cloneRuntimeConfig(values.BotConfig)
 
 	return values
+}
+
+func queueDeploymentDefaults(values RuntimeValues) workqueue.DeploymentDefaults {
+	return workqueue.DeploymentDefaults{
+		PollInterval:         values.PollInterval,
+		PendingCIQuietPeriod: values.PendingCIQuietPeriod,
+		PathIndexInterval:    values.PathIndexInterval,
+	}
 }
 
 func (s *Server) sessionTTL() time.Duration {

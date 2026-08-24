@@ -1,6 +1,7 @@
 package sqlstore
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -54,6 +55,109 @@ func (s *Store) ListAllQueuePolicies(ctx context.Context) ([]workqueue.Policy, e
 	}
 
 	return policies, nil
+}
+
+// InitializeQueuePolicies adopts deployment timings only while a global
+// policy is still the untouched migration seed. Root edits and compatibility
+// alias writes both advance the revision and therefore remain authoritative.
+func (s *Store) InitializeQueuePolicies(
+	ctx context.Context,
+	defaults workqueue.DeploymentDefaults,
+	now time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin queue policy initialization: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, desired := range workqueue.DeploymentPolicies(defaults) {
+		if err := s.initializeQueuePolicy(ctx, tx, desired, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit queue policy initialization: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) initializeQueuePolicy(
+	ctx context.Context,
+	tx *transaction,
+	desired workqueue.Policy,
+	now time.Time,
+) error {
+	if err := validateQueuePolicyChange(policyChangeFromPolicy(desired)); err != nil {
+		return fmt.Errorf("validate deployment queue policy %s: %w", desired.Kind, err)
+	}
+	current, err := getEffectiveQueuePolicy(ctx, tx, desired.Kind, nil)
+	if err != nil {
+		return fmt.Errorf("read deployment queue policy %s: %w", desired.Kind, err)
+	}
+	if current.Revision != 1 || current.UpdatedBy != nil || sameQueuePolicy(current, desired) {
+		return nil
+	}
+	result, err := tx.ExecContext(ctx, `
+UPDATE queue_policies SET
+    enabled = ?, cadence_seconds = ?, profile_id = ?, default_priority = ?,
+    retry_delay_seconds = ?, retention_seconds = ?, approval_ttl_seconds = ?,
+    configuration = ?
+WHERE kind = ? AND scope_id = 'root' AND revision = 1 AND updated_by IS NULL`,
+		desired.Enabled, int64(desired.Cadence/time.Second), desired.ProfileID,
+		desired.DefaultPriority, int64(desired.RetryDelay/time.Second),
+		durationSeconds(desired.Retention), durationSeconds(desired.ApprovalTTL),
+		string(desired.Configuration), desired.Kind,
+	)
+	if err != nil {
+		return fmt.Errorf("initialize deployment queue policy %s: %w", desired.Kind, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("count initialized queue policy %s: %w", desired.Kind, err)
+	}
+	if changed != 1 {
+		return storage.ErrConflict
+	}
+	updated, err := getEffectiveQueuePolicy(ctx, tx, desired.Kind, nil)
+	if err != nil {
+		return err
+	}
+	profile, err := getScheduleProfile(ctx, tx, updated.ProfileID)
+	if err != nil {
+		return err
+	}
+
+	return s.reschedulePolicyItems(
+		ctx, tx, updated, profile, now, queueActorSystem,
+		"Deployment default changed",
+	)
+}
+
+func policyChangeFromPolicy(policy workqueue.Policy) workqueue.PolicyChange {
+	return workqueue.PolicyChange{
+		Kind: policy.Kind, Enabled: policy.Enabled, Cadence: policy.Cadence,
+		ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+		RetryDelay: policy.RetryDelay, Retention: policy.Retention,
+		ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+	}
+}
+
+func sameQueuePolicy(left, right workqueue.Policy) bool {
+	return left.Enabled == right.Enabled && left.Cadence == right.Cadence &&
+		left.ProfileID == right.ProfileID && left.DefaultPriority == right.DefaultPriority &&
+		left.RetryDelay == right.RetryDelay &&
+		sameDuration(left.Retention, right.Retention) &&
+		sameDuration(left.ApprovalTTL, right.ApprovalTTL) &&
+		bytes.Equal(left.Configuration, right.Configuration)
+}
+
+func sameDuration(left, right *time.Duration) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+
+	return *left == *right
 }
 
 func (s *Store) GetEffectiveQueuePolicy(

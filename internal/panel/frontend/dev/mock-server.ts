@@ -148,6 +148,7 @@ interface MockState extends Fixtures {
   streams: Set<Duplex>;
   shell: ShellSource;
   scheduleProfiles: ScheduleProfile[];
+  scheduleDefaults: QueuePolicy[];
   schedulePolicies: QueuePolicy[];
   scheduleRequests: ScheduleRequest[];
   scheduleCounter: number;
@@ -188,7 +189,11 @@ function mockScheduleState(
   fixtures: Fixtures,
 ): Pick<
   MockState,
-  'scheduleProfiles' | 'schedulePolicies' | 'scheduleRequests' | 'scheduleCounter'
+  | 'scheduleProfiles'
+  | 'scheduleDefaults'
+  | 'schedulePolicies'
+  | 'scheduleRequests'
+  | 'scheduleCounter'
 > {
   const now = new Date().toISOString();
   const alwaysOpen: ScheduleProfile = {
@@ -299,6 +304,7 @@ function mockScheduleState(
 
   return {
     scheduleProfiles: [alwaysOpen, europeHours],
+    scheduleDefaults: structuredClone(policies.filter((policy) => policy.target_id === undefined)),
     schedulePolicies: policies,
     scheduleRequests: requests,
     scheduleCounter: 2,
@@ -1469,16 +1475,16 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/root/job-policies') && method === 'GET') {
-      const deploymentDefaults = globalSchedulePolicies(state);
+      const current = globalSchedulePolicies(state);
       const overrides = state.schedulePolicies.filter((policy) => policy.target_id !== undefined);
       const policySet: RootJobPolicies['policy_set'] = {
-        current: structuredClone(deploymentDefaults),
-        deployment_defaults: structuredClone(deploymentDefaults),
+        current: structuredClone(current),
+        deployment_defaults: structuredClone(state.scheduleDefaults),
         overrides: structuredClone(overrides),
-        effective: structuredClone(deploymentDefaults),
+        effective: structuredClone(current),
       };
       const document: RootJobPolicies = {
-        policies: structuredClone(deploymentDefaults),
+        policies: structuredClone(current),
         policy_set: policySet,
         statuses: mockPolicyStatuses(state),
       };
@@ -4421,15 +4427,15 @@ function globalSchedulePolicies(state: MockState): QueuePolicy[] {
 }
 
 function targetSchedulePolicies(state: MockState, targetID: string): RootJobPolicies['policy_set'] {
-  const deploymentDefaults = globalSchedulePolicies(state);
+  const current = globalSchedulePolicies(state);
   const overrides = state.schedulePolicies.filter((policy) => policy.target_id === targetID);
-  const effective = deploymentDefaults.map(
+  const effective = current.map(
     (policy) => overrides.find((override) => override.kind === policy.kind) ?? policy,
   );
 
   return {
-    current: structuredClone(effective),
-    deployment_defaults: structuredClone(deploymentDefaults),
+    current: structuredClone(current),
+    deployment_defaults: structuredClone(state.scheduleDefaults),
     overrides: structuredClone(overrides),
     effective: structuredClone(effective),
   };

@@ -160,10 +160,10 @@ func (s *Server) getRootJobPolicies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	set := schedulePolicySet{}
+	set.DeploymentDefaults = s.deploymentQueuePolicies()
 	for _, policy := range policies {
 		if policy.TargetID == nil {
 			set.Current = append(set.Current, policy)
-			set.DeploymentDefaults = append(set.DeploymentDefaults, policy)
 			set.Effective = append(set.Effective, policy)
 		} else {
 			set.Overrides = append(set.Overrides, policy)
@@ -350,10 +350,10 @@ func (s *Server) policySet(r *http.Request, targetID string) (schedulePolicySet,
 	if err != nil {
 		return schedulePolicySet{}, err
 	}
-	set := schedulePolicySet{}
+	set := schedulePolicySet{DeploymentDefaults: s.deploymentQueuePolicies()}
 	for _, policy := range policies {
 		if policy.TargetID == nil {
-			set.DeploymentDefaults = append(set.DeploymentDefaults, policy)
+			set.Current = append(set.Current, policy)
 		} else {
 			set.Overrides = append(set.Overrides, policy)
 		}
@@ -368,9 +368,15 @@ func (s *Server) policySet(r *http.Request, targetID string) (schedulePolicySet,
 		}
 		set.Effective = append(set.Effective, policy)
 	}
-	set.Current = append(set.Current, set.Effective...)
-
 	return set, nil
+}
+
+func (s *Server) deploymentQueuePolicies() []workqueue.Policy {
+	return workqueue.DeploymentPolicies(workqueue.DeploymentDefaults{
+		PollInterval:         s.cfg.PollInterval,
+		PendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
+		PathIndexInterval:    s.cfg.PathIndexInterval,
+	})
 }
 
 func (s *Server) getRootScheduleRequests(w http.ResponseWriter, r *http.Request) {

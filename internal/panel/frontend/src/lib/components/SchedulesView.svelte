@@ -262,7 +262,16 @@
 
   function policySource(kind: QueueWorkload): string {
     if (policySet?.overrides.some((policy) => policy.kind === kind)) return 'Installation override';
-    return 'Deployment default';
+    return 'Global policy';
+  }
+
+  function deploymentDefault(kind: QueueWorkload): QueuePolicy | undefined {
+    return policySet?.deployment_defaults.find((policy) => policy.kind === kind);
+  }
+
+  function deploymentSummary(policy: QueuePolicy): string {
+    const cadence = policy.enabled ? duration(policy.cadence) : 'disabled';
+    return `Deployment ${cadence} · ${profileName(policy.profile_id)} · ${policy.default_priority}`;
   }
 
   function numberSetting(policy: QueuePolicy, key: string): number | undefined {
@@ -340,7 +349,7 @@
         revertingPolicy.kind,
         revertingPolicy.revision,
       );
-      notice = `${revertingPolicy.kind.replaceAll('_', ' ')} now inherits the deployment default`;
+      notice = `${revertingPolicy.kind.replaceAll('_', ' ')} now inherits the global policy`;
       revertingPolicy = null;
       dialogError = '';
       await load();
@@ -509,6 +518,7 @@
 {#snippet policyCells(policy: QueuePolicy)}
   {@const status = policyStatus(policy.kind)}
   {@const details = jobDetails(policy)}
+  {@const baseline = deploymentDefault(policy.kind)}
   {@const statusTone = runtimeTone(status?.current_state)}
   <th scope="row" data-label="Workload">
     <div class="policy-work band-trim-stack">
@@ -520,7 +530,7 @@
       </div>
       <span class="policy-description">{workloadDescription(policy.kind)}</span>
       <span class="policy-source">
-        {targetId === undefined ? 'Deployment default' : policySource(policy.kind)} · revision
+        {targetId === undefined ? 'Global policy' : policySource(policy.kind)} · revision
         {policy.revision}
       </span>
     </div>
@@ -564,6 +574,9 @@
       </div>
       {#each details as detail (detail)}<span>{detail}</span>{/each}
       {#if details.length === 0}<span>Standard retry and retention</span>{/if}
+      {#if targetId === undefined && baseline !== undefined}
+        <span>{deploymentSummary(baseline)}</span>
+      {/if}
     </div>
   </td>
   {#if targetId === undefined}
@@ -603,7 +616,7 @@
   <td data-label="Actions">
     <div class="request-buttons">
       <Button row onclick={() => (editingPolicy = policy)}>Configure</Button>
-      <Button row tone="stop-quiet" onclick={() => (revertingPolicy = policy)}>Use default</Button>
+      <Button row tone="stop-quiet" onclick={() => (revertingPolicy = policy)}>Use global</Button>
     </div>
   </td>
 {/snippet}
@@ -644,7 +657,7 @@
     >
   {:else}
     <div class="schedule-summary" aria-label="Schedule overview">
-      {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'deployment policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
+      {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'global policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
         <article>
           <span class="summary-mark"><Icon name={summaryIcon(index)} size={16} /></span>
           <div>

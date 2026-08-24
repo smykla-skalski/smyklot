@@ -30,6 +30,97 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(syncPolicy.ProfileID).To(Equal(workqueue.AlwaysOpenProfileID))
 	})
 
+	It("adopts deployment timings while global policies remain pristine", func() {
+		ctx, store, now := runtime()
+		defaults := workqueue.DeploymentDefaults{
+			PollInterval:         90 * time.Second,
+			PendingCIQuietPeriod: 45 * time.Second,
+			PathIndexInterval:    20 * time.Minute,
+		}
+		Expect(store.InitializeQueuePolicies(ctx, defaults, now)).To(Succeed())
+		reaction, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reaction.Cadence).To(Equal(90 * time.Second))
+		Expect(reaction.Revision).To(Equal(int64(1)))
+		Expect(reaction.UpdatedBy).To(BeNil())
+		path, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPathRefresh, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(path.Cadence).To(Equal(20 * time.Minute))
+		pendingCI, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPendingCI, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(pendingCI.Configuration)).To(ContainSubstring(`"passing_quiet_seconds":45`))
+
+		defaults.PollInterval = 2 * time.Minute
+		Expect(store.InitializeQueuePolicies(ctx, defaults, now.Add(time.Minute))).To(Succeed())
+		reaction, err = store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reaction.Cadence).To(Equal(2 * time.Minute))
+		Expect(reaction.Revision).To(Equal(int64(1)))
+	})
+
+	It("keeps Root queue policy edits over later deployment initialization", func() {
+		ctx, store, now := runtime()
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		policy.Cadence = 7 * time.Minute
+		policy, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, Enabled: policy.Enabled, Cadence: policy.Cadence,
+			ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+			RetryDelay: policy.RetryDelay, Retention: policy.Retention,
+			ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+			ExpectedRevision: policy.Revision, ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(policy.Revision).To(Equal(int64(2)))
+
+		Expect(store.InitializeQueuePolicies(ctx, workqueue.DeploymentDefaults{
+			PollInterval:         2 * time.Minute,
+			PendingCIQuietPeriod: 30 * time.Second,
+			PathIndexInterval:    time.Hour,
+		}, now.Add(time.Minute))).To(Succeed())
+		kept, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(kept.Cadence).To(Equal(7 * time.Minute))
+		Expect(kept.Revision).To(Equal(int64(2)))
+		Expect(kept.UpdatedBy).To(HaveValue(Equal(account.ID)))
+	})
+
+	It("maps the legacy every-sweep path interval onto a valid queue cadence", func() {
+		ctx, store, now := runtime()
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		poll, every := 90*time.Second, time.Duration(0)
+		result, err := store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			PollInterval: &poll, PathIndexInterval: &every,
+			EffectivePollInterval:         poll,
+			EffectivePendingCIQuietPeriod: 30 * time.Second,
+			EffectivePathIndexInterval:    every,
+			EffectiveSessionTTL:           time.Hour,
+			ActorAccountID:                account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		path, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPathRefresh, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(path.Enabled).To(BeTrue())
+		Expect(path.Cadence).To(Equal(poll))
+
+		disabled := time.Duration(0)
+		_, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+			PollInterval: &disabled, PathIndexInterval: &every,
+			EffectivePendingCIQuietPeriod: 30 * time.Second,
+			EffectiveSessionTTL:           time.Hour,
+			ExpectedRevision:              result.Settings.Revision,
+			ActorAccountID:                account.ID, ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		path, err = store.GetEffectiveQueuePolicy(ctx, workqueue.KindPathRefresh, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(path.Enabled).To(BeFalse())
+		Expect(path.Cadence).To(BeZero())
+	})
+
 	It("rejects a zero cadence for enabled recurring work", func() {
 		ctx, store, now := runtime()
 		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindCatalogRefresh, nil)

@@ -26,6 +26,11 @@ describe('background work schedules [Integration]', () => {
           page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
         )
         .toBe(11);
+      await page
+        .locator('.policy-source', { hasText: 'Global policy · revision' })
+        .first()
+        .waitFor();
+      await page.getByText(/^Deployment 6h · Always Open · normal$/).waitFor();
       await page.getByRole('heading', { name: 'Profiles' }).waitFor();
       await page.locator('.profile-card', { hasText: 'Always Open' }).waitFor();
       await page.locator('.profile-card', { hasText: 'Europe business hours' }).waitFor();
@@ -52,6 +57,13 @@ describe('background work schedules [Integration]', () => {
           page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
         )
         .toBe(6);
+      await page
+        .locator('.policy-source', { hasText: 'Global policy · revision' })
+        .first()
+        .waitFor();
+      await page
+        .locator('.policy-source', { hasText: 'Installation override · revision' })
+        .waitFor();
       await page.getByRole('heading', { name: 'Request a recurring change' }).waitFor();
       await page.getByRole('button', { name: 'Send request' }).waitFor();
       await page.getByText('Europe business hours').first().waitFor();

@@ -172,6 +172,11 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve runtime settings: %w", err)
 	}
+	if err := deps.Store.InitializeQueuePolicies(
+		context.Background(), queueDeploymentDefaults(runtime), deps.Now().UTC(),
+	); err != nil {
+		return nil, fmt.Errorf("initialize queue policies: %w", err)
+	}
 	if deps.Runtime != nil {
 		deps.Runtime.ApplyRuntimeSettings(runtime)
 	}
