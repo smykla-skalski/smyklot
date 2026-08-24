@@ -588,9 +588,12 @@
     translate: 0 1px;
   }
 
+  /* Expanded groups show their selection on exactly one child row. Opening the
+     group already provides the parent context; bolding the parent as well made
+     both rows read as selected. Collapsed groups still inherit the active ink
+     from their dedicated rules below. */
   .tree-page.is-active > .tree-row {
-    color: var(--sidebar-text);
-    font-weight: 600;
+    color: var(--sidebar-text-secondary);
   }
 
   .tree-row.is-active {

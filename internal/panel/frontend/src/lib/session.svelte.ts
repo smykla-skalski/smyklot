@@ -320,7 +320,10 @@ export class PanelSession {
     if (this.isRootMode) {
       const route = this.currentRootRoute;
       if (route.rootView === 'installation') {
-        return ['repositories', 'users', 'invitations', 'history'].includes(route.view);
+        return (
+          ['repositories', 'users', 'invitations', 'history'].includes(route.view) &&
+          (route.view !== 'repositories' || route.repository === undefined)
+        );
       }
 
       return (
@@ -332,7 +335,11 @@ export class PanelSession {
 
     return (
       this.selectedTarget !== null &&
-      ['repositories', 'users', 'invitations', 'history'].includes(this.currentView)
+      ['repositories', 'users', 'invitations', 'history'].includes(this.currentView) &&
+      /* Repository lists own a bounded table scroller. A repository detail is a
+         document-length settings page, so trapping its workspace at 100dvh clips
+         the controls below the fold with no element left that can scroll. */
+      (this.currentView !== 'repositories' || this.currentRepository === null)
     );
   }
 

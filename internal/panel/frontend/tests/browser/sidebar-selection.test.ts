@@ -38,6 +38,7 @@ let panel: Panel;
 let landed: Selection;
 let moved: Selection;
 let requestParentSelected: boolean;
+let queueSelectionCount: number;
 
 beforeAll(async () => {
   panel = await startPanel();
@@ -59,9 +60,12 @@ beforeAll(async () => {
   moved = await measure(page);
 
   await visit(page, `${panel.origin}/root/queue/request/pending-ci-0`);
-  const requestParent = page.locator('.tree-page.is-active > .tree-row.is-active');
+  const requestParent = page.locator('.tree-row.is-active');
   await requestParent.waitFor({ state: 'visible' });
   requestParentSelected = (await requestParent.textContent())?.includes('Queue') === true;
+
+  await visit(page, `${panel.origin}/root/queue`);
+  queueSelectionCount = await page.locator('.tree [aria-current="page"]').count();
 }, 60_000);
 
 afterAll(async () => {
@@ -134,5 +138,9 @@ describe("the Root console sidebar's selection", () => {
 
   it('selects the parent row while a detail route has no selected child', () => {
     expect(requestParentSelected).toBe(true);
+  });
+
+  it('draws one Queue selection instead of a selected parent and legacy child', () => {
+    expect(queueSelectionCount).toBe(1);
   });
 });
