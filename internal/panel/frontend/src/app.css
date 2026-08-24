@@ -1551,8 +1551,11 @@ a[href]:active {
    still begin where the values under them do.
    https://github.com/Shopify/polaris/pull/1273 */
 thead th {
-  --heading-pad-start: var(--space-3);
-  --heading-pad-end: var(--space-3);
+  /* Headings and body cells share the same per-table inline inset. A table that
+     asks for roomier rows must move the heading ink with them, or the columns
+     align geometrically while their contents read as a four-pixel step. */
+  --heading-pad-start: var(--table-cell-pad-inline, var(--space-3));
+  --heading-pad-end: var(--table-cell-pad-inline, var(--space-3));
   --heading-filter-room: 0rem;
 
   padding: 0;
