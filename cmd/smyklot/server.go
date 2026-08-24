@@ -19,6 +19,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
@@ -114,6 +115,7 @@ type server struct {
 	// beside it.
 	runtimePathIndexInterval time.Duration
 	pollIntervalChanged      chan struct{}
+	workQueueChanged         chan struct{}
 	migrationRetryDelay      time.Duration
 	sweepMu                  sync.Mutex
 
@@ -192,6 +194,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		runtimePollInterval:      cfg.pollInterval,
 		runtimePathIndexInterval: cfg.pathIndexInterval,
 		pollIntervalChanged:      make(chan struct{}, 1),
+		workQueueChanged:         make(chan struct{}, 1),
 		pendingCIGateChanged:     make(chan struct{}, 1),
 		migrationRetryDelay:      gate.RetryDelay,
 		registry:                 registry,
@@ -203,12 +206,16 @@ func newServer(cfg *serveConfig) (*server, error) {
 	}
 
 	metrics.RegisterReadiness(registry, func() bool { return srv.readiness.state().Ready })
+	metrics.RegisterWorkQueue(registry, func() (workqueue.MetricsSnapshot, error) {
+		return srv.store.WorkQueueMetrics(context.Background(), time.Now().UTC())
+	})
 	if err := srv.initStorage(context.Background()); err != nil {
 		return nil, err
 	}
 	srv.sync = apply.New(srv.store, tokens, cfg.apiBaseURL)
 	pendingCICoordinator := bot.NewCoordinator()
 	srv.pendingCICoordinator = pendingCICoordinator
+	srv.sync.SetCoordinator(pendingCICoordinator)
 	srv.gate = gate.New(gate.Dependencies{
 		Store:       srv.store,
 		Gates:       srv.store,
@@ -384,14 +391,6 @@ func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 		s.gate.Scheduler.Run(ctx)
 	}()
 
-	running.Add(1)
-
-	go func() {
-		defer running.Done()
-
-		s.panelMaintenanceLoop(ctx)
-	}()
-
 	stopped := make(chan struct{})
 
 	go func() {
@@ -425,6 +424,19 @@ func (s *server) handleIssueComment(
 	eventKey string,
 	sourceOrder int64,
 ) error {
+	repositoryID := storage.RepositoryID(event.Repository.ID)
+
+	return s.pendingCICoordinator.Exclusive(ctx, repositoryID, func() error {
+		return s.handleIssueCommentCoordinated(ctx, event, eventKey, sourceOrder)
+	})
+}
+
+func (s *server) handleIssueCommentCoordinated(
+	ctx context.Context,
+	event *webhook.IssueCommentEvent,
+	eventKey string,
+	sourceOrder int64,
+) error {
 	token, err := s.tokens.InstallationToken(event.Installation.ID)
 	if err != nil {
 		return bot.NewGitHubError(bot.ErrGitHubAppAuth, err)
@@ -451,7 +463,7 @@ func (s *server) handleIssueComment(
 		SourceOrder: sourceOrder, EventKey: eventKey, ObservedAt: time.Now().UTC(),
 	}
 	claim, err := gate.ClaimSource(
-		ctx, s.store, s.pendingCICoordinator, source,
+		ctx, s.store, inlineExclusive{}, source,
 		gate.SourceCancellation(event, source.RepositoryID),
 	)
 	if err != nil {

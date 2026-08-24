@@ -138,6 +138,9 @@ func (p *Pipeline) QueueDepth() int {
 	return len(p.jobs)
 }
 
+// Wake asks the durable dispatcher to re-check eligibility immediately.
+func (p *Pipeline) Wake() { p.wake() }
+
 func (p *Pipeline) closeQueue() {
 	p.lifecycleMu.Lock()
 	if p.queueClosed {

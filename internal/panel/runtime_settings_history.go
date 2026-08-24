@@ -118,6 +118,8 @@ func (s *Server) postRootSettingsRestore(w http.ResponseWriter, r *http.Request)
 			ChangedAt:                     s.now().UTC(),
 			Runner:                        s.cfg.ProcessConfig.EffectiveRunner(),
 			EffectivePendingCIQuietPeriod: effective.PendingCIQuietPeriod,
+			EffectivePollInterval:         effective.PollInterval,
+			EffectivePathIndexInterval:    effective.PathIndexInterval,
 			EffectiveSessionTTL:           effective.SessionTTL,
 		},
 	)

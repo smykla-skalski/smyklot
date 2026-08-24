@@ -56,6 +56,8 @@ type RuntimeSettingsChange struct {
 	SessionTTL                    *time.Duration
 	PathIndexInterval             *time.Duration
 	EffectivePendingCIQuietPeriod time.Duration
+	EffectivePollInterval         time.Duration
+	EffectivePathIndexInterval    time.Duration
 	EffectiveSessionTTL           time.Duration
 	ExpectedRevision              int64
 	ActorAccountID                string
@@ -80,6 +82,8 @@ type RestoreRuntimeSettingsRequest struct {
 	ChangedAt                     time.Time
 	Runner                        config.Runner
 	EffectivePendingCIQuietPeriod time.Duration
+	EffectivePollInterval         time.Duration
+	EffectivePathIndexInterval    time.Duration
 	EffectiveSessionTTL           time.Duration
 }
 

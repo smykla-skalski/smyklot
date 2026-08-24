@@ -9,6 +9,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 type transitionStore interface {
@@ -80,6 +81,10 @@ type gateWakeEffects interface {
 	WakePendingCIGates()
 }
 
+type queuePolicyReader interface {
+	GetEffectiveQueuePolicy(context.Context, workqueue.Kind, *string) (workqueue.Policy, error)
+}
+
 // Reconciler combines live truth with the pure policy, then applies
 // one optimistic durable transition. GitHub access stays behind narrow ports.
 type Reconciler struct {
@@ -131,14 +136,40 @@ func (reconciler *Reconciler) currentTiming() pendingci.Timing {
 }
 
 func (reconciler *Reconciler) timingFor(
+	ctx context.Context,
+	request pendingci.Request,
 	observation pendingci.Observation,
-) pendingci.Timing {
+) (pendingci.Timing, error) {
 	timing := reconciler.currentTiming()
+	if reader, ok := reconciler.store.(queuePolicyReader); ok {
+		policy, err := reader.GetEffectiveQueuePolicy(
+			ctx, workqueue.KindPendingCI, &request.TargetID,
+		)
+		if err != nil {
+			return pendingci.Timing{}, fmt.Errorf("read pending-CI queue policy: %w", err)
+		}
+		configured, err := workqueue.ParsePendingCITiming(
+			policy.Configuration,
+			workqueue.PendingCITiming{
+				ActiveInterval: timing.ActiveInterval, DiscoveryGrace: timing.DiscoveryGrace,
+				DeferAfter: timing.DeferAfter, DeferredInterval: timing.DeferredInterval,
+				PassingQuiet: timing.PassingQuiet,
+			},
+		)
+		if err != nil {
+			return pendingci.Timing{}, err
+		}
+		timing = pendingci.Timing{
+			ActiveInterval: configured.ActiveInterval, DiscoveryGrace: configured.DiscoveryGrace,
+			DeferAfter: configured.DeferAfter, DeferredInterval: configured.DeferredInterval,
+			PassingQuiet: configured.PassingQuiet,
+		}
+	}
 	if observation.PassingQuiet != nil {
 		timing.PassingQuiet = *observation.PassingQuiet
 	}
 
-	return timing
+	return timing, nil
 }
 
 func (reconciler *Reconciler) Process(
@@ -162,7 +193,11 @@ func (reconciler *Reconciler) processArmedExclusive(
 	if err != nil {
 		return fmt.Errorf("observe live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.timingFor(observation))
+	timing, err := reconciler.timingFor(ctx, request, observation)
+	if err != nil {
+		return fmt.Errorf("resolve pending CI timing: %w", err)
+	}
+	decision, err := pendingci.Decide(request, observation, timing)
 	if err != nil {
 		return fmt.Errorf("decide pending CI transition: %w", err)
 	}
@@ -280,7 +315,11 @@ func (reconciler *Reconciler) mergeExclusive(
 	if err != nil {
 		return fmt.Errorf("revalidate live GitHub state: %w", err)
 	}
-	decision, err := pendingci.Decide(request, observation, reconciler.timingFor(observation))
+	timing, err := reconciler.timingFor(ctx, request, observation)
+	if err != nil {
+		return fmt.Errorf("resolve pending CI timing: %w", err)
+	}
+	decision, err := pendingci.Decide(request, observation, timing)
 	if err != nil {
 		return fmt.Errorf("revalidate pending CI transition: %w", err)
 	}

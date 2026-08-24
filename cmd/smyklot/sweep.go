@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
@@ -24,29 +28,40 @@ import (
 // Sweeping in the loop rather than in a goroutine per tick means a sweep that
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
-	migrationStopped := make(chan struct{})
-	go func() {
-		defer close(migrationStopped)
-		s.migrationLoop(ctx)
-	}()
-	defer func() { <-migrationStopped }()
+	var migrationStopped chan struct{}
+	if s.panel == nil {
+		migrationStopped = make(chan struct{})
+		go func() {
+			defer close(migrationStopped)
+			s.migrationLoop(ctx)
+		}()
+		defer func() { <-migrationStopped }()
+	} else {
+		s.dispatchMaintenanceQueue(ctx)
+	}
 
 	interval := s.pollInterval()
 	s.logPollInterval(interval)
 	for {
-		if interval <= 0 {
+		delay, err := s.nextMaintenanceDelay(ctx, interval)
+		if err != nil {
+			s.logger.Error("read maintenance queue schedule", "error", err)
+		}
+		if delay == nil {
 			select {
 			case <-ctx.Done():
 				return
 			case <-s.pollIntervalChanged:
 				interval = s.pollInterval()
 				s.logPollInterval(interval)
+			case <-s.workQueueChanged:
+				s.dispatchMaintenanceQueue(ctx)
 			}
 
 			continue
 		}
 
-		timer := time.NewTimer(interval)
+		timer := time.NewTimer(*delay)
 		select {
 		case <-ctx.Done():
 			timer.Stop()
@@ -56,9 +71,72 @@ func (s *server) pollLoop(ctx context.Context) {
 			timer.Stop()
 			interval = s.pollInterval()
 			s.logPollInterval(interval)
-		case <-timer.C:
-			s.runSweep(ctx)
+		case <-s.workQueueChanged:
+			timer.Stop()
+			s.dispatchMaintenanceQueue(ctx)
 			interval = s.pollInterval()
+		case <-timer.C:
+			s.dispatchMaintenanceQueue(ctx)
+			interval = s.pollInterval()
+		}
+	}
+}
+
+func (s *server) nextMaintenanceDelay(
+	ctx context.Context,
+	fallback time.Duration,
+) (*time.Duration, error) {
+	now := time.Now().UTC()
+	next, err := s.store.NextQueueAvailability(ctx, workqueue.LaneMaintenance, now)
+	if err != nil {
+		if fallback <= 0 {
+			return nil, err
+		}
+
+		return &fallback, err
+	}
+	if next == nil {
+		if fallback <= 0 {
+			return nil, nil
+		}
+
+		return &fallback, nil
+	}
+	delay := next.Sub(now)
+	if delay < 250*time.Millisecond {
+		delay = 250 * time.Millisecond
+	}
+	if fallback > 0 && fallback < delay {
+		delay = fallback
+	}
+
+	return &delay, nil
+}
+
+func (s *server) dispatchMaintenanceQueue(ctx context.Context) {
+	if s.panel != nil {
+		s.dispatchDurableMaintenance(ctx)
+
+		return
+	}
+	s.maintainPanel(ctx)
+	s.runSweep(ctx)
+}
+
+func (s *server) WakeQueue(lane workqueue.Lane) {
+	switch lane {
+	case workqueue.LaneWebhook:
+		if s.deliveries != nil {
+			s.deliveries.Wake()
+		}
+	case workqueue.LanePendingCI:
+		if s.gate != nil {
+			s.gate.Wake()
+		}
+	case workqueue.LaneMaintenance:
+		select {
+		case s.workQueueChanged <- struct{}{}:
+		default:
 		}
 	}
 }
@@ -86,6 +164,11 @@ func (s *server) migrationLoop(ctx context.Context) {
 }
 
 func (s *server) WakePendingCIGates() {
+	if s.panel != nil {
+		s.WakeQueue(workqueue.LaneMaintenance)
+
+		return
+	}
 	select {
 	case s.pendingCIGateChanged <- struct{}{}:
 	default:
@@ -209,9 +292,18 @@ func (s *server) sweepInstallation(
 		return bot.NewGitHubError(bot.ErrGitHubClient, err)
 	}
 
-	repos, err := s.reconcileSweepInstallation(ctx, client, installation)
-	if err != nil {
-		return err
+	targetID := storage.InstallationID(installation.ID)
+	var repos []github.Repository
+	if s.panel == nil {
+		repos, err = client.ListInstallationRepos(ctx)
+		if err != nil {
+			return bot.NewGitHubError(bot.ErrListRepos, err)
+		}
+	} else {
+		repos, err = s.storedSweepRepositories(ctx, targetID)
+		if err != nil {
+			return err
+		}
 	}
 
 	var sweepErr error
@@ -219,7 +311,7 @@ func (s *server) sweepInstallation(
 		// The repository is named here rather than added to the context,
 		// because bot.PollAllPRs adds it for the lines below that
 		if err := s.sweepRepo(
-			ctx, client, storage.InstallationID(installation.ID), installation.ID, repo,
+			ctx, client, targetID, installation.ID, repo,
 			pollReactions,
 		); err != nil {
 			logging.From(ctx).Error("repository sweep failed",
@@ -228,8 +320,8 @@ func (s *server) sweepInstallation(
 		}
 	}
 
-	// After the repositories, because planning compares against the catalog the
-	// reconcile above has just refreshed. Its failure is reported and does not
+	// After the repositories, because planning compares against the catalog.
+	// Its failure is reported and does not
 	// stop the sweep: org sync is a slower promise than answering a comment,
 	// and a planner that could not read GitHub gets another tick.
 	if err := s.reconcileInstallationSync(ctx, client, installation); err != nil {
@@ -238,6 +330,30 @@ func (s *server) sweepInstallation(
 	}
 
 	return sweepErr
+}
+
+func (s *server) storedSweepRepositories(
+	ctx context.Context,
+	targetID string,
+) ([]github.Repository, error) {
+	stored, err := s.store.ListRepositories(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list catalog repositories for sweep: %w", err)
+	}
+	repositories := make([]github.Repository, 0, len(stored))
+	for _, repository := range stored {
+		id, parseErr := strconv.ParseInt(repository.ID, 10, 64)
+		parts := strings.SplitN(repository.FullName, "/", 2)
+		if parseErr != nil || len(parts) != 2 {
+			return nil, fmt.Errorf("read catalog repository identity %q", repository.FullName)
+		}
+		repositories = append(repositories, github.Repository{
+			ID: id, Owner: parts[0], Name: parts[1], FullName: repository.FullName,
+			Private: repository.Private, DefaultBranch: repository.DefaultBranch,
+		})
+	}
+
+	return repositories, nil
 }
 
 // reconcileInstallationSync computes and applies whatever org sync is due.
@@ -264,56 +380,29 @@ func (s *server) reconcileInstallationSync(
 
 	targetID := storage.InstallationID(installation.ID)
 
-	if err := s.sync.PlanInstallation(
-		ctx, client, targetID, orgsync.TriggerReconcile,
-	); err != nil {
+	_, err := s.runRecurringWorkWithSummary(ctx, recurringWork{
+		kind: workqueue.KindSyncScan, targetID: &targetID, title: "Scan organization sync drift",
+	}, func() (string, error) {
+		return s.sync.PlanInstallationWithSummary(
+			ctx, client, targetID, orgsync.TriggerReconcile,
+		)
+	})
+	if err != nil {
 		return err
 	}
 
 	// After the plan rather than before it: this feeds a control that helps
 	// somebody type a path, and nothing here is planned from it.
-	s.sync.RefreshPaths(ctx, client, targetID, s.pathIndexInterval())
+	if _, err := s.runRecurringWork(ctx, recurringWork{
+		kind: workqueue.KindPathRefresh, targetID: &targetID, title: "Refresh repository paths",
+	}, func() error {
+		s.sync.RefreshPaths(ctx, client, targetID, 0)
+		return nil
+	}); err != nil {
+		return err
+	}
 
 	return s.sync.ApplyPlans(ctx)
-}
-
-func (s *server) reconcileSweepInstallation(
-	ctx context.Context,
-	client *github.Client,
-	installation github.Installation,
-) ([]github.Repository, error) {
-	s.catalogMu.Lock()
-	defer s.catalogMu.Unlock()
-
-	repos, err := client.ListInstallationRepos(ctx)
-	if err != nil {
-		return nil, bot.NewGitHubError(bot.ErrListRepos, err)
-	}
-	if s.panel == nil {
-		return repos, nil
-	}
-	snapshot, err := completeInstallationSnapshot(
-		ctx,
-		s.cfg.apiBaseURL,
-		client,
-		installation,
-		repos,
-		time.Now().UTC(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.reconcileInstallationSnapshot(ctx, snapshot); err != nil {
-		return nil, err
-	}
-	if s.gate != nil {
-		s.gate.Wake()
-	}
-	if s.panel != nil {
-		s.panel.Announce(snapshot.TargetID, "")
-	}
-
-	return repos, nil
 }
 
 // sweepRepo polls one repository, using the same code the poll subcommand runs.
@@ -350,9 +439,14 @@ func (s *server) sweepRepo(
 	// A failure is logged rather than returned: the sweep's job is to answer
 	// reactions, and an unsolicited pull request failing to open must not stop
 	// that.
-	if err := s.migrateRepositoryConfig(ctx, client, targetID, repo); err != nil {
+	repositoryID := storage.RepositoryID(repo.ID)
+	_, migrationErr := s.runRecurringWork(ctx, recurringWork{
+		kind: workqueue.KindConfigMigration, targetID: &targetID,
+		repositoryID: &repositoryID, title: "Check configuration migration",
+	}, func() error { return s.migrateRepositoryConfig(ctx, client, targetID, repo) })
+	if migrationErr != nil {
 		logging.From(ctx).Warn("could not propose the configuration migration",
-			"repo", bot.RepoFullName(repo.Owner, repo.Name), "error", err)
+			"repo", bot.RepoFullName(repo.Owner, repo.Name), "error", migrationErr)
 	}
 	var target storage.Target
 	var repository storage.Repository
@@ -404,6 +498,21 @@ func (s *server) sweepRepo(
 		return nil
 	}
 
+	_, err = s.runRecurringWork(ctx, recurringWork{
+		kind: workqueue.KindReactionScan, targetID: &targetID,
+		repositoryID: &repositoryID, title: "Discover pull request reactions",
+	}, func() error { return s.processRepositoryReactions(ctx, client, repo, bc, prs) })
+
+	return err
+}
+
+func (s *server) processRepositoryReactions(
+	ctx context.Context,
+	client *github.Client,
+	repo github.Repository,
+	bc *config.Config,
+	prs []map[string]interface{},
+) error {
 	codeowners, err := s.owners.Get(ctx, client, repo.Owner, repo.Name)
 	if err != nil {
 		return err

@@ -13,6 +13,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/pendingci/gate"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
@@ -31,7 +32,7 @@ func (s *server) initDeliveries(
 		webhook.Options{
 			Events:     serviceEvents(),
 			Screen:     s.screenDelivery,
-			Retry:      retryDelivery,
+			Retry:      s.retryDelivery,
 			Workers:    workerCount,
 			QueueDepth: queueDepth,
 			Timeouts: webhook.Timeouts{
@@ -218,6 +219,43 @@ func retryDelivery(cause error, attempt int) (time.Duration, bool) {
 	return webhook.DefaultRetry(cause, attempt)
 }
 
+func (s *server) retryDelivery(cause error, attempt int) (time.Duration, bool) {
+	if errors.Is(cause, bot.ErrRepoConfigInvalid) {
+		return 0, false
+	}
+	if s.store == nil {
+		return retryDelivery(cause, attempt)
+	}
+	policy, err := s.store.GetEffectiveQueuePolicy(
+		context.Background(), workqueue.KindWebhookDelivery, nil,
+	)
+	if err != nil {
+		return retryDelivery(cause, attempt)
+	}
+	retry, err := workqueue.ParseWebhookRetry(policy.Configuration, workqueue.WebhookRetry{
+		MaxDelay: 5 * time.Minute, MaxAttempts: 8,
+	})
+	if err != nil || attempt >= retry.MaxAttempts {
+		return 0, false
+	}
+	var classified interface{ Retryable() bool }
+	if errors.As(cause, &classified) && !classified.Retryable() {
+		return 0, false
+	}
+	delay := policy.RetryDelay
+	if delay <= 0 {
+		delay = 2 * time.Second
+	}
+	for index := 1; index < attempt && delay < retry.MaxDelay; index++ {
+		delay *= 2
+	}
+	if delay > retry.MaxDelay {
+		delay = retry.MaxDelay
+	}
+
+	return delay, true
+}
+
 func (s *server) deliveryObserver() webhook.Observer {
 	return webhook.Observer{
 		Received: func(event, outcome string) {
@@ -231,7 +269,7 @@ func (s *server) deliveryObserver() webhook.Observer {
 			result := metrics.ResultSuccess
 			if err != nil {
 				result = metrics.ResultFailure
-				if _, again := retryDelivery(err, delivery.Attempt); !again {
+				if _, again := s.retryDelivery(err, delivery.Attempt); !again {
 					s.recordFailure(delivery, action, err)
 				}
 			}

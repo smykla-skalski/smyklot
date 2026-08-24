@@ -191,6 +191,9 @@ func (s *Store) updatePendingCIWithEvents(
 			return pendingci.Request{}, err
 		}
 	}
+	if err := syncPendingCIQueue(ctx, tx, after); err != nil {
+		return pendingci.Request{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return pendingci.Request{}, fmt.Errorf("commit %s: %w", action, err)
 	}

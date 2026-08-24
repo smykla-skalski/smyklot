@@ -13,6 +13,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -24,6 +25,10 @@ import (
 // expires is not lost: the next reconcile computes the same answer from the
 // same state.
 const syncPlanTTL = 2 * time.Hour
+
+type queuePolicyReader interface {
+	GetEffectiveQueuePolicy(context.Context, workqueue.Kind, *string) (workqueue.Policy, error)
+}
 
 // PlanInstallation computes what one installation's repositories would need.
 //
@@ -37,9 +42,24 @@ func (s *Engine) PlanInstallation(
 	targetID string,
 	trigger orgsync.Trigger,
 ) error {
+	_, err := s.PlanInstallationWithSummary(ctx, client, targetID, trigger)
+
+	return err
+}
+
+// PlanInstallationWithSummary computes drift and names the durable result for
+// the queue ledger. Scheduled scans still avoid a domain audit row when there
+// is no drift, while a person who explicitly requested the scan can see the
+// affirmative "No changes" outcome on that queue occurrence.
+func (s *Engine) PlanInstallationWithSummary(
+	ctx context.Context,
+	client *github.Client,
+	targetID string,
+	trigger orgsync.Trigger,
+) (string, error) {
 	configs, err := s.store.ListSyncConfigs(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("read sync configuration: %w", err)
+		return "", fmt.Errorf("read sync configuration: %w", err)
 	}
 
 	// The stored installation, not the one the sweep is holding.
@@ -50,7 +70,7 @@ func (s *Engine) PlanInstallation(
 	// should be the one the work will be judged against.
 	target, err := s.store.GetTarget(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("read sync installation: %w", err)
+		return "", fmt.Errorf("read sync installation: %w", err)
 	}
 
 	switchedOn := switchedOnSyncKinds(configs)
@@ -58,7 +78,7 @@ func (s *Engine) PlanInstallation(
 
 	applied, err := s.store.ListSyncRepositoryState(ctx, targetID)
 	if err != nil {
-		return fmt.Errorf("read sync repository state: %w", err)
+		return "", fmt.Errorf("read sync repository state: %w", err)
 	}
 
 	// The state is read first and the rest of the catalog only where something
@@ -66,12 +86,12 @@ func (s *Engine) PlanInstallation(
 	// having read one table, which is what it did before a refusal had to be
 	// cleared - and a refusal to clear is the exception, not the tick.
 	if len(active) == 0 && !anyRefused(applied) {
-		return nil
+		return "No changes", nil
 	}
 
 	held, err := s.syncInventoryFor(ctx, targetID, applied)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	// Scoped by what is switched on rather than by what can act, so a kind
@@ -84,35 +104,48 @@ func (s *Engine) PlanInstallation(
 	// and the ways it stops looking include the kind being switched off, which
 	// is the case that returns first.
 	if err := s.clearStaleSyncProblems(ctx, scopes, held); err != nil {
-		return err
+		return "", err
 	}
 
 	if len(active) == 0 {
 		// Nothing switched on and permitted, so there is nothing to compare
 		// against.
-		return nil
+		return "No changes", nil
 	}
 
 	// A plan already in flight holds the installation's one live slot. Leaving
 	// it alone is what makes pressing "sync now" twice, or a reconcile landing
 	// beside it, idempotent rather than a conflict somebody has to read about.
 	if _, _, err := s.store.GetLiveSyncPlan(ctx, targetID); err == nil {
-		return nil
+		return "A live sync plan is already available", nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
-		return fmt.Errorf("read live sync plan: %w", err)
+		return "", fmt.Errorf("read live sync plan: %w", err)
 	}
 
 	actions, err := s.planSyncActions(ctx, client, active, scopes, held)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if len(actions) == 0 {
-		return nil
+		return "No changes", nil
 	}
 
 	// Whoever last saved the configuration being enforced, carried onto the
 	// plan. A reconcile is doing what they asked for on a timer, so naming them
 	// is truthful where a synthetic account would not be.
+	now := time.Now().UTC()
+	approvalTTL := syncPlanTTL
+	if reader, ok := s.store.(queuePolicyReader); ok {
+		policy, policyErr := reader.GetEffectiveQueuePolicy(
+			ctx, workqueue.KindSyncScan, &targetID,
+		)
+		if policyErr != nil {
+			return "", fmt.Errorf("read sync approval policy: %w", policyErr)
+		}
+		if policy.ApprovalTTL != nil {
+			approvalTTL = *policy.ApprovalTTL
+		}
+	}
 	plan, err := s.store.CreateSyncPlan(ctx, orgsync.PlanCreate{
 		ID:        newSyncPlanID(),
 		TargetID:  targetID,
@@ -120,17 +153,17 @@ func (s *Engine) PlanInstallation(
 		ActorID:   syncActor(active),
 		Digest:    orgsync.DigestScope(configs, held.overrides),
 		Actions:   actions,
-		Now:       time.Now().UTC(),
-		ExpiresAt: time.Now().UTC().Add(syncPlanTTL),
+		Now:       now,
+		ExpiresAt: now.Add(approvalTTL),
 	})
 	if err != nil {
 		// Another caller won the slot between the read above and this write.
 		// That is the index doing its job, not a failure worth reporting.
 		if errors.Is(err, storage.ErrConflict) {
-			return nil
+			return "A live sync plan is already available", nil
 		}
 
-		return fmt.Errorf("record sync plan: %w", err)
+		return "", fmt.Errorf("record sync plan: %w", err)
 	}
 
 	logging.From(ctx).Info("sync plan computed",
@@ -139,13 +172,17 @@ func (s *Engine) PlanInstallation(
 	// Only now, with a plan that has something in it. Every path above that
 	// returns early returns without writing an entry, which is the rule: a
 	// reconcile that found nothing is not an event.
-	return s.store.RecordSyncAudit(ctx, orgsync.AuditEntry{
+	if err := s.store.RecordSyncAudit(ctx, orgsync.AuditEntry{
 		TargetID: targetID, PlanID: plan.ID, ActorID: plan.ActorAccountID,
 		Action:  orgsync.AuditPlanned,
 		Summary: syncPlanSummary(plan.Counts),
 		Counts:  plan.Counts,
 		Now:     plan.ComputedAt,
-	})
+	}); err != nil {
+		return "", err
+	}
+
+	return "Sync plan created and waiting for approval", nil
 }
 
 // syncPlanSummary says what a plan would do, for somebody reading a history

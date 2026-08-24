@@ -194,7 +194,7 @@ WHERE repository_id = ? AND revision = ?`,
 
 func wakePendingCIChecksForRepository(
 	ctx context.Context,
-	tx runner,
+	tx *transaction,
 	repositoryID string,
 	readyAt time.Time,
 ) error {
@@ -218,13 +218,19 @@ WHERE repository_id = ? AND lifecycle = ? AND artifact_kind = ? AND merge_phase 
 	if _, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("read ready-gate pending CI wake result: %w", err)
 	}
+	if err := syncPendingCIQueueWhere(
+		ctx, tx, "repository_id = ? AND lifecycle = ? AND updated_at = ?",
+		repositoryID, pendingci.LifecycleArmed, readyAt,
+	); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func wakePendingCIRequestsForRepository(
 	ctx context.Context,
-	tx runner,
+	tx *transaction,
 	repositoryID string,
 	wakeAt time.Time,
 ) error {
@@ -247,13 +253,19 @@ WHERE repository_id = ? AND lifecycle = ? AND merge_phase = ?`,
 	if _, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("read repository pending CI wake result: %w", err)
 	}
+	if err := syncPendingCIQueueWhere(
+		ctx, tx, "repository_id = ? AND lifecycle = ? AND updated_at = ?",
+		repositoryID, pendingci.LifecycleArmed, wakeAt,
+	); err != nil {
+		return err
+	}
 
 	return nil
 }
 
 func wakePendingCIRequestsForTarget(
 	ctx context.Context,
-	tx runner,
+	tx *transaction,
 	targetID string,
 	wakeAt time.Time,
 ) error {
@@ -275,6 +287,12 @@ WHERE target_id = ? AND lifecycle = ? AND merge_phase = ?`,
 	}
 	if _, err := result.RowsAffected(); err != nil {
 		return fmt.Errorf("read target pending CI wake result: %w", err)
+	}
+	if err := syncPendingCIQueueWhere(
+		ctx, tx, "target_id = ? AND lifecycle = ? AND updated_at = ?",
+		targetID, pendingci.LifecycleArmed, wakeAt,
+	); err != nil {
+		return err
 	}
 
 	return nil

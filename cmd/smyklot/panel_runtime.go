@@ -73,6 +73,7 @@ func (s *server) initPanel() error {
 	}, adminpanel.Dependencies{
 		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
 		Gates:     s,
+		Queue:     s,
 		PendingCI: s.gate.NewControl(s.store),
 	})
 	if err != nil {

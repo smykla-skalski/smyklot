@@ -4,6 +4,7 @@ import (
 	"time"
 
 	adminpanel "github.com/smykla-skalski/smyklot/internal/panel"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -14,6 +15,7 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	resolved := config.Resolve(values.BotConfig)
 	s.runtimeMu.Lock()
 	pollIntervalChanged := s.runtimePollInterval != values.PollInterval
+	pathIndexIntervalChanged := s.runtimePathIndexInterval != values.PathIndexInterval
 	s.runtimeBotConfig = &resolved.Values
 	s.runtimePollInterval = values.PollInterval
 	s.runtimePathIndexInterval = values.PathIndexInterval
@@ -25,6 +27,9 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 		case s.pollIntervalChanged <- struct{}{}:
 		default:
 		}
+	}
+	if pathIndexIntervalChanged {
+		s.WakeQueue(workqueue.LaneMaintenance)
 	}
 }
 

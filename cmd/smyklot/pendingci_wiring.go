@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
@@ -9,6 +10,12 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
+
+type inlineExclusive struct{}
+
+func (inlineExclusive) Exclusive(_ context.Context, _ string, operation func() error) error {
+	return operation()
+}
 
 func (s *server) commandEnvironment(
 	client *github.Client,
@@ -27,7 +34,7 @@ func (s *server) commandEnvironment(
 		PendingCIMode:       guard,
 		PendingCI: &bot.PendingCICommand{
 			Store: s.store, Wake: s.gate.Wake,
-			Coordinator:        s.pendingCICoordinator,
+			Coordinator:        inlineExclusive{},
 			TargetID:           storage.InstallationID(event.Installation.ID),
 			InstallationID:     event.Installation.ID,
 			RepositoryID:       storage.RepositoryID(event.Repository.ID),
@@ -45,7 +52,7 @@ func (s *server) commandEnvironment(
 func (s *server) reactionCommandEnvironment(repositoryID string) bot.CommandEnvironment {
 	return bot.CommandEnvironment{PendingCI: &bot.PendingCICommand{
 		Store: s.store, Wake: s.gate.Wake,
-		Coordinator: s.pendingCICoordinator, RepositoryID: repositoryID,
+		Coordinator: inlineExclusive{}, RepositoryID: repositoryID,
 		Now: func() time.Time { return time.Now().UTC() },
 	}}
 }

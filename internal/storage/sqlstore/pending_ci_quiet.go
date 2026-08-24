@@ -143,6 +143,15 @@ WHERE id = ? AND lifecycle = ? AND next_check_trigger = ? AND revision = ?
 			return 0, fmt.Errorf("read pending CI quiet-period retune result: %w", err)
 		}
 		changed += affected
+		if affected == 1 {
+			updated, readErr := getPendingCIFrom(ctx, tx, deadline.id)
+			if readErr != nil {
+				return 0, readErr
+			}
+			if syncErr := syncPendingCIQueue(ctx, tx, updated); syncErr != nil {
+				return 0, syncErr
+			}
+		}
 	}
 
 	return changed, nil

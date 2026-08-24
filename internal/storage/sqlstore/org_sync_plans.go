@@ -3,12 +3,14 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // livePlanStates is the set the partial unique index is built on, spelled here
@@ -97,6 +99,13 @@ UPDATE sync_plans SET state = 'stale', finished_at = ?
 WHERE target_id = ? AND state IN `+livePlanStates, now, targetID); err != nil {
 		return fmt.Errorf("invalidate live sync plans: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE target_id = ? AND source_kind = 'sync_plan'
+  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'running', 'retrying')`,
+		now, now, targetID); err != nil {
+		return fmt.Errorf("invalidate sync plan queue items: %w", err)
+	}
 
 	return nil
 }
@@ -152,6 +161,18 @@ INSERT INTO sync_plan_actions (
 		); err != nil {
 			return orgsync.Plan{}, fmt.Errorf("insert sync plan action: %w", err)
 		}
+	}
+	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
+		ID: "sync-plan:" + create.ID, Kind: workqueue.KindSyncApply,
+		Lane: workqueue.LaneMaintenance, TargetID: create.TargetID,
+		SourceKind: "sync_plan", SourceID: create.ID, Title: "Organization sync",
+		Summary: fmt.Sprintf("%d to add, %d to change, %d to remove",
+			counts.Create, counts.Update, counts.Delete),
+		State: workqueue.StateAwaitingApproval, NotBefore: create.Now,
+		ActorID: create.ActorID, ProgressTotal: counts.Total(),
+		Details: map[string]any{"create": counts.Create, "update": counts.Update, "delete": counts.Delete},
+	}); err != nil {
+		return orgsync.Plan{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -314,6 +335,11 @@ UPDATE sync_plans SET state = 'approved', approved_at = ? WHERE id = ?`,
 	); err != nil {
 		return orgsync.Plan{}, fmt.Errorf("approve sync plan: %w", err)
 	}
+	if err := scheduleApprovedSyncPlan(
+		ctx, tx, approval.PlanID, approval.Now, approval.ActorID,
+	); err != nil {
+		return orgsync.Plan{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return orgsync.Plan{}, fmt.Errorf("commit sync plan approval: %w", err)
@@ -362,6 +388,12 @@ UPDATE sync_plans SET state = 'discarded', finished_at = ? WHERE id = ?`,
 	); err != nil {
 		return orgsync.Plan{}, fmt.Errorf("discard sync plan: %w", err)
 	}
+	if err := transitionLinkedQueueItem(
+		ctx, tx, "sync-plan:"+discard.PlanID, workqueue.StateCancelled,
+		discard.Now, "Sync plan discarded", discard.ActorID,
+	); err != nil {
+		return orgsync.Plan{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return orgsync.Plan{}, fmt.Errorf("commit sync plan discard: %w", err)
@@ -388,14 +420,20 @@ func (s *Store) LeaseSyncPlan(
 		return orgsync.PlanLease{}, fmt.Errorf("begin sync plan lease: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	choice, available, err := s.nextQueueDispatch(ctx, tx, workqueue.LaneMaintenance, now)
+	if err != nil {
+		return orgsync.PlanLease{}, err
+	}
+	if !available || choice.item.SourceKind != "sync_plan" {
+		return orgsync.PlanLease{}, nil
+	}
 
 	plan, err := scanSyncPlan(tx.QueryRowContext(ctx, `
 SELECT`+syncPlanColumns+`
 FROM sync_plans
-WHERE (state = 'approved' AND lease_expires_at IS NULL)
-   OR (state = 'applying' AND lease_expires_at <= ?)
-ORDER BY approved_at
-LIMIT 1`+s.dialect.RowLock(), now))
+WHERE id = ? AND ((state = 'approved' AND lease_expires_at IS NULL)
+   OR (state = 'applying' AND lease_expires_at <= ?))
+LIMIT 1`+s.dialect.RowLock(), choice.item.SourceID, now))
 	if errors.Is(err, sql.ErrNoRows) {
 		// Nothing due is the ordinary answer on most ticks, not a failure.
 		return orgsync.PlanLease{}, nil
@@ -411,6 +449,14 @@ UPDATE sync_plans SET
 WHERE id = ?`, now, until, plan.ID,
 	); err != nil {
 		return orgsync.PlanLease{}, fmt.Errorf("lease sync plan: %w", err)
+	}
+	if err := leaseLinkedQueueItem(
+		ctx, tx, "sync-plan:"+plan.ID, now, until, "Applying organization sync plan",
+	); err != nil {
+		return orgsync.PlanLease{}, err
+	}
+	if err := advanceQueueDispatch(ctx, tx, choice, now); err != nil {
+		return orgsync.PlanLease{}, err
 	}
 
 	// Every action, not only the pending ones.
@@ -457,20 +503,69 @@ func (s *Store) RecordSyncActionOutcome(
 	ctx context.Context,
 	outcome orgsync.ActionOutcome,
 ) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sync action outcome: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var (
+		planID, repositoryID, subject, previousError, previousBlocker string
+		kind                                                          orgsync.Kind
+		previousState                                                 orgsync.ActionState
+	)
+	err = tx.QueryRowContext(ctx, `
+SELECT plan_id, repository_id, kind, subject, state, error, blocker
+FROM sync_plan_actions WHERE id = ?`+s.dialect.RowLock(), outcome.ActionID).Scan(
+		&planID, &repositoryID, &kind, &subject, &previousState, &previousError, &previousBlocker,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return storage.ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("read sync action outcome: %w", err)
+	}
+	if previousState == outcome.State && previousError == outcome.Error &&
+		previousBlocker == string(outcome.Blocker) {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx, `
 UPDATE sync_plan_actions SET state = ?, error = ?, blocker = ? WHERE id = ?`,
 		outcome.State, outcome.Error, string(outcome.Blocker), outcome.ActionID,
-	)
-	if err != nil {
+	); err != nil {
 		return fmt.Errorf("record sync action outcome: %w", err)
 	}
-
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("record sync action outcome: %w", err)
+	var completed, total int
+	if err := tx.QueryRowContext(ctx, `
+SELECT SUM(CASE WHEN state = 'pending' THEN 0 ELSE 1 END), COUNT(*)
+FROM sync_plan_actions WHERE plan_id = ?`, planID).Scan(&completed, &total); err != nil {
+		return fmt.Errorf("count sync action progress: %w", err)
 	}
-	if affected == 0 {
-		return storage.ErrNotFound
+	now := time.Now().UTC()
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET progress_current = ?, progress_total = ?, updated_at = ?,
+    revision = revision + 1 WHERE id = ?`,
+		completed, total, now, "sync-plan:"+planID,
+	); err != nil {
+		return fmt.Errorf("update sync queue progress: %w", err)
+	}
+	details, err := json.Marshal(map[string]any{
+		"action_id": outcome.ActionID, "action_state": outcome.State,
+		"repository_id": repositoryID, "kind": kind, "subject": subject,
+		"progress_current": completed, "progress_total": total,
+	})
+	if err != nil {
+		return fmt.Errorf("encode sync queue progress: %w", err)
+	}
+	summary := fmt.Sprintf("%s %s: %s", outcome.State, kind, subject)
+	if err := insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: "sync-plan:" + planID, ActorID: queueEventActor("system"),
+		Kind: "progress", State: workqueue.StateRunning, Summary: summary,
+		Details: details, CreatedAt: now,
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sync action outcome: %w", err)
 	}
 
 	return nil
@@ -515,6 +610,16 @@ UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE 
 		outcome.State, outcome.Now, outcome.PlanID,
 	); err != nil {
 		return fmt.Errorf("finish sync plan: %w", err)
+	}
+	queueState := workqueue.StateFailed
+	if outcome.State == orgsync.PlanApplied {
+		queueState = workqueue.StateSucceeded
+	}
+	if err := transitionLinkedQueueItem(
+		ctx, tx, "sync-plan:"+outcome.PlanID, queueState, outcome.Now,
+		"Organization sync finished", "system",
+	); err != nil {
+		return err
 	}
 
 	for _, state := range outcome.Applied {
@@ -597,11 +702,24 @@ VALUES (?, ?, ?, ?, ?)`,
 // abandoned because its expiry passed - it is being applied, and its lease is
 // what says whether that is still true.
 func (s *Store) ExpireSyncPlans(ctx context.Context, now time.Time) error {
-	if _, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sync plan expiry: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
 UPDATE sync_plans SET state = 'expired', finished_at = ?
 WHERE state IN ('computed', 'approved') AND expires_at <= ?`, now, now); err != nil {
 		return fmt.Errorf("expire sync plans: %w", err)
 	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE source_kind = 'sync_plan'
+  AND source_id IN (SELECT id FROM sync_plans WHERE state = 'expired' AND finished_at = ?)
+  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'retrying')`,
+		now, now, now); err != nil {
+		return fmt.Errorf("expire sync plan queue items: %w", err)
+	}
 
-	return nil
+	return tx.Commit()
 }

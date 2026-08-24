@@ -82,6 +82,14 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 		if err := recordPendingCIEvent(ctx, tx, event); err != nil {
 			return 0, err
 		}
+		request.Schedule = pendingci.ScheduleActive
+		request.NextCheckAt = wake.OccurredAt
+		request.NextCheckTrigger = pendingci.TriggerWebhook
+		request.LeaseExpiresAt = nil
+		request.UpdatedAt = wake.OccurredAt
+		if err := syncPendingCIQueue(ctx, tx, request); err != nil {
+			return 0, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return 0, fmt.Errorf("commit pending CI head wake: %w", err)
@@ -151,10 +159,6 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	)); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("commit pending CI pull request finish: %w", err)
-	}
-
 	request.Lifecycle = change.Lifecycle
 	request.Reason = change.Reason
 	request.LeaseExpiresAt = nil
@@ -167,6 +171,12 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	request.CleanupAttempts = 0
 	request.CleanupError = ""
 	request.Revision++
+	if err := syncPendingCIQueue(ctx, tx, request); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit pending CI pull request finish: %w", err)
+	}
 
 	return &request, nil
 }
@@ -228,6 +238,9 @@ WHERE repository_id = ? AND lifecycle = ? AND reason = ? AND finished_at = ?`,
 			change.Reason,
 			change.CancelledAt,
 		)); err != nil {
+			return nil, err
+		}
+		if err := syncPendingCIQueue(ctx, tx, request); err != nil {
 			return nil, err
 		}
 	}

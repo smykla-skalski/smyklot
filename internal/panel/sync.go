@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // syncConfigRequest carries one kind's fields into the shared settings batch
@@ -75,16 +77,18 @@ var emptyDocument = json.RawMessage(`{}`)
 // syncPlanDTO is a plan as a person reads it: what it would do, and enough to
 // approve exactly this one.
 type syncPlanDTO struct {
-	ID       string          `json:"id"`
-	Trigger  string          `json:"trigger"`
-	State    string          `json:"state"`
-	Digest   string          `json:"digest"`
-	Counts   syncCountsDTO   `json:"counts"`
-	Actions  []syncActionDTO `json:"actions"`
-	Computed time.Time       `json:"computed_at"`
-	Expires  time.Time       `json:"expires_at"`
-	Approved *time.Time      `json:"approved_at,omitempty"`
-	Finished *time.Time      `json:"finished_at,omitempty"`
+	ID             string          `json:"id"`
+	Trigger        string          `json:"trigger"`
+	State          string          `json:"state"`
+	Digest         string          `json:"digest"`
+	Counts         syncCountsDTO   `json:"counts"`
+	Actions        []syncActionDTO `json:"actions"`
+	Computed       time.Time       `json:"computed_at"`
+	Expires        time.Time       `json:"expires_at"`
+	Approved       *time.Time      `json:"approved_at,omitempty"`
+	Finished       *time.Time      `json:"finished_at,omitempty"`
+	ExecutionStage string          `json:"execution_stage"`
+	Queue          *workqueue.Item `json:"queue_item,omitempty"`
 }
 
 type syncCountsDTO struct {
@@ -103,6 +107,17 @@ type syncActionDTO struct {
 	State      string `json:"state"`
 	Error      string `json:"error,omitempty"`
 	Blocker    string `json:"blocker,omitempty"`
+}
+
+type syncRunNowInput struct {
+	ExpectedRevision int64  `json:"expected_revision"`
+	Reason           string `json:"reason"`
+}
+
+type syncRunNowResponse struct {
+	Status string          `json:"status"`
+	Plan   *syncPlanDTO    `json:"plan,omitempty"`
+	Queue  *workqueue.Item `json:"queue_item,omitempty"`
 }
 
 // syncKind reads the kind from the address, refusing one this version does not
@@ -369,7 +384,7 @@ func (s *Server) syncEditorLogin(ctx context.Context, accountID string) (string,
 
 // getSyncPlan reads whatever plan an installation has in flight.
 func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
-	_, target, _, ok := s.requireTarget(w, r, false)
+	_, target, access, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
@@ -393,8 +408,123 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	writeJSON(w, http.StatusOK,
-		map[string]any{syncPlanKey: syncPlanToDTO(plan, actions, repositoryNames)})
+	dto := syncPlanToDTO(plan, actions, repositoryNames)
+	if err := s.attachSyncPlanQueue(r.Context(), &dto, access.Role); err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto})
+}
+
+func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	account, target, access, ok := s.requireTarget(w, r, false)
+	if !ok {
+		return
+	}
+	if access.Role != storage.InstallationRoleAdmin && access.Role != storage.InstallationRoleOwner {
+		s.writeError(w, http.StatusForbidden, "forbidden", "Admin or Owner access is required")
+		return
+	}
+	var input syncRunNowInput
+	if !decodeJSON(w, r, &input) {
+		return
+	}
+	input.Reason = strings.TrimSpace(input.Reason)
+	if input.Reason == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "run now requires a reason")
+		return
+	}
+	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
+	if err == nil {
+		s.handleLiveSyncRunNow(w, r, account, target, access.Role, input, plan, actions)
+		return
+	}
+	if !errors.Is(err, storage.ErrNotFound) {
+		s.writeStorageError(w, err)
+		return
+	}
+	item, err := s.store.RequestRecurringWork(r.Context(), workqueue.RecurringRequest{
+		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
+		Title: "Scan organization sync drift", ActorID: account.ID,
+		Reason: input.Reason, Now: s.now().UTC(),
+	})
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	prepareQueueItem(&item, true, false)
+	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
+	s.wakeScheduledWork(workqueue.LaneMaintenance)
+	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "scan_queued", Queue: &item})
+}
+
+func (s *Server) handleLiveSyncRunNow(
+	w http.ResponseWriter,
+	r *http.Request,
+	account storage.Account,
+	target storage.Target,
+	role storage.InstallationRole,
+	input syncRunNowInput,
+	plan orgsync.Plan,
+	actions []orgsync.Action,
+) {
+	dto, err := s.syncPlanDTO(r.Context(), plan, actions, role)
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	switch plan.State {
+	case orgsync.PlanComputed:
+		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "approval_required", Plan: &dto})
+	case orgsync.PlanApplying:
+		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "already_running", Plan: &dto})
+	case orgsync.PlanApproved:
+		if dto.Queue == nil || input.ExpectedRevision != dto.Queue.Revision {
+			writeJSON(w, http.StatusConflict, map[string]any{
+				"code": "stale_revision", "message": "sync queue item changed; review the latest state",
+				"current": dto,
+			})
+			return
+		}
+		item, actionErr := s.store.ApplyQueueAction(r.Context(), dto.Queue.ID, workqueue.ItemAction{
+			Type: workqueue.ActionRunNow, ExpectedRevision: input.ExpectedRevision,
+			ActorID: account.ID, Reason: input.Reason, ChangedAt: s.now().UTC(),
+		})
+		if actionErr != nil {
+			s.writeStorageError(w, actionErr)
+			return
+		}
+		prepareQueueItem(&item, true, false)
+		dto.Queue = &item
+		s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
+		s.wakeScheduledWork(workqueue.LaneMaintenance)
+		writeJSON(w, http.StatusAccepted, syncRunNowResponse{
+			Status: "plan_dispatched", Plan: &dto, Queue: &item,
+		})
+	default:
+		s.writeError(w, http.StatusConflict, "unsupported_plan_state", "sync plan cannot run now")
+	}
+}
+
+func (s *Server) syncPlanDTO(
+	ctx context.Context,
+	plan orgsync.Plan,
+	actions []orgsync.Action,
+	role storage.InstallationRole,
+) (syncPlanDTO, error) {
+	repositoryNames, err := s.syncPlanRepositoryNames(ctx, plan.TargetID, actions)
+	if err != nil {
+		return syncPlanDTO{}, err
+	}
+	dto := syncPlanToDTO(plan, actions, repositoryNames)
+	if err := s.attachSyncPlanQueue(ctx, &dto, role); err != nil {
+		return syncPlanDTO{}, err
+	}
+
+	return dto, nil
 }
 
 // postSyncPlanApproval accepts a plan somebody has read.
@@ -402,7 +532,7 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
-	account, target, _, ok := s.requireTarget(w, r, true)
+	account, target, access, ok := s.requireTarget(w, r, true)
 	if !ok {
 		return
 	}
@@ -453,6 +583,7 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Announce(target.ID, "")
+	s.wakeScheduledWork(workqueue.LaneMaintenance)
 
 	_, actions, err := s.store.GetSyncPlan(r.Context(), target.ID, plan.ID)
 	if err != nil {
@@ -467,8 +598,31 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK,
-		map[string]any{syncPlanKey: syncPlanToDTO(plan, actions, repositoryNames)})
+	dto := syncPlanToDTO(plan, actions, repositoryNames)
+	if err := s.attachSyncPlanQueue(r.Context(), &dto, access.Role); err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto})
+}
+
+func (s *Server) attachSyncPlanQueue(
+	ctx context.Context,
+	dto *syncPlanDTO,
+	role storage.InstallationRole,
+) error {
+	item, err := s.store.GetQueueItem(ctx, "sync-plan:"+dto.ID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	canControl := role == storage.InstallationRoleAdmin || role == storage.InstallationRoleOwner
+	prepareQueueItem(&item, canControl, false)
+	dto.Queue = &item
+
+	return nil
 }
 
 func syncApprovalSummary(counts orgsync.Counts) string {
@@ -510,11 +664,12 @@ func syncPlanToDTO(
 			Update: plan.Counts.Update,
 			Delete: plan.Counts.Delete,
 		},
-		Actions:  make([]syncActionDTO, 0, len(actions)),
-		Computed: plan.ComputedAt,
-		Expires:  plan.ExpiresAt,
-		Approved: plan.ApprovedAt,
-		Finished: plan.FinishedAt,
+		Actions:        make([]syncActionDTO, 0, len(actions)),
+		Computed:       plan.ComputedAt,
+		Expires:        plan.ExpiresAt,
+		Approved:       plan.ApprovedAt,
+		Finished:       plan.FinishedAt,
+		ExecutionStage: syncExecutionStage(plan, actions),
 	}
 
 	for _, action := range actions {
@@ -536,4 +691,31 @@ func syncPlanToDTO(
 	}
 
 	return dto
+}
+
+func syncExecutionStage(plan orgsync.Plan, actions []orgsync.Action) string {
+	total, settled := len(actions), 0
+	for _, action := range actions {
+		if action.State != orgsync.ActionPending {
+			settled++
+		}
+	}
+	switch plan.State {
+	case orgsync.PlanComputed:
+		return "Waiting for approval"
+	case orgsync.PlanApproved:
+		return "Waiting for scheduled dispatch"
+	case orgsync.PlanApplying:
+		return fmt.Sprintf("Applying changes - %d of %d settled", settled, total)
+	case orgsync.PlanApplied:
+		return "All changes applied"
+	case orgsync.PlanFailed:
+		return "Execution finished with failures"
+	case orgsync.PlanStale:
+		return "A fresh drift scan is required"
+	case orgsync.PlanExpired:
+		return "Approval expired - a fresh drift scan is required"
+	default:
+		return string(plan.State)
+	}
 }

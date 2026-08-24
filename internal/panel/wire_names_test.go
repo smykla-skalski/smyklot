@@ -11,6 +11,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // Every name the panel API puts on the wire is lower_snake_case.
@@ -129,6 +130,18 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	); err != nil {
 		t.Fatal(err)
 	}
+	targetID := target
+	profileID := workqueue.AlwaysOpenProfileID
+	if _, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
+		ID: "wire-name-queue", Kind: workqueue.KindPathRefresh,
+		Lane: workqueue.LaneMaintenance, TargetID: &targetID,
+		Title: "Refresh repository paths", State: workqueue.StateReady,
+		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
+		ProfileID: &profileID, NotBefore: harness.now,
+		EligibleAt: harness.now, CreatedAt: harness.now, UpdatedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // The addresses the panel reads from, which is every GET the server registers.
@@ -164,6 +177,10 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/sync/files/context",
 		"/panel/api/v1/targets/" + target + "/audit",
 		"/panel/api/v1/targets/" + target + "/failures",
+		"/panel/api/v1/targets/" + target + "/queue",
+		"/panel/api/v1/targets/" + target + "/queue/wire-name-queue",
+		"/panel/api/v1/targets/" + target + "/schedules",
+		"/panel/api/v1/targets/" + target + "/schedule-requests",
 		"/panel/api/v1/root/overview",
 		"/panel/api/v1/root/pending-ci/7",
 		"/panel/api/v1/root/installations",
@@ -174,6 +191,11 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/root/runtime/settings",
 		"/panel/api/v1/root/runtime/settings/checkpoints/baseline",
 		"/panel/api/v1/root/runtime/settings/checkpoints/1",
+		"/panel/api/v1/root/queue",
+		"/panel/api/v1/root/queue/wire-name-queue",
+		"/panel/api/v1/root/schedule-profiles",
+		"/panel/api/v1/root/job-policies",
+		"/panel/api/v1/root/schedule-requests",
 		"/panel/api/v1/root/installations/" + target + "/elevation",
 		"/panel/api/v1/root/installations/" + target + "/settings",
 		"/panel/api/v1/root/installations/" + target + "/settings/checkpoints/baseline",
@@ -201,6 +223,7 @@ var readableRoutePlaceholders = map[string]string{
 	"{request}": "7",
 	"{history}": "audit",
 	"{access}":  "users",
+	"{queue}":   "wire-name-queue",
 }
 
 var wireName = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
@@ -248,7 +271,7 @@ func TestPanelWireNameProbesCoverEveryReadableRoute(t *testing.T) {
 			continue
 		}
 		concrete := match[1]
-		for _, placeholders := range []map[string]string{routePlaceholders, readableRoutePlaceholders} {
+		for _, placeholders := range []map[string]string{readableRoutePlaceholders, routePlaceholders} {
 			for placeholder, value := range placeholders {
 				concrete = strings.ReplaceAll(concrete, placeholder, value)
 			}

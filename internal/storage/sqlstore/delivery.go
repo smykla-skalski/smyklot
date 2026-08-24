@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // ClaimDelivery atomically accepts an event revision once and distinguishes a
@@ -72,6 +74,18 @@ RETURNING id`,
 
 		return storage.DeliveryClaimResult{Disposition: disposition}, nil
 	}
+	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
+		ID: "delivery:" + strconv.FormatInt(claimID, 10), Kind: workqueue.KindWebhookDelivery,
+		Lane: workqueue.LaneWebhook, TargetID: claim.TargetID,
+		RepositoryID: claim.RepositoryID, SourceKind: "delivery",
+		SourceID: strconv.FormatInt(claimID, 10), Title: "Webhook: " + claim.Event,
+		Summary: claim.RepositoryFullName, State: workqueue.StateScheduled,
+		NotBefore: claim.ClaimedAt,
+		ActorID:   "system",
+		Details:   map[string]any{"delivery_id": claim.DeliveryID, "event": claim.Event},
+	}); err != nil {
+		return storage.DeliveryClaimResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return storage.DeliveryClaimResult{}, fmt.Errorf("commit delivery claim: %w", err)
 	}
@@ -96,7 +110,7 @@ func (s *Store) LeaseDelivery(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	work, err := selectReadyDelivery(ctx, tx, now)
+	work, choice, err := s.selectReadyDelivery(ctx, tx, now)
 	if errors.Is(err, sql.ErrNoRows) {
 		availableAt, availableErr := nextDeliveryAvailability(ctx, tx)
 		if availableErr != nil {
@@ -133,6 +147,15 @@ WHERE id = ? AND status = ? AND payload IS NOT NULL
 	if changed != 1 {
 		return storage.DeliveryLeaseResult{}, storage.ErrConflict
 	}
+	if err := leaseLinkedQueueItem(
+		ctx, tx, "delivery:"+strconv.FormatInt(work.ID, 10), now, leaseExpiresAt,
+		"Delivering webhook",
+	); err != nil {
+		return storage.DeliveryLeaseResult{}, err
+	}
+	if err := advanceQueueDispatch(ctx, tx, choice, now); err != nil {
+		return storage.DeliveryLeaseResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return storage.DeliveryLeaseResult{}, fmt.Errorf("commit delivery lease: %w", err)
 	}
@@ -141,22 +164,34 @@ WHERE id = ? AND status = ? AND payload IS NOT NULL
 	return storage.DeliveryLeaseResult{Work: &work}, nil
 }
 
-func selectReadyDelivery(
+func (s *Store) selectReadyDelivery(
 	ctx context.Context,
 	tx *transaction,
 	now time.Time,
-) (storage.DeliveryWork, error) {
+) (storage.DeliveryWork, queueDispatchChoice, error) {
+	choice, available, err := s.nextQueueDispatch(ctx, tx, workqueue.LaneWebhook, now)
+	if err != nil {
+		return storage.DeliveryWork{}, queueDispatchChoice{}, err
+	}
+	if !available {
+		return storage.DeliveryWork{}, queueDispatchChoice{}, sql.ErrNoRows
+	}
+	if choice.item.SourceKind != "delivery" {
+		return storage.DeliveryWork{}, queueDispatchChoice{}, fmt.Errorf(
+			"webhook queue item %q has unsupported source %q",
+			choice.item.ID, choice.item.SourceKind,
+		)
+	}
 	var work storage.DeliveryWork
 	var repositoryID sql.NullString
-	err := tx.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 SELECT id, claim_key, delivery_id, target_id, repository_id,
        repository_full_name, event, payload, attempt_count
 FROM deliveries
-WHERE status = ? AND payload IS NOT NULL
+WHERE id = ? AND status = ? AND payload IS NOT NULL
   AND next_attempt_at <= ?
-  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-ORDER BY next_attempt_at, id
-LIMIT 1`,
+	AND (lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+		choice.item.SourceID,
 		storage.DeliveryRunning,
 		now,
 		now,
@@ -173,16 +208,16 @@ LIMIT 1`,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return storage.DeliveryWork{}, sql.ErrNoRows
+			return storage.DeliveryWork{}, queueDispatchChoice{}, sql.ErrNoRows
 		}
 
-		return storage.DeliveryWork{}, fmt.Errorf("select ready delivery: %w", err)
+		return storage.DeliveryWork{}, queueDispatchChoice{}, fmt.Errorf("select ready delivery: %w", err)
 	}
 	if repositoryID.Valid {
 		work.RepositoryID = &repositoryID.String
 	}
 
-	return work, nil
+	return work, choice, nil
 }
 
 func nextDeliveryAvailability(ctx context.Context, tx *transaction) (*time.Time, error) {
@@ -211,7 +246,12 @@ WHERE status = ? AND payload IS NOT NULL`, storage.DeliveryRunning).Scan(&availa
 // RetryDelivery clears an executor lease and schedules a transiently failed
 // payload for another attempt.
 func (s *Store) RetryDelivery(ctx context.Context, change storage.DeliveryRetryChange) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delivery retry: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
 UPDATE deliveries SET
     stage = ?,
     reason = ?,
@@ -228,14 +268,37 @@ WHERE id = ? AND status = ?`,
 	if err != nil {
 		return fmt.Errorf("retry delivery: %w", err)
 	}
+	if err := checkDeliveryUpdateFrom(ctx, tx, result, change.ClaimID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'retrying', not_before = ?, eligible_at = ?,
+    blocked_reason = ?, lease_expires_at = NULL, updated_at = ?, revision = revision + 1
+WHERE id = ?`, change.RetryAt, change.RetryAt, change.Reason, change.RetryAt,
+		"delivery:"+strconv.FormatInt(change.ClaimID, 10)); err != nil {
+		return fmt.Errorf("schedule delivery queue retry: %w", err)
+	}
+	if err := insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID:  "delivery:" + strconv.FormatInt(change.ClaimID, 10),
+		ActorID: queueEventActor("system"),
+		Kind:    "retry_scheduled", State: workqueue.StateRetrying,
+		Summary: change.Reason, CreatedAt: change.RetryAt,
+	}); err != nil {
+		return err
+	}
 
-	return s.checkDeliveryUpdate(ctx, result, change.ClaimID)
+	return tx.Commit()
 }
 
 // AbandonDelivery releases a running claim that never entered execution, such
 // as a delivery refused because the bounded worker queue was full.
 func (s *Store) AbandonDelivery(ctx context.Context, claimID int64) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delivery abandon: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
 DELETE FROM deliveries WHERE id = ? AND status = ?`,
 		claimID,
 		storage.DeliveryRunning,
@@ -243,8 +306,17 @@ DELETE FROM deliveries WHERE id = ? AND status = ?`,
 	if err != nil {
 		return fmt.Errorf("abandon delivery: %w", err)
 	}
+	if err := checkDeliveryUpdateFrom(ctx, tx, result, claimID); err != nil {
+		return err
+	}
+	if err := transitionLinkedQueueItem(
+		ctx, tx, "delivery:"+strconv.FormatInt(claimID, 10),
+		workqueue.StateCancelled, time.Now().UTC(), "Webhook delivery abandoned", "system",
+	); err != nil {
+		return err
+	}
 
-	return s.checkDeliveryUpdate(ctx, result, claimID)
+	return tx.Commit()
 }
 
 // CompleteDelivery marks a running delivery successful. Repeating the same
@@ -254,7 +326,12 @@ func (s *Store) CompleteDelivery(
 	claimID int64,
 	completedAt time.Time,
 ) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delivery completion: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
 UPDATE deliveries SET status = ?, finished_at = ?
 WHERE id = ? AND status IN (?, ?)`,
 		storage.DeliverySucceeded,
@@ -266,8 +343,17 @@ WHERE id = ? AND status IN (?, ?)`,
 	if err != nil {
 		return fmt.Errorf("complete delivery: %w", err)
 	}
+	if err := checkDeliveryUpdateFrom(ctx, tx, result, claimID); err != nil {
+		return err
+	}
+	if err := transitionLinkedQueueItem(
+		ctx, tx, "delivery:"+strconv.FormatInt(claimID, 10),
+		workqueue.StateSucceeded, completedAt, "Webhook delivered", "system",
+	); err != nil {
+		return err
+	}
 
-	return s.checkDeliveryUpdate(ctx, result, claimID)
+	return tx.Commit()
 }
 
 // FailDelivery marks a running delivery failed with a sanitized reason.
@@ -276,7 +362,12 @@ func (s *Store) FailDelivery(
 	ctx context.Context,
 	change storage.DeliveryFailureChange,
 ) error {
-	result, err := s.db.ExecContext(ctx, `
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin delivery failure: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
 UPDATE deliveries SET
     status = ?,
     stage = ?,
@@ -296,8 +387,17 @@ WHERE id = ? AND status IN (?, ?)`,
 	if err != nil {
 		return fmt.Errorf("fail delivery: %w", err)
 	}
+	if err := checkDeliveryUpdateFrom(ctx, tx, result, change.ClaimID); err != nil {
+		return err
+	}
+	if err := transitionLinkedQueueItem(
+		ctx, tx, "delivery:"+strconv.FormatInt(change.ClaimID, 10),
+		workqueue.StateFailed, change.FailedAt, change.Reason, "system",
+	); err != nil {
+		return err
+	}
 
-	return s.checkDeliveryUpdate(ctx, result, change.ClaimID)
+	return tx.Commit()
 }
 
 // RecoverRunningDeliveries requeues durable payloads that belonged to the
@@ -340,6 +440,21 @@ WHERE status = ? AND payload IS NULL`,
 		storage.DeliveryRunning,
 	); err != nil {
 		return fmt.Errorf("recover running deliveries: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'retrying', not_before = ?, eligible_at = ?,
+    lease_expires_at = NULL, blocked_reason = 'Recovered after restart',
+    updated_at = ?, revision = revision + 1
+WHERE source_kind = 'delivery' AND state = 'running'`,
+		recoveredAt, recoveredAt, recoveredAt); err != nil {
+		return fmt.Errorf("recover delivery queue items: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO queue_events (queue_item_id, kind, state, summary, details, created_at)
+SELECT id, 'lease_recovered', 'retrying', 'Recovered after restart', '{}', ?
+FROM queue_items WHERE source_kind = 'delivery' AND state = 'retrying' AND updated_at = ?`,
+		recoveredAt, recoveredAt); err != nil {
+		return fmt.Errorf("audit delivery queue recovery: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit running delivery recovery: %w", err)
@@ -451,6 +566,15 @@ func (s *Store) checkDeliveryUpdate(
 	result sql.Result,
 	claimID int64,
 ) error {
+	return checkDeliveryUpdateFrom(ctx, s.db, result, claimID)
+}
+
+func checkDeliveryUpdateFrom(
+	ctx context.Context,
+	runner runner,
+	result sql.Result,
+	claimID int64,
+) error {
 	changed, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("read delivery update result: %w", err)
@@ -461,7 +585,7 @@ func (s *Store) checkDeliveryUpdate(
 	}
 
 	var exists int
-	if err := s.db.QueryRowContext(ctx, `
+	if err := runner.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM deliveries WHERE id = ?`, claimID).Scan(&exists); err != nil {
 		return fmt.Errorf("classify delivery update: %w", err)
 	}

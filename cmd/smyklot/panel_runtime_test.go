@@ -300,10 +300,11 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		DeferCleanup(connection.CloseNow)
 
 		events := make(chan runtimePanelEvent, 4)
+		readContext := GinkgoT().Context()
 		go func() {
 			for {
 				var event runtimePanelEvent
-				if err := wsjson.Read(GinkgoT().Context(), connection, &event); err != nil {
+				if err := wsjson.Read(readContext, connection, &event); err != nil {
 					return
 				}
 				events <- event
@@ -313,14 +314,23 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Eventually(events).Should(Receive(&event))
 		Expect(event.Version).To(Equal(1))
 		Expect(event.Type).To(Equal("ready"))
+		expectEventType := func(eventType string) {
+			Eventually(func() string {
+				select {
+				case event = <-events:
+					return event.Type
+				default:
+					return ""
+				}
+			}).Should(Equal(eventType))
+		}
 
 		stub.installations = `[
 			{"id":111,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}},
 			{"id":222,"account":{"id":8,"login":"another-org","type":"Organization"}}
 		]`
 		service.maintainPanel(GinkgoT().Context())
-		Eventually(events).Should(Receive(&event))
-		Expect(event.Type).To(Equal("resync"))
+		expectEventType("resync")
 
 		targets, err := service.store.ListTargets(GinkgoT().Context(), owner.ID, time.Now().UTC())
 		Expect(err).NotTo(HaveOccurred())
@@ -338,8 +348,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 			"smyklot",
 		)
 		Expect(err).NotTo(HaveOccurred())
-		Eventually(events).Should(Receive(&event))
-		Expect(event.Type).To(Equal("repository.changed"))
+		expectEventType("repository.changed")
 		Expect(event.TargetID).To(Equal("github:installation:222"))
 		Expect(event.RepositoryID).To(Equal("github:repository:31"))
 		_, err = service.serviceConfig(

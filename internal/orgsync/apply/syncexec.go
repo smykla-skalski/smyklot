@@ -30,14 +30,23 @@ const syncLease = 15 * time.Minute
 // is almost entirely waiting on GitHub. Draining a queue here would let one
 // installation's large plan delay every other installation's small one.
 func (s *Engine) ApplyPlans(ctx context.Context) error {
+	_, err := s.ApplyOnePlan(ctx)
+
+	return err
+}
+
+// ApplyOnePlan applies at most one queue-selected plan and reports whether it
+// claimed work. The maintenance dispatcher uses the boolean to keep draining
+// the single serial lane without guessing whether a plan was eligible.
+func (s *Engine) ApplyOnePlan(ctx context.Context) (bool, error) {
 	now := time.Now().UTC()
 
 	lease, err := s.store.LeaseSyncPlan(ctx, now, now.Add(syncLease))
 	if err != nil {
-		return fmt.Errorf("lease sync plan: %w", err)
+		return false, fmt.Errorf("lease sync plan: %w", err)
 	}
 	if !lease.Found {
-		return nil
+		return false, nil
 	}
 
 	ctx = logging.With(ctx, "sync_plan", lease.Plan.ID, "target", lease.Plan.TargetID)
@@ -46,7 +55,7 @@ func (s *Engine) ApplyPlans(ctx context.Context) error {
 	if err != nil {
 		// The plan keeps its lease and is offered again when that runs out.
 		// Closing it here would record a verdict on work that was never tried.
-		return err
+		return true, err
 	}
 
 	finishedAt := time.Now().UTC()
@@ -65,15 +74,15 @@ func (s *Engine) ApplyPlans(ctx context.Context) error {
 		logging.From(ctx).Warn("sync plan went stale while it was being applied",
 			"actions", len(outcome.Actions))
 
-		return nil
+		return true, nil
 	} else if err != nil {
-		return fmt.Errorf("finish sync plan: %w", err)
+		return true, fmt.Errorf("finish sync plan: %w", err)
 	}
 
 	logging.From(ctx).Info("sync plan applied",
 		"state", outcome.State(), "actions", len(outcome.Actions))
 
-	return s.recordSyncOutcomeAudit(ctx, lease.Plan, outcome, finishedAt)
+	return true, s.recordSyncOutcomeAudit(ctx, lease.Plan, outcome, finishedAt)
 }
 
 // recordSyncOutcomeAudit writes what a plan did, and separately what it removed.
@@ -160,7 +169,18 @@ func (s *Engine) applySyncPlan(
 			continue
 		}
 
-		s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
+		applyWork := func() error {
+			s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
+
+			return nil
+		}
+		if s.coordinator != nil {
+			if err := s.coordinator.Exclusive(ctx, repository.ID, applyWork); err != nil {
+				return outcome, fmt.Errorf("coordinate sync repository %s: %w", repository.ID, err)
+			}
+		} else if err := applyWork(); err != nil {
+			return outcome, err
+		}
 	}
 
 	return outcome, nil

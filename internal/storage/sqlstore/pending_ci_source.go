@@ -5,8 +5,10 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 const legacyPendingCIDrainReason = "pre-upgrade pending CI request has no recoverable authorized head; reissue the command"
@@ -284,6 +286,19 @@ RETURNING id`,
 		LastProgressAt: request.DrainedAt, Reason: legacyPendingCIDrainReason,
 		RequestedAt: request.DrainedAt, UpdatedAt: request.DrainedAt,
 		FinishedAt: &request.DrainedAt, CleanupPending: true, Revision: 1,
+	}
+	repositoryID := request.RepositoryID
+	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
+		ID: "pending-ci:" + strconv.FormatInt(id, 10), Kind: workqueue.KindPendingCI,
+		Lane: workqueue.LanePendingCI, TargetID: request.TargetID,
+		RepositoryID: &repositoryID, SourceKind: "pending_ci", SourceID: strconv.FormatInt(id, 10),
+		Title:   fmt.Sprintf("Pending CI cleanup %s #%d", request.RepositoryFullName, request.PullRequest),
+		Summary: legacyPendingCIDrainReason, State: workqueue.StateRetrying,
+		NotBefore: request.DrainedAt,
+		ActorID:   "system",
+		Details:   map[string]any{"pull_request": request.PullRequest, "head_sha": request.HeadSHA},
+	}); err != nil {
+		return pendingci.Request{}, err
 	}
 
 	return drained, nil

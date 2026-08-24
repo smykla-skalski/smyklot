@@ -28,7 +28,9 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	level := &slog.LevelVar{}
 	service := &server{
 		logLevel: level, runtimeBotConfig: config.Default(),
-		pollIntervalChanged: make(chan struct{}, 1),
+		pollIntervalChanged:      make(chan struct{}, 1),
+		workQueueChanged:         make(chan struct{}, 1),
+		runtimePathIndexInterval: time.Hour,
 		gate: gate.New(gate.Dependencies{
 			Store: store, Gates: store, Checks: store, Transitions: store,
 			Leases: store, Handoffs: store, Current: store,
@@ -40,7 +42,7 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
 		BotConfig: config.Default(), LogLevel: slog.LevelDebug,
 		PollInterval: time.Minute, PendingCIQuietPeriod: 45 * time.Second,
-		SessionTTL: time.Hour,
+		PathIndexInterval: 30 * time.Minute, SessionTTL: time.Hour,
 	})
 
 	if got := service.gate.PassingQuiet(); got != 45*time.Second {
@@ -53,5 +55,10 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	case <-service.pollIntervalChanged:
 	default:
 		t.Fatal("the poll loop was not told the interval changed")
+	}
+	select {
+	case <-service.workQueueChanged:
+	default:
+		t.Fatal("the maintenance lane was not told the path interval changed")
 	}
 }

@@ -117,6 +117,8 @@ func (s *Store) RestoreRuntimeSettings(
 		ExpectedRevision: request.ExpectedRevision,
 		ActorAccountID:   request.ActorAccountID, ChangedAt: request.ChangedAt,
 		EffectivePendingCIQuietPeriod: request.EffectivePendingCIQuietPeriod,
+		EffectivePollInterval:         request.EffectivePollInterval,
+		EffectivePathIndexInterval:    request.EffectivePathIndexInterval,
 		EffectiveSessionTTL:           request.EffectiveSessionTTL,
 	}
 	botConfig, err := validateRuntimeSettingsChange(change)
@@ -188,6 +190,9 @@ func (s *Store) saveRuntimeSettings(
 	}
 
 	if err := s.writeRuntimeSettings(ctx, tx, current, change, botConfig); err != nil {
+		return storage.SaveRuntimeSettingsResult{}, err
+	}
+	if err := s.syncRuntimeQueueAliases(ctx, tx, current, change); err != nil {
 		return storage.SaveRuntimeSettingsResult{}, err
 	}
 	if err := shortenSessions(ctx, tx, change.EffectiveSessionTTL); err != nil {

@@ -91,6 +91,8 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	change.EffectivePendingCIQuietPeriod = effective.PendingCIQuietPeriod
+	change.EffectivePollInterval = effective.PollInterval
+	change.EffectivePathIndexInterval = effective.PathIndexInterval
 	change.EffectiveSessionTTL = effective.SessionTTL
 	saved, err := s.store.SaveRuntimeSettings(r.Context(), change)
 	if err != nil {

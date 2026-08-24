@@ -15,6 +15,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 const maxRequestBody = 64 << 10
@@ -78,6 +79,10 @@ type PendingCIGateController interface {
 	WakePendingCIGates()
 }
 
+type WorkQueueController interface {
+	WakeQueue(workqueue.Lane)
+}
+
 // Dependencies are the service capabilities used by panel handlers.
 type Dependencies struct {
 	Store     storage.Store
@@ -89,6 +94,7 @@ type Dependencies struct {
 	Runtime   RuntimeController
 	PendingCI PendingCIController
 	Gates     PendingCIGateController
+	Queue     WorkQueueController
 	// Candidates reads the roster logins are completed against. Optional: a
 	// panel without one offers no completion, which is what the dialogs did
 	// before there was any.
@@ -113,6 +119,7 @@ type Server struct {
 	controller RuntimeController
 	pendingCI  PendingCIController
 	gates      PendingCIGateController
+	queue      WorkQueueController
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
@@ -185,6 +192,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		controller: deps.Runtime,
 		pendingCI:  deps.PendingCI,
 		gates:      deps.Gates,
+		queue:      deps.Queue,
 	}, nil
 }
 
@@ -249,6 +257,7 @@ func (s *Server) Handler() http.Handler {
 		s.getSyncOverride,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/sync/run-now", s.postSyncRunNow)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/status", s.getSyncStatus)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/sync/files/context",
@@ -264,6 +273,14 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue", s.getTargetQueue)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue/{queue}", s.getTargetQueueItem)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions/preview", s.previewTargetQueueAction)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions", s.postTargetQueueAction)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedules", s.getTargetSchedules)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedule-requests", s.getTargetScheduleRequests)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/schedule-requests", s.postTargetScheduleRequest)
+	mux.HandleFunc("DELETE "+base+"/api/v1/targets/{target}/schedule-requests/{request}", s.deleteTargetScheduleRequest)
 	mux.HandleFunc("GET "+base+"/api/v1/events", s.streamEvents)
 
 	if base != "" {
@@ -296,6 +313,20 @@ func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base str
 }
 
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc("GET "+base+"/api/v1/root/queue", s.getRootQueue)
+	mux.HandleFunc("GET "+base+"/api/v1/root/queue/{queue}", s.getRootQueueItem)
+	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions/preview", s.previewRootQueueAction)
+	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions", s.postRootQueueAction)
+	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-profiles", s.getRootScheduleProfiles)
+	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-profiles", s.postRootScheduleProfile)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/schedule-profiles/{profile}", s.putRootScheduleProfile)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/schedule-profiles/{profile}", s.deleteRootScheduleProfile)
+	mux.HandleFunc("GET "+base+"/api/v1/root/job-policies", s.getRootJobPolicies)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/job-policies/{kind}", s.putRootJobPolicy)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
+	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-requests", s.getRootScheduleRequests)
+	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-requests/{request}/decision", s.postRootScheduleDecision)
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
@@ -441,6 +472,11 @@ func (s *Server) Announce(targetID, repositoryID string) {
 // final installation cannot leave an open panel displaying stale targets.
 func (s *Server) AnnounceCatalog() {
 	s.events.announce(panelEvent{Type: panelEventResync})
+}
+
+// AnnounceQueue tells scoped browsers that durable background work changed.
+func (s *Server) AnnounceQueue(targetID string) {
+	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: targetID})
 }
 
 func (s *Server) secureHeaders(next http.Handler) http.Handler {
