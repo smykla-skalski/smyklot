@@ -43,6 +43,7 @@ var _ = Describe("Configuration migration [Unit]", func() {
 			database:      GinkgoT().TempDir() + "/panel.sqlite3",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
+			pollInterval:  defaultPollInterval,
 			apiBaseURL:    endpoint.URL,
 			botUsername:   bot.DefaultBotUsername,
 			appClientID:   "Iv1.test",
