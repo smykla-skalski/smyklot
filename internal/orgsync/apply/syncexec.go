@@ -48,13 +48,20 @@ func (s *Engine) ApplyOnePlan(ctx context.Context) (bool, error) {
 	if !lease.Found {
 		return false, nil
 	}
+	s.announceQueue(lease.Plan.TargetID)
+	defer s.announceQueue(lease.Plan.TargetID)
 
 	ctx = logging.With(ctx, "sync_plan", lease.Plan.ID, "target", lease.Plan.TargetID)
 
 	outcome, err := s.applySyncPlan(ctx, lease)
 	if err != nil {
-		// The plan keeps its lease and is offered again when that runs out.
-		// Closing it here would record a verdict on work that was never tried.
+		retryErr := s.store.RetrySyncPlan(ctx, orgsync.PlanRetry{
+			PlanID: lease.Plan.ID, Failure: err.Error(), Now: time.Now().UTC(),
+		})
+		if retryErr != nil {
+			return true, errors.Join(err, fmt.Errorf("schedule sync plan retry: %w", retryErr))
+		}
+
 		return true, err
 	}
 

@@ -220,6 +220,15 @@ type PlanOutcome struct {
 	Applied []RepositoryState
 }
 
+// PlanRetry returns an approved plan to the durable queue after an execution
+// failure that happened outside an individual action. The queue retains the
+// failure for Root while installation views receive the redacted form.
+type PlanRetry struct {
+	PlanID  string
+	Failure string
+	Now     time.Time
+}
+
 // AuditAction names what a sync audit entry records.
 //
 // Four, and no more. A plan writes one when it is computed, one when somebody
@@ -386,6 +395,7 @@ type Store interface {
 	// LeaseDelivery claims a delivery, so an executor that dies leaves work
 	// somebody else can pick up rather than a plan stuck in applying.
 	LeaseSyncPlan(context.Context, time.Time, time.Time) (PlanLease, error)
+	RetrySyncPlan(context.Context, PlanRetry) error
 
 	RecordSyncActionOutcome(context.Context, ActionOutcome) error
 	FinishSyncPlan(context.Context, PlanOutcome) error

@@ -16,6 +16,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/orgsync/apply"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
@@ -582,13 +583,18 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(HaveOccurred())
 
-			// Nothing was written to GitHub, and the plan keeps its lease rather
-			// than being closed: granting the permission back is all it needs
+			// Nothing was written to GitHub, and the plan returns to its durable
+			// retry schedule: granting the permission back is all it needs.
 			Expect(stub.labelWrites).To(BeEmpty())
 			held, _, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(held.State).To(Equal(orgsync.PlanApplying))
+			Expect(held.State).To(Equal(orgsync.PlanApproved))
+			Expect(held.LeaseExpiresAt).To(BeNil())
+			item, err := service.store.GetQueueItem(
+				GinkgoT().Context(), "sync-plan:"+computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateRetrying))
 		})
 
 		It("changes the settings the plan named, and only those", func() {
@@ -1815,7 +1821,12 @@ var _ = Describe("Org sync [Unit]", func() {
 			held, _, err := service.store.GetSyncPlan(
 				GinkgoT().Context(), target.ID, computed.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(held.State).To(Equal(orgsync.PlanApplying))
+			Expect(held.State).To(Equal(orgsync.PlanApproved))
+			Expect(held.LeaseExpiresAt).To(BeNil())
+			item, err := service.store.GetQueueItem(
+				GinkgoT().Context(), "sync-plan:"+computed.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateRetrying))
 		})
 
 		// git puts a blob wherever a tree entry names one, and says nothing

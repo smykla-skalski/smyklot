@@ -17,6 +17,7 @@ type Store interface {
 	GetLiveSyncPlan(context.Context, string) (orgsync.Plan, []orgsync.Action, error)
 	CreateSyncPlan(context.Context, orgsync.PlanCreate) (orgsync.Plan, error)
 	LeaseSyncPlan(context.Context, time.Time, time.Time) (orgsync.PlanLease, error)
+	RetrySyncPlan(context.Context, orgsync.PlanRetry) error
 	FinishSyncPlan(context.Context, orgsync.PlanOutcome) error
 	RecordSyncActionOutcome(context.Context, orgsync.ActionOutcome) error
 	RecordSyncAudit(context.Context, orgsync.AuditEntry) error

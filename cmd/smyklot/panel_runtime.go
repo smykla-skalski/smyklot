@@ -81,6 +81,7 @@ func (s *server) initPanel() error {
 	}
 
 	s.panel = panelServer
+	s.sync.SetQueueObserver(panelServer.AnnounceQueue)
 
 	return nil
 }

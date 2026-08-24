@@ -720,6 +720,49 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(again.Found).To(BeFalse())
 		})
 
+		It("releases an execution failure into the configured retry schedule", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			leaseOne(ctx, store, account.ID, now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+			})
+			retryAt := now.Add(10 * time.Second)
+
+			Expect(store.RetrySyncPlan(ctx, orgsync.PlanRetry{
+				PlanID: "plan-1", Failure: "GitHub is temporarily unavailable", Now: retryAt,
+			})).To(Succeed())
+
+			plan, _, err := store.GetSyncPlan(ctx, target, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.State).To(Equal(orgsync.PlanApproved))
+			Expect(plan.LeaseExpiresAt).To(BeNil())
+
+			item, err := store.GetQueueItem(ctx, "sync-plan:plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateRetrying))
+			Expect(item.BlockedReason).To(Equal("GitHub is temporarily unavailable"))
+			Expect(item.NotBefore).To(Equal(retryAt.Add(5 * time.Minute)))
+			Expect(item.EligibleAt).To(Equal(retryAt.Add(5 * time.Minute)))
+			Expect(item.LeaseExpiresAt).To(BeNil())
+
+			events, err := store.ListQueueEvents(ctx, item.ID, 20)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(events[len(events)-1].State).To(Equal(workqueue.StateRetrying))
+			Expect(events[len(events)-1].Summary).To(Equal("Organization sync will retry"))
+
+			early, err := store.LeaseSyncPlan(
+				ctx, item.EligibleAt.Add(-time.Second), item.EligibleAt.Add(time.Minute),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(early.Found).To(BeFalse())
+			again, err := store.LeaseSyncPlan(
+				ctx, item.EligibleAt, item.EligibleAt.Add(time.Minute),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(again.Found).To(BeTrue())
+			Expect(again.Plan.Attempt).To(Equal(2))
+		})
+
 		It("records what became of each action, and skips name the blocker", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)

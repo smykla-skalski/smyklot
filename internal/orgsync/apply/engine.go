@@ -7,10 +7,11 @@ import (
 )
 
 type Engine struct {
-	store       Store
-	tokens      *githubapp.TokenStore
-	apiBaseURL  string
-	coordinator bot.Exclusive
+	store        Store
+	tokens       *githubapp.TokenStore
+	apiBaseURL   string
+	coordinator  bot.Exclusive
+	queueChanged func(string)
 }
 
 func New(store Store, tokens *githubapp.TokenStore, apiBaseURL string) *Engine {
@@ -21,3 +22,13 @@ func New(store Store, tokens *githubapp.TokenStore, apiBaseURL string) *Engine {
 // pending-CI execution. Planning remains concurrent because it only observes;
 // applying a plan holds the repository key around every GitHub mutation.
 func (s *Engine) SetCoordinator(coordinator bot.Exclusive) { s.coordinator = coordinator }
+
+// SetQueueObserver publishes scoped queue revisions after sync execution
+// starts and after it reaches its next durable state.
+func (s *Engine) SetQueueObserver(observer func(string)) { s.queueChanged = observer }
+
+func (s *Engine) announceQueue(targetID string) {
+	if s.queueChanged != nil {
+		s.queueChanged(targetID)
+	}
+}

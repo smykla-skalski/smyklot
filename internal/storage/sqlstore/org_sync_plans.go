@@ -578,6 +578,131 @@ UPDATE queue_items SET progress_current = ?, progress_total = ?, updated_at = ?,
 	return nil
 }
 
+// RetrySyncPlan releases an execution lease after work failed before the plan
+// could produce an action-level outcome. The plan remains approved, while its
+// queue item carries the retry timing and retained Root-only failure detail.
+func (s *Store) RetrySyncPlan(ctx context.Context, retry orgsync.PlanRetry) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sync plan retry: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	targetID, item, err := s.loadSyncPlanRetry(ctx, tx, retry.PlanID)
+	if err != nil {
+		return err
+	}
+	policy, err := getEffectiveQueuePolicy(ctx, tx, workqueue.KindSyncApply, &targetID)
+	if err != nil {
+		return fmt.Errorf("read sync apply retry policy: %w", err)
+	}
+
+	if policy.RetryDelay <= 0 {
+		err = failSyncPlanExecution(ctx, tx, item.ID, retry)
+	} else {
+		err = s.scheduleSyncPlanRetry(ctx, tx, item, policy.RetryDelay, retry)
+	}
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sync plan retry: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Store) loadSyncPlanRetry(
+	ctx context.Context,
+	tx *transaction,
+	planID string,
+) (string, workqueue.Item, error) {
+	var (
+		targetID string
+		state    orgsync.PlanState
+	)
+	err := tx.QueryRowContext(ctx, `
+SELECT target_id, state FROM sync_plans WHERE id = ?`+s.dialect.RowLock(), planID,
+	).Scan(&targetID, &state)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", workqueue.Item{}, storage.ErrNotFound
+	}
+	if err != nil {
+		return "", workqueue.Item{}, fmt.Errorf("read sync plan to retry: %w", err)
+	}
+	if state != orgsync.PlanApplying {
+		return "", workqueue.Item{}, storage.ErrConflict
+	}
+	item, err := getQueueItem(ctx, tx, "sync-plan:"+planID, s.dialect.RowLock())
+	if err != nil {
+		return "", workqueue.Item{}, fmt.Errorf("read sync plan queue item to retry: %w", err)
+	}
+
+	return targetID, item, nil
+}
+
+func failSyncPlanExecution(
+	ctx context.Context,
+	tx *transaction,
+	itemID string,
+	retry orgsync.PlanRetry,
+) error {
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = 'failed', lease_expires_at = NULL, finished_at = ?
+WHERE id = ?`, retry.Now, retry.PlanID); err != nil {
+		return fmt.Errorf("fail sync plan without retry: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'failed', blocked_reason = ?, lease_expires_at = NULL,
+    finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE id = ?`, retry.Failure, retry.Now, retry.Now, itemID); err != nil {
+		return fmt.Errorf("fail sync plan queue item without retry: %w", err)
+	}
+
+	return insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: itemID, ActorID: queueEventActor(queueActorSystem), Kind: "execution_failed",
+		State: workqueue.StateFailed, Summary: "Organization sync execution failed",
+		CreatedAt: retry.Now,
+	})
+}
+
+func (s *Store) scheduleSyncPlanRetry(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+	delay time.Duration,
+	retry orgsync.PlanRetry,
+) error {
+	notBefore := retry.Now.Add(delay)
+	eligibleAt := notBefore
+	if item.WindowMode == workqueue.WindowRespect && item.ProfileID != nil {
+		profile, err := getScheduleProfile(ctx, tx, *item.ProfileID)
+		if err != nil {
+			return fmt.Errorf("read sync retry profile: %w", err)
+		}
+		eligibleAt, err = workqueue.NextEligible(profile, notBefore)
+		if err != nil {
+			return fmt.Errorf("calculate sync retry eligibility: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = 'approved', lease_expires_at = NULL WHERE id = ?`, retry.PlanID,
+	); err != nil {
+		return fmt.Errorf("release sync plan for retry: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'retrying', not_before = ?, eligible_at = ?,
+    blocked_reason = ?, lease_expires_at = NULL, updated_at = ?, revision = revision + 1
+WHERE id = ?`, notBefore, eligibleAt, retry.Failure, retry.Now, item.ID); err != nil {
+		return fmt.Errorf("schedule sync plan queue retry: %w", err)
+	}
+
+	return insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "retry_scheduled",
+		State: workqueue.StateRetrying, Summary: "Organization sync will retry",
+		CreatedAt: retry.Now,
+	})
+}
+
 // FinishSyncPlan closes a plan and records what each repository now has.
 //
 // The applied digests are written in the same transaction as the plan's own
