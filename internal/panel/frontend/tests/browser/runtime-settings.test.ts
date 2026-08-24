@@ -40,16 +40,16 @@ describe('Root runtime settings drafts', () => {
       await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
 
       const overrideButton = page.getByRole('button', {
-        name: 'Override the deployment quiet period',
+        name: 'Override the deployment session lifetime',
       });
       await overrideButton.waitFor({ state: 'visible', timeout: 30_000 });
       await overrideButton.click();
 
-      const amount = page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' });
+      const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
       await amount.waitFor({ state: 'visible' });
       await amount.fill('2');
-      await page.getByRole('button', { name: 'Merge-after-CI quiet period unit' }).click();
-      await page.getByRole('option', { name: 'minutes' }).click();
+      await page.getByRole('button', { name: 'Session lifetime unit' }).click();
+      await page.getByRole('option', { name: 'hours' }).click();
       expect(writes).toHaveLength(0);
 
       await page.getByRole('link', { name: 'Service' }).click();
@@ -60,7 +60,7 @@ describe('Root runtime settings drafts', () => {
 
       await page.reload({ waitUntil: 'domcontentloaded' });
       const amountBack = page.getByRole('textbox', {
-        name: 'Merge-after-CI quiet period amount',
+        name: 'Session lifetime amount',
       });
       await amountBack.waitFor({ state: 'visible', timeout: 30_000 });
       expect(await amountBack.inputValue()).toBe('2');
@@ -73,9 +73,9 @@ describe('Root runtime settings drafts', () => {
         bot_config: null,
         log_level: null,
         reaction_poll_interval_seconds: null,
-        merge_after_ci_quiet_period_seconds: 120,
+        merge_after_ci_quiet_period_seconds: null,
         path_index_interval_seconds: null,
-        session_ttl_seconds: null,
+        session_ttl_seconds: 7_200,
         expected_revision: 0,
       });
       await page.getByText('Settings saved').waitFor({ state: 'visible' });
@@ -83,15 +83,15 @@ describe('Root runtime settings drafts', () => {
 
       await page.reload({ waitUntil: 'domcontentloaded' });
       const savedAmount = page.getByRole('textbox', {
-        name: 'Merge-after-CI quiet period amount',
+        name: 'Session lifetime amount',
       });
       await savedAmount.waitFor({ state: 'visible', timeout: 30_000 });
       expect(await savedAmount.inputValue()).toBe('2');
 
-      const quietRow = page
+      const sessionRow = page
         .locator('.policy-row')
-        .filter({ has: page.getByRole('textbox', { name: 'Merge-after-CI quiet period amount' }) });
-      await quietRow
+        .filter({ has: page.getByRole('textbox', { name: 'Session lifetime amount' }) });
+      await sessionRow
         .getByRole('button', { name: 'Stop overriding - follow the deployment configuration' })
         .click();
       expect(writes).toHaveLength(1);
@@ -99,10 +99,10 @@ describe('Root runtime settings drafts', () => {
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       const restoreRequest = await restored;
       expect(restoreRequest.postDataJSON()).toMatchObject({
-        merge_after_ci_quiet_period_seconds: null,
+        session_ttl_seconds: null,
         expected_revision: 1,
       });
-      await page.getByText('Follows the deployment - 30 seconds').waitFor({ state: 'visible' });
+      await page.getByText('Follows the deployment - 1 day').waitFor({ state: 'visible' });
       expect(writes).toHaveLength(2);
       expect(crashes).toEqual([]);
     } finally {

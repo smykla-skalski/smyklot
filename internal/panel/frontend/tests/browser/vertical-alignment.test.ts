@@ -427,6 +427,11 @@ async function rowsOn(page: Page): Promise<{
         [...control.querySelectorAll('*')].some((inner) => painted(inner, getComputedStyle(inner)))
       )
         continue;
+      /* A grid surface with several children is a card with a layout, not a label painted on a
+         control. Its rows were already measured by the centre sweep above. Buttons and pills use
+         inline-flex, so this keeps testing every actual control while avoiding a second, invalid
+         question about the card's outer padding. */
+      if (style.display === 'grid' && control.children.length > 1) continue;
 
       const rect = control.getBoundingClientRect();
       if (rect.height === 0 || rect.width === 0) continue;

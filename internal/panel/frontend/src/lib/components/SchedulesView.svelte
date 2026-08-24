@@ -443,31 +443,39 @@
               {@const status = policyStatus(policy.kind)}
               {@const details = jobDetails(policy)}
               <tr>
-                <th scope="row"
-                  ><strong>{policy.kind.replaceAll('_', ' ')}</strong><span
-                    >{policy.enabled ? 'Enabled' : 'Disabled'} · {targetId === undefined
-                      ? 'deployment default'
-                      : policySource(policy.kind)} · revision {policy.revision}</span
-                  ></th
-                >
-                <td>{duration(policy.cadence)}</td>
-                <td>{profileName(policy.profile_id)}</td>
-                <td>{policy.default_priority}</td>
-                <td>{duration(policy.retry_delay)}</td>
+                <th scope="row">
+                  <div class="band-trim-stack">
+                    <strong>{policy.kind.replaceAll('_', ' ')}</strong><span
+                      class="policy-description"
+                      >{policy.enabled ? 'Enabled' : 'Disabled'} · {targetId === undefined
+                        ? 'deployment default'
+                        : policySource(policy.kind)} · revision {policy.revision}</span
+                    >
+                  </div>
+                </th>
+                <td><span class="band-trim">{duration(policy.cadence)}</span></td>
+                <td><span class="band-trim">{profileName(policy.profile_id)}</span></td>
+                <td><span class="band-trim">{policy.default_priority}</span></td>
+                <td><span class="band-trim">{duration(policy.retry_delay)}</span></td>
                 <td class="runtime-cell">
-                  <span>{status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}</span>
-                  <small
-                    >Last {instant(status?.last_run_at)}{#if status?.last_state}
-                      · {status.last_state}{/if}</small
-                  >
-                  <small>Next {instant(status?.next_eligibility_at)}</small>
-                  {#if status?.estimated_start_at}<small
-                      >Estimate {instant(status.estimated_start_at)} · {status.work_ahead} ahead</small
-                    >{/if}
+                  <div class="band-trim-stack">
+                    <span>{status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}</span>
+                    <small
+                      >Last {instant(status?.last_run_at)}{#if status?.last_state}
+                        · {status.last_state}{/if}</small
+                    >
+                    <small>Next {instant(status?.next_eligibility_at)}</small>
+                    {#if status?.estimated_start_at}<small
+                        >Estimate {instant(status.estimated_start_at)} · {status.work_ahead} ahead</small
+                      >{/if}
+                  </div>
                 </td>
                 <td class="details-cell">
-                  {#if details.length === 0}<span class="dim">Standard policy</span>{/if}
-                  {#each details as detail (detail)}<small>{detail}</small>{/each}
+                  <div class={['band-trim-stack', { 'single-detail': details.length <= 1 }]}>
+                    {#if details.length === 0}<span class="dim">Standard policy</span>{/if}
+                    {#each details as detail (detail)}<span class="detail-line">{detail}</span
+                      >{/each}
+                  </div>
                 </td>
                 {#if targetId === undefined}<td
                     ><Button
@@ -512,12 +520,14 @@
             <tbody>
               {#each policySet?.overrides ?? [] as policy (`${policy.target_id}:${policy.kind}`)}
                 <tr>
-                  <td><code>{policy.target_id}</code></td>
-                  <th scope="row">{policy.kind.replaceAll('_', ' ')}</th>
-                  <td>{duration(policy.cadence)}</td>
-                  <td>{profileName(policy.profile_id)}</td>
-                  <td>{policy.default_priority}</td>
-                  <td>{policy.revision}</td>
+                  <td><code class="band-trim">{policy.target_id}</code></td>
+                  <th scope="row"
+                    ><div class="band-trim">{policy.kind.replaceAll('_', ' ')}</div></th
+                  >
+                  <td><span class="band-trim">{duration(policy.cadence)}</span></td>
+                  <td><span class="band-trim">{profileName(policy.profile_id)}</span></td>
+                  <td><span class="band-trim">{policy.default_priority}</span></td>
+                  <td><span class="band-trim">{policy.revision}</span></td>
                   <td
                     ><div class="request-buttons">
                       <Button row onclick={() => (editingPolicy = policy)}>Configure</Button>
@@ -544,12 +554,12 @@
       <div class="profile-grid">
         {#each profiles as profile (profile.id)}
           <article class="profile-card">
-            <div>
-              <strong>{profile.name}</strong><span
+            <div class="band-trim-stack">
+              <strong>{profile.name}</strong><span class="profile-revision"
                 >{profile.timezone} · revision {profile.revision}</span
               >
             </div>
-            <span
+            <span class="profile-summary band-trim"
               >{profile.windows.length} weekly windows · {profile.exceptions.length} exceptions</span
             >
             {#if targetId === undefined && !profile.system}
@@ -669,19 +679,21 @@
       {#if requests.length === 0}<p class="dim">No schedule requests yet.</p>{/if}
       {#each requests as request (request.id)}
         <article class="request-row">
-          <div>
-            <strong>{request.kind.replaceAll('_', ' ')}</strong><span>{request.reason}</span>
-            {#if request.custom_profile !== undefined}<span
+          <div class="band-trim-stack">
+            <strong>{request.kind.replaceAll('_', ' ')}</strong><span class="request-detail"
+              >{request.reason}</span
+            >
+            {#if request.custom_profile !== undefined}<span class="request-detail"
                 >{request.custom_profile.name} · {request.custom_profile.timezone}</span
               >{/if}
-            <span
+            <span class="request-detail"
               >{duration(request.cadence)} cadence · {request.default_priority} priority · base revision
               {request.base_revision} ({request.base_target_id === undefined
                 ? 'global policy'
                 : 'installation override'})</span
             >
           </div>
-          <span class="request-state">{request.state}</span>
+          <span class="request-state band-trim">{request.state}</span>
           {#if targetId === undefined && request.state === 'pending'}
             <div class="request-buttons">
               <Button row tone="signal" onclick={() => openDecision(request, 'approve')}
@@ -858,29 +870,45 @@
   tbody tr:last-child > * {
     border-bottom: 0;
   }
-  tbody th span,
-  .profile-card span,
-  .request-row span {
+  .policy-description,
+  .profile-revision,
+  .profile-summary,
+  .request-detail {
     color: var(--dim);
     display: block;
     font-size: 0.7rem;
+  }
+  .policy-description,
+  .profile-revision,
+  .request-detail {
     margin-top: var(--space-1);
+  }
+  .band-trim-stack > * {
+    display: block;
   }
   .runtime-cell,
   .details-cell {
     min-width: 12rem;
   }
-  .runtime-cell > span,
-  .runtime-cell small,
-  .details-cell small {
-    display: block;
+  .details-cell .band-trim-stack {
+    display: flex;
+    flex-direction: column;
   }
-  .runtime-cell > span {
+  .details-cell .single-detail {
+    /* This cell is one compact line while every neighbour begins with body text.
+       `vertical-align: middle` centres their line boxes and leaves its cap band 2.36px low at the
+       panel's fixed root size. The measured correction keeps the visible bands level. */
+    transform: translateY(-0.15rem);
+  }
+  .runtime-cell > .band-trim-stack > span {
     text-transform: capitalize;
   }
   .runtime-cell small,
-  .details-cell small {
+  .detail-line {
     color: var(--dim);
+  }
+  .runtime-cell small,
+  .details-cell .band-trim-stack > * + * {
     margin-top: var(--space-1);
   }
   .profile-grid {
@@ -908,6 +936,8 @@
     border: 1px solid var(--control-border);
     border-radius: 999px;
     color: var(--text) !important;
+    display: block;
+    font-size: 0.7rem;
     margin: 0 !important;
     padding: 0.22rem 0.48rem;
     text-transform: uppercase;
