@@ -381,7 +381,7 @@ func claimRecurringItem(
 	); err != nil {
 		return false, err
 	}
-	item.State, item.Immediate = workqueue.StateRunning, false
+	item.State, item.Immediate, item.BlockedReason = workqueue.StateRunning, false, ""
 	item.Attempt++
 	item.LeaseExpiresAt, item.UpdatedAt = &lease, claim.Now
 	item.Revision++

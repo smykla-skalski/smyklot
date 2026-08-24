@@ -115,7 +115,8 @@ func leaseLinkedQueueItem(
 	result, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = 'running', immediate_dispatch = FALSE,
     attempt = attempt + 1, lease_expires_at = ?,
-    started_at = COALESCE(started_at, ?), updated_at = ?, revision = revision + 1
+    started_at = COALESCE(started_at, ?), blocked_reason = '',
+    updated_at = ?, revision = revision + 1
 WHERE id = ?`, until, at, at, id)
 	if err != nil {
 		return fmt.Errorf("lease linked queue item: %w", err)

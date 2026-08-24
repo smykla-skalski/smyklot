@@ -45,8 +45,17 @@ func (s *Store) NextQueueAvailability(
 	lane workqueue.Lane,
 	now time.Time,
 ) (*time.Time, error) {
+	return nextQueueAvailability(ctx, s.db, lane, now)
+}
+
+func nextQueueAvailability(
+	ctx context.Context,
+	runner runner,
+	lane workqueue.Lane,
+	now time.Time,
+) (*time.Time, error) {
 	var available StoredTime
-	err := s.db.QueryRowContext(ctx, `
+	err := runner.QueryRowContext(ctx, `
 SELECT MIN(
     CASE
         WHEN state = 'running' AND lease_expires_at IS NOT NULL AND lease_expires_at > eligible_at
@@ -98,10 +107,89 @@ WHERE lane = ?
 	if len(items) == 0 {
 		return queueDispatchChoice{}, false, nil
 	}
+	items, err = s.deferClosedWindowItems(ctx, tx, items, now)
+	if err != nil {
+		return queueDispatchChoice{}, false, err
+	}
+	if len(items) == 0 {
+		return queueDispatchChoice{}, false, nil
+	}
 
 	choice, ok := chooseQueueDispatch(items, state)
 
 	return choice, ok, nil
+}
+
+func (s *Store) deferClosedWindowItems(
+	ctx context.Context,
+	tx *transaction,
+	items []workqueue.Item,
+	now time.Time,
+) ([]workqueue.Item, error) {
+	eligible := make([]workqueue.Item, 0, len(items))
+	profiles := make(map[string]workqueue.Profile)
+	for _, item := range items {
+		if item.Immediate || !item.Kind.Windowed() || item.WindowMode == workqueue.WindowBypass {
+			eligible = append(eligible, item)
+			continue
+		}
+		if item.ProfileID == nil {
+			return nil, fmt.Errorf("dispatch queue item %q has no schedule profile", item.ID)
+		}
+		profile, found := profiles[*item.ProfileID]
+		if !found {
+			var err error
+			profile, err = getScheduleProfile(ctx, tx, *item.ProfileID)
+			if err != nil {
+				return nil, fmt.Errorf("read dispatch schedule profile: %w", err)
+			}
+			profiles[profile.ID] = profile
+		}
+		next, err := workqueue.NextEligible(profile, now)
+		if err != nil {
+			return nil, fmt.Errorf("calculate dispatch window for %q: %w", item.ID, err)
+		}
+		if next.Equal(now) {
+			eligible = append(eligible, item)
+			continue
+		}
+		if err := deferQueueItemToWindow(ctx, tx, item, profile, next, now); err != nil {
+			return nil, err
+		}
+	}
+
+	return eligible, nil
+}
+
+func deferQueueItemToWindow(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+	profile workqueue.Profile,
+	next time.Time,
+	now time.Time,
+) error {
+	reason := "Waiting for the " + profile.Name + " window"
+	result, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'scheduled', eligible_at = ?, blocked_reason = ?,
+    lease_expires_at = NULL, updated_at = ?, revision = revision + 1
+WHERE id = ? AND revision = ?`, next, reason, now, item.ID, item.Revision)
+	if err != nil {
+		return fmt.Errorf("defer queue item to next window: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read deferred queue item result: %w", err)
+	}
+	if changed != 1 {
+		return fmt.Errorf("defer queue item %q changed %d rows", item.ID, changed)
+	}
+
+	return insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: item.ID, Kind: "window_missed", State: workqueue.StateScheduled,
+		Summary:   "Window closed before dispatch; moved to the next " + profile.Name + " opening",
+		CreatedAt: now,
+	})
 }
 
 func (s *Store) lockQueueDispatchState(

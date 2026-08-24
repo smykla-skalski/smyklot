@@ -233,6 +233,54 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(claimed).To(BeTrue())
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
 	})
+
+	It("defers expired work that missed its execution window", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		profile, err := store.SaveScheduleProfile(ctx, workqueue.ProfileChange{
+			ID: "monday-morning", Name: "Monday morning", Timezone: "UTC",
+			Windows: []workqueue.Window{{
+				Weekday: time.Monday, Start: 9 * 60, End: 10 * 60,
+			}},
+			ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		windowStart := time.Date(2026, time.August, 24, 9, 0, 0, 0, time.UTC)
+		dispatchAt := windowStart.Add(3 * time.Hour)
+		leaseExpiredAt := windowStart.Add(90 * time.Minute)
+		itemID := "pending-ci:missed-window"
+		_, err = store.CreateQueueItem(ctx, workqueue.Item{
+			ID: itemID, Kind: workqueue.KindPendingCI, Lane: workqueue.LanePendingCI,
+			TargetID: &target.TargetID, SourceKind: "pending_ci", SourceID: "missing",
+			Title: "Pending CI check", State: workqueue.StateRunning,
+			Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
+			ProfileID: &profile.ID, NotBefore: windowStart, EligibleAt: windowStart,
+			LeaseExpiresAt: &leaseExpiredAt, StartedAt: &windowStart,
+			CreatedAt: windowStart, UpdatedAt: windowStart,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		lease, err := store.LeaseDue(ctx, dispatchAt, dispatchAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).To(BeNil())
+		nextWindow := time.Date(2026, time.August, 31, 9, 0, 0, 0, time.UTC)
+		Expect(lease.AvailableAt).To(HaveValue(Equal(nextWindow)))
+
+		deferred, err := store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(deferred.State).To(Equal(workqueue.StateScheduled))
+		Expect(deferred.EligibleAt).To(Equal(nextWindow))
+		Expect(deferred.LeaseExpiresAt).To(BeNil())
+		Expect(deferred.BlockedReason).To(Equal("Waiting for the Monday morning window"))
+		Expect(deferred.Revision).To(Equal(int64(2)))
+
+		events, err := store.ListQueueEvents(ctx, itemID, 20)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(HaveLen(2))
+		Expect(events[1].Kind).To(Equal("window_missed"))
+		Expect(events[1].State).To(Equal(workqueue.StateScheduled))
+	})
 }
 
 func createQueueFixture(

@@ -335,7 +335,9 @@ func (s *Store) LeaseDue(
 
 	request, choice, err := s.selectDuePendingCI(ctx, tx, now)
 	if errors.Is(err, sql.ErrNoRows) {
-		availableAt, availableErr := nextPendingCIAvailability(ctx, tx)
+		availableAt, availableErr := nextQueueAvailability(
+			ctx, tx, workqueue.LanePendingCI, now,
+		)
 		if availableErr != nil {
 			return pendingci.LeaseResult{}, availableErr
 		}
@@ -432,35 +434,6 @@ WHERE id = ? AND (lifecycle = ? OR cleanup_pending = TRUE) AND next_check_at <= 
 	))
 
 	return request, choice, err
-}
-
-func nextPendingCIAvailability(ctx context.Context, tx *transaction) (*time.Time, error) {
-	var available StoredTime
-	err := tx.QueryRowContext(ctx, `
-SELECT MIN(
-    CASE
-        WHEN lease_expires_at IS NOT NULL AND lease_expires_at > next_check_at
-            THEN lease_expires_at
-        ELSE next_check_at
-    END
-)
-FROM pending_ci_requests
-WHERE (lifecycle = ? OR cleanup_pending = TRUE)
-  AND EXISTS (
-    SELECT 1 FROM queue_items qi
-    WHERE qi.source_kind = 'pending_ci'
-      AND qi.source_id = CAST(pending_ci_requests.id AS TEXT)
-      AND qi.state IN ('scheduled', 'ready', 'retrying', 'running')
-  )`, pendingci.LifecycleArmed).Scan(&available)
-	if err != nil {
-		return nil, fmt.Errorf("read next pending CI availability: %w", err)
-	}
-	if !available.Valid() {
-		return nil, nil
-	}
-	parsed := available.Time()
-
-	return &parsed, nil
 }
 
 // Wake promotes an armed request to Active exactly once per meaningful event.
