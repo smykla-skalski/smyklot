@@ -235,11 +235,13 @@
     return (['sliders', 'refresh', 'history', 'pending'] as const)[index] ?? 'sliders';
   }
 
-  function instant(value?: string): string {
-    if (value === undefined) return 'None scheduled';
+  function compactInstant(value?: string): string {
+    if (value === undefined) return 'not scheduled';
     return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+      day: 'numeric',
+      month: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
     }).format(new Date(value));
   }
 
@@ -479,18 +481,21 @@
 {#snippet policyCells(policy: QueuePolicy)}
   {@const status = policyStatus(policy.kind)}
   {@const details = jobDetails(policy)}
+  {@const statusTone = runtimeTone(status?.current_state)}
   <th scope="row" data-label="Workload">
-    <div class="policy-title-line">
-      <strong>{workloadTitle(policy.kind)}</strong>
-      <Chip tone={policy.enabled ? 'accent' : 'absent'} small>
-        {policy.enabled ? 'Enabled' : 'Disabled'}
-      </Chip>
+    <div class="policy-work band-trim-stack">
+      <div class="policy-title-line">
+        <strong>{workloadTitle(policy.kind)}</strong>
+        <Chip tone={policy.enabled ? 'accent' : 'absent'} small>
+          {policy.enabled ? 'Enabled' : 'Disabled'}
+        </Chip>
+      </div>
+      <span class="policy-description">{workloadDescription(policy.kind)}</span>
+      <span class="policy-source">
+        {targetId === undefined ? 'Deployment default' : policySource(policy.kind)} · revision
+        {policy.revision}
+      </span>
     </div>
-    <span class="policy-description">{workloadDescription(policy.kind)}</span>
-    <span class="policy-source">
-      {targetId === undefined ? 'Deployment default' : policySource(policy.kind)} · revision
-      {policy.revision}
-    </span>
   </th>
   <td data-label="Schedule">
     <dl class="policy-facts">
@@ -505,23 +510,24 @@
     </dl>
   </td>
   <td data-label="Runtime">
-    <div class="runtime-summary">
-      <Chip tone={runtimeTone(status?.current_state)} dot={status?.current_state === 'running'}>
-        {status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}
-      </Chip>
-      <span>Next {instant(status?.next_eligibility_at)}</span>
-      <span>
-        Last {instant(status?.last_run_at)}{status?.last_state === undefined
-          ? ''
-          : ` · ${status.last_state.replaceAll('_', ' ')}`}
+    <div class="runtime-summary band-trim-stack">
+      <span class="runtime-state runtime-state-{statusTone}">
+        <span class="runtime-dot" aria-hidden="true"></span>
+        <strong>{status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}</strong>
       </span>
+      <span>Next {compactInstant(status?.next_eligibility_at)}</span>
+      <span>Last {compactInstant(status?.last_run_at)}</span>
       {#if status?.estimated_start_at}
-        <span>Estimate {instant(status.estimated_start_at)} · {status.work_ahead} ahead</span>
+        <span
+          >Est. {compactInstant(status.estimated_start_at)} · {status.work_ahead === 0
+            ? 'next'
+            : `${status.work_ahead} ahead`}</span
+        >
       {/if}
     </div>
   </td>
   <td data-label="Policy">
-    <div class="policy-detail">
+    <div class="policy-detail band-trim-stack">
       <div class="policy-chip-line">
         <Chip tone={policy.default_priority === 'urgent' ? 'stop' : 'neutral'} small>
           {policy.default_priority} priority
@@ -534,29 +540,37 @@
   </td>
   {#if targetId === undefined}
     <td data-label="Action">
-      <Button
-        row
-        onclick={() => {
-          editingPolicy = policy;
-          dialogError = '';
-        }}>Configure</Button
-      >
+      <div class="policy-action">
+        <Button
+          row
+          onclick={() => {
+            editingPolicy = policy;
+            dialogError = '';
+          }}>Configure</Button
+        >
+      </div>
     </td>
   {/if}
 {/snippet}
 
 {#snippet overrideCells(policy: QueuePolicy)}
   <th class="override-installation" scope="row" data-label="Installation">
-    <code>{policy.target_id}</code>
-    <span>{workloadTitle(policy.kind)}</span>
+    <div class="override-stack band-trim-stack">
+      <code>{policy.target_id}</code>
+      <span>{workloadTitle(policy.kind)}</span>
+    </div>
   </th>
   <td class="override-value" data-label="Schedule">
-    <strong>{duration(policy.cadence)}</strong>
-    <span>{profileName(policy.profile_id)}</span>
+    <div class="override-stack band-trim-stack">
+      <strong>{duration(policy.cadence)}</strong>
+      <span>{profileName(policy.profile_id)}</span>
+    </div>
   </td>
   <td class="override-value" data-label="Policy">
-    <Chip tone="neutral" small>{policy.default_priority} priority</Chip>
-    <span>Revision {policy.revision}</span>
+    <div class="override-stack band-trim-stack">
+      <Chip tone="neutral" small>{policy.default_priority} priority</Chip>
+      <span>Revision {policy.revision}</span>
+    </div>
   </td>
   <td data-label="Actions">
     <div class="request-buttons">
@@ -1030,6 +1044,12 @@
     gap: 0.12rem;
     min-width: 0;
   }
+  .schedule-summary article > div > :first-child {
+    text-box: trim-start cap alphabetic;
+  }
+  .schedule-summary article > div > :last-child {
+    text-box: trim-end cap alphabetic;
+  }
   .schedule-summary article div > span,
   .schedule-summary small {
     color: var(--text-muted);
@@ -1090,13 +1110,21 @@
   .policy-title-line > strong {
     color: var(--text-primary);
     font-size: var(--font-size-body);
+    text-box: trim-both cap alphabetic;
+  }
+  .policy-work,
+  .override-stack {
+    display: grid;
+  }
+  .policy-work {
+    gap: var(--space-1);
   }
   .policy-description {
-    margin-top: var(--space-1);
+    margin-top: 0;
   }
   .policy-source,
   .request-detail {
-    margin-top: var(--space-1);
+    margin-top: 0;
   }
   .policy-source {
     font-size: var(--font-size-micro);
@@ -1108,10 +1136,14 @@
     margin: 0;
   }
   .policy-facts > div {
-    align-items: baseline;
     display: grid;
-    gap: var(--space-2);
-    grid-template-columns: 3.3rem minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+  .policy-facts > :first-child > dt {
+    text-box: trim-start cap alphabetic;
+  }
+  .policy-facts > :last-child > dd {
+    text-box: trim-end cap alphabetic;
   }
   .policy-facts dt,
   .profile-facts dt {
@@ -1135,11 +1167,41 @@
   .runtime-summary {
     justify-items: start;
   }
+  .runtime-state {
+    align-items: center;
+    color: var(--text-muted);
+    display: flex;
+    gap: var(--space-1);
+  }
+  .runtime-state strong {
+    font-size: var(--font-size-compact);
+    font-weight: 650;
+    text-box: trim-both cap alphabetic;
+    text-transform: capitalize;
+  }
+  .runtime-dot {
+    background: currentcolor;
+    border-radius: 50%;
+    height: 0.4rem;
+    width: 0.4rem;
+  }
+  .runtime-state-signal,
+  .runtime-state-accent {
+    color: var(--brand-action-text);
+  }
+  .runtime-state-warning {
+    color: var(--warning);
+  }
+  .runtime-state-stop {
+    color: var(--stop);
+  }
+  .runtime-state-clear {
+    color: var(--clear);
+  }
   .runtime-summary > span,
   .policy-detail > span,
   .policy-chip-line > span,
-  .override-value > span,
-  .override-installation > span {
+  .override-stack > span {
     color: var(--text-muted);
     display: block;
     font-size: var(--font-size-compact);
@@ -1151,9 +1213,16 @@
     flex-wrap: wrap;
     gap: var(--space-2);
   }
-  .override-installation > span,
-  .override-value > span {
-    margin-top: var(--space-1);
+  .policy-chip-line > span {
+    text-box: trim-both cap alphabetic;
+  }
+  .policy-action {
+    align-items: center;
+    display: flex;
+    justify-content: flex-start;
+  }
+  .override-stack {
+    gap: var(--space-1);
   }
   .profile-grid {
     display: grid;
@@ -1185,6 +1254,12 @@
   .profile-heading > div {
     display: block;
     min-width: 0;
+  }
+  .profile-heading > div > :first-child {
+    text-box: trim-start cap alphabetic;
+  }
+  .profile-heading > div > :last-child {
+    text-box: trim-end cap alphabetic;
   }
   .profile-heading strong,
   .profile-heading div > span {

@@ -515,6 +515,9 @@
     font-size: var(--font-size-compact);
     gap: var(--space-2);
   }
+  .queue-tools > span {
+    text-box: trim-both cap alphabetic;
+  }
   .queue-pagination {
     align-items: center;
     display: flex;

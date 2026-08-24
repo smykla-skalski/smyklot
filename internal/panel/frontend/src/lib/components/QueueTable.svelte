@@ -245,6 +245,9 @@
     line-height: 1.35;
     margin-top: 0.35rem;
   }
+  .queue-reason {
+    text-box: trim-end cap alphabetic;
+  }
   .state-cell {
     display: grid;
     gap: var(--space-1);
