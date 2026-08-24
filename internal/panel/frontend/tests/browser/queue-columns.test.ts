@@ -93,7 +93,7 @@ describe('the general Queue table [Integration]', () => {
       const row = page.locator('.general-queue-table tbody .data-row', {
         hasText: 'Apply organization sync plan',
       });
-      await row.getByRole('button', { name: 'Details' }).click();
+      await row.getByRole('button', { name: 'Apply organization sync plan', exact: true }).click();
       const dialog = page.getByRole('dialog', { name: 'Apply organization sync plan' });
       await dialog.waitFor({ state: 'visible' });
       await dialog.getByRole('heading', { name: 'Workload detail' }).waitFor();

@@ -21,7 +21,7 @@
   import QueueTable from './QueueTable.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
-  import Select from './Select.svelte';
+  import TableToolsMenu, { type ToolsFilter } from './TableToolsMenu.svelte';
 
   type Section = 'active' | 'approvals' | 'history';
 
@@ -83,6 +83,145 @@
   const rangeStart = $derived(total === 0 ? 0 : offset + 1);
   const rangeEnd = $derived(Math.min(offset + items.length, total));
   const query = $derived.by(queueQuery);
+  const queueFilters = $derived<ToolsFilter[]>([
+    {
+      label: 'Workload',
+      hint: 'Show one kind of background work',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'All workloads' },
+            ...workloads.map((kind) => ({
+              value: kind,
+              label: kind.replaceAll('_', ' '),
+            })),
+          ],
+        },
+      ],
+      selected: [workload],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        workload = value as QueueWorkload | 'all';
+        offset = 0;
+      },
+    },
+    {
+      label: 'State',
+      hint: 'Narrow the current Queue view',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'All states' },
+            ...states.map((value) => ({ value, label: value.replaceAll('_', ' ') })),
+          ],
+        },
+      ],
+      selected: [stateFilter],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        stateFilter = value;
+        offset = 0;
+      },
+    },
+    {
+      label: 'Window',
+      hint: 'Filter by assigned execution window',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'All windows' },
+            ...profiles.map((value) => ({ value, label: value })),
+          ],
+        },
+      ],
+      selected: [profile],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        profile = value;
+        offset = 0;
+      },
+    },
+    ...(targetId === undefined
+      ? [
+          {
+            label: 'Installation',
+            hint: 'Limit work to one installation',
+            sections: [
+              {
+                options: [
+                  { value: 'all', label: 'All installations' },
+                  ...installations.map((value) => ({ value, label: value })),
+                ],
+              },
+            ],
+            selected: [installation],
+            fallbackValue: 'all',
+            onChange: ([value = 'all']) => {
+              installation = value;
+              offset = 0;
+            },
+          },
+        ]
+      : []),
+    {
+      label: 'Repository',
+      hint: 'Limit work to one repository',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'All repositories' },
+            ...repositories.map((value) => ({ value, label: value })),
+          ],
+        },
+      ],
+      selected: [repository],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        repository = value;
+        offset = 0;
+      },
+    },
+    {
+      label: 'Created',
+      hint: 'Limit work by creation time',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'Any time' },
+            { value: '24h', label: 'Last 24 hours' },
+            { value: '7d', label: 'Last 7 days' },
+          ],
+        },
+      ],
+      selected: [timeRange],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        timeRange = value as 'all' | '24h' | '7d';
+        offset = 0;
+      },
+    },
+    {
+      label: 'Priority',
+      hint: 'Show one dispatch priority band',
+      sections: [
+        {
+          options: [
+            { value: 'all', label: 'All priorities' },
+            { value: 'urgent', label: 'Urgent' },
+            { value: 'high', label: 'High' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'low', label: 'Low' },
+          ],
+        },
+      ],
+      selected: [priority],
+      fallbackValue: 'all',
+      onChange: ([value = 'all']) => {
+        priority = value as QueuePriority | 'all';
+        offset = 0;
+      },
+    },
+  ]);
 
   onMount(() => {
     const refresh = window.setInterval(() => void load(false), 30_000);
@@ -273,7 +412,7 @@
     </PageHeader>
   {/if}
 
-  <div class="queue-controls">
+  <div class="queue-toolbar">
     <div class="queue-tabs">
       <SegmentedControl
         name="queue-view"
@@ -288,66 +427,13 @@
         onSelect={(value) => selectSection(value as Section)}
       />
     </div>
-    <div class="queue-filters" aria-label="Queue filters">
-      <label>
-        <span>Workload</span>
-        <Select bind:value={workload} onchange={() => (offset = 0)}>
-          <option value="all">All workloads</option>
-          {#each workloads as kind (kind)}
-            <option value={kind}>{kind.replaceAll('_', ' ')}</option>
-          {/each}
-        </Select>
-      </label>
-      <label>
-        <span>State</span>
-        <Select bind:value={stateFilter} onchange={() => (offset = 0)}>
-          <option value="all">All states</option>
-          {#each states as value (value)}
-            <option {value}>{value.replaceAll('_', ' ')}</option>
-          {/each}
-        </Select>
-      </label>
-      <label>
-        <span>Window</span>
-        <Select bind:value={profile} onchange={() => (offset = 0)}>
-          <option value="all">All windows</option>
-          {#each profiles as value (value)}<option {value}>{value}</option>{/each}
-        </Select>
-      </label>
-      {#if targetId === undefined}
-        <label>
-          <span>Installation</span>
-          <Select bind:value={installation} onchange={() => (offset = 0)}>
-            <option value="all">All installations</option>
-            {#each installations as value (value)}<option {value}>{value}</option>{/each}
-          </Select>
-        </label>
-      {/if}
-      <label>
-        <span>Repository</span>
-        <Select bind:value={repository} onchange={() => (offset = 0)}>
-          <option value="all">All repositories</option>
-          {#each repositories as value (value)}<option {value}>{value}</option>{/each}
-        </Select>
-      </label>
-      <label>
-        <span>Created</span>
-        <Select bind:value={timeRange} onchange={() => (offset = 0)}>
-          <option value="all">Any time</option>
-          <option value="24h">Last 24 hours</option>
-          <option value="7d">Last 7 days</option>
-        </Select>
-      </label>
-      <label>
-        <span>Priority</span>
-        <Select bind:value={priority} onchange={() => (offset = 0)}>
-          <option value="all">All priorities</option>
-          <option value="urgent">Urgent</option>
-          <option value="high">High</option>
-          <option value="normal">Normal</option>
-          <option value="low">Low</option>
-        </Select>
-      </label>
+    <div class="queue-tools">
+      <span aria-live="polite">
+        {loading
+          ? 'Updating…'
+          : `${total} ${section === 'active' ? 'active' : section} item${total === 1 ? '' : 's'}`}
+      </span>
+      <TableToolsMenu label="Filter queue" sorts={[]} filters={queueFilters} />
     </div>
   </div>
 
@@ -411,32 +497,23 @@
     min-height: 0;
     min-width: 0;
   }
-  .queue-controls {
-    display: grid;
+  .queue-toolbar {
+    align-items: center;
+    display: flex;
     gap: var(--space-3);
+    justify-content: space-between;
     padding-bottom: var(--space-1);
   }
   .queue-tabs {
     display: flex;
     justify-content: flex-start;
   }
-  .queue-filters {
-    align-items: end;
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
-  }
-  .queue-filters label {
-    display: grid;
-    gap: var(--space-1);
-    min-width: 0;
-  }
-  .queue-filters label > span {
+  .queue-tools {
+    align-items: center;
     color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    display: flex;
+    font-size: var(--font-size-compact);
+    gap: var(--space-2);
   }
   .queue-pagination {
     align-items: center;
@@ -454,14 +531,18 @@
     gap: var(--space-2);
   }
   @media (max-width: 36rem) {
-    .queue-filters {
-      grid-template-columns: 1fr;
+    .queue-toolbar {
+      align-items: stretch;
+      flex-direction: column;
     }
     .queue-tabs :global(fieldset) {
       width: 100%;
     }
     .queue-tabs :global(label) {
       flex: 1;
+    }
+    .queue-tools {
+      justify-content: space-between;
     }
   }
 </style>
