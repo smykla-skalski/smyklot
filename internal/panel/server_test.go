@@ -871,6 +871,50 @@ func TestEventHubAnnounceAccount(t *testing.T) {
 	}
 }
 
+func TestQueueEventVisibilityFollowsAuthorizationScope(t *testing.T) {
+	t.Run("installation owner", func(t *testing.T) {
+		harness := newPanelHarnessForSubject(t, "owner", "42")
+		if _, err := harness.server.catalog.SyncCatalog(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		harness.signIn(t)
+		_, unrelated := seedNonOwnedInstallation(t, harness)
+		accountID := "github:test:user:42"
+
+		if !harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
+			Type: panelEventQueueChanged, TargetID: "github:installation:10",
+		}) {
+			t.Fatal("owner could not receive their installation queue event")
+		}
+		if harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
+			Type: panelEventQueueChanged, TargetID: unrelated.TargetID,
+		}) {
+			t.Fatal("queue event leaked from another installation")
+		}
+		if harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
+			Type: panelEventQueueChanged,
+		}) {
+			t.Fatal("global queue event leaked to an installation user")
+		}
+	})
+
+	t.Run("root", func(t *testing.T) {
+		harness := newPanelHarness(t, "root")
+		harness.signIn(t)
+		_, unrelated := seedNonOwnedInstallation(t, harness)
+		accountID := "github:test:user:1"
+
+		for _, event := range []panelEvent{
+			{Type: panelEventQueueChanged},
+			{Type: panelEventQueueChanged, TargetID: unrelated.TargetID},
+		} {
+			if !harness.server.panelEventVisible(t.Context(), accountID, event) {
+				t.Fatalf("Root could not receive queue event %#v", event)
+			}
+		}
+	})
+}
+
 func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	_ = harness.signIn(t)

@@ -340,6 +340,9 @@ func (s *Server) servePanelEvents(
 		case <-ctx.Done():
 			return
 		case event := <-subscriber.events:
+			if !s.panelEventVisible(ctx, subscriber.accountID, event) {
+				continue
+			}
 			if err := writePanelEvent(ctx, connection, event); err != nil {
 				return
 			}
@@ -358,6 +361,34 @@ func (s *Server) servePanelEvents(
 			}
 		}
 	}
+}
+
+// panelEventVisible keeps installation-scoped queue changes inside the same
+// authorization boundary as the queue API. Root sees global and installation
+// work; an installation user sees only targets they can still access. Access
+// is resolved when the event is delivered so a long-lived connection cannot
+// retain a scope after ownership or an explicit role changes.
+func (s *Server) panelEventVisible(
+	ctx context.Context,
+	accountID string,
+	event panelEvent,
+) bool {
+	if event.Type != panelEventQueueChanged {
+		return true
+	}
+	user, err := s.store.GetPanelUser(ctx, accountID)
+	if err != nil || user.Status != storage.PanelUserActive {
+		return false
+	}
+	if user.SystemRole.IsRoot() {
+		return true
+	}
+	if event.TargetID == "" {
+		return false
+	}
+	access, err := s.store.ResolveTargetAccess(ctx, accountID, event.TargetID, s.now().UTC())
+
+	return err == nil && access.Role != storage.InstallationRoleNone
 }
 
 func (s *Server) heartbeatPanelEvents(
