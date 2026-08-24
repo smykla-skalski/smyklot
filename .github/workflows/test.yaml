@@ -62,7 +62,7 @@ jobs:
           - area: packages
             dirs: >-
               ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
-              ./internal/bot
+              ./internal/bot ./internal/workqueue
 
     steps:
       - name: Checkout code
