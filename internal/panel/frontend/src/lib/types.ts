@@ -66,6 +66,9 @@ export interface TargetUserAccess {
   suspended: boolean;
   suspension_reason?: string;
   revision: number;
+  affected_installations?: number;
+  affected_items?: number;
+  affected_policies?: number;
   updated_at?: string;
   effective_role: InstallationRole;
   source: AccessSource;
@@ -342,6 +345,261 @@ export interface PendingCIEvent {
 export interface PendingCIDetail {
   request: PendingCIRequest;
   events: PendingCIEvent[];
+}
+
+export type QueueWorkload =
+  | 'webhook_delivery'
+  | 'pending_ci'
+  | 'pending_ci_gate'
+  | 'catalog_refresh'
+  | 'reaction_scan'
+  | 'config_migration'
+  | 'sync_scan'
+  | 'sync_apply'
+  | 'path_refresh'
+  | 'delivery_cleanup'
+  | 'auth_cleanup'
+  | 'schedule_change';
+export type QueueState =
+  | 'awaiting_approval'
+  | 'scheduled'
+  | 'blocked'
+  | 'ready'
+  | 'running'
+  | 'retrying'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  | 'superseded';
+export type QueuePriority = 'low' | 'normal' | 'high' | 'urgent';
+export type QueueActionType = 'run_now' | 'next_window' | 'schedule_at' | 'set_priority' | 'cancel';
+
+interface QueueItemBase {
+  id: string;
+  lane: 'webhook' | 'pending_ci' | 'maintenance';
+  target_id?: string;
+  repository_id?: string;
+  source_kind?: string;
+  source_id?: string;
+  title: string;
+  summary?: string;
+  state: QueueState;
+  priority: QueuePriority;
+  priority_overridden: boolean;
+  window_mode: 'respect' | 'bypass';
+  immediate: boolean;
+  profile_id?: string;
+  profile_name?: string;
+  profile_timezone?: string;
+  not_before: string;
+  cadence_anchor_at?: string;
+  eligible_at: string;
+  estimated_start_at?: string;
+  work_ahead: number;
+  blocked_reason?: string;
+  progress_current: number;
+  progress_total: number;
+  attempt: number;
+  lease_expires_at?: string;
+  requested_by?: string;
+  reason?: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  started_at?: string;
+  finished_at?: string;
+  actions?: QueueActionType[];
+}
+
+export type QueueItem =
+  | (QueueItemBase & {
+      kind: 'webhook_delivery';
+      details?: { delivery_id?: number; event?: string };
+    })
+  | (QueueItemBase & {
+      kind: 'pending_ci';
+      details?: { pull_request?: number; head_sha?: string };
+    })
+  | (QueueItemBase & {
+      kind: 'sync_apply';
+      details?: { create?: number; update?: number; delete?: number };
+    })
+  | (QueueItemBase & {
+      kind: 'schedule_change';
+      details?: { policy_kind?: QueueWorkload };
+    })
+  | (QueueItemBase & {
+      kind: Exclude<
+        QueueWorkload,
+        'webhook_delivery' | 'pending_ci' | 'sync_apply' | 'schedule_change'
+      >;
+      details?: Record<string, unknown>;
+    });
+
+export interface QueueEvent {
+  id: number;
+  item_id: string;
+  actor_id?: string;
+  actor: string;
+  kind: string;
+  state: QueueState;
+  summary: string;
+  details?: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface QueueDetail {
+  item: QueueItem;
+  events: QueueEvent[];
+}
+
+export interface QueuePage {
+  items: QueueItem[];
+  next_offset: number;
+  total: number;
+  facets: {
+    targets: string[];
+    repositories: string[];
+    profiles: string[];
+    states: QueueState[];
+    workloads: QueueWorkload[];
+    priorities: QueuePriority[];
+  };
+}
+
+export interface QueueActionInput {
+  type: QueueActionType;
+  expected_revision: number;
+  reason?: string;
+  at?: string;
+  outside_window?: boolean;
+  priority?: QueuePriority;
+}
+
+export interface QueueSchedulePreview {
+  item_revision: number;
+  requested_at: string;
+  eligible_at: string;
+  outside_window: boolean;
+  profile_id?: string;
+  profile_name?: string;
+  profile_timezone?: string;
+}
+
+export interface ScheduleProfile {
+  id: string;
+  target_id?: string;
+  name: string;
+  timezone: string;
+  system: boolean;
+  archived_at?: string;
+  revision: number;
+  affected_installations?: number;
+  affected_items?: number;
+  affected_policies?: number;
+  windows: Array<{ weekday: number; start_minute: number; end_minute: number }>;
+  exceptions: Array<{
+    date: string;
+    closed: boolean;
+    start_minute?: number;
+    end_minute?: number;
+  }>;
+}
+
+export interface QueuePolicy {
+  kind: QueueWorkload;
+  target_id?: string;
+  enabled: boolean;
+  cadence: number;
+  profile_id: string;
+  default_priority: QueuePriority;
+  retry_delay: number;
+  retention?: number;
+  approval_ttl?: number;
+  configuration?: Record<string, unknown>;
+  revision: number;
+  updated_at: string;
+}
+
+export interface SchedulePolicySet {
+  current: QueuePolicy[];
+  deployment_defaults: QueuePolicy[];
+  overrides: QueuePolicy[];
+  effective: QueuePolicy[];
+}
+
+export interface QueuePolicyStatus {
+  kind: QueueWorkload;
+  target_id?: string;
+  last_run_at?: string;
+  last_state?: QueueState;
+  next_eligibility_at?: string;
+  estimated_start_at?: string;
+  work_ahead: number;
+  current_state?: QueueState;
+  current_queue_item_id?: string;
+}
+
+export interface RootJobPolicies {
+  policies: QueuePolicy[];
+  policy_set: SchedulePolicySet;
+  statuses: QueuePolicyStatus[];
+}
+
+export interface ScheduleRequest {
+  id: string;
+  target_id: string;
+  kind: QueueWorkload;
+  state: 'pending' | 'approved' | 'rejected' | 'withdrawn' | 'stale';
+  base_revision: number;
+  base_target_id?: string;
+  profile_id?: string;
+  custom_profile?: ScheduleProfile;
+  cadence: number;
+  default_priority: QueuePriority;
+  configuration?: Record<string, unknown>;
+  reason: string;
+  requested_by: string;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TargetSchedules {
+  policies: SchedulePolicySet;
+  profiles: ScheduleProfile[];
+  statuses: QueuePolicyStatus[];
+}
+
+export interface ScheduleProfileInput {
+  name: string;
+  timezone: string;
+  windows: ScheduleProfile['windows'];
+  exceptions: ScheduleProfile['exceptions'];
+  expected_revision: number;
+}
+
+export interface QueuePolicyInput {
+  enabled: boolean;
+  cadence_seconds: number;
+  profile_id: string;
+  default_priority: QueuePriority;
+  retry_delay_seconds: number;
+  retention_seconds?: number;
+  approval_lifetime_seconds?: number;
+  configuration?: Record<string, unknown>;
+  expected_revision: number;
+}
+
+export interface ScheduleRequestInput {
+  kind: QueueWorkload;
+  base_revision: number;
+  profile_id?: string;
+  custom_profile?: ScheduleProfile;
+  cadence_seconds: number;
+  default_priority: QueuePriority;
+  configuration?: Record<string, unknown>;
+  reason: string;
 }
 
 /** What the storage subsystem reports about itself. */
@@ -1214,4 +1472,12 @@ export interface SyncPlan {
   expires_at: string;
   approved_at?: string;
   finished_at?: string;
+  execution_stage: string;
+  queue_item?: QueueItem;
+}
+
+export interface SyncRunNowResponse {
+  status: 'scan_queued' | 'approval_required' | 'already_running' | 'plan_dispatched';
+  plan?: SyncPlan;
+  queue_item?: QueueItem;
 }

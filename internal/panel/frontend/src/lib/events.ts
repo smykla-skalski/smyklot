@@ -9,7 +9,19 @@ export type PanelChangeType =
   | 'failure.changed'
   | 'users.changed'
   | 'invitation.changed'
-  | 'access.changed';
+  | 'access.changed'
+  | 'queue.changed';
+
+type ScopedPanelChangeType = Exclude<PanelChangeType, 'queue.changed'>;
+
+export type PanelChangeEvent =
+  | {
+      version: 1;
+      type: ScopedPanelChangeType;
+      target_id: string;
+      repository_id?: string;
+    }
+  | { version: 1; type: 'queue.changed'; target_id?: string };
 
 // PanelPrefsInfo rides the ready frame: the stored preference revision and
 // checksum always, the full document only when the client's dial parameters
@@ -23,17 +35,11 @@ export interface PanelPrefsInfo {
 export type PanelStreamEvent =
   | { version: 1; type: 'ready'; prefs?: PanelPrefsInfo }
   | { version: 1; type: 'resync' }
-  | {
-      version: 1;
-      type: PanelChangeType;
-      target_id: string;
-      repository_id?: string;
-    }
+  | PanelChangeEvent
   | { version: 1; type: 'session.revoked'; code: string; reason: string }
   | { version: 1; type: 'prefs.changed'; rev: number; changes: Record<string, unknown> }
   | { version: 1; type: 'prefs.rejected'; keys: string[] };
 
-export type PanelChangeEvent = Extract<PanelStreamEvent, { target_id: string }>;
 type PanelRevokedEvent = Extract<PanelStreamEvent, { type: 'session.revoked' }>;
 type PanelPrefsChangedEvent = Extract<PanelStreamEvent, { type: 'prefs.changed' }>;
 
@@ -138,7 +144,7 @@ export function openPanelStream(
         handlers.onPrefsRejected?.(event.keys);
         return;
       }
-      if ('target_id' in event) handlers.onChange(event);
+      if (event.type === 'queue.changed' || 'target_id' in event) handlers.onChange(event);
     });
     opened.addEventListener('error', () => {});
     opened.addEventListener('close', () => {
@@ -228,11 +234,19 @@ export function readEvent(data: unknown): PanelStreamEvent | null {
       reason: frame.reason,
     };
   }
+  if (frame.type === 'queue.changed') {
+    if (frame.target_id !== undefined && typeof frame.target_id !== 'string') return null;
+    return {
+      version: PANEL_STREAM_VERSION,
+      type: frame.type,
+      ...(frame.target_id === undefined ? {} : { target_id: frame.target_id }),
+    };
+  }
   if (!changeTypes.has(frame.type) || typeof frame.target_id !== 'string') return null;
   if (frame.repository_id !== undefined && typeof frame.repository_id !== 'string') return null;
   return {
     version: PANEL_STREAM_VERSION,
-    type: frame.type as PanelChangeType,
+    type: frame.type as ScopedPanelChangeType,
     target_id: frame.target_id,
     ...(frame.repository_id === undefined ? {} : { repository_id: frame.repository_id }),
   };

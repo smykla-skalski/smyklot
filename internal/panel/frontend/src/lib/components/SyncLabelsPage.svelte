@@ -160,6 +160,7 @@
     if (signature === configSignature) return;
     configSignature = signature;
     untrack(() => {
+      if (signature === localLabelsSignature()) return;
       rows = toRows(current);
       patterns = [...(current?.excludes ?? [])];
       enabled = current?.enabled ?? false;
@@ -175,6 +176,15 @@
       labels: source?.labels ?? [],
       allow_removal: source?.allow_removal ?? false,
       excludes: source?.excludes ?? [],
+    });
+  }
+
+  function localLabelsSignature(): string {
+    return JSON.stringify({
+      enabled,
+      labels: toLabels(rows),
+      allow_removal: allowRemoval,
+      excludes: patterns.filter((pattern) => pattern.trim() !== ''),
     });
   }
 

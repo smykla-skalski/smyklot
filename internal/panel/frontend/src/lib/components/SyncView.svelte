@@ -34,6 +34,7 @@
     SyncKind,
     SyncOverride,
     SyncPlan,
+    SyncRunNowResponse,
     SyncStatus,
   } from '#lib/types.js';
   import type { SyncSection } from '#lib/routes.js';
@@ -55,10 +56,14 @@
     rulesetName = null,
     fileName = null,
     readOnly,
+    canControl = false,
     fetchConfig,
     fetchPlan,
     approvePlan,
     discardPlan,
+    runSyncNow = async () => {
+      throw new Error('Sync queue control is unavailable');
+    },
     fetchStatus,
     sectionHref,
     onOpenSection,
@@ -78,6 +83,7 @@
     /** One template's own page, when the address names one. */
     fileName?: string | null;
     readOnly: boolean;
+    canControl?: boolean;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
     fileHref: (path: string) => string;
@@ -88,6 +94,10 @@
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
+    runSyncNow?: (
+      targetId: string,
+      input: { expected_revision: number; reason: string },
+    ) => Promise<SyncRunNowResponse>;
     fetchStatus: (targetId: string) => Promise<SyncStatus>;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
@@ -141,6 +151,8 @@
   let nowMs = $state(0);
   let approving = $state(false);
   let discarding = $state(false);
+  let runningNow = $state(false);
+  let runNotice = $state('');
 
   let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
@@ -348,6 +360,30 @@
     }
   }
 
+  async function onRunNow(reason: string): Promise<void> {
+    runningNow = true;
+    error = null;
+    runNotice = '';
+    try {
+      const response = await runSyncNow(targetId, {
+        expected_revision: plan?.queue_item?.revision ?? 0,
+        reason,
+      });
+      if (response.plan !== undefined) plan = response.plan;
+      if (response.status === 'scan_queued')
+        runNotice = 'Drift scan queued for immediate dispatch.';
+      if (response.status === 'plan_dispatched')
+        runNotice = 'Approved plan queued for immediate dispatch.';
+      if (response.status === 'approval_required')
+        runNotice = 'Review and approve the computed plan first.';
+      if (response.status === 'already_running') runNotice = 'This plan is already running.';
+    } catch (cause) {
+      error = messageOf(cause);
+    } finally {
+      runningNow = false;
+    }
+  }
+
   function messageOf(cause: unknown): string {
     return cause instanceof Error ? cause.message : String(cause);
   }
@@ -388,16 +424,20 @@
   {#if error !== null}
     <FormError message={error} />
   {/if}
+  {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
   <SyncPlanPage
     {plan}
     {nowMs}
     {readOnly}
+    {canControl}
     {approving}
     {discarding}
+    runNowBusy={runningNow}
     {sectionHref}
     {onOpenSection}
     onApprove={(planId, digest) => void onApprove(planId, digest)}
     onDiscard={(planId) => void onDiscard(planId)}
+    onRunNow={(reason) => void onRunNow(reason)}
   />
 {:else if section === 'labels'}
   {#key config === null}
@@ -511,5 +551,12 @@
 
   :global(.form-error) {
     margin: var(--space-3) 0 0;
+  }
+
+  .sync-run-notice {
+    border-inline-start: 2px solid var(--signal);
+    color: var(--text-secondary);
+    margin: var(--space-3) 0;
+    padding: var(--space-2) var(--space-3);
   }
 </style>

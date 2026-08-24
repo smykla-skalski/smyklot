@@ -1,19 +1,14 @@
 <script lang="ts">
-  import GeneralQueueView from '#lib/components/GeneralQueueView.svelte';
+  import SchedulesView from '#lib/components/SchedulesView.svelte';
   import { getPanelSession } from '#lib/session.svelte.js';
 
   const session = getPanelSession();
 </script>
 
-<section
-  class="root-workspace"
-  class:root-table-view={session.tableScrollView}
-  aria-labelledby="root-page-heading"
->
-  <GeneralQueueView
+<section class="root-workspace" aria-labelledby="root-page-heading">
+  <SchedulesView
     api={session.api}
     rootRole={session.rootRole}
-    canControl
     refreshRevision={session.queueRevision}
   />
 </section>

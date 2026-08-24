@@ -107,6 +107,7 @@ describe('panel routes', () => {
 
   it('parses Root routes without treating them as installations', () => {
     expect(parsePanelRoute('', '/root')).toEqual({ rootView: 'overview' });
+    expect(parsePanelRoute('', '/root/schedules')).toEqual({ rootView: 'schedules' });
     expect(parsePanelRoute('/panel', '/panel/root/installations')).toEqual({
       rootView: 'installations',
     });
@@ -181,6 +182,7 @@ describe('panel routes', () => {
       `${basePath}/i/bartsmykla/access/users`,
     );
     expect(panelAddress({ rootView: 'overview' })).toBe(`${basePath}/root`);
+    expect(panelAddress({ rootView: 'schedules' })).toBe(`${basePath}/root/schedules`);
     expect(panelAddress({ rootView: 'access-users' })).toBe(`${basePath}/root/access/users`);
     expect(
       panelAddress({

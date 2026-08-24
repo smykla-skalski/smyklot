@@ -105,6 +105,8 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/queue/recent');
     case 'queue-request':
       return resolve('/root/queue/request/[id]', { id: encodeURIComponent(route.request) });
+    case 'schedules':
+      return resolve('/root/schedules');
     case 'runtime-settings':
       return resolve('/root/runtime/settings');
     case 'runtime-service':
@@ -256,6 +258,8 @@ export function panelRouteAt(
       return { rootView: 'queue-recent' };
     case '/root/queue/request/[id]':
       return { rootView: 'queue-request', request: params.id ?? '' };
+    case '/root/schedules':
+      return { rootView: 'schedules' };
     case '/root/runtime':
       return { rootView: 'runtime-service' };
     case '/root/runtime/settings':

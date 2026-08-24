@@ -114,10 +114,12 @@
             section={session.currentSyncSection}
             rulesetName={session.currentSyncRuleset}
             readOnly={!session.selectedTarget.capabilities.write}
+            canControl={['admin', 'owner'].includes(session.selectedTarget.effective_role)}
             fetchConfig={session.api.fetchSyncConfig}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}
             discardPlan={session.api.discardSyncPlan}
+            runSyncNow={session.api.runSyncNow}
             fetchStatus={session.api.fetchSyncStatus}
             sectionHref={(s) => session.syncSectionHref(s)}
             onOpenSection={(s) => session.selectSyncSection(s)}
@@ -133,6 +135,43 @@
         {/key}
       {:catch error}
         {@render failedView('sync', error)}
+      {/await}
+    </div>
+  {:else if view === 'queue'}
+    <div id="queue-panel">
+      {#await import('./GeneralQueueView.svelte')}
+        {@render loadingView('queue')}
+      {:then { default: GeneralQueueView }}
+        {#key session.selectedTarget.id}
+          <GeneralQueueView
+            api={session.api}
+            targetId={session.selectedTarget.id}
+            refreshRevision={session.queueRevision}
+            canControl={session.selectedTarget.effective_role === 'admin' ||
+              session.selectedTarget.effective_role === 'owner'}
+          />
+        {/key}
+      {:catch error}
+        {@render failedView('queue', error)}
+      {/await}
+    </div>
+  {:else if view === 'schedules'}
+    <div id="schedules-panel">
+      {#await import('./SchedulesView.svelte')}
+        {@render loadingView('schedules')}
+      {:then { default: SchedulesView }}
+        {#key session.selectedTarget.id}
+          <SchedulesView
+            api={session.api}
+            targetId={session.selectedTarget.id}
+            actorAccountId={session.viewer?.account.id ?? ''}
+            refreshRevision={session.queueRevision}
+            canRequest={session.selectedTarget.effective_role === 'admin' ||
+              session.selectedTarget.effective_role === 'owner'}
+          />
+        {/key}
+      {:catch error}
+        {@render failedView('schedules', error)}
       {/await}
     </div>
   {:else if view === 'users' || view === 'invitations'}
@@ -211,6 +250,8 @@
 
 <style>
   #repositories-panel,
+  #queue-panel,
+  #schedules-panel,
   #access-panel,
   #history-panel {
     display: flex;

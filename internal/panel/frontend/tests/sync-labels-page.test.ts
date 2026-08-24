@@ -95,4 +95,35 @@ describe('SyncLabelsPage [Component]', () => {
 
     expect(sent[2]).toMatchObject({ enabled: true, allow_removal: true, labels: [] });
   });
+
+  it('keeps an active editor open when the parent echoes its draft', async () => {
+    const props = {
+      config: config(),
+      readOnly: false,
+      problem: null,
+      sectionHref: () => '#',
+      onOpenSection: vi.fn(),
+      onChange: vi.fn(() => true),
+    };
+    const page = render(SyncLabelsPage, props);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a label' }));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Label name' }), {
+      target: { value: 'release' },
+    });
+    await page.rerender({
+      ...props,
+      config: config({
+        labels: [
+          { name: 'release', color: '0e8a16' },
+          { name: 'bug', color: 'd73a4a' },
+        ],
+        revision: 2,
+      }),
+    });
+
+    expect((screen.getByRole('textbox', { name: 'Label name' }) as HTMLInputElement).value).toBe(
+      'release',
+    );
+  });
 });

@@ -446,6 +446,7 @@ describe('SyncView [Component]', () => {
       id: 'plan-1',
       trigger: 'reconcile',
       state: 'computed',
+      execution_stage: 'Waiting for approval',
       digest: 'digest',
       counts: { create: 1, update: 0, delete: 0 },
       actions: [

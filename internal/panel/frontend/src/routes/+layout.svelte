@@ -576,6 +576,8 @@
     'defaults',
     'repositories',
     'sync',
+    'queue',
+    'schedules',
     'access',
     'history',
   ] as const satisfies readonly PanelSection[];
@@ -583,6 +585,8 @@
     defaults: 'sliders',
     repositories: 'repositories',
     sync: 'refresh',
+    queue: 'pending',
+    schedules: 'sliders',
     access: 'users',
     history: 'history',
   } as const;
@@ -666,6 +670,7 @@
   const ROOT_ORDER = [
     'overview',
     'queue',
+    'schedules',
     'installations',
     'access',
     'history',
@@ -674,6 +679,7 @@
   const rootIcon = {
     overview: 'system',
     queue: 'pending',
+    schedules: 'sliders',
     installations: 'repositories',
     access: 'users',
     history: 'history',

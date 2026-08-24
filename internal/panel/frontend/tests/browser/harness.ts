@@ -38,6 +38,8 @@ export interface Panel {
  */
 export const PANEL_ROUTES = [
   'i/defaults',
+  'i/queue',
+  'i/schedules',
   'i/repositories',
   /* One repository's own page, which is a route in its own right and was in none
      of these sweeps: it has a header, a switch, a way back and three panes, and
@@ -63,6 +65,7 @@ export const PANEL_ROUTES = [
   'root/queue',
   'root/queue/recent',
   'root/queue/request/pending-ci-0',
+  'root/schedules',
   'root/installations',
   'root/installations/{account}/defaults',
   'root/installations/{account}/repositories',

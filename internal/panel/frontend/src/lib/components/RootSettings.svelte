@@ -121,9 +121,6 @@
       ? 0
       : [
           settings.log_level.override !== null,
-          settings.reaction_poll_interval.override_seconds !== null,
-          settings.merge_after_ci_quiet_period.override_seconds !== null,
-          settings.path_index_interval.override_seconds !== null,
           settings.session_lifetime.override_seconds !== null,
         ].filter(Boolean).length,
   );
@@ -143,9 +140,6 @@
     await settingsQuery.refetch();
   }
 
-  const POLL_SPEC = RUNTIME_DURATION_SPECS.reaction_poll_interval_seconds;
-  const QUIET_SPEC = RUNTIME_DURATION_SPECS.merge_after_ci_quiet_period_seconds;
-  const PATH_INDEX_SPEC = RUNTIME_DURATION_SPECS.path_index_interval_seconds;
   const SESSION_SPEC = RUNTIME_DURATION_SPECS.session_ttl_seconds;
 
   function controlDirty(controlId: RuntimeSettingsControlId): boolean {
@@ -346,9 +340,12 @@
       <section class="card group-card" aria-labelledby="root-runtime">
         <div class="group-head">
           <h3 class="group-name" id="root-runtime">Runtime</h3>
-          <span class="group-tally">{runtimeOverridden} of 5 overridden</span>
+          <span class="group-tally">{runtimeOverridden} of 2 overridden</span>
         </div>
-        <p class="group-note">Applied to the running process without a restart</p>
+        <p class="group-note">
+          Applied to the running process without a restart. Background-work cadence and timing are
+          managed in <a href="/root/schedules">Schedules</a>.
+        </p>
         <div class="policy-rows">
           <div
             class={['policy-row', { 'is-unsaved': controlDirty('runtime.log_level') }]}
@@ -420,189 +417,6 @@
                 title="Stop overriding - follow the deployment configuration"
                 disabled={saving}
                 onclick={() => setLogLevel(null)}
-              >
-                <Icon name="close" size={10} />
-              </button>
-            {/if}
-          </div>
-
-          <div
-            class={[
-              'policy-row',
-              {
-                'is-unsaved': controlDirty('runtime.reaction_poll_interval_seconds'),
-                'is-invalid': durationProblem(POLL_SPEC) !== null,
-              },
-            ]}
-            data-unsaved={controlDirty('runtime.reaction_poll_interval_seconds') || undefined}
-          >
-            <span class="setting-say">
-              <span class="setting-name">Reaction sweep</span>
-              <span class="setting-why"
-                >Checks reaction changes GitHub does not deliver through webhooks. Zero turns the
-                sweep off</span
-              >
-              {#if durationProblem(POLL_SPEC) !== null}
-                <span class="setting-problem">{durationProblem(POLL_SPEC)}</span>
-              {/if}
-            </span>
-            {#if current.reaction_poll_interval.override_seconds === null}
-              <span class="policy-value">
-                <span class="setting-unmanaged"
-                  >Follows the deployment - every {formatDuration(
-                    current.reaction_poll_interval.deployment_seconds,
-                    POLL_SPEC.units,
-                  )}</span
-                >
-              </span>
-              <button
-                class="setting-clear"
-                title="Override the deployment sweep interval"
-                disabled={saving}
-                onclick={() =>
-                  setDuration(POLL_SPEC, current.reaction_poll_interval.deployment_seconds)}
-              >
-                <Icon name="plus" size={10} />
-              </button>
-            {:else if current.reaction_poll_interval.override_seconds === 0}
-              <span class="policy-value">
-                <span class="value-word">off</span>
-                <Button
-                  tone="quiet"
-                  disabled={saving}
-                  onclick={() =>
-                    setDuration(
-                      POLL_SPEC,
-                      Math.max(current.reaction_poll_interval.deployment_seconds, 60),
-                    )}
-                >
-                  Turn on
-                </Button>
-              </span>
-              <button
-                class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
-                disabled={saving}
-                onclick={() => setDuration(POLL_SPEC, null)}
-              >
-                <Icon name="close" size={10} />
-              </button>
-            {:else}
-              <span class="policy-value">
-                {@render durationValue(POLL_SPEC, 'Reaction sweep interval')}
-                <Button tone="quiet" disabled={saving} onclick={() => setDuration(POLL_SPEC, 0)}>
-                  Turn off
-                </Button>
-              </span>
-              <button
-                class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
-                disabled={saving}
-                onclick={() => setDuration(POLL_SPEC, null)}
-              >
-                <Icon name="close" size={10} />
-              </button>
-            {/if}
-          </div>
-
-          <div
-            class={[
-              'policy-row',
-              {
-                'is-unsaved': controlDirty('runtime.merge_after_ci_quiet_period_seconds'),
-                'is-invalid': durationProblem(QUIET_SPEC) !== null,
-              },
-            ]}
-            data-unsaved={controlDirty('runtime.merge_after_ci_quiet_period_seconds') || undefined}
-          >
-            <span class="setting-say">
-              <span class="setting-name">Merge after CI</span>
-              <span class="setting-why"
-                >Requires checks to remain unchanged and passing before Smyklot merges</span
-              >
-              {#if durationProblem(QUIET_SPEC) !== null}
-                <span class="setting-problem">{durationProblem(QUIET_SPEC)}</span>
-              {/if}
-            </span>
-            {#if current.merge_after_ci_quiet_period.override_seconds === null}
-              <span class="policy-value">
-                <span class="setting-unmanaged"
-                  >Follows the deployment - {formatDuration(
-                    current.merge_after_ci_quiet_period.deployment_seconds,
-                    QUIET_SPEC.units,
-                  )}</span
-                >
-              </span>
-              <button
-                class="setting-clear"
-                title="Override the deployment quiet period"
-                disabled={saving}
-                onclick={() =>
-                  setDuration(QUIET_SPEC, current.merge_after_ci_quiet_period.deployment_seconds)}
-              >
-                <Icon name="plus" size={10} />
-              </button>
-            {:else}
-              <span class="policy-value">
-                {@render durationValue(QUIET_SPEC, 'Merge-after-CI quiet period')}
-              </span>
-              <button
-                class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
-                disabled={saving}
-                onclick={() => setDuration(QUIET_SPEC, null)}
-              >
-                <Icon name="close" size={10} />
-              </button>
-            {/if}
-          </div>
-
-          <div
-            class={[
-              'policy-row',
-              {
-                'is-unsaved': controlDirty('runtime.path_index_interval_seconds'),
-                'is-invalid': durationProblem(PATH_INDEX_SPEC) !== null,
-              },
-            ]}
-            data-unsaved={controlDirty('runtime.path_index_interval_seconds') || undefined}
-          >
-            <span class="setting-say">
-              <span class="setting-name">Path index</span>
-              <span class="setting-why"
-                >How often each repository's file list is read again for the finder and the plans</span
-              >
-              {#if durationProblem(PATH_INDEX_SPEC) !== null}
-                <span class="setting-problem">{durationProblem(PATH_INDEX_SPEC)}</span>
-              {/if}
-            </span>
-            {#if current.path_index_interval.override_seconds === null}
-              <span class="policy-value">
-                <span class="setting-unmanaged"
-                  >Follows the deployment - every {formatDuration(
-                    current.path_index_interval.deployment_seconds,
-                    PATH_INDEX_SPEC.units,
-                  )}</span
-                >
-              </span>
-              <button
-                class="setting-clear"
-                title="Override the deployment index interval"
-                disabled={saving}
-                onclick={() =>
-                  setDuration(PATH_INDEX_SPEC, current.path_index_interval.deployment_seconds)}
-              >
-                <Icon name="plus" size={10} />
-              </button>
-            {:else}
-              <span class="policy-value">
-                {@render durationValue(PATH_INDEX_SPEC, 'Path index interval')}
-              </span>
-              <button
-                class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
-                disabled={saving}
-                onclick={() => setDuration(PATH_INDEX_SPEC, null)}
               >
                 <Icon name="close" size={10} />
               </button>

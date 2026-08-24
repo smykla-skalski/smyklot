@@ -33,6 +33,8 @@
     fetchPlan: async () => ({ plan: PLAN }),
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},
+    runSyncNow: async () => ({ status: 'scan_queued' as const }),
+    canControl: true,
     fetchStatus: async () => SYNC_STATUS,
     sectionHref: (section: string) => `#/sync/${section}`,
     onOpenSection: () => {},

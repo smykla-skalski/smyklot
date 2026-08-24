@@ -13,13 +13,22 @@ export const PANEL_VIEWS = [
   'defaults',
   'repositories',
   'sync',
+  'queue',
+  'schedules',
   'users',
   'invitations',
   'history',
 ] as const;
 
 /** Views written directly after an installation account in the route tree. */
-export const DIRECT_PANEL_VIEWS = ['defaults', 'repositories', 'sync', 'history'] as const;
+export const DIRECT_PANEL_VIEWS = [
+  'defaults',
+  'repositories',
+  'sync',
+  'queue',
+  'schedules',
+  'history',
+] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
@@ -133,11 +142,12 @@ export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 export type RootRuntimeSection = (typeof ROOT_RUNTIME_SECTIONS)[number];
-export type RootSection = 'overview' | 'queue' | 'installations' | 'access' | 'history' | 'runtime';
+export type RootSection =
+  'overview' | 'queue' | 'schedules' | 'installations' | 'access' | 'history' | 'runtime';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
   | {
-      rootView: 'overview' | 'installations' | 'access-users' | 'access-invitations';
+      rootView: 'overview' | 'installations' | 'schedules' | 'access-users' | 'access-invitations';
       dialog?: RouteDialog;
     }
   | {
@@ -498,6 +508,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     }
   }
   if (parts.length === 2 && parts[1] === 'queue') return { rootView: 'queue' };
+  if (parts.length === 2 && parts[1] === 'schedules') return { rootView: 'schedules' };
   if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'recent') {
     return { rootView: 'queue-recent' };
   }

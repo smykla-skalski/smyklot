@@ -329,6 +329,15 @@ describe('PanelSession [Unit]', () => {
     const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
     expect(keys).toEqual(expect.arrayContaining([['sync-override', 'target-1']]));
   });
+
+  it('publishes queue revisions for direct queue and schedule views', () => {
+    const session = createSession();
+
+    session.invalidateChange({ version: 1, type: 'queue.changed', target_id: 'target-1' });
+    session.invalidateChange({ version: 1, type: 'queue.changed' });
+
+    expect(session.queueRevision).toBe(2);
+  });
 });
 
 /** Puts a session on one repository's Commands pane, which is the page Return has to name. */

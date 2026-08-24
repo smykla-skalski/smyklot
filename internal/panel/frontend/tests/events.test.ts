@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type {
   PanelStreamClock,
-  PanelStreamEvent,
+  PanelChangeEvent,
   PanelStreamHandlers,
   PanelWebSocket,
 } from '../src/lib/events';
@@ -52,7 +52,7 @@ interface StreamFixture {
   cancelled: unknown[];
   resyncs: number;
   revoked: Array<{ code: string; reason: string }>;
-  changes: Array<Extract<PanelStreamEvent, { target_id: string }>>;
+  changes: PanelChangeEvent[];
   prefsReady: Array<{ rev: number; sum: string; values?: Record<string, unknown> }>;
   prefsChanged: Array<{ rev: number; changes: Record<string, unknown> }>;
   prefsRejected: string[][];
@@ -124,6 +124,10 @@ describe('readEvent', () => {
       type: 'repository.changed',
       target_id: '2001',
       repository_id: '4001',
+    });
+    expect(readEvent('{"version":1,"type":"queue.changed"}')).toEqual({
+      version: 1,
+      type: 'queue.changed',
     });
     expect(
       readEvent('{"version":1,"type":"session.revoked","code":"banned","reason":"policy breach"}'),
@@ -201,10 +205,14 @@ describe('openPanelStream', () => {
     expect(state.resyncs).toBe(0);
     first.deliver({ version: 1, type: 'ready' });
     first.deliver({ version: 1, type: 'failure.changed', target_id: '2001' });
+    first.deliver({ version: 1, type: 'queue.changed' });
     first.emit('close');
 
     expect(state.resyncs).toBe(1);
-    expect(state.changes).toEqual([{ version: 1, type: 'failure.changed', target_id: '2001' }]);
+    expect(state.changes).toEqual([
+      { version: 1, type: 'failure.changed', target_id: '2001' },
+      { version: 1, type: 'queue.changed' },
+    ]);
     expect(state.scheduled).toHaveLength(1);
     expect(state.scheduled[0]?.delay).toBe(1_000);
 

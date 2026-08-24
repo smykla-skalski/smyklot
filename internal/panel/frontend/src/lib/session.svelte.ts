@@ -88,6 +88,7 @@ export class PanelSession {
   selectedId = $state<string | null>(null);
   failure = $state<PanelFailure | null>(null);
   notificationUnread = $state(0);
+  queueRevision = $state(0);
   streamReady = $state(false);
   /** Set from the stream's handshake; see `StreamLiveness`. */
   private readonly stream: StreamLiveness;
@@ -796,6 +797,11 @@ export class PanelSession {
   }
 
   invalidateChange(event: PanelChangeEvent): void {
+    if (event.type === 'queue.changed') {
+      this.queueRevision += 1;
+      void this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] });
+      return;
+    }
     const targetId = event.target_id;
     // The server has no notification-specific event. Any audited change can
     // produce a new Owner notification, which is why the old shell refreshed

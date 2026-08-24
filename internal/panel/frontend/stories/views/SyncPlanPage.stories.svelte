@@ -145,6 +145,7 @@
     id: 'plan-1',
     trigger: 'sweep',
     state: 'computed',
+    execution_stage: 'Waiting for approval',
     digest: 'digest',
     counts: { create: 8, update: 5, delete: 1 },
     actions: ACTIONS,

@@ -31,6 +31,19 @@ import type {
   NotificationPageRequest,
   PendingCIRequest,
   PendingCIDetail,
+  QueueActionInput,
+  QueueDetail,
+  QueueItem,
+  QueuePage,
+  QueuePolicy,
+  RootJobPolicies,
+  QueuePolicyInput,
+  QueueSchedulePreview,
+  ScheduleProfile,
+  ScheduleProfileInput,
+  ScheduleRequest,
+  ScheduleRequestInput,
+  TargetSchedules,
   RepositoryDetail,
   RepositoryPageRequest,
   RepositorySummary,
@@ -47,6 +60,7 @@ import type {
   SyncOverride,
   SyncPathIndex,
   SyncPlan,
+  SyncRunNowResponse,
   SyncFilesContext,
   SyncStatus,
   InvitationDays,
@@ -77,6 +91,59 @@ export interface PanelApi {
   fetchRootPendingCI(requestId: string): Promise<PendingCIDetail>;
   checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
   cancelRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
+  fetchRootQueue(query?: string): Promise<QueuePage>;
+  fetchTargetQueue(targetId: string, query?: string): Promise<QueuePage>;
+  fetchRootQueueItem(itemId: string): Promise<QueueDetail>;
+  fetchTargetQueueItem(targetId: string, itemId: string): Promise<QueueDetail>;
+  actOnRootQueue(itemId: string, input: QueueActionInput): Promise<QueueItem>;
+  actOnTargetQueue(targetId: string, itemId: string, input: QueueActionInput): Promise<QueueItem>;
+  previewRootQueueAction(itemId: string, input: QueueActionInput): Promise<QueueSchedulePreview>;
+  previewTargetQueueAction(
+    targetId: string,
+    itemId: string,
+    input: QueueActionInput,
+  ): Promise<QueueSchedulePreview>;
+  fetchRootScheduleProfiles(): Promise<ScheduleProfile[]>;
+  fetchRootJobPolicies(): Promise<RootJobPolicies>;
+  fetchRootScheduleRequests(): Promise<ScheduleRequest[]>;
+  fetchTargetSchedules(targetId: string): Promise<TargetSchedules>;
+  fetchTargetScheduleRequests(targetId: string): Promise<ScheduleRequest[]>;
+  createRootScheduleProfile(input: ScheduleProfileInput): Promise<ScheduleProfile>;
+  updateRootScheduleProfile(id: string, input: ScheduleProfileInput): Promise<ScheduleProfile>;
+  archiveRootScheduleProfile(id: string, expectedRevision: number): Promise<ScheduleProfile>;
+  updateRootJobPolicy(kind: string, input: QueuePolicyInput): Promise<QueuePolicy>;
+  updateRootInstallationJobPolicy(
+    targetId: string,
+    kind: string,
+    input: QueuePolicyInput,
+  ): Promise<QueuePolicy>;
+  deleteRootInstallationJobPolicy(
+    targetId: string,
+    kind: string,
+    expectedRevision: number,
+  ): Promise<QueuePolicy>;
+  decideRootScheduleRequest(
+    id: string,
+    input: {
+      approve: boolean;
+      promote_profile: boolean;
+      reason: string;
+      expected_revision: number;
+    },
+  ): Promise<ScheduleRequest>;
+  createTargetScheduleRequest(
+    targetId: string,
+    input: ScheduleRequestInput,
+  ): Promise<ScheduleRequest>;
+  withdrawTargetScheduleRequest(
+    targetId: string,
+    id: string,
+    expectedRevision: number,
+  ): Promise<ScheduleRequest>;
+  runSyncNow(
+    targetId: string,
+    input: { expected_revision: number; reason: string },
+  ): Promise<SyncRunNowResponse>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
   fetchRootInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
@@ -435,6 +502,161 @@ export function createPanelApi(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expected_revision: expectedRevision }),
       });
+    },
+
+    fetchRootQueue(query = ''): Promise<QueuePage> {
+      return jsonRequest(`/api/v1/root/queue${query}`);
+    },
+
+    fetchTargetQueue(targetId: string, query = ''): Promise<QueuePage> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/queue${query}`);
+    },
+
+    fetchRootQueueItem(itemId: string): Promise<QueueDetail> {
+      return jsonRequest(`/api/v1/root/queue/${pathSegment(itemId)}`);
+    },
+
+    fetchTargetQueueItem(targetId: string, itemId: string): Promise<QueueDetail> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}`);
+    },
+
+    actOnRootQueue(itemId: string, input: QueueActionInput): Promise<QueueItem> {
+      return postJson(`/api/v1/root/queue/${pathSegment(itemId)}/actions`, input);
+    },
+
+    actOnTargetQueue(
+      targetId: string,
+      itemId: string,
+      input: QueueActionInput,
+    ): Promise<QueueItem> {
+      return postJson(
+        `/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}/actions`,
+        input,
+      );
+    },
+
+    previewRootQueueAction(itemId: string, input: QueueActionInput): Promise<QueueSchedulePreview> {
+      return postJson(`/api/v1/root/queue/${pathSegment(itemId)}/actions/preview`, input);
+    },
+
+    previewTargetQueueAction(
+      targetId: string,
+      itemId: string,
+      input: QueueActionInput,
+    ): Promise<QueueSchedulePreview> {
+      return postJson(
+        `/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}/actions/preview`,
+        input,
+      );
+    },
+
+    async fetchRootScheduleProfiles(): Promise<ScheduleProfile[]> {
+      const body = await jsonRequest<{ profiles: ScheduleProfile[] }>(
+        '/api/v1/root/schedule-profiles',
+      );
+      return body.profiles;
+    },
+
+    fetchRootJobPolicies(): Promise<RootJobPolicies> {
+      return jsonRequest('/api/v1/root/job-policies');
+    },
+
+    async fetchRootScheduleRequests(): Promise<ScheduleRequest[]> {
+      const body = await jsonRequest<{ requests: ScheduleRequest[] }>(
+        '/api/v1/root/schedule-requests',
+      );
+      return body.requests;
+    },
+
+    fetchTargetSchedules(targetId: string): Promise<TargetSchedules> {
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/schedules`);
+    },
+
+    async fetchTargetScheduleRequests(targetId: string): Promise<ScheduleRequest[]> {
+      const body = await jsonRequest<{ requests: ScheduleRequest[] }>(
+        `/api/v1/targets/${pathSegment(targetId)}/schedule-requests`,
+      );
+      return body.requests;
+    },
+
+    createRootScheduleProfile(input: ScheduleProfileInput): Promise<ScheduleProfile> {
+      return postJson('/api/v1/root/schedule-profiles', input);
+    },
+
+    updateRootScheduleProfile(id: string, input: ScheduleProfileInput): Promise<ScheduleProfile> {
+      return putJson(`/api/v1/root/schedule-profiles/${pathSegment(id)}`, input);
+    },
+
+    archiveRootScheduleProfile(id: string, expectedRevision: number): Promise<ScheduleProfile> {
+      return jsonRequest(
+        `/api/v1/root/schedule-profiles/${pathSegment(id)}?expected_revision=${expectedRevision}`,
+        { method: 'DELETE' },
+      );
+    },
+
+    updateRootJobPolicy(kind: string, input: QueuePolicyInput): Promise<QueuePolicy> {
+      return putJson(`/api/v1/root/job-policies/${pathSegment(kind)}`, input);
+    },
+
+    updateRootInstallationJobPolicy(
+      targetId: string,
+      kind: string,
+      input: QueuePolicyInput,
+    ): Promise<QueuePolicy> {
+      return putJson(
+        `/api/v1/root/installations/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}`,
+        input,
+      );
+    },
+
+    deleteRootInstallationJobPolicy(
+      targetId: string,
+      kind: string,
+      expectedRevision: number,
+    ): Promise<QueuePolicy> {
+      return jsonRequest(
+        `/api/v1/root/installations/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}` +
+          `?expected_revision=${expectedRevision}`,
+        { method: 'DELETE' },
+      );
+    },
+
+    decideRootScheduleRequest(
+      id: string,
+      input: {
+        approve: boolean;
+        promote_profile: boolean;
+        reason: string;
+        expected_revision: number;
+      },
+    ): Promise<ScheduleRequest> {
+      return postJson(`/api/v1/root/schedule-requests/${pathSegment(id)}/decision`, input);
+    },
+
+    createTargetScheduleRequest(
+      targetId: string,
+      input: ScheduleRequestInput,
+    ): Promise<ScheduleRequest> {
+      return postJson(`/api/v1/targets/${pathSegment(targetId)}/schedule-requests`, input);
+    },
+
+    withdrawTargetScheduleRequest(
+      targetId: string,
+      id: string,
+      expectedRevision: number,
+    ): Promise<ScheduleRequest> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/schedule-requests/${pathSegment(id)}` +
+          `?expected_revision=${expectedRevision}`,
+        { method: 'DELETE' },
+      );
+    },
+
+    runSyncNow(
+      targetId: string,
+      input: { expected_revision: number; reason: string },
+    ): Promise<SyncRunNowResponse> {
+      return postJson(`/api/v1/targets/${pathSegment(targetId)}/sync/run-now`, input);
     },
 
     fetchRootUsers(userPage: RootPanelUserPageRequest): Promise<Page<RootPanelUser>> {

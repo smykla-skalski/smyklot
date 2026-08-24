@@ -36,6 +36,7 @@ import type {
   PanelUser,
   RootPanelUser,
   PendingCIRequest,
+  QueueItem,
   InstallationRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -162,6 +163,7 @@ export interface MockState {
   elevations: Map<string, RootElevation>;
   notifications: SecurityNotification[];
   pendingCI: PendingCIRequest[];
+  queue: QueueItem[];
   /**
    * The requests this process has watched all the way through, and may therefore arm again.
    *
@@ -504,6 +506,7 @@ export function seed(
     elevations: new Map(),
     notifications,
     pendingCI: pendingCISeeds(iso),
+    queue: queueSeeds(iso),
     queueLoop: new Set(),
     runtime: {
       behaviorOverride: null,
@@ -973,6 +976,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
     id: 'plan-1',
     trigger: 'reconcile',
     state: 'computed',
+    execution_stage: 'Waiting for approval',
     digest: 'sha256:plan',
     counts: { create: 8, update: 5, delete: 1 },
     actions: [
@@ -1522,6 +1526,117 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
     detail.repository.enabled_override === null ? 'target' : 'repository';
   detail.repository.config_override_count = Object.keys(detail.config_patch).length;
   if (detail.ignore_repository_file) detail.repository.config_file_status = 'bypassed';
+}
+
+export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
+  const common = {
+    target_id: '2001',
+    profile_id: 'always-open',
+    profile_name: 'Always Open',
+    profile_timezone: 'UTC',
+    window_mode: 'respect' as const,
+    immediate: false,
+    work_ahead: 0,
+    priority_overridden: false,
+    progress_current: 0,
+    progress_total: 0,
+    attempt: 0,
+    revision: 1,
+  };
+  return [
+    {
+      ...common,
+      id: 'queue-sync-apply',
+      kind: 'sync_apply',
+      lane: 'maintenance',
+      repository_id: '4001',
+      title: 'Apply organization sync plan',
+      summary: 'smykla-skalski · 12 changes',
+      state: 'running',
+      priority: 'high',
+      not_before: iso(-8 * 60_000),
+      eligible_at: iso(-8 * 60_000),
+      estimated_start_at: iso(-8 * 60_000),
+      progress_current: 4,
+      progress_total: 12,
+      details: { create: 3, update: 7, delete: 2 },
+      attempt: 1,
+      created_at: iso(-18 * 60_000),
+      updated_at: iso(-2 * 60_000),
+      started_at: iso(-8 * 60_000),
+      actions: ['set_priority'],
+    },
+    {
+      ...common,
+      id: 'queue-pending-ci',
+      kind: 'pending_ci',
+      lane: 'pending_ci',
+      repository_id: '4002',
+      title: 'Merge platform-infra#184 after CI',
+      summary: 'Waiting for required checks',
+      state: 'blocked',
+      priority: 'normal',
+      not_before: iso(-25 * 60_000),
+      eligible_at: iso(5 * 60_000),
+      estimated_start_at: iso(6 * 60_000),
+      work_ahead: 1,
+      blocked_reason: 'Required checks are still running',
+      details: { pull_request: 184, head_sha: '2bb2221374c1a9ee4f8b0d3c6a5e9017cc41ab8e' },
+      created_at: iso(-30 * 60_000),
+      updated_at: iso(-3 * 60_000),
+      actions: ['run_now', 'next_window', 'schedule_at', 'set_priority', 'cancel'],
+    },
+    {
+      ...common,
+      id: 'queue-sync-approval',
+      kind: 'sync_apply',
+      lane: 'maintenance',
+      title: 'Review organization sync plan',
+      summary: 'Computed plan · 3 repository changes',
+      state: 'awaiting_approval',
+      priority: 'normal',
+      not_before: iso(-12 * 60_000),
+      eligible_at: iso(-12 * 60_000),
+      created_at: iso(-12 * 60_000),
+      updated_at: iso(-12 * 60_000),
+      actions: [],
+    },
+    {
+      ...common,
+      id: 'queue-reaction-retry',
+      kind: 'reaction_scan',
+      lane: 'maintenance',
+      repository_id: '4003',
+      title: 'Discover pull request reactions',
+      summary: 'smykla-skalski/agent-platform',
+      state: 'retrying',
+      priority: 'low',
+      not_before: iso(-10 * 60_000),
+      eligible_at: iso(2 * 60_000),
+      estimated_start_at: iso(4 * 60_000),
+      work_ahead: 2,
+      blocked_reason: 'GitHub rate limit; retry scheduled',
+      attempt: 2,
+      created_at: iso(-40 * 60_000),
+      updated_at: iso(-1 * 60_000),
+      actions: ['run_now', 'next_window', 'schedule_at', 'set_priority', 'cancel'],
+    },
+    {
+      ...common,
+      id: 'queue-catalog-complete',
+      kind: 'catalog_refresh',
+      lane: 'maintenance',
+      title: 'Refresh installation catalog',
+      state: 'succeeded',
+      priority: 'normal',
+      not_before: iso(-90 * 60_000),
+      eligible_at: iso(-90 * 60_000),
+      created_at: iso(-90 * 60_000),
+      updated_at: iso(-88 * 60_000),
+      finished_at: iso(-88 * 60_000),
+      actions: [],
+    },
+  ];
 }
 
 export function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequest[] {

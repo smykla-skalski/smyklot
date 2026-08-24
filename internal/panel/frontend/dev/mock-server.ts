@@ -27,6 +27,21 @@ import type {
   PanelUser,
   PendingCIDetail,
   PendingCIRequest,
+  QueueActionInput,
+  QueueDetail,
+  QueueItem,
+  QueuePage,
+  QueueSchedulePreview,
+  QueuePolicy,
+  QueuePolicyInput,
+  QueuePolicyStatus,
+  QueueWorkload,
+  RootJobPolicies,
+  ScheduleProfile,
+  ScheduleProfileInput,
+  ScheduleRequest,
+  ScheduleRequestInput,
+  TargetSchedules,
   TargetUserAccess,
   RepositoryDetail,
   RepositorySummary,
@@ -132,6 +147,10 @@ type ShellSource = () => Promise<string>;
 interface MockState extends Fixtures {
   streams: Set<Duplex>;
   shell: ShellSource;
+  scheduleProfiles: ScheduleProfile[];
+  schedulePolicies: QueuePolicy[];
+  scheduleRequests: ScheduleRequest[];
+  scheduleCounter: number;
 }
 
 /** Marks the error renderer's own request for a shell, so `handle` stands aside. */
@@ -148,6 +167,142 @@ const SHELL_REQUEST_HEADER = 'x-smyklot-mock-shell';
  */
 function opensBrowser(): boolean {
   return process.env.SMYKLOT_PANEL_DEV_OPEN === '1';
+}
+
+const NANOSECONDS_PER_SECOND = 1_000_000_000;
+const MOCK_SCHEDULE_KINDS: QueueWorkload[] = [
+  'webhook_delivery',
+  'pending_ci',
+  'pending_ci_gate',
+  'catalog_refresh',
+  'reaction_scan',
+  'config_migration',
+  'sync_scan',
+  'sync_apply',
+  'path_refresh',
+  'delivery_cleanup',
+  'auth_cleanup',
+];
+
+function mockScheduleState(
+  fixtures: Fixtures,
+): Pick<
+  MockState,
+  'scheduleProfiles' | 'schedulePolicies' | 'scheduleRequests' | 'scheduleCounter'
+> {
+  const now = new Date().toISOString();
+  const alwaysOpen: ScheduleProfile = {
+    id: 'always-open',
+    name: 'Always Open',
+    timezone: 'UTC',
+    system: true,
+    revision: 1,
+    affected_installations: fixtures.targets.length,
+    affected_items: fixtures.queue.filter((item) => item.profile_id === 'always-open').length,
+    affected_policies: MOCK_SCHEDULE_KINDS.length,
+    windows: Array.from({ length: 7 }, (_, weekday) => ({
+      weekday,
+      start_minute: 0,
+      end_minute: 24 * 60,
+    })),
+    exceptions: [],
+  };
+  const europeHours: ScheduleProfile = {
+    id: 'europe-hours',
+    name: 'Europe business hours',
+    timezone: 'Europe/Warsaw',
+    system: false,
+    revision: 3,
+    affected_installations: 1,
+    affected_items: 2,
+    affected_policies: 1,
+    windows: [1, 2, 3, 4, 5].map((weekday) => ({
+      weekday,
+      start_minute: 9 * 60,
+      end_minute: 17 * 60,
+    })),
+    exceptions: [{ date: '2026-12-25', closed: true }],
+  };
+  const cadenceSeconds: Record<QueueWorkload, number> = {
+    webhook_delivery: 0,
+    pending_ci: 30,
+    pending_ci_gate: 60 * 60,
+    catalog_refresh: 5 * 60,
+    reaction_scan: 5 * 60,
+    config_migration: 5 * 60,
+    sync_scan: 6 * 60 * 60,
+    sync_apply: 0,
+    path_refresh: 60 * 60,
+    delivery_cleanup: 60 * 60,
+    auth_cleanup: 60 * 60,
+    schedule_change: 0,
+  };
+  const policies = MOCK_SCHEDULE_KINDS.map<QueuePolicy>((kind) => ({
+    kind,
+    enabled: true,
+    cadence: cadenceSeconds[kind] * NANOSECONDS_PER_SECOND,
+    profile_id: 'always-open',
+    default_priority: kind === 'webhook_delivery' ? 'high' : 'normal',
+    retry_delay: (kind === 'webhook_delivery' ? 30 : 5 * 60) * NANOSECONDS_PER_SECOND,
+    ...(kind === 'sync_scan' ? { approval_ttl: 2 * 60 * 60 * NANOSECONDS_PER_SECOND } : {}),
+    ...(kind === 'pending_ci'
+      ? {
+          configuration: {
+            active_check_seconds: 30,
+            no_check_grace_seconds: 120,
+            defer_after_seconds: 900,
+            deferred_check_seconds: 300,
+            passing_quiet_seconds: 30,
+          },
+        }
+      : {}),
+    ...(kind === 'webhook_delivery'
+      ? { configuration: { max_delay_seconds: 3600, max_attempts: 8 } }
+      : {}),
+    revision: 1,
+    updated_at: now,
+  }));
+  const primaryTarget = fixtures.targets[0]?.value.id;
+  if (primaryTarget !== undefined) {
+    const base = policies.find((policy) => policy.kind === 'sync_scan');
+    if (base !== undefined) {
+      policies.push({
+        ...base,
+        target_id: primaryTarget,
+        profile_id: europeHours.id,
+        default_priority: 'high',
+        revision: 2,
+      });
+    }
+  }
+
+  const requests: ScheduleRequest[] =
+    primaryTarget === undefined
+      ? []
+      : [
+          {
+            id: 'request:mock-1',
+            target_id: primaryTarget,
+            kind: 'path_refresh',
+            state: 'pending',
+            base_revision: 1,
+            profile_id: europeHours.id,
+            cadence: 30 * 60 * NANOSECONDS_PER_SECOND,
+            default_priority: 'normal',
+            reason: 'Refresh repository paths during the release preparation window',
+            requested_by: VIEWER.id,
+            revision: 1,
+            created_at: now,
+            updated_at: now,
+          },
+        ];
+
+  return {
+    scheduleProfiles: [alwaysOpen, europeHours],
+    schedulePolicies: policies,
+    scheduleRequests: requests,
+    scheduleCounter: 2,
+  };
 }
 
 /**
@@ -437,8 +592,10 @@ export function mockServer(): Plugin {
  * asking for one says what is missing instead of reading as an empty page.
  */
 function install(httpServer: DevHttpServer | null | undefined, middlewares: Connect.Server): void {
+  const fixtures = seed(loadIssuedInvitations(), Date.now(), loadPreferences());
   const state: MockState = {
-    ...seed(loadIssuedInvitations(), Date.now(), loadPreferences()),
+    ...fixtures,
+    ...mockScheduleState(fixtures),
     streams: new Set(),
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
   };
@@ -1188,6 +1345,350 @@ async function handle(
     }
     if (path === route('/api/v1/root/overview') && method === 'GET') {
       respond(res, 200, rootOverviewValue(state));
+      return;
+    }
+    if (path === route('/api/v1/root/queue') && method === 'GET') {
+      respond(res, 200, mockQueuePage(state.queue, parsed.searchParams));
+      return;
+    }
+    const targetQueue = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/queue$/);
+    if (targetQueue && method === 'GET') {
+      const target = findTarget(state, targetQueue.groups?.target ?? '');
+      respond(
+        res,
+        200,
+        mockQueuePage(
+          state.queue.filter((item) => item.target_id === target.value.id),
+          parsed.searchParams,
+        ),
+      );
+      return;
+    }
+    const rootQueueDetail = path.match(/^\/api\/v1\/root\/queue\/(?<item>[^/]+)$/);
+    const targetQueueDetail = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/queue\/(?<item>[^/]+)$/,
+    );
+    if ((rootQueueDetail || targetQueueDetail) && method === 'GET') {
+      const match = rootQueueDetail ?? targetQueueDetail;
+      const target = targetQueueDetail
+        ? findTarget(state, targetQueueDetail.groups?.target ?? '')
+        : undefined;
+      const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
+      respond(res, 200, mockQueueDetail(item));
+      return;
+    }
+    const rootQueuePreview = path.match(
+      /^\/api\/v1\/root\/queue\/(?<item>[^/]+)\/actions\/preview$/,
+    );
+    const targetQueuePreview = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/queue\/(?<item>[^/]+)\/actions\/preview$/,
+    );
+    if ((rootQueuePreview || targetQueuePreview) && method === 'POST') {
+      const match = rootQueuePreview ?? targetQueuePreview;
+      const target = targetQueuePreview
+        ? findTarget(state, targetQueuePreview.groups?.target ?? '')
+        : undefined;
+      const input = await readBody<QueueActionInput>(req);
+      const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
+      respond(res, 200, previewMockQueueAction(state, item, input));
+      return;
+    }
+    const rootQueueAction = path.match(/^\/api\/v1\/root\/queue\/(?<item>[^/]+)\/actions$/);
+    const targetQueueAction = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/queue\/(?<item>[^/]+)\/actions$/,
+    );
+    if ((rootQueueAction || targetQueueAction) && method === 'POST') {
+      const match = rootQueueAction ?? targetQueueAction;
+      const target = targetQueueAction
+        ? findTarget(state, targetQueueAction.groups?.target ?? '')
+        : undefined;
+      const input = await readBody<QueueActionInput>(req);
+      const item = applyMockQueueAction(
+        state.queue,
+        match?.groups?.item ?? '',
+        input,
+        target?.value.id,
+      );
+      broadcast(state, { type: 'queue.changed', target_id: item.target_id ?? '' });
+      respond(res, 200, item);
+      return;
+    }
+    if (path === route('/api/v1/root/schedule-profiles') && method === 'GET') {
+      respond(res, 200, {
+        profiles: structuredClone(
+          state.scheduleProfiles.filter(
+            (profile) => parsed.searchParams.get('archived') === 'true' || !profile.archived_at,
+          ),
+        ),
+      });
+      return;
+    }
+    if (path === route('/api/v1/root/schedule-profiles') && method === 'POST') {
+      const input = await readBody<ScheduleProfileInput>(req);
+      const profile = saveMockScheduleProfile(state, input);
+      broadcast(state, { type: 'queue.changed' });
+      respond(res, 201, profile);
+      return;
+    }
+    const rootScheduleProfile = path.match(
+      /^\/api\/v1\/root\/schedule-profiles\/(?<profile>[^/]+)$/,
+    );
+    if (rootScheduleProfile && method === 'PUT') {
+      const input = await readBody<ScheduleProfileInput>(req);
+      const profile = saveMockScheduleProfile(
+        state,
+        input,
+        rootScheduleProfile.groups?.profile ?? '',
+      );
+      broadcast(state, { type: 'queue.changed' });
+      respond(res, 200, profile);
+      return;
+    }
+    if (rootScheduleProfile && method === 'DELETE') {
+      const profile = findMockScheduleProfile(state, rootScheduleProfile.groups?.profile ?? '');
+      const expected = Number(parsed.searchParams.get('expected_revision'));
+      if (expected !== profile.revision) {
+        throw new MockApiError(409, 'conflict', 'schedule profile changed; reload and try again');
+      }
+      if (profile.system) {
+        throw new MockApiError(
+          409,
+          'profile_in_use',
+          'system schedule profiles cannot be archived',
+        );
+      }
+      const archived = {
+        ...profile,
+        archived_at: new Date().toISOString(),
+        revision: profile.revision + 1,
+      };
+      state.scheduleProfiles = state.scheduleProfiles.map((candidate) =>
+        candidate.id === archived.id ? archived : candidate,
+      );
+      respond(res, 200, structuredClone(archived));
+      return;
+    }
+    if (path === route('/api/v1/root/job-policies') && method === 'GET') {
+      const deploymentDefaults = globalSchedulePolicies(state);
+      const overrides = state.schedulePolicies.filter((policy) => policy.target_id !== undefined);
+      const policySet: RootJobPolicies['policy_set'] = {
+        current: structuredClone(deploymentDefaults),
+        deployment_defaults: structuredClone(deploymentDefaults),
+        overrides: structuredClone(overrides),
+        effective: structuredClone(deploymentDefaults),
+      };
+      const document: RootJobPolicies = {
+        policies: structuredClone(deploymentDefaults),
+        policy_set: policySet,
+        statuses: mockPolicyStatuses(state),
+      };
+      respond(res, 200, document);
+      return;
+    }
+    const rootJobPolicy = path.match(/^\/api\/v1\/root\/job-policies\/(?<kind>[^/]+)$/);
+    if (rootJobPolicy && method === 'PUT') {
+      const input = await readBody<QueuePolicyInput>(req);
+      const policy = saveMockQueuePolicy(
+        state,
+        decodeURIComponent(rootJobPolicy.groups?.kind ?? '') as QueueWorkload,
+        input,
+      );
+      broadcast(state, { type: 'queue.changed' });
+      respond(res, 200, policy);
+      return;
+    }
+    const rootInstallationPolicy = path.match(
+      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/job-policies\/(?<kind>[^/]+)$/,
+    );
+    if (rootInstallationPolicy && method === 'PUT') {
+      const target = findTarget(state, rootInstallationPolicy.groups?.target ?? '');
+      const input = await readBody<QueuePolicyInput>(req);
+      const policy = saveMockQueuePolicy(
+        state,
+        decodeURIComponent(rootInstallationPolicy.groups?.kind ?? '') as QueueWorkload,
+        input,
+        target.value.id,
+      );
+      broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      respond(res, 200, policy);
+      return;
+    }
+    if (rootInstallationPolicy && method === 'DELETE') {
+      const target = findTarget(state, rootInstallationPolicy.groups?.target ?? '');
+      const kind = decodeURIComponent(rootInstallationPolicy.groups?.kind ?? '') as QueueWorkload;
+      const override = state.schedulePolicies.find(
+        (policy) => policy.kind === kind && policy.target_id === target.value.id,
+      );
+      if (override === undefined)
+        throw new MockApiError(404, 'not_found', 'installation schedule override not found');
+      if (Number(parsed.searchParams.get('expected_revision')) !== override.revision) {
+        throw new MockApiError(409, 'conflict', 'schedule policy changed; reload and try again');
+      }
+      state.schedulePolicies = state.schedulePolicies.filter((policy) => policy !== override);
+      const inherited = globalSchedulePolicies(state).find((policy) => policy.kind === kind);
+      if (inherited === undefined)
+        throw new MockApiError(404, 'not_found', 'deployment schedule policy not found');
+      broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      respond(res, 200, structuredClone(inherited));
+      return;
+    }
+    if (path === route('/api/v1/root/schedule-requests') && method === 'GET') {
+      respond(res, 200, { requests: structuredClone(state.scheduleRequests) });
+      return;
+    }
+    const rootScheduleDecision = path.match(
+      /^\/api\/v1\/root\/schedule-requests\/(?<request>[^/]+)\/decision$/,
+    );
+    if (rootScheduleDecision && method === 'POST') {
+      const input = await readBody<{
+        approve: boolean;
+        promote_profile: boolean;
+        reason: string;
+        expected_revision: number;
+      }>(req);
+      const request = findMockScheduleRequest(state, rootScheduleDecision.groups?.request ?? '');
+      if (request.revision !== input.expected_revision) {
+        throw new MockApiError(409, 'conflict', 'schedule request changed; reload and try again');
+      }
+      const saved: ScheduleRequest = {
+        ...request,
+        state: input.approve ? 'approved' : 'rejected',
+        revision: request.revision + 1,
+        updated_at: new Date().toISOString(),
+      };
+      state.scheduleRequests = state.scheduleRequests.map((candidate) =>
+        candidate.id === saved.id ? saved : candidate,
+      );
+      if (input.approve) {
+        let profileID = request.profile_id;
+        if (request.custom_profile !== undefined) {
+          const promoted = saveMockScheduleProfile(state, {
+            name: request.custom_profile.name,
+            timezone: request.custom_profile.timezone,
+            windows: request.custom_profile.windows,
+            exceptions: request.custom_profile.exceptions,
+            expected_revision: 0,
+          });
+          profileID = promoted.id;
+        }
+        const effective = targetSchedulePolicies(state, request.target_id).effective.find(
+          (policy) => policy.kind === request.kind,
+        );
+        if (effective !== undefined && profileID !== undefined) {
+          saveMockQueuePolicy(
+            state,
+            request.kind,
+            {
+              enabled: effective.enabled,
+              cadence_seconds: request.cadence / NANOSECONDS_PER_SECOND,
+              profile_id: profileID,
+              default_priority: request.default_priority,
+              retry_delay_seconds: effective.retry_delay / NANOSECONDS_PER_SECOND,
+              ...(effective.retention === undefined
+                ? {}
+                : { retention_seconds: effective.retention / NANOSECONDS_PER_SECOND }),
+              ...(effective.approval_ttl === undefined
+                ? {}
+                : {
+                    approval_lifetime_seconds: effective.approval_ttl / NANOSECONDS_PER_SECOND,
+                  }),
+              configuration: request.configuration,
+              expected_revision: effective.revision,
+            },
+            request.target_id,
+          );
+        }
+      }
+      broadcast(state, { type: 'queue.changed', target_id: saved.target_id });
+      respond(res, 200, structuredClone(saved));
+      return;
+    }
+    const targetSchedules = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/schedules$/);
+    if (targetSchedules && method === 'GET') {
+      const target = findTarget(state, targetSchedules.groups?.target ?? '');
+      const document: TargetSchedules = {
+        policies: targetSchedulePolicies(state, target.value.id),
+        profiles: structuredClone(
+          state.scheduleProfiles.filter(
+            (profile) => profile.target_id === undefined || profile.target_id === target.value.id,
+          ),
+        ),
+        statuses: mockPolicyStatuses(state, target.value.id),
+      };
+      respond(res, 200, document);
+      return;
+    }
+    const targetScheduleRequests = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/schedule-requests$/,
+    );
+    if (targetScheduleRequests && method === 'GET') {
+      const target = findTarget(state, targetScheduleRequests.groups?.target ?? '');
+      respond(res, 200, {
+        requests: structuredClone(
+          state.scheduleRequests.filter((request) => request.target_id === target.value.id),
+        ),
+      });
+      return;
+    }
+    if (targetScheduleRequests && method === 'POST') {
+      const target = findTarget(state, targetScheduleRequests.groups?.target ?? '');
+      const input = await readBody<ScheduleRequestInput>(req);
+      const effective = targetSchedulePolicies(state, target.value.id).effective.find(
+        (policy) => policy.kind === input.kind,
+      );
+      if (effective === undefined)
+        throw new MockApiError(404, 'not_found', 'schedule policy not found');
+      if (input.base_revision !== effective.revision) {
+        throw new MockApiError(409, 'conflict', 'schedule policy changed; reload and try again');
+      }
+      const now = new Date().toISOString();
+      const saved: ScheduleRequest = {
+        id: `request:mock-${state.scheduleCounter++}`,
+        target_id: target.value.id,
+        kind: input.kind,
+        state: 'pending',
+        base_revision: input.base_revision,
+        ...(effective.target_id === undefined ? {} : { base_target_id: effective.target_id }),
+        ...(input.profile_id === undefined ? {} : { profile_id: input.profile_id }),
+        ...(input.custom_profile === undefined
+          ? {}
+          : { custom_profile: structuredClone(input.custom_profile) }),
+        cadence: input.cadence_seconds * NANOSECONDS_PER_SECOND,
+        default_priority: input.default_priority,
+        configuration: structuredClone(input.configuration),
+        reason: input.reason,
+        requested_by: VIEWER.id,
+        revision: 1,
+        created_at: now,
+        updated_at: now,
+      };
+      state.scheduleRequests = [saved, ...state.scheduleRequests];
+      broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      respond(res, 201, structuredClone(saved));
+      return;
+    }
+    const targetScheduleRequest = path.match(
+      /^\/api\/v1\/targets\/(?<target>[^/]+)\/schedule-requests\/(?<request>[^/]+)$/,
+    );
+    if (targetScheduleRequest && method === 'DELETE') {
+      const target = findTarget(state, targetScheduleRequest.groups?.target ?? '');
+      const request = findMockScheduleRequest(state, targetScheduleRequest.groups?.request ?? '');
+      if (request.target_id !== target.value.id)
+        throw new MockApiError(404, 'not_found', 'schedule request not found');
+      if (Number(parsed.searchParams.get('expected_revision')) !== request.revision) {
+        throw new MockApiError(409, 'conflict', 'schedule request changed; reload and try again');
+      }
+      const withdrawn: ScheduleRequest = {
+        ...request,
+        state: 'withdrawn',
+        revision: request.revision + 1,
+        updated_at: new Date().toISOString(),
+      };
+      state.scheduleRequests = state.scheduleRequests.map((candidate) =>
+        candidate.id === withdrawn.id ? withdrawn : candidate,
+      );
+      broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      respond(res, 200, structuredClone(withdrawn));
       return;
     }
     if (path === route('/api/v1/root/runtime/settings') && method === 'GET') {
@@ -3913,6 +4414,351 @@ function findPendingCI(state: MockState, encodedID: string): PendingCIRequest {
     throw new MockApiError(404, 'not_found', 'pending CI request not found');
   }
   return request;
+}
+
+function globalSchedulePolicies(state: MockState): QueuePolicy[] {
+  return state.schedulePolicies.filter((policy) => policy.target_id === undefined);
+}
+
+function targetSchedulePolicies(state: MockState, targetID: string): RootJobPolicies['policy_set'] {
+  const deploymentDefaults = globalSchedulePolicies(state);
+  const overrides = state.schedulePolicies.filter((policy) => policy.target_id === targetID);
+  const effective = deploymentDefaults.map(
+    (policy) => overrides.find((override) => override.kind === policy.kind) ?? policy,
+  );
+
+  return {
+    current: structuredClone(effective),
+    deployment_defaults: structuredClone(deploymentDefaults),
+    overrides: structuredClone(overrides),
+    effective: structuredClone(effective),
+  };
+}
+
+function mockPolicyStatuses(state: MockState, targetID?: string): QueuePolicyStatus[] {
+  const now = Date.now();
+  const policies =
+    targetID === undefined
+      ? globalSchedulePolicies(state)
+      : targetSchedulePolicies(state, targetID).effective;
+
+  return policies.map((policy, index) => {
+    const current = state.queue.find(
+      (item) =>
+        item.kind === policy.kind &&
+        (targetID === undefined || item.target_id === targetID) &&
+        !['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+    );
+    const last = state.queue.find(
+      (item) =>
+        item.kind === policy.kind &&
+        (targetID === undefined || item.target_id === targetID) &&
+        ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+    );
+    const next =
+      current?.eligible_at ?? new Date(now + Number(policy.cadence) / 1_000_000).toISOString();
+    return {
+      kind: policy.kind,
+      ...(targetID === undefined ? {} : { target_id: targetID }),
+      ...(last === undefined ? {} : { last_run_at: last.finished_at ?? last.updated_at }),
+      ...(last === undefined ? {} : { last_state: last.state }),
+      next_eligibility_at: next,
+      estimated_start_at: current?.estimated_start_at ?? next,
+      work_ahead: current?.work_ahead ?? index % 3,
+      ...(current === undefined
+        ? {}
+        : { current_state: current.state, current_queue_item_id: current.id }),
+    };
+  });
+}
+
+function findMockScheduleProfile(state: MockState, encodedID: string): ScheduleProfile {
+  const id = decodeURIComponent(encodedID);
+  const profile = state.scheduleProfiles.find((candidate) => candidate.id === id);
+  if (profile === undefined) throw new MockApiError(404, 'not_found', 'schedule profile not found');
+  return profile;
+}
+
+function saveMockScheduleProfile(
+  state: MockState,
+  input: ScheduleProfileInput,
+  encodedID?: string,
+): ScheduleProfile {
+  const existing = encodedID === undefined ? undefined : findMockScheduleProfile(state, encodedID);
+  if (existing !== undefined && input.expected_revision !== existing.revision) {
+    throw new MockApiError(409, 'conflict', 'schedule profile changed; reload and try again');
+  }
+  if (existing === undefined && input.expected_revision !== 0) {
+    throw new MockApiError(409, 'conflict', 'new schedule profiles start at revision zero');
+  }
+  const id =
+    existing?.id ??
+    `profile:mock-${state.scheduleCounter++}-${input.name
+      .toLocaleLowerCase()
+      .replaceAll(/[^a-z0-9]+/gu, '-')
+      .replaceAll(/(^-|-$)/gu, '')}`;
+  const saved: ScheduleProfile = {
+    id,
+    name: input.name,
+    timezone: input.timezone,
+    system: existing?.system ?? false,
+    revision: (existing?.revision ?? 0) + 1,
+    affected_installations: existing?.affected_installations ?? 0,
+    affected_items: existing?.affected_items ?? 0,
+    affected_policies: existing?.affected_policies ?? 0,
+    windows: structuredClone(input.windows),
+    exceptions: structuredClone(input.exceptions),
+  };
+  state.scheduleProfiles = [
+    ...state.scheduleProfiles.filter((profile) => profile.id !== saved.id),
+    saved,
+  ];
+  return structuredClone(saved);
+}
+
+function queuePolicyFromInput(
+  existing: QueuePolicy,
+  input: QueuePolicyInput,
+  targetID?: string,
+): QueuePolicy {
+  if (input.expected_revision !== existing.revision) {
+    throw new MockApiError(409, 'conflict', 'schedule policy changed; reload and try again');
+  }
+  return {
+    kind: existing.kind,
+    ...(targetID === undefined ? {} : { target_id: targetID }),
+    enabled: input.enabled,
+    cadence: input.cadence_seconds * NANOSECONDS_PER_SECOND,
+    profile_id: input.profile_id,
+    default_priority: input.default_priority,
+    retry_delay: input.retry_delay_seconds * NANOSECONDS_PER_SECOND,
+    ...(input.retention_seconds === undefined
+      ? {}
+      : { retention: input.retention_seconds * NANOSECONDS_PER_SECOND }),
+    ...(input.approval_lifetime_seconds === undefined
+      ? {}
+      : { approval_ttl: input.approval_lifetime_seconds * NANOSECONDS_PER_SECOND }),
+    ...(input.configuration === undefined
+      ? {}
+      : { configuration: structuredClone(input.configuration) }),
+    revision: existing.revision + 1,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function saveMockQueuePolicy(
+  state: MockState,
+  kind: QueueWorkload,
+  input: QueuePolicyInput,
+  targetID?: string,
+): QueuePolicy {
+  const existing =
+    state.schedulePolicies.find(
+      (policy) => policy.kind === kind && policy.target_id === targetID,
+    ) ??
+    (targetID === undefined
+      ? undefined
+      : globalSchedulePolicies(state).find((policy) => policy.kind === kind));
+  if (existing === undefined) throw new MockApiError(404, 'not_found', 'schedule policy not found');
+  const saved = queuePolicyFromInput(existing, input, targetID);
+  state.schedulePolicies = [
+    ...state.schedulePolicies.filter(
+      (policy) => !(policy.kind === saved.kind && policy.target_id === saved.target_id),
+    ),
+    saved,
+  ];
+  return structuredClone(saved);
+}
+
+function findMockScheduleRequest(state: MockState, encodedID: string): ScheduleRequest {
+  const id = decodeURIComponent(encodedID);
+  const request = state.scheduleRequests.find((candidate) => candidate.id === id);
+  if (request === undefined) throw new MockApiError(404, 'not_found', 'schedule request not found');
+  return request;
+}
+
+function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): QueuePage {
+  const facets = {
+    targets: uniqueQueueValues(items, (item) => item.target_id),
+    repositories: uniqueQueueValues(items, (item) => item.repository_id),
+    profiles: uniqueQueueValues(items, (item) => item.profile_id ?? 'immediate'),
+    states: uniqueQueueValues(items, (item) => item.state),
+    workloads: uniqueQueueValues(items, (item) => item.kind),
+    priorities: uniqueQueueValues(items, (item) => item.priority),
+  };
+  const states = queueQueryValues(query, 'state');
+  const workloads = queueQueryValues(query, 'workload');
+  const priorities = queueQueryValues(query, 'priority');
+  const after = Date.parse(query.get('created_after') ?? '');
+  const before = Date.parse(query.get('created_before') ?? '');
+  const filtered = items.filter(
+    (item) =>
+      matchesQueueQuery(query, 'installation', item.target_id) &&
+      matchesQueueQuery(query, 'repository', item.repository_id) &&
+      matchesQueueQuery(query, 'profile', item.profile_id ?? 'immediate') &&
+      (states.length === 0 || states.includes(item.state)) &&
+      (workloads.length === 0 || workloads.includes(item.kind)) &&
+      (priorities.length === 0 || priorities.includes(item.priority)) &&
+      (Number.isNaN(after) || Date.parse(item.created_at) >= after) &&
+      (Number.isNaN(before) || Date.parse(item.created_at) < before),
+  );
+  const offset = Number(query.get('offset') ?? 0);
+  const limit = Number(query.get('limit') ?? 50);
+  const page = filtered.slice(offset, offset + limit);
+  const nextOffset = offset + limit < filtered.length ? offset + limit : 0;
+
+  return {
+    items: structuredClone(page),
+    next_offset: nextOffset,
+    total: filtered.length,
+    facets,
+  };
+}
+
+function uniqueQueueValues<T extends string>(
+  items: QueueItem[],
+  value: (item: QueueItem) => T | undefined,
+): T[] {
+  return [...new Set(items.flatMap((item) => value(item) ?? []))].sort();
+}
+
+function queueQueryValues(query: URLSearchParams, name: string): string[] {
+  return query
+    .getAll(name)
+    .flatMap((value) => value.split(','))
+    .filter((value) => value !== '');
+}
+
+function matchesQueueQuery(
+  query: URLSearchParams,
+  name: string,
+  actual: string | undefined,
+): boolean {
+  const expected = query.get(name);
+  return expected === null || expected === actual;
+}
+
+function findMockQueueItem(items: QueueItem[], encodedID: string, targetID?: string): QueueItem {
+  const id = decodeURIComponent(encodedID);
+  const item = items.find(
+    (candidate) =>
+      candidate.id === id && (targetID === undefined || candidate.target_id === targetID),
+  );
+  if (item === undefined) throw new MockApiError(404, 'not_found', 'queue item not found');
+
+  return item;
+}
+
+function mockQueueDetail(item: QueueItem): QueueDetail {
+  const events = [
+    {
+      id: 1,
+      item_id: item.id,
+      actor: 'system',
+      kind: 'created',
+      state: item.state,
+      summary: `Queued ${item.title}`,
+      created_at: item.created_at,
+    },
+  ];
+  if (item.updated_at !== item.created_at) {
+    events.push({
+      id: 2,
+      item_id: item.id,
+      actor: 'system',
+      kind: item.state === 'running' ? 'started' : 'updated',
+      state: item.state,
+      summary: item.state === 'running' ? `Started ${item.title}` : `Updated ${item.title}`,
+      created_at: item.updated_at,
+    });
+  }
+
+  return { item: structuredClone(item), events };
+}
+
+function applyMockQueueAction(
+  items: QueueItem[],
+  encodedID: string,
+  input: QueueActionInput,
+  targetID?: string,
+): QueueItem {
+  const item = findMockQueueItem(items, encodedID, targetID);
+  const index = items.indexOf(item);
+  if (item.revision !== input.expected_revision) {
+    throw new MockApiError(409, 'conflict', 'queue item changed; reload and try again');
+  }
+  const now = new Date().toISOString();
+  const updated: QueueItem = { ...item, revision: item.revision + 1, updated_at: now };
+  if (input.type === 'set_priority' && input.priority !== undefined) {
+    updated.priority = input.priority;
+    updated.priority_overridden = true;
+  } else if (input.type === 'run_now') {
+    updated.state = 'ready';
+    updated.immediate = true;
+    updated.window_mode = 'bypass';
+    updated.not_before = now;
+    updated.eligible_at = now;
+    updated.blocked_reason = undefined;
+    updated.reason = input.reason;
+  } else if (input.type === 'next_window') {
+    updated.state = 'ready';
+    updated.immediate = false;
+    updated.window_mode = 'respect';
+    updated.not_before = now;
+    updated.eligible_at = now;
+    updated.blocked_reason = undefined;
+  } else if (input.type === 'schedule_at' && input.at !== undefined) {
+    updated.state = Date.parse(input.at) <= Date.now() ? 'ready' : 'scheduled';
+    updated.immediate = false;
+    updated.window_mode = input.outside_window === true ? 'bypass' : 'respect';
+    updated.not_before = input.at;
+    updated.eligible_at = input.at;
+    updated.reason = input.reason;
+  } else if (input.type === 'cancel') {
+    updated.state = 'cancelled';
+    updated.finished_at = now;
+    updated.reason = input.reason;
+    updated.actions = [];
+  }
+  items[index] = updated;
+
+  return structuredClone(updated);
+}
+
+function previewMockQueueAction(
+  state: MockState,
+  item: QueueItem,
+  input: QueueActionInput,
+): QueueSchedulePreview {
+  if (item.revision !== input.expected_revision) {
+    throw new MockApiError(409, 'conflict', 'queue item changed; reload and try again');
+  }
+  if (input.type !== 'schedule_at' || input.at === undefined) {
+    throw new MockApiError(400, 'invalid_action', 'only exact-time scheduling can be previewed');
+  }
+
+  const requestedAt = new Date(input.at);
+  if (Number.isNaN(requestedAt.getTime())) {
+    throw new MockApiError(400, 'invalid_time', 'schedule time must be an ISO timestamp');
+  }
+  const outsideWindow = input.outside_window === true;
+  const profile = outsideWindow
+    ? undefined
+    : state.scheduleProfiles.find((candidate) => candidate.id === item.profile_id);
+
+  return {
+    item_revision: item.revision,
+    requested_at: requestedAt.toISOString(),
+    eligible_at: requestedAt.toISOString(),
+    outside_window: outsideWindow,
+    ...(profile === undefined
+      ? {}
+      : {
+          profile_id: profile.id,
+          profile_name: profile.name,
+          profile_timezone: profile.timezone,
+        }),
+  };
 }
 
 function requirePendingCIRevision(request: PendingCIRequest, revision: number): void {

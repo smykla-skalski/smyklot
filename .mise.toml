@@ -428,6 +428,7 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 #   queue-columns     the Queue table against the approved design, to the pixel
 #   queue-live        the queue re-sorting under a reader, and holding still
 #   repository-page   a repository opened from its row, and its three panes
+#   schedules         Root and installation schedule policy, requests and phone layout
 #   signed-out-layout the sign-in page, and what is not drawn behind it
 #   sync-label-layout long names stay inside their row at desktop and phone widths
 [tasks."panel:frontend:test:browser:local"]
@@ -441,6 +442,7 @@ npm run test:browser -- \
   tests/browser/queue-columns.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
+  tests/browser/schedules.test.ts \
   tests/browser/signed-out-layout.test.ts \
   tests/browser/sync-label-layout.test.ts
 '''

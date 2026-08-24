@@ -53,6 +53,11 @@ export default defineConfig({
       },
       paths: {
         base: isMockDev ? MOCK_BASE : '/__smyklot_panel_base__',
+        // Relative development paths make a direct deep link such as
+        // `/root/schedules` infer `/root` as the app base, which turns the session
+        // request into `/root/api/v1/session`. Production keeps SvelteKit's portable
+        // relative output so the Go server can rewrite its deployment-base sentinel.
+        ...(isMockDev ? { relative: false } : {}),
       },
       version: {
         // Under the mock this is configured rather than rewritten: SvelteKit hashes

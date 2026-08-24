@@ -1,460 +1,119 @@
-/**
- * The Queue's columns, against the rule the panel's other tables are held to.
- *
- * `table-columns.test.ts` stresses every table with an unbreakable run longer
- * than anything real and asks whether the layout holds. That catches a column
- * that is too NARROW. It cannot catch the other half of the rule, which is the
- * half these numbers exist for: a column wider than its own worst case is dead
- * space at the front of every row, and nothing complains about dead space.
- *
- * So this measures both ends, and it does it with the vocabulary rather than with
- * filler. Each column here draws from a closed set of words - the five CI states
- * plus the one a request wears before its first check, the nine reasons a next
- * look is scheduled, the three ways a request ends - and every one of them is
- * listed below, beside the function that produces it. A column is right when it
- * is the width of its own widest member and no wider.
- *
- * The two columns that cannot be sized that way say so and are checked their own
- * way: the pull request flexes, and the reason a request ended is service text
- * with no bound, capped at the two lines the row already stands at.
- */
-import { beforeAll, afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { addressOf, startPanel, visit, type Panel } from './harness';
 
-/** A quarter of a rem: the step the widths are rounded up to, and so the slack allowed. */
-const STEP = 4;
-
-/**
- * The two widths this table is laid out for, both measured rather than one.
- *
- * Below 64rem four of these columns give up their heading's word for a symbol and are
- * sized by what is left, and every one of those numbers is written by hand. A reading at
- * one width sees none of them: the Cleanup column shipped at 3.5rem under a heading that
- * needs 8.5rem, drew "CLEANI" across the top of it, and this suite stayed green.
- *
- * 820px rather than 1023: it sits inside the band and clear of the 48rem this table
- * becomes cards under, so moving either boundary still leaves this measuring a table.
- */
-const WIDE = 1280;
-const NARROW = 820;
-
-/**
- * Every value each column can hold, beside where it comes from.
- *
- * `queueState` falls through to "Scheduled" for a state it does not know, and
- * that is not a defensive branch - `last_observed_state` is
- * `TEXT NOT NULL DEFAULT ''` and the insert in `sqlstore.Arm` does not set it, so
- * every request wears it between the command and its first reconciliation.
- */
-const VOCABULARY = {
-  waiting: {
-    checks: ['Passing', 'Running', 'Failing', 'Unreadable', 'No checks', 'Scheduled'],
-    /* `queueNext`: a merge landing, a countdown to one, and `formatUntil` at each
-       of its own steps down to the date it falls back to. */
-    lead: [
-      'Merging now',
-      'Merging in 0:30',
-      'Checks again now',
-      'Checks again in 59 minutes',
-      'Checks again in 23 hours',
-      'Checks again in 13 days',
-      'Checks again 17 Aug 2026',
-    ],
-    /** `triggerReason`, all of it, plus the two the quiet period writes. */
-    sub: [
-      'Waiting for it to land',
-      'Quiet period, then it lands',
-      'A delivery moved it forward',
-      'Asked for from this panel',
-      'Tidying up after the merge',
-      'First look since it was armed',
-      'Nothing has moved for an hour',
-      'Waiting for checks to appear',
-      'The regular safety net',
-    ],
-    /** `shortAge` at each of its steps. */
-    age: ['now', '59 min', '23 hr', '6 d', '99 wk'],
-  },
-  recent: {
-    /** `outcomeState`. A request reaches this table with one of these three. */
-    outcome: ['Merged', 'Cancelled', 'Superseded'],
-    /** `cleanupState`. */
-    cleanup: ['Done', 'Pending', 'Failed'],
-    age: ['now', '59 min', '23 hr', '6 d', '99 wk'],
-    /* `endReason`: the panel's own four, then every string the service writes into
-       `reason` - `policy.go`, and the cancellation reasons in
-       `pending_ci_github.go`. */
-    reason: [
-      'Checks passed and stayed quiet for 30 s',
-      'Cancelled before it could merge',
-      'Replaced by a later command',
-      'Still waiting',
-      'pull request merged outside pending CI reconciliation',
-      'replaced by a newer authorized command',
-      'base branch has no required status checks',
-      'repository disabled in Smyklot',
-      'source comment deleted',
-      'source comment edited',
-    ],
-  },
-} as const;
-
-interface ColumnReading {
-  column: string;
-  /** What the column is given. */
-  shipped: number;
-  /** What its widest member needs, with the cell's own padding. */
-  needs: number;
-}
-
-/** One state chip as it was actually drawn, before any value was written over it. */
-interface ChipReading {
-  label: string;
-  height: number;
-  /** How far the glyph's centre sits from the word's, which should be nothing. */
-  markDrift: number;
-  /** How far the chip's centre sits from its cell's content centre, same. */
-  cellDrift: number;
-}
-
-/** A heading as it was drawn: its word, or the symbol standing where the word was. */
-interface HeadingReading {
-  column: string;
-  /** The word's box against the word's own width, `null` where no word is drawn. */
-  word: { shown: number; needs: number } | null;
-  /** Whether a symbol is drawn in its place. */
-  symbol: boolean;
-}
-
-interface Reading {
-  columns: ColumnReading[];
-  headings: HeadingReading[];
-  /** Rows that grew: a value that did not fit wrapped, and one row is now taller. */
-  heights: number[];
-  /** Reasons that needed more than the two lines the row stands at. */
-  clipped: string[];
-  /** The first column's chips, one per state the seed puts on the screen. */
-  chips: ChipReading[];
-}
-
 let panel: Panel;
-const readings = new Map<string, Reading>();
-
-async function read(section: 'waiting' | 'recent', width = WIDE): Promise<Reading> {
-  const page = await panel.browser.newPage({ viewport: { width, height: 900 } });
-  try {
-    const route = section === 'waiting' ? 'root/queue' : 'root/queue/recent';
-    await visit(page, addressOf(panel, route), { ready: 'tbody td' });
-
-    return await page.evaluate(
-      ({ words, kind }) => {
-        const table = document.querySelector<HTMLTableElement>(
-          kind === 'waiting' ? '.waiting-table' : '.recent-table',
-        );
-        if (table === null) throw new Error(`no ${kind} table`);
-        const body = table.tBodies[0];
-        if (body === undefined) throw new Error('no body');
-        const template = body.querySelector('.queue-row');
-        if (template === null) throw new Error('no rows to fill');
-
-        /* Read before anything is written over: these are the chips the SEED put
-           on the screen, one per state, which is why `pendingCISeeds` carries one
-           request in each. A chip's height is set by its glyph rather than by its
-           word - the mark is 13px and the line is 12px - so a state whose glyph
-           was drawn at another size would make one row's badge taller than the
-           five beside it, and nothing else here would notice. */
-        const middle = (box: DOMRect): number => box.top + box.height / 2;
-        const seeded = [...body.querySelectorAll('.queue-row')] as HTMLTableRowElement[];
-        const chips = seeded.flatMap((row) => {
-          const chip = row.cells[0]?.querySelector('.chip');
-          const cell = row.cells[0];
-          if (chip == null || cell == null) return [];
-          const mark = chip.querySelector('svg');
-          const word = chip.querySelector('.chip-label');
-          const style = getComputedStyle(cell);
-          const cellBox = cell.getBoundingClientRect();
-          /* The content centre, not the border box's: every row but the last
-             carries a 1px bottom border, which would read as half a pixel of
-             drift on five rows out of six. */
-          const inner =
-            cellBox.top +
-            parseFloat(style.paddingTop) +
-            (cellBox.height -
-              parseFloat(style.paddingTop) -
-              parseFloat(style.paddingBottom) -
-              parseFloat(style.borderBottomWidth)) /
-              2;
-          const round = (value: number): number => Math.round(value * 1000) / 1000;
-
-          return [
-            {
-              label: (chip.textContent ?? '').trim(),
-              height: round(chip.getBoundingClientRect().height),
-              markDrift:
-                mark === null || word === null
-                  ? 0
-                  : round(
-                      Math.abs(
-                        middle(mark.getBoundingClientRect()) - middle(word.getBoundingClientRect()),
-                      ),
-                    ),
-              cellDrift: round(Math.abs(middle(chip.getBoundingClientRect()) - inner)),
-            },
-          ];
-        });
-
-        const lists = Object.values(words) as string[][];
-        const want = Math.max(...lists.map((one) => one.length));
-        while (body.querySelectorAll('.queue-row').length < want) {
-          body.append(template.cloneNode(true));
-        }
-        const rows = [...body.querySelectorAll('.queue-row')] as HTMLTableRowElement[];
-
-        /* One text node per cell, the way the other sweep does it: a cell is a
-           chip, a mark and a word, and replacing all of them would measure markup
-           this table never renders. */
-        const write = (host: Element | null, value: string): void => {
-          if (host === null) throw new Error(`nowhere to write ${value}`);
-          const walk = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
-          let node = walk.nextNode();
-          while (node !== null) {
-            if ((node.nodeValue ?? '').trim() !== '') {
-              node.nodeValue = value;
-              return;
-            }
-            node = walk.nextNode();
-          }
-          throw new Error(`no text to replace for ${value}`);
-        };
-
-        const pick = (list: string[], index: number): string => list[index % list.length] as string;
-
-        /* The ring is drawn only while a merge is landing, and then the lead is
-           the countdown - so a ring beside "Checks again in 59 minutes" is a row
-           this table cannot produce, and measuring it would buy the column 12px
-           of width for nothing. Ring rows take the merging leads; the rest take
-           the others. */
-        const leads = words.lead ?? [];
-        const merging = leads.filter((one) => one.startsWith('Merging'));
-        const waiting = leads.filter((one) => !one.startsWith('Merging'));
-
-        for (const [index, row] of rows.entries()) {
-          if (kind === 'waiting') {
-            write(row.cells[0] ?? null, pick(words.checks, index));
-            const next = row.cells[2] ?? null;
-            const hasRing = next?.querySelector('.next-lead .ring') != null;
-            const lead =
-              next?.querySelector('.next-lead .band-trim') ??
-              next?.querySelector('.next-lead') ??
-              null;
-            write(lead, pick(hasRing ? merging : waiting, index));
-            write(row.cells[2]?.querySelector('.next-sub') ?? null, pick(words.sub, index));
-            write(row.cells[3] ?? null, pick(words.age, index));
-          } else {
-            write(row.cells[0] ?? null, pick(words.outcome, index));
-            write(row.cells[2] ?? null, pick(words.cleanup, index));
-            write(row.cells[3] ?? null, pick(words.reason, index));
-            write(row.cells[4] ?? null, pick(words.age, index));
-          }
-        }
-
-        /* Read one: the shipped layout, holding every value at once. A row that is
-           taller than its neighbours is a value that wrapped where it should not
-           have, and a reason whose full height is past its cap is one the reader
-           cannot finish. */
-        const heights = [
-          ...new Set(rows.map((row) => Math.round(row.getBoundingClientRect().height))),
-        ];
-        /* Counted as line boxes rather than as height. `text-box: trim-both` ends
-           the block at the baseline, so a one-line reason measures shorter than
-           its own line and every height comparison reads it as overflowing. A
-           range over the text reports one rect per line, whatever the box does. */
-        const clipped: string[] = [];
-        if (kind === 'recent') {
-          for (const row of rows) {
-            const reason = row.cells[3]?.querySelector('.reason') as HTMLElement | null;
-            if (reason === null || reason === undefined) continue;
-            const range = document.createRange();
-            range.selectNodeContents(reason);
-            const lines = range.getClientRects().length;
-            if (lines > 2) clipped.push(`${(reason.textContent ?? '').trim()} (${lines} lines)`);
-          }
-        }
-
-        const heads = [...(table.tHead?.rows[0]?.cells ?? [])];
-        const shipped = heads.map((head) => head.getBoundingClientRect().width);
-
-        /* Read before the columns are loosened, because what a heading shows is
-           the question and its width is the answer: a word squeezed to nothing by
-           its own column reports a box narrower than the letters in it. */
-        const headings = heads.map((head) => {
-          const word = head.querySelector('.table-heading-label');
-          const symbol = head.querySelector('.heading-symbol');
-
-          return {
-            column: (head.textContent ?? '').trim() || 'Actions',
-            word:
-              word === null || !word.checkVisibility()
-                ? null
-                : {
-                    shown: Math.round(word.getBoundingClientRect().width * 100) / 100,
-                    needs: word.scrollWidth,
-                  },
-            symbol: symbol !== null && symbol.checkVisibility(),
-          };
-        });
-
-        /* Read two: what each column would take if it were free. Auto layout
-           gives every column its own max-content, over the heading AND every cell
-           - which is the researched rule, computed by the engine rather than
-           restated here. */
-        const loosen = document.createElement('style');
-        loosen.textContent =
-          '.queue-table{table-layout:auto!important;width:max-content!important}' +
-          '.queue-table :is(th,td){width:auto!important}' +
-          '.reason{display:block!important;overflow:visible!important;white-space:nowrap!important}';
-        document.head.append(loosen);
-        const needs = heads.map((head) => head.getBoundingClientRect().width);
-        loosen.remove();
-
-        return {
-          headings,
-          columns: heads.map((head, index) => ({
-            column: (head.textContent ?? '').trim() || 'Actions',
-            shipped: Math.round((shipped[index] ?? 0) * 100) / 100,
-            needs: Math.round((needs[index] ?? 0) * 100) / 100,
-          })),
-          heights,
-          clipped,
-          chips,
-        };
-      },
-      { words: VOCABULARY[section] as unknown as Record<string, string[]>, kind: section },
-    );
-  } finally {
-    await page.close();
-  }
-}
 
 beforeAll(async () => {
   panel = await startPanel();
-  readings.set('waiting', await read('waiting'));
-  readings.set('recent', await read('recent'));
-  readings.set('waiting narrow', await read('waiting', NARROW));
-  readings.set('recent narrow', await read('recent', NARROW));
-}, 300_000);
+});
 
 afterAll(async () => {
   await panel?.close();
 });
 
-/* The two that are not sized by their worst case, named so that a column added
-   later has to say which it is rather than quietly joining them. */
-const EXEMPT = new Set(['Pull request', 'Why it ended']);
-
-describe('the Queue table columns [Integration]', () => {
-  it.each(['waiting', 'recent'])('holds every value the %s section can show', (section) => {
-    const reading = readings.get(section);
-    const narrow = (reading?.columns ?? [])
-      .filter((one) => !EXEMPT.has(one.column))
-      .filter((one) => one.shipped + 0.5 < one.needs)
-      .map((one) => `${one.column}: ${one.shipped}px given, ${one.needs}px needed`);
-
-    expect(narrow, `these columns cut a value off:\n  ${narrow.join('\n  ')}`).toEqual([]);
+describe('the general Queue table [Integration]', () => {
+  it('states the durable-work columns and keeps them inside the wide console', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      await visit(page, addressOf(panel, 'root/queue'), {
+        ready: '.general-queue-table tbody tr',
+      });
+      const reading = await page.evaluate(() => {
+        const region = document.querySelector<HTMLElement>('.general-queue-table');
+        const table = region?.querySelector('table');
+        return {
+          headings: [...document.querySelectorAll('.general-queue-table thead th')].map((cell) =>
+            (cell.textContent ?? '').trim(),
+          ),
+          overflow:
+            region === null || table === null || table === undefined
+              ? Number.POSITIVE_INFINITY
+              : table.getBoundingClientRect().right - region.getBoundingClientRect().right,
+        };
+      });
+      expect(reading.headings).toEqual([
+        'Work',
+        'State',
+        'Schedule',
+        'Estimated start',
+        'Priority',
+        'Actions',
+      ]);
+      expect(reading.overflow).toBeLessThanOrEqual(1);
+    } finally {
+      await page.close();
+    }
   });
 
-  it.each(['waiting', 'recent'])('reserves nothing it does not need in %s', (section) => {
-    const reading = readings.get(section);
-    const loose = (reading?.columns ?? [])
-      .filter((one) => !EXEMPT.has(one.column))
-      .filter((one) => one.shipped > one.needs + STEP)
-      .map((one) => `${one.column}: ${one.shipped}px given, ${one.needs}px needed`);
-
-    expect(loose, `these columns hold empty space in every row:\n  ${loose.join('\n  ')}`).toEqual(
-      [],
-    );
-  });
-
-  it.each(['waiting', 'recent'])('keeps every row in %s the same height', (section) => {
-    expect(readings.get(section)?.heights ?? []).toHaveLength(1);
-  });
-
-  it('shows every reason a request ended in full', () => {
-    expect(readings.get('recent')?.clipped ?? []).toEqual([]);
-  });
-
-  /* The seed carries one request in each of the six states, so this is measured
-     rather than argued: 6.4px of padding, a 13px glyph and 6.4px of padding is
-     25.8px, and the glyph is what sets it - the word's line box is 12px and never
-     reaches the edges. Every state's glyph is drawn at the same size, so every
-     badge is the same height, and a redraw that changed one would show here. */
-  it('draws every state of the Checks column at one height', () => {
-    const chips = readings.get('waiting')?.chips ?? [];
-    const shown = chips.map((one) => one.label).sort();
-
-    expect(shown).toEqual(
-      ['Failing', 'No checks', 'Passing', 'Running', 'Scheduled', 'Unreadable'].sort(),
-    );
-    expect(new Set(chips.map((one) => one.height)).size, JSON.stringify(chips)).toBe(1);
-  });
-
-  it('centres every state chip on its mark and on its cell', () => {
-    const off = (readings.get('waiting')?.chips ?? [])
-      .filter((one) => one.markDrift > 0.01 || one.cellDrift > 0.01)
-      .map(
-        (one) => `${one.label}: ${one.markDrift}px from its mark, ${one.cellDrift}px from centre`,
+  it('turns each item into a labelled card on a phone', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 390, height: 844 } });
+    try {
+      await visit(page, addressOf(panel, 'root/queue'), {
+        ready: '.general-queue-table tbody tr',
+      });
+      const rows = await page.evaluate(() =>
+        [...document.querySelectorAll<HTMLElement>('.general-queue-table tbody .data-row')].map(
+          (row) => ({
+            right: row.getBoundingClientRect().right,
+            viewport: document.documentElement.clientWidth,
+            labels: [...row.querySelectorAll<HTMLElement>('[data-label]')].map(
+              (cell) => cell.dataset.label,
+            ),
+          }),
+        ),
       );
-
-    expect(off, `these chips are not centred:\n  ${off.join('\n  ')}`).toEqual([]);
-  });
-});
-
-/**
- * The same table under 64rem, where four headings trade their word for a symbol.
- *
- * Every column width there is written by hand against a heading whose contents have just
- * changed, which is the one place this table has been wrong twice: a column sized for the
- * badge under it and not for the heading over it drew a heading cut in half, and a badge
- * whose word was hidden kept the gap the word had been sitting in.
- */
-describe('the Queue table columns under 64rem [Integration]', () => {
-  it.each(['waiting', 'recent'])('never cuts a heading in %s', (section) => {
-    const cut = (readings.get(`${section} narrow`)?.headings ?? [])
-      .filter((one) => one.word !== null && one.word.shown + 0.5 < one.word.needs)
-      .map((one) => `${one.column}: ${one.word?.shown}px shown, ${one.word?.needs}px of word`);
-
-    expect(cut, `these headings are cut short:\n  ${cut.join('\n  ')}`).toEqual([]);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.right).toBeLessThanOrEqual(row.viewport + 1);
+        expect(row.labels).toEqual([
+          'Work',
+          'State',
+          'Schedule',
+          'Estimate',
+          'Priority',
+          'Actions',
+        ]);
+      }
+    } finally {
+      await page.close();
+    }
   });
 
-  /* A column that gives up its word has to say what it holds some other way, and the
-     symbol is that way. Without this the rule above is satisfied by hiding every word. */
-  it.each(['waiting', 'recent'])('names every column it narrows in %s', (section) => {
-    const wide = new Map(
-      (readings.get(section)?.headings ?? []).map((one) => [one.column, one] as const),
-    );
-    const mute = (readings.get(`${section} narrow`)?.headings ?? [])
-      .filter((one) => one.word === null && !one.symbol)
-      .filter((one) => wide.get(one.column)?.word != null)
-      .map((one) => one.column);
+  it('moves approval and terminal work into their named views', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      await visit(page, addressOf(panel, 'root/queue'), {
+        ready: '.general-queue-table tbody tr',
+      });
+      await page.getByRole('tab', { name: 'Approvals' }).click();
+      await expect.poll(() => page.locator('.general-queue-table tbody .data-row').count()).toBe(1);
+      await page.getByText('Review organization sync plan').waitFor({ state: 'visible' });
 
-    expect(mute, `these columns lost their name:\n  ${mute.join('\n  ')}`).toEqual([]);
+      await page.getByRole('tab', { name: 'History' }).click();
+      await page.getByText('Refresh installation catalog').waitFor({ state: 'visible' });
+    } finally {
+      await page.close();
+    }
   });
 
-  it.each(['waiting', 'recent'])('holds every value the %s section can show', (section) => {
-    const narrow = (readings.get(`${section} narrow`)?.columns ?? [])
-      .filter((one) => !EXEMPT.has(one.column))
-      .filter((one) => one.shipped + 0.5 < one.needs)
-      .map((one) => `${one.column}: ${one.shipped}px given, ${one.needs}px needed`);
-
-    expect(narrow, `these columns cut a value off:\n  ${narrow.join('\n  ')}`).toEqual([]);
-  });
-
-  it.each(['waiting', 'recent'])('keeps every row in %s the same height', (section) => {
-    expect(readings.get(`${section} narrow`)?.heights ?? []).toHaveLength(1);
-  });
-
-  it('shows every reason a request ended in full', () => {
-    expect(readings.get('recent narrow')?.clipped ?? []).toEqual([]);
+  it('opens workload detail and the immutable transition timeline', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      await visit(page, addressOf(panel, 'root/queue'), {
+        ready: '.general-queue-table tbody tr',
+      });
+      const row = page.locator('.general-queue-table tbody .data-row', {
+        hasText: 'Apply organization sync plan',
+      });
+      await row.getByRole('button', { name: 'Details' }).click();
+      const dialog = page.getByRole('dialog', { name: 'Apply organization sync plan' });
+      await dialog.waitFor({ state: 'visible' });
+      await dialog.getByRole('heading', { name: 'Workload detail' }).waitFor();
+      await dialog.getByText('3 create · 7 update · 2 delete').waitFor();
+      await dialog.getByRole('heading', { name: 'Timeline' }).waitFor();
+    } finally {
+      await page.close();
+    }
   });
 });

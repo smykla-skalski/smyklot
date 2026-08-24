@@ -8,7 +8,7 @@
    */
   import { SvelteSet } from 'svelte/reactivity';
 
-  import { formatRelative, formatUntil } from '../format';
+  import { formatDateTime, formatRelative, formatUntil } from '../format';
   import { SYNC_KINDS, type SyncAction, type SyncPlan } from '../types';
   import type { SyncSection } from '../routes';
 
@@ -24,23 +24,29 @@
     plan,
     nowMs,
     readOnly,
+    canControl,
     approving,
     discarding,
+    runNowBusy,
     sectionHref,
     onOpenSection,
     onApprove,
     onDiscard,
+    onRunNow,
   }: {
     plan: SyncPlan | null;
     /** The clock, passed in so a story renders the same minute every time. */
     nowMs: number;
     readOnly: boolean;
+    canControl: boolean;
     approving: boolean;
     discarding: boolean;
+    runNowBusy: boolean;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
+    onRunNow: (reason: string) => void;
   } = $props();
 
   const actions = $derived(plan?.actions ?? []);
@@ -186,6 +192,8 @@
   const approvable = $derived(plan !== null && plan.state === 'computed' && total > 0);
 
   let confirming = $state(false);
+  let runConfirming = $state(false);
+  let runReason = $state('');
 
   const removals = $derived(actions.filter((action) => action.operation === 'delete'));
 
@@ -209,6 +217,16 @@
   const landed = $derived(actions.filter((action) => action.state === 'applied').length);
   const failed = $derived(actions.filter((action) => action.state === 'failed').length);
 
+  function profileTime(value: string, timezone?: string): string {
+    if (timezone === undefined || timezone === '') return formatDateTime(value);
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: timezone,
+      timeZoneName: 'short',
+    }).format(new Date(value));
+  }
+
   /* The lifecycle map speaks at the plan's own scale; its transitions keep
      the demo fractions where the plan has not been there yet. */
   const applyingShown = $derived(Math.min(3, Math.max(total, 1)));
@@ -225,6 +243,11 @@
   {#if plan === null || total === 0}
     <div class="hero">
       <h2>Nothing is waiting</h2>
+      {#if canControl}
+        <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
+          >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
+        >
+      {/if}
     </div>
     <p class="plan-rule">
       A reconcile runs on a timer and proposes whatever differs - a plan appears here the moment one
@@ -253,6 +276,63 @@
         {/if}
       </span>
     </div>
+
+    {#if plan.queue_item !== undefined}
+      {@const queued = plan.queue_item}
+      <section class="schedule-card" aria-labelledby="plan-schedule-title">
+        <div class="schedule-card-head">
+          <h3 id="plan-schedule-title">Execution schedule</h3>
+          <div class="schedule-card-actions">
+            <span class="schedule-state">{queued.state.replaceAll('_', ' ')}</span>
+            {#if canControl && plan.state === 'approved'}
+              <Button row tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
+                >{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
+              >
+            {/if}
+          </div>
+        </div>
+        <dl class="schedule-facts">
+          <div>
+            <dt>Earliest eligible</dt>
+            <dd>
+              <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
+              <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
+            </dd>
+          </div>
+          <div>
+            <dt>Window</dt>
+            <dd>
+              {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
+              <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>
+            </dd>
+          </div>
+          <div>
+            <dt>Estimated start</dt>
+            <dd>
+              {queued.estimated_start_at
+                ? formatDateTime(queued.estimated_start_at)
+                : 'Not estimated'}
+              <small
+                >{queued.work_ahead === 0 ? 'Next in lane' : `${queued.work_ahead} items ahead`} · estimate</small
+              >
+            </dd>
+          </div>
+          <div>
+            <dt>Current status</dt>
+            <dd>
+              {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
+              <small
+                >{queued.state === 'running'
+                  ? `${plan.execution_stage} · attempt ${queued.attempt} · ${queued.progress_current} of ${queued.progress_total}`
+                  : queued.state === 'retrying'
+                    ? `Retry attempt ${queued.attempt}`
+                    : `${plan.execution_stage} · priority ${queued.priority}`}</small
+              >
+            </dd>
+          </div>
+        </dl>
+      </section>
+    {/if}
 
     <div class="plan-tools">
       <SegmentedControl
@@ -510,6 +590,38 @@
       {/if}
     </ConfirmDialog>
   {/if}
+
+  <ConfirmDialog
+    id="sync-run-now-dialog"
+    open={runConfirming}
+    title={plan?.state === 'approved' ? 'Run approved plan now?' : 'Check organization drift now?'}
+    description={plan?.state === 'approved'
+      ? 'This bypasses the assigned window once and immediately dispatches the approved plan.'
+      : 'This queues an immediate drift scan. Any changes still require human approval.'}
+    confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Queue drift scan'}
+    busyLabel="Queuing…"
+    confirmTone="signal"
+    busy={runNowBusy}
+    confirmDisabled={runReason.trim() === ''}
+    onClose={() => {
+      if (!runNowBusy) runConfirming = false;
+    }}
+    onConfirm={() => {
+      const reason = runReason.trim();
+      if (reason === '') return;
+      runConfirming = false;
+      runReason = '';
+      onRunNow(reason);
+    }}
+  >
+    <label class="run-reason" for="sync-run-reason"
+      >Reason<textarea
+        id="sync-run-reason"
+        rows="3"
+        bind:value={runReason}
+        placeholder="Why should this run outside its normal schedule?"></textarea></label
+    >
+  </ConfirmDialog>
 </div>
 
 <style>
@@ -586,6 +698,67 @@
   .plan-tools {
     display: flex;
     margin-block-end: var(--space-3);
+  }
+
+  .schedule-card {
+    background: var(--surface-base);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    margin-block-end: var(--space-4);
+    padding: var(--space-4);
+  }
+
+  .schedule-card-head {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-block-end: var(--space-4);
+  }
+
+  .schedule-card-head h3 {
+    font-size: var(--font-size-card-title);
+    margin: 0;
+  }
+
+  .schedule-card-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .schedule-state {
+    color: var(--text-secondary);
+    font-family: var(--mono);
+    font-size: var(--font-size-micro);
+    text-transform: uppercase;
+  }
+
+  .schedule-facts {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0;
+  }
+
+  .schedule-facts div {
+    min-width: 0;
+  }
+
+  .schedule-facts dt,
+  .schedule-facts small {
+    color: var(--text-muted);
+    display: block;
+    font-size: var(--font-size-micro);
+  }
+
+  .schedule-facts dd {
+    color: var(--text-primary);
+    font-size: var(--font-size-meta);
+    margin: var(--space-1) 0 0;
+  }
+
+  .schedule-facts small {
+    margin-block-start: var(--space-1);
   }
 
   /* ---------- The groups ---------- */
@@ -1079,6 +1252,29 @@
     font-weight: 600;
   }
 
+  .run-reason {
+    color: var(--text-secondary);
+    display: grid;
+    font-size: var(--font-size-meta);
+    gap: var(--space-2);
+  }
+
+  .run-reason textarea {
+    background: var(--control-bg);
+    border: 1px solid var(--control-border);
+    border-radius: var(--r-ctl);
+    color: var(--text-primary);
+    font: inherit;
+    min-block-size: 5rem;
+    padding: var(--space-3);
+    resize: vertical;
+  }
+
+  .run-reason textarea:focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
   @media (max-width: 36rem) {
     .view-frame {
       overflow-x: hidden;
@@ -1096,6 +1292,23 @@
 
     .hero-meta-lines {
       justify-items: start;
+    }
+
+    .schedule-facts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .schedule-card-head,
+    .schedule-card-actions {
+      align-items: flex-start;
+    }
+
+    .schedule-card-head {
+      gap: var(--space-3);
+    }
+
+    .schedule-card-actions {
+      flex-direction: column;
     }
 
     .plan-tools {
