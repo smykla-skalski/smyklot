@@ -441,7 +441,8 @@ func (s *Server) postTargetScheduleRequest(w http.ResponseWriter, r *http.Reques
 
 func validScheduleRequestInput(input scheduleRequestInput) bool {
 	return input.Kind.InstallationConfigurable() &&
-		input.CadenceSeconds >= 0 && input.DefaultPriority.Valid() &&
+		input.CadenceSeconds >= 0 && (!input.Kind.Recurring() || input.CadenceSeconds > 0) &&
+		input.DefaultPriority.Valid() &&
 		strings.TrimSpace(input.Reason) != "" &&
 		(input.ProfileID == nil) != (input.CustomProfile == nil) &&
 		workqueue.ValidatePolicyConfiguration(input.Kind, input.Configuration) == nil

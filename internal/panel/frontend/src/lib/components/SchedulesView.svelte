@@ -439,7 +439,7 @@
   }
 
   async function submitRequest(): Promise<void> {
-    if (targetId === undefined || requestReason.trim() === '') return;
+    if (targetId === undefined || requestReason.trim() === '' || requestCadenceInvalid()) return;
     const current = policies.find((policy) => policy.kind === requestKind);
     if (current === undefined) return;
     requestBusy = true;
@@ -476,6 +476,10 @@
     } finally {
       requestBusy = false;
     }
+  }
+
+  function requestCadenceInvalid(): boolean {
+    return requestCadence < 0 || (requestKind !== 'pending_ci' && requestCadence <= 0);
   }
 
   function timeMinute(value: string): number {
@@ -850,7 +854,13 @@
         {/if}
         <label>
           <span>Cadence seconds</span>
-          <input class="text-input" type="number" min="0" step="60" bind:value={requestCadence} />
+          <input
+            class="text-input"
+            type="number"
+            min={requestKind === 'pending_ci' ? 0 : 1}
+            step="60"
+            bind:value={requestCadence}
+          />
         </label>
         <label>
           <span>Priority</span>
@@ -872,7 +882,7 @@
         <div class="request-action">
           <Button
             tone="signal"
-            disabled={requestBusy || requestReason.trim() === ''}
+            disabled={requestBusy || requestReason.trim() === '' || requestCadenceInvalid()}
             onclick={() => void submitRequest()}>{requestBusy ? 'Sending…' : 'Send request'}</Button
           >
         </div>

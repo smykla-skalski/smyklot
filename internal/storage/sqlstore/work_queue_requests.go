@@ -124,7 +124,8 @@ func validateScheduleRequestCreate(create workqueue.ScheduleRequestCreate) error
 		return errors.New("schedule request identity, scope, requester, and reason are required")
 	}
 	if !create.Kind.InstallationConfigurable() ||
-		!create.DefaultPriority.Valid() || create.Cadence < 0 {
+		!create.DefaultPriority.Valid() || create.Cadence < 0 ||
+		(create.Kind.Recurring() && create.Cadence <= 0) {
 		return errors.New("schedule request policy is invalid")
 	}
 	if (create.ProfileID == nil) == (create.CustomProfile == nil) {

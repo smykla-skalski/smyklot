@@ -39,6 +39,16 @@
   let passingQuiet = $state(30);
   let webhookMaxDelay = $state(300);
   let webhookMaxAttempts = $state(8);
+  const recurringKinds = new Set<QueuePolicy['kind']>([
+    'pending_ci_gate',
+    'catalog_refresh',
+    'reaction_scan',
+    'config_migration',
+    'sync_scan',
+    'path_refresh',
+    'delivery_cleanup',
+    'auth_cleanup',
+  ]);
 
   onMount(() => {
     if (policy === null) return;
@@ -82,7 +92,13 @@
   }
 
   function invalid(): boolean {
-    if (cadence < 0 || retryDelay < 0 || profileId === '') return true;
+    if (
+      cadence < 0 ||
+      (enabled && policy !== null && recurringKinds.has(policy.kind) && cadence <= 0) ||
+      retryDelay < 0 ||
+      profileId === ''
+    )
+      return true;
     if (retentionEnabled && retention < 0) return true;
     if (policy?.kind === 'sync_scan' && approvalLifetime <= 0) return true;
     if (policy?.kind === 'pending_ci')
@@ -133,7 +149,13 @@
       ><input type="checkbox" bind:checked={enabled} /><span>Scheduling enabled</span></label
     >
     <label for="policy-cadence">Cadence in seconds</label>
-    <input id="policy-cadence" type="number" min="0" step="30" bind:value={cadence} />
+    <input
+      id="policy-cadence"
+      type="number"
+      min={enabled && policy !== null && recurringKinds.has(policy.kind) ? 1 : 0}
+      step="30"
+      bind:value={cadence}
+    />
     <label for="policy-window">Execution window</label>
     <select id="policy-window" bind:value={profileId}>
       {#each profiles as profile (profile.id)}

@@ -19,3 +19,25 @@ func TestInstallationScheduleProfileHidesGlobalImpact(t *testing.T) {
 		t.Fatalf("installation profile exposed global impact: %#v", profile)
 	}
 }
+
+func TestValidScheduleRequestInputRequiresRecurringCadence(t *testing.T) {
+	t.Parallel()
+
+	profileID := workqueue.AlwaysOpenProfileID
+	input := scheduleRequestInput{
+		Kind:            workqueue.KindSyncScan,
+		BaseRevision:    1,
+		ProfileID:       &profileID,
+		CadenceSeconds:  0,
+		DefaultPriority: workqueue.PriorityNormal,
+		Reason:          "Run during installation hours",
+	}
+	if validScheduleRequestInput(input) {
+		t.Fatal("recurring schedule request accepted a zero cadence")
+	}
+
+	input.Kind = workqueue.KindPendingCI
+	if !validScheduleRequestInput(input) {
+		t.Fatal("event-driven schedule request rejected a zero cadence")
+	}
+}

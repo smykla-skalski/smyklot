@@ -218,6 +218,23 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(effective.ProfileID).To(Equal(profile.ID))
 	})
 
+	It("rejects recurring schedule requests with a zero cadence", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		global, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		profileID := workqueue.AlwaysOpenProfileID
+
+		_, err = store.CreateScheduleRequest(ctx, workqueue.ScheduleRequestCreate{
+			ID: "schedule-request-zero-cadence", TargetID: target.TargetID,
+			Kind: workqueue.KindSyncScan, BaseRevision: global.Revision,
+			ProfileID: &profileID, Cadence: 0,
+			DefaultPriority: global.DefaultPriority, Configuration: global.Configuration,
+			Reason: "run continuously", RequestedBy: account.ID, CreatedAt: now,
+		})
+		Expect(err).To(MatchError(ContainSubstring("policy is invalid")))
+	})
+
 	It("marks a request stale when its effective policy source changes", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallation(ctx, store, now)
