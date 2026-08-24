@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
@@ -2098,6 +2100,39 @@ func DeclareSpecs(harness Harness) {
 		Expect(recovered.Work).NotTo(BeNil())
 		Expect(recovered.Work.ID).To(Equal(accepted.ID))
 		Expect(recovered.Work.Attempt).To(Equal(3))
+	})
+
+	It("moves a webhook source deadline with its queue schedule", func() {
+		account, target := seedInstallation(ctx, store, now)
+		claim := storage.DeliveryClaim{
+			ClaimKey:   "issue_comment:created:repo:scheduled:revision",
+			DeliveryID: "scheduled-delivery", TargetID: target.TargetID,
+			RepositoryFullName: "smykla-skalski/smyklot",
+			Event:              "issue_comment", Payload: []byte(`{"action":"created"}`), ClaimedAt: now,
+		}
+		accepted, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		first, err := store.LeaseDelivery(ctx, now, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(first.Work).NotTo(BeNil())
+		retryAt := now.Add(4 * time.Hour)
+		Expect(store.RetryDelivery(ctx, storage.DeliveryRetryChange{
+			ClaimID: accepted.ID, Stage: "execute", Reason: "temporary failure", RetryAt: retryAt,
+		})).To(Succeed())
+
+		itemID := fmt.Sprintf("delivery:%d", accepted.ID)
+		item, err := store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		runAt := now.Add(2 * time.Minute)
+		_, err = store.ApplyQueueAction(ctx, itemID, workqueue.ItemAction{
+			Type: workqueue.ActionRunNow, ExpectedRevision: item.Revision,
+			ActorID: account.ID, Reason: "recover webhook", ChangedAt: runAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		leased, err := store.LeaseDelivery(ctx, runAt, runAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(leased.Work).NotTo(BeNil())
+		Expect(leased.Work.ID).To(Equal(accepted.ID))
 	})
 
 	It("finalizes only the claimed attempt when GitHub reuses a delivery ID", func() {

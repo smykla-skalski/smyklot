@@ -30,6 +30,26 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(syncPolicy.ProfileID).To(Equal(workqueue.AlwaysOpenProfileID))
 	})
 
+	It("rejects a zero cadence for enabled recurring work", func() {
+		ctx, store, now := runtime()
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindCatalogRefresh, nil)
+		Expect(err).NotTo(HaveOccurred())
+		policy.Cadence = 0
+		_, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, Enabled: policy.Enabled, Cadence: policy.Cadence,
+			ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+			RetryDelay: policy.RetryDelay, Retention: policy.Retention,
+			ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+			ExpectedRevision: policy.Revision, ActorID: "root", ChangedAt: now,
+		})
+		Expect(err).To(MatchError(ContainSubstring("positive cadence")))
+
+		webhook, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindWebhookDelivery, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(webhook.Enabled).To(BeTrue())
+		Expect(webhook.Cadence).To(BeZero())
+	})
+
 	It("lists target work without leaking another installation", func() {
 		ctx, store, now := runtime()
 		account, first := seedInstallation(ctx, store, now)
@@ -232,6 +252,64 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
+	})
+
+	It("supersedes recurring work whose scope disappeared after its lease", func() {
+		ctx, store, now := runtime()
+		_, target := seedInstallation(ctx, store, now)
+		repositoryID := "repo-1"
+		claim := workqueue.RecurringClaim{
+			Kind: workqueue.KindReactionScan, TargetID: &target.TargetID,
+			RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+			Now: now, LeaseDuration: time.Minute,
+		}
+		scheduled, err := store.EnsureRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		retired, err := store.SupersedeMissingRecurringWork(ctx, nil, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(retired).To(HaveLen(1))
+		Expect(retired[0].ID).To(Equal(scheduled.ID))
+		Expect(retired[0].State).To(Equal(workqueue.StateSuperseded))
+
+		claim.RepositoryID = pointer("repo-2")
+		claim.Now = now.Add(time.Minute)
+		running, claimed, err := store.ClaimRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+		retired, err = store.SupersedeMissingRecurringWork(ctx, nil, now.Add(90*time.Second))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(retired).To(BeEmpty())
+		retired, err = store.SupersedeMissingRecurringWork(ctx, nil, now.Add(3*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(retired).To(HaveLen(1))
+		Expect(retired[0].ID).To(Equal(running.ID))
+	})
+
+	It("returns the newest queue events in chronological order", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		itemID := createQueueFixture(ctx, store, account.ID, target.TargetID, "repo-1", now)
+		item, err := store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		for index := range 6 {
+			priority := workqueue.PriorityHigh
+			if index%2 == 1 {
+				priority = workqueue.PriorityNormal
+			}
+			item, err = store.ApplyQueueAction(ctx, itemID, workqueue.ItemAction{
+				Type: workqueue.ActionSetPriority, Priority: priority,
+				ExpectedRevision: item.Revision, ActorID: account.ID,
+				ChangedAt: now.Add(time.Duration(index+1) * time.Minute),
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		events, err := store.ListQueueEvents(ctx, itemID, 3)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(events).To(HaveLen(3))
+		Expect(events[0].ID).To(BeNumerically("<", events[1].ID))
+		Expect(events[1].ID).To(BeNumerically("<", events[2].ID))
+		Expect(events[2].Summary).To(Equal("Priority changed to normal"))
 	})
 
 	It("defers expired work that missed its execution window", func() {

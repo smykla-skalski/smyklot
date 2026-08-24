@@ -3,6 +3,7 @@ package storagetest
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.Time)) {
@@ -71,6 +73,54 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 
 		return deferred
 	}
+
+	It("keeps source deadlines and disabled policy state aligned with the queue", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+		targetID := "installation:77"
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPendingCI, &targetID)
+		Expect(err).NotTo(HaveOccurred())
+		policy, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, TargetID: &targetID, Enabled: false,
+			Cadence: policy.Cadence, ProfileID: policy.ProfileID,
+			DefaultPriority: policy.DefaultPriority, RetryDelay: policy.RetryDelay,
+			Retention: policy.Retention, ApprovalTTL: policy.ApprovalTTL,
+			Configuration: policy.Configuration, ExpectedRevision: 0,
+			ActorID: "account:pending-ci", ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		armed, err := store.Arm(ctx, pendingCIArm(now, 214, 114, "head"))
+		Expect(err).NotTo(HaveOccurred())
+		itemID := "pending-ci:" + fmt.Sprint(armed.Request.ID)
+		item, err := store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.State).To(Equal(workqueue.StateBlocked))
+		Expect(item.BlockedReason).To(Equal("Workload disabled by policy"))
+
+		policy, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, TargetID: &targetID, Enabled: true,
+			Cadence: policy.Cadence, ProfileID: policy.ProfileID,
+			DefaultPriority: policy.DefaultPriority, RetryDelay: policy.RetryDelay,
+			Retention: policy.Retention, ApprovalTTL: policy.ApprovalTTL,
+			Configuration: policy.Configuration, ExpectedRevision: policy.Revision,
+			ActorID: "account:pending-ci", ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		item, err = store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.State).NotTo(Equal(workqueue.StateBlocked))
+
+		scheduledAt := now.Add(4 * time.Hour)
+		item, err = store.ApplyQueueAction(ctx, itemID, workqueue.ItemAction{
+			Type: workqueue.ActionScheduleAt, ExpectedRevision: item.Revision,
+			ActorID: "account:pending-ci", At: scheduledAt, ChangedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		request, err := store.GetArmed(ctx, armed.Request.RepositoryID, armed.Request.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(request.NextCheckAt).To(Equal(item.EligibleAt))
+	})
 
 	It("persists exact check reauthorization and idempotent action replay", func() {
 		ctx, store, now := runtime()

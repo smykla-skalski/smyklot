@@ -89,6 +89,117 @@ func (s *Store) EnsureRecurringWork(
 	return item, nil
 }
 
+// SupersedeMissingRecurringWork retires durable occurrences whose installation
+// or repository no longer appears in the scheduler's current catalog. A live
+// lease is allowed to finish; an expired lease is safe to retire on this pass.
+func (s *Store) SupersedeMissingRecurringWork(
+	ctx context.Context,
+	claims []workqueue.RecurringClaim,
+	now time.Time,
+) ([]workqueue.Item, error) {
+	if now.IsZero() {
+		return nil, errors.New("recurring reconciliation time is required")
+	}
+	live := make(map[string]struct{}, len(claims))
+	for _, claim := range claims {
+		if err := validateRecurringClaim(claim); err != nil {
+			return nil, err
+		}
+		live[recurringSourceID(claim)] = struct{}{}
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin recurring reconciliation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
+		return nil, err
+	}
+	items, err := activeRecurringItems(ctx, tx, now, s.dialect.RowLock())
+	if err != nil {
+		return nil, err
+	}
+	superseded := make([]workqueue.Item, 0)
+	for _, item := range items {
+		if _, found := live[item.SourceID]; found {
+			continue
+		}
+		updated, changed, err := supersedeRecurringItem(ctx, tx, item, now)
+		if err != nil {
+			return nil, err
+		}
+		if changed {
+			superseded = append(superseded, updated)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit recurring reconciliation: %w", err)
+	}
+
+	return superseded, nil
+}
+
+func activeRecurringItems(
+	ctx context.Context,
+	tx *transaction,
+	now time.Time,
+	lock string,
+) ([]workqueue.Item, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT"+queueItemColumns+`
+FROM queue_items
+WHERE source_kind = ?
+  AND state NOT IN ('succeeded', 'failed', 'cancelled', 'superseded')
+  AND (state <> 'running' OR lease_expires_at IS NULL OR lease_expires_at <= ?)
+ORDER BY id`+lock, queueSourceRecurring, now)
+	if err != nil {
+		return nil, fmt.Errorf("list active recurring queue items: %w", err)
+	}
+	items, err := collectRows(rows, scanQueueItem)
+	if err != nil {
+		return nil, fmt.Errorf("read active recurring queue items: %w", err)
+	}
+
+	return items, nil
+}
+
+func supersedeRecurringItem(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+	now time.Time,
+) (workqueue.Item, bool, error) {
+	const reason = "Workload scope is no longer available"
+	result, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'superseded', immediate_dispatch = FALSE,
+    blocked_reason = ?, lease_expires_at = NULL, finished_at = ?, updated_at = ?,
+    revision = revision + 1
+WHERE id = ? AND state NOT IN ('succeeded', 'failed', 'cancelled', 'superseded')
+  AND (state <> 'running' OR lease_expires_at IS NULL OR lease_expires_at <= ?)`,
+		reason, now, now, item.ID, now,
+	)
+	if err != nil {
+		return workqueue.Item{}, false, fmt.Errorf("supersede missing recurring item: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return workqueue.Item{}, false, fmt.Errorf("read recurring supersede result: %w", err)
+	}
+	if changed == 0 {
+		return item, false, nil
+	}
+	item.State, item.Immediate, item.BlockedReason = workqueue.StateSuperseded, false, reason
+	item.LeaseExpiresAt, item.FinishedAt = nil, &now
+	item.UpdatedAt, item.Revision = now, item.Revision+1
+	if err := insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "source_unavailable",
+		State: item.State, Summary: reason, CreatedAt: now,
+	}); err != nil {
+		return workqueue.Item{}, false, err
+	}
+
+	return item, true, nil
+}
+
 func (s *Store) ensureRecurringOccurrenceTx(
 	ctx context.Context,
 	tx *transaction,

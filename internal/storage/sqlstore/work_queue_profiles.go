@@ -236,7 +236,7 @@ FROM queue_items WHERE profile_id = ? AND immediate_dispatch = FALSE
 		}
 		state, blockedReason := stateForEligibility(eligible, now), ""
 		if !policy.Enabled {
-			state, blockedReason = workqueue.StateBlocked, "Workload disabled by policy"
+			state, blockedReason = workqueue.StateBlocked, queueBlockedDisabled
 		}
 		if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET eligible_at = ?, state = ?, blocked_reason = ?,

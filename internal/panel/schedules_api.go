@@ -272,6 +272,7 @@ func (s *Server) deleteRootInstallationJobPolicy(w http.ResponseWriter, r *http.
 
 func validQueuePolicyInput(kind workqueue.Kind, input queuePolicyInput) bool {
 	return kind.Valid() && kind != workqueue.KindScheduleChange && input.CadenceSeconds >= 0 &&
+		(!input.Enabled || !kind.Recurring() || input.CadenceSeconds > 0) &&
 		input.RetryDelay >= 0 && input.DefaultPriority.Valid() &&
 		(input.Retention == nil || *input.Retention >= 0) &&
 		(input.ApprovalLifetime == nil || *input.ApprovalLifetime > 0) &&
@@ -323,7 +324,7 @@ func (s *Server) getTargetSchedules(w http.ResponseWriter, r *http.Request) {
 	visible := make([]workqueue.Profile, 0, len(profiles))
 	for _, profile := range profiles {
 		if profile.TargetID == nil || *profile.TargetID == target.ID {
-			visible = append(visible, profile)
+			visible = append(visible, installationScheduleProfile(profile))
 		}
 	}
 	statuses, err := s.store.ListQueuePolicyStatuses(r.Context(), &target.ID)
@@ -334,6 +335,14 @@ func (s *Server) getTargetSchedules(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"policies": policies, "profiles": visible, "statuses": statuses,
 	})
+}
+
+func installationScheduleProfile(profile workqueue.Profile) workqueue.Profile {
+	profile.AffectedInstallations = 0
+	profile.AffectedItems = 0
+	profile.AffectedPolicies = 0
+
+	return profile
 }
 
 func (s *Server) policySet(r *http.Request, targetID string) (schedulePolicySet, error) {

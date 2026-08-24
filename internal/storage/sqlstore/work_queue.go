@@ -16,7 +16,9 @@ import (
 
 const (
 	queueActorSystem     = "system"
+	queueBlockedDisabled = "Workload disabled by policy"
 	queueEventCreated    = "created"
+	queueSourceDelivery  = "delivery"
 	queueSourcePendingCI = "pending_ci"
 	queueSourceRecurring = "recurring"
 	queryAllRows         = "1 = 1"
@@ -526,7 +528,10 @@ func (s *Store) ListQueueEvents(
 ) ([]workqueue.Event, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, queue_item_id, actor_account_id, kind, state, summary, details, created_at
-FROM queue_events WHERE queue_item_id = ? ORDER BY id LIMIT ?`, itemID, pageLimit(limit))
+FROM (
+  SELECT id, queue_item_id, actor_account_id, kind, state, summary, details, created_at
+  FROM queue_events WHERE queue_item_id = ? ORDER BY id DESC LIMIT ?
+) recent ORDER BY id`, itemID, queueEventLimit(limit))
 	if err != nil {
 		return nil, fmt.Errorf("list queue events: %w", err)
 	}
@@ -536,6 +541,14 @@ FROM queue_events WHERE queue_item_id = ? ORDER BY id LIMIT ?`, itemID, pageLimi
 	}
 
 	return events, nil
+}
+
+func queueEventLimit(limit int) int {
+	if limit <= 0 {
+		return 100
+	}
+
+	return min(limit, 500)
 }
 
 func scanQueueEvent(scanner rowScanner) (workqueue.Event, error) {

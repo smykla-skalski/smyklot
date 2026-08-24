@@ -210,6 +210,9 @@ func validateQueuePolicyChange(change workqueue.PolicyChange) error {
 	if change.Cadence < 0 || change.RetryDelay < 0 || !change.DefaultPriority.Valid() {
 		return errors.New("queue policy timing or priority is invalid")
 	}
+	if change.Enabled && change.Kind.Recurring() && change.Cadence <= 0 {
+		return errors.New("enabled recurring queue policy needs a positive cadence")
+	}
 	if change.Retention != nil && *change.Retention < 0 {
 		return errors.New("queue policy retention cannot be negative")
 	}
@@ -342,7 +345,7 @@ func (s *Store) reschedulePolicyItem(
 	}
 	state, blockedReason := stateForEligibility(eligible, now), ""
 	if !effective.Enabled {
-		state, blockedReason = workqueue.StateBlocked, "Workload disabled by policy"
+		state, blockedReason = workqueue.StateBlocked, queueBlockedDisabled
 	}
 	priority := effective.DefaultPriority
 	if item.PriorityOverride {

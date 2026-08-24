@@ -2,6 +2,7 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,6 +33,9 @@ func (s *Store) ApplyQueueAction(
 	if err != nil {
 		return workqueue.Item{}, err
 	}
+	if err := syncQueueSourceSchedule(ctx, tx, item, updated, action.Type); err != nil {
+		return workqueue.Item{}, err
+	}
 	if err := updateQueueItemForAction(ctx, tx, item, updated); err != nil {
 		return workqueue.Item{}, err
 	}
@@ -47,6 +51,52 @@ func (s *Store) ApplyQueueAction(
 	}
 
 	return updated, nil
+}
+
+// syncQueueSourceSchedule keeps source-backed dispatch predicates aligned with
+// the ledger. Leasing checks both records transactionally; changing only the
+// queue row would either select the same item in a tight loop while its source
+// remained deferred, or leave a Run now request silently waiting on the old
+// domain deadline.
+func syncQueueSourceSchedule(
+	ctx context.Context,
+	tx *transaction,
+	before, after workqueue.Item,
+	action workqueue.ActionType,
+) error {
+	if action != workqueue.ActionRunNow && action != workqueue.ActionNextWindow &&
+		action != workqueue.ActionScheduleAt {
+		return nil
+	}
+	var (
+		result sql.Result
+		err    error
+	)
+	switch before.SourceKind {
+	case queueSourcePendingCI:
+		result, err = tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET next_check_at = ?, lease_expires_at = NULL,
+    updated_at = ?, revision = revision + 1
+WHERE id = ?`, after.EligibleAt, after.UpdatedAt, before.SourceID)
+	case queueSourceDelivery:
+		result, err = tx.ExecContext(ctx, `
+UPDATE deliveries SET next_attempt_at = ?, lease_expires_at = NULL
+WHERE id = ?`, after.EligibleAt, before.SourceID)
+	default:
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("synchronize queue source schedule: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read queue source schedule result: %w", err)
+	}
+	if changed != 1 {
+		return storage.ErrConflict
+	}
+
+	return nil
 }
 
 func (s *Store) applyQueueAction(

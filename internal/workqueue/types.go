@@ -55,6 +55,20 @@ func (kind Kind) Valid() bool {
 
 func (kind Kind) Windowed() bool { return kind != KindWebhookDelivery }
 
+// Recurring reports whether the scheduler creates a new cadence-anchored
+// occurrence after each successful run. Source-backed work such as webhook
+// delivery and pending CI owns its next deadline in its domain table instead.
+func (kind Kind) Recurring() bool {
+	switch kind {
+	case KindPendingCIGate, KindCatalogRefresh, KindReactionScan,
+		KindConfigMigration, KindSyncScan, KindPathRefresh,
+		KindDeliveryCleanup, KindAuthCleanup:
+		return true
+	default:
+		return false
+	}
+}
+
 func (kind Kind) InstallationConfigurable() bool {
 	switch kind {
 	case KindPendingCI, KindPendingCIGate, KindReactionScan,
@@ -434,6 +448,7 @@ type Store interface {
 	ApplyQueueAction(context.Context, string, ItemAction) (Item, error)
 	ClaimRecurringWork(context.Context, RecurringClaim) (Item, bool, error)
 	EnsureRecurringWork(context.Context, RecurringClaim) (Item, error)
+	SupersedeMissingRecurringWork(context.Context, []RecurringClaim, time.Time) ([]Item, error)
 	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
 	FinishRecurringWork(context.Context, string, string, string, time.Time) (Item, error)
 	PruneWorkQueue(context.Context, time.Time) (int64, error)

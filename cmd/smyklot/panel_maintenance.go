@@ -232,18 +232,33 @@ func (s *server) repositoryMaintenanceJobs(
 
 func (s *server) ensureMaintenanceJobs(ctx context.Context, jobs []maintenanceJob) error {
 	announced := map[string]bool{}
+	now := time.Now().UTC()
+	claims := make([]workqueue.RecurringClaim, 0, len(jobs))
 	for _, job := range jobs {
-		item, err := s.store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
+		claim := workqueue.RecurringClaim{
 			Kind: job.work.kind, TargetID: job.work.targetID,
 			RepositoryID: job.work.repositoryID, Title: job.work.title,
-			Now: time.Now().UTC(), LeaseDuration: recurringWorkLease,
-		})
+			Now: now, LeaseDuration: recurringWorkLease,
+		}
+		claims = append(claims, claim)
+		item, err := s.store.EnsureRecurringWork(ctx, claim)
 		if err != nil {
 			return err
 		}
 		if item.ID == "" || s.panel == nil {
 			continue
 		}
+		targetID := ""
+		if item.TargetID != nil {
+			targetID = *item.TargetID
+		}
+		announced[targetID] = true
+	}
+	superseded, err := s.store.SupersedeMissingRecurringWork(ctx, claims, now)
+	if err != nil {
+		return err
+	}
+	for _, item := range superseded {
 		targetID := ""
 		if item.TargetID != nil {
 			targetID = *item.TargetID

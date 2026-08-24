@@ -77,7 +77,7 @@ RETURNING id`,
 	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
 		ID: "delivery:" + strconv.FormatInt(claimID, 10), Kind: workqueue.KindWebhookDelivery,
 		Lane: workqueue.LaneWebhook, TargetID: claim.TargetID,
-		RepositoryID: claim.RepositoryID, SourceKind: "delivery",
+		RepositoryID: claim.RepositoryID, SourceKind: queueSourceDelivery,
 		SourceID: strconv.FormatInt(claimID, 10), Title: "Webhook: " + claim.Event,
 		Summary: claim.RepositoryFullName, State: workqueue.StateScheduled,
 		NotBefore: claim.ClaimedAt,
@@ -176,7 +176,7 @@ func (s *Store) selectReadyDelivery(
 	if !available {
 		return storage.DeliveryWork{}, queueDispatchChoice{}, sql.ErrNoRows
 	}
-	if choice.item.SourceKind != "delivery" {
+	if choice.item.SourceKind != queueSourceDelivery {
 		return storage.DeliveryWork{}, queueDispatchChoice{}, fmt.Errorf(
 			"webhook queue item %q has unsupported source %q",
 			choice.item.ID, choice.item.SourceKind,

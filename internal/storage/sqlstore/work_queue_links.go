@@ -59,6 +59,10 @@ func insertLinkedQueueItem(ctx context.Context, tx *transaction, link linkedQueu
 			return err
 		}
 	}
+	if !policy.Enabled && !item.State.Terminal() {
+		item.State = workqueue.StateBlocked
+		item.BlockedReason = queueBlockedDisabled
+	}
 	if err := insertQueueItem(ctx, tx, item); err != nil {
 		return err
 	}
@@ -177,17 +181,9 @@ func syncPendingCIQueue(
 	if err != nil {
 		return fmt.Errorf("read pending CI queue item: %w", err)
 	}
-	state := workqueue.StateScheduled
-	switch request.Lifecycle {
-	case pendingci.LifecycleMerged:
-		state = workqueue.StateSucceeded
-	case pendingci.LifecycleCancelled:
-		state = workqueue.StateCancelled
-	case pendingci.LifecycleSuperseded:
-		state = workqueue.StateSuperseded
-	}
-	if request.CleanupPending {
-		state = workqueue.StateRetrying
+	state, blockedReason, err := pendingCIQueueState(ctx, tx, item, request)
+	if err != nil {
+		return err
 	}
 	finished := request.FinishedAt
 	if request.CleanupPending {
@@ -209,7 +205,7 @@ UPDATE queue_items SET state = ?, not_before = ?, eligible_at = ?,
     blocked_reason = ?, lease_expires_at = ?, finished_at = ?,
     updated_at = ?, revision = revision + 1
 WHERE source_kind = 'pending_ci' AND source_id = ?`,
-		state, request.NextCheckAt, eligibleAt, request.Reason,
+		state, request.NextCheckAt, eligibleAt, blockedReason,
 		request.LeaseExpiresAt, finished, request.UpdatedAt, strconv.FormatInt(request.ID, 10),
 	)
 	if err != nil {
@@ -225,12 +221,46 @@ WHERE source_kind = 'pending_ci' AND source_id = ?`,
 	}
 	if state.Terminal() {
 		summary = "Pending CI request " + string(state)
+	} else if state == workqueue.StateBlocked && blockedReason == queueBlockedDisabled {
+		summary = "Pending CI checking blocked by policy"
 	}
 
 	return insertQueueEvent(ctx, tx, workqueue.Event{
 		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "source_transition",
 		State: state, Summary: summary, CreatedAt: request.UpdatedAt,
 	})
+}
+
+func pendingCIQueueState(
+	ctx context.Context,
+	tx runner,
+	item workqueue.Item,
+	request pendingci.Request,
+) (workqueue.State, string, error) {
+	state := workqueue.StateScheduled
+	switch request.Lifecycle {
+	case pendingci.LifecycleMerged:
+		state = workqueue.StateSucceeded
+	case pendingci.LifecycleCancelled:
+		state = workqueue.StateCancelled
+	case pendingci.LifecycleSuperseded:
+		state = workqueue.StateSuperseded
+	}
+	if request.CleanupPending {
+		return workqueue.StateRetrying, request.Reason, nil
+	}
+	if state.Terminal() {
+		return state, request.Reason, nil
+	}
+	policy, err := getEffectiveQueuePolicy(ctx, tx, workqueue.KindPendingCI, item.TargetID)
+	if err != nil {
+		return "", "", fmt.Errorf("read pending CI queue policy: %w", err)
+	}
+	if !policy.Enabled {
+		return workqueue.StateBlocked, queueBlockedDisabled, nil
+	}
+
+	return state, request.Reason, nil
 }
 
 func queueEventActor(actorID string) *string {

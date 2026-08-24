@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // declareOrgSyncSpecs covers what org sync needs from a database, on both
@@ -512,6 +513,30 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				ActorID: account.ID, Now: now.Add(2 * time.Hour),
 			})
 			Expect(errors.Is(err, orgsync.ErrStalePlan)).To(BeTrue())
+		})
+
+		It("expires an approved plan before leasing it", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "plan-1", account.ID, "digest-1", now, nil)
+			_, err := store.ApproveSyncPlan(ctx, orgsync.PlanApproval{
+				TargetID: target, PlanID: "plan-1", Digest: "digest-1",
+				ActorID: account.ID, Now: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+
+			lease, err := store.LeaseSyncPlan(
+				ctx, now.Add(2*time.Hour), now.Add(2*time.Hour+time.Minute),
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Found).To(BeFalse())
+
+			plan, _, err := store.GetSyncPlan(ctx, target, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.State).To(Equal(orgsync.PlanExpired))
+			item, err := store.GetQueueItem(ctx, "sync-plan:plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateSuperseded))
 		})
 
 		It("retires a plan nobody acted on, and frees the slot", func() {

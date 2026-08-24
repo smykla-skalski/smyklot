@@ -415,6 +415,13 @@ func (s *Store) LeaseSyncPlan(
 	now time.Time,
 	until time.Time,
 ) (orgsync.PlanLease, error) {
+	// Expire approved plans before asking the shared dispatcher for its next
+	// item. Otherwise an expired plan can remain the selected ready row forever,
+	// either applying stale mutations or preventing later maintenance work from
+	// advancing.
+	if err := s.ExpireSyncPlans(ctx, now); err != nil {
+		return orgsync.PlanLease{}, err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return orgsync.PlanLease{}, fmt.Errorf("begin sync plan lease: %w", err)
@@ -431,9 +438,9 @@ func (s *Store) LeaseSyncPlan(
 	plan, err := scanSyncPlan(tx.QueryRowContext(ctx, `
 SELECT`+syncPlanColumns+`
 FROM sync_plans
-WHERE id = ? AND ((state = 'approved' AND lease_expires_at IS NULL)
+WHERE id = ? AND ((state = 'approved' AND expires_at > ? AND lease_expires_at IS NULL)
    OR (state = 'applying' AND lease_expires_at <= ?))
-LIMIT 1`+s.dialect.RowLock(), choice.item.SourceID, now))
+LIMIT 1`+s.dialect.RowLock(), choice.item.SourceID, now, now))
 	if errors.Is(err, sql.ErrNoRows) {
 		// Nothing due is the ordinary answer on most ticks, not a failure.
 		return orgsync.PlanLease{}, nil
