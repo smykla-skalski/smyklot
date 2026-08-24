@@ -313,20 +313,7 @@ func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base str
 }
 
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
-	mux.HandleFunc("GET "+base+"/api/v1/root/queue", s.getRootQueue)
-	mux.HandleFunc("GET "+base+"/api/v1/root/queue/{queue}", s.getRootQueueItem)
-	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions/preview", s.previewRootQueueAction)
-	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions", s.postRootQueueAction)
-	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-profiles", s.getRootScheduleProfiles)
-	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-profiles", s.postRootScheduleProfile)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/schedule-profiles/{profile}", s.putRootScheduleProfile)
-	mux.HandleFunc("DELETE "+base+"/api/v1/root/schedule-profiles/{profile}", s.deleteRootScheduleProfile)
-	mux.HandleFunc("GET "+base+"/api/v1/root/job-policies", s.getRootJobPolicies)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/job-policies/{kind}", s.putRootJobPolicy)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
-	mux.HandleFunc("DELETE "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
-	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-requests", s.getRootScheduleRequests)
-	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-requests/{request}/decision", s.postRootScheduleDecision)
+	s.registerRootQueueScheduleRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
@@ -425,6 +412,23 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"GET "+base+"/api/v1/root/installations/{target}/failures",
 		s.getRootTargetFailures,
 	)
+}
+
+func (s *Server) registerRootQueueScheduleRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc("GET "+base+"/api/v1/root/queue", s.getRootQueue)
+	mux.HandleFunc("GET "+base+"/api/v1/root/queue/{queue}", s.getRootQueueItem)
+	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions/preview", s.previewRootQueueAction)
+	mux.HandleFunc("POST "+base+"/api/v1/root/queue/{queue}/actions", s.postRootQueueAction)
+	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-profiles", s.getRootScheduleProfiles)
+	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-profiles", s.postRootScheduleProfile)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/schedule-profiles/{profile}", s.putRootScheduleProfile)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/schedule-profiles/{profile}", s.deleteRootScheduleProfile)
+	mux.HandleFunc("GET "+base+"/api/v1/root/job-policies", s.getRootJobPolicies)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/job-policies/{kind}", s.putRootJobPolicy)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
+	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-requests", s.getRootScheduleRequests)
+	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-requests/{request}/decision", s.postRootScheduleDecision)
 }
 
 func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base string) {
@@ -673,7 +677,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+	writeJSON(w, status, map[string]any{
+		"error": map[string]string{jsonFieldCode: code, jsonFieldMessage: message},
+	})
 }
 
 func (s *Server) writeError(w http.ResponseWriter, status int, code, message string) {

@@ -76,7 +76,7 @@ func (s *Store) applyQueueAction(
 		updated.PriorityOverride = true
 		return updated, "Priority changed to " + string(action.Priority), nil
 	case workqueue.ActionCancel:
-		if item.SourceKind != "" && item.SourceKind != "recurring" {
+		if item.SourceKind != "" && item.SourceKind != queueSourceRecurring {
 			return workqueue.Item{}, "", storage.ErrConflict
 		}
 		if item.State == workqueue.StateRunning {

@@ -83,7 +83,7 @@ func acceptsHTML(accept string) bool {
 // the same bundle the panel always boots, told which error to render.
 func (s *Server) writeErrorDocument(w http.ResponseWriter, status int, code, message string) {
 	descriptor, err := json.Marshal(map[string]any{
-		"status": status, "code": code, "message": message,
+		"status": status, jsonFieldCode: code, jsonFieldMessage: message,
 	})
 	if err != nil {
 		writeError(w, status, code, message)

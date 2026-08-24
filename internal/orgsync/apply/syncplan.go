@@ -24,7 +24,10 @@ import (
 // live slot is not held overnight by a plan nobody came back to. A plan that
 // expires is not lost: the next reconcile computes the same answer from the
 // same state.
-const syncPlanTTL = 2 * time.Hour
+const (
+	syncPlanTTL   = 2 * time.Hour
+	noSyncChanges = "No changes"
+)
 
 type queuePolicyReader interface {
 	GetEffectiveQueuePolicy(context.Context, workqueue.Kind, *string) (workqueue.Policy, error)
@@ -86,7 +89,7 @@ func (s *Engine) PlanInstallationWithSummary(
 	// having read one table, which is what it did before a refusal had to be
 	// cleared - and a refusal to clear is the exception, not the tick.
 	if len(active) == 0 && !anyRefused(applied) {
-		return "No changes", nil
+		return noSyncChanges, nil
 	}
 
 	held, err := s.syncInventoryFor(ctx, targetID, applied)
@@ -110,16 +113,14 @@ func (s *Engine) PlanInstallationWithSummary(
 	if len(active) == 0 {
 		// Nothing switched on and permitted, so there is nothing to compare
 		// against.
-		return "No changes", nil
+		return noSyncChanges, nil
 	}
 
 	// A plan already in flight holds the installation's one live slot. Leaving
 	// it alone is what makes pressing "sync now" twice, or a reconcile landing
 	// beside it, idempotent rather than a conflict somebody has to read about.
-	if _, _, err := s.store.GetLiveSyncPlan(ctx, targetID); err == nil {
-		return "A live sync plan is already available", nil
-	} else if !errors.Is(err, storage.ErrNotFound) {
-		return "", fmt.Errorf("read live sync plan: %w", err)
+	if summary, found, err := s.livePlanSummary(ctx, targetID); err != nil || found {
+		return summary, err
 	}
 
 	actions, err := s.planSyncActions(ctx, client, active, scopes, held)
@@ -127,24 +128,16 @@ func (s *Engine) PlanInstallationWithSummary(
 		return "", err
 	}
 	if len(actions) == 0 {
-		return "No changes", nil
+		return noSyncChanges, nil
 	}
 
 	// Whoever last saved the configuration being enforced, carried onto the
 	// plan. A reconcile is doing what they asked for on a timer, so naming them
 	// is truthful where a synthetic account would not be.
 	now := time.Now().UTC()
-	approvalTTL := syncPlanTTL
-	if reader, ok := s.store.(queuePolicyReader); ok {
-		policy, policyErr := reader.GetEffectiveQueuePolicy(
-			ctx, workqueue.KindSyncScan, &targetID,
-		)
-		if policyErr != nil {
-			return "", fmt.Errorf("read sync approval policy: %w", policyErr)
-		}
-		if policy.ApprovalTTL != nil {
-			approvalTTL = *policy.ApprovalTTL
-		}
+	approvalTTL, err := s.syncApprovalTTL(ctx, targetID)
+	if err != nil {
+		return "", err
 	}
 	plan, err := s.store.CreateSyncPlan(ctx, orgsync.PlanCreate{
 		ID:        newSyncPlanID(),
@@ -183,6 +176,32 @@ func (s *Engine) PlanInstallationWithSummary(
 	}
 
 	return "Sync plan created and waiting for approval", nil
+}
+
+func (s *Engine) livePlanSummary(ctx context.Context, targetID string) (string, bool, error) {
+	if _, _, err := s.store.GetLiveSyncPlan(ctx, targetID); err == nil {
+		return "A live sync plan is already available", true, nil
+	} else if !errors.Is(err, storage.ErrNotFound) {
+		return "", false, fmt.Errorf("read live sync plan: %w", err)
+	}
+
+	return "", false, nil
+}
+
+func (s *Engine) syncApprovalTTL(ctx context.Context, targetID string) (time.Duration, error) {
+	reader, ok := s.store.(queuePolicyReader)
+	if !ok {
+		return syncPlanTTL, nil
+	}
+	policy, err := reader.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncScan, &targetID)
+	if err != nil {
+		return 0, fmt.Errorf("read sync approval policy: %w", err)
+	}
+	if policy.ApprovalTTL != nil {
+		return *policy.ApprovalTTL, nil
+	}
+
+	return syncPlanTTL, nil
 }
 
 // syncPlanSummary says what a plan would do, for somebody reading a history

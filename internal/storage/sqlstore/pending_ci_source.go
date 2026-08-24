@@ -291,11 +291,11 @@ RETURNING id`,
 	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
 		ID: "pending-ci:" + strconv.FormatInt(id, 10), Kind: workqueue.KindPendingCI,
 		Lane: workqueue.LanePendingCI, TargetID: request.TargetID,
-		RepositoryID: &repositoryID, SourceKind: "pending_ci", SourceID: strconv.FormatInt(id, 10),
+		RepositoryID: &repositoryID, SourceKind: queueSourcePendingCI, SourceID: strconv.FormatInt(id, 10),
 		Title:   fmt.Sprintf("Pending CI cleanup %s #%d", request.RepositoryFullName, request.PullRequest),
 		Summary: legacyPendingCIDrainReason, State: workqueue.StateRetrying,
 		NotBefore: request.DrainedAt,
-		ActorID:   "system",
+		ActorID:   queueActorSystem,
 		Details:   map[string]any{"pull_request": request.PullRequest, "head_sha": request.HeadSHA},
 	}); err != nil {
 		return pendingci.Request{}, err

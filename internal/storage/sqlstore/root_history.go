@@ -62,7 +62,7 @@ func (s *Store) ListRootAudit(
 }
 
 func rootAuditFilters(page storage.RootAuditPageRequest) ([]string, []any, error) {
-	clauses := []string{"1 = 1"}
+	clauses := []string{queryAllRows}
 	arguments := []any{}
 	if page.Query != "" {
 		columns := []string{

@@ -14,6 +14,13 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
 )
 
+const (
+	tableScheduleProfiles   = "schedule_profiles"
+	tableScheduleWindows    = "schedule_windows"
+	tableQueuePolicies      = "queue_policies"
+	tableQueueDispatchState = "queue_dispatch_state"
+)
+
 // tables lists every table a copy carries, ordered so that a row's references
 // are already present when it arrives.
 //
@@ -40,11 +47,11 @@ var tables = []string{
 	"target_owners",
 	"target_roles",
 	"repositories",
-	"schedule_profiles",
-	"schedule_windows",
+	tableScheduleProfiles,
+	tableScheduleWindows,
 	"schedule_exceptions",
-	"queue_policies",
-	"queue_dispatch_state",
+	tableQueuePolicies,
+	tableQueueDispatchState,
 	"pending_ci_repository_gates",
 	"pending_ci_check_slots",
 	"root_elevations",
@@ -266,10 +273,10 @@ func requireEmpty(ctx context.Context, destination *sql.Conn) error {
 }
 
 var bootstrapPredicates = map[string]string{
-	"schedule_profiles":    "id = 'always-open'",
-	"schedule_windows":     "profile_id = 'always-open'",
-	"queue_policies":       "scope_id = 'root'",
-	"queue_dispatch_state": "lane IN ('webhook', 'pending_ci', 'maintenance')",
+	tableScheduleProfiles:   "id = 'always-open'",
+	tableScheduleWindows:    "profile_id = 'always-open'",
+	tableQueuePolicies:      "scope_id = 'root'",
+	tableQueueDispatchState: "lane IN ('webhook', 'pending_ci', 'maintenance')",
 }
 
 func countNonBootstrapRows(ctx context.Context, connection *sql.Conn, table string) (int, error) {
@@ -296,7 +303,7 @@ func countNonBootstrapRows(ctx context.Context, connection *sql.Conn, table stri
 // destination is still empty for transfer purposes.
 func emptyBootstrap(ctx context.Context, destination *sql.Conn) error {
 	for _, table := range []string{
-		"queue_dispatch_state", "queue_policies", "schedule_windows", "schedule_profiles",
+		tableQueueDispatchState, tableQueuePolicies, tableScheduleWindows, tableScheduleProfiles,
 	} {
 		predicate := bootstrapPredicates[table]
 		// #nosec G202 -- table and predicate both come from package constants.

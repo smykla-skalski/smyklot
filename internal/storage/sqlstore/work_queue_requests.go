@@ -130,11 +130,7 @@ func validateScheduleRequestCreate(create workqueue.ScheduleRequestCreate) error
 	if (create.ProfileID == nil) == (create.CustomProfile == nil) {
 		return errors.New("schedule request needs one existing or custom profile")
 	}
-	if err := workqueue.ValidatePolicyConfiguration(create.Kind, create.Configuration); err != nil {
-		return err
-	}
-
-	return nil
+	return workqueue.ValidatePolicyConfiguration(create.Kind, create.Configuration)
 }
 
 func (s *Store) validateRequestedProfile(

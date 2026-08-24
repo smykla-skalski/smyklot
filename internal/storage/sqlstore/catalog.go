@@ -337,7 +337,7 @@ func recordOwnershipAudit(
 	ownership storage.OwnershipSnapshot,
 ) error {
 	system := storage.Account{
-		ID: systemAuditAccountID, Provider: "smyklot", SubjectID: "system",
+		ID: systemAuditAccountID, Provider: "smyklot", SubjectID: queueActorSystem,
 		Login: "smyklot", DisplayName: "Smyklot", UpdatedAt: ownership.SyncedAt,
 	}
 	if err := upsertCatalogAccount(ctx, tx, system); err != nil {

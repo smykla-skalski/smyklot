@@ -25,29 +25,12 @@ func (s *Store) ClaimRecurringWork(
 		return workqueue.Item{}, false, fmt.Errorf("begin recurring claim: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
-		return workqueue.Item{}, false, err
-	}
-	sourceID := recurringSourceID(claim)
-	item, err := latestRecurringItem(ctx, tx, sourceID, s.dialect.RowLock())
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return workqueue.Item{}, false, fmt.Errorf("read recurring queue item: %w", err)
-	}
-	missing := errors.Is(err, sql.ErrNoRows)
-	policy, err := getEffectiveQueuePolicy(ctx, tx, claim.Kind, claim.TargetID)
+	item, err := s.ensureRecurringOccurrenceTx(ctx, tx, claim)
 	if err != nil {
 		return workqueue.Item{}, false, err
 	}
-	if !policy.Enabled {
+	if item.ID == "" {
 		return workqueue.Item{}, false, nil
-	}
-	if missing || item.State.Terminal() {
-		item, err = s.createRecurringOccurrence(ctx, tx, claim, policy, item, sourceID)
-		if err != nil {
-			return workqueue.Item{}, false, err
-		}
-	} else if err := s.coalesceRecurringOccurrence(ctx, tx, &item, claim, policy); err != nil {
-		return workqueue.Item{}, false, err
 	}
 	choice, available, err := s.nextQueueDispatch(ctx, tx, workqueue.LaneMaintenance, claim.Now)
 	if err != nil {
@@ -92,6 +75,25 @@ func (s *Store) EnsureRecurringWork(
 		return workqueue.Item{}, fmt.Errorf("begin recurring schedule: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	item, err := s.ensureRecurringOccurrenceTx(ctx, tx, claim)
+	if err != nil {
+		return workqueue.Item{}, err
+	}
+	if item.ID == "" {
+		return workqueue.Item{}, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return workqueue.Item{}, fmt.Errorf("commit recurring schedule: %w", err)
+	}
+
+	return item, nil
+}
+
+func (s *Store) ensureRecurringOccurrenceTx(
+	ctx context.Context,
+	tx *transaction,
+	claim workqueue.RecurringClaim,
+) (workqueue.Item, error) {
 	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
 		return workqueue.Item{}, err
 	}
@@ -115,9 +117,6 @@ func (s *Store) EnsureRecurringWork(
 		}
 	} else if err := s.coalesceRecurringOccurrence(ctx, tx, &item, claim, policy); err != nil {
 		return workqueue.Item{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return workqueue.Item{}, fmt.Errorf("commit recurring schedule: %w", err)
 	}
 
 	return item, nil
@@ -233,7 +232,7 @@ UPDATE queue_items SET state = ?, not_before = ?, cadence_anchor_at = ?, eligibl
 	item.UpdatedAt, item.Revision = claim.Now, item.Revision+1
 
 	return insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: item.ID, ActorID: queueEventActor("system"), Kind: "coalesced", State: state,
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "coalesced", State: state,
 		Summary: "Coalesced missed occurrences", CreatedAt: claim.Now,
 	})
 }
@@ -270,14 +269,14 @@ func latestRecurringItem(
 ) (workqueue.Item, error) {
 	return scanQueueItem(runner.QueryRowContext(ctx, "SELECT"+queueItemColumns+`
 FROM queue_items
-WHERE source_kind = 'recurring' AND source_id = ?
+WHERE source_kind = ? AND source_id = ?
 ORDER BY CASE
     WHEN state IN ('succeeded', 'failed', 'cancelled', 'superseded') THEN 1
     ELSE 0
   END,
   COALESCE(cadence_anchor_at, not_before) DESC,
   created_at DESC
-LIMIT 1`+lock, sourceID))
+LIMIT 1`+lock, queueSourceRecurring, sourceID))
 }
 
 func (s *Store) createRecurringOccurrence(
@@ -306,7 +305,7 @@ func (s *Store) createRecurringOccurrence(
 		ID:   "recurring:" + sourceID + ":" + strconv.FormatInt(anchor.UnixNano(), 10),
 		Kind: claim.Kind, Lane: workqueue.LaneMaintenance,
 		TargetID: claim.TargetID, RepositoryID: claim.RepositoryID,
-		SourceKind: "recurring", SourceID: sourceID, Title: claim.Title,
+		SourceKind: queueSourceRecurring, SourceID: sourceID, Title: claim.Title,
 		State: stateForEligibility(eligible, claim.Now), Priority: policy.DefaultPriority,
 		WindowMode: workqueue.WindowRespect, ProfileID: &profileID,
 		NotBefore: anchor, CadenceAnchorAt: &anchor, EligibleAt: eligible, Revision: 1,
@@ -319,7 +318,7 @@ func (s *Store) createRecurringOccurrence(
 		return workqueue.Item{}, err
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: item.ID, ActorID: queueEventActor("system"), Kind: "created", State: item.State,
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: queueEventCreated, State: item.State,
 		Summary: "Queued " + item.Title, CreatedAt: claim.Now,
 	}); err != nil {
 		return workqueue.Item{}, err
@@ -406,7 +405,7 @@ func (s *Store) FinishRecurringWork(
 	if err != nil {
 		return workqueue.Item{}, noRows(err)
 	}
-	if item.SourceKind != "recurring" || item.State != workqueue.StateRunning {
+	if item.SourceKind != queueSourceRecurring || item.State != workqueue.StateRunning {
 		return workqueue.Item{}, storage.ErrConflict
 	}
 	state, eligible, summary, finished := s.recurringOutcome(
@@ -419,7 +418,7 @@ WHERE id = ?`, state, eligible, failure, finished, at, id); err != nil {
 		return workqueue.Item{}, fmt.Errorf("finish recurring queue item: %w", err)
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: id, ActorID: queueEventActor("system"), Kind: "finished",
+		ItemID: id, ActorID: queueEventActor(queueActorSystem), Kind: "finished",
 		State: state, Summary: summary, CreatedAt: at,
 	}); err != nil {
 		return workqueue.Item{}, err

@@ -64,6 +64,29 @@ func retuneQuietPeriod(
 	dialect Dialect,
 	request pendingci.RetuneQuietPeriodRequest,
 ) (int64, error) {
+	deadlines, err := readPendingCIQuietDeadlines(ctx, tx, dialect, request)
+	if err != nil {
+		return 0, err
+	}
+
+	var changed int64
+	for _, deadline := range deadlines {
+		affected, err := retunePendingCIQuietDeadline(ctx, tx, request, deadline)
+		if err != nil {
+			return 0, err
+		}
+		changed += affected
+	}
+
+	return changed, nil
+}
+
+func readPendingCIQuietDeadlines(
+	ctx context.Context,
+	tx runner,
+	dialect Dialect,
+	request pendingci.RetuneQuietPeriodRequest,
+) ([]pendingCIQuietDeadline, error) {
 	query := `
 SELECT p.id, p.revision, p.last_progress_at
 FROM pending_ci_requests p
@@ -98,7 +121,7 @@ WHERE r.id = p.repository_id AND r.target_id = p.target_id
 	query += " ORDER BY p.id" + dialect.RowLock()
 	rows, err := tx.QueryContext(ctx, query, arguments...)
 	if err != nil {
-		return 0, fmt.Errorf("read pending CI quiet-period deadlines: %w", err)
+		return nil, fmt.Errorf("read pending CI quiet-period deadlines: %w", err)
 	}
 
 	deadlines := make([]pendingCIQuietDeadline, 0)
@@ -107,52 +130,58 @@ WHERE r.id = p.repository_id AND r.target_id = p.target_id
 		if err := rows.Scan(&deadline.id, &deadline.revision, &deadline.lastProgressAt); err != nil {
 			_ = rows.Close()
 
-			return 0, fmt.Errorf("scan pending CI quiet-period deadline: %w", err)
+			return nil, fmt.Errorf("scan pending CI quiet-period deadline: %w", err)
 		}
 		deadlines = append(deadlines, deadline)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
 
-		return 0, fmt.Errorf("iterate pending CI quiet-period deadlines: %w", err)
+		return nil, fmt.Errorf("iterate pending CI quiet-period deadlines: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return 0, fmt.Errorf("close pending CI quiet-period deadlines: %w", err)
+		return nil, fmt.Errorf("close pending CI quiet-period deadlines: %w", err)
 	}
 
-	var changed int64
-	for _, deadline := range deadlines {
-		result, err := tx.ExecContext(ctx, `
+	return deadlines, nil
+}
+
+func retunePendingCIQuietDeadline(
+	ctx context.Context,
+	tx runner,
+	request pendingci.RetuneQuietPeriodRequest,
+	deadline pendingCIQuietDeadline,
+) (int64, error) {
+	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET
     next_check_at = ?, lease_expires_at = NULL, updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND next_check_trigger = ? AND revision = ?
 	AND merge_phase = ?`,
-			deadline.lastProgressAt.Time().Add(request.PassingQuiet),
-			request.ChangedAt,
-			deadline.id,
-			pendingci.LifecycleArmed,
-			pendingci.TriggerQuietPeriod,
-			deadline.revision,
-			pendingci.MergeWaiting,
-		)
-		if err != nil {
-			return 0, fmt.Errorf("retune pending CI quiet-period deadline: %w", err)
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return 0, fmt.Errorf("read pending CI quiet-period retune result: %w", err)
-		}
-		changed += affected
-		if affected == 1 {
-			updated, readErr := getPendingCIFrom(ctx, tx, deadline.id)
-			if readErr != nil {
-				return 0, readErr
-			}
-			if syncErr := syncPendingCIQueue(ctx, tx, updated); syncErr != nil {
-				return 0, syncErr
-			}
-		}
+		deadline.lastProgressAt.Time().Add(request.PassingQuiet),
+		request.ChangedAt,
+		deadline.id,
+		pendingci.LifecycleArmed,
+		pendingci.TriggerQuietPeriod,
+		deadline.revision,
+		pendingci.MergeWaiting,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("retune pending CI quiet-period deadline: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("read pending CI quiet-period retune result: %w", err)
+	}
+	if affected != 1 {
+		return affected, nil
+	}
+	updated, err := getPendingCIFrom(ctx, tx, deadline.id)
+	if err != nil {
+		return 0, err
+	}
+	if err := syncPendingCIQueue(ctx, tx, updated); err != nil {
+		return 0, err
 	}
 
-	return changed, nil
+	return affected, nil
 }

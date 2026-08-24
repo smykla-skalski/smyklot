@@ -81,7 +81,7 @@ RETURNING id`,
 		SourceID: strconv.FormatInt(claimID, 10), Title: "Webhook: " + claim.Event,
 		Summary: claim.RepositoryFullName, State: workqueue.StateScheduled,
 		NotBefore: claim.ClaimedAt,
-		ActorID:   "system",
+		ActorID:   queueActorSystem,
 		Details:   map[string]any{"delivery_id": claim.DeliveryID, "event": claim.Event},
 	}); err != nil {
 		return storage.DeliveryClaimResult{}, err
@@ -280,7 +280,7 @@ WHERE id = ?`, change.RetryAt, change.RetryAt, change.Reason, change.RetryAt,
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
 		ItemID:  "delivery:" + strconv.FormatInt(change.ClaimID, 10),
-		ActorID: queueEventActor("system"),
+		ActorID: queueEventActor(queueActorSystem),
 		Kind:    "retry_scheduled", State: workqueue.StateRetrying,
 		Summary: change.Reason, CreatedAt: change.RetryAt,
 	}); err != nil {
@@ -311,7 +311,7 @@ DELETE FROM deliveries WHERE id = ? AND status = ?`,
 	}
 	if err := transitionLinkedQueueItem(
 		ctx, tx, "delivery:"+strconv.FormatInt(claimID, 10),
-		workqueue.StateCancelled, time.Now().UTC(), "Webhook delivery abandoned", "system",
+		workqueue.StateCancelled, time.Now().UTC(), "Webhook delivery abandoned", queueActorSystem,
 	); err != nil {
 		return err
 	}
@@ -348,7 +348,7 @@ WHERE id = ? AND status IN (?, ?)`,
 	}
 	if err := transitionLinkedQueueItem(
 		ctx, tx, "delivery:"+strconv.FormatInt(claimID, 10),
-		workqueue.StateSucceeded, completedAt, "Webhook delivered", "system",
+		workqueue.StateSucceeded, completedAt, "Webhook delivered", queueActorSystem,
 	); err != nil {
 		return err
 	}
@@ -392,7 +392,7 @@ WHERE id = ? AND status IN (?, ?)`,
 	}
 	if err := transitionLinkedQueueItem(
 		ctx, tx, "delivery:"+strconv.FormatInt(change.ClaimID, 10),
-		workqueue.StateFailed, change.FailedAt, change.Reason, "system",
+		workqueue.StateFailed, change.FailedAt, change.Reason, queueActorSystem,
 	); err != nil {
 		return err
 	}
@@ -534,7 +534,7 @@ func failureFilters(
 	targetID string,
 	page storage.FailurePageRequest,
 ) ([]string, []any) {
-	clauses := []string{"target_id = ?", "status = ?"}
+	clauses := []string{queryTargetIDEquals, "status = ?"}
 	arguments := []any{targetID, storage.DeliveryFailed}
 	if page.Query != "" {
 		columns := []string{"delivery_id", "repository_full_name", "event", "stage", "reason"}
@@ -559,14 +559,6 @@ WHERE finished_at IS NOT NULL AND finished_at < ?`, finishedBefore); err != nil 
 	}
 
 	return nil
-}
-
-func (s *Store) checkDeliveryUpdate(
-	ctx context.Context,
-	result sql.Result,
-	claimID int64,
-) error {
-	return checkDeliveryUpdateFrom(ctx, s.db, result, claimID)
 }
 
 func checkDeliveryUpdateFrom(

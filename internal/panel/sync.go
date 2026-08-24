@@ -484,8 +484,8 @@ func (s *Server) handleLiveSyncRunNow(
 	case orgsync.PlanApproved:
 		if dto.Queue == nil || input.ExpectedRevision != dto.Queue.Revision {
 			writeJSON(w, http.StatusConflict, map[string]any{
-				"code": "stale_revision", "message": "sync queue item changed; review the latest state",
-				"current": dto,
+				jsonFieldCode: errorCodeStaleRevision, jsonFieldMessage: "sync queue item changed; review the latest state",
+				jsonFieldCurrent: dto,
 			})
 			return
 		}

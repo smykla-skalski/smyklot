@@ -14,6 +14,15 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
+const (
+	queueActorSystem     = "system"
+	queueEventCreated    = "created"
+	queueSourcePendingCI = "pending_ci"
+	queueSourceRecurring = "recurring"
+	queryAllRows         = "1 = 1"
+	queryTargetIDEquals  = "target_id = ?"
+)
+
 const queueItemColumns = `
     id, kind, lane, target_id, repository_id, source_kind, source_id,
     title, summary, state, priority, priority_overridden,
@@ -72,7 +81,7 @@ func queueFilters(filter workqueue.Filter) ([]string, []any) {
 	var clauses []string
 	var arguments []any
 	if filter.TargetID != nil {
-		clauses = append(clauses, "target_id = ?")
+		clauses = append(clauses, queryTargetIDEquals)
 		arguments = append(arguments, *filter.TargetID)
 	}
 	if filter.RepositoryID != nil {
@@ -462,7 +471,7 @@ func (s *Store) CreateQueueItem(ctx context.Context, item workqueue.Item) (workq
 		return workqueue.Item{}, err
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: item.ID, ActorID: item.RequestedBy, Kind: "created", State: item.State,
+		ItemID: item.ID, ActorID: item.RequestedBy, Kind: queueEventCreated, State: item.State,
 		Summary: "Queued " + item.Title, CreatedAt: item.CreatedAt,
 	}); err != nil {
 		return workqueue.Item{}, err
@@ -541,7 +550,7 @@ func scanQueueEvent(scanner rowScanner) (workqueue.Event, error) {
 		return workqueue.Event{}, err
 	}
 	event.ActorID, event.CreatedAt = stringPointer(actor), created.Time()
-	event.Actor = "system"
+	event.Actor = queueActorSystem
 	if event.ActorID != nil {
 		event.Actor = *event.ActorID
 	}

@@ -219,11 +219,7 @@ func validateQueuePolicyChange(change workqueue.PolicyChange) error {
 	if change.Kind.Windowed() && change.ProfileID == "" {
 		return errors.New("windowed queue policy needs a profile")
 	}
-	if err := workqueue.ValidatePolicyConfiguration(change.Kind, change.Configuration); err != nil {
-		return err
-	}
-
-	return nil
+	return workqueue.ValidatePolicyConfiguration(change.Kind, change.Configuration)
 }
 
 func saveQueuePolicy(
@@ -305,47 +301,64 @@ func (s *Store) reschedulePolicyItems(
 		return fmt.Errorf("read queue items for policy: %w", err)
 	}
 	for _, item := range items {
-		effective, effectiveProfile := policy, profile
-		if policy.TargetID == nil && item.TargetID != nil {
-			effective, err = getEffectiveQueuePolicy(ctx, tx, policy.Kind, item.TargetID)
-			if err != nil {
-				return err
-			}
-			effectiveProfile, err = getScheduleProfile(ctx, tx, effective.ProfileID)
-			if err != nil {
-				return err
-			}
-		}
-		eligible := item.NotBefore
-		if effective.Kind.Windowed() && item.WindowMode == workqueue.WindowRespect {
-			eligible, err = workqueue.NextEligible(effectiveProfile, item.NotBefore)
-			if err != nil {
-				return err
-			}
-		}
-		state, blockedReason := stateForEligibility(eligible, now), ""
-		if !effective.Enabled {
-			state, blockedReason = workqueue.StateBlocked, "Workload disabled by policy"
-		}
-		priority := effective.DefaultPriority
-		if item.PriorityOverride {
-			priority = item.Priority
-		}
-		if _, err := tx.ExecContext(ctx, `
-UPDATE queue_items SET profile_id = ?, priority = ?, eligible_at = ?,
-	state = ?, blocked_reason = ?, revision = revision + 1, updated_at = ? WHERE id = ?`,
-			effective.ProfileID, priority, eligible,
-			state, blockedReason, now, item.ID,
+		if err := s.reschedulePolicyItem(
+			ctx, tx, item, policy, profile, now, actorID, reason,
 		); err != nil {
-			return fmt.Errorf("reschedule queue item for policy: %w", err)
-		}
-		if err := insertQueueEvent(ctx, tx, workqueue.Event{
-			ItemID: item.ID, ActorID: queueEventActor(actorID), Kind: "schedule.recomputed",
-			State: state, Summary: reason, CreatedAt: now,
-		}); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func (s *Store) reschedulePolicyItem(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+	policy workqueue.Policy,
+	profile workqueue.Profile,
+	now time.Time,
+	actorID string,
+	reason string,
+) error {
+	effective, effectiveProfile := policy, profile
+	var err error
+	if policy.TargetID == nil && item.TargetID != nil {
+		effective, err = getEffectiveQueuePolicy(ctx, tx, policy.Kind, item.TargetID)
+		if err != nil {
+			return err
+		}
+		effectiveProfile, err = getScheduleProfile(ctx, tx, effective.ProfileID)
+		if err != nil {
+			return err
+		}
+	}
+	eligible := item.NotBefore
+	if effective.Kind.Windowed() && item.WindowMode == workqueue.WindowRespect {
+		eligible, err = workqueue.NextEligible(effectiveProfile, item.NotBefore)
+		if err != nil {
+			return err
+		}
+	}
+	state, blockedReason := stateForEligibility(eligible, now), ""
+	if !effective.Enabled {
+		state, blockedReason = workqueue.StateBlocked, "Workload disabled by policy"
+	}
+	priority := effective.DefaultPriority
+	if item.PriorityOverride {
+		priority = item.Priority
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET profile_id = ?, priority = ?, eligible_at = ?,
+	state = ?, blocked_reason = ?, revision = revision + 1, updated_at = ? WHERE id = ?`,
+		effective.ProfileID, priority, eligible,
+		state, blockedReason, now, item.ID,
+	); err != nil {
+		return fmt.Errorf("reschedule queue item for policy: %w", err)
+	}
+
+	return insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: item.ID, ActorID: queueEventActor(actorID), Kind: "schedule.recomputed",
+		State: state, Summary: reason, CreatedAt: now,
+	})
 }

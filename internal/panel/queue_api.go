@@ -3,6 +3,7 @@ package panel
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -11,7 +12,13 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
-const panelEventQueueChanged = "queue.changed"
+const (
+	panelEventQueueChanged = "queue.changed"
+	jsonFieldCode          = "code"
+	jsonFieldCurrent       = "current"
+	jsonFieldMessage       = "message"
+	errorCodeStaleRevision = "stale_revision"
+)
 
 type queueActionInput struct {
 	Type             workqueue.ActionType `json:"type"`
@@ -82,72 +89,97 @@ func (s *Server) writeQueuePage(
 
 func parseQueueFilter(r *http.Request) (workqueue.Filter, error) {
 	filter := workqueue.Filter{}
-	if raw := strings.TrimSpace(r.URL.Query().Get("installation")); raw != "" {
+	values := r.URL.Query()
+	if raw := strings.TrimSpace(values.Get("installation")); raw != "" {
 		filter.TargetID = &raw
 	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("repository")); raw != "" {
+	if raw := strings.TrimSpace(values.Get("repository")); raw != "" {
 		filter.RepositoryID = &raw
 	}
-	if raw := strings.TrimSpace(r.URL.Query().Get("profile")); raw != "" {
+	if raw := strings.TrimSpace(values.Get("profile")); raw != "" {
 		filter.ProfileID = &raw
 	}
-	for _, raw := range splitQueueValues(r.URL.Query()["state"]) {
+	if err := parseQueueKinds(values, &filter); err != nil {
+		return workqueue.Filter{}, err
+	}
+	if err := parseQueueTimes(values, &filter); err != nil {
+		return workqueue.Filter{}, err
+	}
+	if err := parseQueuePage(values, &filter); err != nil {
+		return workqueue.Filter{}, err
+	}
+
+	return filter, nil
+}
+
+func parseQueueKinds(values url.Values, filter *workqueue.Filter) error {
+	for _, raw := range splitQueueValues(values["state"]) {
 		state := workqueue.State(raw)
 		if !state.Valid() {
-			return workqueue.Filter{}, errors.New("queue state is invalid")
+			return errors.New("queue state is invalid")
 		}
 		filter.States = append(filter.States, state)
 	}
-	for _, raw := range splitQueueValues(r.URL.Query()["workload"]) {
+	for _, raw := range splitQueueValues(values["workload"]) {
 		kind := workqueue.Kind(raw)
 		if !kind.Valid() {
-			return workqueue.Filter{}, errors.New("queue workload is invalid")
+			return errors.New("queue workload is invalid")
 		}
 		filter.Kinds = append(filter.Kinds, kind)
 	}
-	for _, raw := range splitQueueValues(r.URL.Query()["priority"]) {
+	for _, raw := range splitQueueValues(values["priority"]) {
 		priority := workqueue.Priority(raw)
 		if !priority.Valid() {
-			return workqueue.Filter{}, errors.New("queue priority is invalid")
+			return errors.New("queue priority is invalid")
 		}
 		filter.Priorities = append(filter.Priorities, priority)
 	}
-	if raw := r.URL.Query().Get("created_after"); raw != "" {
+
+	return nil
+}
+
+func parseQueueTimes(values url.Values, filter *workqueue.Filter) error {
+	if raw := values.Get("created_after"); raw != "" {
 		value, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return workqueue.Filter{}, errors.New("queue created_after must be an RFC3339 timestamp")
+			return errors.New("queue created_after must be an RFC3339 timestamp")
 		}
 		value = value.UTC()
 		filter.CreatedAfter = &value
 	}
-	if raw := r.URL.Query().Get("created_before"); raw != "" {
+	if raw := values.Get("created_before"); raw != "" {
 		value, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return workqueue.Filter{}, errors.New("queue created_before must be an RFC3339 timestamp")
+			return errors.New("queue created_before must be an RFC3339 timestamp")
 		}
 		value = value.UTC()
 		filter.CreatedBefore = &value
 	}
 	if filter.CreatedAfter != nil && filter.CreatedBefore != nil &&
 		!filter.CreatedAfter.Before(*filter.CreatedBefore) {
-		return workqueue.Filter{}, errors.New("queue created_after must be before created_before")
+		return errors.New("queue created_after must be before created_before")
 	}
-	if raw := r.URL.Query().Get("limit"); raw != "" {
+
+	return nil
+}
+
+func parseQueuePage(values url.Values, filter *workqueue.Filter) error {
+	if raw := values.Get("limit"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 200 {
-			return workqueue.Filter{}, errors.New("queue limit must be between 1 and 200")
+			return errors.New("queue limit must be between 1 and 200")
 		}
 		filter.Limit = value
 	}
-	if raw := r.URL.Query().Get("offset"); raw != "" {
+	if raw := values.Get("offset"); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 0 {
-			return workqueue.Filter{}, errors.New("queue offset must be non-negative")
+			return errors.New("queue offset must be non-negative")
 		}
 		filter.Offset = value
 	}
 
-	return filter, nil
+	return nil
 }
 
 func splitQueueValues(values []string) []string {
@@ -306,8 +338,8 @@ func (s *Server) previewQueueAction(w http.ResponseWriter, r *http.Request, targ
 	if item.Revision != *input.ExpectedRevision {
 		prepareQueueItem(&item, true, targetID == nil)
 		writeJSON(w, http.StatusConflict, map[string]any{
-			"code": "stale_revision", "message": "queue item changed; review the latest state",
-			"current": item,
+			jsonFieldCode: errorCodeStaleRevision, jsonFieldMessage: "queue item changed; review the latest state",
+			jsonFieldCurrent: item,
 		})
 		return
 	}
@@ -397,8 +429,8 @@ func (s *Server) applyQueueAction(
 		if latestErr == nil {
 			prepareQueueItem(&latest, true, root)
 			writeJSON(w, http.StatusConflict, map[string]any{
-				"code": "stale_revision", "message": "queue item changed; review the latest state",
-				"current": latest,
+				jsonFieldCode: errorCodeStaleRevision, jsonFieldMessage: "queue item changed; review the latest state",
+				jsonFieldCurrent: latest,
 			})
 			return
 		}

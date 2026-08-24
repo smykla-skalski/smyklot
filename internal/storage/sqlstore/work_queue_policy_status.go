@@ -73,18 +73,18 @@ func (s *Store) ListQueuePolicyStatuses(
 
 func queueStatusScope(targetID *string) (string, []any) {
 	if targetID == nil {
-		return "1 = 1", nil
+		return queryAllRows, nil
 	}
 
-	return "target_id = ?", []any{*targetID}
+	return queryTargetIDEquals, []any{*targetID}
 }
 
 func queueStatusInnerScope(targetID *string) string {
 	if targetID == nil {
-		return "1 = 1"
+		return queryAllRows
 	}
 
-	return "target_id = ?"
+	return queryTargetIDEquals
 }
 
 func (s *Store) queueStatusItems(

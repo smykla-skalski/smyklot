@@ -119,7 +119,7 @@ LIMIT ? OFFSET ?`, append(arguments, pageLimit(page.Limit)+1, max(page.Offset, 0
 func rootPanelUserFilters(
 	page storage.RootPanelUserPageRequest,
 ) ([]string, []any, error) {
-	clauses := []string{"1 = 1"}
+	clauses := []string{queryAllRows}
 	arguments := make([]any, 0)
 	if page.Query != "" {
 		clauses = append(clauses, containsAnyClause("a.login", "a.display_name"))

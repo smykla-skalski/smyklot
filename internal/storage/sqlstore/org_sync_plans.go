@@ -558,7 +558,7 @@ UPDATE queue_items SET progress_current = ?, progress_total = ?, updated_at = ?,
 	}
 	summary := fmt.Sprintf("%s %s: %s", outcome.State, kind, subject)
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: "sync-plan:" + planID, ActorID: queueEventActor("system"),
+		ItemID: "sync-plan:" + planID, ActorID: queueEventActor(queueActorSystem),
 		Kind: "progress", State: workqueue.StateRunning, Summary: summary,
 		Details: details, CreatedAt: now,
 	}); err != nil {
@@ -617,7 +617,7 @@ UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE 
 	}
 	if err := transitionLinkedQueueItem(
 		ctx, tx, "sync-plan:"+outcome.PlanID, queueState, outcome.Now,
-		"Organization sync finished", "system",
+		"Organization sync finished", queueActorSystem,
 	); err != nil {
 		return err
 	}

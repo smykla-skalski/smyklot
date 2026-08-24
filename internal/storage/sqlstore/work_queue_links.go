@@ -64,7 +64,7 @@ func insertLinkedQueueItem(ctx context.Context, tx *transaction, link linkedQueu
 	}
 
 	return insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: item.ID, ActorID: queueEventActor(link.ActorID), Kind: "created", State: item.State,
+		ItemID: item.ID, ActorID: queueEventActor(link.ActorID), Kind: queueEventCreated, State: item.State,
 		Summary: "Queued " + item.Title, CreatedAt: item.CreatedAt,
 	})
 }
@@ -127,7 +127,7 @@ WHERE id = ?`, until, at, at, id)
 	}
 
 	return insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: id, ActorID: queueEventActor("system"), Kind: "started", State: workqueue.StateRunning,
+		ItemID: id, ActorID: queueEventActor(queueActorSystem), Kind: "started", State: workqueue.StateRunning,
 		Summary: stage, CreatedAt: at,
 	})
 }
@@ -228,13 +228,13 @@ WHERE source_kind = 'pending_ci' AND source_id = ?`,
 	}
 
 	return insertQueueEvent(ctx, tx, workqueue.Event{
-		ItemID: item.ID, ActorID: queueEventActor("system"), Kind: "source_transition",
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "source_transition",
 		State: state, Summary: summary, CreatedAt: request.UpdatedAt,
 	})
 }
 
 func queueEventActor(actorID string) *string {
-	if actorID == "" || actorID == "system" {
+	if actorID == "" || actorID == queueActorSystem {
 		return nil
 	}
 

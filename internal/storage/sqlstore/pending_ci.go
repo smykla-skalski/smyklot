@@ -131,17 +131,7 @@ WHERE id = ? AND lifecycle = ?`,
 		return pendingci.ArmResult{}, err
 	}
 	request := armedRequest(id, arm)
-	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
-		ID: "pending-ci:" + strconv.FormatInt(id, 10), Kind: workqueue.KindPendingCI,
-		Lane: workqueue.LanePendingCI, TargetID: arm.TargetID,
-		RepositoryID: &arm.RepositoryID, SourceKind: "pending_ci",
-		SourceID: strconv.FormatInt(id, 10),
-		Title:    fmt.Sprintf("Pending CI %s #%d", arm.RepositoryFullName, arm.PullRequest),
-		Summary:  "Waiting for required checks", State: workqueue.StateScheduled,
-		NotBefore: arm.RequestedAt,
-		ActorID:   "system",
-		Details:   map[string]any{"pull_request": arm.PullRequest, "head_sha": arm.HeadSHA},
-	}); err != nil {
+	if err := insertArmedPendingCIQueue(ctx, tx, id, arm); err != nil {
 		return pendingci.ArmResult{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -154,6 +144,27 @@ WHERE id = ? AND lifecycle = ?`,
 	}
 
 	return resultValue, nil
+}
+
+func insertArmedPendingCIQueue(
+	ctx context.Context,
+	tx *transaction,
+	id int64,
+	arm pendingci.ArmRequest,
+) error {
+	sourceID := strconv.FormatInt(id, 10)
+
+	return insertLinkedQueueItem(ctx, tx, linkedQueueItem{
+		ID: "pending-ci:" + sourceID, Kind: workqueue.KindPendingCI,
+		Lane: workqueue.LanePendingCI, TargetID: arm.TargetID,
+		RepositoryID: &arm.RepositoryID, SourceKind: queueSourcePendingCI,
+		SourceID: sourceID,
+		Title:    fmt.Sprintf("Pending CI %s #%d", arm.RepositoryFullName, arm.PullRequest),
+		Summary:  "Waiting for required checks", State: workqueue.StateScheduled,
+		NotBefore: arm.RequestedAt,
+		ActorID:   queueActorSystem,
+		Details:   map[string]any{"pull_request": arm.PullRequest, "head_sha": arm.HeadSHA},
+	})
 }
 
 func normalizedArmRequest(arm pendingci.ArmRequest) pendingci.ArmRequest {
@@ -417,7 +428,7 @@ func (s *Store) selectDuePendingCI(
 	if !available {
 		return pendingci.Request{}, queueDispatchChoice{}, sql.ErrNoRows
 	}
-	if choice.item.SourceKind != "pending_ci" {
+	if choice.item.SourceKind != queueSourcePendingCI {
 		return pendingci.Request{}, queueDispatchChoice{}, fmt.Errorf(
 			"pending-CI queue item %q has unsupported source %q",
 			choice.item.ID, choice.item.SourceKind,
