@@ -13,13 +13,17 @@
     ScheduleRequest,
   } from '#lib/types.js';
   import Button from './Button.svelte';
+  import Chip, { type ChipTone } from './Chip.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import DataTable from './DataTable.svelte';
+  import Icon, { type IconName } from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import PolicyEditorDialog from './PolicyEditorDialog.svelte';
   import ProfileEditorDialog from './ProfileEditorDialog.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
+  import Select from './Select.svelte';
 
   const {
     api,
@@ -87,6 +91,65 @@
   const requestablePolicies = $derived(
     policies.filter((policy) => installationKinds.has(policy.kind)),
   );
+  const displayedPolicies = $derived(targetId === undefined ? policies : requestablePolicies);
+  const activeWorkloads = $derived(
+    displayedPolicies.filter((policy) => policyStatus(policy.kind)?.current_state !== undefined)
+      .length,
+  );
+  const pendingRequests = $derived(
+    requests.filter((request) => request.state === 'pending').length,
+  );
+
+  const workloadCopy: Record<QueueWorkload, { title: string; description: string }> = {
+    webhook_delivery: {
+      title: 'Webhook delivery',
+      description: 'Accept and deliver GitHub events',
+    },
+    pending_ci: {
+      title: 'Pending CI checks',
+      description: 'Recheck merge requests waiting on CI',
+    },
+    pending_ci_gate: {
+      title: 'Deferred CI gate',
+      description: 'Wake deferred checks after their quiet period',
+    },
+    catalog_refresh: {
+      title: 'Catalog refresh',
+      description: 'Discover installations and repositories',
+    },
+    reaction_scan: {
+      title: 'Reaction discovery',
+      description: 'Find pull request approval reactions',
+    },
+    config_migration: {
+      title: 'Configuration migration',
+      description: 'Move repositories to the current configuration',
+    },
+    sync_scan: {
+      title: 'Organization sync scan',
+      description: 'Compute drift and prepare an approval plan',
+    },
+    sync_apply: {
+      title: 'Sync plan execution',
+      description: 'Apply a previously approved organization plan',
+    },
+    path_refresh: {
+      title: 'Path indexing',
+      description: 'Refresh repository configuration paths',
+    },
+    delivery_cleanup: {
+      title: 'Delivery retention',
+      description: 'Remove expired delivery history',
+    },
+    auth_cleanup: {
+      title: 'Authentication cleanup',
+      description: 'Remove expired sessions and credentials',
+    },
+    schedule_change: {
+      title: 'Schedule change',
+      description: 'Apply an approved recurring policy request',
+    },
+  };
 
   onMount(() => void load());
 
@@ -140,8 +203,36 @@
     return profiles.find((profile) => profile.id === id)?.name ?? id;
   }
 
+  function workloadTitle(kind: QueueWorkload): string {
+    return workloadCopy[kind].title;
+  }
+
+  function workloadDescription(kind: QueueWorkload): string {
+    return workloadCopy[kind].description;
+  }
+
   function policyStatus(kind: QueueWorkload): QueuePolicyStatus | undefined {
     return statuses.find((status) => status.kind === kind);
+  }
+
+  function runtimeTone(state?: string): ChipTone {
+    if (state === 'running' || state === 'ready') return 'signal';
+    if (state === 'failed') return 'stop';
+    if (state === 'blocked' || state === 'retrying') return 'warning';
+    if (state === 'succeeded') return 'clear';
+    if (state === undefined) return 'absent';
+    return 'neutral';
+  }
+
+  function requestTone(state: ScheduleRequest['state']): ChipTone {
+    if (state === 'approved') return 'clear';
+    if (state === 'rejected' || state === 'stale') return 'stop';
+    if (state === 'pending') return 'warning';
+    return 'absent';
+  }
+
+  function summaryIcon(index: number): IconName {
+    return (['sliders', 'refresh', 'history', 'pending'] as const)[index] ?? 'sliders';
   }
 
   function instant(value?: string): string {
@@ -385,6 +476,96 @@
   }
 </script>
 
+{#snippet policyCells(policy: QueuePolicy)}
+  {@const status = policyStatus(policy.kind)}
+  {@const details = jobDetails(policy)}
+  <th scope="row" data-label="Workload">
+    <div class="policy-title-line">
+      <strong>{workloadTitle(policy.kind)}</strong>
+      <Chip tone={policy.enabled ? 'accent' : 'absent'} small>
+        {policy.enabled ? 'Enabled' : 'Disabled'}
+      </Chip>
+    </div>
+    <span class="policy-description">{workloadDescription(policy.kind)}</span>
+    <span class="policy-source">
+      {targetId === undefined ? 'Deployment default' : policySource(policy.kind)} · revision
+      {policy.revision}
+    </span>
+  </th>
+  <td data-label="Schedule">
+    <dl class="policy-facts">
+      <div>
+        <dt>Cadence</dt>
+        <dd>{duration(policy.cadence)}</dd>
+      </div>
+      <div>
+        <dt>Window</dt>
+        <dd>{profileName(policy.profile_id)}</dd>
+      </div>
+    </dl>
+  </td>
+  <td data-label="Runtime">
+    <div class="runtime-summary">
+      <Chip tone={runtimeTone(status?.current_state)} dot={status?.current_state === 'running'}>
+        {status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}
+      </Chip>
+      <span>Next {instant(status?.next_eligibility_at)}</span>
+      <span>
+        Last {instant(status?.last_run_at)}{status?.last_state === undefined
+          ? ''
+          : ` · ${status.last_state.replaceAll('_', ' ')}`}
+      </span>
+      {#if status?.estimated_start_at}
+        <span>Estimate {instant(status.estimated_start_at)} · {status.work_ahead} ahead</span>
+      {/if}
+    </div>
+  </td>
+  <td data-label="Policy">
+    <div class="policy-detail">
+      <div class="policy-chip-line">
+        <Chip tone={policy.default_priority === 'urgent' ? 'stop' : 'neutral'} small>
+          {policy.default_priority} priority
+        </Chip>
+        <span>Retry {duration(policy.retry_delay)}</span>
+      </div>
+      {#each details as detail (detail)}<span>{detail}</span>{/each}
+      {#if details.length === 0}<span>Standard retry and retention</span>{/if}
+    </div>
+  </td>
+  {#if targetId === undefined}
+    <td data-label="Action">
+      <Button
+        row
+        onclick={() => {
+          editingPolicy = policy;
+          dialogError = '';
+        }}>Configure</Button
+      >
+    </td>
+  {/if}
+{/snippet}
+
+{#snippet overrideCells(policy: QueuePolicy)}
+  <th class="override-installation" scope="row" data-label="Installation">
+    <code>{policy.target_id}</code>
+    <span>{workloadTitle(policy.kind)}</span>
+  </th>
+  <td class="override-value" data-label="Schedule">
+    <strong>{duration(policy.cadence)}</strong>
+    <span>{profileName(policy.profile_id)}</span>
+  </td>
+  <td class="override-value" data-label="Policy">
+    <Chip tone="neutral" small>{policy.default_priority} priority</Chip>
+    <span>Revision {policy.revision}</span>
+  </td>
+  <td data-label="Actions">
+    <div class="request-buttons">
+      <Button row onclick={() => (editingPolicy = policy)}>Configure</Button>
+      <Button row tone="stop-quiet" onclick={() => (revertingPolicy = policy)}>Use default</Button>
+    </div>
+  </td>
+{/snippet}
+
 <section
   class="schedules-view"
   aria-labelledby={targetId === undefined ? 'root-page-heading' : 'schedules-heading'}
@@ -411,7 +592,7 @@
     />
   {/if}
 
-  <p class="sr-only" aria-live="polite">{notice}</p>
+  <p class="visually-hidden" aria-live="polite">{notice}</p>
   {#if loading && policies.length === 0 && profiles.length === 0}
     <Plate label="Loading"><p class="dim" role="status">Reading schedule policy…</p></Plate>
   {:else if error !== ''}
@@ -420,77 +601,54 @@
       <Button onclick={() => void load()}>Try again</Button></Plate
     >
   {:else}
+    <div class="schedule-summary" aria-label="Schedule overview">
+      {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'deployment policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
+        <article>
+          <span class="summary-mark"><Icon name={summaryIcon(index)} size={16} /></span>
+          <div>
+            <span>{metric.label}</span>
+            <strong>{metric.value}</strong>
+            <small>{metric.detail}</small>
+          </div>
+        </article>
+      {/each}
+    </div>
+
     <section class="schedule-section" aria-labelledby="policy-heading">
       <div class="section-heading">
         <div>
           <span class="eyebrow">Effective settings</span>
           <h2 id="policy-heading">Workload policies</h2>
         </div>
-        <span class="dim">{policies.length} workloads</span>
+        <span class="dim">{displayedPolicies.length} workloads</span>
       </div>
-      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div class="policy-table-wrap" tabindex="0" role="region" aria-label="Workload policies">
-        <table>
-          <thead
-            ><tr
-              ><th>Workload</th><th>Cadence</th><th>Window</th><th>Priority</th><th>Retry</th><th
-                >Runtime</th
-              ><th>Job details</th>{#if targetId === undefined}<th>Action</th>{/if}</tr
-            ></thead
-          >
-          <tbody>
-            {#each policies as policy (policy.kind)}
-              {@const status = policyStatus(policy.kind)}
-              {@const details = jobDetails(policy)}
-              <tr>
-                <th scope="row">
-                  <div class="band-trim-stack">
-                    <strong>{policy.kind.replaceAll('_', ' ')}</strong><span
-                      class="policy-description"
-                      >{policy.enabled ? 'Enabled' : 'Disabled'} · {targetId === undefined
-                        ? 'deployment default'
-                        : policySource(policy.kind)} · revision {policy.revision}</span
-                    >
-                  </div>
-                </th>
-                <td><span class="band-trim">{duration(policy.cadence)}</span></td>
-                <td><span class="band-trim">{profileName(policy.profile_id)}</span></td>
-                <td><span class="band-trim">{policy.default_priority}</span></td>
-                <td><span class="band-trim">{duration(policy.retry_delay)}</span></td>
-                <td class="runtime-cell">
-                  <div class="band-trim-stack">
-                    <span>{status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}</span>
-                    <small
-                      >Last {instant(status?.last_run_at)}{#if status?.last_state}
-                        · {status.last_state}{/if}</small
-                    >
-                    <small>Next {instant(status?.next_eligibility_at)}</small>
-                    {#if status?.estimated_start_at}<small
-                        >Estimate {instant(status.estimated_start_at)} · {status.work_ahead} ahead</small
-                      >{/if}
-                  </div>
-                </td>
-                <td class="details-cell">
-                  <div class={['band-trim-stack', { 'single-detail': details.length <= 1 }]}>
-                    {#if details.length === 0}<span class="dim">Standard policy</span>{/if}
-                    {#each details as detail (detail)}<span class="detail-line">{detail}</span
-                      >{/each}
-                  </div>
-                </td>
-                {#if targetId === undefined}<td
-                    ><Button
-                      row
-                      onclick={() => {
-                        editingPolicy = policy;
-                        dialogError = '';
-                      }}>Configure</Button
-                    ></td
-                  >{/if}
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        rows={displayedPolicies}
+        rowKey={(policy) => policy.kind}
+        caption="Workload policies"
+        regionLabel="Workload policies"
+        columns={targetId === undefined
+          ? [
+              { label: 'Workload' },
+              { label: 'Schedule' },
+              { label: 'Runtime' },
+              { label: 'Policy' },
+              { label: 'Action' },
+            ]
+          : [
+              { label: 'Workload' },
+              { label: 'Schedule' },
+              { label: 'Runtime' },
+              { label: 'Policy' },
+            ]}
+        columnWidths={targetId === undefined
+          ? ['27%', '16%', '25%', '20%', '12%']
+          : ['30%', '18%', '28%', '24%']}
+        cells={policyCells}
+        class="policy-table-wrap"
+        scrollable={false}
+        stacked
+      />
     </section>
 
     {#if targetId === undefined && (policySet?.overrides.length ?? 0) > 0}
@@ -502,45 +660,23 @@
           </div>
           <span class="dim">{policySet?.overrides.length ?? 0} active</span>
         </div>
-        <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div
-          class="policy-table-wrap"
-          tabindex="0"
-          role="region"
-          aria-label="Installation overrides"
-        >
-          <table class="overrides-table">
-            <thead
-              ><tr
-                ><th>Installation</th><th>Workload</th><th>Cadence</th><th>Window</th><th
-                  >Priority</th
-                ><th>Revision</th><th>Action</th></tr
-              ></thead
-            >
-            <tbody>
-              {#each policySet?.overrides ?? [] as policy (`${policy.target_id}:${policy.kind}`)}
-                <tr>
-                  <td><code class="band-trim">{policy.target_id}</code></td>
-                  <th scope="row"
-                    ><div class="band-trim">{policy.kind.replaceAll('_', ' ')}</div></th
-                  >
-                  <td><span class="band-trim">{duration(policy.cadence)}</span></td>
-                  <td><span class="band-trim">{profileName(policy.profile_id)}</span></td>
-                  <td><span class="band-trim">{policy.default_priority}</span></td>
-                  <td><span class="band-trim">{policy.revision}</span></td>
-                  <td
-                    ><div class="request-buttons">
-                      <Button row onclick={() => (editingPolicy = policy)}>Configure</Button>
-                      <Button row tone="stop-quiet" onclick={() => (revertingPolicy = policy)}
-                        >Use default</Button
-                      >
-                    </div></td
-                  >
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          rows={policySet?.overrides ?? []}
+          rowKey={(policy) => `${policy.target_id}:${policy.kind}`}
+          caption="Installation overrides"
+          regionLabel="Installation overrides"
+          columns={[
+            { label: 'Installation' },
+            { label: 'Schedule' },
+            { label: 'Policy' },
+            { label: 'Actions' },
+          ]}
+          columnWidths={['30%', '24%', '20%', '26%']}
+          cells={overrideCells}
+          class="policy-table-wrap overrides-table"
+          scrollable={false}
+          stacked
+        />
       </section>
     {/if}
 
@@ -554,14 +690,36 @@
       <div class="profile-grid">
         {#each profiles as profile (profile.id)}
           <article class="profile-card">
-            <div class="band-trim-stack">
-              <strong>{profile.name}</strong><span class="profile-revision"
-                >{profile.timezone} · revision {profile.revision}</span
-              >
+            <div class="profile-heading">
+              <span class="profile-mark"><Icon name="history" size={15} /></span>
+              <div>
+                <strong>{profile.name}</strong>
+                <span>Revision {profile.revision}</span>
+              </div>
+              <Chip tone={profile.system ? 'accent' : 'neutral'} small>
+                {profile.system ? 'System' : 'Custom'}
+              </Chip>
             </div>
-            <span class="profile-summary band-trim"
-              >{profile.windows.length} weekly windows · {profile.exceptions.length} exceptions</span
-            >
+            <dl class="profile-facts">
+              <div>
+                <dt>Timezone</dt>
+                <dd>{profile.timezone}</dd>
+              </div>
+              <div>
+                <dt>Weekly</dt>
+                <dd>{profile.windows.length} windows</dd>
+              </div>
+              <div>
+                <dt>Exceptions</dt>
+                <dd>{profile.exceptions.length}</dd>
+              </div>
+            </dl>
+            {#if targetId === undefined}
+              <p class="profile-impact">
+                {profile.affected_installations ?? 0} installations · {profile.affected_items ?? 0}
+                queued items
+              </p>
+            {/if}
             {#if targetId === undefined && !profile.system}
               <div class="profile-actions">
                 <Button
@@ -595,31 +753,39 @@
             <h2 id="request-heading">Request a recurring change</h2>
           </div>
         </div>
-        <label
-          >Workload<select bind:value={requestKind}
-            >{#each requestablePolicies as policy (policy.kind)}<option value={policy.kind}
-                >{policy.kind.replaceAll('_', ' ')}</option
-              >{/each}</select
-          ></label
-        >
-        <label
-          >Window source<select bind:value={requestWindowMode}
-            ><option value="existing">Named profile</option><option value="custom"
-              >Custom hours</option
-            ></select
-          ></label
-        >
+        <label>
+          <span>Workload</span>
+          <Select bind:value={requestKind}>
+            {#each requestablePolicies as policy (policy.kind)}
+              <option value={policy.kind}>{workloadTitle(policy.kind)}</option>
+            {/each}
+          </Select>
+        </label>
+        <label>
+          <span>Window source</span>
+          <Select bind:value={requestWindowMode}>
+            <option value="existing">Named profile</option>
+            <option value="custom">Custom hours</option>
+          </Select>
+        </label>
         {#if requestWindowMode === 'existing'}
-          <label
-            >Window<select bind:value={requestProfile}
-              >{#each profiles as profile (profile.id)}<option value={profile.id}
-                  >{profile.name}</option
-                >{/each}</select
-            ></label
-          >
+          <label>
+            <span>Window</span>
+            <Select bind:value={requestProfile}>
+              {#each profiles as profile (profile.id)}
+                <option value={profile.id}>{profile.name}</option>
+              {/each}
+            </Select>
+          </label>
         {:else}
-          <label>Profile name<input bind:value={requestCustomName} /></label>
-          <label>Timezone<input bind:value={requestTimezone} placeholder="Europe/Warsaw" /></label>
+          <label>
+            <span>Profile name</span>
+            <input class="text-input" bind:value={requestCustomName} />
+          </label>
+          <label>
+            <span>Timezone</span>
+            <input class="text-input" bind:value={requestTimezone} placeholder="Europe/Warsaw" />
+          </label>
           <div class="custom-window">
             <ScheduleWindowsEditor
               idPrefix="request-window"
@@ -627,38 +793,40 @@
               onChange={(next) => (requestWindows = next)}
             />
           </div>
-          <label class="request-exceptions"
-            >Date exceptions<textarea
+          <label class="request-exceptions">
+            <span>Date exceptions</span>
+            <textarea
+              class="text-input"
               rows="4"
               bind:value={requestExceptions}
-              placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea></label
-          >
+              placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea>
+          </label>
           <p class="request-helper">
             One local date per line: <code>YYYY-MM-DD closed</code> or
             <code>YYYY-MM-DD HH:MM-HH:MM</code>.
           </p>
         {/if}
-        <label
-          >Cadence seconds<input
-            type="number"
-            min="0"
-            step="60"
-            bind:value={requestCadence}
-          /></label
-        >
-        <label
-          >Priority<select bind:value={requestPriority}
-            ><option value="low">Low</option><option value="normal">Normal</option><option
-              value="high">High</option
-            ><option value="urgent">Urgent</option></select
-          ></label
-        >
-        <label class="reason-field"
-          >Reason<textarea
+        <label>
+          <span>Cadence seconds</span>
+          <input class="text-input" type="number" min="0" step="60" bind:value={requestCadence} />
+        </label>
+        <label>
+          <span>Priority</span>
+          <Select bind:value={requestPriority}>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </Select>
+        </label>
+        <label class="reason-field">
+          <span>Reason</span>
+          <textarea
+            class="text-input"
             rows="3"
             bind:value={requestReason}
-            placeholder="Explain the operational need"></textarea></label
-        >
+            placeholder="Explain the operational need"></textarea>
+        </label>
         <div class="request-action">
           <Button
             tone="signal"
@@ -679,10 +847,12 @@
       {#if requests.length === 0}<p class="dim">No schedule requests yet.</p>{/if}
       {#each requests as request (request.id)}
         <article class="request-row">
-          <div class="band-trim-stack">
-            <strong>{request.kind.replaceAll('_', ' ')}</strong><span class="request-detail"
-              >{request.reason}</span
-            >
+          <div class="request-copy">
+            <div class="request-title">
+              <strong>{workloadTitle(request.kind)}</strong>
+              <Chip tone={requestTone(request.state)} small>{request.state}</Chip>
+            </div>
+            <span class="request-detail">{request.reason}</span>
             {#if request.custom_profile !== undefined}<span class="request-detail"
                 >{request.custom_profile.name} · {request.custom_profile.timezone}</span
               >{/if}
@@ -693,7 +863,6 @@
                 : 'installation override'})</span
             >
           </div>
-          <span class="request-state band-trim">{request.state}</span>
           {#if targetId === undefined && request.state === 'pending'}
             <div class="request-buttons">
               <Button row tone="signal" onclick={() => openDecision(request, 'approve')}
@@ -817,144 +986,263 @@
 
 <style>
   .schedules-view {
-    display: grid;
-    gap: var(--space-5);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
   }
   .schedule-section {
     display: grid;
     gap: var(--space-3);
   }
+  .schedule-summary {
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .schedule-summary article {
+    align-items: center;
+    background: var(--surface-base);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
+    border-radius: var(--radius-surface);
+    box-shadow: var(--shadow-plate);
+    display: flex;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+  }
+  .summary-mark,
+  .profile-mark {
+    align-items: center;
+    background: color-mix(in srgb, var(--brand-action) 12%, transparent);
+    border-radius: var(--radius-control);
+    color: var(--brand-action-text);
+    display: inline-flex;
+    flex: none;
+    justify-content: center;
+  }
+  .summary-mark {
+    height: 2rem;
+    width: 2rem;
+  }
+  .schedule-summary article > div {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+  }
+  .schedule-summary article div > span,
+  .schedule-summary small {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+  }
+  .schedule-summary article div > span {
+    font-weight: 650;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .schedule-summary strong {
+    color: var(--text-primary);
+    font-size: 1.25rem;
+    line-height: 1;
+  }
   .section-heading {
-    align-items: end;
+    align-items: flex-end;
     display: flex;
     justify-content: space-between;
   }
   .section-heading h2 {
-    font-size: 1rem;
+    font-size: var(--font-size-title);
+    letter-spacing: -0.015em;
     margin: var(--space-1) 0 0;
   }
   .eyebrow {
-    color: var(--dim);
-    font-size: 0.66rem;
-    font-weight: 760;
-    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 700;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  .policy-table-wrap {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    overflow: auto;
-  }
-  table {
-    border-collapse: collapse;
-    min-width: 48rem;
-    width: 100%;
-  }
-  .overrides-table {
-    min-width: 42rem;
+  :global(.policy-table-wrap) {
+    --table-cell-font-size: var(--font-size-meta);
+    --table-cell-pad-block: var(--space-3);
+    --table-cell-pad-inline: var(--space-4);
+    --table-layout: fixed;
+    --table-min-width: 0;
   }
   th,
   td {
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: 0.78rem;
-    padding: 0.72rem 0.85rem;
-    text-align: left;
-  }
-  thead th {
-    background: var(--table-header-bg);
-    color: var(--dim);
-    font-size: 0.68rem;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  tbody tr:last-child > * {
-    border-bottom: 0;
+    vertical-align: middle;
   }
   .policy-description,
-  .profile-revision,
-  .profile-summary,
+  .policy-source,
   .request-detail {
-    color: var(--dim);
+    color: var(--text-muted);
     display: block;
-    font-size: 0.7rem;
+    font-size: var(--font-size-compact);
+    line-height: 1.35;
   }
-  .policy-description,
-  .profile-revision,
+  .policy-title-line {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .policy-title-line > strong {
+    color: var(--text-primary);
+    font-size: var(--font-size-body);
+  }
+  .policy-description {
+    margin-top: var(--space-1);
+  }
+  .policy-source,
   .request-detail {
     margin-top: var(--space-1);
   }
-  .band-trim-stack > * {
+  .policy-source {
+    font-size: var(--font-size-micro);
+  }
+  .policy-facts,
+  .profile-facts {
+    display: grid;
+    gap: var(--space-1);
+    margin: 0;
+  }
+  .policy-facts > div {
+    align-items: baseline;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: 3.3rem minmax(0, 1fr);
+  }
+  .policy-facts dt,
+  .profile-facts dt {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .policy-facts dd,
+  .profile-facts dd {
+    color: var(--text-secondary);
+    font-size: var(--font-size-compact);
+    margin: 0;
+  }
+  .runtime-summary,
+  .policy-detail {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .runtime-summary {
+    justify-items: start;
+  }
+  .runtime-summary > span,
+  .policy-detail > span,
+  .policy-chip-line > span,
+  .override-value > span,
+  .override-installation > span {
+    color: var(--text-muted);
     display: block;
+    font-size: var(--font-size-compact);
+    line-height: 1.35;
   }
-  .runtime-cell,
-  .details-cell {
-    min-width: 12rem;
-  }
-  .details-cell .band-trim-stack {
+  .policy-chip-line {
+    align-items: center;
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    gap: var(--space-2);
   }
-  .details-cell .single-detail {
-    /* This cell is one compact line while every neighbour begins with body text.
-       `vertical-align: middle` centres their line boxes and leaves its cap band 2.36px low at the
-       panel's fixed root size. The measured correction keeps the visible bands level. */
-    transform: translateY(-0.15rem);
-  }
-  .runtime-cell > .band-trim-stack > span {
-    text-transform: capitalize;
-  }
-  .runtime-cell small,
-  .detail-line {
-    color: var(--dim);
-  }
-  .runtime-cell small,
-  .details-cell .band-trim-stack > * + * {
+  .override-installation > span,
+  .override-value > span {
     margin-top: var(--space-1);
   }
   .profile-grid {
     display: grid;
-    gap: var(--space-3);
-    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: var(--space-2);
+    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
   }
   .profile-card,
   .request-row {
-    align-items: center;
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
+    background: var(--surface-base);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 10%, var(--border-subtle));
     border-radius: var(--radius-surface);
-    display: grid;
-    gap: var(--space-3);
+    box-shadow: var(--shadow-plate);
     padding: var(--space-4);
   }
   .profile-card {
-    grid-template-columns: 1fr auto auto;
+    display: grid;
+    gap: var(--space-3);
   }
-  .request-row {
-    grid-template-columns: 1fr auto auto;
+  .profile-heading {
+    align-items: center;
+    display: grid;
+    gap: var(--space-2);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
-  .request-state {
-    border: 1px solid var(--control-border);
-    border-radius: 999px;
-    color: var(--text) !important;
+  .profile-mark {
+    height: 1.75rem;
+    width: 1.75rem;
+  }
+  .profile-heading > div {
     display: block;
-    font-size: 0.7rem;
-    margin: 0 !important;
-    padding: 0.22rem 0.48rem;
-    text-transform: uppercase;
+    min-width: 0;
   }
+  .profile-heading strong,
+  .profile-heading div > span {
+    display: block;
+  }
+  .profile-heading strong {
+    color: var(--text-primary);
+    font-size: var(--font-size-meta);
+  }
+  .profile-heading div > span,
+  .profile-impact {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin: var(--space-1) 0 0;
+  }
+  .profile-facts {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .profile-facts > div {
+    display: grid;
+    gap: var(--space-1);
+  }
+  .profile-actions,
   .request-buttons {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
   .profile-actions {
+    border-top: 1px solid var(--rule);
+    padding-top: var(--space-3);
+  }
+  .request-row {
+    align-items: center;
     display: flex;
+    gap: var(--space-4);
+    justify-content: space-between;
+  }
+  .request-copy {
+    min-width: 0;
+  }
+  .request-title {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
+  .request-title strong {
+    color: var(--text-primary);
+    font-size: var(--font-size-meta);
+  }
   .request-form {
-    border: 1px solid var(--border-subtle);
+    background: var(--surface-base);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
     border-radius: var(--radius-surface);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    padding: var(--space-4);
+    box-shadow: var(--shadow-plate);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding: var(--space-5);
   }
   .request-form .section-heading,
   .reason-field,
@@ -966,16 +1254,24 @@
   .request-form label,
   .decision-reason {
     display: grid;
-    font-size: 0.72rem;
-    font-weight: 720;
     gap: var(--space-1);
   }
+  .request-form label > span,
+  .decision-reason {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
   .custom-window {
-    border: 1px solid var(--border-subtle);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-control);
+    overflow: hidden;
   }
   .request-helper {
-    color: var(--dim);
-    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
     margin: calc(var(--space-2) * -1) 0 0;
   }
   .promote-profile {
@@ -983,13 +1279,13 @@
     display: flex;
     gap: var(--space-2);
   }
-  :is(select, input, textarea) {
+  :is(input, textarea) {
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
     color: var(--text);
     font: inherit;
-    min-height: 2.5rem;
+    min-height: var(--control-height);
     padding: var(--space-2) var(--space-3);
   }
   textarea {
@@ -1004,25 +1300,33 @@
   .form-error {
     color: var(--danger);
   }
-  @media (max-width: 54rem) {
+  @media (max-width: 64rem) {
+    .schedule-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .request-form {
       grid-template-columns: 1fr 1fr;
     }
-    .profile-card,
     .request-row {
-      grid-template-columns: 1fr auto;
-    }
-    .request-buttons {
-      grid-column: 1 / -1;
+      align-items: flex-start;
+      flex-direction: column;
     }
   }
   @media (max-width: 34rem) {
+    .schedule-summary,
     .request-form {
       grid-template-columns: 1fr;
     }
-    .profile-card,
-    .request-row {
+    .schedule-summary article {
+      padding: var(--space-3);
+    }
+    .profile-facts {
       grid-template-columns: 1fr;
+    }
+    .section-heading {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: var(--space-1);
     }
   }
 </style>

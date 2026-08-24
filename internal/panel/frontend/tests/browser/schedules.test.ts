@@ -47,6 +47,11 @@ describe('background work schedules [Integration]', () => {
       });
 
       await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+      await expect
+        .poll(() =>
+          page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
+        )
+        .toBe(6);
       await page.getByRole('heading', { name: 'Request a recurring change' }).waitFor();
       await page.getByRole('button', { name: 'Send request' }).waitFor();
       await page.getByText('Europe business hours').first().waitFor();
@@ -69,6 +74,13 @@ describe('background work schedules [Integration]', () => {
         return region.getBoundingClientRect().right - document.documentElement.clientWidth;
       });
       expect(overflow).toBeLessThanOrEqual(1);
+
+      const scroll = await page.evaluate(() => {
+        const before = window.scrollY;
+        window.scrollTo({ top: document.documentElement.scrollHeight });
+        return { before, after: window.scrollY };
+      });
+      expect(scroll.after).toBeGreaterThan(scroll.before);
     } finally {
       await page.close();
     }
