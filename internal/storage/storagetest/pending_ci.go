@@ -120,6 +120,21 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		request, err := store.GetArmed(ctx, armed.Request.RepositoryID, armed.Request.PullRequest)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(request.NextCheckAt).To(Equal(item.EligibleAt))
+
+		runAt := now.Add(3 * time.Minute)
+		item, err = store.ApplyQueueAction(ctx, itemID, workqueue.ItemAction{
+			Type: workqueue.ActionRunNow, ExpectedRevision: item.Revision,
+			ActorID: "account:pending-ci", Reason: "check pending CI now", ChangedAt: runAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		request, err = store.GetArmed(ctx, armed.Request.RepositoryID, armed.Request.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(request.NextCheckAt).To(Equal(runAt))
+		Expect(request.NextCheckAt).To(Equal(item.EligibleAt))
+		lease, err := store.LeaseDue(ctx, runAt, runAt.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Request).NotTo(BeNil())
+		Expect(lease.Request.ID).To(Equal(armed.Request.ID))
 	})
 
 	It("persists exact check reauthorization and idempotent action replay", func() {
