@@ -90,27 +90,30 @@
       },
       ...(item.actions ?? [])
         .filter((action) => action !== 'run_now')
-        .map((action) => ({
-          id: action,
-          label: actionLabel(action),
-          description:
-            action === 'next_window'
-              ? 'Keep the assigned execution window'
-              : action === 'schedule_at'
-                ? 'Choose the earliest acceptable time'
-                : action === 'set_priority'
-                  ? 'Move this item to another priority band'
-                  : 'Keep the item in audited history',
-          icon:
-            action === 'next_window'
-              ? 'pending'
-              : action === 'schedule_at'
-                ? 'history'
-                : action === 'set_priority'
-                  ? 'sliders'
-                  : 'trash',
-          tone: action === 'cancel' ? 'danger' : 'default',
-        })),
+        .map(
+          (action) =>
+            ({
+              id: action,
+              label: actionLabel(action),
+              description:
+                action === 'next_window'
+                  ? 'Keep the assigned execution window'
+                  : action === 'schedule_at'
+                    ? 'Choose the earliest acceptable time'
+                    : action === 'set_priority'
+                      ? 'Move this item to another priority band'
+                      : 'Keep the item in audited history',
+              icon:
+                action === 'next_window'
+                  ? 'pending'
+                  : action === 'schedule_at'
+                    ? 'history'
+                    : action === 'set_priority'
+                      ? 'sliders'
+                      : 'trash',
+              tone: action === 'cancel' ? 'danger' : 'default',
+            }) satisfies ActionMenuItem,
+        ),
     ];
   }
 

@@ -100,8 +100,8 @@
       ],
       selected: [workload],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        workload = value as QueueWorkload | 'all';
+      onChange: (values: string[]) => {
+        workload = (values[0] ?? 'all') as QueueWorkload | 'all';
         offset = 0;
       },
     },
@@ -118,8 +118,8 @@
       ],
       selected: [stateFilter],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        stateFilter = value;
+      onChange: (values: string[]) => {
+        stateFilter = values[0] ?? 'all';
         offset = 0;
       },
     },
@@ -136,8 +136,8 @@
       ],
       selected: [profile],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        profile = value;
+      onChange: (values: string[]) => {
+        profile = values[0] ?? 'all';
         offset = 0;
       },
     },
@@ -156,8 +156,8 @@
             ],
             selected: [installation],
             fallbackValue: 'all',
-            onChange: ([value = 'all']) => {
-              installation = value;
+            onChange: (values: string[]) => {
+              installation = values[0] ?? 'all';
               offset = 0;
             },
           },
@@ -176,8 +176,8 @@
       ],
       selected: [repository],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        repository = value;
+      onChange: (values: string[]) => {
+        repository = values[0] ?? 'all';
         offset = 0;
       },
     },
@@ -195,8 +195,8 @@
       ],
       selected: [timeRange],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        timeRange = value as 'all' | '24h' | '7d';
+      onChange: (values: string[]) => {
+        timeRange = (values[0] ?? 'all') as 'all' | '24h' | '7d';
         offset = 0;
       },
     },
@@ -216,8 +216,8 @@
       ],
       selected: [priority],
       fallbackValue: 'all',
-      onChange: ([value = 'all']) => {
-        priority = value as QueuePriority | 'all';
+      onChange: (values: string[]) => {
+        priority = (values[0] ?? 'all') as QueuePriority | 'all';
         offset = 0;
       },
     },
