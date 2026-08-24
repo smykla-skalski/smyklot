@@ -73,6 +73,7 @@
   let nextOffset = $state(0);
   let total = $state(0);
   let loadGeneration = 0;
+  let detailLoadGeneration = 0;
   const pageSize = 50;
 
   const workloads = $derived(facets.workloads);
@@ -224,7 +225,11 @@
   ]);
 
   onMount(() => {
-    const refresh = window.setInterval(() => void load(false), 30_000);
+    const refresh = window.setInterval(() => {
+      void load(false);
+      const itemID = detailOpen ? detail?.item.id : undefined;
+      if (itemID !== undefined) void loadDetail(itemID, false, refreshRevision);
+    }, 30_000);
     const clock = window.setInterval(() => (now = Date.now()), 1_000);
     return () => {
       window.clearInterval(refresh);
@@ -323,23 +328,28 @@
   }
 
   async function loadDetail(itemID: string, clear: boolean, refreshAtStart: number): Promise<void> {
+    const generation = ++detailLoadGeneration;
     if (clear) detail = null;
     try {
       const refreshed =
         targetId === undefined
           ? await api.fetchRootQueueItem(itemID)
           : await api.fetchTargetQueueItem(targetId, itemID);
-      if (!detailOpen || refreshAtStart !== refreshRevision) return;
+      if (generation !== detailLoadGeneration || !detailOpen || refreshAtStart !== refreshRevision)
+        return;
       detail = refreshed;
     } catch (cause) {
-      if (!detailOpen || refreshAtStart !== refreshRevision) return;
+      if (generation !== detailLoadGeneration || !detailOpen || refreshAtStart !== refreshRevision)
+        return;
       detailError = cause instanceof Error ? cause.message : String(cause);
     } finally {
-      if (detailOpen && refreshAtStart === refreshRevision) detailLoading = false;
+      if (generation === detailLoadGeneration && detailOpen && refreshAtStart === refreshRevision)
+        detailLoading = false;
     }
   }
 
   function closeDetail(): void {
+    detailLoadGeneration += 1;
     detailOpen = false;
     detailError = '';
     detailRefreshRevision = -1;

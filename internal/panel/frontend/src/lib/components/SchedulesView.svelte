@@ -61,6 +61,7 @@
   let decision = $state<'approve' | 'reject'>('approve');
   let decisionReason = $state('');
   let promoteProfile = $state(false);
+  let loadGeneration = 0;
 
   let requestKind = $state<QueueWorkload>('sync_scan');
   let requestProfile = $state('always-open');
@@ -151,13 +152,19 @@
     },
   };
 
-  onMount(() => void load());
+  onMount(() => {
+    void load();
+    const refresh = window.setInterval(() => void load(false), 30_000);
+
+    return () => window.clearInterval(refresh);
+  });
 
   $effect(() => {
     if (refreshRevision > 0) untrack(() => void load(false));
   });
 
   async function load(showLoading = true): Promise<void> {
+    const generation = ++loadGeneration;
     if (showLoading) loading = true;
     try {
       if (targetId === undefined) {
@@ -166,6 +173,7 @@
           api.fetchRootJobPolicies(),
           api.fetchRootScheduleRequests(),
         ]);
+        if (generation !== loadGeneration) return;
         profiles = loadedProfiles;
         policies = policyDocument.policies;
         policySet = policyDocument.policy_set;
@@ -176,6 +184,7 @@
           api.fetchTargetSchedules(targetId),
           api.fetchTargetScheduleRequests(targetId),
         ]);
+        if (generation !== loadGeneration) return;
         profiles = schedules.profiles;
         policies = schedules.policies.effective;
         policySet = schedules.policies;
@@ -184,9 +193,10 @@
       }
       error = '';
     } catch (cause) {
+      if (generation !== loadGeneration) return;
       error = cause instanceof Error ? cause.message : String(cause);
     } finally {
-      loading = false;
+      if (generation === loadGeneration) loading = false;
     }
   }
 

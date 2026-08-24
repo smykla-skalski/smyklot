@@ -359,6 +359,167 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(events[1].Kind).To(Equal("window_missed"))
 		Expect(events[1].State).To(Equal(workqueue.StateScheduled))
 	})
+
+	It("applies queue controls through the persisted schedule semantics", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		controlAt := time.Date(2026, time.August, 24, 8, 0, 0, 0, time.UTC)
+		profile, err := store.SaveScheduleProfile(ctx, workqueue.ProfileChange{
+			ID: "monday-controls", Name: "Monday controls", Timezone: "UTC",
+			Windows: []workqueue.Window{{
+				Weekday: time.Monday, Start: 9 * 60, End: 10 * 60,
+			}},
+			ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		item, err := store.CreateQueueItem(ctx, workqueue.Item{
+			ID: "queue:controls", Kind: workqueue.KindReactionScan,
+			Lane: workqueue.LaneMaintenance, TargetID: &target.TargetID,
+			Title: "Controlled reaction scan", State: workqueue.StateScheduled,
+			Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
+			ProfileID: &profile.ID, NotBefore: controlAt.Add(24 * time.Hour),
+			EligibleAt: controlAt.Add(24 * time.Hour), CreatedAt: now, UpdatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		next, err := store.ApplyQueueAction(ctx, item.ID, workqueue.ItemAction{
+			Type: workqueue.ActionNextWindow, ExpectedRevision: item.Revision,
+			ActorID: account.ID, ChangedAt: controlAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next.NotBefore).To(Equal(controlAt))
+		Expect(next.EligibleAt).To(Equal(controlAt.Add(time.Hour)))
+		Expect(next.WindowMode).To(Equal(workqueue.WindowRespect))
+
+		past := controlAt.Add(-2 * time.Hour)
+		bypassed, err := store.ApplyQueueAction(ctx, item.ID, workqueue.ItemAction{
+			Type: workqueue.ActionScheduleAt, ExpectedRevision: next.Revision,
+			ActorID: account.ID, At: past, OutsideWindow: true,
+			Reason: "recover an overdue scan", ChangedAt: controlAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(bypassed.NotBefore).To(Equal(past))
+		Expect(bypassed.EligibleAt).To(Equal(past))
+		Expect(bypassed.State).To(Equal(workqueue.StateReady))
+		Expect(bypassed.WindowMode).To(Equal(workqueue.WindowBypass))
+
+		_, err = store.ApplyQueueAction(ctx, item.ID, workqueue.ItemAction{
+			Type: workqueue.ActionScheduleAt, ExpectedRevision: bypassed.Revision,
+			ActorID: account.ID, At: controlAt, OutsideWindow: true, ChangedAt: controlAt,
+		})
+		Expect(err).To(MatchError(ContainSubstring("reason is required")))
+	})
+
+	It("recomputes future profile work without moving a running lease", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		controlAt := time.Date(2026, time.August, 24, 8, 0, 0, 0, time.UTC)
+		profile, err := store.SaveScheduleProfile(ctx, workqueue.ProfileChange{
+			ID: "editable-hours", Name: "Editable hours", Timezone: "UTC",
+			Windows: []workqueue.Window{{
+				Weekday: time.Monday, Start: 9 * 60, End: 11 * 60,
+			}},
+			ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		lease := controlAt.Add(2 * time.Hour)
+		for _, fixture := range []workqueue.Item{
+			{
+				ID: "queue:future-profile", State: workqueue.StateScheduled,
+				NotBefore: controlAt, EligibleAt: controlAt.Add(time.Hour),
+			},
+			{
+				ID: "queue:running-profile", State: workqueue.StateRunning,
+				NotBefore: controlAt, EligibleAt: controlAt.Add(time.Hour),
+				LeaseExpiresAt: &lease, StartedAt: &controlAt,
+			},
+		} {
+			fixture.Kind, fixture.Lane = workqueue.KindReactionScan, workqueue.LaneMaintenance
+			fixture.TargetID, fixture.Title = &target.TargetID, "Profile-controlled scan"
+			fixture.Priority, fixture.WindowMode = workqueue.PriorityNormal, workqueue.WindowRespect
+			fixture.ProfileID, fixture.CreatedAt, fixture.UpdatedAt = &profile.ID, now, now
+			_, err = store.CreateQueueItem(ctx, fixture)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		_, err = store.SaveScheduleProfile(ctx, workqueue.ProfileChange{
+			ID: profile.ID, Name: profile.Name, Timezone: profile.Timezone,
+			Windows: []workqueue.Window{{
+				Weekday: time.Monday, Start: 10 * 60, End: 12 * 60,
+			}},
+			ExpectedRevision: profile.Revision, ActorID: account.ID,
+			ChangedAt: controlAt.Add(30 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		future, err := store.GetQueueItem(ctx, "queue:future-profile")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(future.EligibleAt).To(Equal(controlAt.Add(2 * time.Hour)))
+		Expect(future.Revision).To(Equal(int64(2)))
+		running, err := store.GetQueueItem(ctx, "queue:running-profile")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(running.EligibleAt).To(Equal(controlAt.Add(time.Hour)))
+		Expect(running.Revision).To(Equal(int64(1)))
+	})
+
+	It("reports queue health and prunes each workload by its retention policy", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		finished := now.Add(-2 * time.Hour)
+		lease := now.Add(time.Hour)
+		started := now.Add(-2 * time.Minute)
+		fixtures := []workqueue.Item{
+			{
+				ID: "queue:metric-waiting", State: workqueue.StateScheduled,
+				NotBefore: now.Add(-10 * time.Minute), EligibleAt: now.Add(-10 * time.Minute),
+			},
+			{
+				ID: "queue:metric-running", State: workqueue.StateRunning,
+				NotBefore: now.Add(-5 * time.Minute), EligibleAt: now.Add(-5 * time.Minute),
+				LeaseExpiresAt: &lease, StartedAt: &started,
+			},
+			{
+				ID: "queue:metric-failed", State: workqueue.StateFailed,
+				NotBefore: finished, EligibleAt: finished, FinishedAt: &finished,
+			},
+		}
+		for _, fixture := range fixtures {
+			fixture.Kind, fixture.Lane = workqueue.KindReactionScan, workqueue.LaneMaintenance
+			fixture.TargetID, fixture.Title = &target.TargetID, "Measured reaction scan"
+			fixture.Priority, fixture.WindowMode = workqueue.PriorityNormal, workqueue.WindowRespect
+			fixture.ProfileID = pointer(workqueue.AlwaysOpenProfileID)
+			fixture.CreatedAt, fixture.UpdatedAt = now.Add(-3*time.Hour), now
+			_, err := store.CreateQueueItem(ctx, fixture)
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		metrics, err := store.WorkQueueMetrics(ctx, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(metrics.Failures).To(Equal(1))
+		Expect(metrics.MissedWindows).To(Equal(1))
+		Expect(metrics.RunningLeases).To(Equal(1))
+		Expect(metrics.Backlogs).To(ContainElement(And(
+			HaveField("Lane", workqueue.LaneMaintenance),
+			HaveField("ProfileID", workqueue.AlwaysOpenProfileID),
+			HaveField("Depth", 1),
+		)))
+
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		retention := time.Hour
+		_, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, Enabled: policy.Enabled, Cadence: policy.Cadence,
+			ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+			RetryDelay: policy.RetryDelay, Retention: &retention,
+			ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+			ExpectedRevision: policy.Revision, ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		removed, err := store.PruneWorkQueue(ctx, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(removed).To(Equal(int64(1)))
+		_, err = store.GetQueueItem(ctx, "queue:metric-failed")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	})
 }
 
 func createQueueFixture(
