@@ -326,6 +326,95 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).To(MatchError(ContainSubstring("policy is invalid")))
 	})
 
+	It("scopes custom profiles and retains every request decision", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		custom := &workqueue.Profile{
+			Name: "Requested night hours", Timezone: "Europe/Warsaw",
+			Windows: []workqueue.Window{{Weekday: time.Tuesday, Start: 20 * 60, End: 23 * 60}},
+		}
+
+		reaction, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		request, err := store.CreateScheduleRequest(ctx, workqueue.ScheduleRequestCreate{
+			ID: "schedule-request-installation-profile", TargetID: target.TargetID,
+			Kind: workqueue.KindReactionScan, BaseRevision: reaction.Revision,
+			CustomProfile: custom, Cadence: reaction.Cadence,
+			DefaultPriority: reaction.DefaultPriority, Configuration: reaction.Configuration,
+			Reason: "scan during the local night", RequestedBy: account.ID, CreatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		installationProfileID := "profile:installation-night"
+		approved, err := store.DecideScheduleRequest(ctx, request.ID, workqueue.ScheduleDecision{
+			Approve: true, ExpectedRevision: request.Revision, ProfileID: &installationProfileID,
+			ReviewerID: account.ID, ReviewedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(approved.State).To(Equal(workqueue.RequestApproved))
+		Expect(approved.PromotedProfileID).To(HaveValue(Equal(installationProfileID)))
+		installationProfile, err := store.GetScheduleProfile(ctx, installationProfileID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(installationProfile.TargetID).To(HaveValue(Equal(target.TargetID)))
+
+		path, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPathRefresh, nil)
+		Expect(err).NotTo(HaveOccurred())
+		request, err = store.CreateScheduleRequest(ctx, workqueue.ScheduleRequestCreate{
+			ID: "schedule-request-promoted-profile", TargetID: target.TargetID,
+			Kind: workqueue.KindPathRefresh, BaseRevision: path.Revision,
+			CustomProfile: custom, Cadence: path.Cadence,
+			DefaultPriority: path.DefaultPriority, Configuration: path.Configuration,
+			Reason: "reuse these hours", RequestedBy: account.ID, CreatedAt: now.Add(2 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		globalProfileID := "profile:global-night"
+		approved, err = store.DecideScheduleRequest(ctx, request.ID, workqueue.ScheduleDecision{
+			Approve: true, PromoteProfile: true, ExpectedRevision: request.Revision,
+			ProfileID: &globalProfileID, ReviewerID: account.ID, ReviewedAt: now.Add(3 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		globalProfile, err := store.GetScheduleProfile(ctx, globalProfileID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(globalProfile.TargetID).To(BeNil())
+
+		gate, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindPendingCIGate, nil)
+		Expect(err).NotTo(HaveOccurred())
+		request, err = store.CreateScheduleRequest(ctx, workqueue.ScheduleRequestCreate{
+			ID: "schedule-request-rejected", TargetID: target.TargetID,
+			Kind: gate.Kind, BaseRevision: gate.Revision, ProfileID: &gate.ProfileID,
+			Cadence: gate.Cadence, DefaultPriority: gate.DefaultPriority,
+			Configuration: gate.Configuration, Reason: "change protection cadence",
+			RequestedBy: account.ID, CreatedAt: now.Add(4 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		rejected, err := store.DecideScheduleRequest(ctx, request.ID, workqueue.ScheduleDecision{
+			ExpectedRevision: request.Revision, ReviewerID: account.ID,
+			DecisionReason: "keep the current cadence", ReviewedAt: now.Add(5 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rejected.State).To(Equal(workqueue.RequestRejected))
+
+		migration, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindConfigMigration, nil)
+		Expect(err).NotTo(HaveOccurred())
+		request, err = store.CreateScheduleRequest(ctx, workqueue.ScheduleRequestCreate{
+			ID: "schedule-request-withdrawn", TargetID: target.TargetID,
+			Kind: migration.Kind, BaseRevision: migration.Revision, ProfileID: &migration.ProfileID,
+			Cadence: migration.Cadence, DefaultPriority: migration.DefaultPriority,
+			Configuration: migration.Configuration, Reason: "change migration cadence",
+			RequestedBy: account.ID, CreatedAt: now.Add(6 * time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		withdrawn, err := store.WithdrawScheduleRequest(
+			ctx, request.ID, request.Revision, account.ID, now.Add(7*time.Minute),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(withdrawn.State).To(Equal(workqueue.RequestWithdrawn))
+		for _, requestID := range []string{"schedule-request-rejected", "schedule-request-withdrawn"} {
+			item, itemErr := store.GetQueueItem(ctx, "schedule-request:"+requestID)
+			Expect(itemErr).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateCancelled))
+		}
+	})
+
 	It("marks a request stale when its effective policy source changes", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallation(ctx, store, now)
@@ -689,6 +778,8 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 			HaveField("Lane", workqueue.LaneMaintenance),
 			HaveField("ProfileID", workqueue.AlwaysOpenProfileID),
 			HaveField("Depth", 1),
+			HaveField("OldestAge", 3*time.Hour),
+			HaveField("EligibleToStartLatency", 3*time.Minute),
 		)))
 
 		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
