@@ -2,14 +2,19 @@ package panel
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
+
+const panelSyncTarget = "github:installation:10"
 
 // TestSyncConfigShowsTheEditorLogin drives the production API boundary that
 // feeds the overview cards. Storage deliberately keeps the stable account key;
@@ -97,6 +102,118 @@ func TestSyncPlanShowsRepositoryNames(t *testing.T) {
 	if strings.Contains(read.Body.String(), `"repository":"repository-20"`) {
 		t.Fatalf("sync plan exposed stable repository id: %s", read.Body.String())
 	}
+}
+
+func TestSyncRunNowSafetyMatrix(t *testing.T) {
+	t.Run("queues a drift scan when no plan is live", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		response := postPanelSyncRunNow(t, harness, harness.signIn(t), 0)
+		requireResponse(t, response, "no-plan run now", http.StatusAccepted,
+			`"status":"scan_queued"`, `"kind":"sync_scan"`, `"immediate":true`)
+	})
+
+	t.Run("opens a computed plan for approval", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		createPanelSyncPlan(t, harness, "computed", harness.now.Add(time.Hour))
+		response := postPanelSyncRunNow(t, harness, session, 0)
+		requireResponse(t, response, "computed-plan run now", http.StatusOK,
+			`"status":"approval_required"`, `"state":"computed"`)
+		item, err := harness.store.GetQueueItem(t.Context(), "sync-plan:computed")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if item.State != workqueue.StateAwaitingApproval {
+			t.Fatalf("computed plan queue state = %q", item.State)
+		}
+	})
+
+	t.Run("dispatches an approved plan immediately", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		createPanelSyncPlan(t, harness, "approved", harness.now.Add(time.Hour))
+		_, err := harness.store.ApproveSyncPlan(t.Context(), orgsync.PlanApproval{
+			TargetID: panelSyncTarget, PlanID: "approved", Digest: "sha256:approved",
+			ActorID: "github:test:user:1", Now: harness.now,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		item, err := harness.store.GetQueueItem(t.Context(), "sync-plan:approved")
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := postPanelSyncRunNow(t, harness, session, item.Revision)
+		requireResponse(t, response, "approved-plan run now", http.StatusAccepted,
+			`"status":"plan_dispatched"`, `"state":"ready"`, `"immediate":true`)
+	})
+
+	t.Run("reports a plan that is already applying", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		createPanelSyncPlan(t, harness, "applying", harness.now.Add(time.Hour))
+		_, err := harness.store.ApproveSyncPlan(t.Context(), orgsync.PlanApproval{
+			TargetID: panelSyncTarget, PlanID: "applying", Digest: "sha256:applying",
+			ActorID: "github:test:user:1", Now: harness.now,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		lease, err := harness.store.LeaseSyncPlan(
+			t.Context(), harness.now, harness.now.Add(time.Minute),
+		)
+		if err != nil || !lease.Found {
+			t.Fatalf("lease approved sync plan: found=%t err=%v", lease.Found, err)
+		}
+		response := postPanelSyncRunNow(t, harness, session, 0)
+		requireResponse(t, response, "applying-plan run now", http.StatusOK,
+			`"status":"already_running"`, `"state":"applying"`)
+	})
+
+	t.Run("queues a fresh scan after a plan expires", func(t *testing.T) {
+		harness := newPanelHarness(t, "owner")
+		session := harness.signIn(t)
+		createPanelSyncPlan(t, harness, "expired", harness.now.Add(time.Minute))
+		later := harness.now.Add(2 * time.Minute)
+		if err := harness.store.ExpireSyncPlans(t.Context(), later); err != nil {
+			t.Fatal(err)
+		}
+		*harness.clock = later
+		response := postPanelSyncRunNow(t, harness, session, 0)
+		requireResponse(t, response, "expired-plan run now", http.StatusAccepted,
+			`"status":"scan_queued"`, `"kind":"sync_scan"`)
+	})
+}
+
+func createPanelSyncPlan(
+	t *testing.T,
+	harness *panelHarness,
+	id string,
+	expiresAt time.Time,
+) {
+	t.Helper()
+	_, err := harness.store.CreateSyncPlan(t.Context(), orgsync.PlanCreate{
+		ID: id, TargetID: panelSyncTarget, Trigger: orgsync.TriggerManual,
+		ActorID: "github:test:user:1", Digest: "sha256:" + id,
+		Now: harness.now, ExpiresAt: expiresAt,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func postPanelSyncRunNow(
+	t *testing.T,
+	harness *panelHarness,
+	session *http.Cookie,
+	expectedRevision int64,
+) *httptest.ResponseRecorder {
+	t.Helper()
+	body := fmt.Sprintf(`{"reason":"operator request","expected_revision":%d}`, expectedRevision)
+
+	return harness.request(t, http.MethodPost,
+		"/panel/api/v1/targets/"+panelSyncTarget+"/sync/run-now",
+		strings.NewReader(body), session)
 }
 
 // TestSyncConfigReportsADocumentItCannotRead is the guard on the difference
