@@ -82,6 +82,103 @@ func TestEstimateQueuePositionFollowsWeightedTurns(t *testing.T) {
 	}
 }
 
+func TestEstimateQueuePositionsOrdersTheBacklogInOnePass(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	items := make([]workqueue.Item, 0, 2_000)
+	for index := range 2_000 {
+		priority := workqueue.PriorityNormal
+		if index%5 == 0 {
+			priority = workqueue.PriorityUrgent
+		}
+		target := string(rune('a' + index%20))
+		items = append(items, dispatchFixture(
+			"item-"+time.Duration(index).String(), priority, target,
+			now.Add(time.Duration(index%4)*time.Minute),
+		))
+	}
+
+	positions := estimateQueuePositions(items, queueDispatchState{}, time.Second, now)
+	if len(positions) != len(items) {
+		t.Fatalf("estimated %d queue items, want %d", len(positions), len(items))
+	}
+	seen := make([]bool, len(items))
+	for _, position := range positions {
+		if position.ahead < 0 || position.ahead >= len(items) {
+			t.Fatalf("work ahead %d is outside the backlog", position.ahead)
+		}
+		if seen[position.ahead] {
+			t.Fatalf("work ahead %d was assigned twice", position.ahead)
+		}
+		seen[position.ahead] = true
+	}
+}
+
+func TestEstimateQueuePositionsDoesNotLetFuturePriorityJumpReadyWork(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	ready := dispatchFixture("ready", workqueue.PriorityLow, "target", now)
+	future := dispatchFixture("future", workqueue.PriorityUrgent, "target", now.Add(time.Hour))
+
+	positions := estimateQueuePositions(
+		[]workqueue.Item{future, ready}, queueDispatchState{}, time.Minute, now,
+	)
+	if positions[ready.ID].ahead != 0 {
+		t.Fatalf("ready work ahead = %d, want 0", positions[ready.ID].ahead)
+	}
+	if positions[future.ID].ahead != 1 {
+		t.Fatalf("future work ahead = %d, want 1", positions[future.ID].ahead)
+	}
+}
+
+func TestEstimateQueuePositionsMatchesReadyDispatcherOrder(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	priorities := []workqueue.Priority{
+		workqueue.PriorityUrgent,
+		workqueue.PriorityHigh,
+		workqueue.PriorityNormal,
+		workqueue.PriorityLow,
+	}
+	items := make([]workqueue.Item, 0, 120)
+	for index := range 120 {
+		item := dispatchFixture(
+			"ready-"+time.Duration(index).String(), priorities[index%len(priorities)],
+			string(rune('a'+index%7)), now.Add(-time.Duration(index%3)*time.Minute),
+		)
+		item.Immediate = index%19 == 0
+		items = append(items, item)
+	}
+	state := queueDispatchState{priorityCursor: 5, targetCursor: "c"}
+	positions := estimateQueuePositions(items, state, time.Second, now)
+	remaining := append([]workqueue.Item(nil), items...)
+	for ahead := 0; len(remaining) > 0; ahead++ {
+		choice, ok := chooseQueueDispatch(remaining, state)
+		if !ok {
+			t.Fatal("dispatcher found no ready work")
+		}
+		if positions[choice.item.ID].ahead != ahead {
+			t.Fatalf(
+				"%s work ahead = %d, want %d",
+				choice.item.ID, positions[choice.item.ID].ahead, ahead,
+			)
+		}
+		state.priorityCursor = choice.nextCursor
+		state.targetCursor = queueItemTarget(choice.item)
+		remaining = removeDispatchFixture(remaining, choice.item.ID)
+	}
+}
+
+func removeDispatchFixture(items []workqueue.Item, id string) []workqueue.Item {
+	for index := range items {
+		if items[index].ID == id {
+			return append(items[:index], items[index+1:]...)
+		}
+	}
+
+	return items
+}
+
 func dispatchFixture(
 	id string,
 	priority workqueue.Priority,

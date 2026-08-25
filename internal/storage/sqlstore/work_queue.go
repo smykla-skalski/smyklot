@@ -254,12 +254,8 @@ func (s *Store) queuePositions(
 	if err != nil {
 		return nil, err
 	}
-	positions := make(map[string]queuePosition, len(items))
-	for _, item := range items {
-		positions[item.ID] = estimateQueuePosition(items, item, state, duration, now)
-	}
 
-	return positions, nil
+	return estimateQueuePositions(items, state, duration, now), nil
 }
 
 func (s *Store) activeQueueLane(
@@ -341,62 +337,198 @@ func estimateQueuePosition(
 	duration time.Duration,
 	now time.Time,
 ) queuePosition {
-	if target.State == workqueue.StateRunning && target.LeaseExpiresAt != nil &&
-		target.LeaseExpiresAt.After(now) {
-		estimated := now
-		if target.StartedAt != nil {
-			estimated = *target.StartedAt
-		}
+	positions := estimateQueuePositions(all, state, duration, now)
+	if position, ok := positions[target.ID]; ok {
+		return position
+	}
 
-		return queuePosition{estimated: estimated}
-	}
-	running := 0
-	remaining := make([]workqueue.Item, 0, len(all))
-	for _, item := range all {
-		if item.ID != target.ID && item.State == workqueue.StateRunning &&
-			item.LeaseExpiresAt != nil && item.LeaseExpiresAt.After(now) {
-			running++
-			continue
-		}
-		if item.Immediate || !item.EligibleAt.After(target.EligibleAt) {
-			remaining = append(remaining, item)
-		}
-	}
-	ahead := running
-	for len(remaining) > 0 {
-		choice, ok := chooseQueueDispatch(remaining, state)
-		if !ok {
-			break
-		}
-		if choice.item.ID == target.ID {
-			break
-		}
-		ahead++
-		state.priorityCursor = choice.nextCursor
-		if choice.item.TargetID == nil {
-			state.targetCursor = ""
-		} else {
-			state.targetCursor = *choice.item.TargetID
-		}
-		remaining = removeQueueItem(remaining, choice.item.ID)
-	}
 	estimated := target.EligibleAt
 	if estimated.Before(now) {
 		estimated = now
 	}
-	estimated = estimated.Add(time.Duration(ahead/target.Lane.Workers()) * duration)
 
-	return queuePosition{ahead: ahead, estimated: estimated}
+	return queuePosition{estimated: estimated}
 }
 
-func removeQueueItem(items []workqueue.Item, id string) []workqueue.Item {
-	for index := range items {
-		if items[index].ID == id {
-			return append(items[:index], items[index+1:]...)
+func estimateQueuePositions(
+	items []workqueue.Item,
+	state queueDispatchState,
+	duration time.Duration,
+	now time.Time,
+) map[string]queuePosition {
+	positions := make(map[string]queuePosition, len(items))
+	waiting := make([]workqueue.Item, 0, len(items))
+	immediate := make([]workqueue.Item, 0, len(items))
+	scheduler := newQueuePositionScheduler(state)
+	running := 0
+	for _, item := range items {
+		if item.State == workqueue.StateRunning && item.LeaseExpiresAt != nil &&
+			item.LeaseExpiresAt.After(now) {
+			estimated := now
+			if item.StartedAt != nil {
+				estimated = *item.StartedAt
+			}
+			positions[item.ID] = queuePosition{estimated: estimated}
+			running++
+
+			continue
+		}
+		if item.Immediate {
+			immediate = append(immediate, item)
+
+			continue
+		}
+		waiting = append(waiting, item)
+	}
+	sortQueuePositionItems(immediate)
+	for _, item := range immediate {
+		scheduler.add(item)
+	}
+	sortQueuePositionItems(waiting)
+	nextWaiting := 0
+	addReady := func(at time.Time) {
+		for nextWaiting < len(waiting) && !waiting[nextWaiting].EligibleAt.After(at) {
+			scheduler.add(waiting[nextWaiting])
+			nextWaiting++
 		}
 	}
+	addReady(now)
+	queuedAhead := 0
+	for scheduler.pending > 0 || nextWaiting < len(waiting) {
+		if scheduler.pending == 0 {
+			addReady(waiting[nextWaiting].EligibleAt)
+		}
+		item, ok := scheduler.next()
+		if !ok {
+			break
+		}
+		ahead := running + queuedAhead
+		estimated := item.EligibleAt
+		if estimated.Before(now) {
+			estimated = now
+		}
+		estimated = estimated.Add(time.Duration(ahead/item.Lane.Workers()) * duration)
+		positions[item.ID] = queuePosition{ahead: ahead, estimated: estimated}
+		queuedAhead++
+	}
 
-	return items
+	return positions
+}
+
+type queuePositionScheduler struct {
+	state      queueDispatchState
+	immediate  queuePositionBand
+	priorities map[workqueue.Priority]*queuePositionBand
+	pending    int
+}
+
+func newQueuePositionScheduler(state queueDispatchState) *queuePositionScheduler {
+	return &queuePositionScheduler{
+		state: state,
+		priorities: map[workqueue.Priority]*queuePositionBand{
+			workqueue.PriorityUrgent: {},
+			workqueue.PriorityHigh:   {},
+			workqueue.PriorityNormal: {},
+			workqueue.PriorityLow:    {},
+		},
+	}
+}
+
+func (s *queuePositionScheduler) add(item workqueue.Item) {
+	if item.Immediate {
+		s.immediate.add(item)
+	} else {
+		s.priorities[item.Priority].add(item)
+	}
+	s.pending++
+}
+
+func (s *queuePositionScheduler) next() (workqueue.Item, bool) {
+	if s.immediate.count > 0 {
+		item := s.immediate.pop(s.state.targetCursor)
+		s.state.targetCursor = queueItemTarget(item)
+		s.pending--
+
+		return item, true
+	}
+	for offset := range priorityCycle {
+		index := (s.state.priorityCursor + offset) % len(priorityCycle)
+		band := s.priorities[priorityCycle[index]]
+		if band.count == 0 {
+			continue
+		}
+		item := band.pop(s.state.targetCursor)
+		s.state.priorityCursor = (index + 1) % len(priorityCycle)
+		s.state.targetCursor = queueItemTarget(item)
+		s.pending--
+
+		return item, true
+	}
+
+	return workqueue.Item{}, false
+}
+
+type queuePositionBand struct {
+	byTarget map[string][]workqueue.Item
+	targets  []string
+	count    int
+}
+
+func (b *queuePositionBand) add(item workqueue.Item) {
+	if b.byTarget == nil {
+		b.byTarget = make(map[string][]workqueue.Item)
+	}
+	target := queueItemTarget(item)
+	if _, found := b.byTarget[target]; !found {
+		index := sort.SearchStrings(b.targets, target)
+		b.targets = append(b.targets, "")
+		copy(b.targets[index+1:], b.targets[index:])
+		b.targets[index] = target
+	}
+	b.byTarget[target] = append(b.byTarget[target], item)
+	b.count++
+}
+
+func (b *queuePositionBand) pop(previous string) workqueue.Item {
+	index := sort.Search(len(b.targets), func(index int) bool {
+		return b.targets[index] > previous
+	})
+	if index == len(b.targets) {
+		index = 0
+	}
+	target := b.targets[index]
+	queued := b.byTarget[target]
+	item := queued[0]
+	if len(queued) == 1 {
+		delete(b.byTarget, target)
+		b.targets = append(b.targets[:index], b.targets[index+1:]...)
+	} else {
+		b.byTarget[target] = queued[1:]
+	}
+	b.count--
+
+	return item
+}
+
+func sortQueuePositionItems(items []workqueue.Item) {
+	sort.Slice(items, func(left, right int) bool {
+		if !items[left].EligibleAt.Equal(items[right].EligibleAt) {
+			return items[left].EligibleAt.Before(items[right].EligibleAt)
+		}
+		if !items[left].CreatedAt.Equal(items[right].CreatedAt) {
+			return items[left].CreatedAt.Before(items[right].CreatedAt)
+		}
+
+		return items[left].ID < items[right].ID
+	})
+}
+
+func queueItemTarget(item workqueue.Item) string {
+	if item.TargetID == nil {
+		return ""
+	}
+
+	return *item.TargetID
 }
 
 func (s *Store) GetQueueItem(ctx context.Context, id string) (workqueue.Item, error) {

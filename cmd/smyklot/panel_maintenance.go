@@ -74,36 +74,32 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 }
 
 // dispatchDurableMaintenance publishes every maintenance candidate before it
-// lets the shared dispatcher lease one. Rebuilding after each completion makes
-// a catalog refresh immediately expose newly discovered target and repository
-// work without running any of it outside the queue ledger.
+// lets the shared dispatcher lease one. It executes at most one lease per wake
+// so an overdue backlog yields to panel traffic before the next queue tick.
 func (s *server) dispatchDurableMaintenance(ctx context.Context) error {
-	for {
-		jobs, err := s.durableMaintenanceJobs(ctx)
-		if err != nil {
-			return fmt.Errorf("build maintenance queue: %w", err)
-		}
-		if err := s.ensureMaintenanceJobs(ctx, jobs); err != nil {
-			return fmt.Errorf("publish maintenance queue: %w", err)
-		}
-		claimed, err := s.runNextMaintenanceJob(ctx, jobs)
-		if err != nil {
-			return fmt.Errorf("run queued maintenance: %w", err)
-		}
-		if claimed {
-			continue
-		}
-		applied, err := s.sync.ApplyOnePlan(ctx)
-		if err != nil {
-			return fmt.Errorf("apply queued sync plan: %w", err)
-		}
-		if !applied {
-			return nil
-		}
-		if s.panel != nil {
-			s.panel.AnnounceQueue("")
-		}
+	jobs, err := s.durableMaintenanceJobs(ctx)
+	if err != nil {
+		return fmt.Errorf("build maintenance queue: %w", err)
 	}
+	if err := s.ensureMaintenanceJobs(ctx, jobs); err != nil {
+		return fmt.Errorf("publish maintenance queue: %w", err)
+	}
+	claimed, err := s.runNextMaintenanceJob(ctx, jobs)
+	if err != nil {
+		return fmt.Errorf("run queued maintenance: %w", err)
+	}
+	if claimed {
+		return nil
+	}
+	applied, err := s.sync.ApplyOnePlan(ctx)
+	if err != nil {
+		return fmt.Errorf("apply queued sync plan: %w", err)
+	}
+	if applied && s.panel != nil {
+		s.panel.AnnounceQueue("")
+	}
+
+	return nil
 }
 
 func (s *server) durableMaintenanceJobs(ctx context.Context) ([]maintenanceJob, error) {
