@@ -293,6 +293,7 @@ function configGroup(key: ConfigKey): 'behavior' | 'commands' {
     case 'disable_reactions':
     case 'disable_deleted_comments':
     case 'allow_self_approval':
+    case 'allow_draft_merges':
       return 'behavior';
   }
 }
@@ -327,6 +328,7 @@ function parseConfigPatch(value: unknown): TargetDefaultsConfigPatch | null {
   if (!copyBoolean(value, patch, 'disable_reactions')) return null;
   if (!copyBoolean(value, patch, 'disable_deleted_comments')) return null;
   if (!copyBoolean(value, patch, 'allow_self_approval')) return null;
+  if (!copyBoolean(value, patch, 'allow_draft_merges')) return null;
   return patch;
 }
 
@@ -342,7 +344,8 @@ function copyBoolean(
     | 'disable_unapprove'
     | 'disable_reactions'
     | 'disable_deleted_comments'
-    | 'allow_self_approval',
+    | 'allow_self_approval'
+    | 'allow_draft_merges',
 ): boolean {
   if (!Object.hasOwn(source, key)) return true;
   const value = source[key];
@@ -399,6 +402,7 @@ function configValue(patch: ConfigPatch, key: ConfigKey): SettingsJson {
     case 'disable_reactions':
     case 'disable_deleted_comments':
     case 'allow_self_approval':
+    case 'allow_draft_merges':
       return patch[key] ?? null;
     case 'command_prefix':
       return patch.command_prefix ?? null;

@@ -49,6 +49,7 @@ type CommandEnvironment struct {
 	PendingCI           *PendingCICommand
 	PendingCIActivation PendingCIActivationGuard
 	PendingCIMode       PendingCIModeResolver
+	DraftMergeRevision  string
 }
 
 // PendingCICommand translates an already-authorized command into durable

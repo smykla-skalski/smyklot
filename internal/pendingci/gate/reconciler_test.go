@@ -63,6 +63,31 @@ func TestPendingCIReconcilerKeepsMergeRaceArmed(t *testing.T) {
 	}
 }
 
+func TestPendingCIReconcilerCancelsWhenFinalDraftHistoryInvalidatesCommand(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &reconcilerTestStore{}
+	effects := &reconcilerTestEffects{mergeErr: pendingci.ErrStaleSourceRevision}
+	reconciler := newReconciler(
+		store,
+		reconcilerTestObserver{observation: reconcilerObservation(now, pendingci.ObservedPassing)},
+		effects,
+		bot.NewCoordinator(),
+		defaultTiming(),
+	)
+
+	if err := reconciler.Process(t.Context(), reconcilerRequest(now.Add(-time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+	if store.finished == nil || store.finished.Lifecycle != pendingci.LifecycleCancelled ||
+		store.finished.Reason != pendingci.DraftCancellationReason {
+		t.Fatalf("finish = %#v, want draft cancellation", store.finished)
+	}
+	if store.rescheduled != nil {
+		t.Fatalf("invalidated draft command was rescheduled: %#v", store.rescheduled)
+	}
+}
+
 func TestPendingCIReconcilerDoesNotMergeAfterLeaseInvalidation(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)

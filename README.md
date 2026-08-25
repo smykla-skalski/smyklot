@@ -132,6 +132,8 @@ Merge with default method (with fallback to squash/rebase if merge commits disal
 
 Or add a 🚀 reaction to the PR description.
 
+Draft pull requests remain protected by default. Set `allow_draft_merges = true` to let any merge command or 🚀 reaction mark a draft ready for review before continuing. A merge-after-CI command publishes the pull request when accepted; converting it back to draft cancels that pending merge and requires a new command.
+
 #### Squash merging
 
 ```text
@@ -215,6 +217,7 @@ disable_unapprove = false
 disable_reactions = false
 disable_deleted_comments = false
 allow_self_approval = false
+allow_draft_merges = false
 ```
 
 A variable still holding the JSON object this used to be is read as before, and Smyklot warns at startup. It cannot open a pull request migrating that one: the App has no permission to write Actions variables.
@@ -274,6 +277,7 @@ Configure individual settings via repository variables or environment variables 
 | `SMYKLOT_DISABLE_REACTIONS`        | boolean | `false`        | Disable reaction-based approvals/merges                                    |
 | `SMYKLOT_DISABLE_DELETED_COMMENTS` | boolean | `false`        | Disable the notice posted when a command comment is deleted                |
 | `SMYKLOT_ALLOW_SELF_APPROVAL`      | boolean | `false`        | Allow PR authors to approve their own PRs                                  |
+| `SMYKLOT_ALLOW_DRAFT_MERGES`       | boolean | `false`        | Mark draft PRs ready for review before executing merge commands            |
 | `SMYKLOT_RUNNER`                   | string  | `service`      | Which entry point acts: `service` or `action`; the other stands down       |
 | `SMYKLOT_BOT_USERNAME`             | string  | `smyklot[bot]` | Bot username for cleanup operations (GitHub App format: `{app-slug}[bot]`) |
 | `SMYKLOT_GITHUB_API_URL`           | string  | public API     | REST API base URL for a proxy or mirror (Enterprise is not supported)      |
@@ -359,6 +363,19 @@ or via JSON:
 ```
 
 By default, Smyklot prevents self-approval to enforce separation of duties. Only enable this in development/testing environments.
+
+##### Example 7: Merge draft pull requests
+
+Allow every merge command and 🚀 reaction to publish a draft before continuing:
+
+```yaml
+env:
+  SMYKLOT_ALLOW_DRAFT_MERGES: "true"
+```
+
+This does not bypass reviews or required checks. If the pull request is converted back to draft while waiting for CI, Smyklot cancels the pending merge.
+
+Action workflows that enable this setting must pass the immutable event revision as `COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}` alongside `COMMENT_BODY`. Smyklot rejects a delayed workflow when the live comment no longer matches both values.
 
 ## Running as a service
 

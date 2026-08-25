@@ -18,13 +18,43 @@ func (c *Client) AddReaction(
 	commentID int,
 	reaction ReactionType,
 ) error {
+	_, err := c.AddReactionState(ctx, owner, repo, commentID, reaction)
+
+	return err
+}
+
+// AddReactionState adds an emoji reaction and returns GitHub's durable state.
+func (c *Client) AddReactionState(
+	ctx context.Context,
+	owner, repo string,
+	commentID int,
+	reaction ReactionType,
+) (Reaction, error) {
 	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions", owner, repo, commentID)
 
-	_, _, err := c.gh.Reactions.CreateIssueCommentReaction(
+	created, _, err := c.gh.Reactions.CreateIssueCommentReaction(
 		ctx, owner, repo, int64(commentID), string(reaction),
 	)
+	if err != nil {
+		return Reaction{}, wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	}
 
-	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	return convertReaction(created), nil
+}
+
+// RemoveCommentReaction deletes one exact reaction from a comment.
+func (c *Client) RemoveCommentReaction(
+	ctx context.Context,
+	owner, repo string,
+	commentID int,
+	reactionID int64,
+) error {
+	path := fmt.Sprintf("/repos/%s/%s/issues/comments/%d/reactions/%d", owner, repo, commentID, reactionID)
+	_, err := c.gh.Reactions.DeleteIssueCommentReaction(
+		ctx, owner, repo, int64(commentID), reactionID,
+	)
+
+	return wrapError(ErrAPIRequest, http.MethodDelete, path, err)
 }
 
 // RemoveReactionByUser deletes every matching reaction one account left on a
@@ -122,11 +152,17 @@ func convertReactions(raw []*gogithub.Reaction) []Reaction {
 	reactions := make([]Reaction, 0, len(raw))
 
 	for _, item := range raw {
-		reactions = append(reactions, Reaction{
-			Type: ReactionType(item.GetContent()),
-			User: item.GetUser().GetLogin(),
-		})
+		reactions = append(reactions, convertReaction(item))
 	}
 
 	return reactions
+}
+
+func convertReaction(item *gogithub.Reaction) Reaction {
+	return Reaction{
+		ID:        item.GetID(),
+		Type:      ReactionType(item.GetContent()),
+		User:      item.GetUser().GetLogin(),
+		CreatedAt: item.GetCreatedAt().Time,
+	}
 }

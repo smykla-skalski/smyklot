@@ -2,7 +2,9 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -47,9 +49,32 @@ const (
 	// ReactionPendingCI marks a command waiting for CI
 	ReactionPendingCI = github.ReactionEyes
 
+	// ReactionPendingCIAction binds an Action-mode wait to the exact command
+	// comment. Unlike the shared method label, this marker has one comment as
+	// its owner, so a stale concurrent workflow cannot revoke a newer command.
+	ReactionPendingCIAction = github.ReactionHooray
+
 	// ReactionPendingCIService fences a service-owned wait from the Action
 	// runner without adding a second label to the pull request.
 	ReactionPendingCIService = github.ReactionHooray
+
+	// ReactionPendingCIRejected keeps an Action-mode request closed while its
+	// exact command is validated. The positive activation supersedes it, and it
+	// also remains a durable tombstone when activation is rejected. It must not
+	// share a reaction with ordinary command feedback: retries clear old error
+	// reactions before they are authorized.
+	ReactionPendingCIRejected = github.ReactionLaugh
+
+	// ReactionPendingCIRepair is a retry signal on the pull request itself.
+	// Its target distinguishes it from ReactionPendingCIRejected, which is
+	// placed on a command comment. Unlike a method label, this signal cannot
+	// authorize legacy pending-CI work after a draft transition.
+	ReactionPendingCIRepair = github.ReactionLaugh
+
+	// ReactionPendingCIRepairClaim is a recovery claim created before the
+	// corresponding retry signal is removed. Keeping the two states separate
+	// guarantees that an interrupted handoff always leaves one durable marker.
+	ReactionPendingCIRepairClaim = github.ReactionConfused
 )
 
 // handleReactions processes reaction-based approvals and merges.
@@ -148,7 +173,9 @@ func handleReactions(
 
 		// Handle merge reaction
 		if reaction.Type == ReactionMerge {
-			if err := handleReactionMerge(ctx, client, rc, bc, prNum, commentID, reaction.User); err != nil {
+			if err := handleReactionMerge(
+				ctx, client, rc, bc, prNum, commentID, reaction.User, reaction.CreatedAt,
+			); err != nil {
 				return err
 			}
 		}
@@ -339,7 +366,9 @@ func handleReactionMerge(
 	bc *config.Config,
 	prNum, commentID int,
 	author string,
+	createdAt time.Time,
 ) error {
+	sourceRevision := ""
 	// Get PR info to check if it's mergeable and prevent self-approval
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
 	if err != nil {
@@ -360,68 +389,66 @@ func handleReactionMerge(
 		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
 		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionError)
 	}
+	if bc.AllowDraftMerges {
+		if createdAt.IsZero() {
+			return postOperationFailure(
+				ctx, client, rc, prNum, commentID,
+				errors.New("merge reaction is missing its GitHub creation time; remove and add the reaction again"),
+				feedback.NewMergeFailed, errMergePR,
+			)
+		}
+		sourceRevision = createdAt.UTC().Format(time.RFC3339Nano)
+		if err := ValidateDraftMergeAuthorization(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum,
+			sourceRevision,
+		); err != nil {
+			return postOperationFailure(
+				ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
+			)
+		}
+	}
+	info, err = prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
+		)
+	}
+	if err := approveReactionMergeIfNeeded(
+		ctx, client, rc, prNum, commentID, author, info,
+	); err != nil {
+		return err
+	}
 
 	// Check if PR is mergeable
 	if !info.Mergeable {
-		return postNotMergeable(ctx, client, rc, prNum, commentID)
-	}
-
-	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
-
-	// Approve the PR if neither bot nor user has already approved
-	if !botAlreadyApproved && !userAlreadyApproved {
-		if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
-			return postOperationFailure(
-				ctx,
-				client,
-				rc,
-				prNum,
-				commentID,
-				err,
-				feedback.NewApprovalFailed,
-				errApprovePR,
+		switch info.MergeableState {
+		case github.MergeableStateBlocked, github.MergeableStateUnstable:
+			return enableReactionAutoMerge(
+				ctx, client, rc, bc, prNum, commentID, author, sourceRevision,
 			)
+		case github.MergeableStateUnknown, "":
+		default:
+			return postNotMergeable(ctx, client, rc, prNum, commentID)
 		}
 	}
 
 	// Merge the PR (using default merge method)
-	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge); err != nil {
+	err = runDraftAuthorizedEffect(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		func() error {
+			return client.MergePR(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
+			)
+		},
+	)
+	if err != nil {
 		// Check if we should enable auto-merge instead
 		if shouldEnableAutoMerge(err) {
-			if err := client.EnableAutoMerge(
-				ctx,
-				rc.RepoOwner,
-				rc.RepoName,
-				prNum,
-				github.MergeMethodMerge,
-			); err != nil {
-				return postOperationFailure(
-					ctx,
-					client,
-					rc,
-					prNum,
-					commentID,
-					err,
-					feedback.NewAutoMergeFailed,
-					errMergePR,
-				)
-			}
-
-			// Add label to track reaction-based auto-merge
-			_ = client.AddLabel(
-				ctx,
-				rc.RepoOwner,
-				rc.RepoName,
-				prNum,
-				LabelReactionMerge,
+			return enableReactionAutoMerge(
+				ctx, client, rc, bc, prNum, commentID, author, sourceRevision,
 			)
-
-			// Post auto-merge enabled feedback
-			fb := feedback.NewAutoMergeEnabled(author, bc.QuietReactions)
-			return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
 		}
 
 		return postOperationFailure(
@@ -447,6 +474,61 @@ func handleReactionMerge(
 
 	// Post success feedback
 	fb := feedback.NewReactionMergeSuccess(author, bc.QuietReactions)
+
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
+}
+
+func approveReactionMergeIfNeeded(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	prNum, commentID int,
+	author string,
+	info *github.PRInfo,
+) error {
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
+	if botAlreadyApproved || userAlreadyApproved {
+		return nil
+	}
+	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID,
+			err, feedback.NewApprovalFailed, errApprovePR,
+		)
+	}
+
+	return nil
+}
+
+func enableReactionAutoMerge(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	author string,
+	sourceRevision string,
+) error {
+	err := runDraftAuthorizedEffect(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		func() error {
+			return client.EnableAutoMerge(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
+			)
+		},
+	)
+	if err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID,
+			err, feedback.NewAutoMergeFailed, errMergePR,
+		)
+	}
+
+	_ = client.AddLabel(
+		ctx, rc.RepoOwner, rc.RepoName, prNum, LabelReactionMerge,
+	)
+	fb := feedback.NewAutoMergeEnabled(author, bc.QuietReactions)
 
 	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
 }

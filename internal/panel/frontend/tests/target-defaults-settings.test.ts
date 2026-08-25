@@ -29,6 +29,7 @@ const INHERITED: ConfigValues = {
   disable_reactions: false,
   disable_deleted_comments: false,
   allow_self_approval: false,
+  allow_draft_merges: false,
 };
 
 const SOURCES: ConfigSources = {
@@ -44,6 +45,7 @@ const SOURCES: ConfigSources = {
   disable_reactions: 'process',
   disable_deleted_comments: 'process',
   allow_self_approval: 'process',
+  allow_draft_merges: 'process',
 };
 
 function target(): PanelTarget {

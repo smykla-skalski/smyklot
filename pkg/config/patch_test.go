@@ -37,18 +37,22 @@ var _ = Describe("Patch [Unit]", func() {
 				Expect(*patch.CommandAliases).To(BeEmpty())
 				Expect(patch.CommandPrefix).NotTo(BeNil())
 				Expect(*patch.CommandPrefix).To(BeEmpty())
+				Expect(patch.AllowDraftMerges).NotTo(BeNil())
+				Expect(*patch.AllowDraftMerges).To(BeFalse())
 			},
 			Entry("yaml", config.FormatYAML, `
 quiet_success: false
 allowed_commands: []
 command_aliases: {}
 command_prefix: ""
+allow_draft_merges: false
 `),
 			Entry("toml", config.FormatTOML, `
 quiet_success = false
 allowed_commands = []
 command_aliases = {}
 command_prefix = ""
+allow_draft_merges = false
 `),
 		)
 

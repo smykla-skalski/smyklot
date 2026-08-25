@@ -10,6 +10,9 @@ package bot
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
@@ -28,6 +31,7 @@ const (
 	EnvGitHubToken         = "GITHUB_TOKEN" //nolint:gosec // Environment variable name, not a credential
 	EnvCommentBody         = "COMMENT_BODY"
 	EnvCommentID           = "COMMENT_ID"
+	EnvCommentRevision     = "COMMENT_UPDATED_AT"
 	EnvCommentAction       = "COMMENT_ACTION"
 	EnvPRNumber            = "PR_NUMBER"
 	EnvRepoOwner           = "REPO_OWNER"
@@ -78,6 +82,7 @@ const (
 | Disable Reactions | ` + "`{{.DisableReactions}}`" + ` |
 | Disable Deleted Comments | ` + "`{{.DisableDeletedComments}}`" + ` |
 | Allow Self Approval | ` + "`{{.AllowSelfApproval}}`" + ` |
+| Allow Draft Merges | ` + "`{{.AllowDraftMerges}}`" + ` |
 {{if .AllowedCommands}}| Allowed Commands | ` + "`{{.AllowedCommands}}`" + ` |
 {{else}}| Allowed Commands | All commands allowed |
 {{end}}
@@ -427,6 +432,20 @@ func executeMerge(
 	if err != nil {
 		return feedback.NewMergeFailed(err.Error()), nil
 	}
+	if bc.AllowDraftMerges {
+		revision, revisionErr := draftMergeCommandRevision(
+			ctx, client, rc, commentID, environment,
+		)
+		if revisionErr != nil {
+			return feedback.NewMergeFailed(revisionErr.Error()), nil
+		}
+		if revisionErr = ValidateDraftMergeAuthorization(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, revision,
+		); revisionErr != nil {
+			return feedback.NewMergeFailed(revisionErr.Error()), nil
+		}
+		environment.DraftMergeRevision = revision
+	}
 
 	// Handle "after CI" modifier - defer merge until CI passes
 	if waitForCI {
@@ -436,29 +455,92 @@ func executeMerge(
 		)
 	}
 	if environment.PendingCI != nil {
-		var result *feedback.Feedback
-		accepted, err := environment.PendingCI.cancelAndRun(
-			ctx,
-			prNum,
-			"superseded by an immediate merge command",
-			func() error {
-				var operationErr error
-				result, operationErr = executeMerge(
-					ctx, client, rc, bc, prNum, commentID, method,
-					false, requiredChecksOnly, CommandEnvironment{},
-				)
-
-				return operationErr
-			},
+		return executeCoordinatedMerge(
+			ctx, client, rc, bc, prNum, commentID, method,
+			requiredChecksOnly, environment,
 		)
-		if err != nil {
-			return nil, err
-		}
-		if !accepted {
-			return nil, nil
+	}
+
+	return executeImmediateCommandMerge(
+		ctx, client, rc, bc, prNum, commentID, method, info,
+		environment.DraftMergeRevision,
+	)
+}
+
+func executeCoordinatedMerge(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
+	environment CommandEnvironment,
+) (*feedback.Feedback, error) {
+	var result *feedback.Feedback
+	accepted, err := environment.PendingCI.cancelAndRun(
+		ctx,
+		prNum,
+		"superseded by an immediate merge command",
+		func() error {
+			var operationErr error
+			coordinated := environment
+			coordinated.PendingCI = nil
+			result, operationErr = executeMerge(
+				ctx, client, rc, bc, prNum, commentID, method,
+				false, requiredChecksOnly, coordinated,
+			)
+
+			return operationErr
+		},
+	)
+	if err != nil {
+		if errors.Is(err, pendingci.ErrAmbiguousSourceRevision) {
+			return feedback.NewMergeFailed(err.Error()), nil
 		}
 
-		return result, nil
+		return nil, err
+	}
+	if !accepted {
+		return feedback.NewMergeFailed(
+			"a newer merge command or draft transition superseded this command; reissue the command to confirm the merge",
+		), nil
+	}
+
+	return result, nil
+}
+
+func executeImmediateCommandMerge(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	method github.MergeMethod,
+	info *github.PRInfo,
+	sourceRevision string,
+) (*feedback.Feedback, error) {
+	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
+		return failure, nil
+	}
+	authorize := commandMergeAuthorizer(
+		ctx, client, rc, prNum, commentID, sourceRevision,
+	)
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
+	var err error
+	info, err = prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
+	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
+		return failure, nil
 	}
 
 	// Check if PR is mergeable
@@ -468,7 +550,7 @@ func executeMerge(
 		switch info.MergeableState {
 		case github.MergeableStateBlocked, github.MergeableStateUnstable:
 			// Branch protection or failing checks - enable auto-merge
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 
 		case github.MergeableStateDirty:
 			// Actual conflicts - cannot merge
@@ -483,18 +565,6 @@ func executeMerge(
 		}
 	}
 
-	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
-
-	// Approve the PR if neither bot nor user has already approved
-	if !botAlreadyApproved && !userAlreadyApproved {
-		if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
-			return feedback.NewApprovalFailed(err.Error()), nil
-		}
-	}
-
 	// Check if merge queue is enabled - if so, always use auto-merge
 	if info.BaseBranch != "" {
 		mergeQueueEnabled, _ := client.IsMergeQueueEnabled(
@@ -504,20 +574,60 @@ func executeMerge(
 			info.BaseBranch,
 		)
 		if mergeQueueEnabled {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 		}
 	}
 
-	// Merge the PR
-	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, method); err != nil {
+	return mergeCommandPR(ctx, client, rc, bc, prNum, method, authorize)
+}
+
+func approveMergeIfNeeded(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	prNum int,
+	info *github.PRInfo,
+) *feedback.Feedback {
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
+	if botAlreadyApproved || userAlreadyApproved {
+		return nil
+	}
+	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
+		return feedback.NewApprovalFailed(err.Error())
+	}
+
+	return nil
+}
+
+func mergeCommandPR(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum int,
+	method github.MergeMethod,
+	authorize mergeAuthorizer,
+) (*feedback.Feedback, error) {
+	merge := func(mergeMethod github.MergeMethod) error {
+		return runMergeAuthorizedEffect(
+			authorize,
+			func() error {
+				return client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, mergeMethod)
+			},
+		)
+	}
+	if err := merge(method); err != nil {
 		// If merge commits not allowed and using default merge method, try squash first
 		if method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash); err != nil {
+			if err := merge(github.MergeMethodSquash); err != nil {
 				// Try rebase if squash also fails
-				if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase); err != nil {
+				if err := merge(github.MergeMethodRebase); err != nil {
 					// Check if we should enable auto-merge instead
 					if shouldEnableAutoMerge(err) {
-						return enableAutoMerge(ctx, client, rc, bc, prNum, github.MergeMethodRebase)
+						return enableAutoMerge(
+							ctx, client, rc, bc, prNum, github.MergeMethodRebase, authorize,
+						)
 					}
 					return feedback.NewMergeFailed(err.Error()), nil
 				}
@@ -528,7 +638,7 @@ func executeMerge(
 
 		// Check if we should enable auto-merge instead of failing
 		if shouldEnableAutoMerge(err) {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 		}
 
 		return feedback.NewMergeFailed(err.Error()), nil
@@ -555,14 +665,17 @@ func enableAutoMerge(
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
+	authorize mergeAuthorizer,
 ) (*feedback.Feedback, error) {
-	if err := client.EnableAutoMerge(
-		ctx,
-		rc.RepoOwner,
-		rc.RepoName,
-		prNum,
-		method,
-	); err != nil {
+	err := runMergeAuthorizedEffect(
+		authorize,
+		func() error {
+			return client.EnableAutoMerge(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, method,
+			)
+		},
+	)
+	if err != nil {
 		return feedback.NewAutoMergeFailed(err.Error()), nil
 	}
 
@@ -589,24 +702,20 @@ func executePendingCIMerge(
 	requiredChecksOnly bool,
 	environment CommandEnvironment,
 ) (*feedback.Feedback, error) {
-	// Get PR head SHA for CI status check
 	headRef, err := client.GetPRHeadRef(ctx, rc.RepoOwner, rc.RepoName, prNum)
 	if err != nil {
 		return feedback.NewMergeFailed("failed to get PR head ref: " + err.Error()), nil
 	}
 	if environment.PendingCI == nil {
-		serviceOwned, ownershipErr := PendingCIServiceOwned(
-			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+		result, finished, actionErr := evaluateActionPendingCI(
+			ctx, client, rc, bc, prNum, commentID, method, info, headRef, requiredChecksOnly,
+			environment.DraftMergeRevision,
 		)
-		if ownershipErr != nil {
-			return feedback.NewMergeFailed(ownershipErr.Error()), nil
-		}
-		if serviceOwned {
-			return feedback.NewMergeFailed(
-				"the service is still handing off this pending CI request; retry after its waiting reaction is removed",
-			), nil
+		if actionErr != nil || finished {
+			return result, actionErr
 		}
 	}
+
 	mode := storage.PendingCIModeLabels
 	if environment.PendingCI != nil && environment.PendingCIMode != nil {
 		resolvedMode, modeErr := environment.PendingCIMode.PendingCIMode(ctx, info.BaseBranch)
@@ -615,118 +724,387 @@ func executePendingCIMerge(
 		}
 		mode = resolvedMode
 	}
-	if environment.PendingCI == nil {
-		// The Action has no durable reconciler, so it delegates the wait to
-		// GitHub labels. The service resolves App-bound requirements in its
-		// activation guard, where it can exclude only Smyklot's own check.
-		requiredChecks, err := pendingCIRequiredChecks(
-			ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
-		)
-		if err != nil {
-			return feedback.NewMergeFailed(err.Error()), nil
-		}
-		checkStatus, err := client.GetCheckStatus(
-			ctx, rc.RepoOwner, rc.RepoName, headRef, requiredChecks,
-		)
-		if err != nil {
-			return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), nil
-		}
-		if checkStatus.AllPassing {
-			serviceOwned, ownershipErr := PendingCIServiceOwned(
-				ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
-			)
-			if ownershipErr != nil {
-				return feedback.NewMergeFailed(ownershipErr.Error()), nil
-			}
-			if serviceOwned {
-				return nil, nil
-			}
-			return executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
-		}
-	}
 
 	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
 	}
-
-	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.PendingCI == nil {
-		if failure := approvePendingCI(
-			ctx, client, rc, prNum, PendingCIApprovalRequired(rc, info),
-		); failure != nil {
-			return failure, nil
-		}
-		serviceOwned, ownershipErr := PendingCIServiceOwned(
-			ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+		info, err = prepareDraftMerge(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
 		)
-		if ownershipErr != nil {
-			return feedback.NewMergeFailed(ownershipErr.Error()), nil
-		}
-		if serviceOwned {
-			return nil, nil
-		}
-		_ = client.AddReaction(
-			ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCI,
-		)
-		if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
-			return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), nil
-		}
-	} else {
-		artifactKind := pendingci.ArtifactLabel
-		if mode == storage.PendingCIModeChecks {
-			artifactKind = pendingci.ArtifactCheck
-		}
-		failures, coordinationErr := activatePendingCI(
-			ctx, client, environment.PendingCI, environment.PendingCIActivation,
-			PendingCIActivationRequest{
-				Runtime: rc, Owner: rc.RepoOwner, Repository: rc.RepoName,
-				PullRequest: prNum, CommentID: commentID, HeadSHA: headRef,
-				BaseBranch: info.BaseBranch, Method: method,
-				RequiredChecksOnly: requiredChecksOnly, Label: label,
-				ArtifactKind: artifactKind,
-			},
-		)
-		if coordinationErr != nil {
-			return nil, coordinationErr
-		}
-		if failures.Approval != nil {
-			return feedback.NewApprovalFailed(failures.Approval.Error()), nil
-		}
-		if failures.Label != nil {
-			return feedback.NewMergeFailed(
-				"failed to record the pending CI request: " + failures.Label.Error(),
-			), nil
-		}
-		if failures.Check != nil {
-			return feedback.NewMergeFailed(
-				"failed to record the pending CI check: " + failures.Check.Error(),
-			), nil
-		}
-		if failures.Reaction != nil {
-			return feedback.NewMergeFailed(
-				"failed to record the pending CI request: " + failures.Reaction.Error(),
-			), nil
-		}
-		if failures.Command != nil {
-			return nil, failures.Command
-		}
-		if failures.Stale {
-			return nil, nil
-		}
-		if failures.StoodDown {
-			return nil, nil
-		}
-		if failures.Ambiguous {
-			return feedback.NewMergeFailed(
-				"GitHub reported multiple after-CI commands with the same timestamp; reissue the command to choose the intended merge method",
-			), nil
+		if err != nil {
+			return feedback.NewMergeFailed(err.Error()), nil
 		}
 	}
 
-	// Return pending feedback
+	label := getPendingCILabel(method, requiredChecksOnly)
+	if environment.PendingCI == nil {
+		result, finished := recordActionPendingCI(
+			ctx, client, rc, bc, prNum, commentID, method, requiredChecksOnly,
+			info, label, environment.DraftMergeRevision,
+		)
+		if finished {
+			return result, nil
+		}
+	} else {
+		result, finished, activationErr := recordServicePendingCI(
+			ctx, client, rc, bc, prNum, commentID, method, info, headRef,
+			requiredChecksOnly, label, mode, environment,
+		)
+		if activationErr != nil || finished {
+			return result, activationErr
+		}
+	}
+
 	methodName := getMergeMethodName(method)
 
 	return feedback.NewPendingCI(rc.CommentAuthor, methodName, bc.QuietPending), nil
+}
+
+func evaluateActionPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	method github.MergeMethod,
+	info *github.PRInfo,
+	headRef string,
+	requiredChecksOnly bool,
+	sourceRevision string,
+) (*feedback.Feedback, bool, error) {
+	serviceOwned, err := PendingCIServiceOwned(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), true, nil
+	}
+	if serviceOwned {
+		return feedback.NewMergeFailed(
+			"the service is still handing off this pending CI request; retry after its waiting reaction is removed",
+		), true, nil
+	}
+
+	requiredChecks, err := pendingCIRequiredChecks(
+		ctx, client, rc.RepoOwner, rc.RepoName, info.BaseBranch, requiredChecksOnly,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), true, nil
+	}
+	checkStatus, err := client.GetCheckStatus(
+		ctx, rc.RepoOwner, rc.RepoName, headRef, requiredChecks,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed("failed to get CI status: " + err.Error()), true, nil
+	}
+	if !checkStatus.AllPassing {
+		return nil, false, nil
+	}
+
+	serviceOwned, err = PendingCIServiceOwned(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), true, nil
+	}
+	if serviceOwned {
+		return nil, true, nil
+	}
+	authorize := commandMergeAuthorizer(
+		ctx, client, rc, prNum, commentID, sourceRevision,
+	)
+	result, mergeErr := executeImmediateMerge(
+		ctx, client, rc, bc, prNum, method, info, headRef, authorize,
+	)
+
+	return result, true, mergeErr
+}
+
+func recordActionPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
+	info *github.PRInfo,
+	label string,
+	sourceRevision string,
+) (*feedback.Feedback, bool) {
+	resolvedRevision, err := actionPendingCISourceRevision(
+		ctx, client, rc, commentID, sourceRevision,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), true
+	}
+	authorize := actionPendingCIAuthorizer(
+		ctx, client, rc, prNum, commentID, resolvedRevision,
+	)
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), true
+	}
+	if failure := approvePendingCI(
+		ctx, client, rc, prNum, PendingCIApprovalRequired(rc, info),
+	); failure != nil {
+		return failure, true
+	}
+	serviceOwned, err := PendingCIServiceOwned(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), true
+	}
+	if serviceOwned {
+		return nil, true
+	}
+	if err := publishActionPendingCI(
+		ctx, client, rc, bc, prNum, commentID, method, requiredChecksOnly,
+		label, resolvedRevision, authorize,
+	); err != nil {
+		return feedback.NewMergeFailed(err.Error()), true
+	}
+
+	return nil, false
+}
+
+func actionPendingCISourceRevision(
+	ctx context.Context,
+	client *github.Client,
+	runtime *RuntimeConfig,
+	commentID int,
+	sourceRevision string,
+) (string, error) {
+	if sourceRevision != "" {
+		return sourceRevision, nil
+	}
+	comment, err := client.GetIssueComment(
+		ctx, runtime.RepoOwner, runtime.RepoName, int64(commentID),
+	)
+	if err != nil {
+		return "", fmt.Errorf("read pending CI command revision: %w", err)
+	}
+
+	return comment.UpdatedAt, nil
+}
+
+func actionPendingCIAuthorizer(
+	ctx context.Context,
+	client *github.Client,
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	sourceRevision string,
+) mergeAuthorizer {
+	authorizeCommand := commandMergeAuthorizer(
+		ctx, client, runtime, pullRequest, commentID, sourceRevision,
+	)
+
+	return func() error {
+		if err := authorizeCommand(); err != nil {
+			return err
+		}
+		info, err := client.GetPRInfo(
+			ctx, runtime.RepoOwner, runtime.RepoName, pullRequest,
+		)
+		if err != nil {
+			return fmt.Errorf("revalidate pending CI pull request: %w", err)
+		}
+		if info.Draft {
+			return fmt.Errorf(
+				"%w: pull request returned to draft while the pending CI request was being recorded; reissue the command",
+				pendingci.ErrStaleSourceRevision,
+			)
+		}
+
+		return nil
+	}
+}
+
+func publishActionPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	runtime *RuntimeConfig,
+	botConfig *config.Config,
+	pullRequest, commentID int,
+	method github.MergeMethod,
+	requiredOnly bool,
+	label, sourceRevision string,
+	authorize mergeAuthorizer,
+) (publishErr error) {
+	if err := removeActionPendingCILabel(
+		ctx, client, runtime.RepoOwner, runtime.RepoName, pullRequest, label,
+	); err != nil {
+		return fmt.Errorf("disarm the previous pending CI request: %w", err)
+	}
+	exclusion := actionPendingCIArtifactExclusion{commentID: commentID}
+	defer func() {
+		if publishErr == nil {
+			return
+		}
+		publishErr = repairActionPendingCILabel(
+			ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName,
+			pullRequest, method, requiredOnly, runtime.BotUsername, label,
+			exclusion, publishErr,
+		)
+	}()
+	for _, reaction := range []github.ReactionType{
+		ReactionPendingCIAction, ReactionPendingCI, ReactionPendingCIRejected,
+	} {
+		if err := client.RemoveReactionByUser(
+			ctx, runtime.RepoOwner, runtime.RepoName, commentID,
+			reaction, runtime.BotUsername,
+		); err != nil {
+			return fmt.Errorf("rotate the pending CI command fence: %w", err)
+		}
+	}
+	closed, err := client.AddReactionState(
+		ctx, runtime.RepoOwner, runtime.RepoName, commentID, ReactionPendingCIRejected,
+	)
+	if err != nil {
+		return fmt.Errorf("close the pending CI command gate: %w", err)
+	}
+	if closed.ID == 0 {
+		return errors.New("GitHub returned an incomplete pending CI command gate; reissue the command")
+	}
+	fence, err := client.AddReactionState(
+		ctx, runtime.RepoOwner, runtime.RepoName, commentID, ReactionPendingCI,
+	)
+	if err != nil {
+		return fmt.Errorf("record the pending CI command fence: %w", err)
+	}
+	if err := validateActionPendingCIMarker(fence, sourceRevision); err != nil {
+		return err
+	}
+	exclusion.fenceID = fence.ID
+	if err := authorize(); err != nil {
+		return fmt.Errorf("revalidate pending CI command: %w", err)
+	}
+	activation, err := client.AddReactionState(
+		ctx, runtime.RepoOwner, runtime.RepoName, commentID, ReactionPendingCIAction,
+	)
+	if err != nil {
+		return fmt.Errorf("activate the pending CI command: %w", err)
+	}
+	if err := validateActionPendingCIActivation(fence, activation); err != nil {
+		return err
+	}
+	if err := removeActionPendingCIReaction(
+		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, closed.ID,
+	); err != nil {
+		return fmt.Errorf("open the pending CI command gate: %w", err)
+	}
+	if err := client.AddLabel(
+		ctx, runtime.RepoOwner, runtime.RepoName, pullRequest, label,
+	); err != nil {
+		return fmt.Errorf("arm the pending CI request: %w", err)
+	}
+
+	return nil
+}
+
+func validateActionPendingCIActivation(fence, activation github.Reaction) error {
+	if activation.ID == 0 || activation.CreatedAt.IsZero() ||
+		!newerActionPendingCIMarker(activation, fence) {
+		return errors.New(
+			"GitHub returned an incomplete pending CI command activation; reissue the command",
+		)
+	}
+
+	return nil
+}
+
+func removeActionPendingCILabel(
+	ctx context.Context,
+	client actionPendingCILabeler,
+	owner, repository string,
+	pullRequest int,
+	label string,
+) error {
+	err := client.RemoveLabel(ctx, owner, repository, pullRequest, label)
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
+
+	return err
+}
+
+type actionPendingCILabeler interface {
+	RemoveLabel(context.Context, string, string, int, string) error
+}
+
+func recordServicePendingCI(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	method github.MergeMethod,
+	info *github.PRInfo,
+	headRef string,
+	requiredChecksOnly bool,
+	label string,
+	mode storage.PendingCIMode,
+	environment CommandEnvironment,
+) (*feedback.Feedback, bool, error) {
+	artifactKind := pendingci.ArtifactLabel
+	if mode == storage.PendingCIModeChecks {
+		artifactKind = pendingci.ArtifactCheck
+	}
+	failures, err := activatePendingCI(
+		ctx, client, environment.PendingCI, environment.PendingCIActivation,
+		PendingCIActivationRequest{
+			Runtime: rc, Owner: rc.RepoOwner, Repository: rc.RepoName,
+			PullRequest: prNum, CommentID: commentID, HeadSHA: headRef,
+			BaseBranch: info.BaseBranch, Method: method,
+			RequiredChecksOnly: requiredChecksOnly, Label: label,
+			ArtifactKind: artifactKind, AllowDraftMerges: bc.AllowDraftMerges,
+		},
+	)
+	if err != nil {
+		return nil, true, err
+	}
+
+	return pendingCIActivationOutcome(failures)
+}
+
+func pendingCIActivationOutcome(
+	failures pendingCIActivationErrors,
+) (*feedback.Feedback, bool, error) {
+	if failures.Ready != nil {
+		return feedback.NewMergeFailed(failures.Ready.Error()), true, nil
+	}
+	if failures.Approval != nil {
+		return feedback.NewApprovalFailed(failures.Approval.Error()), true, nil
+	}
+	if failures.Label != nil {
+		return feedback.NewMergeFailed(
+			"failed to record the pending CI request: " + failures.Label.Error(),
+		), true, nil
+	}
+	if failures.Check != nil {
+		return feedback.NewMergeFailed(
+			"failed to record the pending CI check: " + failures.Check.Error(),
+		), true, nil
+	}
+	if failures.Reaction != nil {
+		return feedback.NewMergeFailed(
+			"failed to record the pending CI request: " + failures.Reaction.Error(),
+		), true, nil
+	}
+	if failures.Command != nil {
+		return nil, true, failures.Command
+	}
+	if failures.Stale || failures.StoodDown {
+		return nil, true, nil
+	}
+	if failures.Ambiguous {
+		return feedback.NewMergeFailed(
+			"GitHub reported multiple after-CI commands with the same timestamp; reissue the command to choose the intended merge method",
+		), true, nil
+	}
+
+	return nil, false, nil
 }
 
 // executeImmediateMerge performs the actual merge when CI has already passed
@@ -741,6 +1119,7 @@ func executeImmediateMerge(
 	method github.MergeMethod,
 	info *github.PRInfo,
 	expectedHead string,
+	authorize mergeAuthorizer,
 ) (*feedback.Feedback, error) {
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
@@ -749,29 +1128,40 @@ func executeImmediateMerge(
 			[]string{selfApprovalNotAllowed},
 		), nil
 	}
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
+	info, err := prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
 
-	// Check if bot already approved the PR
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
+		return failure, nil
+	}
 
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, rc.CommentAuthor)
-
-	// Approve the PR if neither bot nor user has already approved
-	if !botAlreadyApproved && !userAlreadyApproved {
-		if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
-			return feedback.NewApprovalFailed(err.Error()), nil
-		}
+	mergeAtHead := func(mergeMethod github.MergeMethod) error {
+		return runMergeAuthorizedEffect(
+			authorize,
+			func() error {
+				return client.MergePRAtHead(
+					ctx, rc.RepoOwner, rc.RepoName, prNum, mergeMethod, expectedHead,
+				)
+			},
+		)
 	}
 
 	// Merge the PR
-	if err := client.MergePRAtHead(ctx, rc.RepoOwner, rc.RepoName, prNum, method, expectedHead); err != nil {
+	if err := mergeAtHead(method); err != nil {
 		// Try fallback methods if merge commits not allowed
 		if method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePRAtHead(
-				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash, expectedHead,
-			); err != nil {
-				if err := client.MergePRAtHead(
-					ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase, expectedHead,
-				); err != nil {
+			if err := mergeAtHead(github.MergeMethodSquash); err != nil {
+				if err := mergeAtHead(github.MergeMethodRebase); err != nil {
 					return feedback.NewMergeFailed(err.Error()), nil
 				}
 			}

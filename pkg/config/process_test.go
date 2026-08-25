@@ -194,6 +194,25 @@ func layerSetting(source config.Source, prefix string) config.Layer {
 var _ = Describe("Precedence [Unit]", func() {
 	BeforeEach(clearEnv)
 
+	DescribeTable("loads allow_draft_merges through every process spelling",
+		func(setup func() *pflag.FlagSet) {
+			cfg, err := config.LoadProcess(setup())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.AllowDraftMerges).To(BeTrue())
+		},
+		Entry("config document", func() *pflag.FlagSet {
+			setEnv(config.EnvConfig, `{"allow_draft_merges":true}`)
+			return nil
+		}),
+		Entry("environment", func() *pflag.FlagSet {
+			setEnv(config.EnvVar(config.KeyAllowDraftMerges), "true")
+			return nil
+		}),
+		Entry("flag", func() *pflag.FlagSet {
+			return newFlags("--" + config.KeyAllowDraftMerges + "=true")
+		}),
+	)
+
 	for _, pair := range precedencePairs {
 		It(pair.higher+" beats "+pair.lower, func() {
 			Expect(pair.resolve()).To(Equal(pair.higher))

@@ -58,6 +58,18 @@ func TestDecideCancelsWhenAuthorizedBaseChanges(t *testing.T) {
 	}
 }
 
+func TestDecideCancelsWhenPullRequestReturnsToDraft(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC)
+	observation := policyObservation(now, ObservedPassing, "green")
+	observation.PullRequestDraft = true
+	decision := mustDecide(t, policyRequest(now, ObservedPassing, "green"), observation)
+	if decision.Kind != DecisionFinish || decision.Lifecycle != LifecycleCancelled ||
+		decision.Reason != DraftCancellationReason {
+		t.Fatalf("got %#v, want draft cancellation", decision)
+	}
+}
+
 func TestDecideRequiresCheckReauthorizationWhenAuthorizedRevisionChanges(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)

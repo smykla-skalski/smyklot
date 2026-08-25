@@ -12,7 +12,8 @@ import (
 
 type pendingCIArtifacts interface {
 	pendingCIApprover
-	GetPRInfo(context.Context, string, string, int) (*github.PRInfo, error)
+	draftMergeClient
+	draftMergeHistoryClient
 	GetLabels(context.Context, string, string, int) ([]string, error)
 	AddLabel(context.Context, string, string, int, string) error
 	RemoveLabel(context.Context, string, string, int, string) error
@@ -39,6 +40,7 @@ type PendingCIActivationRequest struct {
 	RequiredChecksOnly bool
 	Label              string
 	ArtifactKind       pendingci.ArtifactKind
+	AllowDraftMerges   bool
 }
 
 type pendingCIActivationErrors struct {
@@ -47,6 +49,7 @@ type pendingCIActivationErrors struct {
 	Reaction  error
 	Command   error
 	Check     error
+	Ready     error
 	Stale     bool
 	Ambiguous bool
 	StoodDown bool
@@ -86,7 +89,8 @@ func activatePendingCIExclusive(
 	if stopped {
 		return err
 	}
-	if pendingCIApprovalFailed(ctx, artifacts, request, failures) {
+	info, failed := preparePendingCIDraft(ctx, artifacts, command, request, failures)
+	if failed || pendingCIApprovalFailed(ctx, artifacts, request, info, failures) {
 		return nil
 	}
 	stopped, err = addPendingCIServiceReaction(
@@ -101,20 +105,43 @@ func activatePendingCIExclusive(
 	)
 }
 
+func preparePendingCIDraft(
+	ctx context.Context,
+	artifacts pendingCIArtifacts,
+	command *PendingCICommand,
+	request PendingCIActivationRequest,
+	failures *pendingCIActivationErrors,
+) (*github.PRInfo, bool) {
+	info, err := artifacts.GetPRInfo(
+		ctx, request.Owner, request.Repository, request.PullRequest,
+	)
+	if err == nil && request.AllowDraftMerges {
+		err = ValidateDraftMergeAuthorization(
+			ctx, artifacts, request.Owner, request.Repository,
+			request.PullRequest, command.SourceRevision,
+		)
+	}
+	if err == nil {
+		info, err = prepareDraftMerge(
+			ctx, artifacts, request.Owner, request.Repository, request.PullRequest,
+			request.AllowDraftMerges, info,
+		)
+	}
+	if err != nil {
+		failures.Ready = err
+		return nil, true
+	}
+
+	return info, false
+}
+
 func pendingCIApprovalFailed(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
 	request PendingCIActivationRequest,
+	info *github.PRInfo,
 	failures *pendingCIActivationErrors,
 ) bool {
-	info, err := artifacts.GetPRInfo(
-		ctx, request.Owner, request.Repository, request.PullRequest,
-	)
-	if err != nil {
-		failures.Approval = err
-
-		return true
-	}
 	if !PendingCIApprovalRequired(request.Runtime, info) {
 		return false
 	}
@@ -395,6 +422,12 @@ func resolveAmbiguousPendingCI(
 		"commands from different comments have an ambiguous source order",
 	)
 	if err != nil {
+		if errors.Is(err, pendingci.ErrAmbiguousSourceRevision) {
+			failures.Command = nil
+			failures.Ambiguous = true
+
+			return
+		}
 		failures.Command = errors.Join(failures.Command, err)
 
 		return

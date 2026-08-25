@@ -13,6 +13,7 @@ type RuntimeConfig struct {
 	Token               string
 	CommentBody         string
 	CommentID           string
+	CommentRevision     string
 	CommentAction       string
 	PRNumber            string
 	RepoOwner           string

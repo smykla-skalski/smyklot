@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -121,57 +122,10 @@ func (s *Store) FinishPR(
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI pull request finish target: %w", err)
 	}
-
-	result, err := tx.ExecContext(ctx, `
-UPDATE pending_ci_requests SET
-    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
-    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
-    cleanup_attempts = 0, cleanup_error = '',
-    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
-WHERE id = ? AND lifecycle = ? AND revision = ?`,
-		change.Lifecycle,
-		change.Reason,
-		change.FinishedAt,
-		pendingci.TriggerCleanup,
-		change.FinishedAt,
-		change.FinishedAt,
-		request.ID,
-		pendingci.LifecycleArmed,
-		request.Revision,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("finish pending CI pull request: %w", err)
-	}
-	changed, err := result.RowsAffected()
-	if err != nil {
-		return nil, fmt.Errorf("read pending CI pull request finish result: %w", err)
-	}
-	if changed != 1 {
-		return nil, storage.ErrConflict
-	}
-	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
-		request.ID,
-		pendingci.EventFinished,
-		change.Trigger,
-		string(change.Lifecycle),
-		change.Reason,
-		change.FinishedAt,
-	)); err != nil {
-		return nil, err
-	}
-	request.Lifecycle = change.Lifecycle
-	request.Reason = change.Reason
-	request.LeaseExpiresAt = nil
-	request.UpdatedAt = change.FinishedAt
-	request.FinishedAt = timePointer(change.FinishedAt)
-	request.NextCheckAt = change.FinishedAt
-	request.NextCheckTrigger = pendingci.TriggerCleanup
-	request.CleanupPending = true
-	request.CleanupArtifactsDone = false
-	request.CleanupAttempts = 0
-	request.CleanupError = ""
-	request.Revision++
-	if err := syncPendingCIQueue(ctx, tx, request); err != nil {
+	if err := finishPendingCIRequest(
+		ctx, tx, &request, change.Lifecycle, change.Trigger,
+		change.Reason, change.FinishedAt,
+	); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -179,6 +133,68 @@ WHERE id = ? AND lifecycle = ? AND revision = ?`,
 	}
 
 	return &request, nil
+}
+
+func finishPendingCIRequest(
+	ctx context.Context,
+	tx *transaction,
+	request *pendingci.Request,
+	lifecycle pendingci.Lifecycle,
+	trigger pendingci.Trigger,
+	reason string,
+	finishedAt time.Time,
+) error {
+	result, err := tx.ExecContext(ctx, `
+UPDATE pending_ci_requests SET
+    lifecycle = ?, reason = ?, next_check_at = ?, lease_expires_at = NULL,
+    cleanup_pending = TRUE, cleanup_artifacts_done = FALSE,
+    cleanup_attempts = 0, cleanup_error = '',
+    next_check_trigger = ?, updated_at = ?, finished_at = ?, revision = revision + 1
+WHERE id = ? AND lifecycle = ? AND revision = ?`,
+		lifecycle,
+		reason,
+		finishedAt,
+		pendingci.TriggerCleanup,
+		finishedAt,
+		finishedAt,
+		request.ID,
+		pendingci.LifecycleArmed,
+		request.Revision,
+	)
+	if err != nil {
+		return fmt.Errorf("finish pending CI pull request: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read pending CI pull request finish result: %w", err)
+	}
+	if changed != 1 {
+		return storage.ErrConflict
+	}
+	if err := recordPendingCIEvent(ctx, tx, pendingCIAuditEvent(
+		request.ID,
+		pendingci.EventFinished,
+		trigger,
+		string(lifecycle),
+		reason,
+		finishedAt,
+	)); err != nil {
+		return err
+	}
+	request.Lifecycle = lifecycle
+	request.Reason = reason
+	request.LeaseExpiresAt = nil
+	request.UpdatedAt = finishedAt
+	request.FinishedAt = timePointer(finishedAt)
+	request.NextCheckAt = finishedAt
+	request.NextCheckTrigger = pendingci.TriggerCleanup
+	request.CleanupPending = true
+	request.CleanupArtifactsDone = false
+	request.CleanupAttempts = 0
+	request.CleanupError = ""
+	request.Revision++
+
+	return syncPendingCIQueue(ctx, tx, *request)
 }
 
 // CancelRepository terminalizes every armed request before the service hands

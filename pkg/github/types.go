@@ -1,5 +1,7 @@
 package github
 
+import "time"
+
 // Installation represents one installation of the GitHub App
 type Installation struct {
 	// ID identifies the installation, and is what an installation token is
@@ -127,6 +129,9 @@ type PRInfo struct {
 	// Mergeable indicates whether the PR can be merged (no conflicts)
 	Mergeable bool
 
+	// Draft reports whether the pull request is still a draft.
+	Draft bool
+
 	// MergeableState provides detailed merge state (clean, dirty, blocked, unstable, unknown)
 	MergeableState MergeableState
 
@@ -192,11 +197,17 @@ const (
 
 // Reaction represents a reaction on a comment
 type Reaction struct {
+	// ID is GitHub's immutable identifier for this reaction.
+	ID int64
+
 	// Type is the reaction type
 	Type ReactionType
 
 	// User is the username of the user who reacted
 	User string
+
+	// CreatedAt is GitHub's durable authorization timestamp for the reaction.
+	CreatedAt time.Time
 }
 
 // MergeMethod represents the type of merge method to use

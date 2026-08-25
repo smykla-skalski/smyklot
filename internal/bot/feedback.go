@@ -29,6 +29,18 @@ func PostFeedback(
 			return NewGitHubError(errPostComment, err)
 		}
 	}
+	if reaction == ReactionPendingCI {
+		// The existing eyes reaction is the durable pre-activation fence for an
+		// Action-mode pending request. GitHub returns that reaction when the bot
+		// already left it, so adding it again preserves its creation time.
+		if err := client.AddReaction(
+			ctx, rc.RepoOwner, rc.RepoName, commentID, reaction,
+		); err != nil {
+			return NewGitHubError(errAddReaction, err)
+		}
+
+		return nil
+	}
 
 	// Remove eyes reaction after the operation completes
 	_ = client.RemoveReactionByUser(

@@ -357,6 +357,23 @@ type FinishPRRequest struct {
 	FinishedAt   time.Time
 }
 
+// DraftTransitionRequest records GitHub's durable ordering boundary for a
+// pull request becoming draft. DraftedAt and command source revisions both
+// come from GitHub, so delivery order and service clock skew cannot revive an
+// older merge command.
+type DraftTransitionRequest struct {
+	RepositoryID string
+	PullRequest  int
+	EventKey     string
+	DraftedAt    time.Time
+	RecordedAt   time.Time
+}
+
+type DraftTransitionResult struct {
+	Changed  bool
+	Finished *Request
+}
+
 type CancelRepositoryRequest struct {
 	RepositoryID string
 	Reason       string
@@ -405,6 +422,7 @@ type Observation struct {
 	BaseBranch        string
 	PullRequestOpen   bool
 	PullRequestMerged bool
+	PullRequestDraft  bool
 	PendingLabelFound bool
 	CancelReason      string
 	State             ObservedState
@@ -413,6 +431,10 @@ type Observation struct {
 	ObservedAt        time.Time
 	PassingQuiet      *time.Duration
 }
+
+// DraftCancellationReason explains why a later draft transition invalidates
+// the earlier merge authorization.
+const DraftCancellationReason = "pull request was converted back to draft after command authorization"
 
 // Timing controls fallback frequency and the green stability window.
 type Timing struct {
@@ -465,6 +487,7 @@ type Store interface {
 	RetryCleanup(context.Context, RetryCleanupRequest) (Request, error)
 	CancelBySource(context.Context, CancelRequest) (*Request, error)
 	CancelByIntent(context.Context, CancelIntentRequest) (CancelIntentResult, error)
+	RecordDraftTransition(context.Context, DraftTransitionRequest) (DraftTransitionResult, error)
 	FinishPR(context.Context, FinishPRRequest) (*Request, error)
 	CancelRepository(context.Context, CancelRepositoryRequest) ([]Request, error)
 	HasPendingCleanup(context.Context, CleanupFilter) (bool, error)

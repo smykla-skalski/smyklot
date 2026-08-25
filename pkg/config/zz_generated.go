@@ -59,6 +59,11 @@ type Config struct {
 	// default: an approval is meant to be a second pair of eyes.
 	AllowSelfApproval bool `json:"allow_self_approval"`
 
+	// AllowDraftMerges lets a merge command mark a draft pull request ready
+	// for review before continuing. Off by default: drafts stay protected
+	// until a person explicitly publishes them.
+	AllowDraftMerges bool `json:"allow_draft_merges"`
+
 	// Runner names the entry point that acts on this repository, so the other
 	// one stands down. It is settable only in the repository's own file: the
 	// panel cannot write it, because a repository that has moved back to the
@@ -125,6 +130,9 @@ const (
 	// KeyAllowSelfApproval addresses allow_self_approval.
 	KeyAllowSelfApproval = "allow_self_approval"
 
+	// KeyAllowDraftMerges addresses allow_draft_merges.
+	KeyAllowDraftMerges = "allow_draft_merges"
+
 	// KeyRunner addresses runner.
 	KeyRunner = "runner"
 )
@@ -147,6 +155,7 @@ func Default() *Config {
 		DisableReactions:       false,
 		DisableDeletedComments: false,
 		AllowSelfApproval:      false,
+		AllowDraftMerges:       false,
 		Runner:                 "service",
 	}
 }
@@ -166,6 +175,7 @@ func Keys() []string {
 		KeyDisableReactions,
 		KeyDisableDeletedComments,
 		KeyAllowSelfApproval,
+		KeyAllowDraftMerges,
 		KeyRunner,
 	}
 }
@@ -203,6 +213,7 @@ func (c Config) AsPatch() Patch {
 		DisableReactions:       &c.DisableReactions,
 		DisableDeletedComments: &c.DisableDeletedComments,
 		AllowSelfApproval:      &c.AllowSelfApproval,
+		AllowDraftMerges:       &c.AllowDraftMerges,
 		Runner:                 &c.Runner,
 	}
 }
@@ -213,7 +224,7 @@ func (c Config) AsPatch() Patch {
 // only the pointers can answer. Counting or enumerating them by hand is how a
 // key comes to be left out of one caller and not another.
 func (p Patch) SetKeys() []string {
-	keys := make([]string, 0, 13)
+	keys := make([]string, 0, 14)
 
 	if p.QuietSuccess != nil {
 		keys = append(keys, KeyQuietSuccess)
@@ -263,6 +274,10 @@ func (p Patch) SetKeys() []string {
 		keys = append(keys, KeyAllowSelfApproval)
 	}
 
+	if p.AllowDraftMerges != nil {
+		keys = append(keys, KeyAllowDraftMerges)
+	}
+
 	if p.Runner != nil {
 		keys = append(keys, KeyRunner)
 	}
@@ -294,6 +309,7 @@ func RegisterFlags(flags *pflag.FlagSet) {
 	flags.Bool(KeyDisableReactions, defaults.DisableReactions, "Stops a reaction on the pull request body counting as a command at all.")
 	flags.Bool(KeyDisableDeletedComments, defaults.DisableDeletedComments, "Stops Smyklot reporting that a comment carrying a command was deleted.")
 	flags.Bool(KeyAllowSelfApproval, defaults.AllowSelfApproval, "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.")
+	flags.Bool(KeyAllowDraftMerges, defaults.AllowDraftMerges, "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them.")
 
 	registerConfigFileFlag(flags)
 }
@@ -430,6 +446,15 @@ func envPatch(lookup func(string) (string, bool)) (Patch, error) {
 		patch.AllowSelfApproval = &value
 	}
 
+	if raw, ok := lookup(EnvVar(KeyAllowDraftMerges)); ok && raw != "" {
+		value, err := parseBool(KeyAllowDraftMerges, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.AllowDraftMerges = &value
+	}
+
 	if raw, ok := lookup(EnvVar(KeyRunner)); ok && raw != "" {
 		value := Runner(raw)
 		patch.Runner = &value
@@ -560,6 +585,15 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.AllowSelfApproval = &value
 	}
 
+	if flags.Changed(KeyAllowDraftMerges) {
+		value, err := flags.GetBool(KeyAllowDraftMerges)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		patch.AllowDraftMerges = &value
+	}
+
 	return patch, nil
 }
 
@@ -576,6 +610,7 @@ func applyPatch(values *Config, patch Patch, sources map[string]Source, source S
 	set(&values.DisableReactions, patch.DisableReactions, sources, KeyDisableReactions, source)
 	set(&values.DisableDeletedComments, patch.DisableDeletedComments, sources, KeyDisableDeletedComments, source)
 	set(&values.AllowSelfApproval, patch.AllowSelfApproval, sources, KeyAllowSelfApproval, source)
+	set(&values.AllowDraftMerges, patch.AllowDraftMerges, sources, KeyAllowDraftMerges, source)
 	set(&values.Runner, patch.Runner, sources, KeyRunner, source)
 }
 
@@ -593,6 +628,7 @@ func processSources() map[string]Source {
 		KeyDisableReactions:       SourceProcess,
 		KeyDisableDeletedComments: SourceProcess,
 		KeyAllowSelfApproval:      SourceProcess,
+		KeyAllowDraftMerges:       SourceProcess,
 		KeyRunner:                 SourceProcess,
 	}
 }

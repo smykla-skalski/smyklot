@@ -538,6 +538,19 @@ func NewPendingCIFailed(reason string) *Feedback {
 	}
 }
 
+// NewPendingCICancelled explains a non-CI safety cancellation.
+func NewPendingCICancelled(reason string) *Feedback {
+	message := fmt.Sprintf(
+		"⚠️ **Pending Merge Cancelled**\n\n"+
+			"The pending merge has been cancelled.\n\n"+
+			"**Reason:** %s\n\n"+
+			"Mark the pull request ready and issue a new merge command to continue.",
+		reason,
+	)
+
+	return &Feedback{Type: Warning, Emoji: warningEmoji, Message: message}
+}
+
 // NewHelp creates help feedback with usage instructions
 func NewHelp() *Feedback {
 	message := "ℹ️ **Smyklot Bot - Help**\n\n" +

@@ -4,6 +4,7 @@ import { PanelApiError } from '../src/lib/api';
 import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '../src/lib/root-settings-save';
 import {
   adoptRuntimeSettings,
+  buildRuntimeSettingsDraftDocument,
   parseRuntimeSettingsDraftDocument,
   RUNTIME_DURATION_SPECS,
   RUNTIME_RESOURCE,
@@ -37,6 +38,22 @@ function runtime(over: Partial<RootRuntimeSettings> = {}): RootRuntimeSettings {
 }
 
 describe('Root runtime settings drafts [Unit]', () => {
+  it('hydrates legacy full-config documents with the safe draft-merge default', () => {
+    const current = runtime({
+      behavior_defaults: {
+        deployment: RUNTIME.behavior_defaults.deployment,
+        override: { ...RUNTIME.behavior_defaults.deployment },
+        effective: RUNTIME.behavior_defaults.effective,
+      },
+    });
+    const legacy = buildRuntimeSettingsDraftDocument(current);
+    delete (legacy.bot_config as Record<string, unknown>).allow_draft_merges;
+
+    const parsed = parseRuntimeSettingsDraftDocument(legacy);
+
+    expect(parsed?.bot_config?.allow_draft_merges).toBe(false);
+  });
+
   it('persists bounded raw duration input and refuses it before the wire', () => {
     const storage = memoryStorage();
     const first = registry(storage);

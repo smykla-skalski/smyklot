@@ -36,12 +36,46 @@ func (c *Client) AddPullRequestReaction(
 	pullRequest int,
 	reactionType ReactionType,
 ) error {
-	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, pullRequest)
-	_, _, err := c.gh.Reactions.CreateIssueReaction(
-		ctx, owner, repo, pullRequest, string(reactionType),
+	_, err := c.AddPullRequestReactionState(
+		ctx, owner, repo, pullRequest, reactionType,
 	)
 
-	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	return err
+}
+
+// AddPullRequestReactionState adds a reaction and returns its durable state.
+func (c *Client) AddPullRequestReactionState(
+	ctx context.Context,
+	owner, repo string,
+	pullRequest int,
+	reactionType ReactionType,
+) (Reaction, error) {
+	path := fmt.Sprintf("/repos/%s/%s/issues/%d/reactions", owner, repo, pullRequest)
+	created, _, err := c.gh.Reactions.CreateIssueReaction(
+		ctx, owner, repo, pullRequest, string(reactionType),
+	)
+	if err != nil {
+		return Reaction{}, wrapError(ErrAPIRequest, http.MethodPost, path, err)
+	}
+
+	return convertReaction(created), nil
+}
+
+// RemovePullRequestReaction removes one exact reaction from the pull request.
+func (c *Client) RemovePullRequestReaction(
+	ctx context.Context,
+	owner, repo string,
+	pullRequest int,
+	reactionID int64,
+) error {
+	path := fmt.Sprintf(
+		"/repos/%s/%s/issues/%d/reactions/%d", owner, repo, pullRequest, reactionID,
+	)
+	_, err := c.gh.Reactions.DeleteIssueReaction(
+		ctx, owner, repo, pullRequest, reactionID,
+	)
+
+	return wrapError(ErrAPIRequest, http.MethodDelete, path, err)
 }
 
 // RemovePullRequestReactionByUser removes one user's matching reaction from

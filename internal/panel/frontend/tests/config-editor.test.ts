@@ -40,4 +40,20 @@ describe('ConfigEditor drafts [Component]', () => {
     expect(screen.getByLabelText('Success replies').closest('[data-unsaved]')).not.toBeNull();
     expect(screen.getByLabelText('Prefix').closest('[data-unsaved]')).toBeNull();
   });
+
+  it('stages the draft-merge opt-in as a positive boolean', async () => {
+    const onChange = vi.fn();
+    render(ConfigEditor, {
+      patch: { allow_draft_merges: false },
+      inherited: CONFIG,
+      scope: 'target',
+      idPrefix: 'draft-merge',
+      section: 'behavior',
+      onChange,
+    });
+
+    await fireEvent.click(screen.getByLabelText('Merge draft pull requests'));
+
+    expect(onChange).toHaveBeenCalledWith({ allow_draft_merges: true }, 'allow_draft_merges');
+  });
 });

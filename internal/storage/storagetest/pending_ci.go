@@ -614,6 +614,62 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(events[1].Trigger).To(Equal(pendingci.TriggerWebhook))
 	})
 
+	It("orders draft transitions and commands by GitHub source time", func() {
+		ctx, store, now := runtime()
+		draftedAt := now.Add(time.Minute)
+		barrier, err := store.RecordDraftTransition(ctx, pendingci.DraftTransitionRequest{
+			RepositoryID: "repository-20", PullRequest: 199,
+			EventKey:  "pull_request:9001:199:converted_to_draft",
+			DraftedAt: draftedAt, RecordedAt: now.Add(time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(barrier.Changed).To(BeTrue())
+		Expect(barrier.Finished).To(BeNil())
+
+		delayed := pendingCIArm(now.Add(2*time.Hour), 199, 102, "delayed-head")
+		delayed.SourceRevision = now.Format(time.RFC3339Nano)
+		_, err = store.Arm(ctx, delayed)
+		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
+
+		ambiguous := pendingCIArm(now.Add(2*time.Hour), 199, 103, "ambiguous-head")
+		ambiguous.SourceRevision = draftedAt.Format(time.RFC3339Nano)
+		_, err = store.Arm(ctx, ambiguous)
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
+		_, err = store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
+			RepositoryID: ambiguous.RepositoryID, PullRequest: ambiguous.PullRequest,
+			CommentID: ambiguous.SourceCommentID, SourceRevision: ambiguous.SourceRevision,
+			SourceSequence: ambiguous.SourceSequence, SourceOrder: ambiguous.SourceOrder,
+			Reason: "same-second immediate merge", CancelledAt: now.Add(2 * time.Hour),
+		})
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
+
+		fresh := pendingCIArm(now.Add(2*time.Hour), 199, 104, "fresh-head")
+		fresh.SourceRevision = draftedAt.Add(time.Second).Format(time.RFC3339Nano)
+		armed, err := store.Arm(ctx, fresh)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(armed.Request.ID).NotTo(BeZero())
+
+		staleDraft, err := store.RecordDraftTransition(ctx, pendingci.DraftTransitionRequest{
+			RepositoryID: fresh.RepositoryID, PullRequest: fresh.PullRequest,
+			EventKey:  "pull_request:9001:199:older-draft",
+			DraftedAt: draftedAt, RecordedAt: now.Add(3 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(staleDraft.Changed).To(BeFalse())
+		current, err := store.GetArmed(ctx, fresh.RepositoryID, fresh.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.ID).To(Equal(armed.Request.ID))
+
+		cancelled, err := store.RecordDraftTransition(ctx, pendingci.DraftTransitionRequest{
+			RepositoryID: fresh.RepositoryID, PullRequest: fresh.PullRequest,
+			EventKey:  "pull_request:9001:199:newer-draft",
+			DraftedAt: draftedAt.Add(2 * time.Second), RecordedAt: now.Add(4 * time.Hour),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cancelled.Changed).To(BeTrue())
+		Expect(cancelled.Finished.ID).To(Equal(armed.Request.ID))
+	})
+
 	It("persists the pending CI lifecycle and its crash-safe cleanup phases", func() {
 		ctx, store, now := runtime()
 		arm := pendingCIArm(now, 198, 101, "cleanup-head")

@@ -137,7 +137,8 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	command := &PendingCICommand{
 		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
-		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+		SourceRevision: "2026-08-25T08:02:00Z",
+		Now:            func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
 	failures, err := activatePendingCI(
@@ -276,7 +277,7 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 	t.Parallel()
 	approved := false
 	artifacts := &pendingCIArtifactsStub{
-		info: &github.PRInfo{},
+		info: &github.PRInfo{Draft: true},
 		approve: func() error {
 			approved = true
 
@@ -298,6 +299,7 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 			Owner:   "owner", Repository: "repository", PullRequest: 198,
 			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
 			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
+			AllowDraftMerges: true,
 		},
 	)
 	if err != nil {
@@ -309,8 +311,71 @@ func TestPendingCIActivationRejectsStaleSourceBeforeApproval(t *testing.T) {
 	if approved {
 		t.Fatal("stale activation approved the pull request")
 	}
+	if artifacts.readyCalls != 0 {
+		t.Fatal("stale activation marked the pull request ready for review")
+	}
 	if len(artifacts.addedLabels) != 0 {
 		t.Fatalf("stale activation added labels: %v", artifacts.addedLabels)
+	}
+}
+
+func TestPendingCIActivationPreparesDraftAfterAcceptance(t *testing.T) {
+	t.Parallel()
+	artifacts := &pendingCIArtifactsStub{
+		info: &github.PRInfo{Draft: true, ApprovedBy: []string{"operator"}},
+	}
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		SourceRevision: "2026-08-25T08:02:00Z",
+		Now:            func() time.Time { return time.Now().UTC() }, Wake: func() {},
+	}
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
+			AllowDraftMerges: true,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failures.Ready != nil || artifacts.readyCalls != 1 {
+		t.Fatalf("failures = %+v, ready calls = %d", failures, artifacts.readyCalls)
+	}
+	if !equalStrings(artifacts.addedLabels, []string{LabelPendingCISquash}) {
+		t.Fatalf("added labels = %v", artifacts.addedLabels)
+	}
+}
+
+func TestPendingCIActivationRejectsDraftWhenDisabled(t *testing.T) {
+	t.Parallel()
+	artifacts := &pendingCIArtifactsStub{info: &github.PRInfo{Draft: true}}
+	command := &PendingCICommand{
+		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+	}
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.Is(failures.Ready, errDraftMergeDisabled) {
+		t.Fatalf("ready failure = %v", failures.Ready)
+	}
+	if artifacts.readyCalls != 0 || len(artifacts.addedLabels) != 0 {
+		t.Fatalf("unexpected effects: ready=%d labels=%v", artifacts.readyCalls, artifacts.addedLabels)
 	}
 }
 
@@ -378,6 +443,36 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	}
 	if !equalStrings(artifacts.removedLabels, []string{LabelPendingCISquash}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
+func TestPendingCIActivationReportsAmbiguousDraftBoundary(t *testing.T) {
+	t.Parallel()
+	artifacts := &pendingCIArtifactsStub{}
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
+			getErr:      storage.ErrNotFound,
+			checkArmErr: pendingci.ErrAmbiguousSourceRevision,
+			finishErr:   pendingci.ErrAmbiguousSourceRevision,
+		},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failures.Ambiguous || failures.Command != nil {
+		t.Fatalf("activation failures = %+v", failures)
 	}
 }
 
@@ -565,6 +660,8 @@ type pendingCIArtifactsStub struct {
 	approve           func() error
 	info              *github.PRInfo
 	infoErr           error
+	readyCalls        int
+	readyErr          error
 }
 
 func (stub *pendingCIArtifactsStub) ApprovePR(
@@ -591,6 +688,29 @@ func (stub *pendingCIArtifactsStub) GetPRInfo(
 	}
 
 	return &github.PRInfo{ApprovedBy: []string{"operator"}}, nil
+}
+
+func (stub *pendingCIArtifactsStub) MarkPullRequestReadyForReview(
+	context.Context,
+	string,
+	string,
+	int,
+) error {
+	stub.readyCalls++
+	if stub.readyErr == nil && stub.info != nil {
+		stub.info.Draft = false
+	}
+
+	return stub.readyErr
+}
+
+func (stub *pendingCIArtifactsStub) LatestPullRequestDraftTransition(
+	context.Context,
+	string,
+	string,
+	int,
+) (time.Time, bool, error) {
+	return time.Time{}, false, nil
 }
 
 func (stub *pendingCIArtifactsStub) GetLabels(

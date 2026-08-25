@@ -26,6 +26,7 @@ const EFFECTIVE: ConfigValues = {
   disable_reactions: false,
   disable_deleted_comments: false,
   allow_self_approval: false,
+  allow_draft_merges: false,
 };
 
 describe('configuration patches', () => {

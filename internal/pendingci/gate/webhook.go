@@ -96,6 +96,17 @@ func (g *Gate) applyPendingCISignal(
 		}
 
 		return 0, err
+	case pendingci.SignalPullRequestDraft:
+		result, err := g.store.RecordDraftTransition(ctx, pendingci.DraftTransitionRequest{
+			RepositoryID: repositoryID, PullRequest: signal.PullRequest,
+			EventKey: signal.EventKey, DraftedAt: signal.OccurredAt,
+			RecordedAt: occurredAt,
+		})
+		if err != nil || !result.Changed {
+			return 0, err
+		}
+
+		return 1, nil
 	case pendingci.SignalWakeHead:
 		return g.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,

@@ -195,6 +195,13 @@ var _ = Describe("pending CI webhook notifications [Unit]", func() {
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(opened.Signals[0].Kind).To(Equal(pendingci.SignalWakePullRequest))
+		drafted, err := parseNotification(
+			webhook.EventPullRequest,
+			payload("converted_to_draft", "", false),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(drafted.Signals[0].Kind).To(Equal(pendingci.SignalPullRequestDraft))
+		Expect(drafted.Signals[0].OccurredAt).NotTo(BeZero())
 
 		closed, err := parseNotification(
 			webhook.EventPullRequest,

@@ -30,6 +30,7 @@ var runEnv = []string{
 	bot.EnvGitHubToken,
 	bot.EnvCommentBody,
 	bot.EnvCommentID,
+	bot.EnvCommentRevision,
 	bot.EnvCommentAction,
 	bot.EnvPRNumber,
 	bot.EnvRepoOwner,
@@ -175,15 +176,16 @@ func runCommentOn(
 	}
 
 	settings := map[string]string{
-		bot.EnvGitHubToken:   "test-token",
-		bot.EnvAPIBaseURL:    server.URL,
-		bot.EnvCommentAction: commentAction,
-		bot.EnvCommentBody:   commentBody,
-		bot.EnvCommentID:     "555",
-		bot.EnvPRNumber:      "42",
-		bot.EnvRepoOwner:     "smykla-skalski",
-		bot.EnvRepoName:      "smyklot",
-		bot.EnvCommentAuthor: "someone",
+		bot.EnvGitHubToken:     "test-token",
+		bot.EnvAPIBaseURL:      server.URL,
+		bot.EnvCommentAction:   commentAction,
+		bot.EnvCommentBody:     commentBody,
+		bot.EnvCommentID:       "555",
+		bot.EnvCommentRevision: "2026-08-25T08:00:00Z",
+		bot.EnvPRNumber:        "42",
+		bot.EnvRepoOwner:       "smykla-skalski",
+		bot.EnvRepoName:        "smyklot",
+		bot.EnvCommentAuthor:   "someone",
 
 		// These specs exercise the Action, which stands down by default now
 		// that the service handles a repository that says nothing

@@ -567,7 +567,8 @@ func supportedConfigOverride(key string) bool {
 		config.KeyDisableUnapprove,
 		config.KeyDisableReactions,
 		config.KeyDisableDeletedComments,
-		config.KeyAllowSelfApproval:
+		config.KeyAllowSelfApproval,
+		config.KeyAllowDraftMerges:
 		return true
 	default:
 		return false

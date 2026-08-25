@@ -14,6 +14,7 @@ import (
 const (
 	pendingCIIntentArm    = "arm"
 	pendingCIIntentCancel = "cancel"
+	pendingCIIntentDraft  = "draft"
 )
 
 type pendingCIIntent struct {
@@ -25,6 +26,101 @@ type pendingCIIntent struct {
 	order        int64
 	kind         string
 	recordedAt   time.Time
+}
+
+// RecordDraftTransition stores a PR-level barrier before touching the armed
+// request. Both this boundary and command source revisions use GitHub time, so
+// delayed delivery and service clock skew cannot revive an older command.
+func (s *Store) RecordDraftTransition(
+	ctx context.Context,
+	change pendingci.DraftTransitionRequest,
+) (pendingci.DraftTransitionResult, error) {
+	if err := change.Validate(); err != nil {
+		return pendingci.DraftTransitionResult{}, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return pendingci.DraftTransitionResult{}, fmt.Errorf(
+			"begin pending CI draft transition: %w", err,
+		)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	request, err := getArmedPendingCI(ctx, tx, change.RepositoryID, change.PullRequest)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return pendingci.DraftTransitionResult{}, fmt.Errorf(
+			"read pending CI draft transition target: %w", err,
+		)
+	}
+	if request.ID != 0 {
+		newer, compareErr := pendingCISourceIsAfter(request.SourceRevision, change.DraftedAt)
+		if compareErr != nil {
+			return pendingci.DraftTransitionResult{}, compareErr
+		}
+		if newer {
+			return pendingci.DraftTransitionResult{}, nil
+		}
+	}
+	intent, err := latestPendingCIIntent(ctx, tx, change.RepositoryID, change.PullRequest)
+	if err != nil {
+		return pendingci.DraftTransitionResult{}, err
+	}
+	accept, err := acceptsPendingCIDraftTransition(change.DraftedAt, intent)
+	if err != nil || !accept {
+		return pendingci.DraftTransitionResult{}, err
+	}
+	if err := recordPendingCIIntent(ctx, tx, pendingCIIntent{
+		repositoryID: change.RepositoryID, pullRequest: change.PullRequest,
+		revision: change.DraftedAt.UTC().Format(time.RFC3339Nano),
+		kind:     pendingCIIntentDraft, recordedAt: change.RecordedAt,
+	}); err != nil {
+		return pendingci.DraftTransitionResult{}, err
+	}
+	result := pendingci.DraftTransitionResult{Changed: true}
+	if request.ID != 0 {
+		if err := finishPendingCIRequest(
+			ctx, tx, &request, pendingci.LifecycleCancelled,
+			pendingci.TriggerWebhook, pendingci.DraftCancellationReason,
+			change.RecordedAt,
+		); err != nil {
+			return pendingci.DraftTransitionResult{}, err
+		}
+		result.Finished = &request
+	}
+	if err := tx.Commit(); err != nil {
+		return pendingci.DraftTransitionResult{}, fmt.Errorf(
+			"commit pending CI draft transition: %w", err,
+		)
+	}
+
+	return result, nil
+}
+
+func pendingCISourceIsAfter(revision string, boundary time.Time) (bool, error) {
+	sourceAt, err := pendingci.ParseSourceRevision(revision)
+	if err != nil {
+		return false, err
+	}
+
+	return sourceAt.After(boundary), nil
+}
+
+func acceptsPendingCIDraftTransition(
+	draftedAt time.Time,
+	intent *pendingCIIntent,
+) (bool, error) {
+	if intent == nil {
+		return true, nil
+	}
+	intentAt, err := pendingci.ParseSourceRevision(intent.revision)
+	if err != nil {
+		return false, err
+	}
+	if intent.kind == pendingCIIntentDraft {
+		return draftedAt.After(intentAt), nil
+	}
+
+	return !draftedAt.Before(intentAt), nil
 }
 
 // CancelByIntent records cleanup before terminalizing the current request.
@@ -187,6 +283,13 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	if err != nil || intent == nil {
 		return false, false, err
 	}
+	if intent.kind == pendingCIIntentDraft {
+		comparison, compareErr := comparePendingCIDraftBoundary(
+			change.SourceRevision, intent.revision,
+		)
+
+		return comparison < 0, false, compareErr
+	}
 	comparison, err := pendingci.CompareSourceIntent(
 		change.SourceRevision, change.CommentID, change.SourceOrder,
 		intent.revision, intent.commentID, intent.order,
@@ -237,6 +340,13 @@ func comparePendingCIArmIntent(
 	if err != nil || intent == nil {
 		return false, false, err
 	}
+	if intent.kind == pendingCIIntentDraft {
+		comparison, compareErr := comparePendingCIDraftBoundary(
+			arm.SourceRevision, intent.revision,
+		)
+
+		return comparison < 0, false, compareErr
+	}
 	comparison, err := pendingci.CompareSourceIntent(
 		arm.SourceRevision, arm.SourceCommentID, arm.SourceOrder,
 		intent.revision, intent.commentID, intent.order,
@@ -246,6 +356,25 @@ func comparePendingCIArmIntent(
 	}
 
 	return comparison < 0, comparison == 0, nil
+}
+
+func comparePendingCIDraftBoundary(sourceRevision, draftRevision string) (int, error) {
+	sourceAt, err := pendingci.ParseSourceRevision(sourceRevision)
+	if err != nil {
+		return 0, err
+	}
+	draftedAt, err := pendingci.ParseSourceRevision(draftRevision)
+	if err != nil {
+		return 0, err
+	}
+	if sourceAt.Before(draftedAt) {
+		return -1, nil
+	}
+	if sourceAt.After(draftedAt) {
+		return 1, nil
+	}
+
+	return 0, pendingci.ErrAmbiguousSourceRevision
 }
 
 func recordPendingCIIntent(ctx context.Context, tx *transaction, intent pendingCIIntent) error {

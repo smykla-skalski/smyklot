@@ -136,8 +136,9 @@ func (backend *Backend) Observe(
 
 	return pendingci.Observation{
 		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-		State: observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
+		PullRequestMerged: state.Merged, PullRequestDraft: state.Draft,
+		PendingLabelFound: labelFound,
+		State:             observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
 		Summary: checks.Summary, ObservedAt: observedAt, PassingQuiet: passingQuiet,
 	}, nil
 }
@@ -270,8 +271,9 @@ func pullRequestObservation(
 ) pendingci.Observation {
 	return pendingci.Observation{
 		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-		State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		PullRequestMerged: state.Merged, PullRequestDraft: state.Draft,
+		PendingLabelFound: labelFound,
+		State:             pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 	}
 }
 
@@ -352,17 +354,26 @@ func (backend *Backend) MergeAtHead(
 	if err != nil {
 		return err
 	}
+	authorize := func() error {
+		return validatePendingCIDraftAuthorization(
+			ctx, client, owner, repository, request,
+		)
+	}
 
 	method := github.MergeMethod(request.MergeMethod)
 	if request.ArtifactKind == pendingci.ArtifactCheck {
+		if err := authorize(); err != nil {
+			return err
+		}
+
 		return mergePendingPRAtHeadWithoutQueue(
 			ctx, client, owner, repository, request.PullRequest,
-			method, request.BaseBranch, headSHA,
+			method, request.BaseBranch, headSHA, authorize,
 		)
 	}
 
 	return bot.MergePendingPRAtHead(
-		ctx, client, owner, repository, request.PullRequest, method, headSHA,
+		ctx, client, owner, repository, request.PullRequest, method, headSHA, authorize,
 	)
 }
 
@@ -375,12 +386,13 @@ func mergePendingPRAtHeadWithoutQueue(
 	method github.MergeMethod,
 	baseBranch string,
 	headSHA string,
+	authorize func() error,
 ) error {
 	state, err := client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
 		return fmt.Errorf("read final pending CI merge revision: %w", err)
 	}
-	if !state.Open || state.HeadSHA != headSHA || state.BaseBranch != baseBranch {
+	if !state.Open || state.Draft || state.HeadSHA != headSHA || state.BaseBranch != baseBranch {
 		return errors.New("pending CI merge revision changed after check authorization")
 	}
 	mergeQueue, err := client.IsMergeQueueEnabled(
@@ -395,6 +407,9 @@ func mergePendingPRAtHeadWithoutQueue(
 			state.BaseBranch,
 		)
 	}
+	if err := authorize(); err != nil {
+		return fmt.Errorf("revalidate final pending CI merge authorization: %w", err)
+	}
 
 	// The method is part of the exact authorization. Action mode retains its
 	// legacy merge-to-squash-to-rebase fallback, but a durable check request
@@ -408,6 +423,11 @@ func (backend *Backend) SatisfyCheck(
 ) error {
 	client, owner, repository, err := backend.client(ctx, request)
 	if err != nil {
+		return err
+	}
+	if err := validatePendingCIDraftAuthorization(
+		ctx, client, owner, repository, request,
+	); err != nil {
 		return err
 	}
 	if err := preflightPendingCICheckMerge(
@@ -425,6 +445,21 @@ func (backend *Backend) SatisfyCheck(
 	_, err = backend.checkRuns.EnsureMergeReady(ctx, slot)
 
 	return err
+}
+
+func validatePendingCIDraftAuthorization(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	request pendingci.Request,
+) error {
+	if err := bot.ValidateDraftMergeAuthorization(
+		ctx, client, owner, repository, request.PullRequest, request.SourceRevision,
+	); err != nil {
+		return fmt.Errorf("verify pending CI draft history: %w", err)
+	}
+
+	return nil
 }
 
 func preflightPendingCICheckMerge(

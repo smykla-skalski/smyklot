@@ -18,6 +18,7 @@
     "disable_reactions": {"type": "boolean", "description": "Stops a reaction on the pull request body counting as a command at all.", "default": false},
     "disable_deleted_comments": {"type": "boolean", "description": "Stops Smyklot reporting that a comment carrying a command was deleted.", "default": false},
     "allow_self_approval": {"type": "boolean", "description": "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.", "default": false},
+    "allow_draft_merges": {"type": "boolean", "description": "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them.", "default": false},
     "runner": {"type": "string", "description": "Names the entry point that acts on this repository, so the other one stands down. It is settable only in the repository's own file: the panel cannot write it, because a repository that has moved back to the Action must be able to say so itself.", "enum": ["service","action"], "default": "service"}
   }
 }

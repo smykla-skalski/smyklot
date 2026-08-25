@@ -21,10 +21,14 @@ func TestPullRequestServiceReactionLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := client.AddPullRequestReaction(
+	created, err := client.AddPullRequestReactionState(
 		t.Context(), "owner", "repo", 42, github.ReactionHooray,
-	); err != nil {
+	)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if created.ID != 501 {
+		t.Fatalf("created reaction ID = %d, want 501", created.ID)
 	}
 	if state.added != github.ReactionHooray {
 		t.Fatalf("added reaction = %q", state.added)
@@ -42,6 +46,25 @@ func TestPullRequestServiceReactionLifecycle(t *testing.T) {
 	if err := client.RemovePullRequestReactionByUser(
 		t.Context(), "owner", "repo", 42, "smyklot[bot]",
 		github.ReactionHooray,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if state.deleted != "/repos/owner/repo/issues/42/reactions/501" {
+		t.Fatalf("deleted reaction path = %q", state.deleted)
+	}
+}
+
+func TestPullRequestReactionRemovalUsesExactGeneration(t *testing.T) {
+	t.Parallel()
+	state := &pullRequestReactionState{t: t}
+	server := httptest.NewServer(state)
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := client.RemovePullRequestReaction(
+		t.Context(), "owner", "repo", 42, 501,
 	); err != nil {
 		t.Fatal(err)
 	}

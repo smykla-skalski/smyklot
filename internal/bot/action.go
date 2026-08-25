@@ -33,6 +33,7 @@ type stepSummaryData struct {
 	DisableReactions       bool
 	DisableDeletedComments bool
 	AllowSelfApproval      bool
+	AllowDraftMerges       bool
 	AllowedCommands        string
 	CommandAliases         map[string]string
 }
@@ -151,6 +152,7 @@ func WriteStepSummary(rc *RuntimeConfig, bc *config.Config) error {
 		DisableReactions:       bc.DisableReactions,
 		DisableDeletedComments: bc.DisableDeletedComments,
 		AllowSelfApproval:      bc.AllowSelfApproval,
+		AllowDraftMerges:       bc.AllowDraftMerges,
 		AllowedCommands:        allowedCommands,
 		CommandAliases:         bc.CommandAliases,
 	}

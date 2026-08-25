@@ -406,11 +406,17 @@ function parseDurationEditor(value: unknown): RuntimeDurationEditor | null | und
 
 function parseConfig(value: unknown): RuntimeConfigDocument | null | undefined {
   if (value === null) return null;
-  if (!isRecord(value) || CONFIG_KEYS.some((key) => !validConfigValue(key, value[key]))) {
+  if (!isRecord(value)) return undefined;
+  const normalized = { ...value };
+  // Root overrides and browser drafts saved by an older panel contain the
+  // complete config shape from that release. Preserve them with the safe
+  // opt-in default instead of making unrelated saved work unreadable.
+  if (!Object.hasOwn(normalized, 'allow_draft_merges')) normalized.allow_draft_merges = false;
+  if (CONFIG_KEYS.some((key) => !validConfigValue(key, normalized[key]))) {
     return undefined;
   }
-  if (!Object.values(value).every(isSettingsJson)) return undefined;
-  return cloneJson(value) as RuntimeConfigDocument;
+  if (!Object.values(normalized).every(isSettingsJson)) return undefined;
+  return cloneJson(normalized) as RuntimeConfigDocument;
 }
 
 function validConfigValue(key: ConfigKey, value: unknown): boolean {

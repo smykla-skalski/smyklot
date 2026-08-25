@@ -11,6 +11,11 @@ type Store interface {
 	GetArmed(context.Context, string, int) (pendingci.Request, error)
 	Wake(context.Context, pendingci.WakeRequest) (bool, error)
 	WakeByHead(context.Context, pendingci.WakeHeadRequest) (int64, error)
+	RecordDraftTransition(
+		context.Context,
+		pendingci.DraftTransitionRequest,
+	) (pendingci.DraftTransitionResult, error)
+	FinishPR(context.Context, pendingci.FinishPRRequest) (*pendingci.Request, error)
 	Reauthorize(context.Context, pendingci.ReauthorizeRequest) (*pendingci.Request, error)
 	DrainLegacy(context.Context, pendingci.LegacyDrainRequest) (pendingci.LegacyDrainResult, error)
 	HasPendingCleanup(context.Context, pendingci.CleanupFilter) (bool, error)

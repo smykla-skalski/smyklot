@@ -16,7 +16,7 @@ func TestAsPatchRoundTripsThroughApply(t *testing.T) {
 	roundTrips := func(
 		quietSuccess, quietReactions, quietPending bool,
 		commands []string, aliases map[string]string, prefix string,
-		mentions, bare, unapprove, reactions, deleted, selfApproval bool,
+		mentions, bare, unapprove, reactions, deleted, selfApproval, draftMerges bool,
 		action bool,
 	) bool {
 		runner := config.RunnerService
@@ -41,7 +41,7 @@ func TestAsPatchRoundTripsThroughApply(t *testing.T) {
 			DisableMentions: mentions, DisableBareCommands: bare,
 			DisableUnapprove: unapprove, DisableReactions: reactions,
 			DisableDeletedComments: deleted, AllowSelfApproval: selfApproval,
-			Runner: runner,
+			AllowDraftMerges: draftMerges, Runner: runner,
 		}
 
 		restored := config.ApplyPatch(config.Default(), original.AsPatch())

@@ -3,6 +3,7 @@ package pendingci
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -10,12 +11,13 @@ import (
 type SignalKind string
 
 const (
-	SignalWakePullRequest SignalKind = "wake_pull_request"
-	SignalWakeHead        SignalKind = "wake_head"
-	SignalPullRequestDone SignalKind = "pull_request_done"
-	SignalLabelRemoved    SignalKind = "label_removed"
-	SignalReauthorize     SignalKind = "reauthorize"
-	SignalRerequestCheck  SignalKind = "rerequest_check"
+	SignalWakePullRequest  SignalKind = "wake_pull_request"
+	SignalWakeHead         SignalKind = "wake_head"
+	SignalPullRequestDone  SignalKind = "pull_request_done"
+	SignalPullRequestDraft SignalKind = "pull_request_draft"
+	SignalLabelRemoved     SignalKind = "label_removed"
+	SignalReauthorize      SignalKind = "reauthorize"
+	SignalRerequestCheck   SignalKind = "rerequest_check"
 )
 
 type Signal struct {
@@ -24,6 +26,7 @@ type Signal struct {
 	HeadSHA     string
 	MatchHead   bool
 	EventKey    string
+	OccurredAt  time.Time
 	Merged      bool
 	Label       string
 	Actor       string
@@ -291,12 +294,20 @@ func parsePullRequest(
 	kind := SignalWakePullRequest
 	merged := false
 	label := ""
+	var occurredAt time.Time
 	switch source.Action {
 	case "closed":
 		kind, merged = SignalPullRequestDone, payload.PullRequest.Merged
+	case "converted_to_draft":
+		kind = SignalPullRequestDraft
+		parsed, parseErr := time.Parse(time.RFC3339, payload.PullRequest.UpdatedAt)
+		if parseErr != nil {
+			return nil, fmt.Errorf("converted-to-draft payload has invalid updated_at: %w", parseErr)
+		}
+		occurredAt = parsed
 	case "unlabeled":
 		kind, label = SignalLabelRemoved, payload.Label.Name
-	case "opened", "synchronize", "reopened", "ready_for_review", "converted_to_draft", "edited", "labeled",
+	case "opened", "synchronize", "reopened", "ready_for_review", "edited", "labeled",
 		"unlocked", "enqueued", "dequeued":
 	default:
 		return &Notification{
@@ -308,7 +319,8 @@ func parsePullRequest(
 		Event: webhook.EventPullRequest, Action: source.Action, Source: source,
 		Signals: []Signal{{
 			Kind: kind, PullRequest: payload.Number,
-			HeadSHA: payload.PullRequest.Head.SHA, Merged: merged, Label: label,
+			HeadSHA: payload.PullRequest.Head.SHA, OccurredAt: occurredAt,
+			Merged: merged, Label: label,
 			EventKey: fmt.Sprintf(
 				"%s:%d:%d:%s:%s:%s:%s",
 				webhook.EventPullRequest,

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -270,6 +271,137 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 			}
 		})
 
+		It("cancels an armed request when the pull request returns to draft", func() {
+			labelRemoved := false
+			commentPosted := false
+			mergeRequested := false
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/repos/owner/repo/pulls/42" && r.Method == http.MethodGet:
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"state": "open", "draft": true,
+						"head":   map[string]any{"sha": "abc123"},
+						"labels": []map[string]any{{"name": LabelPendingCIMerge}},
+					})
+				case r.URL.Path == "/repos/owner/repo/issues/42/reactions":
+					_, _ = w.Write([]byte(`[]`))
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodGet:
+					_, _ = w.Write([]byte(`[]`))
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodPost:
+					commentPosted = true
+					var body map[string]string
+					Expect(json.NewDecoder(r.Body).Decode(&body)).To(Succeed())
+					Expect(body["body"]).To(ContainSubstring("Pending Merge Cancelled"))
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				case strings.Contains(r.URL.Path, "/labels/") && r.Method == http.MethodDelete:
+					labelRemoved = true
+					w.WriteHeader(http.StatusNoContent)
+				case strings.HasSuffix(r.URL.Path, "/merge"):
+					mergeRequested = true
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			err = processPendingCIPR(
+				context.Background(), client, config.Default(), "owner", "repo",
+				PendingCIPR{
+					PRData: map[string]any{"number": float64(42)},
+					Method: github.MergeMethodMerge, Label: LabelPendingCIMerge,
+				},
+				"smyklot[bot]",
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(labelRemoved).To(BeTrue())
+			Expect(commentPosted).To(BeTrue())
+			Expect(mergeRequested).To(BeFalse())
+		})
+
+		It("cancels an armed request after a draft then ready transition", func() {
+			labelRemoved := false
+			mergeRequested := false
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/repos/owner/repo/pulls/42":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"state": "open", "draft": false,
+						"head":   map[string]any{"sha": "abc123"},
+						"labels": []map[string]any{{"name": LabelPendingCIMerge}},
+					})
+				case r.URL.Path == "/repos/owner/repo/issues/42/reactions":
+					_, _ = w.Write([]byte(`[]`))
+				case r.URL.Path == "/repos/owner/repo/issues/42/events":
+					writePendingCIEvents(w, LabelPendingCIMerge, true)
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodGet:
+					_, _ = w.Write([]byte(`[]`))
+				case strings.Contains(r.URL.Path, "/labels/") && r.Method == http.MethodDelete:
+					labelRemoved = true
+					w.WriteHeader(http.StatusNoContent)
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodPost:
+					w.WriteHeader(http.StatusCreated)
+					_, _ = w.Write([]byte(`{"id":1}`))
+				case strings.HasSuffix(r.URL.Path, "/merge"):
+					mergeRequested = true
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			err = processPendingCIPR(
+				context.Background(), client, config.Default(), "owner", "repo",
+				PendingCIPR{
+					PRData: map[string]any{"number": float64(42)},
+					Method: github.MergeMethodMerge, Label: LabelPendingCIMerge,
+				},
+				"smyklot[bot]",
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(labelRemoved).To(BeTrue())
+			Expect(mergeRequested).To(BeFalse())
+		})
+
+		It("does not report cancellation when the authorization label remains", func() {
+			commentPosted := false
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.URL.Path == "/repos/owner/repo/pulls/42":
+					_ = json.NewEncoder(w).Encode(map[string]any{
+						"state": "open", "draft": true,
+						"head":   map[string]any{"sha": "abc123"},
+						"labels": []map[string]any{{"name": LabelPendingCIMerge}},
+					})
+				case r.URL.Path == "/repos/owner/repo/issues/42/reactions":
+					_, _ = w.Write([]byte(`[]`))
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodGet:
+					_, _ = w.Write([]byte(`[]`))
+				case strings.Contains(r.URL.Path, "/labels/") && r.Method == http.MethodDelete:
+					http.Error(w, "temporary failure", http.StatusInternalServerError)
+				case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == http.MethodPost:
+					commentPosted = true
+				default:
+					w.WriteHeader(http.StatusNotFound)
+				}
+			}))
+
+			client, err := github.NewClient("test-token", server.URL)
+			Expect(err).NotTo(HaveOccurred())
+			err = processPendingCIPR(
+				context.Background(), client, config.Default(), "owner", "repo",
+				PendingCIPR{
+					PRData: map[string]any{"number": float64(42)},
+					Method: github.MergeMethodMerge, Label: LabelPendingCIMerge,
+				},
+				"smyklot[bot]",
+			)
+			Expect(err).To(HaveOccurred())
+			Expect(commentPosted).To(BeFalse())
+		})
+
 		Context("when CI is passing", func() {
 			It("should merge the PR and remove label", func() {
 				mergeRequested := false
@@ -309,10 +441,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
 						_, _ = w.Write([]byte(`[]`))
+					case r.URL.Path == "/repos/owner/repo/issues/42/events":
+						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
@@ -378,6 +513,12 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						} else {
 							_, _ = w.Write([]byte(`[]`))
 						}
+					case r.URL.Path == "/repos/owner/repo/issues/42/events":
+						writePendingCIEvents(w, LabelPendingCISquash, false)
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments":
+						writeLegacyPendingCIComments(w, "/squash after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"total_count": 0, "statuses": []map[string]interface{}{},
@@ -451,10 +592,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
 						_, _ = w.Write([]byte(`[]`))
+					case r.URL.Path == "/repos/owner/repo/issues/42/events":
+						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
@@ -527,10 +671,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
 						_, _ = w.Write([]byte(`[]`))
+					case r.URL.Path == "/repos/owner/repo/issues/42/events":
+						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
@@ -598,10 +745,13 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/reactions" && r.Method == "GET":
 						_, _ = w.Write([]byte(`[]`))
+					case r.URL.Path == "/repos/owner/repo/issues/42/events":
+						writePendingCIEvents(w, LabelPendingCISquash, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/squash after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						var body map[string]interface{}
@@ -654,6 +804,15 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 
 		It("should return nil when no PRs have pending-ci labels", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.Method == http.MethodGet &&
+					request.URL.Path == "/repos/owner/repo/issues/1/reactions" {
+					_, _ = w.Write([]byte(`[]`))
+
+					return
+				}
+				http.NotFound(w, request)
+			}))
 			prs := []map[string]interface{}{
 				{
 					"number": float64(1),
@@ -663,7 +822,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				},
 			}
 
-			client, err := github.NewClient("test-token", "http://localhost")
+			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
 			bc := config.Default()
@@ -672,3 +831,36 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 	})
 })
+
+func writePendingCIEvents(w http.ResponseWriter, label string, drafted bool) {
+	events := []map[string]any{{
+		"id": 1, "event": "labeled", "created_at": "2026-08-25T08:00:00Z",
+		"label": map[string]any{"name": label}, "actor": map[string]any{"login": "smyklot[bot]"},
+	}}
+	if drafted {
+		events = append(events,
+			map[string]any{
+				"id": 2, "event": "convert_to_draft",
+				"created_at": "2026-08-25T08:01:00Z",
+			},
+			map[string]any{
+				"id": 3, "event": "ready_for_review",
+				"created_at": "2026-08-25T08:02:00Z",
+			},
+		)
+	}
+	_ = json.NewEncoder(w).Encode(events)
+}
+
+func writeLegacyPendingCIComments(w http.ResponseWriter, command string) {
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 101, "body": command, "updated_at": "2026-08-25T08:01:00Z",
+	}})
+}
+
+func writeLegacyPendingCIReactions(w http.ResponseWriter) {
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 201, "content": "eyes", "created_at": "2026-08-25T08:01:01Z",
+		"user": map[string]any{"login": "smyklot[bot]"},
+	}})
+}

@@ -87,6 +87,7 @@ Using environment variables:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
           PR_NUMBER: ${{ github.event.issue.number }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
@@ -153,6 +154,7 @@ Using environment variables:
           GITHUB_TOKEN: ${{ steps.generate-token.outputs.token }}
           COMMENT_BODY: ${{ github.event.comment.body }}
           COMMENT_ID: ${{ github.event.comment.id }}
+          COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
           PR_NUMBER: ${{ github.event.issue.number }}
           REPO_OWNER: ${{ github.repository_owner }}
           REPO_NAME: ${{ github.event.repository.name }}
@@ -775,6 +777,7 @@ All user inputs are passed via environment variables (not shell interpolation) t
 ```yaml
 env:
   COMMENT_BODY: ${{ github.event.comment.body }}
+  COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}
   # Not: run: ./bot "${{ github.event.comment.body }}"
 ```
 
