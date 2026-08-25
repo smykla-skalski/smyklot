@@ -103,6 +103,20 @@ func (s *Store) GetPendingCIRepositoryGate(
 	return gate, err
 }
 
+func (s *Store) ListTargetPendingCIRepositoryGates(
+	ctx context.Context,
+	targetID string,
+) ([]storage.PendingCIRepositoryGate, error) {
+	rows, err := s.db.QueryContext(ctx, pendingCIGateSelect+`
+WHERE target_id = ?
+ORDER BY repository_id`, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list installation pending CI repository gates: %w", err)
+	}
+
+	return collectRows(rows, scanPendingCIGate)
+}
+
 func (s *Store) ListPendingCIRepositoryGates(
 	ctx context.Context,
 	limit int,

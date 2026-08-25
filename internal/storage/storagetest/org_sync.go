@@ -1092,6 +1092,10 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read).To(HaveLen(1))
 			Expect(read[0].RepositoryID).To(Equal(repoA))
+			scans, err := store.ListSyncRepositoryPathScans(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(scans).To(HaveLen(1))
+			Expect(scans[0].RepositoryID).To(Equal(repoA))
 
 			dropped, err := store.PruneSyncRepositoryPaths(ctx, target)
 			Expect(err).NotTo(HaveOccurred())

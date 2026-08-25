@@ -126,29 +126,62 @@ func (s *server) durableMaintenanceJobs(ctx context.Context) ([]maintenanceJob, 
 		if !target.Available {
 			continue
 		}
-		installationID, err := strconv.ParseInt(target.InstallationID, 10, 64)
-		if err != nil || installationID <= 0 {
-			return nil, fmt.Errorf("parse maintenance installation id %q", target.InstallationID)
-		}
-		targetID := target.ID
-		jobs = append(jobs, s.targetMaintenanceJobs(ctx, targetID, installationID)...)
-		repositories, err := s.store.ListRepositories(ctx, targetID)
+		targetJobs, err := s.durableTargetMaintenanceJobs(ctx, target)
 		if err != nil {
-			return nil, fmt.Errorf("list catalog repositories for maintenance: %w", err)
+			return nil, err
 		}
-		for _, stored := range repositories {
-			repository, err := storedSweepRepository(stored)
-			if err != nil {
-				return nil, err
-			}
-			jobs = append(jobs, s.repositoryMaintenanceJobs(
-				ctx, targetID, installationID, repository,
-				repositoryEnabled(target, stored), stored.PendingCIGate,
-			)...)
-		}
+		jobs = append(jobs, targetJobs...)
 	}
 
 	return jobs, nil
+}
+
+func (s *server) durableTargetMaintenanceJobs(
+	ctx context.Context,
+	target storage.Target,
+) ([]maintenanceJob, error) {
+	installationID, err := strconv.ParseInt(target.InstallationID, 10, 64)
+	if err != nil || installationID <= 0 {
+		return nil, fmt.Errorf("parse maintenance installation id %q", target.InstallationID)
+	}
+	targetID := target.ID
+	jobs := s.targetMaintenanceJobs(ctx, targetID, installationID)
+	pendingCIGates, err := s.store.ListTargetPendingCIRepositoryGates(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list pending CI gates for maintenance: %w", err)
+	}
+	pendingCIGatesByRepository := make(map[string]storage.PendingCIRepositoryGate, len(pendingCIGates))
+	for _, gate := range pendingCIGates {
+		pendingCIGatesByRepository[gate.RepositoryID] = gate
+	}
+	repositories, err := s.store.ListRepositories(ctx, targetID)
+	if err != nil {
+		return nil, fmt.Errorf("list catalog repositories for maintenance: %w", err)
+	}
+	for _, stored := range repositories {
+		repository, err := storedSweepRepository(stored)
+		if err != nil {
+			return nil, err
+		}
+		pendingCIGate, found := pendingCIGatesByRepository[stored.ID]
+		jobs = append(jobs, s.repositoryMaintenanceJobs(
+			ctx, targetID, installationID, repository,
+			repositoryEnabled(target, stored), pendingCIGatePointer(pendingCIGate, found),
+		)...)
+	}
+
+	return jobs, nil
+}
+
+func pendingCIGatePointer(
+	gate storage.PendingCIRepositoryGate,
+	found bool,
+) *storage.PendingCIRepositoryGate {
+	if !found {
+		return nil
+	}
+
+	return &gate
 }
 
 func (s *server) targetMaintenanceJobs(

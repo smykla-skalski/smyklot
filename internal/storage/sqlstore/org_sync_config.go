@@ -246,10 +246,10 @@ ORDER BY p.repository_id`, targetID)
 // ListSyncRepositoryPathScans reads when each list was taken and at which
 // commit, without reading the lists.
 //
-// The same rows as above with the one large column left out. A refresh decides
-// what to do with a row from these four fields alone, so selecting `paths` to
-// answer them read - and decoded - every path in the installation on every
-// tick, then discarded all of it.
+// The same available, effectively enabled rows as above with the one large
+// column left out. A refresh decides what to do with a row from these four
+// fields alone, so selecting `paths` to answer them read - and decoded - every
+// path in the installation on every tick, then discarded all of it.
 func (s *Store) ListSyncRepositoryPathScans(
 	ctx context.Context,
 	targetID string,
@@ -258,7 +258,10 @@ func (s *Store) ListSyncRepositoryPathScans(
 SELECT p.repository_id, p.observed_at, p.head_sha, p.partial
 FROM sync_repository_paths p
 JOIN repositories r ON r.id = p.repository_id
+JOIN targets t ON t.id = r.target_id
 WHERE r.target_id = ?
+  AND r.available = TRUE
+  AND COALESCE(r.enabled_override, t.repository_default_enabled) = TRUE
 ORDER BY p.repository_id`, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("list sync repository path scans: %w", err)

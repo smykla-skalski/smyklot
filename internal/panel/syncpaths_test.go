@@ -245,3 +245,40 @@ func TestPathIndexIsAggregatedOncePerVersionOfTheRows(t *testing.T) {
 		t.Errorf("paths = %+v, wanted three: the rows moved and the answer should have", rebuilt.Paths)
 	}
 }
+
+func TestPathIndexDropsDisabledRepositoriesWithoutARefresh(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	seedPathIndex(t, harness,
+		orgsync.RepositoryPaths{
+			RepositoryID: "repository-20", TargetID: "github:installation:10",
+			Paths: []string{"renovate.json"}, ObservedAt: harness.now,
+		},
+		orgsync.RepositoryPaths{
+			RepositoryID: "repository-21", TargetID: "github:installation:10",
+			Paths: []string{"private/config.yml"}, ObservedAt: harness.now,
+		})
+
+	first := readPathIndex(t, harness)
+	if first.Repositories != 2 {
+		t.Fatalf("repositories = %d, wanted 2", first.Repositories)
+	}
+
+	disabled := false
+	if _, err := harness.store.SaveInstallationSettings(
+		t.Context(), storage.SaveInstallationSettingsRequest{
+			TargetID: "github:installation:10", ActorAccountID: "github:test:user:1",
+			ChangedAt: harness.now.Add(time.Minute),
+			Repositories: []storage.InstallationRepositorySettingsChange{{
+				RepositoryID: "repository-21", EnabledOverride: &disabled, ExpectedRevision: 2,
+			}},
+		},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rebuilt := readPathIndex(t, harness)
+	if rebuilt.Repositories != 1 || len(rebuilt.Paths) != 1 ||
+		rebuilt.Paths[0].Path != "renovate.json" {
+		t.Fatalf("path index after disable = %+v", rebuilt)
+	}
+}

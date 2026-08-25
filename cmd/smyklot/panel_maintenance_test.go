@@ -19,6 +19,7 @@ type maintenanceCatalogStore struct {
 	target       storage.Target
 	repositories []storage.Repository
 	gate         storage.PendingCIRepositoryGate
+	gates        []storage.PendingCIRepositoryGate
 }
 
 func (store maintenanceCatalogStore) GetPendingCIRepositoryGate(
@@ -26,6 +27,13 @@ func (store maintenanceCatalogStore) GetPendingCIRepositoryGate(
 	string,
 ) (storage.PendingCIRepositoryGate, error) {
 	return store.gate, nil
+}
+
+func (store maintenanceCatalogStore) ListTargetPendingCIRepositoryGates(
+	context.Context,
+	string,
+) ([]storage.PendingCIRepositoryGate, error) {
+	return store.gates, nil
 }
 
 func (store maintenanceCatalogStore) ListRootTargets(context.Context) ([]storage.Target, error) {
@@ -103,7 +111,7 @@ func TestStoredSweepRepositoryReadsScopedIdentity(t *testing.T) {
 	}
 }
 
-func TestMaintenanceQueueOnlyPublishesEnabledRepositoryWork(t *testing.T) {
+func TestMaintenanceQueueRetainsOnlyDisabledRepositoryCleanup(t *testing.T) {
 	t.Parallel()
 	enabled := true
 	targetID := storage.InstallationID(1)
@@ -123,6 +131,9 @@ func TestMaintenanceQueueOnlyPublishesEnabledRepositoryWork(t *testing.T) {
 				EnabledOverride: &enabled,
 			},
 		},
+		gates: []storage.PendingCIRepositoryGate{{
+			RepositoryID: storage.RepositoryID(11), EffectiveMode: storage.PendingCIEffectiveChecks,
+		}},
 	}
 	service := &server{panel: &adminpanel.Server{}, store: store}
 	jobs, err := service.durableMaintenanceJobs(t.Context())
@@ -132,14 +143,21 @@ func TestMaintenanceQueueOnlyPublishesEnabledRepositoryWork(t *testing.T) {
 
 	disabledID := storage.RepositoryID(11)
 	enabledID := storage.RepositoryID(12)
+	disabledJobs := 0
 	enabledJobs := 0
 	for _, job := range jobs {
 		if job.work.repositoryID != nil && *job.work.repositoryID == disabledID {
-			t.Fatalf("disabled repository published %q", job.work.kind)
+			disabledJobs++
+			if job.work.kind != workqueue.KindPendingCIGate {
+				t.Fatalf("disabled repository published %q", job.work.kind)
+			}
 		}
 		if job.work.repositoryID != nil && *job.work.repositoryID == enabledID {
 			enabledJobs++
 		}
+	}
+	if disabledJobs != 1 {
+		t.Fatalf("disabled repository jobs = %d, want cleanup only", disabledJobs)
 	}
 	if enabledJobs != 3 {
 		t.Fatalf("enabled repository jobs = %d, want 3", enabledJobs)

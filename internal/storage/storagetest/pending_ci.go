@@ -74,6 +74,20 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		return deferred
 	}
 
+	It("lists repository gates within one installation", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+
+		gates, err := store.ListTargetPendingCIRepositoryGates(ctx, "installation:77")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(gates).To(HaveLen(1))
+		Expect(gates[0].RepositoryID).To(Equal("repository-20"))
+
+		other, err := store.ListTargetPendingCIRepositoryGates(ctx, "installation:other")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(other).To(BeEmpty())
+	})
+
 	It("keeps source deadlines and disabled policy state aligned with the queue", func() {
 		ctx, store, now := runtime()
 		seedCheckCatalog(ctx, store, now)

@@ -103,6 +103,7 @@ type ConfigStore interface {
 // only a ready effective mode may accept new merge-after-CI commands.
 type PendingCIGateStore interface {
 	GetPendingCIRepositoryGate(context.Context, string) (PendingCIRepositoryGate, error)
+	ListTargetPendingCIRepositoryGates(context.Context, string) ([]PendingCIRepositoryGate, error)
 	ListPendingCIRepositoryGates(context.Context, int) ([]PendingCIRepositoryGate, error)
 	UpdatePendingCIRepositoryGate(
 		context.Context,
