@@ -49,6 +49,11 @@ const (
 	// ReactionPendingCI marks a command waiting for CI
 	ReactionPendingCI = github.ReactionEyes
 
+	// ReactionPendingCIAction binds an Action-mode wait to the exact command
+	// comment. Unlike the shared method label, this marker has one comment as
+	// its owner, so a stale concurrent workflow cannot revoke a newer command.
+	ReactionPendingCIAction = github.ReactionHooray
+
 	// ReactionPendingCIService fences a service-owned wait from the Action
 	// runner without adding a second label to the pull request.
 	ReactionPendingCIService = github.ReactionHooray
@@ -345,6 +350,7 @@ func handleReactionMerge(
 	author string,
 	createdAt time.Time,
 ) error {
+	sourceRevision := ""
 	// Get PR info to check if it's mergeable and prevent self-approval
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
 	if err != nil {
@@ -373,9 +379,10 @@ func handleReactionMerge(
 				feedback.NewMergeFailed, errMergePR,
 			)
 		}
+		sourceRevision = createdAt.UTC().Format(time.RFC3339Nano)
 		if err := ValidateDraftMergeAuthorization(
 			ctx, client, rc.RepoOwner, rc.RepoName, prNum,
-			createdAt.UTC().Format(time.RFC3339Nano),
+			sourceRevision,
 		); err != nil {
 			return postOperationFailure(
 				ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
@@ -400,7 +407,9 @@ func handleReactionMerge(
 	if !info.Mergeable {
 		switch info.MergeableState {
 		case github.MergeableStateBlocked, github.MergeableStateUnstable:
-			return enableReactionAutoMerge(ctx, client, rc, bc, prNum, commentID, author)
+			return enableReactionAutoMerge(
+				ctx, client, rc, bc, prNum, commentID, author, sourceRevision,
+			)
 		case github.MergeableStateUnknown, "":
 		default:
 			return postNotMergeable(ctx, client, rc, prNum, commentID)
@@ -408,10 +417,20 @@ func handleReactionMerge(
 	}
 
 	// Merge the PR (using default merge method)
-	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge); err != nil {
+	err = runDraftAuthorizedEffect(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		func() error {
+			return client.MergePR(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
+			)
+		},
+	)
+	if err != nil {
 		// Check if we should enable auto-merge instead
 		if shouldEnableAutoMerge(err) {
-			return enableReactionAutoMerge(ctx, client, rc, bc, prNum, commentID, author)
+			return enableReactionAutoMerge(
+				ctx, client, rc, bc, prNum, commentID, author, sourceRevision,
+			)
 		}
 
 		return postOperationFailure(
@@ -471,10 +490,17 @@ func enableReactionAutoMerge(
 	bc *config.Config,
 	prNum, commentID int,
 	author string,
+	sourceRevision string,
 ) error {
-	if err := client.EnableAutoMerge(
-		ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
-	); err != nil {
+	err := runDraftAuthorizedEffect(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		func() error {
+			return client.EnableAutoMerge(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
+			)
+		},
+	)
+	if err != nil {
 		return postOperationFailure(
 			ctx, client, rc, prNum, commentID,
 			err, feedback.NewAutoMergeFailed, errMergePR,

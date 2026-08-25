@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -38,6 +39,189 @@ func TestDraftMergeAuthorizationOrdersAgainstGitHubDraftHistory(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestActionPendingCIFastPathRevalidatesBeforeMerge(t *testing.T) {
+	t.Parallel()
+	merged := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/repos/acme/web/issues/7/events":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 2, "event": "convert_to_draft", "created_at": "2026-08-25T08:03:00Z",
+			}})
+		case "/repos/acme/web/pulls/7/merge":
+			merged = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	result, err := executeImmediateMerge(
+		t.Context(), client, draftRuntime(), botConfig, 7, github.MergeMethodMerge,
+		&github.PRInfo{Author: "author", ApprovedBy: []string{"operator"}},
+		"head", "2026-08-25T08:02:00Z",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged {
+		t.Fatal("stale Action command reached the merge effect")
+	}
+	if result == nil || !strings.Contains(result.Message, "reissue the command") {
+		t.Fatalf("feedback = %#v, want reissue guidance", result)
+	}
+}
+
+func TestActionPendingCIPollRevalidatesAtFinalMergeBoundary(t *testing.T) {
+	t.Parallel()
+	merged := false
+	historyReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": false,
+				"head":   map[string]any{"sha": "head"},
+				"labels": []map[string]any{{"name": LabelPendingCIMerge}},
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			}})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 41, "content": "hooray", "user": map[string]any{"login": "smyklot[bot]"}},
+				{"id": 42, "content": "eyes", "user": map[string]any{"login": "smyklot[bot]"}},
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/events":
+			historyReads++
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 2, "event": "convert_to_draft", "created_at": "2026-08-25T08:03:00Z",
+			}})
+		case request.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case request.URL.Path == "/repos/acme/web/pulls/7/merge":
+			merged = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	err = handlePendingCIPassed(
+		t.Context(), client, botConfig, "acme", "web", 7,
+		PendingCIPR{Method: github.MergeMethodMerge, Label: LabelPendingCIMerge},
+		"smyklot[bot]", "head",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if merged {
+		t.Fatal("stale Action pending-CI command reached the merge effect")
+	}
+	if historyReads < 2 {
+		t.Fatalf("draft history reads = %d, want final-boundary revalidation", historyReads)
+	}
+}
+
+func TestReactionMergeRevalidatesEveryFinalEffect(t *testing.T) {
+	for _, mergeable := range []bool{true, false} {
+		t.Run(map[bool]string{true: "merge", false: "auto merge"}[mergeable], func(t *testing.T) {
+			server, state := reactionDraftRaceServer(t, mergeable)
+			defer server.Close()
+			client, err := github.NewClient("test-token", server.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			botConfig := config.Default()
+			botConfig.AllowDraftMerges = true
+			err = handleReactionMerge(
+				t.Context(), client, draftRuntime(), botConfig, 7, 99, "operator",
+				time.Date(2026, 8, 25, 8, 2, 0, 0, time.UTC),
+			)
+			if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+				t.Fatalf("error = %v, want stale source", err)
+			}
+			if state.effectCalled {
+				t.Fatal("stale reaction reached a merge effect")
+			}
+			if state.historyReads != 2 {
+				t.Fatalf("draft history reads = %d, want 2", state.historyReads)
+			}
+		})
+	}
+}
+
+type reactionDraftRaceState struct {
+	effectCalled bool
+	historyReads int
+}
+
+func reactionDraftRaceServer(
+	t *testing.T,
+	mergeable bool,
+) (*httptest.Server, *reactionDraftRaceState) {
+	t.Helper()
+	state := &reactionDraftRaceState{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.URL.Path == "/repos/acme/web/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "node_id": "PR_node", "state": "open", "draft": false,
+				"mergeable":       mergeable,
+				"mergeable_state": map[bool]string{true: "clean", false: "blocked"}[mergeable],
+				"user":            map[string]any{"login": "author"},
+			})
+		case request.URL.Path == "/repos/acme/web/pulls/7/reviews":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"state": "APPROVED", "user": map[string]any{"login": "operator"},
+			}})
+		case request.URL.Path == "/repos/acme/web/issues/7/events":
+			state.historyReads++
+			draftedAt := "2026-08-25T08:00:00Z"
+			if state.historyReads > 1 {
+				draftedAt = "2026-08-25T08:03:00Z"
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": state.historyReads, "event": "convert_to_draft", "created_at": draftedAt,
+			}})
+		case request.URL.Path == "/repos/acme/web/pulls/7/merge" || request.URL.Path == "/graphql":
+			state.effectCalled = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
+		case request.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+
+	return server, state
 }
 
 func TestDraftMergePreparesEveryTextMergeMethod(t *testing.T) {
@@ -74,6 +258,7 @@ func TestDraftMergePreparesEveryTextMergeMethod(t *testing.T) {
 				"POST /graphql",
 				"GET /repos/acme/web/pulls/7",
 				"GET /repos/acme/web/pulls/7/reviews",
+				"GET /repos/acme/web/issues/7/events",
 				"GET /repos/acme/web/issues/7/events",
 				"PUT /repos/acme/web/pulls/7/merge",
 			})
@@ -120,7 +305,7 @@ func TestReactionMergePreparesDraftBeforeMerging(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	assertRequestOrder(t, (*requests)[:8], []string{
+	assertRequestOrder(t, (*requests)[:9], []string{
 		"GET /repos/acme/web/pulls/7",
 		"GET /repos/acme/web/pulls/7/reviews",
 		"GET /repos/acme/web/issues/7/events",
@@ -128,6 +313,7 @@ func TestReactionMergePreparesDraftBeforeMerging(t *testing.T) {
 		"POST /graphql",
 		"GET /repos/acme/web/pulls/7",
 		"GET /repos/acme/web/pulls/7/reviews",
+		"GET /repos/acme/web/issues/7/events",
 		"PUT /repos/acme/web/pulls/7/merge",
 	})
 }
@@ -240,16 +426,20 @@ func TestActionPendingCIRevalidationRollsBackWhenPullRequestReturnsToDraft(t *te
 			})
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7/reviews":
 			_, _ = w.Write([]byte(`[]`))
-		case request.Method == http.MethodDelete &&
-			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci:merge":
-			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:00:00Z",
+			})
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": 41, "content": "eyes", "user": map[string]any{"login": "smyklot[bot]"},
-			}})
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 41, "content": "hooray", "user": map[string]any{"login": "smyklot[bot]"}},
+				{"id": 42, "content": "eyes", "user": map[string]any{"login": "smyklot[bot]"}},
+			})
 		case request.Method == http.MethodDelete &&
-			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions/41":
+			(request.URL.Path == "/repos/acme/web/issues/comments/99/reactions/41" ||
+				request.URL.Path == "/repos/acme/web/issues/comments/99/reactions/42"):
 			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, request)
@@ -262,14 +452,119 @@ func TestActionPendingCIRevalidationRollsBackWhenPullRequestReturnsToDraft(t *te
 	}
 
 	err = revalidateActionPendingCI(
-		t.Context(), client, draftRuntime(), 7, 99,
-		LabelPendingCIMerge, "2026-08-25T08:00:00Z",
+		t.Context(), client, draftRuntime(), 7, 99, "2026-08-25T08:00:00Z",
 	)
 	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
 		t.Fatalf("error = %v, want stale source", err)
 	}
 	if !slices.Contains(requests, "DELETE /repos/acme/web/issues/comments/99/reactions/41") {
-		t.Fatalf("pending reaction was not rolled back: %v", requests)
+		t.Fatalf("pending command marker was not rolled back: %v", requests)
+	}
+	if slices.Contains(requests, "DELETE /repos/acme/web/issues/7/labels/smyklot:pending:ci:merge") {
+		t.Fatalf("shared pending label must not be rolled back by one workflow: %v", requests)
+	}
+}
+
+func TestActionPendingCIStaleWorkflowPreservesNewerCommentArtifact(t *testing.T) {
+	t.Parallel()
+	deleted := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": true,
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7/reviews":
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			})
+		case request.Method == http.MethodDelete:
+			deleted = true
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = revalidateActionPendingCI(
+		t.Context(), client, draftRuntime(), 7, 99, "2026-08-25T08:00:00Z",
+	)
+	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+		t.Fatalf("error = %v, want stale source", err)
+	}
+	if deleted {
+		t.Fatal("stale workflow deleted a newer command artifact")
+	}
+}
+
+func TestActionPendingCICancellationRestoresConcurrentNewerCommand(t *testing.T) {
+	t.Parallel()
+	commentReads := 0
+	labelRestored := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci":
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/comments":
+			commentReads++
+			if commentReads == 1 {
+				_, _ = w.Write([]byte(`[]`))
+
+				return
+			}
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 202, "body": "/merge after ci", "updated_at": "2026-08-25T08:04:00Z",
+			}})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": false,
+				"head": map[string]any{"sha": "head"},
+			})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/202/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 51, "content": "hooray", "user": map[string]any{"login": "smyklot[bot]"},
+			}})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/events":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 2, "event": "convert_to_draft", "created_at": "2026-08-25T08:03:00Z",
+			}})
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/acme/web/issues/7/labels":
+			labelRestored = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	cancelled, err := cancelDraftPendingCI(
+		t.Context(), client, botConfig, "acme", "web", 7,
+		PendingCIPR{Method: github.MergeMethodMerge, Label: LabelPendingCIMerge},
+		"smyklot[bot]",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled {
+		t.Fatal("concurrent newer command was cancelled")
+	}
+	if !labelRestored {
+		t.Fatal("concurrent newer command label was not restored")
 	}
 }
 

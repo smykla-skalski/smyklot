@@ -544,7 +544,7 @@ func executeImmediateCommandMerge(
 		switch info.MergeableState {
 		case github.MergeableStateBlocked, github.MergeableStateUnstable:
 			// Branch protection or failing checks - enable auto-merge
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
 
 		case github.MergeableStateDirty:
 			// Actual conflicts - cannot merge
@@ -568,11 +568,11 @@ func executeImmediateCommandMerge(
 			info.BaseBranch,
 		)
 		if mergeQueueEnabled {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
 		}
 	}
 
-	return mergeCommandPR(ctx, client, rc, bc, prNum, method)
+	return mergeCommandPR(ctx, client, rc, bc, prNum, method, sourceRevision)
 }
 
 func approveMergeIfNeeded(
@@ -601,16 +601,27 @@ func mergeCommandPR(
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
+	sourceRevision string,
 ) (*feedback.Feedback, error) {
-	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, method); err != nil {
+	merge := func(mergeMethod github.MergeMethod) error {
+		return runDraftAuthorizedEffect(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+			func() error {
+				return client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, mergeMethod)
+			},
+		)
+	}
+	if err := merge(method); err != nil {
 		// If merge commits not allowed and using default merge method, try squash first
 		if method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash); err != nil {
+			if err := merge(github.MergeMethodSquash); err != nil {
 				// Try rebase if squash also fails
-				if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase); err != nil {
+				if err := merge(github.MergeMethodRebase); err != nil {
 					// Check if we should enable auto-merge instead
 					if shouldEnableAutoMerge(err) {
-						return enableAutoMerge(ctx, client, rc, bc, prNum, github.MergeMethodRebase)
+						return enableAutoMerge(
+							ctx, client, rc, bc, prNum, github.MergeMethodRebase, sourceRevision,
+						)
 					}
 					return feedback.NewMergeFailed(err.Error()), nil
 				}
@@ -621,7 +632,7 @@ func mergeCommandPR(
 
 		// Check if we should enable auto-merge instead of failing
 		if shouldEnableAutoMerge(err) {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
 		}
 
 		return feedback.NewMergeFailed(err.Error()), nil
@@ -648,14 +659,17 @@ func enableAutoMerge(
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
+	sourceRevision string,
 ) (*feedback.Feedback, error) {
-	if err := client.EnableAutoMerge(
-		ctx,
-		rc.RepoOwner,
-		rc.RepoName,
-		prNum,
-		method,
-	); err != nil {
+	err := runDraftAuthorizedEffect(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		func() error {
+			return client.EnableAutoMerge(
+				ctx, rc.RepoOwner, rc.RepoName, prNum, method,
+			)
+		},
+	)
+	if err != nil {
 		return feedback.NewAutoMergeFailed(err.Error()), nil
 	}
 
@@ -689,6 +703,7 @@ func executePendingCIMerge(
 	if environment.PendingCI == nil {
 		result, finished, actionErr := evaluateActionPendingCI(
 			ctx, client, rc, bc, prNum, method, info, headRef, requiredChecksOnly,
+			environment.DraftMergeRevision,
 		)
 		if actionErr != nil || finished {
 			return result, actionErr
@@ -750,6 +765,7 @@ func evaluateActionPendingCI(
 	info *github.PRInfo,
 	headRef string,
 	requiredChecksOnly bool,
+	sourceRevision string,
 ) (*feedback.Feedback, bool, error) {
 	serviceOwned, err := PendingCIServiceOwned(
 		ctx, client, rc.RepoOwner, rc.RepoName, prNum, rc.BotUsername,
@@ -788,7 +804,9 @@ func evaluateActionPendingCI(
 	if serviceOwned {
 		return nil, true, nil
 	}
-	result, mergeErr := executeImmediateMerge(ctx, client, rc, bc, prNum, method, info, headRef)
+	result, mergeErr := executeImmediateMerge(
+		ctx, client, rc, bc, prNum, method, info, headRef, sourceRevision,
+	)
 
 	return result, true, mergeErr
 }
@@ -816,17 +834,29 @@ func recordActionPendingCI(
 	if serviceOwned {
 		return nil, true
 	}
-	_ = client.AddReaction(
-		ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCI,
-	)
+	if sourceRevision != "" {
+		if err := client.AddReaction(
+			ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCIAction,
+		); err != nil {
+			return feedback.NewMergeFailed(
+				"failed to record the pending CI command: " + err.Error(),
+			), true
+		}
+	}
 	if err := rotateActionPendingCILabel(
 		ctx, client, rc.RepoOwner, rc.RepoName, prNum, label,
 	); err != nil {
+		if sourceRevision != "" {
+			_ = removeActionPendingCIArtifactIfOwned(
+				ctx, client, rc.RepoOwner, rc.RepoName,
+				commentID, rc.BotUsername, sourceRevision,
+			)
+		}
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), true
 	}
 	if sourceRevision != "" {
 		if err := revalidateActionPendingCI(
-			ctx, client, rc, prNum, commentID, label, sourceRevision,
+			ctx, client, rc, prNum, commentID, sourceRevision,
 		); err != nil {
 			return feedback.NewMergeFailed(err.Error()), true
 		}
@@ -840,7 +870,7 @@ func revalidateActionPendingCI(
 	client *github.Client,
 	runtime *RuntimeConfig,
 	pullRequest, commentID int,
-	label, sourceRevision string,
+	sourceRevision string,
 ) error {
 	info, err := client.GetPRInfo(
 		ctx, runtime.RepoOwner, runtime.RepoName, pullRequest,
@@ -859,12 +889,9 @@ func revalidateActionPendingCI(
 	if err == nil {
 		return nil
 	}
-	cleanupErr := errors.Join(
-		client.RemoveLabel(ctx, runtime.RepoOwner, runtime.RepoName, pullRequest, label),
-		client.RemoveReactionByUser(
-			ctx, runtime.RepoOwner, runtime.RepoName, commentID,
-			ReactionPendingCI, runtime.BotUsername,
-		),
+	cleanupErr := removeActionPendingCIArtifactIfOwned(
+		ctx, client, runtime.RepoOwner, runtime.RepoName,
+		commentID, runtime.BotUsername, sourceRevision,
 	)
 
 	return fmt.Errorf("revalidate pending CI draft authorization: %w", errors.Join(err, cleanupErr))
@@ -978,6 +1005,7 @@ func executeImmediateMerge(
 	method github.MergeMethod,
 	info *github.PRInfo,
 	expectedHead string,
+	sourceRevision string,
 ) (*feedback.Feedback, error) {
 	// Prevent self-approval unless explicitly allowed
 	if !bc.AllowSelfApproval && info.Author == rc.CommentAuthor {
@@ -997,16 +1025,23 @@ func executeImmediateMerge(
 		return failure, nil
 	}
 
+	mergeAtHead := func(mergeMethod github.MergeMethod) error {
+		return runDraftAuthorizedEffect(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+			func() error {
+				return client.MergePRAtHead(
+					ctx, rc.RepoOwner, rc.RepoName, prNum, mergeMethod, expectedHead,
+				)
+			},
+		)
+	}
+
 	// Merge the PR
-	if err := client.MergePRAtHead(ctx, rc.RepoOwner, rc.RepoName, prNum, method, expectedHead); err != nil {
+	if err := mergeAtHead(method); err != nil {
 		// Try fallback methods if merge commits not allowed
 		if method == github.MergeMethodMerge && strings.Contains(err.Error(), "Merge commits are not allowed") {
-			if err := client.MergePRAtHead(
-				ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodSquash, expectedHead,
-			); err != nil {
-				if err := client.MergePRAtHead(
-					ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodRebase, expectedHead,
-				); err != nil {
+			if err := mergeAtHead(github.MergeMethodSquash); err != nil {
+				if err := mergeAtHead(github.MergeMethodRebase); err != nil {
 					return feedback.NewMergeFailed(err.Error()), nil
 				}
 			}

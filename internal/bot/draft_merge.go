@@ -26,6 +26,25 @@ type draftMergeHistoryClient interface {
 	) (time.Time, bool, error)
 }
 
+func runDraftAuthorizedEffect(
+	ctx context.Context,
+	client draftMergeHistoryClient,
+	owner, repository string,
+	pullRequest int,
+	sourceRevision string,
+	effect func() error,
+) error {
+	if sourceRevision != "" {
+		if err := ValidateDraftMergeAuthorization(
+			ctx, client, owner, repository, pullRequest, sourceRevision,
+		); err != nil {
+			return err
+		}
+	}
+
+	return effect()
+}
+
 // ValidateDraftMergeAuthorization fails closed when GitHub records a draft
 // transition after the event that authorized a merge. Equal timestamps are
 // ambiguous because both REST resources have one-second precision.
