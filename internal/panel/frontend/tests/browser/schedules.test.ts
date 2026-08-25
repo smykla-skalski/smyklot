@@ -105,6 +105,15 @@ describe('background work schedules [Integration]', () => {
       await expect.poll(() => form.getByLabel('Cadence seconds').inputValue()).toBe('30');
       await expect.poll(() => form.getByLabel('Priority').inputValue()).toBe('normal');
       await expect.poll(() => form.getByLabel('Window profile').inputValue()).toBe('always-open');
+
+      const cadence = form.getByLabel('Cadence seconds');
+      const sendRequest = form.getByRole('button', { name: 'Send request' });
+      await form.getByLabel('Reason').fill('Keep checks inside the release window');
+      await cadence.fill('');
+      await expect.poll(() => cadence.inputValue()).toBe('');
+      await expect.poll(() => sendRequest.isDisabled()).toBe(true);
+      await cadence.fill('30');
+      await expect.poll(() => sendRequest.isEnabled()).toBe(true);
     } finally {
       await page.close();
     }

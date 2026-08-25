@@ -88,7 +88,7 @@
     { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
   let requestExceptions = $state('');
-  let requestCadence = $state<number | null>(null);
+  let requestCadence = $state<number | null | undefined>(undefined);
   let requestPriority = $state<QueuePriority | null>(null);
   let requestReason = $state('');
   let requestBusy = $state(false);
@@ -280,7 +280,7 @@
 
   function selectRequestKind(kind: QueueWorkload): void {
     requestKind = kind;
-    requestCadence = null;
+    requestCadence = undefined;
     requestPriority = null;
     requestProfile = null;
   }
@@ -289,8 +289,9 @@
     return policies.find((candidate) => candidate.kind === requestKind);
   }
 
-  function requestCadenceValue(): number {
-    return requestCadence ?? Math.round((selectedRequestPolicy()?.cadence ?? 0) / 1_000_000_000);
+  function requestCadenceValue(): number | null {
+    if (requestCadence !== undefined) return requestCadence;
+    return Math.round((selectedRequestPolicy()?.cadence ?? 0) / 1_000_000_000);
   }
 
   function requestPriorityValue(): QueuePriority {
@@ -459,6 +460,8 @@
     if (targetId === undefined || requestReason.trim() === '' || requestCadenceInvalid()) return;
     const current = policies.find((policy) => policy.kind === requestKind);
     if (current === undefined) return;
+    const cadence = requestCadenceValue();
+    if (cadence === null) return;
     requestBusy = true;
     try {
       const customProfile: ScheduleProfile = {
@@ -480,7 +483,7 @@
         ...(requestWindowMode === 'existing'
           ? { profile_id: requestProfileValue() }
           : { custom_profile: customProfile }),
-        cadence_seconds: requestCadenceValue(),
+        cadence_seconds: cadence,
         default_priority: requestPriorityValue(),
         configuration: current.configuration,
         reason: requestReason.trim(),
@@ -497,6 +500,7 @@
 
   function requestCadenceInvalid(): boolean {
     const cadence = requestCadenceValue();
+    if (cadence === null || !Number.isFinite(cadence)) return true;
     return cadence < 0 || (requestKind !== 'pending_ci' && cadence <= 0);
   }
 
@@ -892,9 +896,11 @@
             type="number"
             min={requestKind === 'pending_ci' ? 0 : 1}
             step="60"
-            value={requestCadenceValue()}
-            oninput={(event) =>
-              (requestCadence = (event.currentTarget as HTMLInputElement).valueAsNumber)}
+            value={requestCadenceValue() ?? ''}
+            oninput={(event) => {
+              const cadence = (event.currentTarget as HTMLInputElement).valueAsNumber;
+              requestCadence = Number.isFinite(cadence) ? cadence : null;
+            }}
           />
         </label>
         <label>
