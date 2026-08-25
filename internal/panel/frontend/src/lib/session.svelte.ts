@@ -88,7 +88,6 @@ export class PanelSession {
   selectedId = $state<string | null>(null);
   failure = $state<PanelFailure | null>(null);
   notificationUnread = $state(0);
-  queueRevision = $state(0);
   streamReady = $state(false);
   /** Set from the stream's handshake; see `StreamLiveness`. */
   private readonly stream: StreamLiveness;
@@ -805,8 +804,13 @@ export class PanelSession {
 
   invalidateChange(event: PanelChangeEvent): void {
     if (event.type === 'queue.changed') {
-      this.queueRevision += 1;
-      void this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] });
+      void Promise.all([
+        this.queryClient.invalidateQueries({ queryKey: ['queue'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['queue-detail'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['schedules'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+      ]);
       return;
     }
     const targetId = event.target_id;

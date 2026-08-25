@@ -60,8 +60,47 @@ async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
   return asked;
 }
 
+async function queueScheduleCallsOnReturn(page: Page, queueURL: string): Promise<string[]> {
+  await visit(page, queueURL, { ready: '.general-queue-table tbody .data-row' });
+  await settle(
+    page,
+    () => page.getByRole('link', { name: 'Schedules', exact: true }).first().click(),
+    {
+      ready: '.schedule-summary',
+    },
+  );
+
+  const asked: string[] = [];
+  const watch = (request: { url: () => string }): void => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/')) asked.push(path);
+  };
+  page.on('request', watch);
+  try {
+    await settle(
+      page,
+      () => page.getByRole('link', { name: 'Queue', exact: true }).first().click(),
+      {
+        ready: '.general-queue-table tbody .data-row',
+      },
+    );
+    await settle(
+      page,
+      () => page.getByRole('link', { name: 'Schedules', exact: true }).first().click(),
+      { ready: '.schedule-summary' },
+    );
+    await page.waitForTimeout(1_000);
+  } finally {
+    page.off('request', watch);
+  }
+
+  return asked;
+}
+
 let panel: Panel;
 let live: string[] = [];
+let rootQueueSchedules: string[] = [];
+let targetQueueSchedules: string[] = [];
 let sockets = 0;
 
 beforeAll(async () => {
@@ -87,6 +126,11 @@ beforeAll(async () => {
       });
     });
     live = await apiCallsOnReturn(page, panel);
+    rootQueueSchedules = await queueScheduleCallsOnReturn(page, `${panel.origin}/root/queue`);
+    targetQueueSchedules = await queueScheduleCallsOnReturn(
+      page,
+      `${panel.origin}/i/${panel.account}/queue`,
+    );
     sockets = await page.evaluate(
       () => (window as unknown as { __panelSockets: number }).__panelSockets,
     );
@@ -109,5 +153,19 @@ describe('coming back to a view already read [Integration]', () => {
        second socket here means the effect that owns it is being re-run by the
        route again, and every one of those is a resync of everything. */
     expect(sockets, 'the panel opened a new stream while navigating').toBe(1);
+  });
+
+  it('keeps Root Queue and Schedules in the live cache', () => {
+    expect(
+      rootQueueSchedules,
+      `Root navigation asked for:\n${rootQueueSchedules.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('keeps installation Queue and Schedules in the live cache', () => {
+    expect(
+      targetQueueSchedules,
+      `installation navigation asked for:\n${targetQueueSchedules.join('\n')}`,
+    ).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '#lib/api.js';
   import type {
     QueuePolicy,
@@ -31,23 +31,36 @@
     rootRole = '',
     canRequest = false,
     actorAccountId = '',
-    refreshRevision = 0,
   }: {
     api: PanelApi;
     targetId?: string;
     rootRole?: string;
     canRequest?: boolean;
     actorAccountId?: string;
-    refreshRevision?: number;
   } = $props();
 
-  let policies = $state.raw<QueuePolicy[]>([]);
-  let policySet = $state.raw<SchedulePolicySet | null>(null);
-  let statuses = $state.raw<QueuePolicyStatus[]>([]);
-  let profiles = $state.raw<ScheduleProfile[]>([]);
-  let requests = $state.raw<ScheduleRequest[]>([]);
-  let loading = $state(true);
-  let error = $state('');
+  interface ScheduleViewData {
+    policies: QueuePolicy[];
+    policySet: SchedulePolicySet;
+    statuses: QueuePolicyStatus[];
+    profiles: ScheduleProfile[];
+    requests: ScheduleRequest[];
+  }
+
+  let operationError = $state('');
+  const schedulesQuery = createQuery(() => ({
+    queryKey: targetId === undefined ? ['schedules', 'root'] : ['schedules', 'target', targetId],
+    queryFn: fetchSchedules,
+  }));
+  const scheduleData = $derived<ScheduleViewData | null>(schedulesQuery.data ?? null);
+  const policies = $derived<QueuePolicy[]>(scheduleData?.policies ?? []);
+  const policySet = $derived<SchedulePolicySet | null>(scheduleData?.policySet ?? null);
+  const statuses = $derived<QueuePolicyStatus[]>(scheduleData?.statuses ?? []);
+  const profiles = $derived<ScheduleProfile[]>(scheduleData?.profiles ?? []);
+  const requests = $derived<ScheduleRequest[]>(scheduleData?.requests ?? []);
+  const loading = $derived(schedulesQuery.isFetching);
+  const queryError = $derived(errorMessage(schedulesQuery.error));
+  const error = $derived(operationError || queryError);
   let notice = $state('');
   let editingPolicy = $state<QueuePolicy | null>(null);
   let revertingPolicy = $state<QueuePolicy | null>(null);
@@ -61,10 +74,9 @@
   let decision = $state<'approve' | 'reject'>('approve');
   let decisionReason = $state('');
   let promoteProfile = $state(false);
-  let loadGeneration = 0;
 
   let requestKind = $state<QueueWorkload>('sync_scan');
-  let requestProfile = $state('always-open');
+  let requestProfile = $state<string | null>(null);
   let requestWindowMode = $state<'existing' | 'custom'>('existing');
   let requestCustomName = $state('Installation hours');
   let requestTimezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
@@ -76,11 +88,10 @@
     { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
   let requestExceptions = $state('');
-  let requestCadence = $state(21_600);
-  let requestPriority = $state<QueuePriority>('normal');
+  let requestCadence = $state<number | null>(null);
+  let requestPriority = $state<QueuePriority | null>(null);
   let requestReason = $state('');
   let requestBusy = $state(false);
-  let requestDefaultsInitialized = false;
 
   const installationKinds = new Set<QueueWorkload>([
     'pending_ci',
@@ -154,56 +165,43 @@
     },
   };
 
-  onMount(() => {
-    void load();
-    const refresh = window.setInterval(() => void load(false), 30_000);
+  function errorMessage(cause: unknown): string {
+    if (cause === null || cause === undefined) return '';
+    return cause instanceof Error ? cause.message : String(cause);
+  }
 
-    return () => window.clearInterval(refresh);
-  });
-
-  $effect(() => {
-    if (refreshRevision > 0) untrack(() => void load(false));
-  });
-
-  async function load(showLoading = true): Promise<void> {
-    const generation = ++loadGeneration;
-    if (showLoading) loading = true;
-    try {
-      if (targetId === undefined) {
-        const [loadedProfiles, policyDocument, loadedRequests] = await Promise.all([
-          api.fetchRootScheduleProfiles(),
-          api.fetchRootJobPolicies(),
-          api.fetchRootScheduleRequests(),
-        ]);
-        if (generation !== loadGeneration) return;
-        profiles = loadedProfiles;
-        policies = policyDocument.policies;
-        policySet = policyDocument.policy_set;
-        statuses = policyDocument.statuses;
-        requests = loadedRequests;
-      } else {
-        const [schedules, loadedRequests] = await Promise.all([
-          api.fetchTargetSchedules(targetId),
-          api.fetchTargetScheduleRequests(targetId),
-        ]);
-        if (generation !== loadGeneration) return;
-        profiles = schedules.profiles;
-        policies = schedules.policies.effective;
-        policySet = schedules.policies;
-        statuses = schedules.statuses;
-        requests = loadedRequests;
-        if (!requestDefaultsInitialized) {
-          selectRequestKind(requestKind);
-          requestDefaultsInitialized = true;
-        }
-      }
-      error = '';
-    } catch (cause) {
-      if (generation !== loadGeneration) return;
-      error = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      if (generation === loadGeneration) loading = false;
+  async function fetchSchedules(): Promise<ScheduleViewData> {
+    if (targetId === undefined) {
+      const [loadedProfiles, policyDocument, loadedRequests] = await Promise.all([
+        api.fetchRootScheduleProfiles(),
+        api.fetchRootJobPolicies(),
+        api.fetchRootScheduleRequests(),
+      ]);
+      return {
+        profiles: loadedProfiles,
+        policies: policyDocument.policies,
+        policySet: policyDocument.policy_set,
+        statuses: policyDocument.statuses,
+        requests: loadedRequests,
+      };
     }
+
+    const [schedules, loadedRequests] = await Promise.all([
+      api.fetchTargetSchedules(targetId),
+      api.fetchTargetScheduleRequests(targetId),
+    ]);
+    return {
+      profiles: schedules.profiles,
+      policies: schedules.policies.effective,
+      policySet: schedules.policies,
+      statuses: schedules.statuses,
+      requests: loadedRequests,
+    };
+  }
+
+  async function load(): Promise<void> {
+    operationError = '';
+    await schedulesQuery.refetch();
   }
 
   function duration(value: number): string {
@@ -282,11 +280,25 @@
 
   function selectRequestKind(kind: QueueWorkload): void {
     requestKind = kind;
-    const policy = policies.find((candidate) => candidate.kind === kind);
-    if (policy === undefined) return;
-    requestCadence = Math.round(policy.cadence / 1_000_000_000);
-    requestPriority = policy.default_priority;
-    requestProfile = policy.profile_id;
+    requestCadence = null;
+    requestPriority = null;
+    requestProfile = null;
+  }
+
+  function selectedRequestPolicy(): QueuePolicy | undefined {
+    return policies.find((candidate) => candidate.kind === requestKind);
+  }
+
+  function requestCadenceValue(): number {
+    return requestCadence ?? Math.round((selectedRequestPolicy()?.cadence ?? 0) / 1_000_000_000);
+  }
+
+  function requestPriorityValue(): QueuePriority {
+    return requestPriority ?? selectedRequestPolicy()?.default_priority ?? 'normal';
+  }
+
+  function requestProfileValue(): string {
+    return requestProfile ?? selectedRequestPolicy()?.profile_id ?? profiles[0]?.id ?? '';
   }
 
   function jobDetails(policy: QueuePolicy): string[] {
@@ -329,7 +341,6 @@
               editingPolicy.kind,
               input,
             );
-      policies = policies.map((policy) => (policy.kind === saved.kind ? saved : policy));
       notice = `${saved.kind.replaceAll('_', ' ')} policy saved`;
       editingPolicy = null;
       dialogError = '';
@@ -368,9 +379,6 @@
         editingProfile === null
           ? await api.createRootScheduleProfile(input)
           : await api.updateRootScheduleProfile(editingProfile.id, input);
-      profiles = [...profiles.filter((profile) => profile.id !== saved.id), saved].sort((a, b) =>
-        a.name.localeCompare(b.name),
-      );
       notice = `${saved.name} saved`;
       profileOpen = false;
       editingProfile = null;
@@ -388,10 +396,10 @@
     dialogBusy = true;
     try {
       await api.archiveRootScheduleProfile(archivingProfile.id, archivingProfile.revision);
-      profiles = profiles.filter((profile) => profile.id !== archivingProfile?.id);
       notice = `${archivingProfile.name} archived`;
       archivingProfile = null;
       dialogError = '';
+      await load();
     } catch (cause) {
       dialogError = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -403,15 +411,15 @@
     if (targetId === undefined || withdrawingRequest === null) return;
     dialogBusy = true;
     try {
-      const saved = await api.withdrawTargetScheduleRequest(
+      await api.withdrawTargetScheduleRequest(
         targetId,
         withdrawingRequest.id,
         withdrawingRequest.revision,
       );
-      requests = requests.map((request) => (request.id === saved.id ? saved : request));
       notice = 'Schedule request withdrawn';
       withdrawingRequest = null;
       dialogError = '';
+      await load();
     } catch (cause) {
       dialogError = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -437,7 +445,6 @@
         reason: decisionReason.trim(),
         expected_revision: deciding.revision,
       });
-      requests = requests.map((request) => (request.id === saved.id ? saved : request));
       notice = `Schedule request ${saved.state}`;
       deciding = null;
       await load();
@@ -467,29 +474,30 @@
         })),
         exceptions: parseRequestExceptions(),
       };
-      const saved = await api.createTargetScheduleRequest(targetId, {
+      await api.createTargetScheduleRequest(targetId, {
         kind: requestKind,
         base_revision: current.revision,
         ...(requestWindowMode === 'existing'
-          ? { profile_id: requestProfile }
+          ? { profile_id: requestProfileValue() }
           : { custom_profile: customProfile }),
-        cadence_seconds: requestCadence,
-        default_priority: requestPriority,
+        cadence_seconds: requestCadenceValue(),
+        default_priority: requestPriorityValue(),
         configuration: current.configuration,
         reason: requestReason.trim(),
       });
-      requests = [saved, ...requests];
       requestReason = '';
       notice = 'Schedule change sent to Root for approval';
+      await load();
     } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
+      operationError = cause instanceof Error ? cause.message : String(cause);
     } finally {
       requestBusy = false;
     }
   }
 
   function requestCadenceInvalid(): boolean {
-    return requestCadence < 0 || (requestKind !== 'pending_ci' && requestCadence <= 0);
+    const cadence = requestCadenceValue();
+    return cadence < 0 || (requestKind !== 'pending_ci' && cadence <= 0);
   }
 
   function timeMinute(value: string): number {
@@ -651,12 +659,18 @@
   <p class="visually-hidden" aria-live="polite">{notice}</p>
   {#if loading && policies.length === 0 && profiles.length === 0}
     <Plate label="Loading"><p class="dim" role="status">Reading schedule policy…</p></Plate>
-  {:else if error !== ''}
+  {:else if error !== '' && scheduleData === null}
     <Plate label="Schedules unavailable" tone="alarm"
       ><p>{error}</p>
       <Button onclick={() => void load()}>Try again</Button></Plate
     >
   {:else}
+    {#if error !== ''}
+      <Plate label="Schedule update delayed" tone="alarm">
+        <p>{error}</p>
+        <Button onclick={() => void load()}>Try again</Button>
+      </Plate>
+    {/if}
     <div class="schedule-summary" aria-label="Schedule overview">
       {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'global policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
         <article>
@@ -831,7 +845,12 @@
         {#if requestWindowMode === 'existing'}
           <label>
             <span>Window</span>
-            <Select aria-label="Window profile" bind:value={requestProfile}>
+            <Select
+              aria-label="Window profile"
+              value={requestProfileValue()}
+              onchange={(event) =>
+                (requestProfile = (event.currentTarget as HTMLSelectElement).value)}
+            >
               {#each profiles as profile (profile.id)}
                 <option value={profile.id}>{profile.name}</option>
               {/each}
@@ -873,12 +892,18 @@
             type="number"
             min={requestKind === 'pending_ci' ? 0 : 1}
             step="60"
-            bind:value={requestCadence}
+            value={requestCadenceValue()}
+            oninput={(event) =>
+              (requestCadence = (event.currentTarget as HTMLInputElement).valueAsNumber)}
           />
         </label>
         <label>
           <span>Priority</span>
-          <Select bind:value={requestPriority}>
+          <Select
+            value={requestPriorityValue()}
+            onchange={(event) =>
+              (requestPriority = (event.currentTarget as HTMLSelectElement).value as QueuePriority)}
+          >
             <option value="low">Low</option>
             <option value="normal">Normal</option>
             <option value="high">High</option>

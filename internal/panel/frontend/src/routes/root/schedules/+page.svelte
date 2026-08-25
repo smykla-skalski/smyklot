@@ -6,9 +6,5 @@
 </script>
 
 <section class="root-workspace" aria-labelledby="root-page-heading">
-  <SchedulesView
-    api={session.api}
-    rootRole={session.rootRole}
-    refreshRevision={session.queueRevision}
-  />
+  <SchedulesView api={session.api} rootRole={session.rootRole} />
 </section>

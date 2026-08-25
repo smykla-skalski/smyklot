@@ -357,13 +357,23 @@ describe('PanelSession [Unit]', () => {
     expect(keys).toEqual(expect.arrayContaining([['sync-override', 'target-1']]));
   });
 
-  it('publishes queue revisions for direct queue and schedule views', () => {
-    const session = createSession();
+  it('refreshes every cached queue and schedule view after queue changes', () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    const session = createSession(queryClient);
 
     session.invalidateChange({ version: 1, type: 'queue.changed', target_id: 'target-1' });
-    session.invalidateChange({ version: 1, type: 'queue.changed' });
 
-    expect(session.queueRevision).toBe(2);
+    const keys = invalidate.mock.calls.map(([filters]) => filters?.queryKey);
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        ['queue'],
+        ['queue-detail'],
+        ['schedules'],
+        ['sync-plan'],
+        ['root-overview'],
+      ]),
+    );
   });
 });
 
