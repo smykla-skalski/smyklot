@@ -554,6 +554,26 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 	})
 })
 
+var _ = Describe("Maintenance dispatch timing [Unit]", func() {
+	It("keeps an overdue queue behind the dispatcher retry boundary", func() {
+		now := time.Date(2026, time.August, 25, 8, 44, 0, 0, time.UTC)
+		overdue := 250 * time.Millisecond
+		delay := maintenanceDelayWithRetry(&overdue, now.Add(time.Minute), now)
+
+		Expect(delay).NotTo(BeNil())
+		Expect(*delay).To(Equal(time.Minute))
+	})
+
+	It("does not shorten a later scheduled wake", func() {
+		now := time.Date(2026, time.August, 25, 8, 44, 0, 0, time.UTC)
+		scheduled := 10 * time.Minute
+		delay := maintenanceDelayWithRetry(&scheduled, now.Add(time.Minute), now)
+
+		Expect(delay).NotTo(BeNil())
+		Expect(*delay).To(Equal(scheduled))
+	})
+})
+
 func indexCall(calls []string, method, pathSuffix string) int {
 	for index, call := range calls {
 		if strings.HasPrefix(call, method+" ") && strings.HasSuffix(call, pathSuffix) {

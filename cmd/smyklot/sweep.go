@@ -17,6 +17,8 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
 )
 
+const maintenanceDispatchRetryDelay = time.Minute
+
 // pollLoop sweeps on an interval until ctx is cancelled.
 //
 // GitHub delivers no webhook when someone adds or removes a reaction, so
@@ -28,6 +30,8 @@ import (
 // outruns the interval delays the next one instead of overlapping with it.
 func (s *server) pollLoop(ctx context.Context) {
 	var migrationStopped chan struct{}
+	interval := s.pollInterval()
+	var maintenanceRetryAt time.Time
 	if s.panel == nil {
 		migrationStopped = make(chan struct{})
 		go func() {
@@ -36,16 +40,16 @@ func (s *server) pollLoop(ctx context.Context) {
 		}()
 		defer func() { <-migrationStopped }()
 	} else {
-		s.dispatchMaintenanceQueue(ctx)
+		s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
 	}
 
-	interval := s.pollInterval()
 	s.logPollInterval(interval)
 	for {
 		delay, err := s.nextMaintenanceDelay(ctx, interval)
 		if err != nil {
 			s.logger.Error("read maintenance queue schedule", "error", err)
 		}
+		delay = maintenanceDelayWithRetry(delay, maintenanceRetryAt, time.Now().UTC())
 		if delay == nil {
 			select {
 			case <-ctx.Done():
@@ -54,7 +58,7 @@ func (s *server) pollLoop(ctx context.Context) {
 				interval = s.pollInterval()
 				s.logPollInterval(interval)
 			case <-s.workQueueChanged:
-				s.dispatchMaintenanceQueue(ctx)
+				s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
 			}
 
 			continue
@@ -72,13 +76,51 @@ func (s *server) pollLoop(ctx context.Context) {
 			s.logPollInterval(interval)
 		case <-s.workQueueChanged:
 			timer.Stop()
-			s.dispatchMaintenanceQueue(ctx)
+			if time.Now().UTC().Before(maintenanceRetryAt) {
+				continue
+			}
+			s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		case <-timer.C:
-			s.dispatchMaintenanceQueue(ctx)
+			s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		}
 	}
+}
+
+func (s *server) tryDispatchMaintenanceQueue(
+	ctx context.Context,
+	interval time.Duration,
+	retryAt *time.Time,
+) {
+	err := s.dispatchMaintenanceQueue(ctx)
+	if err == nil {
+		*retryAt = time.Time{}
+
+		return
+	}
+	delay := maintenanceDispatchRetryDelay
+	if interval > delay {
+		delay = interval
+	}
+	*retryAt = time.Now().UTC().Add(delay)
+	s.logger.Error("dispatch maintenance queue", "error", err, "retry_in", delay.String())
+}
+
+func maintenanceDelayWithRetry(
+	delay *time.Duration,
+	retryAt time.Time,
+	now time.Time,
+) *time.Duration {
+	remaining := retryAt.Sub(now)
+	if retryAt.IsZero() || remaining <= 0 {
+		return delay
+	}
+	if delay != nil && *delay >= remaining {
+		return delay
+	}
+
+	return &remaining
 }
 
 func (s *server) nextMaintenanceDelay(
@@ -112,14 +154,14 @@ func (s *server) nextMaintenanceDelay(
 	return &delay, nil
 }
 
-func (s *server) dispatchMaintenanceQueue(ctx context.Context) {
+func (s *server) dispatchMaintenanceQueue(ctx context.Context) error {
 	if s.panel != nil {
-		s.dispatchDurableMaintenance(ctx)
-
-		return
+		return s.dispatchDurableMaintenance(ctx)
 	}
 	s.maintainPanel(ctx)
 	s.runSweep(ctx)
+
+	return nil
 }
 
 func (s *server) WakeQueue(lane workqueue.Lane) {
