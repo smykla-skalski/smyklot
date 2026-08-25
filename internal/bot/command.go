@@ -17,6 +17,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -734,7 +735,7 @@ func executePendingCIMerge(
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.PendingCI == nil {
 		result, finished := recordActionPendingCI(
-			ctx, client, rc, prNum, commentID, info, label,
+			ctx, client, rc, bc, prNum, commentID, info, label,
 			environment.DraftMergeRevision,
 		)
 		if finished {
@@ -815,6 +816,7 @@ func recordActionPendingCI(
 	ctx context.Context,
 	client *github.Client,
 	rc *RuntimeConfig,
+	bc *config.Config,
 	prNum, commentID int,
 	info *github.PRInfo,
 	label string,
@@ -834,32 +836,53 @@ func recordActionPendingCI(
 	if serviceOwned {
 		return nil, true
 	}
-	if sourceRevision != "" {
-		if err := client.AddReaction(
-			ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCIAction,
-		); err != nil {
+	if sourceRevision == "" {
+		comment, commentErr := client.GetIssueComment(
+			ctx, rc.RepoOwner, rc.RepoName, int64(commentID),
+		)
+		if commentErr != nil {
 			return feedback.NewMergeFailed(
-				"failed to record the pending CI command: " + err.Error(),
+				"failed to read the pending CI command revision: " + commentErr.Error(),
 			), true
 		}
+		sourceRevision = comment.UpdatedAt
+	}
+	var marker github.Reaction
+	if err := client.RemoveReactionByUser(
+		ctx, rc.RepoOwner, rc.RepoName, commentID,
+		ReactionPendingCIAction, rc.BotUsername,
+	); err != nil {
+		return feedback.NewMergeFailed(
+			"failed to rotate the pending CI command marker: " + err.Error(),
+		), true
+	}
+	marker, err = client.AddReactionState(
+		ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCIAction,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(
+			"failed to record the pending CI command: " + err.Error(),
+		), true
+	}
+	if err := validateActionPendingCIMarker(marker, sourceRevision); err != nil {
+		cleanupErr := client.RemoveCommentReaction(
+			ctx, rc.RepoOwner, rc.RepoName, commentID, marker.ID,
+		)
+
+		return feedback.NewMergeFailed(errors.Join(err, cleanupErr).Error()), true
 	}
 	if err := rotateActionPendingCILabel(
 		ctx, client, rc.RepoOwner, rc.RepoName, prNum, label,
 	); err != nil {
-		if sourceRevision != "" {
-			_ = removeActionPendingCIArtifactIfOwned(
-				ctx, client, rc.RepoOwner, rc.RepoName,
-				commentID, rc.BotUsername, sourceRevision,
-			)
-		}
+		_ = client.RemoveCommentReaction(
+			ctx, rc.RepoOwner, rc.RepoName, commentID, marker.ID,
+		)
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), true
 	}
-	if sourceRevision != "" {
-		if err := revalidateActionPendingCI(
-			ctx, client, rc, prNum, commentID, sourceRevision,
-		); err != nil {
-			return feedback.NewMergeFailed(err.Error()), true
-		}
+	if err := revalidateActionPendingCI(
+		ctx, client, rc, bc, prNum, commentID, label, sourceRevision,
+	); err != nil {
+		return feedback.NewMergeFailed(err.Error()), true
 	}
 
 	return nil, false
@@ -869,12 +892,34 @@ func revalidateActionPendingCI(
 	ctx context.Context,
 	client *github.Client,
 	runtime *RuntimeConfig,
+	botConfig *config.Config,
 	pullRequest, commentID int,
+	label string,
 	sourceRevision string,
 ) error {
-	info, err := client.GetPRInfo(
-		ctx, runtime.RepoOwner, runtime.RepoName, pullRequest,
+	comment, err := client.GetIssueComment(
+		ctx, runtime.RepoOwner, runtime.RepoName, int64(commentID),
 	)
+	if err == nil {
+		var currentRevision time.Time
+		currentRevision, err = pendingci.ParseSourceRevision(comment.UpdatedAt)
+		if err == nil {
+			var expectedRevision time.Time
+			expectedRevision, err = pendingci.ParseSourceRevision(sourceRevision)
+			if err == nil && !currentRevision.Equal(expectedRevision) {
+				err = fmt.Errorf(
+					"%w: merge command comment changed while the pending CI request was being recorded; reissue the command",
+					pendingci.ErrStaleSourceRevision,
+				)
+			}
+		}
+	}
+	var info *github.PRInfo
+	if err == nil {
+		info, err = client.GetPRInfo(
+			ctx, runtime.RepoOwner, runtime.RepoName, pullRequest,
+		)
+	}
 	if err == nil && info.Draft {
 		err = fmt.Errorf(
 			"%w: pull request returned to draft while the merge command was being recorded; reissue the command",
@@ -889,9 +934,12 @@ func revalidateActionPendingCI(
 	if err == nil {
 		return nil
 	}
-	cleanupErr := removeActionPendingCIArtifactIfOwned(
-		ctx, client, runtime.RepoOwner, runtime.RepoName,
-		commentID, runtime.BotUsername, sourceRevision,
+	method, requiredOnly, _ := ParsePendingCILabel(label)
+	_, cleanupErr := reconcileDraftPendingCI(
+		ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName,
+		pullRequest, PendingCIPR{
+			Method: method, Label: label, RequiredOnly: requiredOnly,
+		}, runtime.BotUsername, false,
 	)
 
 	return fmt.Errorf("revalidate pending CI draft authorization: %w", errors.Join(err, cleanupErr))

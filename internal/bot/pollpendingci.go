@@ -422,38 +422,102 @@ func cancelDraftPendingCI(
 	pr PendingCIPR,
 	botUsername string,
 ) (bool, error) {
-	labelErr := client.RemoveLabel(ctx, owner, repository, pullRequest, pr.Label)
-	if labelErr != nil {
-		return false, fmt.Errorf("remove cancelled pending CI label: %w", labelErr)
-	}
-	reactionErr := settleCancelledActionPendingCI(
+	return reconcileDraftPendingCI(
+		ctx, client, bc, owner, repository, pullRequest, pr, botUsername, true,
+	)
+}
+
+func reconcileDraftPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	bc *config.Config,
+	owner, repository string,
+	pullRequest int,
+	pr PendingCIPR,
+	botUsername string,
+	notify bool,
+) (bool, error) {
+	if err := migrateLegacyActionPendingCIArtifacts(
 		ctx, client, bc, owner, repository, pullRequest,
 		pr.Method, pr.RequiredOnly, botUsername,
-	)
-	if reactionErr != nil {
-		return false, fmt.Errorf("clean up cancelled pending CI request: %w", reactionErr)
+	); err != nil {
+		return false, err
 	}
 	state, err := client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
-		return false, fmt.Errorf("recheck cancelled pending CI state: %w", err)
+		return false, fmt.Errorf("preflight cancelled pending CI state: %w", err)
 	}
 	stillCancelled, err := actionPendingCIDraftCancelled(
 		ctx, client, bc, owner, repository, pullRequest,
 		pr.Method, pr.RequiredOnly, pr.Label, botUsername, state.Draft,
 	)
 	if err != nil {
-		return false, fmt.Errorf("recheck cancelled pending CI authorization: %w", err)
+		return false, fmt.Errorf("preflight cancelled pending CI authorization: %w", err)
 	}
 	if !stillCancelled {
-		if err := client.AddLabel(ctx, owner, repository, pullRequest, pr.Label); err != nil {
-			return false, fmt.Errorf("restore concurrent pending CI command: %w", err)
+		return false, nil
+	}
+	labelErr := client.RemoveLabel(ctx, owner, repository, pullRequest, pr.Label)
+	if labelErr != nil {
+		return false, fmt.Errorf("remove cancelled pending CI label: %w", labelErr)
+	}
+	state, err = client.GetPullRequestState(ctx, owner, repository, pullRequest)
+	if err != nil {
+		return restorePendingCILabel(
+			ctx, client, owner, repository, pullRequest, pr.Label,
+			fmt.Errorf("recheck cancelled pending CI state: %w", err),
+		)
+	}
+	stillCancelled, err = actionPendingCIDraftCancelled(
+		ctx, client, bc, owner, repository, pullRequest,
+		pr.Method, pr.RequiredOnly, pr.Label, botUsername, state.Draft,
+	)
+	if err != nil {
+		return restorePendingCILabel(
+			ctx, client, owner, repository, pullRequest, pr.Label,
+			fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
+		)
+	}
+	if !stillCancelled {
+		return restorePendingCILabel(
+			ctx, client, owner, repository, pullRequest, pr.Label, nil,
+		)
+	}
+	surviving, cleanupErr := settleCancelledActionPendingCI(
+		ctx, client, bc, owner, repository, pullRequest,
+		pr.Method, pr.RequiredOnly, botUsername,
+	)
+	if surviving || cleanupErr != nil {
+		if cleanupErr != nil {
+			cleanupErr = fmt.Errorf("clean up cancelled pending CI request: %w", cleanupErr)
 		}
 
-		return false, nil
+		return restorePendingCILabel(
+			ctx, client, owner, repository, pullRequest, pr.Label, cleanupErr,
+		)
+	}
+	if !notify {
+		return true, nil
 	}
 	fb := feedback.NewPendingCICancelled(pendingci.DraftCancellationReason)
 
 	return true, client.PostComment(ctx, owner, repository, pullRequest, fb.Message)
+}
+
+func restorePendingCILabel(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	label string,
+	cause error,
+) (bool, error) {
+	restoreErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
+	if restoreErr != nil {
+		restoreErr = fmt.Errorf("restore concurrent pending CI command: %w", restoreErr)
+	}
+
+	return false, errors.Join(cause, restoreErr)
 }
 
 // postPendingCIError posts error feedback and removes a request that cannot be completed.

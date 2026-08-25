@@ -197,6 +197,9 @@ const (
 
 // Reaction represents a reaction on a comment
 type Reaction struct {
+	// ID is GitHub's immutable identifier for this reaction.
+	ID int64
+
 	// Type is the reaction type
 	Type ReactionType
 

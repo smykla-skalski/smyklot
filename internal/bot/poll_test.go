@@ -514,6 +514,8 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						}
 					case r.URL.Path == "/repos/owner/repo/issues/42/events":
 						writePendingCIEvents(w, LabelPendingCISquash, false)
+					case r.URL.Path == "/repos/owner/repo/issues/42/comments":
+						_, _ = w.Write([]byte(`[]`))
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"total_count": 0, "statuses": []map[string]interface{}{},

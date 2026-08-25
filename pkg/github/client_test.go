@@ -72,6 +72,37 @@ var _ = Describe("GitHub Client [Unit]", func() {
 
 	Describe("AddReaction", func() {
 		Context("when adding reaction to a comment", func() {
+			It("returns and removes the exact durable reaction", func() {
+				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodPost:
+						_ = json.NewEncoder(w).Encode(map[string]interface{}{
+							"id": 77, "content": "hooray", "created_at": "2026-08-25T08:04:01Z",
+							"user": map[string]any{"login": "smyklot[bot]"},
+						})
+					case http.MethodDelete:
+						Expect(r.URL.Path).To(Equal(
+							"/repos/owner/repo/issues/comments/123/reactions/77",
+						))
+						w.WriteHeader(http.StatusNoContent)
+					default:
+						Fail("unexpected request method: " + r.Method)
+					}
+				}))
+				client, err := github.NewClient("test-token", server.URL)
+				Expect(err).NotTo(HaveOccurred())
+
+				reaction, err := client.AddReactionState(
+					context.Background(), "owner", "repo", 123, github.ReactionHooray,
+				)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(reaction.ID).To(Equal(int64(77)))
+				Expect(reaction.CreatedAt.IsZero()).To(BeFalse())
+				Expect(client.RemoveCommentReaction(
+					context.Background(), "owner", "repo", 123, reaction.ID,
+				)).To(Succeed())
+			})
+
 			It("should add success reaction", func() {
 				server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					Expect(r.Method).To(Equal("POST"))
