@@ -555,6 +555,12 @@ var _ = Describe("Reaction sweep [Unit]", func() {
 })
 
 var _ = Describe("Maintenance dispatch timing [Unit]", func() {
+	It("bounds dispatcher backoff independently of reaction polling", func() {
+		now := time.Date(2026, time.August, 25, 8, 44, 0, 0, time.UTC)
+
+		Expect(maintenanceRetryBoundary(now)).To(Equal(now.Add(time.Minute)))
+	})
+
 	It("keeps an overdue queue behind the dispatcher retry boundary", func() {
 		now := time.Date(2026, time.August, 25, 8, 44, 0, 0, time.UTC)
 		overdue := 250 * time.Millisecond

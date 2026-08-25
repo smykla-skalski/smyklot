@@ -40,7 +40,7 @@ func (s *server) pollLoop(ctx context.Context) {
 		}()
 		defer func() { <-migrationStopped }()
 	} else {
-		s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
+		s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 	}
 
 	s.logPollInterval(interval)
@@ -58,7 +58,7 @@ func (s *server) pollLoop(ctx context.Context) {
 				interval = s.pollInterval()
 				s.logPollInterval(interval)
 			case <-s.workQueueChanged:
-				s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
+				s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			}
 
 			continue
@@ -76,13 +76,12 @@ func (s *server) pollLoop(ctx context.Context) {
 			s.logPollInterval(interval)
 		case <-s.workQueueChanged:
 			timer.Stop()
-			if time.Now().UTC().Before(maintenanceRetryAt) {
-				continue
-			}
-			s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
+			// An explicit queue action must be able to wake this lane even when
+			// an earlier automatic dispatch is waiting for its retry boundary.
+			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		case <-timer.C:
-			s.tryDispatchMaintenanceQueue(ctx, interval, &maintenanceRetryAt)
+			s.tryDispatchMaintenanceQueue(ctx, &maintenanceRetryAt)
 			interval = s.pollInterval()
 		}
 	}
@@ -90,7 +89,6 @@ func (s *server) pollLoop(ctx context.Context) {
 
 func (s *server) tryDispatchMaintenanceQueue(
 	ctx context.Context,
-	interval time.Duration,
 	retryAt *time.Time,
 ) {
 	err := s.dispatchMaintenanceQueue(ctx)
@@ -99,12 +97,16 @@ func (s *server) tryDispatchMaintenanceQueue(
 
 		return
 	}
-	delay := maintenanceDispatchRetryDelay
-	if interval > delay {
-		delay = interval
-	}
-	*retryAt = time.Now().UTC().Add(delay)
-	s.logger.Error("dispatch maintenance queue", "error", err, "retry_in", delay.String())
+	*retryAt = maintenanceRetryBoundary(time.Now().UTC())
+	s.logger.Error(
+		"dispatch maintenance queue",
+		"error", err,
+		"retry_in", maintenanceDispatchRetryDelay.String(),
+	)
+}
+
+func maintenanceRetryBoundary(now time.Time) time.Time {
+	return now.Add(maintenanceDispatchRetryDelay)
 }
 
 func maintenanceDelayWithRetry(

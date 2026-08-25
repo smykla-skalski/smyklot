@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
@@ -76,6 +78,29 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 		Expect(response.Header().Get("Content-Security-Policy")).NotTo(BeEmpty())
 		Expect(response.Body.String()).To(ContainSubstring("Smyklot"))
 		Expect(response.Body.String()).NotTo(ContainSubstring("/__smyklot_panel_base__"))
+	})
+
+	It("keeps a durable workload failure local to its queue item", func() {
+		work := recurringWork{
+			kind:  workqueue.KindCatalogRefresh,
+			title: "Refresh installation catalog",
+		}
+		ran, err := service.runRecurringWork(
+			GinkgoT().Context(),
+			work,
+			func() error { return errors.New("github rate limit") },
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(ran).To(BeTrue())
+
+		page, err := service.store.ListWorkQueue(GinkgoT().Context(), workqueue.Filter{
+			Kinds:  []workqueue.Kind{workqueue.KindCatalogRefresh},
+			States: []workqueue.State{workqueue.StateRetrying},
+			Limit:  1,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].BlockedReason).To(Equal("github rate limit"))
 	})
 
 	It("mounts the panel at the public root without shadowing service routes", func() {

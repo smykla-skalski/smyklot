@@ -155,6 +155,27 @@ func TestEstimateQueuePositionsAdmitsWorkBeforeTheNextVirtualSlot(t *testing.T) 
 	}
 }
 
+func TestEstimateQueuePositionsKeepsWorkerBusyAcrossIdleGap(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	first := dispatchFixture(
+		"future-first", workqueue.PriorityNormal, "target", now.Add(time.Hour),
+	)
+	second := dispatchFixture(
+		"future-second", workqueue.PriorityNormal, "target", now.Add(time.Hour+30*time.Second),
+	)
+
+	positions := estimateQueuePositions(
+		[]workqueue.Item{first, second}, queueDispatchState{}, time.Minute, now,
+	)
+	if got, want := positions[first.ID].estimated, now.Add(time.Hour); !got.Equal(want) {
+		t.Fatalf("first estimate = %s, want %s", got, want)
+	}
+	if got, want := positions[second.ID].estimated, now.Add(time.Hour+time.Minute); !got.Equal(want) {
+		t.Fatalf("second estimate = %s, want %s", got, want)
+	}
+}
+
 func TestEstimateQueuePositionsMatchesReadyDispatcherOrder(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()

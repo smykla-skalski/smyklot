@@ -482,19 +482,23 @@ func estimateWaitingQueuePositions(
 ) {
 	nextWaiting := 0
 	nextWaiting = addReadyQueuePositionItems(scheduler, waiting, nextWaiting, now)
+	workerAvailable := queueWorkerAvailability(workers, running, duration, now)
 	queuedAhead := 0
 	for scheduler.pending > 0 || nextWaiting < len(waiting) {
-		slotAt := now.Add(time.Duration((running+queuedAhead)/workers) * duration)
+		worker := earliestQueueWorker(workerAvailable)
+		slotAt := workerAvailable[worker]
 		if nextWaiting < len(waiting) {
 			nextWaiting = addReadyQueuePositionItems(scheduler, waiting, nextWaiting, slotAt)
 		}
 		if scheduler.pending == 0 {
-			slotAt = waiting[nextWaiting].EligibleAt
+			if waiting[nextWaiting].EligibleAt.After(slotAt) {
+				slotAt = waiting[nextWaiting].EligibleAt
+			}
 			nextWaiting = addReadyQueuePositionItems(
 				scheduler,
 				waiting,
 				nextWaiting,
-				waiting[nextWaiting].EligibleAt,
+				slotAt,
 			)
 		}
 		item, ok := scheduler.next()
@@ -507,8 +511,37 @@ func estimateWaitingQueuePositions(
 			estimated = item.EligibleAt
 		}
 		positions[item.ID] = queuePosition{ahead: ahead, estimated: estimated}
+		workerAvailable[worker] = estimated.Add(duration)
 		queuedAhead++
 	}
+}
+
+func queueWorkerAvailability(
+	workers int,
+	running int,
+	duration time.Duration,
+	now time.Time,
+) []time.Time {
+	available := make([]time.Time, workers)
+	for index := range available {
+		available[index] = now
+		if index < running {
+			available[index] = now.Add(duration)
+		}
+	}
+
+	return available
+}
+
+func earliestQueueWorker(available []time.Time) int {
+	earliest := 0
+	for index := 1; index < len(available); index++ {
+		if available[index].Before(available[earliest]) {
+			earliest = index
+		}
+	}
+
+	return earliest
 }
 
 func addReadyQueuePositionItems(

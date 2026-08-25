@@ -82,12 +82,22 @@ func (s *server) dispatchDurableMaintenance(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("build maintenance queue: %w", err)
 	}
-	if err := s.ensureMaintenanceJobs(ctx, jobs); err != nil {
-		return fmt.Errorf("publish maintenance queue: %w", err)
-	}
 	claimed, err := s.runNextMaintenanceJob(ctx, jobs)
 	if err != nil {
 		return fmt.Errorf("run queued maintenance: %w", err)
+	}
+	if claimed {
+		return nil
+	}
+	// Existing occurrences schedule their successors transactionally when
+	// they finish. Reconcile the full candidate set only after that durable
+	// backlog is empty, rather than republishing every candidate per lease.
+	if err := s.ensureMaintenanceJobs(ctx, jobs); err != nil {
+		return fmt.Errorf("publish maintenance queue: %w", err)
+	}
+	claimed, err = s.runNextMaintenanceJob(ctx, jobs)
+	if err != nil {
+		return fmt.Errorf("run published maintenance: %w", err)
 	}
 	if claimed {
 		return nil

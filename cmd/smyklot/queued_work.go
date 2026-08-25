@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
@@ -62,7 +61,10 @@ func (s *server) runClaimedRecurringWorkWithSummary(
 	)
 	s.announceRecurringWork(work)
 
-	return errors.Join(runErr, finishErr)
+	// A workload error is already durable as retrying or failed queue state.
+	// Only a failure to persist that outcome should stop the shared dispatcher;
+	// otherwise one repository failure would back off unrelated maintenance.
+	return finishErr
 }
 
 func (s *server) announceRecurringWork(work recurringWork) {
