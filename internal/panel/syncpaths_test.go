@@ -28,7 +28,7 @@ type pathIndexAnswer struct {
 func seedPathIndex(t *testing.T, harness *panelHarness, first, second orgsync.RepositoryPaths) {
 	t.Helper()
 
-	if err := harness.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
+	snapshot := storage.InstallationSnapshot{
 		TargetID:       "github:installation:10",
 		InstallationID: "10",
 		Kind:           storage.TargetOrganization,
@@ -44,8 +44,33 @@ func seedPathIndex(t *testing.T, harness *panelHarness, first, second orgsync.Re
 			{ID: "repository-20", Name: "smyklot", FullName: "smykla-skalski/smyklot"},
 			{ID: "repository-21", Name: "docs", FullName: "smykla-skalski/docs"},
 		},
+		Ownership: storage.OwnershipSnapshot{
+			Source: storage.OwnershipSourceOrganizationAdmin,
+			Status: storage.OwnershipStatusFresh,
+			Owners: []storage.Account{{
+				ID: "github:test:user:1", Provider: "github:test", SubjectID: "1",
+				Login: "owner", DisplayName: "Panel Owner", UpdatedAt: harness.now,
+			}},
+			SyncedAt: harness.now,
+		},
 		SyncedAt: harness.now,
-	}); err != nil {
+	}
+	if err := harness.store.ReconcileInstallation(t.Context(), snapshot); err != nil {
+		t.Fatal(err)
+	}
+	harness.server.catalog = fakeCatalog{store: harness.store, snapshot: snapshot}
+
+	enabled := true
+	if _, err := harness.store.SaveInstallationSettings(
+		t.Context(), storage.SaveInstallationSettingsRequest{
+			TargetID: "github:installation:10", ActorAccountID: "github:test:user:1",
+			ChangedAt: harness.now,
+			Repositories: []storage.InstallationRepositorySettingsChange{
+				{RepositoryID: "repository-20", EnabledOverride: &enabled, ExpectedRevision: 1},
+				{RepositoryID: "repository-21", EnabledOverride: &enabled, ExpectedRevision: 1},
+			},
+		},
+	); err != nil {
 		t.Fatal(err)
 	}
 
