@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1117,7 +1119,9 @@ func TestActionPendingCIFailureRestoresAnotherAuthorizedRequest(t *testing.T) {
 
 func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	t.Parallel()
-	state := &actionPendingCIPublishFailureState{scanFailures: 3}
+	state := &actionPendingCIPublishFailureState{
+		scanFailures: 3, nextRepairSignalID: 70,
+	}
 	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
@@ -1132,10 +1136,10 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("failed publication unexpectedly succeeded")
 	}
-	if state.labelRestored || !state.repairSignaled {
+	if state.labelRestored || state.repairSignalID == 0 {
 		t.Fatalf(
-			"labelRestored=%t repairSignaled=%t, want a non-authorizing retry signal",
-			state.labelRestored, state.repairSignaled,
+			"labelRestored=%t repairSignalID=%d, want a non-authorizing retry signal",
+			state.labelRestored, state.repairSignalID,
 		)
 	}
 	request, found, err := recoverActionPendingCIRepair(
@@ -1151,21 +1155,54 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 			found, request.Label, state.labelRestored,
 		)
 	}
-	if state.repairSignaled {
+	if state.repairSignalID != 0 {
 		t.Fatal("successful repair left its retry signal behind")
 	}
 }
 
+func TestActionPendingCIRecoveryDoesNotClearConcurrentRepairSignal(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		repairSignalID: 70, nextRepairSignalID: 71, rotateOnLabel: true,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web",
+		map[string]interface{}{"number": float64(7)}, "smyklot[bot]",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found || state.repairSignalID != 71 {
+		t.Fatalf(
+			"found=%t repairSignalID=%d, want concurrent signal 71 preserved",
+			found, state.repairSignalID,
+		)
+	}
+}
+
 type actionPendingCIPublishFailureState struct {
-	labelRestored  bool
-	repairSignaled bool
-	scanFailures   int
+	labelRestored      bool
+	rotateOnLabel      bool
+	repairSignalID     int64
+	nextRepairSignalID int64
+	scanFailures       int
 }
 
 func actionPendingCIPublishFailureHandler(
 	state *actionPendingCIPublishFailureState,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, request *http.Request) {
+		if strings.HasPrefix(request.URL.Path, "/repos/acme/web/issues/7/reactions") {
+			handleActionPendingCIRepairRequest(w, request, state)
+
+			return
+		}
 		switch {
 		case request.Method == http.MethodDelete &&
 			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci":
@@ -1206,48 +1243,105 @@ func actionPendingCIPublishFailureHandler(
 			_, _ = w.Write([]byte(`[]`))
 		case request.Method == http.MethodPost &&
 			request.URL.Path == "/repos/acme/web/issues/7/labels":
-			state.labelRestored = true
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`[]`))
+			recordActionPendingCILabelRestore(w, state)
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/pulls/7":
-			labels := []map[string]any{}
-			if state.labelRestored {
-				labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"number": 7, "state": "open", "draft": false,
-				"head": map[string]any{"sha": "head"}, "labels": labels,
-			})
-		case request.Method == http.MethodPost &&
-			request.URL.Path == "/repos/acme/web/issues/7/reactions":
-			state.repairSignaled = true
-			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{}`))
-		case request.Method == http.MethodGet &&
-			request.URL.Path == "/repos/acme/web/issues/7/reactions":
-			writeActionPendingCIRepairSignal(w, state.repairSignaled)
-		case request.Method == http.MethodDelete &&
-			request.URL.Path == "/repos/acme/web/issues/7/reactions/70":
-			state.repairSignaled = false
-			w.WriteHeader(http.StatusNoContent)
+			writeActionPendingCIPublishPullState(w, state)
 		default:
 			http.NotFound(w, request)
 		}
 	}
 }
 
+func recordActionPendingCILabelRestore(
+	w http.ResponseWriter,
+	state *actionPendingCIPublishFailureState,
+) {
+	state.labelRestored = true
+	if state.rotateOnLabel {
+		state.repairSignalID = state.nextRepairSignalID
+		state.nextRepairSignalID++
+	}
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write([]byte(`[]`))
+}
+
+func writeActionPendingCIPublishPullState(
+	w http.ResponseWriter,
+	state *actionPendingCIPublishFailureState,
+) {
+	labels := []map[string]any{}
+	if state.labelRestored {
+		labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"number": 7, "state": "open", "draft": false,
+		"head": map[string]any{"sha": "head"}, "labels": labels,
+	})
+}
+
+func handleActionPendingCIRepairRequest(
+	w http.ResponseWriter,
+	request *http.Request,
+	state *actionPendingCIPublishFailureState,
+) {
+	switch request.Method {
+	case http.MethodPost:
+		state.repairSignalID = state.nextRepairSignalID
+		state.nextRepairSignalID++
+		w.WriteHeader(http.StatusCreated)
+		writeActionPendingCIRepairCreation(w, state.repairSignalID)
+	case http.MethodGet:
+		writeActionPendingCIRepairSignalID(w, state.repairSignalID)
+	case http.MethodDelete:
+		deleteActionPendingCIRepairSignal(w, request, state)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
 func writeActionPendingCIRepairSignal(w http.ResponseWriter, present bool) {
 	if !present {
+		writeActionPendingCIRepairSignalID(w, 0)
+	} else {
+		writeActionPendingCIRepairSignalID(w, 70)
+	}
+}
+
+func writeActionPendingCIRepairSignalID(w http.ResponseWriter, reactionID int64) {
+	if reactionID == 0 {
 		_, _ = w.Write([]byte(`[]`))
 
 		return
 	}
 	_ = json.NewEncoder(w).Encode([]map[string]any{{
-		"id": 70, "content": string(ReactionPendingCIRepair),
+		"id": reactionID, "content": string(ReactionPendingCIRepair),
 		"created_at": "2026-08-25T08:05:01Z",
 		"user":       map[string]any{"login": "smyklot[bot]"},
 	}})
+}
+
+func writeActionPendingCIRepairCreation(w http.ResponseWriter, reactionID int64) {
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": reactionID, "content": string(ReactionPendingCIRepair),
+		"created_at": "2026-08-25T08:05:01Z",
+		"user":       map[string]any{"login": "smyklot[bot]"},
+	})
+}
+
+func deleteActionPendingCIRepairSignal(
+	w http.ResponseWriter,
+	request *http.Request,
+	state *actionPendingCIPublishFailureState,
+) {
+	reactionID, _ := strconv.ParseInt(path.Base(request.URL.Path), 10, 64)
+	if reactionID != state.repairSignalID {
+		http.NotFound(w, request)
+
+		return
+	}
+	state.repairSignalID = 0
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func TestActionPendingCIRepairPreservesNewerGenerationOnSameComment(t *testing.T) {
@@ -1643,7 +1737,7 @@ func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) htt
 			request.URL.Path == "/repos/acme/web/issues/7/reactions":
 			state.repairSignal = true
 			w.WriteHeader(http.StatusCreated)
-			_, _ = w.Write([]byte(`{}`))
+			writeActionPendingCIRepairCreation(w, 70)
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/7/reactions":
 			writeActionPendingCIRepairSignal(w, state.repairSignal)
