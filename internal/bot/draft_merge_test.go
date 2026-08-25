@@ -946,12 +946,52 @@ func TestActionPendingCIRejectedBeforeActivationCannotBeRevived(t *testing.T) {
 	}
 }
 
+func TestActionPendingCILostActivationResponseStaysClosed(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIRejectionState{
+		publishing: true, activationResponseLost: true,
+	}
+	server := httptest.NewServer(actionPendingCIRejectionHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = publishActionPendingCI(
+		t.Context(), client, draftRuntime(), draftMergeConfig(), 7, 99,
+		github.MergeMethodMerge, false, LabelPendingCIMerge,
+		"2026-08-25T08:02:00Z", func() error { return nil },
+	)
+	if err == nil {
+		t.Fatal("lost activation response unexpectedly succeeded")
+	}
+	if !state.activationAdded || state.labelAdded {
+		t.Fatalf(
+			"ambiguous activation persisted=%t labeled=%t",
+			state.activationAdded, state.labelAdded,
+		)
+	}
+
+	state.publishing = false
+	cancelled, err := actionPendingCIDraftCancelled(
+		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
+		github.MergeMethodMerge, false, LabelPendingCIMerge, "smyklot[bot]", false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cancelled {
+		t.Fatal("persisted activation opened a generation with an intact rejection gate")
+	}
+}
+
 type actionPendingCIRejectionState struct {
-	publishing       bool
-	feedbackCleanup  bool
-	rejectionPresent bool
-	activationAdded  bool
-	labelAdded       bool
+	publishing             bool
+	feedbackCleanup        bool
+	activationResponseLost bool
+	rejectionPresent       bool
+	activationAdded        bool
+	labelAdded             bool
 }
 
 func actionPendingCIRejectionHandler(
@@ -962,49 +1002,9 @@ func actionPendingCIRejectionHandler(
 		case "DELETE /repos/acme/web/issues/7/labels/smyklot:pending:ci":
 			w.WriteHeader(http.StatusNoContent)
 		case "GET /repos/acme/web/issues/comments/99/reactions":
-			if state.publishing {
-				_, _ = w.Write([]byte(`[]`))
-
-				return
-			}
-			reactions := []map[string]any{
-				{
-					"id": 41, "content": "eyes", "created_at": "2026-08-25T08:02:02Z",
-					"user": map[string]any{"login": "smyklot[bot]"},
-				},
-			}
-			if state.rejectionPresent {
-				reactions = append(reactions, map[string]any{
-					"id": 40, "content": string(ReactionPendingCIRejected),
-					"created_at": "2026-08-25T08:02:01Z",
-					"user":       map[string]any{"login": "smyklot[bot]"},
-				})
-			}
-			_ = json.NewEncoder(w).Encode(reactions)
+			writeActionPendingCIRejectionMarkers(w, state)
 		case "POST /repos/acme/web/issues/comments/99/reactions":
-			if state.feedbackCleanup {
-				w.WriteHeader(http.StatusInternalServerError)
-				_, _ = w.Write([]byte(`{"message":"reaction cleanup failed"}`))
-
-				return
-			}
-			var body map[string]string
-			_ = json.NewDecoder(request.Body).Decode(&body)
-			if body["content"] == string(ReactionPendingCIRejected) {
-				state.rejectionPresent = true
-			}
-			if body["content"] == "hooray" {
-				state.activationAdded = true
-			}
-			createdAt := "2026-08-25T08:02:01Z"
-			id := 40
-			if body["content"] == "eyes" {
-				createdAt = "2026-08-25T08:02:02Z"
-				id = 41
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id": id, "content": body["content"], "created_at": createdAt,
-			})
+			writeActionPendingCIRejectionMarker(w, request, state)
 		case "POST /repos/acme/web/issues/7/labels":
 			state.labelAdded = true
 			w.WriteHeader(http.StatusCreated)
@@ -1025,6 +1025,72 @@ func actionPendingCIRejectionHandler(
 			http.NotFound(w, request)
 		}
 	}
+}
+
+func writeActionPendingCIRejectionMarkers(
+	w http.ResponseWriter,
+	state *actionPendingCIRejectionState,
+) {
+	if state.publishing {
+		_, _ = w.Write([]byte(`[]`))
+
+		return
+	}
+	reactions := []map[string]any{{
+		"id": 41, "content": "eyes", "created_at": "2026-08-25T08:02:02Z",
+		"user": map[string]any{"login": "smyklot[bot]"},
+	}}
+	if state.rejectionPresent {
+		reactions = append(reactions, map[string]any{
+			"id": 40, "content": string(ReactionPendingCIRejected),
+			"created_at": "2026-08-25T08:02:01Z",
+			"user":       map[string]any{"login": "smyklot[bot]"},
+		})
+	}
+	if state.activationAdded {
+		reactions = append(reactions, map[string]any{
+			"id": 42, "content": "hooray", "created_at": "2026-08-25T08:02:03Z",
+			"user": map[string]any{"login": "smyklot[bot]"},
+		})
+	}
+	_ = json.NewEncoder(w).Encode(reactions)
+}
+
+func writeActionPendingCIRejectionMarker(
+	w http.ResponseWriter,
+	request *http.Request,
+	state *actionPendingCIRejectionState,
+) {
+	if state.feedbackCleanup {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"reaction cleanup failed"}`))
+
+		return
+	}
+	var body map[string]string
+	_ = json.NewDecoder(request.Body).Decode(&body)
+	createdAt := "2026-08-25T08:02:01Z"
+	id := 40
+	switch body["content"] {
+	case string(ReactionPendingCIRejected):
+		state.rejectionPresent = true
+	case "eyes":
+		createdAt = "2026-08-25T08:02:02Z"
+		id = 41
+	case "hooray":
+		state.activationAdded = true
+		if state.activationResponseLost {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"message":"response lost"}`))
+
+			return
+		}
+		createdAt = "2026-08-25T08:02:03Z"
+		id = 42
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"id": id, "content": body["content"], "created_at": createdAt,
+	})
 }
 
 func TestActionPendingCIFailureRestoresAnotherAuthorizedRequest(t *testing.T) {
@@ -1049,8 +1115,41 @@ func TestActionPendingCIFailureRestoresAnotherAuthorizedRequest(t *testing.T) {
 	}
 }
 
+func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{scanFailures: 1}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = publishActionPendingCI(
+		t.Context(), client, draftRuntime(), draftMergeConfig(), 7, 99,
+		github.MergeMethodMerge, false, LabelPendingCIMerge,
+		"2026-08-25T08:05:00Z", func() error { return nil },
+	)
+	if err == nil {
+		t.Fatal("failed publication unexpectedly succeeded")
+	}
+	if !state.labelRestored {
+		t.Fatal("failed repair scan did not leave a durable retry label")
+	}
+	cancelled, err := actionPendingCIDraftCancelled(
+		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
+		github.MergeMethodMerge, false, LabelPendingCIMerge, "smyklot[bot]", false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cancelled {
+		t.Fatal("recovered scan did not find the surviving authorized request")
+	}
+}
+
 type actionPendingCIPublishFailureState struct {
 	labelRestored bool
+	scanFailures  int
 }
 
 func actionPendingCIPublishFailureHandler(
@@ -1070,6 +1169,13 @@ func actionPendingCIPublishFailureHandler(
 			_, _ = w.Write([]byte(`{"message":"reaction failed"}`))
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/7/comments":
+			if state.scanFailures > 0 {
+				state.scanFailures--
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"message":"try again"}`))
+
+				return
+			}
 			_ = json.NewEncoder(w).Encode([]map[string]any{{
 				"id": 88, "body": "/merge after ci", "updated_at": "2026-08-25T08:04:00Z",
 			}})

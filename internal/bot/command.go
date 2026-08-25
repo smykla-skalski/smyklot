@@ -987,7 +987,6 @@ func publishActionPendingCI(
 	if err := validateActionPendingCIActivation(fence, activation); err != nil {
 		return err
 	}
-	exclusion.markerID = activation.ID
 	if err := removeActionPendingCIReaction(
 		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, closed.ID,
 	); err != nil {

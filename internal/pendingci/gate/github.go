@@ -368,7 +368,7 @@ func (backend *Backend) MergeAtHead(
 
 		return mergePendingPRAtHeadWithoutQueue(
 			ctx, client, owner, repository, request.PullRequest,
-			method, request.BaseBranch, headSHA,
+			method, request.BaseBranch, headSHA, authorize,
 		)
 	}
 
@@ -386,12 +386,13 @@ func mergePendingPRAtHeadWithoutQueue(
 	method github.MergeMethod,
 	baseBranch string,
 	headSHA string,
+	authorize func() error,
 ) error {
 	state, err := client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
 		return fmt.Errorf("read final pending CI merge revision: %w", err)
 	}
-	if !state.Open || state.HeadSHA != headSHA || state.BaseBranch != baseBranch {
+	if !state.Open || state.Draft || state.HeadSHA != headSHA || state.BaseBranch != baseBranch {
 		return errors.New("pending CI merge revision changed after check authorization")
 	}
 	mergeQueue, err := client.IsMergeQueueEnabled(
@@ -405,6 +406,9 @@ func mergePendingPRAtHeadWithoutQueue(
 			"merge-after-CI checks do not support the merge queue on base branch %s",
 			state.BaseBranch,
 		)
+	}
+	if err := authorize(); err != nil {
+		return fmt.Errorf("revalidate final pending CI merge authorization: %w", err)
 	}
 
 	// The method is part of the exact authorization. Action mode retains its

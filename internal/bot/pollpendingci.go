@@ -550,7 +550,12 @@ func repairActionPendingCILabel(
 		method, requiredOnly, botUsername, exclusion,
 	)
 	if scanErr != nil {
-		return errors.Join(cause, disarmErr, scanErr)
+		// Keep a durable retry signal when GitHub fails the repair scan. The
+		// poller will revisit this PR through the label, while incomplete
+		// publications remain closed by their rejection gate.
+		retryErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
+
+		return errors.Join(cause, disarmErr, scanErr, retryErr)
 	}
 	for _, artifact := range artifacts {
 		if artifact.legacy || !artifact.bound {

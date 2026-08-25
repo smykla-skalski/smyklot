@@ -38,7 +38,6 @@ type actionPendingCIArtifact struct {
 
 type actionPendingCIArtifactExclusion struct {
 	commentID int
-	markerID  int64
 }
 
 type actionPendingCIArtifactMatch struct {
@@ -171,22 +170,18 @@ func actionPendingCIArtifactForComment(
 	comment github.IssueCommentState,
 	exclusion actionPendingCIArtifactExclusion,
 ) (actionPendingCIArtifactMatch, error) {
+	if int(comment.ID) == exclusion.commentID {
+		return actionPendingCIArtifactMatch{}, nil
+	}
 	parsed, err := commands.ParseCommand(comment.Body, botConfig)
 	if err != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
 		return actionPendingCIArtifactMatch{}, nil
 	}
-	ignoredMarkerID := int64(0)
-	if int(comment.ID) == exclusion.commentID {
-		ignoredMarkerID = exclusion.markerID
-	}
 	marker, pending, rejected, err := actionPendingCICommentMarkers(
-		ctx, client, owner, repository, int(comment.ID), botUsername, ignoredMarkerID,
+		ctx, client, owner, repository, int(comment.ID), botUsername,
 	)
 	if err != nil {
 		return actionPendingCIArtifactMatch{}, err
-	}
-	if marker.ID == 0 && int(comment.ID) == exclusion.commentID {
-		return actionPendingCIArtifactMatch{}, nil
 	}
 	if marker.ID == 0 {
 		if rejected.ID != 0 {
@@ -203,8 +198,8 @@ func actionPendingCIArtifactForComment(
 			artifact: artifact, found: found, legacy: found,
 		}, nil
 	}
-	if pending.ID == 0 || !newerActionPendingCIMarker(marker, pending) ||
-		rejected.ID != 0 && !newerActionPendingCIMarker(marker, rejected) {
+	if pending.ID == 0 || rejected.ID != 0 ||
+		!newerActionPendingCIMarker(marker, pending) {
 		return actionPendingCIArtifactMatch{}, nil
 	}
 	revision, err := pendingci.ParseSourceRevision(comment.UpdatedAt)
@@ -246,7 +241,6 @@ func actionPendingCICommentMarkers(
 	owner, repository string,
 	commentID int,
 	botUsername string,
-	ignoredMarkerID int64,
 ) (github.Reaction, github.Reaction, github.Reaction, error) {
 	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
 	if err != nil {
@@ -264,7 +258,7 @@ func actionPendingCICommentMarkers(
 		if reaction.Type == ReactionPendingCI && newerActionPendingCIMarker(reaction, pending) {
 			pending = reaction
 		}
-		if reaction.Type == ReactionPendingCIAction && reaction.ID != ignoredMarkerID &&
+		if reaction.Type == ReactionPendingCIAction &&
 			newerActionPendingCIMarker(reaction, marker) {
 			marker = reaction
 		}

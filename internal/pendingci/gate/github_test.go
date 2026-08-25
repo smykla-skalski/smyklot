@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -131,7 +132,7 @@ func TestPendingCIMergeRejectsANewMergeQueue(t *testing.T) {
 	}
 	err = mergePendingPRAtHeadWithoutQueue(
 		t.Context(), client, "owner", "repository", 42,
-		github.MergeMethodSquash, "main", "authorized-head",
+		github.MergeMethodSquash, "main", "authorized-head", func() error { return nil },
 	)
 	if err == nil {
 		t.Fatal("merge accepted after a merge queue was enabled")
@@ -157,7 +158,7 @@ func TestPendingCIMergeRejectsARetargetAfterCheckSuccess(t *testing.T) {
 	}
 	err = mergePendingPRAtHeadWithoutQueue(
 		t.Context(), client, "owner", "repository", 42,
-		github.MergeMethodSquash, "main", "authorized-head",
+		github.MergeMethodSquash, "main", "authorized-head", func() error { return nil },
 	)
 	if err == nil {
 		t.Fatal("merge accepted after the base changed following check success")
@@ -191,13 +192,80 @@ func TestPendingCICheckMergeDoesNotFallbackAfterAuthorizedMethodFails(t *testing
 	}
 	err = mergePendingPRAtHeadWithoutQueue(
 		t.Context(), client, "owner", "repository", 42,
-		github.MergeMethodMerge, "main", "authorized-head",
+		github.MergeMethodMerge, "main", "authorized-head", func() error { return nil },
 	)
 	if err == nil {
 		t.Fatal("authorized merge method failure was ignored")
 	}
 	if mergeAttempts != 1 {
 		t.Fatalf("check-mode merge attempts = %d, want exactly one", mergeAttempts)
+	}
+}
+
+func TestPendingCICheckMergeReauthorizesAfterFinalStateReads(t *testing.T) {
+	t.Parallel()
+	steps := make([]string, 0, 3)
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/owner/repository/pulls/42":
+			steps = append(steps, "state")
+			_, _ = w.Write([]byte(
+				`{"state":"open","head":{"sha":"authorized-head"},"base":{"ref":"main"}}`,
+			))
+		case "/graphql":
+			steps = append(steps, "queue")
+			_, _ = w.Write([]byte(`{"data":{"repository":{"mergeQueue":null}}}`))
+		default:
+			t.Fatalf("merge continued after authorization changed: %s %s", r.Method, r.URL.RequestURI())
+		}
+	}))
+	defer api.Close()
+
+	client, err := github.NewClient("installation-token", api.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = mergePendingPRAtHeadWithoutQueue(
+		t.Context(), client, "owner", "repository", 42,
+		github.MergeMethodSquash, "main", "authorized-head",
+		func() error {
+			steps = append(steps, "authorize")
+
+			return pendingci.ErrStaleSourceRevision
+		},
+	)
+	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+		t.Fatalf("merge error = %v, want stale source", err)
+	}
+	want := []string{"state", "queue", "authorize"}
+	if !slices.Equal(steps, want) {
+		t.Fatalf("final merge steps = %v, want %v", steps, want)
+	}
+}
+
+func TestPendingCICheckMergeRejectsCurrentDraft(t *testing.T) {
+	t.Parallel()
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repository/pulls/42" {
+			t.Fatalf("draft merge continued: %s %s", r.Method, r.URL.RequestURI())
+		}
+		_, _ = w.Write([]byte(
+			`{"state":"open","draft":true,"head":{"sha":"authorized-head"},"base":{"ref":"main"}}`,
+		))
+	}))
+	defer api.Close()
+
+	client, err := github.NewClient("installation-token", api.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = mergePendingPRAtHeadWithoutQueue(
+		t.Context(), client, "owner", "repository", 42,
+		github.MergeMethodSquash, "main", "authorized-head",
+		func() error { return nil },
+	)
+	if err == nil {
+		t.Fatal("check-mode merge accepted a draft pull request")
 	}
 }
 
