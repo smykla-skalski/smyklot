@@ -356,10 +356,25 @@ func estimateQueuePositions(
 	duration time.Duration,
 	now time.Time,
 ) map[string]queuePosition {
+	positions, waiting, immediate, running := splitQueuePositionItems(items, now)
+	scheduler := newQueuePositionScheduler(state)
+	sortQueuePositionItems(immediate)
+	for _, item := range immediate {
+		scheduler.add(item)
+	}
+	sortQueuePositionItems(waiting)
+	estimateWaitingQueuePositions(positions, waiting, scheduler, running, duration, now)
+
+	return positions
+}
+
+func splitQueuePositionItems(
+	items []workqueue.Item,
+	now time.Time,
+) (map[string]queuePosition, []workqueue.Item, []workqueue.Item, int) {
 	positions := make(map[string]queuePosition, len(items))
 	waiting := make([]workqueue.Item, 0, len(items))
 	immediate := make([]workqueue.Item, 0, len(items))
-	scheduler := newQueuePositionScheduler(state)
 	running := 0
 	for _, item := range items {
 		if item.State == workqueue.StateRunning && item.LeaseExpiresAt != nil &&
@@ -380,23 +395,29 @@ func estimateQueuePositions(
 		}
 		waiting = append(waiting, item)
 	}
-	sortQueuePositionItems(immediate)
-	for _, item := range immediate {
-		scheduler.add(item)
-	}
-	sortQueuePositionItems(waiting)
+
+	return positions, waiting, immediate, running
+}
+
+func estimateWaitingQueuePositions(
+	positions map[string]queuePosition,
+	waiting []workqueue.Item,
+	scheduler *queuePositionScheduler,
+	running int,
+	duration time.Duration,
+	now time.Time,
+) {
 	nextWaiting := 0
-	addReady := func(at time.Time) {
-		for nextWaiting < len(waiting) && !waiting[nextWaiting].EligibleAt.After(at) {
-			scheduler.add(waiting[nextWaiting])
-			nextWaiting++
-		}
-	}
-	addReady(now)
+	nextWaiting = addReadyQueuePositionItems(scheduler, waiting, nextWaiting, now)
 	queuedAhead := 0
 	for scheduler.pending > 0 || nextWaiting < len(waiting) {
 		if scheduler.pending == 0 {
-			addReady(waiting[nextWaiting].EligibleAt)
+			nextWaiting = addReadyQueuePositionItems(
+				scheduler,
+				waiting,
+				nextWaiting,
+				waiting[nextWaiting].EligibleAt,
+			)
 		}
 		item, ok := scheduler.next()
 		if !ok {
@@ -411,8 +432,20 @@ func estimateQueuePositions(
 		positions[item.ID] = queuePosition{ahead: ahead, estimated: estimated}
 		queuedAhead++
 	}
+}
 
-	return positions
+func addReadyQueuePositionItems(
+	scheduler *queuePositionScheduler,
+	waiting []workqueue.Item,
+	next int,
+	at time.Time,
+) int {
+	for next < len(waiting) && !waiting[next].EligibleAt.After(at) {
+		scheduler.add(waiting[next])
+		next++
+	}
+
+	return next
 }
 
 type queuePositionScheduler struct {
