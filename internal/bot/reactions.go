@@ -380,25 +380,10 @@ func handleReactionMerge(
 		}
 	}
 
-	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
-	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
-
-	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
-
-	// Approve the PR if neither bot nor user has already approved
-	if !botAlreadyApproved && !userAlreadyApproved {
-		if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
-			return postOperationFailure(
-				ctx,
-				client,
-				rc,
-				prNum,
-				commentID,
-				err,
-				feedback.NewApprovalFailed,
-				errApprovePR,
-			)
-		}
+	if err := approveReactionMergeIfNeeded(
+		ctx, client, rc, prNum, commentID, author, info,
+	); err != nil {
+		return err
 	}
 
 	// Merge the PR (using default merge method)
@@ -433,6 +418,29 @@ func handleReactionMerge(
 	fb := feedback.NewReactionMergeSuccess(author, bc.QuietReactions)
 
 	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
+}
+
+func approveReactionMergeIfNeeded(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	prNum, commentID int,
+	author string,
+	info *github.PRInfo,
+) error {
+	botAlreadyApproved := isBotAlreadyApproved(info, rc.BotUsername)
+	userAlreadyApproved := slices.Contains(info.ApprovedBy, author)
+	if botAlreadyApproved || userAlreadyApproved {
+		return nil
+	}
+	if err := client.ApprovePR(ctx, rc.RepoOwner, rc.RepoName, prNum); err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID,
+			err, feedback.NewApprovalFailed, errApprovePR,
+		)
+	}
+
+	return nil
 }
 
 func enableReactionAutoMerge(
