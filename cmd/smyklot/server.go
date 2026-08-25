@@ -292,6 +292,10 @@ func (s *server) handler() http.Handler {
 func (s *server) Run(ctx context.Context) error {
 	webhookListener, err := s.listen(ctx, "tcp", s.cfg.listenAddress)
 	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return nil
+		}
+
 		return fmt.Errorf("listen for webhooks: %w", err)
 	}
 
@@ -300,6 +304,9 @@ func (s *server) Run(ctx context.Context) error {
 		listenErr := fmt.Errorf("listen for admin: %w", err)
 		if closeErr := webhookListener.Close(); closeErr != nil {
 			return errors.Join(listenErr, fmt.Errorf("close webhook listener: %w", closeErr))
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			return nil
 		}
 
 		return listenErr

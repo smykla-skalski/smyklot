@@ -155,8 +155,41 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		Eventually(started).Should(BeClosed())
 		cancel()
 
-		Eventually(result, returnBudget).
-			Should(Receive(MatchError(ContainSubstring("listen for webhooks: context canceled"))))
+		Eventually(result, returnBudget).Should(Receive(BeNil()))
+	})
+
+	It("should cancel admin listener setup and release the webhook listener", func() {
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		webhooks := loopbackListener()
+		adminStarted := make(chan struct{})
+		result := make(chan error, 1)
+		next := 0
+		srv.listen = func(ctx context.Context, _, _ string) (net.Listener, error) {
+			if next == 0 {
+				next++
+
+				return webhooks, nil
+			}
+
+			close(adminStarted)
+			<-ctx.Done()
+
+			return nil, ctx.Err()
+		}
+
+		go func() {
+			defer GinkgoRecover()
+
+			result <- srv.Run(ctx)
+		}()
+
+		Eventually(adminStarted).Should(BeClosed())
+		cancel()
+
+		Eventually(result, returnBudget).Should(Receive(BeNil()))
+		rebound, err := net.Listen("tcp", webhooks.Addr().String())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(rebound.Close()).To(Succeed())
 	})
 
 	It("should own ephemeral listeners until its context is cancelled", func() {
