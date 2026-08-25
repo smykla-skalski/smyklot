@@ -60,8 +60,10 @@ const (
 
 	// ReactionPendingCIRejected keeps an Action-mode request closed while its
 	// exact command is validated. The positive activation supersedes it, and it
-	// also remains a durable tombstone when activation is rejected.
-	ReactionPendingCIRejected = github.ReactionMinusOne
+	// also remains a durable tombstone when activation is rejected. It must not
+	// share a reaction with ordinary command feedback: retries clear old error
+	// reactions before they are authorized.
+	ReactionPendingCIRejected = github.ReactionLaugh
 )
 
 // handleReactions processes reaction-based approvals and merges.

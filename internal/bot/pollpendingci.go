@@ -484,7 +484,7 @@ func reconcileDraftPendingCI(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
 			actionPendingCIArtifactExclusion{},
-			true, fmt.Errorf("recheck cancelled pending CI state: %w", err),
+			fmt.Errorf("recheck cancelled pending CI state: %w", err),
 		)
 	}
 	stillCancelled, err = actionPendingCIDraftCancelled(
@@ -496,7 +496,7 @@ func reconcileDraftPendingCI(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
 			actionPendingCIArtifactExclusion{},
-			true, fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
+			fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
 		)
 	}
 	if !stillCancelled {
@@ -516,7 +516,7 @@ func reconcileDraftPendingCI(
 		return false, repairActionPendingCILabel(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
-			actionPendingCIArtifactExclusion{}, true, cleanupErr,
+			actionPendingCIArtifactExclusion{}, cleanupErr,
 		)
 	}
 	if !notify {
@@ -538,16 +538,12 @@ func repairActionPendingCILabel(
 	botUsername string,
 	label string,
 	exclusion actionPendingCIArtifactExclusion,
-	restoreSafe bool,
 	cause error,
 ) error {
 	disarmErr := client.RemoveLabel(ctx, owner, repository, pullRequest, label)
 	var apiErr *github.APIError
 	if errors.As(disarmErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		disarmErr = nil
-	}
-	if !restoreSafe {
-		return errors.Join(cause, disarmErr)
 	}
 	artifacts, _, scanErr := actionPendingCIArtifacts(
 		ctx, client, botConfig, owner, repository, pullRequest,

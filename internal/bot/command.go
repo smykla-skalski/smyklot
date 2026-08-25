@@ -740,8 +740,8 @@ func executePendingCIMerge(
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.PendingCI == nil {
 		result, finished := recordActionPendingCI(
-			ctx, client, rc, prNum, commentID, info, label,
-			environment.DraftMergeRevision,
+			ctx, client, rc, bc, prNum, commentID, method, requiredChecksOnly,
+			info, label, environment.DraftMergeRevision,
 		)
 		if finished {
 			return result, nil
@@ -824,7 +824,10 @@ func recordActionPendingCI(
 	ctx context.Context,
 	client *github.Client,
 	rc *RuntimeConfig,
+	bc *config.Config,
 	prNum, commentID int,
+	method github.MergeMethod,
+	requiredChecksOnly bool,
 	info *github.PRInfo,
 	label string,
 	sourceRevision string,
@@ -856,7 +859,8 @@ func recordActionPendingCI(
 		return nil, true
 	}
 	if err := publishActionPendingCI(
-		ctx, client, rc, prNum, commentID, label, resolvedRevision, authorize,
+		ctx, client, rc, bc, prNum, commentID, method, requiredChecksOnly,
+		label, resolvedRevision, authorize,
 	); err != nil {
 		return feedback.NewMergeFailed(err.Error()), true
 	}
@@ -920,15 +924,29 @@ func publishActionPendingCI(
 	ctx context.Context,
 	client *github.Client,
 	runtime *RuntimeConfig,
+	botConfig *config.Config,
 	pullRequest, commentID int,
+	method github.MergeMethod,
+	requiredOnly bool,
 	label, sourceRevision string,
 	authorize mergeAuthorizer,
-) error {
+) (publishErr error) {
 	if err := removeActionPendingCILabel(
 		ctx, client, runtime.RepoOwner, runtime.RepoName, pullRequest, label,
 	); err != nil {
 		return fmt.Errorf("disarm the previous pending CI request: %w", err)
 	}
+	exclusion := actionPendingCIArtifactExclusion{commentID: commentID}
+	defer func() {
+		if publishErr == nil {
+			return
+		}
+		publishErr = repairActionPendingCILabel(
+			ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName,
+			pullRequest, method, requiredOnly, runtime.BotUsername, label,
+			exclusion, publishErr,
+		)
+	}()
 	for _, reaction := range []github.ReactionType{
 		ReactionPendingCIAction, ReactionPendingCI, ReactionPendingCIRejected,
 	} {
@@ -969,6 +987,7 @@ func publishActionPendingCI(
 	if err := validateActionPendingCIActivation(fence, activation); err != nil {
 		return err
 	}
+	exclusion.markerID = activation.ID
 	if err := removeActionPendingCIReaction(
 		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, closed.ID,
 	); err != nil {
