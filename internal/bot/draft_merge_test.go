@@ -1216,6 +1216,32 @@ func TestActionPendingCIRecoveryKeepsReadySignalWhenClaimCreationFails(t *testin
 	}
 }
 
+func TestActionPendingCIRecoveryFinishesInterruptedClaimHandoff(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		repairReadyID: 70, repairClaimID: 71, nextRepairSignalID: 72,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web",
+		map[string]interface{}{"number": float64(7)}, "smyklot[bot]",
+	)
+	if err != nil || !found {
+		t.Fatalf("found=%t error=%v, want interrupted handoff recovered", found, err)
+	}
+	if state.repairReadyID != 0 || state.repairClaimID != 0 {
+		t.Fatalf(
+			"ready=%d claim=%d, want completed handoff cleared",
+			state.repairReadyID, state.repairClaimID,
+		)
+	}
+}
+
 func TestActionPendingCIRecoveryFailureKeepsClaimForRetry(t *testing.T) {
 	t.Parallel()
 	state := &actionPendingCIPublishFailureState{

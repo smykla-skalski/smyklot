@@ -243,7 +243,11 @@ func acquireActionPendingCIRepair(
 		return github.Reaction{}, false, err
 	}
 	if signals.claim.ID != 0 {
-		return signals.claim, true, nil
+		acquired, claimErr := consumeActionPendingCIRepairReady(
+			ctx, client, owner, repository, pullRequest, signals.ready.ID,
+		)
+
+		return signals.claim, acquired, claimErr
 	}
 	if signals.ready.ID == 0 {
 		return github.Reaction{}, false, nil
@@ -255,18 +259,35 @@ func acquireActionPendingCIRepair(
 	if err != nil {
 		return github.Reaction{}, false, err
 	}
-	err = client.RemovePullRequestReaction(
-		ctx, owner, repository, pullRequest, signals.ready.ID,
+	acquired, err := consumeActionPendingCIRepairReady(
+		ctx, client, owner, repository, pullRequest, signals.ready.ID,
+	)
+
+	return claim, acquired, err
+}
+
+func consumeActionPendingCIRepairReady(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	reactionID int64,
+) (bool, error) {
+	if reactionID == 0 {
+		return true, nil
+	}
+	err := client.RemovePullRequestReaction(
+		ctx, owner, repository, pullRequest, reactionID,
 	)
 	var apiErr *github.APIError
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-		return claim, false, nil
+		return false, nil
 	}
 	if err != nil {
-		return claim, false, fmt.Errorf("claim pending-CI repair signal: %w", err)
+		return false, fmt.Errorf("claim pending-CI repair signal: %w", err)
 	}
 
-	return claim, true, nil
+	return true, nil
 }
 
 func signalActionPendingCIRepair(
