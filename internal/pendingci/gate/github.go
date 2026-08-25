@@ -136,8 +136,9 @@ func (backend *Backend) Observe(
 
 	return pendingci.Observation{
 		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-		State: observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
+		PullRequestMerged: state.Merged, PullRequestDraft: state.Draft,
+		PendingLabelFound: labelFound,
+		State:             observedCIState(checks.State), Fingerprint: checkFingerprint(checks),
 		Summary: checks.Summary, ObservedAt: observedAt, PassingQuiet: passingQuiet,
 	}, nil
 }
@@ -270,8 +271,9 @@ func pullRequestObservation(
 ) pendingci.Observation {
 	return pendingci.Observation{
 		HeadSHA: state.HeadSHA, BaseBranch: state.BaseBranch, PullRequestOpen: state.Open,
-		PullRequestMerged: state.Merged, PendingLabelFound: labelFound,
-		State: pendingci.ObservedIndeterminate, ObservedAt: observedAt,
+		PullRequestMerged: state.Merged, PullRequestDraft: state.Draft,
+		PendingLabelFound: labelFound,
+		State:             pendingci.ObservedIndeterminate, ObservedAt: observedAt,
 	}
 }
 

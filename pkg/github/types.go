@@ -127,6 +127,9 @@ type PRInfo struct {
 	// Mergeable indicates whether the PR can be merged (no conflicts)
 	Mergeable bool
 
+	// Draft reports whether the pull request is still a draft.
+	Draft bool
+
 	// MergeableState provides detailed merge state (clean, dirty, blocked, unstable, unknown)
 	MergeableState MergeableState
 

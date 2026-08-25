@@ -78,6 +78,7 @@ const (
 | Disable Reactions | ` + "`{{.DisableReactions}}`" + ` |
 | Disable Deleted Comments | ` + "`{{.DisableDeletedComments}}`" + ` |
 | Allow Self Approval | ` + "`{{.AllowSelfApproval}}`" + ` |
+| Allow Draft Merges | ` + "`{{.AllowDraftMerges}}`" + ` |
 {{if .AllowedCommands}}| Allowed Commands | ` + "`{{.AllowedCommands}}`" + ` |
 {{else}}| Allowed Commands | All commands allowed |
 {{end}}
@@ -460,6 +461,12 @@ func executeMerge(
 
 		return result, nil
 	}
+	info, err = prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
 
 	// Check if PR is mergeable
 	// If blocked by branch protection or unstable (failing checks), try enabling auto-merge
@@ -648,6 +655,14 @@ func executePendingCIMerge(
 	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
 	}
+	if environment.PendingCI == nil {
+		info, err = prepareDraftMerge(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+		)
+		if err != nil {
+			return feedback.NewMergeFailed(err.Error()), nil
+		}
+	}
 
 	label := getPendingCILabel(method, requiredChecksOnly)
 	if environment.PendingCI == nil {
@@ -683,11 +698,14 @@ func executePendingCIMerge(
 				PullRequest: prNum, CommentID: commentID, HeadSHA: headRef,
 				BaseBranch: info.BaseBranch, Method: method,
 				RequiredChecksOnly: requiredChecksOnly, Label: label,
-				ArtifactKind: artifactKind,
+				ArtifactKind: artifactKind, AllowDraftMerges: bc.AllowDraftMerges,
 			},
 		)
 		if coordinationErr != nil {
 			return nil, coordinationErr
+		}
+		if failures.Ready != nil {
+			return feedback.NewMergeFailed(failures.Ready.Error()), nil
 		}
 		if failures.Approval != nil {
 			return feedback.NewApprovalFailed(failures.Approval.Error()), nil
@@ -748,6 +766,12 @@ func executeImmediateMerge(
 			rc.CommentAuthor,
 			[]string{selfApprovalNotAllowed},
 		), nil
+	}
+	info, err := prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
 	}
 
 	// Check if bot already approved the PR

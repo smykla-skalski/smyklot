@@ -23,6 +23,9 @@ func Decide(request Request, observation Observation, timing Timing) (Decision, 
 		}
 		return finishDecision("pull request is no longer open"), nil
 	}
+	if observation.PullRequestDraft {
+		return finishDecision(DraftCancellationReason), nil
+	}
 	artifact := request.ArtifactKind
 	if artifact == "" {
 		artifact = ArtifactLabel

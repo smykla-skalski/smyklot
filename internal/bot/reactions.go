@@ -360,10 +360,24 @@ func handleReactionMerge(
 		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
 		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionError)
 	}
+	info, err = prepareDraftMerge(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
+	)
+	if err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
+		)
+	}
 
 	// Check if PR is mergeable
 	if !info.Mergeable {
-		return postNotMergeable(ctx, client, rc, prNum, commentID)
+		switch info.MergeableState {
+		case github.MergeableStateBlocked, github.MergeableStateUnstable:
+			return enableReactionAutoMerge(ctx, client, rc, bc, prNum, commentID, author)
+		case github.MergeableStateUnknown, "":
+		default:
+			return postNotMergeable(ctx, client, rc, prNum, commentID)
+		}
 	}
 
 	// Check if bot already approved the PR (prevents duplicate approvals from edits/reactions)
@@ -391,37 +405,7 @@ func handleReactionMerge(
 	if err := client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge); err != nil {
 		// Check if we should enable auto-merge instead
 		if shouldEnableAutoMerge(err) {
-			if err := client.EnableAutoMerge(
-				ctx,
-				rc.RepoOwner,
-				rc.RepoName,
-				prNum,
-				github.MergeMethodMerge,
-			); err != nil {
-				return postOperationFailure(
-					ctx,
-					client,
-					rc,
-					prNum,
-					commentID,
-					err,
-					feedback.NewAutoMergeFailed,
-					errMergePR,
-				)
-			}
-
-			// Add label to track reaction-based auto-merge
-			_ = client.AddLabel(
-				ctx,
-				rc.RepoOwner,
-				rc.RepoName,
-				prNum,
-				LabelReactionMerge,
-			)
-
-			// Post auto-merge enabled feedback
-			fb := feedback.NewAutoMergeEnabled(author, bc.QuietReactions)
-			return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
+			return enableReactionAutoMerge(ctx, client, rc, bc, prNum, commentID, author)
 		}
 
 		return postOperationFailure(
@@ -447,6 +431,31 @@ func handleReactionMerge(
 
 	// Post success feedback
 	fb := feedback.NewReactionMergeSuccess(author, bc.QuietReactions)
+
+	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
+}
+
+func enableReactionAutoMerge(
+	ctx context.Context,
+	client *github.Client,
+	rc *RuntimeConfig,
+	bc *config.Config,
+	prNum, commentID int,
+	author string,
+) error {
+	if err := client.EnableAutoMerge(
+		ctx, rc.RepoOwner, rc.RepoName, prNum, github.MergeMethodMerge,
+	); err != nil {
+		return postOperationFailure(
+			ctx, client, rc, prNum, commentID,
+			err, feedback.NewAutoMergeFailed, errMergePR,
+		)
+	}
+
+	_ = client.AddLabel(
+		ctx, rc.RepoOwner, rc.RepoName, prNum, LabelReactionMerge,
+	)
+	fb := feedback.NewAutoMergeEnabled(author, bc.QuietReactions)
 
 	return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionSuccess)
 }

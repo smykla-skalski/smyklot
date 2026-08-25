@@ -405,6 +405,7 @@ type Observation struct {
 	BaseBranch        string
 	PullRequestOpen   bool
 	PullRequestMerged bool
+	PullRequestDraft  bool
 	PendingLabelFound bool
 	CancelReason      string
 	State             ObservedState
@@ -413,6 +414,10 @@ type Observation struct {
 	ObservedAt        time.Time
 	PassingQuiet      *time.Duration
 }
+
+// DraftCancellationReason explains why a later draft transition invalidates
+// the earlier merge authorization.
+const DraftCancellationReason = "pull request was converted back to draft after command authorization"
 
 // Timing controls fallback frequency and the green stability window.
 type Timing struct {

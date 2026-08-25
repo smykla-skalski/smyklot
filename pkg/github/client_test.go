@@ -422,6 +422,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 							"number":    1,
 							"state":     "open",
 							"mergeable": true,
+							"draft":     true,
 							"title":     "Test PR",
 							"body":      "Test description",
 							"user": map[string]interface{}{
@@ -452,6 +453,7 @@ var _ = Describe("GitHub Client [Unit]", func() {
 				Expect(info.Number).To(Equal(1))
 				Expect(info.State).To(Equal("open"))
 				Expect(info.Mergeable).To(BeTrue())
+				Expect(info.Draft).To(BeTrue())
 				Expect(info.Title).To(Equal("Test PR"))
 				Expect(info.Author).To(Equal("testuser"))
 				Expect(info.ApprovedBy).To(ConsistOf("reviewer1"))

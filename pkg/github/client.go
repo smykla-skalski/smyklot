@@ -158,23 +158,9 @@ func (c *Client) EnableAutoMerge(
 	prNumber int,
 	method MergeMethod,
 ) error {
-	// Get PR node ID first (required for GraphQL)
-	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, prNumber)
-
-	pull, _, err := c.gh.PullRequests.Get(ctx, owner, repo, prNumber)
+	nodeID, err := c.pullRequestNodeID(ctx, owner, repo, prNumber)
 	if err != nil {
-		return wrapError(ErrAPIRequest, http.MethodGet, path, err)
-	}
-
-	nodeID := pull.GetNodeID()
-	if nodeID == "" {
-		return NewAPIError(
-			ErrResponseParse,
-			0,
-			http.MethodGet,
-			path,
-			errors.New("no node_id in response"),
-		)
+		return err
 	}
 
 	// Map merge method to GraphQL enum
@@ -576,6 +562,10 @@ func (c *Client) GetPRInfo(ctx context.Context, owner, repo string, prNumber int
 
 	if mergeable, ok := response["mergeable"].(bool); ok {
 		info.Mergeable = mergeable
+	}
+
+	if draft, ok := response["draft"].(bool); ok {
+		info.Draft = draft
 	}
 
 	if mergeableState, ok := response["mergeable_state"].(string); ok {

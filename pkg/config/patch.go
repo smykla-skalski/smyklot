@@ -138,6 +138,11 @@ type Patch struct {
 	// default: an approval is meant to be a second pair of eyes.
 	AllowSelfApproval *bool `json:"allow_self_approval,omitempty" yaml:"allow_self_approval,omitempty" toml:"allow_self_approval,omitempty"`
 
+	// AllowDraftMerges lets a merge command mark a draft pull request ready for
+	// review before continuing. Off by default: drafts stay protected until a
+	// person explicitly publishes them.
+	AllowDraftMerges *bool `json:"allow_draft_merges,omitempty" yaml:"allow_draft_merges,omitempty" toml:"allow_draft_merges,omitempty"`
+
 	// Runner names the entry point that acts on this repository, so the other
 	// one stands down. It is settable only in the repository's own file: the
 	// panel cannot write it, because a repository that has moved back to the

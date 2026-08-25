@@ -15,6 +15,20 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
+func TestPullRequestObservationProjectsDraftState(t *testing.T) {
+	t.Parallel()
+	observation := pullRequestObservation(
+		github.PullRequestState{
+			HeadSHA: "head", BaseBranch: "main", Open: true, Draft: true,
+		},
+		true,
+		time.Date(2026, time.August, 25, 12, 0, 0, 0, time.UTC),
+	)
+	if !observation.PullRequestDraft {
+		t.Fatal("draft state was not projected into the pending CI observation")
+	}
+}
+
 func TestPendingCICheckObservationAppliesFreshBranchScope(t *testing.T) {
 	t.Parallel()
 	store, target, repository, _ := gateTestStore(t)

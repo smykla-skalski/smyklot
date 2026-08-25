@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -145,11 +146,11 @@ func processPendingCIPR(
 
 	logging.From(ctx).Debug("checking CI status", "merge_method", pr.Method)
 
-	// Get PR head SHA for CI status check
-	headRef, err := client.GetPRHeadRef(ctx, repoOwner, repoName, prNumber)
+	state, err := client.GetPullRequestState(ctx, repoOwner, repoName, prNumber)
 	if err != nil {
-		return fmt.Errorf("failed to get PR head ref: %w", err)
+		return fmt.Errorf("failed to get PR state: %w", err)
 	}
+	headRef := state.HeadSHA
 	actionOwned, err := pendingCIActionOwns(
 		ctx, client, repoOwner, repoName, prNumber, pr.Label, headRef, botUsername,
 	)
@@ -160,6 +161,11 @@ func processPendingCIPR(
 		logging.From(ctx).Info("pending CI request is owned by the service; Action stands down")
 
 		return nil
+	}
+	if state.Draft {
+		return cancelDraftPendingCI(
+			ctx, client, repoOwner, repoName, prNumber, pr.Label, botUsername,
+		)
 	}
 
 	// Get required checks list if filtering by required checks only
@@ -254,7 +260,9 @@ func handlePendingCIPassed(
 	_ = client.RemoveLabel(ctx, repoOwner, repoName, prNumber, pr.Label)
 
 	// Update pending CI reaction from 👀 to 👍
-	_ = settlePendingCIReaction(ctx, client, repoOwner, repoName, prNumber, botUsername)
+	_ = settlePendingCIReaction(
+		ctx, client, repoOwner, repoName, prNumber, botUsername, ReactionSuccess,
+	)
 
 	// Post success feedback
 	// We don't know who requested the merge, so use a generic message
@@ -304,6 +312,7 @@ func settlePendingCIReaction(
 	owner, repo string,
 	prNumber int,
 	botUsername string,
+	result github.ReactionType,
 ) error {
 	// Get all comments on the PR
 	comments, err := client.GetPRComments(ctx, owner, repo, prNumber)
@@ -338,10 +347,26 @@ func settlePendingCIReaction(
 				ctx, owner, repo, commentID, ReactionPendingCI, botUsername,
 			)
 
-			// Add "+1" (thumbs up) reaction
-			_ = client.AddReaction(ctx, owner, repo, commentID, ReactionSuccess)
+			_ = client.AddReaction(ctx, owner, repo, commentID, result)
 		}
 	}
+
+	return nil
+}
+
+func cancelDraftPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	label, botUsername string,
+) error {
+	_ = client.RemoveLabel(ctx, owner, repository, pullRequest, label)
+	_ = settlePendingCIReaction(
+		ctx, client, owner, repository, pullRequest, botUsername, ReactionWarning,
+	)
+	fb := feedback.NewPendingCICancelled(pendingci.DraftCancellationReason)
+	_ = client.PostComment(ctx, owner, repository, pullRequest, fb.Message)
 
 	return nil
 }
