@@ -243,6 +243,18 @@ func TestQueueSummarySnapshotRequiresFullActiveRootScope(t *testing.T) {
 	}
 }
 
+func TestDispatchOrderReadsOneCompleteSnapshot(t *testing.T) {
+	t.Parallel()
+	filter := workqueue.Filter{Limit: 3, Offset: 40, DispatchOrder: true}
+	limit, offset, bounded := queueSelectionBounds(filter)
+	if bounded {
+		t.Fatal("dispatch order must not limit a snapshot from an earlier count")
+	}
+	if limit != 3 || offset != 40 {
+		t.Fatalf("pagination = (%d, %d), want (3, 40)", limit, offset)
+	}
+}
+
 func dispatchFixture(
 	id string,
 	priority workqueue.Priority,

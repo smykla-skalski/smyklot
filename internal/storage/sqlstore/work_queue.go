@@ -43,29 +43,32 @@ func (s *Store) ListWorkQueue(
 	if len(clauses) > 0 {
 		where = " WHERE " + strings.Join(clauses, " AND ")
 	}
+	limit, offset, bounded := queueSelectionBounds(filter)
 	var total int
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM queue_items"+where, arguments...).Scan(&total); err != nil {
-		return workqueue.Page{}, fmt.Errorf("count queue items: %w", err)
+	if bounded {
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM queue_items"+where, arguments...).Scan(&total); err != nil {
+			return workqueue.Page{}, fmt.Errorf("count queue items: %w", err)
+		}
 	}
-	limit := pageLimit(filter.Limit)
-	offset := max(filter.Offset, 0)
-	queryLimit, queryOffset := limit+1, offset
-	if filter.DispatchOrder {
-		queryLimit, queryOffset = total+1, 0
-	}
-	arguments = append(arguments, queryLimit, queryOffset)
-	rows, err := s.db.QueryContext(ctx, "SELECT"+queueItemColumns+`
-FROM queue_items`+where+`
+	query := "SELECT" + queueItemColumns + `
+FROM queue_items` + where + `
 ORDER BY CASE WHEN finished_at IS NULL THEN 0 ELSE 1 END,
          CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
-         eligible_at, updated_at DESC, id
-LIMIT ? OFFSET ?`, arguments...)
+         eligible_at, updated_at DESC, id`
+	if bounded {
+		query += "\nLIMIT ? OFFSET ?"
+		arguments = append(arguments, limit+1, offset)
+	}
+	rows, err := s.db.QueryContext(ctx, query, arguments...)
 	if err != nil {
 		return workqueue.Page{}, fmt.Errorf("list queue items: %w", err)
 	}
 	items, err := collectRows(rows, scanQueueItem)
 	if err != nil {
 		return workqueue.Page{}, fmt.Errorf("read queue items: %w", err)
+	}
+	if !bounded {
+		total = len(items)
 	}
 	var positionErr error
 	if queueSummarySnapshotComplete(filter) {
@@ -89,6 +92,12 @@ LIMIT ? OFFSET ?`, arguments...)
 	}
 
 	return s.queuePageWithFacets(ctx, filter, items, next, total)
+}
+
+func queueSelectionBounds(filter workqueue.Filter) (limit, offset int, bounded bool) {
+	limit, offset = pageLimit(filter.Limit), max(filter.Offset, 0)
+
+	return limit, offset, !filter.DispatchOrder
 }
 
 func (s *Store) queuePageWithFacets(
