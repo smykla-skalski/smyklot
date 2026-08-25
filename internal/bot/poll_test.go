@@ -826,7 +826,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 func writePendingCIEvents(w http.ResponseWriter, label string, drafted bool) {
 	events := []map[string]any{{
 		"id": 1, "event": "labeled", "created_at": "2026-08-25T08:00:00Z",
-		"label": map[string]any{"name": label},
+		"label": map[string]any{"name": label}, "actor": map[string]any{"login": "smyklot[bot]"},
 	}}
 	if drafted {
 		events = append(events,

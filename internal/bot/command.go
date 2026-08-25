@@ -32,6 +32,7 @@ const (
 	EnvGitHubToken         = "GITHUB_TOKEN" //nolint:gosec // Environment variable name, not a credential
 	EnvCommentBody         = "COMMENT_BODY"
 	EnvCommentID           = "COMMENT_ID"
+	EnvCommentRevision     = "COMMENT_UPDATED_AT"
 	EnvCommentAction       = "COMMENT_ACTION"
 	EnvPRNumber            = "PR_NUMBER"
 	EnvRepoOwner           = "REPO_OWNER"
@@ -462,7 +463,8 @@ func executeMerge(
 	}
 
 	return executeImmediateCommandMerge(
-		ctx, client, rc, bc, prNum, method, info, environment.DraftMergeRevision,
+		ctx, client, rc, bc, prNum, commentID, method, info,
+		environment.DraftMergeRevision,
 	)
 }
 
@@ -483,9 +485,11 @@ func executeCoordinatedMerge(
 		"superseded by an immediate merge command",
 		func() error {
 			var operationErr error
+			coordinated := environment
+			coordinated.PendingCI = nil
 			result, operationErr = executeMerge(
 				ctx, client, rc, bc, prNum, commentID, method,
-				false, requiredChecksOnly, CommandEnvironment{},
+				false, requiredChecksOnly, coordinated,
 			)
 
 			return operationErr
@@ -512,13 +516,19 @@ func executeImmediateCommandMerge(
 	client *github.Client,
 	rc *RuntimeConfig,
 	bc *config.Config,
-	prNum int,
+	prNum, commentID int,
 	method github.MergeMethod,
 	info *github.PRInfo,
 	sourceRevision string,
 ) (*feedback.Feedback, error) {
 	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
+	}
+	authorize := commandMergeAuthorizer(
+		ctx, client, rc, prNum, commentID, sourceRevision,
+	)
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
 	}
 	var err error
 	info, err = prepareDraftMerge(
@@ -527,15 +537,11 @@ func executeImmediateCommandMerge(
 	if err != nil {
 		return feedback.NewMergeFailed(err.Error()), nil
 	}
+	if err := authorize(); err != nil {
+		return feedback.NewMergeFailed(err.Error()), nil
+	}
 	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
 		return failure, nil
-	}
-	if sourceRevision != "" {
-		if err := ValidateDraftMergeAuthorization(
-			ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
-		); err != nil {
-			return feedback.NewMergeFailed(err.Error()), nil
-		}
 	}
 
 	// Check if PR is mergeable
@@ -545,7 +551,7 @@ func executeImmediateCommandMerge(
 		switch info.MergeableState {
 		case github.MergeableStateBlocked, github.MergeableStateUnstable:
 			// Branch protection or failing checks - enable auto-merge
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 
 		case github.MergeableStateDirty:
 			// Actual conflicts - cannot merge
@@ -569,11 +575,11 @@ func executeImmediateCommandMerge(
 			info.BaseBranch,
 		)
 		if mergeQueueEnabled {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 		}
 	}
 
-	return mergeCommandPR(ctx, client, rc, bc, prNum, method, sourceRevision)
+	return mergeCommandPR(ctx, client, rc, bc, prNum, method, authorize)
 }
 
 func approveMergeIfNeeded(
@@ -602,11 +608,11 @@ func mergeCommandPR(
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
-	sourceRevision string,
+	authorize mergeAuthorizer,
 ) (*feedback.Feedback, error) {
 	merge := func(mergeMethod github.MergeMethod) error {
-		return runDraftAuthorizedEffect(
-			ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		return runMergeAuthorizedEffect(
+			authorize,
 			func() error {
 				return client.MergePR(ctx, rc.RepoOwner, rc.RepoName, prNum, mergeMethod)
 			},
@@ -621,7 +627,7 @@ func mergeCommandPR(
 					// Check if we should enable auto-merge instead
 					if shouldEnableAutoMerge(err) {
 						return enableAutoMerge(
-							ctx, client, rc, bc, prNum, github.MergeMethodRebase, sourceRevision,
+							ctx, client, rc, bc, prNum, github.MergeMethodRebase, authorize,
 						)
 					}
 					return feedback.NewMergeFailed(err.Error()), nil
@@ -633,7 +639,7 @@ func mergeCommandPR(
 
 		// Check if we should enable auto-merge instead of failing
 		if shouldEnableAutoMerge(err) {
-			return enableAutoMerge(ctx, client, rc, bc, prNum, method, sourceRevision)
+			return enableAutoMerge(ctx, client, rc, bc, prNum, method, authorize)
 		}
 
 		return feedback.NewMergeFailed(err.Error()), nil
@@ -660,10 +666,10 @@ func enableAutoMerge(
 	bc *config.Config,
 	prNum int,
 	method github.MergeMethod,
-	sourceRevision string,
+	authorize mergeAuthorizer,
 ) (*feedback.Feedback, error) {
-	err := runDraftAuthorizedEffect(
-		ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+	err := runMergeAuthorizedEffect(
+		authorize,
 		func() error {
 			return client.EnableAutoMerge(
 				ctx, rc.RepoOwner, rc.RepoName, prNum, method,
@@ -938,18 +944,57 @@ func revalidateActionPendingCI(
 	markerCleanupErr := removeActionPendingCIReaction(
 		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, markerID,
 	)
+	restoreSafe := markerCleanupErr == nil
+	var tombstoneErr error
+	if !restoreSafe {
+		tombstoneErr = recordActionPendingCIRejection(
+			ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, markerID,
+		)
+		restoreSafe = tombstoneErr == nil
+	}
 	method, requiredOnly, _ := ParsePendingCILabel(label)
 	repairErr := repairActionPendingCILabel(
 		ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName, pullRequest,
 		method, requiredOnly, runtime.BotUsername, label,
 		actionPendingCIArtifactExclusion{commentID: commentID, markerID: markerID},
-		nil,
+		restoreSafe, nil,
 	)
 
 	return fmt.Errorf(
 		"revalidate pending CI draft authorization: %w",
-		errors.Join(err, markerCleanupErr, repairErr),
+		errors.Join(err, markerCleanupErr, tombstoneErr, repairErr),
 	)
+}
+
+func recordActionPendingCIRejection(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	commentID int,
+	markerID int64,
+) error {
+	tombstone, err := client.AddReactionState(
+		ctx, owner, repository, commentID, ReactionPendingCIRejected,
+	)
+	if err != nil {
+		return fmt.Errorf("record rejected pending CI marker: %w", err)
+	}
+	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
+	if err != nil {
+		return fmt.Errorf("verify rejected pending CI marker: %w", err)
+	}
+	for _, reaction := range reactions {
+		if reaction.ID != markerID {
+			continue
+		}
+		if tombstone.ID <= 0 || !newerActionPendingCIMarker(tombstone, reaction) {
+			return errors.New("rejected pending CI tombstone does not follow the surviving marker")
+		}
+
+		return nil
+	}
+
+	return nil
 }
 
 type actionPendingCILabeler interface {

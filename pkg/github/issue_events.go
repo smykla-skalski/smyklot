@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -13,12 +14,19 @@ const (
 )
 
 type pullRequestIssueEvent struct {
-	ID        int64     `json:"id"`
-	Event     string    `json:"event"`
-	CreatedAt time.Time `json:"created_at"`
-	Label     struct {
-		Name string `json:"name"`
-	} `json:"label"`
+	ID        int64                      `json:"id"`
+	Event     string                     `json:"event"`
+	CreatedAt time.Time                  `json:"created_at"`
+	Label     pullRequestIssueEventLabel `json:"label"`
+	Actor     pullRequestIssueEventActor `json:"actor"`
+}
+
+type pullRequestIssueEventLabel struct {
+	Name string `json:"name"`
+}
+
+type pullRequestIssueEventActor struct {
+	Login string `json:"login"`
 }
 
 // LatestPullRequestDraftTransition returns the newest durable transition that
@@ -64,6 +72,7 @@ func (c *Client) PullRequestDraftedAfterLabel(
 	owner, repository string,
 	pullRequest int,
 	label string,
+	botUsername string,
 ) (bool, error) {
 	events, path, err := c.pullRequestIssueEvents(ctx, owner, repository, pullRequest)
 	if err != nil {
@@ -72,15 +81,21 @@ func (c *Client) PullRequestDraftedAfterLabel(
 
 	var authorization pullRequestIssueEvent
 	for _, event := range events {
-		if (event.Event == issueEventConvertToDraft ||
-			(event.Event == issueEventLabeled && event.Label.Name == label)) &&
+		matchingLabel := event.Event == issueEventLabeled && event.Label.Name == label
+		if (event.Event == issueEventConvertToDraft || matchingLabel) &&
 			(event.ID <= 0 || event.CreatedAt.IsZero()) {
 			return false, NewAPIError(
 				ErrResponseParse, 0, http.MethodGet, path,
 				fmt.Errorf("incomplete %q issue event", event.Event),
 			)
 		}
-		if event.Event == issueEventLabeled && event.Label.Name == label &&
+		if matchingLabel && event.Actor.Login == "" {
+			return false, NewAPIError(
+				ErrResponseParse, 0, http.MethodGet, path,
+				fmt.Errorf("incomplete actor for %q issue event", event.Event),
+			)
+		}
+		if matchingLabel && strings.EqualFold(event.Actor.Login, botUsername) &&
 			issueEventAfter(event, authorization) {
 			authorization = event
 		}

@@ -375,6 +375,8 @@ env:
 
 This does not bypass reviews or required checks. If the pull request is converted back to draft while waiting for CI, Smyklot cancels the pending merge.
 
+Action workflows that enable this setting must pass the immutable event revision as `COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}` alongside `COMMENT_BODY`. Smyklot rejects a delayed workflow when the live comment no longer matches both values.
+
 ## Running as a service
 
 Smyklot can run as a long-running process instead of a per-comment workflow. One process serves every repository the App is installed on, so no repository needs a workflow file, and a command takes effect without a workflow run being queued first.

@@ -484,7 +484,7 @@ func reconcileDraftPendingCI(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
 			actionPendingCIArtifactExclusion{},
-			fmt.Errorf("recheck cancelled pending CI state: %w", err),
+			true, fmt.Errorf("recheck cancelled pending CI state: %w", err),
 		)
 	}
 	stillCancelled, err = actionPendingCIDraftCancelled(
@@ -496,7 +496,7 @@ func reconcileDraftPendingCI(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
 			actionPendingCIArtifactExclusion{},
-			fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
+			true, fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
 		)
 	}
 	if !stillCancelled {
@@ -516,7 +516,7 @@ func reconcileDraftPendingCI(
 		return false, repairActionPendingCILabel(
 			ctx, client, bc, owner, repository, pullRequest,
 			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
-			actionPendingCIArtifactExclusion{}, cleanupErr,
+			actionPendingCIArtifactExclusion{}, true, cleanupErr,
 		)
 	}
 	if !notify {
@@ -538,12 +538,16 @@ func repairActionPendingCILabel(
 	botUsername string,
 	label string,
 	exclusion actionPendingCIArtifactExclusion,
+	restoreSafe bool,
 	cause error,
 ) error {
 	disarmErr := client.RemoveLabel(ctx, owner, repository, pullRequest, label)
 	var apiErr *github.APIError
 	if errors.As(disarmErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		disarmErr = nil
+	}
+	if !restoreSafe {
+		return errors.Join(cause, disarmErr)
 	}
 	artifacts, _, scanErr := actionPendingCIArtifacts(
 		ctx, client, botConfig, owner, repository, pullRequest,
@@ -553,8 +557,18 @@ func repairActionPendingCILabel(
 		return errors.Join(cause, disarmErr, scanErr)
 	}
 	for _, artifact := range artifacts {
-		if artifact.legacy {
+		if artifact.legacy || !artifact.bound {
 			continue
+		}
+		authorizationErr := ValidateDraftMergeAuthorization(
+			ctx, client, owner, repository, pullRequest, artifact.revision,
+		)
+		if errors.Is(authorizationErr, pendingci.ErrStaleSourceRevision) ||
+			errors.Is(authorizationErr, pendingci.ErrAmbiguousSourceRevision) {
+			continue
+		}
+		if authorizationErr != nil {
+			return errors.Join(cause, disarmErr, authorizationErr)
 		}
 		restoreErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
 

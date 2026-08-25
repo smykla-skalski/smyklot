@@ -20,7 +20,7 @@ type actionPendingCIArtifactClient interface {
 	GetPRComments(context.Context, string, string, int) ([]github.IssueCommentState, error)
 	GetIssueComment(context.Context, string, string, int64) (github.IssueCommentState, error)
 	GetCommentReactions(context.Context, string, string, int) ([]github.Reaction, error)
-	PullRequestDraftedAfterLabel(context.Context, string, string, int, string) (bool, error)
+	PullRequestDraftedAfterLabel(context.Context, string, string, int, string, string) (bool, error)
 	RemoveCommentReaction(context.Context, string, string, int, int64) error
 	RemoveReactionByUser(
 		context.Context, string, string, int, github.ReactionType, string,
@@ -39,6 +39,12 @@ type actionPendingCIArtifact struct {
 type actionPendingCIArtifactExclusion struct {
 	commentID int
 	markerID  int64
+}
+
+type actionPendingCIArtifactMatch struct {
+	artifact actionPendingCIArtifact
+	found    bool
+	legacy   bool
 }
 
 func actionPendingCIDraftCancelled(
@@ -66,7 +72,7 @@ func actionPendingCIDraftCancelled(
 	if !found {
 		if legacy {
 			return client.PullRequestDraftedAfterLabel(
-				ctx, owner, repository, pullRequest, label,
+				ctx, owner, repository, pullRequest, label, botUsername,
 			)
 		}
 
@@ -138,51 +144,74 @@ func actionPendingCIArtifacts(
 	artifacts := make([]actionPendingCIArtifact, 0)
 	legacy := false
 	for _, comment := range comments {
-		parsed, parseErr := commands.ParseCommand(comment.Body, botConfig)
-		if parseErr != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
-			continue
-		}
-		ignoredMarkerID := int64(0)
-		if int(comment.ID) == exclusion.commentID {
-			ignoredMarkerID = exclusion.markerID
-		}
-		marker, pending, markerErr := actionPendingCICommentMarkers(
-			ctx, client, owner, repository, int(comment.ID), botUsername, ignoredMarkerID,
+		match, artifactErr := actionPendingCIArtifactForComment(
+			ctx, client, botConfig, owner, repository, method, requiredOnly,
+			botUsername, comment, exclusion,
 		)
-		if markerErr != nil {
-			return nil, false, markerErr
+		if artifactErr != nil {
+			return nil, false, artifactErr
 		}
-		if marker.ID == 0 {
-			if int(comment.ID) == exclusion.commentID {
-				continue
-			}
-			if pending.ID != 0 {
-				legacy = true
-				artifacts = append(artifacts, actionPendingCIArtifact{
-					commentID: int(comment.ID),
-					revision:  comment.UpdatedAt,
-					pending:   pending,
-					legacy:    true,
-				})
-			}
-
-			continue
+		legacy = legacy || match.legacy
+		if match.found {
+			artifacts = append(artifacts, match.artifact)
 		}
-		revision, revisionErr := pendingci.ParseSourceRevision(comment.UpdatedAt)
-		if revisionErr != nil {
-			return nil, false, fmt.Errorf(
-				"parse pending CI command revision on comment %d: %w", comment.ID, revisionErr,
-			)
-		}
-		artifacts = append(artifacts, actionPendingCIArtifact{
-			commentID: int(comment.ID),
-			revision:  revision.UTC().Format(time.RFC3339Nano),
-			marker:    marker,
-			bound:     marker.CreatedAt.After(revision),
-		})
 	}
 
 	return artifacts, legacy, nil
+}
+
+func actionPendingCIArtifactForComment(
+	ctx context.Context,
+	client actionPendingCIArtifactClient,
+	botConfig *config.Config,
+	owner, repository string,
+	method github.MergeMethod,
+	requiredOnly bool,
+	botUsername string,
+	comment github.IssueCommentState,
+	exclusion actionPendingCIArtifactExclusion,
+) (actionPendingCIArtifactMatch, error) {
+	parsed, err := commands.ParseCommand(comment.Body, botConfig)
+	if err != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
+		return actionPendingCIArtifactMatch{}, nil
+	}
+	ignoredMarkerID := int64(0)
+	if int(comment.ID) == exclusion.commentID {
+		ignoredMarkerID = exclusion.markerID
+	}
+	marker, pending, rejected, err := actionPendingCICommentMarkers(
+		ctx, client, owner, repository, int(comment.ID), botUsername, ignoredMarkerID,
+	)
+	if err != nil {
+		return actionPendingCIArtifactMatch{}, err
+	}
+	if rejected || marker.ID == 0 && int(comment.ID) == exclusion.commentID {
+		return actionPendingCIArtifactMatch{}, nil
+	}
+	if marker.ID == 0 {
+		artifact := actionPendingCIArtifact{
+			commentID: int(comment.ID), revision: comment.UpdatedAt,
+			pending: pending, legacy: true,
+		}
+
+		found := pending.ID != 0
+
+		return actionPendingCIArtifactMatch{
+			artifact: artifact, found: found, legacy: found,
+		}, nil
+	}
+	revision, err := pendingci.ParseSourceRevision(comment.UpdatedAt)
+	if err != nil {
+		return actionPendingCIArtifactMatch{}, fmt.Errorf(
+			"parse pending CI command revision on comment %d: %w", comment.ID, err,
+		)
+	}
+	artifact := actionPendingCIArtifact{
+		commentID: int(comment.ID), revision: revision.UTC().Format(time.RFC3339Nano),
+		marker: marker, bound: marker.CreatedAt.After(revision),
+	}
+
+	return actionPendingCIArtifactMatch{artifact: artifact, found: true}, nil
 }
 
 func actionPendingCICommandMatches(
@@ -211,15 +240,16 @@ func actionPendingCICommentMarkers(
 	commentID int,
 	botUsername string,
 	ignoredMarkerID int64,
-) (github.Reaction, github.Reaction, error) {
+) (github.Reaction, github.Reaction, bool, error) {
 	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
 	if err != nil {
-		return github.Reaction{}, github.Reaction{}, fmt.Errorf(
+		return github.Reaction{}, github.Reaction{}, false, fmt.Errorf(
 			"read pending CI command marker on comment %d: %w", commentID, err,
 		)
 	}
 	var marker github.Reaction
 	var pending github.Reaction
+	var rejected github.Reaction
 	for _, reaction := range reactions {
 		if reaction.User != botUsername {
 			continue
@@ -231,9 +261,15 @@ func actionPendingCICommentMarkers(
 			newerActionPendingCIMarker(reaction, marker) {
 			marker = reaction
 		}
+		if reaction.Type == ReactionPendingCIRejected &&
+			newerActionPendingCIMarker(reaction, rejected) {
+			rejected = reaction
+		}
 	}
+	invalidated := rejected.ID != 0 &&
+		(marker.ID == 0 || newerActionPendingCIMarker(rejected, marker))
 
-	return marker, pending, nil
+	return marker, pending, invalidated, nil
 }
 
 func newerActionPendingCIMarker(candidate, current github.Reaction) bool {
@@ -341,7 +377,7 @@ func settleCancelledActionPendingCI(
 		if artifact.legacy {
 			legacySurvives, legacyErr := settleLegacyActionPendingCIArtifact(
 				ctx, client, owner, repository, pullRequest,
-				label, artifact, currentlyDraft,
+				label, botUsername, artifact, currentlyDraft,
 			)
 			surviving = surviving || legacySurvives
 			if legacyErr != nil {
@@ -399,6 +435,7 @@ func settleLegacyActionPendingCIArtifact(
 	owner, repository string,
 	pullRequest int,
 	label string,
+	botUsername string,
 	artifact actionPendingCIArtifact,
 	currentlyDraft bool,
 ) (bool, error) {
@@ -406,7 +443,7 @@ func settleLegacyActionPendingCIArtifact(
 	var err error
 	if !cancelled {
 		cancelled, err = client.PullRequestDraftedAfterLabel(
-			ctx, owner, repository, pullRequest, label,
+			ctx, owner, repository, pullRequest, label, botUsername,
 		)
 	}
 	if err != nil || !cancelled {

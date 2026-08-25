@@ -57,6 +57,11 @@ const (
 	// ReactionPendingCIService fences a service-owned wait from the Action
 	// runner without adding a second label to the pull request.
 	ReactionPendingCIService = github.ReactionHooray
+
+	// ReactionPendingCIRejected is a durable tombstone for an exact Action
+	// marker GitHub refused to delete. A later command removes the ordinary
+	// error reaction before it records a new marker.
+	ReactionPendingCIRejected = github.ReactionMinusOne
 )
 
 // handleReactions processes reaction-based approvals and merges.

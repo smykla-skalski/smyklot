@@ -158,6 +158,7 @@ func loadRuntimeConfig(cmd *cobra.Command) *bot.RuntimeConfig {
 	loadEnvIfEmpty(&rc.Token, bot.EnvGitHubToken)
 	loadEnvIfEmpty(&rc.CommentBody, bot.EnvCommentBody)
 	loadEnvIfEmpty(&rc.CommentID, bot.EnvCommentID)
+	loadEnvIfEmpty(&rc.CommentRevision, bot.EnvCommentRevision)
 	loadEnvIfEmpty(&rc.CommentAction, bot.EnvCommentAction)
 	loadEnvIfEmpty(&rc.PRNumber, bot.EnvPRNumber)
 	loadEnvIfEmpty(&rc.RepoOwner, bot.EnvRepoOwner)

@@ -26,6 +26,43 @@ type draftMergeHistoryClient interface {
 	) (time.Time, bool, error)
 }
 
+type mergeAuthorizer func() error
+
+func commandMergeAuthorizer(
+	ctx context.Context,
+	client *github.Client,
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	sourceRevision string,
+) mergeAuthorizer {
+	return func() error {
+		if sourceRevision == "" {
+			return nil
+		}
+		if _, err := draftMergeCommandRevision(
+			ctx, client, runtime, commentID,
+			CommandEnvironment{DraftMergeRevision: sourceRevision},
+		); err != nil {
+			return err
+		}
+
+		return ValidateDraftMergeAuthorization(
+			ctx, client, runtime.RepoOwner, runtime.RepoName,
+			pullRequest, sourceRevision,
+		)
+	}
+}
+
+func runMergeAuthorizedEffect(authorize mergeAuthorizer, effect func() error) error {
+	if authorize != nil {
+		if err := authorize(); err != nil {
+			return err
+		}
+	}
+
+	return effect()
+}
+
 func runDraftAuthorizedEffect(
 	ctx context.Context,
 	client draftMergeHistoryClient,
@@ -88,9 +125,18 @@ func draftMergeCommandRevision(
 	commentID int,
 	environment CommandEnvironment,
 ) (string, error) {
-	if environment.PendingCI != nil &&
-		strings.TrimSpace(environment.PendingCI.SourceRevision) != "" {
-		return environment.PendingCI.SourceRevision, nil
+	revision := strings.TrimSpace(environment.DraftMergeRevision)
+	if revision == "" && environment.PendingCI != nil {
+		revision = strings.TrimSpace(environment.PendingCI.SourceRevision)
+	}
+	if revision == "" {
+		revision = strings.TrimSpace(runtime.CommentRevision)
+	}
+	if revision == "" {
+		return "", fmt.Errorf(
+			"%w: %s is required when allow_draft_merges is enabled",
+			pendingci.ErrInvalidRequest, EnvCommentRevision,
+		)
 	}
 	comment, err := client.GetIssueComment(
 		ctx, runtime.RepoOwner, runtime.RepoName, int64(commentID),
@@ -98,8 +144,16 @@ func draftMergeCommandRevision(
 	if err != nil {
 		return "", fmt.Errorf("read merge command revision: %w", err)
 	}
+	if comment.ID != int64(commentID) || comment.UpdatedAt != revision ||
+		comment.Body != runtime.CommentBody ||
+		!strings.EqualFold(comment.User.Login, runtime.CommentAuthor) {
+		return "", fmt.Errorf(
+			"%w: merge command comment changed before execution; reissue the command",
+			pendingci.ErrStaleSourceRevision,
+		)
+	}
 
-	return comment.UpdatedAt, nil
+	return revision, nil
 }
 
 func prepareDraftMerge(

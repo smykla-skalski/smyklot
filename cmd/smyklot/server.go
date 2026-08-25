@@ -554,14 +554,15 @@ func (s *server) handleIssueCommentCoordinated(
 // The Action fills the same struct from environment variables a workflow set.
 func runtimeConfigFor(event *webhook.IssueCommentEvent, cfg *serveConfig) *bot.RuntimeConfig {
 	return &bot.RuntimeConfig{
-		CommentBody:   event.Comment.Body,
-		CommentID:     strconv.FormatInt(event.Comment.ID, 10),
-		CommentAction: event.Action,
-		PRNumber:      strconv.Itoa(event.Issue.Number),
-		RepoOwner:     event.Repository.Owner.Login,
-		RepoName:      event.Repository.Name,
-		CommentAuthor: event.Comment.User.Login,
-		BotUsername:   cfg.botUsername,
-		APIBaseURL:    cfg.apiBaseURL,
+		CommentBody:     event.Comment.Body,
+		CommentID:       strconv.FormatInt(event.Comment.ID, 10),
+		CommentRevision: event.Comment.UpdatedAt,
+		CommentAction:   event.Action,
+		PRNumber:        strconv.Itoa(event.Issue.Number),
+		RepoOwner:       event.Repository.Owner.Login,
+		RepoName:        event.Repository.Name,
+		CommentAuthor:   event.Comment.User.Login,
+		BotUsername:     cfg.botUsername,
+		APIBaseURL:      cfg.apiBaseURL,
 	}
 }
