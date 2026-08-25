@@ -1,6 +1,12 @@
 <script lang="ts">
   import { plainClick } from '#lib/follow.js';
   import { createQuery } from '@tanstack/svelte-query';
+  import { onMount } from 'svelte';
+  import {
+    queueListKey,
+    ROOT_OVERVIEW_ACTIVE_QUEUE,
+    ROOT_OVERVIEW_APPROVAL_QUEUE,
+  } from '#lib/queue-cache.js';
   import type { PanelApi } from '../api';
   import {
     formatBytes,
@@ -9,7 +15,7 @@
     formatRelative,
     formatTimestamp,
   } from '../format';
-  import type { DependencyState, RootOverview } from '../types';
+  import type { DependencyState, QueueItem, RootOverview } from '../types';
   import type { ChipTone } from './Chip.svelte';
   import StatusPill from './StatusPill.svelte';
   import Button from './Button.svelte';
@@ -31,8 +37,6 @@
     onOpenInbox,
     queueHref,
     onOpenQueue,
-    requestHref,
-    onOpenRequest,
   }: {
     api: PanelApi;
     rootRole: string;
@@ -47,9 +51,6 @@
     /** The queue summary is a link to the page that replaced the panel here. */
     queueHref: string;
     onOpenQueue: () => void;
-    /** Each row in that summary opens the request it names. */
-    requestHref: (requestId: string) => string;
-    onOpenRequest: (requestId: string) => void;
   } = $props();
 
   /* The hrefs are real addresses - middle-click, Cmd-click and Copy link all
@@ -82,7 +83,22 @@
     queryKey: ['root-overview'],
     queryFn: () => api.fetchRootOverview(),
   }));
+  const activeQueueQuery = createQuery(() => ({
+    queryKey: queueListKey(undefined, ROOT_OVERVIEW_ACTIVE_QUEUE),
+    queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_ACTIVE_QUEUE),
+  }));
+  const approvalQueueQuery = createQuery(() => ({
+    queryKey: queueListKey(undefined, ROOT_OVERVIEW_APPROVAL_QUEUE),
+    queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_APPROVAL_QUEUE),
+  }));
   const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
+  const queueItems = $derived<QueueItem[]>(activeQueueQuery.data?.items ?? []);
+  const queueTotal = $derived(activeQueueQuery.data?.total ?? 0);
+  const queueApprovals = $derived(approvalQueueQuery.data?.total ?? 0);
+  const queueLoading = $derived(activeQueueQuery.isFetching || approvalQueueQuery.isFetching);
+  const queueFailure = $derived(
+    errorMessage(activeQueueQuery.error) || errorMessage(approvalQueueQuery.error),
+  );
   const loading = $derived(overviewQuery.isFetching);
   const failure = $derived(
     overviewQuery.error === null
@@ -109,7 +125,21 @@
   );
 
   async function load(): Promise<void> {
-    await overviewQuery.refetch();
+    await Promise.all([
+      overviewQuery.refetch(),
+      activeQueueQuery.refetch(),
+      approvalQueueQuery.refetch(),
+    ]);
+  }
+
+  onMount(() => {
+    const clock = window.setInterval(() => (now = Date.now()), 1_000);
+    return () => window.clearInterval(clock);
+  });
+
+  function errorMessage(error: unknown): string {
+    if (error === null || error === undefined) return '';
+    return error instanceof Error ? error.message : String(error);
   }
 
   function uptime(seconds: number): string {
@@ -139,10 +169,6 @@
   function sentenceCase(text: string): string {
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
-
-  $effect(() => {
-    if (overviewQuery.dataUpdatedAt > 0) now = overviewQuery.dataUpdatedAt;
-  });
 </script>
 
 <RootPageHeader
@@ -330,12 +356,14 @@
          dashboard still owes it is what lands next and whether anything is
          stuck, which is three rows and a chip. -->
     <QueueSummary
-      queue={overview.pending_ci}
+      items={queueItems}
+      total={queueTotal}
+      approvals={queueApprovals}
+      loading={queueLoading}
+      error={queueFailure}
       {now}
       {queueHref}
       {onOpenQueue}
-      {requestHref}
-      {onOpenRequest}
     />
 
     <div class="overview-columns">

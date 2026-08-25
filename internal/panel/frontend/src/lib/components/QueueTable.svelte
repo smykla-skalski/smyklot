@@ -1,5 +1,8 @@
 <script lang="ts">
   import type { QueueActionType, QueueItem } from '#lib/types.js';
+  import { cubicOut } from 'svelte/easing';
+  import { MediaQuery } from 'svelte/reactivity';
+  import { fade } from 'svelte/transition';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Button from './Button.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
@@ -18,6 +21,11 @@
   } = $props();
 
   type QueueMenuAction = QueueActionType | 'details';
+  const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce');
+  const rowMotion = $derived({ duration: reducedMotion.current ? 0 : 150, easing: cubicOut });
+  const rowArriving = $derived({ duration: reducedMotion.current ? 0 : 120, delay: 15 });
+  const rowLeaving = $derived({ duration: reducedMotion.current ? 0 : 70 });
+  const valueMotion = $derived({ duration: reducedMotion.current ? 0 : 80 });
 
   function words(value: string): string {
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -125,6 +133,15 @@
     }
     onAction(item, action as QueueActionType);
   }
+
+  function statusDetail(item: QueueItem): string {
+    if (item.blocked_reason) return item.blocked_reason;
+    if (item.state === 'running' && item.progress_total > 0) {
+      return `${item.progress_current} of ${item.progress_total}`;
+    }
+    if (item.attempt > 0) return `Attempt ${item.attempt}`;
+    return '';
+  }
 </script>
 
 {#snippet cells(item: QueueItem)}
@@ -137,24 +154,42 @@
   <td data-label="State">
     <div class="queue-cell state-cell">
       <div class="state-line">
-        <Chip tone={stateTone(item.state)} dot={item.state === 'running'}>{words(item.state)}</Chip>
-        <span class="priority-{item.priority}">
-          <Chip tone={priorityTone(item.priority)} small>{words(item.priority)}</Chip>
+        <span class="live-value state-value">
+          {#key `${item.id}:${item.state}:${item.revision}`}
+            <span class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
+              <Chip tone={stateTone(item.state)} dot={item.state === 'running'}>
+                {words(item.state)}
+              </Chip>
+            </span>
+          {/key}
+        </span>
+        <span class="live-value priority-value priority-{item.priority}">
+          {#key `${item.id}:${item.priority}:${item.revision}`}
+            <span class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
+              <Chip tone={priorityTone(item.priority)} small>{words(item.priority)}</Chip>
+            </span>
+          {/key}
         </span>
       </div>
-      {#if item.blocked_reason}
-        <span class="queue-reason">{item.blocked_reason}</span>
-      {:else if item.state === 'running' && item.progress_total > 0}
-        <span class="queue-reason">{item.progress_current} of {item.progress_total}</span>
-      {:else if item.attempt > 0}
-        <span class="queue-reason">Attempt {item.attempt}</span>
+      {#if statusDetail(item) !== ''}
+        {#key `${item.id}:${statusDetail(item)}:${item.revision}`}
+          <span class="queue-reason" in:fade={valueMotion} out:fade={valueMotion}>
+            {statusDetail(item)}
+          </span>
+        {/key}
       {/if}
     </div>
   </td>
   <td data-label="Timing">
     <div class="timing-cell">
       <div class="eligibility-line">
-        <strong>{countdown(item.eligible_at)}</strong>
+        <span class="live-value eligibility-value">
+          {#key `${item.id}:${item.state}:${item.eligible_at}`}
+            <strong class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
+              {countdown(item.eligible_at)}
+            </strong>
+          {/key}
+        </span>
         <span aria-hidden="true">·</span>
         <time datetime={item.eligible_at}>{absolute(item.eligible_at)}</time>
       </div>
@@ -202,6 +237,7 @@
   class="general-queue-table"
   scrollable={false}
   stacked
+  motion={{ flip: rowMotion, arriving: rowArriving, leaving: rowLeaving }}
 />
 
 <style>
@@ -260,6 +296,17 @@
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-1);
+  }
+  .live-value,
+  .live-value-version {
+    display: grid;
+    grid-area: 1 / 1;
+  }
+  .live-value-version {
+    justify-self: start;
+  }
+  .eligibility-value {
+    min-width: 5.25rem;
   }
   .timing-cell {
     display: grid;

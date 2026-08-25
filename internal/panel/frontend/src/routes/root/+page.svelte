@@ -23,7 +23,5 @@
     onOpenInbox={() => session.openInbox()}
     queueHref={session.queueHref()}
     onOpenQueue={() => session.selectRootSection('queue')}
-    requestHref={(request: string) => session.queueRequestHref(request)}
-    onOpenRequest={(request: string) => session.openQueueRequest(request)}
   />
 </section>

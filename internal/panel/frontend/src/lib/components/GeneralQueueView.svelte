@@ -3,6 +3,7 @@
   import { onMount } from 'svelte';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
+  import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
   import type {
     QueueActionInput,
     QueueActionType,
@@ -68,13 +69,13 @@
   const query = $derived.by(queueQuery);
 
   const queuePageQuery = createQuery(() => ({
-    queryKey: [...queueScopeKey(), query],
+    queryKey: queueListKey(targetId, query),
     queryFn: () =>
       targetId === undefined ? api.fetchRootQueue(query) : api.fetchTargetQueue(targetId, query),
     placeholderData: (previous: QueuePage | undefined) => previous,
   }));
   const detailQuery = createQuery(() => ({
-    queryKey: [...detailScopeKey(), detailItemID ?? ''],
+    queryKey: queueDetailKey(targetId, detailItemID ?? ''),
     queryFn: () => fetchDetail(detailItemID),
     enabled: detailOpen && detailItemID !== null,
   }));
@@ -241,14 +242,6 @@
     return () => window.clearInterval(clock);
   });
 
-  function queueScopeKey(): readonly string[] {
-    return targetId === undefined ? ['queue', 'root'] : ['queue', 'target', targetId];
-  }
-
-  function detailScopeKey(): readonly string[] {
-    return targetId === undefined ? ['queue-detail', 'root'] : ['queue-detail', 'target', targetId];
-  }
-
   function errorMessage(cause: unknown): string {
     if (cause === null || cause === undefined) return '';
     return cause instanceof Error ? cause.message : String(cause);
@@ -328,7 +321,7 @@
         targetId === undefined
           ? await api.actOnRootQueue(selected.id, input)
           : await api.actOnTargetQueue(targetId, selected.id, input);
-      queryClient.setQueriesData<QueuePage>({ queryKey: queueScopeKey() }, (current) =>
+      queryClient.setQueriesData<QueuePage>({ queryKey: queueListScopeKey(targetId) }, (current) =>
         current === undefined
           ? current
           : {
@@ -336,18 +329,18 @@
               items: current.items.map((item) => (item.id === updated.id ? updated : item)),
             },
       );
-      queryClient.setQueryData<QueueDetail>([...detailScopeKey(), updated.id], (current) =>
+      queryClient.setQueryData<QueueDetail>(queueDetailKey(targetId, updated.id), (current) =>
         current === undefined ? current : { ...current, item: updated },
       );
       announcement = `${updated.title}: ${updated.state.replaceAll('_', ' ')}`;
       selected = null;
       selectedAction = null;
       actionError = '';
-      void queryClient.invalidateQueries({ queryKey: queueScopeKey() });
+      void queryClient.invalidateQueries({ queryKey: queueListScopeKey(targetId) });
     } catch (cause) {
       actionError = cause instanceof Error ? cause.message : String(cause);
       if (actionError.toLowerCase().includes('changed')) {
-        void queryClient.invalidateQueries({ queryKey: queueScopeKey() });
+        void queryClient.invalidateQueries({ queryKey: queueListScopeKey(targetId) });
       }
     } finally {
       actionBusy = false;

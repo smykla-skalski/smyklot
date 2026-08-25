@@ -60,6 +60,9 @@ const at = (offsetMs: number): string => new Date(NOW + offsetMs).toISOString();
  */
 const MOCK = seed(undefined, NOW);
 
+/** Durable background work, shared with the development server. */
+export const GENERAL_QUEUE = MOCK.queue;
+
 function request(over: Partial<PendingCIRequest> & { id: string }): PendingCIRequest {
   return {
     repository_full_name: 'smykla-skalski/smyklot',
