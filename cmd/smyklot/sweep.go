@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -342,18 +341,29 @@ func (s *server) storedSweepRepositories(
 	}
 	repositories := make([]github.Repository, 0, len(stored))
 	for _, repository := range stored {
-		id, parseErr := strconv.ParseInt(repository.ID, 10, 64)
-		parts := strings.SplitN(repository.FullName, "/", 2)
-		if parseErr != nil || len(parts) != 2 {
-			return nil, fmt.Errorf("read catalog repository identity %q", repository.FullName)
+		converted, convertErr := storedSweepRepository(repository)
+		if convertErr != nil {
+			return nil, convertErr
 		}
-		repositories = append(repositories, github.Repository{
-			ID: id, Owner: parts[0], Name: parts[1], FullName: repository.FullName,
-			Private: repository.Private, DefaultBranch: repository.DefaultBranch,
-		})
+		repositories = append(repositories, converted)
 	}
 
 	return repositories, nil
+}
+
+func storedSweepRepository(repository storage.Repository) (github.Repository, error) {
+	id, parseErr := storage.ParseRepositoryID(repository.ID)
+	parts := strings.SplitN(repository.FullName, "/", 2)
+	if parseErr != nil || len(parts) != 2 {
+		return github.Repository{}, fmt.Errorf(
+			"read catalog repository identity %q", repository.FullName,
+		)
+	}
+
+	return github.Repository{
+		ID: id, Owner: parts[0], Name: parts[1], FullName: repository.FullName,
+		Private: repository.Private, DefaultBranch: repository.DefaultBranch,
+	}, nil
 }
 
 // reconcileInstallationSync computes and applies whatever org sync is due.
