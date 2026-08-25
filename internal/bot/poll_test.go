@@ -804,6 +804,15 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 		})
 
 		It("should return nil when no PRs have pending-ci labels", func() {
+			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+				if request.Method == http.MethodGet &&
+					request.URL.Path == "/repos/owner/repo/issues/1/reactions" {
+					_, _ = w.Write([]byte(`[]`))
+
+					return
+				}
+				http.NotFound(w, request)
+			}))
 			prs := []map[string]interface{}{
 				{
 					"number": float64(1),
@@ -813,7 +822,7 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 				},
 			}
 
-			client, err := github.NewClient("test-token", "http://localhost")
+			client, err := github.NewClient("test-token", server.URL)
 			Expect(err).NotTo(HaveOccurred())
 
 			bc := config.Default()

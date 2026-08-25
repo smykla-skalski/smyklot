@@ -1117,7 +1117,7 @@ func TestActionPendingCIFailureRestoresAnotherAuthorizedRequest(t *testing.T) {
 
 func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	t.Parallel()
-	state := &actionPendingCIPublishFailureState{scanFailures: 1}
+	state := &actionPendingCIPublishFailureState{scanFailures: 3}
 	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
@@ -1132,24 +1132,34 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("failed publication unexpectedly succeeded")
 	}
-	if !state.labelRestored {
-		t.Fatal("failed repair scan did not leave a durable retry label")
+	if state.labelRestored || !state.repairSignaled {
+		t.Fatalf(
+			"labelRestored=%t repairSignaled=%t, want a non-authorizing retry signal",
+			state.labelRestored, state.repairSignaled,
+		)
 	}
-	cancelled, err := actionPendingCIDraftCancelled(
-		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
-		github.MergeMethodMerge, false, LabelPendingCIMerge, "smyklot[bot]", false,
+	request, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web",
+		map[string]interface{}{"number": float64(7)}, "smyklot[bot]",
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cancelled {
-		t.Fatal("recovered scan did not find the surviving authorized request")
+	if !found || request.Label != LabelPendingCIMerge || !state.labelRestored {
+		t.Fatalf(
+			"found=%t label=%q restored=%t, want recovered merge request",
+			found, request.Label, state.labelRestored,
+		)
+	}
+	if state.repairSignaled {
+		t.Fatal("successful repair left its retry signal behind")
 	}
 }
 
 type actionPendingCIPublishFailureState struct {
-	labelRestored bool
-	scanFailures  int
+	labelRestored  bool
+	repairSignaled bool
+	scanFailures   int
 }
 
 func actionPendingCIPublishFailureHandler(
@@ -1199,9 +1209,103 @@ func actionPendingCIPublishFailureHandler(
 			state.labelRestored = true
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/pulls/7":
+			labels := []map[string]any{}
+			if state.labelRestored {
+				labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": false,
+				"head": map[string]any{"sha": "head"}, "labels": labels,
+			})
+		case request.Method == http.MethodPost &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			state.repairSignaled = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			writeActionPendingCIRepairSignal(w, state.repairSignaled)
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions/70":
+			state.repairSignaled = false
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			http.NotFound(w, request)
 		}
+	}
+}
+
+func writeActionPendingCIRepairSignal(w http.ResponseWriter, present bool) {
+	if !present {
+		_, _ = w.Write([]byte(`[]`))
+
+		return
+	}
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 70, "content": string(ReactionPendingCIRepair),
+		"created_at": "2026-08-25T08:05:01Z",
+		"user":       map[string]any{"login": "smyklot[bot]"},
+	}})
+}
+
+func TestActionPendingCIRepairPreservesNewerGenerationOnSameComment(t *testing.T) {
+	t.Parallel()
+	labelRestored := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci":
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/7/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:04:00Z",
+			}})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{
+					"id": 61, "content": "eyes", "created_at": "2026-08-25T08:04:01Z",
+					"user": map[string]any{"login": "smyklot[bot]"},
+				},
+				{
+					"id": 62, "content": "hooray", "created_at": "2026-08-25T08:04:02Z",
+					"user": map[string]any{"login": "smyklot[bot]"},
+				},
+			})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/7/events":
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodPost &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels":
+			labelRestored = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = repairActionPendingCILabel(
+		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
+		github.MergeMethodMerge, false, "smyklot[bot]", LabelPendingCIMerge,
+		actionPendingCIArtifactExclusion{commentID: 99, fenceID: 41},
+		errors.New("older publication failed"),
+	)
+	if err == nil {
+		t.Fatal("repair hid the original publication failure")
+	}
+	if !labelRestored {
+		t.Fatal("older publication stranded a newer generation on the same comment")
 	}
 }
 
@@ -1454,15 +1558,19 @@ func TestActionPendingCILegacyCancellationErrorDoesNotReauthorizeLabel(t *testin
 
 type legacyCancellationErrorTestState struct {
 	pullReads     int
+	scanFailures  int
 	failFinalRead bool
 	labelPresent  bool
 	labelRestored bool
+	repairSignal  bool
 	merged        bool
 }
 
 func assertLegacyCancellationErrorDisarmsLabel(t *testing.T, allowDraftMerges bool) {
 	t.Helper()
-	state := &legacyCancellationErrorTestState{failFinalRead: true, labelPresent: true}
+	state := &legacyCancellationErrorTestState{
+		failFinalRead: true, labelPresent: true, scanFailures: 3,
+	}
 	server := httptest.NewServer(legacyCancellationErrorHandler(state))
 	defer server.Close()
 	client, err := github.NewClient("test-token", server.URL)
@@ -1479,10 +1587,26 @@ func assertLegacyCancellationErrorDisarmsLabel(t *testing.T, allowDraftMerges bo
 	if err == nil || cancelled {
 		t.Fatalf("cancelled=%t error=%v, want uncertain failure", cancelled, err)
 	}
-	if state.labelPresent || state.labelRestored {
-		t.Fatal("legacy cancellation failure created a new authorization label")
+	if state.labelPresent || state.labelRestored || !state.repairSignal {
+		t.Fatalf(
+			"present=%t restored=%t repair=%t, want only a repair signal",
+			state.labelPresent, state.labelRestored, state.repairSignal,
+		)
 	}
 	state.failFinalRead = false
+	_, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, botConfig, "acme", "web",
+		map[string]interface{}{"number": float64(7)}, "smyklot[bot]",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found || state.labelPresent || state.labelRestored || state.repairSignal {
+		t.Fatalf(
+			"found=%t present=%t restored=%t repair=%t after legacy recovery",
+			found, state.labelPresent, state.labelRestored, state.repairSignal,
+		)
+	}
 	pr.PRData = map[string]any{"number": float64(7)}
 	if err = processPendingCIPR(
 		t.Context(), client, botConfig, "acme", "web", pr, "smyklot[bot]",
@@ -1498,25 +1622,9 @@ func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) htt
 	return func(w http.ResponseWriter, request *http.Request) {
 		switch {
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
-			state.pullReads++
-			if state.pullReads > 1 && state.failFinalRead {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(`{"message":"try again"}`))
-
-				return
-			}
-			labels := []map[string]any{}
-			if state.labelPresent {
-				labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
-			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"number": 7, "state": "open", "draft": false,
-				"head": map[string]any{"sha": "head"}, "labels": labels,
-			})
+			writeLegacyCancellationState(w, state)
 		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/comments":
-			_ = json.NewEncoder(w).Encode([]map[string]any{{
-				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
-			}})
+			writeLegacyCancellationComments(w, state)
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
 			writeLegacyActionPendingCIReactions(w, true)
@@ -1531,6 +1639,18 @@ func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) htt
 			state.labelRestored = true
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodPost &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			state.repairSignal = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{}`))
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions":
+			writeActionPendingCIRepairSignal(w, state.repairSignal)
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions/70":
+			state.repairSignal = false
+			w.WriteHeader(http.StatusNoContent)
 		case request.Method == http.MethodPut && request.URL.Path == "/repos/acme/web/pulls/7/merge":
 			state.merged = true
 			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
@@ -1538,6 +1658,43 @@ func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) htt
 			http.NotFound(w, request)
 		}
 	}
+}
+
+func writeLegacyCancellationState(
+	w http.ResponseWriter,
+	state *legacyCancellationErrorTestState,
+) {
+	state.pullReads++
+	if state.pullReads > 1 && state.failFinalRead {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message":"try again"}`))
+
+		return
+	}
+	labels := []map[string]any{}
+	if state.labelPresent {
+		labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"number": 7, "state": "open", "draft": false,
+		"head": map[string]any{"sha": "head"}, "labels": labels,
+	})
+}
+
+func writeLegacyCancellationComments(
+	w http.ResponseWriter,
+	state *legacyCancellationErrorTestState,
+) {
+	if !state.labelPresent && state.scanFailures > 0 {
+		state.scanFailures--
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message":"try again"}`))
+
+		return
+	}
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+	}})
 }
 
 func writeLegacyCancellationEvents(w http.ResponseWriter, restored bool) {

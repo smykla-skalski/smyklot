@@ -30,8 +30,12 @@ func processPendingCIPRs(
 	prs []map[string]interface{},
 	botUsername string,
 ) error {
-	// Filter PRs with pending-ci labels
 	pendingPRs := filterPendingCIPRs(prs)
+	for _, recovered := range recoverActionPendingCIRepairs(
+		ctx, client, bc, repoOwner, repoName, prs, botUsername,
+	) {
+		pendingPRs = appendPendingCIRequest(pendingPRs, recovered)
+	}
 
 	if len(pendingPRs) == 0 {
 		return nil
@@ -550,10 +554,11 @@ func repairActionPendingCILabel(
 		method, requiredOnly, botUsername, exclusion,
 	)
 	if scanErr != nil {
-		// Keep a durable retry signal when GitHub fails the repair scan. The
-		// poller will revisit this PR through the label, while incomplete
-		// publications remain closed by their rejection gate.
-		retryErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
+		// A PR reaction keeps the repair discoverable without recreating a
+		// method label, which is an authorization artifact for legacy waits.
+		retryErr := client.AddPullRequestReaction(
+			ctx, owner, repository, pullRequest, ReactionPendingCIRepair,
+		)
 
 		return errors.Join(cause, disarmErr, scanErr, retryErr)
 	}

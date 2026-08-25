@@ -64,6 +64,12 @@ const (
 	// share a reaction with ordinary command feedback: retries clear old error
 	// reactions before they are authorized.
 	ReactionPendingCIRejected = github.ReactionLaugh
+
+	// ReactionPendingCIRepair is a retry signal on the pull request itself.
+	// Its target distinguishes it from ReactionPendingCIRejected, which is
+	// placed on a command comment. Unlike a method label, this signal cannot
+	// authorize legacy pending-CI work after a draft transition.
+	ReactionPendingCIRepair = github.ReactionLaugh
 )
 
 // handleReactions processes reaction-based approvals and merges.

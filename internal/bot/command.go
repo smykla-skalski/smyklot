@@ -975,6 +975,7 @@ func publishActionPendingCI(
 	if err := validateActionPendingCIMarker(fence, sourceRevision); err != nil {
 		return err
 	}
+	exclusion.fenceID = fence.ID
 	if err := authorize(); err != nil {
 		return fmt.Errorf("revalidate pending CI command: %w", err)
 	}

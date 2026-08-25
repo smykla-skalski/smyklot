@@ -38,6 +38,7 @@ type actionPendingCIArtifact struct {
 
 type actionPendingCIArtifactExclusion struct {
 	commentID int
+	fenceID   int64
 }
 
 type actionPendingCIArtifactMatch struct {
@@ -170,9 +171,6 @@ func actionPendingCIArtifactForComment(
 	comment github.IssueCommentState,
 	exclusion actionPendingCIArtifactExclusion,
 ) (actionPendingCIArtifactMatch, error) {
-	if int(comment.ID) == exclusion.commentID {
-		return actionPendingCIArtifactMatch{}, nil
-	}
 	parsed, err := commands.ParseCommand(comment.Body, botConfig)
 	if err != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
 		return actionPendingCIArtifactMatch{}, nil
@@ -182,6 +180,10 @@ func actionPendingCIArtifactForComment(
 	)
 	if err != nil {
 		return actionPendingCIArtifactMatch{}, err
+	}
+	if int(comment.ID) == exclusion.commentID &&
+		exclusion.fenceID != 0 && pending.ID == exclusion.fenceID {
+		return actionPendingCIArtifactMatch{}, nil
 	}
 	if marker.ID == 0 {
 		if rejected.ID != 0 {
