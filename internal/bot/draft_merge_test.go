@@ -1163,6 +1163,84 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	}
 }
 
+func TestActionPendingCIRepairLabelFailureLeavesDurableRetry(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		nextRepairSignalID: 70, labelRestoreStatus: http.StatusInternalServerError,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = repairActionPendingCILabel(
+		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
+		github.MergeMethodMerge, false, "smyklot[bot]", LabelPendingCIMerge,
+		actionPendingCIArtifactExclusion{}, errors.New("publication failed"),
+	)
+	if err == nil {
+		t.Fatal("label restoration failure was hidden")
+	}
+	assertActionPendingCIReadyOnly(t, state)
+}
+
+func TestActionPendingCIRepairAuthorizationFailureLeavesDurableRetry(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		nextRepairSignalID: 70, eventFailures: 3,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = repairActionPendingCILabel(
+		t.Context(), client, draftMergeConfig(), "acme", "web", 7,
+		github.MergeMethodMerge, false, "smyklot[bot]", LabelPendingCIMerge,
+		actionPendingCIArtifactExclusion{}, errors.New("publication failed"),
+	)
+	if err == nil {
+		t.Fatal("draft-history failure was hidden")
+	}
+	assertActionPendingCIReadyOnly(t, state)
+}
+
+func TestRestorePendingCILabelFailureLeavesDurableRetry(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		nextRepairSignalID: 70, labelRestoreStatus: http.StatusInternalServerError,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = restorePendingCILabel(
+		t.Context(), client, "acme", "web", 7, LabelPendingCIMerge,
+		errors.New("concurrent command survived"),
+	)
+	if err == nil {
+		t.Fatal("concurrent label restoration failure was hidden")
+	}
+	assertActionPendingCIReadyOnly(t, state)
+}
+
+func assertActionPendingCIReadyOnly(
+	t *testing.T,
+	state *actionPendingCIPublishFailureState,
+) {
+	t.Helper()
+	if state.labelRestored || state.repairReadyID == 0 || state.repairClaimID != 0 {
+		t.Fatalf(
+			"labelRestored=%t ready=%d claim=%d, want only a durable ready signal",
+			state.labelRestored, state.repairReadyID, state.repairClaimID,
+		)
+	}
+}
+
 func TestActionPendingCIRecoveryDoesNotClearConcurrentRepairSignal(t *testing.T) {
 	t.Parallel()
 	state := &actionPendingCIPublishFailureState{
@@ -1287,7 +1365,9 @@ type actionPendingCIPublishFailureState struct {
 	repairClaimID       int64
 	nextRepairSignalID  int64
 	claimCreationStatus int
+	labelRestoreStatus  int
 	scanFailures        int
+	eventFailures       int
 }
 
 func actionPendingCIPublishFailureHandler(
@@ -1336,6 +1416,13 @@ func actionPendingCIPublishFailureHandler(
 			})
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/7/events":
+			if state.eventFailures > 0 {
+				state.eventFailures--
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"message":"try again"}`))
+
+				return
+			}
 			_, _ = w.Write([]byte(`[]`))
 		case request.Method == http.MethodPost &&
 			request.URL.Path == "/repos/acme/web/issues/7/labels":
@@ -1353,6 +1440,12 @@ func recordActionPendingCILabelRestore(
 	w http.ResponseWriter,
 	state *actionPendingCIPublishFailureState,
 ) {
+	if state.labelRestoreStatus != 0 {
+		w.WriteHeader(state.labelRestoreStatus)
+		_, _ = w.Write([]byte(`{"message":"label rejected"}`))
+
+		return
+	}
 	state.labelRestored = true
 	if state.signalOnLabel && state.repairReadyID == 0 {
 		state.repairReadyID = state.nextRepairSignalID

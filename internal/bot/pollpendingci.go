@@ -574,11 +574,22 @@ func repairActionPendingCILabel(
 			continue
 		}
 		if authorizationErr != nil {
-			return errors.Join(cause, disarmErr, authorizationErr)
+			retryErr := signalActionPendingCIRepair(
+				ctx, client, owner, repository, pullRequest,
+			)
+
+			return errors.Join(cause, disarmErr, authorizationErr, retryErr)
 		}
 		restoreErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
+		if restoreErr != nil {
+			retryErr := signalActionPendingCIRepair(
+				ctx, client, owner, repository, pullRequest,
+			)
 
-		return errors.Join(cause, disarmErr, restoreErr)
+			return errors.Join(cause, disarmErr, restoreErr, retryErr)
+		}
+
+		return errors.Join(cause, disarmErr)
 	}
 
 	return errors.Join(cause, disarmErr)
@@ -595,9 +606,14 @@ func restorePendingCILabel(
 	restoreErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
 	if restoreErr != nil {
 		restoreErr = fmt.Errorf("restore concurrent pending CI command: %w", restoreErr)
+		retryErr := signalActionPendingCIRepair(
+			ctx, client, owner, repository, pullRequest,
+		)
+
+		return false, errors.Join(cause, restoreErr, retryErr)
 	}
 
-	return false, errors.Join(cause, restoreErr)
+	return false, cause
 }
 
 // postPendingCIError posts error feedback and removes a request that cannot be completed.
