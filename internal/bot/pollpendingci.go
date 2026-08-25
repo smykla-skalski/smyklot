@@ -437,12 +437,6 @@ func reconcileDraftPendingCI(
 	botUsername string,
 	notify bool,
 ) (bool, error) {
-	if err := migrateLegacyActionPendingCIArtifacts(
-		ctx, client, bc, owner, repository, pullRequest,
-		pr.Method, pr.RequiredOnly, botUsername,
-	); err != nil {
-		return false, err
-	}
 	state, err := client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
 		return false, fmt.Errorf("preflight cancelled pending CI state: %w", err)
@@ -485,7 +479,7 @@ func reconcileDraftPendingCI(
 	}
 	surviving, cleanupErr := settleCancelledActionPendingCI(
 		ctx, client, bc, owner, repository, pullRequest,
-		pr.Method, pr.RequiredOnly, botUsername,
+		pr.Method, pr.RequiredOnly, botUsername, pr.Label, state.Draft,
 	)
 	if surviving || cleanupErr != nil {
 		if cleanupErr != nil {

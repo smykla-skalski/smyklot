@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
@@ -16,9 +17,6 @@ import (
 type actionPendingCIArtifactClient interface {
 	draftMergeHistoryClient
 	AddReaction(context.Context, string, string, int, github.ReactionType) error
-	AddReactionState(
-		context.Context, string, string, int, github.ReactionType,
-	) (github.Reaction, error)
 	GetPRComments(context.Context, string, string, int) ([]github.IssueCommentState, error)
 	GetIssueComment(context.Context, string, string, int64) (github.IssueCommentState, error)
 	GetCommentReactions(context.Context, string, string, int) ([]github.Reaction, error)
@@ -33,6 +31,7 @@ type actionPendingCIArtifact struct {
 	commentID int
 	revision  string
 	marker    github.Reaction
+	pending   github.Reaction
 	bound     bool
 	legacy    bool
 }
@@ -137,18 +136,19 @@ func actionPendingCIArtifacts(
 		if parseErr != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
 			continue
 		}
-		marker, marked, eyes, markerErr := actionPendingCICommentMarkers(
+		marker, pending, markerErr := actionPendingCICommentMarkers(
 			ctx, client, owner, repository, int(comment.ID), botUsername,
 		)
 		if markerErr != nil {
 			return nil, false, markerErr
 		}
-		if !marked {
-			if eyes {
+		if marker.ID == 0 {
+			if pending.ID != 0 {
 				legacy = true
 				artifacts = append(artifacts, actionPendingCIArtifact{
 					commentID: int(comment.ID),
 					revision:  comment.UpdatedAt,
+					pending:   pending,
 					legacy:    true,
 				})
 			}
@@ -170,48 +170,6 @@ func actionPendingCIArtifacts(
 	}
 
 	return artifacts, legacy, nil
-}
-
-func migrateLegacyActionPendingCIArtifacts(
-	ctx context.Context,
-	client actionPendingCIArtifactClient,
-	botConfig *config.Config,
-	owner, repository string,
-	pullRequest int,
-	method github.MergeMethod,
-	requiredOnly bool,
-	botUsername string,
-) error {
-	artifacts, _, err := actionPendingCIArtifacts(
-		ctx, client, botConfig, owner, repository, pullRequest,
-		method, requiredOnly, botUsername,
-	)
-	if err != nil {
-		return err
-	}
-	for _, artifact := range artifacts {
-		if !artifact.legacy {
-			continue
-		}
-		marker, markerErr := client.AddReactionState(
-			ctx, owner, repository, artifact.commentID, ReactionPendingCIAction,
-		)
-		if markerErr == nil {
-			markerErr = validateActionPendingCIMarker(marker, artifact.revision)
-		}
-		if markerErr == nil {
-			continue
-		}
-		if marker.ID != 0 {
-			markerErr = errors.Join(markerErr, client.RemoveCommentReaction(
-				ctx, owner, repository, artifact.commentID, marker.ID,
-			))
-		}
-
-		return fmt.Errorf("migrate legacy pending CI command: %w", markerErr)
-	}
-
-	return nil
 }
 
 func actionPendingCICommandMatches(
@@ -239,28 +197,28 @@ func actionPendingCICommentMarkers(
 	owner, repository string,
 	commentID int,
 	botUsername string,
-) (github.Reaction, bool, bool, error) {
+) (github.Reaction, github.Reaction, error) {
 	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
 	if err != nil {
-		return github.Reaction{}, false, false, fmt.Errorf(
+		return github.Reaction{}, github.Reaction{}, fmt.Errorf(
 			"read pending CI command marker on comment %d: %w", commentID, err,
 		)
 	}
 	var marker github.Reaction
-	eyes := false
+	var pending github.Reaction
 	for _, reaction := range reactions {
 		if reaction.User != botUsername {
 			continue
 		}
-		if reaction.Type == ReactionPendingCI {
-			eyes = true
+		if reaction.Type == ReactionPendingCI && newerActionPendingCIMarker(reaction, pending) {
+			pending = reaction
 		}
 		if reaction.Type == ReactionPendingCIAction && newerActionPendingCIMarker(reaction, marker) {
 			marker = reaction
 		}
 	}
 
-	return marker, marker.ID != 0, eyes, nil
+	return marker, pending, nil
 }
 
 func newerActionPendingCIMarker(candidate, current github.Reaction) bool {
@@ -315,8 +273,8 @@ func removeActionPendingCIArtifactIfOwned(
 	if !currentRevision.Equal(expectedRevision) {
 		return false, nil
 	}
-	if err := client.RemoveCommentReaction(
-		ctx, owner, repository, commentID, markerID,
+	if err := removeActionPendingCIReaction(
+		ctx, client, owner, repository, commentID, markerID,
 	); err != nil {
 		return false, err
 	}
@@ -325,6 +283,22 @@ func removeActionPendingCIArtifactIfOwned(
 	)
 
 	return true, nil
+}
+
+func removeActionPendingCIReaction(
+	ctx context.Context,
+	client actionPendingCIArtifactClient,
+	owner, repository string,
+	commentID int,
+	reactionID int64,
+) error {
+	err := client.RemoveCommentReaction(ctx, owner, repository, commentID, reactionID)
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return nil
+	}
+
+	return err
 }
 
 func settleCancelledActionPendingCI(
@@ -336,18 +310,29 @@ func settleCancelledActionPendingCI(
 	method github.MergeMethod,
 	requiredOnly bool,
 	botUsername string,
+	label string,
+	currentlyDraft bool,
 ) (bool, error) {
-	artifacts, legacy, err := actionPendingCIArtifacts(
+	artifacts, _, err := actionPendingCIArtifacts(
 		ctx, client, botConfig, owner, repository, pullRequest,
 		method, requiredOnly, botUsername,
 	)
 	if err != nil {
 		return true, err
 	}
-	surviving := legacy
+	surviving := false
 	var cleanupErrors []error
 	for _, artifact := range artifacts {
 		if artifact.legacy {
+			legacySurvives, legacyErr := settleLegacyActionPendingCIArtifact(
+				ctx, client, owner, repository, pullRequest,
+				label, artifact, currentlyDraft,
+			)
+			surviving = surviving || legacySurvives
+			if legacyErr != nil {
+				cleanupErrors = append(cleanupErrors, legacyErr)
+			}
+
 			continue
 		}
 		var authorizationErr error
@@ -391,4 +376,33 @@ func settleCancelledActionPendingCI(
 	}
 
 	return surviving, errors.Join(cleanupErrors...)
+}
+
+func settleLegacyActionPendingCIArtifact(
+	ctx context.Context,
+	client actionPendingCIArtifactClient,
+	owner, repository string,
+	pullRequest int,
+	label string,
+	artifact actionPendingCIArtifact,
+	currentlyDraft bool,
+) (bool, error) {
+	cancelled := currentlyDraft
+	var err error
+	if !cancelled {
+		cancelled, err = client.PullRequestDraftedAfterLabel(
+			ctx, owner, repository, pullRequest, label,
+		)
+	}
+	if err != nil || !cancelled {
+		return true, err
+	}
+	if err = removeActionPendingCIReaction(
+		ctx, client, owner, repository, artifact.commentID, artifact.pending.ID,
+	); err != nil {
+		return true, err
+	}
+	_ = client.AddReaction(ctx, owner, repository, artifact.commentID, ReactionWarning)
+
+	return false, nil
 }

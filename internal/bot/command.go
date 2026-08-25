@@ -880,7 +880,7 @@ func recordActionPendingCI(
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), true
 	}
 	if err := revalidateActionPendingCI(
-		ctx, client, rc, bc, prNum, commentID, label, sourceRevision,
+		ctx, client, rc, bc, prNum, commentID, marker.ID, label, sourceRevision,
 	); err != nil {
 		return feedback.NewMergeFailed(err.Error()), true
 	}
@@ -894,6 +894,7 @@ func revalidateActionPendingCI(
 	runtime *RuntimeConfig,
 	botConfig *config.Config,
 	pullRequest, commentID int,
+	markerID int64,
 	label string,
 	sourceRevision string,
 ) error {
@@ -934,6 +935,9 @@ func revalidateActionPendingCI(
 	if err == nil {
 		return nil
 	}
+	markerCleanupErr := removeActionPendingCIReaction(
+		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, markerID,
+	)
 	method, requiredOnly, _ := ParsePendingCILabel(label)
 	_, cleanupErr := reconcileDraftPendingCI(
 		ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName,
@@ -942,7 +946,10 @@ func revalidateActionPendingCI(
 		}, runtime.BotUsername, false,
 	)
 
-	return fmt.Errorf("revalidate pending CI draft authorization: %w", errors.Join(err, cleanupErr))
+	return fmt.Errorf(
+		"revalidate pending CI draft authorization: %w",
+		errors.Join(err, markerCleanupErr, cleanupErr),
+	)
 }
 
 type actionPendingCILabeler interface {
