@@ -564,13 +564,13 @@ var _ = Describe("Maintenance dispatch timing [Unit]", func() {
 		Expect(*delay).To(Equal(time.Minute))
 	})
 
-	It("does not shorten a later scheduled wake", func() {
+	It("retries publication before a later scheduled wake", func() {
 		now := time.Date(2026, time.August, 25, 8, 44, 0, 0, time.UTC)
 		scheduled := 10 * time.Minute
 		delay := maintenanceDelayWithRetry(&scheduled, now.Add(time.Minute), now)
 
 		Expect(delay).NotTo(BeNil())
-		Expect(*delay).To(Equal(scheduled))
+		Expect(*delay).To(Equal(time.Minute))
 	})
 })
 

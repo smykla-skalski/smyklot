@@ -40,6 +40,17 @@ func (s *server) runRecurringWorkWithSummary(
 	if err != nil || !claimed {
 		return false, err
 	}
+	err = s.runClaimedRecurringWorkWithSummary(ctx, item, work, run)
+
+	return true, err
+}
+
+func (s *server) runClaimedRecurringWorkWithSummary(
+	ctx context.Context,
+	item workqueue.Item,
+	work recurringWork,
+	run func() (string, error),
+) error {
 	s.announceRecurringWork(work)
 	successSummary, runErr := run()
 	failure := ""
@@ -51,7 +62,7 @@ func (s *server) runRecurringWorkWithSummary(
 	)
 	s.announceRecurringWork(work)
 
-	return true, errors.Join(runErr, finishErr)
+	return errors.Join(runErr, finishErr)
 }
 
 func (s *server) announceRecurringWork(work recurringWork) {

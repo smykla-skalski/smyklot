@@ -116,9 +116,6 @@ func maintenanceDelayWithRetry(
 	if retryAt.IsZero() || remaining <= 0 {
 		return delay
 	}
-	if delay != nil && *delay >= remaining {
-		return delay
-	}
 
 	return &remaining
 }

@@ -216,6 +216,22 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(page.Items[0].ID).To(Equal(firstID))
 	})
 
+	It("limits the dispatch-ordered page after scheduler position", func() {
+		ctx, store, now := runtime()
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		seedDispatchOrderedQueue(ctx, store, now, account.ID)
+
+		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
+			States: []workqueue.State{workqueue.StateReady}, DispatchOrder: true, Limit: 3,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Total).To(Equal(5))
+		Expect(page.Items).To(HaveLen(3))
+		Expect(page.Items[0].Kind).To(Equal(workqueue.KindCatalogRefresh))
+		Expect(page.Items[0].WorkAhead).To(BeZero())
+	})
+
 	It("applies audited optimistic queue controls", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallation(ctx, store, now)
@@ -486,6 +502,40 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
+	})
+
+	It("leases the scheduler's next recurring occurrence in one claim", func() {
+		ctx, store, now := runtime()
+		claims := []workqueue.RecurringClaim{
+			{
+				Kind:  workqueue.KindCatalogRefresh,
+				Title: "Refresh installation catalog",
+				Now:   now, LeaseDuration: time.Minute,
+			},
+			{
+				Kind:  workqueue.KindAuthCleanup,
+				Title: "Clean up expired authentication",
+				Now:   now, LeaseDuration: time.Minute,
+			},
+		}
+		ensureRecurringClaims(ctx, store, claims)
+
+		item, claimed, err := store.ClaimNextRecurringWork(ctx, workqueue.RecurringLease{
+			Now: now, LeaseDuration: time.Minute,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+		Expect(item.State).To(Equal(workqueue.StateRunning))
+		Expect(item.Kind).To(BeElementOf(
+			workqueue.KindCatalogRefresh,
+			workqueue.KindAuthCleanup,
+		))
+		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
+			States: []workqueue.State{workqueue.StateRunning},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].ID).To(Equal(item.ID))
 	})
 
 	It("recomputes recurring cadence without replacing one-off schedules", func() {
@@ -823,6 +873,60 @@ func createQueueFixture(
 	Expect(item.Revision).To(Equal(int64(1)))
 
 	return itemID
+}
+
+func seedDispatchOrderedQueue(
+	ctx context.Context,
+	store storage.Store,
+	now time.Time,
+	actorID string,
+) {
+	GinkgoHelper()
+	policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+	Expect(err).NotTo(HaveOccurred())
+	policy.Enabled = true
+	policy.Cadence = 5 * time.Minute
+	policy.DefaultPriority = workqueue.PriorityUrgent
+	_, err = store.SaveQueuePolicy(ctx, policyChange(policy, actorID, now))
+	Expect(err).NotTo(HaveOccurred())
+	for index := range 6 {
+		targetID := "dispatch-target-" + string(rune('a'+index))
+		repositoryID := "dispatch-repository-" + string(rune('a'+index))
+		_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
+			Kind: workqueue.KindReactionScan, TargetID: &targetID,
+			RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+			Now: now, LeaseDuration: time.Minute,
+		})
+		Expect(err).NotTo(HaveOccurred())
+	}
+	_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
+		Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog",
+		Now: now, LeaseDuration: time.Minute,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	for range 2 {
+		item, claimed, claimErr := store.ClaimNextRecurringWork(
+			ctx,
+			workqueue.RecurringLease{Now: now, LeaseDuration: time.Minute},
+		)
+		Expect(claimErr).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+		Expect(item.Kind).To(Equal(workqueue.KindReactionScan))
+		_, err = store.FinishRecurringWork(ctx, item.ID, "", "", now)
+		Expect(err).NotTo(HaveOccurred())
+	}
+}
+
+func ensureRecurringClaims(
+	ctx context.Context,
+	store storage.Store,
+	claims []workqueue.RecurringClaim,
+) {
+	GinkgoHelper()
+	for _, claim := range claims {
+		_, err := store.EnsureRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+	}
 }
 
 func pointer[T any](value T) *T { return &value }

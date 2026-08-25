@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -268,20 +269,70 @@ func (s *server) runNextMaintenanceJob(
 	ctx context.Context,
 	jobs []maintenanceJob,
 ) (bool, error) {
+	item, claimed, err := s.store.ClaimNextRecurringWork(ctx, workqueue.RecurringLease{
+		Now: time.Now().UTC(), LeaseDuration: recurringWorkLease,
+	})
+	if err != nil || !claimed {
+		return false, err
+	}
 	for _, job := range jobs {
-		claimed, err := s.runMaintenanceJob(ctx, job)
-		if err != nil {
-			return claimed, fmt.Errorf("%s: %w", job.failureMessage, err)
-		}
-		if claimed {
+		if recurringWorkMatchesItem(job.work, item) {
+			if err := s.runClaimedMaintenanceJob(ctx, item, job); err != nil {
+				return true, fmt.Errorf("%s: %w", job.failureMessage, err)
+			}
+
 			return true, nil
 		}
 	}
+	failure := fmt.Sprintf("no maintenance job matches queue item %q", item.ID)
+	work := recurringWork{
+		kind: item.Kind, targetID: item.TargetID, repositoryID: item.RepositoryID,
+		title: item.Title,
+	}
+	s.announceRecurringWork(work)
+	_, finishErr := s.store.FinishRecurringWork(
+		ctx, item.ID, failure, "", time.Now().UTC(),
+	)
+	s.announceRecurringWork(work)
 
-	return false, nil
+	return true, errors.Join(errors.New(failure), finishErr)
+}
+
+func recurringWorkMatchesItem(work recurringWork, item workqueue.Item) bool {
+	return work.kind == item.Kind && optionalStringEqual(work.targetID, item.TargetID) &&
+		optionalStringEqual(work.repositoryID, item.RepositoryID)
+}
+
+func optionalStringEqual(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
 }
 
 func (s *server) runMaintenanceJob(ctx context.Context, job maintenanceJob) (bool, error) {
+	run, runWithSummary := s.coordinatedMaintenanceRun(ctx, job)
+	if runWithSummary != nil {
+		return s.runRecurringWorkWithSummary(ctx, job.work, runWithSummary)
+	}
+
+	return s.runRecurringWork(ctx, job.work, run)
+}
+
+func (s *server) runClaimedMaintenanceJob(
+	ctx context.Context,
+	item workqueue.Item,
+	job maintenanceJob,
+) error {
+	run, runWithSummary := s.coordinatedMaintenanceRun(ctx, job)
+	if runWithSummary == nil {
+		runWithSummary = func() (string, error) { return "", run() }
+	}
+
+	return s.runClaimedRecurringWorkWithSummary(ctx, item, job.work, runWithSummary)
+}
+
+func (s *server) coordinatedMaintenanceRun(
+	ctx context.Context,
+	job maintenanceJob,
+) (func() error, func() (string, error)) {
 	run := job.run
 	runWithSummary := job.runWithSummary
 	if job.coordinateRepository && job.work.repositoryID != nil {
@@ -305,11 +356,7 @@ func (s *server) runMaintenanceJob(ctx context.Context, job maintenanceJob) (boo
 			}
 		}
 	}
-	if runWithSummary != nil {
-		return s.runRecurringWorkWithSummary(ctx, job.work, runWithSummary)
-	}
-
-	return s.runRecurringWork(ctx, job.work, run)
+	return run, runWithSummary
 }
 
 func (s *server) queuedInstallationClient(installationID int64) (*github.Client, error) {

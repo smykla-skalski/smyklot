@@ -131,6 +131,30 @@ func TestEstimateQueuePositionsDoesNotLetFuturePriorityJumpReadyWork(t *testing.
 	}
 }
 
+func TestEstimateQueuePositionsAdmitsWorkBeforeTheNextVirtualSlot(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	first := dispatchFixture("first-low", workqueue.PriorityLow, "target", now)
+	second := dispatchFixture("second-low", workqueue.PriorityLow, "target", now)
+	urgent := dispatchFixture(
+		"future-urgent", workqueue.PriorityUrgent, "target", now.Add(time.Minute),
+	)
+
+	positions := estimateQueuePositions(
+		[]workqueue.Item{first, second, urgent}, queueDispatchState{}, 2*time.Minute, now,
+	)
+	if positions[urgent.ID].ahead != 1 {
+		t.Fatalf("future urgent work ahead = %d, want 1", positions[urgent.ID].ahead)
+	}
+	if positions[urgent.ID].estimated != now.Add(2*time.Minute) {
+		t.Fatalf(
+			"future urgent estimate = %s, want %s",
+			positions[urgent.ID].estimated,
+			now.Add(2*time.Minute),
+		)
+	}
+}
+
 func TestEstimateQueuePositionsMatchesReadyDispatcherOrder(t *testing.T) {
 	t.Parallel()
 	now := time.Now().UTC()

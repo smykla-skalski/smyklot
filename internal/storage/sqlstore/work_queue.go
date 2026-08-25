@@ -49,7 +49,11 @@ func (s *Store) ListWorkQueue(
 	}
 	limit := pageLimit(filter.Limit)
 	offset := max(filter.Offset, 0)
-	arguments = append(arguments, limit+1, offset)
+	queryLimit, queryOffset := limit+1, offset
+	if filter.DispatchOrder {
+		queryLimit, queryOffset = total+1, 0
+	}
+	arguments = append(arguments, queryLimit, queryOffset)
 	rows, err := s.db.QueryContext(ctx, "SELECT"+queueItemColumns+`
 FROM queue_items`+where+`
 ORDER BY CASE WHEN finished_at IS NULL THEN 0 ELSE 1 END,
@@ -63,20 +67,84 @@ LIMIT ? OFFSET ?`, arguments...)
 	if err != nil {
 		return workqueue.Page{}, fmt.Errorf("read queue items: %w", err)
 	}
+	if err := s.addQueuePositions(ctx, items); err != nil {
+		return workqueue.Page{}, err
+	}
+	if filter.DispatchOrder {
+		sortQueueItemsForDispatch(items)
+		items, next := paginateQueueItems(items, limit, offset)
+
+		return s.queuePageWithFacets(ctx, filter, items, next, total)
+	}
 	next := 0
 	if len(items) > limit {
 		items = items[:limit]
 		next = offset + limit
 	}
-	if err := s.addQueuePositions(ctx, items); err != nil {
-		return workqueue.Page{}, err
-	}
+
+	return s.queuePageWithFacets(ctx, filter, items, next, total)
+}
+
+func (s *Store) queuePageWithFacets(
+	ctx context.Context,
+	filter workqueue.Filter,
+	items []workqueue.Item,
+	next, total int,
+) (workqueue.Page, error) {
 	facets, err := s.queueFacets(ctx, filter.TargetID)
 	if err != nil {
 		return workqueue.Page{}, err
 	}
 
 	return workqueue.Page{Items: items, NextOffset: next, Total: total, Facets: facets}, nil
+}
+
+func paginateQueueItems(items []workqueue.Item, limit, offset int) ([]workqueue.Item, int) {
+	start := min(offset, len(items))
+	end := min(start+limit, len(items))
+	next := 0
+	if end < len(items) {
+		next = end
+	}
+
+	return items[start:end], next
+}
+
+func sortQueueItemsForDispatch(items []workqueue.Item) {
+	sort.SliceStable(items, func(left, right int) bool {
+		leftRank, rightRank := dispatchListRank(items[left]), dispatchListRank(items[right])
+		if leftRank != rightRank {
+			return leftRank < rightRank
+		}
+		leftAt, rightAt := queueItemEstimate(items[left]), queueItemEstimate(items[right])
+		if !leftAt.Equal(rightAt) {
+			return leftAt.Before(rightAt)
+		}
+		if items[left].WorkAhead != items[right].WorkAhead {
+			return items[left].WorkAhead < items[right].WorkAhead
+		}
+
+		return items[left].ID < items[right].ID
+	})
+}
+
+func dispatchListRank(item workqueue.Item) int {
+	switch item.State {
+	case workqueue.StateRunning:
+		return 0
+	case workqueue.StateBlocked:
+		return 2
+	default:
+		return 1
+	}
+}
+
+func queueItemEstimate(item workqueue.Item) time.Time {
+	if item.EstimatedStartAt != nil {
+		return *item.EstimatedStartAt
+	}
+
+	return item.EligibleAt
 }
 
 func queueFilters(filter workqueue.Filter) ([]string, []any) {
@@ -363,7 +431,11 @@ func estimateQueuePositions(
 		scheduler.add(item)
 	}
 	sortQueuePositionItems(waiting)
-	estimateWaitingQueuePositions(positions, waiting, scheduler, running, duration, now)
+	workers := 1
+	if len(items) > 0 {
+		workers = items[0].Lane.Workers()
+	}
+	estimateWaitingQueuePositions(positions, waiting, scheduler, running, workers, duration, now)
 
 	return positions
 }
@@ -404,6 +476,7 @@ func estimateWaitingQueuePositions(
 	waiting []workqueue.Item,
 	scheduler *queuePositionScheduler,
 	running int,
+	workers int,
 	duration time.Duration,
 	now time.Time,
 ) {
@@ -411,7 +484,12 @@ func estimateWaitingQueuePositions(
 	nextWaiting = addReadyQueuePositionItems(scheduler, waiting, nextWaiting, now)
 	queuedAhead := 0
 	for scheduler.pending > 0 || nextWaiting < len(waiting) {
+		slotAt := now.Add(time.Duration((running+queuedAhead)/workers) * duration)
+		if nextWaiting < len(waiting) {
+			nextWaiting = addReadyQueuePositionItems(scheduler, waiting, nextWaiting, slotAt)
+		}
 		if scheduler.pending == 0 {
+			slotAt = waiting[nextWaiting].EligibleAt
 			nextWaiting = addReadyQueuePositionItems(
 				scheduler,
 				waiting,
@@ -424,11 +502,10 @@ func estimateWaitingQueuePositions(
 			break
 		}
 		ahead := running + queuedAhead
-		estimated := item.EligibleAt
-		if estimated.Before(now) {
-			estimated = now
+		estimated := slotAt
+		if estimated.Before(item.EligibleAt) {
+			estimated = item.EligibleAt
 		}
-		estimated = estimated.Add(time.Duration(ahead/item.Lane.Workers()) * duration)
 		positions[item.ID] = queuePosition{ahead: ahead, estimated: estimated}
 		queuedAhead++
 	}

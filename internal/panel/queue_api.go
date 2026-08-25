@@ -108,8 +108,35 @@ func parseQueueFilter(r *http.Request) (workqueue.Filter, error) {
 	if err := parseQueuePage(values, &filter); err != nil {
 		return workqueue.Filter{}, err
 	}
+	if raw := strings.TrimSpace(values.Get("order")); raw != "" {
+		if raw != "dispatch" {
+			return workqueue.Filter{}, errors.New("queue order is invalid")
+		}
+		if !dispatchOrderStates(filter.States) {
+			return workqueue.Filter{}, errors.New(
+				"dispatch order requires active queue states",
+			)
+		}
+		filter.DispatchOrder = true
+	}
 
 	return filter, nil
+}
+
+func dispatchOrderStates(states []workqueue.State) bool {
+	if len(states) == 0 {
+		return false
+	}
+	for _, state := range states {
+		switch state {
+		case workqueue.StateScheduled, workqueue.StateBlocked, workqueue.StateReady,
+			workqueue.StateRunning, workqueue.StateRetrying:
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 func parseQueueKinds(values url.Values, filter *workqueue.Filter) error {
