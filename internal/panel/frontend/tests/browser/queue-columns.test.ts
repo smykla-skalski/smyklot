@@ -76,12 +76,13 @@ describe('the general Queue table [Integration]', () => {
       await visit(page, addressOf(panel, 'root/queue'), {
         ready: '.general-queue-table tbody tr',
       });
-      const views = page.getByRole('group', { name: 'Queue views' });
-      await views.getByText('Approvals', { exact: true }).click();
+      await page.getByRole('link', { name: 'Approvals', exact: true }).click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe('/root/queue/approvals');
       await expect.poll(() => page.locator('.general-queue-table tbody .data-row').count()).toBe(1);
       await page.getByText('Review organization sync plan').waitFor({ state: 'visible' });
 
-      await views.getByText('History', { exact: true }).click();
+      await page.locator('a[href="/root/queue/history"]').click();
+      await expect.poll(() => new URL(page.url()).pathname).toBe('/root/queue/history');
       await page.getByText('Refresh installation catalog').waitFor({ state: 'visible' });
     } finally {
       await page.close();
