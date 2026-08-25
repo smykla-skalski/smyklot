@@ -64,6 +64,7 @@
   let detailOpen = $state(false);
   let detailItemID = $state<string | null>(null);
   let now = $state(Date.now());
+  let rangeNow = $state(Date.now());
   let offset = $state(0);
   const pageSize = 50;
   const query = $derived.by(queueQuery);
@@ -211,6 +212,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         timeRange = (values[0] ?? 'all') as 'all' | '24h' | '7d';
+        rangeNow = Date.now();
         offset = 0;
       },
     },
@@ -239,7 +241,13 @@
 
   onMount(() => {
     const clock = window.setInterval(() => (now = Date.now()), 1_000);
-    return () => window.clearInterval(clock);
+    const rangeClock = window.setInterval(() => {
+      if (timeRange !== 'all') rangeNow = Date.now();
+    }, 60_000);
+    return () => {
+      window.clearInterval(clock);
+      window.clearInterval(rangeClock);
+    };
   });
 
   function errorMessage(cause: unknown): string {
@@ -274,7 +282,7 @@
     if (repository !== 'all') query.set('repository', repository);
     if (timeRange !== 'all') {
       const age = timeRange === '24h' ? 86_400_000 : 604_800_000;
-      query.set('created_after', new Date(Date.now() - age).toISOString());
+      query.set('created_after', new Date(rangeNow - age).toISOString());
     }
 
     return `?${query.toString()}`;

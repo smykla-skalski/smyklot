@@ -108,6 +108,12 @@ func parseQueueFilter(r *http.Request) (workqueue.Filter, error) {
 	if err := parseQueuePage(values, &filter); err != nil {
 		return workqueue.Filter{}, err
 	}
+	if raw := strings.TrimSpace(values.Get("summary")); raw != "" {
+		if raw != "true" {
+			return workqueue.Filter{}, errors.New("queue summary must be true")
+		}
+		filter.Summary = true
+	}
 	if raw := strings.TrimSpace(values.Get("order")); raw != "" {
 		if raw != "dispatch" {
 			return workqueue.Filter{}, errors.New("queue order is invalid")

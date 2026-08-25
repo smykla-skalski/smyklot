@@ -38,6 +38,18 @@ async function recordedMotion(page: Page): Promise<QueueMotion[]> {
   );
 }
 
+async function waitForFastMotion(page: Page, maximumDuration: number): Promise<void> {
+  await expect
+    .poll(
+      async () =>
+        (await recordedMotion(page)).some(
+          (animation) => animation.duration > 0 && animation.duration <= maximumDuration,
+        ),
+      { interval: 10, timeout: 1_000 },
+    )
+    .toBe(true);
+}
+
 beforeAll(async () => {
   panel = await startPanel();
   viewer = await panel.browser.newPage();
@@ -86,10 +98,7 @@ describe('the general Queue live stream [Integration]', () => {
     });
     expect(status).toBe(200);
     await viewerRow.locator('.priority-high').waitFor({ state: 'visible', timeout: 5_000 });
-    const motion = await recordedMotion(viewer);
-    expect(motion.some((animation) => animation.duration > 0 && animation.duration <= 150)).toBe(
-      true,
-    );
+    await waitForFastMotion(viewer, 150);
   });
 
   it('rejects an action based on a stale item revision', async () => {
@@ -132,16 +141,7 @@ describe('the general Queue live stream [Integration]', () => {
       overviewRow.getByText('Ready', { exact: true }).waitFor({ timeout: 5_000 }),
     ]);
 
-    const [viewerMotion, overviewMotion] = await Promise.all([
-      recordedMotion(viewer),
-      recordedMotion(overview),
-    ]);
-    expect(
-      viewerMotion.some((animation) => animation.duration > 0 && animation.duration <= 150),
-    ).toBe(true);
-    expect(
-      overviewMotion.some((animation) => animation.duration > 0 && animation.duration <= 140),
-    ).toBe(true);
+    await Promise.all([waitForFastMotion(viewer, 150), waitForFastMotion(overview, 140)]);
   });
 
   it('removes queue motion when reduced motion is requested', async () => {

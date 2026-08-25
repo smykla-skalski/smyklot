@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -74,9 +73,9 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 	)
 }
 
-// dispatchDurableMaintenance publishes every maintenance candidate before it
-// lets the shared dispatcher lease one. It executes at most one lease per wake
-// so an overdue backlog yields to panel traffic before the next queue tick.
+// dispatchDurableMaintenance leases existing work before reconciling the full
+// candidate set. It executes at most one lease per wake so an overdue backlog
+// yields to panel traffic before the next queue tick.
 func (s *server) dispatchDurableMaintenance(ctx context.Context) error {
 	jobs, err := s.durableMaintenanceJobs(ctx)
 	if err != nil {
@@ -234,14 +233,8 @@ func (s *server) repositoryMaintenanceJobs(
 func (s *server) ensureMaintenanceJobs(ctx context.Context, jobs []maintenanceJob) error {
 	announced := map[string]bool{}
 	now := time.Now().UTC()
-	claims := make([]workqueue.RecurringClaim, 0, len(jobs))
-	for _, job := range jobs {
-		claim := workqueue.RecurringClaim{
-			Kind: job.work.kind, TargetID: job.work.targetID,
-			RepositoryID: job.work.repositoryID, Title: job.work.title,
-			Now: now, LeaseDuration: recurringWorkLease,
-		}
-		claims = append(claims, claim)
+	claims := maintenanceClaims(jobs, now)
+	for _, claim := range claims {
 		item, err := s.store.EnsureRecurringWork(ctx, claim)
 		if err != nil {
 			return err
@@ -275,6 +268,19 @@ func (s *server) ensureMaintenanceJobs(ctx context.Context, jobs []maintenanceJo
 	return nil
 }
 
+func maintenanceClaims(jobs []maintenanceJob, now time.Time) []workqueue.RecurringClaim {
+	claims := make([]workqueue.RecurringClaim, 0, len(jobs))
+	for _, job := range jobs {
+		claims = append(claims, workqueue.RecurringClaim{
+			Kind: job.work.kind, TargetID: job.work.targetID,
+			RepositoryID: job.work.repositoryID, Title: job.work.title,
+			Now: now, LeaseDuration: recurringWorkLease,
+		})
+	}
+
+	return claims
+}
+
 func (s *server) runNextMaintenanceJob(
 	ctx context.Context,
 	jobs []maintenanceJob,
@@ -300,12 +306,25 @@ func (s *server) runNextMaintenanceJob(
 		title: item.Title,
 	}
 	s.announceRecurringWork(work)
+	now := time.Now().UTC()
 	_, finishErr := s.store.FinishRecurringWork(
-		ctx, item.ID, failure, "", time.Now().UTC(),
+		ctx, item.ID, failure, "", now,
 	)
 	s.announceRecurringWork(work)
+	if finishErr != nil {
+		return true, finishErr
+	}
+	retired, reconcileErr := s.store.SupersedeMissingRecurringWork(
+		ctx, maintenanceClaims(jobs, now), now,
+	)
+	for _, retiredItem := range retired {
+		s.announceRecurringWork(recurringWork{
+			kind: retiredItem.Kind, targetID: retiredItem.TargetID,
+			repositoryID: retiredItem.RepositoryID, title: retiredItem.Title,
+		})
+	}
 
-	return true, errors.Join(errors.New(failure), finishErr)
+	return true, reconcileErr
 }
 
 func recurringWorkMatchesItem(work recurringWork, item workqueue.Item) bool {

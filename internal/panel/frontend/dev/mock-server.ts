@@ -4584,14 +4584,30 @@ function findMockScheduleRequest(state: MockState, encodedID: string): ScheduleR
 }
 
 function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): QueuePage {
-  const facets = {
-    targets: uniqueQueueValues(items, (item) => item.target_id),
-    repositories: uniqueQueueValues(items, (item) => item.repository_id),
-    profiles: uniqueQueueValues(items, (item) => item.profile_id ?? 'immediate'),
-    states: uniqueQueueValues(items, (item) => item.state),
-    workloads: uniqueQueueValues(items, (item) => item.kind),
-    priorities: uniqueQueueValues(items, (item) => item.priority),
-  };
+  const summary = query.get('summary') === 'true';
+  const facets: QueuePage['facets'] = summary
+    ? {
+        targets: [],
+        repositories: [],
+        profiles: [],
+        states: [],
+        workloads: [],
+        priorities: [],
+      }
+    : {
+        targets: uniqueQueueValues(items, (item) => item.target_id),
+        repositories: uniqueQueueValues(items, (item) => item.repository_id),
+        profiles: uniqueQueueValues(items, (item) => item.profile_id ?? 'immediate'),
+        states: uniqueQueueValues(items, (item) => item.state),
+        workloads: uniqueQueueValues(items, (item) => item.kind),
+        priorities: uniqueQueueValues(items, (item) => item.priority),
+      };
+  const stateCounts = summary
+    ? items.reduce<NonNullable<QueuePage['state_counts']>>((counts, item) => {
+        counts[item.state] = (counts[item.state] ?? 0) + 1;
+        return counts;
+      }, {})
+    : undefined;
   const states = queueQueryValues(query, 'state');
   const workloads = queueQueryValues(query, 'workload');
   const priorities = queueQueryValues(query, 'priority');
@@ -4618,6 +4634,7 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
     next_offset: nextOffset,
     total: filtered.length,
     facets,
+    state_counts: stateCounts,
   };
 }
 

@@ -2,12 +2,7 @@
   import { plainClick } from '#lib/follow.js';
   import { createQuery } from '@tanstack/svelte-query';
   import { onMount } from 'svelte';
-  import {
-    queueListKey,
-    ROOT_OVERVIEW_ACTIVE_QUEUE,
-    ROOT_OVERVIEW_APPROVAL_QUEUE,
-    ROOT_OVERVIEW_REVIEW_QUEUE,
-  } from '#lib/queue-cache.js';
+  import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import type { PanelApi } from '../api';
   import {
     formatBytes,
@@ -88,27 +83,16 @@
     queryKey: queueListKey(undefined, ROOT_OVERVIEW_ACTIVE_QUEUE),
     queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_ACTIVE_QUEUE),
   }));
-  const approvalQueueQuery = createQuery(() => ({
-    queryKey: queueListKey(undefined, ROOT_OVERVIEW_APPROVAL_QUEUE),
-    queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_APPROVAL_QUEUE),
-  }));
-  const reviewQueueQuery = createQuery(() => ({
-    queryKey: queueListKey(undefined, ROOT_OVERVIEW_REVIEW_QUEUE),
-    queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_REVIEW_QUEUE),
-  }));
   const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
   const queueItems = $derived<QueueItem[]>(activeQueueQuery.data?.items ?? []);
   const queueTotal = $derived(activeQueueQuery.data?.total ?? 0);
-  const queueApprovals = $derived(approvalQueueQuery.data?.total ?? 0);
-  const queueReview = $derived(reviewQueueQuery.data?.total ?? 0);
-  const queueLoading = $derived(
-    activeQueueQuery.isFetching || approvalQueueQuery.isFetching || reviewQueueQuery.isFetching,
+  const queueApprovals = $derived(activeQueueQuery.data?.state_counts?.awaiting_approval ?? 0);
+  const queueReview = $derived(
+    (activeQueueQuery.data?.state_counts?.blocked ?? 0) +
+      (activeQueueQuery.data?.state_counts?.retrying ?? 0),
   );
-  const queueFailure = $derived(
-    errorMessage(activeQueueQuery.error) ||
-      errorMessage(approvalQueueQuery.error) ||
-      errorMessage(reviewQueueQuery.error),
-  );
+  const queueLoading = $derived(activeQueueQuery.isFetching);
+  const queueFailure = $derived(errorMessage(activeQueueQuery.error));
   const loading = $derived(overviewQuery.isFetching);
   const failure = $derived(
     overviewQuery.error === null
@@ -135,12 +119,7 @@
   );
 
   async function load(): Promise<void> {
-    await Promise.all([
-      overviewQuery.refetch(),
-      activeQueueQuery.refetch(),
-      approvalQueueQuery.refetch(),
-      reviewQueueQuery.refetch(),
-    ]);
+    await Promise.all([overviewQuery.refetch(), activeQueueQuery.refetch()]);
   }
 
   onMount(() => {

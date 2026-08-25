@@ -366,6 +366,7 @@ type Filter struct {
 	CreatedAfter  *time.Time
 	CreatedBefore *time.Time
 	DispatchOrder bool
+	Summary       bool
 	Limit         int
 	Offset        int
 }
@@ -380,10 +381,11 @@ type Facets struct {
 }
 
 type Page struct {
-	Items      []Item `json:"items"`
-	NextOffset int    `json:"next_offset"`
-	Total      int    `json:"total"`
-	Facets     Facets `json:"facets"`
+	Items       []Item        `json:"items"`
+	NextOffset  int           `json:"next_offset"`
+	Total       int           `json:"total"`
+	Facets      Facets        `json:"facets"`
+	StateCounts map[State]int `json:"state_counts,omitempty"`
 }
 
 type BacklogMetric struct {

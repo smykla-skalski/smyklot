@@ -224,6 +224,25 @@ func removeDispatchFixture(items []workqueue.Item, id string) []workqueue.Item {
 	return items
 }
 
+func TestQueueSummarySnapshotRequiresFullActiveRootScope(t *testing.T) {
+	t.Parallel()
+	filter := workqueue.Filter{
+		States: []workqueue.State{
+			workqueue.StateScheduled, workqueue.StateBlocked, workqueue.StateReady,
+			workqueue.StateRunning, workqueue.StateRetrying,
+		},
+		DispatchOrder: true,
+		Summary:       true,
+	}
+	if !queueSummarySnapshotComplete(filter) {
+		t.Fatal("full active Root summary should provide a complete scheduler snapshot")
+	}
+	filter.States = []workqueue.State{workqueue.StateReady}
+	if queueSummarySnapshotComplete(filter) {
+		t.Fatal("partial state summary must not estimate from an incomplete snapshot")
+	}
+}
+
 func dispatchFixture(
 	id string,
 	priority workqueue.Priority,

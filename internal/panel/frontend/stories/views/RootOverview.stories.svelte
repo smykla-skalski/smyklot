@@ -3,11 +3,7 @@
   import { fn } from 'storybook/test';
 
   import RootOverview from '#lib/components/RootOverview.svelte';
-  import {
-    queueListKey,
-    ROOT_OVERVIEW_ACTIVE_QUEUE,
-    ROOT_OVERVIEW_APPROVAL_QUEUE,
-  } from '#lib/queue-cache.js';
+  import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import type { QueueItem, QueuePage } from '#lib/types.js';
   import Seeded from '../support/Seeded.svelte';
   import { stubApi } from '../support/api.js';
@@ -15,17 +11,19 @@
 
   const KEY = ['root-overview'] as const;
   const ACTIVE_KEY = queueListKey(undefined, ROOT_OVERVIEW_ACTIVE_QUEUE);
-  const APPROVAL_KEY = queueListKey(undefined, ROOT_OVERVIEW_APPROVAL_QUEUE);
   const active = GENERAL_QUEUE.filter((item) =>
     ['scheduled', 'blocked', 'ready', 'running', 'retrying'].includes(item.state),
   );
-  const approvals = GENERAL_QUEUE.filter((item) => item.state === 'awaiting_approval');
 
   function queuePage(items: QueueItem[]): QueuePage {
     return {
       items: items.slice(0, 3),
       next_offset: 0,
       total: items.length,
+      state_counts: GENERAL_QUEUE.reduce<NonNullable<QueuePage['state_counts']>>((counts, item) => {
+        counts[item.state] = (counts[item.state] ?? 0) + 1;
+        return counts;
+      }, {}),
       facets: {
         targets: [],
         repositories: [],
@@ -37,10 +35,7 @@
     };
   }
 
-  const QUEUE_SEED: Array<[readonly unknown[], QueuePage]> = [
-    [ACTIVE_KEY, queuePage(active)],
-    [APPROVAL_KEY, queuePage(approvals)],
-  ];
+  const QUEUE_SEED: Array<[readonly unknown[], QueuePage]> = [[ACTIVE_KEY, queuePage(active)]];
 
   const base = {
     api: stubApi(),

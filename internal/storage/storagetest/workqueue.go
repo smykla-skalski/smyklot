@@ -223,13 +223,21 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		seedDispatchOrderedQueue(ctx, store, now, account.ID)
 
 		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
-			States: []workqueue.State{workqueue.StateReady}, DispatchOrder: true, Limit: 3,
+			States: []workqueue.State{workqueue.StateReady}, DispatchOrder: true,
+			Summary: true, Limit: 3,
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(page.Total).To(Equal(5))
 		Expect(page.Items).To(HaveLen(3))
 		Expect(page.Items[0].Kind).To(Equal(workqueue.KindCatalogRefresh))
 		Expect(page.Items[0].WorkAhead).To(BeZero())
+		Expect(page.StateCounts[workqueue.StateReady]).To(Equal(5))
+		Expect(page.StateCounts[workqueue.StateSucceeded]).To(Equal(2))
+		Expect(page.Facets).To(Equal(workqueue.Facets{
+			Targets: []string{}, Repositories: []string{}, Profiles: []string{},
+			States: []workqueue.State{}, Kinds: []workqueue.Kind{},
+			Priorities: []workqueue.Priority{},
+		}))
 	})
 
 	It("applies audited optimistic queue controls", func() {

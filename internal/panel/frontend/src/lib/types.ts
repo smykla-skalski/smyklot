@@ -457,6 +457,7 @@ export interface QueuePage {
   items: QueueItem[];
   next_offset: number;
   total: number;
+  state_counts?: Partial<Record<QueueState, number>>;
   facets: {
     targets: string[];
     repositories: string[];

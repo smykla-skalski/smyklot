@@ -67,8 +67,14 @@ LIMIT ? OFFSET ?`, arguments...)
 	if err != nil {
 		return workqueue.Page{}, fmt.Errorf("read queue items: %w", err)
 	}
-	if err := s.addQueuePositions(ctx, items); err != nil {
-		return workqueue.Page{}, err
+	var positionErr error
+	if queueSummarySnapshotComplete(filter) {
+		positionErr = s.addQueuePositionsFromSnapshot(ctx, items)
+	} else {
+		positionErr = s.addQueuePositions(ctx, items)
+	}
+	if positionErr != nil {
+		return workqueue.Page{}, positionErr
 	}
 	if filter.DispatchOrder {
 		sortQueueItemsForDispatch(items)
@@ -91,12 +97,47 @@ func (s *Store) queuePageWithFacets(
 	items []workqueue.Item,
 	next, total int,
 ) (workqueue.Page, error) {
+	if filter.Summary {
+		stateCounts, err := s.queueStateCounts(ctx, filter.TargetID)
+		if err != nil {
+			return workqueue.Page{}, err
+		}
+
+		return workqueue.Page{
+			Items: items, NextOffset: next, Total: total,
+			Facets: emptyQueueFacets(), StateCounts: stateCounts,
+		}, nil
+	}
 	facets, err := s.queueFacets(ctx, filter.TargetID)
 	if err != nil {
 		return workqueue.Page{}, err
 	}
 
 	return workqueue.Page{Items: items, NextOffset: next, Total: total, Facets: facets}, nil
+}
+
+func queueSummarySnapshotComplete(filter workqueue.Filter) bool {
+	if !filter.Summary || !filter.DispatchOrder || len(filter.States) != 5 {
+		return false
+	}
+	active := map[workqueue.State]bool{
+		workqueue.StateScheduled: true, workqueue.StateBlocked: true,
+		workqueue.StateReady: true, workqueue.StateRunning: true,
+		workqueue.StateRetrying: true,
+	}
+	for _, state := range filter.States {
+		if !active[state] {
+			return false
+		}
+		delete(active, state)
+	}
+	if len(active) != 0 {
+		return false
+	}
+
+	return filter.TargetID == nil &&
+		filter.RepositoryID == nil && filter.ProfileID == nil && len(filter.Kinds) == 0 &&
+		len(filter.Priorities) == 0 && filter.CreatedAfter == nil && filter.CreatedBefore == nil
 }
 
 func paginateQueueItems(items []workqueue.Item, limit, offset int) ([]workqueue.Item, int) {
@@ -191,11 +232,7 @@ func queueFilters(filter workqueue.Filter) ([]string, []any) {
 }
 
 func (s *Store) queueFacets(ctx context.Context, targetID *string) (workqueue.Facets, error) {
-	facets := workqueue.Facets{
-		Targets: []string{}, Repositories: []string{}, Profiles: []string{},
-		States: []workqueue.State{}, Kinds: []workqueue.Kind{},
-		Priorities: []workqueue.Priority{},
-	}
+	facets := emptyQueueFacets()
 	queries := []struct {
 		expression string
 		append     func(string)
@@ -214,6 +251,46 @@ func (s *Store) queueFacets(ctx context.Context, targetID *string) (workqueue.Fa
 	}
 
 	return facets, nil
+}
+
+func emptyQueueFacets() workqueue.Facets {
+	return workqueue.Facets{
+		Targets: []string{}, Repositories: []string{}, Profiles: []string{},
+		States: []workqueue.State{}, Kinds: []workqueue.Kind{},
+		Priorities: []workqueue.Priority{},
+	}
+}
+
+func (s *Store) queueStateCounts(
+	ctx context.Context,
+	targetID *string,
+) (map[workqueue.State]int, error) {
+	query := "SELECT state, COUNT(*) FROM queue_items"
+	var arguments []any
+	if targetID != nil {
+		query += " WHERE " + queryTargetIDEquals
+		arguments = append(arguments, *targetID)
+	}
+	query += " GROUP BY state"
+	rows, err := s.db.QueryContext(ctx, query, arguments...)
+	if err != nil {
+		return nil, fmt.Errorf("count queue states: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	counts := make(map[workqueue.State]int)
+	for rows.Next() {
+		var state workqueue.State
+		var count int
+		if err := rows.Scan(&state, &count); err != nil {
+			return nil, fmt.Errorf("read queue state count: %w", err)
+		}
+		counts[state] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read queue state counts: %w", err)
+	}
+
+	return counts, nil
 }
 
 func (s *Store) readQueueFacet(
@@ -258,7 +335,6 @@ func queueInClause[T ~string](column string, values []T) (string, []any) {
 }
 
 func (s *Store) addQueuePositions(ctx context.Context, items []workqueue.Item) error {
-	profiles := make(map[string]workqueue.Profile)
 	positions := make(map[string]queuePosition)
 	for _, lane := range []workqueue.Lane{
 		workqueue.LaneWebhook, workqueue.LanePendingCI, workqueue.LaneMaintenance,
@@ -271,6 +347,51 @@ func (s *Store) addQueuePositions(ctx context.Context, items []workqueue.Item) e
 			positions[id] = position
 		}
 	}
+
+	return s.decorateQueuePositions(ctx, items, positions)
+}
+
+func (s *Store) addQueuePositionsFromSnapshot(
+	ctx context.Context,
+	items []workqueue.Item,
+) error {
+	positions := make(map[string]queuePosition)
+	now := time.Now().UTC()
+	for _, lane := range []workqueue.Lane{
+		workqueue.LaneWebhook, workqueue.LanePendingCI, workqueue.LaneMaintenance,
+	} {
+		laneItems := make([]workqueue.Item, 0)
+		for _, item := range items {
+			if item.Lane != lane || item.State == workqueue.StateBlocked {
+				continue
+			}
+			laneItems = append(laneItems, item)
+		}
+		if len(laneItems) == 0 {
+			continue
+		}
+		state, err := s.readQueueDispatchState(ctx, lane)
+		if err != nil {
+			return err
+		}
+		duration, err := s.estimatedLaneDuration(ctx, lane)
+		if err != nil {
+			return err
+		}
+		for id, position := range estimateQueuePositions(laneItems, state, duration, now) {
+			positions[id] = position
+		}
+	}
+
+	return s.decorateQueuePositions(ctx, items, positions)
+}
+
+func (s *Store) decorateQueuePositions(
+	ctx context.Context,
+	items []workqueue.Item,
+	positions map[string]queuePosition,
+) error {
+	profiles := make(map[string]workqueue.Profile)
 	for index := range items {
 		if items[index].ProfileID != nil {
 			profile, ok := profiles[*items[index].ProfileID]
