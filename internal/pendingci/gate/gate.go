@@ -80,7 +80,7 @@ type Dependencies struct {
 	Panelled    bool
 	WakeGates   func()
 	Logger      *slog.Logger
-	Paused      func() bool
+	BeginWork   func() (func(), bool)
 }
 
 func New(deps Dependencies) *Gate {
@@ -123,7 +123,7 @@ func New(deps Dependencies) *Gate {
 	gate.reconciler = newReconciler(
 		deps.Transitions, backend, backend, deps.Coordinator, timing,
 	)
-	gate.Scheduler = newScheduler(deps.Leases, gate.reconciler, deps.Logger, deps.Paused)
+	gate.Scheduler = newScheduler(deps.Leases, gate.reconciler, deps.Logger, deps.BeginWork)
 	gate.Scheduler.RetunePassingQuiet(deps.QuietPeriod)
 	gate.Gates.wake = gate.Scheduler.Wake
 	gate.Handoff = &Handoff{

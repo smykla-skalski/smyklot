@@ -18,6 +18,14 @@ type maintenanceCatalogStore struct {
 	storage.Store
 	target       storage.Target
 	repositories []storage.Repository
+	gate         storage.PendingCIRepositoryGate
+}
+
+func (store maintenanceCatalogStore) GetPendingCIRepositoryGate(
+	context.Context,
+	string,
+) (storage.PendingCIRepositoryGate, error) {
+	return store.gate, nil
 }
 
 func (store maintenanceCatalogStore) ListRootTargets(context.Context) ([]storage.Target, error) {
@@ -181,6 +189,26 @@ func TestRecurringCompletionDistinguishesBlockersAndTerminalGitHubFailures(t *te
 	))
 	if terminal.Blocked || terminal.Retryable {
 		t.Fatalf("terminal completion = %#v", terminal)
+	}
+}
+
+func TestPendingCIGateQueueOutcomeRetriesTemporaryProviderFailures(t *testing.T) {
+	t.Parallel()
+	service := &server{store: maintenanceCatalogStore{
+		gate: storage.PendingCIRepositoryGate{
+			Readiness: storage.PendingCIBlocked,
+			Reason:    "GitHub is temporarily unavailable. Smyklot will retry.",
+		},
+	}}
+	cause := github.NewAPIError(
+		github.ErrAPIRequest, 503, "GET", "/repos/owner/repo/rulesets",
+		errors.New("upstream unavailable"),
+	)
+
+	outcome := service.pendingCIGateQueueOutcome(t.Context(), "repository-1", cause)
+	completion := recurringCompletion("", outcome)
+	if completion.Blocked || !completion.Retryable {
+		t.Fatalf("temporary provider completion = %#v", completion)
 	}
 }
 

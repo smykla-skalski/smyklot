@@ -237,7 +237,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		Panelled:    cfg.panel != nil,
 		WakeGates:   srv.WakePendingCIGates,
 		Logger:      srv.logger,
-		Paused:      srv.backgroundWorkPaused,
+		BeginWork:   srv.beginBackgroundWork,
 	})
 	if err := srv.initPanel(); err != nil {
 		_ = srv.store.Close()

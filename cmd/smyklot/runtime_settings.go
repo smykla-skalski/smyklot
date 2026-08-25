@@ -50,6 +50,20 @@ func (s *server) backgroundWorkPaused() bool {
 	return s.runtimeBackgroundWorkPaused
 }
 
+// beginBackgroundWork makes lease acquisition mutually exclusive with pausing.
+// The caller releases the read lock as soon as the durable claim is complete;
+// after that the item is already in flight and may finish while paused.
+func (s *server) beginBackgroundWork() (func(), bool) {
+	s.runtimeMu.RLock()
+	if s.runtimeBackgroundWorkPaused {
+		s.runtimeMu.RUnlock()
+
+		return nil, false
+	}
+
+	return s.runtimeMu.RUnlock, true
+}
+
 func (s *server) botConfig() *config.Config {
 	s.runtimeMu.RLock()
 	defer s.runtimeMu.RUnlock()

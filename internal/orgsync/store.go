@@ -285,8 +285,8 @@ type Store interface {
 
 	ListSyncRepositoryOverrides(context.Context, string) ([]RepositoryOverride, error)
 
-	// ListSyncRepositoryPaths reads every path an installation's repositories
-	// are known to hold, one row per repository.
+	// ListSyncRepositoryPaths reads every path the installation's available,
+	// effectively enabled repositories are known to hold, one row per repository.
 	//
 	// What the panel's path finder offers. Aggregated by the reader rather than
 	// stored aggregated: a repository's list is replaced whole when it is read
@@ -323,11 +323,11 @@ type Store interface {
 	// PruneSyncRepositoryPaths drops the lists of repositories an installation
 	// no longer synchronizes, answering how many went.
 	//
-	// A repository leaves an installation, or is archived, or its access is
-	// withdrawn - and its list stayed, so the finder went on offering paths
-	// from a repository nobody could configure a file at. Nothing else removes
-	// them: the sweep writes a list per repository it reads, and it reads none
-	// of these.
+	// A repository leaves an installation, is disabled or archived, or has its
+	// access withdrawn - and its list stayed, so the finder went on offering
+	// paths from a repository nobody could configure a file at. Nothing else
+	// removes them: the sweep writes a list per repository it reads, and it
+	// reads none of these.
 	//
 	// The catalog decides, rather than a list of identifiers the caller passes:
 	// what is worth keeping is a query the database can answer about itself,

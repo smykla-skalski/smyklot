@@ -37,8 +37,9 @@ func TestPathIndexMigrationDropsLegacyRows(t *testing.T) {
           VALUES ('github:1', 'github', '1', 'smykla-skalski', 'Smykla', ?)`, []any{stamp}},
 		{
 			`INSERT INTO targets (
-              id, installation_id, kind, account_id, settings_updated_at, synced_at
-          ) VALUES ('installation:77', '77', 'Organization', 'github:1', ?, ?)`,
+			  id, installation_id, kind, account_id, repository_default_enabled,
+			  settings_updated_at, synced_at
+			) VALUES ('installation:77', '77', 'Organization', 'github:1', 1, ?, ?)`,
 			[]any{stamp, stamp},
 		},
 		{

@@ -37,6 +37,12 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				testRepository(repoB, "smykla-skalski/two", false),
 			}),
 		})).To(Succeed())
+		Expect(store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+			TargetID: target, ActorAccountID: account.ID, ChangedAt: now,
+			Target: &storage.InstallationTargetSettingsChange{
+				RepositoryDefaultEnabled: true, ExpectedRevision: 1,
+			},
+		})).Error().NotTo(HaveOccurred())
 
 		return account
 	}
@@ -1057,6 +1063,39 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read).To(HaveLen(1))
 			Expect(read[0].RepositoryID).To(Equal(repoA))
+		})
+
+		It("hides and prunes paths when a repository is disabled", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+
+			for _, id := range []string{repoA, repoB} {
+				Expect(store.SetSyncRepositoryPaths(ctx, orgsync.RepositoryPaths{
+					RepositoryID: id, TargetID: target,
+					Paths: []string{"secret/path.yml"}, ObservedAt: now,
+				})).To(Succeed())
+			}
+			disabled := false
+			result, err := store.SaveInstallationSettings(
+				ctx,
+				storage.SaveInstallationSettingsRequest{
+					TargetID: target, ActorAccountID: account.ID, ChangedAt: now.Add(time.Minute),
+					Repositories: []storage.InstallationRepositorySettingsChange{{
+						RepositoryID: repoB, EnabledOverride: &disabled, ExpectedRevision: 1,
+					}},
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result.Repositories).To(HaveLen(1))
+
+			read, err := store.ListSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(read).To(HaveLen(1))
+			Expect(read[0].RepositoryID).To(Equal(repoA))
+
+			dropped, err := store.PruneSyncRepositoryPaths(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(dropped).To(BeNumerically("==", 1))
 		})
 
 		// The scope of an installation is the catalog's, like every other read

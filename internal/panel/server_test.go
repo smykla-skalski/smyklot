@@ -1453,7 +1453,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	behavior := config.Default()
 	behavior.QuietSuccess = true
 	content, err := json.Marshal(map[string]any{
-		"background_work_paused":             true,
+		"background_work_paused":              true,
 		"bot_config":                          behavior,
 		"log_level":                           "debug",
 		"reaction_poll_interval_seconds":      90,

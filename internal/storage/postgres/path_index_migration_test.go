@@ -151,8 +151,9 @@ func seedLegacyPathList(t *testing.T, ctx context.Context, dsn string, now time.
           VALUES ('github:1', 'github', '1', 'smykla-skalski', 'Smykla', $1)`, []any{now}},
 		{
 			`INSERT INTO targets (
-              id, installation_id, kind, account_id, settings_updated_at, synced_at
-          ) VALUES ('installation:77', '77', 'Organization', 'github:1', $1, $2)`,
+			  id, installation_id, kind, account_id, repository_default_enabled,
+			  settings_updated_at, synced_at
+			) VALUES ('installation:77', '77', 'Organization', 'github:1', true, $1, $2)`,
 			[]any{now, now},
 		},
 		{

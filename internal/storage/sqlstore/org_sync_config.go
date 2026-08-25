@@ -217,8 +217,8 @@ func scanSyncRepositoryState(scanner rowScanner) (orgsync.RepositoryState, error
 	return state, nil
 }
 
-// ListSyncRepositoryPaths reads every path an installation's repositories are
-// known to hold, one row per repository.
+// ListSyncRepositoryPaths reads every path the installation's available,
+// effectively enabled repositories are known to hold, one row per repository.
 //
 // Through the repositories join like every other read of these tables: the
 // scope of an installation is the catalog's, and a repository that moves cannot
@@ -231,7 +231,10 @@ func (s *Store) ListSyncRepositoryPaths(
 SELECT p.repository_id, p.target_id, p.paths, p.observed_at, p.head_sha, p.partial
 FROM sync_repository_paths p
 JOIN repositories r ON r.id = p.repository_id
+JOIN targets t ON t.id = r.target_id
 WHERE r.target_id = ?
+  AND r.available = TRUE
+  AND COALESCE(r.enabled_override, t.repository_default_enabled) = TRUE
 ORDER BY p.repository_id`, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("list sync repository paths: %w", err)
@@ -287,13 +290,12 @@ UPDATE sync_repository_paths SET observed_at = ? WHERE repository_id = ?`,
 }
 
 // PruneSyncRepositoryPaths drops the lists of repositories an installation no
-// longer synchronizes.
+// longer synchronizes, including repositories disabled by either policy layer.
 //
 // The catalog decides. A repository that left the installation has no row in
-// it at all, and one that is archived or whose access was withdrawn is there
-// with `available` clear - the sweep skips both, so nothing was ever going to
-// replace their lists, and the finder went on offering paths from repositories
-// nobody could configure a file at.
+// it at all, and one that is archived, disabled, or whose access was withdrawn
+// remains in the catalog but is no longer eligible. The sweep skips all of
+// them, so nothing would replace their lists without this prune.
 //
 // Scoped to the installation and not to a moment: a row for a repository under
 // some other target is that target's business, and one written a second ago by
@@ -303,8 +305,13 @@ func (s *Store) PruneSyncRepositoryPaths(ctx context.Context, targetID string) (
 DELETE FROM sync_repository_paths
 WHERE target_id = ?
   AND repository_id NOT IN (
-      SELECT id FROM repositories WHERE target_id = ? AND available = ?
-  )`, targetID, targetID, true)
+      SELECT r.id
+      FROM repositories r
+      JOIN targets t ON t.id = r.target_id
+      WHERE r.target_id = ?
+        AND r.available = TRUE
+        AND COALESCE(r.enabled_override, t.repository_default_enabled) = TRUE
+  )`, targetID, targetID)
 	if err != nil {
 		return 0, fmt.Errorf("prune sync repository paths: %w", err)
 	}

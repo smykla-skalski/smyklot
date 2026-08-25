@@ -32,7 +32,7 @@ type Scheduler struct {
 	logger    *slog.Logger
 	now       func() time.Time
 	wake      chan struct{}
-	paused    func() bool
+	beginWork func() (func(), bool)
 	retuneMu  sync.Mutex
 	retune    *pendingci.RetuneQuietPeriodRequest
 	retuneGen uint64
@@ -42,16 +42,16 @@ func newScheduler(
 	store leaseStore,
 	processor processor,
 	logger *slog.Logger,
-	pauses ...func() bool,
+	beginWork ...func() (func(), bool),
 ) *Scheduler {
-	var paused func() bool
-	if len(pauses) > 0 {
-		paused = pauses[0]
+	var begin func() (func(), bool)
+	if len(beginWork) > 0 {
+		begin = beginWork[0]
 	}
 	return &Scheduler{
 		store: store, processor: processor, logger: logger,
 		now: func() time.Time { return time.Now().UTC() }, wake: make(chan struct{}, 1),
-		paused: paused,
+		beginWork: begin,
 	}
 }
 
@@ -92,42 +92,52 @@ func (scheduler *Scheduler) dispatch(
 	jobs chan<- pendingci.Request,
 ) {
 	for {
-		if scheduler.paused != nil && scheduler.paused() {
+		result, now, allowed, err := scheduler.leaseNext(ctx)
+		if !allowed {
 			if !scheduler.wait(ctx, nil) {
 				return
 			}
 			continue
 		}
-		now := scheduler.now()
-		if err := scheduler.applyQuietPeriodRetune(ctx); err != nil {
-			scheduler.logger.Error("pending CI quiet-period retune failed", "error", err)
-			retryAt := now.Add(RetryDelay)
-			if !scheduler.wait(ctx, &retryAt) {
-				return
-			}
-			continue
-		}
-		lease, err := scheduler.store.LeaseDue(ctx, now, now.Add(lease))
 		if err != nil {
-			scheduler.logger.Error("pending CI lease failed", "error", err)
+			scheduler.logger.Error("pending CI dispatch failed", "error", err)
 			retryAt := now.Add(RetryDelay)
 			if !scheduler.wait(ctx, &retryAt) {
 				return
 			}
 			continue
 		}
-		if lease.Request == nil {
-			if !scheduler.wait(ctx, lease.AvailableAt) {
+		if result.Request == nil {
+			if !scheduler.wait(ctx, result.AvailableAt) {
 				return
 			}
 			continue
 		}
 		select {
-		case jobs <- *lease.Request:
+		case jobs <- *result.Request:
 		case <-ctx.Done():
 			return
 		}
 	}
+}
+
+func (scheduler *Scheduler) leaseNext(
+	ctx context.Context,
+) (pendingci.LeaseResult, time.Time, bool, error) {
+	if scheduler.beginWork != nil {
+		release, allowed := scheduler.beginWork()
+		if !allowed {
+			return pendingci.LeaseResult{}, time.Time{}, false, nil
+		}
+		defer release()
+	}
+	now := scheduler.now()
+	if err := scheduler.applyQuietPeriodRetune(ctx); err != nil {
+		return pendingci.LeaseResult{}, now, true, err
+	}
+	result, err := scheduler.store.LeaseDue(ctx, now, now.Add(lease))
+
+	return result, now, true, err
 }
 
 func (scheduler *Scheduler) applyQuietPeriodRetune(ctx context.Context) error {

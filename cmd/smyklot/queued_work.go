@@ -34,7 +34,7 @@ func (s *server) runRecurringWorkWithSummary(
 	run func() (string, error),
 ) (bool, error) {
 	now := time.Now().UTC()
-	item, claimed, err := s.store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{
+	item, claimed, err := s.claimRecurringWork(ctx, workqueue.RecurringClaim{
 		Kind: work.kind, TargetID: work.targetID, RepositoryID: work.repositoryID,
 		Title: work.title, Now: now, LeaseDuration: recurringWorkLease,
 	})
@@ -44,6 +44,19 @@ func (s *server) runRecurringWorkWithSummary(
 	err = s.runClaimedRecurringWorkWithSummary(ctx, item, work, run)
 
 	return true, err
+}
+
+func (s *server) claimRecurringWork(
+	ctx context.Context,
+	claim workqueue.RecurringClaim,
+) (workqueue.Item, bool, error) {
+	release, allowed := s.beginBackgroundWork()
+	if !allowed {
+		return workqueue.Item{}, false, nil
+	}
+	defer release()
+
+	return s.store.ClaimRecurringWork(ctx, claim)
 }
 
 func (s *server) runClaimedRecurringWorkWithSummary(

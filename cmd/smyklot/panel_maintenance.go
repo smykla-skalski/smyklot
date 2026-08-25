@@ -285,6 +285,12 @@ func (s *server) pendingCIGateQueueOutcome(
 
 		return err
 	}
+	if cause != nil {
+		var classified interface{ Retryable() bool }
+		if !errors.As(cause, &classified) || classified.Retryable() {
+			return cause
+		}
+	}
 	if gate.Readiness == storage.PendingCIBlocked {
 		return recurringBlocker{reason: gate.Reason, cause: cause}
 	}
@@ -357,7 +363,7 @@ func (s *server) runNextMaintenanceJob(
 	ctx context.Context,
 	jobs []maintenanceJob,
 ) (bool, error) {
-	item, claimed, err := s.store.ClaimNextRecurringWork(ctx, workqueue.RecurringLease{
+	item, claimed, err := s.claimNextMaintenanceWork(ctx, workqueue.RecurringLease{
 		Now: time.Now().UTC(), LeaseDuration: recurringWorkLease,
 	})
 	if err != nil || !claimed {
@@ -399,6 +405,19 @@ func (s *server) runNextMaintenanceJob(
 	}
 
 	return true, reconcileErr
+}
+
+func (s *server) claimNextMaintenanceWork(
+	ctx context.Context,
+	lease workqueue.RecurringLease,
+) (workqueue.Item, bool, error) {
+	release, allowed := s.beginBackgroundWork()
+	if !allowed {
+		return workqueue.Item{}, false, nil
+	}
+	defer release()
+
+	return s.store.ClaimNextRecurringWork(ctx, lease)
 }
 
 func recurringWorkMatchesItem(work recurringWork, item workqueue.Item) bool {

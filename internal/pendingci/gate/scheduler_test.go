@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,13 +93,23 @@ func TestPendingCISchedulerDoesNotLeaseWhilePaused(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
 	store := &schedulerTestStore{now: now, firstLease: make(chan struct{})}
-	var paused atomic.Bool
-	paused.Store(true)
+	var pauseMu sync.RWMutex
+	paused := true
+	beginWork := func() (func(), bool) {
+		pauseMu.RLock()
+		if paused {
+			pauseMu.RUnlock()
+
+			return nil, false
+		}
+
+		return pauseMu.RUnlock, true
+	}
 	scheduler := newScheduler(
 		store,
 		&schedulerTestProcessor{processed: make(chan pendingci.Request, 1)},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		paused.Load,
+		beginWork,
 	)
 	scheduler.now = func() time.Time { return now }
 	ctx, cancel := context.WithCancel(context.Background())
@@ -117,7 +126,9 @@ func TestPendingCISchedulerDoesNotLeaseWhilePaused(t *testing.T) {
 	if callsWhilePaused != 0 {
 		t.Fatalf("leased %d times while background work was paused", callsWhilePaused)
 	}
-	paused.Store(false)
+	pauseMu.Lock()
+	paused = false
+	pauseMu.Unlock()
 	scheduler.Wake()
 	select {
 	case <-store.firstLease:

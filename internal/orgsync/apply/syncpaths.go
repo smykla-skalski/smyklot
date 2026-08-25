@@ -166,11 +166,10 @@ func (s *Engine) RefreshPaths(
 		return
 	}
 
-	// And what the installation no longer holds. A repository that left it, or
-	// was archived, or whose access was withdrawn, is skipped by the loop above
-	// - so nothing was ever going to replace its list, and the finder went on
-	// offering paths from a repository nobody can configure a file at. Last,
-	// because it reads the catalog the loop has just been walking.
+	// And what the installation no longer synchronizes. A repository that left,
+	// was disabled or archived, or had its access withdrawn is skipped above,
+	// so nothing would replace its list and the finder would keep offering its
+	// paths. Last, because it reads the catalog the loop has just walked.
 	dropped, err := s.store.PruneSyncRepositoryPaths(ctx, targetID)
 	if err != nil {
 		logging.From(ctx).Warn("could not prune the path index", "error", err)
