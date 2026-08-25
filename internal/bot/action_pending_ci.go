@@ -185,10 +185,13 @@ func actionPendingCIArtifactForComment(
 	if err != nil {
 		return actionPendingCIArtifactMatch{}, err
 	}
-	if rejected || marker.ID == 0 && int(comment.ID) == exclusion.commentID {
+	if marker.ID == 0 && int(comment.ID) == exclusion.commentID {
 		return actionPendingCIArtifactMatch{}, nil
 	}
 	if marker.ID == 0 {
+		if rejected.ID != 0 {
+			return actionPendingCIArtifactMatch{}, nil
+		}
 		artifact := actionPendingCIArtifact{
 			commentID: int(comment.ID), revision: comment.UpdatedAt,
 			pending: pending, legacy: true,
@@ -200,6 +203,10 @@ func actionPendingCIArtifactForComment(
 			artifact: artifact, found: found, legacy: found,
 		}, nil
 	}
+	if pending.ID == 0 || !newerActionPendingCIMarker(marker, pending) ||
+		rejected.ID != 0 && !newerActionPendingCIMarker(marker, rejected) {
+		return actionPendingCIArtifactMatch{}, nil
+	}
 	revision, err := pendingci.ParseSourceRevision(comment.UpdatedAt)
 	if err != nil {
 		return actionPendingCIArtifactMatch{}, fmt.Errorf(
@@ -208,7 +215,7 @@ func actionPendingCIArtifactForComment(
 	}
 	artifact := actionPendingCIArtifact{
 		commentID: int(comment.ID), revision: revision.UTC().Format(time.RFC3339Nano),
-		marker: marker, bound: marker.CreatedAt.After(revision),
+		marker: marker, pending: pending, bound: pending.CreatedAt.After(revision),
 	}
 
 	return actionPendingCIArtifactMatch{artifact: artifact, found: true}, nil
@@ -240,10 +247,10 @@ func actionPendingCICommentMarkers(
 	commentID int,
 	botUsername string,
 	ignoredMarkerID int64,
-) (github.Reaction, github.Reaction, bool, error) {
+) (github.Reaction, github.Reaction, github.Reaction, error) {
 	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
 	if err != nil {
-		return github.Reaction{}, github.Reaction{}, false, fmt.Errorf(
+		return github.Reaction{}, github.Reaction{}, github.Reaction{}, fmt.Errorf(
 			"read pending CI command marker on comment %d: %w", commentID, err,
 		)
 	}
@@ -266,10 +273,7 @@ func actionPendingCICommentMarkers(
 			rejected = reaction
 		}
 	}
-	invalidated := rejected.ID != 0 &&
-		(marker.ID == 0 || newerActionPendingCIMarker(rejected, marker))
-
-	return marker, pending, invalidated, nil
+	return marker, pending, rejected, nil
 }
 
 func newerActionPendingCIMarker(candidate, current github.Reaction) bool {

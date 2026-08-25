@@ -58,9 +58,9 @@ const (
 	// runner without adding a second label to the pull request.
 	ReactionPendingCIService = github.ReactionHooray
 
-	// ReactionPendingCIRejected is a durable tombstone for an exact Action
-	// marker GitHub refused to delete. A later command removes the ordinary
-	// error reaction before it records a new marker.
+	// ReactionPendingCIRejected keeps an Action-mode request closed while its
+	// exact command is validated. The positive activation supersedes it, and it
+	// also remains a durable tombstone when activation is rejected.
 	ReactionPendingCIRejected = github.ReactionMinusOne
 )
 
