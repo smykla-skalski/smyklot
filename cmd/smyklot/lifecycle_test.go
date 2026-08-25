@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -187,9 +188,7 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		cancel()
 
 		Eventually(result, returnBudget).Should(Receive(BeNil()))
-		rebound, err := net.Listen("tcp", webhooks.Addr().String())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(rebound.Close()).To(Succeed())
+		Expect(errors.Is(webhooks.Close(), net.ErrClosed)).To(BeTrue())
 	})
 
 	It("should own ephemeral listeners until its context is cancelled", func() {
