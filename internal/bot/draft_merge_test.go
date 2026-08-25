@@ -253,6 +253,49 @@ func TestActionPendingCIPollRevalidatesAtFinalMergeBoundary(t *testing.T) {
 	}
 }
 
+func TestPendingCIMergeFallbackReauthorizesEveryMethod(t *testing.T) {
+	t.Parallel()
+	mergeAttempts := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodPut || request.URL.Path != "/repos/acme/web/pulls/7/merge" {
+			http.NotFound(w, request)
+
+			return
+		}
+		mergeAttempts++
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_, _ = w.Write([]byte(`{"message":"Merge commits are not allowed"}`))
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorizations := 0
+	authorize := func() error {
+		authorizations++
+		if authorizations > 1 {
+			return pendingci.ErrStaleSourceRevision
+		}
+
+		return nil
+	}
+
+	err = MergePendingPRAtHead(
+		t.Context(), client, "acme", "web", 7,
+		github.MergeMethodMerge, "head", authorize,
+	)
+	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+		t.Fatalf("error = %v, want stale source", err)
+	}
+	if authorizations != 2 || mergeAttempts != 1 {
+		t.Fatalf(
+			"authorizations=%d mergeAttempts=%d, want 2 and 1",
+			authorizations, mergeAttempts,
+		)
+	}
+}
+
 func TestReactionMergeRevalidatesEveryFinalEffect(t *testing.T) {
 	for _, mergeable := range []bool{true, false} {
 		t.Run(map[bool]string{true: "merge", false: "auto merge"}[mergeable], func(t *testing.T) {
@@ -650,8 +693,8 @@ func TestActionPendingCIStaleWorkflowPreservesNewerCommentArtifact(t *testing.T)
 	if deletedReaction {
 		t.Fatal("stale workflow deleted a newer command artifact")
 	}
-	if labelDeleted || labelRestored {
-		t.Fatalf("stale workflow mutated the newer command label: deleted=%t restored=%t", labelDeleted, labelRestored)
+	if !labelDeleted || !labelRestored {
+		t.Fatalf("newer command label was not repaired: deleted=%t restored=%t", labelDeleted, labelRestored)
 	}
 }
 
@@ -717,6 +760,122 @@ func TestActionPendingCIStaleWorkflowRemovesItsOwnMarkerBeforeReconciliation(t *
 	if !labelDeleted {
 		t.Fatal("stale workflow label survived reconciliation")
 	}
+}
+
+func TestActionPendingCIRejectedWorkflowDisarmsUnownedLabel(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		name             string
+		allowDraftMerges bool
+		deleteStatus     int
+	}{
+		{name: "disabled config after successful marker cleanup", deleteStatus: http.StatusNoContent},
+		{
+			name: "enabled config after failed marker cleanup", allowDraftMerges: true,
+			deleteStatus: http.StatusInternalServerError,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			assertActionPendingCIRejectedWorkflowDisarms(
+				t, test.allowDraftMerges, test.deleteStatus,
+			)
+		})
+	}
+}
+
+type rejectedActionPendingCITestState struct {
+	markerPresent bool
+	labelPresent  bool
+	labelRestored bool
+	deleteStatus  int
+}
+
+func assertActionPendingCIRejectedWorkflowDisarms(
+	t *testing.T,
+	allowDraftMerges bool,
+	deleteStatus int,
+) {
+	t.Helper()
+	state := &rejectedActionPendingCITestState{
+		markerPresent: true, labelPresent: true, deleteStatus: deleteStatus,
+	}
+	server := httptest.NewServer(rejectedActionPendingCIHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = allowDraftMerges
+
+	err = revalidateActionPendingCI(
+		t.Context(), client, draftRuntime(), botConfig, 7, 99, 41,
+		LabelPendingCIMerge, "2026-08-25T08:00:00Z",
+	)
+	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+		t.Fatalf("error = %v, want stale source", err)
+	}
+	if state.labelPresent || state.labelRestored {
+		t.Fatalf(
+			"rejected workflow remained discoverable: labelPresent=%t restored=%t",
+			state.labelPresent, state.labelRestored,
+		)
+	}
+	if deleteStatus == http.StatusNoContent && state.markerPresent {
+		t.Fatal("successful exact cleanup left the rejected marker")
+	}
+	if deleteStatus != http.StatusNoContent && !state.markerPresent {
+		t.Fatal("failed exact cleanup unexpectedly removed the marker")
+	}
+}
+
+func rejectedActionPendingCIHandler(state *rejectedActionPendingCITestState) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			})
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions/41":
+			w.WriteHeader(state.deleteStatus)
+			if state.deleteStatus == http.StatusNoContent {
+				state.markerPresent = false
+			}
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci":
+			state.labelPresent = false
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			}})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
+			writeRejectedActionPendingCIReactions(w, state.markerPresent)
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/acme/web/issues/7/labels":
+			state.labelPresent = true
+			state.labelRestored = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			http.NotFound(w, request)
+		}
+	}
+}
+
+func writeRejectedActionPendingCIReactions(w http.ResponseWriter, present bool) {
+	if !present {
+		_, _ = w.Write([]byte(`[]`))
+
+		return
+	}
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 41, "content": "hooray", "created_at": "2026-08-25T08:03:00Z",
+		"user": map[string]any{"login": "smyklot[bot]"},
+	}})
 }
 
 func TestActionPendingCILegacyCancellationNeverMintsEditedRevisionMarker(t *testing.T) {
@@ -944,9 +1103,124 @@ func TestActionPendingCICancellationRestoresLabelWhenFinalReadFails(t *testing.T
 	if cancelled {
 		t.Fatal("uncertain request was reported as cancelled")
 	}
-	if !labelRestored {
-		t.Fatal("label was not restored after an uncertain final read")
+	if labelRestored {
+		t.Fatal("unproven label was restored as new authorization after an uncertain final read")
 	}
+}
+
+func TestActionPendingCILegacyCancellationErrorDoesNotReauthorizeLabel(t *testing.T) {
+	t.Parallel()
+	for _, allowDraftMerges := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_draft_merges=%t", allowDraftMerges), func(t *testing.T) {
+			t.Parallel()
+			assertLegacyCancellationErrorDisarmsLabel(t, allowDraftMerges)
+		})
+	}
+}
+
+type legacyCancellationErrorTestState struct {
+	pullReads     int
+	failFinalRead bool
+	labelPresent  bool
+	labelRestored bool
+	merged        bool
+}
+
+func assertLegacyCancellationErrorDisarmsLabel(t *testing.T, allowDraftMerges bool) {
+	t.Helper()
+	state := &legacyCancellationErrorTestState{failFinalRead: true, labelPresent: true}
+	server := httptest.NewServer(legacyCancellationErrorHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = allowDraftMerges
+	pr := PendingCIPR{Method: github.MergeMethodMerge, Label: LabelPendingCIMerge}
+
+	cancelled, err := cancelDraftPendingCI(
+		t.Context(), client, botConfig, "acme", "web", 7, pr, "smyklot[bot]",
+	)
+	if err == nil || cancelled {
+		t.Fatalf("cancelled=%t error=%v, want uncertain failure", cancelled, err)
+	}
+	if state.labelPresent || state.labelRestored {
+		t.Fatal("legacy cancellation failure created a new authorization label")
+	}
+	state.failFinalRead = false
+	pr.PRData = map[string]any{"number": float64(7)}
+	if err = processPendingCIPR(
+		t.Context(), client, botConfig, "acme", "web", pr, "smyklot[bot]",
+	); err != nil {
+		t.Fatal(err)
+	}
+	if state.merged {
+		t.Fatal("legacy request merged on the poll after cancellation uncertainty")
+	}
+}
+
+func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) http.HandlerFunc {
+	return func(w http.ResponseWriter, request *http.Request) {
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
+			state.pullReads++
+			if state.pullReads > 1 && state.failFinalRead {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"message":"try again"}`))
+
+				return
+			}
+			labels := []map[string]any{}
+			if state.labelPresent {
+				labels = append(labels, map[string]any{"name": LabelPendingCIMerge})
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": false,
+				"head": map[string]any{"sha": "head"}, "labels": labels,
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/comments":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 99, "body": "/merge after ci", "updated_at": "2026-08-25T08:02:00Z",
+			}})
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
+			writeLegacyActionPendingCIReactions(w, true)
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/issues/7/events":
+			writeLegacyCancellationEvents(w, state.labelRestored)
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci":
+			state.labelPresent = false
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodPost && request.URL.Path == "/repos/acme/web/issues/7/labels":
+			state.labelPresent = true
+			state.labelRestored = true
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodPut && request.URL.Path == "/repos/acme/web/pulls/7/merge":
+			state.merged = true
+			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
+		default:
+			http.NotFound(w, request)
+		}
+	}
+}
+
+func writeLegacyCancellationEvents(w http.ResponseWriter, restored bool) {
+	events := []map[string]any{
+		{
+			"id": 1, "event": "labeled", "created_at": "2026-08-25T08:00:00Z",
+			"label": map[string]any{"name": LabelPendingCIMerge},
+		},
+		{"id": 2, "event": "convert_to_draft", "created_at": "2026-08-25T08:01:00Z"},
+	}
+	if restored {
+		events = append(events, map[string]any{
+			"id": 3, "event": "labeled", "created_at": "2026-08-25T08:02:00Z",
+			"label": map[string]any{"name": LabelPendingCIMerge},
+		})
+	}
+	_ = json.NewEncoder(w).Encode(events)
 }
 
 type actionPendingCILabelStub struct {

@@ -445,8 +445,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
@@ -515,7 +516,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 					case r.URL.Path == "/repos/owner/repo/issues/42/events":
 						writePendingCIEvents(w, LabelPendingCISquash, false)
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments":
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/squash after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 					case r.URL.Path == "/repos/owner/repo/commits/abc123/status":
 						_ = json.NewEncoder(w).Encode(map[string]interface{}{
 							"total_count": 0, "statuses": []map[string]interface{}{},
@@ -593,8 +596,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/labels/smyklot:pending:ci" && r.Method == "DELETE":
 						labelRemoved = true
@@ -671,8 +675,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						writePendingCIEvents(w, LabelPendingCIMerge, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/merge after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						mergeRequested = true
@@ -744,8 +749,9 @@ var _ = Describe("Poll Pending CI [Unit]", func() {
 						writePendingCIEvents(w, LabelPendingCISquash, false)
 
 					case r.URL.Path == "/repos/owner/repo/issues/42/comments" && r.Method == "GET":
-						w.WriteHeader(http.StatusOK)
-						_, _ = w.Write([]byte(`[]`))
+						writeLegacyPendingCIComments(w, "/squash after ci")
+					case r.URL.Path == "/repos/owner/repo/issues/comments/101/reactions":
+						writeLegacyPendingCIReactions(w)
 
 					case r.URL.Path == "/repos/owner/repo/pulls/42/merge" && r.Method == "PUT":
 						var body map[string]interface{}
@@ -835,4 +841,17 @@ func writePendingCIEvents(w http.ResponseWriter, label string, drafted bool) {
 		)
 	}
 	_ = json.NewEncoder(w).Encode(events)
+}
+
+func writeLegacyPendingCIComments(w http.ResponseWriter, command string) {
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 101, "body": command, "updated_at": "2026-08-25T08:01:00Z",
+	}})
+}
+
+func writeLegacyPendingCIReactions(w http.ResponseWriter) {
+	_ = json.NewEncoder(w).Encode([]map[string]any{{
+		"id": 201, "content": "eyes", "created_at": "2026-08-25T08:01:01Z",
+		"user": map[string]any{"login": "smyklot[bot]"},
+	}})
 }

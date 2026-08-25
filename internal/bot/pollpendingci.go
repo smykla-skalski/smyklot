@@ -275,19 +275,31 @@ func handlePendingCIPassed(
 
 		return nil
 	}
-	state, err := client.GetPullRequestState(ctx, repoOwner, repoName, prNumber)
-	if err != nil {
-		return fmt.Errorf("revalidate pending CI draft state: %w", err)
-	}
-	cancelled, err := cancelActionPendingCIDraft(
-		ctx, client, bc, repoOwner, repoName, prNumber, pr,
-		botUsername, state.Draft,
-	)
-	if err != nil || cancelled {
-		return err
-	}
+	authorize := func() error {
+		state, stateErr := client.GetPullRequestState(ctx, repoOwner, repoName, prNumber)
+		if stateErr != nil {
+			return fmt.Errorf("revalidate pending CI draft state: %w", stateErr)
+		}
+		cancelled, cancelErr := cancelActionPendingCIDraft(
+			ctx, client, bc, repoOwner, repoName, prNumber, pr,
+			botUsername, state.Draft,
+		)
+		if cancelErr != nil {
+			return cancelErr
+		}
+		if cancelled {
+			return pendingci.ErrStaleSourceRevision
+		}
 
-	if err := MergePendingPRAtHead(ctx, client, repoOwner, repoName, prNumber, pr.Method, headRef); err != nil {
+		return nil
+	}
+	if err := MergePendingPRAtHead(
+		ctx, client, repoOwner, repoName, prNumber, pr.Method, headRef, authorize,
+	); err != nil {
+		if errors.Is(err, pendingci.ErrStaleSourceRevision) ||
+			errors.Is(err, pendingci.ErrAmbiguousSourceRevision) {
+			return nil
+		}
 		if mergeHeadChanged(err) {
 			return nil
 		}
@@ -320,14 +332,25 @@ func MergePendingPRAtHead(
 	prNumber int,
 	method github.MergeMethod,
 	headRef string,
+	authorize func() error,
 ) error {
+	if err := authorize(); err != nil {
+		return err
+	}
 	err := client.MergePRAtHead(ctx, owner, repo, prNumber, method, headRef)
 	if err == nil || method != github.MergeMethodMerge || !strings.Contains(err.Error(), "Merge commits are not allowed") {
 		return err
 	}
 
+	if err = authorize(); err != nil {
+		return err
+	}
 	err = client.MergePRAtHead(ctx, owner, repo, prNumber, github.MergeMethodSquash, headRef)
 	if err == nil || mergeHeadChanged(err) {
+		return err
+	}
+
+	if err = authorize(); err != nil {
 		return err
 	}
 
@@ -457,8 +480,10 @@ func reconcileDraftPendingCI(
 	}
 	state, err = client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
-		return restorePendingCILabel(
-			ctx, client, owner, repository, pullRequest, pr.Label,
+		return false, repairActionPendingCILabel(
+			ctx, client, bc, owner, repository, pullRequest,
+			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
+			actionPendingCIArtifactExclusion{},
 			fmt.Errorf("recheck cancelled pending CI state: %w", err),
 		)
 	}
@@ -467,8 +492,10 @@ func reconcileDraftPendingCI(
 		pr.Method, pr.RequiredOnly, pr.Label, botUsername, state.Draft,
 	)
 	if err != nil {
-		return restorePendingCILabel(
-			ctx, client, owner, repository, pullRequest, pr.Label,
+		return false, repairActionPendingCILabel(
+			ctx, client, bc, owner, repository, pullRequest,
+			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
+			actionPendingCIArtifactExclusion{},
 			fmt.Errorf("recheck cancelled pending CI authorization: %w", err),
 		)
 	}
@@ -486,8 +513,10 @@ func reconcileDraftPendingCI(
 			cleanupErr = fmt.Errorf("clean up cancelled pending CI request: %w", cleanupErr)
 		}
 
-		return restorePendingCILabel(
-			ctx, client, owner, repository, pullRequest, pr.Label, cleanupErr,
+		return false, repairActionPendingCILabel(
+			ctx, client, bc, owner, repository, pullRequest,
+			pr.Method, pr.RequiredOnly, botUsername, pr.Label,
+			actionPendingCIArtifactExclusion{}, cleanupErr,
 		)
 	}
 	if !notify {
@@ -496,6 +525,43 @@ func reconcileDraftPendingCI(
 	fb := feedback.NewPendingCICancelled(pendingci.DraftCancellationReason)
 
 	return true, client.PostComment(ctx, owner, repository, pullRequest, fb.Message)
+}
+
+func repairActionPendingCILabel(
+	ctx context.Context,
+	client *github.Client,
+	botConfig *config.Config,
+	owner, repository string,
+	pullRequest int,
+	method github.MergeMethod,
+	requiredOnly bool,
+	botUsername string,
+	label string,
+	exclusion actionPendingCIArtifactExclusion,
+	cause error,
+) error {
+	disarmErr := client.RemoveLabel(ctx, owner, repository, pullRequest, label)
+	var apiErr *github.APIError
+	if errors.As(disarmErr, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		disarmErr = nil
+	}
+	artifacts, _, scanErr := actionPendingCIArtifacts(
+		ctx, client, botConfig, owner, repository, pullRequest,
+		method, requiredOnly, botUsername, exclusion,
+	)
+	if scanErr != nil {
+		return errors.Join(cause, disarmErr, scanErr)
+	}
+	for _, artifact := range artifacts {
+		if artifact.legacy {
+			continue
+		}
+		restoreErr := client.AddLabel(ctx, owner, repository, pullRequest, label)
+
+		return errors.Join(cause, disarmErr, restoreErr)
+	}
+
+	return errors.Join(cause, disarmErr)
 }
 
 func restorePendingCILabel(

@@ -939,16 +939,16 @@ func revalidateActionPendingCI(
 		ctx, client, runtime.RepoOwner, runtime.RepoName, commentID, markerID,
 	)
 	method, requiredOnly, _ := ParsePendingCILabel(label)
-	_, cleanupErr := reconcileDraftPendingCI(
-		ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName,
-		pullRequest, PendingCIPR{
-			Method: method, Label: label, RequiredOnly: requiredOnly,
-		}, runtime.BotUsername, false,
+	repairErr := repairActionPendingCILabel(
+		ctx, client, botConfig, runtime.RepoOwner, runtime.RepoName, pullRequest,
+		method, requiredOnly, runtime.BotUsername, label,
+		actionPendingCIArtifactExclusion{commentID: commentID, markerID: markerID},
+		nil,
 	)
 
 	return fmt.Errorf(
 		"revalidate pending CI draft authorization: %w",
-		errors.Join(err, markerCleanupErr, cleanupErr),
+		errors.Join(err, markerCleanupErr, repairErr),
 	)
 }
 

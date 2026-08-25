@@ -354,14 +354,18 @@ func (backend *Backend) MergeAtHead(
 	if err != nil {
 		return err
 	}
-	if err := validatePendingCIDraftAuthorization(
-		ctx, client, owner, repository, request,
-	); err != nil {
-		return err
+	authorize := func() error {
+		return validatePendingCIDraftAuthorization(
+			ctx, client, owner, repository, request,
+		)
 	}
 
 	method := github.MergeMethod(request.MergeMethod)
 	if request.ArtifactKind == pendingci.ArtifactCheck {
+		if err := authorize(); err != nil {
+			return err
+		}
+
 		return mergePendingPRAtHeadWithoutQueue(
 			ctx, client, owner, repository, request.PullRequest,
 			method, request.BaseBranch, headSHA,
@@ -369,7 +373,7 @@ func (backend *Backend) MergeAtHead(
 	}
 
 	return bot.MergePendingPRAtHead(
-		ctx, client, owner, repository, request.PullRequest, method, headSHA,
+		ctx, client, owner, repository, request.PullRequest, method, headSHA, authorize,
 	)
 }
 

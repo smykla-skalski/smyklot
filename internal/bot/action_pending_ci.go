@@ -36,6 +36,11 @@ type actionPendingCIArtifact struct {
 	legacy    bool
 }
 
+type actionPendingCIArtifactExclusion struct {
+	commentID int
+	markerID  int64
+}
+
 func actionPendingCIDraftCancelled(
 	ctx context.Context,
 	client actionPendingCIArtifactClient,
@@ -59,7 +64,7 @@ func actionPendingCIDraftCancelled(
 		return false, err
 	}
 	if !found {
-		if legacy || !botConfig.AllowDraftMerges {
+		if legacy {
 			return client.PullRequestDraftedAfterLabel(
 				ctx, owner, repository, pullRequest, label,
 			)
@@ -90,7 +95,7 @@ func latestActionPendingCIRevision(
 ) (string, bool, bool, error) {
 	artifacts, legacy, err := actionPendingCIArtifacts(
 		ctx, client, botConfig, owner, repository, pullRequest,
-		method, requiredOnly, botUsername,
+		method, requiredOnly, botUsername, actionPendingCIArtifactExclusion{},
 	)
 	if err != nil {
 		return "", false, false, err
@@ -124,6 +129,7 @@ func actionPendingCIArtifacts(
 	method github.MergeMethod,
 	requiredOnly bool,
 	botUsername string,
+	exclusion actionPendingCIArtifactExclusion,
 ) ([]actionPendingCIArtifact, bool, error) {
 	comments, err := client.GetPRComments(ctx, owner, repository, pullRequest)
 	if err != nil {
@@ -136,13 +142,20 @@ func actionPendingCIArtifacts(
 		if parseErr != nil || !actionPendingCICommandMatches(parsed, method, requiredOnly) {
 			continue
 		}
+		ignoredMarkerID := int64(0)
+		if int(comment.ID) == exclusion.commentID {
+			ignoredMarkerID = exclusion.markerID
+		}
 		marker, pending, markerErr := actionPendingCICommentMarkers(
-			ctx, client, owner, repository, int(comment.ID), botUsername,
+			ctx, client, owner, repository, int(comment.ID), botUsername, ignoredMarkerID,
 		)
 		if markerErr != nil {
 			return nil, false, markerErr
 		}
 		if marker.ID == 0 {
+			if int(comment.ID) == exclusion.commentID {
+				continue
+			}
 			if pending.ID != 0 {
 				legacy = true
 				artifacts = append(artifacts, actionPendingCIArtifact{
@@ -197,6 +210,7 @@ func actionPendingCICommentMarkers(
 	owner, repository string,
 	commentID int,
 	botUsername string,
+	ignoredMarkerID int64,
 ) (github.Reaction, github.Reaction, error) {
 	reactions, err := client.GetCommentReactions(ctx, owner, repository, commentID)
 	if err != nil {
@@ -213,7 +227,8 @@ func actionPendingCICommentMarkers(
 		if reaction.Type == ReactionPendingCI && newerActionPendingCIMarker(reaction, pending) {
 			pending = reaction
 		}
-		if reaction.Type == ReactionPendingCIAction && newerActionPendingCIMarker(reaction, marker) {
+		if reaction.Type == ReactionPendingCIAction && reaction.ID != ignoredMarkerID &&
+			newerActionPendingCIMarker(reaction, marker) {
 			marker = reaction
 		}
 	}
@@ -315,7 +330,7 @@ func settleCancelledActionPendingCI(
 ) (bool, error) {
 	artifacts, _, err := actionPendingCIArtifacts(
 		ctx, client, botConfig, owner, repository, pullRequest,
-		method, requiredOnly, botUsername,
+		method, requiredOnly, botUsername, actionPendingCIArtifactExclusion{},
 	)
 	if err != nil {
 		return true, err
