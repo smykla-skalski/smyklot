@@ -1,3 +1,4 @@
+import type { Route } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { addressOf, startPanel, visit, type Panel } from './harness';
@@ -13,6 +14,36 @@ afterAll(async () => {
 });
 
 describe('background work schedules [Integration]', () => {
+  it('renders empty policy overrides from older servers', async () => {
+    const page = await panel.browser.newPage();
+    const emptyOverrides = async (route: Route) => {
+      const response = await route.fetch();
+      const document = (await response.json()) as {
+        policy_set?: { overrides?: unknown };
+        policies?: { overrides?: unknown };
+      };
+      if (document.policy_set !== undefined) document.policy_set.overrides = null;
+      if (document.policies !== undefined) document.policies.overrides = null;
+      await route.fulfill({ response, json: document });
+    };
+    try {
+      await page.route('**/api/v1/root/job-policies', emptyOverrides);
+      await page.route('**/api/v1/targets/*/schedules', emptyOverrides);
+
+      await visit(page, addressOf(panel, 'root/schedules'), {
+        ready: '.schedules-view .policy-table-wrap tbody tr',
+      });
+      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+
+      await visit(page, addressOf(panel, 'i/schedules'), {
+        ready: '.schedules-view .policy-table-wrap tbody tr',
+      });
+      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+    } finally {
+      await page.close();
+    }
+  });
+
   it('shows Root the effective policies, named profiles, and pending decisions', async () => {
     const page = await panel.browser.newPage();
     try {

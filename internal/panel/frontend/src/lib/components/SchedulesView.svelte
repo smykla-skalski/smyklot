@@ -94,6 +94,7 @@
     policies.filter((policy) => installationKinds.has(policy.kind)),
   );
   const displayedPolicies = $derived(targetId === undefined ? policies : requestablePolicies);
+  const policyOverrides = $derived(policySet?.overrides ?? []);
   const activeWorkloads = $derived(
     displayedPolicies.filter((policy) => policyStatus(policy.kind)?.current_state !== undefined)
       .length,
@@ -261,7 +262,7 @@
   }
 
   function policySource(kind: QueueWorkload): string {
-    if (policySet?.overrides.some((policy) => policy.kind === kind)) return 'Installation override';
+    if (policyOverrides.some((policy) => policy.kind === kind)) return 'Installation override';
     return 'Global policy';
   }
 
@@ -706,17 +707,17 @@
       />
     </section>
 
-    {#if targetId === undefined && (policySet?.overrides.length ?? 0) > 0}
+    {#if targetId === undefined && policyOverrides.length > 0}
       <section class="schedule-section" aria-labelledby="overrides-heading">
         <div class="section-heading">
           <div>
             <span class="eyebrow">Approved installation settings</span>
             <h2 id="overrides-heading">Overrides</h2>
           </div>
-          <span class="dim">{policySet?.overrides.length ?? 0} active</span>
+          <span class="dim">{policyOverrides.length} active</span>
         </div>
         <DataTable
-          rows={policySet?.overrides ?? []}
+          rows={policyOverrides}
           rowKey={(policy) => `${policy.target_id}:${policy.kind}`}
           caption="Installation overrides"
           regionLabel="Installation overrides"

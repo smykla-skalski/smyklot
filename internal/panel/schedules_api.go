@@ -57,6 +57,15 @@ type schedulePolicySet struct {
 	Effective          []workqueue.Policy `json:"effective"`
 }
 
+func newSchedulePolicySet(defaults []workqueue.Policy) schedulePolicySet {
+	return schedulePolicySet{
+		Current:            []workqueue.Policy{},
+		DeploymentDefaults: defaults,
+		Overrides:          []workqueue.Policy{},
+		Effective:          []workqueue.Policy{},
+	}
+}
+
 func (s *Server) getRootScheduleProfiles(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireRoot(w, r); !ok {
 		return
@@ -159,8 +168,7 @@ func (s *Server) getRootJobPolicies(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	set := schedulePolicySet{}
-	set.DeploymentDefaults = s.deploymentQueuePolicies()
+	set := newSchedulePolicySet(s.deploymentQueuePolicies())
 	for _, policy := range policies {
 		if policy.TargetID == nil {
 			set.Current = append(set.Current, policy)
@@ -350,7 +358,7 @@ func (s *Server) policySet(r *http.Request, targetID string) (schedulePolicySet,
 	if err != nil {
 		return schedulePolicySet{}, err
 	}
-	set := schedulePolicySet{DeploymentDefaults: s.deploymentQueuePolicies()}
+	set := newSchedulePolicySet(s.deploymentQueuePolicies())
 	for _, policy := range policies {
 		if policy.TargetID == nil {
 			set.Current = append(set.Current, policy)

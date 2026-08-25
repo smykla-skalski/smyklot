@@ -40,10 +40,39 @@ func TestRootSchedulePoliciesDistinguishDeploymentDefaults(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
 		t.Fatal(err)
 	}
+	requireSchedulePolicyCollections(t, result.PolicySet)
 	deployment := queuePolicyFromSet(t, result.PolicySet.DeploymentDefaults, workqueue.KindSyncScan)
 	effective := queuePolicyFromSet(t, result.PolicySet.Effective, workqueue.KindSyncScan)
 	if deployment.Cadence != 6*time.Hour || effective.Cadence != 12*time.Hour {
 		t.Fatalf("deployment = %s, effective = %s", deployment.Cadence, effective.Cadence)
+	}
+}
+
+func TestInstallationSchedulesEncodeEmptyOverridesAsArray(t *testing.T) {
+	harness := newPanelHarness(t, "root")
+	session := harness.signIn(t)
+	response := harness.request(
+		t,
+		http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/schedules",
+		nil,
+		session,
+	)
+	requireResponse(t, response, "installation queue policies", http.StatusOK)
+	var result struct {
+		PolicySet schedulePolicySet `json:"policies"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	requireSchedulePolicyCollections(t, result.PolicySet)
+}
+
+func requireSchedulePolicyCollections(t *testing.T, set schedulePolicySet) {
+	t.Helper()
+	if set.Current == nil || set.DeploymentDefaults == nil || set.Overrides == nil ||
+		set.Effective == nil {
+		t.Fatalf("schedule policy set contains a null collection: %#v", set)
 	}
 }
 
