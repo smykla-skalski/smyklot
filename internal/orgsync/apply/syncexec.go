@@ -41,7 +41,7 @@ func (s *Engine) ApplyPlans(ctx context.Context) error {
 func (s *Engine) ApplyOnePlan(ctx context.Context) (bool, error) {
 	now := time.Now().UTC()
 
-	lease, err := s.store.LeaseSyncPlan(ctx, now, now.Add(syncLease))
+	lease, err := s.leaseSyncPlan(ctx, now)
 	if err != nil {
 		return false, fmt.Errorf("lease sync plan: %w", err)
 	}
@@ -90,6 +90,22 @@ func (s *Engine) ApplyOnePlan(ctx context.Context) (bool, error) {
 		"state", outcome.State(), "actions", len(outcome.Actions))
 
 	return true, s.recordSyncOutcomeAudit(ctx, lease.Plan, outcome, finishedAt)
+}
+
+func (s *Engine) leaseSyncPlan(
+	ctx context.Context,
+	now time.Time,
+) (orgsync.PlanLease, error) {
+	if s.beginWork == nil {
+		return s.store.LeaseSyncPlan(ctx, now, now.Add(syncLease))
+	}
+	release, allowed := s.beginWork()
+	if !allowed {
+		return orgsync.PlanLease{}, nil
+	}
+	defer release()
+
+	return s.store.LeaseSyncPlan(ctx, now, now.Add(syncLease))
 }
 
 // recordSyncOutcomeAudit writes what a plan did, and separately what it removed.
@@ -167,35 +183,61 @@ func (s *Engine) applySyncPlan(
 	var outcome orgsync.Outcome
 
 	for _, work := range orgsync.Schedule(lease.Actions) {
-		repository, err := s.store.GetRepository(ctx, lease.Plan.TargetID, work.RepositoryID)
+		err := s.applyRepositoryIfEnabled(
+			ctx, lease.Plan.TargetID, work, &outcome,
+			func(repository storage.Repository) error {
+				s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
+
+				return nil
+			},
+		)
 		if err != nil {
-			// A repository the catalog no longer has is not a failure of the
-			// plan, but its actions cannot run and must not stay pending.
-			s.abandonRepositoryWork(ctx, &outcome, work, "repository is no longer available")
-
-			continue
-		}
-		if !repositoryEnabled(target, repository) {
-			s.abandonRepositoryWork(ctx, &outcome, work, "repository is disabled in Smyklot")
-
-			continue
-		}
-
-		applyWork := func() error {
-			s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
-
-			return nil
-		}
-		if s.coordinator != nil {
-			if err := s.coordinator.Exclusive(ctx, repository.ID, applyWork); err != nil {
-				return outcome, fmt.Errorf("coordinate sync repository %s: %w", repository.ID, err)
-			}
-		} else if err := applyWork(); err != nil {
-			return outcome, err
+			return outcome, fmt.Errorf("coordinate sync repository %s: %w", work.RepositoryID, err)
 		}
 	}
 
 	return outcome, nil
+}
+
+func (s *Engine) applyRepositoryIfEnabled(
+	ctx context.Context,
+	targetID string,
+	work orgsync.RepositoryWork,
+	outcome *orgsync.Outcome,
+	apply func(storage.Repository) error,
+) error {
+	run := func() error {
+		target, err := s.store.GetTarget(ctx, targetID)
+		if errors.Is(err, storage.ErrNotFound) {
+			s.abandonRepositoryWork(ctx, outcome, work, "installation is no longer available")
+
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("refresh sync installation: %w", err)
+		}
+		repository, err := s.store.GetRepository(ctx, targetID, work.RepositoryID)
+		if errors.Is(err, storage.ErrNotFound) {
+			s.abandonRepositoryWork(ctx, outcome, work, "repository is no longer available")
+
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("refresh sync repository: %w", err)
+		}
+		if !repositoryEnabled(target, repository) {
+			s.abandonRepositoryWork(ctx, outcome, work, "repository is disabled in Smyklot")
+
+			return nil
+		}
+
+		return apply(repository)
+	}
+	if s.coordinator == nil {
+		return run()
+	}
+
+	return s.coordinator.Exclusive(ctx, work.RepositoryID, run)
 }
 
 // abandonRepositoryWork records every action for a repository that cannot be
