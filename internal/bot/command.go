@@ -10,6 +10,8 @@ package bot
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"regexp"
 	"slices"
 	"strconv"
@@ -490,6 +492,9 @@ func executeImmediateCommandMerge(
 	method github.MergeMethod,
 	info *github.PRInfo,
 ) (*feedback.Feedback, error) {
+	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
+		return failure, nil
+	}
 	var err error
 	info, err = prepareDraftMerge(
 		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,
@@ -781,11 +786,35 @@ func recordActionPendingCI(
 	_ = client.AddReaction(
 		ctx, rc.RepoOwner, rc.RepoName, commentID, ReactionPendingCI,
 	)
-	if err := client.AddLabel(ctx, rc.RepoOwner, rc.RepoName, prNum, label); err != nil {
+	if err := rotateActionPendingCILabel(
+		ctx, client, rc.RepoOwner, rc.RepoName, prNum, label,
+	); err != nil {
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), true
 	}
 
 	return nil, false
+}
+
+type actionPendingCILabeler interface {
+	AddLabel(context.Context, string, string, int, string) error
+	RemoveLabel(context.Context, string, string, int, string) error
+}
+
+func rotateActionPendingCILabel(
+	ctx context.Context,
+	client actionPendingCILabeler,
+	owner, repository string,
+	pullRequest int,
+	label string,
+) error {
+	if err := client.RemoveLabel(ctx, owner, repository, pullRequest, label); err != nil {
+		var apiErr *github.APIError
+		if !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusNotFound {
+			return err
+		}
+	}
+
+	return client.AddLabel(ctx, owner, repository, pullRequest, label)
 }
 
 func recordServicePendingCI(

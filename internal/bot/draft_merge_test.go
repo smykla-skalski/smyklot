@@ -121,6 +121,34 @@ func TestDraftMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 	assertApprovalBeforeAutoMerge(t, *requests)
 }
 
+func TestDraftMergeRefusesSelfApprovalBeforePublishing(t *testing.T) {
+	server, requests := draftBlockedServer(t)
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	runtime := draftRuntime()
+	runtime.CommentAuthor = "author"
+	result, err := executeMerge(
+		t.Context(), client, runtime, botConfig, 7, 99,
+		github.MergeMethodMerge, false, false, CommandEnvironment{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil || result.Message == "" {
+		t.Fatalf("self-approval feedback = %#v", result)
+	}
+	for _, request := range *requests {
+		if request == "POST /graphql" || request == "POST /repos/acme/web/pulls/7/reviews" {
+			t.Fatalf("self-approval mutated pull request: %v", *requests)
+		}
+	}
+}
+
 func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 	server, requests := draftBlockedServer(t)
 	defer server.Close()
@@ -136,6 +164,55 @@ func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertApprovalBeforeAutoMerge(t, *requests)
+}
+
+func TestActionPendingCICommandRotatesItsAuthorizationLabel(t *testing.T) {
+	labels := &actionPendingCILabelStub{}
+	err := rotateActionPendingCILabel(
+		t.Context(), labels, "acme", "web", 7, LabelPendingCIMerge,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(labels.calls) != 2 || labels.calls[0] != "remove" || labels.calls[1] != "add" {
+		t.Fatalf("label operations = %v, want [remove add]", labels.calls)
+	}
+}
+
+func TestActionPendingCICommandAddsMissingAuthorizationLabel(t *testing.T) {
+	labels := &actionPendingCILabelStub{removeErr: github.NewAPIError(
+		github.ErrAPIRequest, http.StatusNotFound, http.MethodDelete, "/labels/pending", nil,
+	)}
+	err := rotateActionPendingCILabel(
+		t.Context(), labels, "acme", "web", 7, LabelPendingCIMerge,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(labels.calls) != 2 || labels.calls[0] != "remove" || labels.calls[1] != "add" {
+		t.Fatalf("label operations = %v, want [remove add]", labels.calls)
+	}
+}
+
+type actionPendingCILabelStub struct {
+	calls     []string
+	removeErr error
+}
+
+func (stub *actionPendingCILabelStub) AddLabel(
+	context.Context, string, string, int, string,
+) error {
+	stub.calls = append(stub.calls, "add")
+
+	return nil
+}
+
+func (stub *actionPendingCILabelStub) RemoveLabel(
+	context.Context, string, string, int, string,
+) error {
+	stub.calls = append(stub.calls, "remove")
+
+	return stub.removeErr
 }
 
 type draftMergeStub struct {

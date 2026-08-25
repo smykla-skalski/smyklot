@@ -13,8 +13,8 @@ import (
 type wakingStore struct {
 	Store
 
-	woke     bool
-	finished *pendingci.FinishPRRequest
+	woke    bool
+	drafted *pendingci.DraftTransitionRequest
 }
 
 func (s *wakingStore) Wake(context.Context, pendingci.WakeRequest) (bool, error) {
@@ -23,13 +23,13 @@ func (s *wakingStore) Wake(context.Context, pendingci.WakeRequest) (bool, error)
 	return true, nil
 }
 
-func (s *wakingStore) FinishPR(
+func (s *wakingStore) RecordDraftTransition(
 	_ context.Context,
-	request pendingci.FinishPRRequest,
-) (*pendingci.Request, error) {
-	s.finished = &request
+	request pendingci.DraftTransitionRequest,
+) (pendingci.DraftTransitionResult, error) {
+	s.drafted = &request
 
-	return &pendingci.Request{ID: 1}, nil
+	return pendingci.DraftTransitionResult{Changed: true}, nil
 }
 
 func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
@@ -66,6 +66,7 @@ func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
 				Source: webhook.Source{Repository: webhook.Repository{ID: 1}},
 				Signals: []pendingci.Signal{{
 					Kind: pendingci.SignalPullRequestDraft, PullRequest: 7,
+					EventKey:   "pull_request:1:7:converted_to_draft",
 					OccurredAt: time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC),
 				}},
 			},
@@ -89,10 +90,10 @@ func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
 				t.Fatalf("store woken = %t, want %t", store.woke, test.wantWoke)
 			}
 			if test.notification.Action == "converted_to_draft" {
-				if store.finished == nil || store.finished.PullRequest != 7 ||
-					store.finished.Reason != pendingci.DraftCancellationReason ||
-					store.finished.AuthorizedAtOrBefore.IsZero() {
-					t.Fatalf("finish request = %#v", store.finished)
+				if store.drafted == nil || store.drafted.PullRequest != 7 ||
+					store.drafted.EventKey == "" || store.drafted.DraftedAt.IsZero() ||
+					store.drafted.RecordedAt.IsZero() {
+					t.Fatalf("draft transition request = %#v", store.drafted)
 				}
 			}
 		})

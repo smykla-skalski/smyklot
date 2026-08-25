@@ -97,13 +97,12 @@ func (g *Gate) applyPendingCISignal(
 
 		return 0, err
 	case pendingci.SignalPullRequestDraft:
-		finished, err := g.store.FinishPR(ctx, pendingci.FinishPRRequest{
+		result, err := g.store.RecordDraftTransition(ctx, pendingci.DraftTransitionRequest{
 			RepositoryID: repositoryID, PullRequest: signal.PullRequest,
-			Lifecycle: pendingci.LifecycleCancelled, Trigger: pendingci.TriggerWebhook,
-			Reason: pendingci.DraftCancellationReason, FinishedAt: occurredAt,
-			AuthorizedAtOrBefore: signal.OccurredAt,
+			EventKey: signal.EventKey, DraftedAt: signal.OccurredAt,
+			RecordedAt: occurredAt,
 		})
-		if err != nil || finished == nil {
+		if err != nil || !result.Changed {
 			return 0, err
 		}
 

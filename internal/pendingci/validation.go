@@ -287,6 +287,18 @@ func (request FinishPRRequest) Validate() error {
 	return nil
 }
 
+func (request DraftTransitionRequest) Validate() error {
+	if strings.TrimSpace(request.RepositoryID) == "" || request.PullRequest <= 0 ||
+		strings.TrimSpace(request.EventKey) == "" {
+		return invalid("draft transition repository, pull request, and event are required")
+	}
+	if request.DraftedAt.IsZero() || request.RecordedAt.IsZero() {
+		return invalid("draft transition occurrence and recording times are required")
+	}
+
+	return nil
+}
+
 func (request CancelRepositoryRequest) Validate() error {
 	if strings.TrimSpace(request.RepositoryID) == "" {
 		return invalid("repository identity is required")
