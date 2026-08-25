@@ -67,6 +67,12 @@ export const BOOLEAN_FIELDS: ReadonlyArray<BooleanField> = [
     help: 'When enabled, pull request authors may approve their own changes through Smyklot',
     positive: true,
   },
+  {
+    key: 'allow_draft_merges',
+    label: 'Merge draft pull requests',
+    help: 'When enabled, merge commands mark draft pull requests ready for review before merging',
+    positive: true,
+  },
 ];
 
 /** Whether the feature a field describes is active for a given raw config value. */
@@ -94,6 +100,7 @@ export const CONFIG_KEYS: readonly ConfigKey[] = [
   'disable_reactions',
   'disable_deleted_comments',
   'allow_self_approval',
+  'allow_draft_merges',
 ];
 
 export function clonePatch(patch: ConfigPatch): ConfigPatch {

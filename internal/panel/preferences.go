@@ -489,6 +489,7 @@ func settingFilter() prefValidator {
 		config.KeyDisableReactions,
 		config.KeyDisableDeletedComments,
 		config.KeyAllowSelfApproval,
+		config.KeyAllowDraftMerges,
 	}
 
 	return func(value any) (any, bool) {

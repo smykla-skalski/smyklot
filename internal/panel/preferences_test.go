@@ -135,8 +135,8 @@ func TestValidatePrefChanges(t *testing.T) {
 		{
 			name:     "setting filter keys mode canonicalized",
 			key:      "table.repositories.settings",
-			value:    `["keys","quiet_success","allowed_commands"]`,
-			accepted: `["keys","allowed_commands","quiet_success"]`,
+			value:    `["keys","quiet_success","allow_draft_merges","allowed_commands"]`,
+			accepted: `["keys","allow_draft_merges","allowed_commands","quiet_success"]`,
 		},
 		{name: "setting filter keys mode needs keys", key: "table.repositories.settings", value: `["keys"]`},
 		{name: "setting filter unknown key", key: "table.repositories.settings", value: `["keys","favourite"]`},

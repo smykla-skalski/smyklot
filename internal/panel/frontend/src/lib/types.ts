@@ -25,6 +25,7 @@ export interface ConfigValues {
   disable_reactions: boolean;
   disable_deleted_comments: boolean;
   allow_self_approval: boolean;
+  allow_draft_merges: boolean;
 }
 
 /** Omitted values inherit from the next lower-precedence source. */

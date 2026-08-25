@@ -1874,7 +1874,9 @@ func DeclareSpecs(harness Harness) {
 			ChangedAt: now.Add(2 * time.Minute),
 			Repositories: []storage.InstallationRepositorySettingsChange{{
 				RepositoryID: "repo-beta", EnabledOverride: &enabled,
-				ConfigPatch:          config.Patch{QuietSuccess: &enabled},
+				ConfigPatch: config.Patch{
+					QuietSuccess: &enabled, AllowDraftMerges: &enabled,
+				},
 				IgnoreRepositoryFile: false, ExpectedRevision: 1,
 			}},
 		})
@@ -1982,6 +1984,18 @@ func DeclareSpecs(harness Harness) {
 		Expect(matching.Total).To(Equal(2))
 		Expect(matching.Items[0].Name).To(Equal("beta"))
 		Expect(matching.Items[1].Name).To(Equal("delta"))
+
+		draftMergeOverrides, err := store.ListRepositoryPage(
+			ctx,
+			installation.TargetID,
+			storage.RepositoryPageRequest{
+				Limit: 10, Order: storage.RepositoryNameAscending,
+				ConfigOverrideKeys: []string{config.KeyAllowDraftMerges},
+			},
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(draftMergeOverrides.Total).To(Equal(1))
+		Expect(draftMergeOverrides.Items[0].Name).To(Equal("beta"))
 	})
 
 	It("treats wildcard characters in a search as ordinary text", func() {
