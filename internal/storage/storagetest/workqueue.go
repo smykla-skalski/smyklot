@@ -805,31 +805,48 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		fixtures := []workqueue.Item{
 			{
 				ID: "queue:metric-waiting", State: workqueue.StateScheduled,
+				TargetID:  &target.TargetID,
 				NotBefore: now.Add(-10 * time.Minute), EligibleAt: now.Add(-10 * time.Minute),
 			},
 			{
 				ID: "queue:metric-running", State: workqueue.StateRunning,
+				TargetID:  &target.TargetID,
 				NotBefore: now.Add(-5 * time.Minute), EligibleAt: now.Add(-5 * time.Minute),
 				LeaseExpiresAt: &lease, StartedAt: &started,
 			},
 			{
-				ID: "queue:metric-failed", State: workqueue.StateFailed,
+				ID: "queue:metric-target-failed", State: workqueue.StateFailed,
+				TargetID:  &target.TargetID,
+				NotBefore: finished, EligibleAt: finished, FinishedAt: &finished,
+			},
+			{
+				ID: "queue:metric-global-failed", State: workqueue.StateFailed,
 				NotBefore: finished, EligibleAt: finished, FinishedAt: &finished,
 			},
 		}
 		for _, fixture := range fixtures {
 			fixture.Kind, fixture.Lane = workqueue.KindReactionScan, workqueue.LaneMaintenance
-			fixture.TargetID, fixture.Title = &target.TargetID, "Measured reaction scan"
+			fixture.Title = "Measured reaction scan"
 			fixture.Priority, fixture.WindowMode = workqueue.PriorityNormal, workqueue.WindowRespect
 			fixture.ProfileID = pointer(workqueue.AlwaysOpenProfileID)
 			fixture.CreatedAt, fixture.UpdatedAt = now.Add(-3*time.Hour), now
 			_, err := store.CreateQueueItem(ctx, fixture)
 			Expect(err).NotTo(HaveOccurred())
 		}
+		_, err := store.CreateQueueItem(ctx, workqueue.Item{
+			ID: "queue:metric-schedule-change", Kind: workqueue.KindScheduleChange,
+			Lane: workqueue.LaneMaintenance, TargetID: &target.TargetID,
+			Title: "Measured schedule change", State: workqueue.StateFailed,
+			Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
+			ProfileID: pointer(workqueue.AlwaysOpenProfileID),
+			NotBefore: finished, EligibleAt: finished, FinishedAt: &finished,
+			CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
 
 		metrics, err := store.WorkQueueMetrics(ctx, now)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(metrics.Failures).To(Equal(1))
+		Expect(metrics.Failures).To(Equal(3))
 		Expect(metrics.MissedWindows).To(Equal(1))
 		Expect(metrics.RunningLeases).To(Equal(1))
 		Expect(metrics.Backlogs).To(ContainElement(And(
@@ -851,10 +868,43 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 			ExpectedRevision: policy.Revision, ActorID: account.ID, ChangedAt: now,
 		})
 		Expect(err).NotTo(HaveOccurred())
+		targetRetention := 3 * time.Hour
+		targetPolicy, err := store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, TargetID: &target.TargetID,
+			Enabled: policy.Enabled, Cadence: policy.Cadence,
+			ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+			RetryDelay: policy.RetryDelay, Retention: &targetRetention,
+			ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+			ExpectedRevision: 0, ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
 		removed, err := store.PruneWorkQueue(ctx, now)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(removed).To(Equal(int64(1)))
-		_, err = store.GetQueueItem(ctx, "queue:metric-failed")
+		_, err = store.GetQueueItem(ctx, "queue:metric-global-failed")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+		_, err = store.GetQueueItem(ctx, "queue:metric-target-failed")
+		Expect(err).NotTo(HaveOccurred())
+		_, err = store.GetQueueItem(ctx, "queue:metric-schedule-change")
+		Expect(err).NotTo(HaveOccurred())
+
+		targetRetention = time.Hour
+		targetPolicy, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: targetPolicy.Kind, TargetID: targetPolicy.TargetID,
+			Enabled: targetPolicy.Enabled, Cadence: targetPolicy.Cadence,
+			ProfileID:       targetPolicy.ProfileID,
+			DefaultPriority: targetPolicy.DefaultPriority,
+			RetryDelay:      targetPolicy.RetryDelay, Retention: &targetRetention,
+			ApprovalTTL:      targetPolicy.ApprovalTTL,
+			Configuration:    targetPolicy.Configuration,
+			ExpectedRevision: targetPolicy.Revision,
+			ActorID:          account.ID, ChangedAt: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		removed, err = store.PruneWorkQueue(ctx, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(removed).To(Equal(int64(1)))
+		_, err = store.GetQueueItem(ctx, "queue:metric-target-failed")
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 }

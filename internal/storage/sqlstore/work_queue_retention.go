@@ -2,9 +2,12 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
@@ -12,35 +15,28 @@ import (
 // policy has a retention period. Domain rows keep their own retention rules;
 // this operation owns the queue ledger and its cascading event timeline.
 func (s *Store) PruneWorkQueue(ctx context.Context, now time.Time) (int64, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT"+queueItemColumns+`
-FROM queue_items
-WHERE state IN ('succeeded', 'failed', 'cancelled', 'superseded')
-  AND finished_at IS NOT NULL
-ORDER BY finished_at, id`)
+	scopes, err := s.queueRetentionScopes(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("list retained queue items: %w", err)
-	}
-	items, err := collectRows(rows, scanQueueItem)
-	if err != nil {
-		return 0, fmt.Errorf("read retained queue items: %w", err)
+		return 0, err
 	}
 	var removed int64
-	for _, item := range items {
-		policy, policyErr := s.GetEffectiveQueuePolicy(ctx, item.Kind, item.TargetID)
+	for _, scope := range scopes {
+		policy, policyErr := s.GetEffectiveQueuePolicy(ctx, scope.kind, scope.targetID)
 		if policyErr != nil {
+			if scope.kind == workqueue.KindScheduleChange &&
+				errors.Is(policyErr, storage.ErrNotFound) {
+				continue
+			}
 			return removed, policyErr
 		}
-		if !queueRetentionExpired(item, policy, now) {
+		if policy.Retention == nil {
 			continue
 		}
-		result, deleteErr := s.db.ExecContext(ctx, `DELETE FROM queue_items
-WHERE id = ? AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')`, item.ID)
+		changed, deleteErr := s.pruneQueueRetentionScope(
+			ctx, scope, now.Add(-*policy.Retention),
+		)
 		if deleteErr != nil {
-			return removed, fmt.Errorf("prune queue item %s: %w", item.ID, deleteErr)
-		}
-		changed, rowsErr := result.RowsAffected()
-		if rowsErr != nil {
-			return removed, fmt.Errorf("read pruned queue item %s: %w", item.ID, rowsErr)
+			return removed, deleteErr
 		}
 		removed += changed
 	}
@@ -48,7 +44,64 @@ WHERE id = ? AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')`, i
 	return removed, nil
 }
 
-func queueRetentionExpired(item workqueue.Item, policy workqueue.Policy, now time.Time) bool {
-	return policy.Retention != nil && item.FinishedAt != nil &&
-		!item.FinishedAt.Add(*policy.Retention).After(now)
+type queueRetentionScope struct {
+	kind     workqueue.Kind
+	targetID *string
+}
+
+func (s *Store) queueRetentionScopes(ctx context.Context) ([]queueRetentionScope, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT kind, target_id
+FROM queue_items
+WHERE state IN ('succeeded', 'failed', 'cancelled', 'superseded')
+	  AND finished_at IS NOT NULL`)
+	if err != nil {
+		return nil, fmt.Errorf("list queue retention scopes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	scopes := make([]queueRetentionScope, 0)
+	for rows.Next() {
+		var kind workqueue.Kind
+		var targetID sql.NullString
+		if err := rows.Scan(&kind, &targetID); err != nil {
+			return nil, fmt.Errorf("read queue retention scope: %w", err)
+		}
+		scopes = append(scopes, queueRetentionScope{
+			kind: kind, targetID: stringPointer(targetID),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("list queue retention scopes: %w", err)
+	}
+
+	return scopes, nil
+}
+
+func (s *Store) pruneQueueRetentionScope(
+	ctx context.Context,
+	scope queueRetentionScope,
+	cutoff time.Time,
+) (int64, error) {
+	query := `DELETE FROM queue_items
+WHERE kind = ? AND target_id IS NULL
+  AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')
+  AND finished_at IS NOT NULL AND finished_at <= ?`
+	arguments := []any{scope.kind, cutoff}
+	if scope.targetID != nil {
+		query = `DELETE FROM queue_items
+WHERE kind = ? AND target_id = ?
+  AND state IN ('succeeded', 'failed', 'cancelled', 'superseded')
+  AND finished_at IS NOT NULL AND finished_at <= ?`
+		arguments = []any{scope.kind, *scope.targetID, cutoff}
+	}
+	result, err := s.db.ExecContext(ctx, query, arguments...)
+	if err != nil {
+		return 0, fmt.Errorf("prune queue retention scope %s: %w", scope.kind, err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("read pruned queue retention scope %s: %w", scope.kind, err)
+	}
+
+	return changed, nil
 }
