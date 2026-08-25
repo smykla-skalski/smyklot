@@ -1136,10 +1136,10 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 	if err == nil {
 		t.Fatal("failed publication unexpectedly succeeded")
 	}
-	if state.labelRestored || state.repairSignalID == 0 {
+	if state.labelRestored || state.repairReadyID == 0 || state.repairClaimID != 0 {
 		t.Fatalf(
-			"labelRestored=%t repairSignalID=%d, want a non-authorizing retry signal",
-			state.labelRestored, state.repairSignalID,
+			"labelRestored=%t ready=%d claim=%d, want only a non-authorizing retry signal",
+			state.labelRestored, state.repairReadyID, state.repairClaimID,
 		)
 	}
 	request, found, err := recoverActionPendingCIRepair(
@@ -1155,15 +1155,18 @@ func TestActionPendingCIRepairFailureLeavesDurableRetry(t *testing.T) {
 			found, request.Label, state.labelRestored,
 		)
 	}
-	if state.repairSignalID != 0 {
-		t.Fatal("successful repair left its retry signal behind")
+	if state.repairReadyID != 0 || state.repairClaimID != 0 {
+		t.Fatalf(
+			"successful repair left signals ready=%d claim=%d",
+			state.repairReadyID, state.repairClaimID,
+		)
 	}
 }
 
 func TestActionPendingCIRecoveryDoesNotClearConcurrentRepairSignal(t *testing.T) {
 	t.Parallel()
 	state := &actionPendingCIPublishFailureState{
-		repairSignalID: 70, nextRepairSignalID: 71, rotateOnLabel: true,
+		repairReadyID: 70, nextRepairSignalID: 71, signalOnLabel: true,
 	}
 	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
 	defer server.Close()
@@ -1178,20 +1181,87 @@ func TestActionPendingCIRecoveryDoesNotClearConcurrentRepairSignal(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !found || state.repairSignalID != 71 {
+	if !found || state.repairReadyID != 72 || state.repairClaimID != 0 {
 		t.Fatalf(
-			"found=%t repairSignalID=%d, want concurrent signal 71 preserved",
-			found, state.repairSignalID,
+			"found=%t ready=%d claim=%d, want concurrent ready signal 72 preserved",
+			found, state.repairReadyID, state.repairClaimID,
+		)
+	}
+}
+
+func TestActionPendingCIRecoveryKeepsReadySignalWhenClaimCreationFails(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		repairReadyID: 70, nextRepairSignalID: 71,
+		claimCreationStatus: http.StatusForbidden,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web",
+		map[string]interface{}{"number": float64(7)}, "smyklot[bot]",
+	)
+	if err == nil || found {
+		t.Fatalf("found=%t error=%v, want claim creation failure", found, err)
+	}
+	if state.repairReadyID != 70 || state.repairClaimID != 0 {
+		t.Fatalf(
+			"ready=%d claim=%d, want original ready signal preserved",
+			state.repairReadyID, state.repairClaimID,
+		)
+	}
+}
+
+func TestActionPendingCIRecoveryFailureKeepsClaimForRetry(t *testing.T) {
+	t.Parallel()
+	state := &actionPendingCIPublishFailureState{
+		repairReadyID: 70, nextRepairSignalID: 71, scanFailures: 3,
+	}
+	server := httptest.NewServer(actionPendingCIPublishFailureHandler(state))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr := map[string]interface{}{"number": float64(7)}
+	_, found, err := recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web", pr, "smyklot[bot]",
+	)
+	if err == nil || found {
+		t.Fatalf("found=%t error=%v, want transient recovery failure", found, err)
+	}
+	if state.repairReadyID != 0 || state.repairClaimID != 71 {
+		t.Fatalf(
+			"ready=%d claim=%d, want durable claim 71",
+			state.repairReadyID, state.repairClaimID,
+		)
+	}
+	_, found, err = recoverActionPendingCIRepair(
+		t.Context(), client, draftMergeConfig(), "acme", "web", pr, "smyklot[bot]",
+	)
+	if err != nil || !found {
+		t.Fatalf("found=%t error=%v, want retry to recover", found, err)
+	}
+	if state.repairReadyID != 0 || state.repairClaimID != 0 {
+		t.Fatalf(
+			"ready=%d claim=%d, want successful retry to clear claim",
+			state.repairReadyID, state.repairClaimID,
 		)
 	}
 }
 
 type actionPendingCIPublishFailureState struct {
-	labelRestored      bool
-	rotateOnLabel      bool
-	repairSignalID     int64
-	nextRepairSignalID int64
-	scanFailures       int
+	labelRestored       bool
+	signalOnLabel       bool
+	repairReadyID       int64
+	repairClaimID       int64
+	nextRepairSignalID  int64
+	claimCreationStatus int
+	scanFailures        int
 }
 
 func actionPendingCIPublishFailureHandler(
@@ -1258,8 +1328,8 @@ func recordActionPendingCILabelRestore(
 	state *actionPendingCIPublishFailureState,
 ) {
 	state.labelRestored = true
-	if state.rotateOnLabel {
-		state.repairSignalID = state.nextRepairSignalID
+	if state.signalOnLabel && state.repairReadyID == 0 {
+		state.repairReadyID = state.nextRepairSignalID
 		state.nextRepairSignalID++
 	}
 	w.WriteHeader(http.StatusCreated)
@@ -1287,12 +1357,23 @@ func handleActionPendingCIRepairRequest(
 ) {
 	switch request.Method {
 	case http.MethodPost:
-		state.repairSignalID = state.nextRepairSignalID
-		state.nextRepairSignalID++
+		var body map[string]string
+		_ = json.NewDecoder(request.Body).Decode(&body)
+		reactionType := github.ReactionType(body["content"])
+		if reactionType == ReactionPendingCIRepairClaim &&
+			state.claimCreationStatus != 0 {
+			w.WriteHeader(state.claimCreationStatus)
+			_, _ = w.Write([]byte(`{"message":"claim rejected"}`))
+
+			return
+		}
+		reactionID := actionPendingCIRepairReactionID(state, reactionType)
 		w.WriteHeader(http.StatusCreated)
-		writeActionPendingCIRepairCreation(w, state.repairSignalID)
+		writeActionPendingCIRepairCreation(w, reactionID, reactionType)
 	case http.MethodGet:
-		writeActionPendingCIRepairSignalID(w, state.repairSignalID)
+		writeActionPendingCIRepairSignals(
+			w, state.repairReadyID, state.repairClaimID,
+		)
 	case http.MethodDelete:
 		deleteActionPendingCIRepairSignal(w, request, state)
 	default:
@@ -1300,33 +1381,56 @@ func handleActionPendingCIRepairRequest(
 	}
 }
 
-func writeActionPendingCIRepairSignal(w http.ResponseWriter, present bool) {
-	if !present {
-		writeActionPendingCIRepairSignalID(w, 0)
-	} else {
-		writeActionPendingCIRepairSignalID(w, 70)
+func actionPendingCIRepairReactionID(
+	state *actionPendingCIPublishFailureState,
+	reactionType github.ReactionType,
+) int64 {
+	current := &state.repairReadyID
+	if reactionType == ReactionPendingCIRepairClaim {
+		current = &state.repairClaimID
+	}
+	if *current == 0 {
+		*current = state.nextRepairSignalID
+		state.nextRepairSignalID++
+	}
+
+	return *current
+}
+
+func writeActionPendingCIRepairSignals(w http.ResponseWriter, readyID, claimID int64) {
+	reactions := make([]map[string]any, 0, 2)
+	if readyID != 0 {
+		reactions = append(reactions, actionPendingCIRepairReaction(
+			readyID, ReactionPendingCIRepair,
+		))
+	}
+	if claimID != 0 {
+		reactions = append(reactions, actionPendingCIRepairReaction(
+			claimID, ReactionPendingCIRepairClaim,
+		))
+	}
+	_ = json.NewEncoder(w).Encode(reactions)
+}
+
+func actionPendingCIRepairReaction(
+	reactionID int64,
+	reactionType github.ReactionType,
+) map[string]any {
+	return map[string]any{
+		"id": reactionID, "content": string(reactionType),
+		"created_at": "2026-08-25T08:05:01Z",
+		"user":       map[string]any{"login": "smyklot[bot]"},
 	}
 }
 
-func writeActionPendingCIRepairSignalID(w http.ResponseWriter, reactionID int64) {
-	if reactionID == 0 {
-		_, _ = w.Write([]byte(`[]`))
-
-		return
-	}
-	_ = json.NewEncoder(w).Encode([]map[string]any{{
-		"id": reactionID, "content": string(ReactionPendingCIRepair),
-		"created_at": "2026-08-25T08:05:01Z",
-		"user":       map[string]any{"login": "smyklot[bot]"},
-	}})
-}
-
-func writeActionPendingCIRepairCreation(w http.ResponseWriter, reactionID int64) {
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"id": reactionID, "content": string(ReactionPendingCIRepair),
-		"created_at": "2026-08-25T08:05:01Z",
-		"user":       map[string]any{"login": "smyklot[bot]"},
-	})
+func writeActionPendingCIRepairCreation(
+	w http.ResponseWriter,
+	reactionID int64,
+	reactionType github.ReactionType,
+) {
+	_ = json.NewEncoder(w).Encode(actionPendingCIRepairReaction(
+		reactionID, reactionType,
+	))
 }
 
 func deleteActionPendingCIRepairSignal(
@@ -1335,12 +1439,16 @@ func deleteActionPendingCIRepairSignal(
 	state *actionPendingCIPublishFailureState,
 ) {
 	reactionID, _ := strconv.ParseInt(path.Base(request.URL.Path), 10, 64)
-	if reactionID != state.repairSignalID {
+	switch reactionID {
+	case state.repairReadyID:
+		state.repairReadyID = 0
+	case state.repairClaimID:
+		state.repairClaimID = 0
+	default:
 		http.NotFound(w, request)
 
 		return
 	}
-	state.repairSignalID = 0
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1656,7 +1764,8 @@ type legacyCancellationErrorTestState struct {
 	failFinalRead bool
 	labelPresent  bool
 	labelRestored bool
-	repairSignal  bool
+	repairReadyID int64
+	repairClaimID int64
 	merged        bool
 }
 
@@ -1681,10 +1790,12 @@ func assertLegacyCancellationErrorDisarmsLabel(t *testing.T, allowDraftMerges bo
 	if err == nil || cancelled {
 		t.Fatalf("cancelled=%t error=%v, want uncertain failure", cancelled, err)
 	}
-	if state.labelPresent || state.labelRestored || !state.repairSignal {
+	if state.labelPresent || state.labelRestored || state.repairReadyID == 0 ||
+		state.repairClaimID != 0 {
 		t.Fatalf(
-			"present=%t restored=%t repair=%t, want only a repair signal",
-			state.labelPresent, state.labelRestored, state.repairSignal,
+			"present=%t restored=%t ready=%d claim=%d, want only a repair signal",
+			state.labelPresent, state.labelRestored,
+			state.repairReadyID, state.repairClaimID,
 		)
 	}
 	state.failFinalRead = false
@@ -1695,10 +1806,12 @@ func assertLegacyCancellationErrorDisarmsLabel(t *testing.T, allowDraftMerges bo
 	if err != nil {
 		t.Fatal(err)
 	}
-	if found || state.labelPresent || state.labelRestored || state.repairSignal {
+	if found || state.labelPresent || state.labelRestored ||
+		state.repairReadyID != 0 || state.repairClaimID != 0 {
 		t.Fatalf(
-			"found=%t present=%t restored=%t repair=%t after legacy recovery",
-			found, state.labelPresent, state.labelRestored, state.repairSignal,
+			"found=%t present=%t restored=%t ready=%d claim=%d after legacy recovery",
+			found, state.labelPresent, state.labelRestored,
+			state.repairReadyID, state.repairClaimID,
 		)
 	}
 	pr.PRData = map[string]any{"number": float64(7)}
@@ -1735,15 +1848,30 @@ func legacyCancellationErrorHandler(state *legacyCancellationErrorTestState) htt
 			_, _ = w.Write([]byte(`[]`))
 		case request.Method == http.MethodPost &&
 			request.URL.Path == "/repos/acme/web/issues/7/reactions":
-			state.repairSignal = true
+			var body map[string]string
+			_ = json.NewDecoder(request.Body).Decode(&body)
+			reactionType := github.ReactionType(body["content"])
+			reactionID := int64(70)
+			if reactionType == ReactionPendingCIRepairClaim {
+				reactionID = 71
+				state.repairClaimID = reactionID
+			} else {
+				state.repairReadyID = reactionID
+			}
 			w.WriteHeader(http.StatusCreated)
-			writeActionPendingCIRepairCreation(w, 70)
+			writeActionPendingCIRepairCreation(w, reactionID, reactionType)
 		case request.Method == http.MethodGet &&
 			request.URL.Path == "/repos/acme/web/issues/7/reactions":
-			writeActionPendingCIRepairSignal(w, state.repairSignal)
+			writeActionPendingCIRepairSignals(
+				w, state.repairReadyID, state.repairClaimID,
+			)
 		case request.Method == http.MethodDelete &&
 			request.URL.Path == "/repos/acme/web/issues/7/reactions/70":
-			state.repairSignal = false
+			state.repairReadyID = 0
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/reactions/71":
+			state.repairClaimID = 0
 			w.WriteHeader(http.StatusNoContent)
 		case request.Method == http.MethodPut && request.URL.Path == "/repos/acme/web/pulls/7/merge":
 			state.merged = true

@@ -556,8 +556,8 @@ func repairActionPendingCILabel(
 	if scanErr != nil {
 		// A PR reaction keeps the repair discoverable without recreating a
 		// method label, which is an authorization artifact for legacy waits.
-		retryErr := rotateActionPendingCIRepair(
-			ctx, client, owner, repository, pullRequest, botUsername,
+		retryErr := signalActionPendingCIRepair(
+			ctx, client, owner, repository, pullRequest,
 		)
 
 		return errors.Join(cause, disarmErr, scanErr, retryErr)

@@ -24,6 +24,11 @@ type actionPendingCIRepairMatch struct {
 	found     bool
 }
 
+type actionPendingCIRepairSignals struct {
+	ready github.Reaction
+	claim github.Reaction
+}
+
 var actionPendingCIRepairCandidates = []actionPendingCIRepairCandidate{
 	{method: github.MergeMethodMerge, label: LabelPendingCIMerge},
 	{method: github.MergeMethodSquash, label: LabelPendingCISquash},
@@ -72,55 +77,61 @@ func recoverActionPendingCIRepair(
 	if pullRequest == 0 {
 		return PendingCIPR{}, false, errors.New("invalid PR number")
 	}
-	repairSignal, err := actionPendingCIRepairSignal(
+	claim, acquired, err := acquireActionPendingCIRepair(
 		ctx, client, owner, repository, pullRequest, botUsername,
 	)
-	if err != nil || repairSignal.ID == 0 {
+	if err != nil || !acquired {
 		return PendingCIPR{}, false, err
 	}
 	state, err := client.GetPullRequestState(ctx, owner, repository, pullRequest)
 	if err != nil {
-		return PendingCIPR{}, false, fmt.Errorf("read pending-CI repair state: %w", err)
+		return retryActionPendingCIRepair(
+			ctx, client, owner, repository, pullRequest,
+			fmt.Errorf("read pending-CI repair state: %w", err),
+		)
 	}
 	serviceOwned, err := pendingCIServiceOwnedForState(
 		ctx, client, owner, repository, pullRequest, botUsername, state,
 	)
 	if err != nil {
-		return PendingCIPR{}, false, err
+		return retryActionPendingCIRepair(
+			ctx, client, owner, repository, pullRequest, err,
+		)
 	}
 	if !state.Open || state.Draft || serviceOwned {
-		err = clearActionPendingCIRepair(
-			ctx, client, owner, repository, pullRequest, repairSignal.ID,
+		return PendingCIPR{}, false, clearActionPendingCIRepairClaim(
+			ctx, client, owner, repository, pullRequest, claim.ID,
 		)
-
-		return PendingCIPR{}, false, err
 	}
 	match, err := latestRecoverableActionPendingCI(
 		ctx, client, botConfig, owner, repository, pullRequest, botUsername,
 	)
 	if err != nil {
-		return PendingCIPR{}, false, err
+		return retryActionPendingCIRepair(
+			ctx, client, owner, repository, pullRequest, err,
+		)
 	}
 	if !match.found {
-		err = clearActionPendingCIRepair(
-			ctx, client, owner, repository, pullRequest, repairSignal.ID,
+		return PendingCIPR{}, false, clearActionPendingCIRepairClaim(
+			ctx, client, owner, repository, pullRequest, claim.ID,
 		)
-
-		return PendingCIPR{}, false, err
 	}
 	label := existingPendingCILabel(state.Labels, match.candidate)
 	if label == "" {
 		label = match.candidate.label
 		if err = client.AddLabel(ctx, owner, repository, pullRequest, label); err != nil {
-			return PendingCIPR{}, false, fmt.Errorf("restore pending-CI repair label: %w", err)
+			return retryActionPendingCIRepair(
+				ctx, client, owner, repository, pullRequest,
+				fmt.Errorf("restore pending-CI repair label: %w", err),
+			)
 		}
 	}
 	request := PendingCIPR{
 		PRData: pr, Method: match.candidate.method, Label: label,
 		RequiredOnly: match.candidate.requiredOnly,
 	}
-	err = clearActionPendingCIRepair(
-		ctx, client, owner, repository, pullRequest, repairSignal.ID,
+	err = clearActionPendingCIRepairClaim(
+		ctx, client, owner, repository, pullRequest, claim.ID,
 	)
 
 	return request, true, err
@@ -188,65 +199,113 @@ func recoverableActionPendingCIArtifact(
 	return true, nil
 }
 
-func actionPendingCIRepairSignal(
+func actionPendingCIRepairSignalsForPR(
 	ctx context.Context,
 	client *github.Client,
 	owner, repository string,
 	pullRequest int,
 	botUsername string,
-) (github.Reaction, error) {
+) (actionPendingCIRepairSignals, error) {
 	reactions, err := client.GetPRReactions(ctx, owner, repository, pullRequest)
 	if err != nil {
-		return github.Reaction{}, fmt.Errorf("read pending-CI repair signal: %w", err)
+		return actionPendingCIRepairSignals{},
+			fmt.Errorf("read pending-CI repair signals: %w", err)
 	}
-	var latest github.Reaction
+	var signals actionPendingCIRepairSignals
 	for _, reaction := range reactions {
-		if reaction.User == botUsername && reaction.Type == ReactionPendingCIRepair &&
-			newerActionPendingCIMarker(reaction, latest) {
-			latest = reaction
+		if reaction.User != botUsername {
+			continue
+		}
+		if reaction.Type == ReactionPendingCIRepair &&
+			newerActionPendingCIMarker(reaction, signals.ready) {
+			signals.ready = reaction
+		}
+		if reaction.Type == ReactionPendingCIRepairClaim &&
+			newerActionPendingCIMarker(reaction, signals.claim) {
+			signals.claim = reaction
 		}
 	}
 
-	return latest, nil
+	return signals, nil
 }
 
-func rotateActionPendingCIRepair(
+func acquireActionPendingCIRepair(
 	ctx context.Context,
 	client *github.Client,
 	owner, repository string,
 	pullRequest int,
 	botUsername string,
-) error {
-	current, err := actionPendingCIRepairSignal(
+) (github.Reaction, bool, error) {
+	signals, err := actionPendingCIRepairSignalsForPR(
 		ctx, client, owner, repository, pullRequest, botUsername,
 	)
 	if err != nil {
-		return err
+		return github.Reaction{}, false, err
 	}
-	// Rotate before publishing the retry so every repair that overlaps an
-	// existing recovery gets a newer ID. Recoveries delete only the ID they
-	// observed; they cannot consume this generation after it is created.
-	if current.ID != 0 {
-		if err = clearActionPendingCIRepair(
-			ctx, client, owner, repository, pullRequest, current.ID,
-		); err != nil {
-			return fmt.Errorf("rotate pending-CI repair signal: %w", err)
-		}
+	if signals.claim.ID != 0 {
+		return signals.claim, true, nil
 	}
-	created, err := client.AddPullRequestReactionState(
-		ctx, owner, repository, pullRequest, ReactionPendingCIRepair,
+	if signals.ready.ID == 0 {
+		return github.Reaction{}, false, nil
+	}
+	claim, err := addActionPendingCIRepairSignal(
+		ctx, client, owner, repository, pullRequest,
+		ReactionPendingCIRepairClaim, "claim",
 	)
 	if err != nil {
-		return fmt.Errorf("record pending-CI repair signal: %w", err)
+		return github.Reaction{}, false, err
 	}
-	if created.ID == 0 {
-		return errors.New("GitHub returned an incomplete pending-CI repair signal")
+	err = client.RemovePullRequestReaction(
+		ctx, owner, repository, pullRequest, signals.ready.ID,
+	)
+	var apiErr *github.APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
+		return claim, false, nil
+	}
+	if err != nil {
+		return claim, false, fmt.Errorf("claim pending-CI repair signal: %w", err)
 	}
 
-	return nil
+	return claim, true, nil
 }
 
-func clearActionPendingCIRepair(
+func signalActionPendingCIRepair(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+) error {
+	_, err := addActionPendingCIRepairSignal(
+		ctx, client, owner, repository, pullRequest,
+		ReactionPendingCIRepair, "signal",
+	)
+
+	return err
+}
+
+func addActionPendingCIRepairSignal(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	reactionType github.ReactionType,
+	subject string,
+) (github.Reaction, error) {
+	created, err := client.AddPullRequestReactionState(
+		ctx, owner, repository, pullRequest, reactionType,
+	)
+	if err != nil {
+		return github.Reaction{}, fmt.Errorf("record pending-CI repair %s: %w", subject, err)
+	}
+	if created.ID == 0 {
+		return github.Reaction{},
+			fmt.Errorf("GitHub returned an incomplete pending-CI repair %s", subject)
+	}
+
+	return created, nil
+}
+
+func clearActionPendingCIRepairClaim(
 	ctx context.Context,
 	client *github.Client,
 	owner, repository string,
@@ -260,8 +319,26 @@ func clearActionPendingCIRepair(
 	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		return nil
 	}
+	if err != nil {
+		return fmt.Errorf("clear pending-CI repair claim: %w", err)
+	}
 
-	return err
+	return nil
+}
+
+func retryActionPendingCIRepair(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	cause error,
+) (PendingCIPR, bool, error) {
+	_, retryErr := addActionPendingCIRepairSignal(
+		ctx, client, owner, repository, pullRequest,
+		ReactionPendingCIRepairClaim, "claim",
+	)
+
+	return PendingCIPR{}, false, errors.Join(cause, retryErr)
 }
 
 func existingPendingCILabel(

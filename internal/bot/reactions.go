@@ -70,6 +70,11 @@ const (
 	// placed on a command comment. Unlike a method label, this signal cannot
 	// authorize legacy pending-CI work after a draft transition.
 	ReactionPendingCIRepair = github.ReactionLaugh
+
+	// ReactionPendingCIRepairClaim is a recovery claim created before the
+	// corresponding retry signal is removed. Keeping the two states separate
+	// guarantees that an interrupted handoff always leaves one durable marker.
+	ReactionPendingCIRepairClaim = github.ReactionConfused
 )
 
 // handleReactions processes reaction-based approvals and merges.
