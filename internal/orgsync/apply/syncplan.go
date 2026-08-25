@@ -92,7 +92,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		return noSyncChanges, nil
 	}
 
-	held, err := s.syncInventoryFor(ctx, targetID, applied)
+	held, err := s.syncInventoryFor(ctx, target, applied)
 	if err != nil {
 		return "", err
 	}
@@ -289,15 +289,18 @@ type syncInventory struct {
 // syncInventoryFor reads the rest of the catalog around state already in hand.
 func (s *Engine) syncInventoryFor(
 	ctx context.Context,
-	targetID string,
+	target storage.Target,
 	applied []orgsync.RepositoryState,
 ) (syncInventory, error) {
-	repositories, err := s.store.ListRepositories(ctx, targetID)
+	repositories, err := s.store.ListRepositories(ctx, target.ID)
 	if err != nil {
 		return syncInventory{}, fmt.Errorf("read sync repositories: %w", err)
 	}
+	repositories = slices.DeleteFunc(repositories, func(repository storage.Repository) bool {
+		return !repositoryEnabled(target, repository)
+	})
 
-	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
+	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, target.ID)
 	if err != nil {
 		return syncInventory{}, fmt.Errorf("read sync overrides: %w", err)
 	}
@@ -307,6 +310,11 @@ func (s *Engine) syncInventoryFor(
 		overrides:    overrides,
 		applied:      applied,
 	}, nil
+}
+
+func repositoryEnabled(target storage.Target, repository storage.Repository) bool {
+	return target.Available && repository.Available &&
+		storage.RepositoryEnabled(target, repository)
 }
 
 // anyRefused reports state worth reading the rest of the catalog for.

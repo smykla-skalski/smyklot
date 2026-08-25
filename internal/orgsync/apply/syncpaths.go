@@ -129,9 +129,9 @@ func (s *Engine) RefreshPaths(
 	group.SetLimit(pathIndexConcurrency)
 
 	for _, repository := range repositories {
-		// Only what sync watches. A repository the installation does not
-		// synchronize contributes paths nobody can configure a file at.
-		if !repository.Available {
+		// Only repositories Smyklot is allowed to operate on. A disabled
+		// repository contributes paths no active sync may apply.
+		if !repository.Available || !storage.RepositoryEnabled(target, repository) {
 			continue
 		}
 

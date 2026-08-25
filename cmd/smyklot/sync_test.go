@@ -78,6 +78,26 @@ var _ = Describe("Org sync [Unit]", func() {
 
 		target, err := service.store.GetTarget(GinkgoT().Context(), targetIDs[0])
 		Expect(err).NotTo(HaveOccurred())
+		if !target.RepositoryDefaultEnabled {
+			saved, err := service.store.SaveInstallationSettings(
+				GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+					TargetID: target.ID, ActorAccountID: target.Account.ID,
+					ChangedAt: time.Now().UTC(),
+					Target: &storage.InstallationTargetSettingsChange{
+						RepositoryDefaultEnabled:       true,
+						PendingCIModeDefault:           target.PendingCIModeDefault,
+						PendingCIBranchPatternsDefault: target.PendingCIBranchPatternsDefault,
+						PendingCIQuietPeriodOverride:   target.PendingCIQuietPeriodOverride,
+						PathIndexIntervalOverride:      target.PathIndexIntervalOverride,
+						ConfigPatch:                    target.ConfigPatch,
+						ExpectedRevision:               target.Revision,
+					},
+				},
+			)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(saved.Target).NotTo(BeNil())
+			target = *saved.Target
+		}
 
 		return target
 	}

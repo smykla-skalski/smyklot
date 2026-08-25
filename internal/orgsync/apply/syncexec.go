@@ -175,6 +175,11 @@ func (s *Engine) applySyncPlan(
 
 			continue
 		}
+		if !repositoryEnabled(target, repository) {
+			s.abandonRepositoryWork(ctx, &outcome, work, "repository is disabled in Smyklot")
+
+			continue
+		}
 
 		applyWork := func() error {
 			s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)

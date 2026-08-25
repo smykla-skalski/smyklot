@@ -486,7 +486,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(item.Attempt).To(Equal(1))
 
 		retrying, err := store.FinishRecurringWork(
-			ctx, item.ID, "GitHub unavailable", "", now.Add(time.Minute),
+			ctx, item.ID, workqueue.RecurringCompletion{
+				Failure: "GitHub unavailable", Retryable: true,
+			}, now.Add(time.Minute),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(retrying.State).To(Equal(workqueue.StateRetrying))
@@ -497,7 +499,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.Attempt).To(Equal(2))
-		_, err = store.FinishRecurringWork(ctx, item.ID, "", "", now.Add(3*time.Minute))
+		_, err = store.FinishRecurringWork(
+			ctx, item.ID, workqueue.RecurringCompletion{}, now.Add(3*time.Minute),
+		)
 		Expect(err).NotTo(HaveOccurred())
 		next, err := store.NextQueueAvailability(
 			ctx, workqueue.LaneMaintenance, now.Add(3*time.Minute),
@@ -510,6 +514,29 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
+	})
+
+	It("holds stable recurring blockers without scheduling a retry", func() {
+		ctx, store, now := runtime()
+		item, claimed, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{
+			Kind: workqueue.KindPendingCIGate, Title: "Reconcile pending CI protection",
+			Now: now, LeaseDuration: time.Minute,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+
+		item, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+			Failure: "GitHub rulesets require GitHub Pro", Blocked: true,
+		}, now.Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.State).To(Equal(workqueue.StateBlocked))
+		Expect(item.BlockedReason).To(Equal("GitHub rulesets require GitHub Pro"))
+		Expect(item.FinishedAt).To(BeNil())
+		next, err := store.NextQueueAvailability(
+			ctx, workqueue.LaneMaintenance, now.Add(2*time.Minute),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(next).To(BeNil())
 	})
 
 	It("leases the scheduler's next recurring occurrence in one claim", func() {
@@ -556,7 +583,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		first, claimed, err := store.ClaimRecurringWork(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
-		_, err = store.FinishRecurringWork(ctx, first.ID, "", "", now.Add(time.Minute))
+		_, err = store.FinishRecurringWork(
+			ctx, first.ID, workqueue.RecurringCompletion{}, now.Add(time.Minute),
+		)
 		Expect(err).NotTo(HaveOccurred())
 
 		policy, err := store.GetEffectiveQueuePolicy(ctx, claim.Kind, nil)
@@ -970,7 +999,7 @@ func seedDispatchOrderedQueue(
 		Expect(claimErr).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.Kind).To(Equal(workqueue.KindReactionScan))
-		_, err = store.FinishRecurringWork(ctx, item.ID, "", "", now)
+		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, now)
 		Expect(err).NotTo(HaveOccurred())
 	}
 }

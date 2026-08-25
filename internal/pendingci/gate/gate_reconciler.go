@@ -310,13 +310,28 @@ func (reconciler *GateReconciler) reconcileInactive(
 	prs []map[string]interface{},
 	owner, name, reason string,
 ) error {
-	if err := removePendingCIRuleset(ctx, client, owner, name, gate); err != nil {
-		return reconciler.block(ctx, gate, err)
-	}
 	cleaning, err := reconciler.store.HasPendingCleanup(ctx, pendingci.CleanupFilter{
 		RepositoryID: repository.ID, ArtifactsPendingOnly: true,
 	})
 	if err != nil {
+		return reconciler.block(ctx, gate, err)
+	}
+	if !cleaning && !gateOwnsServiceArtifacts(gate) {
+		_, err := reconciler.store.UpdatePendingCIRepositoryGate(
+			ctx,
+			storage.PendingCIGateChange{
+				RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
+				EffectiveMode: storage.PendingCIEffectiveNone, Readiness: storage.PendingCIReady,
+				Reason: reason, ObservedAt: reconciler.now(),
+			},
+		)
+		if err != nil && !errors.Is(err, storage.ErrConflict) {
+			return err
+		}
+
+		return nil
+	}
+	if err := removePendingCIRuleset(ctx, client, owner, name, gate); err != nil {
 		return reconciler.block(ctx, gate, err)
 	}
 	if cleaning {
@@ -356,6 +371,13 @@ func (reconciler *GateReconciler) reconcileInactive(
 	}
 
 	return nil
+}
+
+func gateOwnsServiceArtifacts(gate storage.PendingCIRepositoryGate) bool {
+	return gate.EffectiveMode != storage.PendingCIEffectiveNone || gate.AppID != nil ||
+		gate.RulesetID != nil || gate.RulesetFingerprint != "" ||
+		gate.Readiness == storage.PendingCIProvisioning ||
+		gate.Readiness == storage.PendingCIDraining
 }
 
 func (reconciler *GateReconciler) block(

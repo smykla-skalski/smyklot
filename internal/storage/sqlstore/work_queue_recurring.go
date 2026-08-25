@@ -504,7 +504,8 @@ func claimRecurringItem(
 
 func (s *Store) FinishRecurringWork(
 	ctx context.Context,
-	id, failure, successSummary string,
+	id string,
+	completion workqueue.RecurringCompletion,
 	at time.Time,
 ) (workqueue.Item, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -520,12 +521,12 @@ func (s *Store) FinishRecurringWork(
 		return workqueue.Item{}, storage.ErrConflict
 	}
 	state, eligible, summary, finished := s.recurringOutcome(
-		ctx, tx, item, failure, successSummary, at,
+		ctx, tx, item, completion, at,
 	)
 	if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = ?, eligible_at = ?, blocked_reason = ?,
     lease_expires_at = NULL, finished_at = ?, updated_at = ?, revision = revision + 1
-WHERE id = ?`, state, eligible, failure, finished, at, id); err != nil {
+WHERE id = ?`, state, eligible, completion.Failure, finished, at, id); err != nil {
 		return workqueue.Item{}, fmt.Errorf("finish recurring queue item: %w", err)
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
@@ -542,7 +543,7 @@ WHERE id = ?`, state, eligible, failure, finished, at, id); err != nil {
 	if err := tx.Commit(); err != nil {
 		return workqueue.Item{}, fmt.Errorf("commit recurring finish: %w", err)
 	}
-	item.State, item.EligibleAt, item.BlockedReason = state, eligible, failure
+	item.State, item.EligibleAt, item.BlockedReason = state, eligible, completion.Failure
 	item.LeaseExpiresAt, item.FinishedAt, item.UpdatedAt = nil, finished, at
 	item.Revision++
 
@@ -553,16 +554,21 @@ func (s *Store) recurringOutcome(
 	ctx context.Context,
 	tx *transaction,
 	item workqueue.Item,
-	failure string,
-	successSummary string,
+	completion workqueue.RecurringCompletion,
 	at time.Time,
 ) (workqueue.State, time.Time, string, *time.Time) {
-	if failure == "" {
-		if successSummary == "" {
-			successSummary = item.Title + " completed"
+	if completion.Failure == "" {
+		if completion.SuccessSummary == "" {
+			completion.SuccessSummary = item.Title + " completed"
 		}
 
-		return workqueue.StateSucceeded, item.EligibleAt, successSummary, &at
+		return workqueue.StateSucceeded, item.EligibleAt, completion.SuccessSummary, &at
+	}
+	if completion.Blocked {
+		return workqueue.StateBlocked, item.EligibleAt, item.Title + " is blocked", nil
+	}
+	if !completion.Retryable {
+		return workqueue.StateFailed, item.EligibleAt, item.Title + " failed", &at
 	}
 	policy, err := getEffectiveQueuePolicy(ctx, tx, item.Kind, item.TargetID)
 	if err != nil || policy.RetryDelay <= 0 {

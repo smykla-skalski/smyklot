@@ -216,6 +216,39 @@ func TestPendingCIChecksRequireCommitStatusReadPermission(t *testing.T) {
 	}
 }
 
+func TestInactiveGateWithoutArtifactsDoesNotCallGitHub(t *testing.T) {
+	t.Parallel()
+	store, target, repository, now := gateTestStore(t)
+	gate, err := store.GetPendingCIRepositoryGate(t.Context(), repository.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = store.UpdatePendingCIRepositoryGate(t.Context(), storage.PendingCIGateChange{
+		RepositoryID: gate.RepositoryID, ExpectedRevision: gate.Revision,
+		EffectiveMode: storage.PendingCIEffectiveNone, Readiness: storage.PendingCIReady,
+		Reason: "No service artifacts", ObservedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reconciler := &GateReconciler{store: store, now: func() time.Time { return now }}
+
+	if err := reconciler.Reconcile(
+		t.Context(), nil, target, repository, nil, false,
+	); err != nil {
+		t.Fatal(err)
+	}
+	gate, err = store.GetPendingCIRepositoryGate(t.Context(), repository.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gate.EffectiveMode != storage.PendingCIEffectiveNone ||
+		gate.Readiness != storage.PendingCIReady ||
+		gate.Reason != "Repository is not active on the service" {
+		t.Fatalf("inactive gate = %#v", gate)
+	}
+}
+
 func TestInactiveGateRemovesOwnedRulesetBeforeArtifactCleanup(t *testing.T) {
 	t.Parallel()
 	store, target, repository, now := gateTestStore(t)

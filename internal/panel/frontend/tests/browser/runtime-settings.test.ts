@@ -110,6 +110,37 @@ describe('Root runtime settings drafts', () => {
     }
   });
 
+  it('pauses and resumes automatic work without staging a settings draft', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+    try {
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      const pause = page.getByRole('button', { name: 'Pause automatic work', exact: true });
+      await pause.waitFor({ state: 'visible', timeout: 30_000 });
+
+      const paused = runtimeUpdate(page);
+      await pause.click();
+      await page.getByRole('button', { name: 'Pause background work', exact: true }).click();
+      const pausedBody = (await paused).postDataJSON();
+      expect(pausedBody).toMatchObject({ background_work_paused: true });
+      await page.getByText('Paused', { exact: true }).waitFor({ state: 'visible' });
+      await page
+        .getByText('Queue items remain durable', { exact: false })
+        .waitFor({ state: 'visible' });
+
+      const resumed = runtimeUpdate(page);
+      await page.getByRole('button', { name: 'Resume automatic work', exact: true }).click();
+      const resumedBody = (await resumed).postDataJSON();
+      expect(resumedBody).toMatchObject({
+        background_work_paused: false,
+        expected_revision: pausedBody.expected_revision + 1,
+      });
+      await page.getByText('Running', { exact: true }).waitFor({ state: 'visible' });
+    } finally {
+      await page.close();
+    }
+  });
+
   it('keeps invalid raw duration text and blocks Save before the wire', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     const writes: Request[] = [];

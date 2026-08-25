@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -73,13 +74,16 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 	)
 }
 
-// dispatchDurableMaintenance leases existing work before reconciling the full
-// candidate set. It executes at most one lease per wake so an overdue backlog
-// yields to panel traffic before the next queue tick.
+// dispatchDurableMaintenance retires work that is no longer eligible before it
+// leases an existing occurrence. It executes at most one lease per wake so an
+// overdue backlog yields to panel traffic before the next queue tick.
 func (s *server) dispatchDurableMaintenance(ctx context.Context) error {
 	jobs, err := s.durableMaintenanceJobs(ctx)
 	if err != nil {
 		return fmt.Errorf("build maintenance queue: %w", err)
+	}
+	if err := s.supersedeMissingMaintenanceJobs(ctx, jobs); err != nil {
+		return fmt.Errorf("retire ineligible maintenance queue: %w", err)
 	}
 	claimed, err := s.runNextMaintenanceJob(ctx, jobs)
 	if err != nil {
@@ -128,14 +132,18 @@ func (s *server) durableMaintenanceJobs(ctx context.Context) ([]maintenanceJob, 
 		}
 		targetID := target.ID
 		jobs = append(jobs, s.targetMaintenanceJobs(ctx, targetID, installationID)...)
-		repositories, err := s.storedSweepRepositories(ctx, targetID)
+		repositories, err := s.store.ListRepositories(ctx, targetID)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("list catalog repositories for maintenance: %w", err)
 		}
-		for _, repository := range repositories {
-			repository := repository
+		for _, stored := range repositories {
+			repository, err := storedSweepRepository(stored)
+			if err != nil {
+				return nil, err
+			}
 			jobs = append(jobs, s.repositoryMaintenanceJobs(
 				ctx, targetID, installationID, repository,
+				repositoryEnabled(target, stored), stored.PendingCIGate,
 			)...)
 		}
 	}
@@ -184,28 +192,44 @@ func (s *server) repositoryMaintenanceJobs(
 	targetID string,
 	installationID int64,
 	repository github.Repository,
+	enabled bool,
+	pendingCIGate *storage.PendingCIRepositoryGate,
 ) []maintenanceJob {
 	repositoryID := storage.RepositoryID(repository.ID)
-
-	return []maintenanceJob{
-		{
+	jobs := make([]maintenanceJob, 0, 3)
+	if enabled || pendingCIGateOwnsArtifacts(pendingCIGate) {
+		jobs = append(jobs, maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindPendingCIGate, targetID: &targetID,
 				repositoryID: &repositoryID, title: "Reconcile pending CI protection",
 			},
 			run: func() error {
-				return s.reconcileQueuedPendingCIGate(
+				runErr := s.reconcileQueuedPendingCIGate(
 					ctx, targetID, installationID, repository,
 				)
+
+				return s.pendingCIGateQueueOutcome(ctx, repositoryID, runErr)
 			},
 			failureMessage: "pending CI protection reconciliation failed",
-		},
-		{
+		})
+	}
+	if !enabled {
+		return jobs
+	}
+
+	return append(jobs,
+		maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindConfigMigration, targetID: &targetID,
 				repositoryID: &repositoryID, title: "Check configuration migration",
 			},
 			run: func() error {
+				_, _, enabled, err := s.automaticRepositoryControls(
+					ctx, targetID, repositoryID,
+				)
+				if err != nil || !enabled {
+					return err
+				}
 				client, err := s.queuedInstallationClient(installationID)
 				if err != nil {
 					return err
@@ -216,7 +240,7 @@ func (s *server) repositoryMaintenanceJobs(
 			coordinateRepository: true,
 			failureMessage:       "configuration migration check failed",
 		},
-		{
+		maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindReactionScan, targetID: &targetID,
 				repositoryID: &repositoryID, title: "Discover pull request reactions",
@@ -227,7 +251,45 @@ func (s *server) repositoryMaintenanceJobs(
 			coordinateRepository: true,
 			failureMessage:       "reaction discovery failed",
 		},
+	)
+}
+
+func pendingCIGateOwnsArtifacts(gate *storage.PendingCIRepositoryGate) bool {
+	return gate != nil && (gate.EffectiveMode != storage.PendingCIEffectiveNone ||
+		gate.AppID != nil || gate.RulesetID != nil || gate.RulesetFingerprint != "" ||
+		gate.Readiness == storage.PendingCIProvisioning ||
+		gate.Readiness == storage.PendingCIDraining)
+}
+
+type recurringBlocker struct {
+	reason string
+	cause  error
+}
+
+func (blocker recurringBlocker) Error() string { return blocker.reason }
+func (blocker recurringBlocker) Unwrap() error { return blocker.cause }
+func (blocker recurringBlocker) QueueBlockReason() string {
+	return blocker.reason
+}
+
+func (s *server) pendingCIGateQueueOutcome(
+	ctx context.Context,
+	repositoryID string,
+	cause error,
+) error {
+	gate, err := s.store.GetPendingCIRepositoryGate(ctx, repositoryID)
+	if err != nil {
+		if cause != nil {
+			return errors.Join(cause, err)
+		}
+
+		return err
 	}
+	if gate.Readiness == storage.PendingCIBlocked {
+		return recurringBlocker{reason: gate.Reason, cause: cause}
+	}
+
+	return cause
 }
 
 func (s *server) ensureMaintenanceJobs(ctx context.Context, jobs []maintenanceJob) error {
@@ -248,21 +310,31 @@ func (s *server) ensureMaintenanceJobs(ctx context.Context, jobs []maintenanceJo
 		}
 		announced[targetID] = true
 	}
-	superseded, err := s.store.SupersedeMissingRecurringWork(ctx, claims, now)
-	if err != nil {
-		return err
-	}
-	for _, item := range superseded {
-		targetID := ""
-		if item.TargetID != nil {
-			targetID = *item.TargetID
-		}
-		announced[targetID] = true
-	}
 	if s.panel != nil {
 		for targetID := range announced {
 			s.panel.AnnounceQueue(targetID)
 		}
+	}
+
+	return nil
+}
+
+func (s *server) supersedeMissingMaintenanceJobs(
+	ctx context.Context,
+	jobs []maintenanceJob,
+) error {
+	now := time.Now().UTC()
+	superseded, err := s.store.SupersedeMissingRecurringWork(
+		ctx, maintenanceClaims(jobs, now), now,
+	)
+	if err != nil {
+		return err
+	}
+	for _, item := range superseded {
+		s.announceRecurringWork(recurringWork{
+			kind: item.Kind, targetID: item.TargetID,
+			repositoryID: item.RepositoryID, title: item.Title,
+		})
 	}
 
 	return nil
@@ -308,7 +380,9 @@ func (s *server) runNextMaintenanceJob(
 	s.announceRecurringWork(work)
 	now := time.Now().UTC()
 	_, finishErr := s.store.FinishRecurringWork(
-		ctx, item.ID, failure, "", now,
+		ctx, item.ID, workqueue.RecurringCompletion{
+			Failure: failure, Retryable: true,
+		}, now,
 	)
 	s.announceRecurringWork(work)
 	if finishErr != nil {
@@ -407,19 +481,33 @@ func (s *server) reconcileQueuedPendingCIGate(
 	installationID int64,
 	repository github.Repository,
 ) error {
-	client, err := s.queuedInstallationClient(installationID)
-	if err != nil {
-		return err
-	}
-	botConfig, err := s.serviceConfig(
-		ctx, client, targetID, storage.RepositoryID(repository.ID),
-		repository.Owner, repository.Name,
+	target, stored, enabled, err := s.automaticRepositoryControls(
+		ctx, targetID, storage.RepositoryID(repository.ID),
 	)
 	if err != nil {
 		return err
 	}
-	target, stored, err := s.repositoryControls(
-		ctx, targetID, storage.RepositoryID(repository.ID),
+	if !enabled && !pendingCIGateOwnsArtifacts(stored.PendingCIGate) {
+		return nil
+	}
+	client, err := s.queuedInstallationClient(installationID)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		prs, err := client.GetOpenPRs(ctx, repository.Owner, repository.Name)
+		if err != nil {
+			return bot.NewGitHubError(bot.ErrGetPRs, err)
+		}
+		if _, err := s.gate.ReconcileServiceArtifacts(ctx, client, repository, prs, true); err != nil {
+			return err
+		}
+
+		return s.reconcileInactivePendingCIGate(ctx, client, target, stored, prs)
+	}
+	botConfig, err := s.serviceConfig(
+		ctx, client, targetID, storage.RepositoryID(repository.ID),
+		repository.Owner, repository.Name,
 	)
 	if err != nil {
 		return err
@@ -443,7 +531,7 @@ func (s *server) reconcileQueuedPendingCIGate(
 	if err != nil {
 		return err
 	}
-	enabled, err := s.reconcileActivePendingCIGate(ctx, client, target, stored, prs)
+	enabled, err = s.reconcileActivePendingCIGate(ctx, client, target, stored, prs)
 	if err != nil || !enabled {
 		return err
 	}
@@ -459,6 +547,12 @@ func (s *server) scanQueuedReactions(
 	installationID int64,
 	repository github.Repository,
 ) error {
+	_, _, enabled, err := s.automaticRepositoryControls(
+		ctx, targetID, storage.RepositoryID(repository.ID),
+	)
+	if err != nil || !enabled {
+		return err
+	}
 	client, err := s.queuedInstallationClient(installationID)
 	if err != nil {
 		return err
@@ -482,6 +576,21 @@ func (s *server) scanQueuedReactions(
 	}
 
 	return s.processRepositoryReactions(ctx, client, repository, botConfig, prs)
+}
+
+func (s *server) automaticRepositoryControls(
+	ctx context.Context,
+	targetID, repositoryID string,
+) (storage.Target, storage.Repository, bool, error) {
+	target, repository, err := s.readRepositoryControls(ctx, targetID, repositoryID)
+	if errors.Is(err, storage.ErrNotFound) {
+		return storage.Target{}, storage.Repository{}, false, nil
+	}
+	if err != nil {
+		return storage.Target{}, storage.Repository{}, false, err
+	}
+
+	return target, repository, repositoryEnabled(target, repository), nil
 }
 
 func (s *server) refreshPanelCatalog(ctx context.Context) error {

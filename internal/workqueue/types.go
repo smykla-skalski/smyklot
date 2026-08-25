@@ -438,6 +438,13 @@ type RecurringLease struct {
 	LeaseDuration time.Duration
 }
 
+type RecurringCompletion struct {
+	Failure        string
+	SuccessSummary string
+	Retryable      bool
+	Blocked        bool
+}
+
 type RecurringRequest struct {
 	Kind         Kind
 	TargetID     *string
@@ -459,7 +466,7 @@ type Store interface {
 	EnsureRecurringWork(context.Context, RecurringClaim) (Item, error)
 	SupersedeMissingRecurringWork(context.Context, []RecurringClaim, time.Time) ([]Item, error)
 	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
-	FinishRecurringWork(context.Context, string, string, string, time.Time) (Item, error)
+	FinishRecurringWork(context.Context, string, RecurringCompletion, time.Time) (Item, error)
 	PruneWorkQueue(context.Context, time.Time) (int64, error)
 	NextQueueAvailability(context.Context, Lane, time.Time) (*time.Time, error)
 	WorkQueueMetrics(context.Context, time.Time) (MetricsSnapshot, error)

@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
@@ -52,12 +54,8 @@ func (s *server) runClaimedRecurringWorkWithSummary(
 ) error {
 	s.announceRecurringWork(work)
 	successSummary, runErr := run()
-	failure := ""
-	if runErr != nil {
-		failure = runErr.Error()
-	}
 	_, finishErr := s.store.FinishRecurringWork(
-		ctx, item.ID, failure, successSummary, time.Now().UTC(),
+		ctx, item.ID, recurringCompletion(successSummary, runErr), time.Now().UTC(),
 	)
 	s.announceRecurringWork(work)
 
@@ -65,6 +63,28 @@ func (s *server) runClaimedRecurringWorkWithSummary(
 	// Only a failure to persist that outcome should stop the shared dispatcher;
 	// otherwise one repository failure would back off unrelated maintenance.
 	return finishErr
+}
+
+func recurringCompletion(
+	successSummary string,
+	runErr error,
+) workqueue.RecurringCompletion {
+	if runErr == nil {
+		return workqueue.RecurringCompletion{SuccessSummary: successSummary}
+	}
+	var blocker interface{ QueueBlockReason() string }
+	if errors.As(runErr, &blocker) {
+		return workqueue.RecurringCompletion{
+			Failure: strings.TrimSpace(blocker.QueueBlockReason()), Blocked: true,
+		}
+	}
+	var classified interface{ Retryable() bool }
+	retryable := true
+	if errors.As(runErr, &classified) {
+		retryable = classified.Retryable()
+	}
+
+	return workqueue.RecurringCompletion{Failure: runErr.Error(), Retryable: retryable}
 }
 
 func (s *server) announceRecurringWork(work recurringWork) {

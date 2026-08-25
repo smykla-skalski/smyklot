@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,6 +14,40 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
+type maintenanceCatalogStore struct {
+	storage.Store
+	target       storage.Target
+	repositories []storage.Repository
+}
+
+func (store maintenanceCatalogStore) ListRootTargets(context.Context) ([]storage.Target, error) {
+	return []storage.Target{store.target}, nil
+}
+
+func (store maintenanceCatalogStore) ListRepositories(
+	context.Context,
+	string,
+) ([]storage.Repository, error) {
+	return store.repositories, nil
+}
+
+func (store maintenanceCatalogStore) GetTarget(context.Context, string) (storage.Target, error) {
+	return store.target, nil
+}
+
+func (store maintenanceCatalogStore) GetRepository(
+	_ context.Context,
+	_, repositoryID string,
+) (storage.Repository, error) {
+	for _, repository := range store.repositories {
+		if repository.ID == repositoryID {
+			return repository, nil
+		}
+	}
+
+	return storage.Repository{}, storage.ErrNotFound
+}
+
 func TestMaintenanceQueueCoversEveryRecurringWorkload(t *testing.T) {
 	t.Parallel()
 	targetID := "github:installation:1"
@@ -22,6 +57,7 @@ func TestMaintenanceQueueCoversEveryRecurringWorkload(t *testing.T) {
 	jobs = append(jobs, server.repositoryMaintenanceJobs(
 		context.Background(), targetID, 1,
 		github.Repository{ID: 1, Owner: "smykla-skalski", Name: "smyklot"},
+		true, nil,
 	)...)
 
 	queued := make(map[workqueue.Kind]int, len(jobs))
@@ -56,6 +92,127 @@ func TestStoredSweepRepositoryReadsScopedIdentity(t *testing.T) {
 	if repository.ID != 31 || repository.Owner != "smykla-skalski" ||
 		repository.Name != "smyklot" || !repository.Private || repository.DefaultBranch != "main" {
 		t.Fatalf("converted repository = %#v", repository)
+	}
+}
+
+func TestMaintenanceQueueOnlyPublishesEnabledRepositoryWork(t *testing.T) {
+	t.Parallel()
+	enabled := true
+	targetID := storage.InstallationID(1)
+	store := maintenanceCatalogStore{
+		target: storage.Target{
+			ID: targetID, InstallationID: "1", Available: true,
+			RepositoryDefaultEnabled: false,
+		},
+		repositories: []storage.Repository{
+			{
+				ID: storage.RepositoryID(11), TargetID: targetID,
+				FullName: "smykla-skalski/disabled", Available: true,
+			},
+			{
+				ID: storage.RepositoryID(12), TargetID: targetID,
+				FullName: "smykla-skalski/enabled", Available: true,
+				EnabledOverride: &enabled,
+			},
+		},
+	}
+	service := &server{panel: &adminpanel.Server{}, store: store}
+	jobs, err := service.durableMaintenanceJobs(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	disabledID := storage.RepositoryID(11)
+	enabledID := storage.RepositoryID(12)
+	enabledJobs := 0
+	for _, job := range jobs {
+		if job.work.repositoryID != nil && *job.work.repositoryID == disabledID {
+			t.Fatalf("disabled repository published %q", job.work.kind)
+		}
+		if job.work.repositoryID != nil && *job.work.repositoryID == enabledID {
+			enabledJobs++
+		}
+	}
+	if enabledJobs != 3 {
+		t.Fatalf("enabled repository jobs = %d, want 3", enabledJobs)
+	}
+}
+
+func TestDisabledRepositoryExecutionStopsBeforeGitHub(t *testing.T) {
+	t.Parallel()
+	targetID := storage.InstallationID(1)
+	repositoryID := storage.RepositoryID(11)
+	store := maintenanceCatalogStore{
+		target: storage.Target{
+			ID: targetID, InstallationID: "1", Available: true,
+			RepositoryDefaultEnabled: false,
+		},
+		repositories: []storage.Repository{{
+			ID: repositoryID, TargetID: targetID,
+			FullName: "smykla-skalski/disabled", Available: true,
+		}},
+	}
+	service := &server{panel: &adminpanel.Server{}, store: store}
+	repository := github.Repository{
+		ID: 11, Owner: "smykla-skalski", Name: "disabled",
+	}
+
+	if err := service.scanQueuedReactions(t.Context(), targetID, 1, repository); err != nil {
+		t.Fatalf("disabled reaction scan = %v", err)
+	}
+	if err := service.migrateRepositoryConfig(t.Context(), nil, targetID, repository); err != nil {
+		t.Fatalf("disabled configuration migration = %v", err)
+	}
+	if err := service.reconcileQueuedPendingCIGate(t.Context(), targetID, 1, repository); err != nil {
+		t.Fatalf("disabled pending-CI reconciliation = %v", err)
+	}
+}
+
+func TestRecurringCompletionDistinguishesBlockersAndTerminalGitHubFailures(t *testing.T) {
+	t.Parallel()
+	blocked := recurringCompletion("", recurringBlocker{reason: "safe operator guidance"})
+	if !blocked.Blocked || blocked.Retryable || blocked.Failure != "safe operator guidance" {
+		t.Fatalf("blocked completion = %#v", blocked)
+	}
+
+	terminal := recurringCompletion("", github.NewAPIError(
+		errors.New("forbidden"), 403, "GET", "/repos/owner/repo/rulesets",
+		errors.New("upgrade to GitHub Pro"),
+	))
+	if terminal.Blocked || terminal.Retryable {
+		t.Fatalf("terminal completion = %#v", terminal)
+	}
+}
+
+func TestMissingMaintenanceScopeIsSupersededBeforeClaim(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	store, err := open.Store(ctx, filepath.Join(t.TempDir(), "queue.sqlite3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	targetID, repositoryID := storage.InstallationID(1), storage.RepositoryID(11)
+	_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
+		Kind: workqueue.KindReactionScan, TargetID: &targetID,
+		RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+		Now: time.Now().UTC().Add(-time.Hour), LeaseDuration: time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &server{store: store}
+	if err := service.supersedeMissingMaintenanceJobs(ctx, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimNextRecurringWork(ctx, workqueue.RecurringLease{
+		Now: time.Now().UTC(), LeaseDuration: time.Minute,
+	}); err != nil || claimed {
+		t.Fatalf("claim after supersede = %t, %v", claimed, err)
 	}
 }
 
