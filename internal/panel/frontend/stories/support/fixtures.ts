@@ -366,6 +366,7 @@ export const ROOT_INSTALLATION: RootInstallation = {
 };
 
 export const RUNTIME: RootRuntimeSettings = {
+  background_work_paused: false,
   behavior_defaults: { deployment: CONFIG, override: null, effective: CONFIG },
   log_level: { deployment: 'info', override: null, effective: 'info' },
   reaction_poll_interval: {

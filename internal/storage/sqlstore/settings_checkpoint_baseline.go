@@ -289,7 +289,8 @@ func (s *Store) backfillRuntimeSettingsBaseline(
 
 func runtimeSettingsDocument(settings storage.RuntimeSettings) storage.RuntimeSettingsDocument {
 	return storage.RuntimeSettingsDocument{
-		BotConfig: settings.BotConfig, LogLevel: settings.LogLevel,
+		BackgroundWorkPaused: settings.BackgroundWorkPaused,
+		BotConfig:            settings.BotConfig, LogLevel: settings.LogLevel,
 		PollInterval:         settings.PollInterval,
 		PendingCIQuietPeriod: settings.PendingCIQuietPeriod,
 		SessionTTL:           settings.SessionTTL,

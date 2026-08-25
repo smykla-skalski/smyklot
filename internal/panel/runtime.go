@@ -15,6 +15,7 @@ import (
 
 // RuntimeValues are the effective settings consumed by the running service.
 type RuntimeValues struct {
+	BackgroundWorkPaused bool
 	BotConfig            *config.Config
 	LogLevel             slog.Level
 	PollInterval         time.Duration
@@ -28,6 +29,7 @@ type RuntimeValues struct {
 
 func resolveRuntimeValues(cfg Config, persisted storage.RuntimeSettings) (RuntimeValues, error) {
 	values := RuntimeValues{
+		BackgroundWorkPaused: persisted.BackgroundWorkPaused,
 		BotConfig:            cloneRuntimeConfig(cfg.ProcessConfig),
 		LogLevel:             cfg.LogLevel,
 		PollInterval:         cfg.PollInterval,

@@ -105,6 +105,7 @@ type SettingsCheckpointItem struct {
 // overrides. Deployment defaults are deliberately absent: a restore must put
 // the stored overrides back, then let the current deployment resolve them.
 type RuntimeSettingsDocument struct {
+	BackgroundWorkPaused bool           `json:"background_work_paused"`
 	BotConfig            *config.Config `json:"bot_config"`
 	LogLevel             *string        `json:"log_level"`
 	PollInterval         *time.Duration `json:"poll_interval"`

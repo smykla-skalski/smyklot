@@ -3836,7 +3836,7 @@ function rootInstallationValue(target: MockTarget): RootInstallation {
   };
 }
 
-const ROOT_RUNTIME_INPUT_KEYS = [
+const ROOT_RUNTIME_REQUIRED_INPUT_KEYS = [
   'bot_config',
   'log_level',
   'reaction_poll_interval_seconds',
@@ -3844,6 +3844,10 @@ const ROOT_RUNTIME_INPUT_KEYS = [
   'path_index_interval_seconds',
   'session_ttl_seconds',
   'expected_revision',
+] as const;
+const ROOT_RUNTIME_INPUT_KEYS = [
+  ...ROOT_RUNTIME_REQUIRED_INPUT_KEYS,
+  'background_work_paused',
 ] as const;
 const ROOT_RUNTIME_LOG_LEVELS = new Set(['debug', 'info', 'warn', 'error']);
 const ROOT_RUNTIME_NANOSECONDS_PER_SECOND = 1_000_000_000;
@@ -3859,7 +3863,7 @@ function saveMockRootRuntimeSettings(
   }
 
   const before = mockRootRuntimeCheckpointState(state);
-  const nextDocument = mockRootRuntimeDocumentFromInput(input);
+  const nextDocument = mockRootRuntimeDocumentFromInput(state, input);
   if (sameMockDocument(before.document, nextDocument)) return rootRuntimeSettingsValue(state);
 
   ensureMockRootRuntimeBaseline(state);
@@ -4076,6 +4080,7 @@ function mockRootRuntimeCheckpointState(state: MockState): SettingsCheckpointSta
 
 function mockRootRuntimeDocument(state: MockState): Record<string, unknown> {
   return {
+    background_work_paused: state.runtime.backgroundWorkPaused,
     bot_config: copyOptionalConfig(state.runtime.behaviorOverride),
     log_level: state.runtime.logLevelOverride,
     poll_interval: mockRootRuntimeDuration(state.runtime.pollIntervalOverride),
@@ -4086,9 +4091,11 @@ function mockRootRuntimeDocument(state: MockState): Record<string, unknown> {
 }
 
 function mockRootRuntimeDocumentFromInput(
+  state: MockState,
   input: RootRuntimeSettingsInput,
 ): Record<string, unknown> {
   return {
+    background_work_paused: input.background_work_paused ?? state.runtime.backgroundWorkPaused,
     bot_config: copyOptionalConfig(input.bot_config),
     log_level: input.log_level,
     poll_interval: mockRootRuntimeDuration(input.reaction_poll_interval_seconds),
@@ -4103,6 +4110,7 @@ function mockRootRuntimeInputFromDocument(
   expectedRevision: number,
 ): RootRuntimeSettingsInput {
   return {
+    background_work_paused: mockRootRuntimePaused(document.background_work_paused),
     bot_config: mockRootRuntimeConfig(document.bot_config),
     log_level: mockRootRuntimeLogLevel(document.log_level),
     reaction_poll_interval_seconds: mockRootRuntimeSeconds(document.poll_interval),
@@ -4115,6 +4123,7 @@ function mockRootRuntimeInputFromDocument(
 
 function applyMockRootRuntimeDocument(state: MockState, document: Record<string, unknown>): void {
   const input = mockRootRuntimeInputFromDocument(document, state.runtime.revision);
+  state.runtime.backgroundWorkPaused = input.background_work_paused ?? false;
   state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
   state.runtime.logLevelOverride = input.log_level;
   state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
@@ -4142,6 +4151,13 @@ function mockRootRuntimeSeconds(value: unknown): number | null {
     );
   }
   return value / ROOT_RUNTIME_NANOSECONDS_PER_SECOND;
+}
+
+function mockRootRuntimePaused(value: unknown): boolean {
+  if (typeof value !== 'boolean') {
+    throw new MockApiError(409, 'settings_restore_blocked', 'background work pause is invalid');
+  }
+  return value;
 }
 
 function mockRootRuntimeConfig(value: unknown): ConfigValues | null {
@@ -4176,12 +4192,20 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
   if (
     input === null ||
     typeof input !== 'object' ||
-    Object.keys(input).length !== ROOT_RUNTIME_INPUT_KEYS.length ||
-    ROOT_RUNTIME_INPUT_KEYS.some((key) => !Object.hasOwn(input, key)) ||
+    Object.keys(input).some(
+      (key) => !(ROOT_RUNTIME_INPUT_KEYS as readonly string[]).includes(key),
+    ) ||
+    ROOT_RUNTIME_REQUIRED_INPUT_KEYS.some((key) => !Object.hasOwn(input, key)) ||
     !Number.isSafeInteger(input.expected_revision) ||
     input.expected_revision < 0
   ) {
     invalidMockRootRuntimeSettings('every runtime setting and expected revision is required');
+  }
+  if (
+    input.background_work_paused !== undefined &&
+    typeof input.background_work_paused !== 'boolean'
+  ) {
+    invalidMockRootRuntimeSettings('background work pause must be true or false');
   }
   if (input.bot_config !== null && !isMockRootRuntimeConfig(input.bot_config)) {
     invalidMockRootRuntimeSettings('behavior defaults are invalid');
@@ -4268,6 +4292,7 @@ function invalidMockRootRuntimeSettings(message: string): never {
 function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
   const behaviorOverride = copyOptionalConfig(state.runtime.behaviorOverride);
   return {
+    background_work_paused: state.runtime.backgroundWorkPaused,
     behavior_defaults: {
       deployment: copyConfig(DEFAULT_CONFIG),
       override: behaviorOverride,

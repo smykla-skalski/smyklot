@@ -14,5 +14,6 @@
     section="settings"
     rootRole={session.rootRole}
     fetchSettings={session.api.fetchRootRuntimeSettings}
+    saveSettings={session.api.saveRootRuntimeSettings}
   />
 </section>

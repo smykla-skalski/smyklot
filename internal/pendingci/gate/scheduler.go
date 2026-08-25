@@ -32,6 +32,7 @@ type Scheduler struct {
 	logger    *slog.Logger
 	now       func() time.Time
 	wake      chan struct{}
+	paused    func() bool
 	retuneMu  sync.Mutex
 	retune    *pendingci.RetuneQuietPeriodRequest
 	retuneGen uint64
@@ -41,10 +42,16 @@ func newScheduler(
 	store leaseStore,
 	processor processor,
 	logger *slog.Logger,
+	pauses ...func() bool,
 ) *Scheduler {
+	var paused func() bool
+	if len(pauses) > 0 {
+		paused = pauses[0]
+	}
 	return &Scheduler{
 		store: store, processor: processor, logger: logger,
 		now: func() time.Time { return time.Now().UTC() }, wake: make(chan struct{}, 1),
+		paused: paused,
 	}
 }
 
@@ -85,6 +92,12 @@ func (scheduler *Scheduler) dispatch(
 	jobs chan<- pendingci.Request,
 ) {
 	for {
+		if scheduler.paused != nil && scheduler.paused() {
+			if !scheduler.wait(ctx, nil) {
+				return
+			}
+			continue
+		}
 		now := scheduler.now()
 		if err := scheduler.applyQuietPeriodRetune(ctx); err != nil {
 			scheduler.logger.Error("pending CI quiet-period retune failed", "error", err)

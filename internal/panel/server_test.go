@@ -1442,6 +1442,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	)
 	requireResponse(
 		t, current, "Root runtime settings", http.StatusOK,
+		`"background_work_paused":false`,
 		`"effective_seconds":43200`,
 		`"deployment":"info"`, `"public":":8080"`,
 		`"reaction_poll_interval":{"deployment_seconds":300`,
@@ -1452,6 +1453,7 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	behavior := config.Default()
 	behavior.QuietSuccess = true
 	content, err := json.Marshal(map[string]any{
+		"background_work_paused":             true,
 		"bot_config":                          behavior,
 		"log_level":                           "debug",
 		"reaction_poll_interval_seconds":      90,
@@ -1468,12 +1470,14 @@ func TestPanelRootRuntimeSettings(t *testing.T) {
 	)
 	requireResponse(
 		t, updated, "update Root runtime settings", http.StatusOK,
+		`"background_work_paused":true`,
 		`"quiet_success":true`, `"override":"debug"`,
 		`"reaction_poll_interval":{"deployment_seconds":300,"override_seconds":90,"effective_seconds":90}`,
 		`"merge_after_ci_quiet_period":{"deployment_seconds":30,"override_seconds":45,"effective_seconds":45}`,
 		`"override_seconds":3600`, `"revision":1`,
 	)
-	if !harness.runtime.values.BotConfig.QuietSuccess ||
+	if !harness.runtime.values.BackgroundWorkPaused ||
+		!harness.runtime.values.BotConfig.QuietSuccess ||
 		harness.runtime.values.LogLevel != slog.LevelDebug ||
 		harness.runtime.values.PollInterval != 90*time.Second ||
 		harness.runtime.values.PendingCIQuietPeriod != 45*time.Second ||

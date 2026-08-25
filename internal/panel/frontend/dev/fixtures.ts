@@ -174,6 +174,7 @@ export interface MockState {
    */
   queueLoop: Set<string>;
   runtime: {
+    backgroundWorkPaused: boolean;
     behaviorOverride: ConfigValues | null;
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
@@ -509,6 +510,7 @@ export function seed(
     queue: queueSeeds(iso),
     queueLoop: new Set(),
     runtime: {
+      backgroundWorkPaused: false,
       behaviorOverride: null,
       logLevelOverride: null,
       pollIntervalOverride: null,

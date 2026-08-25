@@ -27,7 +27,7 @@ func (s *server) initDeliveries(
 ) error {
 	deliveries, err := webhook.New(
 		s.cfg.webhookSecret,
-		deliveryInbox{store: s.store, redactor: redactor},
+		deliveryInbox{store: s.store, redactor: redactor, paused: s.backgroundWorkPaused},
 		s.executeDelivery,
 		webhook.Options{
 			Events:     serviceEvents(),
@@ -60,6 +60,7 @@ func (s *server) initDeliveries(
 type deliveryInbox struct {
 	store    storage.DeliveryStore
 	redactor *logging.Redactor
+	paused   func() bool
 }
 
 func (i deliveryInbox) Claim(
@@ -102,6 +103,9 @@ func (i deliveryInbox) Lease(
 	ctx context.Context,
 	now, expires time.Time,
 ) (webhook.Lease, error) {
+	if i.paused != nil && i.paused() {
+		return webhook.Lease{}, nil
+	}
 	result, err := i.store.LeaseDelivery(ctx, now, expires)
 	if err != nil || result.Work == nil {
 		return webhook.Lease{AvailableAt: result.AvailableAt}, err

@@ -3,6 +3,7 @@ package panel
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -22,6 +23,7 @@ import (
 const MaxPathIndexInterval = storage.MaxPathIndexInterval
 
 type runtimeSettingsRequest struct {
+	BackgroundWorkPaused        requiredRuntimeValue[bool]          `json:"background_work_paused"`
 	BotConfig                   requiredRuntimeValue[config.Config] `json:"bot_config"`
 	LogLevel                    requiredRuntimeValue[string]        `json:"log_level"`
 	PollIntervalSeconds         requiredRuntimeValue[int64]         `json:"reaction_poll_interval_seconds"`
@@ -80,7 +82,12 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	change, proposed, err := s.runtimeSettingsChange(actor, input)
+	current, err := s.store.GetRuntimeSettings(r.Context())
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+	change, proposed, err := s.runtimeSettingsChange(actor, input, current)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_runtime_settings", err.Error())
 		return
@@ -116,6 +123,7 @@ func (s *Server) putRootRuntimeSettings(w http.ResponseWriter, r *http.Request) 
 func (s *Server) runtimeSettingsChange(
 	actor storage.Account,
 	input runtimeSettingsRequest,
+	current storage.RuntimeSettings,
 ) (storage.RuntimeSettingsChange, storage.RuntimeSettings, error) {
 	if !completeRuntimeSettingsRequest(input) || input.ExpectedRevision.value == nil ||
 		*input.ExpectedRevision.value < 0 {
@@ -167,13 +175,23 @@ func (s *Server) runtimeSettingsChange(
 			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{}, err
 		}
 	}
+	backgroundWorkPaused := current.BackgroundWorkPaused
+	if input.BackgroundWorkPaused.present {
+		if input.BackgroundWorkPaused.value == nil {
+			return storage.RuntimeSettingsChange{}, storage.RuntimeSettings{},
+				errors.New("background work pause must be true or false")
+		}
+		backgroundWorkPaused = *input.BackgroundWorkPaused.value
+	}
 	proposed := storage.RuntimeSettings{
-		BotConfig: botConfig, LogLevel: input.LogLevel.value,
+		BackgroundWorkPaused: backgroundWorkPaused,
+		BotConfig:            botConfig, LogLevel: input.LogLevel.value,
 		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
 		SessionTTL: sessionTTL, PathIndexInterval: pathIndexInterval,
 	}
 	change := storage.RuntimeSettingsChange{
-		BotConfig: botConfig, LogLevel: input.LogLevel.value,
+		BackgroundWorkPaused: backgroundWorkPaused,
+		BotConfig:            botConfig, LogLevel: input.LogLevel.value,
 		PollInterval: pollInterval, PendingCIQuietPeriod: pendingCIQuietPeriod,
 		SessionTTL:        sessionTTL,
 		PathIndexInterval: pathIndexInterval,

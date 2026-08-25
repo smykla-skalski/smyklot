@@ -57,6 +57,7 @@ type runtimeServiceResponse struct {
 }
 
 type runtimeSettingsResponse struct {
+	BackgroundWorkPaused bool                         `json:"background_work_paused"`
 	BehaviorDefaults     runtimeConfigValueResponse   `json:"behavior_defaults"`
 	LogLevel             runtimeStringValueResponse   `json:"log_level"`
 	PollInterval         runtimeDurationValueResponse `json:"reaction_poll_interval"`
@@ -78,6 +79,7 @@ func runtimeSettingsDTO(
 	startedAt, now time.Time,
 ) runtimeSettingsResponse {
 	response := runtimeSettingsResponse{
+		BackgroundWorkPaused: settings.BackgroundWorkPaused,
 		BehaviorDefaults: runtimeConfigValueResponse{
 			Deployment: *cloneRuntimeConfig(cfg.ProcessConfig),
 			Override:   cloneOptionalRuntimeConfig(settings.BotConfig),

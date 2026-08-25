@@ -126,6 +126,9 @@ func (s *server) nextMaintenanceDelay(
 	ctx context.Context,
 	fallback time.Duration,
 ) (*time.Duration, error) {
+	if s.backgroundWorkPaused() {
+		return nil, nil
+	}
 	now := time.Now().UTC()
 	next, err := s.store.NextQueueAvailability(ctx, workqueue.LaneMaintenance, now)
 	if err != nil {
@@ -154,6 +157,9 @@ func (s *server) nextMaintenanceDelay(
 }
 
 func (s *server) dispatchMaintenanceQueue(ctx context.Context) error {
+	if s.backgroundWorkPaused() {
+		return nil
+	}
 	if s.panel != nil {
 		return s.dispatchDurableMaintenance(ctx)
 	}

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -80,6 +81,48 @@ func TestPendingCISchedulerRetunesBeforeLeasing(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("scheduler did not retune durable quiet-period deadlines")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not stop")
+	}
+}
+
+func TestPendingCISchedulerDoesNotLeaseWhilePaused(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, time.August, 15, 12, 0, 0, 0, time.UTC)
+	store := &schedulerTestStore{now: now, firstLease: make(chan struct{})}
+	var paused atomic.Bool
+	paused.Store(true)
+	scheduler := newScheduler(
+		store,
+		&schedulerTestProcessor{processed: make(chan pendingci.Request, 1)},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		paused.Load,
+	)
+	scheduler.now = func() time.Time { return now }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		scheduler.Run(ctx)
+		close(done)
+	}()
+
+	time.Sleep(25 * time.Millisecond)
+	store.mu.Lock()
+	callsWhilePaused := store.calls
+	store.mu.Unlock()
+	if callsWhilePaused != 0 {
+		t.Fatalf("leased %d times while background work was paused", callsWhilePaused)
+	}
+	paused.Store(false)
+	scheduler.Wake()
+	select {
+	case <-store.firstLease:
+	case <-time.After(time.Second):
+		t.Fatal("scheduler did not lease after background work resumed")
 	}
 	cancel()
 	select {

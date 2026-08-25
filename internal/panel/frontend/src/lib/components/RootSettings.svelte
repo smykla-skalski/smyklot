@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
   import { CONFIG_KEYS } from '../config';
@@ -23,10 +23,16 @@
     type RuntimeSettingsControlId,
   } from '../runtime-settings';
   import { getSettingsDraftRegistry } from '../settings-drafts.svelte';
-  import type { ConfigKey, ConfigPatch, RootRuntimeSettings } from '../types';
+  import type {
+    ConfigKey,
+    ConfigPatch,
+    RootRuntimeSettings,
+    RootRuntimeSettingsInput,
+  } from '../types';
   import Button from './Button.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
@@ -83,13 +89,16 @@
     section,
     rootRole,
     fetchSettings,
+    saveSettings,
   }: {
     section: RootRuntimeSection;
     rootRole: string;
     fetchSettings: () => Promise<RootRuntimeSettings>;
+    saveSettings?: (input: RootRuntimeSettingsInput) => Promise<RootRuntimeSettings>;
   } = $props();
 
   const drafts = getSettingsDraftRegistry();
+  const queryClient = useQueryClient();
   const settingsQuery = createQuery(() => ({
     queryKey: ['root-settings'],
     queryFn: fetchSettings,
@@ -107,6 +116,8 @@
   const saving = $derived(drafts.operation(ROOT_SETTINGS_SCOPE).saving);
   const settingsDirty = $derived(drafts.hasDirty(ROOT_SETTINGS_SCOPE));
   let actionFailure = $state<string | null>(null);
+  let pauseDialogOpen = $state(false);
+  let pauseSaving = $state(false);
   const failure = $derived(
     actionFailure ??
       (settingsQuery.error === null
@@ -138,6 +149,32 @@
   async function load(): Promise<void> {
     actionFailure = null;
     await settingsQuery.refetch();
+  }
+
+  async function setBackgroundWorkPaused(paused: boolean): Promise<void> {
+    const current = canonicalSettings;
+    if (current === null || saveSettings === undefined || pauseSaving) return;
+    pauseSaving = true;
+    actionFailure = null;
+    try {
+      const updated = await saveSettings({
+        background_work_paused: paused,
+        bot_config: current.behavior_defaults.override,
+        log_level: current.log_level.override,
+        reaction_poll_interval_seconds: current.reaction_poll_interval.override_seconds,
+        merge_after_ci_quiet_period_seconds: current.merge_after_ci_quiet_period.override_seconds,
+        path_index_interval_seconds: current.path_index_interval.override_seconds,
+        session_ttl_seconds: current.session_lifetime.override_seconds,
+        expected_revision: current.revision,
+      });
+      queryClient.setQueryData(['root-settings'], updated);
+      pauseDialogOpen = false;
+    } catch (cause) {
+      actionFailure = cause instanceof Error ? cause.message : String(cause);
+      await settingsQuery.refetch();
+    } finally {
+      pauseSaving = false;
+    }
   }
 
   const SESSION_SPEC = RUNTIME_DURATION_SPECS.session_ttl_seconds;
@@ -324,6 +361,49 @@
     {/if}
 
     {#if section === 'settings'}
+      {#if saveSettings !== undefined}
+        <section
+          class:paused={current.background_work_paused}
+          class="card emergency-card"
+          aria-labelledby="background-work-control"
+        >
+          <div class="emergency-copy">
+            <div class="emergency-heading">
+              <h3 class="group-name" id="background-work-control">Automatic background work</h3>
+              <StatusPill dot state={current.background_work_paused ? 'warning' : 'healthy'}>
+                {current.background_work_paused ? 'Paused' : 'Running'}
+              </StatusPill>
+            </div>
+            <p class="group-note emergency-note">
+              {#if current.background_work_paused}
+                Queue items remain durable, but webhook delivery, pending CI, sync, and maintenance
+                will not start new work.
+              {:else}
+                Every queue lane can start eligible work. Use this control to stop automatic
+                dispatch without taking the panel or webhook intake offline.
+              {/if}
+            </p>
+          </div>
+          {#if current.background_work_paused}
+            <Button
+              tone="signal"
+              disabled={pauseSaving}
+              onclick={() => void setBackgroundWorkPaused(false)}
+            >
+              {pauseSaving ? 'Resuming…' : 'Resume automatic work'}
+            </Button>
+          {:else}
+            <Button
+              tone="stop-quiet"
+              disabled={pauseSaving}
+              onclick={() => (pauseDialogOpen = true)}
+            >
+              Pause automatic work
+            </Button>
+          {/if}
+        </section>
+      {/if}
+
       <ConfigEditor
         patch={runtimeConfigPatch(
           current.behavior_defaults.deployment,
@@ -615,6 +695,24 @@
   {/if}
 </section>
 
+<ConfirmDialog
+  id="pause-background-work"
+  open={pauseDialogOpen}
+  title="Pause automatic background work?"
+  description="This is an immediate service-wide safety control."
+  onClose={() => (pauseDialogOpen = false)}
+  onConfirm={() => void setBackgroundWorkPaused(true)}
+  confirmLabel="Pause background work"
+  busyLabel="Pausing…"
+  confirmTone="stop"
+  busy={pauseSaving}
+>
+  <p class="confirm-copy">
+    No queue lane will lease new work. Work already running may finish, and incoming webhooks remain
+    stored for later delivery. Root can resume dispatch from this page.
+  </p>
+</ConfirmDialog>
+
 <style>
   .root-settings {
     display: grid;
@@ -636,12 +734,58 @@
     margin-bottom: var(--space-2);
   }
 
+  .emergency-card {
+    align-items: center;
+    display: flex;
+    gap: var(--space-5);
+    justify-content: space-between;
+  }
+
+  .emergency-card.paused {
+    background: color-mix(in srgb, var(--warning) 7%, var(--surface-base));
+    border-color: color-mix(in srgb, var(--warning) 42%, var(--border-subtle));
+  }
+
+  .emergency-copy {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .emergency-heading {
+    align-items: center;
+    display: flex;
+    gap: var(--space-3);
+  }
+
+  .emergency-note {
+    margin: 0;
+    max-width: 76ch;
+  }
+
+  .confirm-copy {
+    color: var(--text-muted);
+    margin: 0;
+  }
+
   .group-name {
     font-size: var(--font-size-title);
     font-weight: 600;
     margin: 0;
     min-block-size: 12px;
     text-box: trim-both cap alphabetic;
+  }
+
+  @media (max-width: 720px) {
+    .emergency-card {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .emergency-card :global(.btn) {
+      justify-content: center;
+      width: 100%;
+    }
   }
 
   .group-tally {

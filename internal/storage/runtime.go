@@ -29,6 +29,7 @@ const MaxPathIndexInterval = 7 * 24 * time.Hour
 // RuntimeSettings contains the persisted overrides layered over deployment
 // defaults. Nil fields keep the corresponding deployment value.
 type RuntimeSettings struct {
+	BackgroundWorkPaused bool
 	BotConfig            *config.Config
 	LogLevel             *string
 	PollInterval         *time.Duration
@@ -49,6 +50,7 @@ type RuntimeSettings struct {
 // RuntimeSettingsChange atomically replaces every persisted runtime override
 // and appends its application-wide audit event.
 type RuntimeSettingsChange struct {
+	BackgroundWorkPaused          bool
 	BotConfig                     *config.Config
 	LogLevel                      *string
 	PollInterval                  *time.Duration

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -8,9 +9,46 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/metrics"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
+
+type deliveryPauseStore struct {
+	storage.DeliveryStore
+	leases int
+}
+
+func (store *deliveryPauseStore) LeaseDelivery(
+	context.Context,
+	time.Time,
+	time.Time,
+) (storage.DeliveryLeaseResult, error) {
+	store.leases++
+
+	return storage.DeliveryLeaseResult{
+		Work: &storage.DeliveryWork{ID: 7, DeliveryID: "delivery-7"},
+	}, nil
+}
+
+var _ = Describe("Delivery pause [Unit]", func() {
+	It("keeps durable work unleased until automatic work resumes", func(ctx SpecContext) {
+		paused := true
+		store := &deliveryPauseStore{}
+		inbox := deliveryInbox{store: store, paused: func() bool { return paused }}
+
+		lease, err := inbox.Lease(ctx, time.Now(), time.Now().Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Work).To(BeNil())
+		Expect(store.leases).To(BeZero())
+
+		paused = false
+		lease, err = inbox.Lease(ctx, time.Now(), time.Now().Add(time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lease.Work).NotTo(BeNil())
+		Expect(store.leases).To(Equal(1))
+	})
+})
 
 var _ = Describe("Delivery retry policy [Unit]", func() {
 	It("should not retry a repository whose configuration will not parse", func() {

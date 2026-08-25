@@ -110,7 +110,8 @@ func (s *Store) RestoreRuntimeSettings(
 		document.BotConfig = &botConfig
 	}
 	change := storage.RuntimeSettingsChange{
-		BotConfig: document.BotConfig, LogLevel: document.LogLevel,
+		BackgroundWorkPaused: document.BackgroundWorkPaused,
+		BotConfig:            document.BotConfig, LogLevel: document.LogLevel,
 		PollInterval:         document.PollInterval,
 		PendingCIQuietPeriod: document.PendingCIQuietPeriod,
 		SessionTTL:           document.SessionTTL, PathIndexInterval: document.PathIndexInterval,
@@ -169,7 +170,8 @@ func (s *Store) saveRuntimeSettings(
 		return storage.SaveRuntimeSettingsResult{}, storage.ErrConflict
 	}
 	proposed := storage.RuntimeSettings{
-		BotConfig: change.BotConfig, LogLevel: change.LogLevel,
+		BackgroundWorkPaused: change.BackgroundWorkPaused,
+		BotConfig:            change.BotConfig, LogLevel: change.LogLevel,
 		PollInterval:         change.PollInterval,
 		PendingCIQuietPeriod: change.PendingCIQuietPeriod,
 		SessionTTL:           change.SessionTTL, PathIndexInterval: change.PathIndexInterval,
@@ -316,11 +318,12 @@ func (s *Store) writeRuntimeSettings(
 	if current.Revision == 0 {
 		result, err = tx.ExecContext(ctx, `
 INSERT INTO runtime_settings (
-    singleton, bot_config, log_level,
+    singleton, background_work_paused, bot_config, log_level,
     poll_interval_seconds, pending_ci_quiet_period_seconds, session_ttl_seconds,
     path_index_interval_seconds,
     revision, updated_at, updated_by_account_id
-) VALUES (1, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+) VALUES (1, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+			change.BackgroundWorkPaused,
 			botConfig,
 			change.LogLevel,
 			durationSeconds(change.PollInterval),
@@ -333,11 +336,12 @@ INSERT INTO runtime_settings (
 	} else {
 		result, err = tx.ExecContext(ctx, `
 UPDATE runtime_settings SET
-    bot_config = ?, log_level = ?, poll_interval_seconds = ?,
+    background_work_paused = ?, bot_config = ?, log_level = ?, poll_interval_seconds = ?,
     pending_ci_quiet_period_seconds = ?, session_ttl_seconds = ?,
     path_index_interval_seconds = ?,
     revision = revision + 1, updated_at = ?, updated_by_account_id = ?
 WHERE singleton = 1 AND revision = ?`,
+			change.BackgroundWorkPaused,
 			botConfig,
 			change.LogLevel,
 			durationSeconds(change.PollInterval),
@@ -371,7 +375,8 @@ func validateRuntimeSettingsChange(change storage.RuntimeSettingsChange) (*strin
 		return nil, errors.New("runtime settings identity and revision are required")
 	}
 	if err := validateRuntimeSettingsDocumentValue(storage.RuntimeSettingsDocument{
-		BotConfig: change.BotConfig, LogLevel: change.LogLevel,
+		BackgroundWorkPaused: change.BackgroundWorkPaused,
+		BotConfig:            change.BotConfig, LogLevel: change.LogLevel,
 		PollInterval: change.PollInterval, PendingCIQuietPeriod: change.PendingCIQuietPeriod,
 		SessionTTL: change.SessionTTL, PathIndexInterval: change.PathIndexInterval,
 	}); err != nil {
@@ -405,10 +410,12 @@ func getRuntimeSettings(
 	var updatedByID string
 	var updatedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
-SELECT bot_config, log_level, poll_interval_seconds, pending_ci_quiet_period_seconds,
+SELECT background_work_paused, bot_config, log_level,
+       poll_interval_seconds, pending_ci_quiet_period_seconds,
        session_ttl_seconds, path_index_interval_seconds,
        revision, updated_at, updated_by_account_id
-FROM runtime_settings WHERE singleton = 1`).Scan(
+	FROM runtime_settings WHERE singleton = 1`).Scan(
+		&settings.BackgroundWorkPaused,
 		&botConfig,
 		&logLevel,
 		&pollSeconds,

@@ -40,7 +40,8 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	}
 
 	service.ApplyRuntimeSettings(adminpanel.RuntimeValues{
-		BotConfig: config.Default(), LogLevel: slog.LevelDebug,
+		BackgroundWorkPaused: true,
+		BotConfig:            config.Default(), LogLevel: slog.LevelDebug,
 		PollInterval: time.Minute, PendingCIQuietPeriod: 45 * time.Second,
 		PathIndexInterval: 30 * time.Minute, SessionTTL: time.Hour,
 	})
@@ -50,6 +51,9 @@ func TestApplyRuntimeSettingsUpdatesAndWakesPendingCI(t *testing.T) {
 	}
 	if level.Level() != slog.LevelDebug {
 		t.Fatalf("log level = %s, want debug", level.Level())
+	}
+	if !service.backgroundWorkPaused() {
+		t.Fatal("background work was not paused")
 	}
 	select {
 	case <-service.pollIntervalChanged:

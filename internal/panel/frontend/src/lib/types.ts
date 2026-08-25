@@ -672,6 +672,8 @@ export interface RootElevationInput {
 }
 
 export interface RootRuntimeSettings {
+  /** Stops every durable background-work lane from leasing another item. */
+  background_work_paused: boolean;
   behavior_defaults: {
     deployment: ConfigValues;
     override: ConfigValues | null;
@@ -726,6 +728,8 @@ export interface RootRuntimeSettings {
 }
 
 export interface RootRuntimeSettingsInput {
+  /** Optional for older clients; omitted writes preserve the current pause state. */
+  background_work_paused?: boolean;
   bot_config: ConfigValues | null;
   log_level: string | null;
   reaction_poll_interval_seconds: number | null;

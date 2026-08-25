@@ -14,9 +14,12 @@ import (
 func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	resolved := config.Resolve(values.BotConfig)
 	s.runtimeMu.Lock()
+	backgroundWorkPauseChanged :=
+		s.runtimeBackgroundWorkPaused != values.BackgroundWorkPaused
 	pollIntervalChanged := s.runtimePollInterval != values.PollInterval
 	pathIndexIntervalChanged := s.runtimePathIndexInterval != values.PathIndexInterval
 	s.runtimeBotConfig = &resolved.Values
+	s.runtimeBackgroundWorkPaused = values.BackgroundWorkPaused
 	s.runtimePollInterval = values.PollInterval
 	s.runtimePathIndexInterval = values.PathIndexInterval
 	s.runtimeMu.Unlock()
@@ -31,6 +34,20 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	if pathIndexIntervalChanged {
 		s.WakeQueue(workqueue.LaneMaintenance)
 	}
+	if backgroundWorkPauseChanged {
+		for _, lane := range []workqueue.Lane{
+			workqueue.LaneWebhook, workqueue.LanePendingCI, workqueue.LaneMaintenance,
+		} {
+			s.WakeQueue(lane)
+		}
+	}
+}
+
+func (s *server) backgroundWorkPaused() bool {
+	s.runtimeMu.RLock()
+	defer s.runtimeMu.RUnlock()
+
+	return s.runtimeBackgroundWorkPaused
 }
 
 func (s *server) botConfig() *config.Config {
