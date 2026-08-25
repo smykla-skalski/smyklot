@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -35,26 +34,23 @@ import (
 // deadline rather than nil.
 const returnBudget = 10 * time.Second
 
-// freePort asks the kernel for a port nothing is using, so a spec that binds a
-// real listener cannot collide with another
-func freePort() int {
+// loopbackListener keeps ownership of the kernel-selected port until the
+// service starts serving it. Closing a free-port probe before Run introduces a
+// race with every other process on the test host.
+func loopbackListener() net.Listener {
 	GinkgoHelper()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	Expect(err).NotTo(HaveOccurred())
+	DeferCleanup(func() { _ = listener.Close() })
 
-	port := listener.Addr().(*net.TCPAddr).Port
-	Expect(listener.Close()).To(Succeed())
-
-	return port
+	return listener
 }
 
 var _ = Describe("Service lifecycle [Unit]", func() {
 	var (
-		stub         *githubStub
-		address      string
-		adminAddress string
-		srv          *server
+		stub *githubStub
+		srv  *server
 	)
 
 	BeforeEach(func() {
@@ -63,15 +59,12 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		endpoint := httptest.NewServer(stub)
 		DeferCleanup(endpoint.Close)
 
-		address = fmt.Sprintf("127.0.0.1:%d", freePort())
-		adminAddress = fmt.Sprintf("127.0.0.1:%d", freePort())
-
 		var err error
 
 		srv, err = newServer(&serveConfig{
 			database:      GinkgoT().TempDir() + "/state.sqlite3",
-			listenAddress: address,
-			adminAddress:  adminAddress,
+			listenAddress: "127.0.0.1:0",
+			adminAddress:  "127.0.0.1:0",
 			webhookPath:   defaultWebhookPath,
 			webhookSecret: []byte(testSecret),
 			apiBaseURL:    endpoint.URL,
@@ -101,17 +94,35 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 	// the orchestrator kills the process with deliveries still in the queue
 	It("should serve until its context is cancelled and then return", func() {
 		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		webhooks := loopbackListener()
+		admin := loopbackListener()
 
 		result := make(chan error, 1)
+		go func() {
+			defer GinkgoRecover()
+
+			result <- srv.runWithListeners(ctx, webhooks, admin)
+		}()
+
+		Eventually(func() int { return get(webhooks.Addr().String(), healthPath) }, 5*time.Second).
+			Should(Equal(http.StatusOK))
+
+		cancel()
+
+		Eventually(result, returnBudget).Should(Receive(BeNil()))
+	})
+
+	It("should own ephemeral listeners until its context is cancelled", func() {
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		result := make(chan error, 1)
+
 		go func() {
 			defer GinkgoRecover()
 
 			result <- srv.Run(ctx)
 		}()
 
-		Eventually(func() int { return get(address, healthPath) }, 5*time.Second).
-			Should(Equal(http.StatusOK))
-
+		Consistently(result, 200*time.Millisecond).ShouldNot(Receive())
 		cancel()
 
 		Eventually(result, returnBudget).Should(Receive(BeNil()))
@@ -120,29 +131,31 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 	It("should serve the admin routes on their own port", func() {
 		ctx, cancel := context.WithCancel(GinkgoT().Context())
 		DeferCleanup(cancel)
+		webhooks := loopbackListener()
+		admin := loopbackListener()
 
 		result := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
 
-			result <- srv.Run(ctx)
+			result <- srv.runWithListeners(ctx, webhooks, admin)
 		}()
 
-		Eventually(func() int { return get(adminAddress, livePath) }, 5*time.Second).
+		Eventually(func() int { return get(admin.Addr().String(), livePath) }, 5*time.Second).
 			Should(Equal(http.StatusOK))
 
-		Expect(get(adminAddress, metricsPath)).To(Equal(http.StatusOK))
-		Expect(get(adminAddress, failuresPath)).To(Equal(http.StatusOK))
+		Expect(get(admin.Addr().String(), metricsPath)).To(Equal(http.StatusOK))
+		Expect(get(admin.Addr().String(), failuresPath)).To(Equal(http.StatusOK))
 
 		// The stub answers /app, so the first probe finds GitHub
 		// reachable and readiness turns from unready to ready
-		Eventually(func() int { return get(adminAddress, readyPath) }, 5*time.Second).
+		Eventually(func() int { return get(admin.Addr().String(), readyPath) }, 5*time.Second).
 			Should(Equal(http.StatusOK))
 
 		// None of it is on the port GitHub talks to
-		Expect(get(address, metricsPath)).To(Equal(http.StatusNotFound))
-		Expect(get(address, failuresPath)).To(Equal(http.StatusNotFound))
-		Expect(get(address, readyPath)).To(Equal(http.StatusNotFound))
+		Expect(get(webhooks.Addr().String(), metricsPath)).To(Equal(http.StatusNotFound))
+		Expect(get(webhooks.Addr().String(), failuresPath)).To(Equal(http.StatusNotFound))
+		Expect(get(webhooks.Addr().String(), readyPath)).To(Equal(http.StatusNotFound))
 
 		cancel()
 
@@ -150,23 +163,41 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 	})
 
 	It("should report a listen address it cannot bind", func() {
-		blocker, err := net.Listen("tcp", address)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { _ = blocker.Close() })
+		blocker := loopbackListener()
+		srv.cfg.listenAddress = blocker.Addr().String()
 
-		Expect(srv.Run(GinkgoT().Context())).To(HaveOccurred())
+		Expect(srv.Run(GinkgoT().Context())).To(MatchError(ContainSubstring("listen for webhooks")))
+	})
+
+	It("should report an admin address it cannot bind", func() {
+		blocker := loopbackListener()
+		srv.cfg.adminAddress = blocker.Addr().String()
+
+		Expect(srv.Run(GinkgoT().Context())).To(MatchError(ContainSubstring("listen for admin")))
 	})
 
 	// One listener dying must take the other with it, or the service keeps
-	// accepting deliveries with nothing left to report how it is doing
-	It("should stop serving webhooks when the admin listener cannot bind", func() {
-		blocker, err := net.Listen("tcp", adminAddress)
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(func() { _ = blocker.Close() })
+	// accepting deliveries with nothing left to report how it is doing.
+	It("should stop serving webhooks when the admin listener dies", func() {
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		DeferCleanup(cancel)
+		webhooks := loopbackListener()
+		admin := loopbackListener()
+		result := make(chan error, 1)
 
-		Expect(srv.Run(GinkgoT().Context())).To(HaveOccurred())
-		// Another parallel suite may claim the released port. What matters is
-		// that this server's unconditional health response is gone.
-		Expect(get(address, healthPath)).NotTo(Equal(http.StatusOK))
+		go func() {
+			defer GinkgoRecover()
+
+			result <- srv.runWithListeners(ctx, webhooks, admin)
+		}()
+
+		Eventually(func() int { return get(webhooks.Addr().String(), healthPath) }, 5*time.Second).
+			Should(Equal(http.StatusOK))
+
+		Expect(admin.Close()).To(Succeed())
+		Eventually(result, returnBudget).Should(Receive(HaveOccurred()))
+
+		Eventually(func() int { return get(webhooks.Addr().String(), healthPath) }).
+			ShouldNot(Equal(http.StatusOK))
 	})
 })

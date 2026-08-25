@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -287,6 +288,29 @@ func (s *server) handler() http.Handler {
 
 // Run serves until ctx is cancelled, then drains what is already in flight.
 func (s *server) Run(ctx context.Context) error {
+	webhookListener, err := net.Listen("tcp", s.cfg.listenAddress)
+	if err != nil {
+		return fmt.Errorf("listen for webhooks: %w", err)
+	}
+
+	adminListener, err := net.Listen("tcp", s.cfg.adminAddress)
+	if err != nil {
+		listenErr := fmt.Errorf("listen for admin: %w", err)
+		if closeErr := webhookListener.Close(); closeErr != nil {
+			return errors.Join(listenErr, fmt.Errorf("close webhook listener: %w", closeErr))
+		}
+
+		return listenErr
+	}
+
+	return s.runWithListeners(ctx, webhookListener, adminListener)
+}
+
+func (s *server) runWithListeners(
+	ctx context.Context,
+	webhookListener net.Listener,
+	adminListener net.Listener,
+) error {
 	// A listener that dies must stop the sweep and the probe too, not leave
 	// them running on behalf of a service that is no longer serving
 	runCtx, stopBackground := context.WithCancel(ctx)
@@ -295,15 +319,18 @@ func (s *server) Run(ctx context.Context) error {
 	s.deliveries.Start(runCtx)
 	background := s.startBackground(runCtx)
 
-	webhooks := s.newHTTPServer(s.cfg.listenAddress, s.handler())
-	admin := s.newHTTPServer(s.cfg.adminAddress, s.adminHandler())
+	webhooks := s.newHTTPServer(webhookListener.Addr().String(), s.handler())
+	admin := s.newHTTPServer(adminListener.Addr().String(), s.adminHandler())
 
 	s.logger.Info("listening",
-		"address", s.cfg.listenAddress,
+		"address", webhooks.Addr,
 		"webhook_path", s.cfg.webhookPath,
-		"admin_address", s.cfg.adminAddress)
+		"admin_address", admin.Addr)
 
-	shutdownErr := s.serveUntilDone(ctx, webhooks, admin)
+	shutdownErr := s.serveUntilDone(ctx,
+		httpEndpoint{server: webhooks, listener: webhookListener},
+		httpEndpoint{server: admin, listener: adminListener},
+	)
 
 	stopBackground()
 	if err := s.deliveries.Shutdown(context.Background()); err != nil {
@@ -312,6 +339,11 @@ func (s *server) Run(ctx context.Context) error {
 	<-background
 
 	return shutdownErr
+}
+
+type httpEndpoint struct {
+	server   *http.Server
+	listener net.Listener
 }
 
 // newHTTPServer builds one listener with the timeouts every listener needs.
@@ -330,12 +362,12 @@ func (s *server) newHTTPServer(address string, handler http.Handler) *http.Serve
 //
 // Both, whichever way it got here: an admin listener that died would otherwise
 // leave the service serving webhooks with no way to say how it is doing.
-func (s *server) serveUntilDone(ctx context.Context, listeners ...*http.Server) error {
-	stopped := make(chan error, len(listeners))
+func (s *server) serveUntilDone(ctx context.Context, endpoints ...httpEndpoint) error {
+	stopped := make(chan error, len(endpoints))
 
-	for _, srv := range listeners {
+	for _, endpoint := range endpoints {
 		go func() {
-			err := srv.ListenAndServe()
+			err := endpoint.server.Serve(endpoint.listener)
 			if errors.Is(err, http.ErrServerClosed) {
 				err = nil
 			}
@@ -359,8 +391,8 @@ func (s *server) serveUntilDone(ctx context.Context, listeners ...*http.Server) 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 
-	for _, srv := range listeners {
-		shutdownErr = errors.Join(shutdownErr, srv.Shutdown(shutdownCtx))
+	for _, endpoint := range endpoints {
+		shutdownErr = errors.Join(shutdownErr, endpoint.server.Shutdown(shutdownCtx))
 	}
 
 	return shutdownErr
