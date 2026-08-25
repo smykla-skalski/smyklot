@@ -60,6 +60,7 @@ export function createPanelQueryClient(stream: StreamLiveness = { live: false })
          * up on its own again without anything having to be re-created.
          */
         staleTime: () => (stream.live ? Number.POSITIVE_INFINITY : STALE_WITHOUT_STREAM),
+        refetchInterval: () => (stream.live ? false : STALE_WITHOUT_STREAM),
         gcTime: GC_TIME,
         /* Coming back to the tab is a moment when data MIGHT have changed, and
            the stream says when it did - including everything missed while the

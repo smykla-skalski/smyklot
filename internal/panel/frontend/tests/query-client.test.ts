@@ -31,13 +31,23 @@ function decide(client: QueryClient): unknown {
   return staleTime({} as never);
 }
 
+/** The polling interval the client would use now, from the same liveness box. */
+function polling(client: QueryClient): unknown {
+  const interval = client.getDefaultOptions().queries?.refetchInterval;
+  if (typeof interval !== 'function') throw new Error('refetchInterval is not a function');
+
+  return interval({} as never);
+}
+
 describe('how long the panel trusts an answer [Unit]', () => {
   it('trusts it until the stream says otherwise', () => {
     expect(staleness(true)).toBe(Number.POSITIVE_INFINITY);
+    expect(polling(createPanelQueryClient({ live: true }))).toBe(false);
   });
 
   it('falls back to the clock when there is no stream', () => {
     expect(staleness(false)).toBe(STALE_WITHOUT_STREAM);
+    expect(polling(createPanelQueryClient({ live: false }))).toBe(STALE_WITHOUT_STREAM);
     expect(STALE_WITHOUT_STREAM).toBeLessThan(Number.POSITIVE_INFINITY);
   });
 
@@ -49,8 +59,10 @@ describe('how long the panel trusts an answer [Unit]', () => {
     const client = createPanelQueryClient(stream);
 
     expect(decide(client)).toBe(Number.POSITIVE_INFINITY);
+    expect(polling(client)).toBe(false);
     stream.live = false;
     expect(decide(client)).toBe(STALE_WITHOUT_STREAM);
+    expect(polling(client)).toBe(STALE_WITHOUT_STREAM);
   });
 });
 

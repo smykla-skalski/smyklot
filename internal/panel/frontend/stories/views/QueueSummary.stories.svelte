@@ -9,6 +9,7 @@
     ['scheduled', 'blocked', 'ready', 'running', 'retrying'].includes(item.state),
   );
   const approvals = GENERAL_QUEUE.filter((item) => item.state === 'awaiting_approval').length;
+  const review = active.filter((item) => ['blocked', 'retrying'].includes(item.state)).length;
 
   const { Story } = defineMeta({
     title: 'Views/QueueSummary',
@@ -17,6 +18,7 @@
       items: active,
       total: active.length,
       approvals,
+      review,
       now: NOW,
       queueHref: '#/root/queue',
       onOpenQueue: fn(),
@@ -32,6 +34,6 @@
 <Story name="Waiting and recent" />
 
 <!-- Nothing armed: the summary has to say so rather than draw an empty table. -->
-<Story name="Empty" args={{ items: [], total: 0, approvals: 0 }} />
+<Story name="Empty" args={{ items: [], total: 0, approvals: 0, review: 0 }} />
 
-<Story name="Only approvals" args={{ items: [], total: 0, approvals: 2 }} />
+<Story name="Only approvals" args={{ items: [], total: 0, approvals: 2, review: 0 }} />

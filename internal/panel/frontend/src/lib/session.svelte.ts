@@ -791,7 +791,13 @@ export class PanelSession {
    * it was down stays missed.
    */
   setStreamLive(live: boolean): void {
+    if (this.stream.live === live) return;
     this.stream.live = live;
+    /* A refetch updates every active observer, which makes TanStack evaluate
+       its dynamic interval again. Without this nudge a query whose interval
+       was disabled while the socket was live would never learn that the
+       fallback clock should start. */
+    if (!live) void this.queryClient.invalidateQueries({ type: 'active' });
   }
 
   refreshAccessFromStream(): void {

@@ -1,6 +1,8 @@
 /** Queue list queries shared by the full Queue and its Root Overview summary. */
-export const ROOT_OVERVIEW_ACTIVE_QUEUE = '?limit=3&state=scheduled,blocked,ready,running,retrying';
+export const ROOT_OVERVIEW_ACTIVE_QUEUE =
+  '?limit=3&order=dispatch&state=scheduled,blocked,ready,running,retrying';
 export const ROOT_OVERVIEW_APPROVAL_QUEUE = '?limit=1&state=awaiting_approval';
+export const ROOT_OVERVIEW_REVIEW_QUEUE = '?limit=1&state=blocked,retrying';
 
 export function queueListScopeKey(targetId?: string): readonly string[] {
   return targetId === undefined ? ['queue', 'root'] : ['queue', 'target', targetId];

@@ -12,6 +12,7 @@
     items,
     total,
     approvals,
+    review,
     loading = false,
     error = '',
     now,
@@ -21,6 +22,7 @@
     items: readonly QueueItem[];
     total: number;
     approvals: number;
+    review: number;
     loading?: boolean;
     error?: string;
     now: number;
@@ -30,9 +32,7 @@
 
   const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce');
   const visible = $derived(items.slice(0, 3));
-  const needsReview = $derived(
-    approvals > 0 || items.some((item) => item.state === 'blocked' || item.state === 'retrying'),
-  );
+  const needsReview = $derived(approvals > 0 || review > 0);
   const summary = $derived.by(() => {
     if (loading && items.length === 0) return 'Reading the durable queue';
     if (error !== '' && items.length === 0) return 'Queue status unavailable';

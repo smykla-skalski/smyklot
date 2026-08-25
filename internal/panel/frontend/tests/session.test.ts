@@ -375,6 +375,21 @@ describe('PanelSession [Unit]', () => {
       ]),
     );
   });
+
+  it('starts the active-query fallback when the live stream drops', () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    const stream = { live: false };
+    const session = new PanelSession({} as PanelApi, {} as PanelBuild, queryClient, stream);
+
+    session.setStreamLive(true);
+    session.setStreamLive(false);
+    session.setStreamLive(false);
+
+    expect(stream.live).toBe(false);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(invalidate).toHaveBeenCalledWith({ type: 'active' });
+  });
 });
 
 /** Puts a session on one repository's Commands pane, which is the page Return has to name. */

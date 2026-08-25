@@ -6,6 +6,7 @@
     queueListKey,
     ROOT_OVERVIEW_ACTIVE_QUEUE,
     ROOT_OVERVIEW_APPROVAL_QUEUE,
+    ROOT_OVERVIEW_REVIEW_QUEUE,
   } from '#lib/queue-cache.js';
   import type { PanelApi } from '../api';
   import {
@@ -91,13 +92,22 @@
     queryKey: queueListKey(undefined, ROOT_OVERVIEW_APPROVAL_QUEUE),
     queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_APPROVAL_QUEUE),
   }));
+  const reviewQueueQuery = createQuery(() => ({
+    queryKey: queueListKey(undefined, ROOT_OVERVIEW_REVIEW_QUEUE),
+    queryFn: () => api.fetchRootQueue(ROOT_OVERVIEW_REVIEW_QUEUE),
+  }));
   const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
   const queueItems = $derived<QueueItem[]>(activeQueueQuery.data?.items ?? []);
   const queueTotal = $derived(activeQueueQuery.data?.total ?? 0);
   const queueApprovals = $derived(approvalQueueQuery.data?.total ?? 0);
-  const queueLoading = $derived(activeQueueQuery.isFetching || approvalQueueQuery.isFetching);
+  const queueReview = $derived(reviewQueueQuery.data?.total ?? 0);
+  const queueLoading = $derived(
+    activeQueueQuery.isFetching || approvalQueueQuery.isFetching || reviewQueueQuery.isFetching,
+  );
   const queueFailure = $derived(
-    errorMessage(activeQueueQuery.error) || errorMessage(approvalQueueQuery.error),
+    errorMessage(activeQueueQuery.error) ||
+      errorMessage(approvalQueueQuery.error) ||
+      errorMessage(reviewQueueQuery.error),
   );
   const loading = $derived(overviewQuery.isFetching);
   const failure = $derived(
@@ -129,6 +139,7 @@
       overviewQuery.refetch(),
       activeQueueQuery.refetch(),
       approvalQueueQuery.refetch(),
+      reviewQueueQuery.refetch(),
     ]);
   }
 
@@ -359,6 +370,7 @@
       items={queueItems}
       total={queueTotal}
       approvals={queueApprovals}
+      review={queueReview}
       loading={queueLoading}
       error={queueFailure}
       {now}
