@@ -137,7 +137,8 @@ func TestPendingCIActivationCleansAmbiguousMethodPublishFailure(t *testing.T) {
 	command := &PendingCICommand{
 		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
-		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+		SourceRevision: "2026-08-25T08:02:00Z",
+		Now:            func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 
 	failures, err := activatePendingCI(
@@ -326,7 +327,8 @@ func TestPendingCIActivationPreparesDraftAfterAcceptance(t *testing.T) {
 	command := &PendingCICommand{
 		Store:       pendingCICommandStoreStub{getErr: storage.ErrNotFound},
 		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
-		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+		SourceRevision: "2026-08-25T08:02:00Z",
+		Now:            func() time.Time { return time.Now().UTC() }, Wake: func() {},
 	}
 	failures, err := activatePendingCI(
 		t.Context(), artifacts, command, allowPendingCIActivation,
@@ -441,6 +443,36 @@ func TestPendingCIActivationCancelsAmbiguousCommands(t *testing.T) {
 	}
 	if !equalStrings(artifacts.removedLabels, []string{LabelPendingCISquash}) {
 		t.Fatalf("removed labels = %v", artifacts.removedLabels)
+	}
+}
+
+func TestPendingCIActivationReportsAmbiguousDraftBoundary(t *testing.T) {
+	t.Parallel()
+	artifacts := &pendingCIArtifactsStub{}
+	command := &PendingCICommand{
+		Store: pendingCICommandStoreStub{
+			getErr:      storage.ErrNotFound,
+			checkArmErr: pendingci.ErrAmbiguousSourceRevision,
+			finishErr:   pendingci.ErrAmbiguousSourceRevision,
+		},
+		Coordinator: NewCoordinator(), RepositoryID: "repository:7",
+		Now: func() time.Time { return time.Now().UTC() }, Wake: func() {},
+	}
+
+	failures, err := activatePendingCI(
+		t.Context(), artifacts, command, allowPendingCIActivation,
+		PendingCIActivationRequest{
+			Runtime: &RuntimeConfig{CommentAuthor: "operator"},
+			Owner:   "owner", Repository: "repository", PullRequest: 198,
+			CommentID: 101, HeadSHA: "head", BaseBranch: "main",
+			Method: github.MergeMethodSquash, Label: LabelPendingCISquash,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !failures.Ambiguous || failures.Command != nil {
+		t.Fatalf("activation failures = %+v", failures)
 	}
 }
 
@@ -670,6 +702,15 @@ func (stub *pendingCIArtifactsStub) MarkPullRequestReadyForReview(
 	}
 
 	return stub.readyErr
+}
+
+func (stub *pendingCIArtifactsStub) LatestPullRequestDraftTransition(
+	context.Context,
+	string,
+	string,
+	int,
+) (time.Time, bool, error) {
+	return time.Time{}, false, nil
 }
 
 func (stub *pendingCIArtifactsStub) GetLabels(

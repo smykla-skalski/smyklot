@@ -13,6 +13,7 @@ import (
 type pendingCIArtifacts interface {
 	pendingCIApprover
 	draftMergeClient
+	draftMergeHistoryClient
 	GetLabels(context.Context, string, string, int) ([]string, error)
 	AddLabel(context.Context, string, string, int, string) error
 	RemoveLabel(context.Context, string, string, int, string) error
@@ -88,7 +89,7 @@ func activatePendingCIExclusive(
 	if stopped {
 		return err
 	}
-	info, failed := preparePendingCIDraft(ctx, artifacts, request, failures)
+	info, failed := preparePendingCIDraft(ctx, artifacts, command, request, failures)
 	if failed || pendingCIApprovalFailed(ctx, artifacts, request, info, failures) {
 		return nil
 	}
@@ -107,12 +108,19 @@ func activatePendingCIExclusive(
 func preparePendingCIDraft(
 	ctx context.Context,
 	artifacts pendingCIArtifacts,
+	command *PendingCICommand,
 	request PendingCIActivationRequest,
 	failures *pendingCIActivationErrors,
 ) (*github.PRInfo, bool) {
 	info, err := artifacts.GetPRInfo(
 		ctx, request.Owner, request.Repository, request.PullRequest,
 	)
+	if err == nil && request.AllowDraftMerges {
+		err = ValidateDraftMergeAuthorization(
+			ctx, artifacts, request.Owner, request.Repository,
+			request.PullRequest, command.SourceRevision,
+		)
+	}
 	if err == nil {
 		info, err = prepareDraftMerge(
 			ctx, artifacts, request.Owner, request.Repository, request.PullRequest,
@@ -414,6 +422,12 @@ func resolveAmbiguousPendingCI(
 		"commands from different comments have an ambiguous source order",
 	)
 	if err != nil {
+		if errors.Is(err, pendingci.ErrAmbiguousSourceRevision) {
+			failures.Command = nil
+			failures.Ambiguous = true
+
+			return
+		}
 		failures.Command = errors.Join(failures.Command, err)
 
 		return

@@ -21,6 +21,41 @@ type pullRequestIssueEvent struct {
 	} `json:"label"`
 }
 
+// LatestPullRequestDraftTransition returns the newest durable transition that
+// converted the pull request to draft. Callers compare this GitHub timestamp
+// with the authorization event that may publish or merge the pull request.
+func (c *Client) LatestPullRequestDraftTransition(
+	ctx context.Context,
+	owner, repository string,
+	pullRequest int,
+) (time.Time, bool, error) {
+	events, path, err := c.pullRequestIssueEvents(ctx, owner, repository, pullRequest)
+	if err != nil {
+		return time.Time{}, false, err
+	}
+
+	var latest pullRequestIssueEvent
+	for _, event := range events {
+		if event.Event != issueEventConvertToDraft {
+			continue
+		}
+		if event.ID <= 0 || event.CreatedAt.IsZero() {
+			return time.Time{}, false, NewAPIError(
+				ErrResponseParse, 0, http.MethodGet, path,
+				fmt.Errorf("incomplete %q issue event", event.Event),
+			)
+		}
+		if issueEventAfter(event, latest) {
+			latest = event
+		}
+	}
+	if latest.ID == 0 {
+		return time.Time{}, false, nil
+	}
+
+	return latest.CreatedAt.UTC(), true, nil
+}
+
 // PullRequestDraftedAfterLabel reports whether a draft transition happened
 // after the current occurrence of a pending-CI label was added. The label
 // event is the durable authorization boundary for the legacy Action runner.

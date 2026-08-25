@@ -283,6 +283,13 @@ WHERE repository_id = ? AND pull_request = ? AND source_comment_id > 0`,
 	if err != nil || intent == nil {
 		return false, false, err
 	}
+	if intent.kind == pendingCIIntentDraft {
+		comparison, compareErr := comparePendingCIDraftBoundary(
+			change.SourceRevision, intent.revision,
+		)
+
+		return comparison < 0, false, compareErr
+	}
 	comparison, err := pendingci.CompareSourceIntent(
 		change.SourceRevision, change.CommentID, change.SourceOrder,
 		intent.revision, intent.commentID, intent.order,
@@ -334,16 +341,11 @@ func comparePendingCIArmIntent(
 		return false, false, err
 	}
 	if intent.kind == pendingCIIntentDraft {
-		authorizedAt, parseErr := pendingci.ParseSourceRevision(arm.SourceRevision)
-		if parseErr != nil {
-			return false, false, parseErr
-		}
-		draftedAt, parseErr := pendingci.ParseSourceRevision(intent.revision)
-		if parseErr != nil {
-			return false, false, parseErr
-		}
+		comparison, compareErr := comparePendingCIDraftBoundary(
+			arm.SourceRevision, intent.revision,
+		)
 
-		return !authorizedAt.After(draftedAt), false, nil
+		return comparison < 0, false, compareErr
 	}
 	comparison, err := pendingci.CompareSourceIntent(
 		arm.SourceRevision, arm.SourceCommentID, arm.SourceOrder,
@@ -354,6 +356,25 @@ func comparePendingCIArmIntent(
 	}
 
 	return comparison < 0, comparison == 0, nil
+}
+
+func comparePendingCIDraftBoundary(sourceRevision, draftRevision string) (int, error) {
+	sourceAt, err := pendingci.ParseSourceRevision(sourceRevision)
+	if err != nil {
+		return 0, err
+	}
+	draftedAt, err := pendingci.ParseSourceRevision(draftRevision)
+	if err != nil {
+		return 0, err
+	}
+	if sourceAt.Before(draftedAt) {
+		return -1, nil
+	}
+	if sourceAt.After(draftedAt) {
+		return 1, nil
+	}
+
+	return 0, pendingci.ErrAmbiguousSourceRevision
 }
 
 func recordPendingCIIntent(ctx context.Context, tx *transaction, intent pendingCIIntent) error {

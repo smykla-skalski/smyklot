@@ -354,6 +354,11 @@ func (backend *Backend) MergeAtHead(
 	if err != nil {
 		return err
 	}
+	if err := validatePendingCIDraftAuthorization(
+		ctx, client, owner, repository, request,
+	); err != nil {
+		return err
+	}
 
 	method := github.MergeMethod(request.MergeMethod)
 	if request.ArtifactKind == pendingci.ArtifactCheck {
@@ -412,6 +417,11 @@ func (backend *Backend) SatisfyCheck(
 	if err != nil {
 		return err
 	}
+	if err := validatePendingCIDraftAuthorization(
+		ctx, client, owner, repository, request,
+	); err != nil {
+		return err
+	}
 	if err := preflightPendingCICheckMerge(
 		ctx, client, owner, repository, request,
 	); err != nil {
@@ -427,6 +437,21 @@ func (backend *Backend) SatisfyCheck(
 	_, err = backend.checkRuns.EnsureMergeReady(ctx, slot)
 
 	return err
+}
+
+func validatePendingCIDraftAuthorization(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	request pendingci.Request,
+) error {
+	if err := bot.ValidateDraftMergeAuthorization(
+		ctx, client, owner, repository, request.PullRequest, request.SourceRevision,
+	); err != nil {
+		return fmt.Errorf("verify pending CI draft history: %w", err)
+	}
+
+	return nil
 }
 
 func preflightPendingCICheckMerge(

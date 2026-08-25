@@ -5,9 +5,49 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
+
+func TestLatestPullRequestDraftTransitionUsesDurableEventOrder(t *testing.T) {
+	t.Parallel()
+	client, closeServer := issueEventClient(t, []map[string]any{
+		issueEvent(10, "convert_to_draft", "2026-08-25T08:01:00Z", ""),
+		issueEvent(12, "convert_to_draft", "2026-08-25T08:01:00Z", ""),
+		issueEvent(11, "ready_for_review", "2026-08-25T08:02:00Z", ""),
+	})
+	defer closeServer()
+
+	draftedAt, found, err := client.LatestPullRequestDraftTransition(
+		t.Context(), "acme", "web", 7,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, 8, 25, 8, 1, 0, 0, time.UTC)
+	if !found || !draftedAt.Equal(want) {
+		t.Fatalf("latest draft = %s, %t; want %s, true", draftedAt, found, want)
+	}
+}
+
+func TestLatestPullRequestDraftTransitionReportsNoHistory(t *testing.T) {
+	t.Parallel()
+	client, closeServer := issueEventClient(t, []map[string]any{
+		issueEvent(10, "ready_for_review", "2026-08-25T08:02:00Z", ""),
+	})
+	defer closeServer()
+
+	draftedAt, found, err := client.LatestPullRequestDraftTransition(
+		t.Context(), "acme", "web", 7,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if found || !draftedAt.IsZero() {
+		t.Fatalf("latest draft = %s, %t; want zero, false", draftedAt, found)
+	}
+}
 
 func TestPullRequestDraftedAfterLabelFindsLaterDraftTransition(t *testing.T) {
 	t.Parallel()

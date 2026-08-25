@@ -11,6 +11,7 @@ package bot
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"regexp"
 	"slices"
@@ -430,6 +431,20 @@ func executeMerge(
 	if err != nil {
 		return feedback.NewMergeFailed(err.Error()), nil
 	}
+	if bc.AllowDraftMerges {
+		revision, revisionErr := draftMergeCommandRevision(
+			ctx, client, rc, commentID, environment,
+		)
+		if revisionErr != nil {
+			return feedback.NewMergeFailed(revisionErr.Error()), nil
+		}
+		if revisionErr = ValidateDraftMergeAuthorization(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, revision,
+		); revisionErr != nil {
+			return feedback.NewMergeFailed(revisionErr.Error()), nil
+		}
+		environment.DraftMergeRevision = revision
+	}
 
 	// Handle "after CI" modifier - defer merge until CI passes
 	if waitForCI {
@@ -445,7 +460,9 @@ func executeMerge(
 		)
 	}
 
-	return executeImmediateCommandMerge(ctx, client, rc, bc, prNum, method, info)
+	return executeImmediateCommandMerge(
+		ctx, client, rc, bc, prNum, method, info, environment.DraftMergeRevision,
+	)
 }
 
 func executeCoordinatedMerge(
@@ -474,10 +491,16 @@ func executeCoordinatedMerge(
 		},
 	)
 	if err != nil {
+		if errors.Is(err, pendingci.ErrAmbiguousSourceRevision) {
+			return feedback.NewMergeFailed(err.Error()), nil
+		}
+
 		return nil, err
 	}
 	if !accepted {
-		return nil, nil
+		return feedback.NewMergeFailed(
+			"a newer merge command or draft transition superseded this command; reissue the command to confirm the merge",
+		), nil
 	}
 
 	return result, nil
@@ -491,6 +514,7 @@ func executeImmediateCommandMerge(
 	prNum int,
 	method github.MergeMethod,
 	info *github.PRInfo,
+	sourceRevision string,
 ) (*feedback.Feedback, error) {
 	if failure := PendingCIApprovalAllowed(rc, bc, info); failure != nil {
 		return failure, nil
@@ -504,6 +528,13 @@ func executeImmediateCommandMerge(
 	}
 	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
 		return failure, nil
+	}
+	if sourceRevision != "" {
+		if err := ValidateDraftMergeAuthorization(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum, sourceRevision,
+		); err != nil {
+			return feedback.NewMergeFailed(err.Error()), nil
+		}
 	}
 
 	// Check if PR is mergeable
@@ -689,6 +720,7 @@ func executePendingCIMerge(
 	if environment.PendingCI == nil {
 		result, finished := recordActionPendingCI(
 			ctx, client, rc, prNum, commentID, info, label,
+			environment.DraftMergeRevision,
 		)
 		if finished {
 			return result, nil
@@ -768,6 +800,7 @@ func recordActionPendingCI(
 	prNum, commentID int,
 	info *github.PRInfo,
 	label string,
+	sourceRevision string,
 ) (*feedback.Feedback, bool) {
 	if failure := approvePendingCI(
 		ctx, client, rc, prNum, PendingCIApprovalRequired(rc, info),
@@ -791,8 +824,50 @@ func recordActionPendingCI(
 	); err != nil {
 		return feedback.NewMergeFailed("failed to record the pending CI request: " + err.Error()), true
 	}
+	if sourceRevision != "" {
+		if err := revalidateActionPendingCI(
+			ctx, client, rc, prNum, commentID, label, sourceRevision,
+		); err != nil {
+			return feedback.NewMergeFailed(err.Error()), true
+		}
+	}
 
 	return nil, false
+}
+
+func revalidateActionPendingCI(
+	ctx context.Context,
+	client *github.Client,
+	runtime *RuntimeConfig,
+	pullRequest, commentID int,
+	label, sourceRevision string,
+) error {
+	info, err := client.GetPRInfo(
+		ctx, runtime.RepoOwner, runtime.RepoName, pullRequest,
+	)
+	if err == nil && info.Draft {
+		err = fmt.Errorf(
+			"%w: pull request returned to draft while the merge command was being recorded; reissue the command",
+			pendingci.ErrStaleSourceRevision,
+		)
+	}
+	if err == nil {
+		err = ValidateDraftMergeAuthorization(
+			ctx, client, runtime.RepoOwner, runtime.RepoName, pullRequest, sourceRevision,
+		)
+	}
+	if err == nil {
+		return nil
+	}
+	cleanupErr := errors.Join(
+		client.RemoveLabel(ctx, runtime.RepoOwner, runtime.RepoName, pullRequest, label),
+		client.RemoveReactionByUser(
+			ctx, runtime.RepoOwner, runtime.RepoName, commentID,
+			ReactionPendingCI, runtime.BotUsername,
+		),
+	)
+
+	return fmt.Errorf("revalidate pending CI draft authorization: %w", errors.Join(err, cleanupErr))
 }
 
 type actionPendingCILabeler interface {

@@ -2,7 +2,9 @@ package bot
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/feedback"
@@ -148,7 +150,9 @@ func handleReactions(
 
 		// Handle merge reaction
 		if reaction.Type == ReactionMerge {
-			if err := handleReactionMerge(ctx, client, rc, bc, prNum, commentID, reaction.User); err != nil {
+			if err := handleReactionMerge(
+				ctx, client, rc, bc, prNum, commentID, reaction.User, reaction.CreatedAt,
+			); err != nil {
 				return err
 			}
 		}
@@ -339,6 +343,7 @@ func handleReactionMerge(
 	bc *config.Config,
 	prNum, commentID int,
 	author string,
+	createdAt time.Time,
 ) error {
 	// Get PR info to check if it's mergeable and prevent self-approval
 	info, err := client.GetPRInfo(ctx, rc.RepoOwner, rc.RepoName, prNum)
@@ -359,6 +364,23 @@ func handleReactionMerge(
 	if !bc.AllowSelfApproval && info.Author == author {
 		fb := feedback.NewUnauthorized(author, []string{selfApprovalNotAllowed})
 		return PostFeedback(ctx, client, rc, prNum, commentID, fb.Message, ReactionError)
+	}
+	if bc.AllowDraftMerges {
+		if createdAt.IsZero() {
+			return postOperationFailure(
+				ctx, client, rc, prNum, commentID,
+				errors.New("merge reaction is missing its GitHub creation time; remove and add the reaction again"),
+				feedback.NewMergeFailed, errMergePR,
+			)
+		}
+		if err := ValidateDraftMergeAuthorization(
+			ctx, client, rc.RepoOwner, rc.RepoName, prNum,
+			createdAt.UTC().Format(time.RFC3339Nano),
+		); err != nil {
+			return postOperationFailure(
+				ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
+			)
+		}
 	}
 	info, err = prepareDraftMerge(
 		ctx, client, rc.RepoOwner, rc.RepoName, prNum, bc.AllowDraftMerges, info,

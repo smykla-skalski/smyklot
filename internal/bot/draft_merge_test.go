@@ -3,14 +3,42 @@ package bot
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
+
+func TestDraftMergeAuthorizationOrdersAgainstGitHubDraftHistory(t *testing.T) {
+	t.Parallel()
+	draftedAt := time.Date(2026, 8, 25, 8, 1, 0, 0, time.UTC)
+	for _, test := range []struct {
+		name     string
+		revision string
+		wantErr  error
+	}{
+		{name: "older command", revision: "2026-08-25T08:00:59Z", wantErr: pendingci.ErrStaleSourceRevision},
+		{name: "same second", revision: "2026-08-25T08:01:00Z", wantErr: pendingci.ErrAmbiguousSourceRevision},
+		{name: "fresh command", revision: "2026-08-25T08:01:01Z"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateDraftMergeAuthorization(
+				t.Context(), draftHistoryStub{draftedAt: draftedAt, found: true},
+				"acme", "web", 7, test.revision,
+			)
+			if !errors.Is(err, test.wantErr) || test.wantErr == nil && err != nil {
+				t.Fatalf("error = %v, want %v", err, test.wantErr)
+			}
+		})
+	}
+}
 
 func TestDraftMergePreparesEveryTextMergeMethod(t *testing.T) {
 	for _, method := range []github.MergeMethod{
@@ -40,10 +68,13 @@ func TestDraftMergePreparesEveryTextMergeMethod(t *testing.T) {
 			assertRequestOrder(t, *requests, []string{
 				"GET /repos/acme/web/pulls/7",
 				"GET /repos/acme/web/pulls/7/reviews",
+				"GET /repos/acme/web/issues/comments/99",
+				"GET /repos/acme/web/issues/7/events",
 				"GET /repos/acme/web/pulls/7",
 				"POST /graphql",
 				"GET /repos/acme/web/pulls/7",
 				"GET /repos/acme/web/pulls/7/reviews",
+				"GET /repos/acme/web/issues/7/events",
 				"PUT /repos/acme/web/pulls/7/merge",
 			})
 		})
@@ -85,12 +116,14 @@ func TestReactionMergePreparesDraftBeforeMerging(t *testing.T) {
 	botConfig.AllowDraftMerges = true
 	if err := handleReactionMerge(
 		t.Context(), client, draftRuntime(), botConfig, 7, 99, "operator",
+		time.Date(2026, 8, 25, 8, 2, 0, 0, time.UTC),
 	); err != nil {
 		t.Fatal(err)
 	}
-	assertRequestOrder(t, (*requests)[:7], []string{
+	assertRequestOrder(t, (*requests)[:8], []string{
 		"GET /repos/acme/web/pulls/7",
 		"GET /repos/acme/web/pulls/7/reviews",
+		"GET /repos/acme/web/issues/7/events",
 		"GET /repos/acme/web/pulls/7",
 		"POST /graphql",
 		"GET /repos/acme/web/pulls/7",
@@ -160,6 +193,7 @@ func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
 	botConfig.AllowDraftMerges = true
 	if err := handleReactionMerge(
 		t.Context(), client, draftRuntime(), botConfig, 7, 99, "operator",
+		time.Date(2026, 8, 25, 8, 2, 0, 0, time.UTC),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +228,51 @@ func TestActionPendingCICommandAddsMissingAuthorizationLabel(t *testing.T) {
 	}
 }
 
+func TestActionPendingCIRevalidationRollsBackWhenPullRequestReturnsToDraft(t *testing.T) {
+	t.Parallel()
+	requests := make([]string, 0, 5)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		requests = append(requests, request.Method+" "+request.URL.Path)
+		switch {
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "state": "open", "draft": true,
+			})
+		case request.Method == http.MethodGet && request.URL.Path == "/repos/acme/web/pulls/7/reviews":
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/7/labels/smyklot:pending:ci:merge":
+			w.WriteHeader(http.StatusNoContent)
+		case request.Method == http.MethodGet &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions":
+			_ = json.NewEncoder(w).Encode([]map[string]any{{
+				"id": 41, "content": "eyes", "user": map[string]any{"login": "smyklot[bot]"},
+			}})
+		case request.Method == http.MethodDelete &&
+			request.URL.Path == "/repos/acme/web/issues/comments/99/reactions/41":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, request)
+		}
+	}))
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = revalidateActionPendingCI(
+		t.Context(), client, draftRuntime(), 7, 99,
+		LabelPendingCIMerge, "2026-08-25T08:00:00Z",
+	)
+	if !errors.Is(err, pendingci.ErrStaleSourceRevision) {
+		t.Fatalf("error = %v, want stale source", err)
+	}
+	if !slices.Contains(requests, "DELETE /repos/acme/web/issues/comments/99/reactions/41") {
+		t.Fatalf("pending reaction was not rolled back: %v", requests)
+	}
+}
+
 type actionPendingCILabelStub struct {
 	calls     []string
 	removeErr error
@@ -213,6 +292,21 @@ func (stub *actionPendingCILabelStub) RemoveLabel(
 	stub.calls = append(stub.calls, "remove")
 
 	return stub.removeErr
+}
+
+type draftHistoryStub struct {
+	draftedAt time.Time
+	found     bool
+	err       error
+}
+
+func (stub draftHistoryStub) LatestPullRequestDraftTransition(
+	context.Context,
+	string,
+	string,
+	int,
+) (time.Time, bool, error) {
+	return stub.draftedAt, stub.found, stub.err
 }
 
 type draftMergeStub struct {
@@ -285,6 +379,14 @@ func draftMergeServer(
 				t.Errorf("merge method = %v, want %s", body["merge_method"], expectedMethod)
 			}
 			_ = json.NewEncoder(w).Encode(map[string]any{"merged": true})
+		case request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge", "updated_at": "2026-08-25T08:02:00Z",
+			})
+		case request.URL.Path == "/repos/acme/web/issues/7/events":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 1, "event": "convert_to_draft", "created_at": "2026-08-25T08:00:00Z"},
+			})
 		case request.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(map[string]any{"id": 1})
@@ -332,6 +434,14 @@ func draftBlockedServer(t *testing.T) (*httptest.Server, *[]string) {
 			request.Method == http.MethodPost:
 			w.WriteHeader(http.StatusCreated)
 			_, _ = w.Write([]byte(`{"id":1}`))
+		case request.URL.Path == "/repos/acme/web/issues/comments/99":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": 99, "body": "/merge", "updated_at": "2026-08-25T08:02:00Z",
+			})
+		case request.URL.Path == "/repos/acme/web/issues/7/events":
+			_ = json.NewEncoder(w).Encode([]map[string]any{
+				{"id": 1, "event": "convert_to_draft", "created_at": "2026-08-25T08:00:00Z"},
+			})
 		case request.URL.Path == "/repos/acme/web/issues/comments/99/reactions" &&
 			request.Method == http.MethodGet:
 			_, _ = w.Write([]byte(`[]`))

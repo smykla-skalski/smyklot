@@ -123,8 +123,9 @@ func convertReactions(raw []*gogithub.Reaction) []Reaction {
 
 	for _, item := range raw {
 		reactions = append(reactions, Reaction{
-			Type: ReactionType(item.GetContent()),
-			User: item.GetUser().GetLogin(),
+			Type:      ReactionType(item.GetContent()),
+			User:      item.GetUser().GetLogin(),
+			CreatedAt: item.GetCreatedAt().Time,
 		})
 	}
 

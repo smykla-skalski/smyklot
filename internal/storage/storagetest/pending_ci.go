@@ -631,6 +631,18 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		_, err = store.Arm(ctx, delayed)
 		Expect(errors.Is(err, pendingci.ErrStaleSourceRevision)).To(BeTrue())
 
+		ambiguous := pendingCIArm(now.Add(2*time.Hour), 199, 103, "ambiguous-head")
+		ambiguous.SourceRevision = draftedAt.Format(time.RFC3339Nano)
+		_, err = store.Arm(ctx, ambiguous)
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
+		_, err = store.CancelByIntent(ctx, pendingci.CancelIntentRequest{
+			RepositoryID: ambiguous.RepositoryID, PullRequest: ambiguous.PullRequest,
+			CommentID: ambiguous.SourceCommentID, SourceRevision: ambiguous.SourceRevision,
+			SourceSequence: ambiguous.SourceSequence, SourceOrder: ambiguous.SourceOrder,
+			Reason: "same-second immediate merge", CancelledAt: now.Add(2 * time.Hour),
+		})
+		Expect(errors.Is(err, pendingci.ErrAmbiguousSourceRevision)).To(BeTrue())
+
 		fresh := pendingCIArm(now.Add(2*time.Hour), 199, 104, "fresh-head")
 		fresh.SourceRevision = draftedAt.Add(time.Second).Format(time.RFC3339Nano)
 		armed, err := store.Arm(ctx, fresh)

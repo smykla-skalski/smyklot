@@ -351,6 +351,13 @@ func (reconciler *Reconciler) mergeExclusive(
 			return errors.New("pending CI check merge effects are unavailable")
 		}
 		if err := checkEffects.SatisfyCheck(ctx, claimed); err != nil {
+			if pendingCIDraftAuthorizationInvalid(err) {
+				return reconciler.finish(
+					ctx, claimed, pendingci.LifecycleCancelled,
+					pendingci.DraftCancellationReason, observation.ObservedAt,
+				)
+			}
+
 			return fmt.Errorf("satisfy pending CI required check: %w", err)
 		}
 		phaseStore, ok := reconciler.store.(mergePhaseStore)
@@ -495,6 +502,12 @@ func (reconciler *Reconciler) merge(
 	observation pendingci.Observation,
 ) error {
 	if err := reconciler.effects.MergeAtHead(ctx, request, observation.HeadSHA); err != nil {
+		if pendingCIDraftAuthorizationInvalid(err) {
+			return reconciler.finish(
+				ctx, request, pendingci.LifecycleCancelled,
+				pendingci.DraftCancellationReason, observation.ObservedAt,
+			)
+		}
 		var restoreErr error
 		if request.ArtifactKind == pendingci.ArtifactCheck {
 			if checkEffects, ok := reconciler.effects.(checkMergeEffects); ok {
@@ -520,4 +533,9 @@ func (reconciler *Reconciler) merge(
 		ctx, request, pendingci.LifecycleMerged,
 		"CI passed and pull request merged", observation.ObservedAt,
 	)
+}
+
+func pendingCIDraftAuthorizationInvalid(err error) bool {
+	return errors.Is(err, pendingci.ErrStaleSourceRevision) ||
+		errors.Is(err, pendingci.ErrAmbiguousSourceRevision)
 }
