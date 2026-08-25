@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -45,6 +46,27 @@ func loopbackListener() net.Listener {
 	DeferCleanup(func() { _ = listener.Close() })
 
 	return listener
+}
+
+// useListeners lets Run own ports the spec kept bound. Returning them in call
+// order also proves Run keeps the public and admin handlers on the right ports.
+func useListeners(srv *server, listeners ...net.Listener) {
+	GinkgoHelper()
+
+	next := 0
+	srv.listen = func(ctx context.Context, _, _ string) (net.Listener, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if next >= len(listeners) {
+			return nil, fmt.Errorf("unexpected listener request %d", next+1)
+		}
+
+		listener := listeners[next]
+		next++
+
+		return listener, nil
+	}
 }
 
 var _ = Describe("Service lifecycle [Unit]", func() {
@@ -96,12 +118,13 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		ctx, cancel := context.WithCancel(GinkgoT().Context())
 		webhooks := loopbackListener()
 		admin := loopbackListener()
+		useListeners(srv, webhooks, admin)
 
 		result := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
 
-			result <- srv.runWithListeners(ctx, webhooks, admin)
+			result <- srv.Run(ctx)
 		}()
 
 		Eventually(func() int { return get(webhooks.Addr().String(), healthPath) }, 5*time.Second).
@@ -110,6 +133,30 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		cancel()
 
 		Eventually(result, returnBudget).Should(Receive(BeNil()))
+	})
+
+	It("should cancel listener setup with its context", func() {
+		ctx, cancel := context.WithCancel(GinkgoT().Context())
+		started := make(chan struct{})
+		result := make(chan error, 1)
+		srv.listen = func(ctx context.Context, _, _ string) (net.Listener, error) {
+			close(started)
+			<-ctx.Done()
+
+			return nil, ctx.Err()
+		}
+
+		go func() {
+			defer GinkgoRecover()
+
+			result <- srv.Run(ctx)
+		}()
+
+		Eventually(started).Should(BeClosed())
+		cancel()
+
+		Eventually(result, returnBudget).
+			Should(Receive(MatchError(ContainSubstring("listen for webhooks: context canceled"))))
 	})
 
 	It("should own ephemeral listeners until its context is cancelled", func() {
@@ -133,12 +180,13 @@ var _ = Describe("Service lifecycle [Unit]", func() {
 		DeferCleanup(cancel)
 		webhooks := loopbackListener()
 		admin := loopbackListener()
+		useListeners(srv, webhooks, admin)
 
 		result := make(chan error, 1)
 		go func() {
 			defer GinkgoRecover()
 
-			result <- srv.runWithListeners(ctx, webhooks, admin)
+			result <- srv.Run(ctx)
 		}()
 
 		Eventually(func() int { return get(admin.Addr().String(), livePath) }, 5*time.Second).

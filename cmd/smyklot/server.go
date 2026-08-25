@@ -101,6 +101,7 @@ type server struct {
 	tokens *githubapp.TokenStore
 	store  storage.Store
 	panel  *adminpanel.Server
+	listen func(context.Context, string, string) (net.Listener, error)
 
 	logger   *slog.Logger
 	logLevel *slog.LevelVar
@@ -188,6 +189,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 	srv := &server{
 		cfg:                      cfg,
 		tokens:                   tokens,
+		listen:                   (&net.ListenConfig{}).Listen,
 		logger:                   logging.New(out, cfg.logFormat, level, redactor),
 		logLevel:                 level,
 		redactor:                 redactor,
@@ -288,12 +290,12 @@ func (s *server) handler() http.Handler {
 
 // Run serves until ctx is cancelled, then drains what is already in flight.
 func (s *server) Run(ctx context.Context) error {
-	webhookListener, err := net.Listen("tcp", s.cfg.listenAddress)
+	webhookListener, err := s.listen(ctx, "tcp", s.cfg.listenAddress)
 	if err != nil {
 		return fmt.Errorf("listen for webhooks: %w", err)
 	}
 
-	adminListener, err := net.Listen("tcp", s.cfg.adminAddress)
+	adminListener, err := s.listen(ctx, "tcp", s.cfg.adminAddress)
 	if err != nil {
 		listenErr := fmt.Errorf("listen for admin: %w", err)
 		if closeErr := webhookListener.Close(); closeErr != nil {
