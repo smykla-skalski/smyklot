@@ -162,10 +162,11 @@ func processPendingCIPR(
 
 		return nil
 	}
-	if state.Draft {
-		return cancelDraftPendingCI(
-			ctx, client, repoOwner, repoName, prNumber, pr.Label, botUsername,
-		)
+	cancelled, err := cancelActionPendingCIDraft(
+		ctx, client, repoOwner, repoName, prNumber, pr.Label, botUsername, state.Draft,
+	)
+	if err != nil || cancelled {
+		return err
 	}
 
 	// Get required checks list if filtering by required checks only
@@ -222,6 +223,32 @@ func processPendingCIPR(
 	logging.From(ctx).Debug("CI wait remains armed", "state", checkStatus.State, "summary", checkStatus.Summary)
 
 	return nil
+}
+
+func cancelActionPendingCIDraft(
+	ctx context.Context,
+	client *github.Client,
+	owner, repository string,
+	pullRequest int,
+	label, botUsername string,
+	draft bool,
+) (bool, error) {
+	if !draft {
+		var err error
+		draft, err = client.PullRequestDraftedAfterLabel(
+			ctx, owner, repository, pullRequest, label,
+		)
+		if err != nil {
+			return false, fmt.Errorf("verify pending CI draft history: %w", err)
+		}
+	}
+	if !draft {
+		return false, nil
+	}
+
+	return true, cancelDraftPendingCI(
+		ctx, client, owner, repository, pullRequest, label, botUsername,
+	)
 }
 
 // handlePendingCIPassed handles a PR where CI has passed
@@ -319,6 +346,7 @@ func settlePendingCIReaction(
 	if err != nil {
 		return err
 	}
+	var cleanupErrors []error
 
 	// Check each comment for bot's "eyes" reaction
 	for _, comment := range comments {
@@ -327,7 +355,11 @@ func settlePendingCIReaction(
 		// Get reactions for this comment
 		reactions, err := client.GetCommentReactions(ctx, owner, repo, commentID)
 		if err != nil {
-			continue // Skip comments we can't get reactions for
+			cleanupErrors = append(
+				cleanupErrors,
+				fmt.Errorf("read pending CI reaction on comment %d: %w", commentID, err),
+			)
+			continue
 		}
 
 		// Check if bot has an "eyes" reaction on this comment
@@ -343,15 +375,26 @@ func settlePendingCIReaction(
 
 		if hasBotEyesReaction {
 			// Remove the "eyes" reaction
-			_ = client.RemoveReactionByUser(
+			if err := client.RemoveReactionByUser(
 				ctx, owner, repo, commentID, ReactionPendingCI, botUsername,
-			)
+			); err != nil {
+				cleanupErrors = append(
+					cleanupErrors,
+					fmt.Errorf("remove pending CI reaction on comment %d: %w", commentID, err),
+				)
+				continue
+			}
 
-			_ = client.AddReaction(ctx, owner, repo, commentID, result)
+			if err := client.AddReaction(ctx, owner, repo, commentID, result); err != nil {
+				cleanupErrors = append(
+					cleanupErrors,
+					fmt.Errorf("record pending CI result on comment %d: %w", commentID, err),
+				)
+			}
 		}
 	}
 
-	return nil
+	return errors.Join(cleanupErrors...)
 }
 
 func cancelDraftPendingCI(
@@ -361,14 +404,16 @@ func cancelDraftPendingCI(
 	pullRequest int,
 	label, botUsername string,
 ) error {
-	_ = client.RemoveLabel(ctx, owner, repository, pullRequest, label)
-	_ = settlePendingCIReaction(
+	reactionErr := settlePendingCIReaction(
 		ctx, client, owner, repository, pullRequest, botUsername, ReactionWarning,
 	)
+	labelErr := client.RemoveLabel(ctx, owner, repository, pullRequest, label)
+	if err := errors.Join(reactionErr, labelErr); err != nil {
+		return fmt.Errorf("clean up cancelled pending CI request: %w", err)
+	}
 	fb := feedback.NewPendingCICancelled(pendingci.DraftCancellationReason)
-	_ = client.PostComment(ctx, owner, repository, pullRequest, fb.Message)
 
-	return nil
+	return client.PostComment(ctx, owner, repository, pullRequest, fb.Message)
 }
 
 // postPendingCIError posts error feedback and removes a request that cannot be completed.

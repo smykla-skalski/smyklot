@@ -595,6 +595,24 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(events).To(HaveLen(2))
 		Expect(events[1].Trigger).To(Equal(pendingci.TriggerFallback))
 
+		replacementArm := pendingCIArm(now.Add(2*time.Minute), 199, 104, "replacement-head")
+		replacement, err := store.Arm(ctx, replacementArm)
+		Expect(err).NotTo(HaveOccurred())
+		staleDraft, err := store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID:         replacementArm.RepositoryID,
+			PullRequest:          replacementArm.PullRequest,
+			Lifecycle:            pendingci.LifecycleCancelled,
+			Trigger:              pendingci.TriggerWebhook,
+			Reason:               pendingci.DraftCancellationReason,
+			FinishedAt:           now.Add(3 * time.Minute),
+			AuthorizedAtOrBefore: now.Add(time.Minute),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(staleDraft).To(BeNil())
+		current, err := store.GetArmed(ctx, replacementArm.RepositoryID, replacementArm.PullRequest)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(current.ID).To(Equal(replacement.Request.ID))
+
 		webhookArm := pendingCIArm(now.Add(time.Minute), 200, 103, "webhook-head")
 		webhookRequest, err := store.Arm(ctx, webhookArm)
 		Expect(err).NotTo(HaveOccurred())

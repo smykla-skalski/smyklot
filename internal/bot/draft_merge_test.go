@@ -99,6 +99,45 @@ func TestReactionMergePreparesDraftBeforeMerging(t *testing.T) {
 	})
 }
 
+func TestDraftMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
+	server, requests := draftBlockedServer(t)
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	result, err := executeMerge(
+		t.Context(), client, draftRuntime(), botConfig, 7, 99,
+		github.MergeMethodMerge, false, false, CommandEnvironment{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result == nil {
+		t.Fatalf("auto-merge feedback = %#v", result)
+	}
+	assertApprovalBeforeAutoMerge(t, *requests)
+}
+
+func TestDraftReactionMergeApprovesBeforeBlockedAutoMerge(t *testing.T) {
+	server, requests := draftBlockedServer(t)
+	defer server.Close()
+	client, err := github.NewClient("test-token", server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	botConfig := config.Default()
+	botConfig.AllowDraftMerges = true
+	if err := handleReactionMerge(
+		t.Context(), client, draftRuntime(), botConfig, 7, 99, "operator",
+	); err != nil {
+		t.Fatal(err)
+	}
+	assertApprovalBeforeAutoMerge(t, *requests)
+}
+
 type draftMergeStub struct {
 	responses  []*github.PRInfo
 	infoCalls  int
@@ -178,6 +217,77 @@ func draftMergeServer(
 	}))
 
 	return server, &requests
+}
+
+func draftBlockedServer(t *testing.T) (*httptest.Server, *[]string) {
+	t.Helper()
+	var mu sync.Mutex
+	requests := []string{}
+	pullReads := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		mu.Lock()
+		requests = append(requests, request.Method+" "+request.URL.Path)
+		mu.Unlock()
+
+		switch {
+		case request.URL.Path == "/repos/acme/web/pulls/7" && request.Method == http.MethodGet:
+			pullReads++
+			draft := pullReads < 3
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"number": 7, "node_id": "PR_node", "state": "open", "draft": draft,
+				"mergeable": false, "mergeable_state": "blocked",
+				"user": map[string]any{"login": "author"},
+				"head": map[string]any{"sha": "head"},
+			})
+		case request.URL.Path == "/repos/acme/web/pulls/7/reviews" &&
+			request.Method == http.MethodGet:
+			_ = json.NewEncoder(w).Encode([]map[string]any{})
+		case request.URL.Path == "/repos/acme/web/pulls/7/reviews" &&
+			request.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case request.URL.Path == "/graphql":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+				"markPullRequestReadyForReview": map[string]any{"clientMutationId": nil},
+				"enablePullRequestAutoMerge":    map[string]any{"clientMutationId": nil},
+			}})
+		case request.URL.Path == "/repos/acme/web/issues/7/comments" &&
+			request.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		case request.URL.Path == "/repos/acme/web/issues/comments/99/reactions" &&
+			request.Method == http.MethodGet:
+			_, _ = w.Write([]byte(`[]`))
+		case request.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			_, _ = w.Write([]byte(`{"id":1}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	return server, &requests
+}
+
+func assertApprovalBeforeAutoMerge(t *testing.T, requests []string) {
+	t.Helper()
+	approval := -1
+	autoMerge := -1
+	graphqlCalls := 0
+	for index, request := range requests {
+		switch request {
+		case "POST /repos/acme/web/pulls/7/reviews":
+			approval = index
+		case "POST /graphql":
+			graphqlCalls++
+			if graphqlCalls == 2 {
+				autoMerge = index
+			}
+		}
+	}
+	if approval < 0 || autoMerge < 0 || approval >= autoMerge {
+		t.Fatalf("approval=%d auto-merge=%d requests=%v", approval, autoMerge, requests)
+	}
 }
 
 func assertRequestOrder(t *testing.T, got, want []string) {

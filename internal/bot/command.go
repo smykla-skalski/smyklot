@@ -497,6 +497,9 @@ func executeImmediateCommandMerge(
 	if err != nil {
 		return feedback.NewMergeFailed(err.Error()), nil
 	}
+	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
+		return failure, nil
+	}
 
 	// Check if PR is mergeable
 	// If blocked by branch protection or unstable (failing checks), try enabling auto-merge
@@ -518,10 +521,6 @@ func executeImmediateCommandMerge(
 		default:
 			return feedback.NewNotMergeable(), nil
 		}
-	}
-
-	if failure := approveMergeIfNeeded(ctx, client, rc, prNum, info); failure != nil {
-		return failure, nil
 	}
 
 	// Check if merge queue is enabled - if so, always use auto-merge

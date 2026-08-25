@@ -3,6 +3,7 @@ package gate
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
@@ -12,13 +13,23 @@ import (
 type wakingStore struct {
 	Store
 
-	woke bool
+	woke     bool
+	finished *pendingci.FinishPRRequest
 }
 
 func (s *wakingStore) Wake(context.Context, pendingci.WakeRequest) (bool, error) {
 	s.woke = true
 
 	return true, nil
+}
+
+func (s *wakingStore) FinishPR(
+	_ context.Context,
+	request pendingci.FinishPRRequest,
+) (*pendingci.Request, error) {
+	s.finished = &request
+
+	return &pendingci.Request{ID: 1}, nil
 }
 
 func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
@@ -48,6 +59,17 @@ func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
 			},
 			wantWoke: true,
 		},
+		{
+			name: "draft transition terminalizes an armed request",
+			notification: &pendingci.Notification{
+				Event: webhook.EventPullRequest, Action: "converted_to_draft",
+				Source: webhook.Source{Repository: webhook.Repository{ID: 1}},
+				Signals: []pendingci.Signal{{
+					Kind: pendingci.SignalPullRequestDraft, PullRequest: 7,
+					OccurredAt: time.Date(2026, 8, 25, 8, 0, 0, 0, time.UTC),
+				}},
+			},
+		},
 	}
 
 	for _, test := range tests {
@@ -65,6 +87,13 @@ func TestHandleWebhookSurvivesAGateWithNothingToWake(t *testing.T) {
 			}
 			if store.woke != test.wantWoke {
 				t.Fatalf("store woken = %t, want %t", store.woke, test.wantWoke)
+			}
+			if test.notification.Action == "converted_to_draft" {
+				if store.finished == nil || store.finished.PullRequest != 7 ||
+					store.finished.Reason != pendingci.DraftCancellationReason ||
+					store.finished.AuthorizedAtOrBefore.IsZero() {
+					t.Fatalf("finish request = %#v", store.finished)
+				}
 			}
 		})
 	}

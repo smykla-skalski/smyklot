@@ -121,6 +121,10 @@ func (s *Store) FinishPR(
 	if err != nil {
 		return nil, fmt.Errorf("read pending CI pull request finish target: %w", err)
 	}
+	if !change.AuthorizedAtOrBefore.IsZero() &&
+		request.AuthorizedAt.After(change.AuthorizedAtOrBefore) {
+		return nil, nil
+	}
 
 	result, err := tx.ExecContext(ctx, `
 UPDATE pending_ci_requests SET

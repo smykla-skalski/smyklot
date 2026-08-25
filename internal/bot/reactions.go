@@ -368,6 +368,11 @@ func handleReactionMerge(
 			ctx, client, rc, prNum, commentID, err, feedback.NewMergeFailed, errMergePR,
 		)
 	}
+	if err := approveReactionMergeIfNeeded(
+		ctx, client, rc, prNum, commentID, author, info,
+	); err != nil {
+		return err
+	}
 
 	// Check if PR is mergeable
 	if !info.Mergeable {
@@ -378,12 +383,6 @@ func handleReactionMerge(
 		default:
 			return postNotMergeable(ctx, client, rc, prNum, commentID)
 		}
-	}
-
-	if err := approveReactionMergeIfNeeded(
-		ctx, client, rc, prNum, commentID, author, info,
-	); err != nil {
-		return err
 	}
 
 	// Merge the PR (using default merge method)

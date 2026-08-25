@@ -349,12 +349,13 @@ type CancelIntentResult struct {
 }
 
 type FinishPRRequest struct {
-	RepositoryID string
-	PullRequest  int
-	Lifecycle    Lifecycle
-	Trigger      Trigger
-	Reason       string
-	FinishedAt   time.Time
+	RepositoryID         string
+	PullRequest          int
+	Lifecycle            Lifecycle
+	Trigger              Trigger
+	Reason               string
+	FinishedAt           time.Time
+	AuthorizedAtOrBefore time.Time
 }
 
 type CancelRepositoryRequest struct {

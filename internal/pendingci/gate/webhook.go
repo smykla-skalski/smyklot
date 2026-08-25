@@ -96,6 +96,18 @@ func (g *Gate) applyPendingCISignal(
 		}
 
 		return 0, err
+	case pendingci.SignalPullRequestDraft:
+		finished, err := g.store.FinishPR(ctx, pendingci.FinishPRRequest{
+			RepositoryID: repositoryID, PullRequest: signal.PullRequest,
+			Lifecycle: pendingci.LifecycleCancelled, Trigger: pendingci.TriggerWebhook,
+			Reason: pendingci.DraftCancellationReason, FinishedAt: occurredAt,
+			AuthorizedAtOrBefore: signal.OccurredAt,
+		})
+		if err != nil || finished == nil {
+			return 0, err
+		}
+
+		return 1, nil
 	case pendingci.SignalWakeHead:
 		return g.store.WakeByHead(ctx, pendingci.WakeHeadRequest{
 			RepositoryID: repositoryID, HeadSHA: signal.HeadSHA,
