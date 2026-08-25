@@ -25,7 +25,6 @@ export const DIRECT_PANEL_VIEWS = [
   'defaults',
   'repositories',
   'sync',
-  'queue',
   'schedules',
   'history',
 ] as const;
@@ -66,6 +65,11 @@ export const ROOT_INSTALLATION_VIEWS = [
 export const DIRECT_ROOT_INSTALLATION_VIEWS = ['defaults', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
+
+/** Queue sections are pages. Active owns the bare Queue address. */
+export const WRITTEN_QUEUE_SECTIONS = ['approvals', 'history'] as const;
+export const QUEUE_SECTIONS = ['active', ...WRITTEN_QUEUE_SECTIONS] as const;
+export type QueueSection = (typeof QUEUE_SECTIONS)[number];
 
 /** The tables the Root console's access page is split into. */
 export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
@@ -154,6 +158,8 @@ export type RootRoute =
       rootView:
         | 'history-audit'
         | 'history-failures'
+        | 'queue-approvals'
+        | 'queue-history'
         | 'runtime-settings'
         | 'runtime-service'
         | 'runtime-database';
@@ -200,6 +206,8 @@ export type InstallationRoute = {
    * all. Only ever present with `sync === 'files'`.
    */
   syncFile?: string;
+  /** The Queue page the address names; absent means Active. */
+  queue?: QueueSection;
   /** What is open on top of the view; see `route-dialogs`. */
   dialog?: RouteDialog;
 };
@@ -211,6 +219,7 @@ export interface ResolvedPanelRoute {
   account: string;
   view: PanelView;
   section?: HistorySection;
+  queue?: QueueSection;
 }
 
 export function parsePanelRoute(basePath: string, pathname: string): PanelRoute | null {
@@ -244,7 +253,11 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const accessView =
     rawSection === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[3]) : undefined;
   if (rawSection === 'access' && parts.length > 3 && accessView === undefined) return null;
-  if (rawSection !== 'access' && !DIRECT_PANEL_VIEWS.some((view) => view === rawSection)) {
+  if (
+    rawSection !== 'access' &&
+    rawSection !== 'queue' &&
+    !DIRECT_PANEL_VIEWS.some((view) => view === rawSection)
+  ) {
     return null;
   }
   const rawView = rawSection === 'access' ? (accessView ?? 'users') : rawSection;
@@ -264,8 +277,14 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   const sync = parseTrailingSync(rawView, consumed ? [] : trailing);
   if (sync === 'invalid') return null;
 
-  const section = parseSection(rawView, consumed ? undefined : trailing[0]);
-  if (section === 'invalid' || (!consumed && rawView !== 'sync' && trailing.length > 1)) {
+  const queue = parseTrailingQueue(rawView, consumed ? [] : trailing);
+  if (queue === 'invalid') return null;
+
+  const section = parseSection(rawView, consumed || queue !== undefined ? undefined : trailing[0]);
+  if (
+    section === 'invalid' ||
+    (!consumed && rawView !== 'sync' && rawView !== 'queue' && trailing.length > 1)
+  ) {
     return null;
   }
 
@@ -281,6 +300,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
   if (sync !== undefined) return { ...route, ...sync };
+  if (queue !== undefined) return { ...route, queue };
   return section === undefined ? route : { ...route, section };
 }
 
@@ -395,14 +415,22 @@ export function resolvePanelRoute(
      a bare /history that a reload would have to guess at. */
   return view === 'history'
     ? { account, view, section: requested?.section ?? 'audit' }
-    : { account, view };
+    : view === 'queue'
+      ? { account, view, queue: requested?.queue ?? 'active' }
+      : { account, view };
 }
 
 export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
   if (route.rootView === 'installation') return 'installations';
-  if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
+  if (
+    route.rootView === 'queue-recent' ||
+    route.rootView === 'queue-request' ||
+    route.rootView === 'queue-approvals' ||
+    route.rootView === 'queue-history'
+  )
+    return 'queue';
   if (
     route.rootView === 'runtime-settings' ||
     route.rootView === 'runtime-service' ||
@@ -434,7 +462,11 @@ function routeTitleSegments(route: PanelRoute): string[] {
   }
   const view = route.view;
   const section = panelViewSection(view);
-  const leaf = route.section ?? ('sync' in route ? route.sync : undefined) ?? view;
+  const leaf =
+    route.section ??
+    ('sync' in route ? route.sync : undefined) ??
+    ('queue' in route ? route.queue : undefined) ??
+    view;
   return leaf === section ? [leaf] : [leaf, section];
 }
 
@@ -486,6 +518,16 @@ function parseTrailingSync(
     : { sync, syncFile: parts.join('/') };
 }
 
+/** Reads the one Queue section written after the bare Active page. */
+function parseTrailingQueue(
+  view: string,
+  segments: string[],
+): QueueSection | undefined | 'invalid' {
+  if (view !== 'queue' || segments.length === 0) return undefined;
+  if (segments.length !== 1) return 'invalid';
+  return WRITTEN_QUEUE_SECTIONS.find((section) => section === segments[0]) ?? 'invalid';
+}
+
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
   if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
@@ -509,6 +551,12 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   }
   if (parts.length === 2 && parts[1] === 'queue') return { rootView: 'queue' };
   if (parts.length === 2 && parts[1] === 'schedules') return { rootView: 'schedules' };
+  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'approvals') {
+    return { rootView: 'queue-approvals' };
+  }
+  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'history') {
+    return { rootView: 'queue-history' };
+  }
   if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'recent') {
     return { rootView: 'queue-recent' };
   }

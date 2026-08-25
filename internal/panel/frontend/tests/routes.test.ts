@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DIRECT_PANEL_VIEWS,
   PANEL_VIEWS,
+  QUEUE_SECTIONS,
   panelDocumentTitle,
   panelViewSection,
   parseInvitationToken,
@@ -80,6 +81,26 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan/extra')).toBeNull();
   });
 
+  it('parses Queue pages and refuses non-pages', () => {
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue')).toEqual({
+      account: 'smykla-skalski',
+      view: 'queue',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue/approvals')).toEqual({
+      account: 'smykla-skalski',
+      view: 'queue',
+      queue: 'approvals',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue/history')).toEqual({
+      account: 'smykla-skalski',
+      view: 'queue',
+      queue: 'history',
+    });
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue/active')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/i/smykla-skalski/queue/history/extra')).toBeNull();
+  });
+
   it('parses one ruleset page and refuses names anywhere else', () => {
     expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/main-protection')).toEqual({
       account: 'smykla-skalski',
@@ -108,6 +129,10 @@ describe('panel routes', () => {
   it('parses Root routes without treating them as installations', () => {
     expect(parsePanelRoute('', '/root')).toEqual({ rootView: 'overview' });
     expect(parsePanelRoute('', '/root/schedules')).toEqual({ rootView: 'schedules' });
+    expect(parsePanelRoute('', '/root/queue/approvals')).toEqual({
+      rootView: 'queue-approvals',
+    });
+    expect(parsePanelRoute('', '/root/queue/history')).toEqual({ rootView: 'queue-history' });
     expect(parsePanelRoute('/panel', '/panel/root/installations')).toEqual({
       rootView: 'installations',
     });
@@ -178,6 +203,13 @@ describe('panel routes', () => {
     expect(panelAddress({ account: 'bartsmykla', view: 'defaults' })).toBe(
       `${basePath}/i/bartsmykla/defaults`,
     );
+    expect(panelAddress({ account: 'bartsmykla', view: 'queue' })).toBe(
+      `${basePath}/i/bartsmykla/queue`,
+    );
+    expect(panelAddress({ account: 'bartsmykla', view: 'queue', queue: 'approvals' })).toBe(
+      `${basePath}/i/bartsmykla/queue/approvals`,
+    );
+    expect(panelAddress({ rootView: 'queue-history' })).toBe(`${basePath}/root/queue/history`);
     expect(panelAddress({ account: 'bartsmykla', view: 'users' })).toBe(
       `${basePath}/i/bartsmykla/access/users`,
     );
@@ -205,6 +237,7 @@ describe('panel document titles', () => {
     [{ account: 'acme', view: 'invitations' }, 'Invitations | Access | SMYKLOT'],
     [{ account: 'acme', view: 'history', section: 'audit' }, 'Audit | History | SMYKLOT'],
     [{ account: 'acme', view: 'history', section: 'failures' }, 'Failures | History | SMYKLOT'],
+    [{ account: 'acme', view: 'queue', queue: 'approvals' }, 'Approvals | Queue | SMYKLOT'],
     [{ personal: 'inbox' }, 'Inbox | SMYKLOT'],
     [{ rootView: 'overview' }, 'Overview | Root Console | SMYKLOT'],
     [{ rootView: 'installations' }, 'Installations | Root Console | SMYKLOT'],
@@ -212,6 +245,7 @@ describe('panel document titles', () => {
     [{ rootView: 'access-invitations' }, 'Invitations | Access | Root Console | SMYKLOT'],
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
     [{ rootView: 'history-failures' }, 'Failures | History | Root Console | SMYKLOT'],
+    [{ rootView: 'queue-history' }, 'History | Queue | Root Console | SMYKLOT'],
     [{ rootView: 'runtime-service' }, 'Service | Runtime | Root Console | SMYKLOT'],
     [{ rootView: 'runtime-database' }, 'Database | Runtime | Root Console | SMYKLOT'],
     [{ rootView: 'runtime-settings' }, 'Settings | Runtime | Root Console | SMYKLOT'],
@@ -260,12 +294,20 @@ describe('the direct panel view matcher', () => {
     }
   });
 
-  it('keeps Access leaves under the Access route', () => {
+  it('keeps nested views under their own routes', () => {
     for (const view of PANEL_VIEWS.filter(
       (candidate) => !(DIRECT_PANEL_VIEWS as readonly string[]).includes(candidate),
     )) {
       expect(accepts('panelView', view), `${view} escaped the Access route`).toBe(false);
     }
+  });
+
+  it('accepts only Queue sections written into addresses', () => {
+    for (const section of QUEUE_SECTIONS.filter((candidate) => candidate !== 'active')) {
+      expect(accepts('queueSection', section)).toBe(true);
+    }
+    expect(accepts('queueSection', 'active')).toBe(false);
+    expect(accepts('queueSection', 'everything')).toBe(false);
   });
 
   it('refuses a segment that is not a view', () => {
@@ -300,6 +342,16 @@ describe('resolvePanelRoute', () => {
     expect(
       resolvePanelRoute(accounts, { account: 'removed-org', view: 'repositories' }, 'bartsmykla'),
     ).toEqual({ account: 'bartsmykla', view: 'repositories' });
+  });
+
+  it('preserves the requested Queue page across installations', () => {
+    expect(
+      resolvePanelRoute(
+        accounts,
+        { account: 'removed-org', view: 'queue', queue: 'approvals' },
+        'bartsmykla',
+      ),
+    ).toEqual({ account: 'bartsmykla', view: 'queue', queue: 'approvals' });
   });
 
   it('falls back to the first available installation', () => {

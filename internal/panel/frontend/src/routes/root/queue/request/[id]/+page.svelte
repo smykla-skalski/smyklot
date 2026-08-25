@@ -14,6 +14,6 @@
     rootRole={session.rootRole}
     requestId={params.id}
     queueHref={session.queueHref()}
-    onBack={() => session.selectQueueSection('waiting')}
+    onBack={() => session.selectRootQueueSection('active')}
   />
 </section>

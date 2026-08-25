@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { QueueActionType, QueueItem } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
+  import { onMount } from 'svelte';
   import { MediaQuery } from 'svelte/reactivity';
   import { fade } from 'svelte/transition';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
@@ -22,10 +23,17 @@
 
   type QueueMenuAction = QueueActionType | 'details';
   const reducedMotion = new MediaQuery('prefers-reduced-motion: reduce');
-  const rowMotion = $derived({ duration: reducedMotion.current ? 0 : 150, easing: cubicOut });
-  const rowArriving = $derived({ duration: reducedMotion.current ? 0 : 120, delay: 15 });
-  const rowLeaving = $derived({ duration: reducedMotion.current ? 0 : 70 });
-  const valueMotion = $derived({ duration: reducedMotion.current ? 0 : 80 });
+  let motionEnabled = $state(false);
+  const still = $derived(reducedMotion.current || !motionEnabled);
+  const rowMotion = $derived({ duration: still ? 0 : 150, easing: cubicOut });
+  const rowArriving = $derived({ duration: still ? 0 : 120, delay: still ? 0 : 15 });
+  const rowLeaving = $derived({ duration: still ? 0 : 70 });
+  const valueMotion = $derived({ duration: still ? 0 : 80 });
+
+  onMount(() => {
+    const frame = window.requestAnimationFrame(() => (motionEnabled = true));
+    return () => window.cancelAnimationFrame(frame);
+  });
 
   function words(value: string): string {
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -247,7 +255,6 @@
     --table-cell-pad-inline: var(--space-4);
     --table-layout: fixed;
     --table-min-width: 0;
-    min-height: 12rem;
   }
   th,
   td {

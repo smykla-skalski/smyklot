@@ -57,6 +57,15 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
+  if (route.view === 'queue') {
+    return route.queue === undefined || route.queue === 'active'
+      ? resolve('/i/[account]/queue', { account })
+      : resolve('/i/[account]/queue/[section=queueSection]', {
+          account,
+          section: route.queue,
+        });
+  }
+
   if (route.view === 'repositories' && named(route.repository)) {
     return resolve('/i/[account]/repositories/[repository]/[[section=repositorySection]]', {
       account,
@@ -101,6 +110,10 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/installations');
     case 'queue':
       return resolve('/root/queue');
+    case 'queue-approvals':
+      return resolve('/root/queue/[section=queueSection]', { section: 'approvals' });
+    case 'queue-history':
+      return resolve('/root/queue/[section=queueSection]', { section: 'history' });
     case 'queue-recent':
       return resolve('/root/queue/recent');
     case 'queue-request':
@@ -223,6 +236,10 @@ export function panelRouteAt(
 
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);
+    case '/i/[account]/queue':
+      return { account, view: 'queue' };
+    case '/i/[account]/queue/[section=queueSection]':
+      return { account, view: 'queue', queue: section === 'history' ? 'history' : 'approvals' };
     case '/i/[account]/access':
       return withView(account, 'users');
     case '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]':
@@ -254,6 +271,8 @@ export function panelRouteAt(
       return { rootView: 'installations' };
     case '/root/queue':
       return { rootView: 'queue' };
+    case '/root/queue/[section=queueSection]':
+      return { rootView: section === 'history' ? 'queue-history' : 'queue-approvals' };
     case '/root/queue/recent':
       return { rootView: 'queue-recent' };
     case '/root/queue/request/[id]':

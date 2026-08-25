@@ -79,6 +79,37 @@ describe('the general Queue live stream [Integration]', () => {
     expect(await summary.locator('[data-queue-item]').count()).toBe(3);
   });
 
+  it('renders each Queue view before arming live motion', async () => {
+    await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
+    await viewer.getByRole('link', { name: 'Approvals', exact: true }).click();
+    await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/approvals');
+    await viewer.getByText('Review organization sync plan').waitFor({ state: 'visible' });
+    await viewer.waitForTimeout(200);
+
+    const spacing = await viewer.evaluate(() => {
+      const heading = document.querySelector('.general-queue-table thead tr');
+      const row = document.querySelector('.general-queue-table tbody .data-row');
+      if (!(heading instanceof HTMLElement) || !(row instanceof HTMLElement)) return null;
+      return row.getBoundingClientRect().top - heading.getBoundingClientRect().bottom;
+    });
+    expect(spacing).not.toBeNull();
+    expect(spacing ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+    expect(await trailingTableSpace(viewer)).toBeLessThanOrEqual(1);
+    expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
+
+    await viewer.locator('a[href="/root/queue/history"]').click();
+    await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/history');
+    await viewer.getByText('Refresh installation catalog', { exact: true }).waitFor();
+    expect(await trailingTableSpace(viewer)).toBeLessThanOrEqual(1);
+
+    await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
+    await viewer.getByRole('link', { name: 'Active', exact: true }).click();
+    await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue');
+    await viewer.getByText('Apply organization sync plan', { exact: true }).waitFor();
+    await viewer.waitForTimeout(200);
+    expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
+  });
+
   it('refreshes another reader when an audited action changes an item', async () => {
     const title = 'Merge platform-infra#184 after CI';
     const viewerRow = viewer.locator('.general-queue-table tbody .data-row', { hasText: title });
@@ -176,3 +207,14 @@ describe('the general Queue live stream [Integration]', () => {
     ).toBe(true);
   });
 });
+
+async function trailingTableSpace(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const table = document.querySelector('.general-queue-table table');
+    const row = document.querySelector('.general-queue-table tbody tr:last-child');
+    if (!(table instanceof HTMLElement) || !(row instanceof HTMLElement)) {
+      return Number.POSITIVE_INFINITY;
+    }
+    return table.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom;
+  });
+}

@@ -53,6 +53,7 @@ import {
   type InstallationRoute,
   type PanelRoute,
   type PanelView,
+  type QueueSection,
   type RepositoryPage,
   type RepositorySection,
   type RootInstallationView,
@@ -97,6 +98,7 @@ export class PanelSession {
   sidebarCollapsed = $state(false);
   private lastScopedView = $state<PanelView>('defaults');
   private lastScopedHistorySection = $state<HistorySection>('audit');
+  private lastScopedQueueSection = $state<QueueSection>('active');
   /**
    * The whole page each side was last on, which is where crossing to it goes back to.
    *
@@ -232,6 +234,18 @@ export class PanelSession {
     return this.lastScopedHistorySection;
   }
 
+  /** The Queue page named by either surface; the bare Queue address is Active. */
+  get currentQueueSection(): QueueSection {
+    const route = this.parsedRoute;
+    if (route === null || 'personal' in route) return 'active';
+    if ('rootView' in route) {
+      if (route.rootView === 'queue-approvals') return 'approvals';
+      if (route.rootView === 'queue-history') return 'history';
+      return 'active';
+    }
+    return route.view === 'queue' ? (route.queue ?? 'active') : 'active';
+  }
+
   /**
    * The repository the address names, or `null` for the list.
    *
@@ -271,6 +285,7 @@ export class PanelSession {
     if (route.view === 'history' && route.section !== undefined) {
       this.lastScopedHistorySection = route.section;
     }
+    if (route.view === 'queue') this.lastScopedQueueSection = route.queue ?? 'active';
     this.lastWorkspacePage = route;
     writeLastPage('workspace', page.route.id, page.params);
   }
@@ -306,6 +321,7 @@ export class PanelSession {
     const view = this.currentView;
     const route: InstallationRoute = { account: '', view };
     if (view === 'history') route.section = this.currentHistorySection;
+    if (view === 'queue') route.queue = this.currentQueueSection;
     if (view === 'sync') {
       route.sync = this.currentSyncSection;
       route.syncRuleset = this.currentSyncRuleset ?? undefined;
@@ -420,7 +436,12 @@ export class PanelSession {
   }
 
   openTarget(target: PanelTarget, replace = false): Promise<void> {
-    return this.navigate(this.routeFor(target, this.currentView), replace);
+    return this.navigate(
+      this.currentView === 'queue'
+        ? this.queueRoute(target, this.currentQueueSection)
+        : this.routeFor(target, this.currentView),
+      replace,
+    );
   }
 
   selectView(nextView: PanelView): void {
@@ -431,7 +452,10 @@ export class PanelSession {
        the navigation still reads Repositories while you are on one, and this is
        how a reader who presses it expects to reach the list. Without the second
        clause the item was inert on exactly the screen it was most needed. */
-    const alreadyThere = this.currentView === nextView && this.currentRepository === null;
+    const alreadyThere =
+      this.currentView === nextView &&
+      this.currentRepository === null &&
+      (nextView !== 'queue' || this.currentQueueSection === 'active');
     if (alreadyThere && !this.isInbox) return;
     void this.navigate(this.routeFor(target, nextView));
   }
@@ -444,6 +468,13 @@ export class PanelSession {
     )
       return;
     void this.navigate(this.routeFor(target, 'history', section));
+  }
+
+  selectQueueSection(section: QueueSection): void {
+    const target = this.selectedTarget;
+    if (target === null || (this.currentView === 'queue' && this.currentQueueSection === section))
+      return;
+    void this.navigate(this.queueRoute(target, section));
   }
 
   // --- Sync sections ---
@@ -583,13 +614,17 @@ export class PanelSession {
   // --- Root navigation ---
 
   selectRootSection(section: RootSection): void {
-    if (!this.isRootMode || this.rootValue === section) return;
+    if (
+      !this.isRootMode ||
+      (this.rootValue === section && (section !== 'queue' || this.currentQueueSection === 'active'))
+    )
+      return;
     void this.navigate(rootSectionRoute(section));
     this.resetPageScroll();
   }
 
-  selectQueueSection(section: 'waiting' | 'recent'): void {
-    const route: RootRoute = { rootView: section === 'waiting' ? 'queue' : 'queue-recent' };
+  selectRootQueueSection(section: QueueSection): void {
+    const route = this.rootQueueRoute(section);
     if (this.currentRootRoute.rootView === route.rootView) return;
     void this.navigate(route);
   }
@@ -693,8 +728,13 @@ export class PanelSession {
     return target === null ? '#' : panelAddress(this.routeFor(target, section));
   }
 
-  queueSectionHref(section: 'waiting' | 'recent'): string {
-    return panelAddress({ rootView: section === 'waiting' ? 'queue' : 'queue-recent' });
+  queueSectionHref(section: QueueSection): string {
+    const target = this.selectedTarget;
+    return target === null ? '#' : panelAddress(this.queueRoute(target, section));
+  }
+
+  rootQueueSectionHref(section: QueueSection): string {
+    return panelAddress(this.rootQueueRoute(section));
   }
 
   rootAccessHref(section: 'users' | 'invitations'): string {
@@ -951,6 +991,9 @@ export class PanelSession {
 
   /** The same view on another installation, which is what its own link promises. */
   private targetRoute(target: PanelTarget): PanelRoute {
+    if (this.lastScopedView === 'queue') {
+      return this.queueRoute(target, this.lastScopedQueueSection);
+    }
     return this.routeFor(target, this.lastScopedView, this.lastScopedHistorySection);
   }
 
@@ -984,6 +1027,17 @@ export class PanelSession {
         ? { account: target.account.login, view: nextView, section }
         : { account: target.account.login, view: nextView };
     return dialog === undefined ? route : { ...route, dialog };
+  }
+
+  private queueRoute(target: PanelTarget, section: QueueSection): InstallationRoute {
+    const route: InstallationRoute = { account: target.account.login, view: 'queue' };
+    return section === 'active' ? route : { ...route, queue: section };
+  }
+
+  private rootQueueRoute(section: QueueSection): RootRoute {
+    if (section === 'approvals') return { rootView: 'queue-approvals' };
+    if (section === 'history') return { rootView: 'queue-history' };
+    return { rootView: 'queue' };
   }
 
   /**

@@ -4,6 +4,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
+  import type { QueueSection } from '#lib/routes.js';
   import type {
     QueueActionInput,
     QueueActionType,
@@ -22,21 +23,20 @@
   import QueueDetailDialog from './QueueDetailDialog.svelte';
   import QueueTable from './QueueTable.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
   import TableToolsMenu, { type ToolsFilter } from './TableToolsMenu.svelte';
-
-  type Section = 'active' | 'approvals' | 'history';
 
   const {
     api,
     targetId,
     rootRole = '',
     canControl = false,
+    section = 'active',
   }: {
     api: PanelApi;
     targetId?: string;
     rootRole?: string;
     canControl?: boolean;
+    section?: QueueSection;
   } = $props();
 
   const emptyFacets: QueuePage['facets'] = {
@@ -48,7 +48,6 @@
     priorities: [],
   };
   const queryClient = useQueryClient();
-  let section = $state<Section>('active');
   let workload = $state<QueueWorkload | 'all'>('all');
   let priority = $state<QueuePriority | 'all'>('all');
   let stateFilter = $state('all');
@@ -73,7 +72,6 @@
     queryKey: queueListKey(targetId, query),
     queryFn: () =>
       targetId === undefined ? api.fetchRootQueue(query) : api.fetchTargetQueue(targetId, query),
-    placeholderData: (previous: QueuePage | undefined) => previous,
   }));
   const detailQuery = createQuery(() => ({
     queryKey: queueDetailKey(targetId, detailItemID ?? ''),
@@ -262,7 +260,7 @@
       : api.fetchTargetQueueItem(targetId, itemID);
   }
 
-  function sectionStates(value: Section): QueueItem['state'][] {
+  function sectionStates(value: QueueSection): QueueItem['state'][] {
     if (value === 'approvals') return ['awaiting_approval'];
     if (value === 'history') return ['succeeded', 'failed', 'cancelled', 'superseded'];
     return ['scheduled', 'blocked', 'ready', 'running', 'retrying'];
@@ -286,11 +284,6 @@
     }
 
     return `?${query.toString()}`;
-  }
-
-  function selectSection(value: Section): void {
-    section = value;
-    stateFilter = 'all';
   }
 
   async function load(): Promise<void> {
@@ -394,20 +387,6 @@
   {/if}
 
   <div class="queue-toolbar">
-    <div class="queue-tabs">
-      <SegmentedControl
-        name="queue-view"
-        label="Queue views"
-        variant="navigation"
-        value={section}
-        options={[
-          { value: 'active', label: 'Active' },
-          { value: 'approvals', label: 'Approvals' },
-          { value: 'history', label: 'History' },
-        ]}
-        onSelect={(value) => selectSection(value as Section)}
-      />
-    </div>
     <div class="queue-tools">
       <span aria-live="polite">
         {loading
@@ -433,7 +412,9 @@
         <Button onclick={() => void load()}>Try again</Button>
       </Plate>
     {/if}
-    <QueueTable {items} clock={() => now} onOpen={openDetail} onAction={openAction} />
+    {#key query}
+      <QueueTable {items} clock={() => now} onOpen={openDetail} onAction={openAction} />
+    {/key}
     {#if total > 0}
       <nav class="queue-pagination" aria-label="Queue pages">
         <p>Showing {rangeStart}–{rangeEnd} of {total}</p>
@@ -483,12 +464,7 @@
     align-items: center;
     display: flex;
     gap: var(--space-3);
-    justify-content: space-between;
-    padding-bottom: var(--space-1);
-  }
-  .queue-tabs {
-    display: flex;
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
   .queue-tools {
     align-items: center;
@@ -516,16 +492,6 @@
     gap: var(--space-2);
   }
   @media (max-width: 36rem) {
-    .queue-toolbar {
-      align-items: stretch;
-      flex-direction: column;
-    }
-    .queue-tabs :global(fieldset) {
-      width: 100%;
-    }
-    .queue-tabs :global(label) {
-      flex: 1;
-    }
     .queue-tools {
       justify-content: space-between;
     }

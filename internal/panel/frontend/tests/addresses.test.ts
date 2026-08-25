@@ -35,6 +35,21 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', view: 'sync' },
   },
   {
+    route: { account: 'acme', view: 'queue' },
+    id: '/i/[account]/queue',
+    params: { account: 'acme' },
+  },
+  {
+    route: { account: 'acme', view: 'queue', queue: 'approvals' },
+    id: '/i/[account]/queue/[section=queueSection]',
+    params: { account: 'acme', section: 'approvals' },
+  },
+  {
+    route: { account: 'acme', view: 'queue', queue: 'history' },
+    id: '/i/[account]/queue/[section=queueSection]',
+    params: { account: 'acme', section: 'history' },
+  },
+  {
     route: { account: 'smykla skalski', view: 'repositories' },
     id: '/i/[account]/[view=panelView]',
     params: { account: 'smykla skalski', view: 'repositories' },
@@ -96,6 +111,16 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
   { route: { rootView: 'overview' }, id: '/root', params: {} },
   { route: { rootView: 'installations' }, id: '/root/installations', params: {} },
   { route: { rootView: 'queue' }, id: '/root/queue', params: {} },
+  {
+    route: { rootView: 'queue-approvals' },
+    id: '/root/queue/[section=queueSection]',
+    params: { section: 'approvals' },
+  },
+  {
+    route: { rootView: 'queue-history' },
+    id: '/root/queue/[section=queueSection]',
+    params: { section: 'history' },
+  },
   { route: { rootView: 'queue-recent' }, id: '/root/queue/recent', params: {} },
   {
     route: { rootView: 'queue-request', request: 'req-1' },

@@ -6,6 +6,7 @@ import {
   DIRECT_ROOT_INSTALLATION_VIEWS,
   HISTORY_SECTIONS,
   REPOSITORY_SECTIONS,
+  WRITTEN_QUEUE_SECTIONS,
   WRITTEN_SYNC_SECTIONS,
 } from './lib/routes.ts';
 
@@ -88,6 +89,9 @@ const MATCHERS = {
    * not-found page and a reload of the address did too.
    */
   panelView: oneOf(DIRECT_PANEL_VIEWS),
+
+  /** Queue pages written after the bare Active address. */
+  queueSection: oneOf(WRITTEN_QUEUE_SECTIONS),
 
   /**
    * The panes one repository's page can open on.

@@ -33,12 +33,14 @@
   import {
     ACCESS_SECTIONS,
     HISTORY_SECTIONS,
+    QUEUE_SECTIONS,
     ROOT_RUNTIME_SECTIONS,
     SYNC_SECTIONS,
     panelViewSection,
     routeSegmentLabel,
     type PanelSection,
     type PanelView,
+    type QueueSection,
     type RootInstallationView,
     type RootRuntimeSection,
     type RootSection,
@@ -630,6 +632,18 @@
     })),
   );
 
+  const queueKids = $derived(
+    QUEUE_SECTIONS.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      href: session.queueSectionHref(section),
+      active:
+        !session.isInbox &&
+        session.currentView === 'queue' &&
+        session.currentQueueSection === section,
+    })),
+  );
+
   const workspacePages = $derived.by((): SidebarPage[] =>
     WORKSPACE_ORDER.filter(
       (section) =>
@@ -658,11 +672,13 @@
         kids:
           section === 'sync'
             ? syncKids
-            : section === 'access'
-              ? accessKids
-              : section === 'history'
-                ? historyKids
-                : undefined,
+            : section === 'queue'
+              ? queueKids
+              : section === 'access'
+                ? accessKids
+                : section === 'history'
+                  ? historyKids
+                  : undefined,
       };
     }),
   );
@@ -709,6 +725,22 @@
         (section === 'audit'
           ? session.currentRootRoute.rootView === 'history-audit'
           : session.currentRootRoute.rootView === 'history-failures'),
+    })),
+  );
+
+  const rootQueueKids = $derived(
+    QUEUE_SECTIONS.map((section) => ({
+      id: section,
+      label: routeSegmentLabel(section),
+      href: session.rootQueueSectionHref(section),
+      active:
+        !session.isInbox &&
+        session.currentRootRoute.rootView ===
+          (section === 'active'
+            ? 'queue'
+            : section === 'approvals'
+              ? 'queue-approvals'
+              : 'queue-history'),
     })),
   );
 
@@ -774,15 +806,17 @@
             ? rootDirty
             : undefined,
       kids:
-        section === 'access'
-          ? rootAccessKids
-          : section === 'history'
-            ? rootHistoryKids
-            : section === 'runtime'
-              ? rootRuntimeKids
-              : section === 'installations'
-                ? rootInstallationKids
-                : undefined,
+        section === 'queue'
+          ? rootQueueKids
+          : section === 'access'
+            ? rootAccessKids
+            : section === 'history'
+              ? rootHistoryKids
+              : section === 'runtime'
+                ? rootRuntimeKids
+                : section === 'installations'
+                  ? rootInstallationKids
+                  : undefined,
     })),
   );
 
@@ -882,6 +916,7 @@
             drawerOpen = false;
             if (!session.isRootMode) {
               if (pageRow.id === 'sync') session.selectSyncSection(kid.id as SyncSection);
+              else if (pageRow.id === 'queue') session.selectQueueSection(kid.id as QueueSection);
               else if (pageRow.id === 'access')
                 session.selectUserSection(kid.id as 'users' | 'invitations');
               else if (pageRow.id === 'history')
@@ -889,7 +924,7 @@
               return;
             }
 
-            if (pageRow.id === 'queue') session.selectQueueSection(kid.id as 'waiting' | 'recent');
+            if (pageRow.id === 'queue') session.selectRootQueueSection(kid.id as QueueSection);
             else if (pageRow.id === 'access')
               session.selectRootAccessSection(kid.id as 'users' | 'invitations');
             else if (pageRow.id === 'history')

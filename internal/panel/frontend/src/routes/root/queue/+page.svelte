@@ -10,5 +10,10 @@
   class:root-table-view={session.tableScrollView}
   aria-labelledby="root-page-heading"
 >
-  <GeneralQueueView api={session.api} rootRole={session.rootRole} canControl />
+  <GeneralQueueView
+    api={session.api}
+    rootRole={session.rootRole}
+    canControl
+    section={session.currentQueueSection}
+  />
 </section>
