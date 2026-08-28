@@ -66,20 +66,6 @@
     options.find((option) => option.value === value)?.tone ?? 'default',
   );
 
-  /**
-   * Where the previewed option sits relative to the selection, so the thumb can square the corner
-   * they share the way a hovered neighbour does.
-   */
-  const previewSide = $derived.by(() => {
-    if (preview === null || value === null) return undefined;
-    const [selected, offered] = [
-      options.findIndex((option) => option.value === value),
-      options.findIndex((option) => option.value === preview),
-    ];
-    if (selected === -1 || offered === -1 || Math.abs(selected - offered) !== 1) return undefined;
-    return offered < selected ? 'before' : 'after';
-  });
-
   function positionSelection(node: HTMLFieldSetElement, selection: string) {
     let currentSelection = selection;
 
@@ -104,13 +90,21 @@
          the first open of the account menu: the one measurement this had ever taken was taken
          against `display: none`, and only choosing a different option ever asked for another. No
          box is not a position, so it collapses and waits to be measured somewhere it can be. */
-      if (option.offsetWidth === 0) {
+      const optionBox = option.getBoundingClientRect();
+      if (optionBox.width === 0) {
         collapse();
         return;
       }
 
-      node.style.setProperty('--segment-left', `${option.offsetLeft}px`);
-      node.style.setProperty('--segment-width', `${option.offsetWidth}px`);
+      /* Fluid controls divide their width at subpixel boundaries. `offsetLeft` and `offsetWidth`
+         round those boundaries to whole CSS pixels, which leaves the track showing through as a
+         differently coloured seam around the thumb's curved corners. Keep the same coordinate
+         system as the absolute indicator while retaining the fractional geometry; scrollLeft
+         restores the content coordinate when a narrow control is horizontally scrolled. */
+      const nodeBox = node.getBoundingClientRect();
+      const left = optionBox.left - nodeBox.left - node.clientLeft + node.scrollLeft;
+      node.style.setProperty('--segment-left', `${left}px`);
+      node.style.setProperty('--segment-width', `${optionBox.width}px`);
 
       /* Landing in place rather than sliding into it, which is a real difference and not a
          precaution: the two writes above and the class below otherwise resolve in one style
@@ -151,6 +145,7 @@
     const resize =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
     resize?.observe(node);
+    for (const option of node.querySelectorAll('label')) resize?.observe(option);
 
     void scheduleMove();
 
@@ -180,7 +175,6 @@
   class:selected-on={selectedTone === 'on'}
   class:selected-off={selectedTone === 'off'}
   class:previewing={preview !== null}
-  data-preview={previewSide}
   aria-describedby={descriptionId}
   use:positionSelection={value ?? ''}
   {disabled}
@@ -363,7 +357,7 @@
      --segment-hover in app.css for the measurements. */
   label::before {
     background: var(--seg-hover);
-    border-radius: calc(var(--r-ctl) - 2px);
+    border-radius: 0;
     content: '';
     inset: 0;
     opacity: 0;
@@ -375,6 +369,19 @@
     z-index: 1;
   }
 
+  /* Segment fills meet without exposing track-coloured wedges at internal joins. Only the two
+     edges that actually meet the rounded control shell curve; a one-option control matches both
+     selectors and therefore keeps all four corners. Logical corners preserve the same rule in RTL. */
+  label:first-of-type::before {
+    border-end-start-radius: calc(var(--r-ctl) - 2px);
+    border-start-start-radius: calc(var(--r-ctl) - 2px);
+  }
+
+  label:last-of-type::before {
+    border-end-end-radius: calc(var(--r-ctl) - 2px);
+    border-start-end-radius: calc(var(--r-ctl) - 2px);
+  }
+
   label:hover:not(:has(input:disabled))::before {
     opacity: 1;
   }
@@ -384,107 +391,6 @@
   label:active:not(:has(input:disabled))::before {
     background: var(--seg-pressed);
     opacity: 1;
-  }
-
-  /* Hovering the option next to the selected one squares the corner on its own
-     side of the join, so the fill runs flat up to the thumb's edge instead of
-     curving away from it and leaving a notch. The thumb keeps its own rounding:
-     the hover wraps around the outside of that curve rather than cutting it off,
-     which is what makes the two read as one lit stretch of the control.
-
-     What fills the crescent outside the curve is `.selection-indicator::after`,
-     drawn on the thumb rather than by the hover. The hover used to reach a radius'
-     worth of fill in *under* the thumb to cover it, which works only while the
-     thumb is opaque - on the night surface it is glass, and the fill tucked behind
-     it read straight through as a bright band across the selected option. Painting
-     only the crescent puts nothing underneath at all, so it holds however
-     see-through the thumb is. */
-  label:has(input:checked) + label:hover:not(:has(input:disabled))::before {
-    border-start-start-radius: 0;
-    border-end-start-radius: 0;
-  }
-
-  label:hover:not(:has(input:disabled)):has(+ label input:checked)::before {
-    border-start-end-radius: 0;
-    border-end-end-radius: 0;
-  }
-
-  /* The crescent itself: a strip one thumb-radius wide, reaching over the thumb's
-     corner square from the hovered option's own edge. It is two tiles, each a disc
-     of that radius punched out of the fill - transparent where the thumb is, lit
-     where it is not - and each disc is centred on the arc the thumb's corner is
-     drawn with, so the two curves are the same curve and meet without a seam.
-
-     It rides the hovered label rather than the thumb because a rule that had to
-     ask "is the thumb next to something hovered" would need `:has()` inside
-     `:has()`, which is invalid and drops the rule silently. From here one level
-     is enough. It also sits *over* the thumb, which is safe precisely because the
-     part covering the thumb is the transparent part. */
-  label::after {
-    --thumb-radius: calc(var(--r-ctl) - 2px);
-    --crescent-fill: var(--seg-hover);
-
-    background-repeat: no-repeat;
-    background-size: var(--thumb-radius) var(--thumb-radius);
-    bottom: 0;
-    content: '';
-    opacity: 0;
-    pointer-events: none;
-    position: absolute;
-    top: 0;
-    transition: opacity 120ms ease-out;
-    width: var(--thumb-radius);
-    z-index: 2;
-  }
-
-  label:has(input:checked) + label:hover:not(:has(input:disabled))::after {
-    background-image:
-      radial-gradient(
-        circle var(--thumb-radius) at 0 100%,
-        transparent 0 var(--thumb-radius),
-        var(--crescent-fill) var(--thumb-radius)
-      ),
-      radial-gradient(
-        circle var(--thumb-radius) at 0 0,
-        transparent 0 var(--thumb-radius),
-        var(--crescent-fill) var(--thumb-radius)
-      );
-    background-position:
-      0 0,
-      0 100%;
-    opacity: 1;
-    right: 100%;
-  }
-
-  label:hover:not(:has(input:disabled)):has(+ label input:checked)::after {
-    background-image:
-      radial-gradient(
-        circle var(--thumb-radius) at 100% 100%,
-        transparent 0 var(--thumb-radius),
-        var(--crescent-fill) var(--thumb-radius)
-      ),
-      radial-gradient(
-        circle var(--thumb-radius) at 100% 0,
-        transparent 0 var(--thumb-radius),
-        var(--crescent-fill) var(--thumb-radius)
-      );
-    background-position:
-      0 0,
-      0 100%;
-    left: 100%;
-    opacity: 1;
-  }
-
-  /* The crescent follows the fill it belongs to down the same ramp. */
-  label:has(input:checked) + label:active:not(:has(input:disabled))::after,
-  label:active:not(:has(input:disabled)):has(+ label input:checked)::after {
-    --crescent-fill: var(--seg-pressed);
-  }
-
-  /* An offer on the table already squares the thumb's shared corner, so there is
-     no crescent left to fill. */
-  fieldset.previewing label::after {
-    opacity: 0;
   }
 
   input {
@@ -584,7 +490,7 @@
     display: none;
 
     background: var(--selected-bg);
-    border-radius: calc(var(--r-ctl) - 2px);
+    border-radius: 0;
     box-shadow: var(--seg-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));
@@ -598,6 +504,16 @@
       box-shadow var(--duration-fast) var(--ease-standard);
     width: var(--segment-width, 0);
     z-index: 2;
+  }
+
+  fieldset:has(label:first-of-type input:checked) .selection-indicator {
+    border-end-start-radius: calc(var(--r-ctl) - 2px);
+    border-start-start-radius: calc(var(--r-ctl) - 2px);
+  }
+
+  fieldset:has(label:last-of-type input:checked) .selection-indicator {
+    border-end-end-radius: calc(var(--r-ctl) - 2px);
+    border-start-end-radius: calc(var(--r-ctl) - 2px);
   }
 
   fieldset:not(.selection-ready) .selection-indicator {
@@ -667,19 +583,6 @@
   fieldset.previewing .selection-indicator,
   fieldset.previewing input:checked ~ .segment-label {
     opacity: 0.4;
-  }
-
-  /* Squaring the shared corner only applies when the two sit next to each other, so it is keyed on
-     that separately rather than on the offer existing. */
-
-  fieldset[data-preview='before'] .selection-indicator {
-    border-end-start-radius: 0;
-    border-start-start-radius: 0;
-  }
-
-  fieldset[data-preview='after'] .selection-indicator {
-    border-end-end-radius: 0;
-    border-start-end-radius: 0;
   }
 
   @keyframes segment-preview {

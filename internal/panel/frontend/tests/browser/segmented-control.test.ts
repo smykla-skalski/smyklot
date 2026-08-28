@@ -189,8 +189,8 @@ describe('the segmented control inside a popover', () => {
     expect(result.thumb.width, `${name} opened with no selection marked`).toBeGreaterThan(0);
     // On the option, not merely somewhere. A thumb of the right size under the wrong option is
     // the same bug one measurement later.
-    expect(Math.abs(result.thumb.left - result.option.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(result.thumb.width - result.option.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(result.thumb.left - result.option.left)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(result.thumb.width - result.option.width)).toBeLessThanOrEqual(0.05);
   });
 
   it.each(MENUS.map((menu) => menu.name))('does not slide it into place in %s', (name) => {
@@ -219,8 +219,10 @@ describe('the segmented control inside a popover', () => {
     if (result.moved === null) throw new Error(`${name} has only one option, so nothing can move`);
 
     // It arrives, first of all. Everything below is about how.
-    expect(Math.abs(result.moved.thumb.left - result.moved.option.left)).toBeLessThanOrEqual(1);
-    expect(Math.abs(result.moved.thumb.width - result.moved.option.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(result.moved.thumb.left - result.moved.option.left)).toBeLessThanOrEqual(0.05);
+    expect(Math.abs(result.moved.thumb.width - result.moved.option.width)).toBeLessThanOrEqual(
+      0.05,
+    );
 
     /* And it went there rather than appearing there. Landing in place and travelling between
        options pull against each other on one transition, so a change that simply turned the
