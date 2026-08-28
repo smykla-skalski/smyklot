@@ -127,6 +127,20 @@ describe('SettingsDraftRegistry scopes and locations [Unit]', () => {
     expect(drafts.value(defaults)).toEqual({ nested: { enabled: false } });
     expect(drafts.dirty).toBe(false);
   });
+
+  it('blocks saving while a mounted editor holds an invalid value', () => {
+    const drafts = registry();
+    drafts.hydrate('account-1');
+    stageBoolean(drafts, defaults, 'defaults.enabled', 'defaults', ['repositories']);
+
+    drafts.setValidationProblem(targetOne, 'defaults.formatting.line_width', 'Invalid line width');
+    expect(drafts.validationProblem(targetOne)).toBe('Invalid line width');
+    expect(drafts.beginSave(targetOne)).toBeNull();
+
+    drafts.setValidationProblem(targetOne, 'defaults.formatting.line_width', null);
+    expect(drafts.validationProblem(targetOne)).toBeNull();
+    expect(drafts.beginSave(targetOne)).not.toBeNull();
+  });
 });
 
 describe('SettingsDraftRegistry durability [Unit]', () => {

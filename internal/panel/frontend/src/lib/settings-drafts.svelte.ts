@@ -143,6 +143,7 @@ export class SettingsDraftRegistry {
   private resources = $state.raw<Record<string, ResourceState>>({});
   private records = $state.raw<SettingsRecordMap>({});
   private operations = $state.raw<Record<string, OperationState>>({});
+  private validationProblems = $state.raw<Record<string, Record<string, string>>>({});
   private sequence = 0;
   private editCounter = 0;
   private logicalTime = 0;
@@ -185,6 +186,7 @@ export class SettingsDraftRegistry {
     this.resources = {};
     this.records = {};
     this.operations = {};
+    this.validationProblems = {};
     this.sequence = 0;
     this.editCounter = 0;
     this.logicalTime = 0;
@@ -338,6 +340,38 @@ export class SettingsDraftRegistry {
     return this.dirtyStates(scope).length > 0;
   }
 
+  /**
+   * Register an editor-only problem that cannot be represented in the typed
+   * draft yet, such as a partially entered bounded integer. These problems are
+   * deliberately not persisted: the invalid text belongs to the mounted input,
+   * while every stored draft remains valid and round-trippable.
+   */
+  setValidationProblem(scope: SettingsScope, controlId: string, problem: string | null): void {
+    const scopeKey = settingsScopeKey(scope);
+    const current = this.validationProblems[scopeKey] ?? {};
+    if (
+      (problem === null && !Object.hasOwn(current, controlId)) ||
+      (problem !== null && current[controlId] === problem)
+    ) {
+      return;
+    }
+    const next = { ...current };
+    if (problem === null) delete next[controlId];
+    else next[controlId] = problem;
+
+    const validationProblems = { ...this.validationProblems };
+    if (Object.keys(next).length === 0) delete validationProblems[scopeKey];
+    else validationProblems[scopeKey] = next;
+    this.validationProblems = validationProblems;
+  }
+
+  validationProblem(scope: SettingsScope): string | null {
+    const problems = this.validationProblems[settingsScopeKey(scope)];
+    if (problems === undefined) return null;
+    const first = Object.keys(problems).sort()[0];
+    return first === undefined ? null : (problems[first] ?? null);
+  }
+
   hasConflicts(scope: SettingsScope): boolean {
     return this.dirtyStates(scope).some((state) => state.conflict !== null);
   }
@@ -413,6 +447,9 @@ export class SettingsDraftRegistry {
     this.resources = resources;
     this.records = records;
     this.operations = { ...this.operations, [settingsScopeKey(scope)]: { ...cleanOperation } };
+    const validationProblems = { ...this.validationProblems };
+    delete validationProblems[settingsScopeKey(scope)];
+    this.validationProblems = validationProblems;
     this.persist();
     return selected.length;
   }
@@ -427,6 +464,7 @@ export class SettingsDraftRegistry {
       accountId === null ||
       states.length === 0 ||
       states.some(([, state]) => state.conflict !== null) ||
+      this.validationProblem(scope) !== null ||
       this.isSaving(scope)
     ) {
       return null;

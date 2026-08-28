@@ -154,11 +154,22 @@ describe('one repository through the Root console [Unit]', () => {
    */
   describe('the panes a surface offers', () => {
     it('offers every pane where sync can be asked about', () => {
-      expect(availableRepositorySections(true)).toEqual(['file', 'behavior', 'commands', 'sync']);
+      expect(availableRepositorySections(true)).toEqual([
+        'file',
+        'behavior',
+        'commands',
+        'formatting',
+        'sync',
+      ]);
     });
 
     it('leaves sync out where there is nowhere to ask', () => {
-      expect(availableRepositorySections(false)).toEqual(['file', 'behavior', 'commands']);
+      expect(availableRepositorySections(false)).toEqual([
+        'file',
+        'behavior',
+        'commands',
+        'formatting',
+      ]);
     });
 
     /* Filtered from the router's own list rather than written out again, so a

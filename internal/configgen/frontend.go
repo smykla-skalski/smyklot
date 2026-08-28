@@ -66,6 +66,19 @@ func RenderFrontendFormatting(model Model) ([]byte, error) {
 		output.WriteString(",\n")
 	}
 	output.WriteString("} as const satisfies Record<FormattingPreset, FormattingPolicy>;\n\n")
+	output.WriteString("export const FORMATTING_GROUPS = [\n")
+	for _, field := range formatting.Children {
+		if field.Kind != KindObject {
+			continue
+		}
+		fmt.Fprintf(&output, "  { key: %s, label: %s, description: %s },\n",
+			quoteTypeScript(typeScriptLocalKey(field.Key)),
+			quoteTypeScript(field.GoName),
+			quoteTypeScript(field.Description),
+		)
+	}
+	output.WriteString("] as const;\n\n")
+	output.WriteString("export type FormattingGroup = (typeof FORMATTING_GROUPS)[number];\n\n")
 	output.WriteString("export const FORMATTING_FIELDS = [\n")
 	for _, field := range flattenLeaves(formatting.Children) {
 		if err := writeFieldDefinition(&output, field); err != nil {

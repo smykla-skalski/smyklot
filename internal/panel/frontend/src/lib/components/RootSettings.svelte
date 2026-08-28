@@ -5,6 +5,12 @@
   import { CONFIG_KEYS } from '../config';
   import { durationParts, type DurationUnit } from '../duration';
   import { formatBytes, formatElapsed, formatLatency } from '../format';
+  import {
+    FORMATTING_FIELDS,
+    formattingOverrideCount,
+    type FormattingFieldKey,
+    type FormattingPatch,
+  } from '../formatting';
   import type { RootRuntimeSection } from '../routes';
   import {
     adoptRuntimeSettings,
@@ -32,6 +38,7 @@
   import Button from './Button.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
+  import FormattingEditor from './FormattingEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
@@ -139,6 +146,11 @@
   const dirtyConfigKeys = $derived(
     CONFIG_KEYS.filter((key) => controlDirty(`runtime.bot_config.${key}`)),
   );
+  const dirtyFormattingKeys = $derived(
+    FORMATTING_FIELDS.filter((field) => controlDirty(`runtime.bot_config.${field.key}`)).map(
+      (field) => field.key,
+    ),
+  );
 
   $effect(() => {
     const current = canonicalSettings;
@@ -207,6 +219,32 @@
         bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
       },
       `runtime.bot_config.${changedKey}`,
+    );
+  }
+
+  function updateFormatting(formatting: FormattingPatch, changedKey: FormattingFieldKey): void {
+    const current = canonicalSettings;
+    if (current === null || document === null) return;
+    const patch = runtimeConfigPatch(
+      current.behavior_defaults.deployment,
+      current.behavior_defaults.override,
+    );
+    if (formattingOverrideCount(formatting) === 0) delete patch.formatting;
+    else patch.formatting = formatting;
+    stage(
+      {
+        ...document,
+        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
+      },
+      `runtime.bot_config.${changedKey}`,
+    );
+  }
+
+  function setFormattingValidity(valid: boolean): void {
+    drafts.setValidationProblem(
+      ROOT_SETTINGS_SCOPE,
+      'runtime.bot_config.formatting',
+      valid ? null : 'Formatting widths must be whole numbers within their documented bounds',
     );
   }
 
@@ -415,6 +453,20 @@
         disabled={saving}
         dirtyKeys={dirtyConfigKeys}
         onChange={updateBehavior}
+      />
+
+      <FormattingEditor
+        patch={runtimeConfigPatch(
+          current.behavior_defaults.deployment,
+          current.behavior_defaults.override,
+        ).formatting ?? {}}
+        inherited={current.behavior_defaults.deployment.formatting}
+        scope="runtime"
+        idPrefix="root"
+        disabled={saving}
+        dirtyKeys={dirtyFormattingKeys}
+        onChange={updateFormatting}
+        onValidity={setFormattingValidity}
       />
 
       <section class="card group-card" aria-labelledby="root-runtime">

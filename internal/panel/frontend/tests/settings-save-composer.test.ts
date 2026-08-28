@@ -78,6 +78,20 @@ describe('SettingsSaveComposer [Component]', () => {
     );
   });
 
+  it('blocks saving while an editor holds an invalid value', () => {
+    render(SettingsSaveComposer, {
+      ...base,
+      invalidProblem: 'Line width must be from 40 to 320',
+    });
+
+    expect(screen.getByText('Fix the invalid setting before saving')).toBeTruthy();
+    expect(screen.getByText('Line width must be from 40 to 320')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Discard' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+  });
+
   it('shows a saved receipt until it is dismissed', async () => {
     const onDismiss = vi.fn();
     render(SettingsSaveComposer, {

@@ -2,6 +2,12 @@
   import { BOOLEAN_FIELDS, CONFIG_KEYS } from '../config';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import {
+    FORMATTING_FIELDS,
+    formattingOverrideCount,
+    type FormattingFieldKey,
+    type FormattingPatch,
+  } from '../formatting';
+  import {
     buildRepositorySettingsDocument,
     type RepositorySettingsControlId,
     type RepositorySettingsDocument,
@@ -22,6 +28,7 @@
   } from '../types';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
+  import FormattingEditor from './FormattingEditor.svelte';
   import Icon from './Icon.svelte';
   import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
@@ -74,6 +81,7 @@
     syncReadProblem = null,
     now = 0,
     onChangeSync = () => {},
+    onFormattingValidity = () => {},
     dirtyControls = [],
   }: {
     repository: RepositorySummary;
@@ -107,12 +115,18 @@
     /** The clock the pane's relative times are read against. */
     now?: number;
     onChangeSync?: (next: SyncOverrideEditorEnvelope, control: SyncOverrideControlId) => void;
+    onFormattingValidity?: (valid: boolean) => void;
     dirtyControls?: readonly string[];
   } = $props();
 
   const disabled = $derived(readOnly);
   const dirtyControlSet = $derived(new Set(dirtyControls));
   const dirtyConfigKeys = $derived(CONFIG_KEYS.filter((key) => controlDirty(configControl(key))));
+  const dirtyFormattingKeys = $derived(
+    FORMATTING_FIELDS.filter((field) => controlDirty(controlId(`config_patch.${field.key}`))).map(
+      (field) => field.key,
+    ),
+  );
   const titleId = 'repository-page-title';
 
   function controlId(suffix: string): RepositorySettingsControlId {
@@ -331,6 +345,15 @@
     stage({ ...document, config_patch: patch }, configControl(key));
   }
 
+  function setFormatting(formatting: FormattingPatch, key: FormattingFieldKey): void {
+    const document = currentDocument();
+    if (document === null) return;
+    const configPatch = { ...document.config_patch };
+    if (formattingOverrideCount(formatting) === 0) delete configPatch.formatting;
+    else configPatch.formatting = formatting;
+    stage({ ...document, config_patch: configPatch }, controlId(`config_patch.${key}`));
+  }
+
   /* The repository-file pane lists the behavior settings this repository
      actually overrides, the way the approved design draws it: the file card, the
      bypass control, then whatever this repo has changed. Someone reading the
@@ -342,7 +365,11 @@
     );
   }
 
-  function sectionCount(one: RepositoryDetail, pane: 'behavior' | 'commands'): number {
+  function sectionCount(
+    one: RepositoryDetail,
+    pane: 'behavior' | 'commands' | 'formatting',
+  ): number {
+    if (pane === 'formatting') return formattingOverrideCount(one.config_patch.formatting ?? {});
     const keys: readonly ConfigKey[] =
       pane === 'behavior'
         ? BOOLEAN_FIELDS.map((field) => field.key)
@@ -371,6 +398,7 @@
     file: 'File',
     behavior: 'Behavior',
     commands: 'Commands',
+    formatting: 'Formatting',
     sync: 'Sync',
   };
 
@@ -836,6 +864,17 @@
               onChange={onChangeSync}
             />
           {/if}
+        {:else if section === 'formatting'}
+          <FormattingEditor
+            patch={detail.config_patch.formatting ?? {}}
+            inherited={detail.inherited_config.formatting}
+            scope="repository"
+            idPrefix={repository.id}
+            {disabled}
+            dirtyKeys={dirtyFormattingKeys}
+            onChange={setFormatting}
+            onValidity={onFormattingValidity}
+          />
         {:else}
           <ConfigEditor
             patch={detail.config_patch}

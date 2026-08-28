@@ -6,6 +6,7 @@
     saving = false,
     resolving = false,
     problem = null,
+    invalidProblem = null,
     problemHref,
     problemLabel,
     notice = null,
@@ -21,6 +22,7 @@
     saving?: boolean;
     resolving?: boolean;
     problem?: string | null;
+    invalidProblem?: string | null;
     problemHref?: string;
     problemLabel?: string;
     notice?: string | null;
@@ -52,6 +54,9 @@
       {:else if saving}
         <strong>Saving settings…</strong>
         <span>Every changed setting in this workspace will land together</span>
+      {:else if invalidProblem !== null}
+        <strong>Fix the invalid setting before saving</strong>
+        <span>{invalidProblem}</span>
       {:else if problem !== null || conflict}
         <strong>{conflict ? 'Your draft is still safe' : 'Settings were not saved'}</strong>
         <span>{problem ?? 'Settings also changed in another open tab'}</span>
@@ -75,7 +80,11 @@
             {resolving ? 'Updating…' : 'Update draft'}
           </Button>
         {:else}
-          <Button tone="signal" disabled={saving || resolving || readOnly} onclick={onSave}>
+          <Button
+            tone="signal"
+            disabled={saving || resolving || readOnly || invalidProblem !== null}
+            onclick={onSave}
+          >
             {saving ? 'Saving…' : 'Save'}
           </Button>
         {/if}

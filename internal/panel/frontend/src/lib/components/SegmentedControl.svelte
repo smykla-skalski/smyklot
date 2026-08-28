@@ -145,8 +145,9 @@
        nothing at all. Nothing here is cancellable and nothing is captured - `measure` reads the
        checked option each time - so a tick arriving mid-flight writes the same answer early rather
        than taking anybody's turn. */
-    const resize = new ResizeObserver(() => measure());
-    resize.observe(node);
+    const resize =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => measure());
+    resize?.observe(node);
 
     void scheduleMove();
 
@@ -157,7 +158,7 @@
         void scheduleMove();
       },
       destroy() {
-        resize.disconnect();
+        resize?.disconnect();
       },
     };
   }

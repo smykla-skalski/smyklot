@@ -909,6 +909,12 @@
     {syncReadProblem}
     {now}
     onChangeSync={(next, control) => stageSyncEnvelope(repository.id, next, control)}
+    onFormattingValidity={(valid) =>
+      drafts.setValidationProblem(
+        settingsScope,
+        `repositories.${repository.id}.config_patch.formatting`,
+        valid ? null : 'Formatting widths must be whole numbers within their documented bounds',
+      )}
     dirtyControls={drafts
       .dirtyControls(settingsScope)
       .filter(({ id }) => id.startsWith(`repositories.${repository.id}.`))

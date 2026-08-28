@@ -2,6 +2,12 @@
   import { untrack } from 'svelte';
 
   import { CONFIG_KEYS } from '../config';
+  import {
+    FORMATTING_FIELDS,
+    formattingOverrideCount,
+    type FormattingFieldKey,
+    type FormattingPatch,
+  } from '../formatting';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
   import {
@@ -16,6 +22,7 @@
   import type { ConfigKey, ConfigPatch, PanelTarget, PendingCIMode } from '../types';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
+  import FormattingEditor from './FormattingEditor.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PatternEntries from './PatternEntries.svelte';
@@ -48,6 +55,11 @@
   const frozen = $derived(readOnly);
   const dirtyConfigKeys = $derived(
     CONFIG_KEYS.filter((key) => controlDirty(`defaults.config_patch.${key}`)),
+  );
+  const dirtyFormattingKeys = $derived(
+    FORMATTING_FIELDS.filter((field) => controlDirty(`defaults.config_patch.${field.key}`)).map(
+      (field) => field.key,
+    ),
   );
   const pendingCIPermissionsReady = $derived(
     target.pending_ci_permissions.checks_write &&
@@ -83,6 +95,21 @@
 
   function updateConfig(configPatch: ConfigPatch, changedKey: ConfigKey): void {
     stage({ ...document, config_patch: configPatch }, `defaults.config_patch.${changedKey}`);
+  }
+
+  function updateFormatting(formatting: FormattingPatch, changedKey: FormattingFieldKey): void {
+    const configPatch: ConfigPatch = { ...target.config_patch };
+    if (formattingOverrideCount(formatting) === 0) delete configPatch.formatting;
+    else configPatch.formatting = formatting;
+    stage({ ...document, config_patch: configPatch }, `defaults.config_patch.${changedKey}`);
+  }
+
+  function setFormattingValidity(valid: boolean): void {
+    drafts.setValidationProblem(
+      settingsScope,
+      'defaults.config_patch.formatting',
+      valid ? null : 'Formatting widths must be whole numbers within their documented bounds',
+    );
   }
 
   function setMode(mode: PendingCIMode): void {
@@ -507,6 +534,16 @@
       disabled={frozen}
       dirtyKeys={dirtyConfigKeys}
       onChange={updateConfig}
+    />
+    <FormattingEditor
+      patch={target.config_patch.formatting ?? {}}
+      inherited={target.inherited_config.formatting}
+      scope="target"
+      idPrefix={target.id}
+      disabled={frozen}
+      dirtyKeys={dirtyFormattingKeys}
+      onChange={updateFormatting}
+      onValidity={setFormattingValidity}
     />
   </section>
 </div>

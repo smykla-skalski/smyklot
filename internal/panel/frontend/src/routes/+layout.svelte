@@ -102,6 +102,9 @@
       .toSorted((left, right) => left.changedAt - right.changedAt),
   );
   const rootSettingsOperation = $derived(settingsDraftRegistry.operation(ROOT_SETTINGS_SCOPE));
+  const rootValidationProblem = $derived(
+    settingsDraftRegistry.validationProblem(ROOT_SETTINGS_SCOPE),
+  );
   const rootSettingsConflict = $derived(settingsDraftRegistry.hasConflicts(ROOT_SETTINGS_SCOPE));
   const rootProblemControl = $derived(rootDirtyControls[0]);
   const selectedSettingsScope = $derived.by((): SettingsScope | null => {
@@ -118,6 +121,11 @@
     selectedSettingsScope === null
       ? { saving: false, problem: null, notice: null }
       : settingsDraftRegistry.operation(selectedSettingsScope),
+  );
+  const selectedValidationProblem = $derived(
+    selectedSettingsScope === null
+      ? null
+      : settingsDraftRegistry.validationProblem(selectedSettingsScope),
   );
   const selectedSettingsConflict = $derived(
     selectedSettingsScope !== null && settingsDraftRegistry.hasConflicts(selectedSettingsScope),
@@ -994,6 +1002,7 @@
             saving={selectedSettingsOperation.saving}
             resolving={resolvingSettingsConflict}
             problem={selectedSettingsOperation.problem}
+            invalidProblem={selectedValidationProblem}
             problemHref={selectedProblemHref}
             problemLabel={selectedProblemLabel}
             notice={selectedSettingsOperation.notice}
@@ -1011,6 +1020,7 @@
             saving={rootSettingsOperation.saving}
             resolving={resolvingSettingsConflict}
             problem={rootSettingsOperation.problem}
+            invalidProblem={rootValidationProblem}
             problemHref={rootProblemControl === undefined
               ? undefined
               : session.rootRuntimeHref('settings')}

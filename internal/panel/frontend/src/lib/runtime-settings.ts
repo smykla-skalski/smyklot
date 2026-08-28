@@ -3,7 +3,7 @@ import { durationParts, durationSeconds, type DurationUnit } from './duration';
 import {
   FORMATTING_FIELDS,
   applyFormattingPatch,
-  completeFormattingPatch,
+  formattingPolicyPatch,
   defaultFormattingPolicy,
   formattingPoliciesEqual,
   formattingPolicyValue,
@@ -388,7 +388,7 @@ export function runtimeConfigPatch(
     ),
   ) as ConfigPatch;
   if (!formattingPoliciesEqual(override.formatting, deployment.formatting)) {
-    patch.formatting = completeFormattingPatch(override.formatting);
+    patch.formatting = formattingPolicyPatch(deployment.formatting, override.formatting);
   }
   return patch;
 }

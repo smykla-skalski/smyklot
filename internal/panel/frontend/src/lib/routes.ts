@@ -89,7 +89,7 @@ export const ROOT_RUNTIME_SECTIONS = ['service', 'database', 'settings'] as cons
  * repository already means it, and an address that says so twice is one a reader
  * would have to be told to ignore.
  */
-export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'sync'] as const;
+export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'formatting', 'sync'] as const;
 export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
 
 /**

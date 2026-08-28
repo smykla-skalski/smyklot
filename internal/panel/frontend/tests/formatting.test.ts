@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   FORMATTING_FIELDS,
+  FORMATTING_GROUPS,
   FORMATTING_PRESETS,
   applyFormattingPatch,
   applyFormattingSources,
   defaultFormattingPolicy,
   formattingPatchValue,
+  formattingOverrideCount,
+  formattingPatchesEqual,
   formattingPoliciesEqual,
+  formattingPolicyPatch,
   formattingSources,
   parseFormattingPatch,
   parseFormattingPolicy,
@@ -21,6 +25,14 @@ describe('generated formatting contract [Unit]', () => {
       FORMATTING_PRESETS.conventional,
     );
     expect(FORMATTING_FIELDS).toHaveLength(24);
+    expect(FORMATTING_GROUPS.map(({ label }) => label)).toEqual([
+      'Common',
+      'JSON',
+      'JSONC',
+      'YAML',
+      'TOML',
+      'Markdown',
+    ]);
     expect(new Set(FORMATTING_FIELDS.map(({ key }) => key)).size).toBe(FORMATTING_FIELDS.length);
   });
 
@@ -70,6 +82,27 @@ describe('generated formatting contract [Unit]', () => {
     expect(() => setFormattingPatchValue({}, arrays, 'invalid')).toThrow(
       'invalid value for formatting.json.arrays',
     );
+  });
+
+  it('compares sparse layers without collapsing omission into preserve', () => {
+    const omitted = {};
+    const explicit = { json: { arrays: 'preserve' as const } };
+
+    expect(formattingPatchesEqual(omitted, {})).toBe(true);
+    expect(formattingPatchesEqual(omitted, explicit)).toBe(false);
+    expect(formattingOverrideCount(explicit)).toBe(1);
+  });
+
+  it('derives a minimal layer from two complete policies', () => {
+    const base = defaultFormattingPolicy();
+    const resolved = applyFormattingPatch(base, {
+      preset: 'conventional',
+      json: { arrays: 'preserve' },
+    });
+    const patch = formattingPolicyPatch(base, resolved);
+
+    expect(patch).toEqual({ preset: 'conventional', json: { arrays: 'preserve' } });
+    expect(applyFormattingPatch(base, patch)).toEqual(resolved);
   });
 
   it('tracks preset resets and explicit sibling provenance leaf by leaf', () => {

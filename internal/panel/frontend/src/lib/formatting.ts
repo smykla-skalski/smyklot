@@ -1,5 +1,6 @@
 import {
   FORMATTING_FIELDS,
+  FORMATTING_GROUPS,
   FORMATTING_PRESETS,
   type FormattingField,
   type FormattingPatch,
@@ -11,6 +12,7 @@ import {
 export type {
   FormattingField,
   FormattingFieldKey,
+  FormattingGroup,
   FormattingPatch,
   FormattingPolicy,
   FormattingPreset,
@@ -80,9 +82,43 @@ export function completeFormattingPatch(policy: FormattingPolicy): FormattingPat
   return cloneFormattingPolicy(policy) as FormattingPatch;
 }
 
+/** Return the smallest layer that resolves the base policy to the requested policy. */
+export function formattingPolicyPatch(
+  base: FormattingPolicy,
+  resolved: FormattingPolicy,
+): FormattingPatch {
+  let patch: FormattingPatch = {};
+  let comparison = base;
+  if (resolved.preset !== base.preset) {
+    const preset = FORMATTING_FIELDS[0];
+    patch = setFormattingPatchValue(patch, preset, resolved.preset);
+    comparison = FORMATTING_PRESETS[resolved.preset];
+  }
+  for (const field of FORMATTING_FIELDS.slice(1)) {
+    const value = formattingPolicyValue(resolved, field);
+    if (value !== formattingPolicyValue(comparison, field)) {
+      patch = setFormattingPatchValue(patch, field, value);
+    }
+  }
+  return patch;
+}
+
 export function formattingPoliciesEqual(left: FormattingPolicy, right: FormattingPolicy): boolean {
   return FORMATTING_FIELDS.every(
     (field) => formattingPolicyValue(left, field) === formattingPolicyValue(right, field),
+  );
+}
+
+export function formattingPatchesEqual(left: FormattingPatch, right: FormattingPatch): boolean {
+  return FORMATTING_FIELDS.every(
+    (field) => formattingPatchValue(left, field) === formattingPatchValue(right, field),
+  );
+}
+
+export function formattingOverrideCount(patch: FormattingPatch): number {
+  return FORMATTING_FIELDS.reduce(
+    (count, field) => count + (formattingPatchValue(patch, field) === undefined ? 0 : 1),
+    0,
   );
 }
 
@@ -305,4 +341,4 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return prototype === Object.prototype || prototype === null;
 }
 
-export { FORMATTING_FIELDS, FORMATTING_PRESETS };
+export { FORMATTING_FIELDS, FORMATTING_GROUPS, FORMATTING_PRESETS };

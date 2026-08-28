@@ -139,6 +139,17 @@ export const FORMATTING_PRESETS = {
   },
 } as const satisfies Record<FormattingPreset, FormattingPolicy>;
 
+export const FORMATTING_GROUPS = [
+  { key: 'common', label: 'Common', description: 'Carries presentation choices shared by every supported format.' },
+  { key: 'json', label: 'JSON', description: 'Carries strict JSON presentation choices.' },
+  { key: 'jsonc', label: 'JSONC', description: 'Carries comment-aware JSON presentation choices.' },
+  { key: 'yaml', label: 'YAML', description: 'Carries YAML presentation choices.' },
+  { key: 'toml', label: 'TOML', description: 'Carries TOML presentation choices.' },
+  { key: 'markdown', label: 'Markdown', description: 'Carries Markdown presentation choices.' },
+] as const;
+
+export type FormattingGroup = (typeof FORMATTING_GROUPS)[number];
+
 export const FORMATTING_FIELDS = [
   {
     key: 'formatting.preset',
