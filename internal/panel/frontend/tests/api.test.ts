@@ -130,6 +130,30 @@ const REPOSITORY = {
   updated_at: '2026-08-08T10:00:00Z',
 };
 
+describe('file rendering', () => {
+  it('posts the complete typed render request to the encoded installation route', async () => {
+    const response = { valid: true, content: '{}\n', changed: true, diagnostics: [] };
+    const stub = stubFetch([jsonResponse(200, response)]);
+    const api = createPanelApi('/panel', stub.fetch);
+    const input = {
+      path: 'renovate.json',
+      draft_content: '{}',
+      base_policy: defaultFormattingPolicy(),
+      overlays: [{ common: { final_newline: 'insert' as const } }],
+    };
+
+    await expect(api.renderSyncFile('target.1', input)).resolves.toEqual(response);
+    expect(stub.calls[0]).toMatchObject({
+      url: '/panel/api/v1/targets/target%2E1/sync/files/render',
+      init: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      },
+    });
+  });
+});
+
 const DETAIL: RepositoryDetail = {
   repository: REPOSITORY,
   config_patch: {},

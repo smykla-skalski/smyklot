@@ -1,16 +1,86 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/svelte';
+import type { ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncFilePage, {
   templateDocumentWithContent,
 } from '../src/lib/components/SyncFilePage.svelte';
+import { defaultFormattingPolicy } from '../src/lib/formatting';
 import {
   buildSyncOverrideEditorEnvelope,
   type SyncOverrideControlId,
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
-import type { SyncConfig, SyncFilesContext, SyncOverride } from '../src/lib/types';
+import type {
+  SyncConfig,
+  SyncFileRenderInput,
+  SyncFileRenderResponse,
+  SyncFilesContext,
+  SyncOverride,
+} from '../src/lib/types';
+
+const POLICY = defaultFormattingPolicy();
+
+function repositoryPolicy(repository: string, repositoryId: string) {
+  return {
+    repository,
+    repository_id: repositoryId,
+    default_branch: 'main',
+    base_policy: POLICY,
+  };
+}
+
+const renderFile = async (input: { draft_content: string }) => ({
+  valid: true,
+  content: input.draft_content,
+  changed: false,
+  diagnostics: [],
+});
+
+function configWithTemplate(content = '{}'): SyncConfig {
+  return {
+    kind: 'files',
+    enabled: true,
+    labels: [],
+    allow_removal: false,
+    excludes: [],
+    revision: 1,
+    updated_by: 'bart',
+    updated_at: new Date(0).toISOString(),
+    digest: '',
+    document: { files: [{ path: 'renovate.json', content }] },
+    unreadable: false,
+    unavailable: '',
+  };
+}
+
+type SyncFilePageProps = ComponentProps<typeof SyncFilePage>;
+
+function renderProps(over: Partial<SyncFilePageProps> = {}): SyncFilePageProps {
+  return {
+    config: configWithTemplate(),
+    context: {
+      repositories: 0,
+      covered: 0,
+      known_paths: [],
+      base_formatting: POLICY,
+      repository_policies: [],
+      merges: [],
+    },
+    path: 'renovate.json',
+    nowMs: 0,
+    readOnly: false,
+    sectionHref: () => '#',
+    onOpenSection: vi.fn(),
+    onChangeDocument: () => true,
+    fetchOverride: vi.fn(),
+    renderFile,
+    onFormattingValidity: vi.fn(),
+    onChangeOverride: vi.fn(() => true),
+    ...over,
+  };
+}
 
 class TestResizeObserver {
   observe(): void {}
@@ -39,7 +109,7 @@ describe('SyncFilePage [Component]', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it('writes only the strict file fields the service accepts', () => {
+  it('changes content without discarding formatting or future file fields', () => {
     expect(
       templateDocumentWithContent(
         {
@@ -57,9 +127,138 @@ describe('SyncFilePage [Component]', () => {
         '{ "timezone": "UTC" }',
       ),
     ).toEqual({
-      files: [{ path: 'renovate.json', content: '{ "timezone": "UTC" }' }],
+      files: [
+        {
+          path: 'renovate.json',
+          content: '{ "timezone": "UTC" }',
+          updated_at: 'not part of orgsync.File',
+          updated_by: 'also not part of orgsync.File',
+        },
+      ],
       retired: [],
     });
+  });
+
+  it('blocks saving while the template render check is still pending', async () => {
+    const pending = deferred<SyncFileRenderResponse>();
+    const onFormattingValidity = vi.fn();
+    const renderFile = vi.fn(() => pending.promise);
+
+    render(SyncFilePage, {
+      props: renderProps({ renderFile, onFormattingValidity }),
+    });
+
+    await vi.waitFor(() =>
+      expect(onFormattingValidity).toHaveBeenCalledWith(
+        'sync.files.template-render::renovate.json',
+        false,
+        'The template formatting check has not finished',
+      ),
+    );
+    expect(renderFile).not.toHaveBeenCalled();
+
+    pending.resolve({ valid: true, content: '{}', changed: false, diagnostics: [] });
+  });
+
+  it('keeps an invalid dirty template blocked after the page unmounts', async () => {
+    const onFormattingValidity = vi.fn();
+    const invalid: SyncFileRenderResponse = {
+      valid: false,
+      content: '',
+      changed: false,
+      diagnostics: [{ code: 'unsafe_format', message: 'Formatting is unsafe' }],
+    };
+    const rendered = render(SyncFilePage, {
+      props: renderProps({
+        config: configWithTemplate('{"changed":true}'),
+        savedDocument: { files: [{ path: 'renovate.json', content: '{}' }] },
+        dirtyDocument: true,
+        renderFile: vi.fn().mockResolvedValue(invalid),
+        onFormattingValidity,
+      }),
+    });
+
+    await vi.waitFor(() =>
+      expect(onFormattingValidity).toHaveBeenCalledWith(
+        'sync.files.template-render::renovate.json',
+        false,
+        'Formatting is unsafe',
+      ),
+    );
+    const callsBeforeUnmount = onFormattingValidity.mock.calls.length;
+    rendered.unmount();
+
+    expect(
+      onFormattingValidity.mock.calls
+        .slice(callsBeforeUnmount)
+        .some(
+          ([control, valid]) =>
+            control === 'sync.files.template-render::renovate.json' && valid === true,
+        ),
+    ).toBe(false);
+  });
+
+  it('keeps an invalid dirty repository output blocked after its row collapses', async () => {
+    const onFormattingValidity = vi.fn();
+    const stored: SyncOverride = {
+      kind: 'files',
+      enabled: null,
+      document: {},
+      revision: 1,
+      updated_by: 'bart',
+      updated_at: new Date(0).toISOString(),
+      unreadable: false,
+    };
+    const renderFile = vi.fn(async (input: SyncFileRenderInput): Promise<SyncFileRenderResponse> =>
+      input.default_branch === undefined
+        ? { valid: true, content: input.draft_content, changed: false, diagnostics: [] }
+        : {
+            valid: false,
+            content: '',
+            changed: false,
+            diagnostics: [{ code: 'unsafe_format', message: 'Repository formatting is unsafe' }],
+          },
+    );
+    render(SyncFilePage, {
+      props: renderProps({
+        context: {
+          repositories: 1,
+          covered: 1,
+          known_paths: [],
+          base_formatting: POLICY,
+          repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+          merges: [],
+        },
+        dirtyControls: ['repositories.repo-1.sync.files.document'],
+        fetchOverride: vi.fn().mockResolvedValue({
+          stored,
+          envelope: buildSyncOverrideEditorEnvelope(stored),
+        }),
+        renderFile,
+        onFormattingValidity,
+      }),
+    });
+
+    const row = screen.getByRole('button', { name: /repo-a/ });
+    await fireEvent.click(row);
+    await vi.waitFor(() =>
+      expect(onFormattingValidity).toHaveBeenCalledWith(
+        'sync.files.repository-render:repo-1:renovate.json',
+        false,
+        'Repository formatting is unsafe',
+      ),
+    );
+    const callsBeforeCollapse = onFormattingValidity.mock.calls.length;
+    await fireEvent.click(row);
+
+    expect(
+      onFormattingValidity.mock.calls
+        .slice(callsBeforeCollapse)
+        .some(
+          ([control, valid]) =>
+            control === 'sync.files.repository-render:repo-1:renovate.json' && valid === true,
+        ),
+    ).toBe(false);
   });
 
   it('ignores an override response after another repository opens', async () => {
@@ -88,6 +287,8 @@ describe('SyncFilePage [Component]', () => {
       repositories: 2,
       covered: 2,
       known_paths: [],
+      base_formatting: POLICY,
+      repository_policies: [repositoryPolicy('repo-a', 'a'), repositoryPolicy('repo-b', 'b')],
       merges: [
         { repository: 'repo-a', repository_id: 'a', path: 'renovate.json', merge },
         { repository: 'repo-b', repository_id: 'b', path: 'renovate.json', merge },
@@ -109,6 +310,8 @@ describe('SyncFilePage [Component]', () => {
           const stored = await (repositoryId === 'a' ? first.promise : second.promise);
           return { stored, envelope: buildSyncOverrideEditorEnvelope(stored) };
         },
+        renderFile,
+        onFormattingValidity: vi.fn(),
         onChangeOverride: vi.fn(() => true),
       },
     });
@@ -199,6 +402,8 @@ describe('SyncFilePage [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
+          base_formatting: POLICY,
+          repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
           merges: [
             {
               repository: 'repo-a',
@@ -216,6 +421,8 @@ describe('SyncFilePage [Component]', () => {
         onChangeDocument: () => true,
         fetchOverride: () =>
           Promise.resolve({ stored, envelope: buildSyncOverrideEditorEnvelope(stored) }),
+        renderFile,
+        onFormattingValidity: vi.fn(),
         onChangeOverride,
       },
     });

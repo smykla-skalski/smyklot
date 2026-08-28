@@ -1,5 +1,11 @@
 import { composeFile, formatJson, parseJson, validateSpec } from './merge';
 import type { JsonValue, MergeSpec } from './merge';
+import {
+  cloneFormattingPatch,
+  formattingOverrideCount,
+  parseFormattingPatch,
+  type FormattingPatch,
+} from './formatting';
 import type {
   InstallationSyncOverrideSettingsInput,
   InstallationSyncOverrideSettingsState,
@@ -14,13 +20,15 @@ import {
 } from './settings-draft-storage';
 
 const ENVELOPE_KEYS = ['enabled', 'document', 'override_texts'] as const;
-const DOCUMENT_KEYS = ['merges', 'excludes'] as const;
+const DOCUMENT_KEYS = ['merges', 'formats', 'excludes'] as const;
 const MERGE_KEYS = ['path', 'strategy', 'overrides', 'arrays', 'deduplicate', 'sections'] as const;
+const FORMAT_KEYS = ['path', 'formatting'] as const;
 const ARRAY_RULE_KEYS = ['path', 'strategy'] as const;
 const SECTION_KEYS = ['action', 'heading', 'occurrence', 'content', 'patches'] as const;
 const PATCH_KEYS = ['find', 'replace'] as const;
 const STRUCTURED_PATH = /\.(?:json|ya?ml)$/i;
 const MARKDOWN_PATH = /\.(?:md|markdown)$/i;
+const FORMATTABLE_PATH = /\.(?:jsonc?|ya?ml|toml|md|markdown)$/i;
 const STRUCTURED_STRATEGIES = new Set(['', 'deep-merge', 'shallow-merge']);
 const ARRAY_STRATEGIES = new Set(['replace', 'append', 'prepend']);
 const SECTION_ACTIONS = new Set([
@@ -34,6 +42,12 @@ const SECTION_ACTIONS = new Set([
 ]);
 
 export type SyncOverrideSettingsDocument = Record<string, SettingsJson>;
+
+/** One exact managed path's sparse formatting layer. */
+export interface SyncFileFormattingEntry {
+  path: string;
+  formatting: FormattingPatch;
+}
 
 /**
  * The controlled editor state persisted by the draft registry.
@@ -124,6 +138,50 @@ export function cloneSyncOverrideEditorEnvelope(
   const parsed = parseSyncOverrideEditorEnvelope(envelope);
   if (parsed === null) throw new TypeError('sync override editor state is invalid');
   return parsed;
+}
+
+/** Read validated path-formatting rows from one controlled repository document. */
+export function syncOverrideFormattingEntries(
+  envelope: SyncOverrideEditorEnvelope,
+): SyncFileFormattingEntry[] {
+  const rows = envelope.document.formats;
+  if (!Array.isArray(rows)) return [];
+  const parsed: SyncFileFormattingEntry[] = [];
+  for (const row of rows) {
+    if (!isRecord(row) || typeof row.path !== 'string') continue;
+    const formatting = parseFormattingPatch(row.formatting);
+    if (formatting === null) continue;
+    parsed.push({ path: row.path, formatting });
+  }
+  return parsed;
+}
+
+/** Replace one path layer while preserving every other repository setting. */
+export function withSyncOverrideFormatting(
+  envelope: SyncOverrideEditorEnvelope,
+  path: string,
+  formatting: FormattingPatch,
+): SyncOverrideEditorEnvelope {
+  const nextFormatting = cloneFormattingPatch(formatting);
+  const document = cloneSettingsJson(envelope.document) as SyncOverrideSettingsDocument;
+  const formats = Array.isArray(document.formats) ? [...document.formats] : [];
+  const index = formats.findIndex((entry) => isRecord(entry) && entry.path === path);
+  if (formattingOverrideCount(nextFormatting) === 0) {
+    if (index >= 0) formats.splice(index, 1);
+  } else if (index >= 0) {
+    const current = formats[index];
+    formats[index] = {
+      ...(isRecord(current) ? current : {}),
+      path,
+      formatting: nextFormatting,
+    };
+  } else {
+    formats.push({ path, formatting: nextFormatting });
+  }
+
+  if (formats.length === 0) delete document.formats;
+  else document.formats = formats as unknown as SettingsJson;
+  return { ...envelope, document };
 }
 
 /** Adopt the canonical response while preserving a locally edited envelope. */
@@ -266,7 +324,47 @@ export function serializeSyncOverrideDocument(
     savedMerges.push(saved.merge);
   }
   if (savedMerges.length > 0) serialized.merges = savedMerges;
+  const formats = serializeFormats(document.formats);
+  if (!formats.ok) return formats;
+  if (formats.value.length > 0) serialized.formats = formats.value;
   return { ok: true, document: serialized };
+}
+
+type FormatsSerialization =
+  { ok: true; value: SyncFileFormattingEntry[] } | { ok: false; problem: string };
+
+function serializeFormats(value: unknown): FormatsSerialization {
+  if (value === undefined) return { ok: true, value: [] };
+  if (!Array.isArray(value)) {
+    return { ok: false, problem: 'File formatting overrides must be a list' };
+  }
+
+  const formats: SyncFileFormattingEntry[] = [];
+  const seen = new Map<string, string>();
+  for (const [index, row] of value.entries()) {
+    const named = `File formatting override ${index + 1}`;
+    if (!isRecord(row) || firstUnknownKey(row, FORMAT_KEYS) !== null) {
+      return { ok: false, problem: `${named} is invalid` };
+    }
+    if (typeof row.path !== 'string' || row.path.length === 0) {
+      return { ok: false, problem: `${named} names no file` };
+    }
+    if (!FORMATTABLE_PATH.test(row.path)) {
+      return { ok: false, problem: `${row.path} has no supported formatter` };
+    }
+    const folded = row.path.toLocaleLowerCase();
+    const earlier = seen.get(folded);
+    if (earlier !== undefined) {
+      return { ok: false, problem: `${earlier} has formatting configured twice` };
+    }
+    const formatting = parseFormattingPatch(row.formatting);
+    if (formatting === null || formattingOverrideCount(formatting) === 0) {
+      return { ok: false, problem: `${row.path} has an invalid or empty formatting override` };
+    }
+    seen.set(folded, row.path);
+    formats.push({ path: row.path, formatting });
+  }
+  return { ok: true, value: formats };
 }
 
 /** Convert a canonical compact batch response into a registry commit result. */

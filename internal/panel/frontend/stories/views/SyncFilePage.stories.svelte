@@ -3,10 +3,12 @@
   import { fn } from 'storybook/test';
 
   import SyncFilePage from '#lib/components/SyncFilePage.svelte';
+  import { defaultFormattingPolicy } from '#lib/formatting.js';
   import { buildSyncOverrideEditorEnvelope } from '#lib/repository-sync-override-settings.js';
   import type { SyncConfig, SyncFilesContext, SyncOverride } from '#lib/types.js';
 
   const NOW = Date.UTC(2026, 7, 18, 12, 0, 0);
+  const POLICY = defaultFormattingPolicy();
   const days = (count: number): string => new Date(NOW - count * 86_400_000).toISOString();
 
   const TEMPLATE = [
@@ -62,6 +64,13 @@
     repositories: 25,
     covered: 23,
     known_paths: [],
+    base_formatting: POLICY,
+    repository_policies: Array.from({ length: 25 }, (_, index) => ({
+      repository: ['af', 'afi', 'harness'][index] ?? `repository-${index + 1}`,
+      repository_id: `910${index + 1}`,
+      default_branch: 'main',
+      base_policy: POLICY,
+    })),
     merges: [
       { repository: 'af', repository_id: '9101', path: 'renovate.json', merge: AF_MERGE },
       {
@@ -111,6 +120,13 @@
         stored: OVERRIDE,
         envelope: buildSyncOverrideEditorEnvelope(OVERRIDE),
       }),
+      renderFile: async (input) => ({
+        valid: true,
+        content: input.draft_content,
+        changed: false,
+        diagnostics: [],
+      }),
+      onFormattingValidity: fn(),
       onChangeOverride: fn(() => true),
     },
   });

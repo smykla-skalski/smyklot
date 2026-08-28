@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // TestSyncDocumentRefusesFilesGitHubOrGitWould keeps the answer beside the
@@ -119,6 +120,63 @@ func TestSyncFilesContextCountsRepositoryOptIn(t *testing.T) {
 	}
 	if answer.Repositories != 1 || answer.Covered != 1 {
 		t.Errorf("files context = %+v, wanted the opted-in repository covered", answer)
+	}
+}
+
+func TestSyncFilesContextNormalizesFormattingPoliciesAndPathAdjustments(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+
+	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+		`{"target":{"repository_default_enabled":true,"pending_ci_mode_default":"checks",
+			"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
+			"pending_ci_quiet_period_seconds_override":null,
+			"path_index_interval_seconds_override":null,
+			"config_patch":{"formatting":{"json":{"arrays":"expanded"}}},"expected_revision":1},
+		"repositories":[{"repository_id":"repository-20","enabled_override":null,
+			"pending_ci_mode_override":null,"pending_ci_branch_patterns_override":null,
+			"pending_ci_quiet_period_seconds_override":null,
+			"path_index_interval_seconds_override":null,
+			"config_patch":{"formatting":{"json":{"arrays":"compact"}}},
+			"ignore_repository_file":false,"expected_revision":1}],
+		"sync_configs":[{"kind":"files","enabled":true,"expected_revision":0,
+			"document":{"files":[{"path":"renovate.json","content":"{}",
+			"formatting":{"common":{"final_newline":"insert"}}}]}}],
+		"sync_overrides":[{"repository_id":"repository-20","kind":"files",
+			"enabled":null,"expected_revision":0,"document":{
+			"merges":[{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}],
+			"formats":[{"path":"renovate.json","formatting":{"json":{"arrays":"preserve"}}}]}}]}`), session)
+	if saved.Code != http.StatusOK {
+		t.Fatalf("saving formatting settings = %d %s", saved.Code, saved.Body.String())
+	}
+
+	response := harness.request(t, http.MethodGet,
+		"/panel/api/v1/targets/github:installation:10/sync/files/context", nil, session)
+	if response.Code != http.StatusOK {
+		t.Fatalf("reading files context = %d %s", response.Code, response.Body.String())
+	}
+	var answer struct {
+		BaseFormatting     config.FormattingPolicy `json:"base_formatting"`
+		RepositoryPolicies []syncFileRepositoryDTO `json:"repository_policies"`
+		Merges             []syncFileMergeEntryDTO `json:"merges"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
+		t.Fatal(err)
+	}
+	if answer.BaseFormatting.JSON.Arrays != "expanded" {
+		t.Fatalf("template base arrays = %q, wanted target policy", answer.BaseFormatting.JSON.Arrays)
+	}
+	if len(answer.RepositoryPolicies) != 1 ||
+		answer.RepositoryPolicies[0].BasePolicy.JSON.Arrays != "compact" ||
+		answer.RepositoryPolicies[0].RepositoryID != "repository-20" {
+		t.Fatalf("repository policies = %#v", answer.RepositoryPolicies)
+	}
+	if len(answer.Merges) != 1 || answer.Merges[0].Formatting == nil ||
+		answer.Merges[0].Formatting.JSON == nil ||
+		answer.Merges[0].Formatting.JSON.Arrays == nil ||
+		*answer.Merges[0].Formatting.JSON.Arrays != "preserve" ||
+		!strings.Contains(string(answer.Merges[0].Merge), "Europe/Warsaw") {
+		t.Fatalf("normalized path adjustment = %#v", answer.Merges)
 	}
 }
 

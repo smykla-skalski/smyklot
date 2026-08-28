@@ -62,6 +62,8 @@ import type {
   SyncPlan,
   SyncRunNowResponse,
   SyncFilesContext,
+  SyncFileRenderInput,
+  SyncFileRenderResponse,
   SyncStatus,
   InvitationDays,
   InvitationSignIn,
@@ -274,6 +276,7 @@ export interface PanelApi {
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
   fetchSyncStatus(targetId: string): Promise<SyncStatus>;
   fetchSyncFilesContext(targetId: string): Promise<SyncFilesContext>;
+  renderSyncFile(targetId: string, input: SyncFileRenderInput): Promise<SyncFileRenderResponse>;
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
@@ -1096,6 +1099,10 @@ export function createPanelApi(
 
     fetchSyncFilesContext(targetId: string): Promise<SyncFilesContext> {
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/files/context`);
+    },
+
+    renderSyncFile(targetId: string, input: SyncFileRenderInput): Promise<SyncFileRenderResponse> {
+      return postJson(`/api/v1/targets/${pathSegment(targetId)}/sync/files/render`, input);
     },
 
     // The digest goes back with the approval. It is what says the plan on the

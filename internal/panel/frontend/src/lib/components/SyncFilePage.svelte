@@ -1,5 +1,7 @@
 <script module lang="ts">
   import type { CodeLang } from '../code-tokens';
+  import { formattingOverrideCount } from '../formatting';
+  import type { FormattingPatch as TemplateFormattingPatch } from '../formatting';
   import type { SyncFile as TemplateFile } from '../types';
 
   /** The language a path's extension says it is written in. */
@@ -19,9 +21,28 @@
     return {
       ...document,
       files: files.map((file) => ({
-        path: file.path,
+        ...file,
         content: file.path === path ? content : file.content,
       })),
+    };
+  }
+
+  /** Replaces one template's sparse policy without rebuilding its document by hand. */
+  export function templateDocumentWithFormatting(
+    document: Record<string, unknown>,
+    path: string,
+    formatting: TemplateFormattingPatch,
+  ): Record<string, unknown> {
+    const files = Array.isArray(document.files) ? (document.files as TemplateFile[]) : [];
+    return {
+      ...document,
+      files: files.map((file) => {
+        if (file.path !== path) return file;
+        const next = { ...file };
+        if (formattingOverrideCount(formatting) === 0) delete next.formatting;
+        else next.formatting = formatting;
+        return next;
+      }),
     };
   }
 </script>
@@ -36,21 +57,35 @@
    * cannot answer itself - what happens to a list both sides set - is asked
    * where it arises.
    */
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
 
   import { unifiedDiff } from '../code-tokens';
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
+  import {
+    FORMATTING_FIELDS,
+    applyFormattingPatch,
+    formattingPatchValue,
+    type FormattingPatch,
+  } from '../formatting';
   import { formatJson, parseJson, type JsonValue } from '../merge';
   import type {
     SyncOverrideControlId,
     SyncOverrideEditorEnvelope,
   } from '../repository-sync-override-settings';
+  import {
+    syncOverrideFormattingEntries,
+    withSyncOverrideFormatting,
+  } from '../repository-sync-override-settings';
   import type {
     SyncConfig,
     SyncFile,
+    SyncFileMerge,
     SyncFileMergeEntry,
+    SyncFileRenderInput,
+    SyncFileRenderResponse,
+    SyncFileRepositoryPolicy,
     SyncFilesContext,
     SyncOverride,
   } from '../types';
@@ -61,6 +96,8 @@
   import Icon from './Icon.svelte';
   import FormError from './FormError.svelte';
   import CodeEditor from './CodeEditor.svelte';
+  import DiffBlock from './DiffBlock.svelte';
+  import FormattingEditor from './FormattingEditor.svelte';
   import PanePath from './PanePath.svelte';
 
   const {
@@ -77,6 +114,8 @@
     dirtyDocument = false,
     dirtyControls = [],
     fetchOverride,
+    renderFile,
+    onFormattingValidity,
     onChangeOverride,
   }: {
     config: SyncConfig | null;
@@ -96,6 +135,8 @@
       stored: SyncOverride;
       envelope: SyncOverrideEditorEnvelope | null;
     }>;
+    renderFile: (input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
+    onFormattingValidity: (control: string, valid: boolean, message: string) => void;
     onChangeOverride: (
       repositoryId: string,
       stored: SyncOverride,
@@ -130,7 +171,7 @@
 
   const strategyPill = $derived.by(() => {
     if (merges.length === 0) return 'replaces';
-    const strategy = merges[0]?.merge.strategy;
+    const strategy = merges[0]?.merge?.strategy;
     if (strategy === 'markdown') return 'merges · sections';
     if (strategy === 'shallow-merge') return 'merges · shallow';
     return 'merges · deep';
@@ -146,12 +187,126 @@
   let templateUndoDepth = $state(0);
   let templateEditor = $state<CodeEditor | null>(null);
   const templateText = $derived(templateDraft ?? file?.content ?? '');
+  const templateFormatting = $derived(file?.formatting ?? {});
+  const savedTemplateFormatting = $derived(savedFile?.formatting ?? {});
+  const dirtyTemplateFormatting = $derived(
+    FORMATTING_FIELDS.filter(
+      (field) =>
+        formattingPatchValue(templateFormatting, field) !==
+        formattingPatchValue(savedTemplateFormatting, field),
+    ).map((field) => field.key),
+  );
+
+  let templateRender = $state<SyncFileRenderResponse | null>(null);
+  let templateRendering = $state(false);
+  let templateDiffOpen = $state(false);
+  let renderGeneration = 0;
+
+  const templateMismatch = $derived(
+    templateRender?.valid === true && templateRender.content !== templateText,
+  );
+  const templateDiagnostic = $derived(
+    templateRender?.diagnostics.map(({ message }) => message).join(' · ') ?? '',
+  );
+
+  function renderValidationControl(kind: 'template' | 'repository', repositoryId = ''): string {
+    return `sync.files.${kind}-render:${encodeURIComponent(repositoryId)}:${encodeURIComponent(path)}`;
+  }
+
+  function reportFormattingValidity(control: string, valid: boolean, message: string): void {
+    untrack(() => onFormattingValidity(control, valid, message));
+  }
+
+  function renderInput(
+    basePolicy: SyncFileRenderInput['base_policy'],
+    merge?: SyncFileRenderInput['merge'],
+    defaultBranch?: string,
+    pathFormatting?: FormattingPatch,
+  ): SyncFileRenderInput {
+    const overlays = [templateFormatting, pathFormatting].filter(
+      (overlay): overlay is FormattingPatch => overlay !== undefined,
+    );
+    return {
+      path,
+      draft_content: templateText,
+      base_policy: basePolicy,
+      ...(merge === undefined ? {} : { merge }),
+      ...(defaultBranch === undefined ? {} : { default_branch: defaultBranch }),
+      ...(overlays.length === 0 ? {} : { overlays }),
+    };
+  }
+
+  async function refreshTemplateRender(
+    input: SyncFileRenderInput,
+    generation: number,
+    validationControl: string,
+  ): Promise<void> {
+    templateRendering = true;
+    try {
+      const rendered = await renderFile(input);
+      if (generation !== renderGeneration) return;
+      templateRender = rendered;
+      const message = rendered.diagnostics.map(({ message }) => message).join(' · ');
+      reportFormattingValidity(
+        validationControl,
+        rendered.valid,
+        message === '' ? 'The template cannot be rendered safely' : message,
+      );
+    } catch (cause) {
+      if (generation !== renderGeneration) return;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      templateRender = {
+        valid: false,
+        content: '',
+        changed: false,
+        diagnostics: [{ code: 'render_failed', message }],
+      };
+      reportFormattingValidity(validationControl, false, message);
+    } finally {
+      if (generation === renderGeneration) templateRendering = false;
+    }
+  }
+
+  $effect(() => {
+    const basePolicy = context?.base_formatting;
+    const heldFile = file;
+    void templateText;
+    void templateFormatting;
+    if (basePolicy === undefined || heldFile === null) return;
+    const validationControl = renderValidationControl('template');
+    const preserveValidation = templateDirty || dirtyTemplateFormatting.length > 0;
+    const generation = (renderGeneration += 1);
+    const input = renderInput(basePolicy);
+    reportFormattingValidity(
+      validationControl,
+      false,
+      'The template formatting check has not finished',
+    );
+    const timer = setTimeout(
+      () => void refreshTemplateRender(input, generation, validationControl),
+      120,
+    );
+    return () => {
+      clearTimeout(timer);
+      if (!preserveValidation) reportFormattingValidity(validationControl, true, '');
+    };
+  });
 
   function stageTemplate(text: string): void {
     templateDraft = text;
     if (file === null || frozen) return;
     pendingTemplateText = text;
     onChangeDocument(templateDocumentWithContent(stored, path, text));
+  }
+
+  function stageTemplateFormatting(formatting: FormattingPatch): void {
+    if (file === null || frozen) return;
+    onChangeDocument(templateDocumentWithFormatting(stored, path, formatting));
+  }
+
+  function applyTemplateFormatting(): void {
+    if (templateRender?.valid !== true || !templateMismatch || frozen) return;
+    templateEditor?.replaceValue(templateRender.content);
   }
 
   $effect(() => {
@@ -191,17 +346,35 @@
   /* What this page staged, keyed by repository, layered over a canonical
      context the parent has not re-read yet - null is a removed adjustment. */
   let draftMerges = $state<Record<string, FileMergeSpec | null>>({});
+  let draftFormats = $state<Record<string, FormattingPatch | null>>({});
   let overrideFetchGeneration = 0;
 
-  const adjusters = $derived(
-    merges
-      .filter((entry) => draftMerges[entry.repository_id] !== null)
-      .map((entry) => {
-        const kept = draftMerges[entry.repository_id];
-        return kept === undefined || kept === null
-          ? entry
-          : { ...entry, merge: kept as SyncFileMergeEntry['merge'] };
-      }),
+  type RepositoryRow = SyncFileRepositoryPolicy & {
+    path: string;
+    merge?: SyncFileMergeEntry['merge'];
+    formatting?: FormattingPatch;
+  };
+
+  const repositoryRows = $derived(
+    (context?.repository_policies ?? []).map((repository): RepositoryRow => {
+      const storedAdjustment = merges.find(
+        (entry) => entry.repository_id === repository.repository_id,
+      );
+      const heldMerge = draftMerges[repository.repository_id];
+      const heldFormatting = draftFormats[repository.repository_id];
+      return {
+        ...repository,
+        path,
+        ...(heldMerge === null ? {} : { merge: heldMerge ?? storedAdjustment?.merge }),
+        ...(heldFormatting === null
+          ? {}
+          : { formatting: heldFormatting ?? storedAdjustment?.formatting }),
+      };
+    }),
+  );
+  const adjustedCount = $derived(
+    repositoryRows.filter((entry) => entry.merge !== undefined || entry.formatting !== undefined)
+      .length,
   );
 
   const anyOverrideDirty = $derived(
@@ -223,7 +396,7 @@
     answers = merge.arrays ?? [];
   }
 
-  async function toggleRow(entry: SyncFileMergeEntry): Promise<void> {
+  async function toggleRow(entry: RepositoryRow): Promise<void> {
     if (openRepo === entry.repository_id) {
       overrideFetchGeneration += 1;
       openRepo = null;
@@ -241,7 +414,8 @@
     heldEnvelope = null;
     holdProblem = null;
     rawOverrideOnly = false;
-    seedEdits(entry.merge as FileMergeSpec);
+    if (entry.merge === undefined) editedText = null;
+    else seedEdits(entry.merge as FileMergeSpec);
     try {
       const loaded = await fetchOverride(repositoryId);
       if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
@@ -255,14 +429,16 @@
       }
       const rows = envelopeMerges(loaded.envelope);
       const index = rows.findIndex((merge) => merge.path === path);
-      if (index < 0) {
-        draftMerges = { ...draftMerges, [repositoryId]: null };
-        openRepo = null;
+      const merge = index < 0 ? null : rows[index];
+      const format =
+        syncOverrideFormattingEntries(loaded.envelope).find((row) => row.path === path) ?? null;
+      draftMerges = { ...draftMerges, [repositoryId]: merge };
+      draftFormats = { ...draftFormats, [repositoryId]: format?.formatting ?? null };
+      if (merge === null) {
         editedText = null;
+        answers = [];
         return;
       }
-      const merge = rows[index];
-      draftMerges = { ...draftMerges, [repositoryId]: merge };
       const text = loaded.envelope.override_texts[index] ?? '';
       if (text.startsWith(COMPOSED_DRAFT_PREFIX)) {
         editedText = text.slice(COMPOSED_DRAFT_PREFIX.length);
@@ -281,8 +457,11 @@
     }
   }
 
-  function summaryWord(entry: SyncFileMergeEntry): string {
-    const merge = entry.merge as FileMergeSpec;
+  function summaryWord(entry: RepositoryRow): string {
+    const merge = entry.merge as FileMergeSpec | undefined;
+    if (merge === undefined) {
+      return entry.formatting === undefined ? 'uses the shared template' : 'changes formatting';
+    }
     if (merge.strategy === 'markdown') {
       const sections = Array.isArray(merge.sections) ? merge.sections.length : 0;
       return `${sections} section ${sections === 1 ? 'change' : 'changes'}`;
@@ -300,11 +479,106 @@
       );
     }
     if (summary.removed.length > 0) parts.push(`removes ${summary.removed.join(', ')}`);
-    return parts.length === 0 ? 'no changes' : parts.join(' · ');
+    if (entry.formatting !== undefined) parts.push('changes formatting');
+    return parts.length === 0 ? 'no content changes' : parts.join(' · ');
   }
 
-  const openEntry = $derived(adjusters.find((entry) => entry.repository_id === openRepo) ?? null);
+  const openEntry = $derived(
+    repositoryRows.find((entry) => entry.repository_id === openRepo) ?? null,
+  );
   const openMerge = $derived((openEntry?.merge ?? null) as FileMergeSpec | null);
+  const openPathFormatting = $derived(openEntry?.formatting ?? {});
+  const openInheritedFormatting = $derived(
+    openEntry === null
+      ? context?.base_formatting
+      : applyFormattingPatch(openEntry.base_policy, templateFormatting),
+  );
+  const savedOpenPathFormatting = $derived(
+    merges.find((entry) => entry.repository_id === openRepo)?.formatting ?? {},
+  );
+  const dirtyOpenPathFormatting = $derived(
+    FORMATTING_FIELDS.filter(
+      (field) =>
+        formattingPatchValue(openPathFormatting, field) !==
+        formattingPatchValue(savedOpenPathFormatting, field),
+    ).map((field) => field.key),
+  );
+
+  let repositoryRender = $state<SyncFileRenderResponse | null>(null);
+  let repositoryRendering = $state(false);
+  let repositoryRenderGeneration = 0;
+
+  function repositoryMergeInput(entry: RepositoryRow): SyncFileRenderInput['merge'] | undefined {
+    if (entry.merge === undefined) return undefined;
+    const merge = { ...(entry.merge as unknown as SyncFileMerge) };
+    delete (merge as Partial<SyncFileMerge>).path;
+    return merge as Omit<SyncFileMerge, 'path'>;
+  }
+
+  async function refreshRepositoryRender(
+    input: SyncFileRenderInput,
+    generation: number,
+    validationControl: string,
+  ): Promise<void> {
+    repositoryRendering = true;
+    try {
+      const rendered = await renderFile(input);
+      if (generation !== repositoryRenderGeneration) return;
+      repositoryRender = rendered;
+      const message = rendered.diagnostics.map(({ message }) => message).join(' · ');
+      reportFormattingValidity(
+        validationControl,
+        rendered.valid,
+        message === '' ? 'The repository output cannot be rendered safely' : message,
+      );
+    } catch (cause) {
+      if (generation !== repositoryRenderGeneration) return;
+      const message = cause instanceof Error ? cause.message : String(cause);
+      repositoryRender = {
+        valid: false,
+        content: '',
+        changed: false,
+        diagnostics: [{ code: 'render_failed', message }],
+      };
+      reportFormattingValidity(validationControl, false, message);
+    } finally {
+      if (generation === repositoryRenderGeneration) repositoryRendering = false;
+    }
+  }
+
+  $effect(() => {
+    const entry = openEntry;
+    void templateText;
+    void templateFormatting;
+    if (entry === null) {
+      repositoryRenderGeneration += 1;
+      repositoryRender = null;
+      repositoryRendering = false;
+      return;
+    }
+    const validationControl = renderValidationControl('repository', entry.repository_id);
+    const preserveValidation = overrideDirty(entry.repository_id);
+    const generation = (repositoryRenderGeneration += 1);
+    const input = renderInput(
+      entry.base_policy,
+      repositoryMergeInput(entry),
+      entry.default_branch,
+      entry.formatting,
+    );
+    reportFormattingValidity(
+      validationControl,
+      false,
+      'The repository output formatting check has not finished',
+    );
+    const timer = setTimeout(
+      () => void refreshRepositoryRender(input, generation, validationControl),
+      120,
+    );
+    return () => {
+      clearTimeout(timer);
+      if (!preserveValidation) reportFormattingValidity(validationControl, true, '');
+    };
+  });
 
   /** The override the edited copy amounts to, live as the text changes. */
   const staged = $derived.by(() => {
@@ -356,6 +630,33 @@
     return Array.isArray(envelope.document.merges)
       ? (envelope.document.merges as FileMergeSpec[])
       : [];
+  }
+
+  function stageRepositoryFormatting(formatting: FormattingPatch): void {
+    const entry = openEntry;
+    const current = held;
+    const envelope = heldEnvelope;
+    if (entry === null || current === null || envelope === null || frozen || current.unreadable) {
+      return;
+    }
+    const nextEnvelope = withSyncOverrideFormatting(envelope, path, formatting);
+    if (
+      !onChangeOverride(
+        entry.repository_id,
+        current,
+        nextEnvelope,
+        overrideDocumentControl(entry.repository_id),
+      )
+    ) {
+      holdProblem = 'This repository formatting override could not be staged';
+      return;
+    }
+    holdProblem = null;
+    heldEnvelope = nextEnvelope;
+    draftFormats = {
+      ...draftFormats,
+      [entry.repository_id]: formattingOverrideCount(formatting) === 0 ? null : formatting,
+    };
   }
 
   function validOverrideText(text: string): boolean {
@@ -609,6 +910,10 @@
     if (value === 'prepend') return question.canPrepend;
     return true;
   }
+
+  onDestroy(() => {
+    onFormattingValidity('sync.files.repository-formatting', true, '');
+  });
 </script>
 
 <div class="view-frame">
@@ -645,9 +950,34 @@
               Undo
             </Button>
           {/if}
+          {#if templateRender?.valid === true && templateMismatch}
+            <Button tone="quiet" onclick={() => (templateDiffOpen = !templateDiffOpen)}>
+              {templateDiffOpen ? 'Hide diff' : 'View diff'}
+            </Button>
+            <Button tone="signal" disabled={frozen} onclick={applyTemplateFormatting}
+              >Format template</Button
+            >
+          {/if}
           <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
         </div>
       </div>
+      <p
+        class:mismatch-warning={templateMismatch || templateRender?.valid === false}
+        class="format-status"
+        role="status"
+      >
+        {#if templateRendering}
+          Checking configured formatting…
+        {:else if templateRender?.valid === false}
+          Cannot render configured formatting{templateDiagnostic === ''
+            ? ''
+            : ` · ${templateDiagnostic}`}
+        {:else if templateMismatch}
+          This template does not match configured formatting
+        {:else}
+          Matches configured formatting
+        {/if}
+      </p>
       <CodeEditor
         bind:this={templateEditor}
         value={templateText}
@@ -656,7 +986,30 @@
         onChange={stageTemplate}
         onHistory={(depth) => (templateUndoDepth = depth)}
       />
+      {#if templateDiffOpen && templateRender?.valid === true && templateMismatch}
+        <div class="format-diff">
+          <DiffBlock before={templateText} after={templateRender.content} {lang} />
+        </div>
+      {/if}
     </div>
+
+    {#if context !== null}
+      <FormattingEditor
+        patch={templateFormatting}
+        inherited={context.base_formatting}
+        scope="template"
+        idPrefix={path}
+        disabled={frozen}
+        dirtyKeys={dirtyTemplateFormatting}
+        onChange={stageTemplateFormatting}
+        onValidity={(valid) =>
+          onFormattingValidity(
+            'sync.files.template-formatting',
+            valid,
+            'Formatting widths must be whole numbers within their documented bounds',
+          )}
+      />
+    {/if}
 
     <div
       class="card"
@@ -664,18 +1017,18 @@
       data-unsaved={anyOverrideDirty || undefined}
     >
       <div class="card-head">
-        <h3 class="card-title">Repository adjustments</h3>
+        <h3 class="card-title">Repository outputs</h3>
         <span class="object-sum"
-          >{adjusters.length} of {context?.repositories ?? 0}
-          {adjusters.length === 1 ? 'repository changes' : 'repositories change'} this file</span
+          >{adjustedCount} of {context?.repositories ?? 0}
+          {adjustedCount === 1 ? 'repository adds' : 'repositories add'} a content or formatting adjustment</span
         >
       </div>
 
-      {#if adjusters.length === 0}
-        <p class="sync-empty">Every repository takes this file as the organization writes it</p>
+      {#if repositoryRows.length === 0}
+        <p class="sync-empty">No repositories are available for this installation</p>
       {/if}
 
-      {#each adjusters as entry (entry.repository_id)}
+      {#each repositoryRows as entry (entry.repository_id)}
         <div
           class="adjuster"
           class:is-unsaved={overrideDirty(entry.repository_id)}
@@ -703,7 +1056,7 @@
                 <FormError message={holdProblem} />
               {/if}
               <div class="merge-pane-title">
-                <span class="t">What {entry.repository} ends up with</span>
+                <span class="t">Merge editing aid</span>
                 <span class="pane-tools">
                   {#if editedText !== null && resultUndoDepth > 0}
                     <Button onclick={() => resultEditor?.undoEdit()}>
@@ -718,9 +1071,14 @@
                   {/if}
                 </span>
               </div>
-              {#if editedText === null}
+              {#if openMerge === null}
                 <p class="sync-empty">
-                  This copy cannot compose a {openMerge?.strategy ?? 'deep-merge'} adjustment of a
+                  This repository takes the shared content unchanged before its formatting policy is
+                  applied
+                </p>
+              {:else if editedText === null}
+                <p class="sync-empty">
+                  This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
                   {lang} template - the stored override below is the whole of it
                 </p>
                 <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
@@ -823,6 +1181,44 @@
                   </div>
                 </div>
               {/each}
+
+              {#if openInheritedFormatting !== undefined}
+                <div class="repository-formatting">
+                  <FormattingEditor
+                    patch={openPathFormatting}
+                    inherited={openInheritedFormatting}
+                    scope="path"
+                    idPrefix={`${entry.repository_id}-${path}`}
+                    disabled={mergeFrozen}
+                    dirtyKeys={dirtyOpenPathFormatting}
+                    onChange={stageRepositoryFormatting}
+                    onValidity={(valid) =>
+                      onFormattingValidity(
+                        'sync.files.repository-formatting',
+                        valid,
+                        'Formatting widths must be whole numbers within their documented bounds',
+                      )}
+                  />
+                </div>
+              {/if}
+
+              <div class="exact-output">
+                <div class="merge-pane-title">
+                  <span class="t">Exact final output</span>
+                  {#if repositoryRender?.valid === true}
+                    <span class="output-state">Backend rendered</span>
+                  {/if}
+                </div>
+                {#if repositoryRendering}
+                  <p class="sync-empty">Rendering the repository's complete effective policy…</p>
+                {:else if repositoryRender?.valid === false}
+                  <FormError
+                    message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
+                  />
+                {:else if repositoryRender?.valid === true}
+                  <CodeBlock text={repositoryRender.content} {lang} />
+                {/if}
+              </div>
             </div>
           {/if}
         </div>
@@ -900,6 +1296,40 @@
     color: var(--text-muted);
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-2);
+  }
+
+  .format-status {
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
+    margin: calc(var(--space-2) * -1) 0 var(--space-3);
+  }
+
+  .format-status.mismatch-warning {
+    color: var(--warning);
+  }
+
+  .format-diff,
+  .repository-formatting,
+  .exact-output {
+    margin-top: var(--space-4);
+  }
+
+  .repository-formatting {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-4);
+  }
+
+  .exact-output {
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--r-strip);
+    padding: var(--space-3);
+  }
+
+  .output-state {
+    color: var(--success);
+    letter-spacing: 0;
+    text-transform: none;
   }
 
   .pill {
@@ -1255,6 +1685,12 @@
     .card-head {
       align-items: start;
       flex-wrap: wrap;
+    }
+
+    .card-head > .head-tools {
+      flex-basis: 100%;
+      flex-wrap: wrap;
+      min-width: 0;
     }
 
     .card-head > .object-sum {

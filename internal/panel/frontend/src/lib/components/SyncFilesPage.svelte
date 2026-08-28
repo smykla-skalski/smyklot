@@ -4,7 +4,7 @@
   /** The pill's word for how a template lands where repositories adjust it. */
   export function strategyWord(merges: readonly SyncFileMergeEntry[]): string {
     if (merges.length === 0) return 'replaces';
-    const strategy = merges[0]?.merge.strategy;
+    const strategy = merges[0]?.merge?.strategy;
     if (strategy === 'markdown') return 'merges · sections';
     if (strategy === 'shallow-merge') return 'merges · shallow';
     return 'merges · deep';

@@ -1264,6 +1264,8 @@ export interface SyncRulesetCodeScanningTool {
 export interface SyncFile {
   path: string;
   content: string;
+  /** Overrides the workspace policy for this shared template only. */
+  formatting?: FormattingPatch;
 }
 
 /**
@@ -1458,7 +1460,18 @@ export interface SyncFilesContext {
   covered: number;
   /** Every path any repository holds, deduped, with how many hold it. */
   known_paths: Array<{ path: string; repositories: number }>;
+  /** Runtime through workspace settings, before one template's overlay. */
+  base_formatting: FormattingPolicy;
+  /** Every repository's complete policy, sent once and joined to path overlays locally. */
+  repository_policies: SyncFileRepositoryPolicy[];
   merges: SyncFileMergeEntry[];
+}
+
+export interface SyncFileRepositoryPolicy {
+  repository: string;
+  repository_id: string;
+  default_branch: string;
+  base_policy: FormattingPolicy;
 }
 
 /** One repository's adjustment of one template. */
@@ -1467,7 +1480,30 @@ export interface SyncFileMergeEntry {
   repository_id: string;
   path: string;
   /** The stored merge, whole - strategy, overrides, arrays, sections. */
-  merge: Record<string, unknown>;
+  merge?: Record<string, unknown>;
+  /** The exact-path formatting overlay, including format-only adjustments. */
+  formatting?: FormattingPatch;
+}
+
+export interface SyncFileRenderInput {
+  path: string;
+  draft_content: string;
+  merge?: Omit<SyncFileMerge, 'path'>;
+  default_branch?: string;
+  base_policy: FormattingPolicy;
+  overlays?: FormattingPatch[];
+}
+
+export interface SyncFileRenderDiagnostic {
+  code: string;
+  message: string;
+}
+
+export interface SyncFileRenderResponse {
+  valid: boolean;
+  content: string;
+  changed: boolean;
+  diagnostics: SyncFileRenderDiagnostic[];
 }
 
 /** One change a plan would make. */

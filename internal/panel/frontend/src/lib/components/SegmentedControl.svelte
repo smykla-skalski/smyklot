@@ -31,6 +31,7 @@
     disabled = false,
     align = 'start',
     compact = false,
+    fluid = false,
     variant = 'default',
     surface = 'panel',
     onSelect,
@@ -49,6 +50,8 @@
     disabled?: boolean;
     align?: 'start' | 'end';
     compact?: boolean;
+    /** Fits every option inside the width supplied by the containing row. */
+    fluid?: boolean;
     variant?: 'default' | 'navigation';
     /**
      * Which family of surfaces to draw on. Sidebar popovers carry their own, and
@@ -168,6 +171,7 @@
   class={[
     align === 'end' && 'align-end',
     compact && 'compact',
+    fluid && 'fluid',
     variant === 'navigation' && 'navigation',
     surface === 'sidebar' && 'on-sidebar',
     surface === 'night' && 'on-night',
@@ -309,6 +313,22 @@
   fieldset.compact .segment-label {
     font-size: var(--font-size-compact);
     min-width: 2.25rem;
+  }
+
+  fieldset.fluid {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  fieldset.fluid label {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  fieldset.fluid .segment-label {
+    min-width: 0;
+    padding-inline: var(--space-2);
+    width: 100%;
   }
 
   fieldset.navigation .segment-label {

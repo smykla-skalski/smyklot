@@ -31,6 +31,8 @@
   import type {
     SyncConfig,
     SyncFilesContext,
+    SyncFileRenderInput,
+    SyncFileRenderResponse,
     SyncKind,
     SyncOverride,
     SyncPlan,
@@ -72,6 +74,7 @@
     fileHref,
     onOpenFile,
     fetchFilesContext,
+    renderFile,
     fetchOverride,
     clock = Date.now,
   }: {
@@ -89,6 +92,7 @@
     fileHref: (path: string) => string;
     onOpenFile: (path: string) => void;
     fetchFilesContext: (targetId: string) => Promise<SyncFilesContext>;
+    renderFile: (targetId: string, input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
@@ -497,6 +501,9 @@
       dirtyDocument={dirtyControls.includes('sync.files.document')}
       {dirtyControls}
       fetchOverride={loadFilesOverride}
+      renderFile={(input) => renderFile(targetId, input)}
+      onFormattingValidity={(control, valid, message) =>
+        drafts.setValidationProblem(settingsScope, control, valid ? null : message)}
       onChangeOverride={stageFilesOverride}
     />
   {:else}

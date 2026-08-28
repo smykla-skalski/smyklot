@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
+import { defaultFormattingPolicy } from '../src/lib/formatting';
 import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
 import type {
   SyncCell,
@@ -31,6 +32,26 @@ class MemoryStorage implements SettingsDraftStorage {
     this.values.set(key, value);
   }
 }
+
+const POLICY = defaultFormattingPolicy();
+
+function emptyFilesContext(): SyncFilesContext {
+  return {
+    repositories: 0,
+    covered: 0,
+    known_paths: [],
+    base_formatting: POLICY,
+    repository_policies: [],
+    merges: [],
+  };
+}
+
+const renderFile = async (_targetId: string, input: { draft_content: string }) => ({
+  valid: true,
+  content: input.draft_content,
+  changed: false,
+  diagnostics: [],
+});
 
 /**
  * The page an operator opens to keep an organization in step, and the one place
@@ -125,11 +146,9 @@ describe('SyncView [Component]', () => {
       onOpenRuleset: () => {},
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: () => {},
-      fetchFilesContext: () =>
-        Promise.resolve(
-          state.filesContext ?? { repositories: 0, covered: 0, known_paths: [], merges: [] },
-        ),
+      fetchFilesContext: () => Promise.resolve(state.filesContext ?? emptyFilesContext()),
       fetchOverride: state.fetchOverride ?? (() => Promise.reject(new Error('not in this test'))),
+      renderFile,
       clock: state.clock,
     });
     return { page, drafts };
@@ -223,6 +242,15 @@ describe('SyncView [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
+          base_formatting: POLICY,
+          repository_policies: [
+            {
+              repository: 'repo-a',
+              repository_id: 'repo-1',
+              default_branch: 'main',
+              base_policy: POLICY,
+            },
+          ],
           merges: [
             {
               repository: 'repo-a',
@@ -336,9 +364,9 @@ describe('SyncView [Component]', () => {
       onOpenRuleset: () => {},
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: () => {},
-      fetchFilesContext: () =>
-        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+      fetchFilesContext: () => Promise.resolve(emptyFilesContext()),
       fetchOverride: () => Promise.reject(new Error('not in this test')),
+      renderFile,
     });
 
     await screen.findByRole('heading', { name: 'Rulesets' });
@@ -374,9 +402,9 @@ describe('SyncView [Component]', () => {
       onOpenRuleset: () => {},
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: () => {},
-      fetchFilesContext: () =>
-        Promise.resolve({ repositories: 0, covered: 0, known_paths: [], merges: [] }),
+      fetchFilesContext: () => Promise.resolve(emptyFilesContext()),
       fetchOverride: () => Promise.reject(new Error('not in this test')),
+      renderFile,
     });
 
     await screen.findByRole('heading', { name: 'Shared files' });

@@ -50,6 +50,8 @@ import type {
   RootInstallation,
   RootOverview,
   SyncConfig,
+  SyncFileMergeEntry,
+  SyncFileRepositoryPolicy,
   SyncKind,
   SyncOverride,
   RootRuntimeSettings,
@@ -113,6 +115,7 @@ import {
   type MockTarget,
 } from './fixtures.ts';
 import { parseInvitationToken, parsePanelRoute } from '../src/lib/routes.ts';
+import { renderMockSyncFile } from './mock-file-render.ts';
 
 type DevHttpServer = HttpServer;
 const BASE = '';
@@ -1292,39 +1295,93 @@ async function handle(
     const syncFilesContextMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/files\/context$/.exec(
       path.slice(route('').length),
     );
+    const syncFileRenderMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/files\/render$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncFileRenderMatch && method === 'POST') {
+      findTarget(state, syncFileRenderMatch[1] ?? '');
+      respond(res, 200, renderMockSyncFile(await readBody<unknown>(req)));
+      return;
+    }
     if (syncFilesContextMatch && method === 'GET') {
       const targetId = decodeURIComponent(syncFilesContextMatch[1] ?? '');
+      const target = findTarget(state, targetId);
       const status = state.syncStatus.get(targetId);
       const rows = status?.repositories ?? [];
       const covered = rows.filter((row) => row.cells.files.state !== 'off').length;
-      const merges: Array<{
-        repository: string;
-        repository_id: string;
-        path: string;
-        merge: Record<string, unknown>;
-      }> = [];
+      const adjustments = new Map<string, SyncFileMergeEntry>();
       for (const [key, override] of state.syncOverrides) {
         const [repositoryId, kind] = key.split('/');
         if (kind !== 'files' || repositoryId === undefined) continue;
-        const held = override.document.merges;
-        if (!Array.isArray(held)) continue;
         const name =
           PSEUDO_REPO_NAMES[repositoryId] ??
-          state.targets
-            .flatMap((target) => target.repositories)
-            .find((repository) => repository.detail.repository.id === repositoryId)?.detail
-            .repository.name ??
+          target.repositories.find((repository) => repository.detail.repository.id === repositoryId)
+            ?.detail.repository.name ??
           repositoryId;
-        for (const merge of held as Array<Record<string, unknown>>) {
-          if (typeof merge.path !== 'string') continue;
-          merges.push({ repository: name, repository_id: repositoryId, path: merge.path, merge });
+        const heldMerges = override.document.merges;
+        if (Array.isArray(heldMerges)) {
+          for (const merge of heldMerges as Array<Record<string, unknown>>) {
+            if (typeof merge.path !== 'string') continue;
+            adjustments.set(`${repositoryId}\u0000${merge.path}`, {
+              repository: name,
+              repository_id: repositoryId,
+              path: merge.path,
+              merge,
+            });
+          }
+        }
+        const heldFormats = override.document.formats;
+        if (Array.isArray(heldFormats)) {
+          for (const format of heldFormats) {
+            if (
+              typeof format !== 'object' ||
+              format === null ||
+              !('path' in format) ||
+              typeof format.path !== 'string' ||
+              !('formatting' in format)
+            ) {
+              continue;
+            }
+            const formatting = parseFormattingPatch(format.formatting);
+            if (formatting === null) continue;
+            const adjustmentKey = `${repositoryId}\u0000${format.path}`;
+            const current = adjustments.get(adjustmentKey);
+            adjustments.set(adjustmentKey, {
+              repository: name,
+              repository_id: repositoryId,
+              path: format.path,
+              ...(current?.merge === undefined ? {} : { merge: current.merge }),
+              formatting,
+            });
+          }
         }
       }
+      const repositoryPolicies: SyncFileRepositoryPolicy[] = rows.map((row) => {
+        const pseudoId = Object.entries(PSEUDO_REPO_NAMES).find(
+          ([, name]) => name === row.repository,
+        )?.[0];
+        const repository = target.repositories.find(
+          (candidate) => candidate.detail.repository.name === row.repository,
+        );
+        const repositoryId =
+          repository?.detail.repository.id ?? pseudoId ?? `mock:${row.repository}`;
+        return {
+          repository:
+            repository?.detail.repository.name ?? PSEUDO_REPO_NAMES[repositoryId] ?? row.repository,
+          repository_id: repositoryId,
+          default_branch: repository?.detail.repository.default_branch ?? 'main',
+          base_policy:
+            repository?.detail.effective_config.formatting ??
+            target.value.effective_config.formatting,
+        };
+      });
       respond(res, 200, {
         repositories: rows.length,
         covered,
         known_paths: KNOWN_PATHS,
-        merges,
+        base_formatting: target.value.effective_config.formatting,
+        repository_policies: repositoryPolicies,
+        merges: [...adjustments.values()],
       });
       return;
     }

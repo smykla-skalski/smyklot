@@ -67,6 +67,26 @@ func TestSyncFileRenderReturnsStructuredPolicyDiagnostics(t *testing.T) {
 	}
 }
 
+func TestSyncFileRenderLeavesRepositoryPlaceholderForSharedTemplate(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	policy := config.DefaultFormattingPolicy()
+	response := postSyncFileRender(t, harness, syncFileRenderRequest{
+		Path: "README.md", DraftContent: "Use {{DEFAULT_BRANCH}}.\n", BasePolicy: policy,
+	})
+
+	if !response.Valid || response.Content != "Use {{DEFAULT_BRANCH}}.\n" || response.Changed {
+		t.Fatalf("shared template render = %#v", response)
+	}
+	branch := "trunk"
+	response = postSyncFileRender(t, harness, syncFileRenderRequest{
+		Path: "README.md", DraftContent: "Use {{DEFAULT_BRANCH}}.\n", BasePolicy: policy,
+		DefaultBranch: &branch,
+	})
+	if !response.Valid || response.Content != "Use trunk.\n" || !response.Changed {
+		t.Fatalf("repository template render = %#v", response)
+	}
+}
+
 func postSyncFileRender(
 	t *testing.T,
 	harness *panelHarness,

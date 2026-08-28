@@ -13,7 +13,7 @@ type syncFileRenderRequest struct {
 	Path          string                   `json:"path"`
 	DraftContent  string                   `json:"draft_content"`
 	Merge         *filemerge.Spec          `json:"merge,omitempty"`
-	DefaultBranch string                   `json:"default_branch,omitempty"`
+	DefaultBranch *string                  `json:"default_branch,omitempty"`
 	BasePolicy    config.FormattingPolicy  `json:"base_policy"`
 	Overlays      []config.FormattingPatch `json:"overlays,omitempty"`
 }
@@ -65,12 +65,11 @@ func (s *Server) postSyncFileRender(w http.ResponseWriter, r *http.Request) {
 		spec = *input.Merge
 	}
 	draft := []byte(input.DraftContent)
-	rendered, err := filemerge.Apply(
-		input.Path,
-		[]byte(orgsync.Render(input.DraftContent, input.DefaultBranch)),
-		spec,
-		policy,
-	)
+	content := input.DraftContent
+	if input.DefaultBranch != nil {
+		content = orgsync.Render(content, *input.DefaultBranch)
+	}
+	rendered, err := filemerge.Apply(input.Path, []byte(content), spec, policy)
 	if err != nil {
 		writeJSON(w, http.StatusOK, invalidSyncFileRender("invalid_document", err.Error()))
 

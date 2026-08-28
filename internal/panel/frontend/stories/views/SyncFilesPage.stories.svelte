@@ -3,9 +3,11 @@
   import { fn } from 'storybook/test';
 
   import SyncFilesPage from '#lib/components/SyncFilesPage.svelte';
+  import { defaultFormattingPolicy } from '#lib/formatting.js';
   import type { SyncConfig, SyncFilesContext, SyncPlan, SyncStatus } from '#lib/types.js';
 
   const NOW = Date.UTC(2026, 7, 18, 12, 0, 0);
+  const POLICY = defaultFormattingPolicy();
   const days = (count: number): string => new Date(NOW - count * 86_400_000).toISOString();
 
   const CONFIG: SyncConfig = {
@@ -36,6 +38,8 @@
   const CONTEXT: SyncFilesContext = {
     repositories: 25,
     covered: 23,
+    base_formatting: POLICY,
+    repository_policies: [],
     known_paths: [
       { path: '.github/workflows/ci.yaml', repositories: 25 },
       { path: '.github/workflows/release.yaml', repositories: 18 },

@@ -129,6 +129,7 @@
             fileHref={(path) => session.syncFileHref(path)}
             onOpenFile={(path) => session.selectSyncFile(path)}
             fetchFilesContext={session.api.fetchSyncFilesContext}
+            renderFile={session.api.renderSyncFile}
             fetchOverride={session.api.fetchSyncOverride}
             {clock}
           />

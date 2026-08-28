@@ -12,6 +12,7 @@
     value = null,
     options,
     disabled = false,
+    fluid = false,
     onSelect,
     onRestore,
   }: {
@@ -23,6 +24,8 @@
     value?: string | null;
     options: readonly { value: string; label: string }[];
     disabled?: boolean;
+    /** Shares the supplied row width between the available values. */
+    fluid?: boolean;
     onSelect: (value: string) => void;
     onRestore: () => void;
   } = $props();
@@ -55,7 +58,7 @@
   const groupName = $derived(`inherit-${label.replaceAll(/[^a-z0-9]+/giu, '-').toLowerCase()}`);
 </script>
 
-<span class="linked-control">
+<span class:fluid class="linked-control">
   {#if overridden}
     <AppTooltip text={brokenTip}>
       {#snippet children(props)}
@@ -91,6 +94,7 @@
     {value}
     {preview}
     {disabled}
+    {fluid}
     compact
     onSelect={(selection) => onSelect(selection)}
   />
@@ -101,6 +105,14 @@
     align-items: center;
     display: inline-flex;
     gap: var(--inherit-marker-gap);
+  }
+
+  .linked-control.fluid {
+    display: grid;
+    grid-template-columns: var(--inherit-marker-size) minmax(0, 1fr);
+    max-width: 100%;
+    min-width: 0;
+    width: 100%;
   }
 
   /* The linked chain is a passive provenance marker; only the broken chain is a

@@ -120,6 +120,12 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     fetchSyncPlan: async () => ({ plan: SYNC_PLAN }),
     fetchSyncStatus: async () => SYNC_STATUS,
     fetchSyncFilesContext: async () => SYNC_FILES_CONTEXT,
+    renderSyncFile: async (_targetId, input) => ({
+      valid: true,
+      content: input.draft_content,
+      changed: false,
+      diagnostics: [],
+    }),
     fetchSyncOverride: async (_targetId: string, repositoryId: string, kind: string) =>
       SYNC_OVERRIDES.get(`${repositoryId}/${kind}`) ?? {
         kind,

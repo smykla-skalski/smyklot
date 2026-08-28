@@ -578,6 +578,15 @@ export function seed(
                 ],
               },
             ],
+            formats: [
+              {
+                path: 'renovate.json',
+                formatting: {
+                  common: { line_ending: 'crlf' },
+                  json: { arrays: 'compact' },
+                },
+              },
+            ],
           },
           revision: 1,
           updated_by: 'bart',
@@ -903,6 +912,7 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
       files: [
         {
           path: 'renovate.json',
+          formatting: { common: { final_newline: 'insert' } },
           content: [
             '{',
             '  "$schema": "https://docs.renovatebot.com/renovate-schema.json",',

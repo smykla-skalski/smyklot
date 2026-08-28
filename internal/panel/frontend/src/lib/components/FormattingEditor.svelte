@@ -172,6 +172,7 @@
         value={draft.preset ?? null}
         options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
         {disabled}
+        fluid
         onSelect={(value) => pick(presetField, value)}
         onRestore={() => clear(presetField)}
       />
@@ -209,6 +210,7 @@
                 value={formattingPatchValue(draft, field)?.toString() ?? null}
                 options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
                 {disabled}
+                fluid
                 onSelect={(value) => pick(field, value)}
                 onRestore={() => clear(field)}
               />
@@ -350,13 +352,20 @@
 
   .setting-say {
     display: grid;
-    gap: var(--space-2);
+    gap: var(--space-3);
     min-width: 0;
   }
 
   .setting-name {
     font-size: var(--font-size-meta);
     font-weight: 600;
+    min-block-size: 10px;
+    text-box: trim-both cap alphabetic;
+  }
+
+  .setting-why {
+    min-block-size: 9px;
+    text-box: trim-both cap alphabetic;
   }
 
   .number-control {
@@ -422,6 +431,20 @@
 
     .number-control {
       justify-self: start;
+    }
+  }
+
+  @media (max-width: 30rem) {
+    .card {
+      padding: var(--space-3);
+    }
+
+    .group-head {
+      flex-wrap: wrap;
+    }
+
+    .policy-row {
+      padding-inline: 0;
     }
   }
 </style>

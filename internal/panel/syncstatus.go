@@ -10,6 +10,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // repositoriesKey is the wire name three sync answers share for their
@@ -212,10 +213,18 @@ func syncStatusRow(repository storage.Repository, facts syncStatusFacts) syncRep
 
 // syncFileMergeEntryDTO is one repository's adjustment of one template.
 type syncFileMergeEntryDTO struct {
-	Repository   string          `json:"repository"`
-	RepositoryID string          `json:"repository_id"`
-	Path         string          `json:"path"`
-	Merge        json.RawMessage `json:"merge"`
+	Repository   string                     `json:"repository"`
+	RepositoryID string                     `json:"repository_id"`
+	Path         string                     `json:"path"`
+	Merge        json.RawMessage            `json:"merge,omitempty"`
+	Formatting   *appconfig.FormattingPatch `json:"formatting,omitempty"`
+}
+
+type syncFileRepositoryDTO struct {
+	Repository    string                     `json:"repository"`
+	RepositoryID  string                     `json:"repository_id"`
+	DefaultBranch string                     `json:"default_branch"`
+	BasePolicy    appconfig.FormattingPolicy `json:"base_policy"`
 }
 
 // getSyncFilesContext answers what the files pages need beyond the document:
@@ -236,9 +245,21 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	names := make(map[string]string, len(repositories))
+	repositoryByID := make(map[string]storage.Repository, len(repositories))
 	for _, repository := range repositories {
-		names[repository.ID] = repository.Name
+		repositoryByID[repository.ID] = repository
+	}
+	runtime := s.runtimeValues()
+	templateBase := appconfig.Resolve(runtime.BotConfig, appconfig.Layer{
+		Source: appconfig.SourceTarget, Patch: target.ConfigPatch,
+	}).Values.Formatting
+	repositoryPolicies := make([]syncFileRepositoryDTO, 0, len(repositories))
+	for _, repository := range repositories {
+		repositoryPolicies = append(repositoryPolicies, syncFileRepositoryDTO{
+			Repository: repository.Name, RepositoryID: repository.ID,
+			DefaultBranch: repository.DefaultBranch,
+			BasePolicy:    repositoryFormatting(runtime.BotConfig, target, repository),
+		})
 	}
 
 	config, err := s.store.GetSyncConfig(ctx, target.ID, orgsync.KindFiles)
@@ -265,12 +286,12 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 		if override.Kind != orgsync.KindFiles {
 			continue
 		}
-		name, known := names[override.RepositoryID]
+		repository, known := repositoryByID[override.RepositoryID]
 		if !known {
 			continue
 		}
 		covered += syncCoverageDelta(filesEnabled, override.Enabled)
-		merges = append(merges, fileMergeEntries(name, override)...)
+		merges = append(merges, fileMergeEntries(repository, override)...)
 	}
 
 	rows, err := s.store.ListSyncRepositoryPaths(ctx, target.ID)
@@ -281,10 +302,12 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		repositoriesKey: len(repositories),
-		"covered":       covered,
-		"known_paths":   knownSyncPaths(rows),
-		"merges":        merges,
+		repositoriesKey:       len(repositories),
+		"covered":             covered,
+		"known_paths":         knownSyncPaths(rows),
+		"merges":              merges,
+		"base_formatting":     templateBase,
+		"repository_policies": repositoryPolicies,
 	})
 }
 
@@ -307,18 +330,23 @@ func syncCoverageDelta(defaultEnabled bool, override *bool) int {
 // The document's own spelling: a list of merges, each naming its path.
 // Decoded loosely on purpose - the stored merge travels to the browser whole,
 // and a shape this version does not know is still worth showing.
-func fileMergeEntries(name string, override orgsync.RepositoryOverride) []syncFileMergeEntryDTO {
+func fileMergeEntries(
+	repository storage.Repository,
+	override orgsync.RepositoryOverride,
+) []syncFileMergeEntryDTO {
 	if len(override.Document) == 0 {
 		return nil
 	}
 	var document struct {
-		Merges []json.RawMessage `json:"merges"`
+		Merges  []json.RawMessage    `json:"merges"`
+		Formats []orgsync.FileFormat `json:"formats"`
 	}
 	if err := json.Unmarshal(override.Document, &document); err != nil {
 		return nil
 	}
 
-	entries := make([]syncFileMergeEntryDTO, 0, len(document.Merges))
+	entries := make([]syncFileMergeEntryDTO, 0, len(document.Merges)+len(document.Formats))
+	byPath := make(map[string]int, len(document.Merges)+len(document.Formats))
 	for _, merge := range document.Merges {
 		var named struct {
 			Path string `json:"path"`
@@ -327,14 +355,50 @@ func fileMergeEntries(name string, override orgsync.RepositoryOverride) []syncFi
 			continue
 		}
 		entries = append(entries, syncFileMergeEntryDTO{
-			Repository:   name,
+			Repository:   repository.Name,
 			RepositoryID: override.RepositoryID,
 			Path:         named.Path,
 			Merge:        merge,
 		})
+		byPath[named.Path] = len(entries) - 1
+	}
+	for _, format := range document.Formats {
+		if format.Path == "" || format.Formatting.Validate() != nil {
+			continue
+		}
+		formatting := format.Formatting
+		if index, ok := byPath[format.Path]; ok {
+			entries[index].Formatting = &formatting
+			continue
+		}
+		entries = append(entries, syncFileMergeEntryDTO{
+			Repository: repository.Name, RepositoryID: override.RepositoryID,
+			Path: format.Path, Formatting: &formatting,
+		})
+		byPath[format.Path] = len(entries) - 1
 	}
 
 	return entries
+}
+
+// repositoryFormatting resolves every configuration layer that belongs to a
+// repository before the template and exact-path overlays are applied.
+func repositoryFormatting(
+	process *appconfig.Config,
+	target storage.Target,
+	repository storage.Repository,
+) appconfig.FormattingPolicy {
+	layers := []appconfig.Layer{{Source: appconfig.SourceTarget, Patch: target.ConfigPatch}}
+	if !repository.IgnoreRepositoryFile {
+		layers = append(layers, appconfig.Layer{
+			Source: appconfig.SourceRepositoryFile, Patch: repository.ConfigFilePatch,
+		})
+	}
+	layers = append(layers, appconfig.Layer{
+		Source: appconfig.SourceRepositoryPanel, Patch: repository.ConfigPatch,
+	})
+
+	return appconfig.Resolve(process, layers...).Values.Formatting
 }
 
 // knownSyncPaths folds the per-repository path rows into the finder's index:

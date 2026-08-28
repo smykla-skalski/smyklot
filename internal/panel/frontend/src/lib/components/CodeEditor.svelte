@@ -59,6 +59,12 @@
     if (view !== null) undo(view);
   }
 
+  /** Replace the document in one CodeMirror transaction so one Undo restores it. */
+  export function replaceValue(text: string): void {
+    if (view === null || text === view.state.doc.toString()) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+  }
+
   /* The same inks CodeBlock's tokenizer classes wear, on lezer's tags. */
   const inks = HighlightStyle.define([
     { tag: tags.propertyName, color: 'var(--code-key)' },

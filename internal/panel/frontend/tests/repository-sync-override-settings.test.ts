@@ -13,10 +13,12 @@ import {
   syncOverrideDraftEnvelope,
   syncOverrideResource,
   syncOverrideSavedControls,
+  syncOverrideFormattingEntries,
+  withSyncOverrideFormatting,
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
-import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
+import type { SettingsDraftStorage, SettingsJson } from '../src/lib/settings-draft-storage';
 import type { InstallationSyncOverrideSettingsState, SyncOverride } from '../src/lib/types';
 
 function override(over: Partial<SyncOverride> = {}): SyncOverride {
@@ -187,6 +189,94 @@ describe('repository sync override settings adapter [Unit]', () => {
       },
     });
     expect(envelope).toEqual(before);
+  });
+
+  it('round-trips exact-path formatting through the typed document adapter', () => {
+    const envelope = buildSyncOverrideEditorEnvelope(
+      override({
+        document: {
+          excludes: ['vendor/*'],
+          formats: [{ path: 'renovate.json', formatting: { json: { arrays: 'compact' } } }],
+        },
+      }),
+    );
+
+    expect(syncOverrideFormattingEntries(envelope)).toEqual([
+      { path: 'renovate.json', formatting: { json: { arrays: 'compact' } } },
+    ]);
+    const changed = withSyncOverrideFormatting(envelope, 'renovate.json', {
+      common: { final_newline: 'insert' },
+    });
+    expect(serializeSyncOverrideDocument(changed)).toEqual({
+      ok: true,
+      document: {
+        excludes: ['vendor/*'],
+        formats: [
+          {
+            path: 'renovate.json',
+            formatting: { common: { final_newline: 'insert' } },
+          },
+        ],
+      },
+    });
+    expect(envelope.document.formats).toEqual([
+      { path: 'renovate.json', formatting: { json: { arrays: 'compact' } } },
+    ]);
+  });
+
+  it('preserves future path-formatting fields so the strict serializer can refuse them', () => {
+    const envelope = buildSyncOverrideEditorEnvelope(
+      override({
+        document: {
+          formats: [
+            {
+              path: 'config.toml',
+              formatting: { common: { final_newline: 'insert' } },
+              future_option: { keep: true },
+            },
+          ],
+        },
+      }),
+    );
+
+    const changed = withSyncOverrideFormatting(envelope, 'README.md', {
+      markdown: { tables: 'align' },
+    });
+    expect((changed.document.formats as SettingsJson[])[0]).toMatchObject({
+      path: 'config.toml',
+      future_option: { keep: true },
+    });
+    expect(serializeSyncOverrideDocument(changed)).toEqual({
+      ok: false,
+      problem: 'File formatting override 1 is invalid',
+    });
+  });
+
+  it('refuses duplicate, unsupported, and empty path-formatting rows', () => {
+    const document = (formats: SettingsJson[]): SyncOverrideEditorEnvelope => ({
+      enabled: null,
+      document: { formats },
+      override_texts: [],
+    });
+    expect(
+      serializeSyncOverrideDocument(
+        document([
+          { path: 'README.md', formatting: { markdown: { tables: 'align' } } },
+          { path: 'readme.md', formatting: { common: { final_newline: 'insert' } } },
+        ]),
+      ),
+    ).toMatchObject({ ok: false, problem: 'README.md has formatting configured twice' });
+    expect(
+      serializeSyncOverrideDocument(
+        document([{ path: 'Makefile', formatting: { common: { final_newline: 'insert' } } }]),
+      ),
+    ).toMatchObject({ ok: false, problem: 'Makefile has no supported formatter' });
+    expect(
+      serializeSyncOverrideDocument(document([{ path: 'README.md', formatting: {} }])),
+    ).toMatchObject({
+      ok: false,
+      problem: 'README.md has an invalid or empty formatting override',
+    });
   });
 
   it('refuses malformed text, duplicate paths, unknown keys, and invalid merge rules', () => {
