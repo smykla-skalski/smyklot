@@ -1519,6 +1519,30 @@ jobs:
 			Expect(string(merged)).To(ContainSubstring("timeout: 30"))
 		})
 
+		It("changes only the requested scalar bytes across mixed endings and no final newline", func() {
+			template := []byte("jobs:\r\n  build:\n    go-version: 1.20\r\n    timeout: 5")
+			merged, err := applyFileMerge("ci.yaml", template, filemerge.Spec{
+				Overrides: overrides(`{"jobs": {"build": {"timeout": 30}}}`),
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(merged).To(Equal([]byte(
+				"jobs:\r\n  build:\n    go-version: 1.20\r\n    timeout: 30",
+			)))
+		})
+
+		It("preserves comments and block scalar spelling around deletion and replacement", func() {
+			template := []byte("# top\nname : build # inline\nremove: yes\nscript: |-\n  echo hi  \n")
+			merged, err := applyFileMerge("ci.yaml", template, filemerge.Spec{
+				Overrides: overrides(`{"name": "release", "remove": null}`),
+			})
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(merged).To(Equal([]byte(
+				"# top\nname : release # inline\nscript: |-\n  echo hi  \n",
+			)))
+		})
+
 		It("keeps a list item the template wrote as the template wrote it", func() {
 			merged, err := applyFileMerge("ci.yaml",
 				[]byte("versions:\n  # supported\n  - 1.20\n"),
@@ -1530,9 +1554,9 @@ jobs:
 				})
 
 			Expect(err).NotTo(HaveOccurred())
-			Expect(string(merged)).To(ContainSubstring("- 1.20"))
-			Expect(string(merged)).To(ContainSubstring("# supported"))
-			Expect(string(merged)).To(MatchRegexp(`- ["']1\.21["']`))
+			Expect(merged).To(Equal([]byte(
+				"versions:\n  # supported\n  - 1.20\n  - \"1.21\"\n",
+			)))
 		})
 
 		// Two spellings of one value, which is what the deduplication is for.

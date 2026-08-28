@@ -204,7 +204,7 @@ func FormatDocument(filePath string, content []byte, policy config.FormattingPol
 // SupportsFormatting reports the extensions governed by FormattingPolicy.
 func SupportsFormatting(filePath string) bool {
 	switch strings.ToLower(path.Ext(filePath)) {
-	case extJSON, extJSONC:
+	case extJSON, extJSONC, extYAML, extYML:
 		return true
 	default:
 		return false

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"path"
+	"reflect"
 	"strings"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -12,6 +13,8 @@ import (
 const (
 	extJSON  = ".json"
 	extJSONC = ".jsonc"
+	extYAML  = ".yaml"
+	extYML   = ".yml"
 
 	formatPreserve = "preserve"
 	formatAuto     = "auto"
@@ -50,6 +53,12 @@ func formatWithSource(
 		} else {
 			formatted = content
 		}
+	case extYAML, extYML:
+		if yamlFormattingActive(policy) {
+			formatted, err = formatYAMLDocument(content, policy)
+		} else {
+			formatted = content
+		}
 	default:
 		formatted = content
 	}
@@ -74,6 +83,10 @@ func jsonFormattingActive(policy config.FormattingPolicy) bool {
 		policy.JSON.KeyOrder != formatPreserve
 }
 
+func yamlFormattingActive(policy config.FormattingPolicy) bool {
+	return yamlASTFormattingActive(policy) || policy.YAML.DocumentStart != formatPreserve
+}
+
 func proveFormattedSemantics(filePath string, before, after []byte) error {
 	if bytes.Equal(before, after) {
 		return nil
@@ -93,6 +106,21 @@ func proveFormattedSemantics(filePath string, before, after []byte) error {
 		afterValue, afterErr := jsonSyntaxValue(afterRoot)
 		if beforeErr != nil || afterErr != nil || !holdsEqual([]any{beforeValue}, afterValue) {
 			return fmt.Errorf("%w: formatting changed the JSON value", ErrUnwritable)
+		}
+	case extYAML, extYML:
+		if _, err := parseGoccyYAML(before); err != nil {
+			return err
+		}
+		if _, err := parseGoccyYAML(after); err != nil {
+			return fmt.Errorf("%w: formatted YAML did not parse: %w", ErrUnwritable, err)
+		}
+		beforeValue, beforeErr := decodeYAMLSemantic(before)
+		afterValue, afterErr := decodeYAMLSemantic(after)
+		if beforeErr != nil || afterErr != nil || !reflect.DeepEqual(beforeValue, afterValue) {
+			return fmt.Errorf("%w: formatting changed the YAML value", ErrUnwritable)
+		}
+		if !yamlPresentationOf(before).equal(yamlPresentationOf(after)) {
+			return fmt.Errorf("%w: formatting changed YAML comments or special syntax", ErrUnwritable)
 		}
 	}
 

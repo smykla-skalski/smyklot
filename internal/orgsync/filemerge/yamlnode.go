@@ -48,6 +48,10 @@ const (
 // scalar is refolded. That is a first sync landing as a whole-file reformat -
 // worth knowing, and a different thing from a value that changed meaning.
 func mergeYAML(template []byte, spec Spec) ([]byte, error) {
+	sourceFile, sourceDocument, err := parseYAMLDocument(template)
+	if err != nil {
+		return nil, err
+	}
 	file, document, err := parseYAMLDocument(template)
 	if err != nil {
 		return nil, err
@@ -72,11 +76,8 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 	// rule appending to a list reached through one appended to what the merge
 	// had already put there. Read only where a rule needs it.
 	var before *yaml.Node
-
 	if len(spec.Arrays) > 0 {
-		if _, before, err = parseYAMLDocument(template); err != nil {
-			return nil, err
-		}
+		before = sourceDocument
 	}
 
 	// The merge writes and records; settle decides. What a key inherits is only
@@ -100,7 +101,9 @@ func mergeYAML(template []byte, spec Spec) ([]byte, error) {
 		return nil, err
 	}
 
-	return encodeYAMLDocument(file)
+	inheritYAMLMergePresentation(sourceDocument, document)
+
+	return renderYAMLMerge(template, sourceFile, file)
 }
 
 // parseYAMLDocument reads the one document a file should hold, as nodes.
@@ -249,23 +252,6 @@ func unwriteMergeTags(node *yaml.Node) {
 	for _, child := range node.Content {
 		unwriteMergeTags(child)
 	}
-}
-
-func encodeYAMLDocument(root *yaml.Node) ([]byte, error) {
-	var buffer bytes.Buffer
-
-	encoder := yaml.NewEncoder(&buffer)
-	encoder.SetIndent(yamlIndent)
-
-	if err := encoder.Encode(root); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUnwritable, err)
-	}
-
-	if err := encoder.Close(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrUnwritable, err)
-	}
-
-	return buffer.Bytes(), nil
 }
 
 // intoMapping applies an override object to a mapping node.
