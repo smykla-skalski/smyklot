@@ -14,6 +14,32 @@ afterAll(async () => {
 });
 
 describe('background work schedules [Integration]', () => {
+  it('announces the initial schedule load until every response arrives', async () => {
+    const page = await panel.browser.newPage();
+    let releaseResponse = (): void => {};
+    const heldResponse = new Promise<void>((resolve) => {
+      releaseResponse = resolve;
+    });
+    try {
+      await page.route('**/api/v1/root/job-policies', async (route) => {
+        await heldResponse;
+        await route.continue();
+      });
+      await page.goto(addressOf(panel, 'root/schedules'), { waitUntil: 'domcontentloaded' });
+
+      const view = page.locator('.schedules-view');
+      await view.waitFor();
+      await expect.poll(() => view.getAttribute('aria-busy')).toBe('true');
+
+      releaseResponse();
+      await expect.poll(() => view.getAttribute('aria-busy')).toBe('false');
+      await view.locator('.policy-table-wrap tbody tr').first().waitFor();
+    } finally {
+      releaseResponse();
+      await page.close();
+    }
+  });
+
   it('renders empty policy overrides from older servers', async () => {
     const page = await panel.browser.newPage();
     const emptyOverrides = async (route: Route) => {

@@ -637,6 +637,7 @@
 <section
   class="schedules-view"
   aria-labelledby={targetId === undefined ? 'root-page-heading' : 'schedules-heading'}
+  aria-busy={loading}
 >
   {#if targetId === undefined}
     <RootPageHeader
