@@ -87,6 +87,44 @@ func TestSchemaRenderIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestSchemaRendererEscapesNestedValues(t *testing.T) {
+	hostile := "\"}, \"injected\": true, \"rest\": \"line one\nline two"
+	key := "formatting.quoted\"key"
+	rendered, err := configgen.RenderSchema(configgen.Model{Fields: []configgen.Field{
+		{
+			Key: "formatting", Kind: configgen.KindObject, Description: hostile,
+			Children: []configgen.Field{
+				{Key: key, Kind: configgen.KindString, Description: hostile, Default: hostile},
+			},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("RenderSchema() error = %v", err)
+	}
+	if !json.Valid(rendered) {
+		t.Fatal("RenderSchema() returned invalid JSON")
+	}
+
+	var document schemaDocument
+	if err := json.Unmarshal(rendered, &document); err != nil {
+		t.Fatalf("parse rendered schema: %v", err)
+	}
+	formatting := document.Properties["formatting"]
+	if formatting.Description != hostile {
+		t.Errorf("object description = %q, want %q", formatting.Description, hostile)
+	}
+	quoted, exists := formatting.Properties["quoted\"key"]
+	if !exists {
+		t.Fatalf("nested property keys = %v, want quoted key", formatting.Properties)
+	}
+	if quoted.Description != hostile || quoted.Default != hostile {
+		t.Errorf("nested property = %#v, want hostile text preserved as data", quoted)
+	}
+	if _, injected := formatting.Properties["injected"]; injected {
+		t.Fatal("hostile text created an injected schema property")
+	}
+}
+
 // The completeness test for the published document. A setting missing from it
 // is one an editor cannot complete and cannot check, and the reverse - a
 // property with no setting behind it - is a document describing a version of

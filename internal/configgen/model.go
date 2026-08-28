@@ -68,10 +68,6 @@ var (
 	// ErrDuplicateKey reports two fields addressed by the same key. Both would
 	// render into one map entry, so one of them would silently never resolve.
 	ErrDuplicateKey = errors.New("duplicate key")
-
-	// errInvalidSchema reports a rendered schema that is not valid JSON, which
-	// would otherwise be published and silently ignored by every editor.
-	errInvalidSchema = errors.New("rendered schema is not valid JSON")
 )
 
 // Kind is how a setting behaves, which is what decides the Go type it takes,
