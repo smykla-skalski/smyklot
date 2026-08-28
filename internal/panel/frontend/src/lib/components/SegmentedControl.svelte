@@ -321,7 +321,11 @@
   }
 
   fieldset.fluid label {
-    flex: 1 1 0;
+    /* Start from each option's natural width. A zero basis made every segment equal even when its
+       label was not, so longer formatting choices wrapped while shorter neighbours held unused
+       room. Growing from the content basis still fills the supplied row, but divides it according
+       to what each option actually needs. */
+    flex: 1 1 auto;
     min-width: 0;
   }
 

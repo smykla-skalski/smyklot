@@ -74,7 +74,19 @@ describe('configured file formatting in the development panel', () => {
         .first()
         .evaluate((editor) => {
           const controls = [...editor.querySelectorAll<HTMLElement>('.policy-row fieldset')];
-          const widths = controls.map((control) => control.getBoundingClientRect().width);
+          const width = (name: string, occurrence = 0): number =>
+            controls
+              .filter((control) => control.querySelector('legend')?.textContent?.trim() === name)
+              .at(occurrence)
+              ?.getBoundingClientRect().width ?? 0;
+          const quoteSegments = [
+            ...controls
+              .filter(
+                (control) => control.querySelector('legend')?.textContent?.trim() === 'Quote Style',
+              )
+              .at(1)!
+              .querySelectorAll<HTMLElement>('label'),
+          ].map((label) => label.getBoundingClientRect().width);
           const wrapped = controls.flatMap((control) =>
             [...control.querySelectorAll<HTMLElement>('.band-trim')]
               .filter((label) => {
@@ -86,11 +98,14 @@ describe('configured file formatting in the development panel', () => {
           );
 
           return {
-            widthSpread: Math.max(...widths) - Math.min(...widths),
+            arraysWidth: width('Arrays'),
+            keyOrderWidth: width('Key Order'),
+            quoteSegmentSpread: Math.max(...quoteSegments) - Math.min(...quoteSegments),
             wrapped,
           };
         });
-      expect(geometry.widthSpread).toBeLessThanOrEqual(1);
+      expect(geometry.arraysWidth).toBeGreaterThan(geometry.keyOrderWidth);
+      expect(geometry.quoteSegmentSpread).toBeGreaterThan(1);
       expect(geometry.wrapped).toEqual([]);
       expect(crashes).toEqual([]);
     } finally {
