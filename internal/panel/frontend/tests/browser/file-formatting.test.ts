@@ -68,6 +68,30 @@ describe('configured file formatting in the development panel', () => {
       expect(exact).toContain('"schedule": ["* 4 * * 6"]');
       expect(exact).toContain('"ignorePaths": ["crates/harness-codex-acp/**"]');
       expect(exact).toContain('\r\n');
+
+      const geometry = await page
+        .locator('.formatting-editor')
+        .first()
+        .evaluate((editor) => {
+          const controls = [...editor.querySelectorAll<HTMLElement>('.policy-row fieldset')];
+          const widths = controls.map((control) => control.getBoundingClientRect().width);
+          const wrapped = controls.flatMap((control) =>
+            [...control.querySelectorAll<HTMLElement>('.band-trim')]
+              .filter((label) => {
+                const range = document.createRange();
+                range.selectNodeContents(label);
+                return range.getClientRects().length > 1;
+              })
+              .map((label) => label.textContent?.trim() ?? ''),
+          );
+
+          return {
+            widthSpread: Math.max(...widths) - Math.min(...widths),
+            wrapped,
+          };
+        });
+      expect(geometry.widthSpread).toBeLessThanOrEqual(1);
+      expect(geometry.wrapped).toEqual([]);
       expect(crashes).toEqual([]);
     } finally {
       await page.close();

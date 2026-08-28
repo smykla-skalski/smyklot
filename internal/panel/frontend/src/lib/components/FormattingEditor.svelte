@@ -281,6 +281,7 @@
 
 <style>
   .formatting-editor {
+    container: formatting-editor / inline-size;
     display: grid;
     gap: var(--space-4);
   }
@@ -330,7 +331,11 @@
     align-items: center;
     display: grid;
     gap: var(--space-3) var(--space-4);
-    grid-template-columns: minmax(14rem, 1fr) auto;
+    /* The control column is a row contract, not the max-content width of whichever labels happen
+       to be in this setting. Letting `auto` size it gave every segmented control a different left
+       edge and wrapped TOML labels even though the card had room. The percentage keeps the label
+       useful as the card narrows; the cap keeps the control from taking over a wide settings page. */
+    grid-template-columns: minmax(14rem, 1fr) min(32rem, 58%);
     min-block-size: 48px;
     padding: var(--space-4) var(--space-2);
     position: relative;
@@ -424,6 +429,19 @@
   }
 
   @media (max-width: 900px) {
+    .policy-row {
+      align-items: start;
+      grid-template-columns: 1fr;
+    }
+
+    .number-control {
+      justify-self: start;
+    }
+  }
+
+  /* Formatting editors also live inside repository rows. Their usable width can be narrow while
+     the viewport is still wide, so the component's own width is the authority for stacking. */
+  @container formatting-editor (max-width: 44rem) {
     .policy-row {
       align-items: start;
       grid-template-columns: 1fr;
