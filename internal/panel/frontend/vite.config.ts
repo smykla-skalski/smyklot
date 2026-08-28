@@ -66,7 +66,9 @@ export default defineConfig({
         name: panelVersion,
       },
     }),
-    svelteTesting(),
+    // The panel owns cleanup so delayed overlay teardown completes before
+    // Vitest removes jsdom. See tests/setup.ts.
+    svelteTesting({ autoCleanup: false }),
     mockServer(),
     checkSentinels(),
   ],
@@ -98,6 +100,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    setupFiles: ['./tests/setup.ts'],
     // The `test` script runs Node with `--no-experimental-webstorage`, and it has to. Node 26 turns
     // Web Storage on by default, which puts a `localStorage` accessor on `globalThis` that answers
     // `undefined` unless the process was given `--localstorage-file`. jsdom installs its globals by
