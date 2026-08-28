@@ -37,6 +37,7 @@ const PatchTypeName = "Patch"
 const (
 	goBool   = "bool"
 	goString = "string"
+	goInt    = "int"
 )
 
 var (
@@ -92,6 +93,13 @@ const (
 
 	// KindStringMap is a mapping, replaced wholesale rather than merged.
 	KindStringMap Kind = "string_map"
+
+	// KindInt is a bounded integer setting.
+	KindInt Kind = "int"
+
+	// KindObject is a nested sparse patch whose leaves are generated
+	// individually while Config carries its complete policy counterpart.
+	KindObject Kind = "object"
 )
 
 // Field is one setting, in every form the generated code and the schema need.
@@ -99,12 +107,18 @@ type Field struct {
 	// GoName is the field's identifier, shared by Patch and Config.
 	GoName string
 
+	// ConstName is the Go suffix used for a leaf's generated key constant.
+	ConstName string
+
 	// Key is how the setting is addressed in a file, an environment variable
 	// and the schema.
 	Key string
 
 	// GoType is the type Config carries: Patch's type with the pointer removed.
 	GoType string
+
+	// PatchType is the sparse struct type for a nested object.
+	PatchType string
 
 	// Kind decides the schema, the flag and the apply helper.
 	Kind Kind
@@ -132,6 +146,16 @@ type Field struct {
 	// Enum is the complete set of accepted values, for KindEnum.
 	Enum []string
 
+	// Min and Max bound an integer leaf. Empty means unbounded.
+	Min string
+	Max string
+
+	// Children are the fields of a nested object. Leaves have none.
+	Children []Field
+
+	// GoPath names a leaf below its top-level Config/Patch field.
+	GoPath []string
+
 	// HasFlag reports whether the setting takes a command-line flag.
 	HasFlag bool
 
@@ -144,6 +168,7 @@ type Field struct {
 // it came from and a reviewer can diff the two side by side.
 type Model struct {
 	Fields []Field
+	Leaves []Field
 }
 
 // Parse reads the config package at dir and returns what Patch declares.
@@ -181,6 +206,7 @@ func Parse(dir string) (Model, error) {
 	var patch *ast.StructType
 
 	stringTypes := make(map[string]struct{})
+	structTypes := make(map[string]*ast.StructType)
 
 	for _, name := range names {
 		path := filepath.Join(dir, name)
@@ -191,6 +217,7 @@ func Parse(dir string) (Model, error) {
 		}
 
 		collectStringTypes(file, stringTypes)
+		collectStructTypes(file, structTypes)
 
 		if spec := findStruct(file, PatchTypeName); spec != nil && patch == nil {
 			patch = spec
@@ -201,7 +228,27 @@ func Parse(dir string) (Model, error) {
 		return Model{}, fmt.Errorf("%w in %s", ErrPatchNotFound, dir)
 	}
 
-	return build(patch, stringTypes)
+	return build(patch, stringTypes, structTypes)
+}
+
+func collectStructTypes(file *ast.File, into map[string]*ast.StructType) {
+	for _, decl := range file.Decls {
+		generic, ok := decl.(*ast.GenDecl)
+		if !ok || generic.Tok != token.TYPE {
+			continue
+		}
+
+		for _, spec := range generic.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+
+			if value, ok := typeSpec.Type.(*ast.StructType); ok {
+				into[typeSpec.Name.Name] = value
+			}
+		}
+	}
 }
 
 // collectStringTypes records every `type X string` in the package.
@@ -249,35 +296,102 @@ func findStruct(file *ast.File, name string) *ast.StructType {
 	return found
 }
 
-func build(spec *ast.StructType, stringTypes map[string]struct{}) (Model, error) {
+func build(
+	spec *ast.StructType,
+	stringTypes map[string]struct{},
+	structTypes map[string]*ast.StructType,
+) (Model, error) {
 	var model Model
 
 	seen := make(map[string]string)
+	fields, err := buildFields(spec, nil, nil, stringTypes, structTypes, seen)
+	if err != nil {
+		return Model{}, err
+	}
+
+	model.Fields = fields
+	model.Leaves = flattenLeaves(fields)
+
+	return model, nil
+}
+
+func buildFields(
+	spec *ast.StructType,
+	keyPath, goPath []string,
+	stringTypes map[string]struct{},
+	structTypes map[string]*ast.StructType,
+	seen map[string]string,
+) ([]Field, error) {
+	var fields []Field
 
 	for _, astField := range spec.Fields.List {
 		// An embedded field has no names. Patch has none, and one appearing
 		// would be a setting with no key, so it is an error rather than a skip.
 		if len(astField.Names) == 0 {
-			return Model{}, fmt.Errorf("%w: embedded field", ErrUnsupportedType)
+			return nil, fmt.Errorf("%w: embedded field", ErrUnsupportedType)
 		}
 
 		for _, name := range astField.Names {
 			field, err := buildField(name.Name, astField, stringTypes)
 			if err != nil {
-				return Model{}, fmt.Errorf("%s: %w", name.Name, err)
+				return nil, fmt.Errorf("%s: %w", name.Name, err)
 			}
 
+			field.GoPath = append(append([]string{}, goPath...), name.Name)
+			fullKeyPath := append(append([]string{}, keyPath...), field.Key)
+
+			if pointer, ok := astField.Type.(*ast.StarExpr); ok {
+				if ident, ok := pointer.X.(*ast.Ident); ok {
+					if nested, ok := structTypes[ident.Name]; ok {
+						if !strings.HasSuffix(ident.Name, "Patch") {
+							return nil, fmt.Errorf("%s: %w: nested type must end in Patch",
+								name.Name, ErrUnsupportedType)
+						}
+
+						field.Kind = KindObject
+						field.PatchType = ident.Name
+						field.GoType = strings.TrimSuffix(ident.Name, "Patch") + "Policy"
+						field.Children, err = buildFields(
+							nested, fullKeyPath, field.GoPath, stringTypes, structTypes, seen)
+						if err != nil {
+							return nil, fmt.Errorf("%s: %w", name.Name, err)
+						}
+
+						fields = append(fields, field)
+						continue
+					}
+				}
+			}
+
+			field.Key = strings.Join(fullKeyPath, ".")
+			field.ConstName = strings.Join(field.GoPath, "")
+
 			if owner, taken := seen[field.Key]; taken {
-				return Model{}, fmt.Errorf("%s: %w: %q also names %s",
+				return nil, fmt.Errorf("%s: %w: %q also names %s",
 					name.Name, ErrDuplicateKey, field.Key, owner)
 			}
 
 			seen[field.Key] = name.Name
-			model.Fields = append(model.Fields, field)
+			fields = append(fields, field)
 		}
 	}
 
-	return model, nil
+	return fields, nil
+}
+
+func flattenLeaves(fields []Field) []Field {
+	var leaves []Field
+
+	for _, field := range fields {
+		if field.Kind == KindObject {
+			leaves = append(leaves, flattenLeaves(field.Children)...)
+			continue
+		}
+
+		leaves = append(leaves, field)
+	}
+
+	return leaves
 }
 
 func buildField(name string, astField *ast.Field, stringTypes map[string]struct{}) (Field, error) {
@@ -305,6 +419,7 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 
 	field := Field{
 		GoName:      name,
+		ConstName:   name,
 		Key:         key,
 		GoType:      typed.GoType,
 		Kind:        typed.Kind,
@@ -314,6 +429,8 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 		Default:     tag.Get("default"),
 		HasFlag:     tag.Get("flag") != "-",
 		PanelDeny:   tag.Get("panel") == "deny",
+		Min:         tag.Get("min"),
+		Max:         tag.Get("max"),
 	}
 
 	if enum := tag.Get("enum"); enum != "" {
@@ -351,6 +468,28 @@ func validate(field Field) error {
 		if field.Default != "" {
 			return fmt.Errorf("%w: a list or mapping defaults to empty", ErrInvalidDefault)
 		}
+
+	case KindInt:
+		value, err := strconv.Atoi(field.Default)
+		if err != nil {
+			return fmt.Errorf("%w: %q is not an integer", ErrInvalidDefault, field.Default)
+		}
+
+		if field.Min != "" {
+			minimum, err := strconv.Atoi(field.Min)
+			if err != nil || value < minimum {
+				return fmt.Errorf("%w: default %d is below min %q",
+					ErrInvalidDefault, value, field.Min)
+			}
+		}
+
+		if field.Max != "" {
+			maximum, err := strconv.Atoi(field.Max)
+			if err != nil || value > maximum {
+				return fmt.Errorf("%w: default %d is above max %q",
+					ErrInvalidDefault, value, field.Max)
+			}
+		}
 	}
 
 	// An enum is a closed set of strings. On a boolean it would silently
@@ -379,12 +518,17 @@ func classify(expr ast.Expr, stringTypes map[string]struct{}) (classified, error
 			return classified{GoType: goBool, Kind: KindBool}, nil
 		case goString:
 			return classified{GoType: goString, Kind: KindString}, nil
+		case goInt:
+			return classified{GoType: goInt, Kind: KindInt}, nil
 		default:
 			// A named type such as Runner, accepted only when the package
 			// declares it as a string. Anything else - int, a struct, a type
 			// from another package - is refused, because the decoders read a
 			// setting from text and the schema has to publish it as one.
 			if _, ok := stringTypes[typed.Name]; !ok {
+				if strings.HasSuffix(typed.Name, "Patch") {
+					return classified{GoType: typed.Name, Kind: KindObject}, nil
+				}
 				return classified{}, fmt.Errorf(
 					"%w: %s is not a string-based type declared in this package",
 					ErrUnsupportedType, typed.Name)

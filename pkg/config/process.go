@@ -86,8 +86,13 @@ func PrecedenceDoc() string {
 // list that comes to disagree with the keys beside it, which is the failure
 // this whole package is being reshaped to make impossible.
 func EnvVar(key string) string {
-	return EnvPrefix + "_" + strings.ToUpper(key)
+	replacer := strings.NewReplacer(".", "_", "-", "_")
+
+	return EnvPrefix + "_" + strings.ToUpper(replacer.Replace(key))
 }
+
+// FlagName turns a dotted nested setting key into its command-line spelling.
+func FlagName(key string) string { return strings.ReplaceAll(key, ".", "-") }
 
 // LoadProcess resolves the configuration a process starts with, from every
 // layer below the account and the repository.
@@ -227,6 +232,15 @@ func parseBool(key, raw string) (bool, error) {
 	value, err := strconv.ParseBool(strings.TrimSpace(raw))
 	if err != nil {
 		return false, fmt.Errorf("%w for %s: %q is not true or false", ErrInvalidValue, key, raw)
+	}
+
+	return value, nil
+}
+
+func parseInt(key, raw string) (int, error) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("%w for %s: %q is not an integer", ErrInvalidValue, key, raw)
 	}
 
 	return value, nil

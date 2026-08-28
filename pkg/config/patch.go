@@ -92,6 +92,11 @@ const (
 //	flag     "-" for a setting with no command-line flag
 //	panel    "deny" for a setting the panel must refuse to write
 type Patch struct {
+	// Formatting controls file presentation independently of semantic merge.
+	// Every dimension defaults to preserve, so adding the feature does not
+	// rewrite an existing template.
+	Formatting *FormattingPatch `json:"formatting,omitempty" yaml:"formatting,omitempty" toml:"formatting,omitempty"`
+
 	// QuietSuccess drops the comment a successful command would post, leaving
 	// only its reaction. Errors and warnings still comment.
 	QuietSuccess *bool `json:"quiet_success,omitempty" yaml:"quiet_success,omitempty" toml:"quiet_success,omitempty"`
@@ -158,8 +163,9 @@ type Layer struct {
 
 // Resolved contains effective values and the source of every setting.
 type Resolved struct {
-	Values  Config            `json:"values"`
-	Sources map[string]Source `json:"sources"`
+	Values     Config            `json:"values"`
+	Sources    map[string]Source `json:"sources"`
+	Formatting FormattingSources `json:"formatting_sources"`
 }
 
 // ParsePatch decodes a configuration layer written in format.
@@ -354,7 +360,10 @@ func Resolve(base *Config, layers ...Layer) Resolved {
 		applyPatch(values, layer.Patch, sources, layer.Source)
 	}
 
-	return Resolved{Values: *values, Sources: sources}
+	return Resolved{
+		Values: *values, Sources: sources,
+		Formatting: formattingSources(sources),
+	}
 }
 
 func cloneConfig(base *Config) *Config {

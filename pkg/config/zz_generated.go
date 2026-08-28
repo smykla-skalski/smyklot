@@ -13,6 +13,11 @@ import (
 // It is the shape the rest of Smyklot reads. Patch is the shape a layer is
 // written in, and this is what a stack of layers collapses to.
 type Config struct {
+	// Formatting controls file presentation independently of semantic merge.
+	// Every dimension defaults to preserve, so adding the feature does not
+	// rewrite an existing template.
+	Formatting FormattingPolicy `json:"formatting"`
+
 	// QuietSuccess drops the comment a successful command would post, leaving
 	// only its reaction. Errors and warnings still comment.
 	QuietSuccess bool `json:"quiet_success"`
@@ -94,6 +99,78 @@ const (
 // The key every setting is addressed by, in a file, an environment variable,
 // a command-line flag and the schema alike.
 const (
+	// KeyFormattingPreset addresses formatting.preset.
+	KeyFormattingPreset = "formatting.preset"
+
+	// KeyFormattingCommonIndentStyle addresses formatting.common.indent_style.
+	KeyFormattingCommonIndentStyle = "formatting.common.indent_style"
+
+	// KeyFormattingCommonIndentWidth addresses formatting.common.indent_width.
+	KeyFormattingCommonIndentWidth = "formatting.common.indent_width"
+
+	// KeyFormattingCommonLineWidth addresses formatting.common.line_width.
+	KeyFormattingCommonLineWidth = "formatting.common.line_width"
+
+	// KeyFormattingCommonLineEnding addresses formatting.common.line_ending.
+	KeyFormattingCommonLineEnding = "formatting.common.line_ending"
+
+	// KeyFormattingCommonFinalNewline addresses formatting.common.final_newline.
+	KeyFormattingCommonFinalNewline = "formatting.common.final_newline"
+
+	// KeyFormattingJSONArrays addresses formatting.json.arrays.
+	KeyFormattingJSONArrays = "formatting.json.arrays"
+
+	// KeyFormattingJSONObjects addresses formatting.json.objects.
+	KeyFormattingJSONObjects = "formatting.json.objects"
+
+	// KeyFormattingJSONKeyOrder addresses formatting.json.key_order.
+	KeyFormattingJSONKeyOrder = "formatting.json.key_order"
+
+	// KeyFormattingJSONCTrailingCommas addresses formatting.jsonc.trailing_commas.
+	KeyFormattingJSONCTrailingCommas = "formatting.jsonc.trailing_commas"
+
+	// KeyFormattingYAMLSequences addresses formatting.yaml.sequences.
+	KeyFormattingYAMLSequences = "formatting.yaml.sequences"
+
+	// KeyFormattingYAMLMappings addresses formatting.yaml.mappings.
+	KeyFormattingYAMLMappings = "formatting.yaml.mappings"
+
+	// KeyFormattingYAMLQuoteStyle addresses formatting.yaml.quote_style.
+	KeyFormattingYAMLQuoteStyle = "formatting.yaml.quote_style"
+
+	// KeyFormattingYAMLSequenceIndent addresses formatting.yaml.sequence_indent.
+	KeyFormattingYAMLSequenceIndent = "formatting.yaml.sequence_indent"
+
+	// KeyFormattingYAMLDocumentStart addresses formatting.yaml.document_start.
+	KeyFormattingYAMLDocumentStart = "formatting.yaml.document_start"
+
+	// KeyFormattingTOMLArrays addresses formatting.toml.arrays.
+	KeyFormattingTOMLArrays = "formatting.toml.arrays"
+
+	// KeyFormattingTOMLTrailingCommas addresses formatting.toml.trailing_commas.
+	KeyFormattingTOMLTrailingCommas = "formatting.toml.trailing_commas"
+
+	// KeyFormattingTOMLQuoteStyle addresses formatting.toml.quote_style.
+	KeyFormattingTOMLQuoteStyle = "formatting.toml.quote_style"
+
+	// KeyFormattingTOMLAlignEntries addresses formatting.toml.align_entries.
+	KeyFormattingTOMLAlignEntries = "formatting.toml.align_entries"
+
+	// KeyFormattingTOMLAlignComments addresses formatting.toml.align_comments.
+	KeyFormattingTOMLAlignComments = "formatting.toml.align_comments"
+
+	// KeyFormattingTOMLKeyOrder addresses formatting.toml.key_order.
+	KeyFormattingTOMLKeyOrder = "formatting.toml.key_order"
+
+	// KeyFormattingMarkdownProseWrap addresses formatting.markdown.prose_wrap.
+	KeyFormattingMarkdownProseWrap = "formatting.markdown.prose_wrap"
+
+	// KeyFormattingMarkdownListSpacing addresses formatting.markdown.list_spacing.
+	KeyFormattingMarkdownListSpacing = "formatting.markdown.list_spacing"
+
+	// KeyFormattingMarkdownTables addresses formatting.markdown.tables.
+	KeyFormattingMarkdownTables = "formatting.markdown.tables"
+
 	// KeyQuietSuccess addresses quiet_success.
 	KeyQuietSuccess = "quiet_success"
 
@@ -143,6 +220,7 @@ const (
 // another's.
 func Default() *Config {
 	return &Config{
+		Formatting:             DefaultFormattingPolicy(),
 		QuietSuccess:           false,
 		QuietReactions:         false,
 		QuietPending:           false,
@@ -163,6 +241,30 @@ func Default() *Config {
 // Keys returns every configuration key, in declaration order.
 func Keys() []string {
 	return []string{
+		KeyFormattingPreset,
+		KeyFormattingCommonIndentStyle,
+		KeyFormattingCommonIndentWidth,
+		KeyFormattingCommonLineWidth,
+		KeyFormattingCommonLineEnding,
+		KeyFormattingCommonFinalNewline,
+		KeyFormattingJSONArrays,
+		KeyFormattingJSONObjects,
+		KeyFormattingJSONKeyOrder,
+		KeyFormattingJSONCTrailingCommas,
+		KeyFormattingYAMLSequences,
+		KeyFormattingYAMLMappings,
+		KeyFormattingYAMLQuoteStyle,
+		KeyFormattingYAMLSequenceIndent,
+		KeyFormattingYAMLDocumentStart,
+		KeyFormattingTOMLArrays,
+		KeyFormattingTOMLTrailingCommas,
+		KeyFormattingTOMLQuoteStyle,
+		KeyFormattingTOMLAlignEntries,
+		KeyFormattingTOMLAlignComments,
+		KeyFormattingTOMLKeyOrder,
+		KeyFormattingMarkdownProseWrap,
+		KeyFormattingMarkdownListSpacing,
+		KeyFormattingMarkdownTables,
 		KeyQuietSuccess,
 		KeyQuietReactions,
 		KeyQuietPending,
@@ -197,10 +299,12 @@ func PanelDeniedKeys() []string {
 // not alias the configuration it came from. A caller holding both would
 // otherwise find that editing one edited the other.
 func (c Config) AsPatch() Patch {
+	formatting := c.Formatting.AsPatch()
 	allowedCommands := append([]string{}, c.AllowedCommands...)
 	commandAliases := maps.Clone(c.CommandAliases)
 
 	return Patch{
+		Formatting:             &formatting,
 		QuietSuccess:           &c.QuietSuccess,
 		QuietReactions:         &c.QuietReactions,
 		QuietPending:           &c.QuietPending,
@@ -224,7 +328,11 @@ func (c Config) AsPatch() Patch {
 // only the pointers can answer. Counting or enumerating them by hand is how a
 // key comes to be left out of one caller and not another.
 func (p Patch) SetKeys() []string {
-	keys := make([]string, 0, 14)
+	keys := make([]string, 0, 38)
+
+	if p.Formatting != nil {
+		keys = append(keys, p.Formatting.SetKeys()...)
+	}
 
 	if p.QuietSuccess != nil {
 		keys = append(keys, KeyQuietSuccess)
@@ -297,19 +405,43 @@ func (p Patch) SetKeys() []string {
 // all, and nothing said so.
 func RegisterFlags(flags *pflag.FlagSet) {
 	defaults := Default()
-	flags.Bool(KeyQuietSuccess, defaults.QuietSuccess, "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment.")
-	flags.Bool(KeyQuietReactions, defaults.QuietReactions, "Drops the comment an approval or merge driven by a reaction would post.")
-	flags.Bool(KeyQuietPending, defaults.QuietPending, "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction.")
-	flags.StringSlice(KeyAllowedCommands, defaults.AllowedCommands, "Narrows what may be run. An empty list allows every command; naming any command forbids the rest.")
-	flags.StringToString(KeyCommandAliases, defaults.CommandAliases, "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\".")
-	flags.String(KeyCommandPrefix, defaults.CommandPrefix, "Opens a slash-style command, as \"/\" does in \"/approve\".")
-	flags.Bool(KeyDisableMentions, defaults.DisableMentions, "Stops Smyklot answering a mention, such as \"@smyklot approve\".")
-	flags.Bool(KeyDisableBareCommands, defaults.DisableBareCommands, "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own.")
-	flags.Bool(KeyDisableUnapprove, defaults.DisableUnapprove, "Withdraws the unapprove and disapprove commands.")
-	flags.Bool(KeyDisableReactions, defaults.DisableReactions, "Stops a reaction on the pull request body counting as a command at all.")
-	flags.Bool(KeyDisableDeletedComments, defaults.DisableDeletedComments, "Stops Smyklot reporting that a comment carrying a command was deleted.")
-	flags.Bool(KeyAllowSelfApproval, defaults.AllowSelfApproval, "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.")
-	flags.Bool(KeyAllowDraftMerges, defaults.AllowDraftMerges, "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them.")
+	flags.String(FlagName(KeyFormattingPreset), defaults.Formatting.Preset, "Resets every formatting leaf before sibling overrides are applied.")
+	flags.String(FlagName(KeyFormattingCommonIndentStyle), defaults.Formatting.Common.IndentStyle, "Chooses spaces, tabs, or the document's existing indentation.")
+	flags.Int(FlagName(KeyFormattingCommonIndentWidth), defaults.Formatting.Common.IndentWidth, "Is the number of spaces represented by one indentation level.")
+	flags.Int(FlagName(KeyFormattingCommonLineWidth), defaults.Formatting.Common.LineWidth, "Is the target width used by automatic collection and prose layout.")
+	flags.String(FlagName(KeyFormattingCommonLineEnding), defaults.Formatting.Common.LineEnding, "Chooses LF, CRLF, or the document's existing endings.")
+	flags.String(FlagName(KeyFormattingCommonFinalNewline), defaults.Formatting.Common.FinalNewline, "Inserts, removes, or preserves the last line ending.")
+	flags.String(FlagName(KeyFormattingJSONArrays), defaults.Formatting.JSON.Arrays, "Controls JSON array layout.")
+	flags.String(FlagName(KeyFormattingJSONObjects), defaults.Formatting.JSON.Objects, "Controls JSON object layout.")
+	flags.String(FlagName(KeyFormattingJSONKeyOrder), defaults.Formatting.JSON.KeyOrder, "Preserves insertion order or sorts object keys.")
+	flags.String(FlagName(KeyFormattingJSONCTrailingCommas), defaults.Formatting.JSONC.TrailingCommas, "Inserts, removes, or preserves JSONC trailing commas.")
+	flags.String(FlagName(KeyFormattingYAMLSequences), defaults.Formatting.YAML.Sequences, "Controls YAML sequence layout.")
+	flags.String(FlagName(KeyFormattingYAMLMappings), defaults.Formatting.YAML.Mappings, "Controls YAML mapping layout.")
+	flags.String(FlagName(KeyFormattingYAMLQuoteStyle), defaults.Formatting.YAML.QuoteStyle, "Controls safe scalar quote preference.")
+	flags.String(FlagName(KeyFormattingYAMLSequenceIndent), defaults.Formatting.YAML.SequenceIndent, "Controls indentation of block sequence markers.")
+	flags.String(FlagName(KeyFormattingYAMLDocumentStart), defaults.Formatting.YAML.DocumentStart, "Inserts, removes, or preserves the YAML document marker.")
+	flags.String(FlagName(KeyFormattingTOMLArrays), defaults.Formatting.TOML.Arrays, "Controls TOML array layout.")
+	flags.String(FlagName(KeyFormattingTOMLTrailingCommas), defaults.Formatting.TOML.TrailingCommas, "Controls commas in multiline TOML arrays.")
+	flags.String(FlagName(KeyFormattingTOMLQuoteStyle), defaults.Formatting.TOML.QuoteStyle, "Controls safe TOML string quote preference.")
+	flags.String(FlagName(KeyFormattingTOMLAlignEntries), defaults.Formatting.TOML.AlignEntries, "Aligns or compacts neighbouring TOML assignments.")
+	flags.String(FlagName(KeyFormattingTOMLAlignComments), defaults.Formatting.TOML.AlignComments, "Aligns or compacts neighbouring TOML comments.")
+	flags.String(FlagName(KeyFormattingTOMLKeyOrder), defaults.Formatting.TOML.KeyOrder, "Preserves insertion order or sorts TOML keys.")
+	flags.String(FlagName(KeyFormattingMarkdownProseWrap), defaults.Formatting.Markdown.ProseWrap, "Wraps safe prose, removes soft wraps, or preserves it.")
+	flags.String(FlagName(KeyFormattingMarkdownListSpacing), defaults.Formatting.Markdown.ListSpacing, "Makes safe lists tight or loose, or preserves their spacing.")
+	flags.String(FlagName(KeyFormattingMarkdownTables), defaults.Formatting.Markdown.Tables, "Aligns or compacts safe GFM tables, or preserves them.")
+	flags.Bool(FlagName(KeyQuietSuccess), defaults.QuietSuccess, "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment.")
+	flags.Bool(FlagName(KeyQuietReactions), defaults.QuietReactions, "Drops the comment an approval or merge driven by a reaction would post.")
+	flags.Bool(FlagName(KeyQuietPending), defaults.QuietPending, "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction.")
+	flags.StringSlice(FlagName(KeyAllowedCommands), defaults.AllowedCommands, "Narrows what may be run. An empty list allows every command; naming any command forbids the rest.")
+	flags.StringToString(FlagName(KeyCommandAliases), defaults.CommandAliases, "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\".")
+	flags.String(FlagName(KeyCommandPrefix), defaults.CommandPrefix, "Opens a slash-style command, as \"/\" does in \"/approve\".")
+	flags.Bool(FlagName(KeyDisableMentions), defaults.DisableMentions, "Stops Smyklot answering a mention, such as \"@smyklot approve\".")
+	flags.Bool(FlagName(KeyDisableBareCommands), defaults.DisableBareCommands, "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own.")
+	flags.Bool(FlagName(KeyDisableUnapprove), defaults.DisableUnapprove, "Withdraws the unapprove and disapprove commands.")
+	flags.Bool(FlagName(KeyDisableReactions), defaults.DisableReactions, "Stops a reaction on the pull request body counting as a command at all.")
+	flags.Bool(FlagName(KeyDisableDeletedComments), defaults.DisableDeletedComments, "Stops Smyklot reporting that a comment carrying a command was deleted.")
+	flags.Bool(FlagName(KeyAllowSelfApproval), defaults.AllowSelfApproval, "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.")
+	flags.Bool(FlagName(KeyAllowDraftMerges), defaults.AllowDraftMerges, "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them.")
 
 	registerConfigFileFlag(flags)
 }
@@ -324,12 +456,17 @@ func RegisterFlags(flags *pflag.FlagSet) {
 // variable. The pointer is replaced rather than written through, since a patch
 // may point into a Config that nothing asked to have edited.
 func (p *Patch) normalize() error {
+	if p.Formatting != nil {
+		if err := p.Formatting.normalize(); err != nil {
+			return err
+		}
+	}
+
 	if p.Runner != nil {
 		value, err := ParseRunner(string(*p.Runner))
 		if err != nil {
 			return err
 		}
-
 		p.Runner = &value
 	}
 
@@ -345,6 +482,275 @@ func (p *Patch) normalize() error {
 // the same way, for the same reason.
 func envPatch(lookup func(string) (string, bool)) (Patch, error) {
 	var patch Patch
+
+	if raw, ok := lookup(EnvVar(KeyFormattingPreset)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		patch.Formatting.Preset = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonIndentStyle)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.IndentStyle = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonIndentWidth)); ok && raw != "" {
+		value, err := parseInt(KeyFormattingCommonIndentWidth, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.IndentWidth = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonLineWidth)); ok && raw != "" {
+		value, err := parseInt(KeyFormattingCommonLineWidth, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.LineWidth = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonLineEnding)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.LineEnding = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonFinalNewline)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.FinalNewline = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingJSONArrays)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.Arrays = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingJSONObjects)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.Objects = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingJSONKeyOrder)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.KeyOrder = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingJSONCTrailingCommas)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSONC == nil {
+			patch.Formatting.JSONC = &FormattingJSONCPatch{}
+		}
+		patch.Formatting.JSONC.TrailingCommas = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingYAMLSequences)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.Sequences = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingYAMLMappings)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.Mappings = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingYAMLQuoteStyle)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.QuoteStyle = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingYAMLSequenceIndent)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.SequenceIndent = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingYAMLDocumentStart)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.DocumentStart = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLArrays)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.Arrays = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLTrailingCommas)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.TrailingCommas = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLQuoteStyle)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.QuoteStyle = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLAlignEntries)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.AlignEntries = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLAlignComments)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.AlignComments = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingTOMLKeyOrder)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.KeyOrder = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingMarkdownProseWrap)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.ProseWrap = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingMarkdownListSpacing)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.ListSpacing = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingMarkdownTables)); ok && raw != "" {
+		value := raw
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.Tables = &value
+	}
 
 	if raw, ok := lookup(EnvVar(KeyQuietSuccess)); ok && raw != "" {
 		value, err := parseBool(KeyQuietSuccess, raw)
@@ -477,8 +883,365 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		return patch, nil
 	}
 
-	if flags.Changed(KeyQuietSuccess) {
-		value, err := flags.GetBool(KeyQuietSuccess)
+	if flags.Changed(FlagName(KeyFormattingPreset)) {
+		value, err := flags.GetString(FlagName(KeyFormattingPreset))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		patch.Formatting.Preset = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonIndentStyle)) {
+		value, err := flags.GetString(FlagName(KeyFormattingCommonIndentStyle))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.IndentStyle = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonIndentWidth)) {
+		value, err := flags.GetInt(FlagName(KeyFormattingCommonIndentWidth))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.IndentWidth = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonLineWidth)) {
+		value, err := flags.GetInt(FlagName(KeyFormattingCommonLineWidth))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.LineWidth = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonLineEnding)) {
+		value, err := flags.GetString(FlagName(KeyFormattingCommonLineEnding))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.LineEnding = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonFinalNewline)) {
+		value, err := flags.GetString(FlagName(KeyFormattingCommonFinalNewline))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.FinalNewline = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingJSONArrays)) {
+		value, err := flags.GetString(FlagName(KeyFormattingJSONArrays))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.Arrays = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingJSONObjects)) {
+		value, err := flags.GetString(FlagName(KeyFormattingJSONObjects))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.Objects = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingJSONKeyOrder)) {
+		value, err := flags.GetString(FlagName(KeyFormattingJSONKeyOrder))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSON == nil {
+			patch.Formatting.JSON = &FormattingJSONPatch{}
+		}
+		patch.Formatting.JSON.KeyOrder = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingJSONCTrailingCommas)) {
+		value, err := flags.GetString(FlagName(KeyFormattingJSONCTrailingCommas))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.JSONC == nil {
+			patch.Formatting.JSONC = &FormattingJSONCPatch{}
+		}
+		patch.Formatting.JSONC.TrailingCommas = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingYAMLSequences)) {
+		value, err := flags.GetString(FlagName(KeyFormattingYAMLSequences))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.Sequences = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingYAMLMappings)) {
+		value, err := flags.GetString(FlagName(KeyFormattingYAMLMappings))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.Mappings = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingYAMLQuoteStyle)) {
+		value, err := flags.GetString(FlagName(KeyFormattingYAMLQuoteStyle))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.QuoteStyle = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingYAMLSequenceIndent)) {
+		value, err := flags.GetString(FlagName(KeyFormattingYAMLSequenceIndent))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.SequenceIndent = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingYAMLDocumentStart)) {
+		value, err := flags.GetString(FlagName(KeyFormattingYAMLDocumentStart))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.YAML == nil {
+			patch.Formatting.YAML = &FormattingYAMLPatch{}
+		}
+		patch.Formatting.YAML.DocumentStart = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLArrays)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLArrays))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.Arrays = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLTrailingCommas)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLTrailingCommas))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.TrailingCommas = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLQuoteStyle)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLQuoteStyle))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.QuoteStyle = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLAlignEntries)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLAlignEntries))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.AlignEntries = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLAlignComments)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLAlignComments))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.AlignComments = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingTOMLKeyOrder)) {
+		value, err := flags.GetString(FlagName(KeyFormattingTOMLKeyOrder))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.TOML == nil {
+			patch.Formatting.TOML = &FormattingTOMLPatch{}
+		}
+		patch.Formatting.TOML.KeyOrder = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingMarkdownProseWrap)) {
+		value, err := flags.GetString(FlagName(KeyFormattingMarkdownProseWrap))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.ProseWrap = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingMarkdownListSpacing)) {
+		value, err := flags.GetString(FlagName(KeyFormattingMarkdownListSpacing))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.ListSpacing = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingMarkdownTables)) {
+		value, err := flags.GetString(FlagName(KeyFormattingMarkdownTables))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Markdown == nil {
+			patch.Formatting.Markdown = &FormattingMarkdownPatch{}
+		}
+		patch.Formatting.Markdown.Tables = &value
+	}
+
+	if flags.Changed(FlagName(KeyQuietSuccess)) {
+		value, err := flags.GetBool(FlagName(KeyQuietSuccess))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -486,8 +1249,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.QuietSuccess = &value
 	}
 
-	if flags.Changed(KeyQuietReactions) {
-		value, err := flags.GetBool(KeyQuietReactions)
+	if flags.Changed(FlagName(KeyQuietReactions)) {
+		value, err := flags.GetBool(FlagName(KeyQuietReactions))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -495,8 +1258,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.QuietReactions = &value
 	}
 
-	if flags.Changed(KeyQuietPending) {
-		value, err := flags.GetBool(KeyQuietPending)
+	if flags.Changed(FlagName(KeyQuietPending)) {
+		value, err := flags.GetBool(FlagName(KeyQuietPending))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -504,8 +1267,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.QuietPending = &value
 	}
 
-	if flags.Changed(KeyAllowedCommands) {
-		value, err := flags.GetStringSlice(KeyAllowedCommands)
+	if flags.Changed(FlagName(KeyAllowedCommands)) {
+		value, err := flags.GetStringSlice(FlagName(KeyAllowedCommands))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -513,8 +1276,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.AllowedCommands = &value
 	}
 
-	if flags.Changed(KeyCommandAliases) {
-		value, err := flags.GetStringToString(KeyCommandAliases)
+	if flags.Changed(FlagName(KeyCommandAliases)) {
+		value, err := flags.GetStringToString(FlagName(KeyCommandAliases))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -522,8 +1285,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.CommandAliases = &value
 	}
 
-	if flags.Changed(KeyCommandPrefix) {
-		value, err := flags.GetString(KeyCommandPrefix)
+	if flags.Changed(FlagName(KeyCommandPrefix)) {
+		value, err := flags.GetString(FlagName(KeyCommandPrefix))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -531,8 +1294,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.CommandPrefix = &value
 	}
 
-	if flags.Changed(KeyDisableMentions) {
-		value, err := flags.GetBool(KeyDisableMentions)
+	if flags.Changed(FlagName(KeyDisableMentions)) {
+		value, err := flags.GetBool(FlagName(KeyDisableMentions))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -540,8 +1303,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.DisableMentions = &value
 	}
 
-	if flags.Changed(KeyDisableBareCommands) {
-		value, err := flags.GetBool(KeyDisableBareCommands)
+	if flags.Changed(FlagName(KeyDisableBareCommands)) {
+		value, err := flags.GetBool(FlagName(KeyDisableBareCommands))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -549,8 +1312,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.DisableBareCommands = &value
 	}
 
-	if flags.Changed(KeyDisableUnapprove) {
-		value, err := flags.GetBool(KeyDisableUnapprove)
+	if flags.Changed(FlagName(KeyDisableUnapprove)) {
+		value, err := flags.GetBool(FlagName(KeyDisableUnapprove))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -558,8 +1321,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.DisableUnapprove = &value
 	}
 
-	if flags.Changed(KeyDisableReactions) {
-		value, err := flags.GetBool(KeyDisableReactions)
+	if flags.Changed(FlagName(KeyDisableReactions)) {
+		value, err := flags.GetBool(FlagName(KeyDisableReactions))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -567,8 +1330,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.DisableReactions = &value
 	}
 
-	if flags.Changed(KeyDisableDeletedComments) {
-		value, err := flags.GetBool(KeyDisableDeletedComments)
+	if flags.Changed(FlagName(KeyDisableDeletedComments)) {
+		value, err := flags.GetBool(FlagName(KeyDisableDeletedComments))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -576,8 +1339,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.DisableDeletedComments = &value
 	}
 
-	if flags.Changed(KeyAllowSelfApproval) {
-		value, err := flags.GetBool(KeyAllowSelfApproval)
+	if flags.Changed(FlagName(KeyAllowSelfApproval)) {
+		value, err := flags.GetBool(FlagName(KeyAllowSelfApproval))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -585,8 +1348,8 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 		patch.AllowSelfApproval = &value
 	}
 
-	if flags.Changed(KeyAllowDraftMerges) {
-		value, err := flags.GetBool(KeyAllowDraftMerges)
+	if flags.Changed(FlagName(KeyAllowDraftMerges)) {
+		value, err := flags.GetBool(FlagName(KeyAllowDraftMerges))
 		if err != nil {
 			return Patch{}, err
 		}
@@ -598,6 +1361,9 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 }
 
 func applyPatch(values *Config, patch Patch, sources map[string]Source, source Source) {
+	if patch.Formatting != nil {
+		applyFormattingPatch(&values.Formatting, *patch.Formatting, sources, source)
+	}
 	set(&values.QuietSuccess, patch.QuietSuccess, sources, KeyQuietSuccess, source)
 	set(&values.QuietReactions, patch.QuietReactions, sources, KeyQuietReactions, source)
 	set(&values.QuietPending, patch.QuietPending, sources, KeyQuietPending, source)
@@ -616,19 +1382,43 @@ func applyPatch(values *Config, patch Patch, sources map[string]Source, source S
 
 func processSources() map[string]Source {
 	return map[string]Source{
-		KeyQuietSuccess:           SourceProcess,
-		KeyQuietReactions:         SourceProcess,
-		KeyQuietPending:           SourceProcess,
-		KeyAllowedCommands:        SourceProcess,
-		KeyCommandAliases:         SourceProcess,
-		KeyCommandPrefix:          SourceProcess,
-		KeyDisableMentions:        SourceProcess,
-		KeyDisableBareCommands:    SourceProcess,
-		KeyDisableUnapprove:       SourceProcess,
-		KeyDisableReactions:       SourceProcess,
-		KeyDisableDeletedComments: SourceProcess,
-		KeyAllowSelfApproval:      SourceProcess,
-		KeyAllowDraftMerges:       SourceProcess,
-		KeyRunner:                 SourceProcess,
+		KeyFormattingPreset:              SourceProcess,
+		KeyFormattingCommonIndentStyle:   SourceProcess,
+		KeyFormattingCommonIndentWidth:   SourceProcess,
+		KeyFormattingCommonLineWidth:     SourceProcess,
+		KeyFormattingCommonLineEnding:    SourceProcess,
+		KeyFormattingCommonFinalNewline:  SourceProcess,
+		KeyFormattingJSONArrays:          SourceProcess,
+		KeyFormattingJSONObjects:         SourceProcess,
+		KeyFormattingJSONKeyOrder:        SourceProcess,
+		KeyFormattingJSONCTrailingCommas: SourceProcess,
+		KeyFormattingYAMLSequences:       SourceProcess,
+		KeyFormattingYAMLMappings:        SourceProcess,
+		KeyFormattingYAMLQuoteStyle:      SourceProcess,
+		KeyFormattingYAMLSequenceIndent:  SourceProcess,
+		KeyFormattingYAMLDocumentStart:   SourceProcess,
+		KeyFormattingTOMLArrays:          SourceProcess,
+		KeyFormattingTOMLTrailingCommas:  SourceProcess,
+		KeyFormattingTOMLQuoteStyle:      SourceProcess,
+		KeyFormattingTOMLAlignEntries:    SourceProcess,
+		KeyFormattingTOMLAlignComments:   SourceProcess,
+		KeyFormattingTOMLKeyOrder:        SourceProcess,
+		KeyFormattingMarkdownProseWrap:   SourceProcess,
+		KeyFormattingMarkdownListSpacing: SourceProcess,
+		KeyFormattingMarkdownTables:      SourceProcess,
+		KeyQuietSuccess:                  SourceProcess,
+		KeyQuietReactions:                SourceProcess,
+		KeyQuietPending:                  SourceProcess,
+		KeyAllowedCommands:               SourceProcess,
+		KeyCommandAliases:                SourceProcess,
+		KeyCommandPrefix:                 SourceProcess,
+		KeyDisableMentions:               SourceProcess,
+		KeyDisableBareCommands:           SourceProcess,
+		KeyDisableUnapprove:              SourceProcess,
+		KeyDisableReactions:              SourceProcess,
+		KeyDisableDeletedComments:        SourceProcess,
+		KeyAllowSelfApproval:             SourceProcess,
+		KeyAllowDraftMerges:              SourceProcess,
+		KeyRunner:                        SourceProcess,
 	}
 }

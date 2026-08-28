@@ -47,6 +47,7 @@ const (
 const (
 	jsonBoolean = "boolean"
 	jsonString  = "string"
+	jsonInteger = "integer"
 	jsonArray   = "array"
 	jsonObject  = "object"
 )
@@ -102,6 +103,10 @@ const schemaDescription = "Settings a repository may set for Smyklot, in .smyklo
 // renderProperty renders one setting as a compact one-line schema, so the
 // document reads as a table of settings rather than as nested punctuation.
 func renderProperty(field Field) (string, error) {
+	if field.Kind == KindObject {
+		return renderObjectProperty(field)
+	}
+
 	var parts []string
 
 	add := func(key string, value any) error {
@@ -136,6 +141,15 @@ func renderProperty(field Field) (string, error) {
 		}
 	}
 
+	if field.Kind == KindInt {
+		if field.Min != "" {
+			parts = append(parts, `"minimum": `+field.Min)
+		}
+		if field.Max != "" {
+			parts = append(parts, `"maximum": `+field.Max)
+		}
+	}
+
 	if err := add("default", defaultValue(field)); err != nil {
 		return "", err
 	}
@@ -143,10 +157,65 @@ func renderProperty(field Field) (string, error) {
 	return "{" + strings.Join(parts, ", ") + "}", nil
 }
 
+func renderObjectProperty(field Field) (string, error) {
+	var properties bytes.Buffer
+	properties.WriteString("{")
+
+	for index, child := range field.Children {
+		property, err := renderProperty(child)
+		if err != nil {
+			return "", err
+		}
+
+		if index > 0 {
+			properties.WriteString(", ")
+		}
+		properties.WriteString(strconv.Quote(localKey(child.Key)))
+		properties.WriteString(": ")
+		properties.WriteString(property)
+	}
+
+	properties.WriteString("}")
+	description, _ := json.Marshal(field.Description)
+	defaultValue, err := json.Marshal(objectDefault(field))
+	if err != nil {
+		return "", err
+	}
+
+	return `{"type": "object", "description": ` + string(description) +
+		`, "additionalProperties": false, "properties": ` + properties.String() +
+		`, "default": ` + string(defaultValue) + `}`, nil
+}
+
+func localKey(key string) string {
+	if at := strings.LastIndexByte(key, '.'); at >= 0 {
+		return key[at+1:]
+	}
+
+	return key
+}
+
+func objectDefault(field Field) map[string]any {
+	result := make(map[string]any, len(field.Children))
+	for _, child := range field.Children {
+		if child.Kind == KindObject {
+			result[localKey(child.Key)] = objectDefault(child)
+			continue
+		}
+
+		result[localKey(child.Key)] = defaultValue(child)
+	}
+
+	return result
+}
+
 func jsonType(field Field) string {
 	switch field.Kind {
 	case KindBool:
 		return jsonBoolean
+
+	case KindInt:
+		return jsonInteger
 
 	case KindStringSlice:
 		return jsonArray
@@ -168,6 +237,11 @@ func defaultValue(field Field) any {
 	switch field.Kind {
 	case KindBool:
 		return field.Default == "true"
+
+	case KindInt:
+		value, _ := strconv.Atoi(field.Default)
+
+		return value
 
 	case KindStringSlice:
 		return []string{}

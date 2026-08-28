@@ -97,48 +97,52 @@ func TestParseIsDeterministic(t *testing.T) {
 func TestEveryPatchFieldIsGenerated(t *testing.T) {
 	model := parse(t)
 
-	generated := make(map[string]configgen.Field, len(model.Fields))
-	for _, field := range model.Fields {
+	checkGeneratedFields(t, reflect.TypeOf(config.Patch{}), reflect.TypeOf(config.Config{}), model.Fields, "Patch.")
+}
+
+func checkGeneratedFields(
+	t *testing.T,
+	patch, effective reflect.Type,
+	fields []configgen.Field,
+	prefix string,
+) {
+	t.Helper()
+
+	if patch.NumField() != len(fields) {
+		t.Fatalf("%s has %d fields, the model has %d", prefix, patch.NumField(), len(fields))
+	}
+
+	generated := make(map[string]configgen.Field, len(fields))
+	for _, field := range fields {
 		generated[field.GoName] = field
 	}
 
-	patch := reflect.TypeOf(config.Patch{})
-	effective := reflect.TypeOf(config.Config{})
-
-	if patch.NumField() != len(model.Fields) {
-		t.Fatalf("Patch has %d fields, the model has %d", patch.NumField(), len(model.Fields))
-	}
-
 	for index := range patch.NumField() {
-		field := patch.Field(index)
-
-		described, ok := generated[field.Name]
+		patchField := patch.Field(index)
+		described, ok := generated[patchField.Name]
 		if !ok {
-			t.Errorf("Patch.%s is missing from the generated model", field.Name)
-
+			t.Errorf("%s%s is missing from the generated model", prefix, patchField.Name)
 			continue
 		}
-
 		if described.Description == "" {
-			t.Errorf("Patch.%s has no description for the schema", field.Name)
+			t.Errorf("%s%s has no description for the schema", prefix, patchField.Name)
 		}
 
-		// Config must carry the same setting, under the same key, with the
-		// pointer removed. A type that drifted would decode a file into a value
-		// nothing reads.
-		value, ok := effective.FieldByName(field.Name)
+		value, ok := effective.FieldByName(patchField.Name)
 		if !ok {
-			t.Errorf("Config.%s is missing", field.Name)
-
+			t.Errorf("%s%s is missing from the effective type", prefix, patchField.Name)
 			continue
 		}
-
-		if want := field.Type.Elem(); value.Type != want {
-			t.Errorf("Config.%s is %s, want %s", field.Name, value.Type, want)
+		if got := jsonKey(value.Tag.Get("json")); got != localJSONKey(described.Key) {
+			t.Errorf("%s%s has key %q, patch has %q", prefix, patchField.Name, got, localJSONKey(described.Key))
 		}
 
-		if got := jsonKey(value.Tag.Get("json")); got != described.Key {
-			t.Errorf("Config.%s has key %q, Patch has %q", field.Name, got, described.Key)
+		if described.Kind == configgen.KindObject {
+			checkGeneratedFields(t, patchField.Type.Elem(), value.Type, described.Children, prefix+patchField.Name+".")
+			continue
+		}
+		if want := patchField.Type.Elem(); value.Type != want {
+			t.Errorf("%s%s is %s, want %s", prefix, patchField.Name, value.Type, want)
 		}
 	}
 }
@@ -147,12 +151,8 @@ func TestEveryPatchFieldIsGenerated(t *testing.T) {
 // Without this, deleting a field from Patch and leaving the generated file
 // stale would go unnoticed by the test above.
 func TestNoGeneratedKeyIsOrphaned(t *testing.T) {
-	patch := reflect.TypeOf(config.Patch{})
-
-	declared := make(map[string]struct{}, patch.NumField())
-	for index := range patch.NumField() {
-		declared[jsonKey(patch.Field(index).Tag.Get("json"))] = struct{}{}
-	}
+	declared := make(map[string]struct{}, len(config.Keys()))
+	collectPatchKeys(reflect.TypeOf(config.Patch{}), nil, declared)
 
 	for _, key := range config.Keys() {
 		if _, ok := declared[key]; !ok {
@@ -160,9 +160,22 @@ func TestNoGeneratedKeyIsOrphaned(t *testing.T) {
 		}
 	}
 
-	if len(config.Keys()) != patch.NumField() {
-		t.Errorf("config.Keys() has %d entries, Patch has %d fields",
-			len(config.Keys()), patch.NumField())
+	if len(config.Keys()) != len(declared) {
+		t.Errorf("config.Keys() has %d entries, Patch has %d leaves",
+			len(config.Keys()), len(declared))
+	}
+}
+
+func collectPatchKeys(patch reflect.Type, prefix []string, into map[string]struct{}) {
+	for index := range patch.NumField() {
+		field := patch.Field(index)
+		key := jsonKey(field.Tag.Get("json"))
+		path := append(append([]string{}, prefix...), key)
+		if field.Type.Elem().Kind() == reflect.Struct && strings.HasSuffix(field.Type.Elem().Name(), "Patch") {
+			collectPatchKeys(field.Type.Elem(), path, into)
+			continue
+		}
+		into[strings.Join(path, ".")] = struct{}{}
 	}
 }
 
@@ -173,8 +186,8 @@ func TestDefaultsMatchTheModel(t *testing.T) {
 	model := parse(t)
 	defaults := reflect.ValueOf(*config.Default())
 
-	for _, field := range model.Fields {
-		value := defaults.FieldByName(field.GoName)
+	for _, field := range model.Leaves {
+		value := valueAtPath(defaults, field.GoPath)
 
 		switch field.Kind {
 		case configgen.KindBool:
@@ -203,6 +216,15 @@ func TestDefaultsMatchTheModel(t *testing.T) {
 	}
 }
 
+func valueAtPath(root reflect.Value, path []string) reflect.Value {
+	value := root
+	for _, name := range path {
+		value = value.FieldByName(name)
+	}
+
+	return value
+}
+
 // The two exported constants that name a default in prose. They are part of the
 // package's surface, so they cannot simply be generated away, but they can be
 // held to what Default() actually returns.
@@ -222,7 +244,7 @@ func TestExportedDefaultConstantsAgree(t *testing.T) {
 // An enum's declared values have to be values the parser accepts, or the schema
 // publishes a choice the code refuses.
 func TestEnumValuesAreAccepted(t *testing.T) {
-	for _, field := range parse(t).Fields {
+	for _, field := range parse(t).Leaves {
 		if field.Kind != configgen.KindEnum || field.GoName != "Runner" {
 			continue
 		}
@@ -248,7 +270,7 @@ func TestEnumValuesAreAccepted(t *testing.T) {
 func TestPanelDeniedKeysComeFromTheTags(t *testing.T) {
 	var want []string
 
-	for _, field := range parse(t).Fields {
+	for _, field := range parse(t).Leaves {
 		if field.PanelDeny {
 			want = append(want, field.Key)
 		}
@@ -378,8 +400,8 @@ func TestEverySettingWithAFlagHasOne(t *testing.T) {
 
 	var wanted int
 
-	for _, field := range parse(t).Fields {
-		flag, ok := registered[field.Key]
+	for _, field := range parse(t).Leaves {
+		flag, ok := registered[config.FlagName(field.Key)]
 
 		if !field.HasFlag {
 			if ok {
@@ -432,13 +454,13 @@ func TestFlagDefaultsAreTheRealDefaults(t *testing.T) {
 
 	defaults := reflect.ValueOf(*config.Default())
 
-	for _, field := range parse(t).Fields {
-		flag := flags.Lookup(field.Key)
+	for _, field := range parse(t).Leaves {
+		flag := flags.Lookup(config.FlagName(field.Key))
 		if flag == nil {
 			continue
 		}
 
-		value := defaults.FieldByName(field.GoName)
+		value := valueAtPath(defaults, field.GoPath)
 
 		switch field.Kind {
 		case configgen.KindBool:
@@ -452,6 +474,20 @@ func TestFlagDefaultsAreTheRealDefaults(t *testing.T) {
 				t.Errorf("flag %q defaults to %q, Default() says %q",
 					field.Key, flag.DefValue, value.String())
 			}
+
+		case configgen.KindInt:
+			if flag.DefValue != strconv.FormatInt(value.Int(), 10) {
+				t.Errorf("flag %q defaults to %q, Default() says %d",
+					field.Key, flag.DefValue, value.Int())
+			}
 		}
 	}
+}
+
+func localJSONKey(key string) string {
+	if index := strings.LastIndexByte(key, '.'); index >= 0 {
+		return key[index+1:]
+	}
+
+	return key
 }

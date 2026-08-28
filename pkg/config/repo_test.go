@@ -102,6 +102,7 @@ runner: action
 			Expect(err).NotTo(HaveOccurred())
 
 			Expect(cfg).To(Equal(&config.Config{
+				Formatting:             config.DefaultFormattingPolicy(),
 				QuietSuccess:           true,
 				QuietReactions:         true,
 				QuietPending:           true,

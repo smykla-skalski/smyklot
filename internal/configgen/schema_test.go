@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/smykla-skalski/smyklot/internal/configgen"
@@ -21,10 +23,14 @@ type schemaDocument struct {
 }
 
 type schemaProperty struct {
-	Type        string   `json:"type"`
-	Description string   `json:"description"`
-	Enum        []string `json:"enum"`
-	Default     any      `json:"default"`
+	Type                 string                    `json:"type"`
+	Description          string                    `json:"description"`
+	Enum                 []string                  `json:"enum"`
+	Default              any                       `json:"default"`
+	Minimum              *int                      `json:"minimum"`
+	Maximum              *int                      `json:"maximum"`
+	AdditionalProperties json.RawMessage           `json:"additionalProperties"`
+	Properties           map[string]schemaProperty `json:"properties"`
 }
 
 func readSchema(t *testing.T) schemaDocument {
@@ -87,14 +93,15 @@ func TestSchemaRenderIsDeterministic(t *testing.T) {
 // Smyklot that no longer exists, which is exactly how dotsync's schema rotted.
 func TestSchemaCoversEverySetting(t *testing.T) {
 	document := readSchema(t)
+	properties := flattenSchemaProperties(document.Properties, nil)
 
-	if len(document.Properties) != len(config.Keys()) {
+	if len(properties) != len(config.Keys()) {
 		t.Errorf("schema has %d properties, there are %d settings",
-			len(document.Properties), len(config.Keys()))
+			len(properties), len(config.Keys()))
 	}
 
 	for _, key := range config.Keys() {
-		property, ok := document.Properties[key]
+		property, ok := properties[key]
 		if !ok {
 			t.Errorf("schema is missing %q", key)
 
@@ -115,11 +122,30 @@ func TestSchemaCoversEverySetting(t *testing.T) {
 		declared[key] = struct{}{}
 	}
 
-	for key := range document.Properties {
+	for key := range properties {
 		if _, ok := declared[key]; !ok {
 			t.Errorf("schema publishes %q, which is not a setting", key)
 		}
 	}
+}
+
+func flattenSchemaProperties(
+	properties map[string]schemaProperty,
+	prefix []string,
+) map[string]schemaProperty {
+	result := make(map[string]schemaProperty)
+	for name, property := range properties {
+		path := append(append([]string{}, prefix...), name)
+		if property.Type == "object" && len(property.Properties) > 0 {
+			for key, child := range flattenSchemaProperties(property.Properties, path) {
+				result[key] = child
+			}
+			continue
+		}
+		result[strings.Join(path, ".")] = property
+	}
+
+	return result
 }
 
 // A schema whose defaults are decorative is worse than one with none, because a
@@ -127,14 +153,15 @@ func TestSchemaCoversEverySetting(t *testing.T) {
 func TestSchemaDefaultsAreTheRealDefaults(t *testing.T) {
 	document := readSchema(t)
 	defaults := reflect.ValueOf(*config.Default())
+	properties := flattenSchemaProperties(document.Properties, nil)
 
-	for _, field := range parse(t).Fields {
-		property, ok := document.Properties[field.Key]
+	for _, field := range parse(t).Leaves {
+		property, ok := properties[field.Key]
 		if !ok {
 			continue
 		}
 
-		value := defaults.FieldByName(field.GoName)
+		value := valueAtPath(defaults, field.GoPath)
 
 		switch field.Kind {
 		case configgen.KindBool:
@@ -154,6 +181,12 @@ func TestSchemaDefaultsAreTheRealDefaults(t *testing.T) {
 				t.Errorf("schema defaults %q to %v, Default() says empty",
 					field.Key, property.Default)
 			}
+
+		case configgen.KindInt:
+			if property.Default != float64(value.Int()) {
+				t.Errorf("schema defaults %q to %v, Default() says %d",
+					field.Key, property.Default, value.Int())
+			}
 		}
 	}
 }
@@ -169,7 +202,7 @@ func TestSchemaAgreesWithTheDecoder(t *testing.T) {
 	}
 
 	// Every published key has to be one the decoder accepts.
-	for key, property := range document.Properties {
+	for key, property := range flattenSchemaProperties(document.Properties, nil) {
 		document := key + " = " + tomlLiteral(property)
 
 		if _, err := config.ParsePatch(config.FormatTOML, []byte(document)); err != nil {
@@ -186,7 +219,7 @@ func TestSchemaAgreesWithTheDecoder(t *testing.T) {
 // An enum's published values have to be values the decoder accepts, or the
 // schema offers a completion that breaks the file.
 func TestSchemaEnumsAreAccepted(t *testing.T) {
-	for key, property := range readSchema(t).Properties {
+	for key, property := range flattenSchemaProperties(readSchema(t).Properties, nil) {
 		for _, value := range property.Enum {
 			document := key + " = " + jsonString(value)
 
@@ -208,6 +241,13 @@ func tomlLiteral(property schemaProperty) string {
 
 	case "object":
 		return "{}"
+
+	case "integer":
+		if property.Minimum == nil {
+			return "0"
+		}
+
+		return strconv.Itoa(*property.Minimum)
 
 	default:
 		if len(property.Enum) > 0 {
