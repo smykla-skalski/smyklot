@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { PanelApiError } from '../src/lib/api';
+import { applyFormattingPatch } from '../src/lib/formatting';
 import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '../src/lib/root-settings-save';
 import {
   adoptRuntimeSettings,
@@ -38,6 +39,50 @@ function runtime(over: Partial<RootRuntimeSettings> = {}): RootRuntimeSettings {
 }
 
 describe('Root runtime settings drafts [Unit]', () => {
+  it('round-trips a generated preset through the complete runtime config', () => {
+    const drafts = registry();
+    const current = runtime();
+    adoptRuntimeSettings(drafts, current);
+    const document = runtimeSettingsDraftDocument(drafts, current);
+    const formatting = applyFormattingPatch(current.behavior_defaults.deployment.formatting, {
+      preset: 'conventional',
+    });
+    const next = {
+      ...document,
+      bot_config: { ...current.behavior_defaults.deployment, formatting },
+    };
+
+    expect(
+      stageRuntimeSettingsControl(drafts, current, next, 'runtime.bot_config.formatting.preset'),
+    ).toBe(true);
+    const serialized = serializeRuntimeSettingsDraft(
+      current.revision,
+      runtimeSettingsDraftDocument(drafts, current),
+    );
+
+    expect(serialized.ok).toBe(true);
+    if (!serialized.ok) return;
+    expect(serialized.input.bot_config?.formatting).toEqual(formatting);
+    expect(serialized.input.bot_config?.formatting.json.arrays).toBe('auto');
+  });
+
+  it('rejects invalid complete formatting policies before serialization', () => {
+    const current = runtime();
+    const document = buildRuntimeSettingsDraftDocument(current);
+    const invalid = {
+      ...document,
+      bot_config: {
+        ...current.behavior_defaults.deployment,
+        formatting: {
+          ...current.behavior_defaults.deployment.formatting,
+          json: { arrays: 'wide' },
+        },
+      },
+    };
+
+    expect(parseRuntimeSettingsDraftDocument(invalid)).toBeNull();
+  });
+
   it('hydrates legacy full-config documents with the safe draft-merge default', () => {
     const current = runtime({
       behavior_defaults: {
@@ -157,8 +202,37 @@ describe('Root runtime settings drafts [Unit]', () => {
       { ...document, log_level: 'debug' },
       'runtime.log_level',
     );
+    const afterLog = runtimeSettingsDraftDocument(drafts, current);
+    const wantedFormatting = applyFormattingPatch(current.behavior_defaults.deployment.formatting, {
+      preset: 'conventional',
+    });
+    stageRuntimeSettingsControl(
+      drafts,
+      current,
+      {
+        ...afterLog,
+        bot_config: {
+          ...current.behavior_defaults.deployment,
+          formatting: wantedFormatting,
+        },
+      },
+      'runtime.bot_config.formatting.preset',
+    );
+    const concurrentFormatting = applyFormattingPatch(
+      current.behavior_defaults.deployment.formatting,
+      { json: { arrays: 'expanded' } },
+    );
+    const concurrentConfig = {
+      ...current.behavior_defaults.deployment,
+      formatting: concurrentFormatting,
+    };
     const latest = runtime({
       revision: current.revision + 1,
+      behavior_defaults: {
+        deployment: current.behavior_defaults.deployment,
+        override: concurrentConfig,
+        effective: concurrentConfig,
+      },
       session_lifetime: {
         ...current.session_lifetime,
         override_seconds: 3_600,
@@ -180,6 +254,8 @@ describe('Root runtime settings drafts [Unit]', () => {
     const rebased = runtimeSettingsDraftDocument(drafts, latest);
     expect(rebased.log_level).toBe('debug');
     expect(rebased.session_ttl_seconds.override_seconds).toBe(3_600);
+    expect(rebased.bot_config?.formatting).toEqual(wantedFormatting);
+    expect(rebased.bot_config?.formatting.json.arrays).toBe('auto');
     expect(drafts.hasConflicts(ROOT_SETTINGS_SCOPE)).toBe(false);
   });
 });

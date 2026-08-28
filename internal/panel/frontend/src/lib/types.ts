@@ -1,4 +1,16 @@
 import type { ArrayStrategy } from '#lib/merge.js';
+import type {
+  FormattingPatch,
+  FormattingPolicy,
+  FormattingSources,
+} from './formatting.generated.ts';
+
+export type {
+  FormattingFieldKey,
+  FormattingPatch,
+  FormattingPolicy,
+  FormattingSources,
+} from './formatting.generated.ts';
 
 export const COMMANDS = [
   'approve',
@@ -13,6 +25,7 @@ export const COMMANDS = [
 export type CommandName = (typeof COMMANDS)[number];
 
 export interface ConfigValues {
+  formatting: FormattingPolicy;
   quiet_success: boolean;
   quiet_reactions: boolean;
   quiet_pending: boolean;
@@ -29,9 +42,11 @@ export interface ConfigValues {
 }
 
 /** Omitted values inherit from the next lower-precedence source. */
-export type ConfigPatch = Partial<ConfigValues>;
+export type ConfigPatch = Partial<Omit<ConfigValues, 'formatting'>> & {
+  formatting?: FormattingPatch;
+};
 
-export type ConfigKey = keyof ConfigValues;
+export type ConfigKey = Exclude<keyof ConfigValues, 'formatting'>;
 export type ConfigSource = 'process' | 'target' | 'repository_file' | 'repository_panel';
 export type ConfigSources = Record<ConfigKey, ConfigSource>;
 
@@ -257,6 +272,7 @@ export interface PanelTarget {
   inherited_config: ConfigValues;
   effective_config: ConfigValues;
   config_sources: ConfigSources;
+  formatting_sources: FormattingSources<ConfigSource>;
   revision: number;
   repository_counts: RepositoryCounts;
   effective_role: InstallationRole;
@@ -817,6 +833,7 @@ export interface RepositoryDetail {
   inherited_config: ConfigValues;
   effective_config: ConfigValues;
   config_sources: ConfigSources;
+  formatting_sources: FormattingSources<ConfigSource>;
   config_file_patch: ConfigPatch;
   config_file_error?: string;
   config_file_path?: string;

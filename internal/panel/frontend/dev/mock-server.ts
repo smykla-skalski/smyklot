@@ -77,6 +77,13 @@ import type {
 } from '../src/lib/types.ts';
 import { SYNC_KINDS } from '../src/lib/types.ts';
 import { CONFIG_KEYS } from '../src/lib/config.ts';
+import {
+  applyFormattingPatch,
+  applyFormattingSources,
+  formattingSources,
+  parseFormattingPatch,
+  parseFormattingPolicy,
+} from '../src/lib/formatting.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
 /* The fixtures, which used to be nine hundred lines of this file and reachable by
    nothing. They are their own module so the Storybook catalogue can read the same data
@@ -482,29 +489,56 @@ function resolveConfig(
   filePatch: ConfigPatch,
   panelPatch: ConfigPatch,
   bypass: boolean,
-): { values: ConfigValues; sources: ConfigSources } {
+): {
+  values: ConfigValues;
+  sources: ConfigSources;
+  formattingSources: PanelTarget['formatting_sources'];
+} {
   const values = structuredClone(DEFAULT_CONFIG);
-  const sources = Object.fromEntries(
-    Object.keys(DEFAULT_CONFIG).map((key) => [key, 'process']),
-  ) as ConfigSources;
-  applyPatch(values, sources, targetPatch, 'target');
-  if (!bypass) applyPatch(values, sources, filePatch, 'repository_file');
-  applyPatch(values, sources, panelPatch, 'repository_panel');
-  return { values, sources };
+  const sources = Object.fromEntries(CONFIG_KEYS.map((key) => [key, 'process'])) as ConfigSources;
+  let resolvedFormattingSources = formattingSources<ConfigSources[ConfigKey]>('process');
+  resolvedFormattingSources = applyPatch(
+    values,
+    sources,
+    resolvedFormattingSources,
+    targetPatch,
+    'target',
+  );
+  if (!bypass) {
+    resolvedFormattingSources = applyPatch(
+      values,
+      sources,
+      resolvedFormattingSources,
+      filePatch,
+      'repository_file',
+    );
+  }
+  resolvedFormattingSources = applyPatch(
+    values,
+    sources,
+    resolvedFormattingSources,
+    panelPatch,
+    'repository_panel',
+  );
+  return { values, sources, formattingSources: resolvedFormattingSources };
 }
 
 function applyPatch(
   values: ConfigValues,
   sources: ConfigSources,
+  currentFormattingSources: PanelTarget['formatting_sources'],
   patch: ConfigPatch,
   source: ConfigSources[ConfigKey],
-): void {
-  for (const key of Object.keys(patch) as ConfigKey[]) {
+): PanelTarget['formatting_sources'] {
+  for (const key of CONFIG_KEYS) {
     const value = patch[key];
     if (value === undefined) continue;
     Object.assign(values, { [key]: structuredClone(value) });
     sources[key] = source;
   }
+  if (patch.formatting === undefined) return currentFormattingSources;
+  values.formatting = applyFormattingPatch(values.formatting, patch.formatting);
+  return applyFormattingSources(currentFormattingSources, patch.formatting, source);
 }
 
 function recomputeTarget(target: MockTarget): void {
@@ -512,6 +546,7 @@ function recomputeTarget(target: MockTarget): void {
   target.value.inherited_config = structuredClone(DEFAULT_CONFIG);
   target.value.effective_config = targetResolved.values;
   target.value.config_sources = targetResolved.sources;
+  target.value.formatting_sources = targetResolved.formattingSources;
   for (const repository of target.repositories) recomputeRepository(target, repository);
   const enabled = target.repositories.filter(
     (entry) => entry.detail.repository.effective_enabled,
@@ -540,6 +575,7 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
   detail.inherited_config = inherited.values;
   detail.effective_config = resolved.values;
   detail.config_sources = resolved.sources;
+  detail.formatting_sources = resolved.formattingSources;
   detail.repository.effective_enabled =
     detail.repository.enabled_override ?? target.value.repository_default_enabled;
   detail.repository.enabled_source =
@@ -3634,6 +3670,12 @@ function mockCheckpointConfigPatch(value: unknown): ConfigPatch {
   }
   const patch = value as Record<string, unknown>;
   for (const [key, held] of Object.entries(patch)) {
+    if (key === 'formatting') {
+      if (parseFormattingPatch(held) === null) {
+        blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+      }
+      continue;
+    }
     if (!CONFIG_KEYS.includes(key as ConfigKey) || !isMockConfigValue(key as ConfigKey, held)) {
       blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
     }
@@ -4264,7 +4306,8 @@ function validateMockRootRuntimeDuration(
 function isMockRootRuntimeConfig(value: unknown): value is ConfigValues {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).length !== CONFIG_KEYS.length) return false;
+  if (Object.keys(candidate).length !== CONFIG_KEYS.length + 1) return false;
+  if (parseFormattingPolicy(candidate.formatting) === null) return false;
   return CONFIG_KEYS.every((key) => {
     const held = candidate[key];
     if (key === 'allowed_commands') return Array.isArray(held) && held.every(isStringValue);
@@ -4367,11 +4410,7 @@ function copyOptionalConfig(value: ConfigValues | null): ConfigValues | null {
 }
 
 function copyConfig(value: ConfigValues): ConfigValues {
-  return {
-    ...value,
-    allowed_commands: [...value.allowed_commands],
-    command_aliases: { ...value.command_aliases },
-  };
+  return structuredClone(value);
 }
 
 function rootOverviewValue(state: MockState): RootOverview {

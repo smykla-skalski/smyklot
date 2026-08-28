@@ -37,11 +37,11 @@ func RenderFrontendFormatting(model Model) ([]byte, error) {
 
 	var output bytes.Buffer
 	output.WriteString(frontendHeader)
-	output.WriteString("\n\nexport interface FormattingPolicy ")
+	output.WriteString("\n\nexport type FormattingPolicy = ")
 	if err := writeTypeObject(&output, formatting.Children, 0); err != nil {
 		return nil, err
 	}
-	output.WriteString("\n\ntype SparseFormatting<Value> = {\n")
+	output.WriteString(";\n\ntype SparseFormatting<Value> = {\n")
 	output.WriteString("  [Key in keyof Value]?: Value[Key] extends object\n")
 	output.WriteString("    ? SparseFormatting<Value[Key]>\n")
 	output.WriteString("    : Value[Key];\n")

@@ -1,4 +1,14 @@
 import { PanelApiError } from './api';
+import { CONFIG_KEYS } from './config';
+import {
+  applyFormattingPatch,
+  completeFormattingPatch,
+  formattingField,
+  formattingPoliciesEqual,
+  formattingPolicyValue,
+  isFormattingPreset,
+  setFormattingPolicyValue,
+} from './formatting';
 import {
   applyRuntimeConfigPatch,
   buildRuntimeSettingsDraftDocument,
@@ -103,9 +113,38 @@ export function rebaseRootSettingsConflict(
   );
   for (const control of snapshot.controls) {
     if (control.id.startsWith('runtime.bot_config.')) {
-      const key = control.id.slice('runtime.bot_config.'.length) as ConfigKey;
-      if (control.value === null) delete configPatch[key];
-      else Object.assign(configPatch, { [key]: control.value });
+      const key = control.id.slice('runtime.bot_config.'.length);
+      const field = formattingField(key);
+      if (field !== undefined) {
+        const current = applyFormattingPatch(
+          latest.behavior_defaults.deployment.formatting,
+          configPatch.formatting ?? {},
+        );
+        const desired =
+          control.value === null
+            ? formattingPolicyValue(latest.behavior_defaults.deployment.formatting, field)
+            : draft.bot_config === null
+              ? null
+              : formattingPolicyValue(draft.bot_config.formatting, field);
+        if (desired === null) return false;
+        let resolved;
+        if (field.key === 'formatting.preset' && control.value !== null) {
+          if (!isFormattingPreset(desired)) return false;
+          resolved = applyFormattingPatch(current, { preset: desired });
+        } else {
+          resolved = setFormattingPolicyValue(current, field, desired);
+        }
+        if (formattingPoliciesEqual(resolved, latest.behavior_defaults.deployment.formatting)) {
+          delete configPatch.formatting;
+        } else {
+          configPatch.formatting = completeFormattingPatch(resolved);
+        }
+        continue;
+      }
+      if (!CONFIG_KEYS.includes(key as ConfigKey)) return false;
+      const configKey = key as ConfigKey;
+      if (control.value === null) delete configPatch[configKey];
+      else Object.assign(configPatch, { [configKey]: control.value });
       continue;
     }
     if (control.id === 'runtime.log_level') {

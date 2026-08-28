@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { PanelApiError, createPanelApi } from '../src/lib/api';
+import { CONFIG_KEYS } from '../src/lib/config';
+import { defaultFormattingPolicy, formattingSources } from '../src/lib/formatting';
 import type {
   ConfigSources,
   ConfigValues,
@@ -43,6 +45,7 @@ function emptyResponse(status: number): Response {
 }
 
 const CONFIG: ConfigValues = {
+  formatting: defaultFormattingPolicy(),
   quiet_success: false,
   quiet_reactions: false,
   quiet_pending: false,
@@ -58,9 +61,7 @@ const CONFIG: ConfigValues = {
   allow_draft_merges: false,
 };
 
-const SOURCES = Object.fromEntries(
-  Object.keys(CONFIG).map((key) => [key, 'process']),
-) as ConfigSources;
+const SOURCES = Object.fromEntries(CONFIG_KEYS.map((key) => [key, 'process'])) as ConfigSources;
 
 const VIEWER = {
   account: {
@@ -104,6 +105,7 @@ const TARGET: PanelTarget = {
   inherited_config: CONFIG,
   effective_config: CONFIG,
   config_sources: SOURCES,
+  formatting_sources: formattingSources('process'),
   revision: 1,
   repository_counts: { total: 1, enabled: 0, disabled: 1 },
   effective_role: 'owner',
@@ -134,6 +136,7 @@ const DETAIL: RepositoryDetail = {
   inherited_config: CONFIG,
   effective_config: CONFIG,
   config_sources: SOURCES,
+  formatting_sources: formattingSources('process'),
   config_file_patch: {},
   config_migration: 'none' as const,
   ignore_repository_file: false,

@@ -26,6 +26,8 @@ import {
   seed,
   VIEWER,
 } from '../../dev/fixtures.ts';
+import { CONFIG_KEYS } from '#lib/config.js';
+import { formattingSources } from '#lib/formatting.js';
 
 import type {
   ConfigSources,
@@ -134,7 +136,7 @@ export const CONFIG: ConfigValues = DEFAULT_CONFIG;
 
 /** Every key resolves from the deployment unless a story says otherwise. */
 const SOURCES = Object.fromEntries(
-  (Object.keys(CONFIG) as (keyof ConfigValues)[]).map((key) => [key, 'process' as const]),
+  CONFIG_KEYS.map((key) => [key, 'process' as const]),
 ) as ConfigSources;
 
 /** The panel accounts the mock seeds, across every system role and status. */
@@ -430,6 +432,7 @@ export const REPOSITORY_DETAIL: RepositoryDetail = {
   inherited_config: CONFIG,
   effective_config: { ...CONFIG, allow_self_approval: true },
   config_sources: { ...SOURCES, allow_self_approval: 'repository_panel' },
+  formatting_sources: formattingSources('process'),
   config_file_patch: { command_prefix: '/smyklot ' },
   config_file_path: '.smyklot.toml',
   config_migration: 'none',

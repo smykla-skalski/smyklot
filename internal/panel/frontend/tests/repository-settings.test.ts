@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { CONFIG_KEYS } from '../src/lib/config';
 import {
+  FORMATTING_FIELDS,
+  defaultFormattingPolicy,
+  formattingSources,
+} from '../src/lib/formatting';
+import {
   adoptRepositorySettings,
   buildRepositorySettingsDocument,
   overlayRepositorySettingsDocument,
@@ -23,6 +28,7 @@ import type {
 } from '../src/lib/types';
 
 const VALUES: ConfigValues = {
+  formatting: defaultFormattingPolicy(),
   quiet_success: false,
   quiet_reactions: false,
   quiet_pending: false,
@@ -66,6 +72,7 @@ function repository(): RepositoryDetail {
     inherited_config: { ...VALUES },
     effective_config: { ...VALUES },
     config_sources: { ...SOURCES },
+    formatting_sources: formattingSources('target'),
     config_file_patch: {},
     config_migration: 'none',
     ignore_repository_file: true,
@@ -144,6 +151,13 @@ describe('repository settings adapter [Unit]', () => {
           ],
         },
       })),
+      ...FORMATTING_FIELDS.map((field) => ({
+        id: `repositories.repo-1.config_patch.${field.key}`,
+        location: {
+          section: 'repositories',
+          path: ['repo-1', 'formatting', ...field.path],
+        },
+      })),
     ]);
     expect(new Set(controls.map(({ id }) => id)).size).toBe(controls.length);
   });
@@ -179,6 +193,14 @@ describe('repository settings adapter [Unit]', () => {
   it('accepts exact complete documents and rejects partial, extended, or invalid state', () => {
     const valid = buildRepositorySettingsDocument(repository());
     expect(parseRepositorySettingsDocument(valid)).toEqual(valid);
+    const formatted = {
+      ...valid,
+      config_patch: {
+        ...valid.config_patch,
+        formatting: { markdown: { tables: 'align' as const } },
+      },
+    };
+    expect(parseRepositorySettingsDocument(formatted)).toEqual(formatted);
 
     for (const value of [
       null,
@@ -196,6 +218,8 @@ describe('repository settings adapter [Unit]', () => {
       { ...valid, config_patch: { quiet_success: 'false' } },
       { ...valid, config_patch: { allowed_commands: ['merge', 1] } },
       { ...valid, config_patch: { command_aliases: { ship: false } } },
+      { ...valid, config_patch: { formatting: { markdown: { tables: 'grid' } } } },
+      { ...valid, config_patch: { formatting: { common: { line_width: 39 } } } },
       { ...valid, ignore_repository_file: null },
     ]) {
       expect(parseRepositorySettingsDocument(value)).toBeNull();
@@ -204,6 +228,7 @@ describe('repository settings adapter [Unit]', () => {
 
   it('projects inheritance separately from explicit false and empty values', () => {
     const explicit = buildRepositorySettingsDocument(repository());
+    explicit.config_patch.formatting = { markdown: { tables: 'preserve' } };
     const controls = repositorySettingsSavedControls('repo-1', explicit);
 
     expect(controls['repositories.repo-1.enabled_override']).toBe(false);
@@ -219,6 +244,10 @@ describe('repository settings adapter [Unit]', () => {
     expect(controls['repositories.repo-1.config_patch.quiet_reactions']).toEqual({
       overridden: false,
       value: null,
+    });
+    expect(controls['repositories.repo-1.config_patch.formatting.markdown.tables']).toEqual({
+      overridden: true,
+      value: 'preserve',
     });
 
     explicit.enabled_override = null;

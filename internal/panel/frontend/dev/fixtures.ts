@@ -51,7 +51,16 @@ import type {
   SecurityNotification,
   InvitationStatus,
 } from '../src/lib/types.ts';
+import { CONFIG_KEYS } from '../src/lib/config.ts';
+import {
+  applyFormattingPatch,
+  applyFormattingSources,
+  defaultFormattingPolicy,
+  formattingSources,
+} from '../src/lib/formatting.ts';
+
 export const DEFAULT_CONFIG: ConfigValues = {
+  formatting: defaultFormattingPolicy(),
   quiet_success: false,
   quiet_reactions: false,
   quiet_pending: false,
@@ -1345,6 +1354,7 @@ export function targetSeed(input: {
       inherited_config: structuredClone(DEFAULT_CONFIG),
       effective_config: resolved.values,
       config_sources: resolved.sources,
+      formatting_sources: resolved.formattingSources,
       revision: 1,
       repository_counts: { total: 0, enabled: 0, disabled: 0 },
       effective_role: 'owner',
@@ -1405,6 +1415,7 @@ export function repositorySeed(
       inherited_config: inherited.values,
       effective_config: resolved.values,
       config_sources: resolved.sources,
+      formatting_sources: resolved.formattingSources,
       config_file_patch: input.filePatch,
       config_file_error: input.fileError,
       config_file_path: status === 'missing' ? undefined : '.smyklot.toml',
@@ -1465,29 +1476,56 @@ function resolveConfig(
   filePatch: ConfigPatch,
   panelPatch: ConfigPatch,
   bypass: boolean,
-): { values: ConfigValues; sources: ConfigSources } {
+): {
+  values: ConfigValues;
+  sources: ConfigSources;
+  formattingSources: PanelTarget['formatting_sources'];
+} {
   const values = structuredClone(DEFAULT_CONFIG);
-  const sources = Object.fromEntries(
-    Object.keys(DEFAULT_CONFIG).map((key) => [key, 'process']),
-  ) as ConfigSources;
-  applyPatch(values, sources, targetPatch, 'target');
-  if (!bypass) applyPatch(values, sources, filePatch, 'repository_file');
-  applyPatch(values, sources, panelPatch, 'repository_panel');
-  return { values, sources };
+  const sources = Object.fromEntries(CONFIG_KEYS.map((key) => [key, 'process'])) as ConfigSources;
+  let resolvedFormattingSources = formattingSources<ConfigSources[ConfigKey]>('process');
+  resolvedFormattingSources = applyPatch(
+    values,
+    sources,
+    resolvedFormattingSources,
+    targetPatch,
+    'target',
+  );
+  if (!bypass) {
+    resolvedFormattingSources = applyPatch(
+      values,
+      sources,
+      resolvedFormattingSources,
+      filePatch,
+      'repository_file',
+    );
+  }
+  resolvedFormattingSources = applyPatch(
+    values,
+    sources,
+    resolvedFormattingSources,
+    panelPatch,
+    'repository_panel',
+  );
+  return { values, sources, formattingSources: resolvedFormattingSources };
 }
 
 function applyPatch(
   values: ConfigValues,
   sources: ConfigSources,
+  currentFormattingSources: PanelTarget['formatting_sources'],
   patch: ConfigPatch,
   source: ConfigSources[ConfigKey],
-): void {
-  for (const key of Object.keys(patch) as ConfigKey[]) {
+): PanelTarget['formatting_sources'] {
+  for (const key of CONFIG_KEYS) {
     const value = patch[key];
     if (value === undefined) continue;
     Object.assign(values, { [key]: structuredClone(value) });
     sources[key] = source;
   }
+  if (patch.formatting === undefined) return currentFormattingSources;
+  values.formatting = applyFormattingPatch(values.formatting, patch.formatting);
+  return applyFormattingSources(currentFormattingSources, patch.formatting, source);
 }
 
 function recomputeTarget(target: MockTarget): void {
@@ -1495,6 +1533,7 @@ function recomputeTarget(target: MockTarget): void {
   target.value.inherited_config = structuredClone(DEFAULT_CONFIG);
   target.value.effective_config = targetResolved.values;
   target.value.config_sources = targetResolved.sources;
+  target.value.formatting_sources = targetResolved.formattingSources;
   for (const repository of target.repositories) recomputeRepository(target, repository);
   const enabled = target.repositories.filter(
     (entry) => entry.detail.repository.effective_enabled,
@@ -1523,6 +1562,7 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
   detail.inherited_config = inherited.values;
   detail.effective_config = resolved.values;
   detail.config_sources = resolved.sources;
+  detail.formatting_sources = resolved.formattingSources;
   detail.repository.effective_enabled =
     detail.repository.enabled_override ?? target.value.repository_default_enabled;
   detail.repository.enabled_source =

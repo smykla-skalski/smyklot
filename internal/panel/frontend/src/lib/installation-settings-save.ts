@@ -1,5 +1,6 @@
 import { PanelApiError } from './api';
 import { CONFIG_KEYS } from './config';
+import { formattingField, formattingPatchValue, setFormattingPatchValue } from './formatting';
 import {
   parseRepositorySettingsDocument,
   repositorySettingsBatchInput,
@@ -37,6 +38,7 @@ import {
   targetDefaultsSavedControls,
 } from './target-defaults-settings';
 import type {
+  ConfigPatch,
   InstallationSettingsBatchInput,
   InstallationSettingsBatchResponse,
   InstallationSettingsConflict,
@@ -213,8 +215,7 @@ function mergeTargetDefaults(
       ];
     } else if (id.startsWith('defaults.config_patch.')) {
       const key = id.slice('defaults.config_patch.'.length);
-      if (!isConfigKey(key)) return null;
-      copyConfigKey(latest.config_patch, draft.config_patch, key);
+      if (!copyConfigControl(latest.config_patch, draft.config_patch, key)) return null;
     } else {
       return null;
     }
@@ -258,8 +259,7 @@ function mergeRepositorySettings(
       ];
     } else if (key.startsWith('config_patch.')) {
       const configKey = key.slice('config_patch.'.length);
-      if (!isConfigKey(configKey)) return null;
-      copyConfigKey(latest.config_patch, draft.config_patch, configKey);
+      if (!copyConfigControl(latest.config_patch, draft.config_patch, configKey)) return null;
     } else {
       return null;
     }
@@ -301,12 +301,29 @@ function isConfigKey(value: string): value is (typeof CONFIG_KEYS)[number] {
 }
 
 function copyConfigKey(
-  destination: Record<string, SettingsJson>,
-  source: Record<string, SettingsJson>,
+  destination: ConfigPatch,
+  source: ConfigPatch,
   key: (typeof CONFIG_KEYS)[number],
 ): void {
-  if (Object.hasOwn(source, key)) destination[key] = source[key]!;
+  if (Object.hasOwn(source, key))
+    Object.assign(destination, { [key]: structuredClone(source[key]) });
   else delete destination[key];
+}
+
+function copyConfigControl(destination: ConfigPatch, source: ConfigPatch, key: string): boolean {
+  if (isConfigKey(key)) {
+    copyConfigKey(destination, source, key);
+    return true;
+  }
+
+  const field = formattingField(key);
+  if (field === undefined) return false;
+  const value =
+    source.formatting === undefined ? undefined : formattingPatchValue(source.formatting, field);
+  const formatting = setFormattingPatchValue(destination.formatting ?? {}, field, value);
+  if (Object.keys(formatting).length === 0) delete destination.formatting;
+  else destination.formatting = formatting;
+  return true;
 }
 
 function serializeInstallationAttempt(

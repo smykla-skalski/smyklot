@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { CONFIG_KEYS } from '../src/lib/config';
+import {
+  FORMATTING_FIELDS,
+  defaultFormattingPolicy,
+  formattingSources,
+} from '../src/lib/formatting';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import {
   TARGET_DEFAULTS_CONTROLS,
@@ -17,6 +22,7 @@ import {
 import type { ConfigSources, ConfigValues, PanelTarget } from '../src/lib/types';
 
 const INHERITED: ConfigValues = {
+  formatting: defaultFormattingPolicy(),
   quiet_success: false,
   quiet_reactions: false,
   quiet_pending: false,
@@ -94,6 +100,7 @@ function target(): PanelTarget {
     inherited_config: { ...INHERITED },
     effective_config: { ...INHERITED },
     config_sources: { ...SOURCES },
+    formatting_sources: formattingSources('process'),
     revision: 7,
     repository_counts: { total: 3, enabled: 1, disabled: 2 },
     effective_role: 'owner',
@@ -150,6 +157,10 @@ const EXPECTED_CONTROLS = [
         key,
       ],
     },
+  ]),
+  ...FORMATTING_FIELDS.map((field) => [
+    `defaults.config_patch.${field.key}`,
+    { section: 'defaults', path: ['formatting', ...field.path] },
   ]),
 ];
 
@@ -216,6 +227,14 @@ describe('target defaults settings adapter [Unit]', () => {
   it('parses exact finite documents and rejects malformed stored state', () => {
     const valid = buildTargetDefaultsDocument(target());
     expect(parseTargetDefaultsDocument(valid)).toEqual(valid);
+    const formatted = {
+      ...valid,
+      config_patch: {
+        ...valid.config_patch,
+        formatting: { json: { arrays: 'compact' as const } },
+      },
+    };
+    expect(parseTargetDefaultsDocument(formatted)).toEqual(formatted);
 
     const invalid: unknown[] = [
       null,
@@ -239,6 +258,8 @@ describe('target defaults settings adapter [Unit]', () => {
       { ...valid, config_patch: { quiet_success: 'yes' } },
       { ...valid, config_patch: { allowed_commands: ['merge', 12] } },
       { ...valid, config_patch: { command_aliases: { ship: 12 } } },
+      { ...valid, config_patch: { formatting: { json: { arrays: 'wide' } } } },
+      { ...valid, config_patch: { formatting: { common: { indent_width: 17 } } } },
     ];
     for (const value of invalid) expect(parseTargetDefaultsDocument(value)).toBeNull();
 
@@ -256,6 +277,7 @@ describe('target defaults settings adapter [Unit]', () => {
       quiet_success: false,
       allowed_commands: [],
       command_aliases: Object.fromEntries([['__proto__', 'merge']]),
+      formatting: { json: { arrays: 'preserve' } },
     };
     const document = buildTargetDefaultsDocument(source);
     const controls = targetDefaultsSavedControls(document);
@@ -269,6 +291,14 @@ describe('target defaults settings adapter [Unit]', () => {
     expect(controls['defaults.config_patch.quiet_success']).toEqual({
       overridden: true,
       value: false,
+    });
+    expect(controls['defaults.config_patch.formatting.json.arrays']).toEqual({
+      overridden: true,
+      value: 'preserve',
+    });
+    expect(controls['defaults.config_patch.formatting.json.objects']).toEqual({
+      overridden: false,
+      value: null,
     });
     expect(controls['defaults.config_patch.allowed_commands']).toEqual({
       overridden: true,

@@ -1,7 +1,9 @@
 import { CONFIG_KEYS } from './config';
+import { FORMATTING_FIELDS, formattingPatchValue, parseFormattingPatch } from './formatting';
 import type {
   ConfigKey,
   ConfigPatch,
+  FormattingFieldKey,
   InstallationRepositorySettingsInput,
   InstallationRepositorySettingsState,
   PendingCIBranchPatterns,
@@ -24,6 +26,7 @@ const DOCUMENT_KEYS = [
 const PATTERN_KEYS = ['include', 'exclude'] as const;
 const QUIET_PERIOD_MAX_SECONDS = 86_400;
 const PATH_INDEX_MAX_SECONDS = 604_800;
+const CONFIG_PATCH_KEYS = [...CONFIG_KEYS, 'formatting'] as const;
 
 export type RepositorySettingsConfigPatch = Record<string, SettingsJson> & ConfigPatch;
 export type RepositorySettingsBranchPatterns = Record<string, SettingsJson> &
@@ -47,7 +50,7 @@ export type RepositorySettingsControlId =
   | `repositories.${string}.pending_ci_quiet_period_seconds_override`
   | `repositories.${string}.path_index_interval_seconds_override`
   | `repositories.${string}.ignore_repository_file`
-  | `repositories.${string}.config_patch.${ConfigKey}`;
+  | `repositories.${string}.config_patch.${ConfigKey | FormattingFieldKey}`;
 
 export interface RepositorySettingsControlDefinition {
   id: RepositorySettingsControlId;
@@ -93,6 +96,10 @@ export function repositorySettingsControls(
     ...CONFIG_KEYS.map((key): RepositorySettingsControlDefinition => ({
       id: `${prefix}.config_patch.${key}`,
       location: at(configGroup(key), key),
+    })),
+    ...FORMATTING_FIELDS.map((field): RepositorySettingsControlDefinition => ({
+      id: `${prefix}.config_patch.${field.key}`,
+      location: at('formatting', ...field.path),
     })),
   ];
 }
@@ -258,6 +265,16 @@ export function repositorySettingsSavedControls(
       value: overridden ? configValue(document.config_patch, key) : null,
     };
   }
+  for (const field of FORMATTING_FIELDS) {
+    const value =
+      document.config_patch.formatting === undefined
+        ? undefined
+        : formattingPatchValue(document.config_patch.formatting, field);
+    controls[`${prefix}.config_patch.${field.key}`] = {
+      overridden: value !== undefined,
+      value: value ?? null,
+    };
+  }
   return controls as Record<RepositorySettingsControlId, SettingsJson>;
 }
 
@@ -322,7 +339,7 @@ function parseOptionalSeconds(value: unknown, maximum: number): number | null | 
 }
 
 function parseConfigPatch(value: unknown): RepositorySettingsConfigPatch | null {
-  if (!isObject(value) || !hasOnlyKeys(value, CONFIG_KEYS)) return null;
+  if (!isObject(value) || !hasOnlyKeys(value, CONFIG_PATCH_KEYS)) return null;
   const patch: ConfigPatch = {};
   for (const key of CONFIG_KEYS) {
     if (!Object.hasOwn(value, key)) continue;
@@ -345,6 +362,11 @@ function parseConfigPatch(value: unknown): RepositorySettingsConfigPatch | null 
       }
       patch.command_aliases = Object.fromEntries(entries);
     }
+  }
+  if (Object.hasOwn(value, 'formatting')) {
+    const formatting = parseFormattingPatch(value.formatting);
+    if (formatting === null) return null;
+    patch.formatting = formatting;
   }
   return patch;
 }

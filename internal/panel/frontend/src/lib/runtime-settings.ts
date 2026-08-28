@@ -1,11 +1,21 @@
 import { CONFIG_KEYS } from './config';
 import { durationParts, durationSeconds, type DurationUnit } from './duration';
+import {
+  FORMATTING_FIELDS,
+  applyFormattingPatch,
+  completeFormattingPatch,
+  defaultFormattingPolicy,
+  formattingPoliciesEqual,
+  formattingPolicyValue,
+  parseFormattingPolicy,
+} from './formatting';
 import type { SettingsCommittedResource, SettingsDraftRegistry } from './settings-drafts.svelte';
 import type { SettingsJson, SettingsLocation, SettingsResource } from './settings-draft-storage';
 import type {
   ConfigKey,
   ConfigPatch,
   ConfigValues,
+  FormattingFieldKey,
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
 } from './types';
@@ -55,7 +65,9 @@ export interface RuntimeSettingsDraftDocument extends Record<string, SettingsJso
 }
 
 export type RuntimeSettingsControlId =
-  `runtime.bot_config.${ConfigKey}` | 'runtime.log_level' | `runtime.${RuntimeDurationKey}`;
+  | `runtime.bot_config.${ConfigKey | FormattingFieldKey}`
+  | 'runtime.log_level'
+  | `runtime.${RuntimeDurationKey}`;
 
 export interface RuntimeSettingsControlDefinition {
   id: RuntimeSettingsControlId;
@@ -118,6 +130,10 @@ export function runtimeSettingsControls(): readonly RuntimeSettingsControlDefini
     ...CONFIG_KEYS.map((key): RuntimeSettingsControlDefinition => ({
       id: `runtime.bot_config.${key}`,
       location: { section: 'runtime', path: ['settings', 'behavior', key] },
+    })),
+    ...FORMATTING_FIELDS.map((field): RuntimeSettingsControlDefinition => ({
+      id: `runtime.bot_config.${field.key}`,
+      location: { section: 'runtime', path: ['settings', 'formatting', ...field.path] },
     })),
     {
       id: 'runtime.log_level',
@@ -236,6 +252,15 @@ export function runtimeSettingsSavedControls(
   };
   for (const key of CONFIG_KEYS) {
     controls[`runtime.bot_config.${key}`] = patch[key] === undefined ? null : cloneJson(patch[key]);
+  }
+  for (const field of FORMATTING_FIELDS) {
+    const deploymentValue = formattingPolicyValue(deployment.formatting, field);
+    const overrideValue =
+      document.bot_config === null
+        ? deploymentValue
+        : formattingPolicyValue(document.bot_config.formatting, field);
+    controls[`runtime.bot_config.${field.key}`] =
+      document.bot_config !== null && overrideValue !== deploymentValue ? overrideValue : null;
   }
   for (const key of DURATION_KEYS) controls[`runtime.${key}`] = cloneJson(document[key]);
   return controls as Record<RuntimeSettingsControlId, SettingsJson>;
@@ -357,11 +382,15 @@ export function runtimeConfigPatch(
   override: RuntimeConfigDocument | ConfigValues | null,
 ): ConfigPatch {
   if (override === null) return {};
-  return Object.fromEntries(
+  const patch = Object.fromEntries(
     CONFIG_KEYS.flatMap((key) =>
       sameJson(override[key], deployment[key]) ? [] : [[key, cloneJson(override[key])]],
     ),
   ) as ConfigPatch;
+  if (!formattingPoliciesEqual(override.formatting, deployment.formatting)) {
+    patch.formatting = completeFormattingPatch(override.formatting);
+  }
+  return patch;
 }
 
 export function applyRuntimeConfigPatch(
@@ -369,7 +398,14 @@ export function applyRuntimeConfigPatch(
   patch: ConfigPatch,
 ): RuntimeConfigDocument | null {
   if (Object.keys(patch).length === 0) return null;
-  return cloneJson({ ...deployment, ...patch }) as RuntimeConfigDocument;
+  const resolved = cloneJson(deployment) as RuntimeConfigDocument;
+  for (const key of CONFIG_KEYS) {
+    if (patch[key] !== undefined) Object.assign(resolved, { [key]: cloneJson(patch[key]) });
+  }
+  if (patch.formatting !== undefined) {
+    resolved.formatting = applyFormattingPatch(resolved.formatting, patch.formatting);
+  }
+  return resolved;
 }
 
 function durationDraft(seconds: number | null): RuntimeDurationDraft {
@@ -412,9 +448,13 @@ function parseConfig(value: unknown): RuntimeConfigDocument | null | undefined {
   // complete config shape from that release. Preserve them with the safe
   // opt-in default instead of making unrelated saved work unreadable.
   if (!Object.hasOwn(normalized, 'allow_draft_merges')) normalized.allow_draft_merges = false;
+  if (!Object.hasOwn(normalized, 'formatting')) normalized.formatting = defaultFormattingPolicy();
   if (CONFIG_KEYS.some((key) => !validConfigValue(key, normalized[key]))) {
     return undefined;
   }
+  const formatting = parseFormattingPolicy(normalized.formatting);
+  if (formatting === null) return undefined;
+  normalized.formatting = formatting;
   if (!Object.values(normalized).every(isSettingsJson)) return undefined;
   return cloneJson(normalized) as RuntimeConfigDocument;
 }
@@ -458,7 +498,11 @@ function isSettingsJson(value: unknown): value is SettingsJson {
 }
 
 function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  if (Array.isArray(value)) return value.map((entry) => cloneJson(entry)) as T;
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, cloneJson(nested)]),
+  ) as T;
 }
 
 function sameJson(left: unknown, right: unknown): boolean {

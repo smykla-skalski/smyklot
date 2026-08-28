@@ -104,7 +104,7 @@ export const CONFIG_KEYS: readonly ConfigKey[] = [
 ];
 
 export function clonePatch(patch: ConfigPatch): ConfigPatch {
-  return JSON.parse(JSON.stringify(patch)) as ConfigPatch;
+  return cloneValue(patch);
 }
 
 export function countOverrides(patch: ConfigPatch): number {
@@ -126,18 +126,19 @@ export function reconcilePatchDraft(
 function sortPatch(patch: ConfigPatch): ConfigPatch {
   const sorted: Record<string, unknown> = {};
   for (const key of Object.keys(patch).sort()) {
-    const value = patch[key as ConfigKey];
-    if (Array.isArray(value)) {
-      sorted[key] = [...value].sort();
-    } else if (typeof value === 'object' && value !== null) {
-      sorted[key] = Object.fromEntries(
-        Object.entries(value).sort(([a], [b]) => a.localeCompare(b)),
-      );
-    } else {
-      sorted[key] = value;
-    }
+    sorted[key] = sortedValue((patch as Record<string, unknown>)[key]);
   }
   return sorted as ConfigPatch;
+}
+
+function sortedValue(value: unknown): unknown {
+  if (Array.isArray(value)) return [...value].sort();
+  if (typeof value !== 'object' || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, sortedValue(nested)]),
+  );
 }
 
 export function effectiveValue<K extends ConfigKey>(
@@ -218,5 +219,9 @@ function isAliasMap(value: ConfigValues[ConfigKey]): value is Record<string, str
 }
 
 function cloneValue<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  if (Array.isArray(value)) return value.map((entry) => cloneValue(entry)) as T;
+  if (typeof value !== 'object' || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, nested]) => [key, cloneValue(nested)]),
+  ) as T;
 }

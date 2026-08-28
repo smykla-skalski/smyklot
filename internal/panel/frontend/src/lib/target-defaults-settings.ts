@@ -1,7 +1,9 @@
 import { CONFIG_KEYS } from './config';
+import { FORMATTING_FIELDS, formattingPatchValue, parseFormattingPatch } from './formatting';
 import type {
   ConfigKey,
   ConfigPatch,
+  FormattingFieldKey,
   InstallationTargetSettingsState,
   PanelTarget,
   PendingCIBranchPatterns,
@@ -22,6 +24,7 @@ const TARGET_DEFAULTS_KEYS = [
 const PENDING_CI_BRANCH_PATTERN_KEYS = ['include', 'exclude'] as const;
 const QUIET_PERIOD_MAX_SECONDS = 86_400;
 const PATH_INDEX_MAX_SECONDS = 604_800;
+const CONFIG_PATCH_KEYS = [...CONFIG_KEYS, 'formatting'] as const;
 
 export type TargetDefaultsBranchPatterns = Record<string, SettingsJson> & {
   include: string[];
@@ -46,7 +49,7 @@ export type TargetDefaultsControlId =
   | 'defaults.pending_ci_branch_patterns_default.include'
   | 'defaults.pending_ci_branch_patterns_default.exclude'
   | 'defaults.pending_ci_quiet_period_seconds_override'
-  | `defaults.config_patch.${ConfigKey}`;
+  | `defaults.config_patch.${ConfigKey | FormattingFieldKey}`;
 
 export interface TargetDefaultsControlDefinition {
   id: TargetDefaultsControlId;
@@ -96,6 +99,10 @@ const fixedControls: readonly TargetDefaultsControlDefinition[] = [
 export const TARGET_DEFAULTS_CONTROLS: readonly TargetDefaultsControlDefinition[] = [
   ...fixedControls,
   ...CONFIG_KEYS.map(configControlDefinition),
+  ...FORMATTING_FIELDS.map((field): TargetDefaultsControlDefinition => ({
+    id: `defaults.config_patch.${field.key}`,
+    location: { section: 'defaults', path: ['formatting', ...field.path] },
+  })),
 ];
 
 export function targetDefaultsResource(targetId: string): SettingsResource {
@@ -236,6 +243,16 @@ export function targetDefaultsSavedControls(
     const value = overridden ? configValue(document.config_patch, key) : null;
     controls[`defaults.config_patch.${key}`] = { overridden, value };
   }
+  for (const field of FORMATTING_FIELDS) {
+    const value =
+      document.config_patch.formatting === undefined
+        ? undefined
+        : formattingPatchValue(document.config_patch.formatting, field);
+    controls[`defaults.config_patch.${field.key}`] = {
+      overridden: value !== undefined,
+      value: value ?? null,
+    };
+  }
   return controls;
 }
 
@@ -313,7 +330,7 @@ function parseOptionalSeconds(value: unknown, maximum: number): number | null | 
 }
 
 function parseConfigPatch(value: unknown): TargetDefaultsConfigPatch | null {
-  if (!isObject(value) || !hasOnlyKeys(value, CONFIG_KEYS)) return null;
+  if (!isObject(value) || !hasOnlyKeys(value, CONFIG_PATCH_KEYS)) return null;
   const patch: TargetDefaultsConfigPatch = {};
 
   if (!copyBoolean(value, patch, 'quiet_success')) return null;
@@ -329,6 +346,11 @@ function parseConfigPatch(value: unknown): TargetDefaultsConfigPatch | null {
   if (!copyBoolean(value, patch, 'disable_deleted_comments')) return null;
   if (!copyBoolean(value, patch, 'allow_self_approval')) return null;
   if (!copyBoolean(value, patch, 'allow_draft_merges')) return null;
+  if (Object.hasOwn(value, 'formatting')) {
+    const formatting = parseFormattingPatch(value.formatting);
+    if (formatting === null) return null;
+    patch.formatting = formatting;
+  }
   return patch;
 }
 

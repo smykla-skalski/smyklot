@@ -11,9 +11,11 @@ import {
   toggleAllowedCommand,
   updatePatchValue,
 } from '../src/lib/config';
+import { defaultFormattingPolicy } from '../src/lib/formatting';
 import type { ConfigValues } from '../src/lib/types';
 
 const EFFECTIVE: ConfigValues = {
+  formatting: defaultFormattingPolicy(),
   quiet_success: false,
   quiet_reactions: false,
   quiet_pending: false,

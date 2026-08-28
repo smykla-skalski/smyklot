@@ -24,6 +24,7 @@ import {
 } from '../src/lib/sync-config-settings';
 import {
   adoptTargetDefaults,
+  buildTargetDefaultsDocument,
   stageTargetDefaultsControl,
   targetDefaultsDraftDocument,
   targetDefaultsResource,
@@ -211,11 +212,28 @@ describe('installation settings save coordinator [Unit]', () => {
       repository_default_enabled: !TARGET.repository_default_enabled,
     };
     stageTargetDefaultsControl(drafts, TARGET, wanted, 'defaults.repository_default_enabled');
+    const wantedFormatting = {
+      ...targetDefaultsDraftDocument(drafts, TARGET),
+      config_patch: {
+        ...targetDefaultsDraftDocument(drafts, TARGET).config_patch,
+        formatting: { json: { arrays: 'expanded' as const } },
+      },
+    };
+    stageTargetDefaultsControl(
+      drafts,
+      TARGET,
+      wantedFormatting,
+      'defaults.config_patch.formatting.json.arrays',
+    );
     const latest = {
       target_id: targetId,
-      ...targetDefaultsDraftDocument(drafts, TARGET),
+      ...buildTargetDefaultsDocument(TARGET),
       repository_default_enabled: TARGET.repository_default_enabled,
       pending_ci_quiet_period_seconds_override: 75,
+      config_patch: {
+        ...TARGET.config_patch,
+        formatting: { common: { line_width: 120 } },
+      },
       revision: TARGET.revision + 1,
     };
     const save = vi.fn(async () => {
@@ -247,6 +265,10 @@ describe('installation settings save coordinator [Unit]', () => {
     expect(
       targetDefaultsDraftDocument(drafts, TARGET).pending_ci_quiet_period_seconds_override,
     ).toBe(75);
+    expect(targetDefaultsDraftDocument(drafts, TARGET).config_patch.formatting).toEqual({
+      common: { line_width: 120 },
+      json: { arrays: 'expanded' },
+    });
   });
 
   it('rebases one dirty Sync control without replacing concurrent document changes', async () => {
