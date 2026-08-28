@@ -98,6 +98,7 @@ type targetResponse struct {
 	InheritedConfig                      config.Config                `json:"inherited_config"`
 	EffectiveConfig                      config.Config                `json:"effective_config"`
 	ConfigSources                        map[string]config.Source     `json:"config_sources"`
+	FormattingSources                    config.FormattingSources     `json:"formatting_sources"`
 	Revision                             int64                        `json:"revision"`
 	RepositoryCounts                     repositoryCountsResponse     `json:"repository_counts"`
 	EffectiveRole                        storage.InstallationRole     `json:"effective_role"`
@@ -167,6 +168,7 @@ type repositoryDetailResponse struct {
 	InheritedConfig                      config.Config                    `json:"inherited_config"`
 	EffectiveConfig                      config.Config                    `json:"effective_config"`
 	ConfigSources                        map[string]config.Source         `json:"config_sources"`
+	FormattingSources                    config.FormattingSources         `json:"formatting_sources"`
 	ConfigFilePatch                      config.Patch                     `json:"config_file_patch"`
 	ConfigFileError                      *string                          `json:"config_file_error,omitempty"`
 	ConfigFilePath                       string                           `json:"config_file_path,omitempty"`
@@ -310,16 +312,17 @@ func targetDTO(
 			MergeQueuesRead:     target.CanRead("merge_queues"),
 			CommitStatusesRead:  target.CanRead("statuses"),
 		},
-		ConfigPatch:      target.ConfigPatch,
-		InheritedConfig:  inherited.Values,
-		EffectiveConfig:  resolved.Values,
-		ConfigSources:    resolved.Sources,
-		Revision:         target.Revision,
-		RepositoryCounts: newRepositoryCountsResponse(target.RepositoryCounts),
-		EffectiveRole:    access.Role,
-		AccessSource:     access.Source,
-		Capabilities:     capabilitiesDTO(access.Capabilities),
-		SuspensionReason: access.SuspensionReason,
+		ConfigPatch:       target.ConfigPatch,
+		InheritedConfig:   inherited.Values,
+		EffectiveConfig:   resolved.Values,
+		ConfigSources:     resolved.Sources,
+		FormattingSources: resolved.Formatting,
+		Revision:          target.Revision,
+		RepositoryCounts:  newRepositoryCountsResponse(target.RepositoryCounts),
+		EffectiveRole:     access.Role,
+		AccessSource:      access.Source,
+		Capabilities:      capabilitiesDTO(access.Capabilities),
+		SuspensionReason:  access.SuspensionReason,
 	}
 }
 
@@ -390,6 +393,7 @@ func repositoryDetailDTO(
 		InheritedConfig:                     inherited.Values,
 		EffectiveConfig:                     resolved.Values,
 		ConfigSources:                       resolved.Sources,
+		FormattingSources:                   resolved.Formatting,
 		ConfigFilePatch:                     repository.ConfigFilePatch,
 		ConfigFileError:                     repository.ConfigFileError,
 		ConfigFilePath:                      repository.ConfigFilePath,

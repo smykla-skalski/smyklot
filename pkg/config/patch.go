@@ -360,10 +360,12 @@ func Resolve(base *Config, layers ...Layer) Resolved {
 		applyPatch(values, layer.Patch, sources, layer.Source)
 	}
 
-	return Resolved{
-		Values: *values, Sources: sources,
-		Formatting: formattingSources(sources),
+	formatting := formattingSources(sources)
+	for _, key := range FormattingKeys() {
+		delete(sources, key)
 	}
+
+	return Resolved{Values: *values, Sources: sources, Formatting: formatting}
 }
 
 func cloneConfig(base *Config) *Config {

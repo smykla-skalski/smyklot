@@ -124,8 +124,9 @@ var _ = Describe("Formatting configuration [Unit]", func() {
 			Expect(loaded.Formatting).To(Equal(fullFormattingPolicy()))
 			resolved := config.Resolve(loaded)
 			for _, key := range config.FormattingKeys() {
-				Expect(resolved.Sources).To(HaveKeyWithValue(key, config.SourceProcess))
+				Expect(resolved.Sources).NotTo(HaveKey(key))
 			}
+			Expect(resolved.Formatting).To(Equal(fullFormattingSources(config.SourceProcess)))
 		},
 		Entry("process file", func() []string {
 			setEnv(config.EnvConfigFile, writeFullFormattingFile())
@@ -161,10 +162,9 @@ var _ = Describe("Formatting configuration [Unit]", func() {
 
 			Expect(resolved.Values.Formatting).To(Equal(fullFormattingPolicy()))
 			for _, key := range config.FormattingKeys() {
-				Expect(resolved.Sources).To(HaveKeyWithValue(key, source))
+				Expect(resolved.Sources).NotTo(HaveKey(key))
 			}
-			Expect(resolved.Formatting.JSON.Arrays).To(Equal(source))
-			Expect(resolved.Formatting.TOML.AlignComments).To(Equal(source))
+			Expect(resolved.Formatting).To(Equal(fullFormattingSources(source)))
 		},
 		Entry("account settings", config.SourceTarget),
 		Entry("repository file", config.SourceRepositoryFile),
@@ -180,6 +180,31 @@ var _ = Describe("Formatting configuration [Unit]", func() {
 		Expect(policy.Common.IndentWidth).To(Equal(4))
 	})
 })
+
+func fullFormattingSources(source config.Source) config.FormattingSources {
+	return config.FormattingSources{
+		Preset: source,
+		Common: config.FormattingCommonSources{
+			IndentStyle: source, IndentWidth: source, LineWidth: source,
+			LineEnding: source, FinalNewline: source,
+		},
+		JSON: config.FormattingJSONSources{
+			Arrays: source, Objects: source, KeyOrder: source,
+		},
+		JSONC: config.FormattingJSONCSources{TrailingCommas: source},
+		YAML: config.FormattingYAMLSources{
+			Sequences: source, Mappings: source, QuoteStyle: source,
+			SequenceIndent: source, DocumentStart: source,
+		},
+		TOML: config.FormattingTOMLSources{
+			Arrays: source, TrailingCommas: source, QuoteStyle: source,
+			AlignEntries: source, AlignComments: source, KeyOrder: source,
+		},
+		Markdown: config.FormattingMarkdownSources{
+			ProseWrap: source, ListSpacing: source, Tables: source,
+		},
+	}
+}
 
 func fullFormattingPatch() config.FormattingPatch {
 	values := fullFormattingValues()

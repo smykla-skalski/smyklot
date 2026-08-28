@@ -136,13 +136,19 @@ func fullPatch(t *testing.T) config.Patch {
 
 	var patch config.Patch
 
-	value := reflect.ValueOf(&patch).Elem()
+	fillSparseStruct(reflect.ValueOf(&patch).Elem())
+
+	return patch
+}
+
+func fillSparseStruct(value reflect.Value) {
 	for index := range value.NumField() {
 		field := value.Field(index)
 		field.Set(reflect.New(field.Type().Elem()))
+		if field.Elem().Kind() == reflect.Struct {
+			fillSparseStruct(field.Elem())
+		}
 	}
-
-	return patch
 }
 
 // patchSetting returns a patch that sets exactly one key, found by the json tag

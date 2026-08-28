@@ -1,6 +1,9 @@
 package config
 
-const preserve = "preserve"
+const (
+	preserve = "preserve"
+	auto     = "auto"
+)
 
 // DefaultFormattingPolicy keeps every presentation dimension untouched. The
 // numeric defaults are still concrete because auto formatting needs them once
@@ -34,11 +37,11 @@ func conventionalFormattingPolicy() FormattingPolicy {
 	policy.Common.IndentStyle = "spaces"
 	policy.Common.LineEnding = "lf"
 	policy.Common.FinalNewline = "insert"
-	policy.JSON.Arrays = "auto"
-	policy.JSON.Objects = "auto"
-	policy.YAML.Sequences = "auto"
+	policy.JSON.Arrays = auto
+	policy.JSON.Objects = auto
+	policy.YAML.Sequences = auto
 	policy.YAML.Mappings = "block"
-	policy.TOML.Arrays = "auto"
+	policy.TOML.Arrays = auto
 	policy.Markdown.Tables = "align"
 
 	return policy

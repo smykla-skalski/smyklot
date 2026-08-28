@@ -328,51 +328,81 @@ func buildFields(
 		}
 
 		for _, name := range astField.Names {
-			field, err := buildField(name.Name, astField, stringTypes)
+			field, err := buildModelField(
+				name.Name, astField, keyPath, goPath, stringTypes, structTypes, seen,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", name.Name, err)
 			}
-
-			field.GoPath = append(append([]string{}, goPath...), name.Name)
-			fullKeyPath := append(append([]string{}, keyPath...), field.Key)
-
-			if pointer, ok := astField.Type.(*ast.StarExpr); ok {
-				if ident, ok := pointer.X.(*ast.Ident); ok {
-					if nested, ok := structTypes[ident.Name]; ok {
-						if !strings.HasSuffix(ident.Name, "Patch") {
-							return nil, fmt.Errorf("%s: %w: nested type must end in Patch",
-								name.Name, ErrUnsupportedType)
-						}
-
-						field.Kind = KindObject
-						field.PatchType = ident.Name
-						field.GoType = strings.TrimSuffix(ident.Name, "Patch") + "Policy"
-						field.Children, err = buildFields(
-							nested, fullKeyPath, field.GoPath, stringTypes, structTypes, seen)
-						if err != nil {
-							return nil, fmt.Errorf("%s: %w", name.Name, err)
-						}
-
-						fields = append(fields, field)
-						continue
-					}
-				}
-			}
-
-			field.Key = strings.Join(fullKeyPath, ".")
-			field.ConstName = strings.Join(field.GoPath, "")
-
-			if owner, taken := seen[field.Key]; taken {
-				return nil, fmt.Errorf("%s: %w: %q also names %s",
-					name.Name, ErrDuplicateKey, field.Key, owner)
-			}
-
-			seen[field.Key] = name.Name
 			fields = append(fields, field)
 		}
 	}
 
 	return fields, nil
+}
+
+func buildModelField(
+	name string,
+	astField *ast.Field,
+	keyPath, goPath []string,
+	stringTypes map[string]struct{},
+	structTypes map[string]*ast.StructType,
+	seen map[string]string,
+) (Field, error) {
+	field, err := buildField(name, astField, stringTypes)
+	if err != nil {
+		return Field{}, err
+	}
+
+	field.GoPath = append(append([]string{}, goPath...), name)
+	fullKeyPath := append(append([]string{}, keyPath...), field.Key)
+
+	patchType, nested, isNested := nestedPatchType(astField.Type, structTypes)
+	if isNested {
+		if !strings.HasSuffix(patchType, "Patch") {
+			return Field{}, fmt.Errorf("%w: nested type must end in Patch", ErrUnsupportedType)
+		}
+		field.Kind = KindObject
+		field.PatchType = patchType
+		field.GoType = strings.TrimSuffix(patchType, "Patch") + "Policy"
+		field.Children, err = buildFields(
+			nested, fullKeyPath, field.GoPath, stringTypes, structTypes, seen,
+		)
+		if err != nil {
+			return Field{}, err
+		}
+
+		return field, nil
+	}
+
+	field.Key = strings.Join(fullKeyPath, ".")
+	field.ConstName = strings.Join(field.GoPath, "")
+	if owner, taken := seen[field.Key]; taken {
+		return Field{}, fmt.Errorf("%w: %q also names %s", ErrDuplicateKey, field.Key, owner)
+	}
+	seen[field.Key] = name
+
+	return field, nil
+}
+
+func nestedPatchType(
+	expr ast.Expr,
+	structTypes map[string]*ast.StructType,
+) (string, *ast.StructType, bool) {
+	pointer, ok := expr.(*ast.StarExpr)
+	if !ok {
+		return "", nil, false
+	}
+	ident, ok := pointer.X.(*ast.Ident)
+	if !ok {
+		return "", nil, false
+	}
+	nested, ok := structTypes[ident.Name]
+	if !ok {
+		return "", nil, false
+	}
+
+	return ident.Name, nested, true
 }
 
 func flattenLeaves(fields []Field) []Field {
@@ -448,6 +478,20 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 // and the failure is a compile error in a generated file, which is a long way
 // from the tag that caused it.
 func validate(field Field) error {
+	if err := validateDefault(field); err != nil {
+		return err
+	}
+
+	// An enum is a closed set of strings. On a boolean it would silently
+	// re-type the field and render a quoted default into a bool.
+	if len(field.Enum) > 0 && field.GoType == goBool {
+		return fmt.Errorf("%w: a boolean cannot carry an enum", ErrInvalidDefault)
+	}
+
+	return nil
+}
+
+func validateDefault(field Field) error {
 	switch field.Kind {
 	case KindBool:
 		if field.Default != "" && field.Default != "true" && field.Default != "false" {
@@ -466,32 +510,39 @@ func validate(field Field) error {
 		}
 
 	case KindInt:
-		value, err := strconv.Atoi(field.Default)
-		if err != nil {
-			return fmt.Errorf("%w: %q is not an integer", ErrInvalidDefault, field.Default)
-		}
-
-		if field.Min != "" {
-			minimum, err := strconv.Atoi(field.Min)
-			if err != nil || value < minimum {
-				return fmt.Errorf("%w: default %d is below min %q",
-					ErrInvalidDefault, value, field.Min)
-			}
-		}
-
-		if field.Max != "" {
-			maximum, err := strconv.Atoi(field.Max)
-			if err != nil || value > maximum {
-				return fmt.Errorf("%w: default %d is above max %q",
-					ErrInvalidDefault, value, field.Max)
-			}
-		}
+		return validateIntegerDefault(field)
 	}
 
-	// An enum is a closed set of strings. On a boolean it would silently
-	// re-type the field and render a quoted default into a bool.
-	if len(field.Enum) > 0 && field.GoType == goBool {
-		return fmt.Errorf("%w: a boolean cannot carry an enum", ErrInvalidDefault)
+	return nil
+}
+
+func validateIntegerDefault(field Field) error {
+	value, err := strconv.Atoi(field.Default)
+	if err != nil {
+		return fmt.Errorf("%w: %q is not an integer", ErrInvalidDefault, field.Default)
+	}
+	if err := validateIntegerMinimum(value, field.Min); err != nil {
+		return err
+	}
+	if field.Max == "" {
+		return nil
+	}
+	maximum, err := strconv.Atoi(field.Max)
+	if err != nil || value > maximum {
+		return fmt.Errorf("%w: default %d is above max %q",
+			ErrInvalidDefault, value, field.Max)
+	}
+
+	return nil
+}
+
+func validateIntegerMinimum(value int, raw string) error {
+	if raw == "" {
+		return nil
+	}
+	minimum, err := strconv.Atoi(raw)
+	if err != nil || value < minimum {
+		return fmt.Errorf("%w: default %d is below min %q", ErrInvalidDefault, value, raw)
 	}
 
 	return nil

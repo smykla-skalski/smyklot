@@ -147,7 +147,7 @@ func (p *FormattingCommonPatch) normalize() error {
 }
 
 func (p *FormattingJSONPatch) normalize() error {
-	collection := []string{"preserve", "auto", "compact", "expanded"}
+	collection := []string{preserve, auto, "compact", "expanded"}
 	return firstError([]error{
 		enumSetting("formatting.json.arrays", p.Arrays, collection...),
 		enumSetting("formatting.json.objects", p.Objects, collection...),
@@ -157,8 +157,8 @@ func (p *FormattingJSONPatch) normalize() error {
 
 func (p *FormattingYAMLPatch) normalize() error {
 	return firstError([]error{
-		enumSetting("formatting.yaml.sequences", p.Sequences, "preserve", "auto", "flow", "block"),
-		enumSetting("formatting.yaml.mappings", p.Mappings, "preserve", "auto", "flow", "block"),
+		enumSetting("formatting.yaml.sequences", p.Sequences, preserve, auto, "flow", "block"),
+		enumSetting("formatting.yaml.mappings", p.Mappings, preserve, auto, "flow", "block"),
 		enumSetting("formatting.yaml.quote_style", p.QuoteStyle, "preserve", "prefer_plain", "prefer_single", "prefer_double"),
 		enumSetting("formatting.yaml.sequence_indent", p.SequenceIndent, "preserve", "indented", "indentless"),
 		enumSetting("formatting.yaml.document_start", p.DocumentStart, "preserve", "insert", "remove"),
@@ -166,7 +166,7 @@ func (p *FormattingYAMLPatch) normalize() error {
 }
 
 func (p *FormattingTOMLPatch) normalize() error {
-	collection := []string{"preserve", "auto", "compact", "expanded"}
+	collection := []string{preserve, auto, "compact", "expanded"}
 	return firstError([]error{
 		enumSetting("formatting.toml.arrays", p.Arrays, collection...),
 		enumSetting("formatting.toml.trailing_commas", p.TrailingCommas, "preserve", "multiline", "remove"),
