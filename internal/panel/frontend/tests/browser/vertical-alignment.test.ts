@@ -418,10 +418,12 @@ async function rowsOn(page: Page): Promise<{
          The sweeps above still ask the question that matters about such a row, which is where its
          ink sits against the ink beside it.
 
-         Cells stay named as well as tested. A heading cell carries a ground of its own, so the
-         shape test alone reads it as a surface and it is not one - it is a cell, and the same
-         argument applies to it whether or not somebody tinted the row it is in. */
-      if (control.tagName === 'TH' || control.tagName === 'TD') continue;
+         Table structure stays named as well as tested. A heading cell carries a ground of its
+         own, and an empty-state row may carry one too, so the shape test alone reads either as a
+         surface. Neither is a label control: rows belong to the table sweep above and cells are
+         layout within them, whether or not somebody tinted either one. */
+      if (control.tagName === 'TR' || control.tagName === 'TH' || control.tagName === 'TD')
+        continue;
       if (separator(control, style)) continue;
       if (
         [...control.querySelectorAll('*')].some((inner) => painted(inner, getComputedStyle(inner)))
