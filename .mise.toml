@@ -429,6 +429,7 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 # in both.
 #
 #   empty-states      what six tables say when they have no rows
+#   file-formatting   backend render preview, mismatch actions, and exact repository output
 #   filter-vocabulary that a filter menu offers the states its column draws
 #   queue-columns     the Queue table against the approved design, to the pixel
 #   queue-live        the queue re-sorting under a reader, and holding still
@@ -443,6 +444,7 @@ dir = "internal/panel/frontend"
 run = '''
 npm run test:browser -- \
   tests/browser/empty-states.test.ts \
+  tests/browser/file-formatting.test.ts \
   tests/browser/filter-vocabulary.test.ts \
   tests/browser/queue-columns.test.ts \
   tests/browser/queue-live.test.ts \
