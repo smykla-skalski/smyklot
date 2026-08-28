@@ -139,6 +139,11 @@ type Field struct {
 	// schema publishes. Empty means the type's zero value.
 	Default string
 
+	// Presets are the non-default values a named preset assigns to this leaf.
+	// Keeping these beside Default and Enum lets every consumer resolve the
+	// same complete policy instead of reimplementing preset behaviour.
+	Presets []PresetValue
+
 	// Enum is the complete set of accepted values, for KindEnum.
 	Enum []string
 
@@ -157,6 +162,12 @@ type Field struct {
 
 	// PanelDeny reports a setting the panel must refuse to write.
 	PanelDeny bool
+}
+
+// PresetValue is one named preset's value for a leaf.
+type PresetValue struct {
+	Name  string
+	Value string
 }
 
 // Model is every setting, in the order Patch declares them. Declaration order
@@ -459,6 +470,13 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 		Max:         tag.Get("max"),
 	}
 
+	if presets := tag.Get("presets"); presets != "" {
+		field.Presets, err = parsePresets(presets)
+		if err != nil {
+			return Field{}, err
+		}
+	}
+
 	if enum := tag.Get("enum"); enum != "" {
 		field.Enum = strings.Split(enum, ",")
 		field.Kind = KindEnum
@@ -471,6 +489,27 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 	return field, nil
 }
 
+func parsePresets(raw string) ([]PresetValue, error) {
+	parts := strings.Split(raw, ",")
+	values := make([]PresetValue, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+
+	for _, part := range parts {
+		name, value, found := strings.Cut(part, "=")
+		if !found || name == "" || value == "" {
+			return nil, fmt.Errorf("%w: malformed preset value %q", ErrInvalidDefault, part)
+		}
+		if _, duplicate := seen[name]; duplicate {
+			return nil, fmt.Errorf("%w: duplicate preset %q", ErrInvalidDefault, name)
+		}
+
+		seen[name] = struct{}{}
+		values = append(values, PresetValue{Name: name, Value: value})
+	}
+
+	return values, nil
+}
+
 // validate rejects a tag that would render into Go that does not compile, or
 // worse, into Go that does.
 //
@@ -480,6 +519,13 @@ func buildField(name string, astField *ast.Field, stringTypes map[string]struct{
 func validate(field Field) error {
 	if err := validateDefault(field); err != nil {
 		return err
+	}
+	for _, preset := range field.Presets {
+		candidate := field
+		candidate.Default = preset.Value
+		if err := validateDefault(candidate); err != nil {
+			return fmt.Errorf("preset %s: %w", preset.Name, err)
+		}
 	}
 
 	// An enum is a closed set of strings. On a boolean it would silently

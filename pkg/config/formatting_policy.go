@@ -9,42 +9,7 @@ const (
 // numeric defaults are still concrete because auto formatting needs them once
 // a higher layer opts into it.
 func DefaultFormattingPolicy() FormattingPolicy {
-	return FormattingPolicy{
-		Preset: preserve,
-		Common: FormattingCommonPolicy{
-			IndentStyle: preserve, IndentWidth: 2, LineWidth: 100,
-			LineEnding: preserve, FinalNewline: preserve,
-		},
-		JSON:  FormattingJSONPolicy{Arrays: preserve, Objects: preserve, KeyOrder: preserve},
-		JSONC: FormattingJSONCPolicy{TrailingCommas: preserve},
-		YAML: FormattingYAMLPolicy{
-			Sequences: preserve, Mappings: preserve, QuoteStyle: preserve,
-			SequenceIndent: preserve, DocumentStart: preserve,
-		},
-		TOML: FormattingTOMLPolicy{
-			Arrays: preserve, TrailingCommas: preserve, QuoteStyle: preserve,
-			AlignEntries: preserve, AlignComments: preserve, KeyOrder: preserve,
-		},
-		Markdown: FormattingMarkdownPolicy{
-			ProseWrap: preserve, ListSpacing: preserve, Tables: preserve,
-		},
-	}
-}
-
-func conventionalFormattingPolicy() FormattingPolicy {
-	policy := DefaultFormattingPolicy()
-	policy.Preset = "conventional"
-	policy.Common.IndentStyle = "spaces"
-	policy.Common.LineEnding = "lf"
-	policy.Common.FinalNewline = "insert"
-	policy.JSON.Arrays = auto
-	policy.JSON.Objects = auto
-	policy.YAML.Sequences = auto
-	policy.YAML.Mappings = "block"
-	policy.TOML.Arrays = auto
-	policy.Markdown.Tables = "align"
-
-	return policy
+	return formattingPresetPolicy(preserve)
 }
 
 // ApplyFormattingPatch returns base with one sparse layer applied. A preset is
@@ -63,12 +28,7 @@ func applyFormattingPatch(
 	source Source,
 ) {
 	if patch.Preset != nil {
-		switch *patch.Preset {
-		case "conventional":
-			*target = conventionalFormattingPolicy()
-		default:
-			*target = DefaultFormattingPolicy()
-		}
+		*target = formattingPresetPolicy(*patch.Preset)
 
 		for _, key := range FormattingKeys() {
 			setSource(sources, key, source)

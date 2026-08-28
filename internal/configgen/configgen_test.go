@@ -55,6 +55,64 @@ func TestGeneratedFileIsCurrent(t *testing.T) {
 	}
 }
 
+func TestGeneratedFormattingFilesAreCurrent(t *testing.T) {
+	model := parse(t)
+	tests := []struct {
+		path   string
+		render func(configgen.Model) ([]byte, error)
+	}{
+		{path: configgen.FormattingGoFile, render: configgen.RenderFormattingPresetsGo},
+		{path: configgen.FrontendFormattingFile, render: configgen.RenderFrontendFormatting},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			rendered, err := test.render(model)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+
+			path := filepath.Join(repoRoot, test.path)
+			onDisk, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			if string(rendered) != string(onDisk) {
+				t.Errorf("%s is stale - run `mise run generate`", test.path)
+			}
+		})
+	}
+}
+
+func TestFormattingRenderersAreDeterministic(t *testing.T) {
+	model := parse(t)
+	renderers := []struct {
+		name   string
+		render func(configgen.Model) ([]byte, error)
+	}{
+		{name: "backend presets", render: configgen.RenderFormattingPresetsGo},
+		{name: "frontend contract", render: configgen.RenderFrontendFormatting},
+	}
+
+	for _, renderer := range renderers {
+		t.Run(renderer.name, func(t *testing.T) {
+			first, err := renderer.render(model)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for range 8 {
+				again, err := renderer.render(model)
+				if err != nil {
+					t.Fatalf("render: %v", err)
+				}
+				if string(again) != string(first) {
+					t.Fatal("rendering is not deterministic")
+				}
+			}
+		})
+	}
+}
+
 // Rendering twice must produce the same bytes. Map iteration order is the usual
 // way a generator stops being a pure function of its input, and it fails
 // intermittently rather than immediately, so it is worth asserting directly.

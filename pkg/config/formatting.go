@@ -5,7 +5,7 @@ package config
 // a lower formatting choice.
 type FormattingPatch struct {
 	// Preset resets every formatting leaf before sibling overrides are applied.
-	Preset *string `json:"preset,omitempty" yaml:"preset,omitempty" toml:"preset,omitempty" default:"preserve" enum:"preserve,conventional"`
+	Preset *string `json:"preset,omitempty" yaml:"preset,omitempty" toml:"preset,omitempty" default:"preserve" enum:"preserve,conventional" presets:"conventional=conventional"`
 	// Common carries presentation choices shared by every supported format.
 	Common *FormattingCommonPatch `json:"common,omitempty" yaml:"common,omitempty" toml:"common,omitempty"`
 	// JSON carries strict JSON presentation choices.
@@ -22,22 +22,22 @@ type FormattingPatch struct {
 
 type FormattingCommonPatch struct {
 	// IndentStyle chooses spaces, tabs, or the document's existing indentation.
-	IndentStyle *string `json:"indent_style,omitempty" yaml:"indent_style,omitempty" toml:"indent_style,omitempty" default:"preserve" enum:"preserve,spaces,tabs"`
+	IndentStyle *string `json:"indent_style,omitempty" yaml:"indent_style,omitempty" toml:"indent_style,omitempty" default:"preserve" enum:"preserve,spaces,tabs" presets:"conventional=spaces"`
 	// IndentWidth is the number of spaces represented by one indentation level.
 	IndentWidth *int `json:"indent_width,omitempty" yaml:"indent_width,omitempty" toml:"indent_width,omitempty" default:"2" min:"1" max:"16"`
 	// LineWidth is the target width used by automatic collection and prose layout.
 	LineWidth *int `json:"line_width,omitempty" yaml:"line_width,omitempty" toml:"line_width,omitempty" default:"100" min:"40" max:"320"`
 	// LineEnding chooses LF, CRLF, or the document's existing endings.
-	LineEnding *string `json:"line_ending,omitempty" yaml:"line_ending,omitempty" toml:"line_ending,omitempty" default:"preserve" enum:"preserve,lf,crlf"`
+	LineEnding *string `json:"line_ending,omitempty" yaml:"line_ending,omitempty" toml:"line_ending,omitempty" default:"preserve" enum:"preserve,lf,crlf" presets:"conventional=lf"`
 	// FinalNewline inserts, removes, or preserves the last line ending.
-	FinalNewline *string `json:"final_newline,omitempty" yaml:"final_newline,omitempty" toml:"final_newline,omitempty" default:"preserve" enum:"preserve,insert,remove"`
+	FinalNewline *string `json:"final_newline,omitempty" yaml:"final_newline,omitempty" toml:"final_newline,omitempty" default:"preserve" enum:"preserve,insert,remove" presets:"conventional=insert"`
 }
 
 type FormattingJSONPatch struct {
 	// Arrays controls JSON array layout.
-	Arrays *string `json:"arrays,omitempty" yaml:"arrays,omitempty" toml:"arrays,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded"`
+	Arrays *string `json:"arrays,omitempty" yaml:"arrays,omitempty" toml:"arrays,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded" presets:"conventional=auto"`
 	// Objects controls JSON object layout.
-	Objects *string `json:"objects,omitempty" yaml:"objects,omitempty" toml:"objects,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded"`
+	Objects *string `json:"objects,omitempty" yaml:"objects,omitempty" toml:"objects,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded" presets:"conventional=auto"`
 	// KeyOrder preserves insertion order or sorts object keys.
 	KeyOrder *string `json:"key_order,omitempty" yaml:"key_order,omitempty" toml:"key_order,omitempty" default:"preserve" enum:"preserve,sort"`
 }
@@ -49,9 +49,9 @@ type FormattingJSONCPatch struct {
 
 type FormattingYAMLPatch struct {
 	// Sequences controls YAML sequence layout.
-	Sequences *string `json:"sequences,omitempty" yaml:"sequences,omitempty" toml:"sequences,omitempty" default:"preserve" enum:"preserve,auto,flow,block"`
+	Sequences *string `json:"sequences,omitempty" yaml:"sequences,omitempty" toml:"sequences,omitempty" default:"preserve" enum:"preserve,auto,flow,block" presets:"conventional=auto"`
 	// Mappings controls YAML mapping layout.
-	Mappings *string `json:"mappings,omitempty" yaml:"mappings,omitempty" toml:"mappings,omitempty" default:"preserve" enum:"preserve,auto,flow,block"`
+	Mappings *string `json:"mappings,omitempty" yaml:"mappings,omitempty" toml:"mappings,omitempty" default:"preserve" enum:"preserve,auto,flow,block" presets:"conventional=block"`
 	// QuoteStyle controls safe scalar quote preference.
 	QuoteStyle *string `json:"quote_style,omitempty" yaml:"quote_style,omitempty" toml:"quote_style,omitempty" default:"preserve" enum:"preserve,prefer_plain,prefer_single,prefer_double"`
 	// SequenceIndent controls indentation of block sequence markers.
@@ -62,7 +62,7 @@ type FormattingYAMLPatch struct {
 
 type FormattingTOMLPatch struct {
 	// Arrays controls TOML array layout.
-	Arrays *string `json:"arrays,omitempty" yaml:"arrays,omitempty" toml:"arrays,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded"`
+	Arrays *string `json:"arrays,omitempty" yaml:"arrays,omitempty" toml:"arrays,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded" presets:"conventional=auto"`
 	// TrailingCommas controls commas in multiline TOML arrays.
 	TrailingCommas *string `json:"trailing_commas,omitempty" yaml:"trailing_commas,omitempty" toml:"trailing_commas,omitempty" default:"preserve" enum:"preserve,multiline,remove"`
 	// QuoteStyle controls safe TOML string quote preference.
@@ -81,7 +81,7 @@ type FormattingMarkdownPatch struct {
 	// ListSpacing makes safe lists tight or loose, or preserves their spacing.
 	ListSpacing *string `json:"list_spacing,omitempty" yaml:"list_spacing,omitempty" toml:"list_spacing,omitempty" default:"preserve" enum:"preserve,tight,loose"`
 	// Tables aligns or compacts safe GFM tables, or preserves them.
-	Tables *string `json:"tables,omitempty" yaml:"tables,omitempty" toml:"tables,omitempty" default:"preserve" enum:"preserve,align,compact"`
+	Tables *string `json:"tables,omitempty" yaml:"tables,omitempty" toml:"tables,omitempty" default:"preserve" enum:"preserve,align,compact" presets:"conventional=align"`
 }
 
 // FormattingPolicy is a complete formatting decision. It contains no sparse

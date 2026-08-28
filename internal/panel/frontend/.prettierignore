@@ -4,6 +4,10 @@ package-lock.json
 .svelte-kit
 storybook-static
 
+# Generated deterministically from pkg/config.Patch. Formatting it separately
+# would create a second producer for the same checked-in artifact.
+src/lib/formatting.generated.ts
+
 # Written by the dev mock server as the panel is used, so its shape is whatever
 # was stored last. Prettier does not read .gitignore, so without this the lint
 # fails for anyone who has run the mock.

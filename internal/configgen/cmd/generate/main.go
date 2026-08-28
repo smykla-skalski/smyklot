@@ -45,9 +45,21 @@ func run() error {
 		return err
 	}
 
+	frontend, err := configgen.RenderFrontendFormatting(model)
+	if err != nil {
+		return err
+	}
+
+	formattingPresets, err := configgen.RenderFormattingPresetsGo(model)
+	if err != nil {
+		return err
+	}
+
 	for path, content := range map[string][]byte{
-		configgen.GoFile:     source,
-		configgen.SchemaFile: schema,
+		configgen.GoFile:                 source,
+		configgen.FormattingGoFile:       formattingPresets,
+		configgen.SchemaFile:             schema,
+		configgen.FrontendFormattingFile: frontend,
 	} {
 		//nolint:gosec // Generated files are checked in and read by every build.
 		if err := os.WriteFile(filepath.Join(root, path), content, 0o644); err != nil {

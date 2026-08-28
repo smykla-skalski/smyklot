@@ -89,6 +89,7 @@ const (
 //
 //	default  the value Default() reports and the schema publishes
 //	enum     the complete set of accepted values
+//	presets  comma-separated preset=value assignments for non-default presets
 //	flag     "-" for a setting with no command-line flag
 //	panel    "deny" for a setting the panel must refuse to write
 type Patch struct {
