@@ -509,7 +509,9 @@ func parentPath(filePath string) string {
 
 // Adjusted is every path this override adjusts, in the order it names them.
 func (o FileOverride) Adjusted() []string {
-	paths := make([]string, 0, len(o.Merges)+len(o.Formats))
+	// Grow for formatting paths through append instead of adding two
+	// independently decoded slice lengths into one allocation size.
+	paths := make([]string, 0, len(o.Merges))
 	for _, merge := range o.Merges {
 		paths = append(paths, merge.Path)
 	}
