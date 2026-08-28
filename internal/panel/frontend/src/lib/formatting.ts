@@ -70,10 +70,11 @@ export function applyFormattingPatch(
     preset === undefined
       ? cloneFormattingPolicy(base)
       : cloneFormattingPolicy(FORMATTING_PRESETS[preset]);
-  overlayNode(
-    resolved as unknown as Record<string, unknown>,
-    validPatch as Record<string, unknown>,
-  );
+  const target = resolved as unknown as Record<string, unknown>;
+  for (const field of FORMATTING_FIELDS) {
+    const value = formattingPatchValue(validPatch, field);
+    if (value !== undefined) setAtPath(target, field.path, value);
+  }
   return resolved;
 }
 
@@ -258,18 +259,6 @@ function validLeaf(field: FormattingField, value: unknown): value is FormattingL
     );
   }
   return typeof value === 'string' && field.options.some((option) => option === value);
-}
-
-function overlayNode(target: Record<string, unknown>, patch: Record<string, unknown>): void {
-  for (const [key, value] of Object.entries(patch)) {
-    if (isPlainRecord(value)) {
-      const existing = target[key];
-      if (!isPlainRecord(existing)) throw new TypeError(`formatting policy is missing ${key}`);
-      overlayNode(existing, value);
-    } else {
-      target[key] = value;
-    }
-  }
 }
 
 function valueAtPath(root: Record<string, unknown>, path: readonly string[]): unknown {

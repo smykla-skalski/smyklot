@@ -72,6 +72,22 @@ describe('generated formatting contract [Unit]', () => {
     expect(parseFormattingPolicy({ preset: 'preserve' })).toBeNull();
   });
 
+  it('rejects prototype-pollution keys before applying a patch', () => {
+    const attempts = [
+      JSON.parse('{"__proto__":{"polluted":true}}') as unknown,
+      JSON.parse('{"constructor":{"prototype":{"polluted":true}}}') as unknown,
+      JSON.parse('{"json":{"__proto__":{"polluted":true}}}') as unknown,
+    ];
+
+    for (const attempt of attempts) {
+      expect(parseFormattingPatch(attempt)).toBeNull();
+      expect(() => applyFormattingPatch(defaultFormattingPolicy(), attempt as never)).toThrow(
+        'formatting patch is invalid',
+      );
+    }
+    expect(({} as { polluted?: boolean }).polluted).toBeUndefined();
+  });
+
   it('edits one leaf without retaining empty parent objects', () => {
     const arrays = FORMATTING_FIELDS.find(({ key }) => key === 'formatting.json.arrays')!;
     const patch = setFormattingPatchValue({}, arrays, 'expanded');
