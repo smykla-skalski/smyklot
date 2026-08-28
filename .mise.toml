@@ -53,6 +53,11 @@ depends = ["panel:assets:generate"]
 env = { CGO_ENABLED = "1" }
 run = "ginkgo watch -r"
 
+[tasks."test:update-filemerge-parity"]
+description = "Regenerate exact panel merge bytes from the backend formatter"
+env = { CGO_ENABLED = "1", SMYKLOT_UPDATE_FILEMERGE_PARITY = "1" }
+run = "ginkgo --focus='composes every case in the shared table' ./internal/orgsync/filemerge"
+
 [tasks."test:deploy"]
 description = "Run the deploy workflow's checks against canned flyctl answers"
 run = "./scripts/test-deploy-steps.sh"

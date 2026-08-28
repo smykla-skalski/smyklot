@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -36,14 +37,15 @@ type preparedRepositorySettings struct {
 }
 
 type installationSettingsWork struct {
-	target           *targetSettingsWork
-	repositories     []repositorySettingsWork
-	syncConfigs      []syncConfigSettingsWork
-	syncOverrides    []syncOverrideSettingsWork
-	items            []storage.SettingsCheckpointItem
-	snapshotBefore   []storage.SettingsCheckpointItem
-	inclusionChanged bool
-	syncChanged      bool
+	target            *targetSettingsWork
+	repositories      []repositorySettingsWork
+	syncConfigs       []syncConfigSettingsWork
+	syncOverrides     []syncOverrideSettingsWork
+	items             []storage.SettingsCheckpointItem
+	snapshotBefore    []storage.SettingsCheckpointItem
+	inclusionChanged  bool
+	syncChanged       bool
+	formattingChanged bool
 }
 
 type targetSettingsWork struct {
@@ -344,6 +346,10 @@ func buildInstallationSettingsItems(
 		work.target.changed = changed
 		if changed {
 			work.items = append(work.items, item)
+			work.formattingChanged = !reflect.DeepEqual(
+				work.target.current.ConfigPatch.Formatting,
+				work.target.prepared.change.ConfigPatch.Formatting,
+			)
 			work.inclusionChanged = work.target.current.RepositoryDefaultEnabled !=
 				work.target.prepared.change.RepositoryDefaultEnabled
 		}
@@ -356,6 +362,10 @@ func buildInstallationSettingsItems(
 		work.repositories[index].changed = changed
 		if changed {
 			work.items = append(work.items, item)
+			work.formattingChanged = work.formattingChanged || !reflect.DeepEqual(
+				work.repositories[index].current.ConfigPatch.Formatting,
+				work.repositories[index].prepared.change.ConfigPatch.Formatting,
+			)
 			work.inclusionChanged = work.inclusionChanged || !sameOptionalBool(
 				work.repositories[index].current.EnabledOverride,
 				work.repositories[index].prepared.change.EnabledOverride,

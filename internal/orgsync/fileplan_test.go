@@ -8,7 +8,25 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
+	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 )
+
+func planFilesPreserving(
+	repositoryID string,
+	config orgsync.FileConfig,
+	override orgsync.FileOverride,
+	defaultBranch string,
+	current map[string]orgsync.CurrentFile,
+) (orgsync.FilePlan, error) {
+	return orgsync.PlanFiles(
+		repositoryID,
+		config,
+		override,
+		defaultBranch,
+		current,
+		appconfig.DefaultFormattingPolicy(),
+	)
+}
 
 // held is what a repository's tree says about a file it carries.
 //
@@ -38,7 +56,7 @@ var _ = Describe("Planning files [Unit]", func() {
 	) orgsync.FilePlan {
 		GinkgoHelper()
 
-		answer, err := orgsync.PlanFiles("repo-1", config, override, "main", current)
+		answer, err := planFilesPreserving("repo-1", config, override, "main", current)
 		Expect(err).NotTo(HaveOccurred())
 
 		return answer
@@ -75,7 +93,7 @@ var _ = Describe("Planning files [Unit]", func() {
 	})
 
 	It("fills the repository's own branch into the template", func() {
-		answer, err := orgsync.PlanFiles("repo-1", orgsync.FileConfig{
+		answer, err := planFilesPreserving("repo-1", orgsync.FileConfig{
 			Files: []orgsync.File{file("README.md", "Built from {{DEFAULT_BRANCH}}.\n")},
 		}, orgsync.FileOverride{}, "trunk", nil)
 
@@ -84,6 +102,58 @@ var _ = Describe("Planning files [Unit]", func() {
 		written, err := orgsync.DecodeFile(answer.Actions[0].Payload)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(written.Content)).To(Equal("Built from trunk.\n"))
+	})
+
+	It("plans a formatting-only update", func() {
+		policy := appconfig.DefaultFormattingPolicy()
+		policy.JSON.Arrays = "expanded"
+		template := `{"labels":["one","two"]}`
+
+		answer, err := orgsync.PlanFiles(
+			"repo-1",
+			orgsync.FileConfig{Files: []orgsync.File{file("config.json", template)}},
+			orgsync.FileOverride{},
+			"main",
+			map[string]orgsync.CurrentFile{"config.json": held(template)},
+			policy,
+		)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(answer.Actions).To(HaveLen(1))
+		written, err := orgsync.DecodeFile(answer.Actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(written.Content)).To(Equal("{\"labels\":[\n    \"one\",\n    \"two\"\n  ]}"))
+	})
+
+	It("applies template formatting before the repository path overlay", func() {
+		compact, preserve := "compact", "preserve"
+		policy := appconfig.DefaultFormattingPolicy()
+		policy.JSON.Arrays = "expanded"
+		template := "{\n  \"labels\": [\n    \"one\",\n    \"two\"\n  ]\n}\n"
+		fileConfig := orgsync.FileConfig{Files: []orgsync.File{{
+			Path: "config.json", Content: template,
+			Formatting: &appconfig.FormattingPatch{
+				JSON: &appconfig.FormattingJSONPatch{Arrays: &compact},
+			},
+		}}}
+		override := orgsync.FileOverride{Formats: []orgsync.FileFormat{{
+			Path: "config.json",
+			Formatting: appconfig.FormattingPatch{
+				JSON: &appconfig.FormattingJSONPatch{Arrays: &preserve},
+			},
+		}}}
+
+		answer, err := orgsync.PlanFiles(
+			"repo-1",
+			fileConfig,
+			override,
+			"main",
+			map[string]orgsync.CurrentFile{"config.json": held(template)},
+			policy,
+		)
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(answer.Actions).To(BeEmpty())
 	})
 
 	Describe("what a repository adjusts", func() {
@@ -110,7 +180,7 @@ var _ = Describe("Planning files [Unit]", func() {
 		// out of the merge, and what comes out is what a plan carries - once
 		// per repository it would write it to.
 		It("refuses one that composes more than a repository may be sent", func() {
-			_, err := orgsync.PlanFiles("repo-1", orgsync.FileConfig{
+			_, err := planFilesPreserving("repo-1", orgsync.FileConfig{
 				Files: []orgsync.File{file("renovate.json", `{"a":1}`)},
 			}, orgsync.FileOverride{
 				Merges: []orgsync.FileMerge{{
@@ -130,7 +200,7 @@ var _ = Describe("Planning files [Unit]", func() {
 		// warning and wrote the raw template over the repository's file, so a
 		// broken adjustment destroyed exactly the customization it described.
 		It("refuses rather than writing the template over the file", func() {
-			_, err := orgsync.PlanFiles("repo-1", renovate, orgsync.FileOverride{
+			_, err := planFilesPreserving("repo-1", renovate, orgsync.FileOverride{
 				Merges: []orgsync.FileMerge{{
 					Path: "renovate.json",
 					Spec: filemerge.Spec{

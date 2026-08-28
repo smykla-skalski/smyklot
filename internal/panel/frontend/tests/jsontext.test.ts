@@ -37,21 +37,22 @@ describe('composeMergedText', () => {
     expect(composed).not.toBeNull();
     const parsed = parse(composed ?? '') as { labels: string[] };
     expect(parsed.labels).toEqual(['dependencies', 'renovate']);
-    // A compact list stays compact - the seam is the only new text.
-    expect(composed).toContain('"labels": ["dependencies", "renovate"]');
+    expect(composed).toContain('"extends": ["config:recommended"]');
   });
 
-  it('an appended entry leaves the template entries their own bytes', () => {
+  it('delegates appended object serialization to jsonc-parser', () => {
     const composed = composeMergedText(TEMPLATE, {
       strategy: 'deep-merge',
       overrides: { packageRules: [{ matchManagers: ['npm'] }] },
       arrays: [{ path: '$.packageRules', strategy: 'append' }],
     });
-    // The template's own entry is untouched, so the gutter can mark only
-    // what the adjustment added.
-    expect(composed).toContain(
-      '"packageRules": [{ "matchDepTypes": ["devDependencies"], "automerge": true }, { "matchManagers": ["npm"] }]',
-    );
+    expect(parse(composed ?? '')).toMatchObject({
+      packageRules: [
+        { matchDepTypes: ['devDependencies'], automerge: true },
+        { matchManagers: ['npm'] },
+      ],
+    });
+    expect(composed).toContain('// Weekend runs keep review noise');
   });
 
   it('prepends into a multiline list without reflowing what stands', () => {
@@ -90,6 +91,25 @@ describe('composeMergedText', () => {
   it('declines what it cannot compose honestly', () => {
     expect(composeMergedText(TEMPLATE, { strategy: 'markdown' })).toBeNull();
     expect(composeMergedText('not json', { strategy: 'deep-merge' })).toBeNull();
+    expect(
+      composeMergedText('{"duplicate":1,"duplicate":2}', {
+        strategy: 'deep-merge',
+      }),
+    ).toBeNull();
+  });
+
+  it('treats prototype names as data without mutating object prototypes', () => {
+    const overrides = JSON.parse('{"__proto__":{"polluted":true}}') as Record<string, unknown>;
+    const composed = composeMergedText('{"safe":true}', {
+      strategy: 'deep-merge',
+      overrides,
+    });
+
+    const parsed = JSON.parse(composed ?? '') as Record<string, unknown>;
+    expect(parsed.safe).toBe(true);
+    expect(Object.hasOwn(parsed, '__proto__')).toBe(true);
+    expect(parsed['__proto__']).toEqual({ polluted: true });
+    expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false);
   });
 });
 
@@ -170,5 +190,18 @@ describe('deriveMerge', () => {
     expect(deriveMerge(TEMPLATE, '{ broken', 'deep-merge', [])).toBeNull();
     expect(deriveMerge(TEMPLATE, '[]', 'deep-merge', [])).toBeNull();
     expect(deriveMerge(TEMPLATE, '{}', 'markdown', [])).toBeNull();
+  });
+
+  it('derives prototype-named keys into own data properties', () => {
+    const derived = deriveMerge(
+      '{"safe":true}',
+      '{"safe":true,"__proto__":{"polluted":true}}',
+      'deep-merge',
+      [],
+    );
+
+    expect(derived).not.toBeNull();
+    expect(Object.hasOwn(derived?.overrides ?? {}, '__proto__')).toBe(true);
+    expect(Object.hasOwn(Object.prototype, 'polluted')).toBe(false);
   });
 });

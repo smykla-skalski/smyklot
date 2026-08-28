@@ -8,6 +8,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
+	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 func file(path, content string) orgsync.File {
@@ -85,12 +86,22 @@ var _ = Describe("File configuration [Unit]", func() {
 			To(Equal("See {{DEFAULT_BRANCH}}."))
 	})
 
-	// Smyklot writes LF. A template pasted from an editor that writes CRLF is
-	// one file changed once rather than a file whose every line reads as
-	// changed each time something else about it moves.
-	It("settles the line endings, whether or not there is a branch to fill in", func() {
-		Expect(orgsync.Render("one\r\ntwo\r\n", "main")).To(Equal("one\ntwo\n"))
-		Expect(orgsync.Render("one\r\ntwo\r\n", "")).To(Equal("one\ntwo\n"))
+	It("leaves line endings to the effective formatting policy", func() {
+		Expect(orgsync.Render("one\r\ntwo\r\n", "main")).To(Equal("one\r\ntwo\r\n"))
+		Expect(orgsync.Render("one\r\ntwo\r\n", "")).To(Equal("one\r\ntwo\r\n"))
+	})
+
+	It("rejects shared formatting rules for an unsupported extension", func() {
+		compact := "compact"
+		err := orgsync.FileConfig{Files: []orgsync.File{{
+			Path: "notes.txt", Content: "text",
+			Formatting: &appconfig.FormattingPatch{
+				JSON: &appconfig.FormattingJSONPatch{Arrays: &compact},
+			},
+		}}}.Validate()
+
+		Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+		Expect(err.Error()).To(ContainSubstring("unsupported extension"))
 	})
 
 	// The tool this replaces validated the file list not at all: no empty path,
@@ -251,6 +262,35 @@ var _ = Describe("File configuration [Unit]", func() {
 				Spec: filemerge.Spec{Overrides: []byte(`{"timezone": "Europe/Warsaw"}`)},
 			}}}.Validate(config)).To(Succeed())
 		})
+
+		It("accepts one formatting overlay for an exact managed path", func() {
+			compact := "compact"
+			Expect(orgsync.FileOverride{Formats: []orgsync.FileFormat{{
+				Path: "renovate.json",
+				Formatting: appconfig.FormattingPatch{
+					JSON: &appconfig.FormattingJSONPatch{Arrays: &compact},
+				},
+			}}}.Validate(config)).To(Succeed())
+		})
+
+		DescribeTable("refuses invalid formatting overlays",
+			func(fileConfig orgsync.FileConfig, override orgsync.FileOverride, because string) {
+				err := override.Validate(fileConfig)
+
+				Expect(err).To(MatchError(orgsync.ErrInvalidConfig))
+				Expect(err.Error()).To(ContainSubstring(because))
+			},
+			Entry("an unmanaged path", config, orgsync.FileOverride{Formats: []orgsync.FileFormat{{
+				Path: "other.json",
+			}}}, "is not one of the files synchronized"),
+			Entry("a duplicate path", config, orgsync.FileOverride{Formats: []orgsync.FileFormat{
+				{Path: "renovate.json"}, {Path: "renovate.json"},
+			}}, "formatting configured twice"),
+			Entry("an unsupported extension",
+				orgsync.FileConfig{Files: []orgsync.File{file("README.txt", "text")}},
+				orgsync.FileOverride{Formats: []orgsync.FileFormat{{Path: "README.txt"}}},
+				"unsupported extension"),
+		)
 
 		DescribeTable("refuses one that could never be applied",
 			func(override orgsync.FileOverride, because string) {

@@ -217,6 +217,7 @@ func newServer(cfg *serveConfig) (*server, error) {
 		return nil, err
 	}
 	srv.sync = apply.New(srv.store, tokens, cfg.apiBaseURL)
+	srv.sync.SetFormattingPolicy(resolvedConfig.Values.Formatting)
 	srv.sync.SetBeginWork(srv.beginBackgroundWork)
 	pendingCICoordinator := bot.NewCoordinator()
 	srv.pendingCICoordinator = pendingCICoordinator

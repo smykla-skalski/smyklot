@@ -1,13 +1,11 @@
 {
   "why": [
-    "One table of merges, run through the Go engine and through the panel's copy of it.",
-    "The panel composes the file a reader is looking at, and it edits that file rather than the",
-    "patch behind it - so the two composers have to agree to the byte or a save writes something",
-    "other than what was shown. They stopped agreeing in exactly the way two implementations of",
-    "one rule do: the panel had RFC 7396 and nothing else, and the service also honoured the",
-    "strategy, the array rules and deduplicate.",
+    "One table of merges, run through the Go engine and the panel's semantic editing aid.",
+    "The backend owns exact rendered bytes; the browser checks only that its local editing aid",
+    "agrees on strategy, array rules, deduplicate, and the resulting value.",
     "Read by internal/orgsync/filemerge/panel_parity_test.go and by",
-    "internal/panel/frontend/tests/merge-parity.test.ts. A case added here is run by both."
+    "internal/panel/frontend/tests/merge-parity.test.ts. A case added here is run by both.",
+    "Expected bytes are generated only by mise run test:update-filemerge-parity."
   ],
   "cases": [
     {
@@ -19,7 +17,10 @@
           "schedule": "after 9pm"
         }
       },
-      "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ],\n  \"packageRules\": [\n    {\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    }\n  ],\n  \"schedule\": \"after 9pm\"\n}\n"
+      "expected": "{\"extends\":[\"config:base\"],\"schedule\":\"after 9pm\",\"packageRules\":[{\"matchManagers\":[\"npm\"]}]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a deep merge reaches into a nested object",
@@ -32,7 +33,10 @@
           }
         }
       },
-      "expected": "{\n  \"hostRules\": {\n    \"matchHost\": \"github.com\",\n    \"timeout\": 60\n  }\n}\n"
+      "expected": "{\"hostRules\":{\"matchHost\":\"github.com\",\"timeout\":60}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a null removes the key it names",
@@ -43,7 +47,10 @@
           "schedule": null
         }
       },
-      "expected": "{\n  \"extends\": [\n    \"config:base\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"config:base\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a shallow merge replaces a top-level key whole",
@@ -57,7 +64,32 @@
           }
         }
       },
-      "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
+      "expected": "{\"hostRules\":{\"timeout\":60}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
+    },
+    {
+      "name": "a replaced collection inherits its local spacing",
+      "path": "renovate.json",
+      "template": "{\"rules\": { \"one\": 1, \"two\": 2 }, \"labels\": [\"one\", \"two\"]}",
+      "spec": {
+        "strategy": "shallow-merge",
+        "overrides": {
+          "rules": {
+            "two": 3,
+            "three": 4
+          },
+          "labels": [
+            "three",
+            "four"
+          ]
+        }
+      },
+      "expected": "{\"rules\": { \"three\": 4, \"two\": 3 }, \"labels\": [\"three\", \"four\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "an append rule keeps the template's entries and adds the repository's",
@@ -76,7 +108,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"config:base\",\"group:monorepos\",\"local:house-style\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a prepend rule puts the repository's entries first",
@@ -95,7 +130,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"local:house-style\",\n    \"config:base\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"local:house-style\",\"config:base\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "replace is what a list gets with no rule at all",
@@ -114,7 +152,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"local:house-style\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "deduplicate keeps the first of every entry an append doubles",
@@ -135,7 +176,10 @@
         ],
         "deduplicate": true
       },
-      "expected": "{\n  \"extends\": [\n    \"config:base\",\n    \"group:monorepos\",\n    \"local:house-style\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"config:base\",\"group:monorepos\",\"local:house-style\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "deduplicate compares whole objects, not their addresses",
@@ -165,7 +209,10 @@
         ],
         "deduplicate": true
       },
-      "expected": "{\n  \"packageRules\": [\n    {\n      \"enabled\": true,\n      \"matchManagers\": [\n        \"npm\"\n      ]\n    },\n    {\n      \"matchManagers\": [\n        \"gomod\"\n      ]\n    }\n  ]\n}\n"
+      "expected": "{\"packageRules\":[{\"matchManagers\":[\"npm\"],\"enabled\":true},{\"matchManagers\":[\"gomod\"]}]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a rule addresses a list one level down",
@@ -186,7 +233,10 @@
           }
         ]
       },
-      "expected": "{\n  \"customManagers\": {\n    \"fileMatch\": [\n      \"^Dockerfile$\",\n      \"^Makefile$\"\n    ]\n  }\n}\n"
+      "expected": "{\"customManagers\":{\"fileMatch\":[\"^Dockerfile$\",\"^Makefile$\"]}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a backslash escapes a dot, so a key holding one addresses itself",
@@ -205,7 +255,10 @@
           }
         ]
       },
-      "expected": "{\n  \"example.com\": [\n    \"one\",\n    \"two\"\n  ]\n}\n"
+      "expected": "{\"example.com\":[\"one\",\"two\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "appending to a list the template does not have is the repository's own",
@@ -224,7 +277,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"local:house-style\"\n  ],\n  \"schedule\": \"before 5am\"\n}\n"
+      "expected": "{\"schedule\":\"before 5am\",\"extends\":[\"local:house-style\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "numbers keep the digits they were written with",
@@ -235,10 +291,13 @@
           "schedule": "after 9pm"
         }
       },
-      "expected": "{\n  \"appId\": 12345678901234567890,\n  \"kept\": 1e3,\n  \"rate\": 1.50,\n  \"schedule\": \"after 9pm\"\n}\n"
+      "expected": "{\"appId\":12345678901234567890,\"rate\":1.50,\"kept\":1e3,\"schedule\":\"after 9pm\"}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
-      "name": "keys come out sorted, because the service writes a map back out",
+      "name": "existing keys keep template order and a new key appends",
       "path": "renovate.json",
       "template": "{\"zulu\":1,\"alpha\":2,\"Mike\":3}",
       "spec": {
@@ -246,7 +305,10 @@
           "bravo": 4
         }
       },
-      "expected": "{\n  \"Mike\": 3,\n  \"alpha\": 2,\n  \"bravo\": 4,\n  \"zulu\": 1\n}\n"
+      "expected": "{\"zulu\":1,\"alpha\":2,\"Mike\":3,\"bravo\":4}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a key called __proto__ is a key",
@@ -257,7 +319,10 @@
           "schedule": "after 9pm"
         }
       },
-      "expected": "{\n  \"__proto__\": {\n    \"kept\": true\n  },\n  \"schedule\": \"after 9pm\"\n}\n"
+      "expected": "{\"__proto__\":{\"kept\":true},\"schedule\":\"after 9pm\"}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "an override may set a key called __proto__ too",
@@ -270,7 +335,10 @@
           }
         }
       },
-      "expected": "{\n  \"__proto__\": {\n    \"added\": true\n  },\n  \"schedule\": \"before 5am\"\n}\n"
+      "expected": "{\"schedule\":\"before 5am\",\"__proto__\":{\"added\":true}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "an object replaces a scalar rather than merging into it",
@@ -283,7 +351,10 @@
           }
         }
       },
-      "expected": "{\n  \"hostRules\": {\n    \"timeout\": 60\n  }\n}\n"
+      "expected": "{\"hostRules\":{\"timeout\":60}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a rule whose list no override sets is refused",
@@ -300,7 +371,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a rule whose override is not a list is refused",
@@ -317,7 +390,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a path that indexes a list is refused, because positions move when one is merged",
@@ -336,7 +411,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a path that does not start at the document is refused",
@@ -355,14 +432,18 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a spec that says nothing leaves the template exactly as it is",
       "path": "renovate.json",
       "template": "{\"zulu\":1,\"alpha\":2}",
       "spec": {},
-      "verbatim": true
+      "refused": false,
+      "verbatim": true,
+      "unsupported": false
     },
     {
       "name": "a rule below the top level is refused under a shallow merge",
@@ -384,7 +465,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "__proto__ is a key on the way to a list, not a route to the prototype",
@@ -405,10 +488,13 @@
           }
         ]
       },
-      "expected": "{\n  \"__proto__\": {\n    \"list\": [\n      \"t\",\n      \"r\"\n    ]\n  }\n}\n"
+      "expected": "{\"__proto__\":{\"list\":[\"t\",\"r\"]}}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
-      "name": "integer-like keys are sorted as text, the way a Go map is",
+      "name": "integer-like keys keep their exact source order",
       "path": "renovate.json",
       "template": "{\"abc\":1,\"404\":2,\"2\":3,\"10\":4}",
       "spec": {
@@ -416,7 +502,10 @@
           "abc": 9
         }
       },
-      "expected": "{\n  \"10\": 4,\n  \"2\": 3,\n  \"404\": 2,\n  \"abc\": 9\n}\n"
+      "expected": "{\"abc\":9,\"404\":2,\"2\":3,\"10\":4}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "the line separator Go escapes and JavaScript does not",
@@ -427,7 +516,10 @@
           "kept": true
         }
       },
-      "expected": "{\n  \"back\": \"a\\bb\",\n  \"kept\": true,\n  \"sep\": \"a\\u2028b\",\n  \"tab\": \"a\\tb\"\n}\n"
+      "expected": "{\"tab\":\"a\\tb\",\"sep\":\"a\\u2028b\",\"back\":\"a\\bb\",\"kept\":true}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a markdown strategy on a JSON path is refused, not deep-merged",
@@ -443,7 +535,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a strategy neither side knows is refused",
@@ -455,7 +549,9 @@
           "schedule": "after 9pm"
         }
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "sections on a file with no headings are refused",
@@ -472,7 +568,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "deduplicating with no list rule is refused",
@@ -486,7 +584,9 @@
         },
         "deduplicate": true
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "two list rules on one path are refused",
@@ -509,7 +609,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a list strategy neither side knows is refused",
@@ -528,7 +630,9 @@
           }
         ]
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "overrides that are not an object are refused",
@@ -537,7 +641,9 @@
       "spec": {
         "overrides": "after 9pm"
       },
-      "refused": true
+      "refused": true,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a prepend rule puts this repository's entries first",
@@ -556,7 +662,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"local\",\n    \"config:base\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"local\",\"config:base\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a replace rule drops the template's entries",
@@ -575,7 +684,10 @@
           }
         ]
       },
-      "expected": "{\n  \"extends\": [\n    \"local\"\n  ]\n}\n"
+      "expected": "{\"extends\":[\"local\"]}",
+      "refused": false,
+      "verbatim": false,
+      "unsupported": false
     },
     {
       "name": "a Markdown merge the service runs and the panel declines by format",
@@ -591,6 +703,8 @@
         ]
       },
       "expected": "# Title\n\n## Usage\n\nnew\n",
+      "refused": false,
+      "verbatim": false,
       "unsupported": true
     }
   ]

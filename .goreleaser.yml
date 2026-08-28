@@ -33,6 +33,7 @@ archives:
     files:
       - LICENSE
       - README.md
+      - THIRD_PARTY_NOTICES.md
 
 dockers_v2:
   - ids:
@@ -54,6 +55,7 @@ dockers_v2:
     extra_files:
       - go.mod
       - go.sum
+      - THIRD_PARTY_NOTICES.md
       - cmd
       - internal
       - pkg
@@ -65,7 +67,7 @@ dockers_v2:
       org.opencontainers.image.version: "{{.Version}}"
       org.opencontainers.image.created: "{{.Date}}"
       org.opencontainers.image.revision: "{{.FullCommit}}"
-      org.opencontainers.image.licenses: MIT
+      org.opencontainers.image.licenses: MIT AND BSD-3-Clause
 
 checksum:
   name_template: 'checksums.txt'

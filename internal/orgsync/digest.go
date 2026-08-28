@@ -3,9 +3,12 @@ package orgsync
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"io"
 	"sort"
 	"strconv"
+
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // DigestConfig fingerprints one kind's configuration.
@@ -35,10 +38,30 @@ func DigestConfig(enabled bool, document []byte) string {
 // value the next plan will test - two spellings of the same idea would drift
 // and the drift would look like a repository that never settles.
 func DigestRepositoryKind(configDigest string, override *RepositoryOverride) string {
+	return DigestRepositoryKindWithInputs(configDigest, override, nil)
+}
+
+// DigestInput names one additional typed decision included in a scope.
+type DigestInput struct {
+	Name   string
+	Digest string
+}
+
+// DigestRepositoryKindWithInputs includes decisions used only by selected
+// kinds, such as the effective formatting policy for synchronized files.
+func DigestRepositoryKindWithInputs(
+	configDigest string,
+	override *RepositoryOverride,
+	inputs []DigestInput,
+) string {
 	sum := sha256.New()
 
 	writeField(sum, configDigest)
 	writeField(sum, describeOverride(override))
+	for _, input := range inputs {
+		writeField(sum, input.Name)
+		writeField(sum, input.Digest)
+	}
 
 	return hex.EncodeToString(sum.Sum(nil))
 }
@@ -51,7 +74,17 @@ func DigestRepositoryKind(configDigest string, override *RepositoryOverride) str
 // off for one repository removes its actions just as surely as removing a
 // label does, and a plan computed before that must not still be approvable.
 func DigestScope(configs []Config, overrides []RepositoryOverride) string {
-	entries := make([]string, 0, len(configs)+len(overrides))
+	return DigestScopeWithInputs(configs, overrides, nil)
+}
+
+// DigestScopeWithInputs fingerprints the ordinary sync scope plus named
+// decisions that can alter planned output without changing sync documents.
+func DigestScopeWithInputs(
+	configs []Config,
+	overrides []RepositoryOverride,
+	inputs []DigestInput,
+) string {
+	entries := make([]string, 0, len(configs)+len(overrides)+len(inputs))
 
 	for _, config := range configs {
 		entries = append(entries, "config\x00"+string(config.Kind)+"\x00"+config.Digest)
@@ -61,6 +94,9 @@ func DigestScope(configs []Config, overrides []RepositoryOverride) string {
 		entries = append(entries,
 			"override\x00"+override.RepositoryID+"\x00"+string(override.Kind)+
 				"\x00"+describeOverride(&override))
+	}
+	for _, input := range inputs {
+		entries = append(entries, "input\x00"+input.Name+"\x00"+input.Digest)
 	}
 
 	// Sorted, because neither list arrives in a guaranteed order and a digest
@@ -74,6 +110,18 @@ func DigestScope(configs []Config, overrides []RepositoryOverride) string {
 	}
 
 	return hex.EncodeToString(sum.Sum(nil))
+}
+
+// DigestFormattingPolicy fingerprints a complete formatting decision without
+// exposing its representation to planner callers.
+func DigestFormattingPolicy(policy config.FormattingPolicy) string {
+	encoded, err := json.Marshal(policy)
+	if err != nil {
+		panic(err)
+	}
+	sum := sha256.Sum256(encoded)
+
+	return hex.EncodeToString(sum[:])
 }
 
 // describeOverride renders a repository's whole answer about one kind: whether

@@ -549,6 +549,25 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+	if s.syncPlans != nil {
+		current, err := s.syncPlans.CurrentSyncScopeDigest(r.Context(), target.ID)
+		if err != nil {
+			s.writeInternal(w, err)
+
+			return
+		}
+		if current != input.Digest {
+			if err := s.store.InvalidateSyncPlans(r.Context(), target.ID, s.now().UTC()); err != nil {
+				s.writeStorageError(w, err)
+
+				return
+			}
+			s.writeError(w, http.StatusConflict, "stale_plan",
+				"this plan no longer matches the configuration; ask for a new one")
+
+			return
+		}
+	}
 	plan, err := s.store.ApproveSyncPlan(r.Context(), orgsync.PlanApproval{
 		TargetID: target.ID,
 		PlanID:   r.PathValue(syncPlanKey),

@@ -129,6 +129,14 @@ var _ = Describe("Digests [Unit]", func() {
 			Expect(orgsync.DigestScope(configs, adjusting(`{"excludes":["a"]}`))).
 				NotTo(Equal(orgsync.DigestScope(configs, adjusting(`{"excludes":["b"]}`))))
 		})
+
+		It("changes when a named formatting input changes", func() {
+			one := []orgsync.DigestInput{{Name: "formatting", Digest: "one"}}
+			two := []orgsync.DigestInput{{Name: "formatting", Digest: "two"}}
+
+			Expect(orgsync.DigestScopeWithInputs(configs, overrides, one)).
+				NotTo(Equal(orgsync.DigestScopeWithInputs(configs, overrides, two)))
+		})
 	})
 
 	Describe("a repository and one kind", func() {
@@ -163,6 +171,14 @@ var _ = Describe("Digests [Unit]", func() {
 		It("reads a row that answers nothing as a repository that inherits", func() {
 			Expect(orgsync.DigestRepositoryKind("aaa", nil)).
 				To(Equal(orgsync.DigestRepositoryKind("aaa", &orgsync.RepositoryOverride{})))
+		})
+
+		It("changes when the effective formatting input changes", func() {
+			one := []orgsync.DigestInput{{Name: "formatting", Digest: "one"}}
+			two := []orgsync.DigestInput{{Name: "formatting", Digest: "two"}}
+
+			Expect(orgsync.DigestRepositoryKindWithInputs("aaa", nil, one)).
+				NotTo(Equal(orgsync.DigestRepositoryKindWithInputs("aaa", nil, two)))
 		})
 	})
 })

@@ -259,6 +259,7 @@ func regularRouteProbes(target string) []authorizationProbe {
 		{http.MethodGet, target + "/sync/plan"},
 		{http.MethodGet, target + "/sync/status"},
 		{http.MethodGet, target + "/sync/files/context"},
+		{http.MethodPost, target + "/sync/files/render"},
 		{http.MethodPost, target + "/sync/run-now"},
 		{http.MethodPost, target + "/sync/plans/sync-plan-1/approval"},
 		{http.MethodDelete, target + "/sync/plans/sync-plan-1"},

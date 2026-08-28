@@ -1,7 +1,10 @@
 package panel
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +18,12 @@ import (
 )
 
 const panelSyncTarget = "github:installation:10"
+
+type fixedSyncScopeDigest string
+
+func (digest fixedSyncScopeDigest) CurrentSyncScopeDigest(context.Context, string) (string, error) {
+	return string(digest), nil
+}
 
 // TestSyncConfigShowsTheEditorLogin drives the production API boundary that
 // feeds the overview cards. Storage deliberately keeps the stable account key;
@@ -101,6 +110,31 @@ func TestSyncPlanShowsRepositoryNames(t *testing.T) {
 		`"repository":"smyklot"`)
 	if strings.Contains(read.Body.String(), `"repository":"repository-20"`) {
 		t.Fatalf("sync plan exposed stable repository id: %s", read.Body.String())
+	}
+}
+
+func TestSyncPlanApprovalRecomputesScopeBeforeApproval(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	createPanelSyncPlan(t, harness, "scope-check", harness.now.Add(time.Hour))
+	harness.server.syncPlans = fixedSyncScopeDigest("sha256:current")
+	document, err := json.Marshal(struct {
+		Digest string `json:"digest"`
+	}{Digest: "sha256:scope-check"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := harness.request(
+		t,
+		http.MethodPost,
+		"/panel/api/v1/targets/"+panelSyncTarget+"/sync/plans/scope-check/approval",
+		bytes.NewReader(document),
+		session,
+	)
+	requireResponse(t, response, "stale plan approval", http.StatusConflict, `"code":"stale_plan"`)
+	_, _, err = harness.store.GetLiveSyncPlan(t.Context(), panelSyncTarget)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("stale plan remained live: %v", err)
 	}
 }
 

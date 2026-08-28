@@ -53,6 +53,10 @@ type catalogSyncer interface {
 	SyncCatalog(context.Context) ([]string, error)
 }
 
+type syncScopeVerifier interface {
+	CurrentSyncScopeDigest(context.Context, string) (string, error)
+}
+
 type userResolver interface {
 	ResolveUser(context.Context, string, string) (storage.Account, error)
 	ResolveRootUser(context.Context, string) (storage.Account, error)
@@ -95,6 +99,7 @@ type Dependencies struct {
 	PendingCI PendingCIController
 	Gates     PendingCIGateController
 	Queue     WorkQueueController
+	SyncPlans syncScopeVerifier
 	// Candidates reads the roster logins are completed against. Optional: a
 	// panel without one offers no completion, which is what the dialogs did
 	// before there was any.
@@ -120,6 +125,7 @@ type Server struct {
 	pendingCI  PendingCIController
 	gates      PendingCIGateController
 	queue      WorkQueueController
+	syncPlans  syncScopeVerifier
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
@@ -198,6 +204,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		pendingCI:  deps.PendingCI,
 		gates:      deps.Gates,
 		queue:      deps.Queue,
+		syncPlans:  deps.SyncPlans,
 	}, nil
 }
 
@@ -267,6 +274,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/sync/files/context",
 		s.getSyncFilesContext,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/targets/{target}/sync/files/render",
+		s.postSyncFileRender,
 	)
 	mux.HandleFunc(
 		"DELETE "+base+"/api/v1/targets/{target}/sync/plans/{plan}",

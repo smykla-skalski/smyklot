@@ -74,6 +74,7 @@ func (s *server) initPanel() error {
 		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
 		Gates:     s,
 		Queue:     s,
+		SyncPlans: s,
 		PendingCI: s.gate.NewControl(s.store),
 	})
 	if err != nil {
@@ -84,6 +85,12 @@ func (s *server) initPanel() error {
 	s.sync.SetQueueObserver(panelServer.AnnounceQueue)
 
 	return nil
+}
+
+// CurrentSyncScopeDigest gives panel approval the same scope fingerprint the
+// planner and executor use.
+func (s *server) CurrentSyncScopeDigest(ctx context.Context, targetID string) (string, error) {
+	return s.sync.CurrentScopeDigest(ctx, targetID)
 }
 
 func (s *server) initStorage(ctx context.Context) error {

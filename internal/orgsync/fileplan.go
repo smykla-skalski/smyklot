@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // CurrentFile is one path a repository holds, as its tree describes it.
@@ -122,11 +123,12 @@ func PlanFiles(
 	override FileOverride,
 	defaultBranch string,
 	current map[string]CurrentFile,
+	formatting config.FormattingPolicy,
 ) (FilePlan, error) {
 	exclude := Excludes{Patterns: append(
 		slices.Clone(config.Excludes), override.Excludes...)}
 
-	desired, err := resolveFiles(config, override, defaultBranch, exclude)
+	desired, err := resolveFiles(config, override, defaultBranch, exclude, formatting)
 	if err != nil {
 		return FilePlan{}, err
 	}
@@ -253,20 +255,28 @@ func refuseConflicts(
 
 // resolveFiles answers what every managed path should say for one repository.
 func resolveFiles(
-	config FileConfig,
+	fileConfig FileConfig,
 	override FileOverride,
 	defaultBranch string,
 	exclude Excludes,
+	basePolicy config.FormattingPolicy,
 ) ([]desiredFile, error) {
-	resolved := make([]desiredFile, 0, len(config.Files))
+	resolved := make([]desiredFile, 0, len(fileConfig.Files))
 	total := 0
 
-	for _, file := range config.Files {
+	for _, file := range fileConfig.Files {
 		if exclude.Matches(file.Path) {
 			continue
 		}
 
 		spec := override.MergeFor(file.Path)
+		policy := basePolicy
+		if file.Formatting != nil {
+			policy = config.ApplyFormattingPatch(policy, *file.Formatting)
+		}
+		if overlay := override.FormattingFor(file.Path); overlay != nil {
+			policy = config.ApplyFormattingPatch(policy, *overlay)
+		}
 
 		// Rendered before it is composed, so a template's placeholders are
 		// filled in whether or not a repository adjusts the file. What a
@@ -275,6 +285,7 @@ func resolveFiles(
 			file.Path,
 			[]byte(Render(file.Content, defaultBranch)),
 			spec,
+			policy,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)

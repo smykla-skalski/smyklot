@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // File is one file every repository is expected to carry, and what it should
@@ -25,6 +26,9 @@ type File struct {
 
 	// Content is the template, before a repository's own adjustments.
 	Content string `json:"content"`
+
+	// Formatting overrides account defaults for this shared template.
+	Formatting *config.FormattingPatch `json:"formatting,omitempty"`
 }
 
 // FileConfig is the files an installation expects its repositories to carry.
@@ -62,6 +66,9 @@ func (c FileConfig) Exclusions() Excludes { return Excludes{Patterns: c.Excludes
 type FileOverride struct {
 	Merges []FileMerge `json:"merges,omitempty"`
 
+	// Formats overrides formatting for exact managed repository paths.
+	Formats []FileFormat `json:"formats,omitempty"`
+
 	// Excludes narrow further than the installation's, never wider.
 	Excludes []string `json:"excludes,omitempty"`
 }
@@ -78,6 +85,23 @@ func (o FileOverride) MergeFor(filePath string) filemerge.Spec {
 	}
 
 	return filemerge.Spec{}
+}
+
+// FormattingFor answers the exact-path formatting overlay, if there is one.
+func (o FileOverride) FormattingFor(filePath string) *config.FormattingPatch {
+	for _, format := range o.Formats {
+		if format.Path == filePath {
+			return &format.Formatting
+		}
+	}
+
+	return nil
+}
+
+// FileFormat is one exact managed path's formatting override.
+type FileFormat struct {
+	Path       string                 `json:"path"`
+	Formatting config.FormattingPatch `json:"formatting"`
 }
 
 // FileMerge is how one repository adjusts one file.
@@ -132,14 +156,7 @@ var placeholders = map[string]struct{}{
 }
 
 // Render fills a template in for one repository.
-//
-// Line endings are settled here too, and for every file rather than only the
-// ones a merge touches: Smyklot writes LF, so a template somebody pasted from
-// an editor that writes CRLF becomes one file changed once rather than a file
-// whose every line reads as changed each time something else about it moves.
 func Render(content, defaultBranch string) string {
-	content = strings.ReplaceAll(content, "\r\n", "\n")
-
 	if defaultBranch == "" {
 		return content
 	}
@@ -270,6 +287,15 @@ func (f File) validate(index int, seen foldedNames) error {
 	// replacement characters, which is a file that says something nobody wrote.
 	if !utf8.ValidString(f.Content) {
 		return invalid("file %q is not text", f.Path)
+	}
+
+	if f.Formatting != nil {
+		if !filemerge.SupportsFormatting(f.Path) {
+			return invalid("file %q configures formatting for an unsupported extension", f.Path)
+		}
+		if err := f.Formatting.Validate(); err != nil {
+			return invalid("formatting file %q: %s", f.Path, err)
+		}
 	}
 
 	return validatePlaceholders(f)
@@ -483,9 +509,14 @@ func parentPath(filePath string) string {
 
 // Adjusted is every path this override adjusts, in the order it names them.
 func (o FileOverride) Adjusted() []string {
-	paths := make([]string, 0, len(o.Merges))
+	paths := make([]string, 0, len(o.Merges)+len(o.Formats))
 	for _, merge := range o.Merges {
 		paths = append(paths, merge.Path)
+	}
+	for _, format := range o.Formats {
+		if !slices.Contains(paths, format.Path) {
+			paths = append(paths, format.Path)
+		}
 	}
 
 	return paths
@@ -539,6 +570,29 @@ func (o FileOverride) ValidateAgainst(config FileConfig, keeping []string) error
 
 		if err := merge.Validate(merge.Path); err != nil {
 			return invalid("adjusting %q: %s", merge.Path, err)
+		}
+	}
+
+	return o.validateFormats(paths, keeping)
+}
+
+func (o FileOverride) validateFormats(paths, keeping []string) error {
+	seen := foldedNames{}
+	for index, format := range o.Formats {
+		if err := validateFilePath("formatting override", index, format.Path); err != nil {
+			return err
+		}
+		if earlier, clashed := seen.clash(format.Path); clashed {
+			return invalid("%q has formatting configured twice", earlier)
+		}
+		if !slices.Contains(paths, format.Path) && !slices.Contains(keeping, format.Path) {
+			return invalid("%q has formatting configured here and is not one of the files synchronized", format.Path)
+		}
+		if !filemerge.SupportsFormatting(format.Path) {
+			return invalid("%q has formatting configured for an unsupported extension", format.Path)
+		}
+		if err := format.Formatting.Validate(); err != nil {
+			return invalid("formatting %q: %s", format.Path, err)
 		}
 	}
 

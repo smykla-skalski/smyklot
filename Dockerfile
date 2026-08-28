@@ -11,12 +11,13 @@ ARG TARGETPLATFORM
 
 LABEL org.opencontainers.image.source="https://github.com/smykla-skalski/smyklot"
 LABEL org.opencontainers.image.description="Automated PR approvals and merges based on CODEOWNERS"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="MIT AND BSD-3-Clause"
 
 # Copy CA certificates from alpine
 COPY --from=certs /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy pre-built binary from GoReleaser
 COPY ${TARGETPLATFORM}/smyklot /smyklot
+COPY THIRD_PARTY_NOTICES.md /THIRD_PARTY_NOTICES.md
 
 ENTRYPOINT ["/smyklot"]

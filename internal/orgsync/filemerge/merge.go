@@ -1,7 +1,6 @@
 package filemerge
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -16,6 +15,9 @@ import (
 func mergeStructured(format Format, template []byte, spec Spec) ([]byte, error) {
 	if format == FormatYAML {
 		return mergeYAML(template, spec)
+	}
+	if format == FormatJSON || format == FormatJSONC {
+		return mergeJSONSyntax(template, spec, format == FormatJSONC)
 	}
 
 	base, err := parseJSON(template)
@@ -51,16 +53,20 @@ func decodeOverrides(overrides json.RawMessage) (map[string]any, error) {
 		return map[string]any{}, nil
 	}
 
-	decoder := json.NewDecoder(bytes.NewReader(overrides))
-	decoder.UseNumber()
-
-	var document map[string]any
-	if err := decoder.Decode(&document); err != nil {
+	root, err := parseJSONSyntax(overrides, false)
+	if err != nil {
 		return nil, fmt.Errorf("%w: reading the overrides: %w", ErrUnreadable, err)
 	}
-
-	if document == nil {
+	value, err := jsonSyntaxValue(root)
+	if err != nil {
+		return nil, fmt.Errorf("%w: reading the overrides: %w", ErrUnreadable, err)
+	}
+	if value == nil {
 		return map[string]any{}, nil
+	}
+	document, ok := value.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("%w: reading the overrides: it holds no object", ErrUnreadable)
 	}
 
 	return document, nil

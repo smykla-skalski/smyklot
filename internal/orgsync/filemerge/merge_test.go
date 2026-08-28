@@ -12,16 +12,21 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // overrides writes a spec's adjustments the way they are stored: JSON, whatever
 // the file they patch is written in.
 func overrides(document string) json.RawMessage { return json.RawMessage(document) }
 
+func applyFileMerge(filePath string, template []byte, spec filemerge.Spec) ([]byte, error) {
+	return filemerge.Apply(filePath, template, spec, config.DefaultFormattingPolicy())
+}
+
 var _ = Describe("Merging a structured file [Unit]", func() {
 	Describe("a deep merge", func() {
 		It("takes the template where the repository says nothing", func() {
-			merged, err := filemerge.Apply("renovate.json", []byte(`{
+			merged, err := applyFileMerge("renovate.json", []byte(`{
   "extends": ["config:recommended"],
   "timezone": "UTC"
 }`), filemerge.Spec{Overrides: overrides(`{"timezone": "Europe/Warsaw"}`)})
@@ -32,7 +37,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("merges objects key by key rather than replacing them", func() {
-			merged, err := filemerge.Apply("renovate.json", []byte(
+			merged, err := applyFileMerge("renovate.json", []byte(
 				`{"vulnerabilityAlerts": {"enabled": true, "automerge": true}}`,
 			), filemerge.Spec{Overrides: overrides(`{"vulnerabilityAlerts": {"automerge": false}}`)})
 
@@ -44,7 +49,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("removes a key the repository sets to null", func() {
-			merged, err := filemerge.Apply("renovate.json",
+			merged, err := applyFileMerge("renovate.json",
 				[]byte(`{"automergeStrategy": "squash", "timezone": "UTC"}`),
 				filemerge.Spec{Overrides: overrides(`{"automergeStrategy": null}`)})
 
@@ -57,7 +62,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		// replaces it, and the nulls inside remove nothing, because there is
 		// nothing there to remove.
 		It("replaces a scalar with an object, dropping the nulls inside it", func() {
-			merged, err := filemerge.Apply("renovate.json", []byte(`{"schedule": "weekly"}`),
+			merged, err := applyFileMerge("renovate.json", []byte(`{"schedule": "weekly"}`),
 				filemerge.Spec{Overrides: overrides(`{"schedule": {"on": "monday", "off": null}}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -68,7 +73,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 
 	Describe("a shallow merge", func() {
 		It("replaces a top-level key whole rather than merging into it", func() {
-			merged, err := filemerge.Apply("renovate.json", []byte(
+			merged, err := applyFileMerge("renovate.json", []byte(
 				`{"vulnerabilityAlerts": {"enabled": true, "automerge": true}}`,
 			), filemerge.Spec{
 				Strategy:  filemerge.StrategyShallow,
@@ -81,7 +86,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("removes a top-level key set to null", func() {
-			merged, err := filemerge.Apply("renovate.json",
+			merged, err := applyFileMerge("renovate.json",
 				[]byte(`{"timezone": "UTC", "extends": []}`),
 				filemerge.Spec{
 					Strategy: filemerge.StrategyShallow, Overrides: overrides(`{"timezone": null}`),
@@ -96,7 +101,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		template := []byte(`{"ignorePaths": ["vendor/**", "dist/**"]}`)
 
 		It("replaces one without a rule, which is what RFC 7396 says", func() {
-			merged, err := filemerge.Apply("renovate.json", template,
+			merged, err := applyFileMerge("renovate.json", template,
 				filemerge.Spec{Overrides: overrides(`{"ignorePaths": ["crates/**"]}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -104,7 +109,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("appends the repository's entries after the template's", func() {
-			merged, err := filemerge.Apply("renovate.json", template, filemerge.Spec{
+			merged, err := applyFileMerge("renovate.json", template, filemerge.Spec{
 				Overrides: overrides(`{"ignorePaths": ["crates/**"]}`),
 				Arrays: []filemerge.ArrayRule{
 					{Path: "$.ignorePaths", Strategy: filemerge.ArrayAppend},
@@ -117,7 +122,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("prepends them before", func() {
-			merged, err := filemerge.Apply("renovate.json", template, filemerge.Spec{
+			merged, err := applyFileMerge("renovate.json", template, filemerge.Spec{
 				Overrides: overrides(`{"ignorePaths": ["crates/**"]}`),
 				Arrays: []filemerge.ArrayRule{
 					{Path: "$.ignorePaths", Strategy: filemerge.ArrayPrepend},
@@ -130,7 +135,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("appends onto a template that has no list of its own", func() {
-			merged, err := filemerge.Apply("renovate.json", []byte(`{"timezone": "UTC"}`),
+			merged, err := applyFileMerge("renovate.json", []byte(`{"timezone": "UTC"}`),
 				filemerge.Spec{
 					Overrides: overrides(`{"labels": ["automation"]}`),
 					Arrays: []filemerge.ArrayRule{
@@ -143,7 +148,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("reaches a list nested inside an object", func() {
-			merged, err := filemerge.Apply("renovate.json",
+			merged, err := applyFileMerge("renovate.json",
 				[]byte(`{"hostRules": {"matchHost": ["github.com"]}}`), filemerge.Spec{
 					Overrides: overrides(`{"hostRules": {"matchHost": ["gitlab.com"]}}`),
 					Arrays: []filemerge.ArrayRule{
@@ -161,7 +166,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		// The engine this replaces split a path on every dot, so a key with one
 		// in it could not be addressed at all and the rule matched nothing.
 		It("reaches a key that has a dot in its name", func() {
-			merged, err := filemerge.Apply("renovate.json",
+			merged, err := applyFileMerge("renovate.json",
 				[]byte(`{"example.com": ["one"]}`), filemerge.Spec{
 					Overrides: overrides(`{"example.com": ["two"]}`),
 					Arrays: []filemerge.ArrayRule{
@@ -174,7 +179,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("removes what appears twice when asked to", func() {
-			merged, err := filemerge.Apply("renovate.json",
+			merged, err := applyFileMerge("renovate.json",
 				[]byte(`{"labels": ["automation", "renovate"]}`), filemerge.Spec{
 					Overrides:   overrides(`{"labels": ["renovate", "deps"]}`),
 					Arrays:      []filemerge.ArrayRule{{Path: "$.labels", Strategy: filemerge.ArrayAppend}},
@@ -189,7 +194,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		// int(1) met an override's float64(1), cmp.Equal called them different,
 		// and the deduplication it had been asked for silently did nothing.
 		It("removes a repeat the template wrote as YAML and the override as JSON", func() {
-			merged, err := filemerge.Apply("renovate.yaml", []byte("ports:\n  - 8080\n"),
+			merged, err := applyFileMerge("renovate.yaml", []byte("ports:\n  - 8080\n"),
 				filemerge.Spec{
 					Overrides:   overrides(`{"ports": [8080, 9090]}`),
 					Arrays:      []filemerge.ArrayRule{{Path: "$.ports", Strategy: filemerge.ArrayAppend}},
@@ -213,7 +218,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 
 			template := []byte(`{"one": ["a"], "two": ["a"]}`)
 
-			merged, err := filemerge.Apply("f.json", template,
+			merged, err := applyFileMerge("f.json", template,
 				spec(filemerge.ArrayAppend, filemerge.ArrayPrepend))
 
 			Expect(err).NotTo(HaveOccurred())
@@ -232,7 +237,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 	// through the whole entry point.
 	DescribeTable("refuses a list rule that addresses nothing",
 		func(rule filemerge.ArrayRule, template, override, because string) {
-			_, err := filemerge.Apply("renovate.json", []byte(template), filemerge.Spec{
+			_, err := applyFileMerge("renovate.json", []byte(template), filemerge.Spec{
 				Overrides: overrides(override),
 				Arrays:    []filemerge.ArrayRule{rule},
 			})
@@ -255,7 +260,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		// from a JSON round trip as a different number. The engine this replaces
 		// marshalled through JSON on every merge.
 		It("keeps an identifier too large for a float64 exactly as it was", func() {
-			merged, err := filemerge.Apply("ids.json",
+			merged, err := applyFileMerge("ids.json",
 				[]byte(`{"actor": 9007199254740993}`),
 				filemerge.Spec{Overrides: overrides(`{"other": 9007199254740995}`)})
 
@@ -265,7 +270,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 		})
 
 		It("writes a number into YAML as a number rather than as text", func() {
-			merged, err := filemerge.Apply("workflow.yaml", []byte("timeout: 5\n"),
+			merged, err := applyFileMerge("workflow.yaml", []byte("timeout: 5\n"),
 				filemerge.Spec{Overrides: overrides(`{"timeout": 30, "retries": 2}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -278,7 +283,7 @@ var _ = Describe("Merging a structured file [Unit]", func() {
 	It("takes the template unchanged when nothing is configured", func() {
 		template := []byte("# Contributing\n")
 
-		Expect(filemerge.Apply("CONTRIBUTING.md", template, filemerge.Spec{})).
+		Expect(applyFileMerge("CONTRIBUTING.md", template, filemerge.Spec{})).
 			To(Equal(template))
 	})
 
@@ -309,7 +314,7 @@ jobs:
 		merged := func() string {
 			GinkgoHelper()
 
-			out, err := filemerge.Apply(".github/workflows/ci.yaml", template,
+			out, err := applyFileMerge(".github/workflows/ci.yaml", template,
 				filemerge.Spec{Overrides: overrides(`{"name": "release"}`)})
 			Expect(err).NotTo(HaveOccurred())
 
@@ -343,7 +348,7 @@ jobs:
 		// line that says who generated the file - and the spec above passed,
 		// because its comment sits directly above a key and rides along with it.
 		It("keeps a comment that belongs to the file rather than to a key", func() {
-			out, err := filemerge.Apply("ci.yaml",
+			out, err := applyFileMerge("ci.yaml",
 				[]byte("# Generated by Smyklot. Edit the template, not this.\n\nname: build\n"),
 				filemerge.Spec{Overrides: overrides(`{"name": "release"}`)})
 
@@ -358,7 +363,7 @@ jobs:
 		// wrote, and every repository carrying it saw that in the diff.
 		DescribeTable("writes a construction back the way it arrived",
 			func(template string) {
-				out, err := filemerge.Apply("ci.yaml", []byte(template),
+				out, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(`{"name": "release"}`)})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -382,7 +387,7 @@ jobs:
 		// GitHub will not load.
 		DescribeTable("keeps a file readable when it replaces an anchored value",
 			func(template string, spec filemerge.Spec) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template), spec)
+				merged, err := applyFileMerge("ci.yaml", []byte(template), spec)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Read back rather than matched: a dangling alias is a file
@@ -412,7 +417,7 @@ jobs:
 		// whole thing - and every key the alias carried that the override did
 		// not mention went with it.
 		It("merges into what an alias stands for, rather than over it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("common: &c\n  labels:\n    - a\n  owner: platform\nx: *c\n"),
 				filemerge.Spec{Overrides: overrides(`{"x": {"labels": ["b"]}}`)})
 
@@ -434,7 +439,7 @@ jobs:
 		// Nothing can keep this one: the key carrying the anchor is gone, and
 		// what referred to it cannot be left naming nothing.
 		It("refuses to remove an anchor something still refers to", func() {
-			_, err := filemerge.Apply("ci.yaml",
+			_, err := applyFileMerge("ci.yaml",
 				[]byte("defaults: &d\n  runs-on: ubuntu\njobs:\n  build:\n    <<: *d\n"),
 				filemerge.Spec{Overrides: overrides(`{"defaults": null}`)})
 
@@ -447,7 +452,7 @@ jobs:
 		// alias reads upwards. Asking only whether the name is still somewhere
 		// in the document called this fine and wrote a file that will not load.
 		It("refuses where the surviving anchor lands below the alias", func() {
-			_, err := filemerge.Apply("ci.yaml",
+			_, err := applyFileMerge("ci.yaml",
 				[]byte("defaults: &d\n  labels:\n    - &x keep\nafter: *x\nthing:\n  <<: *d\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"defaults": {"labels": ["d"]}, "thing": {"labels": ["t"]}}`),
@@ -465,7 +470,7 @@ jobs:
 		// name before descending, or the merge refuses a document go-yaml reads
 		// and writes quite happily.
 		It("leaves an anchor named from inside itself alone", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("loop: &loop\n  self: *loop\nname: build\n"),
 				filemerge.Spec{Overrides: overrides(`{"name": "test"}`)})
 
@@ -479,7 +484,7 @@ jobs:
 		// the repository's items to nothing - a replacement, silently, for a
 		// rule that says append.
 		It("appends to a list the template reached through an alias", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  ports:\n    - 80\nuse: *b\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"use": {"ports": [443]}}`),
@@ -504,7 +509,7 @@ jobs:
 		// the document being edited and the append landed on what the merge had
 		// already written there.
 		It("appends to what the template held, not to what the merge wrote", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  ports:\n    - 80\nuse: *b\n"),
 				filemerge.Spec{
 					Overrides: overrides(
@@ -525,7 +530,7 @@ jobs:
 		// came to replace what a job inherited rather than adding to it - and
 		// the files this synchronizes are written this way constantly.
 		It("merges into what a merge key gives a mapping, rather than over it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("common: &c\n  with:\n    node: 18\n    cache: npm\n"+
 					"job:\n  <<: *c\n  name: build\n"),
 				filemerge.Spec{Overrides: overrides(`{"job": {"with": {"node": "20"}}}`)})
@@ -549,7 +554,7 @@ jobs:
 		})
 
 		It("appends to a list a merge key gives a mapping", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  ports:\n    - 80\nuse:\n  <<: *b\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"use": {"ports": [443]}}`),
@@ -574,7 +579,7 @@ jobs:
 		// a removal lands as a change of value. Both were silence.
 		DescribeTable("refuses to remove a key a merge key carries",
 			func(template string) {
-				_, err := filemerge.Apply("ci.yaml", []byte(template),
+				_, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(`{"job": {"a": null}}`)})
 
 				Expect(err).To(MatchError(filemerge.ErrUnwritable))
@@ -596,7 +601,7 @@ jobs:
 		// goes through that code.
 		DescribeTable("refuses an override that writes a merge key itself",
 			func(template, override string) {
-				_, err := filemerge.Apply("ci.yaml", []byte(template),
+				_, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(override)})
 
 				Expect(err).To(MatchError(filemerge.ErrUnwritable))
@@ -615,7 +620,7 @@ jobs:
 		// Plain is what makes a merge key one. Read as inheritance, a quoted
 		// `"<<"` had a removal refused for a key the mapping does not have.
 		It("reads a quoted merge key as the ordinary key it is", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("d: &d\n  a: 1\nj:\n  \"<<\": *d\n  a: 2\n"),
 				filemerge.Spec{Overrides: overrides(`{"j": {"a": null}}`)})
 
@@ -640,7 +645,7 @@ jobs:
 					defer GinkgoRecover()
 					defer close(done)
 
-					_, err := filemerge.Apply("ci.yaml",
+					_, err := applyFileMerge("ci.yaml",
 						[]byte("a: &a\n  <<: [*a, *a]\n"),
 						filemerge.Spec{Overrides: overrides(override)})
 					Expect(err).NotTo(HaveOccurred())
@@ -659,7 +664,7 @@ jobs:
 		// This one changes `x.inner`, and `later` names the same anchor - it has
 		// to go on meaning what the template anchored.
 		It("does not redefine an anchor nested inside what it copies", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("common: &c\n  inner: &i\n    k: 1\nx: *c\nlater: *i\n"),
 				filemerge.Spec{Overrides: overrides(`{"x": {"inner": {"k": 2}}}`)})
 
@@ -683,7 +688,7 @@ jobs:
 		// inside anything standing for it - so the copy's pair has to keep
 		// pointing at each other rather than back at the template's.
 		It("keeps a copied alias following the copy it was taken with", func() {
-			merged, err := filemerge.Apply("compose.yaml",
+			merged, err := applyFileMerge("compose.yaml",
 				[]byte("zcommon: &c\n  img: &i alpine\n  from: *i\nx: *c\n"),
 				filemerge.Spec{Overrides: overrides(`{"x": {"img": "debian"}}`)})
 
@@ -708,7 +713,7 @@ jobs:
 		// definition away in the same override leaves the copy readable rather
 		// than refused for an anchor that went with it.
 		It("keeps a copy readable when the anchor it came from is removed", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("zbase: &t\n  q: &i 5\n  r: *i\nalias: *t\n"),
 				filemerge.Spec{Overrides: overrides(`{"alias": {"x": 1}, "zbase": null}`)})
 
@@ -732,7 +737,7 @@ jobs:
 		// nothing - so one name, however the write landed.
 		DescribeTable("leaves one definition of an anchor the written list carries",
 			func(template string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{
 						Overrides: overrides(`{"thing": {"labels": ["extra"]}}`),
 						Arrays: []filemerge.ArrayRule{
@@ -764,7 +769,7 @@ jobs:
 		// alias is written.
 		DescribeTable("leaves a name the template itself defines twice",
 			func(template, expected string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{
 						Overrides: overrides(`{"labels": ["extra"]}`),
 						Arrays: []filemerge.ArrayRule{
@@ -795,7 +800,7 @@ jobs:
 		// override named, in a file the merge reports as written, and one
 		// nothing can catch afterwards because the name is still bound.
 		It("does not rebind an alias by writing a clone above its definition", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("defs: &base\n  - &a first\nafter: &a second\nlist: *base\nuse: *a\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"list": ["extra"]}`),
@@ -824,7 +829,7 @@ jobs:
 		// an alias with nothing above it and somebody's comments deleted.
 		DescribeTable("writes a rule's list back over one that lost what it carried",
 			func(template, expected string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{
 						Overrides:   overrides(`{"a": {"list": ["one", "two"]}}`),
 						Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
@@ -850,7 +855,7 @@ jobs:
 		// flattening that is the whole of the diff.
 		DescribeTable("leaves a copy its own settle emptied",
 			func(template, override string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(override)})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -869,7 +874,7 @@ jobs:
 		// before `zbase` moves, and a reader of athing.inner.sib gets the old
 		// value for ever - byte-stable across sweeps, so it never repairs.
 		It("keeps a stale sibling in a copy its own settle emptied", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("aoth: &o\n  k: v\nzbase: &b\n  inner:\n    <<: *o\n    sib: old\n"+
 					"athing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(
@@ -886,7 +891,7 @@ jobs:
 		// copy reads as saying nothing new and the rule's whole result goes
 		// with it - a rule configured, validated, run, and silently dropped.
 		It("keeps a copy a list rule has written into", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &base\n  list:\n    - t\na: *base\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"a": {"list": ["t"]}}`),
@@ -907,7 +912,7 @@ jobs:
 		// so the rule's write read as the merge's own and the copy went, taking
 		// the rule's result with it.
 		It("keeps a copy a rule wrote into, with an inner key settled", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n"+
 					"  list:\n    - t\na: *base\n"),
 				filemerge.Spec{
@@ -928,7 +933,7 @@ jobs:
 		// anchor already says - and the item dropped is the template's own, from
 		// a rule that was told to append to it.
 		It("keeps the template's items a rule appended into a copy", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("oth: &o\n  k: v\nbase: &base\n  inner:\n    <<: *o\n"+
 					"  list:\n    - old\na: *base\n"),
 				filemerge.Spec{
@@ -952,7 +957,7 @@ jobs:
 		// second copy says nothing the anchor does not and flattening it is the
 		// change nobody asked for.
 		It("takes back a copy beside one a rule wrote into", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &base\n  list:\n    - t\n  k: v\na: *base\nb: *base\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"a": {"list": ["t"]}, "b": {"k": "v"}}`),
@@ -973,7 +978,7 @@ jobs:
 		// in any file. A rebuild that cannot be made cannot decide, and what
 		// cannot be decided is left alone.
 		It("does not fail a file over a rebuild it could not make", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("zoth: &o\n  z: 1\nbase: &b\n  inner:\n    <<: *o\n    k: v\n"+
 					"thing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(
@@ -1018,7 +1023,7 @@ jobs:
 
 			started := time.Now()
 
-			merged, err := filemerge.Apply("ci.yaml", []byte(template.String()),
+			merged, err := applyFileMerge("ci.yaml", []byte(template.String()),
 				filemerge.Spec{Overrides: overrides(`{"top": ` + override.String() + `}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -1051,7 +1056,7 @@ jobs:
 				strings.Repeat("}", depth) + `}}`)}
 
 			started := time.Now()
-			merged, err := filemerge.Apply("ci.yaml", []byte(template), spec)
+			merged, err := applyFileMerge("ci.yaml", []byte(template), spec)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(time.Since(started)).To(BeNumerically("<", time.Minute))
@@ -1065,7 +1070,7 @@ jobs:
 			// And it has converged. A bound that keeps a copy must not then
 			// propose a different file next sweep: that is a pull request
 			// reopening itself for ever, which is worse than the flattening.
-			again, err := filemerge.Apply("ci.yaml", merged, spec)
+			again, err := applyFileMerge("ci.yaml", merged, spec)
 
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(again)).To(Equal(string(merged)))
@@ -1076,7 +1081,7 @@ jobs:
 		// mapping reads. Recorded either way, for the same reason everything
 		// else here is judged at the end rather than where it was written.
 		It("takes back a key a later override key made inherited", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("zbase: &b\n  z: 1\nthing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(`{"thing": {"k": "v"}, "zbase": {"k": "v"}}`)})
 
@@ -1092,7 +1097,7 @@ jobs:
 		// old values, including keys the override never named. Judged against
 		// what the copy would be if it were taken now instead.
 		It("keeps tracking what an alias names when a rule moves it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("aaa: &a\n  k1: v1\n  list:\n    - t1\nddd:\n  x: *a\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"aaa": {"list": ["v3"]}, "ddd": {"x": {"k1": "v1"}}}`),
@@ -1111,7 +1116,7 @@ jobs:
 		// from. `j` is never named by the override and must not be frozen at
 		// the value the template had when the copy was taken.
 		It("keeps tracking a merge key when a later override key moves it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("zbase: &b\n  inner:\n    k: v\n    j: w\nthing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(
 					`{"thing": {"inner": {"k": "v"}}, "zbase": {"inner": {"j": "changed"}}}`)})
@@ -1126,7 +1131,7 @@ jobs:
 		// template that moved under it, which is the whole reason the pane
 		// offers adjustments.
 		It("keeps a pin the moved anchor disagrees with", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("zbase: &b\n  inner:\n    k: v\nthing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(
 					`{"thing": {"inner": {"k": "v"}}, "zbase": {"inner": {"k": "other"}}}`)})
@@ -1150,7 +1155,7 @@ jobs:
 		// was pinning against, and it re-derived the same wrong file every
 		// sweep.
 		It("keeps an override the same run's other change would undo", func() {
-			merged, err := filemerge.Apply("compose.yaml",
+			merged, err := applyFileMerge("compose.yaml",
 				[]byte("x-logging: &logging\n  driver: json-file\n"+
 					"services:\n  web:\n    logging:\n      <<: *logging\n"),
 				filemerge.Spec{Overrides: overrides(
@@ -1166,7 +1171,7 @@ jobs:
 		// Rules always run after the whole merge, so this one needs no ordering
 		// trick at all.
 		It("keeps an override a list rule on the anchor would undo", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  list:\n    - t\nthing:\n  <<: *b\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"base": {"list": ["t"]}, "thing": {"list": ["t"]}}`),
@@ -1192,7 +1197,7 @@ jobs:
 		It("leaves an inherited list alone where the template anchors it", func() {
 			template := "base: &base\n  list: &l\n    - t\na: *base\n"
 
-			merged, err := filemerge.Apply("ci.yaml", []byte(template),
+			merged, err := applyFileMerge("ci.yaml", []byte(template),
 				filemerge.Spec{
 					Overrides:   overrides(`{"a": {"list": ["t"]}}`),
 					Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
@@ -1206,7 +1211,7 @@ jobs:
 		It("leaves an inherited list alone where a rule changes none of it", func() {
 			template := "base: &base\n  list:\n    - t\na: *base\n"
 
-			merged, err := filemerge.Apply("ci.yaml", []byte(template),
+			merged, err := applyFileMerge("ci.yaml", []byte(template),
 				filemerge.Spec{
 					Overrides:   overrides(`{"a": {"list": ["t"]}}`),
 					Arrays:      []filemerge.ArrayRule{{Path: "$.a.list", Strategy: filemerge.ArrayAppend}},
@@ -1231,7 +1236,7 @@ jobs:
 					template = own[0]
 				}
 
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(override)})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -1275,7 +1280,7 @@ jobs:
 		// the sync applied.
 		DescribeTable("writes a respelling the inheritance does not already say",
 			func(template, override, expected string) {
-				merged, err := filemerge.Apply("compose.yaml", []byte(template),
+				merged, err := applyFileMerge("compose.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(override)})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -1310,7 +1315,7 @@ jobs:
 		// whose anchor names itself has no value to read - so a merge that
 		// never needed one failed, blaming the parse for a file that parsed.
 		It("merges into a template whose anchor names itself", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &base\n  self: *base\n  keep: 1\na: *base\nother: 0\n"),
 				filemerge.Spec{Overrides: overrides(`{"a": {"added": 2}}`)})
 
@@ -1327,7 +1332,7 @@ jobs:
 		// `dup` is defined twice in the template on purpose. That is legal YAML
 		// and it is what makes both copies carry a name that has to be renamed.
 		It("gives two copies made in one merge two anchor names", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte(
+			merged, err := applyFileMerge("ci.yaml", []byte(
 				"leaf: &l\n  d: &dup 2\nmid: &m\n  b: *l\n  e: &dup 1\n"+
 					"base: &bs\n  a: *m\nthing:\n  <<: *bs\nkeep: *dup\n"),
 				filemerge.Spec{Overrides: overrides(`{"thing": {"a": {"b": {"c": 1}}}}`)})
@@ -1348,7 +1353,7 @@ jobs:
 		// And where the patch does say something new, the whole mapping is
 		// written out - the inheritance cannot express one key differing.
 		It("writes an inherited mapping out where the patch changes it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  nested:\n    a: 1\n    b: 2\nthing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(`{"thing": {"nested": {"a": 9}}}`)})
 
@@ -1370,7 +1375,7 @@ jobs:
 		// than about what it lands on would split the two apart.
 		DescribeTable("replaces what an empty patch cannot merge into",
 			func(template string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte(template),
+				merged, err := applyFileMerge("ci.yaml", []byte(template),
 					filemerge.Spec{Overrides: overrides(`{"jobs": {}}`)})
 
 				Expect(err).NotTo(HaveOccurred())
@@ -1387,7 +1392,7 @@ jobs:
 		// something is there, or an inherited scalar survives a patch that
 		// replaces the same scalar written literally.
 		It("replaces an inherited scalar with an empty patch", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("base: &b\n  jobs: 5\nthing:\n  <<: *b\n"),
 				filemerge.Spec{Overrides: overrides(`{"thing": {"jobs": {}}}`)})
 
@@ -1406,7 +1411,7 @@ jobs:
 		// written plainly is still a merge key on the way back in - which is
 		// the half that matters and the half a substring assertion cannot see.
 		It("leaves a merge key merging", func() {
-			out, err := filemerge.Apply("ci.yaml",
+			out, err := applyFileMerge("ci.yaml",
 				[]byte("defaults: &d\n  run: make\njobs:\n  <<: *d\n  extra: 1\nname: build\n"),
 				filemerge.Spec{Overrides: overrides(`{"name": "release"}`)})
 			Expect(err).NotTo(HaveOccurred())
@@ -1434,7 +1439,7 @@ jobs:
 
 	Describe("a YAML template the merge does touch", func() {
 		It("writes a string that reads as a number as a string", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte("go-version: 1.19\n"),
+			merged, err := applyFileMerge("ci.yaml", []byte("go-version: 1.19\n"),
 				filemerge.Spec{Overrides: overrides(`{"go-version": "1.20"}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -1448,7 +1453,7 @@ jobs:
 		// somebody's repository.
 		DescribeTable("writes a word an older reader would take for a boolean as a string",
 			func(value string) {
-				merged, err := filemerge.Apply("compose.yaml", []byte("restart: keep\n"),
+				merged, err := applyFileMerge("compose.yaml", []byte("restart: keep\n"),
 					filemerge.Spec{Overrides: overrides(
 						fmt.Sprintf(`{"restart": %q}`, value))})
 
@@ -1472,7 +1477,7 @@ jobs:
 		// triggers at all.
 		DescribeTable("writes a key an older reader would take for something else as a string",
 			func(key string) {
-				merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
+				merged, err := applyFileMerge("ci.yaml", []byte("name: build\n"),
 					filemerge.Spec{Overrides: overrides(
 						fmt.Sprintf(`{%q: "x"}`, key))})
 
@@ -1488,7 +1493,7 @@ jobs:
 		// The same key inside an object the override writes fresh, which is
 		// built by a different function and was bare there too.
 		It("writes a nested key an older reader would misread as a string", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte("name: build\n"),
+			merged, err := applyFileMerge("ci.yaml", []byte("name: build\n"),
 				filemerge.Spec{Overrides: overrides(`{"jobs": {"on": "x"}}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -1496,7 +1501,7 @@ jobs:
 		})
 
 		It("keeps a large identifier's digits", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte("app: 1\n"),
+			merged, err := applyFileMerge("ci.yaml", []byte("app: 1\n"),
 				filemerge.Spec{Overrides: overrides(`{"app": 9007199254740995}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -1504,7 +1509,7 @@ jobs:
 		})
 
 		It("leaves the rest of a mapping alone when one key below it changes", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("jobs:\n  build:\n    go-version: 1.20\n    timeout: 5\n"),
 				filemerge.Spec{Overrides: overrides(
 					`{"jobs": {"build": {"timeout": 30}}}`)})
@@ -1515,7 +1520,7 @@ jobs:
 		})
 
 		It("keeps a list item the template wrote as the template wrote it", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("versions:\n  # supported\n  - 1.20\n"),
 				filemerge.Spec{
 					Overrides: overrides(`{"versions": ["1.21"]}`),
@@ -1532,7 +1537,7 @@ jobs:
 
 		// Two spellings of one value, which is what the deduplication is for.
 		It("removes a repeat written two ways", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("ports:\n  - 8080\n"),
 				filemerge.Spec{
 					Overrides:   overrides(`{"ports": [8080, 9090]}`),
@@ -1550,7 +1555,7 @@ jobs:
 		// A mapping with a key that is not a string decodes to a Go map nothing
 		// else here handles, and comparing two of them took the process down.
 		It("deduplicates beside a mapping whose keys are not strings", func() {
-			merged, err := filemerge.Apply("ci.yaml",
+			merged, err := applyFileMerge("ci.yaml",
 				[]byte("matrix:\n  - 1: a\n"),
 				filemerge.Spec{
 					Overrides:   overrides(`{"matrix": [{"go": "1.21"}]}`),
@@ -1566,7 +1571,7 @@ jobs:
 		})
 
 		It("removes a key an override sets to null", func() {
-			merged, err := filemerge.Apply("ci.yaml", []byte("keep: 1\ndrop: 2\n"),
+			merged, err := applyFileMerge("ci.yaml", []byte("keep: 1\ndrop: 2\n"),
 				filemerge.Spec{Overrides: overrides(`{"drop": null}`)})
 
 			Expect(err).NotTo(HaveOccurred())
@@ -1577,7 +1582,7 @@ jobs:
 
 	DescribeTable("refuses a file it cannot read",
 		func(path, template string) {
-			_, err := filemerge.Apply(path, []byte(template),
+			_, err := applyFileMerge(path, []byte(template),
 				filemerge.Spec{Overrides: overrides(`{"a": 1}`)})
 
 			Expect(err).To(MatchError(filemerge.ErrUnreadable))

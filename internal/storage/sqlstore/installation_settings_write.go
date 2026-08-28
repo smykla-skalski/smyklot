@@ -24,7 +24,7 @@ func (s *Store) applyInstallationSettings(
 			return err
 		}
 	}
-	if work.inclusionChanged || work.syncChanged {
+	if work.inclusionChanged || work.syncChanged || work.formattingChanged {
 		return invalidateLivePlans(ctx, tx, request.TargetID, request.ChangedAt)
 	}
 

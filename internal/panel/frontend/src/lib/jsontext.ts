@@ -1,32 +1,43 @@
 /**
  * The merge over the template's own bytes. `filemerge.ts` answers what a
- * repository ends up with as parsed values; this module answers it as text,
- * editing the template in place so its comments and hand formatting survive
- * everywhere an adjustment did not reach. It also runs the other way:
+ * repository ends up with as parsed values; this module uses jsonc-parser to
+ * produce a responsive local editing aid. The backend render endpoint owns
+ * the exact bytes shown as final output. This module also runs the other way:
  * given the template and an edited copy, it derives the RFC 7396 override
  * that turns one into the other - which is what makes the composed copy an
  * editable surface rather than a printout.
  *
- * One known ceiling, inherited from jsonc-parser: removing a key reformats
- * its immediate neighbours and takes the key's own leading comment with it.
- * Everything else is a local edit.
+ * jsonc-parser deliberately owns serialization here. Keeping those rules out
+ * of browser code prevents the editing aid from becoming a second formatter.
  */
 import {
   applyEdits,
-  findNodeAtLocation,
   modify,
-  parse,
   parseTree,
+  type FormattingOptions,
+  type Node,
   type ParseError,
 } from 'jsonc-parser';
 
 import { arrayRulePath, type ArrayRule, type FileMergeSpec } from './filemerge';
+import type { MergeSpec } from './merge';
 
 type Segments = Array<string | number>;
 type ObjectPath = string[];
+const invalidJSON = Symbol('invalid JSON');
+
+function emptyRecord(): Record<string, unknown> {
+  return Object.create(null) as Record<string, unknown>;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function ownValue(record: unknown, key: string): unknown {
+  return isRecord(record) && Object.prototype.hasOwnProperty.call(record, key)
+    ? record[key]
+    : undefined;
 }
 
 function ruleFor(rules: readonly ArrayRule[], at: readonly string[]): ArrayRule | undefined {
@@ -34,16 +45,53 @@ function ruleFor(rules: readonly ArrayRule[], at: readonly string[]): ArrayRule 
   return rules.find((rule) => rule.path === path);
 }
 
-function formatting(text: string): { formattingOptions: object } {
+function formatting(text: string): { formattingOptions: FormattingOptions } {
+  const spaces = /^( +)\S/mu.exec(text)?.[1].length ?? 2;
+
   return {
-    formattingOptions: { insertSpaces: !/^\t/mu.test(text), tabSize: 2, keepLines: true },
+    formattingOptions: {
+      insertSpaces: !/^\t/mu.test(text),
+      tabSize: spaces,
+      eol: text.includes('\r\n') ? '\r\n' : '\n',
+      keepLines: true,
+    },
   };
 }
 
 function parseLoose(text: string): unknown {
   const errors: ParseError[] = [];
-  const value: unknown = parse(text, errors, { allowTrailingComma: true });
-  return errors.length > 0 ? undefined : value;
+  const root = parseTree(text, errors, { allowTrailingComma: true });
+  if (errors.length > 0 || root === undefined) return undefined;
+  const value = nodeValue(root);
+
+  return value === invalidJSON ? undefined : value;
+}
+
+function nodeValue(node: Node): unknown | typeof invalidJSON {
+  if (node.type === 'array') {
+    const value: unknown[] = [];
+    for (const child of node.children ?? []) {
+      const held = nodeValue(child);
+      if (held === invalidJSON) return invalidJSON;
+      value.push(held);
+    }
+    return value;
+  }
+  if (node.type !== 'object') return node.value;
+
+  const value = emptyRecord();
+  for (const property of node.children ?? []) {
+    const name = property.children?.[0]?.value;
+    const held = property.children?.[1];
+    if (typeof name !== 'string' || held === undefined || Object.hasOwn(value, name)) {
+      return invalidJSON;
+    }
+    const decoded = nodeValue(held);
+    if (decoded === invalidJSON) return invalidJSON;
+    value[name] = decoded;
+  }
+
+  return value;
 }
 
 interface Op {
@@ -56,7 +104,14 @@ interface Op {
 /* An appended or prepended list lands as per-entry insertions, so the
    template's own entries keep their bytes and the gutter marks only what
    the adjustment added. A replaced list is set whole. */
-function listOps(path: Segments, held: unknown[], value: unknown[], rule?: ArrayRule): Op[] {
+function listOps(
+  path: Segments,
+  held: unknown[],
+  value: unknown[],
+  rule: ArrayRule | undefined,
+  deduplicate: boolean,
+): Op[] {
+  if (deduplicate) return deduplicatedListOps(path, held, value, rule);
   if (rule?.strategy === 'append') {
     return value.map((entry, i) => ({
       path: [...path, held.length + i],
@@ -70,22 +125,77 @@ function listOps(path: Segments, held: unknown[], value: unknown[], rule?: Array
   return [{ path, value }];
 }
 
+interface ListEntry {
+  value: unknown;
+  source: 'base' | 'override';
+  index: number;
+}
+
+function deduplicatedListOps(
+  path: Segments,
+  held: unknown[],
+  value: unknown[],
+  rule?: ArrayRule,
+): Op[] {
+  if (rule?.strategy !== 'append' && rule?.strategy !== 'prepend') {
+    return [{ path, value: uniqueValues(value) }];
+  }
+  const base = held.map((entry, index): ListEntry => ({ value: entry, source: 'base', index }));
+  const override = value.map((entry, index): ListEntry => ({
+    value: entry,
+    source: 'override',
+    index,
+  }));
+  const combined = rule.strategy === 'append' ? [...base, ...override] : [...override, ...base];
+  const kept: ListEntry[] = [];
+  for (const candidate of combined) {
+    if (!kept.some((entry) => deepEqual(entry.value, candidate.value))) kept.push(candidate);
+  }
+  const keptBase = new Set(
+    kept.filter((entry) => entry.source === 'base').map((entry) => entry.index),
+  );
+  const removals: Op[] = [];
+  for (let index = held.length - 1; index >= 0; index -= 1) {
+    if (!keptBase.has(index)) removals.push({ path: [...path, index], value: undefined });
+  }
+  const additions = kept.filter((entry) => entry.source === 'override');
+  const start = rule.strategy === 'append' ? keptBase.size : 0;
+  const insertions = additions.map((entry, index): Op => ({
+    path: [...path, start + index],
+    value: entry.value,
+    insert: true,
+  }));
+
+  return [...removals, ...insertions];
+}
+
+function uniqueValues(values: unknown[]): unknown[] {
+  const kept: unknown[] = [];
+  for (const value of values) {
+    if (!kept.some((entry) => deepEqual(entry, value))) kept.push(value);
+  }
+
+  return kept;
+}
+
 function opsDeep(
   base: unknown,
   patch: Record<string, unknown>,
   at: ObjectPath,
   rules: readonly ArrayRule[],
+  deduplicate: boolean,
 ): Op[] {
   const out: Op[] = [];
-  for (const [key, value] of Object.entries(patch)) {
+  for (const key of Object.keys(patch).sort()) {
+    const value = patch[key];
     const path = [...at, key];
-    const held = isRecord(base) ? base[key] : undefined;
+    const held = ownValue(base, key);
     if (value === null) {
       out.push({ path, value: undefined });
     } else if (isRecord(value) && isRecord(held)) {
-      out.push(...opsDeep(held, value, path, rules));
+      out.push(...opsDeep(held, value, path, rules, deduplicate));
     } else if (Array.isArray(value) && Array.isArray(held)) {
-      out.push(...listOps(path, held, value, ruleFor(rules, path)));
+      out.push(...listOps(path, held, value, ruleFor(rules, path), deduplicate));
     } else {
       out.push({ path, value });
     }
@@ -97,14 +207,16 @@ function opsShallow(
   base: unknown,
   patch: Record<string, unknown>,
   rules: readonly ArrayRule[],
+  deduplicate: boolean,
 ): Op[] {
   const out: Op[] = [];
-  for (const [key, value] of Object.entries(patch)) {
-    const held = isRecord(base) ? base[key] : undefined;
+  for (const key of Object.keys(patch).sort()) {
+    const value = patch[key];
+    const held = ownValue(base, key);
     if (value === null) {
       out.push({ path: [key], value: undefined });
     } else if (Array.isArray(value) && Array.isArray(held)) {
-      out.push(...listOps([key], held, value, ruleFor(rules, [key])));
+      out.push(...listOps([key], held, value, ruleFor(rules, [key]), deduplicate));
     } else {
       out.push({ path: [key], value });
     }
@@ -113,113 +225,35 @@ function opsShallow(
 }
 
 /**
- * The composed copy as text: the template with the adjustment written into
- * it, everything untouched by the adjustment byte-identical. Null where the
- * template is not JSON or the strategy is not one this copy speaks.
+ * A local composed copy. It is deliberately not the final-byte authority.
+ * Null means the template is not JSON or the strategy is not one this copy
+ * speaks.
  */
-export function composeMergedText(templateText: string, merge: FileMergeSpec): string | null {
+export function composeMergedText(
+  templateText: string,
+  merge: FileMergeSpec | MergeSpec,
+): string | null {
   const strategy = merge.strategy ?? 'deep-merge';
   if (strategy !== 'deep-merge' && strategy !== 'shallow-merge') return null;
   const template = parseLoose(templateText);
   if (template === undefined) return null;
   const rules = merge.arrays ?? [];
   const overrides = merge.overrides ?? {};
+  if (!isRecord(overrides)) return null;
+  const deduplicate = merge.deduplicate === true;
   const ops =
     strategy === 'deep-merge'
-      ? opsDeep(template, overrides, [], rules)
-      : opsShallow(template, overrides, rules);
+      ? opsDeep(template, overrides, [], rules, deduplicate)
+      : opsShallow(template, overrides, rules, deduplicate);
   let text = templateText;
   for (const op of ops) {
-    text =
+    const options =
       op.insert === true
-        ? spliceListEntry(text, op.path, op.value, templateText)
-        : setValue(text, op.path, op.value, templateText);
+        ? { ...formatting(templateText), isArrayInsertion: true }
+        : formatting(templateText);
+    text = applyEdits(text, modify(text, op.path, op.value, options));
   }
   return text;
-}
-
-/**
- * A value written over an existing single-line one keeps the line's shape:
- * `"schedule": ["* 4 * * 6"]` replaced stays one line, the way a hand would
- * write it. Everything else - new keys, multiline values, removals - goes
- * through jsonc-parser's formatter.
- */
-function setValue(text: string, at: Segments, value: unknown, templateText: string): string {
-  if (value !== undefined) {
-    const root = parseTree(text);
-    const node = root === undefined ? undefined : findNodeAtLocation(root, at);
-    if (node !== undefined && !text.slice(node.offset, node.offset + node.length).includes('\n')) {
-      return (
-        text.slice(0, node.offset) + compactPrint(value) + text.slice(node.offset + node.length)
-      );
-    }
-  }
-  return applyEdits(text, modify(text, at, value, formatting(templateText)));
-}
-
-/** JSON.stringify, with the one-space seams a hand puts after , and : . */
-function compactPrint(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(compactPrint).join(', ')}]`;
-  if (isRecord(value)) {
-    const inner = Object.entries(value)
-      .map(([key, held]) => `${JSON.stringify(key)}: ${compactPrint(held)}`)
-      .join(', ');
-    return `{ ${inner} }`;
-  }
-  return JSON.stringify(value);
-}
-
-/**
- * One entry slotted into a list by hand, because jsonc-parser's own array
- * insertion reformats the whole list - which would put gutter bars on the
- * template's own entries. This touches nothing but the seam: a compact list
- * stays compact, a multiline list gains lines shaped like its neighbours'.
- */
-function spliceListEntry(text: string, at: Segments, value: unknown, templateText: string): string {
-  const arrayPath = at.slice(0, -1);
-  const index = at[at.length - 1];
-  const root = parseTree(text);
-  const node = root === undefined ? undefined : findNodeAtLocation(root, arrayPath);
-  if (typeof index !== 'number' || node === undefined || node.type !== 'array') {
-    // No list to slot into after all - fall back to the formatter's set.
-    return applyEdits(
-      text,
-      modify(text, at, value, { ...formatting(templateText), isArrayInsertion: true }),
-    );
-  }
-  const children = node.children ?? [];
-  const body = text.slice(node.offset, node.offset + node.length);
-  const compact = !body.includes('\n');
-  /* A new entry is written the way its neighbours are: one line beside
-     one-line entries, spread only where the list already spreads. */
-  const neighboursCompact = children.every(
-    (child) => !text.slice(child.offset, child.offset + child.length).includes('\n'),
-  );
-  const indentUnit = /^\t/mu.test(templateText) ? '\t' : '  ';
-  const lineStart = text.lastIndexOf('\n', node.offset) + 1;
-  const baseIndent = /^[ \t]*/u.exec(text.slice(lineStart))?.[0] ?? '';
-  const entryIndent = baseIndent + indentUnit;
-  const printed =
-    compact || neighboursCompact
-      ? compactPrint(value)
-      : JSON.stringify(value, null, indentUnit)
-          .split('\n')
-          .map((line, i) => (i === 0 ? line : entryIndent + line))
-          .join('\n');
-  if (children.length === 0) {
-    const open = node.offset + 1;
-    const inserted = compact ? printed : `\n${entryIndent}${printed}\n${baseIndent}`;
-    return text.slice(0, open) + inserted + text.slice(open);
-  }
-  if (index >= children.length) {
-    const last = children[children.length - 1];
-    const after = last.offset + last.length;
-    const inserted = compact ? `, ${printed}` : `,\n${entryIndent}${printed}`;
-    return text.slice(0, after) + inserted + text.slice(after);
-  }
-  const target = children[Math.max(0, index)];
-  const inserted = compact ? `${printed}, ` : `${printed},\n${entryIndent}`;
-  return text.slice(0, target.offset) + inserted + text.slice(target.offset);
 }
 
 /* ---------- The other direction: edited copy back to an override ---------- */
@@ -300,7 +334,7 @@ function setAt(overrides: Record<string, unknown>, parts: string[], value: unkno
     const next = held[part];
     if (isRecord(next)) held = next;
     else {
-      const fresh: Record<string, unknown> = {};
+      const fresh = emptyRecord();
       held[part] = fresh;
       held = fresh;
     }
@@ -317,7 +351,7 @@ function diffDeep(
   out: DerivedMerge,
 ): void {
   for (const key of Object.keys(base)) {
-    if (!(key in next)) setAt(out.overrides, [...at, key], null);
+    if (!Object.hasOwn(next, key)) setAt(out.overrides, [...at, key], null);
   }
   for (const [key, value] of Object.entries(next)) {
     const path = [...at, key];
@@ -336,7 +370,7 @@ function diffShallow(
   out: DerivedMerge,
 ): void {
   for (const key of Object.keys(base)) {
-    if (!(key in next)) out.overrides[key] = null;
+    if (!Object.hasOwn(next, key)) out.overrides[key] = null;
   }
   for (const [key, value] of Object.entries(next)) {
     const held = base[key];
@@ -363,7 +397,7 @@ export function deriveMerge(
   const base = parseLoose(templateText);
   const next = parseLoose(editedText);
   if (!isRecord(base) || !isRecord(next)) return null;
-  const out: DerivedMerge = { overrides: {}, arrays: [], questions: [] };
+  const out: DerivedMerge = { overrides: emptyRecord(), arrays: [], questions: [] };
   if (strategy === 'deep-merge') diffDeep(base, next, [], prior, out);
   else diffShallow(base, next, prior, out);
   return out;

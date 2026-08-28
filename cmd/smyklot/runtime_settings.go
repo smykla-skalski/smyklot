@@ -24,6 +24,9 @@ func (s *server) ApplyRuntimeSettings(values adminpanel.RuntimeValues) {
 	s.runtimePathIndexInterval = values.PathIndexInterval
 	s.runtimeMu.Unlock()
 	s.logLevel.Set(values.LogLevel)
+	if s.sync != nil {
+		s.sync.SetFormattingPolicy(resolved.Values.Formatting)
+	}
 	s.gate.RetuneQuietPeriod(values.PendingCIQuietPeriod)
 	if pollIntervalChanged {
 		select {

@@ -9,7 +9,7 @@ import (
 
 // merged applies one section to a document and answers with the result.
 func merged(document string, sections ...filemerge.Section) (string, error) {
-	result, err := filemerge.Apply(
+	result, err := applyFileMerge(
 		"CONTRIBUTING.md", []byte(document), filemerge.Spec{Sections: sections})
 
 	return string(result), err

@@ -2,7 +2,10 @@
 package apply
 
 import (
+	"sync"
+
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/githubapp"
 )
 
@@ -13,10 +16,30 @@ type Engine struct {
 	coordinator  bot.Exclusive
 	beginWork    func() (func(), bool)
 	queueChanged func(string)
+	formattingMu sync.RWMutex
+	formatting   config.FormattingPolicy
 }
 
 func New(store Store, tokens *githubapp.TokenStore, apiBaseURL string) *Engine {
-	return &Engine{store: store, tokens: tokens, apiBaseURL: apiBaseURL}
+	return &Engine{
+		store: store, tokens: tokens, apiBaseURL: apiBaseURL,
+		formatting: config.DefaultFormattingPolicy(),
+	}
+}
+
+// SetFormattingPolicy replaces the process-level formatting defaults used by
+// future plans and by scope validation immediately before execution.
+func (s *Engine) SetFormattingPolicy(policy config.FormattingPolicy) {
+	s.formattingMu.Lock()
+	s.formatting = policy
+	s.formattingMu.Unlock()
+}
+
+func (s *Engine) formattingPolicy() config.FormattingPolicy {
+	s.formattingMu.RLock()
+	defer s.formattingMu.RUnlock()
+
+	return s.formatting
 }
 
 // SetCoordinator shares the repository mutation fence with webhook and

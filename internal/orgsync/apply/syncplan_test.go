@@ -6,6 +6,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 type noChangesStore struct{ Store }
@@ -119,5 +120,27 @@ func TestSyncInventoryAndPathIndexExcludeDisabledRepositories(t *testing.T) {
 	engine.RefreshPaths(t.Context(), nil, target.ID, 0)
 	if store.pathWrites != 0 {
 		t.Fatalf("disabled path index writes = %d", store.pathWrites)
+	}
+}
+
+func TestFormattingScopeDigestIsTypedAndOrderIndependent(t *testing.T) {
+	compact := "compact"
+	base := config.DefaultFormattingPolicy()
+	held := syncInventory{
+		target: storage.Target{ConfigPatch: config.Patch{
+			Formatting: &config.FormattingPatch{
+				JSON: &config.FormattingJSONPatch{Arrays: &compact},
+			},
+		}},
+		repositories: []storage.Repository{{ID: "two"}, {ID: "one"}},
+	}
+	original := scopeDigest(nil, held, base)
+	held.repositories[0], held.repositories[1] = held.repositories[1], held.repositories[0]
+	if reordered := scopeDigest(nil, held, base); reordered != original {
+		t.Fatalf("repository order changed digest: %s != %s", reordered, original)
+	}
+	base.JSON.Objects = "expanded"
+	if changed := scopeDigest(nil, held, base); changed == original {
+		t.Fatal("runtime formatting change did not change the scope digest")
 	}
 }

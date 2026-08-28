@@ -385,6 +385,7 @@ type Store interface {
 	GetLiveSyncPlan(context.Context, string) (Plan, []Action, error)
 
 	ApproveSyncPlan(context.Context, PlanApproval) (Plan, error)
+	InvalidateSyncPlans(context.Context, string, time.Time) error
 
 	// DiscardSyncPlan takes a live plan off the slot because somebody declined
 	// it. Refused with a conflict where the plan has already finished - what

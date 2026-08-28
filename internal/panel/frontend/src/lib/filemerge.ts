@@ -20,6 +20,7 @@ export interface FileMergeSpec {
   strategy?: string;
   overrides?: Record<string, unknown>;
   arrays?: ArrayRule[];
+  deduplicate?: boolean;
   [key: string]: unknown;
 }
 

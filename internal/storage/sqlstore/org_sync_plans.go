@@ -110,6 +110,46 @@ WHERE target_id = ? AND source_kind = 'sync_plan'
 	return nil
 }
 
+func invalidateAllLivePlans(ctx context.Context, tx *transaction, now time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = 'stale', finished_at = ?
+WHERE state IN `+livePlanStates, now); err != nil {
+		return fmt.Errorf("invalidate all live sync plans: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE source_kind = 'sync_plan'
+  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'running', 'retrying')`,
+		now, now); err != nil {
+		return fmt.Errorf("invalidate all sync plan queue items: %w", err)
+	}
+
+	return nil
+}
+
+// InvalidateSyncPlans makes every still-actionable plan for one installation
+// unapprovable. The executor uses this after its final scope check detects a
+// process-level formatting change that storage could not observe directly.
+func (s *Store) InvalidateSyncPlans(
+	ctx context.Context,
+	targetID string,
+	now time.Time,
+) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin sync plan invalidation: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := invalidateLivePlans(ctx, tx, targetID, now); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit sync plan invalidation: %w", err)
+	}
+
+	return nil
+}
+
 // CreateSyncPlan records a plan and its actions together.
 //
 // One transaction, because a plan holds the installation's single live slot the

@@ -111,6 +111,11 @@ WHERE target_id = ? AND id = ?`,
 	if err != nil {
 		return false, fmt.Errorf("update repository file state: %w", err)
 	}
+	if changed {
+		if err := invalidateLivePlans(ctx, tx, state.TargetID, state.ObservedAt); err != nil {
+			return false, err
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("commit repository file state update: %w", err)
 	}

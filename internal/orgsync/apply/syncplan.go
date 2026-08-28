@@ -14,6 +14,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
+	appconfig "github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -100,7 +101,7 @@ func (s *Engine) PlanInstallationWithSummary(
 	// Scoped by what is switched on rather than by what can act, so a kind
 	// waiting on a permission keeps its refusals rather than having them read
 	// as nothing being wrong.
-	scopes := syncScopesFor(switchedOn, held)
+	scopes := syncScopesFor(switchedOn, held, s.formattingPolicy())
 
 	// Before the early returns below, and that is the whole reason this runs
 	// here: a refusal is only worth keeping while the planner is still looking,
@@ -144,7 +145,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		TargetID:  targetID,
 		Trigger:   trigger,
 		ActorID:   syncActor(active),
-		Digest:    orgsync.DigestScope(configs, held.overrides),
+		Digest:    scopeDigest(configs, held, s.formattingPolicy()),
 		Actions:   actions,
 		Now:       now,
 		ExpiresAt: now.Add(approvalTTL),
@@ -281,6 +282,7 @@ func syncActor(active []orgsync.Config) string {
 // planner reads it to work out what each repository needs, and the sweep reads
 // it to work out which recorded refusals nothing is looking at any more.
 type syncInventory struct {
+	target       storage.Target
 	repositories []storage.Repository
 	overrides    []orgsync.RepositoryOverride
 	applied      []orgsync.RepositoryState
@@ -306,6 +308,7 @@ func (s *Engine) syncInventoryFor(
 	}
 
 	return syncInventory{
+		target:       target,
 		repositories: repositories,
 		overrides:    overrides,
 		applied:      applied,
@@ -329,12 +332,18 @@ func anyRefused(applied []orgsync.RepositoryState) bool {
 // Once, because two things ask: the planner, per repository, and the sweep
 // clearing refusals nothing is going to rewrite. Building it twice is what let
 // them answer the same question differently.
-func syncScopesFor(active []orgsync.Config, held syncInventory) map[orgsync.Kind]syncScope {
+func syncScopesFor(
+	active []orgsync.Config,
+	held syncInventory,
+	formatting appconfig.FormattingPolicy,
+) map[orgsync.Kind]syncScope {
 	now := time.Now().UTC()
 	scopes := make(map[orgsync.Kind]syncScope, len(active))
 
 	for _, config := range active {
-		scopes[config.Kind] = newSyncScope(config, held.overrides, held.applied, now)
+		scopes[config.Kind] = newSyncScope(
+			config, held.overrides, held.applied, now, formatting, held.target.ConfigPatch,
+		)
 	}
 
 	return scopes
@@ -437,7 +446,9 @@ func (s *Engine) planSyncActions(
 	for _, config := range active {
 		scope := scopes[config.Kind]
 
-		ask, err := repositoryPlanner(client, config, scope.overrides)
+		ask, err := repositoryPlanner(
+			client, config, scope.overrides, s.formattingPolicy(), held.target.ConfigPatch,
+		)
 		if err != nil {
 			// A stored document this version cannot use. Every repository would
 			// answer the same way, so the kind stands down rather than failing
@@ -503,24 +514,26 @@ type repositoryQuestion func(
 // the repository as settled for work nothing did.
 func repositoryPlanner(
 	client *github.Client,
-	config orgsync.Config,
+	syncConfig orgsync.Config,
 	overrides map[string]*orgsync.RepositoryOverride,
+	formatting appconfig.FormattingPolicy,
+	targetPatch appconfig.Patch,
 ) (repositoryQuestion, error) {
-	switch config.Kind {
+	switch syncConfig.Kind {
 	case orgsync.KindLabels:
-		return labelPlanner(client, config)
+		return labelPlanner(client, syncConfig)
 
 	case orgsync.KindSettings:
-		return settingsPlanner(client, config)
+		return settingsPlanner(client, syncConfig)
 
 	case orgsync.KindRulesets:
-		return rulesetPlanner(client, config)
+		return rulesetPlanner(client, syncConfig)
 
 	case orgsync.KindFiles:
-		return filePlanner(client, config, overrides)
+		return filePlanner(client, syncConfig, overrides, formatting, targetPatch)
 
 	default:
-		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, config.Kind)
+		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, syncConfig.Kind)
 	}
 }
 
@@ -601,10 +614,12 @@ func rulesetPlanner(client *github.Client, config orgsync.Config) (repositoryQue
 
 func filePlanner(
 	client *github.Client,
-	config orgsync.Config,
+	syncConfig orgsync.Config,
 	overrides map[string]*orgsync.RepositoryOverride,
+	formatting appconfig.FormattingPolicy,
+	targetPatch appconfig.Patch,
 ) (repositoryQuestion, error) {
-	files, err := decodeSyncDocument[orgsync.FileConfig](config)
+	files, err := decodeSyncDocument[orgsync.FileConfig](syncConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +627,10 @@ func filePlanner(
 	return func(
 		ctx context.Context, repository storage.Repository,
 	) ([]orgsync.Action, string, error) {
-		return planRepositoryFiles(ctx, client, repository, files, overrides[repository.ID])
+		policy := repositoryFormattingPolicy(formatting, targetPatch, repository)
+		return planRepositoryFiles(
+			ctx, client, repository, files, overrides[repository.ID], policy,
+		)
 	}, nil
 }
 
@@ -632,6 +650,7 @@ func planRepositoryFiles(
 	repository storage.Repository,
 	config orgsync.FileConfig,
 	override *orgsync.RepositoryOverride,
+	formatting appconfig.FormattingPolicy,
 ) ([]orgsync.Action, string, error) {
 	target := syncTargetFor(repository)
 
@@ -642,6 +661,10 @@ func planRepositoryFiles(
 		// learning it again.
 		return nil, "this repository has no default branch, " +
 			"so there is nowhere to propose a change", nil
+	}
+	if !repository.IgnoreRepositoryFile && repository.ConfigFileError != nil {
+		return nil, "the repository configuration cannot be used: " +
+			*repository.ConfigFileError, nil
 	}
 
 	adjustments, err := decodeFileOverride(override, config)
@@ -679,7 +702,7 @@ func planRepositoryFiles(
 	}
 
 	plan, err := orgsync.PlanFiles(
-		repository.ID, config, adjustments, target.DefaultBranch, current.Files)
+		repository.ID, config, adjustments, target.DefaultBranch, current.Files, formatting)
 	if err != nil {
 		// A merge that cannot be applied. Fail-closed: no actions, and no
 		// digest, so the repository is asked again once somebody fixes it.
@@ -787,10 +810,12 @@ const RecheckInterval = 6 * time.Hour
 
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
-	config    orgsync.Config
-	overrides map[string]*orgsync.RepositoryOverride
-	applied   map[string]orgsync.RepositoryState
-	now       time.Time
+	config      orgsync.Config
+	overrides   map[string]*orgsync.RepositoryOverride
+	applied     map[string]orgsync.RepositoryState
+	now         time.Time
+	formatting  appconfig.FormattingPolicy
+	targetPatch appconfig.Patch
 }
 
 func newSyncScope(
@@ -798,12 +823,16 @@ func newSyncScope(
 	overrides []orgsync.RepositoryOverride,
 	applied []orgsync.RepositoryState,
 	now time.Time,
+	formatting appconfig.FormattingPolicy,
+	targetPatch appconfig.Patch,
 ) syncScope {
 	scope := syncScope{
-		config:    config,
-		overrides: map[string]*orgsync.RepositoryOverride{},
-		applied:   map[string]orgsync.RepositoryState{},
-		now:       now,
+		config:      config,
+		overrides:   map[string]*orgsync.RepositoryOverride{},
+		applied:     map[string]orgsync.RepositoryState{},
+		now:         now,
+		formatting:  formatting,
+		targetPatch: targetPatch,
 	}
 
 	// This kind's rows and no other's. A repository decides each kind on its
@@ -855,7 +884,7 @@ func (s syncScope) covers(repository storage.Repository) bool {
 	// digestFor is a sha256 and never empty, so a refused repository never
 	// matches and is read again every sweep until it is fixed.
 	state, known := s.applied[repository.ID]
-	if !known || state.AppliedDigest != s.digestFor(repository.ID) {
+	if !known || state.AppliedDigest != s.digestFor(repository) {
 		return true
 	}
 
@@ -868,8 +897,18 @@ func (s syncScope) covers(repository storage.Repository) bool {
 // digestFor is what a repository would record once it matches, and what covers
 // compares against. One expression, so the value written and the value tested
 // cannot drift into disagreeing about whether a repository is settled.
-func (s syncScope) digestFor(repositoryID string) string {
-	return orgsync.DigestRepositoryKind(s.config.Digest, s.overrides[repositoryID])
+func (s syncScope) digestFor(repository storage.Repository) string {
+	var inputs []orgsync.DigestInput
+	if s.config.Kind == orgsync.KindFiles {
+		policy := repositoryFormattingPolicy(s.formatting, s.targetPatch, repository)
+		inputs = append(inputs, orgsync.DigestInput{
+			Name: digestInputFormatting, Digest: orgsync.DigestFormattingPolicy(policy),
+		})
+	}
+
+	return orgsync.DigestRepositoryKindWithInputs(
+		s.config.Digest, s.overrides[repository.ID], inputs,
+	)
 }
 
 // refused reports a repository the last look could not manage this kind on.
@@ -951,7 +990,7 @@ func (s syncScope) ask(
 		// so an apply would never record it, and without a record this
 		// repository is read from GitHub again on every tick for ever - the
 		// cost the digest exists to remove.
-		state.AppliedDigest = s.digestFor(repository.ID)
+		state.AppliedDigest = s.digestFor(repository)
 
 		return nil, []orgsync.RepositoryState{state}
 	}

@@ -194,6 +194,9 @@ func (s *Store) saveRuntimeSettings(
 	if err := s.writeRuntimeSettings(ctx, tx, current, change, botConfig); err != nil {
 		return storage.SaveRuntimeSettingsResult{}, err
 	}
+	if err := invalidatePlansForRuntimeFormatting(ctx, tx, current, change); err != nil {
+		return storage.SaveRuntimeSettingsResult{}, err
+	}
 	if err := s.syncRuntimeQueueAliases(ctx, tx, current, change); err != nil {
 		return storage.SaveRuntimeSettingsResult{}, err
 	}
@@ -237,6 +240,32 @@ func (s *Store) saveRuntimeSettings(
 		Settings:     updated,
 		CheckpointID: &checkpointID,
 	}, nil
+}
+
+func runtimeFormattingChanged(current, proposed *config.Config) bool {
+	currentPolicy := config.DefaultFormattingPolicy()
+	if current != nil {
+		currentPolicy = current.Formatting
+	}
+	proposedPolicy := config.DefaultFormattingPolicy()
+	if proposed != nil {
+		proposedPolicy = proposed.Formatting
+	}
+
+	return currentPolicy != proposedPolicy
+}
+
+func invalidatePlansForRuntimeFormatting(
+	ctx context.Context,
+	tx *transaction,
+	current storage.RuntimeSettings,
+	change storage.RuntimeSettingsChange,
+) error {
+	if !runtimeFormattingChanged(current.BotConfig, change.BotConfig) {
+		return nil
+	}
+
+	return invalidateAllLivePlans(ctx, tx, change.ChangedAt)
 }
 
 func ensureRuntimeSettingsBaseline(

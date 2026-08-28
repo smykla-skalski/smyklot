@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"path"
 	"strings"
+
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // Strategy is how a repository's copy of a template is built from it.
@@ -154,22 +156,59 @@ func (s Spec) adjusts() bool {
 // merge that read it would give an answer that depended on its own last answer,
 // and appending to a file that already holds what was appended grows it once
 // per run.
-func Apply(filePath string, template []byte, spec Spec) ([]byte, error) {
-	if spec.Empty() {
+func Apply(
+	filePath string,
+	template []byte,
+	spec Spec,
+	policy config.FormattingPolicy,
+) ([]byte, error) {
+	if spec.Empty() && policy.AllPreserve() {
 		return template, nil
+	}
+	if spec.Empty() {
+		return FormatDocument(filePath, template, policy)
 	}
 
 	if err := spec.Validate(filePath); err != nil {
 		return nil, err
 	}
 
+	var (
+		merged []byte
+		err    error
+	)
+
 	if spec.effective(filePath) == StrategyMarkdown {
-		return mergeMarkdown(template, spec.Sections)
+		merged, err = mergeMarkdown(template, spec.Sections)
+	} else {
+		format, _ := formatOf(filePath)
+		merged, err = mergeStructured(format, template, spec)
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	format, _ := formatOf(filePath)
+	return formatWithSource(filePath, merged, template, policy)
+}
 
-	return mergeStructured(format, template, spec)
+// FormatDocument applies only configured presentation dimensions. Unsupported file
+// extensions are returned byte-identically.
+func FormatDocument(filePath string, content []byte, policy config.FormattingPolicy) ([]byte, error) {
+	if policy.AllPreserve() || !SupportsFormatting(filePath) {
+		return content, nil
+	}
+
+	return formatWithSource(filePath, content, content, policy)
+}
+
+// SupportsFormatting reports the extensions governed by FormattingPolicy.
+func SupportsFormatting(filePath string) bool {
+	switch strings.ToLower(path.Ext(filePath)) {
+	case extJSON, extJSONC:
+		return true
+	default:
+		return false
+	}
 }
 
 // Validate reports a merge nobody should be able to configure, for the file it
@@ -246,7 +285,9 @@ func (s Spec) validateStructured() error {
 
 	var document map[string]any
 	if len(s.Overrides) > 0 {
-		if err := json.Unmarshal(s.Overrides, &document); err != nil {
+		var err error
+		document, err = decodeOverrides(s.Overrides)
+		if err != nil {
 			return fmt.Errorf("%w: the overrides are not an object: %w", ErrInvalidSpec, err)
 		}
 	}
@@ -406,6 +447,8 @@ func formatOf(filePath string) (Format, bool) {
 	switch strings.ToLower(path.Ext(filePath)) {
 	case ".json":
 		return FormatJSON, true
+	case ".jsonc":
+		return FormatJSONC, true
 	case ".yml", ".yaml":
 		return FormatYAML, true
 	default:

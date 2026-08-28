@@ -11,6 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -23,6 +24,8 @@ import (
 // safe direction - the actions it already recorded are recorded, and the rest
 // are still pending for whoever picks it up.
 const syncLease = 15 * time.Minute
+
+var errSyncPlanScopeStale = errors.New("sync plan scope is stale")
 
 // ApplyPlans applies whatever plan is due, one per call.
 //
@@ -55,6 +58,16 @@ func (s *Engine) ApplyOnePlan(ctx context.Context) (bool, error) {
 
 	outcome, err := s.applySyncPlan(ctx, lease)
 	if err != nil {
+		if errors.Is(err, errSyncPlanScopeStale) {
+			if staleErr := s.store.InvalidateSyncPlans(
+				ctx, lease.Plan.TargetID, time.Now().UTC(),
+			); staleErr != nil {
+				return true, fmt.Errorf("invalidate stale sync plan: %w", staleErr)
+			}
+			logging.From(ctx).Warn("sync plan became stale before repository mutation")
+
+			return true, nil
+		}
 		retryErr := s.store.RetrySyncPlan(ctx, orgsync.PlanRetry{
 			PlanID: lease.Plan.ID, Failure: err.Error(), Now: time.Now().UTC(),
 		})
@@ -163,6 +176,13 @@ func (s *Engine) applySyncPlan(
 	// decision somebody made.
 	if unavailable, missing := unavailableForTarget(target, lease.Actions); missing {
 		return orgsync.Outcome{}, fmt.Errorf("%w: %s", errSyncNotPermitted, unavailable.Reason())
+	}
+	currentDigest, err := s.CurrentScopeDigest(ctx, lease.Plan.TargetID)
+	if err != nil {
+		return orgsync.Outcome{}, err
+	}
+	if currentDigest != lease.Plan.Digest {
+		return orgsync.Outcome{}, errSyncPlanScopeStale
 	}
 
 	client, err := s.installationClient(target.InstallationID)
@@ -304,7 +324,7 @@ func (s *Engine) applyRepositoryWork(
 		outcome.Applied = append(outcome.Applied, orgsync.RepositoryState{
 			RepositoryID:  repository.ID,
 			Kind:          kind.Kind,
-			AppliedDigest: digests.of(repository.ID, kind.Kind),
+			AppliedDigest: digests.of(repository, kind.Kind),
 			AppliedAt:     time.Now().UTC(),
 		})
 	}
@@ -540,12 +560,24 @@ func unavailableForTarget(
 // syncDigestIndex answers what a repository and kind should record once its
 // work lands.
 type syncDigestIndex struct {
-	configs   map[orgsync.Kind]string
-	overrides map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
+	configs     map[orgsync.Kind]string
+	overrides   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
+	formatting  config.FormattingPolicy
+	targetPatch config.Patch
 }
 
-func (i syncDigestIndex) of(repositoryID string, kind orgsync.Kind) string {
-	return orgsync.DigestRepositoryKind(i.configs[kind], i.overrides[repositoryID][kind])
+func (i syncDigestIndex) of(repository storage.Repository, kind orgsync.Kind) string {
+	var inputs []orgsync.DigestInput
+	if kind == orgsync.KindFiles {
+		policy := repositoryFormattingPolicy(i.formatting, i.targetPatch, repository)
+		inputs = append(inputs, orgsync.DigestInput{
+			Name: digestInputFormatting, Digest: orgsync.DigestFormattingPolicy(policy),
+		})
+	}
+
+	return orgsync.DigestRepositoryKindWithInputs(
+		i.configs[kind], i.overrides[repository.ID][kind], inputs,
+	)
 }
 
 // syncDigests reads what an installation has configured, once per plan rather
@@ -560,10 +592,16 @@ func (s *Engine) syncDigests(ctx context.Context, targetID string) (syncDigestIn
 	if err != nil {
 		return syncDigestIndex{}, fmt.Errorf("read sync overrides: %w", err)
 	}
+	target, err := s.store.GetTarget(ctx, targetID)
+	if err != nil {
+		return syncDigestIndex{}, fmt.Errorf("read sync installation: %w", err)
+	}
 
 	index := syncDigestIndex{
-		configs:   make(map[orgsync.Kind]string, len(configs)),
-		overrides: map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
+		configs:     make(map[orgsync.Kind]string, len(configs)),
+		overrides:   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
+		formatting:  s.formattingPolicy(),
+		targetPatch: target.ConfigPatch,
 	}
 
 	for _, config := range configs {
