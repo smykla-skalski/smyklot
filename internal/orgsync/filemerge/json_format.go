@@ -480,10 +480,10 @@ func countJSONExtraComments(extra hujson.Extra, counts map[string]int) {
 }
 
 func jsonIndentUnit(content []byte, common config.FormattingCommonPolicy) string {
-	if common.IndentStyle == "tabs" {
+	if common.IndentStyle == formatTabs {
 		return "\t"
 	}
-	if common.IndentStyle == "spaces" {
+	if common.IndentStyle == formatSpaces {
 		return strings.Repeat(" ", common.IndentWidth)
 	}
 	minimumSpaces := 0

@@ -15,13 +15,17 @@ const (
 	extJSONC = ".jsonc"
 	extYAML  = ".yaml"
 	extYML   = ".yml"
+	extTOML  = ".toml"
 
-	formatPreserve = "preserve"
-	formatAuto     = "auto"
-	formatCompact  = "compact"
-	formatExpanded = "expanded"
-	formatInsert   = "insert"
-	formatRemove   = "remove"
+	formatPreserve  = "preserve"
+	formatAuto      = "auto"
+	formatCompact   = "compact"
+	formatExpanded  = "expanded"
+	formatInsert    = "insert"
+	formatRemove    = "remove"
+	formatSpaces    = "spaces"
+	formatTabs      = "tabs"
+	formatMultiline = "multiline"
 
 	lineEndingLF   = "lf"
 	lineEndingCRLF = "crlf"
@@ -59,6 +63,12 @@ func formatWithSource(
 		} else {
 			formatted = content
 		}
+	case extTOML:
+		if tomlFormattingActive(policy) {
+			formatted, err = formatTOMLDocument(content, policy)
+		} else {
+			formatted = content
+		}
 	default:
 		formatted = content
 	}
@@ -87,41 +97,84 @@ func yamlFormattingActive(policy config.FormattingPolicy) bool {
 	return yamlASTFormattingActive(policy) || policy.YAML.DocumentStart != formatPreserve
 }
 
+func tomlFormattingActive(policy config.FormattingPolicy) bool {
+	return policy.Common.IndentStyle != formatPreserve ||
+		policy.TOML.Arrays != formatPreserve ||
+		policy.TOML.TrailingCommas != formatPreserve ||
+		policy.TOML.QuoteStyle != formatPreserve ||
+		policy.TOML.AlignEntries != formatPreserve ||
+		policy.TOML.AlignComments != formatPreserve ||
+		policy.TOML.KeyOrder != formatPreserve
+}
+
 func proveFormattedSemantics(filePath string, before, after []byte) error {
 	if bytes.Equal(before, after) {
 		return nil
 	}
 	switch strings.ToLower(path.Ext(filePath)) {
 	case extJSON, extJSONC:
-		jsonc := strings.HasSuffix(strings.ToLower(filePath), extJSONC)
-		beforeRoot, err := parseJSONSyntax(before, jsonc)
-		if err != nil {
-			return err
-		}
-		afterRoot, err := parseJSONSyntax(after, jsonc)
-		if err != nil {
-			return fmt.Errorf("%w: formatted JSON did not parse: %w", ErrUnwritable, err)
-		}
-		beforeValue, beforeErr := jsonSyntaxValue(beforeRoot)
-		afterValue, afterErr := jsonSyntaxValue(afterRoot)
-		if beforeErr != nil || afterErr != nil || !holdsEqual([]any{beforeValue}, afterValue) {
-			return fmt.Errorf("%w: formatting changed the JSON value", ErrUnwritable)
-		}
+		return proveJSONFormatting(filePath, before, after)
 	case extYAML, extYML:
-		if _, err := parseGoccyYAML(before); err != nil {
-			return err
-		}
-		if _, err := parseGoccyYAML(after); err != nil {
-			return fmt.Errorf("%w: formatted YAML did not parse: %w", ErrUnwritable, err)
-		}
-		beforeValue, beforeErr := decodeYAMLSemantic(before)
-		afterValue, afterErr := decodeYAMLSemantic(after)
-		if beforeErr != nil || afterErr != nil || !reflect.DeepEqual(beforeValue, afterValue) {
-			return fmt.Errorf("%w: formatting changed the YAML value", ErrUnwritable)
-		}
-		if !yamlPresentationOf(before).equal(yamlPresentationOf(after)) {
-			return fmt.Errorf("%w: formatting changed YAML comments or special syntax", ErrUnwritable)
-		}
+		return proveYAMLFormatting(before, after)
+	case extTOML:
+		return proveTOMLFormatting(before, after)
+	}
+
+	return nil
+}
+
+func proveJSONFormatting(filePath string, before, after []byte) error {
+	jsonc := strings.HasSuffix(strings.ToLower(filePath), extJSONC)
+	beforeRoot, err := parseJSONSyntax(before, jsonc)
+	if err != nil {
+		return err
+	}
+	afterRoot, err := parseJSONSyntax(after, jsonc)
+	if err != nil {
+		return fmt.Errorf("%w: formatted JSON did not parse: %w", ErrUnwritable, err)
+	}
+	beforeValue, beforeErr := jsonSyntaxValue(beforeRoot)
+	afterValue, afterErr := jsonSyntaxValue(afterRoot)
+	if beforeErr != nil || afterErr != nil || !holdsEqual([]any{beforeValue}, afterValue) {
+		return fmt.Errorf("%w: formatting changed the JSON value", ErrUnwritable)
+	}
+
+	return nil
+}
+
+func proveYAMLFormatting(before, after []byte) error {
+	if _, err := parseGoccyYAML(before); err != nil {
+		return err
+	}
+	if _, err := parseGoccyYAML(after); err != nil {
+		return fmt.Errorf("%w: formatted YAML did not parse: %w", ErrUnwritable, err)
+	}
+	beforeValue, beforeErr := decodeYAMLSemantic(before)
+	afterValue, afterErr := decodeYAMLSemantic(after)
+	if beforeErr != nil || afterErr != nil || !reflect.DeepEqual(beforeValue, afterValue) {
+		return fmt.Errorf("%w: formatting changed the YAML value", ErrUnwritable)
+	}
+	if !yamlPresentationOf(before).equal(yamlPresentationOf(after)) {
+		return fmt.Errorf("%w: formatting changed YAML comments or special syntax", ErrUnwritable)
+	}
+
+	return nil
+}
+
+func proveTOMLFormatting(before, after []byte) error {
+	beforeValue, beforeComments, err := decodeTOMLSemantic(before)
+	if err != nil {
+		return err
+	}
+	afterValue, afterComments, err := decodeTOMLSemantic(after)
+	if err != nil {
+		return fmt.Errorf("%w: formatted TOML did not parse: %w", ErrUnwritable, err)
+	}
+	if !tomlSemanticEqual(beforeValue, afterValue) {
+		return fmt.Errorf("%w: formatting changed the TOML value", ErrUnwritable)
+	}
+	if !reflect.DeepEqual(beforeComments, afterComments) {
+		return fmt.Errorf("%w: formatting changed TOML comments", ErrUnwritable)
 	}
 
 	return nil

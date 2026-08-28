@@ -16,6 +16,11 @@ var _ = Describe("Validating a merge [Unit]", func() {
 		}.Validate("renovate.json")).To(Succeed())
 	})
 
+	It("accepts a TOML merge", func() {
+		Expect(filemerge.Spec{Overrides: overrides(`{"service":{"port":8080}}`)}.
+			Validate("config.toml")).To(Succeed())
+	})
+
 	It("accepts a Markdown merge", func() {
 		Expect(filemerge.Spec{Sections: []filemerge.Section{
 			{Action: filemerge.SectionDelete, Heading: "## Setup"},

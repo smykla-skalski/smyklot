@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// mergeStructured composes a JSON or YAML template with a repository's
+// mergeStructured composes a JSON, YAML, or TOML template with a repository's
 // overrides.
 //
 // YAML goes through its own path, which edits the document's nodes. JSON is
@@ -15,6 +15,9 @@ import (
 func mergeStructured(format Format, template []byte, spec Spec) ([]byte, error) {
 	if format == FormatYAML {
 		return mergeYAML(template, spec)
+	}
+	if format == FormatTOML {
+		return mergeTOML(template, spec)
 	}
 	if format == FormatJSON || format == FormatJSONC {
 		return mergeJSONSyntax(template, spec, format == FormatJSONC)

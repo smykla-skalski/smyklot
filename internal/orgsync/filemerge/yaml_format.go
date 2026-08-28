@@ -143,7 +143,7 @@ func reindentYAML(content []byte, common config.FormattingCommonPolicy) ([]byte,
 	if common.IndentStyle == formatPreserve {
 		return content, nil
 	}
-	if common.IndentStyle == "tabs" {
+	if common.IndentStyle == formatTabs {
 		return nil, fmt.Errorf("%w: YAML indentation cannot use tabs", ErrUnwritable)
 	}
 	current := yamlIndentWidth(content, common.IndentWidth)

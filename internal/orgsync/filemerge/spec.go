@@ -204,7 +204,7 @@ func FormatDocument(filePath string, content []byte, policy config.FormattingPol
 // SupportsFormatting reports the extensions governed by FormattingPolicy.
 func SupportsFormatting(filePath string) bool {
 	switch strings.ToLower(path.Ext(filePath)) {
-	case extJSON, extJSONC, extYAML, extYML:
+	case extJSON, extJSONC, extYAML, extYML, extTOML:
 		return true
 	default:
 		return false
@@ -224,7 +224,7 @@ func (s Spec) Validate(filePath string) error {
 
 	if !structured && !markdown {
 		return fmt.Errorf(
-			"%w: %s has no extension this can merge; JSON, YAML and Markdown can",
+			"%w: %s has no extension this can merge; JSON, YAML, TOML and Markdown can",
 			ErrUnsupportedFormat, filePath)
 	}
 
@@ -451,6 +451,8 @@ func formatOf(filePath string) (Format, bool) {
 		return FormatJSONC, true
 	case ".yml", ".yaml":
 		return FormatYAML, true
+	case ".toml":
+		return FormatTOML, true
 	default:
 		return "", false
 	}

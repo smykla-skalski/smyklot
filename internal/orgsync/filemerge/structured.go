@@ -13,6 +13,7 @@ type Format string
 const (
 	FormatJSON  Format = "json"
 	FormatJSONC Format = "jsonc"
+	FormatTOML  Format = "toml"
 	FormatYAML  Format = "yaml"
 )
 
