@@ -11,11 +11,13 @@ import (
 )
 
 const (
-	extJSON  = ".json"
-	extJSONC = ".jsonc"
-	extYAML  = ".yaml"
-	extYML   = ".yml"
-	extTOML  = ".toml"
+	extJSON     = ".json"
+	extJSONC    = ".jsonc"
+	extYAML     = ".yaml"
+	extYML      = ".yml"
+	extTOML     = ".toml"
+	extMD       = ".md"
+	extMarkdown = ".markdown"
 
 	formatPreserve  = "preserve"
 	formatAuto      = "auto"
@@ -69,6 +71,12 @@ func formatWithSource(
 		} else {
 			formatted = content
 		}
+	case extMD, extMarkdown:
+		if markdownFormattingActive(policy) {
+			formatted, err = formatMarkdownDocument(content, policy)
+		} else {
+			formatted = content
+		}
 	default:
 		formatted = content
 	}
@@ -118,6 +126,24 @@ func proveFormattedSemantics(filePath string, before, after []byte) error {
 		return proveYAMLFormatting(before, after)
 	case extTOML:
 		return proveTOMLFormatting(before, after)
+	case extMD, extMarkdown:
+		return proveMarkdownFormatting(before, after)
+	}
+
+	return nil
+}
+
+func proveMarkdownFormatting(before, after []byte) error {
+	beforeDigest, err := markdownSemanticDigest(before)
+	if err != nil {
+		return err
+	}
+	afterDigest, err := markdownSemanticDigest(after)
+	if err != nil {
+		return fmt.Errorf("%w: formatted Markdown did not parse: %w", ErrUnwritable, err)
+	}
+	if beforeDigest != afterDigest {
+		return fmt.Errorf("%w: formatting changed the Markdown document", ErrUnwritable)
 	}
 
 	return nil

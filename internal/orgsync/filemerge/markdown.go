@@ -2,7 +2,6 @@ package filemerge
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 )
 
@@ -19,71 +18,7 @@ const (
 	widestIndent = 3
 
 	// mostBlankLines is how many blank lines in a row a merged document keeps.
-	mostBlankLines = 2
 )
-
-// mergeMarkdown applies a template's section operations in order.
-//
-// The document is read again between operations, because each one moves the
-// lines the next one addresses.
-func mergeMarkdown(template []byte, sections []Section) ([]byte, error) {
-	lines := splitLines(string(template))
-
-	for index, section := range sections {
-		applied, err := applySection(lines, section)
-		if err != nil {
-			return nil, fmt.Errorf("section %d (%s): %w", index+1, section.Action, err)
-		}
-
-		lines = applied
-	}
-
-	return []byte(joinLines(trimBlankTail(lines))), nil
-}
-
-func applySection(lines []string, section Section) ([]string, error) {
-	switch section.Action {
-	case SectionAppend:
-		return appendContent(lines, section), nil
-
-	case SectionPrepend:
-		return prependContent(lines, section), nil
-	}
-
-	// Everything below addresses a heading.
-	written := headings(lines)
-
-	found, err := locate(written, section)
-	if err != nil {
-		return nil, err
-	}
-
-	start := written[found].line
-	end := sectionEnd(written, found, len(lines))
-
-	switch section.Action {
-	case SectionBefore:
-		return insert(lines, start, contentLines(section.Content)), nil
-
-	case SectionAfter:
-		return insert(lines, end, contentLines(section.Content)), nil
-
-	case SectionReplace:
-		return replaceRange(lines, start, end, contentLines(section.Content)), nil
-
-	case SectionDelete:
-		return trimRuns(append(append([]string{}, lines[:start]...), lines[end:]...)), nil
-
-	case SectionPatch:
-		// Below the whole heading, which is two lines where it was written
-		// with an underline: a patch that could see the underline could
-		// substitute over it and leave the heading a paragraph.
-		return patchBody(lines, start+written[found].span, end, section)
-
-	default:
-		return nil, fmt.Errorf("%w: unknown action %q", ErrInvalidSpec, section.Action)
-	}
-}
 
 // locate answers which of a document's headings a section addresses, as an
 // index into them.
@@ -129,109 +64,6 @@ func locate(written []heading, section Section) (int, error) {
 	default:
 		return matches[section.Occurrence-1], nil
 	}
-}
-
-// patchBody substitutes text inside a section, below its heading.
-//
-// Below it, because the heading is how the section is addressed: the engine
-// this replaces included the heading line in the text it substituted over, so a
-// patch whose find string appeared in the heading renamed the section it had
-// just been asked to edit. body is where that heading ends.
-func patchBody(lines []string, body, end int, section Section) ([]string, error) {
-	text := strings.Join(lines[body:end], "\n")
-
-	for index, patch := range section.Patches {
-		if !strings.Contains(text, patch.Find) {
-			return nil, fmt.Errorf("%w: patch %d does not find %q under %q",
-				ErrNothingAddressed, index+1, patch.Find, section.Heading)
-		}
-
-		text = strings.ReplaceAll(text, patch.Find, patch.Replace)
-	}
-
-	patched := make([]string, 0, len(lines))
-	patched = append(patched, lines[:body]...)
-	patched = append(patched, splitLines(text)...)
-	patched = append(patched, lines[end:]...)
-
-	return patched, nil
-}
-
-// appendContent puts content at the end of the document, once.
-//
-// Once, because an operation that changes the document every time it runs
-// cannot be run twice. The document this merges is the template rather than a
-// repository's own copy, so it is the template already ending with the content
-// that this answers - but the property is the operation's, not the caller's.
-func appendContent(lines []string, section Section) []string {
-	content := contentLines(section.Content)
-	body := trimBlankTail(lines)
-
-	if endsWith(body, content) {
-		return body
-	}
-
-	joined := make([]string, 0, len(body)+len(content)+1)
-	joined = append(joined, body...)
-
-	if len(joined) > 0 {
-		joined = append(joined, "")
-	}
-
-	return append(joined, content...)
-}
-
-// prependContent puts content at the start of the document, once.
-func prependContent(lines []string, section Section) []string {
-	content := contentLines(section.Content)
-	body := trimBlankHead(lines)
-
-	if startsWith(body, content) {
-		return body
-	}
-
-	joined := make([]string, 0, len(content)+len(body)+1)
-	joined = append(joined, content...)
-
-	if len(body) > 0 {
-		joined = append(joined, "")
-	}
-
-	return trimRuns(append(joined, body...))
-}
-
-func endsWith(lines, tail []string) bool {
-	if len(tail) > len(lines) {
-		return false
-	}
-
-	return slices.Equal(lines[len(lines)-len(tail):], tail)
-}
-
-func startsWith(lines, head []string) bool {
-	if len(head) > len(lines) {
-		return false
-	}
-
-	return slices.Equal(lines[:len(head)], head)
-}
-
-// insert puts content at a line, with a blank line on either side of it, which
-// is replacing nothing with it.
-func insert(lines []string, at int, content []string) []string {
-	return replaceRange(lines, at, at, content)
-}
-
-// replaceRange puts content where a run of lines was.
-func replaceRange(lines []string, start, end int, content []string) []string {
-	joined := make([]string, 0, len(lines)-(end-start)+len(content)+mostBlankLines)
-	joined = append(joined, lines[:start]...)
-	joined = endBlank(joined)
-	joined = append(joined, content...)
-	joined = append(joined, "")
-	joined = append(joined, lines[end:]...)
-
-	return trimRuns(joined)
 }
 
 // heading is a heading and where it was written.
@@ -448,78 +280,4 @@ func sectionEnd(found []heading, index, lines int) int {
 	}
 
 	return lines
-}
-
-func contentLines(content string) []string {
-	return splitLines(strings.TrimRight(content, "\n"))
-}
-
-func splitLines(content string) []string {
-	if content == "" {
-		return nil
-	}
-
-	return strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-}
-
-func joinLines(lines []string) string {
-	if len(lines) == 0 {
-		return ""
-	}
-
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// endBlank ends a run of lines with a blank one, so what follows is separated
-// from it.
-func endBlank(lines []string) []string {
-	if len(lines) == 0 || strings.TrimSpace(lines[len(lines)-1]) == "" {
-		return lines
-	}
-
-	return append(lines, "")
-}
-
-func trimBlankTail(lines []string) []string {
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
-	}
-
-	return lines
-}
-
-func trimBlankHead(lines []string) []string {
-	for len(lines) > 0 && strings.TrimSpace(lines[0]) == "" {
-		lines = lines[1:]
-	}
-
-	return lines
-}
-
-// trimRuns keeps at most two blank lines in a row, and at most one at the end.
-func trimRuns(lines []string) []string {
-	kept := make([]string, 0, len(lines))
-	blanks := 0
-
-	for _, text := range lines {
-		if strings.TrimSpace(text) == "" {
-			blanks++
-
-			if blanks > mostBlankLines {
-				continue
-			}
-		} else {
-			blanks = 0
-		}
-
-		kept = append(kept, text)
-	}
-
-	for len(kept) > 1 &&
-		strings.TrimSpace(kept[len(kept)-1]) == "" &&
-		strings.TrimSpace(kept[len(kept)-2]) == "" {
-		kept = kept[:len(kept)-1]
-	}
-
-	return kept
 }
