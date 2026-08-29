@@ -3,7 +3,7 @@
 [tools]
 go = "1.27.0"
 node = "24.20.0"
-"npm:markdownlint-cli2" = "0.23.2"
+"npm:markdownlint-cli2" = { version = "0.23.2", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.32.1"
 actionlint = "1.7.12"
 golangci-lint = "2.13.2"
