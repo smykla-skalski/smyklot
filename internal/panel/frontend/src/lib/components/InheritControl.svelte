@@ -24,7 +24,7 @@
     value?: string | null;
     options: readonly { value: string; label: string }[];
     disabled?: boolean;
-    /** Shares the supplied row width between the available values. */
+    /** Lets the control fill a constrained navigation surface while retaining content-sized segments. */
     fluid?: boolean;
     onSelect: (value: string) => void;
     onRestore: () => void;
@@ -98,21 +98,30 @@
     compact
     onSelect={(selection) => onSelect(selection)}
   />
+  <span class="source-badge">From {source}</span>
 </span>
 
 <style>
   .linked-control {
     align-items: center;
-    display: inline-flex;
+    display: inline-grid;
     gap: var(--inherit-marker-gap);
+    grid-template-columns: var(--inherit-marker-size) max-content;
+    max-width: 100%;
   }
 
   .linked-control.fluid {
-    display: grid;
     grid-template-columns: var(--inherit-marker-size) minmax(0, 1fr);
-    max-width: 100%;
     min-width: 0;
     width: 100%;
+  }
+
+  .source-badge {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    grid-column: 2;
+    justify-self: end;
+    white-space: nowrap;
   }
 
   /* The linked chain is a passive provenance marker; only the broken chain is a

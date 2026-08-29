@@ -31,14 +31,16 @@
   import type {
     SyncConfig,
     SyncFilesContext,
-    SyncFileRenderInput,
-    SyncFileRenderResponse,
     SyncKind,
     SyncOverride,
     SyncPlan,
     SyncRunNowResponse,
     SyncStatus,
   } from '#lib/types.js';
+  import type {
+    SyncFileRenderInput,
+    SyncFileRenderResponse,
+  } from '#lib/sync-file-render.generated.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';

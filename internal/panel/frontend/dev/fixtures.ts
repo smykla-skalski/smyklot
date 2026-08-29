@@ -917,7 +917,6 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '{',
             '  "$schema": "https://docs.renovatebot.com/renovate-schema.json",',
             '  "extends": ["config:recommended"],',
-            '  // Weekend runs keep review noise out of the working week',
             '  "schedule": ["* 4 * * 6"],',
             '  "timezone": "UTC",',
             '  "packageRules": [',

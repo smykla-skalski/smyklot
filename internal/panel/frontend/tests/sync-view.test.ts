@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
-import { defaultFormattingPolicy } from '../src/lib/formatting';
 import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
 import type {
   SyncCell,
@@ -33,14 +32,11 @@ class MemoryStorage implements SettingsDraftStorage {
   }
 }
 
-const POLICY = defaultFormattingPolicy();
-
 function emptyFilesContext(): SyncFilesContext {
   return {
     repositories: 0,
     covered: 0,
     known_paths: [],
-    base_formatting: POLICY,
     repository_policies: [],
     merges: [],
   };
@@ -48,8 +44,8 @@ function emptyFilesContext(): SyncFilesContext {
 
 const renderFile = async (_targetId: string, input: { draft_content: string }) => ({
   valid: true,
-  content: input.draft_content,
-  changed: false,
+  final_content: input.draft_content,
+  matches_formatting: true,
   diagnostics: [],
 });
 
@@ -242,13 +238,10 @@ describe('SyncView [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
-          base_formatting: POLICY,
           repository_policies: [
             {
               repository: 'repo-a',
               repository_id: 'repo-1',
-              default_branch: 'main',
-              base_policy: POLICY,
             },
           ],
           merges: [

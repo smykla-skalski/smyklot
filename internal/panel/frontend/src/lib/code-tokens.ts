@@ -8,7 +8,7 @@
  * document says can become HTML.
  */
 
-export type CodeLang = 'json' | 'yaml' | 'markdown';
+export type CodeLang = 'json' | 'yaml' | 'toml' | 'markdown' | 'text';
 
 /** One stretch of a line wearing one token class. */
 export interface TokenRun {
@@ -86,9 +86,24 @@ function tokenizeMarkdown(line: string): TokenRun[] {
   return out;
 }
 
+function tokenizeToml(line: string): TokenRun[] {
+  if (/^\s*#/u.test(line)) return run(line, 'tok-com');
+  if (/^\s*\[\[?.+\]\]?\]\s*(?:#.*)?$/u.test(line)) return run(line, 'tok-head');
+  const entry = /^(\s*)([\w.-]+)(\s*=\s*)(.*)$/u.exec(line);
+  if (entry === null) return run(line);
+  return [
+    ...run(entry[1] ?? ''),
+    ...run(entry[2] ?? '', 'tok-key'),
+    ...run(entry[3] ?? '', 'tok-pun'),
+    ...run(entry[4] ?? '', 'tok-str'),
+  ];
+}
+
 export function tokenizeLine(lang: CodeLang, line: string): TokenRun[] {
   if (lang === 'yaml') return tokenizeYaml(line);
+  if (lang === 'toml') return tokenizeToml(line);
   if (lang === 'markdown') return tokenizeMarkdown(line);
+  if (lang === 'text') return run(line);
   return tokenizeJson(line);
 }
 
