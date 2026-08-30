@@ -541,17 +541,35 @@ it has to answer to the same fact.
       block-size var(--duration-normal) var(--ease-standard),
       inline-size var(--duration-normal) var(--ease-standard),
       inset-inline-start var(--duration-normal) var(--ease-standard),
-      border-radius var(--duration-normal) var(--ease-standard);
+      border-radius var(--duration-normal) var(--ease-standard),
+      translate var(--duration-press) var(--ease-standard),
+      box-shadow var(--duration-press) var(--ease-standard);
   }
 
   .tree:not(:global(.thumb-ready)) .nav-thumb {
     display: none;
   }
 
-  /* The thumb is one physical pixel tall: pressing consumes its hard edge and
-     moves its face by exactly that amount. The anchor hit target never moves. */
+  /* The selected row's pointer answers happen to the THUMB: the ink's lift and
+     land are mirrored here so the ground and the ink move as one object. */
+  .tree:has(.tree-row.is-active:hover:not(:active), .tree-kid.is-active:hover:not(:active))
+    .nav-thumb {
+    translate: 0 -1px;
+  }
+
+  /* The press, on the selected row. Every pressable surface owes the shared
+     pressed fill AND the inset crease, and this thumb had neither: its throw
+     simply collapsed, which reads as a shadow leaving rather than as a surface
+     being held. The row itself draws nothing - the thumb is the ground and the
+     row is the ink on it, and one of them holds the press - so both belong
+     here. The fill advances from the thumb's OWN material, a veil laid over the
+     identity colour rather than a neutral grey film: a grey one made the
+     selection read as a plain hovered row, and the selection vanished. */
   .tree:has(.tree-row.is-active:active, .tree-kid.is-active:active) .nav-thumb {
-    box-shadow: var(--sidebar-thumb-shadow-pressed);
+    background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
+    box-shadow: var(--pressed-inset), var(--sidebar-thumb-shadow-pressed);
+    /* The ink above it travels the same pixel, so ground and ink move as one
+       object. The anchor hit target never moves. */
     translate: 0 1px;
   }
 

@@ -178,15 +178,29 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
         linkStyle.translate === 'none' &&
         linkStyle.transform === 'none' &&
         (state.pressed || state.selected || visualStyle.boxShadow.includes('0px 1px 0px')) &&
-        (state.pressed || !state.selected || thumbStyle.boxShadow.includes('0px 1px 0px')) &&
-        !thumbStyle.boxShadow.includes('3px') &&
+        /* The selected thumb is a RAISED surface, not a 1px hard edge. It used to be the
+           edge, and this asked for `0px 1px 0px` and refused anything blurred - which is
+           the thumb the design system replaced: it lifts on hover, throws a shadow, and
+           lands into a crease on the press. What is still checked is the ordering that
+           made the old assertion worth writing: a lifted thumb throws further than a
+           landed one, and a landed one keeps a shadow rather than losing it. */
+        (!state.selected ||
+          (state.pressed
+            ? thumbStyle.boxShadow.includes('inset')
+            : thumbStyle.boxShadow.split(',').length >= 2)) &&
         (!state.pressed || visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') &&
         (!state.pressed || visualStyle.borderRadius !== '0px') &&
         (!state.pressed || visualStyle.boxShadow === 'none') &&
         (!state.pressed || visualStyle.transitionDuration === '0s') &&
         (!state.pressed || visualStyle.translate === '0px 1px') &&
         (!state.pressed || state.selected || thumbStyle.translate === 'none') &&
-        (!state.pressed || !state.selected || thumbStyle.translate === '0px 1px') &&
+        /* Read as a NUMBER, because the thumb eases its travel: the row's ink lands
+           instantly and the ground under it takes the press duration to arrive, so a
+           reading taken 100ms in caught 0.998757px and an equality check on `0px 1px`
+           failed a thumb that was doing exactly what it should. */
+        (!state.pressed ||
+          !state.selected ||
+          Math.abs(Number.parseFloat(thumbStyle.translate.split(' ')[1] ?? '') - 1) < 0.05) &&
         groundVisible &&
         visual.contains(label)
       );

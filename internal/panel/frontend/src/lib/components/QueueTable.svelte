@@ -201,7 +201,7 @@ from the wall clock cannot be photographed.
     </div>
   </td>
   <td data-label="Timing">
-    <div class="timing-cell">
+    <div class="timing-cell band-trim-stack">
       <div class="eligibility-line">
         <span class="live-value eligibility-value">
           {#key `${item.id}:${item.state}:${item.eligible_at}`}
@@ -331,13 +331,35 @@ from the wall clock cannot be photographed.
     display: grid;
     gap: var(--space-1);
   }
+  /* The leading its size asks for, not the body's. Left to inherit, this line
+     drew a 12px word on a 23px line beside a 12px word on an 18px one, and the
+     cell's band came out 1.04px below every other cell in the row. */
+  /* Aligned by the CAP, not by the baseline. Every word on this line is one
+     font at one size, so once each part is trimmed to its own band the tops ARE
+     the cap line and the baselines follow - and unlike baseline alignment this
+     survives the live value, which is a grid and therefore offers the flex
+     container a baseline synthesised from its box rather than one its words
+     sit on. Trimmed, that box moved and the countdown rode 5px above the time
+     beside it. */
   .eligibility-line {
-    align-items: baseline;
+    align-items: start;
     color: var(--text-secondary);
     display: flex;
     flex-wrap: wrap;
     font-size: var(--font-size-compact);
     gap: var(--space-1);
+    line-height: var(--leading-compact);
+  }
+
+  /* The stack's trim has to reach the WORDS. `text-box` acts on an element's own
+     line boxes, and neither this line nor the live value inside it has any -
+     one is a flex container and the other a grid, so a trim asked of either
+     does nothing and the cell's top stayed the top of a line box rather than
+     the top of its capitals. Every descendant carries it: they share one font
+     and one leading, and `align-items: baseline` already holds them together,
+     so trimming all of them moves the line's edge and nothing inside it. */
+  .eligibility-line :global(*) {
+    text-box: trim-start cap alphabetic;
   }
   .eligibility-line strong {
     color: var(--brand-action-text);

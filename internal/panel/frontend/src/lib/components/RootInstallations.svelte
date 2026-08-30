@@ -494,10 +494,17 @@ and most visits to this route never open one.
     justify-items: start;
   }
 
-  /* The tooltip wrapper is inline by default, and its line box would ride
-     2px below the cell center. */
+  /* The tooltip wrapper is BLOCK-level, and that is the whole of it: an
+     inline-level box in a `vertical-align: middle` cell is placed by its
+     baseline inside a line box the cell's own leading sets the height of, not
+     by the cell's middle - which left this chip 0.75px below the one in the
+     cell beside it, whose wrapper is a grid. `inline-flex` here was a first
+     pass at the same fault and got it from 2px to 0.75. `fit-content` keeps the
+     box hugging its chip, so the tooltip's target is the chip and not the
+     cell. */
   td > span[title] {
-    display: inline-flex;
+    display: flex;
+    inline-size: fit-content;
   }
 
   .owners-line {
