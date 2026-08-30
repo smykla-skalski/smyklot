@@ -425,18 +425,28 @@
      an ordinary neighbour would just be a hover that reaches into a segment nobody is
      pointing at.
 
+     Never the SELECTED option's own fill, which is what `:not(:has(input:checked))`
+     holds off. That fill lies under the thumb and is invisible until the thumb itself
+     is hovered - at which point a bleed is 6px of hover reaching out past the thumb and
+     onto the option beside it, so pointing at the selection appeared to light up its
+     neighbour. It has nothing to be flush against either: the thumb covers it exactly.
+
      Logical corners and logical insets throughout, so the same rule holds in RTL. */
-  label:has(input:checked) + label::before,
-  label.outlined + label::before,
-  label.previewed + label::before {
+  label:not(:has(input:checked)):is(
+      label:has(input:checked) + label,
+      label.outlined + label,
+      label.previewed + label
+    )::before {
     border-end-start-radius: 0;
     border-start-start-radius: 0;
     inset-inline-start: calc(var(--seg-inner-radius) * -1);
   }
 
-  label:has(+ label input:checked)::before,
-  label:has(+ label.outlined)::before,
-  label:has(+ label.previewed)::before {
+  label:not(:has(input:checked)):is(
+      label:has(+ label input:checked),
+      label:has(+ label.outlined),
+      label:has(+ label.previewed)
+    )::before {
     border-end-end-radius: 0;
     border-start-end-radius: 0;
     inset-inline-end: calc(var(--seg-inner-radius) * -1);
@@ -468,7 +478,7 @@
        by 2px per option — the width mismatch is visible against the search
        field it shares a row with. */
     border: 1px solid transparent;
-    border-radius: calc(var(--r-ctl) - 2px);
+    border-radius: var(--seg-inner-radius);
     color: var(--seg-muted);
     display: flex;
     font-size: var(--font-size-compact);
@@ -648,6 +658,35 @@
     border-style: dashed;
     color: var(--text-secondary);
     font-weight: 650;
+  }
+
+  /* A bounded option paints its own ground rather than letting the track show through.
+     Its boundary says it is a box, and a box you can see through is not one: the fill
+     of the option beside it runs 6px under this one to close the join, and against a
+     transparent middle that bleed reads as a hover that has spilled inside somebody
+     else's border.
+
+     Not while it is the selected one. The thumb is drawn underneath `.segment-label`,
+     so a ground painted here at that moment would cover the very thing it is standing
+     on and the selection would go dark. */
+  label.outlined:not(:has(input:checked)) .segment-label,
+  label.previewed:not(:has(input:checked)) .segment-label {
+    background: var(--seg-track);
+    transition: background-color var(--duration-press) var(--ease-standard);
+  }
+
+  /* And it answers a pointer here rather than through `::before`. The fill is `z-index: 1`
+     and this ground is `3`, so once this one is opaque the hover underneath it cannot be
+     seen - a bounded option would take the pointer and show nothing back. Same two
+     colours off the same ramp, so it is the same gesture as every other segment's. */
+  label.outlined:not(:has(input:checked)):hover:not(:has(input:disabled)) .segment-label,
+  label.previewed:not(:has(input:checked)):hover:not(:has(input:disabled)) .segment-label {
+    background: var(--seg-hover);
+  }
+
+  label.outlined:not(:has(input:checked)):active:not(:has(input:disabled)) .segment-label,
+  label.previewed:not(:has(input:checked)):active:not(:has(input:disabled)) .segment-label {
+    background: var(--seg-pressed);
   }
 
   /* The offer: this is what the control will look like once the move is taken. */
