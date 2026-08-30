@@ -12,10 +12,11 @@ import { mixOklab } from './color';
  * derived from them.
  *
  * Custom properties substitute at computed-value time on the element that declares them, which is
- * why this resolves per element rather than by flattening every block into one map: `--accent:
- * var(--brand-action)` declared on `:root` is already resolved to petrol by the time it inherits
- * into the violet Root shell. That is a real cascade behaviour the shell works around by
- * re-declaring its aliases, and a resolver that ignored it would report colours nobody sees.
+ * why this resolves per element rather than by flattening every block into one map: a
+ * `--border-strong: color-mix(…, var(--text-primary) …)` declared on `:root` is already resolved
+ * against the panel's ink by the time it inherits into the violet Root shell. That is a real
+ * cascade behaviour the shell works around by re-declaring what it moves, and a resolver that
+ * ignored it would report colours nobody sees.
  */
 
 const css = readFileSync(new URL('../src/tokens.css', import.meta.url), 'utf8');

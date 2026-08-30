@@ -1019,10 +1019,11 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
    column's filter. Three components drew their own and disagreed on all three of
    size, ink and press.
 
-   It is 1.75rem because that is what the filter triggers in the same header row
-   already are, and because the action column is sized for it: a 2.5rem trigger
-   overflowed its cell's own padding and sat 12px proud of every other column's
-   right edge, in the Queue, Recent, Access and Installations tables alike.
+   It stands on the quiet tier because that is what the filter triggers in the
+   same header row already are, and because the action column is sized for it: a
+   2.5rem trigger overflowed its cell's own padding and sat 12px proud of every
+   other column's right edge, in the Queue, Recent, Access and Installations
+   tables alike.
 
    The states are LAYERS rather than fills. This button sits inside a row that
    hovers underneath it, so a flat colour either matches the row's own hover or
@@ -1038,7 +1039,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   cursor: pointer;
   display: inline-flex;
   flex: none;
-  height: 1.75rem;
+  height: var(--tier-quiet);
   justify-content: center;
   line-height: var(--leading-flat);
   padding: 0;
@@ -1054,7 +1055,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
     color var(--duration-fast) var(--ease-out),
     transform var(--duration-press) var(--ease-standard);
   user-select: none;
-  width: 1.75rem;
+  width: var(--tier-quiet);
   -webkit-tap-highlight-color: transparent;
 }
 
