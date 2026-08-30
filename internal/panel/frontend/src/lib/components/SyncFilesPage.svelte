@@ -461,7 +461,8 @@ already hold - the index ships once, matching costs no requests.
   }
 
   .card + .card {
-    margin-top: var(--space-4);
+    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
+    margin-block-start: var(--rhythm-card-gap);
   }
 
   .card-title {

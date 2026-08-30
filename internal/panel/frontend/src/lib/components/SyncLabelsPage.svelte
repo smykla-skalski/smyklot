@@ -620,7 +620,8 @@ unlisted labels are removed, and the patterns left alone either way.
   }
 
   .card + .card {
-    margin-top: var(--space-4);
+    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
+    margin-block-start: var(--rhythm-card-gap);
   }
 
   .card-title {

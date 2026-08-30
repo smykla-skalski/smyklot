@@ -1038,7 +1038,8 @@ stacked left, Cancel and Done on a hairline foot.
   }
 
   .card + .card {
-    margin-top: var(--space-4);
+    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
+    margin-block-start: var(--rhythm-card-gap);
   }
 
   .group-head {
