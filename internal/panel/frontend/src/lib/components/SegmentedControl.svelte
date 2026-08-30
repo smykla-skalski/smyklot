@@ -66,6 +66,32 @@
     options.find((option) => option.value === value)?.tone ?? 'default',
   );
 
+  /**
+   * How many visual pixels one layout pixel is drawn as, here.
+   *
+   * `zoom` multiplies down the tree and a `transform` scales what is under it, and no
+   * single API reports either as an effective figure - so the chain is walked and the
+   * two are multiplied. Only the horizontal factor: this positions a thumb along one
+   * axis, and a rotation would make the question a different one.
+   */
+  function scaleOf(node: HTMLElement): number {
+    let scale = 1;
+    for (
+      let element: HTMLElement | null = node;
+      element !== null;
+      element = element.parentElement
+    ) {
+      const style = getComputedStyle(element);
+      const zoom = Number.parseFloat(style.zoom);
+      if (Number.isFinite(zoom) && zoom > 0) scale *= zoom;
+      if (style.transform !== 'none' && style.transform !== '') {
+        const factor = new DOMMatrixReadOnly(style.transform).a;
+        if (Number.isFinite(factor) && factor > 0) scale *= factor;
+      }
+    }
+    return scale === 0 ? 1 : scale;
+  }
+
   function positionSelection(node: HTMLFieldSetElement, selection: string) {
     let currentSelection = selection;
 
@@ -103,15 +129,18 @@
          restores the content coordinate when a narrow control is horizontally scrolled. */
       const nodeBox = node.getBoundingClientRect();
       /* A rect is in VISUAL pixels and a custom property is spent as LAYOUT pixels, and
-         inside a scaled subtree those are not the same unit: the scale is applied once
-         by the measurement and again by the browser when the thumb is drawn. Under a
-         page at `zoom: 3` a re-measure put a 291px option under an 874px thumb, 605px
-         off to the right. `offsetWidth` is the same box in layout pixels, so their
-         ratio IS the effective scale - and it covers a CSS `transform` as well as
-         `zoom`, which no single API reports. Divided rather than measured with
-         `offsetLeft`, because that rounds to whole pixels and the seam it leaves around
-         the thumb's corners is what the fractional geometry here exists to avoid. */
-      const scale = node.offsetWidth > 0 ? nodeBox.width / node.offsetWidth : 1;
+         inside a scaled subtree those are not the same unit: the scale lands once on
+         the measurement and again when the thumb is drawn. Under a page at `zoom: 3` a
+         re-measure put a 291px option under an 874px thumb, 605px off to the right.
+
+         Read from the chain rather than inferred from a ratio. `rect.width /
+         offsetWidth` looks like the same number and is not: `offsetWidth` ROUNDS to a
+         whole pixel, so on a 323.4px control it reports 323 and the ratio comes out
+         1.0012 at no zoom at all - which put the thumb 0.078px out and failed the
+         checks that exist to hold this geometry to a twentieth of a pixel. Multiplying
+         the `zoom` and the horizontal transform of every ancestor is exact at every
+         scale, including none. */
+      const scale = scaleOf(node);
       const left = (optionBox.left - nodeBox.left) / scale - node.clientLeft + node.scrollLeft;
       /* Read before the write, because the give below is owed to a MOVE and this runs
          for every re-measurement: a resize, a popover opening, a label changing width.

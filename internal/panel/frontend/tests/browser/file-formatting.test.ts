@@ -134,6 +134,7 @@ describe('configured file formatting in the development panel', () => {
               /* A logical inset, so this reads the same under RTL. */
               insets: [style.insetInlineStart, style.insetInlineEnd],
               last: index === quoteLabels.length - 1,
+              selected: index === selectedIndex,
               /* Which side the thumb is on, if it is beside this segment at all. */
               thumbSide:
                 index === selectedIndex - 1 ? 'end' : index === selectedIndex + 1 ? 'start' : null,
@@ -161,28 +162,33 @@ describe('configured file formatting in the development panel', () => {
       expect(radius).not.toBe('0px');
       expect(geometry.thumbCorners).toEqual([radius, radius, radius, radius]);
 
-      /* A fill squares the side facing another segment and keeps the track's curve where
-         it faces the track's end: a hover has to cover its whole segment, and rounded
-         against a neighbour it would leave two crescents of bare track at the join a
-         reader is looking straight at. Corners read in logical order: start-start,
-         start-end, end-end, end-start. */
+      /* A fill squares the side facing a neighbour that DRAWS - the selected option,
+         which wears the thumb - and runs on underneath it by that same radius, because
+         the thumb is rounded and its curve leaves a wedge of bare track belonging to
+         neither box. Everywhere else it keeps all four corners and bleeds nowhere: a
+         segment whose neighbour draws nothing has nothing to be flush against, and a
+         bleed under an ordinary neighbour would be a hover reaching into a segment
+         nobody is pointing at.
+
+         The selected option's own fill is excluded from both. It lies under the thumb
+         and is invisible until the thumb itself is hovered, at which point a bleed is
+         six pixels of hover reaching out past the thumb onto the option beside it.
+
+         Corners read in logical order: start-start, start-end, end-end, end-start. */
       for (const [index, fill] of geometry.fills.entries()) {
-        expect(fill.corners, `segment ${index} corners`).toEqual([
-          fill.first ? radius : '0px',
-          fill.last ? radius : '0px',
-          fill.last ? radius : '0px',
-          fill.first ? radius : '0px',
-        ]);
-        /* And against the thumb it runs on underneath by that same radius, because the
-           thumb is drawn over it and rounded, so its curve leaves a wedge belonging to
-           neither box. Only there - a bleed under an ordinary neighbour would be a hover
-           reaching into a segment nobody is pointing at. */
+        const facing = fill.selected ? null : fill.thumbSide;
         expect(
-          fill.insets,
-          `segment ${index} bleed (thumb ${fill.thumbSide ?? 'not adjacent'})`,
+          fill.corners,
+          `segment ${index} corners (thumb ${facing ?? 'not adjacent'})`,
         ).toEqual([
-          fill.thumbSide === 'start' ? `-${radius}` : '0px',
-          fill.thumbSide === 'end' ? `-${radius}` : '0px',
+          facing === 'start' ? '0px' : radius,
+          facing === 'end' ? '0px' : radius,
+          facing === 'end' ? '0px' : radius,
+          facing === 'start' ? '0px' : radius,
+        ]);
+        expect(fill.insets, `segment ${index} bleed`).toEqual([
+          facing === 'start' ? `-${radius}` : '0px',
+          facing === 'end' ? `-${radius}` : '0px',
         ]);
       }
       expect(
