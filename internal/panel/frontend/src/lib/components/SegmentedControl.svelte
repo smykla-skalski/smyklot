@@ -620,7 +620,7 @@ positioning will replace once it is portable.
      wedge and both cover the same bleed: a bounded option's ground is on its label at
      `z-index: 3` and this fill is at `1`, so all that survives underneath it is the
      corner its curve gave up. */
-  label:is(
+  label:not(:has(input:checked)):is(
       label:has(input:checked) + label,
       label.outlined + label,
       label.previewed + label
@@ -628,7 +628,7 @@ positioning will replace once it is portable.
     --bleed-start: var(--seg-bleed);
   }
 
-  label:is(
+  label:not(:has(input:checked)):is(
       label:has(+ label input:checked),
       label:has(+ label.outlined),
       label:has(+ label.previewed)
