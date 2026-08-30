@@ -108,20 +108,10 @@
   --edge-hairline-offset: -1px;
   --info: var(--primitive-info-light);
   --info-tint: var(--primitive-info-light-tint);
-  --on-info: #ffffff;
   --success: var(--primitive-success-light);
   --success-tint: var(--primitive-success-light-tint);
-  /* The ink a filled tone carries. --brand-action and --info had one; success,
-     warning and danger did not, so the one control that fills with a state tone
-     (.btn-stop) named white itself - correct here at 6.46:1 and 2.04:1 on the
-     dark palettes, where the same token is a pale pink. A tone is a *text*
-     colour on both sides of the theme; only its partner knows which way round
-     the pair goes. Measured light / dark: 5.47 and 7.76, 5.74 and 9.38, 6.46
-     and 8.78. */
-  --on-success: #ffffff;
   --warning: var(--primitive-warning-light);
   --warning-tint: var(--primitive-warning-light-tint);
-  --on-warning: #ffffff;
   --danger: var(--primitive-danger-light);
   --danger-tint: var(--primitive-danger-light-tint);
   --on-danger: #ffffff;
@@ -290,7 +280,6 @@
      lands within half a just-noticeable difference of this hover on both dark palettes. */
   --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
-  --control-border-hover: #99a7a1;
   --input-bg: var(--surface-inset);
   --popover-bg: var(--surface-base);
   --popover-border: var(--border-subtle);
@@ -345,26 +334,15 @@
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
 
-  /* Matrix cell states. In step is quiet; attention states speak. */
-  --cell-instep: var(--text-muted);
+  /* Matrix cell states. A cell in step draws no mark at all - only the two
+     states that want an answer speak. */
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
-  --cell-off: var(--border-control);
 
   /* Switch (instant boolean). On = brand, like every other "the product is
      acting" control. */
-  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
-     brand colour - "you are here" is not "you can act". Hover previews the
-     same affordance in the border's voice; counts are quiet neutral pills. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
@@ -485,28 +463,6 @@
   --inherit-marker-gap: 6px;
   --inherit-marker-offset: calc(var(--inherit-marker-size) + var(--inherit-marker-gap));
 
-  /* THE PAIR ENTRY's geometry. Every gap inside one comes from these two air
-     units and nothing else: --pair-air on the inline axis (the shell's
-     padding, the gap between a word and its chevron, the tail lane's
-     remainder beside the x) and --pair-air-block above and below a lane. They
-     are px, not rem: the block figure is arithmetic from the control tier and
-     an inline rem against it only agrees at a 16px root.
-     The lane height is the tier minus its two borders minus two block air
-     units, declared so the lane's wash and its 1px invalid hairline land on
-     whole pixels - sized by the input's line box the lane came out fractional
-     and the hairline's edges disappeared into half pixels.
-     The tail lane is one declared column so a draft row, which has no x yet
-     but will, does not jump wider the moment it commits. */
-  --pair-air: 4px;
-  --pair-air-block: 1px;
-  --pair-lane-height: calc(var(--control-height-compact) - 2px - 2 * var(--pair-air-block));
-  --pair-lane-tail: calc(var(--pair-lane-height) + var(--pair-air));
-  --pair-lane-radius: calc(var(--r-ctl) - 1px);
-  --pair-lane-key: 7.5rem;
-  --pair-lane-value: 9.5rem;
-  /* The reserved message line, in rem so it grows with the reader's text. */
-  --pair-note-line: var(--leading-meta);
-
   /* THE COLOUR PICKER's geometry. THE SWATCH GRID IS THE MODULE, and the
      width is derived from it rather than typed beside it. Every one of these
      was a literal in the component - 150, 14, 16 and the rest - so the pop
@@ -613,7 +569,6 @@
      100rem the pane kept growing with the display and every card in it grew with the pane, so a
      wide monitor produced lines nobody wants to read and tables with acres between columns. */
   --content-max: 70rem;
-  --panel-header-height: 5rem;
   --pagination-height: 2.75rem;
   /* One press, everywhere: the control shrinks toward its own centre, which is what reads as
      pushed in. Half the app was nudging elements down by a pixel instead - the same gesture said
@@ -736,8 +691,23 @@
   --night-seg-text: rgb(246 249 255);
   --night-seg-muted: rgb(186 203 233);
 
-  /* Input and checkbox boundaries at ~3:1 against the surface. */
-  --border-strong: #9aa89f;
+  /* THE BOUNDARY RAMP: the line worn by a control whose RING IS THE CONTROL -
+     a switch track, a selection mark, a choice dot, the dashed add-chip.
+     WCAG 1.4.11 asks 3:1 of it, and the flat hex here held 2.19 against the
+     canvas, 2.22 against an inset track and 2.48 against a card: the floor it
+     claimed was never measured. Worse, it was a hex the Root console never
+     redeclared, so the content theme's green-grey came through at 7.37:1 on a
+     violet ground - a line twice as loud as the ink beside it.
+     Derived from each palette's own ink and its own base, so every palette
+     lands on the floor by construction and none can inherit another's. Tuned
+     to the floor rather than past it: 53% clears 3.53 on a card, 3.16 on an
+     inset track and 3.13 on the canvas, and the next step up walks toward 4:1,
+     where every field reads framed.
+     Two state steps, for the same reason a fill has them - a rim that stays put
+     while the ground under it answers reads as a control that did not. */
+  --border-strong: color-mix(in srgb, var(--text-primary) 53%, var(--surface-base));
+  --control-border-hover: color-mix(in srgb, var(--text-primary) 66%, var(--surface-base));
+  --control-border-pressed: color-mix(in srgb, var(--text-primary) 78%, var(--surface-base));
 }
 
 :root[data-theme='dark'],
@@ -767,17 +737,10 @@
   --focus: var(--primitive-petrol-400);
   --info: var(--primitive-info-dark);
   --info-tint: var(--primitive-info-dark-tint);
-  --on-info: #0e1116;
   --success: var(--primitive-success-dark);
   --success-tint: var(--primitive-success-dark-tint);
-  /* A deep tone of the tone's own hue, the way --on-brand-action is - and this
-     one *is* --on-brand-action, since the dark success and the dark brand are
-     both petrol. Not the canvas: near-black on a pastel fill reads as a hole
-     punched in it rather than as writing on it. */
-  --on-success: #062c2a;
   --warning: var(--primitive-warning-dark);
   --warning-tint: var(--primitive-warning-dark-tint);
-  --on-warning: #2c1f06;
   --danger: var(--primitive-danger-dark);
   --danger-tint: var(--primitive-danger-dark-tint);
   --on-danger: #2e0b10;
@@ -836,7 +799,6 @@
      does not follow the theme's pale danger tone. */
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
-  --control-border-hover: #536170;
   --control-bg-hover: color-mix(in srgb, #ffffff 8.5%, var(--control-bg));
   --control-bg-pressed: color-mix(in srgb, #ffffff 14%, var(--control-bg));
   --table-header-bg: var(--surface-inset);
@@ -866,22 +828,10 @@
   --code-punct: var(--text-secondary);
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
-  --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
-  --cell-off: var(--border-control);
-  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
-     brand colour - "you are here" is not "you can act". Hover previews the
-     same affordance in the border's voice; counts are quiet neutral pills. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
@@ -913,7 +863,12 @@
   --segment-hover: var(--interactive-hover-layer);
   --segment-pressed: var(--interactive-pressed);
 
-  --border-strong: #5b6a78;
+  /* A dark ground reaches the same floor on a lighter mix - the same law, less
+     chalk. 40% clears 3.61 on a card, 3.07 on an inset track, 3.90 on the
+     canvas. */
+  --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
+  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 .app-shell.root-mode {
@@ -1039,22 +994,10 @@
   --code-punct: var(--text-secondary);
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
-  --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
-  --cell-off: var(--border-control);
-  /* Section tabs: navigation, so the indicator is ink, deliberately NOT the
-     brand colour - "you are here" is not "you can act". Hover previews the
-     same affordance in the border's voice; counts are quiet neutral pills. */
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
-
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
@@ -1098,6 +1041,13 @@
   --sidebar-seg-track: rgb(0 0 0 / 30%);
   --sidebar-seg-hover: rgb(255 255 255 / 8.5%);
   --sidebar-seg-pressed: rgb(255 255 255 / 14%);
+  /* Restated, not inherited: a var() inside a custom property resolves where
+     that property is DECLARED, so the content theme's ink and base are what
+     the light block's ramp would carry onto this violet ground. The Root
+     console is a dark ground in either theme, so it takes the dark shares. */
+  --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
+  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 :root[data-theme='dark'] .app-shell.root-mode,
@@ -1155,22 +1105,17 @@
   --diff-del-ink: var(--danger);
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
-  --cell-instep: var(--text-muted);
   --cell-pending: var(--diff-chg-ink);
   --cell-pending-bg: var(--diff-chg-bg);
   --cell-refused: var(--danger);
   --cell-refused-bg: var(--danger-tint);
-  --cell-off: var(--border-control);
   --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
   --code-punct: var(--text-secondary);
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
-  --tab-ink: var(--text-primary);
-  --tab-muted: var(--text-secondary);
-  --tab-indicator: var(--text-primary);
-  --tab-indicator-hover: var(--border-control);
-  --tab-count-bg: var(--surface-inset);
-  --tab-count-ink: var(--text-secondary);
+  --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
+  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);

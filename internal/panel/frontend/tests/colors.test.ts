@@ -34,14 +34,13 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       ['brand-action-text', 'surface-base'],
       ['brand-action-text', 'brand-action-tint'],
       ['on-brand-action', 'brand-action'],
-      ['on-info', 'info'],
       // A tone is a text colour on one side of the theme and a fill on the other, so the ink over
       // it cannot be named at the call site. .btn-stop named white and carried it into both dark
       // palettes, where --danger is a pale pink: 2.04:1, under AA and under AA-large, on every
-      // destructive confirmation in the product.
+      // destructive confirmation in the product. Only danger and the brand have a partner: no
+      // control fills with info, success or warning, and the three inks that answered for them
+      // are gone - the tones themselves appear as text and as dots, both measured elsewhere.
       ['on-danger', 'danger'],
-      ['on-success', 'success'],
-      ['on-warning', 'warning'],
       ['sidebar-text', 'sidebar-bg'],
       ['sidebar-text-muted', 'sidebar-bg'],
     ])('keeps %s readable on %s', (foreground, background) => {

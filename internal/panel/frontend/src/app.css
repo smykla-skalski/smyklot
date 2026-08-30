@@ -1962,3 +1962,275 @@ thead th .icon-button:active:not(:disabled) {
     padding-right: 0.875rem;
   }
 }
+
+/* ============================================================
+   EDGES UNDER A CHANGED GROUND
+
+   A row tints under the pointer and the ground beneath everything standing on
+   it moves with it. A pill balanced against the resting surface goes washed
+   out and loses its silhouette - a warning pill on a hovered row, a count on a
+   held nav item. So it borrows an edge FROM ITSELF, for exactly as long as the
+   state lasts, and gives it back after.
+
+   Two shares and nothing else: --edge-on-state under a light ground change,
+   --edge-on-state-strong under a heavy one. One rule covers every tone,
+   because the mix reads currentcolor - an object's ink already is its colour,
+   so warning wears warning and success wears success and no tone is traded for
+   a neutral line. An object whose ink is its FILL rather than its text (a
+   colour swatch) says so with --edge-ink.
+
+   The share travels by INHERITANCE, not by a descendant selector, which is
+   what makes the nesting come out right: a container sets --edge-share on its
+   own box, and a control with a state of its own overwrites it for its own
+   subtree. The pointer reaching the button means the button's state speaks,
+   not the row's.
+
+   The hairline is drawn as an inset-offset OUTLINE: it costs no layout, cannot
+   clobber a shadow the object already wears, and cannot move a neighbour -
+   which a border on a state would do.
+   ============================================================ */
+
+/* LIST 1 - containers that repaint their ground for a state. A family belongs
+   here when a :hover or :active rule of its own changes its background, and it
+   has to be spelled as narrowly as that rule: a static row that deliberately
+   stays still would otherwise hand a hairline to every pill on a ground that
+   never moved. Adding a family here is the whole cost of the law - every
+   object inside it is covered from then on. */
+:is(
+  .rail-tile,
+  .rail-ws,
+  .side-fold,
+  .tree-row,
+  .tree-kid,
+  .menu-item,
+  .action-item,
+  .btn,
+  .icon-button,
+  .table-sort-button,
+  .add-chip,
+  .cmd-chip,
+  .alias-target,
+  .setting-clear,
+  .dot-btn,
+  .symbol,
+  .filter-trigger,
+  .filter-option,
+  .role-trigger,
+  .role-option,
+  .tools-trigger,
+  .tools-option,
+  .display-trigger,
+  .clear-button,
+  .done-button,
+  .object-row,
+  .legend-row,
+  .attn-row,
+  .action-row,
+  .panel-row,
+  .method-option,
+  .repo-group-head,
+  .kind-card,
+  .kind-open,
+  .choice-card,
+  .tile,
+  .finder-opt,
+  .label-name,
+  .label-desc,
+  .label-del,
+  .pattern-del,
+  .patch-key button,
+  .data-row,
+  .queue-row,
+  .user-table tbody tr,
+  thead th
+):hover {
+  --edge-line: var(--control-border-hover);
+  --edge-share: var(--edge-on-state);
+  --edge-style: solid;
+}
+
+/* The switch is the one container whose ground is repainted by a state on an
+   ANCESTOR rather than on itself, so it joins the list in its own spelling. */
+.switch:hover input:not(:disabled) + .switch-track {
+  --edge-line: var(--control-border-hover);
+  --edge-share: var(--edge-on-state);
+  --edge-style: solid;
+}
+
+/* Held, and selected: a heavier ground change takes the heavier share. A
+   selected row is not a passing state, but its ground is repainted just the
+   same and an object on it washes out for as long as it stays selected. */
+:is(
+  .rail-tile,
+  .rail-ws,
+  .side-fold,
+  .tree-row,
+  .tree-kid,
+  .menu-item,
+  .action-item,
+  .btn,
+  .icon-button,
+  .table-sort-button,
+  .add-chip,
+  .cmd-chip,
+  .alias-target,
+  .setting-clear,
+  .dot-btn,
+  .symbol,
+  .filter-trigger,
+  .filter-option,
+  .role-trigger,
+  .role-option,
+  .tools-trigger,
+  .tools-option,
+  .display-trigger,
+  .clear-button,
+  .done-button,
+  .object-row,
+  .legend-row,
+  .attn-row,
+  .action-row,
+  .panel-row,
+  .method-option,
+  .repo-group-head,
+  .kind-card,
+  .kind-open,
+  .choice-card,
+  .tile,
+  .finder-opt,
+  .label-name,
+  .label-desc,
+  .label-del,
+  .pattern-del,
+  .patch-key button,
+  .data-row,
+  .queue-row,
+  .user-table tbody tr,
+  thead th
+):active,
+.rail-tile.is-active,
+.rail-ws.is-active,
+.tree-row.is-active,
+.tree-kid.is-active,
+.method-option.selected,
+.choice-card.is-chosen {
+  --edge-line: var(--control-border-pressed);
+  --edge-share: var(--edge-on-state-strong);
+  --edge-style: solid;
+}
+.switch:active input:not(:disabled) + .switch-track {
+  --edge-line: var(--control-border-pressed);
+  --edge-share: var(--edge-on-state-strong);
+  --edge-style: solid;
+}
+
+/* Disabled outranks all three: an unavailable control draws no ground change,
+   so nothing on it has anything to keep its silhouette against. */
+:is(.btn, .menu-item, .action-item, .icon-button, .filter-option, .role-option, .tools-option)
+  :is([aria-disabled='true'], :disabled),
+:is(.btn, .menu-item, .action-item, .icon-button)[aria-disabled='true'],
+:is(.btn, .menu-item, .action-item, .icon-button):disabled,
+.choice-card:has(input:disabled) {
+  --edge-line: var(--control-border);
+  --edge-share: 0%;
+  --edge-style: none;
+}
+
+/* LIST 2 - borderless inked objects. Each one is a fill and an ink and nothing
+   else, so each borrows the share as a hairline of its own ink. :focus-visible
+   is excluded rather than overridden: focus is one ring and never two, and
+   both are drawn with the same property.
+
+   The STYLE is what a container switches on, not just the colour. Written as
+   `solid` with a transparent colour, every one of these would wear a 1px
+   outline at all times that merely happened to be invisible - a resting change
+   the law forbids, and one forced-colours mode would have drawn anyway.
+
+   The objects that already carry a line are deliberately absent: .chip and
+   .status-pill wear a keyline mixed from their own ink, and .mx-pending and
+   .mx-refused a tone border of theirs. They have a silhouette to keep, and a
+   second line on top of it is one line too many. `.mx-instep` is absent for
+   the opposite reason - it is an unbacked check beside a row rather than a
+   filled object, and an object with no ground of its own does not borrow an
+   edge. */
+:is(.pill, .rail-badge, .tab-count, .label-swatch):not(:focus-visible) {
+  outline: var(--edge-hairline) var(--edge-style, none)
+    color-mix(in srgb, var(--edge-ink) var(--edge-share), transparent);
+  outline-offset: var(--edge-hairline-offset);
+}
+
+/* A swatch's ink is the colour it is showing, not the text on it. */
+.label-swatch {
+  --edge-ink: var(--swatch, currentcolor);
+}
+
+/* LIST 3 - objects that already carry a line. They do not borrow one: they
+   step the one they have, one notch along the ramp they already own, so the
+   line still reads as a CUT between the object and the ground behind it. It is
+   not required to hold the resting contrast ratio - that is a resting number,
+   and this is a state.
+
+   REST IS NOT TOUCHED, so this is written where the state is rather than as
+   one declaration with a fallback. And the BUTTON family is not here: it
+   carries --control-border-hover through its own rule, because the soft
+   control border is that family's language and the ink-mix floor makes a
+   button read unfinished beside its neighbours. What steps here is the family
+   whose ring IS the control - a switch track, a selection mark, a choice dot -
+   and only while it is unselected: a selected one is tone-bordered, and a
+   neutral step would cost the tone. */
+:is(
+    .rail-tile,
+    .rail-ws,
+    .side-fold,
+    .tree-row,
+    .tree-kid,
+    .menu-item,
+    .action-item,
+    .filter-option,
+    .role-option,
+    .tools-option,
+    .object-row,
+    .legend-row,
+    .attn-row,
+    .action-row,
+    .panel-row,
+    .method-option,
+    .repo-group-head,
+    .kind-card,
+    .choice-card,
+    .tile,
+    .finder-opt,
+    .data-row,
+    .queue-row,
+    .user-table tbody tr
+  ):not(.selected, .is-chosen, .is-active):is(:hover, :active)
+  :is(.selection-mark, .method-check, .choice-dot):not(:focus-visible) {
+  border-color: var(--edge-line);
+}
+
+.switch:is(:hover, :active) input:not(:checked, :disabled) + .switch-track,
+:is(
+    .menu-item,
+    .action-item,
+    .filter-option,
+    .role-option,
+    .tools-option,
+    .object-row,
+    .legend-row,
+    .attn-row,
+    .action-row,
+    .panel-row,
+    .repo-group-head,
+    .kind-card,
+    .choice-card,
+    .tile,
+    .finder-opt,
+    .data-row,
+    .queue-row,
+    .user-table tbody tr
+  ):is(:hover, :active)
+  .switch
+  input:not(:checked, :disabled)
+  + .switch-track {
+  border-color: var(--edge-line);
+}

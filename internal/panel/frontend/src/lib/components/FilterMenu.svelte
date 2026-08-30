@@ -361,9 +361,8 @@ is never what clearing a filter is meant to mean.
     border-radius: 5px;
   }
 
-  .filter-option:hover .selection-mark {
-    border-color: var(--text-soft);
-  }
+  /* The mark's hover step is the borrowed-edge law's, in app.css: it steps the
+     boundary ramp it already owns rather than jumping onto the ink scale. */
 
   /* The checkbox fills; the radio keeps its ring, which is the whole of the
      distinction. */
