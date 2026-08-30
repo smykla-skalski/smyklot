@@ -1340,7 +1340,7 @@ where it arises.
 
   .pill {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--radius-chip);
     display: inline-flex;
     font-size: var(--font-size-micro);
@@ -1426,7 +1426,7 @@ where it arises.
     align-items: center;
     display: flex;
     gap: var(--space-2);
-    min-block-size: 20px;
+    min-block-size: var(--object-name-line);
   }
 
   .file-path {
@@ -1466,7 +1466,7 @@ where it arises.
     margin-bottom: var(--space-2);
     /* One declared height whether or not the pane carries tools, so paired
        panes start their code at the same pixel. */
-    min-block-size: 28px;
+    min-block-size: var(--tier-quiet);
     text-transform: uppercase;
   }
 
@@ -1517,7 +1517,7 @@ where it arises.
   .patch-key {
     align-items: center;
     background: var(--brand-action-tint);
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--r-chip);
     box-sizing: border-box;
     color: var(--brand-action-text);

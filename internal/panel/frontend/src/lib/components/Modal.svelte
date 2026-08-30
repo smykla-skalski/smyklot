@@ -188,7 +188,7 @@ belongs in `TableEmptyState`.
   }
 
   :global(.modal-panel > header h2) {
-    font-size: 1.25rem;
+    font-size: var(--font-size-dialog-title);
     font-weight: 700;
     letter-spacing: -0.015em;
     line-height: var(--leading-title);

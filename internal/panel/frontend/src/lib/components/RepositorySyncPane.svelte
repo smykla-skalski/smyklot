@@ -1042,7 +1042,12 @@ customization it described.
     align-items: center;
     display: grid;
     gap: var(--space-2) var(--space-4);
-    grid-template-columns: 1fr auto auto;
+    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
+       control stops being a sentence. 13rem holds about thirty-two characters at the
+       description's size - five average English words - so a line still carries a
+       phrase rather than breaking after every word or two. The say never narrows past
+       it; when the row cannot give it that, the control drops below instead. */
+    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
     /* The air around a drawn hairline is the card's own padding, on both

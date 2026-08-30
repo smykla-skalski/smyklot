@@ -1156,7 +1156,7 @@ the same page without the controls, rather than controls that refuse.
   }
   .schedule-summary strong {
     color: var(--text-primary);
-    font-size: 1.25rem;
+    font-size: var(--font-size-dialog-title);
     line-height: var(--leading-flat);
   }
   .section-heading {

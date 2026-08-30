@@ -940,7 +940,7 @@ would be telling everybody else about a console they cannot open.
     align-items: center;
     background: var(--ws-tint);
     border-radius: 6px;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     color: var(--ws-ink);
     display: inline-flex;
     flex: none;

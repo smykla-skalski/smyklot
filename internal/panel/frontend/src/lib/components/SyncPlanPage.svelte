@@ -1210,7 +1210,7 @@ the button.
   .pill {
     align-items: center;
     /* A chip's height is a decision: 20px, the app's chip-small. */
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--radius-chip);
     display: inline-flex;
     font-size: var(--font-size-micro);

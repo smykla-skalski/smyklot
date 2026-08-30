@@ -1075,7 +1075,12 @@ stacked left, Cancel and Done on a hairline foot.
     align-items: center;
     display: grid;
     gap: var(--space-2) var(--space-4);
-    grid-template-columns: 1fr auto auto;
+    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
+       control stops being a sentence. 13rem holds about thirty-two characters at the
+       description's size - five average English words - so a line still carries a
+       phrase rather than breaking after every word or two. The say never narrows past
+       it; when the row cannot give it that, the control drops below instead. */
+    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
     padding: 0.5rem var(--space-2);
@@ -1181,7 +1186,7 @@ stacked left, Cancel and Done on a hairline foot.
   .cond-chip {
     align-items: center;
     background: var(--surface-inset);
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--r-chip);
     color: var(--text-secondary);
     display: inline-flex;
@@ -1223,7 +1228,7 @@ stacked left, Cancel and Done on a hairline foot.
   .param-chip {
     align-items: center;
     background: var(--surface-inset);
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--r-chip);
     color: var(--text-secondary);
     display: inline-flex;

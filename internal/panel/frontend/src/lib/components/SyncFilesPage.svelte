@@ -696,7 +696,7 @@ already hold - the index ships once, matching costs no requests.
     align-items: center;
     display: flex;
     gap: var(--space-2);
-    min-block-size: 20px;
+    min-block-size: var(--object-name-line);
   }
 
   .file-path {
@@ -720,7 +720,7 @@ already hold - the index ships once, matching costs no requests.
 
   .pill {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--radius-chip);
     display: inline-flex;
     font-size: var(--font-size-micro);
@@ -742,7 +742,7 @@ already hold - the index ships once, matching costs no requests.
 
   .mx-mark {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--r-chip);
     box-sizing: border-box;
     display: inline-flex;

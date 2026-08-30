@@ -678,7 +678,7 @@ it has to answer to the same fact.
   }
 
   .tree-kid {
-    block-size: 28px;
+    block-size: var(--tier-quiet);
     box-sizing: border-box;
     color: var(--sidebar-text-secondary);
     display: block;
@@ -766,7 +766,7 @@ it has to answer to the same fact.
        radius belongs to the status chips in content. */
     border-radius: 6px;
     /* A chip's height is a decision: 20px, the app's chip-small. */
-    block-size: 20px;
+    block-size: var(--tier-mark);
     color: var(--sidebar-text-secondary);
     display: inline-flex;
     font-family: var(--mono);

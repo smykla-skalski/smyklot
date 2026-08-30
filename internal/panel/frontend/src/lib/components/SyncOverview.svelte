@@ -533,7 +533,7 @@ plan is applied, which is why these are switches and not a form.
     background: none;
     border: 0;
     /* A pressable row wears a declared height: 28px whole. */
-    block-size: 28px;
+    block-size: var(--tier-quiet);
     border-radius: var(--r-ctl);
     box-sizing: border-box;
     color: inherit;
@@ -730,7 +730,7 @@ plan is applied, which is why these are switches and not a form.
     align-items: center;
     border-radius: var(--r-chip);
     /* Declared 20px, the chip-small height. */
-    block-size: 20px;
+    block-size: var(--tier-mark);
     box-sizing: border-box;
     display: inline-flex;
     gap: 0.25rem;

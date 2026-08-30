@@ -466,7 +466,7 @@ decisions every kind carries: removal, and the names left alone.
     align-items: center;
     display: flex;
     gap: var(--space-2);
-    min-block-size: 20px;
+    min-block-size: var(--object-name-line);
   }
 
   .object-name {
@@ -490,7 +490,7 @@ decisions every kind carries: removal, and the names left alone.
 
   .pill {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--radius-chip);
     display: inline-flex;
     font-size: var(--font-size-micro);
@@ -522,7 +522,7 @@ decisions every kind carries: removal, and the names left alone.
 
   .mx-mark {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--r-chip);
     box-sizing: border-box;
     display: inline-flex;

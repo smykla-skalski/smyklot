@@ -985,7 +985,7 @@ so a link points at the pane a colleague was asked to look at.
 
   .pill {
     align-items: center;
-    block-size: 20px;
+    block-size: var(--tier-mark);
     border-radius: var(--radius-chip);
     display: inline-flex;
     font-size: var(--font-size-micro);
@@ -1028,7 +1028,12 @@ so a link points at the pane a colleague was asked to look at.
     align-items: center;
     display: grid;
     gap: var(--space-2) var(--space-4);
-    grid-template-columns: 1fr auto auto;
+    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
+       control stops being a sentence. 13rem holds about thirty-two characters at the
+       description's size - five average English words - so a line still carries a
+       phrase rather than breaking after every word or two. The say never narrows past
+       it; when the row cannot give it that, the control drops below instead. */
+    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 48px;
     /* The air around a drawn hairline is the card's own padding, on both
@@ -1153,7 +1158,7 @@ so a link points at the pane a colleague was asked to look at.
     cursor: pointer;
     display: inline-flex;
     font-size: var(--font-size-control);
-    min-block-size: 28px;
+    min-block-size: var(--tier-quiet);
     padding: 0 1.5rem 0 var(--space-2);
   }
 
@@ -1231,7 +1236,7 @@ so a link points at the pane a colleague was asked to look at.
     color: var(--text-primary);
     font-family: var(--mono);
     font-size: var(--font-size-control);
-    min-block-size: 28px;
+    min-block-size: var(--tier-quiet);
     padding: 0 var(--space-2);
     text-align: end;
     width: 8.5rem;

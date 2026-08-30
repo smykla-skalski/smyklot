@@ -812,7 +812,7 @@ unlisted labels are removed, and the patterns left alone either way.
   }
 
   .lbl-field.is-inplace .text-inline {
-    min-block-size: 28px;
+    min-block-size: var(--tier-quiet);
     padding-inline: 7px;
   }
 
@@ -836,7 +836,7 @@ unlisted labels are removed, and the patterns left alone either way.
   .label-del {
     align-items: center;
     background: transparent;
-    block-size: 28px;
+    block-size: var(--tier-quiet);
     border: 0;
     border-radius: 6px;
     color: var(--text-muted);
