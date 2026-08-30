@@ -283,7 +283,7 @@ positioning will replace once it is portable.
           <!-- Trimmed so the label centres on its glyph bounds within the segment. -->
           <span class="band-trim">{option.label}</span>
         {:else}
-          <Icon name={option.icon} size={14} />
+          <Icon name={option.icon} size="sm" />
           <span class="visually-hidden">{option.label}</span>
         {/if}
         {#if option.detail !== undefined}

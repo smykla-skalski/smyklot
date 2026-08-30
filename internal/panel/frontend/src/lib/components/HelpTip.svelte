@@ -33,7 +33,7 @@ keep, and one tooltip is better than two.
   <AppTooltip {id} {text} {align}>
     {#snippet children(props)}
       <button {...props} type="button" class="help-trigger" aria-label={label}>
-        <Icon name="info" size={14} strokeWidth={2} />
+        <Icon name="info" size="sm" strokeWidth={2} />
       </button>
     {/snippet}
   </AppTooltip>

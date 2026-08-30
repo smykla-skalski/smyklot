@@ -246,7 +246,7 @@ already hold - the index ships once, matching costs no requests.
                spread attributes, the way every other Popover trigger here
                already found. -->
           <button {...attributes} type="button" class="btn add-file" disabled={frozen}>
-            <Icon name="plus" size={13} />
+            <Icon name="plus" size="sm" />
             <span class="button-label">Add a file</span>
           </button>
         {/snippet}
@@ -257,7 +257,7 @@ already hold - the index ships once, matching costs no requests.
           loop
         >
           <div class="menu-search finder-search">
-            <Icon name="search" size={12} />
+            <Icon name="search" size="xs" />
             <Command.Input
               bind:value={query}
               placeholder="renovate.json, or a path no repository has yet"
@@ -299,7 +299,7 @@ already hold - the index ships once, matching costs no requests.
                   value={'start: ' + cleanQuery}
                   onSelect={() => choose(cleanQuery)}
                 >
-                  <Icon name="plus" size={12} />
+                  <Icon name="plus" size="xs" />
                   <span
                     >Start <span class="file-path">{cleanQuery}</span> - no repository has it yet</span
                   >
@@ -342,16 +342,16 @@ already hold - the index ships once, matching costs no requests.
             <span class="object-side">
               {#if refused > 0}
                 <span class="mx-mark mx-refused"
-                  ><Icon name="failure" size={12} /><span class="t">{refused} refused</span></span
+                  ><Icon name="failure" size="xs" /><span class="t">{refused} refused</span></span
                 >
               {:else if pending > 0}
                 <span class="mx-mark mx-pending"
                   ><span class="t">{pending} {pending === 1 ? 'differs' : 'differ'}</span></span
                 >
               {:else}
-                <span class="mx-mark mx-instep"><Icon name="check" size={14} /></span>
+                <span class="mx-mark mx-instep"><Icon name="check" size="sm" /></span>
               {/if}
-              <Icon name="chevron-right" size={12} />
+              <Icon name="chevron-right" size="xs" />
             </span>
           </a>
         {/each}

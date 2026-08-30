@@ -119,7 +119,7 @@ the answer somebody came to the overview to get.
       </span>
       <a class="panel-link" href={queueHref} onclick={open} aria-label="View the whole queue">
         <span class="cap-trim">View all</span>
-        <Icon name="chevron-right" size={14} />
+        <Icon name="chevron-right" size="sm" />
       </a>
     </span>
   </header>
@@ -177,7 +177,7 @@ the answer somebody came to the overview to get.
               <small>{queueNote(item)}</small>
             </span>
             <span class="row-chevron" aria-hidden="true">
-              <Icon name="chevron-right" size={14} />
+              <Icon name="chevron-right" size="sm" />
             </span>
           </a>
         </li>

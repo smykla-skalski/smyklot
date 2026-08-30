@@ -67,7 +67,7 @@ recover by going back.
     aria-atomic="true"
   >
     {#snippet icon()}
-      <span class="attention-mark"><Icon name={iconName} size={16} strokeWidth={2} /></span>
+      <span class="attention-mark"><Icon name={iconName} size="base" strokeWidth={2} /></span>
     {/snippet}
     <div class="attention-copy">
       <strong>{heading}</strong>

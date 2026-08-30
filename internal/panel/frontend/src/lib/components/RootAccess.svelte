@@ -498,13 +498,13 @@ refuse.
           bind:element={inviteTrigger}
           onclick={() => invitations?.openCreate(inviteTrigger)}
         >
-          {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+          {#snippet icon()}<Icon name="user-plus" size="sm" strokeWidth={2} />{/snippet}
           Invite Root user
         </Button>
       {/if}
     {:else}
       <Button tone="signal" bind:element={addTrigger} onclick={openAddUser}>
-        {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+        {#snippet icon()}<Icon name="user-plus" size="sm" strokeWidth={2} />{/snippet}
         Add user
       </Button>
     {/if}
@@ -753,7 +753,7 @@ refuse.
   {:else}
     <Callout tabindex={-1}>
       {#snippet icon()}
-        <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size={20} />
+        <Icon name={pendingAction === 'promote_root' ? 'warning' : 'info'} size="md" />
       {/snippet}
       <span>Review the account and effect before confirming</span>
     </Callout>
@@ -858,7 +858,7 @@ refuse.
 
     {#if selectedInstallation !== null && !selectedInstallation.owned_by_viewer}
       <Callout tone="warning">
-        {#snippet icon()}<Icon name="warning" size={18} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
           This installation is not yours. Continue to its Access view to acknowledge and start the
           audited 15-minute elevation before adding the user.

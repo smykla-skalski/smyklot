@@ -376,7 +376,7 @@ without the composer.
           onclick={() => pickUnit(spec, unit)}
         >
           <span class="menu-check">
-            {#if editor.unit === unit}<Icon name="check" size={16} />{/if}
+            {#if editor.unit === unit}<Icon name="check" size="base" />{/if}
           </span>
           <ClippedLabel class="mi-label" text={UNIT_WORDS[unit]} />
         </button>
@@ -510,7 +510,7 @@ without the composer.
                 disabled={saving}
                 onclick={() => setLogLevel(current.log_level.deployment)}
               >
-                <Icon name="plus" size={10} />
+                <Icon name="plus" size="micro" />
               </button>
             {:else}
               <span class="policy-value">
@@ -546,7 +546,7 @@ without the composer.
                         <span class="menu-check">
                           {#if current.log_level.override === option.value}<Icon
                               name="check"
-                              size={16}
+                              size="base"
                             />{/if}
                         </span>
                         <ClippedLabel class="mi-label" text={option.label} />
@@ -561,7 +561,7 @@ without the composer.
                 disabled={saving}
                 onclick={() => setLogLevel(null)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
             {/if}
           </div>
@@ -601,7 +601,7 @@ without the composer.
                 onclick={() =>
                   setDuration(SESSION_SPEC, current.session_lifetime.deployment_seconds)}
               >
-                <Icon name="plus" size={10} />
+                <Icon name="plus" size="micro" />
               </button>
             {:else}
               <span class="policy-value">
@@ -613,7 +613,7 @@ without the composer.
                 disabled={saving}
                 onclick={() => setDuration(SESSION_SPEC, null)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
             {/if}
           </div>
@@ -916,7 +916,10 @@ without the composer.
 
   .setting-say {
     display: grid;
-    gap: var(--space-3);
+    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
+       apart, and it is this one. Both wear `text-box` trim, so the box edge is
+       the ink edge and the declared gap is the rendered one. */
+    gap: var(--row-copy-gap);
   }
 
   .setting-name {

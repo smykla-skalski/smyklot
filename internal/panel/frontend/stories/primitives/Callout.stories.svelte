@@ -17,7 +17,7 @@
 <Story name="Playground">
   {#snippet template({ children, ...args })}
     <Callout {...args}>
-      {#snippet icon()}<Icon name="info" size={20} />{/snippet}
+      {#snippet icon()}<Icon name="info" size="md" />{/snippet}
       <span>Review the account and effect before confirming</span>
     </Callout>
   {/snippet}
@@ -34,11 +34,11 @@
   {#snippet template()}
     <div class="stack">
       <Callout>
-        {#snippet icon()}<Icon name="info" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="info" size="md" />{/snippet}
         <span>Review the account and effect before confirming</span>
       </Callout>
       <Callout tone="warning">
-        {#snippet icon()}<Icon name="warning" size={18} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
           This installation is not yours. Continue to its Access view to acknowledge and start the
           audited 15-minute elevation before adding the user.
@@ -57,11 +57,11 @@
   {#snippet template()}
     <div class="stack">
       <Callout>
-        {#snippet icon()}<Icon name="info" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="info" size="md" />{/snippet}
         <span>One line, so the mark sits on its centre</span>
       </Callout>
       <Callout tone="warning">
-        {#snippet icon()}<Icon name="warning" size={18} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
           Several lines, so the mark sits at the top and marks where the warning begins rather than
           floating somewhere in the middle of it. This is the same reason a bullet is not centred

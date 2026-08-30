@@ -109,7 +109,7 @@ them, and a second copy here would be a second answer to the same question.
       <!-- No word on it. It sorts and it filters, and a button labelled with one
            of the two says the wrong thing about the other; the sliders carry
            both, and the accessible name says it in full. -->
-      <Icon name="sliders" size={16} />
+      <Icon name="sliders" size="base" />
       {#if activeFilters > 0}
         <span class="tools-count" aria-hidden="true">{activeFilters}</span>
       {/if}
@@ -145,7 +145,7 @@ them, and a second copy here would be a second answer to the same question.
                 <!-- The arrow says which way, and the press flips it. Rotated rather
                  than a second glyph, so the two directions are one shape. -->
                 <span class:descending={sort.direction === 'descending'} class="sort-arrow">
-                  <Icon name="chevron-up" size={14} />
+                  <Icon name="chevron-up" size="sm" />
                 </span>
               {/if}
             </button>

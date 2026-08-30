@@ -381,7 +381,7 @@ without the buttons, rather than buttons that refuse.
       subtitle="Every durable task, its schedule, and what is blocking it"
     >
       <Button onclick={() => void load()}>
-        {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+        {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
         Refresh
       </Button>
     </RootPageHeader>
@@ -393,7 +393,7 @@ without the buttons, rather than buttons that refuse.
     >
       {#snippet actions()}
         <Button onclick={() => void load()}>
-          {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+          {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
           Refresh
         </Button>
       {/snippet}

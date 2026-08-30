@@ -611,7 +611,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
 >
   {#if createStage === 'confirm'}
     <Callout class="root-warning">
-      {#snippet icon()}<Icon name="warning" size={19} />{/snippet}
+      {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
       <span
         >Declining was an answer. A new link reaches the same GitHub identity, and asking twice is
         visible to them and in the audit record</span
@@ -640,7 +640,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
         />
       </label>
       <Callout class="root-warning">
-        {#snippet icon()}<Icon name="warning" size={19} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>The recipient becomes a Root only after signing in and accepting this invitation</span
         >
       </Callout>
@@ -697,7 +697,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
 >
   <Callout class="root-warning">
     {#snippet icon()}
-      <Icon name={pendingAction === 'reissue' ? 'refresh' : 'warning'} size={19} />
+      <Icon name={pendingAction === 'reissue' ? 'refresh' : 'warning'} size="md" />
     {/snippet}
     <span>Confirm this system-role invitation change</span>
   </Callout>

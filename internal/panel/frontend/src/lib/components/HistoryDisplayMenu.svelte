@@ -42,10 +42,10 @@ which is why it sits apart from the filter beside it.
       {...attributes}
     >
       <span class="display-icon" aria-hidden="true"
-        ><Icon name="sliders" size={14} strokeWidth={2} /></span
+        ><Icon name="sliders" size="sm" strokeWidth={2} /></span
       >
       <span class="menu-chevron" aria-hidden="true"
-        ><Icon name="chevron-down" size={14} strokeWidth={2} /></span
+        ><Icon name="chevron-down" size="sm" strokeWidth={2} /></span
       >
     </button>
   {/snippet}

@@ -136,7 +136,7 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
         <Combobox.Viewport class="suggestions" aria-label={label}>
           {#each items as account (account.id)}
             <Combobox.Item class="suggestion-item" value={account.login} label={account.login}>
-              <Avatar {account} size={20} />
+              <Avatar {account} size={18} />
               <span class="suggestion-login">{account.login}</span>
               {#if account.display_name !== '' && account.display_name !== account.login}
                 <span class="suggestion-name">{account.display_name}</span>

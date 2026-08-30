@@ -58,7 +58,7 @@ tell them apart.
   <AppTooltip {id} text={message} align="start">
     {#snippet children(props)}
       <button {...props} type="button" class="symbol" aria-label={label}>
-        <Icon name={icon} size={14} />
+        <Icon name={icon} size="sm" />
         {#if showLabel}
           <span class="status-label band-trim"
             >{status.slice(0, 1).toUpperCase() + status.slice(1)}</span

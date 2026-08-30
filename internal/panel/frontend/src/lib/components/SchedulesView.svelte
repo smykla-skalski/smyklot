@@ -689,7 +689,7 @@ the same page without the controls, rather than controls that refuse.
     <div class="schedule-summary" aria-label="Schedule overview">
       {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'global policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
         <article>
-          <span class="summary-mark"><Icon name={summaryIcon(index)} size={16} /></span>
+          <span class="summary-mark"><Icon name={summaryIcon(index)} size="base" /></span>
           <div>
             <span>{metric.label}</span>
             <strong>{metric.value}</strong>
@@ -776,7 +776,7 @@ the same page without the controls, rather than controls that refuse.
         {#each profiles as profile (profile.id)}
           <article class="profile-card">
             <div class="profile-heading">
-              <span class="profile-mark"><Icon name="history" size={15} /></span>
+              <span class="profile-mark"><Icon name="history" size="base" /></span>
               <div>
                 <strong>{profile.name}</strong>
                 <span>Revision {profile.revision}</span>

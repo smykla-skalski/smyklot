@@ -129,7 +129,7 @@ changed something.
     position: fixed;
     transform: translateX(-50%);
     width: calc(100vw - 2 * var(--space-4));
-    z-index: 30;
+    z-index: var(--layer-sticky);
   }
 
   .composer-copy {

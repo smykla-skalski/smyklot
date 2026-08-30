@@ -38,7 +38,7 @@ of actions a reader is looking at.
 </label>
 {#if failed}
   <p class="link-clipboard" role="alert">
-    <Icon name="alert" size={13} strokeWidth={2} />
+    <Icon name="alert" size="sm" strokeWidth={2} />
     Copy it from the field above, the clipboard was not available
   </p>
 {/if}

@@ -184,7 +184,7 @@ an overview nobody keeps open.
 <section class="overview" aria-label="Root operational overview">
   {#if failure !== null}
     <div class="overview-error" role="alert">
-      <span><Icon name="failure" size={20} /></span>
+      <span><Icon name="failure" size="md" /></span>
       <div>
         <strong>Operational state is unavailable</strong>
         <p>{failure}</p>
@@ -201,7 +201,7 @@ an overview nobody keeps open.
       <div class="service-status">
         <!-- A bare check, not a check inside a ring: the tile already is the
              enclosing shape, so the ring drew a second one inside it. -->
-        <span class="health-mark"><Icon name="check" size={20} /></span>
+        <span class="health-mark"><Icon name="check" size="md" /></span>
         <div>
           <h3>Service health</h3>
           <p>All systems operational</p>
@@ -240,7 +240,7 @@ an overview nobody keeps open.
     <article class="service-card database-card">
       <div class="service-status">
         <span class="health-mark" data-state={database.state}>
-          <Icon name={DATABASE_MARK[database.state]} size={20} />
+          <Icon name={DATABASE_MARK[database.state]} size="md" />
         </span>
         <div>
           <h3>Database</h3>
@@ -288,14 +288,14 @@ an overview nobody keeps open.
 
     {#if database.detail !== undefined}
       <p class="database-note" role="status">
-        <span class="note-icon warning"><Icon name="alert" size={14} strokeWidth={2} /></span>
+        <span class="note-icon warning"><Icon name="alert" size="sm" strokeWidth={2} /></span>
         {database.detail}
       </p>
     {:else if database.connections.wait_count > 0}
       <!-- A count that only grows, unlike the sample beside it: the pool may
            look idle now and still have stalled the service an hour ago. -->
       <p class="database-note">
-        <span class="note-icon"><Icon name="info" size={14} strokeWidth={2} /></span>
+        <span class="note-icon"><Icon name="info" size="sm" strokeWidth={2} /></span>
         Callers have waited for a free connection {database.connections.wait_count} times since this service
         started, {formatElapsed(database.connections.wait_ms)} in total
       </p>
@@ -311,7 +311,7 @@ an overview nobody keeps open.
           <small>Installations</small>
           <strong>{overview.catalog.installations}</strong>
         </span>
-        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+        <span class="metric-chevron"><Icon name="chevron-right" size="sm" /></span>
       </a>
       <a
         class="metric-card"
@@ -323,7 +323,7 @@ an overview nobody keeps open.
           <strong>{overview.catalog.repositories}</strong>
           <em>{overview.catalog.enabled_repositories} enabled</em>
         </span>
-        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+        <span class="metric-chevron"><Icon name="chevron-right" size="sm" /></span>
       </a>
       <a
         class="metric-card"
@@ -335,7 +335,7 @@ an overview nobody keeps open.
           <strong>{overview.active_elevations}</strong>
           <em>15-minute write windows</em>
         </span>
-        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+        <span class="metric-chevron"><Icon name="chevron-right" size="sm" /></span>
       </a>
       <!-- A link like every other card here, now that the inbox has an address. -->
       <a
@@ -349,7 +349,7 @@ an overview nobody keeps open.
           <strong>{overview.unread_security_events}</strong>
           <em>Owner notifications</em>
         </span>
-        <span class="metric-chevron"><Icon name="chevron-right" size={14} /></span>
+        <span class="metric-chevron"><Icon name="chevron-right" size="sm" /></span>
       </a>
     </div>
 
@@ -419,7 +419,7 @@ an overview nobody keeps open.
         </dl>
         {#if overview.ownership.permission_pending > 0}
           <p class="ownership-note">
-            <span class="note-icon"><Icon name="alert" size={14} strokeWidth={2} /></span>
+            <span class="note-icon"><Icon name="alert" size="sm" strokeWidth={2} /></span>
             GitHub Members permission approval is blocking Owner synchronization
           </p>
         {/if}
@@ -429,7 +429,7 @@ an overview nobody keeps open.
           onclick={(event) => navigate(event, onOpenInstallations)}
         >
           Review installations
-          {#snippet trailing()}<Icon name="chevron-right" size={14} strokeWidth={2} />{/snippet}
+          {#snippet trailing()}<Icon name="chevron-right" size="sm" strokeWidth={2} />{/snippet}
         </Button>
       </article>
 
@@ -441,7 +441,7 @@ an overview nobody keeps open.
           </div>
           <a href={failuresHref} onclick={(event) => navigate(event, onOpenFailures)}>
             View all
-            <Icon name="chevron-right" size={14} />
+            <Icon name="chevron-right" size="sm" />
           </a>
         </header>
         <div class="failure-list">
@@ -450,7 +450,7 @@ an overview nobody keeps open.
               <!-- The kind is carried by the glyph and its colour, so a retry
                    reads as a retry before the chip on the right is reached. -->
               <span class:retryable={item.failure.retryable} class="failure-mark">
-                <Icon name={item.failure.retryable ? 'refresh' : 'failure'} size={14} />
+                <Icon name={item.failure.retryable ? 'refresh' : 'failure'} size="sm" />
               </span>
               <div>
                 <strong>{sentenceCase(item.failure.reason)}</strong>
@@ -475,7 +475,7 @@ an overview nobody keeps open.
             </div>
           {:else}
             <div class="no-failures">
-              <span><Icon name="success" size={20} /></span>
+              <span><Icon name="success" size="md" /></span>
               <div>
                 <strong>No retained failures</strong>
                 <p>Recent deliveries are healthy</p>

@@ -519,7 +519,7 @@ stacked left, Cancel and Done on a hairline foot.
                   aria-label="Remove {pattern}"
                   disabled={frozen}
                   onclick={() => removePattern('include', pattern)}
-                  ><Icon name="close" size={8} /></button
+                  ><Icon name="close" size="nano" /></button
                 ></span
               >
             {/each}
@@ -532,13 +532,13 @@ stacked left, Cancel and Done on a hairline foot.
             >
               {#snippet trigger(attributes)}
                 <button {...attributes} class="add-chip" disabled={frozen}>
-                  <Icon name="plus" size={12} />
+                  <Icon name="plus" size="xs" />
                   <span class="t">Add a pattern</span>
                 </button>
               {/snippet}
               <div class="name-menu">
                 <div class="menu-search">
-                  <Icon name="search" size={12} />
+                  <Icon name="search" size="xs" />
                   <input
                     placeholder="releases/* or a branch name"
                     aria-label="Pattern to add"
@@ -571,7 +571,7 @@ stacked left, Cancel and Done on a hairline foot.
                     aria-label="Remove {pattern}"
                     disabled={frozen}
                     onclick={() => removePattern('exclude', pattern)}
-                    ><Icon name="close" size={8} /></button
+                    ><Icon name="close" size="nano" /></button
                   ></span
                 >
               {/each}
@@ -585,13 +585,13 @@ stacked left, Cancel and Done on a hairline foot.
             >
               {#snippet trigger(attributes)}
                 <button {...attributes} class="add-chip" disabled={frozen}>
-                  <Icon name="plus" size={12} />
+                  <Icon name="plus" size="xs" />
                   <span class="t">Add a pattern</span>
                 </button>
               {/snippet}
               <div class="name-menu">
                 <div class="menu-search">
-                  <Icon name="search" size={12} />
+                  <Icon name="search" size="xs" />
                   <input
                     placeholder="releases/* or a branch name"
                     aria-label="Pattern to add"
@@ -655,7 +655,7 @@ stacked left, Cancel and Done on a hairline foot.
               disabled={frozen}
               onclick={() => ruleOff(rule.key)}
             >
-              <Icon name="close" size={10} />
+              <Icon name="close" size="micro" />
             </button>
             {#if editing === rule.key}
               <div class="rule-edit">
@@ -718,8 +718,8 @@ stacked left, Cancel and Done on a hairline foot.
                         >
                           {#if prMethods.includes(method)}<Icon
                               name="check"
-                              size={12}
-                            />{:else}<Icon name="plus" size={12} />{/if}
+                              size="xs"
+                            />{:else}<Icon name="plus" size="xs" />{/if}
                           <span class="t">{method}</span>
                         </button>
                       {/each}
@@ -736,7 +736,7 @@ stacked left, Cancel and Done on a hairline foot.
                             aria-label="Remove {context}"
                             onclick={() =>
                               (checksList = checksList.filter((held) => held !== context))}
-                            ><Icon name="close" size={8} /></button
+                            ><Icon name="close" size="nano" /></button
                           ></span
                         >
                       {/each}
@@ -749,13 +749,13 @@ stacked left, Cancel and Done on a hairline foot.
                       >
                         {#snippet trigger(attributes)}
                           <button {...attributes} class="add-chip">
-                            <Icon name="plus" size={12} />
+                            <Icon name="plus" size="xs" />
                             <span class="t">Add a check</span>
                           </button>
                         {/snippet}
                         <div class="name-menu">
                           <div class="menu-search">
-                            <Icon name="search" size={12} />
+                            <Icon name="search" size="xs" />
                             <input
                               placeholder="test"
                               aria-label="Check to add"
@@ -809,7 +809,7 @@ stacked left, Cancel and Done on a hairline foot.
                           <button
                             aria-label="Remove {tool}"
                             onclick={() => (scanTools = scanTools.filter((held) => held !== tool))}
-                            ><Icon name="close" size={8} /></button
+                            ><Icon name="close" size="nano" /></button
                           ></span
                         >
                       {/each}
@@ -822,13 +822,13 @@ stacked left, Cancel and Done on a hairline foot.
                       >
                         {#snippet trigger(attributes)}
                           <button {...attributes} class="add-chip">
-                            <Icon name="plus" size={12} />
+                            <Icon name="plus" size="xs" />
                             <span class="t">Add a tool</span>
                           </button>
                         {/snippet}
                         <div class="name-menu">
                           <div class="menu-search">
-                            <Icon name="search" size={12} />
+                            <Icon name="search" size="xs" />
                             <input
                               placeholder="CodeQL"
                               aria-label="Tool to add"
@@ -863,7 +863,7 @@ stacked left, Cancel and Done on a hairline foot.
             <span class="rest-picks">
               {#each offRules as rule (rule.key)}
                 <button class="add-chip" onclick={() => ruleOn(rule.key)}>
-                  <Icon name="plus" size={12} />
+                  <Icon name="plus" size="xs" />
                   <span class="t">{rule.label}</span>
                 </button>
               {/each}
@@ -878,7 +878,7 @@ stacked left, Cancel and Done on a hairline foot.
               - {offRules.map((rule) => rule.label).join(', ')}</span
             >
             <Button tone="quiet" disabled={frozen} onclick={() => (pickingRule = true)}>
-              {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+              {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
               Add a rule
             </Button>
           {/if}
@@ -914,7 +914,7 @@ stacked left, Cancel and Done on a hairline foot.
                 disabled={frozen}
                 onclick={() => removeActor(at)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
             </div>
           {/each}
@@ -932,9 +932,9 @@ stacked left, Cancel and Done on a hairline foot.
                     class:is-held={actorType === kind.value}
                     onclick={() => (actorType = kind.value)}
                   >
-                    {#if actorType === kind.value}<Icon name="check" size={12} />{:else}<Icon
+                    {#if actorType === kind.value}<Icon name="check" size="xs" />{:else}<Icon
                         name="plus"
-                        size={12}
+                        size="xs"
                       />{/if}
                     <span class="t">{kind.label}</span>
                   </button>
@@ -975,7 +975,7 @@ stacked left, Cancel and Done on a hairline foot.
             >An actor here steps around every rule above, everywhere this ruleset applies</span
           >
           <Button tone="quiet" disabled={frozen} onclick={() => (addingActor = true)}>
-            {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+            {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
             Add an actor
           </Button>
         {/if}

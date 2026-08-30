@@ -46,7 +46,7 @@ to sit in a row's margin or a heading's end, where a labelled button would not f
   disabled={disabled || busy}
   {onclick}
 >
-  <Icon name={icon} size={14} strokeWidth={2} />
+  <Icon name={icon} size="sm" strokeWidth={2} />
 </button>
 
 <style>

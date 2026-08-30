@@ -105,7 +105,7 @@ is never what clearing a filter is meant to mean.
       aria-label={`${label}: ${summary}`}
       {...attributes}
     >
-      <Icon name="filter" size={14} />
+      <Icon name="filter" size="sm" />
       {#if selectedCount > 0}
         <span class="selection-count" aria-hidden="true">{selectedCount}</span>
       {/if}

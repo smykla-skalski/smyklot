@@ -337,7 +337,7 @@ the caller applies, closes and whispers.
     </div>
     {#if hexInvalid}
       <span class="field-error"
-        ><Icon name="alert" size={12} /><span class="t">Hex colours look like #0e8a16</span></span
+        ><Icon name="alert" size="xs" /><span class="t">Hex colours look like #0e8a16</span></span
       >
     {/if}
   </div>
@@ -356,7 +356,7 @@ the caller applies, closes and whispers.
         aria-label={cell}
         onclick={() => onPick(cell)}
       >
-        <Icon name="check" size={14} />
+        <Icon name="check" size="sm" />
       </button>
     {/each}
   </div>
@@ -374,7 +374,7 @@ the caller applies, closes and whispers.
         aria-label={cell}
         onclick={() => onPick(cell)}
       >
-        <Icon name="check" size={14} />
+        <Icon name="check" size="sm" />
       </button>
     {/each}
   </div>
@@ -394,7 +394,7 @@ the caller applies, closes and whispers.
     gap: var(--space-2);
     inset-block-start: calc(100% + 4px);
     inset-inline-start: 0;
-    padding: var(--space-2);
+    padding: var(--cp-pad);
     position: absolute;
     width: max-content;
     z-index: var(--layer-popover);
@@ -418,11 +418,13 @@ the caller applies, closes and whispers.
       linear-gradient(to top, #000000, transparent),
       linear-gradient(to right, #ffffff, var(--cp-hue-color, #ff0000));
     border-radius: 6px;
-    block-size: 150px;
+    block-size: var(--cp-area-height);
     box-shadow: inset 0 0 0 1px rgb(0 0 0 / 7%);
     box-sizing: border-box;
     cursor: crosshair;
-    inline-size: 220px;
+    /* Derived from the grid rather than typed beside it, so the plane and the tiles
+       under it are one width by construction. */
+    inline-size: var(--cp-width);
     position: relative;
     touch-action: none;
   }
@@ -433,11 +435,11 @@ the caller applies, closes and whispers.
     background: var(--cp-color, #ff0000);
     border: 2px solid #ffffff;
     border-radius: 50%;
-    block-size: 14px;
+    block-size: var(--cp-knob);
     box-shadow:
       0 1px 3px rgb(0 0 0 / 35%),
       0 0 0 1px rgb(0 0 0 / 12%);
-    inline-size: 14px;
+    inline-size: var(--cp-knob);
     inset-block-start: var(--cp-y, 0%);
     inset-inline-start: var(--cp-x, 100%);
     pointer-events: none;
@@ -457,12 +459,12 @@ the caller applies, closes and whispers.
       #ff0000
     );
     border-radius: 999px;
-    block-size: 12px;
+    block-size: var(--cp-hue-height);
     cursor: pointer;
     margin-block: 2px;
-    /* The 16px knob's radius, so its centre can reach both rail ends without
-       the ring leaving the popover. */
-    margin-inline: 8px;
+    /* The knob's own radius, so its centre reaches both rail ends without the ring
+       leaving the popover - derived, so resizing the knob moves the rail with it. */
+    margin-inline: calc(var(--cp-hue-thumb) / 2);
     position: relative;
     touch-action: none;
   }
@@ -471,11 +473,11 @@ the caller applies, closes and whispers.
     background: var(--cp-hue-color, #ff0000);
     border: 2px solid #ffffff;
     border-radius: 50%;
-    block-size: 16px;
+    block-size: var(--cp-hue-thumb);
     box-shadow:
       0 1px 3px rgb(0 0 0 / 35%),
       0 0 0 1px rgb(0 0 0 / 12%);
-    inline-size: 16px;
+    inline-size: var(--cp-hue-thumb);
     inset-block-start: 50%;
     inset-inline-start: var(--cp-h, 0%);
     pointer-events: none;
@@ -522,23 +524,26 @@ the caller applies, closes and whispers.
     margin-block: var(--space-1);
   }
 
+  /* THE SWATCH GRID IS THE MODULE, and everything else derives from it. It wrote 8, 4
+     and 24 of its own while the tokens naming those decisions sat unread, so the pop
+     came out wider than the tiles it held and the grid sat left in its own column. */
   .color-grid {
     display: grid;
-    gap: 4px;
-    grid-template-columns: repeat(8, 24px);
+    gap: var(--cp-gap);
+    grid-template-columns: repeat(var(--cp-cols), var(--cp-cell));
   }
 
   .color-cell {
     align-items: center;
     background: var(--cell);
-    block-size: 24px;
+    block-size: var(--cp-cell);
     /* The hairline keeps the pale half of the palette a tile on the popover's
        own white rather than a hole in it. */
     border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
     border-radius: 6px;
     cursor: pointer;
     display: inline-flex;
-    inline-size: 24px;
+    inline-size: var(--cp-cell);
     justify-content: center;
     padding: 0;
     position: relative;

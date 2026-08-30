@@ -280,7 +280,7 @@ pager - a notification list has no last page worth naming.
                   </Button>
                 {:else}
                   <span class="read-state"
-                    ><span class="read-slot"><Icon name="check" size={14} /></span><span
+                    ><span class="read-slot"><Icon name="check" size="sm" /></span><span
                       class="cap-trim">Read</span
                     ></span
                   >

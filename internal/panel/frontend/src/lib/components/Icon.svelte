@@ -139,27 +139,60 @@
     viewer: 2.5,
     warning: 2.8,
   };
+
+  /**
+   * THE ICON SCALE, and the whole of it.
+   *
+   * Six drawn sizes, in px because an icon does not grow with the reader's font size -
+   * the units law puts it on the px side. They are named rather than numbered because a
+   * literal at the call site is a decision taken 204 times: the sheet held eight
+   * different sizes, and 13 and 14 were one tier spelled two ways - a button glyph at
+   * 13 beside a tile glyph at 14.
+   *
+   * A number is still allowed, and only for what is NOT an icon: an avatar, an empty
+   * state's illustration, a mark. Those do not belong to this scale and pretending they
+   * do would mean adding a tier per drawing.
+   */
+  export type IconSize = 'nano' | 'micro' | 'xs' | 'sm' | 'base' | 'md';
 </script>
 
 <script lang="ts">
   const {
     name,
-    size = 20,
+    size = 'base',
     strokeWidth = 1.75,
     class: className,
   }: {
     name: IconName;
-    size?: number;
+    /** A tier of the icon scale, or a number for something that is not an icon. */
+    size?: IconSize | number;
     strokeWidth?: number;
     class?: string;
   } = $props();
 
-  /** The dead space before the ink starts, in rendered pixels, per edge. */
+  /**
+   * The drawn size as a CSS length, so the scale is READ rather than copied.
+   *
+   * A tier resolves to its token; the escape hatch resolves to its own px. The svg is
+   * then sized in CSS instead of through `width`/`height` attributes, which is what
+   * lets the tokens be the single place the six numbers live - an attribute takes a
+   * number and cannot take a `var()`.
+   */
+  const length = $derived(typeof size === 'number' ? `${size}px` : `var(--icon-${size})`);
+
+  /**
+   * The dead space before the ink starts, per edge, as a calc rather than a figure.
+   *
+   * It has to be arithmetic now: the size is a custom property, so its value is not a
+   * number this component ever holds. The bearing is the same expression it always was
+   * - the glyph's dead units, less half the stroke that overhangs them, as a fraction
+   * of the 24-unit grid - just computed where the length is known.
+   */
   const bearing = $derived.by(() => {
     const declared = INK_BEARING[name];
     const [start, end] = Array.isArray(declared) ? declared : [declared, declared];
     const ink = (units: number): string =>
-      `${Math.max(0, ((units - strokeWidth / 2) / 24) * size).toFixed(3)}px`;
+      `max(0px, calc((${units} - ${strokeWidth} / 2) / 24 * ${length}))`;
     return { start: ink(start), end: ink(end) };
   });
 </script>
@@ -171,9 +204,11 @@ One drawn set, one stroke, and a closed list of names. Every glyph is built on t
 disagreeing about weight - the thing a mixed icon library cannot promise and the reason
 this is a union type rather than a string.
 
-A glyph takes the size of the words it stands beside, so `size` is a number and not a
-scale: the places that need one - a chip, a row, a heading, a rail tile - do not agree
-on a step.
+`size` names a tier of the icon scale - six drawn sizes, in px, because an icon does not
+grow with the reader's font size. It used to be a bare number, on the reasoning that a
+chip, a row, a heading and a rail tile do not agree on a step; what that produced was
+eight sizes across 204 call sites, with 13 and 14 as one tier spelled two ways. A number
+is still accepted and is for what is NOT an icon: an avatar, an illustration, a mark.
 
 It is drawn, never announced. An icon repeats something the words already say, or it
 stands inside a control that carries its own accessible name; either way a screen
@@ -186,8 +221,7 @@ only name for something means the control is missing its label.
   data-icon={name}
   style:--icon-ink-start={bearing.start}
   style:--icon-ink-end={bearing.end}
-  width={size}
-  height={size}
+  style:--icon-drawn={length}
   viewBox="0 0 24 24"
   fill="none"
   stroke="currentColor"
@@ -418,8 +452,13 @@ only name for something means the control is missing its label.
 
 <style>
   svg {
+    /* Sized here rather than through `width`/`height`, which take a number and cannot
+       take a `var()` - which is why the six sizes used to live at the call sites
+       instead of in the scale. */
+    block-size: var(--icon-drawn);
     display: block;
     flex: none;
+    inline-size: var(--icon-drawn);
     overflow: visible;
   }
 </style>

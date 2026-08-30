@@ -1292,14 +1292,14 @@ offering it.
 
 {#snippet roleValue(role: InstallationRole)}
   <span class="role-value role-{role}">
-    <span class="role-value-icon" aria-hidden="true"><Icon name={roleIcon(role)} size={14} /></span>
+    <span class="role-value-icon" aria-hidden="true"><Icon name={roleIcon(role)} size="sm" /></span>
     <span class="band-trim">{roleLabel(role)}</span>
   </span>
 {/snippet}
 
 {#snippet headerActions()}
   <Button tone="signal" bind:element={addButton} onclick={openAddModal}>
-    {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+    {#snippet icon()}<Icon name="user-plus" size="sm" strokeWidth={2} />{/snippet}
     {invitingFirst ? 'Invite user' : 'Add user'}
   </Button>
 {/snippet}
@@ -1522,7 +1522,7 @@ offering it.
                     />
                   {:else}
                     <span class="action-slot-empty" title="No actions available" aria-hidden="true">
-                      <Icon name="more" size={14} strokeWidth={2} />
+                      <Icon name="more" size="sm" strokeWidth={2} />
                     </span>
                   {/if}
                   <!-- After the actions rather than before, and always
@@ -1536,7 +1536,7 @@ offering it.
                              row - see `.row-go`. -->
                   <span class="row-go" aria-hidden="true">
                     {#if hasDecisionHistory(user)}
-                      <Icon name="chevron-right" size={14} />
+                      <Icon name="chevron-right" size="sm" />
                     {/if}
                   </span>
                 </td>
@@ -1743,7 +1743,7 @@ offering it.
                     />
                   {:else}
                     <span class="action-slot-empty" title="No actions available" aria-hidden="true">
-                      <Icon name="more" size={14} strokeWidth={2} />
+                      <Icon name="more" size="sm" strokeWidth={2} />
                     </span>
                   {/if}
                 </td>
@@ -1847,7 +1847,7 @@ offering it.
                 bind:group={accessMethod}
               />
               <span class="method-icon" aria-hidden="true">
-                <Icon name={method.value === 'add' ? 'plus' : 'mail'} size={14} strokeWidth={2} />
+                <Icon name={method.value === 'add' ? 'plus' : 'mail'} size="sm" strokeWidth={2} />
               </span>
               <span class="method-copy band-trim-kids">
                 <strong>{method.label}</strong>

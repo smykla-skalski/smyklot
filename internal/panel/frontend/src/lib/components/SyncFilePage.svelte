@@ -948,7 +948,7 @@ where it arises.
         <div class="head-tools">
           {#if templateUndoDepth > 0}
             <Button onclick={() => templateEditor?.undoEdit()}>
-              {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
+              {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
               Undo
             </Button>
           {/if}
@@ -1048,7 +1048,7 @@ where it arises.
               <span class="object-sum">{summaryWord(entry)}</span>
             </span>
             <span class="object-side">
-              <span class="row-chev"><Icon name="chevron-right" size={12} /></span>
+              <span class="row-chev"><Icon name="chevron-right" size="xs" /></span>
             </span>
           </button>
 
@@ -1062,7 +1062,7 @@ where it arises.
                 <span class="pane-tools">
                   {#if editedText !== null && resultUndoDepth > 0}
                     <Button onclick={() => resultEditor?.undoEdit()}>
-                      {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
+                      {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
                       Undo
                     </Button>
                   {/if}
@@ -1129,7 +1129,7 @@ where it arises.
                       <button
                         aria-label="Stop changing {key}"
                         disabled={mergeFrozen}
-                        onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
+                        onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
                       ></span
                     >
                   {/each}
@@ -1139,7 +1139,7 @@ where it arises.
                       <button
                         aria-label="Stop removing {key}"
                         disabled={mergeFrozen}
-                        onclick={() => dropKey(key)}><Icon name="close" size={8} /></button
+                        onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
                       ></span
                     >
                   {/each}
@@ -1237,7 +1237,10 @@ where it arises.
 
   .object-head {
     display: grid;
-    gap: var(--space-2);
+    /* The copy-rhythm law, on the object-head family: a name and the sentence
+       under it, box to box. This head carries no controls beside the name, so it
+       needs none of the pull the kind card takes - it renders the law directly. */
+    gap: var(--row-copy-gap);
     margin-bottom: var(--space-4);
   }
 

@@ -152,7 +152,7 @@ fifteen behaviours.
           aria-label="Remove {pattern === '' ? 'pattern' : pattern}"
           onclick={() => remove(index)}
         >
-          <Icon name="close" size={12} />
+          <Icon name="close" size="xs" />
         </button>
       </span>
     {:else}
@@ -165,14 +165,14 @@ fifteen behaviours.
           disabled={readOnly}
           onclick={() => remove(index)}
         >
-          <Icon name="close" size={12} />
+          <Icon name="close" size="xs" />
         </button>
       </span>
     {/if}
   {/each}
 </span>
 <Button tone="quiet" class="pattern-add" disabled={readOnly} onclick={() => void add()}>
-  {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
   Add
 </Button>
 

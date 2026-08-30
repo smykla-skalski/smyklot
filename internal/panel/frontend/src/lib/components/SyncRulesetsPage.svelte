@@ -208,13 +208,13 @@ decisions every kind carries: removal, and the names left alone.
       <Popover role="dialog" label="Name the ruleset" align="end" bind:open={adding}>
         {#snippet trigger(attributes)}
           <button {...attributes} class="btn" disabled={frozen}>
-            <Icon name="plus" size={13} />
+            <Icon name="plus" size="sm" />
             <span class="button-label">Add a ruleset</span>
           </button>
         {/snippet}
         <div class="name-menu">
           <div class="menu-search">
-            <Icon name="search" size={12} />
+            <Icon name="search" size="xs" />
             <input
               placeholder="main-protection"
               aria-label="Name for the new ruleset"
@@ -264,9 +264,9 @@ decisions every kind carries: removal, and the names left alone.
                   ></span
                 >
               {:else}
-                <span class="mx-mark mx-instep"><Icon name="check" size={14} /></span>
+                <span class="mx-mark mx-instep"><Icon name="check" size="sm" /></span>
               {/if}
-              <Icon name="chevron-right" size={12} />
+              <Icon name="chevron-right" size="xs" />
             </span>
           </a>
         {/each}

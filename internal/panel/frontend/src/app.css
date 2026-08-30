@@ -124,7 +124,7 @@ body {
     background: var(--scrim);
     inset: 0;
     position: fixed;
-    z-index: 30;
+    z-index: var(--layer-scrim);
   }
 }
 
@@ -228,7 +228,10 @@ body {
   top: var(--space-3);
   transform: translateY(calc(-100% - var(--space-6)));
   transition: transform var(--duration-fast) var(--ease-out);
-  z-index: var(--layer-dialog);
+  /* Over everything, which is what a skip link is for. At the dialog layer it sat
+     under a tooltip - the one control a keyboard reader reaches first, behind the
+     one thing that explains whatever it lands on. */
+  z-index: var(--layer-skip);
 }
 
 .skip-link:focus {

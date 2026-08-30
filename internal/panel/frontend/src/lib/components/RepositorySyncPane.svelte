@@ -717,7 +717,7 @@ customization it described.
           {disabled}
           onclick={() => setWanted(true)}
         >
-          <Icon name="plus" size={10} />
+          <Icon name="plus" size="micro" />
         </button>
       {:else}
         <span class="policy-value">
@@ -730,7 +730,7 @@ customization it described.
           {disabled}
           onclick={() => setWanted(null)}
         >
-          <Icon name="close" size={10} />
+          <Icon name="close" size="micro" />
         </button>
       {/if}
     </div>
@@ -994,7 +994,7 @@ customization it described.
 
   {#if !readOnly}
     <button class="add-chip add-entry" type="button" {disabled} onclick={add}>
-      <Icon name="plus" size={12} />
+      <Icon name="plus" size="xs" />
       <span class="t">Adjust a file</span>
     </button>
   {/if}

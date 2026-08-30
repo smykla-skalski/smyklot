@@ -739,7 +739,7 @@ and a reader should not have to navigate between them.
             {#if section === 'waiting'}
               <!-- Only this section's: an outcome's own column keeps its word,
                      because the words under it are what set its width anyway. -->
-              <span class="heading-symbol"><Icon name="check" size={14} strokeWidth={2} /></span>
+              <span class="heading-symbol"><Icon name="check" size="sm" strokeWidth={2} /></span>
             {/if}
             <SortIndicator />
           </button>
@@ -792,7 +792,7 @@ and a reader should not have to navigate between them.
               onclick={() => toggleSort('cleanup')}
             >
               <span class="table-heading-label">Cleanup</span>
-              <span class="heading-symbol"><Icon name="trash" size={14} strokeWidth={2} /></span>
+              <span class="heading-symbol"><Icon name="trash" size="sm" strokeWidth={2} /></span>
               <SortIndicator />
             </button>
             <FilterMenu
@@ -819,7 +819,7 @@ and a reader should not have to navigate between them.
               onclick={() => toggleSort('finished')}
             >
               <span class="table-heading-label">Finished</span>
-              <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span>
+              <span class="heading-symbol"><Icon name="history" size="sm" strokeWidth={2} /></span>
               <SortIndicator />
             </button>
           </div>
@@ -857,7 +857,7 @@ and a reader should not have to navigate between them.
               onclick={() => toggleSort('armed')}
             >
               <span class="table-heading-label">Armed</span>
-              <span class="heading-symbol"><Icon name="history" size={14} strokeWidth={2} /></span>
+              <span class="heading-symbol"><Icon name="history" size="sm" strokeWidth={2} /></span>
               <SortIndicator />
             </button>
           </div>
@@ -924,7 +924,7 @@ and a reader should not have to navigate between them.
         >
         <span class="pr-repo">{repositoryOf(request)}</span>
         <span class="pr-num">#{request.pull_request}</span>
-        <Icon name="link" size={14} strokeWidth={2} />
+        <Icon name="link" size="sm" strokeWidth={2} />
       </a>
       <div class="pr-meta band-trim-kids">
         <span class="contract">{contractOf(request)}</span>

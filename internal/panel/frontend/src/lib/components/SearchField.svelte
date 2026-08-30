@@ -29,7 +29,7 @@ sentence to say, not the search's.
 
 <label class="search-field">
   <span class="visually-hidden">{label}</span>
-  <span class="search-icon"><Icon name="search" size={14} strokeWidth={2} /></span>
+  <span class="search-icon"><Icon name="search" size="sm" strokeWidth={2} /></span>
   <input
     class="text-input"
     type="search"

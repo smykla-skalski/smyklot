@@ -312,7 +312,7 @@ it has to answer to the same fact.
       onclick={onToggleCollapsed}
     >
       <span class="fold-glyph" class:folded={collapsed}>
-        <Icon name="chevron-left" size={14} />
+        <Icon name="chevron-left" size="sm" />
       </span>
     </button>
   </div>
@@ -341,7 +341,7 @@ it has to answer to the same fact.
             onclick={(event) => pageFromClick(event, page)}
           >
             <span class="row-visual">
-              <Icon name={page.icon} size={16} />
+              <Icon name={page.icon} size="base" />
               <span class="t">{page.label}</span>
               {#if bubblesDirty(page)}
                 <span class="dirty-mark" aria-hidden="true">*</span>
@@ -390,7 +390,7 @@ it has to answer to the same fact.
           onclick={(event) => pageFromClick(event, page)}
         >
           <span class="row-visual">
-            <Icon name={page.icon} size={16} />
+            <Icon name={page.icon} size="base" />
             <span class="t">{page.label}</span>
             {#if page.dirty === true}
               <span class="dirty-mark" aria-hidden="true">*</span>
@@ -803,7 +803,7 @@ it has to answer to the same fact.
       padding-inline: 12px 11px;
       /* Sticky makes the column its own stacking context and the pane paints
          after it - without this the flyout renders UNDER the content. */
-      z-index: 10;
+      z-index: var(--layer-chrome);
     }
 
     :global(.app-shell.sidebar-collapsed) .side-head {
@@ -913,7 +913,7 @@ it has to answer to the same fact.
         opacity var(--duration-fast) var(--ease-standard),
         translate var(--duration-fast) var(--ease-standard);
       translate: 0 0;
-      z-index: 60;
+      z-index: var(--layer-flyout);
     }
 
     @starting-style {
@@ -1040,7 +1040,7 @@ it has to answer to the same fact.
       top: 50%;
       translate: 0 -50%;
       white-space: nowrap;
-      z-index: 60;
+      z-index: var(--layer-flyout);
     }
 
     :global(.app-shell.sidebar-collapsed) .tree-row:is(:hover, :focus-visible)::after {
@@ -1067,7 +1067,7 @@ it has to answer to the same fact.
         visibility 0s var(--duration-fast);
       translate: -110% 0;
       visibility: hidden;
-      z-index: 40;
+      z-index: var(--layer-side);
     }
 
     :global(.app-shell.side-open) .side {

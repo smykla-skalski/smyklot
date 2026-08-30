@@ -89,7 +89,7 @@ trusts.
           onfocus={() => (offering = true)}
           onblur={() => (offering = false)}
         >
-          <Icon name="link-off" size={14} strokeWidth={2} />
+          <Icon name="link-off" size="sm" strokeWidth={2} />
         </button>
       {/snippet}
     </AppTooltip>
@@ -97,7 +97,7 @@ trusts.
     <AppTooltip text={linkedTip}>
       {#snippet children(props)}
         <span {...props} class="link-toggle">
-          <Icon name="link" size={14} strokeWidth={2} />
+          <Icon name="link" size="sm" strokeWidth={2} />
         </span>
       {/snippet}
     </AppTooltip>

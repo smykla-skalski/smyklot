@@ -418,7 +418,7 @@ unlisted labels are removed, and the patterns left alone either way.
     <div class="card-head">
       <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
       <Button class="label-add" disabled={frozen} onclick={addLabel}>
-        {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+        {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
         Add a label
       </Button>
     </div>
@@ -480,7 +480,7 @@ unlisted labels are removed, and the patterns left alone either way.
               </span>
               {#if fieldError !== null}
                 <span class="field-error"
-                  ><Icon name="alert" size={12} /><span class="t">{fieldError}</span></span
+                  ><Icon name="alert" size="xs" /><span class="t">{fieldError}</span></span
                 >
               {/if}
             </span>
@@ -508,7 +508,7 @@ unlisted labels are removed, and the patterns left alone either way.
               disabled={frozen}
               onclick={() => removeLabel(index)}
             >
-              <Icon name="trash" size={14} />
+              <Icon name="trash" size="sm" />
             </button>
           </span>
         </li>

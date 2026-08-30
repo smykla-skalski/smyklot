@@ -72,15 +72,15 @@
   {#snippet template()}
     <div class="row">
       <Button tone="signal">
-        {#snippet icon()}<Icon name="user-plus" size={14} strokeWidth={2} />{/snippet}
+        {#snippet icon()}<Icon name="user-plus" size="sm" strokeWidth={2} />{/snippet}
         Add user
       </Button>
       <Button>
-        {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+        {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
         Refresh
       </Button>
       <Button tone="stop">
-        {#snippet icon()}<Icon name="trash" size={14} strokeWidth={2} />{/snippet}
+        {#snippet icon()}<Icon name="trash" size="sm" strokeWidth={2} />{/snippet}
         Remove
       </Button>
     </div>

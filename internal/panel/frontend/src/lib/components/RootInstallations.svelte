@@ -229,7 +229,7 @@ and most visits to this route never open one.
         </span>
       {/if}
       <button class="btn" type="button" disabled={syncing} onclick={() => void syncCatalog()}>
-        <Icon name="refresh" size={14} />
+        <Icon name="refresh" size="sm" />
         <span class="cap-trim">{syncing ? 'Synchronizing…' : 'Sync now'}</span>
       </button>
     </RootPageHeader>

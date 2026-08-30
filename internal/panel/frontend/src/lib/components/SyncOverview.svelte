@@ -214,8 +214,8 @@ plan is applied, which is why these are switches and not a form.
             {#if state === 'change'}<span class="t">{changesOf(row)}</span
               >{:else if state === 'refused'}<Icon
                 name="failure"
-                size={14}
-              />{:else if state === 'settled'}<Icon name="check" size={12} />{/if}
+                size="sm"
+              />{:else if state === 'settled'}<Icon name="check" size="xs" />{/if}
           </button>
         {/each}
       </div>
@@ -328,7 +328,7 @@ plan is applied, which is why these are switches and not a form.
             aria-label={`Open ${KIND_LABEL[kind].toLowerCase()}`}
             onclick={(event) => open(event, KIND_SECTION[kind])}
           >
-            <Icon name="chevron-right" size={10} />
+            <Icon name="chevron-right" size="micro" />
           </a>
         </span>
       </div>
@@ -852,11 +852,18 @@ plan is applied, which is why these are switches and not a form.
     color: var(--brand-action-text);
   }
 
+  /* THE COPY-RHYTHM LAW, on the kind-card family. The distance from the name's box to
+     this one is 8px like every other name-and-sentence pair, and here it is reached by
+     PULLING rather than by setting: the card's own 12px grid gap plus the 4px of slack
+     the head row carries over the trimmed name already spend 16, so the family's
+     declared value is what takes it back to 8. Measured rendered, not declared -
+     re-measure if the head's type or the card's tracks move. */
   .kind-sum {
     align-self: start;
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
     line-height: var(--leading-meta);
+    margin-block-start: var(--row-copy-gap-kind);
   }
 
   /* One slot per repository, the board's order, the board's material. */

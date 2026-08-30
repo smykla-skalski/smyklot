@@ -241,7 +241,7 @@ would be telling everybody else about a console they cannot open.
       aria-label="Pages"
       onclick={onTogglePages}
     >
-      <Icon name={pagesOpen ? 'sidebar-collapse' : 'sidebar-expand'} size={18} />
+      <Icon name={pagesOpen ? 'sidebar-collapse' : 'sidebar-expand'} size="md" />
     </button>
   {/if}
 
@@ -305,7 +305,7 @@ would be telling everybody else about a console they cannot open.
         {/snippet}
         <div class="console-menu" role="none">
           <div class="menu-search">
-            <Icon name="search" size={12} />
+            <Icon name="search" size="xs" />
             <input
               type="search"
               placeholder="Find a workspace"
@@ -327,7 +327,7 @@ would be telling everybody else about a console they cannot open.
                 }}
               >
                 {#if target.account.avatar_url !== null}
-                  <Avatar account={target.account} size={20} shape="workspace" />
+                  <Avatar account={target.account} size={18} shape="workspace" />
                 {:else}
                   <span class="ws-mini" data-h={workspaceHue(target.account.login)}>
                     <span class="t">{workspaceInitials(nameOf(target))}</span>
@@ -361,7 +361,7 @@ would be telling everybody else about a console they cannot open.
       aria-current={rootMode ? 'true' : undefined}
       onclick={enterRootFromClick}
     >
-      <Icon name="shield" size={18} />
+      <Icon name="shield" size="md" />
       {#if rootDirty}
         <span class="rail-dirty" aria-hidden="true">*</span>
       {/if}
@@ -379,7 +379,7 @@ would be telling everybody else about a console they cannot open.
     aria-current={inboxActive ? 'true' : undefined}
     onclick={selectInboxFromClick}
   >
-    <Icon name="notifications" size={18} />
+    <Icon name="notifications" size="md" />
     {#if unreadCount > 0}
       <span class="rail-badge" aria-hidden="true"><span class="t">{unreadLabel}</span></span>
     {/if}
@@ -752,7 +752,7 @@ would be telling everybody else about a console they cannot open.
     top: 50%;
     translate: 0 -50%;
     white-space: nowrap;
-    z-index: 60;
+    z-index: var(--layer-flyout);
   }
 
   .rail-tile:hover::after,

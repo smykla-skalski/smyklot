@@ -483,7 +483,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={overrideMode}
               >
-                <Icon name="plus" size={10} />
+                <Icon name="plus" size="micro" />
               </button>
             {:else}
               <span class="policy-value">
@@ -517,7 +517,7 @@ so a link points at the pane a colleague was asked to look at.
                         <span class="menu-check">
                           {#if detail.pending_ci_mode_override === option.value}<Icon
                               name="check"
-                              size={16}
+                              size="base"
                             />{/if}
                         </span>
                         <ClippedLabel class="mi-label" text={option.label} />
@@ -532,7 +532,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={() => setMode(null)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
             {/if}
           </div>
@@ -569,7 +569,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={overridePatterns}
               >
-                <Icon name="plus" size={10} />
+                <Icon name="plus" size="micro" />
               </button>
             {:else}
               <span class="policy-value"></span>
@@ -579,7 +579,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={() => setPatterns(null)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
               <div class="pattern-line">
                 <PatternEntries
@@ -677,7 +677,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={() => setPathIndex(detail.path_index_interval_seconds_inherited)}
               >
-                <Icon name="plus" size={10} />
+                <Icon name="plus" size="micro" />
               </button>
             {:else}
               <span class="policy-value">
@@ -716,7 +716,7 @@ so a link points at the pane a colleague was asked to look at.
                         onclick={() => pickIndexUnit(unit)}
                       >
                         <span class="menu-check">
-                          {#if indexUnitShown === unit}<Icon name="check" size={16} />{/if}
+                          {#if indexUnitShown === unit}<Icon name="check" size="base" />{/if}
                         </span>
                         <ClippedLabel class="mi-label" text={unit} />
                       </button>
@@ -730,7 +730,7 @@ so a link points at the pane a colleague was asked to look at.
                 {disabled}
                 onclick={() => setPathIndex(null)}
               >
-                <Icon name="close" size={10} />
+                <Icon name="close" size="micro" />
               </button>
             {/if}
           </div>
@@ -762,7 +762,7 @@ so a link points at the pane a colleague was asked to look at.
               <!-- 14px glyph in an 18px slot, the same pairing every other icon
                  slot in the product uses. -->
               <span class="file-card-icon status-{detail.repository.config_file_status}">
-                <Icon name="file" size={14} />
+                <Icon name="file" size="sm" />
               </span>
               <div class="f-copy">
                 <strong>Configuration path</strong>
@@ -907,7 +907,10 @@ so a link points at the pane a colleague was asked to look at.
 
   .object-head {
     display: grid;
-    gap: var(--space-2);
+    /* The copy-rhythm law, on the object-head family: a name and the sentence
+       under it, box to box. This head carries no controls beside the name, so it
+       needs none of the pull the kind card takes - it renders the law directly. */
+    gap: var(--row-copy-gap);
   }
 
   .mono-title {
@@ -1061,7 +1064,10 @@ so a link points at the pane a colleague was asked to look at.
 
   .setting-say {
     display: grid;
-    gap: var(--space-3);
+    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
+       apart, and it is this one. Both wear `text-box` trim, so the box edge is
+       the ink edge and the declared gap is the rendered one. */
+    gap: var(--row-copy-gap);
   }
 
   .setting-name {

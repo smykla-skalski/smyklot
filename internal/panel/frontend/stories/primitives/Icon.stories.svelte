@@ -1,7 +1,10 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
-  import Icon, { type IconName } from '#lib/components/Icon.svelte';
+  import Icon, { type IconName, type IconSize } from '#lib/components/Icon.svelte';
+
+  /** The scale, smallest first, so the control walks it in order. */
+  const SIZES: IconSize[] = ['nano', 'micro', 'xs', 'sm', 'base', 'md'];
 
   /**
    * Every name the union declares, in the order it declares them.
@@ -77,10 +80,10 @@
     component: Icon,
     argTypes: {
       name: { control: 'select', options: NAMES },
-      size: { control: { type: 'range', min: 12, max: 48, step: 1 } },
+      size: { control: 'inline-radio', options: SIZES },
       strokeWidth: { control: { type: 'range', min: 1, max: 3, step: 0.25 } },
     },
-    args: { name: 'admin', size: 20, strokeWidth: 1.75 },
+    args: { name: 'admin', size: 'base', strokeWidth: 1.75 },
   });
 </script>
 

@@ -374,7 +374,7 @@ turns the unmanaged names into rows of their own.
                     disabled={frozen}
                     onclick={() => manage(field)}
                   >
-                    <Icon name="plus" size={10} />
+                    <Icon name="plus" size="micro" />
                   </button>
                 {:else if field.kind === 'switch'}
                   <span class="policy-value">
@@ -394,7 +394,7 @@ turns the unmanaged names into rows of their own.
                     disabled={frozen}
                     onclick={() => unmanage(field)}
                   >
-                    <Icon name="close" size={10} />
+                    <Icon name="close" size="micro" />
                   </button>
                 {:else}
                   <span class="policy-value">
@@ -426,7 +426,7 @@ turns the unmanaged names into rows of their own.
                             <span class="menu-check">
                               {#if stored[field.key] === option.value}<Icon
                                   name="check"
-                                  size={16}
+                                  size="base"
                                 />{/if}
                             </span>
                             <ClippedLabel class="mi-label" text={option.label} />
@@ -441,7 +441,7 @@ turns the unmanaged names into rows of their own.
                     disabled={frozen}
                     onclick={() => unmanage(field)}
                   >
-                    <Icon name="close" size={10} />
+                    <Icon name="close" size="micro" />
                   </button>
                 {/if}
               </div>
@@ -463,7 +463,7 @@ turns the unmanaged names into rows of their own.
               <span class="rest-picks">
                 {#each rest as field (field.key)}
                   <button class="add-chip" onclick={() => manage(field)}>
-                    <Icon name="plus" size={12} />
+                    <Icon name="plus" size="xs" />
                     <span class="t">{field.label}</span>
                   </button>
                 {/each}
@@ -476,7 +476,7 @@ turns the unmanaged names into rows of their own.
                 )}</span
               >
               <Button tone="quiet" disabled={frozen} onclick={() => (picking = group.id)}>
-                {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+                {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
                 Manage one
               </Button>
             {/if}
@@ -679,7 +679,10 @@ turns the unmanaged names into rows of their own.
 
   .setting-say {
     display: grid;
-    gap: var(--space-3);
+    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
+       apart, and it is this one. Both wear `text-box` trim, so the box edge is
+       the ink edge and the declared gap is the rendered one. */
+    gap: var(--row-copy-gap);
   }
 
   .setting-name {

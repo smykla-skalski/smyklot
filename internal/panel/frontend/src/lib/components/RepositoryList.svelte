@@ -1247,7 +1247,7 @@ a workspace has is not a number worth blocking the first screenful on.
                        on the same address is a stop a keyboard reader has to
                        pass for nothing. -->
               <span class="row-chevron" aria-hidden="true">
-                <Icon name="chevron-right" size={16} />
+                <Icon name="chevron-right" size="base" />
               </span>
             </td>
           {/snippet}

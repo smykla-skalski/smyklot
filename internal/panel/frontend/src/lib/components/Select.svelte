@@ -47,5 +47,5 @@ options are not worth the width.
       {@render children()}
     {/if}
   </select>
-  <Icon name="chevron-down" size={14} strokeWidth={2} />
+  <Icon name="chevron-down" size="sm" strokeWidth={2} />
 </span>

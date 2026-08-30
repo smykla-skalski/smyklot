@@ -358,7 +358,7 @@ the button.
           aria-expanded={open}
           onclick={() => toggleGroup(group.repository)}
         >
-          <span class="summary-icon"><Icon name="chevron-right" size={12} /></span>
+          <span class="summary-icon"><Icon name="chevron-right" size="xs" /></span>
           <span class="repo-group-name">{group.repository}</span>
           {#if groupFailed > 0}
             <span class="pill pill-danger"><span class="t">{groupFailed} failed</span></span>
@@ -462,7 +462,7 @@ the button.
               <span class="exit-cause"
                 ><span class="t">The configuration moves</span><Icon
                   name="chevron-down"
-                  size={12}
+                  size="xs"
                 /></span
               >
               <span class="state-say"
@@ -472,7 +472,7 @@ the button.
             </div>
             <div class="state-exit">
               <span class="exit-cause"
-                ><span class="t">Six hours pass</span><Icon name="chevron-down" size={12} /></span
+                ><span class="t">Six hours pass</span><Icon name="chevron-down" size="xs" /></span
               >
               <span class="state-say"
                 ><span class="state-word is-expired">Expired</span> - the next sweep computes a fresh
@@ -482,7 +482,7 @@ the button.
           </div>
         </div>
         <div class="state-edge">
-          <span class="t">You apply</span><Icon name="chevron-right" size={12} />
+          <span class="t">You apply</span><Icon name="chevron-right" size="xs" />
         </div>
         <div class="state-node is-applying">
           <span class="state-dot"></span>
@@ -494,7 +494,7 @@ the button.
               <span class="exit-cause"
                 ><span class="t">GitHub refuses a write</span><Icon
                   name="chevron-down"
-                  size={12}
+                  size="xs"
                 /></span
               >
               <span class="state-say"
@@ -505,7 +505,7 @@ the button.
           </div>
         </div>
         <div class="state-edge">
-          <span class="t">Every write lands</span><Icon name="chevron-right" size={12} />
+          <span class="t">Every write lands</span><Icon name="chevron-right" size="xs" />
         </div>
         <div class="state-node is-applied">
           <span class="state-dot"></span>
@@ -526,7 +526,7 @@ the button.
           aria-expanded={demoOpen}
           onclick={() => (demoOpen = !demoOpen)}
         >
-          <span class="summary-icon"><Icon name="chevron-right" size={12} /></span>
+          <span class="summary-icon"><Icon name="chevron-right" size="xs" /></span>
           <span class="repo-group-name">af</span>
           <span class="pill pill-danger"><span class="t">2 failed</span></span>
         </button>

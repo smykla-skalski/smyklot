@@ -381,7 +381,6 @@
   --well-shadow: inset 0 1px 2px rgb(0 0 0 / 12%);
 
   /* Compatibility aliases while components migrate to semantic names. */
-  --ink: var(--canvas);
   --strip: var(--surface-base);
   --strip-lift: var(--surface-raised);
   --well: var(--surface-inset);
@@ -447,13 +446,6 @@
      Measured rendered, not declared: re-measure after any change to a
      family's type or track sizing. */
   --row-copy-gap: 8px;
-  /* object rows: the name-ROW carries ~5px of control slack below the
-     trimmed name (pills and marks set its height), so the declared grid
-     gap stays one step under the law's 8. */
-  --row-copy-gap-object: 4px;
-  /* choice cards: centred track sizing adds ~3px around the title, so the
-     declared row-gap stays under the law's 8 - renders 8.2. */
-  --row-copy-gap-choice: 5px;
   /* kind cards: the summary pulls against the card's 12px grid gap plus
      the head row's 4px slack - renders 8. */
   --row-copy-gap-kind: -8px;
@@ -527,7 +519,6 @@
   --cp-width: calc(
     var(--cp-cell) * var(--cp-cols) + var(--cp-gap) * (var(--cp-cols) - 1) + var(--cp-pad) * 2 + 2px
   );
-  --cp-dot: 16px;
   --cp-hue-height: 24px;
   --cp-hue-thumb: 16px;
   --cp-area-height: 10rem;
@@ -684,7 +675,6 @@
   --layer-sticky: 30; /* a sticky heading inside a scrolling pane */
   --layer-scrim: 30; /* the dim behind an open side */
   --layer-side: 40; /* the navigation side, as a drawer */
-  --layer-top-bar: 45; /* the narrow-viewport top bar */
   --layer-rail: 50; /* the workspace rail */
   /* Raised from 35, and the one value that moves. A popover opens from any
      control, including one standing beside the rail, so at 35 it rendered
@@ -692,16 +682,8 @@
   --layer-popover: 55;
   --layer-menu: 55; /* a menu is a popover that happens to hold rows */
   --layer-flyout: 60; /* a rail tip, and a flown tree page */
-  /* The scrim is always one step under the thing it dims, and on a phone the
-     side climbs over the top bar and the rail - so its scrim climbs with it.
-     Two names rather than arithmetic: a layer that has to be computed is a
-     layer nobody can read off the list. */
-  --layer-scrim-drawer: 60;
-  --layer-drawer: 70; /* the side, and its tip, over the top bar on a phone */
   --layer-dialog: 75;
   --layer-dialog-popover: 80;
-  --layer-toast: 85;
-  --layer-tip: 90; /* a live match tip, over a toast */
   /* Above the dialog: a tooltip explains whatever is in front of it. */
   --layer-tooltip: 95;
   --layer-skip: 120; /* the skip link, over everything */
@@ -976,7 +958,6 @@
   --well: var(--surface-inset);
   --strip: var(--surface-base);
   --strip-lift: var(--surface-raised);
-  --ink: var(--canvas);
   --neutral-tint: var(--surface-inset);
   --text: var(--text-primary);
   --text-soft: var(--text-secondary);

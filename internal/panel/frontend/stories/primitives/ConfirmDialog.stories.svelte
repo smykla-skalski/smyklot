@@ -35,7 +35,7 @@
   {#snippet template({ children, ...args })}
     <ConfirmDialog {...args}>
       <Callout>
-        {#snippet icon()}<Icon name="warning" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <p>Review this change carefully before confirming</p>
       </Callout>
     </ConfirmDialog>
@@ -53,7 +53,7 @@
   {#snippet template({ children, ...args })}
     <ConfirmDialog {...args}>
       <Callout>
-        {#snippet icon()}<Icon name="info" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="info" size="md" />{/snippet}
         <span>Review the account and effect before confirming</span>
       </Callout>
     </ConfirmDialog>
@@ -65,7 +65,7 @@
   {#snippet template({ children, ...args })}
     <ConfirmDialog {...args}>
       <Callout>
-        {#snippet icon()}<Icon name="warning" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <p>Review this change carefully before confirming</p>
       </Callout>
     </ConfirmDialog>
@@ -85,7 +85,7 @@
   {#snippet template({ children, ...args })}
     <ConfirmDialog {...args}>
       <Callout>
-        {#snippet icon()}<Icon name="warning" size={20} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <p>The user can only join if you create and share a new invitation</p>
       </Callout>
     </ConfirmDialog>

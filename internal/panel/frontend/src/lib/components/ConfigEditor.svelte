@@ -195,7 +195,7 @@ account again.
     disabled={editorDisabled}
     onclick={() => clearField(key)}
   >
-    <Icon name="close" size={10} />
+    <Icon name="close" size="micro" />
   </button>
 {/snippet}
 
@@ -273,7 +273,7 @@ account again.
               <span class="rest-picks">
                 {#each restFields as field (field.key)}
                   <button class="add-chip" disabled={editorDisabled} onclick={() => manage(field)}>
-                    <Icon name="plus" size={12} />
+                    <Icon name="plus" size="xs" />
                     <span class="t">{field.label}</span>
                   </button>
                 {/each}
@@ -286,7 +286,7 @@ account again.
                 )}</span
               >
               <Button tone="quiet" disabled={editorDisabled} onclick={() => (picking = true)}>
-                {#snippet icon()}<Icon name="plus" size={13} />{/snippet}
+                {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
                 Override one
               </Button>
             {/if}
@@ -359,7 +359,7 @@ account again.
                 disabled={editorDisabled || (on && allowedCount === 1)}
                 onclick={() => toggleCommand(command)}
               >
-                <Icon name={on ? 'check' : 'plus'} size={10} />
+                <Icon name={on ? 'check' : 'plus'} size="micro" />
                 <span class="t">{command}</span>
               </button>
             {/each}
@@ -417,7 +417,7 @@ account again.
                         onclick={() => retargetAlias(name, candidate)}
                       >
                         <span class="menu-check">
-                          {#if candidate === command}<Icon name="check" size={16} />{/if}
+                          {#if candidate === command}<Icon name="check" size="base" />{/if}
                         </span>
                         <span class="mi-label">{candidate}</span>
                       </button>
@@ -429,20 +429,20 @@ account again.
                   disabled={editorDisabled}
                   onclick={() => removeAlias(name)}
                 >
-                  <Icon name="close" size={8} />
+                  <Icon name="close" size="nano" />
                 </button>
               </span>
             {/each}
             <Popover role="dialog" label="Name the alias" align="start" bind:open={aliasOpen}>
               {#snippet trigger(attributes)}
                 <button {...attributes} class="add-chip" disabled={editorDisabled}>
-                  <Icon name="plus" size={12} />
+                  <Icon name="plus" size="xs" />
                   <span class="t">Add an alias</span>
                 </button>
               {/snippet}
               <div class="name-menu">
                 <div class="menu-search">
-                  <Icon name="search" size={12} />
+                  <Icon name="search" size="xs" />
                   <input
                     placeholder="ship"
                     aria-label="Name for the new alias"
@@ -572,7 +572,10 @@ account again.
 
   .setting-say {
     display: grid;
-    gap: var(--space-3);
+    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
+       apart, and it is this one. Both wear `text-box` trim, so the box edge is
+       the ink edge and the declared gap is the rendered one. */
+    gap: var(--row-copy-gap);
   }
 
   .setting-name {

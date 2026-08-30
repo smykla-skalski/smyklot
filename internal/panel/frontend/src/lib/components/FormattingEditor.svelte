@@ -241,7 +241,7 @@ three things among thirty finds them again.
                         {disabled}
                         onclick={() => clear(field)}
                       >
-                        <Icon name="link-off" size={14} strokeWidth={2} />
+                        <Icon name="link-off" size="sm" strokeWidth={2} />
                       </button>
                     {/snippet}
                   </AppTooltip>
@@ -251,7 +251,7 @@ three things among thirty finds them again.
                   >
                     {#snippet children(attributes)}
                       <span {...attributes} class="link-toggle">
-                        <Icon name="link" size={14} strokeWidth={2} />
+                        <Icon name="link" size="sm" strokeWidth={2} />
                       </span>
                     {/snippet}
                   </AppTooltip>
@@ -366,7 +366,10 @@ three things among thirty finds them again.
 
   .setting-say {
     display: grid;
-    gap: var(--space-3);
+    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
+       apart, and it is this one. Both wear `text-box` trim, so the box edge is
+       the ink edge and the declared gap is the rendered one. */
+    gap: var(--row-copy-gap);
     min-width: 0;
   }
 

@@ -187,7 +187,7 @@ page directly still leads somewhere.
       rel="noreferrer"
       target="_blank"
     >
-      {#snippet icon()}<Icon name="github" size={16} />{/snippet}
+      {#snippet icon()}<Icon name="github" size="base" />{/snippet}
       Open on GitHub
     </Button>
   </RootPageHeader>
@@ -250,13 +250,13 @@ page directly still leads somewhere.
       {#if armed}
         <div class="card-actions">
           <Button disabled={acting !== null} onclick={() => void act('check')}>
-            {#snippet icon()}<Icon name="refresh" size={14} strokeWidth={2} />{/snippet}
+            {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
             {acting === 'check' ? 'Checking…' : 'Check now'}
           </Button>
           <!-- Bordered rather than filled: the one filled danger control in this
                flow is the confirmation, so a page cannot be left holding two. -->
           <Button tone="stop-quiet" disabled={acting !== null} onclick={() => void act('cancel')}>
-            {#snippet icon()}<Icon name="close" size={14} strokeWidth={2} />{/snippet}
+            {#snippet icon()}<Icon name="close" size="sm" strokeWidth={2} />{/snippet}
             {acting === 'cancel' ? 'Cancelling…' : 'Cancel'}
           </Button>
         </div>
@@ -332,7 +332,7 @@ page directly still leads somewhere.
                of ITS mark. -->
           <span class="rail" aria-hidden="true"></span>
           <span class="mark {mark.tone}" aria-hidden="true">
-            <Icon name={mark.icon} size={14} strokeWidth={2} />
+            <Icon name={mark.icon} size="sm" strokeWidth={2} />
           </span>
           <div class="head">
             <strong class="band-trim">{eventTitle(event)}</strong>

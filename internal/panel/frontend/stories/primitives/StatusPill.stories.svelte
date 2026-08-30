@@ -57,11 +57,11 @@
   {#snippet template()}
     <div class="row">
       <StatusPill>
-        {#snippet icon()}<Icon name="shield" size={14} />{/snippet}
+        {#snippet icon()}<Icon name="shield" size="sm" />{/snippet}
         Owner access
       </StatusPill>
       <StatusPill>
-        {#snippet icon()}<Icon name="warning" size={14} />{/snippet}
+        {#snippet icon()}<Icon name="warning" size="sm" />{/snippet}
         Elevated
       </StatusPill>
     </div>

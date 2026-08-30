@@ -1170,7 +1170,7 @@ where the record is.
           <td data-label="Status">
             <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
               <span class="cell-symbol" aria-hidden="true">
-                <Icon name={failure.retryable ? 'refresh' : 'failure'} size={14} />
+                <Icon name={failure.retryable ? 'refresh' : 'failure'} size="sm" />
               </span>
               <span class="cap-trim">{failure.retryable ? 'Retryable' : 'Permanent'}</span>
             </span>

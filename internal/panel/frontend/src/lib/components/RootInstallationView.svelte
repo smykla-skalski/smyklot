@@ -356,12 +356,12 @@ inside it.
     <div class="access-summary">
       {#if target !== null && ownsInstallation}
         <StatusPill>
-          {#snippet icon()}<Icon name="shield" size={14} />{/snippet}
+          {#snippet icon()}<Icon name="shield" size="sm" />{/snippet}
           Owner access
         </StatusPill>
       {:else if elevation !== null}
         <StatusPill>
-          {#snippet icon()}<Icon name="warning" size={14} />{/snippet}
+          {#snippet icon()}<Icon name="warning" size="sm" />{/snippet}
           Elevated
         </StatusPill>
       {:else}
@@ -371,7 +371,7 @@ inside it.
           disabled={!canElevate || loading}
           onclick={openElevation}
         >
-          {#snippet icon()}<Icon name="lock" size={16} />{/snippet}
+          {#snippet icon()}<Icon name="lock" size="base" />{/snippet}
           Request write access
         </Button>
       {/if}
@@ -380,7 +380,7 @@ inside it.
 
   {#if elevation !== null}
     <aside class="elevation-banner">
-      <span class="elevation-icon"><Icon name="warning" size={19} /></span>
+      <span class="elevation-icon"><Icon name="warning" size="md" /></span>
       <div>
         <strong>Elevated access to {installation.account.display_name}</strong>
         <p>

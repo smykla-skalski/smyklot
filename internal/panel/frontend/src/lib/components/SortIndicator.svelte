@@ -26,4 +26,4 @@ is what a screen reader reads, and saying it twice is a repetition rather
 than a help.
 -->
 
-<span class="sort-indicator" aria-hidden="true"><Icon name="chevron-up" size={14} /></span>
+<span class="sort-indicator" aria-hidden="true"><Icon name="chevron-up" size="sm" /></span>

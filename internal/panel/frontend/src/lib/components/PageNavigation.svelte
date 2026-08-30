@@ -38,7 +38,7 @@ the page size; this half is the move alone.
     aria-label="Previous page"
     onclick={() => onSelect(pageIndex - 1)}
   >
-    <Icon name="chevron-left" size={16} />
+    <Icon name="chevron-left" size="base" />
     <span class="step-label">Previous</span>
   </button>
 
@@ -68,7 +68,7 @@ the page size; this half is the move alone.
     onclick={() => onSelect(pageIndex + 1)}
   >
     <span class="step-label">Next</span>
-    <Icon name="chevron-right" size={16} />
+    <Icon name="chevron-right" size="base" />
   </button>
 </div>
 

@@ -78,10 +78,10 @@ where the reader already is.
         {...attributes}
       >
         {#if selected !== undefined}
-          <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size={14} /></span>
+          <span class="role-icon" aria-hidden="true"><Icon name={selected.icon} size="sm" /></span>
           <span class="band-trim">{selected.label}</span>
         {/if}
-        <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size={14} /></span>
+        <span class="role-chevron" aria-hidden="true"><Icon name="chevron-down" size="sm" /></span>
       </button>
     </div>
   {/snippet}
@@ -97,9 +97,9 @@ where the reader already is.
         aria-selected={isSelected}
         onclick={() => choose(option.value)}
       >
-        <Icon name={option.icon} size={15} />
+        <Icon name={option.icon} size="base" />
         <span>{option.label}</span>
-        {#if isSelected}<Icon name="success" size={15} />{/if}
+        {#if isSelected}<Icon name="success" size="base" />{/if}
       </button>
     {/each}
   </div>

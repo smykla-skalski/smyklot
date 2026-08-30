@@ -71,7 +71,7 @@ once put it a hundred pixels off the button it belongs to.
       aria-label={label}
       title={label}
     >
-      <Icon name="more" size={14} strokeWidth={2} />
+      <Icon name="more" size="sm" strokeWidth={2} />
     </DropdownMenu.Trigger>
   </span>
 
@@ -84,7 +84,7 @@ once put it a hundred pixels off the button it belongs to.
           textValue={item.label}
           onSelect={() => choose(item)}
         >
-          <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size={16} /></span>
+          <span class="action-icon" aria-hidden="true"><Icon name={item.icon} size="base" /></span>
           <span class="action-copy">
             <strong>{item.label}</strong>
             {#if item.description !== undefined}<span>{item.description}</span>{/if}
