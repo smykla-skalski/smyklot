@@ -11,13 +11,15 @@
   }
 </script>
 
+<!--
+@component
+The shared files list: what every repository should carry. Each template
+is a named object one press from its own page; the add flow is a path
+field with fuzzy suggestions from what the organization's repositories
+already hold - the index ships once, matching costs no requests.
+-->
+
 <script lang="ts">
-  /**
-   * The shared files list: what every repository should carry. Each template
-   * is a named object one press from its own page; the add flow is a path
-   * field with fuzzy suggestions from what the organization's repositories
-   * already hold - the index ships once, matching costs no requests.
-   */
   import { Command } from 'bits-ui';
 
   import { formatRelative } from '../format';

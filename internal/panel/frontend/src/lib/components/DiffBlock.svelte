@@ -1,13 +1,4 @@
 <script lang="ts">
-  /**
-   * A small unified diff, drawn from the two texts themselves. The plan page
-   * expands a file action into one of these; nothing here scrolls a whole
-   * file - the texts a plan carries are already the window worth reading.
-   *
-   * Line numbers count the window, not the file, and only context lines wear
-   * one: an added or removed line has no single number to claim, and the
-   * glyph in the source column already says which side it is on.
-   */
   import {
     emphasizeRuns,
     tokenizeLine,
@@ -33,6 +24,17 @@
     return emphasizeRuns(tokenizeLine(lang, line.text), line.emphasis ?? []);
   }
 </script>
+
+<!--
+@component
+A small unified diff, drawn from the two texts themselves. The plan page
+expands a file action into one of these; nothing here scrolls a whole
+file - the texts a plan carries are already the window worth reading.
+
+Line numbers count the window, not the file, and only context lines wear
+one: an added or removed line has no single number to claim, and the
+glyph in the source column already says which side it is on.
+-->
 
 <div class="code">
   <pre>{#each lines as line, index (index)}<div

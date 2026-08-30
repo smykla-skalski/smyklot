@@ -1,13 +1,4 @@
 <script lang="ts">
-  /**
-   * Org-wide label sync: what an installation expects its repositories to carry,
-   * and what the service would change to make that true.
-   *
-   * Two halves, in the order the questions arrive. What is configured, which is
-   * the thing somebody edits. Then what that would do, which is the thing
-   * somebody approves - and those are deliberately not the same act. A sync that
-   * applied on save would give nobody the chance to read the deletions first.
-   */
   import { untrack } from 'svelte';
 
   import { formatJson, type JsonValue } from '#lib/merge.js';
@@ -401,6 +392,17 @@
       stageEnvelope(kind, { ...current, enabled: next }, `sync.${kind}.enabled`);
   }
 </script>
+
+<!--
+@component
+Org-wide label sync: what an installation expects its repositories to carry,
+and what the service would change to make that true.
+
+Two halves, in the order the questions arrive. What is configured, which is
+the thing somebody edits. Then what that would do, which is the thing
+somebody approves - and those are deliberately not the same act. A sync that
+applied on save would give nobody the chance to read the deletions first.
+-->
 
 {#if section === 'overview'}
   {#if error !== null}

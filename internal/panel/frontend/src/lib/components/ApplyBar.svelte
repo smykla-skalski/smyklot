@@ -1,21 +1,23 @@
 <script lang="ts">
-  /**
-   * The sticky decision bar and its melt. At rest, in its own flow slot,
-   * this is a plain card - the elevation story belongs ONLY to the moment
-   * it is glued to the viewport riding over rows. Pure CSS: a sticky
-   * element's view() timeline FREEZES while it is pinned, and advances the
-   * moment it seats and rides the flow - so "stuck" is progress held below
-   * the range, and the 16px of scroll past the dock is the melt. No JS, no
-   * sentinel.
-   *
-   * The page hosting one must carry `timeline-scope: --bar-slot` on the
-   * scrolling frame above the bar - the slot marker after the bar declares
-   * the named timeline, and the scope is what hands it back up.
-   */
   import type { Snippet } from 'svelte';
 
   const { children }: { children: Snippet } = $props();
 </script>
+
+<!--
+@component
+The sticky decision bar and its melt. At rest, in its own flow slot,
+this is a plain card - the elevation story belongs ONLY to the moment
+it is glued to the viewport riding over rows. Pure CSS: a sticky
+element's view() timeline FREEZES while it is pinned, and advances the
+moment it seats and rides the flow - so "stuck" is progress held below
+the range, and the 16px of scroll past the dock is the melt. No JS, no
+sentinel.
+
+The page hosting one must carry `timeline-scope: --bar-slot` on the
+scrolling frame above the bar - the slot marker after the bar declares
+the named timeline, and the scope is what hands it back up.
+-->
 
 <div class="apply-bar">
   {@render children()}

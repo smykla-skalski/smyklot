@@ -1,11 +1,4 @@
 <script lang="ts">
-  /**
-   * The plan: Terraform's grammar under the overview's register. The verdict
-   * is the hero, the state is the sentence rather than a badge, and every
-   * fact lives once - scale in the hero, freshness and expiry on its
-   * baseline, operation counts and the promise on the apply bar, scope on
-   * the button.
-   */
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
@@ -232,6 +225,15 @@
   const applyingShown = $derived(Math.min(3, Math.max(total, 1)));
   const failedShown = $derived(Math.min(2, Math.max(total, 1)));
 </script>
+
+<!--
+@component
+The plan: Terraform's grammar under the overview's register. The verdict
+is the hero, the state is the sentence rather than a badge, and every
+fact lives once - scale in the hero, freshness and expiry on its
+baseline, operation counts and the promise on the apply bar, scope on
+the button.
+-->
 
 <div class="view-frame">
   <PanePath

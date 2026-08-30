@@ -100,21 +100,23 @@
   ] as const;
 </script>
 
+<!--
+@component
+The label colour picker: svelte-awesome-color-picker's anatomy - the
+saturation/value area, a hue rail, the hex field - built in this app's
+own material rather than skinned over the library's DOM (considered,
+and traded away: the drag-commit contract, the focus hand-off and the
+pixel geometry all needed shims through its scoped styles). The rail
+runs horizontal because nothing in this app slides vertically. Below,
+every colour the list already carries ("In use", rebuilt fresh each
+open) and GitHub's sixteen presets.
+
+Dragging tracks the pointer raw and applies silently; the release is
+the commit that earns the receipt. Picking a tile is a finished act -
+the caller applies, closes and whispers.
+-->
+
 <script lang="ts">
-  /**
-   * The label colour picker: svelte-awesome-color-picker's anatomy - the
-   * saturation/value area, a hue rail, the hex field - built in this app's
-   * own material rather than skinned over the library's DOM (considered,
-   * and traded away: the drag-commit contract, the focus hand-off and the
-   * pixel geometry all needed shims through its scoped styles). The rail
-   * runs horizontal because nothing in this app slides vertically. Below,
-   * every colour the list already carries ("In use", rebuilt fresh each
-   * open) and GitHub's sixteen presets.
-   *
-   * Dragging tracks the pointer raw and applies silently; the release is
-   * the commit that earns the receipt. Picking a tile is a finished act -
-   * the caller applies, closes and whispers.
-   */
   import { tick, untrack } from 'svelte';
 
   import Icon from './Icon.svelte';

@@ -137,14 +137,16 @@
   export const SETTINGS_FIELD_TOTAL = SETTINGS_FIELD_KEYS.length;
 </script>
 
+<!--
+@component
+The settings page is the policy: only managed settings render as rows,
+and everything unmanaged is one sentence per group with the names as
+scent, one press from being managed. The x removes the management,
+never "writes the default". "Everything" in the segmented control
+turns the unmanaged names into rows of their own.
+-->
+
 <script lang="ts">
-  /**
-   * The settings page is the policy: only managed settings render as rows,
-   * and everything unmanaged is one sentence per group with the names as
-   * scent, one press from being managed. The x removes the management,
-   * never "writes the default". "Everything" in the segmented control
-   * turns the unmanaged names into rows of their own.
-   */
   import type { SyncConfig } from '../types';
   import type { SyncSection } from '../routes';
 

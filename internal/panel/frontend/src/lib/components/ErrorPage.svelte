@@ -1,13 +1,4 @@
 <script lang="ts">
-  /**
-   * What the panel shows when the server answered with an error rather than a
-   * page. It stands on the same shell as an invitation, because for most of these
-   * the reader is not signed in and has nowhere else in the panel to be.
-   *
-   * The card's contents are `ErrorCard`, which the invitation page shows too - see
-   * the note there. The server's own message is deliberately not among them; see
-   * lib/panel-error.ts.
-   */
   import type { PanelApi } from '../api';
   import { panelUrl, type PanelBuild } from '../base';
   import { describeFailure, type PanelFailure } from '../panel-error';
@@ -32,6 +23,17 @@
 
   const content = $derived(describeFailure(failure));
 </script>
+
+<!--
+@component
+What the panel shows when the server answered with an error rather than a
+page. It stands on the same shell as an invitation, because for most of these
+the reader is not signed in and has nowhere else in the panel to be.
+
+The card's contents are `ErrorCard`, which the invitation page shows too - see
+the note there. The server's own message is deliberately not among them; see
+lib/panel-error.ts.
+-->
 
 <svelte:head>
   {#if insidePanel}

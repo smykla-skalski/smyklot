@@ -50,14 +50,16 @@
   ];
 </script>
 
+<!--
+@component
+One ruleset's own page. Every card speaks the settings row grammar: say
+on the left, value on the right, ghost clear at the end. A rule's
+parameters ARE its value, so they sit in the value column as chips
+beside Edit, and the row opens into a small staged form - fields
+stacked left, Cancel and Done on a hairline foot.
+-->
+
 <script lang="ts">
-  /**
-   * One ruleset's own page. Every card speaks the settings row grammar: say
-   * on the left, value on the right, ghost clear at the end. A rule's
-   * parameters ARE its value, so they sit in the value column as chips
-   * beside Edit, and the row opens into a small staged form - fields
-   * stacked left, Cancel and Done on a hairline foot.
-   */
   import { numericValue } from '../merge';
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
   import type { SyncSection } from '../routes';

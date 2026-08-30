@@ -1,17 +1,4 @@
 <script lang="ts">
-  /**
-   * One control for sorting and filtering a table, for the widths where the
-   * table's own headings are not there to carry either.
-   *
-   * A column heading is a fine place for a sort button and a funnel while there
-   * are columns. On a phone the table is a stack of cards and the headings are
-   * gone, and on the repositories table that meant three sorts and three filters
-   * disappeared with them - the page offered a search field and nothing else.
-   * This gathers them into a single menu beside that field.
-   *
-   * It owns no state. Sorting and filtering already live where the table keeps
-   * them, and a second copy here would be a second answer to the same question.
-   */
   import { updateFilterSelection, type FilterOption, type FilterSection } from '../filter-menu';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
@@ -93,6 +80,21 @@
     triggerButton?.focus();
   }
 </script>
+
+<!--
+@component
+One control for sorting and filtering a table, for the widths where the
+table's own headings are not there to carry either.
+
+A column heading is a fine place for a sort button and a funnel while there
+are columns. On a phone the table is a stack of cards and the headings are
+gone, and on the repositories table that meant three sorts and three filters
+disappeared with them - the page offered a search field and nothing else.
+This gathers them into a single menu beside that field.
+
+It owns no state. Sorting and filtering already live where the table keeps
+them, and a second copy here would be a second answer to the same question.
+-->
 
 <Popover bind:open align="end" itemSelector=".tools-option">
   {#snippet trigger(attributes)}

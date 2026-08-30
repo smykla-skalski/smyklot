@@ -15,13 +15,15 @@
   }
 </script>
 
+<!--
+@component
+The rulesets list: named objects, two levels deep and no deeper - press
+a row for the ruleset's own page. Enforcement is worn as a pill on the
+row, so Evaluate mode is visible from the list. Below, the same two
+decisions every kind carries: removal, and the names left alone.
+-->
+
 <script lang="ts">
-  /**
-   * The rulesets list: named objects, two levels deep and no deeper - press
-   * a row for the ruleset's own page. Enforcement is worn as a pill on the
-   * row, so Evaluate mode is visible from the list. Below, the same two
-   * decisions every kind carries: removal, and the names left alone.
-   */
   import type { SyncConfig, SyncPlan } from '../types';
   import type { SyncSection } from '../routes';
 

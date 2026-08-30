@@ -1,14 +1,4 @@
 <script lang="ts">
-  /**
-   * The panel's page for a reader who is not inside the panel: the mark standing
-   * in a night sky, a title, and one card under it.
-   *
-   * Two things reach people who have no session - an invitation, and whatever the
-   * server answered when something went wrong - and both are the first thing some
-   * readers ever see of Smyklot. They share this shell so they cannot drift into
-   * two different products, and so the sky, the card's glass and the theme switch
-   * are written once.
-   */
   import type { Snippet } from 'svelte';
 
   import type { PanelBuild } from '../base';
@@ -125,6 +115,18 @@
     prefs.set('theme', nextTheme);
   }
 </script>
+
+<!--
+@component
+The panel's page for a reader who is not inside the panel: the mark standing
+in a night sky, a title, and one card under it.
+
+Two things reach people who have no session - an invitation, and whatever the
+server answered when something went wrong - and both are the first thing some
+readers ever see of Smyklot. They share this shell so they cannot drift into
+two different products, and so the sky, the card's glass and the theme switch
+are written once.
+-->
 
 <svelte:head>
   <title>{documentTitle} | SMYKLOT</title>

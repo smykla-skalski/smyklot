@@ -1,15 +1,4 @@
 <script lang="ts">
-  /**
-   * What an error looks like inside the card, wherever the card is.
-   *
-   * The server's error pages are this on its own, and the invitation page shows it
-   * too when the token names nothing: a link that leads nowhere is a link that
-   * leads nowhere, and telling the reader which of the panel's features the
-   * address would have belonged to only describes something they cannot reach.
-   *
-   * Three things, in the order the questions arrive: which error it was, what that
-   * means, and the one thing worth doing about it.
-   */
   import type { ErrorContent } from '../panel-error';
   import Button from './Button.svelte';
 
@@ -27,6 +16,19 @@
     content.action === null ? null : content.action.kind === 'sign-in' ? signInHref : panelHref,
   );
 </script>
+
+<!--
+@component
+What an error looks like inside the card, wherever the card is.
+
+The server's error pages are this on its own, and the invitation page shows it
+too when the token names nothing: a link that leads nowhere is a link that
+leads nowhere, and telling the reader which of the panel's features the
+address would have belonged to only describes something they cannot reach.
+
+Three things, in the order the questions arrive: which error it was, what that
+means, and the one thing worth doing about it.
+-->
 
 <div class="error-body">
   <!-- Decorative: the sentence under it says the same thing in words, and a

@@ -1,13 +1,4 @@
 <script lang="ts">
-  /**
-   * A one-line label that knows when it has been cut. While the text fits,
-   * this is a plain span; the moment the ellipsis appears, hovering the
-   * label answers with the whole text in the app tooltip - and only then,
-   * because a tip that repeats what is already fully visible is noise.
-   *
-   * The wrapper decides how the label clips (overflow, nowrap, ellipsis);
-   * this component only measures the cut and carries the tip.
-   */
   import type { Attachment } from 'svelte/attachments';
 
   import AppTooltip from './AppTooltip.svelte';
@@ -37,6 +28,17 @@
     };
   }
 </script>
+
+<!--
+@component
+A one-line label that knows when it has been cut. While the text fits,
+this is a plain span; the moment the ellipsis appears, hovering the
+label answers with the whole text in the app tooltip - and only then,
+because a tip that repeats what is already fully visible is noise.
+
+The wrapper decides how the label clips (overflow, nowrap, ellipsis);
+this component only measures the cut and carries the tip.
+-->
 
 <AppTooltip {text} disabled={!clipped}>
   {#snippet children(attributes)}

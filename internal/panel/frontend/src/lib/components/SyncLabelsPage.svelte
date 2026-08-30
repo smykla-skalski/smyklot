@@ -30,16 +30,18 @@
   }
 </script>
 
+<!--
+@component
+The labels page: staged, per-segment editing. Pressing a name,
+a description or the colour dot swaps only that piece into its edit
+state, in place - the in-place input is the hover ghost made real, so
+the swap moves nothing. Everything updates the installation draft as it
+commits; pressing anywhere else closes the open piece. Below, the two
+decisions that shape what the list means: whether
+unlisted labels are removed, and the patterns left alone either way.
+-->
+
 <script lang="ts">
-  /**
-   * The labels page: staged, per-segment editing. Pressing a name,
-   * a description or the colour dot swaps only that piece into its edit
-   * state, in place - the in-place input is the hover ghost made real, so
-   * the swap moves nothing. Everything updates the installation draft as it
-   * commits; pressing anywhere else closes the open piece. Below, the two
-   * decisions that shape what the list means: whether
-   * unlisted labels are removed, and the patterns left alone either way.
-   */
   import { tick, untrack } from 'svelte';
 
   import type { SyncConfig, SyncLabel } from '../types';

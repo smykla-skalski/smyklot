@@ -47,16 +47,18 @@
   }
 </script>
 
+<!--
+@component
+One template's own page: what it says, and what each adjusting
+repository turns it into. The composed copy is the surface a reader
+studies - overridden lines wear the managed gutter bar, the keys an
+adjustment writes stand on the patch strip with the x that removes the
+override (never "writes the default"), and the one question a merge
+cannot answer itself - what happens to a list both sides set - is asked
+where it arises.
+-->
+
 <script lang="ts">
-  /**
-   * One template's own page: what it says, and what each adjusting
-   * repository turns it into. The composed copy is the surface a reader
-   * studies - overridden lines wear the managed gutter bar, the keys an
-   * adjustment writes stand on the patch strip with the x that removes the
-   * override (never "writes the default"), and the one question a merge
-   * cannot answer itself - what happens to a list both sides set - is asked
-   * where it arises.
-   */
   import { onDestroy, untrack } from 'svelte';
 
   import { unifiedDiff } from '../code-tokens';

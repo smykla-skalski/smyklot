@@ -1,17 +1,4 @@
 <script lang="ts">
-  /**
-   * What one repository says about the files the organization keeps in step.
-   *
-   * Two answers, and they are one row: whether the sync runs here at all, and
-   * what this repository adjusts about it. A repository knows things the
-   * template cannot - one of them ignores a directory the others do not - and
-   * this is where that is written down.
-   *
-   * Against the repository rather than keyed by name in the installation's own
-   * document, so a rename cannot orphan an adjustment. A file sync that quietly
-   * stopped applying one would write the plain template over exactly the
-   * customization it described.
-   */
   import { patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
   import { asArrayStrategy } from '#lib/merge.js';
@@ -664,6 +651,21 @@
     onChange(currentEnvelope(), controlId('enabled'));
   }
 </script>
+
+<!--
+@component
+What one repository says about the files the organization keeps in step.
+
+Two answers, and they are one row: whether the sync runs here at all, and
+what this repository adjusts about it. A repository knows things the
+template cannot - one of them ignores a directory the others do not - and
+this is where that is written down.
+
+Against the repository rather than keyed by name in the installation's own
+document, so a rename cannot orphan an adjustment. A file sync that quietly
+stopped applying one would write the plain template over exactly the
+customization it described.
+-->
 
 <section class="sync-pane card group-card">
   <div class="group-head">

@@ -1,15 +1,4 @@
 <script lang="ts">
-  /**
-   * A list of patterns edited in place: an entry is an INPUT wearing field
-   * material, press its text to edit it where it stands, the x detaches it,
-   * Add opens an empty one. Commits ride a 700ms debounce; pasting, Enter,
-   * Escape and leaving the field commit at once, and an entry left empty is
-   * dropped rather than kept blank.
-   *
-   * Three pages share this row: labels, rulesets and files all carry a
-   * leave-alone list, and each used to grow its own copy of the same
-   * fifteen behaviours.
-   */
   import { tick } from 'svelte';
 
   import Button from './Button.svelte';
@@ -127,6 +116,19 @@
     editing !== null && editing >= patterns.length ? [...patterns, ''] : [...patterns],
   );
 </script>
+
+<!--
+@component
+A list of patterns edited in place: an entry is an INPUT wearing field
+material, press its text to edit it where it stands, the x detaches it,
+Add opens an empty one. Commits ride a 700ms debounce; pasting, Enter,
+Escape and leaving the field commit at once, and an entry left empty is
+dropped rather than kept blank.
+
+Three pages share this row: labels, rulesets and files all carry a
+leave-alone list, and each used to grow its own copy of the same
+fifteen behaviours.
+-->
 
 <svelte:document onclick={outside} />
 

@@ -1,18 +1,4 @@
 <script lang="ts">
-  /**
-   * The composed copy as an editable surface: CodeMirror, dressed to sit
-   * where a CodeBlock sits - same font, same line grid, same managed gutter
-   * bar on the lines an adjustment rewrote. JSON only, because that is the
-   * one language the merge can be derived back from.
-   *
-   * The editor mounts inside a shadow root. That is not decoration: the
-   * panel serves `style-src 'self'`, under which the style element
-   * CodeMirror injects into a document head is parsed and thrown away -
-   * silently, like every CSP style refusal. In a shadow root its style
-   * module rides `adoptedStyleSheets`, which is script writing to the
-   * CSSOM, and CSP does not govern that. (Spelled "style element" here
-   * because svelte2tsx scans script comments for tags.)
-   */
   import { defaultKeymap, history, historyKeymap, undo, undoDepth } from '@codemirror/commands';
   import { json } from '@codemirror/lang-json';
   import { markdown } from '@codemirror/lang-markdown';
@@ -252,6 +238,22 @@
     if (held !== null) held.dispatch({ effects: marks.reconfigure(markLines(held.state, set)) });
   });
 </script>
+
+<!--
+@component
+The composed copy as an editable surface: CodeMirror, dressed to sit
+where a CodeBlock sits - same font, same line grid, same managed gutter
+bar on the lines an adjustment rewrote. JSON only, because that is the
+one language the merge can be derived back from.
+
+The editor mounts inside a shadow root. That is not decoration: the
+panel serves `style-src 'self'`, under which the style element
+CodeMirror injects into a document head is parsed and thrown away -
+silently, like every CSP style refusal. In a shadow root its style
+module rides `adoptedStyleSheets`, which is script writing to the
+CSSOM, and CSP does not govern that. (Spelled "style element" here
+because svelte2tsx scans script comments for tags.)
+-->
 
 <div class="code-editor" {@attach editor}></div>
 

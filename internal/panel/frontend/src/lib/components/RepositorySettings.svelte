@@ -36,16 +36,6 @@
   import RepositorySyncPane from './RepositorySyncPane.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
-  /**
-   * One repository's own page.
-   *
-   * This was a dialog until it was three panes with a save bar in each, which is
-   * a screen someone works in rather than something standing over the list for a
-   * moment. It reads as any other object page of the panel does - a way back, a
-   * mono title with the switch beside it, then the pane - and it is addressable,
-   * so a link points at the pane a colleague was asked to look at.
-   */
-
   const FILE_STATUS_PILLS = {
     valid: 'pill-success',
     missing: 'pill-muted',
@@ -411,6 +401,17 @@
     return value.slice(0, 1).toUpperCase() + value.slice(1);
   }
 </script>
+
+<!--
+@component
+One repository's own page.
+
+This was a dialog until it was three panes with a save bar in each, which is
+a screen someone works in rather than something standing over the list for a
+moment. It reads as any other object page of the panel does - a way back, a
+mono title with the switch beside it, then the pane - and it is addressable,
+so a link points at the pane a colleague was asked to look at.
+-->
 
 <div class="view-frame">
   <section class="repository-page" aria-labelledby={titleId}>

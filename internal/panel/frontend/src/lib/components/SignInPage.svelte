@@ -1,17 +1,4 @@
 <script lang="ts">
-  /**
-   * The panel's front door.
-   *
-   * It stands on the same shell as an invitation and the error pages, because it
-   * is the third page a reader can be on without a session, and the three of them
-   * being one product matters more here than anywhere: this is where someone who
-   * has just installed Smyklot arrives, and where everyone who ever signs out
-   * comes back to.
-   *
-   * The card is small on purpose. There is one thing to do here, and a card sized
-   * for an invitation's four rows of facts would leave a sentence and a button
-   * floating in it.
-   */
   import type { PanelApi } from '../api';
   import type { PanelBuild } from '../base';
   import { describeSessionEnd, type SessionEnded } from '../panel-session';
@@ -33,6 +20,21 @@
   const title = $derived(notice?.title ?? 'Sign in');
   const offersSignIn = $derived(notice === null || notice.offersSignIn);
 </script>
+
+<!--
+@component
+The panel's front door.
+
+It stands on the same shell as an invitation and the error pages, because it
+is the third page a reader can be on without a session, and the three of them
+being one product matters more here than anywhere: this is where someone who
+has just installed Smyklot arrives, and where everyone who ever signs out
+comes back to.
+
+The card is small on purpose. There is one thing to do here, and a card sized
+for an invitation's four rows of facts would leave a sentence and a button
+floating in it.
+-->
 
 <NightPage {title} documentTitle={title} {build} size="compact">
   <div class="sign-in-body">
