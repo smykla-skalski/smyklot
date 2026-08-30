@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { stylesheets } from './theme';
+
 /**
  * The theme switch was declared inside the sidebar, so the invitation page could not offer one
  * without a second copy of the options - the same shape that let the invitation page's wordmark
@@ -17,7 +19,7 @@ const sources = readdirSync(components)
   .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const);
 
 const read = (file: string): string => sources.find(([name]) => name === file)?.[1] ?? '';
-const appCss = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
+const appCss = stylesheets;
 
 describe('the theme switch', () => {
   it('is the only component naming the theme options', () => {

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { contrast, deltaE, oklch, over } from './color';
-import { palettes, type Palette } from './theme';
+import { palettes, stylesheets, type Palette } from './theme';
 
 /**
  * The surfaces a table and its controls are built from, in all four palettes.
@@ -114,7 +114,7 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
 );
 
 describe('the palette', () => {
-  const css = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
+  const css = stylesheets;
   const sources = readdirSync(new URL('../src/lib/components', import.meta.url))
     .filter((file) => file.endsWith('.svelte'))
     .map((file) => readFileSync(new URL(`../src/lib/components/${file}`, import.meta.url), 'utf8'))

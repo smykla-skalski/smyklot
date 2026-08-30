@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { appStylesheet, tokensStylesheet } from './theme';
+
 /**
  * A rule paints from the palette, never from a colour it names itself.
  *
@@ -20,7 +22,10 @@ import { describe, expect, it } from 'vitest';
  * those would be answered by an exception list longer than the thing it guards.
  */
 
-const stylesheet = new URL('../src/app.css', import.meta.url);
+const sheets: [string, string][] = [
+  ['app.css', appStylesheet],
+  ['tokens.css', tokensStylesheet],
+];
 /* Every component, wherever it lives. Reading one directory left `src/routes/**` uncovered, and a
    route page carries a `<style>` block like any other component. */
 const source = new URL('../src/', import.meta.url);
@@ -188,7 +193,7 @@ describe('the colour scan [Unit]', () => {
 describe('the palette [Unit]', () => {
   it('is the only place a colour is written down', () => {
     const found = [
-      ...literals(readFileSync(stylesheet, 'utf8'), 'app.css'),
+      ...sheets.flatMap(([file, css]) => literals(css, file)),
       ...componentStyles().flatMap(([file, css]) => literals(css, file)),
     ];
 
@@ -204,7 +209,7 @@ describe('the palette [Unit]', () => {
     // Guards the exception list against becoming the place colours are quietly parked: an entry
     // that no longer matches anything is removed rather than left standing.
     const found = new Set([
-      ...literals(readFileSync(stylesheet, 'utf8'), 'app.css'),
+      ...sheets.flatMap(([file, css]) => literals(css, file)),
       ...componentStyles().flatMap(([file, css]) => literals(css, file)),
     ]);
 

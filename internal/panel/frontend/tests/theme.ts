@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 /**
- * The four palettes a control actually renders in, reconstructed from `app.css`.
+ * The four palettes a control actually renders in, reconstructed from `tokens.css`.
  *
  * The panel has two themes and the Root console re-skins both of them, so every rule about a
  * hover, a press or a selected fill has four answers, not one. A number checked only against the
@@ -16,13 +16,26 @@ import { readFileSync } from 'node:fs';
  * re-declaring its aliases, and a resolver that ignored it would report colours nobody sees.
  */
 
-const css = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../src/tokens.css', import.meta.url), 'utf8');
+
+/**
+ * The two halves of the panel's stylesheet, and the pair every sweep has to read.
+ *
+ * `tokens.css` holds the declarations and `app.css` the rules that spend them, so a check written
+ * against one of them alone is a check against half the sheet - and the half it misses is silent:
+ * an orphan sweep with no declarations to read reports no orphans.
+ */
+export const tokensStylesheet = css;
+export const appStylesheet = readFileSync(new URL('../src/app.css', import.meta.url), 'utf8');
+export const stylesheets = `${css}\n${appStylesheet}`;
 
 type Declarations = Record<string, string>;
 
 function block(selector: string): Declarations {
-  const start = css.indexOf(`\n${selector} {`);
-  if (start === -1) throw new Error(`app.css has no \`${selector}\` block`);
+  const escaped = selector.replaceAll(/[$()*+.?[\\\]^{|}]/gu, String.raw`\$&`);
+  const opener = new RegExp(String.raw`^${escaped}(?:,|\s*\{)`, 'mu').exec(css);
+  if (opener === null) throw new Error(`tokens.css has no \`${selector}\` block`);
+  const start = opener.index;
   const open = css.indexOf('{', start);
   const end = css.indexOf('\n}', open);
   if (end === -1) throw new Error(`\`${selector}\` block is unterminated`);

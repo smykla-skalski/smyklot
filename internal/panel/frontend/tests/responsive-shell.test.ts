@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
+import { stylesheets } from './theme';
+
 const source = (path: string): string =>
   readFileSync(new URL(`../src/${path}`, import.meta.url), 'utf8');
 
@@ -12,7 +14,7 @@ function token(css: string, name: string): number {
 
 describe('the responsive shell [Unit]', () => {
   it('keeps the rail below dialogs and above the mobile drawer', () => {
-    const css = source('app.css');
+    const css = stylesheets;
     const rail = source('lib/components/Rail.svelte');
 
     expect(token(css, '--layer-rail')).toBeGreaterThan(40);

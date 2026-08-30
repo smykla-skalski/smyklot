@@ -2,6 +2,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { appStylesheet, tokensStylesheet } from './theme';
+
 /**
  * Selectors the browser throws away without saying so.
  *
@@ -20,7 +22,8 @@ const sources = [
   ...readdirSync(components)
     .filter((file) => file.endsWith('.svelte'))
     .map((file) => [file, readFileSync(new URL(file, components), 'utf8')] as const),
-  ['app.css', readFileSync(new URL('../src/app.css', import.meta.url), 'utf8')] as const,
+  ['app.css', appStylesheet] as const,
+  ['tokens.css', tokensStylesheet] as const,
 ];
 
 /** Every `:has(...)` in the source, with the text it encloses, matching parens by counting. */
