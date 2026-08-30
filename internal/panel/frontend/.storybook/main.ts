@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 import type { StorybookConfig } from '@storybook/sveltekit';
 
+import { componentContracts } from './contracts.js';
+
 const stories = fileURLToPath(new URL('../stories', import.meta.url));
 
 /**
@@ -62,6 +64,8 @@ const config: StorybookConfig = {
     const server = (config.server ??= {});
     const fs = (server.fs ??= {});
     fs.allow = [...(fs.allow ?? []), stories];
+
+    config.plugins = [...(config.plugins ?? []), componentContracts()];
 
     // `vite-plugin-sveltekit-setup` declares `__SVELTEKIT_PAYLOAD__` in dev and not in
     // a build, where Kit's own client config declares it instead - and that half never

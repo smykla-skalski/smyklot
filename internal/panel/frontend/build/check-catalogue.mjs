@@ -137,11 +137,20 @@ await Promise.all(
       next += 1;
       current = id;
 
+      /* A Docs page is an entry like any other and can throw like any other, so it is
+         opened too - but it is a different page. It answers to `viewMode=docs` and
+         renders into `#storybook-docs`; asked for `viewMode=story` it draws nothing
+         into a `#storybook-root` that never fills, so every one of them sat out the
+         ten-second cap and then reported as unrendered. */
+      const docs = index.entries[id]?.type === 'docs';
+      const root = docs ? '#storybook-docs' : '#storybook-root';
+
       /* `domcontentloaded`, not `load`: the fonts and images a story pulls in do not
          decide whether it rendered, and waiting on them was most of the run. */
-      await page.goto(`${base}/iframe.html?id=${encodeURIComponent(id)}&viewMode=story`, {
-        waitUntil: 'domcontentloaded',
-      });
+      await page.goto(
+        `${base}/iframe.html?id=${encodeURIComponent(id)}&viewMode=${docs ? 'docs' : 'story'}`,
+        { waitUntil: 'domcontentloaded' },
+      );
       /* Waits for the story rather than for a guess at how long a story takes. A fixed
          settle was 140ms whether the component needed 8 or 300, which across this many
          stories was 46 seconds of sleeping. This returns the moment the root has
@@ -149,15 +158,29 @@ await Promise.all(
          which is the one case worth waiting for. */
       await page
         .waitForFunction(
-          () => (document.querySelector('#storybook-root')?.childElementCount ?? 0) > 0,
-          undefined,
+          (selector) => (document.querySelector(selector)?.childElementCount ?? 0) > 0,
+          root,
           { timeout: 10_000 },
         )
         .catch(() => undefined);
 
       /* One round trip for both measurements. Each `evaluate` is a crossing, and at
          this many stories that is not nothing. */
-      const seen = await page.evaluate(() => {
+      const seen = await page.evaluate((docsPage) => {
+        if (docsPage) {
+          /* A Docs page carries no `.app-shell` of its own - the decorator runs inside
+             each embedded story - so the question is only whether the page came out at
+             all: a contract, a props table and the stories under them. */
+          const page = document.querySelector('#storybook-docs');
+          return {
+            painted:
+              page !== null &&
+              [...page.querySelectorAll('*')].some(
+                (node) => node.getBoundingClientRect().height > 1,
+              ),
+            over: document.documentElement.scrollWidth - window.innerWidth,
+          };
+        }
         const story = document.querySelector('#storybook-root');
         /* Below the decorator rather than at it. `PanelShell` is 48px tall with
            nothing inside it, so a root measured whole is painted whether or not the
@@ -186,10 +209,12 @@ await Promise.all(
             (node) => !chrome.has(node) && node.getBoundingClientRect().height > 1,
           );
         return { painted, over: document.documentElement.scrollWidth - window.innerWidth };
-      });
+      }, docs);
 
       if (!seen.painted && !blank.has(id)) bare.push(`${id} rendered nothing`);
-      if (seen.painted && blank.has(id)) {
+      /* A Docs page collects every story of its component, blank ones included, so it
+         draws whatever they draw plus its own prose. The tag belongs to the story. */
+      if (seen.painted && blank.has(id) && !docs) {
         filled.push(`${id} is tagged blank and drew something; drop the tag`);
       }
       /* A pixel of slack for the rasteriser. A story that overflows does so by the
@@ -208,13 +233,15 @@ const wrong = [...broke, ...bare, ...wide, ...filled];
 if (wrong.length > 0) {
   for (const line of wrong) console.error(`  ${line}`);
   console.error(
-    `\n${ids.length} stories: ${broke.length} threw, ${bare.length} drew nothing, ` +
+    `\n${ids.length} entries: ${broke.length} threw, ${bare.length} drew nothing, ` +
       `${wide.length} overflowed, ${filled.length} drew while tagged blank.`,
   );
   process.exit(1);
 }
 
+const pages = ids.filter((id) => index.entries[id]?.type === 'docs').length;
 console.log(
-  `catalogue checked: ${ids.length} stories, none throwing, ` +
-    `${ids.length - blank.size} drawing and ${blank.size} blank by declaration, none overflowing`,
+  `catalogue checked: ${ids.length - pages} stories and ${pages} docs pages, none throwing, ` +
+    `${ids.length - pages - blank.size} drawing and ${blank.size} blank by declaration, ` +
+    'none overflowing',
 );

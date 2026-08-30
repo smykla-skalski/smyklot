@@ -55,6 +55,24 @@
 </script>
 
 <!--
+@component
+A tone is a job, never a colour. `default` is the bordered control that does a view's
+ordinary work; `signal` is the one action a view exists for, and a view has one;
+`ghost` dismisses or discards beside a real primary; `stop` is destructive and
+`stop-quiet` is destructive but bordered, for a flow whose filled danger control is
+the confirmation at the end of it; `brand` takes whatever `--brand-action` is where it
+is drawn, so the same markup is petrol in the panel and violet in the Root console;
+`quiet` should not read as a control until it is wanted.
+
+Disabled is a state rather than an eighth tone. It arrives through `rest`, and any of
+the seven can wear it.
+
+`href` draws an anchor instead of a button, which is what sign-in and the invitation's
+accept and decline are. Both wear `.btn`, which is why the tones live in `app.css` and
+this component has no `<style>` block.
+-->
+
+<!--
   The label is always wrapped. A button is a flex container, so bare text sits in an
   anonymous box no selector can reach and `text-box` trimming on the control never
   touches it; `.button-label` is the only thing that puts the word on its cap height.
