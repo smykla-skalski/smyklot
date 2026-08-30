@@ -122,7 +122,7 @@ once put it a hundred pixels off the button it belongs to.
     background: transparent;
     border: 0;
     border-radius: calc(var(--r-ctl) - 2px);
-    color: var(--text);
+    color: var(--text-primary);
     display: grid;
     gap: var(--space-2);
     grid-template-columns: 1rem minmax(0, 1fr);
@@ -154,13 +154,13 @@ once put it a hundred pixels off the button it belongs to.
   }
 
   :global(.action-copy > span) {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.6875rem;
     margin-top: 0.15rem;
   }
 
   :global(.action-item.danger strong),
   :global(.action-item.danger .action-icon) {
-    color: var(--stop);
+    color: var(--danger);
   }
 </style>

@@ -72,7 +72,7 @@ tell them apart.
 <style>
   .file-indicator {
     align-items: center;
-    color: var(--dim);
+    color: var(--text-muted);
     display: inline-flex;
     gap: var(--space-2);
     height: 1.125rem;
@@ -86,11 +86,11 @@ tell them apart.
   }
 
   .status-valid {
-    color: var(--clear);
+    color: var(--success);
   }
 
   .status-invalid {
-    color: var(--stop);
+    color: var(--danger);
   }
 
   .status-bypassed {

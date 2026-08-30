@@ -444,7 +444,7 @@ act sees the same history without the button.
   .snapshot-author time,
   .checkpoint-items legend small,
   .item-title span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
   }
 
@@ -462,7 +462,7 @@ act sees the same history without the button.
   }
 
   .snapshot-count span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-micro);
     white-space: nowrap;
   }
@@ -475,7 +475,7 @@ act sees the same history without the button.
   }
 
   .restore-state-picker p {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin: 0;
   }
@@ -567,7 +567,7 @@ act sees the same history without the button.
   }
 
   .state-comparison span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-micro);
     font-weight: 600;
     letter-spacing: 0.025em;
@@ -590,7 +590,7 @@ act sees the same history without the button.
   }
 
   .all-matching {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin: 0;
     padding: var(--space-4) var(--space-3);
@@ -635,8 +635,8 @@ act sees the same history without the button.
 
   .checkpoint-notice,
   .restore-confirmation {
-    background: var(--accent-tint);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+    background: var(--brand-action-tint);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 30%, transparent);
     border-radius: var(--radius-control);
     color: var(--text-secondary);
     padding: var(--space-3);

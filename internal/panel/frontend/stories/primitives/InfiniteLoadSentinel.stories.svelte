@@ -43,7 +43,7 @@
   .frame {
     border: 1px dashed var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-meta);
     padding: var(--space-4);
   }

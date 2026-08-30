@@ -497,7 +497,7 @@ without the buttons, rather than buttons that refuse.
     justify-content: space-between;
   }
   .queue-pagination p {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.78rem;
     margin: 0;
   }

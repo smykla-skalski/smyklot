@@ -92,7 +92,7 @@ the page size; this half is the move alone.
     background: transparent;
     border: 1px solid transparent;
     box-sizing: border-box;
-    color: var(--dim);
+    color: var(--text-muted);
     display: inline-flex;
     font-size: var(--font-size-compact);
     font-weight: 600;
@@ -109,13 +109,13 @@ the page size; this half is the move alone.
   }
 
   button:hover:not(:disabled):not(.current) {
-    background: var(--strip-lift);
+    background: var(--surface-raised);
     border-color: var(--control-border);
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   button:active:not(:disabled) {
-    box-shadow: inset 0 0 0 100vmax var(--press);
+    box-shadow: inset 0 0 0 100vmax var(--interactive-pressed);
   }
 
   button:disabled {
@@ -150,7 +150,7 @@ the page size; this half is the move alone.
   }
 
   .ellipsis {
-    color: var(--dim);
+    color: var(--text-muted);
     display: grid;
     font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     height: var(--local-control-height, var(--control-height-compact));

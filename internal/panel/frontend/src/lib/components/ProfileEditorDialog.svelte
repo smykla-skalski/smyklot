@@ -181,19 +181,19 @@ changing a window here changes when every policy that names it runs.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: 2.75rem;
     padding: var(--space-2) var(--space-3);
   }
   .helper {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.72rem;
     margin: calc(var(--space-2) * -1) 0 0;
   }
   .impact {
     background: var(--surface-raised);
-    border-inline-start: 2px solid var(--signal);
+    border-inline-start: 2px solid var(--info);
     color: var(--text-secondary);
     font-size: 0.75rem;
     line-height: var(--leading-compact);

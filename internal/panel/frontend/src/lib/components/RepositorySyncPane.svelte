@@ -1223,7 +1223,7 @@ customization it described.
   }
 
   .sync-pane-standdown-when {
-    color: var(--dim);
+    color: var(--text-muted);
   }
 
   .sync-pane-row {
@@ -1272,7 +1272,7 @@ customization it described.
      into six files. Drawn between rather than around, so the first sits flush
      against the strategy row above it. */
   .sync-merge-section + .sync-merge-section {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     margin-top: var(--space-3);
     padding-top: var(--space-3);
   }

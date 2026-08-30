@@ -331,9 +331,9 @@ pager - a notification list has no last page worth naming.
 
   .inbox-empty > span {
     align-items: center;
-    background: var(--accent-tint);
+    background: var(--brand-action-tint);
     border-radius: var(--radius-control);
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     height: 2.5rem;
     justify-content: center;
@@ -417,7 +417,7 @@ pager - a notification list has no last page worth naming.
   }
 
   article.unread {
-    background: color-mix(in srgb, var(--accent) 4%, var(--surface-base));
+    background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-base));
   }
 
   /* Fixed-width in every item so read and unread text columns align; the dot
@@ -428,7 +428,7 @@ pager - a notification list has no last page worth naming.
   }
 
   article.unread .unread-slot::before {
-    background: var(--accent);
+    background: var(--brand-action);
     border-radius: 50%;
     content: '';
     display: block;

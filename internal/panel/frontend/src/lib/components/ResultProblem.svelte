@@ -71,9 +71,9 @@ first is still in flight.
      its place. */
   .result-notice {
     align-items: center;
-    background: var(--stop-tint);
+    background: var(--danger-tint);
     border-radius: var(--r-ctl);
-    color: var(--stop);
+    color: var(--danger);
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-3);

@@ -364,7 +364,7 @@ and most visits to this route never open one.
   }
 
   .installation-loading {
-    color: var(--dim);
+    color: var(--text-muted);
     margin: 0;
   }
 
@@ -410,7 +410,7 @@ and most visits to this route never open one.
   }
 
   .slot-note.problem {
-    color: var(--stop);
+    color: var(--danger);
   }
 
   /* Everything this block used to hold - the scroll shell, `border-collapse`, the

@@ -218,7 +218,7 @@ to ask it four different ways.
     gap: var(--space-3);
   }
   .queue-action-form p {
-    color: var(--dim);
+    color: var(--text-muted);
     margin: 0;
   }
   label:not(.check-line) {
@@ -232,7 +232,7 @@ to ask it four different ways.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: 2.75rem;
     padding: var(--space-2) var(--space-3);
@@ -252,13 +252,13 @@ to ask it four different ways.
   }
   .schedule-preview {
     background: var(--surface-raised);
-    border-inline-start: 2px solid var(--signal);
+    border-inline-start: 2px solid var(--info);
     display: grid;
     font-size: 0.76rem;
     gap: var(--space-1);
     padding: var(--space-3);
   }
   .schedule-preview span {
-    color: var(--dim);
+    color: var(--text-muted);
   }
 </style>

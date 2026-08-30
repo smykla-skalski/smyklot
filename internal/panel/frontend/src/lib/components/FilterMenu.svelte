@@ -255,7 +255,7 @@ is never what clearing a filter is meant to mean.
      cramped beside every other surface. It is on the type ramp and the space
      scale now, like everything else. */
   .filter-body > header {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     padding: var(--space-4);
@@ -267,7 +267,7 @@ is never what clearing a filter is meant to mean.
   }
 
   .filter-body > header span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     line-height: var(--leading-compact);
     /* A real step between the title and the line under it: at 0.1rem the two ran
@@ -285,13 +285,13 @@ is never what clearing a filter is meant to mean.
   }
 
   .filter-section + .filter-section {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     margin-top: var(--space-2);
     padding-top: var(--space-2);
   }
 
   .section-label {
-    color: var(--dim);
+    color: var(--text-muted);
     font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.1em;
     margin: 0;
@@ -307,7 +307,7 @@ is never what clearing a filter is meant to mean.
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
-    color: var(--text);
+    color: var(--text-primary);
     column-gap: var(--space-3);
     display: grid;
     font: 400 var(--font-size-meta) / var(--leading-flat) var(--sans);
@@ -336,7 +336,7 @@ is never what clearing a filter is meant to mean.
   }
 
   .filter-option:active {
-    box-shadow: inset 0 0 0 100vmax var(--press);
+    box-shadow: inset 0 0 0 100vmax var(--interactive-pressed);
   }
 
   /* One size for both marks and one weight for their borders, so a menu of
@@ -367,12 +367,12 @@ is never what clearing a filter is meant to mean.
   /* The checkbox fills; the radio keeps its ring, which is the whole of the
      distinction. */
   .filter-option.selected .selection-mark.multiple {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--brand-action);
+    border-color: var(--brand-action);
   }
 
   .filter-option.selected .selection-mark:not(.multiple) {
-    border-color: var(--accent);
+    border-color: var(--brand-action);
   }
 
   /* The radio's dot is a grid item like the checkbox's tick, not an `::after`
@@ -380,7 +380,7 @@ is never what clearing a filter is meant to mean.
      bordered box centres on the PADDING box, which is a border-width off the
      mark's own middle. */
   .selection-mark span {
-    background: var(--accent);
+    background: var(--brand-action);
     block-size: 0.5rem;
     border-radius: 50%;
     inline-size: 0.5rem;
@@ -388,8 +388,8 @@ is never what clearing a filter is meant to mean.
 
   .selection-mark.multiple span {
     background: transparent;
-    border-bottom: 1.5px solid var(--on-admin);
-    border-right: 1.5px solid var(--on-admin);
+    border-bottom: 1.5px solid var(--on-brand-action);
+    border-right: 1.5px solid var(--on-brand-action);
     border-radius: 0;
     block-size: 0.45rem;
     inline-size: 0.25rem;
@@ -417,7 +417,7 @@ is never what clearing a filter is meant to mean.
   }
 
   .option-description {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     grid-column: 2 / -1;
     grid-row: 2;
@@ -428,7 +428,7 @@ is never what clearing a filter is meant to mean.
      the buttons keep their own room under the rule above them. */
   .filter-body > footer {
     align-items: center;
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     display: flex;
     gap: var(--space-2);
     justify-content: space-between;
@@ -446,12 +446,12 @@ is never what clearing a filter is meant to mean.
 
   .clear-button {
     background: transparent;
-    color: var(--dim);
+    color: var(--text-muted);
   }
 
   .clear-button:hover:not(:disabled) {
-    background: var(--strip-lift);
-    color: var(--text);
+    background: var(--surface-raised);
+    color: var(--text-primary);
   }
 
   .clear-button:disabled {
@@ -460,12 +460,12 @@ is never what clearing a filter is meant to mean.
   }
 
   .done-button {
-    background: var(--admin);
-    color: var(--on-admin);
+    background: var(--brand-action);
+    color: var(--on-brand-action);
   }
 
   .done-button:hover {
-    background: color-mix(in srgb, var(--admin) 88%, var(--strip));
+    background: color-mix(in srgb, var(--brand-action) 88%, var(--surface-base));
   }
 
   @media (prefers-reduced-motion: reduce) {

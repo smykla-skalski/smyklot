@@ -1386,7 +1386,7 @@ a workspace has is not a number worth blocking the first screenful on.
   }
 
   td {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: var(--font-size-meta);
   }
 
@@ -1701,7 +1701,7 @@ a workspace has is not a number worth blocking the first screenful on.
   .override-chip {
     background: var(--surface-inset);
     border-radius: var(--r-chip);
-    color: var(--text-soft);
+    color: var(--text-secondary);
     flex: none;
     font: 500 var(--font-size-compact) / var(--leading-flat) var(--mono);
     padding: 0.34rem 0.5rem;

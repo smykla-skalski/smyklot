@@ -212,7 +212,7 @@ them, and a second copy here would be a second answer to the same question.
      as the count needs. */
   .tools-trigger {
     align-items: center;
-    background: var(--control-surface);
+    background: var(--control-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
     color: var(--text-secondary);
@@ -229,7 +229,7 @@ them, and a second copy here would be a second answer to the same question.
   .tools-trigger:hover,
   .tools-trigger[aria-expanded='true'] {
     background: var(--interactive-hover);
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   .tools-trigger.filtered {
@@ -309,7 +309,7 @@ them, and a second copy here would be a second answer to the same question.
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
-    color: var(--text);
+    color: var(--text-primary);
     display: flex;
     font: inherit;
     gap: var(--space-2);
@@ -444,7 +444,7 @@ them, and a second copy here would be a second answer to the same question.
 
   .clear-button:hover:not(:disabled) {
     background: var(--interactive-hover);
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   .clear-button:disabled {

@@ -204,7 +204,7 @@ describe('sync surfaces [Unit]', () => {
             return over(color, ground, alpha);
           })();
           const pressed = ((): string => {
-            const { color, alpha } = layer(palette, 'press');
+            const { color, alpha } = layer(palette, 'interactive-pressed');
 
             return over(color, ground, alpha);
           })();

@@ -172,8 +172,8 @@ page behind them.
 
 <style>
   .current-decision {
-    background: var(--well);
-    border: 1px solid var(--rule);
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-well);
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -186,7 +186,7 @@ page behind them.
   }
 
   .current-decision > div + div {
-    border-inline-start: 1px solid var(--rule);
+    border-inline-start: 1px solid var(--border-subtle);
   }
 
   /* 1.3, not the inherited 1.5: an uppercase micro key has no descenders to
@@ -251,7 +251,7 @@ page behind them.
   }
 
   .decision-list {
-    border: 1px solid var(--rule);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-well);
     margin-top: var(--space-2);
     max-height: min(21rem, 42vh);
@@ -267,7 +267,7 @@ page behind them.
   }
 
   article + article {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
   }
 
   /* Both cap-trimmed lines drop their leading, so the block's box equals its
@@ -321,7 +321,7 @@ page behind them.
 
     .current-decision > div + div {
       border-inline-start: 0;
-      border-top: 1px solid var(--rule);
+      border-top: 1px solid var(--border-subtle);
     }
 
     article {

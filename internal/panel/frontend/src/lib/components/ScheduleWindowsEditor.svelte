@@ -123,7 +123,7 @@ equivalent to is a change they did not make.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: 2.5rem;
     padding: 0 var(--space-3);

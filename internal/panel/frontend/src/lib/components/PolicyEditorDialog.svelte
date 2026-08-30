@@ -250,7 +250,7 @@ window that no longer exists by the time it opens.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: 2.75rem;
     padding: 0 var(--space-3);

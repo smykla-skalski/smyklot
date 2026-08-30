@@ -148,7 +148,7 @@ which is why it sits apart from the filter beside it.
   }
 
   .option-copy span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.6875rem;
   }
 

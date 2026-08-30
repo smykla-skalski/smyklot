@@ -68,7 +68,7 @@ to hear where they landed and the rows themselves will not say it.
 
     align-items: center;
     background: var(--table-footer-bg);
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     display: grid;
     gap: var(--space-2);
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -77,7 +77,7 @@ to hear where they landed and the rows themselves will not say it.
   }
 
   .pagination-range {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-micro);
     justify-self: start;
     margin: 0;
@@ -85,7 +85,7 @@ to hear where they landed and the rows themselves will not say it.
   }
 
   .pagination-range strong {
-    color: var(--text);
+    color: var(--text-primary);
     font-weight: 600;
   }
 

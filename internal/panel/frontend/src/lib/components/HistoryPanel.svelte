@@ -1324,7 +1324,7 @@ where the record is.
   /* The header's own rule comes from `thead th` in `app.css`, so every table in
      the product draws it the same. This is the separator between rows. */
   :global(.history-table td) {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: var(--font-size-meta);
     padding: 0.625rem 0.75rem;
     text-align: left;
@@ -1380,7 +1380,7 @@ where the record is.
   }
 
   .checkpoint-trigger small {
-    color: var(--accent);
+    color: var(--brand-action);
     flex: none;
     font-size: var(--font-size-compact);
   }
@@ -1543,7 +1543,7 @@ where the record is.
   :global(.history-table code) {
     background: var(--surface-inset);
     border-radius: var(--r-chip);
-    color: var(--text-soft);
+    color: var(--text-secondary);
     display: inline-block;
     font: 500 var(--font-size-compact) / var(--leading-flat) var(--mono);
     justify-self: start;
@@ -1629,7 +1629,7 @@ where the record is.
   }
 
   .failure-kind.permanent {
-    color: var(--stop);
+    color: var(--danger);
   }
 
   .cell-symbol {
@@ -1652,7 +1652,7 @@ where the record is.
   .category-tag {
     background: var(--neutral-tint);
     border-radius: 5px;
-    color: var(--text-soft);
+    color: var(--text-secondary);
     flex: none;
     font: 650 0.65rem / var(--leading-flat) var(--sans);
     letter-spacing: 0.04em;
@@ -1684,7 +1684,7 @@ where the record is.
      container, and inline it rode the row's strut instead of the cell's middle,
      which put the timestamp 0.59px below every other column. */
   .table-time {
-    color: var(--dim);
+    color: var(--text-muted);
     display: block;
     font-size: var(--font-size-meta);
     line-height: var(--leading-meta);
@@ -1772,14 +1772,14 @@ where the record is.
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
-      color: var(--dim);
+      color: var(--text-muted);
       padding-inline: var(--space-3);
     }
 
     :global(.history-table thead .table-sort-button:hover),
     :global(.history-table thead .table-sort-button:focus-visible) {
       background: var(--control-bg-hover);
-      color: var(--text);
+      color: var(--text-primary);
     }
 
     :global(.history-table tbody) {

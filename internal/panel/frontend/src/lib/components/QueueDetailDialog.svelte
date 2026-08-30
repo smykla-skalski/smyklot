@@ -185,7 +185,7 @@ not.
 
 <style>
   .detail-message {
-    color: var(--dim);
+    color: var(--text-muted);
     margin: 0;
   }
   .detail-error,
@@ -207,7 +207,7 @@ not.
     padding: var(--space-3);
   }
   dt {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.66rem;
     font-weight: 760;
     letter-spacing: 0.045em;
@@ -230,7 +230,7 @@ not.
     text-transform: uppercase;
   }
   .workload-detail p {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.78rem;
     line-height: var(--leading-meta);
     margin: var(--space-2) 0 0;
@@ -257,7 +257,7 @@ not.
     width: 1px;
   }
   .timeline-mark {
-    background: var(--accent);
+    background: var(--brand-action);
     border: 2px solid var(--dialog-bg);
     border-radius: 50%;
     height: 0.65rem;
@@ -276,7 +276,7 @@ not.
   }
   .timeline li div > span,
   .timeline time {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.7rem;
     margin-top: var(--space-1);
   }

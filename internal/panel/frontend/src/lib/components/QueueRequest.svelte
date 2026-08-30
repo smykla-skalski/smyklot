@@ -421,12 +421,12 @@ page directly still leads somewhere.
   }
 
   .next-lead.due {
-    color: var(--clear);
+    color: var(--success);
     transition: color var(--duration-normal) var(--ease-out);
   }
 
   .next-lead.idle {
-    color: var(--text-soft);
+    color: var(--text-secondary);
   }
 
   .next-lead.due.imminent {
@@ -435,7 +435,7 @@ page directly still leads somewhere.
 
   .next-lead.due.final {
     animation: countdown-pulse var(--rhythm-pulse) var(--ease-inout) infinite alternate;
-    color: var(--stop);
+    color: var(--danger);
   }
 
   @keyframes countdown-pulse {
@@ -452,7 +452,7 @@ page directly still leads somewhere.
      rule and another 15 below the last value, which is what made the card read
      as two blocks with a hole between them rather than one card. */
   .facts {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     display: grid;
     grid-template-columns: repeat(6, minmax(0, 1fr));
     margin: 0;
@@ -475,11 +475,11 @@ page directly still leads somewhere.
   }
 
   .fact + .fact {
-    border-inline-start: 1px solid var(--rule);
+    border-inline-start: 1px solid var(--border-subtle);
   }
 
   .fact dt {
-    color: var(--dim);
+    color: var(--text-muted);
     font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -544,7 +544,7 @@ page directly still leads somewhere.
   }
 
   .timeline-lede {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-4);
   }
@@ -599,11 +599,11 @@ page directly still leads somewhere.
   }
 
   .timeline li:hover > time {
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   .timeline .rail {
-    background: var(--rule);
+    background: var(--border-subtle);
     grid-area: 1 / 1 / -1 / 2;
     justify-self: center;
     margin-block: calc(var(--tl-mark) / 2) calc(-1 * (2 * var(--tl-inset) + var(--tl-mark) / 2));
@@ -619,11 +619,11 @@ page directly still leads somewhere.
   .timeline .mark {
     align-items: center;
     align-self: center;
-    background: var(--strip);
+    background: var(--surface-base);
     block-size: var(--tl-mark);
     border-radius: 50%;
     box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 30%, transparent);
-    color: var(--dim);
+    color: var(--text-muted);
     display: flex;
     grid-area: 1 / 1 / 2 / 2;
     inline-size: var(--tl-mark);
@@ -631,13 +631,13 @@ page directly still leads somewhere.
   }
 
   .timeline .mark.pass {
-    background: var(--clear-tint);
-    color: var(--clear);
+    background: var(--success-tint);
+    color: var(--success);
   }
 
   .timeline .mark.fail {
-    background: var(--stop-tint);
-    color: var(--stop);
+    background: var(--danger-tint);
+    color: var(--danger);
   }
 
   .timeline .mark.warn {
@@ -646,8 +646,8 @@ page directly still leads somewhere.
   }
 
   .timeline .mark.act {
-    background: var(--accent-tint);
-    color: var(--accent);
+    background: var(--brand-action-tint);
+    color: var(--brand-action);
   }
 
   .timeline .head {
@@ -667,7 +667,7 @@ page directly still leads somewhere.
 
   .timeline > li > time {
     align-self: center;
-    color: var(--dim);
+    color: var(--text-muted);
     font: 400 var(--font-size-meta) / var(--leading-flat) var(--mono);
     grid-area: 1 / 3 / 2 / 4;
   }
@@ -681,7 +681,7 @@ page directly still leads somewhere.
   }
 
   .timeline .body p {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-compact);
     margin: 0;
   }
@@ -699,9 +699,9 @@ page directly still leads somewhere.
      the characters 0.52px above the middle of the chip they sit in - a device
      row at 2x, on every key in the record. */
   .timeline .key {
-    background: var(--well);
+    background: var(--surface-inset);
     border-radius: var(--r-chip);
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font: 500 var(--font-size-micro) / var(--leading-flat) var(--mono);
     max-width: 100%;
     overflow: clip;
@@ -712,7 +712,7 @@ page directly still leads somewhere.
   }
 
   .timeline-empty {
-    color: var(--dim);
+    color: var(--text-muted);
     display: block;
     font-size: var(--font-size-meta);
     padding: var(--space-4) var(--space-3);

@@ -68,7 +68,7 @@ not, a bar or a spinner says the same thing without the lie.
      too, by the blanket rule that shortens every animation. */
   .skeleton span {
     animation: skeleton-pulse var(--rhythm-shimmer) var(--ease-inout) infinite alternate;
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     display: block;
     height: var(--skeleton-row-height, 3.5rem);
     position: relative;

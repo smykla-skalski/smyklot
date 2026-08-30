@@ -671,7 +671,7 @@ account again.
 
   .prefix-inline:focus-visible {
     border-color: var(--brand-action);
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--focus);
   }
 
   /* A block row keeps the grid for its first line and lays its chips on a

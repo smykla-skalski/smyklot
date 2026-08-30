@@ -145,7 +145,7 @@ is the skin, the width rules and the roving focus that `itemSelector` drives.
     border: 1px solid var(--layer-border);
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
-    color: var(--text);
+    color: var(--text-primary);
     max-height: var(--bits-floating-available-height);
     max-width: var(--bits-floating-available-width);
     overflow: auto;

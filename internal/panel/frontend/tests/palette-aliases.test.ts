@@ -71,7 +71,10 @@ describe('the palette aliases [Unit]', () => {
     // The precondition. If the block parser or the pattern ever stops matching, every check below
     // passes over an empty list and this file quietly stops being a test.
     expect(rootAliases.length).toBeGreaterThan(20);
-    expect(rootAliases.map(([alias]) => alias)).toContain('dim');
+    // A token every palette owns and every palette derives, named so the pattern
+    // cannot quietly stop matching. It used to be `dim`, which was a compatibility
+    // alias for this one and is gone.
+    expect(rootAliases.map(([alias]) => alias)).toContain('neutral-tint');
   });
 
   for (const [palette, parent] of DERIVED) {

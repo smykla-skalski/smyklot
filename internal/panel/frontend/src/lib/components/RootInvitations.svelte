@@ -831,7 +831,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
   /* Sits under the field that caused it rather than beside the disabled button, so the reason and
      the thing to change are in the same place. */
   .field-refusal {
-    color: var(--stop);
+    color: var(--danger);
     font-size: var(--font-size-compact);
     font-weight: 500;
     /* The label's own grid gap already spaces it; this closes it back up to a helper's distance. */
@@ -848,7 +848,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: var(--control-height);
     padding: 0 var(--space-3);

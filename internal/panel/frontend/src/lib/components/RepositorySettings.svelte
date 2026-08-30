@@ -1252,7 +1252,7 @@ so a link points at the pane a colleague was asked to look at.
 
   .num-inline:focus-visible {
     border-color: var(--brand-action);
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--focus);
   }
 
   .gate-note {
@@ -1399,7 +1399,7 @@ so a link points at the pane a colleague was asked to look at.
 
   .file-problem strong,
   .form-error {
-    color: var(--stop);
+    color: var(--danger);
   }
 
   /* On a phone the head's three parts cannot share one line - the tally or

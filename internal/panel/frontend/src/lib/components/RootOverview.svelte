@@ -558,9 +558,9 @@ an overview nobody keeps open.
   .health-mark,
   .no-failures > span {
     align-items: center;
-    background: var(--accent-tint);
+    background: var(--brand-action-tint);
     border-radius: var(--radius-control);
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     flex: 0 0 auto;
     justify-content: center;
@@ -616,7 +616,7 @@ an overview nobody keeps open.
   }
 
   .storage-state[data-state='unavailable'] {
-    color: var(--stop);
+    color: var(--danger);
   }
 
   /* Wider than the service card's cells: this row carries a value with a track
@@ -653,7 +653,7 @@ an overview nobody keeps open.
   }
 
   .pool-used {
-    background: var(--accent);
+    background: var(--brand-action);
   }
 
   .metric-grid {
@@ -858,7 +858,7 @@ an overview nobody keeps open.
 
   .overview-panel header > a {
     align-items: center;
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: 0.2rem;
@@ -927,7 +927,7 @@ an overview nobody keeps open.
      failure, so tinting a square behind each one only added weight the mock
      spends on the reason text instead. */
   .failure-mark {
-    color: var(--stop);
+    color: var(--danger);
     display: grid;
     flex: none;
     height: 1.125rem;
@@ -943,8 +943,8 @@ an overview nobody keeps open.
   }
 
   .no-failures > span {
-    background: var(--stop-tint);
-    color: var(--stop);
+    background: var(--danger-tint);
+    color: var(--danger);
     height: 2rem;
     width: 2rem;
   }
@@ -956,8 +956,8 @@ an overview nobody keeps open.
   }
 
   .no-failures > span {
-    background: var(--accent-tint);
-    color: var(--accent);
+    background: var(--brand-action-tint);
+    color: var(--brand-action);
   }
 
   .overview-error {

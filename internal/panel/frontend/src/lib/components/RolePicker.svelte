@@ -112,10 +112,10 @@ where the reader already is.
 
   .role-trigger {
     align-items: center;
-    background: var(--control-surface);
+    background: var(--control-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
-    color: var(--text);
+    color: var(--text-primary);
     display: inline-flex;
     font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: var(--space-2);

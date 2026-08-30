@@ -84,7 +84,7 @@
     margin-top: var(--space-5);
   }
   .bar {
-    background: var(--accent);
+    background: var(--brand-action);
     display: block;
     height: 1.5rem;
   }

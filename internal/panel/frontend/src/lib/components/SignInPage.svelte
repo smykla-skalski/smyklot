@@ -95,7 +95,7 @@ floating in it.
      accepting costs from the facts it is deciding on. Quiet, because it answers a
      question rather than making one. */
   .sign-in-consent {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin: var(--space-4) 0 0;

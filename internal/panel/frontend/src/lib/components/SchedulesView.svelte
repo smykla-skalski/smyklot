@@ -1287,10 +1287,10 @@ the same page without the controls, rather than controls that refuse.
     color: var(--warning);
   }
   .runtime-state-stop {
-    color: var(--stop);
+    color: var(--danger);
   }
   .runtime-state-clear {
-    color: var(--clear);
+    color: var(--success);
   }
   .runtime-summary > span,
   .policy-detail > span,
@@ -1383,7 +1383,7 @@ the same page without the controls, rather than controls that refuse.
     gap: var(--space-2);
   }
   .profile-actions {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     padding-top: var(--space-3);
   }
   .request-row {
@@ -1434,7 +1434,7 @@ the same page without the controls, rather than controls that refuse.
     text-transform: uppercase;
   }
   .custom-window {
-    border: 1px solid var(--rule);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     overflow: hidden;
   }
@@ -1452,7 +1452,7 @@ the same page without the controls, rather than controls that refuse.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     min-height: var(--control-height);
     padding: var(--space-2) var(--space-3);

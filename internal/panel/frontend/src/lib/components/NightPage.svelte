@@ -349,7 +349,7 @@ are written once.
     --night-card-lift: 1.6;
 
     backdrop-filter: blur(22px) saturate(1.4) brightness(var(--night-card-lift));
-    background: color-mix(in srgb, var(--strip) 86%, transparent);
+    background: color-mix(in srgb, var(--surface-base) 86%, transparent);
     border-color: var(--dialog-border);
     box-shadow: var(--shadow-plate);
     margin-bottom: 0;

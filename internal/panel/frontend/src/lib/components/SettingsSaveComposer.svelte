@@ -144,12 +144,12 @@ changed something.
   }
 
   .composer-copy span {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
   }
 
   .composer-copy a {
-    color: var(--accent);
+    color: var(--brand-action);
     font-size: var(--font-size-compact);
     justify-self: start;
   }

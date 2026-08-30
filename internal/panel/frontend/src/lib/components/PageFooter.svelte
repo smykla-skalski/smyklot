@@ -35,8 +35,8 @@ say what it is running is better off not raising the subject.
      which is close but keeps the font's descender bias. */
   .foot {
     align-items: center;
-    border-top: 1px solid var(--rule);
-    color: var(--dim);
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-muted);
     display: flex;
     flex-wrap: wrap;
     font-size: var(--font-size-compact);

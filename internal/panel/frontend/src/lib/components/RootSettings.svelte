@@ -1097,7 +1097,7 @@ without the composer.
 
   .num-inline:focus-visible {
     border-color: var(--brand-action);
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--focus);
   }
 
   .num-inline[aria-invalid='true'] {

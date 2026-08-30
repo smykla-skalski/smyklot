@@ -109,7 +109,7 @@ belongs in `TableEmptyState`.
   :global(.modal-content-wrapper) {
     background: transparent;
     border: 0;
-    color: var(--text);
+    color: var(--text-primary);
     inset: 0;
     margin: auto;
     max-height: none;
@@ -198,7 +198,7 @@ belongs in `TableEmptyState`.
   }
 
   :global(.modal-panel > header p) {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.8125rem;
     line-height: var(--leading-meta);
     margin: 0.45rem 0 0;

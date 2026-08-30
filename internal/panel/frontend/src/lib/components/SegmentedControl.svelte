@@ -748,7 +748,7 @@ positioning will replace once it is portable.
   }
 
   .segment-detail {
-    color: var(--dim);
+    color: var(--text-muted);
     font-weight: 500;
   }
 

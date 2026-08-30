@@ -262,7 +262,7 @@ history is routed with its section. That is what makes an address like
     min-height: 0;
   }
   .route-loading {
-    color: var(--dim);
+    color: var(--text-muted);
     margin: 0;
   }
   .empty-panel-state {
@@ -278,10 +278,10 @@ history is routed with its section. That is what makes an address like
   }
   .empty-panel-mark {
     align-items: center;
-    background: var(--accent-tint);
-    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+    background: var(--brand-action-tint);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 34%, transparent);
     border-radius: var(--radius-control);
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     font: 650 1.25rem/var(--leading-flat) var(--sans);
     height: 2.5rem;

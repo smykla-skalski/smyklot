@@ -209,7 +209,7 @@ the answer somebody came to the overview to get.
     margin: 0;
   }
   .panel-head p {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-meta);
     margin: var(--line-gap) 0 0;
   }
@@ -234,7 +234,7 @@ the answer somebody came to the overview to get.
   .panel-link {
     align-items: center;
     border-radius: var(--r-ctl);
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: 0.2rem;
@@ -256,7 +256,7 @@ the answer somebody came to the overview to get.
   .queue-note {
     background: color-mix(in srgb, var(--warning) 8%, transparent);
     border-inline-start: 2px solid var(--warning);
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-compact);
     margin: 0;
     padding: var(--space-2) var(--space-3);
@@ -272,7 +272,7 @@ the answer somebody came to the overview to get.
     will-change: transform, opacity;
   }
   .panel-next li + li::before {
-    background: var(--rule);
+    background: var(--border-subtle);
     block-size: 1px;
     content: '';
     inset-block-start: 0;
@@ -302,7 +302,7 @@ the answer somebody came to the overview to get.
     outline-offset: var(--focus-ring-inset);
   }
   .panel-row:hover .row-chevron {
-    color: var(--accent);
+    color: var(--brand-action);
   }
   .work-copy,
   .timing-copy {
@@ -311,7 +311,7 @@ the answer somebody came to the overview to get.
     min-width: 0;
   }
   .work-copy strong {
-    color: var(--text);
+    color: var(--text-primary);
     font-size: var(--font-size-meta);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -319,7 +319,7 @@ the answer somebody came to the overview to get.
   }
   .work-copy small,
   .timing-copy small {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-compact);
     overflow: hidden;
     text-overflow: ellipsis;
@@ -343,7 +343,7 @@ the answer somebody came to the overview to get.
     gap: var(--space-4);
   }
   .panel-empty {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     font-size: var(--font-size-meta);
     margin: 0;
   }

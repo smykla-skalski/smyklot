@@ -365,7 +365,7 @@ from the wall clock cannot be photographed.
     text-align: center;
   }
   .queue-empty span {
-    color: var(--dim);
+    color: var(--text-muted);
   }
   @media (max-width: 64rem) {
     .queue-actions {

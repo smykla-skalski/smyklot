@@ -1211,7 +1211,7 @@ and a reader should not have to navigate between them.
      own to trim. */
   .pr-owner {
     align-items: baseline;
-    color: var(--dim);
+    color: var(--text-muted);
     display: flex;
     flex: 0 999 auto;
     min-width: 0;
@@ -1236,7 +1236,7 @@ and a reader should not have to navigate between them.
      The cap is what a name long enough to fill the line on its own runs into, and
      it is where the ellipsis this still carries comes back. */
   .pr-repo {
-    color: var(--text);
+    color: var(--text-primary);
     flex: 0 0 auto;
     font-weight: 700;
     max-width: 100%;
@@ -1255,7 +1255,7 @@ and a reader should not have to navigate between them.
   }
 
   .pr-num {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     flex: none;
     font-weight: 600;
     margin-left: 0.15rem;
@@ -1267,7 +1267,7 @@ and a reader should not have to navigate between them.
   .pr-name:hover .pr-repo,
   .pr-name:hover .pr-num,
   .pr-name:hover .pr-owner {
-    color: var(--accent);
+    color: var(--brand-action);
   }
 
   .pr-name:hover .pr-repo {
@@ -1290,7 +1290,7 @@ and a reader should not have to navigate between them.
      line it is on stays the height of its own letters. */
   .pr-name :global(svg) {
     block-size: 1cap;
-    color: var(--dim);
+    color: var(--text-muted);
     flex: none;
     inline-size: 1cap;
     margin-left: 0.35rem;
@@ -1300,7 +1300,7 @@ and a reader should not have to navigate between them.
 
   :global(.queue-row):hover .pr-name :global(svg),
   :global(.queue-row):focus-within .pr-name :global(svg) {
-    color: var(--accent);
+    color: var(--brand-action);
     opacity: 1;
   }
 
@@ -1310,7 +1310,7 @@ and a reader should not have to navigate between them.
      needs to act, so they never shrink. */
   .pr-meta {
     align-items: baseline;
-    color: var(--dim);
+    color: var(--text-muted);
     display: flex;
     flex-wrap: nowrap;
     font-size: var(--font-size-compact);
@@ -1358,12 +1358,12 @@ and a reader should not have to navigate between them.
   }
 
   .next-lead.due {
-    color: var(--clear);
+    color: var(--success);
     transition: color var(--duration-normal) var(--ease-out);
   }
 
   .next-lead.idle {
-    color: var(--text-soft);
+    color: var(--text-secondary);
   }
 
   /* Two steps, because they say different things. Under ten seconds it is
@@ -1378,7 +1378,7 @@ and a reader should not have to navigate between them.
 
   .next-lead.due.final {
     animation: countdown-pulse var(--rhythm-pulse) var(--ease-inout) infinite alternate;
-    color: var(--stop);
+    color: var(--danger);
   }
 
   @keyframes countdown-pulse {
@@ -1392,13 +1392,13 @@ and a reader should not have to navigate between them.
   }
 
   .next-sub {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin-top: var(--line-gap);
   }
 
   .age {
-    color: var(--text-soft);
+    color: var(--text-secondary);
     display: block;
     font-size: var(--font-size-meta);
   }
@@ -1413,7 +1413,7 @@ and a reader should not have to navigate between them.
      every reason the service writes fits inside two lines, so the cap is the
      WIDTH, and it is enforced by `tests/browser/queue-columns.test.ts`. */
   .reason {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
   }
 
@@ -1636,7 +1636,7 @@ and a reader should not have to navigate between them.
      with the table, because `.queue-table td` sets the padding every cell shares
      and a bare `.empty-cell` loses to it. */
   :global(.queue-table) td.empty-cell {
-    color: var(--dim);
+    color: var(--text-muted);
     padding: 0 var(--space-4);
     text-align: center;
   }
@@ -1679,6 +1679,6 @@ and a reader should not have to navigate between them.
      than dressing up as one of the rows that belong here. The ink stays: what it
      now says is the thing worth reading, and a faded row would hide it. */
   :global(.queue-table) .queue-row.leaving {
-    background-image: linear-gradient(var(--strip-lift), var(--strip-lift));
+    background-image: linear-gradient(var(--surface-raised), var(--surface-raised));
   }
 </style>

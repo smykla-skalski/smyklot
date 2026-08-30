@@ -674,7 +674,7 @@ inside it.
   }
 
   .root-loading.problem {
-    border-color: color-mix(in srgb, var(--stop) 30%, var(--border-subtle));
+    border-color: color-mix(in srgb, var(--danger) 30%, var(--border-subtle));
   }
 
   .root-loading :global(.btn) {

@@ -872,7 +872,7 @@ settings from them answers a different question than the one they asked.
 
   .num-inline:focus-visible {
     border-color: var(--brand-action);
-    outline: 2px solid var(--brand);
+    outline: 2px solid var(--focus);
   }
 
   .perm-note {

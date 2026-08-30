@@ -965,7 +965,7 @@ refuse.
 
   .installation-options > label {
     align-items: center;
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     cursor: pointer;
     display: grid;
     gap: var(--space-3);
@@ -1172,7 +1172,7 @@ refuse.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--radius-control);
-    color: var(--text);
+    color: var(--text-primary);
     font: inherit;
     padding: var(--space-3);
     resize: vertical;

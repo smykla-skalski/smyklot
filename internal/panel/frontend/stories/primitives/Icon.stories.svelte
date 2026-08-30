@@ -117,7 +117,7 @@
   }
   .gallery li {
     align-items: center;
-    color: var(--dim);
+    color: var(--text-muted);
     display: flex;
     gap: var(--space-2);
   }

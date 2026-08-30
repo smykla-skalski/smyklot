@@ -48,7 +48,7 @@ keep, and one tooltip is better than two.
     background: transparent;
     border: 0;
     border-radius: var(--r-ctl);
-    color: var(--dim);
+    color: var(--text-muted);
     cursor: help;
     display: inline-grid;
     height: 1.125rem;
@@ -59,6 +59,6 @@ keep, and one tooltip is better than two.
 
   .help-trigger:hover,
   .help-trigger:focus-visible {
-    color: var(--signal);
+    color: var(--info);
   }
 </style>

@@ -238,14 +238,14 @@ other reader to a blank screen with no way to tell which of the five they hit.
   }
 
   .invitation-details div {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     display: grid;
     gap: 0.25rem;
     padding-top: 0.625rem;
   }
 
   dt {
-    color: var(--dim);
+    color: var(--text-muted);
     font: 650 var(--font-size-compact) / var(--leading-compact) var(--sans);
     letter-spacing: 0.02em;
   }
@@ -277,7 +277,7 @@ other reader to a blank screen with no way to tell which of the five they hit.
      page asking a stranger to authorise something. Keep it true if that changes
      (`newGitHubSignIn` in internal/panel/github.go). */
   .invitation-consent {
-    border-top: 1px solid var(--rule);
+    border-top: 1px solid var(--border-subtle);
     color: var(--text-secondary);
     padding-top: 0.875rem;
   }

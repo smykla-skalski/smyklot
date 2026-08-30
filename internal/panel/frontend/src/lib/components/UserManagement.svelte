@@ -2058,7 +2058,7 @@ offering it.
      a no-op. */
 
   .stable-feedback {
-    color: var(--clear);
+    color: var(--success);
     flex: none;
     font-size: var(--font-size-meta);
     max-width: 18rem;
@@ -2126,7 +2126,7 @@ offering it.
      its contents half a pixel lower than the rest of the row. */
   :global(.user-table td),
   :global(.user-table tbody th) {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     font-size: var(--font-size-meta);
   }
 
@@ -2314,14 +2314,14 @@ offering it.
   }
 
   .user-login {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-compact);
     font-weight: 400;
     line-height: var(--leading-compact);
   }
 
   .last-login {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.75rem;
   }
 
@@ -2350,7 +2350,7 @@ offering it.
   :global(.user-table tbody tr:hover .role-trigger:not(:disabled)),
   :global(.user-table tbody .role-trigger:focus-visible),
   :global(.user-table tbody .role-trigger[aria-expanded='true']) {
-    background: var(--control-surface);
+    background: var(--control-bg);
     border-color: var(--control-border);
   }
 
@@ -2556,7 +2556,7 @@ offering it.
 
   .method-option {
     align-items: center;
-    background: var(--well);
+    background: var(--surface-inset);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
     cursor: pointer;
@@ -2573,8 +2573,8 @@ offering it.
   }
 
   .method-option:hover {
-    background: var(--strip-lift);
-    border-color: color-mix(in srgb, var(--dim) 56%, transparent);
+    background: var(--surface-raised);
+    border-color: color-mix(in srgb, var(--text-muted) 56%, transparent);
   }
 
   /* Mixed against the control border, not against transparent: over the tinted
@@ -2628,7 +2628,7 @@ offering it.
   }
 
   .method-copy small {
-    color: var(--dim);
+    color: var(--text-muted);
     display: block;
     font-size: var(--font-size-micro);
     line-height: var(--leading-flat);
@@ -2666,12 +2666,12 @@ offering it.
   }
 
   .form-field > span small {
-    color: var(--dim);
+    color: var(--text-muted);
     font-weight: 400;
   }
 
   .form-field > small {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.6875rem;
   }
 
@@ -2697,7 +2697,7 @@ offering it.
   }
 
   .identity-help {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.6875rem;
     font-weight: 400;
     line-height: var(--leading-micro);
@@ -2708,7 +2708,7 @@ offering it.
   /* The helper says why the button is off rather than a line appearing under it: the reason
      belongs to the field that caused it, and it takes the place of help that no longer applies. */
   .identity-help.refused {
-    color: var(--stop);
+    color: var(--danger);
     font-weight: 500;
   }
 
@@ -2716,7 +2716,7 @@ offering it.
     background: var(--input-bg);
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
-    color: var(--text);
+    color: var(--text-primary);
     font: 0.8125rem/var(--leading-meta) var(--sans);
     min-height: 6rem;
     padding: 0.625rem;
@@ -2724,14 +2724,14 @@ offering it.
   }
 
   .reason-textarea::placeholder {
-    color: var(--dim);
+    color: var(--text-muted);
   }
 
   .invitation-created,
   .confirmation-note {
     align-items: center;
-    background: var(--well);
-    border: 1px solid var(--rule);
+    background: var(--surface-inset);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-well);
     display: flex;
     gap: 0.75rem;
@@ -2745,7 +2745,7 @@ offering it.
 
   .invitation-created p,
   :global(.callout) p {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.75rem;
     margin: 0.15rem 0 0;
   }
@@ -2780,13 +2780,13 @@ offering it.
   }
 
   .success-mark {
-    background: var(--clear-tint);
-    color: var(--clear);
+    background: var(--success-tint);
+    color: var(--success);
   }
 
   .warning-mark {
-    background: var(--stop-tint);
-    color: var(--stop);
+    background: var(--danger-tint);
+    color: var(--danger);
   }
 
   .copy-button {
@@ -2890,14 +2890,14 @@ offering it.
       background: var(--control-bg);
       border: 1px solid var(--control-border);
       border-radius: var(--radius-control);
-      color: var(--dim);
+      color: var(--text-muted);
       padding-inline: var(--space-3);
     }
 
     :global(.user-table thead .table-sort-button:hover),
     :global(.user-table thead .table-sort-button:focus-visible) {
       background: var(--control-bg-hover);
-      color: var(--text);
+      color: var(--text-primary);
     }
 
     :global(.user-table tbody) {

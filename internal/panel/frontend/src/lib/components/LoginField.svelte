@@ -168,7 +168,7 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
   }
 
   .identity-help {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: 0.6875rem;
     font-weight: 400;
     line-height: var(--leading-micro);
@@ -176,7 +176,7 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
   }
 
   .identity-help.refused {
-    color: var(--stop);
+    color: var(--danger);
     font-weight: 500;
   }
 

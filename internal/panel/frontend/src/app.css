@@ -210,10 +210,10 @@ body {
 }
 
 .skip-link {
-  background: var(--strip);
-  border: 1px solid var(--brand);
+  background: var(--surface-base);
+  border: 1px solid var(--focus);
   border-radius: var(--r-ctl);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: var(--font-size-body);
   font-weight: 650;
   left: var(--space-4);
@@ -246,7 +246,7 @@ body {
 }
 
 .dim {
-  color: var(--dim);
+  color: var(--text-muted);
 }
 
 .load-more-alert {
@@ -288,8 +288,8 @@ body {
    draws it, so every card in the product sat flat and every table wrapper that
    wanted the lift had to ask for it again. */
 .plate {
-  background: var(--strip);
-  border: 1px solid var(--rule);
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--r-strip);
   box-shadow: var(--shadow-plate);
   margin-bottom: var(--space-4);
@@ -297,7 +297,7 @@ body {
 }
 
 .plate-lead {
-  border-color: var(--rule);
+  border-color: var(--border-subtle);
 }
 
 /* The card a table is drawn on.
@@ -419,7 +419,7 @@ body {
  * passes in - `:global(.repositories .count-cell)` is two classes against one.
  */
 .data-table :is(tbody th, td) {
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--border-subtle);
   /* A knob with no value of its own, and deliberately so. Four of the seven tables
      state `--font-size-meta` on their cells and three let them inherit, which is a
      real difference on screen - so picking one here would be a design decision
@@ -524,7 +524,7 @@ body {
   }
 
   .data-table.stacked tbody tr {
-    border-bottom: 1px solid var(--rule);
+    border-bottom: 1px solid var(--border-subtle);
     padding: var(--space-3);
   }
 
@@ -567,12 +567,12 @@ body {
 }
 
 .plate-alarm {
-  border-color: var(--rule);
+  border-color: var(--border-subtle);
 }
 
 .plate-head {
   align-items: center;
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-3);
@@ -626,7 +626,7 @@ a[href] {
 
 button:active:not(:disabled),
 a[href]:active {
-  background-image: linear-gradient(var(--press), var(--press));
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
   transform: scale(var(--press-scale));
 }
 
@@ -1010,7 +1010,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
 }
 
 .table-notice > span {
-  color: var(--text-soft);
+  color: var(--text-secondary);
   font-size: var(--font-size-meta);
   line-height: var(--leading-meta);
 }
@@ -1068,7 +1068,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
 
 /* The disc scale, like every other round-ish target of this size. */
 .icon-button:active:not(:disabled) {
-  background-image: linear-gradient(var(--press), var(--press));
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
   color: var(--text-primary);
   transform: scale(var(--press-scale-disc));
 }
@@ -1108,10 +1108,10 @@ input[type='radio']:not(:disabled) {
 
 .btn {
   align-items: center;
-  background: var(--strip-lift);
+  background: var(--surface-raised);
   border: 1px solid var(--control-border);
   border-radius: var(--r-ctl);
-  color: var(--text);
+  color: var(--text-primary);
   display: inline-flex;
   /* As wide as its label by default - see the note above `.chip`. A button that should
      fill its container is a decision the call site makes, by giving it a width; nothing
@@ -1145,7 +1145,7 @@ input[type='radio']:not(:disabled) {
 }
 
 .btn:active:not(:disabled) {
-  background-image: linear-gradient(var(--press), var(--press));
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
   filter: none;
   transform: scale(var(--press-scale));
 }
@@ -1158,9 +1158,9 @@ select:disabled {
 }
 
 .btn-signal {
-  background: var(--admin);
-  border-color: var(--admin);
-  color: var(--on-admin);
+  background: var(--brand-action);
+  border-color: var(--brand-action);
+  color: var(--on-brand-action);
 }
 
 .btn-signal:hover:not(:disabled) {
@@ -1186,7 +1186,7 @@ select:disabled {
 }
 
 .btn-ghost:active:not(:disabled) {
-  background-image: linear-gradient(var(--press), var(--press));
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
 }
 
 .btn-stop {
@@ -1201,7 +1201,7 @@ select:disabled {
 }
 
 .btn-stop:active:not(:disabled) {
-  background-image: linear-gradient(var(--press), var(--press));
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
 }
 
 /* The console's own action: tinted with whatever `--brand-action` is where it is
@@ -1236,13 +1236,13 @@ select:disabled {
 .btn-quiet {
   background: transparent;
   border-color: transparent;
-  color: var(--dim);
+  color: var(--text-muted);
 }
 
 /* No flat fill: --strip-lift is 0.5 dE00 from the surface this sits on, so the hover was not
    visible at all. The overlay carries it, on whatever ground the button happens to be on. */
 .btn-quiet:hover:not(:disabled) {
-  color: var(--text);
+  color: var(--text-primary);
   filter: none;
 }
 
@@ -1332,38 +1332,38 @@ select:disabled {
 
 .chip-neutral {
   background: var(--neutral-tint);
-  color: var(--text-soft);
+  color: var(--text-secondary);
 }
 
 .chip-neutral .chip-dot {
-  background: var(--dim);
+  background: var(--text-muted);
 }
 
 .chip-clear {
-  background: var(--clear-tint);
-  color: var(--clear);
+  background: var(--success-tint);
+  color: var(--success);
 }
 
 .chip-clear .chip-dot {
-  background: var(--clear);
+  background: var(--success);
 }
 
 .chip-signal {
-  background: var(--signal-tint);
-  color: var(--signal);
+  background: var(--info-tint);
+  color: var(--info);
 }
 
 .chip-signal .chip-dot {
-  background: var(--signal);
+  background: var(--info);
 }
 
 .chip-accent {
-  background: var(--accent-tint);
-  color: var(--accent);
+  background: var(--brand-action-tint);
+  color: var(--brand-action);
 }
 
 .chip-accent .chip-dot {
-  background: var(--accent);
+  background: var(--brand-action);
 }
 
 .chip-warning {
@@ -1376,12 +1376,12 @@ select:disabled {
 }
 
 .chip-stop {
-  background: var(--stop-tint);
-  color: var(--stop);
+  background: var(--danger-tint);
+  color: var(--danger);
 }
 
 .chip-stop .chip-dot {
-  background: var(--stop);
+  background: var(--danger);
 }
 
 /* Absence, drawn as absence: no fill and a dashed edge where every other chip
@@ -1391,13 +1391,13 @@ select:disabled {
 .chip-absent {
   background: transparent;
   box-shadow: none;
-  color: var(--dim);
+  color: var(--text-muted);
   outline: 1px dashed color-mix(in srgb, currentcolor 42%, transparent);
   outline-offset: -1px;
 }
 
 .chip-absent .chip-dot {
-  background: var(--dim);
+  background: var(--text-muted);
 }
 
 /* The panel has no links to speak of - it is built from buttons - so this is a
@@ -1488,10 +1488,10 @@ select:disabled {
 
 .text-input,
 .select-input {
-  background-color: var(--control-surface);
+  background-color: var(--control-bg);
   border: 1px solid var(--control-border);
   border-radius: var(--r-ctl);
-  color: var(--text);
+  color: var(--text-primary);
   font-size: var(--font-size-meta);
   height: var(--local-control-height, var(--control-height-compact));
   /* Not flat: at 13px that is a line box shorter than the face it holds, and a select
@@ -1545,7 +1545,7 @@ select:focus-visible {
 }
 
 .select-wrap > svg {
-  color: var(--dim);
+  color: var(--text-muted);
   pointer-events: none;
   position: absolute;
   right: 0.5rem;
@@ -1564,7 +1564,7 @@ select:focus-visible {
 }
 
 .text-input::placeholder {
-  color: var(--dim);
+  color: var(--text-muted);
 }
 
 /* Plain monospace, no filled chrome. The mock never boxes a bare <code>; where a
@@ -1583,7 +1583,7 @@ code {
    per-form - where the message sits in a grid, how far it stands off the field
    above it - the caller still says, and only that. */
 .form-error {
-  color: var(--stop);
+  color: var(--danger);
   font-size: var(--font-size-meta);
   margin: 0;
 }
@@ -1595,7 +1595,7 @@ code {
    overrides the one rule locally. */
 .form-lead,
 .form-note {
-  color: var(--dim);
+  color: var(--text-muted);
   font-size: var(--font-size-meta);
   margin: 0;
   max-width: 60ch;
@@ -1765,7 +1765,7 @@ thead th {
      same one. Some tables drew it from a `th, td` rule of their own and some drew
      none at all - the queue's header sat straight on its first row with nothing
      between them. */
-  border-bottom: 1px solid var(--rule);
+  border-bottom: 1px solid var(--border-subtle);
   color: var(--heading-text);
   font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
   letter-spacing: 0.08em;
@@ -1838,7 +1838,7 @@ thead th .icon-button:active:not(:disabled) {
   /* The inset surface, not the brand tint: this says what is true, not what can
      be pressed, and a brand-coloured pill beside a brand-coloured button reads as
      a second control. */
-  background: var(--well);
+  background: var(--surface-inset);
   border-radius: var(--radius-chip);
   /* Mixed from the pill's own foreground, which is the answer the chips already
      carry and works on any ground without a per-palette value. Its fill measures
@@ -1846,7 +1846,7 @@ thead th .icon-button:active:not(:disabled) {
      one - under a just-noticeable difference, so without a keyline the pill has
      no shape at all there. */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
-  color: var(--text-soft);
+  color: var(--text-secondary);
   display: inline-flex;
   flex: none;
   font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);

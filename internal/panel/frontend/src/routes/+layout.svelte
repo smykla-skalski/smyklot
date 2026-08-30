@@ -1098,16 +1098,16 @@
     font-size: 1rem;
   }
   .install-copy p {
-    color: var(--dim);
+    color: var(--text-muted);
     margin: var(--space-2) 0 0;
     max-width: var(--measure-note);
   }
   .install-mark {
     align-items: center;
-    background: var(--accent-tint);
-    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+    background: var(--brand-action-tint);
+    border: 1px solid color-mix(in srgb, var(--brand-action) 34%, transparent);
     border-radius: var(--radius-control);
-    color: var(--accent);
+    color: var(--brand-action);
     display: inline-flex;
     font: 650 1.5rem/1 var(--sans);
     height: 3rem;

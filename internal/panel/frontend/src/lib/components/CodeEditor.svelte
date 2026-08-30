@@ -128,7 +128,7 @@
       padding: 'var(--space-3) 0',
     },
     '.cm-content': {
-      caretColor: 'var(--text)',
+      caretColor: 'var(--text-primary)',
       padding: '0',
     },
     '.cm-line': {

@@ -98,8 +98,8 @@ recover by going back.
   }
 
   .settings-draft-attention[data-kind='inactive'] :global(.attention-surface) {
-    background: color-mix(in srgb, var(--accent-tint) 82%, transparent);
-    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+    background: color-mix(in srgb, var(--brand-action-tint) 82%, transparent);
+    border-color: color-mix(in srgb, var(--brand-action) 28%, transparent);
   }
 
   .settings-draft-attention[data-kind='storage-problem'] :global(.attention-surface) {
@@ -121,7 +121,7 @@ recover by going back.
   }
 
   .attention-copy strong {
-    color: var(--text);
+    color: var(--text-primary);
   }
 
   .attention-actions {

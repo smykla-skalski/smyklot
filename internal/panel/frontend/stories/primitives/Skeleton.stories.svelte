@@ -83,7 +83,7 @@
     grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   }
   h3 {
-    color: var(--dim);
+    color: var(--text-muted);
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-2);
   }

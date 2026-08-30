@@ -563,7 +563,7 @@ applied on save would give nobody the chance to read the deletions first.
   }
 
   .sync-run-notice {
-    border-inline-start: 2px solid var(--signal);
+    border-inline-start: 2px solid var(--info);
     color: var(--text-secondary);
     margin: var(--space-3) 0;
     padding: var(--space-2) var(--space-3);
