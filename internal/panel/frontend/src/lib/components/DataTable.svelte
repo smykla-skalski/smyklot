@@ -3,106 +3,6 @@
   import { flip, type FlipParams } from 'svelte/animate';
   import { fade, type FadeParams } from 'svelte/transition';
 
-  /**
-   * The shell every table in the panel shares.
-   *
-   * Nine tables across seven files wrote this by hand, under six different wrapper
-   * class names - `table-scroll`, `user-table-wrap`, `installation-table-shell`,
-   * `repository-table-scroll`, `queue-card` - each carrying a copy of the same
-   * comment saying the surface comes from `.table-card`. Three separate bugs had been
-   * patched in three of those files.
-   *
-   * **A row is not a component, and must never become one.** That was tried, measured
-   * and reverted: a `<tr>` rendered by a child carries the *child's* Svelte scope
-   * class, so every `.repositories tbody tr` rule in the parent stops matching - the
-   * desktop grid never reached the body, and `tests/browser/table-columns.test.ts`
-   * caught headings sitting up to 3.4k pixels from their cells. So this component
-   * renders the `<tr>` itself and takes a snippet for the cells inside it: the row
-   * stays in one scope, which is what lets one stylesheet own every row state.
-   *
-   * For the same reason there is **no rule here that paints `tbody tr`**. `.data-row`
-   * in `app.css` owns the resting ground, the hover, the press and the focus, and a
-   * scoped `tbody tr` here would carry this component's class and outrank it - which
-   * would kill hover in every table at once. Anything a table needs to paint that
-   * `.data-row` does not, it paints on `tr:not(.virtual-spacer, .data-row)`.
-   *
-   * ## Migrating a table onto this
-   *
-   * The markup swap is easy; the **CSS is the whole job**. Exactly which rules break is
-   * worth knowing precisely, because the first guess is wrong in both directions:
-   *
-   * - **Breaks:** every rule against `table`, `thead`, `tbody`, `tr` and the wrapper
-   *   class. This component renders those, so they carry its scope and not the
-   *   caller's. Rewrite each as `:global(.that-table tbody tr)`, anchored through the
-   *   class the caller passes, so it reaches that table's rows and no others.
-   * - **Survives:** rules against `th` and `td`. A `cells` or `head` snippet is written
-   *   in the caller's file, so its cells are the caller's markup and carry the caller's
-   *   scope. Column widths, per-cell alignment and `data-label` rules all keep working
-   *   untouched - which is most of what a table's stylesheet actually is.
-   *
-   * The trap is the other way round: a surviving `td` rule is only `td.svelte-caller`,
-   * one class, and `.data-table :is(tbody th, td)` in `app.css` is one class and two
-   * elements. **The shared floor outranks it.** So a table that padded its cells
-   * differently does not keep that padding by doing nothing - it has to say so through
-   * `--table-cell-pad-block` and `--table-cell-pad-inline`. That is why those are knobs.
-   *
-   * So each rule has one of three homes:
-   *
-   * - **This shell, every table** - the pinned layout, the stacked layout, the cell
-   *   separator. `app.css`, beside `.table-card` and `.data-row`.
-   * - **This shell, this table** - min-width, cell padding, band height, `table-layout`.
-   *   A custom property the caller sets on the class it passes.
-   * - **This table's columns** - widths, a cell that wraps differently. Stays exactly
-   *   where it is, in the caller.
-   *
-   * Do them one table at a time and run `tests/browser/table-columns.test.ts` between
-   * each - it is the check that catches a grid that stopped reaching the body, and at
-   * ~74s it is the slowest in the suite for a reason.
-   *
-   * ## What the band centres against
-   *
-   * A cell's separator is on its BOTTOM only, so a row's border box is 1px taller than
-   * the band a reader sees and its centre sits half a pixel below the visible one.
-   * Measure a row's contents against the border box and everything reads 0.5px high,
-   * every time, in every table - which looks exactly like a defect and is not one. The
-   * reference is the CONTENT box, above the rule: measured there, the identity stack
-   * and the chip land at 0.0000px and the heading label at -0.0039px, the remainder
-   * being the cap trim's own subpixel.
-   *
-   * ## `pinned` and `stacked` are opt-in, and three tables decline
-   *
-   * They are shared layouts, not the layout. A table takes one only if its own is the
-   * same layout, and two here are not:
-   *
-   * - `UserManagement`'s pair lay a row out as a **grid** so the header and the body
-   *   can share one set of column tracks, where `pinned` says `display: table`. And
-   *   their filters live in the column headings with no tools menu behind them, so
-   *   `stacked` - which hides `thead` at 64rem - takes away the only way to filter.
-   *   Both faults were invisible to `svelte-check` and both were caught by a browser
-   *   suite: headings 195px from their cells, and no reachable filter at 320.
-   * - `RepositoryList` does the same with grid rows, at its own breakpoint.
-   *
-   * The lesson is the shape of every trap in this file: a shared rule at two classes
-   * beats a caller's at one, and CSS reports nothing when it wins. Prefer declining a
-   * shared layout to fighting it.
-   *
-   * ## Row motion, and why it is a branch rather than a prop
-   *
-   * `QueueView` animates: its rows carry `animate:flip`, `in:fade` and `out:fade`.
-   * Those are **compile-time directives**. They cannot be spread through `rowAttrs`
-   * like an event handler, and a transition function cannot be passed in and applied -
-   * `in:{someProp}` is not a thing Svelte compiles. They have to be written on the
-   * element itself, by whoever writes the `{#each}`, and that is this component.
-   *
-   * `animate:` also has to be on an element that is the *immediate* child of a keyed
-   * each block, so it cannot be hidden behind an `{#if}` inside one either. What is
-   * left is branching the `{#each}` itself, which is what the body below does.
-   *
-   * That branch is why the directives are not simply always applied with a zero
-   * duration: flip measures every row's box before and after every update, and eight
-   * of the nine tables never move a row. `motion` is how the ninth asks, and the other
-   * eight pay nothing.
-   */
   /* `let`, not `const`: `body` is `$bindable`, and a bindable prop has to be
      assignable. */
   let {
@@ -271,6 +171,108 @@
     }
   });
 </script>
+
+<!--
+@component
+The shell every table in the panel shares.
+
+Nine tables across seven files wrote this by hand, under six different wrapper
+class names - `table-scroll`, `user-table-wrap`, `installation-table-shell`,
+`repository-table-scroll`, `queue-card` - each carrying a copy of the same
+comment saying the surface comes from `.table-card`. Three separate bugs had been
+patched in three of those files.
+
+**A row is not a component, and must never become one.** That was tried, measured
+and reverted: a `<tr>` rendered by a child carries the *child's* Svelte scope
+class, so every `.repositories tbody tr` rule in the parent stops matching - the
+desktop grid never reached the body, and `tests/browser/table-columns.test.ts`
+caught headings sitting up to 3.4k pixels from their cells. So this component
+renders the `<tr>` itself and takes a snippet for the cells inside it: the row
+stays in one scope, which is what lets one stylesheet own every row state.
+
+For the same reason there is **no rule here that paints `tbody tr`**. `.data-row`
+in `app.css` owns the resting ground, the hover, the press and the focus, and a
+scoped `tbody tr` here would carry this component's class and outrank it - which
+would kill hover in every table at once. Anything a table needs to paint that
+`.data-row` does not, it paints on `tr:not(.virtual-spacer, .data-row)`.
+
+## Migrating a table onto this
+
+The markup swap is easy; the **CSS is the whole job**. Exactly which rules break is
+worth knowing precisely, because the first guess is wrong in both directions:
+
+- **Breaks:** every rule against `table`, `thead`, `tbody`, `tr` and the wrapper
+  class. This component renders those, so they carry its scope and not the
+  caller's. Rewrite each as `:global(.that-table tbody tr)`, anchored through the
+  class the caller passes, so it reaches that table's rows and no others.
+- **Survives:** rules against `th` and `td`. A `cells` or `head` snippet is written
+  in the caller's file, so its cells are the caller's markup and carry the caller's
+  scope. Column widths, per-cell alignment and `data-label` rules all keep working
+  untouched - which is most of what a table's stylesheet actually is.
+
+The trap is the other way round: a surviving `td` rule is only `td.svelte-caller`,
+one class, and `.data-table :is(tbody th, td)` in `app.css` is one class and two
+elements. **The shared floor outranks it.** So a table that padded its cells
+differently does not keep that padding by doing nothing - it has to say so through
+`--table-cell-pad-block` and `--table-cell-pad-inline`. That is why those are knobs.
+
+So each rule has one of three homes:
+
+- **This shell, every table** - the pinned layout, the stacked layout, the cell
+  separator. `app.css`, beside `.table-card` and `.data-row`.
+- **This shell, this table** - min-width, cell padding, band height, `table-layout`.
+  A custom property the caller sets on the class it passes.
+- **This table's columns** - widths, a cell that wraps differently. Stays exactly
+  where it is, in the caller.
+
+Do them one table at a time and run `tests/browser/table-columns.test.ts` between
+each - it is the check that catches a grid that stopped reaching the body, and at
+~74s it is the slowest in the suite for a reason.
+
+## What the band centres against
+
+A cell's separator is on its BOTTOM only, so a row's border box is 1px taller than
+the band a reader sees and its centre sits half a pixel below the visible one.
+Measure a row's contents against the border box and everything reads 0.5px high,
+every time, in every table - which looks exactly like a defect and is not one. The
+reference is the CONTENT box, above the rule: measured there, the identity stack
+and the chip land at 0.0000px and the heading label at -0.0039px, the remainder
+being the cap trim's own subpixel.
+
+## `pinned` and `stacked` are opt-in, and three tables decline
+
+They are shared layouts, not the layout. A table takes one only if its own is the
+same layout, and two here are not:
+
+- `UserManagement`'s pair lay a row out as a **grid** so the header and the body
+  can share one set of column tracks, where `pinned` says `display: table`. And
+  their filters live in the column headings with no tools menu behind them, so
+  `stacked` - which hides `thead` at 64rem - takes away the only way to filter.
+  Both faults were invisible to `svelte-check` and both were caught by a browser
+  suite: headings 195px from their cells, and no reachable filter at 320.
+- `RepositoryList` does the same with grid rows, at its own breakpoint.
+
+The lesson is the shape of every trap in this file: a shared rule at two classes
+beats a caller's at one, and CSS reports nothing when it wins. Prefer declining a
+shared layout to fighting it.
+
+## Row motion, and why it is a branch rather than a prop
+
+`QueueView` animates: its rows carry `animate:flip`, `in:fade` and `out:fade`.
+Those are **compile-time directives**. They cannot be spread through `rowAttrs`
+like an event handler, and a transition function cannot be passed in and applied -
+`in:{someProp}` is not a thing Svelte compiles. They have to be written on the
+element itself, by whoever writes the `{#each}`, and that is this component.
+
+`animate:` also has to be on an element that is the *immediate* child of a keyed
+each block, so it cannot be hidden behind an `{#if}` inside one either. What is
+left is branching the `{#each}` itself, which is what the body below does.
+
+That branch is why the directives are not simply always applied with a zero
+duration: flip measures every row's box before and after every update, and eight
+of the nine tables never move a row. `motion` is how the ninth asks, and the other
+eight pay nothing.
+-->
 
 <!--
   `role="region"` with `tabindex` so a keyboard can scroll columns that overflow the

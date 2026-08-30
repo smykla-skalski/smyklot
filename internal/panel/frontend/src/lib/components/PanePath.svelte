@@ -29,6 +29,17 @@
   }
 </script>
 
+<!--
+@component
+The way back up: hierarchy, not history. A page below its console's root opens with
+its ancestors, each one pressable, and the last of them is Up - the browser keeps
+Back, and the two answer different questions.
+
+A root page carries none, which is why an empty `segments` renders nothing at all
+rather than an empty strip. The shell already says which console you are in, and a
+path pointing at the page it sits on is a self-link.
+-->
+
 {#if segments.length > 0}
   <nav class="pane-path" aria-label="Where this page sits">
     {#each segments as segment, index (segment.label + segment.href)}
