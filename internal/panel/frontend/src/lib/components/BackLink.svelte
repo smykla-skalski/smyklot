@@ -95,8 +95,8 @@ other click to the browser.
 
   .back-link.is-quiet:focus-visible {
     border-radius: 4px;
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   /* Leans the way it points, which is the queue's own press and worth keeping:

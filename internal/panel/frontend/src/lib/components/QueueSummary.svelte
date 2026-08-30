@@ -246,8 +246,8 @@ the answer somebody came to the overview to get.
     text-underline-offset: 2px;
   }
   .panel-link:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 3px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
   .panel-link:active {
     color: var(--brand-action-hover);
@@ -298,8 +298,8 @@ the answer somebody came to the overview to get.
     background: var(--table-row-pressed);
   }
   .panel-row:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
   .panel-row:hover .row-chevron {
     color: var(--accent);

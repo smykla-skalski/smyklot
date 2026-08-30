@@ -293,8 +293,8 @@ from the wall clock cannot be photographed.
   }
   .queue-title:focus-visible {
     border-radius: 2px;
-    outline: 2px solid var(--focus);
-    outline-offset: 3px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
   .queue-summary,
   .queue-reason {

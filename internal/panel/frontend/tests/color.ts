@@ -145,6 +145,42 @@ export function oklch(color: string): { L: number; C: number; H: number } {
   return { L, C: Math.hypot(a, b), H: hue < 0 ? hue + 360 : hue };
 }
 
+/**
+ * What `color-mix(in oklab, top share%, base)` computes.
+ *
+ * The palette mixes in sRGB nearly everywhere and in OKLab in one place - the control hover, where
+ * a perceptual mix is what lands the step on its measured ratio. A resolver that knew only sRGB
+ * could not read that declaration at all, and the check that reads it failed rather than quietly
+ * measuring something else, which is the right way round but still leaves the token unchecked.
+ */
+export function mixOklab(top: string, base: string, share: number): string {
+  const toLab = (color: string): [number, number, number] => {
+    const [red, green, blue] = channels(color).map(linear) as [number, number, number];
+    const long = Math.cbrt(0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue);
+    const medium = Math.cbrt(0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue);
+    const short = Math.cbrt(0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue);
+    return [
+      0.2104542553 * long + 0.793617785 * medium - 0.0040720468 * short,
+      1.9779984951 * long - 2.428592205 * medium + 0.4505937099 * short,
+      0.0259040371 * long + 0.7827717662 * medium - 0.808675766 * short,
+    ];
+  };
+  const [topLab, baseLab] = [toLab(top), toLab(base)];
+  const [L = 0, a = 0, b = 0] = topLab.map(
+    (value, index) => value * share + (baseLab[index] ?? 0) * (1 - share),
+  );
+  const long = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const medium = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const short = (L - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return toHex(
+    [
+      4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short,
+      -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short,
+      -0.0041960863 * long - 0.7034186147 * medium + 1.707614701 * short,
+    ].map(gamma),
+  );
+}
+
 export type Dichromacy = 'protan' | 'deutan' | 'tritan';
 
 /**
@@ -169,4 +205,31 @@ export function simulate(color: string, kind: Dichromacy): string {
       -0.000365294 * long - 0.00412163 * medium + 0.693513 * short,
     ].map(gamma),
   );
+}
+
+/**
+ * ONE STATE CHANGE AND TWO, as dE00, per ground.
+ *
+ * The band is the sidebar's own approved pair read as a standard, so a sync surface, a control
+ * track and a nav row are held to one figure rather than three. It is per GROUND rather than per
+ * palette because the Root console pairs a light content area with a dark sidebar, and CIEDE2000
+ * does not report the same number for the same perceived step at both ends of the lightness range.
+ *
+ * The numbers moved when the overlays did. The hover was 5.5% of ink on light and 7% of white on
+ * dark, which composited to 1.11:1 on a white popover - under the 1.20 a hover has to clear to
+ * read peripherally - so the design system took them to 10% and 8.5% and the press to 16% and 14%.
+ * The sidebar's pair went with them, from 2.51 / 5.09 to 5.03 / 8.06 on its light rail and from
+ * 5.07 / 8.92 to 6.13-6.57 / 10.11-10.25 on its dark ones, and these bands are drawn round that.
+ */
+export function stateBand(ground: string): {
+  hover: [number, number];
+  press: [number, number];
+} {
+  /* The light ceiling is 5.4 rather than 5.2 to admit one mix that is made PERCEPTUALLY: the
+     control's hover is `color-mix(in oklab, ...)`, and the same percentage mixed in OKLab lands a
+     shade wider than it does laid as an sRGB overlay - 5.24 against the overlay's 5.02. That is
+     the space doing what it is chosen for, not a step someone pushed. */
+  return oklch(ground).L > 0.5
+    ? { hover: [4.4, 5.4], press: [7.2, 8.3] }
+    : { hover: [5.3, 6.7], press: [9, 10.5] };
 }

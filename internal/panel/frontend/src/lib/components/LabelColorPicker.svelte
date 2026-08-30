@@ -486,8 +486,8 @@ the caller applies, closes and whispers.
   /* Keyboard walks the picker the way the pointer does. */
   .cp-area:focus-visible,
   .cp-hue:focus-visible {
-    outline: 2px solid var(--text-muted);
-    outline-offset: 1px;
+    outline: var(--focus-ring-width) solid var(--text-muted);
+    outline-offset: var(--focus-ring-offset);
   }
 
   /* Held, a knob SEATS like every raised thumb: the throw collapses to its
@@ -574,8 +574,8 @@ the caller applies, closes and whispers.
 
   .color-cell:hover,
   .color-cell:focus-visible {
-    outline: 2px solid var(--control-border);
-    outline-offset: 1px;
+    outline: var(--focus-ring-width) solid var(--control-border);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .color-cell:focus-visible {
@@ -644,8 +644,8 @@ the caller applies, closes and whispers.
      ringed twice. */
   .text-inline:focus {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   .text-inline.is-invalid {

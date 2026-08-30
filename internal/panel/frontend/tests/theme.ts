@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs';
 
+import { mixOklab } from './color';
+
 /**
  * The four palettes a control actually renders in, reconstructed from `tokens.css`.
  *
@@ -133,6 +135,25 @@ function element(own: Declarations, inherited: Map<string, Paint>): Map<string, 
 
     const reference = trimmed.match(/^var\(--(?<name>[\w-]+)\)$/u)?.groups?.name;
     if (reference !== undefined) return token(reference);
+
+    /* OKLab is mixed perceptually rather than channel by channel, and only where both terms are
+       opaque - which is every declaration that asks for it. A translucent one would need the
+       premultiplied path below, and is refused rather than silently mixed the wrong way. */
+    const perceptual = trimmed.match(
+      /^color-mix\(in oklab,\s*(?<top>.+?)\s+(?<share>[\d.]+)%,\s*(?<base>.+)\)$/u,
+    );
+    if (perceptual !== null) {
+      const top = value(perceptual.groups?.top ?? '');
+      const base = value(perceptual.groups?.base ?? '');
+      if (top.alpha !== 1 || base.alpha !== 1) {
+        throw new Error(`a translucent \`in oklab\` mix is not resolved here: ${trimmed}`);
+      }
+
+      return {
+        alpha: 1,
+        color: mixOklab(top.color, base.color, Number(perceptual.groups?.share) / 100),
+      };
+    }
 
     const blend = trimmed.match(
       /^color-mix\(in srgb,\s*(?<top>.+?)\s+(?<share>[\d.]+)%,\s*(?<base>.+)\)$/u,

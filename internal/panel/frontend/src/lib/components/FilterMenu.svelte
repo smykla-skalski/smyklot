@@ -332,7 +332,7 @@ is never what clearing a filter is meant to mean.
   }
 
   .filter-option:focus-visible {
-    outline-offset: -1px;
+    outline-offset: var(--focus-ring-inset);
   }
 
   .filter-option:active {

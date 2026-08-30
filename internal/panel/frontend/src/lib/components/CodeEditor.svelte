@@ -271,7 +271,7 @@ because svelte2tsx scans script comments for tags.)
 
   .code-editor:focus-within {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 </style>

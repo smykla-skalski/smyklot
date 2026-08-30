@@ -1,8 +1,6 @@
-import { readFileSync } from 'node:fs';
-
 import { describe, expect, it } from 'vitest';
 
-import { contrast, deltaE, mix, oklch, simulate } from './color';
+import { contrast, deltaE, mix, oklch, over, simulate, stateBand } from './color';
 import { palettes, type Palette } from './theme';
 
 /**
@@ -20,28 +18,8 @@ import { palettes, type Palette } from './theme';
 /** CIEDE2000 puts a just-noticeable difference at 1.0. */
 const JND = 1;
 
-/**
- * One state change and two, as the sidebar has drawn them since before any of this: 2.51 and 5.09
- * dE00 on its light ground, 5.07 and 8.92 on its dark one. The band is per ground rather than per
- * palette because the Root console pairs a light content area with a dark sidebar, and CIEDE2000
- * does not report the same number for the same perceived step at both ends of the lightness range.
- */
-function band(ground: string): { hover: [number, number]; press: [number, number] } {
-  return oklch(ground).L > 0.5
-    ? { hover: [2, 3], press: [4.5, 5.7] }
-    : // The dark floor is 7.0 rather than 7.5 because a press steps toward the darkest ground the
-      // palette has, and one track - the sidebar popover's, on the dark panel - reaches black
-      // before it reaches 8.92. Black is the end of the ramp, not a value chosen short of it.
-      { hover: [4.5, 6], press: [7, 9.5] };
-}
-
-/** The share a component's own stylesheet mixes at, read from the file rather than copied. */
-function shares(file: string, pattern: RegExp): number[] {
-  const source = readFileSync(new URL(`../src/lib/components/${file}`, import.meta.url), 'utf8');
-  const found = [...source.matchAll(pattern)].map((match) => Number(match.groups?.share) / 100);
-  if (found.length !== 2) throw new Error(`${file} no longer has a hover and a press mix`);
-  return found;
-}
+/** One state change and two, as the sidebar draws them. Defined once, in `./color`. */
+const band = stateBand;
 
 interface Control {
   readonly what: string;
@@ -51,77 +29,65 @@ interface Control {
   readonly thumb: (palette: Palette) => string;
   readonly hover: (palette: Palette) => string;
   readonly pressed: (palette: Palette) => string;
-  /** The hairline in the thumb's shadow, composited over the track. */
-  readonly ring: (palette: Palette) => string;
   /** The ink on the selected option, which has to stay legible on the thumb in every state. */
   readonly selectedText: (palette: Palette) => string;
-  /** The shares the component mixes into the thumb for the selected option's own hover and press. */
-  readonly thumbStates: () => number[];
+  /** What the selection's own ground becomes under the pointer, rest excluded. */
+  readonly thumbStates: (palette: Palette) => string[];
   /** The resting label on an unselected option. */
   readonly restingText: (palette: Palette) => string;
   /** The ink the component switches that label to once the ground darkens under the pointer. */
   readonly hoverText: (palette: Palette) => string;
 }
 
-function ringOver(palette: Palette, token: string): string {
-  const shadow = palette.declaration(token);
-  const hairline = shadow.match(
-    /0 0 0 0\.5px rgb\((?<r>\d+) (?<g>\d+) (?<b>\d+)\s*\/\s*(?<a>[\d.]+)%\)/u,
-  );
-  if (hairline === null) throw new Error(`--${token} has lost its hairline ring`);
-  const channel = (raw: string | undefined): string =>
-    Number(raw ?? 0)
-      .toString(16)
-      .padStart(2, '0');
-  const color = `#${channel(hairline.groups?.r)}${channel(hairline.groups?.g)}${channel(hairline.groups?.b)}`;
-  return color;
+/**
+ * A veiled surface as it actually renders: the veil composited over what it is laid on.
+ *
+ * The segmented control's track, hover and press are translucent - one veil over another over the
+ * page - so reading their declared colours measures the INK the veil is made of rather than the
+ * surface a reader sees. That is why this exists: `palette.color()` answers with the colour and
+ * drops the alpha, which reported a 5% ink veil as near-black and would have passed every step
+ * check on numbers nothing renders.
+ */
+function veiled(palette: Palette, token: string, ground: string): string {
+  const paint = palette.paint(token);
+
+  return over(paint.color, ground, paint.alpha);
 }
 
 const controls: readonly Control[] = [
   {
     what: 'segmented control',
-    track: (palette) => palette.color('segment-track'),
+    /* Measured on the canvas. The veils are mixed over `transparent` precisely so the step is the
+       same on any ground, and the canvas is the one every control can stand on. */
+    track: (palette) => veiled(palette, 'segment-track', palette.color('canvas')),
     thumb: (palette) => palette.color('segment-thumb'),
-    hover: (palette) => palette.color('segment-hover'),
-    pressed: (palette) => palette.color('segment-pressed'),
-    ring: (palette) =>
-      mix(
-        ringOver(palette, 'segment-shadow'),
-        palette.color('segment-track'),
-        Number(
-          palette.declaration('segment-shadow').match(/0\.5px rgb\([\d\s]+\/\s*([\d.]+)%\)/u)?.[1],
-        ) / 100,
-      ),
-    selectedText: (palette) => palette.color('brand-action-text'),
-    thumbStates: () =>
-      shares(
-        'SegmentedControl.svelte',
-        /var\(--selected-text\) (?<share>[\d.]+)%, var\(--selected-bg\)/gu,
-      ),
-    restingText: (palette) => palette.color('text-muted'),
+    hover: (palette) =>
+      veiled(palette, 'segment-hover', veiled(palette, 'segment-track', palette.color('canvas'))),
+    pressed: (palette) =>
+      veiled(palette, 'segment-pressed', veiled(palette, 'segment-track', palette.color('canvas'))),
+    /* The thumb is the palette's accent, so the ink on it is the accent's own inverse rather than
+       the brand ink meant to be READ on a page. */
+    selectedText: (palette) => palette.color('on-brand-action'),
+    /* The selection answers the pointer on the accent's own ramp - hover, then press - which is
+       what a filled accent does everywhere else in the shell. */
+    thumbStates: (palette) => [
+      palette.color('brand-action-hover'),
+      palette.color('brand-action-pressed'),
+    ],
+    restingText: (palette) => palette.color('text-secondary'),
     hoverText: (palette) => palette.color('text-primary'),
   },
   {
     what: 'sidebar navigation',
     track: (palette) => palette.color('sidebar-bg'),
-    thumb: (palette) => palette.color('sidebar-thumb'),
+    /* The selection is a solid pair now - the console's accent under its own inverse ink - rather
+       than a near-white thumb carrying whatever active ink the palette happened to hold. */
+    thumb: (palette) => palette.color('sidebar-active-bg'),
     hover: (palette) => palette.color('sidebar-item-hover'),
     pressed: (palette) => palette.color('sidebar-item-pressed'),
-    ring: (palette) =>
-      mix(
-        ringOver(palette, 'sidebar-thumb-shadow'),
-        palette.color('sidebar-bg'),
-        Number(
-          palette
-            .declaration('sidebar-thumb-shadow')
-            .match(/0\.5px rgb\([\d\s]+\/\s*([\d.]+)%\)/u)?.[1],
-        ) / 100,
-      ),
     selectedText: (palette) => palette.color('sidebar-item-active-text'),
-    /* The shell redesign moved the selected row's pointer answers to elevation
-       alone - the thumb lifts on hover and lands on press, fill untouched - so
-       there are no mixes to read; the thumb's own colour is the only ground
-       the selected ink ever stands on. */
+    /* The selected row's pointer answers are elevation alone - the thumb lifts on hover and lands
+       on press, fill untouched - so its ink only ever stands on the one ground. */
     thumbStates: () => [],
     restingText: (palette) => palette.color('sidebar-text-muted'),
     hoverText: (palette) => palette.color('sidebar-text'),
@@ -129,26 +95,25 @@ const controls: readonly Control[] = [
   {
     // The same component, drawing on a sidebar popover's surfaces instead of the page's.
     what: 'segmented control on a sidebar surface',
-    track: (palette) => palette.color('sidebar-seg-track'),
-    thumb: (palette) => palette.color('sidebar-seg-thumb'),
-    hover: (palette) => palette.color('sidebar-seg-hover'),
-    pressed: (palette) => palette.color('sidebar-seg-pressed'),
-    ring: (palette) =>
-      mix(
-        ringOver(palette, 'sidebar-seg-shadow'),
-        palette.color('sidebar-seg-track'),
-        Number(
-          palette
-            .declaration('sidebar-seg-shadow')
-            .match(/0\.5px rgb\([\d\s]+\/\s*([\d.]+)%\)/u)?.[1],
-        ) / 100,
+    track: (palette) => veiled(palette, 'sidebar-seg-track', palette.color('sidebar-popover-bg')),
+    thumb: (palette) => palette.color('segment-thumb'),
+    hover: (palette) =>
+      veiled(
+        palette,
+        'sidebar-seg-hover',
+        veiled(palette, 'sidebar-seg-track', palette.color('sidebar-popover-bg')),
       ),
-    selectedText: (palette) => palette.color('sidebar-menu-text'),
-    thumbStates: () =>
-      shares(
-        'SegmentedControl.svelte',
-        /var\(--selected-text\) (?<share>[\d.]+)%, var\(--selected-bg\)/gu,
+    pressed: (palette) =>
+      veiled(
+        palette,
+        'sidebar-seg-pressed',
+        veiled(palette, 'sidebar-seg-track', palette.color('sidebar-popover-bg')),
       ),
+    selectedText: (palette) => palette.color('on-brand-action'),
+    thumbStates: (palette) => [
+      palette.color('brand-action-hover'),
+      palette.color('brand-action-pressed'),
+    ],
     restingText: (palette) => palette.color('sidebar-menu-muted'),
     hoverText: (palette) => palette.color('sidebar-menu-text'),
   },
@@ -165,7 +130,6 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
         const hover = control.hover(palette);
         const pressed = control.pressed(palette);
         const fill = deltaE(track, thumb);
-        const ring = deltaE(control.ring(palette), track);
         const limits = band(track);
 
         it('moves the states in one direction, press further than hover', () => {
@@ -208,11 +172,11 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
         });
 
         it('leaves the selection louder than the loudest state beside it', () => {
-          // The fill alone is often not enough: a white thumb on a near-white track separates by
-          // less than a press on a neighbouring option moves. Where that is true the ring is what
-          // puts the selected option back on top, and where the fill is already wide the ring is
-          // free to stay quiet.
-          expect(Math.max(fill, ring)).toBeGreaterThan(deltaE(track, pressed));
+          // The FILL alone, with no ring to help it. A near-white thumb on a near-white track
+          // separated by less than a press on a neighbouring option moved, and was propped up by a
+          // hairline; a saturated accent needs no propping, which is why the ring is gone. If this
+          // ever fails again the answer is a louder selection, not a ring to disguise a quiet one.
+          expect(fill).toBeGreaterThan(deltaE(track, pressed));
         });
 
         it("keeps the selection's own states quieter than the selection itself", () => {
@@ -220,13 +184,8 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
           // that changes nothing should be the faintest thing on the control. A control whose
           // selected thumb answers with elevation alone has no fills to compare - the lift and
           // the landing are its whole acknowledgment.
-          const states = control.thumbStates();
-          if (states.length === 0) return;
-          const [onHover, onPress] = states.map((share) =>
-            mix(control.selectedText(palette), thumb, share),
-          );
-          if (onHover === undefined || onPress === undefined)
-            throw new Error('missing thumb state');
+          const [onHover, onPress] = control.thumbStates(palette);
+          if (onHover === undefined || onPress === undefined) return;
           expect(deltaE(thumb, onHover)).toBeLessThan(fill);
           expect(deltaE(thumb, onPress)).toBeLessThan(fill);
           expect(deltaE(thumb, onHover)).toBeLessThan(deltaE(thumb, onPress));
@@ -242,10 +201,7 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
             expect(contrast(control.hoverText(palette), ground)).toBeGreaterThanOrEqual(4.5);
           }
           const selected = control.selectedText(palette);
-          for (const ground of [
-            thumb,
-            ...control.thumbStates().map((share) => mix(selected, thumb, share)),
-          ]) {
+          for (const ground of [thumb, ...control.thumbStates(palette)]) {
             expect(contrast(selected, ground)).toBeGreaterThanOrEqual(4.5);
           }
         });

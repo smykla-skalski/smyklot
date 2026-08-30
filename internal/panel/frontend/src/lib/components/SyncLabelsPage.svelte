@@ -889,8 +889,8 @@ unlisted labels are removed, and the patterns left alone either way.
 
   .text-inline:focus {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   /* Wrong input: the field wears danger quietly at rest - hairline and a 4%

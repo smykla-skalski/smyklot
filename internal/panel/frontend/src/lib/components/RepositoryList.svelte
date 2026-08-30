@@ -1668,8 +1668,8 @@ a workspace has is not a number worth blocking the first screenful on.
      right edge is wherever the column happens to end. */
   .repo-copy:focus-visible {
     border-radius: var(--r-chip);
-    outline: 2px solid var(--focus);
-    outline-offset: 3px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   /* `clip` rather than `hidden`: the cap trim ends the box at the baseline, so

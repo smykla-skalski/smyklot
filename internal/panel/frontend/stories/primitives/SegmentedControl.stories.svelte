@@ -5,8 +5,8 @@
   import SegmentedControl from '#lib/components/SegmentedControl.svelte';
 
   const VIEWS = [
-    { value: 'audit', label: 'Audit', tone: 'accent' as const },
-    { value: 'failures', label: 'Failures', tone: 'accent' as const },
+    { value: 'audit', label: 'Audit' },
+    { value: 'failures', label: 'Failures' },
   ];
 
   const { Story } = defineMeta({

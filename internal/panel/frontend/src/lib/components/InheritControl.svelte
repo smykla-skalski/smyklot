@@ -157,8 +157,8 @@ trusts.
   }
 
   .link-toggle.broken:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   .link-toggle:disabled {

@@ -2102,8 +2102,8 @@ offering it.
   }
 
   :global(.user-table-wrap:focus-visible) {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   :global(.user-table) {
@@ -2182,8 +2182,8 @@ offering it.
   }
 
   :global(.user-table tbody tr.history-row:focus-visible) {
-    outline: 2px solid var(--focus);
-    outline-offset: -2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   @media (min-width: 64.001rem) {

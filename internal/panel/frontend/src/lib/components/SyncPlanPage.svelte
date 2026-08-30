@@ -1273,8 +1273,8 @@ the button.
   }
 
   .run-reason textarea:focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   @media (max-width: 36rem) {

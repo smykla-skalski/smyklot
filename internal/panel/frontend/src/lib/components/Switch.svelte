@@ -115,8 +115,8 @@ that safe.
   }
 
   .switch input:focus-visible + .switch-track {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .switch input:disabled + .switch-track {

@@ -3,7 +3,7 @@
   color-scheme: light;
 
   /* Primitive palette. Graphite carries structure; petrol marks interaction. */
-  --primitive-light-canvas: #f5f7f6;
+  --primitive-light-canvas: #eef2f0;
   --primitive-light-surface: #ffffff;
   --primitive-light-raised: #fafbfa;
   --primitive-light-inset: #f0f3f2;
@@ -38,10 +38,13 @@
   --primitive-info-light-tint: #edf2f4;
   --primitive-info-dark: #b6c5d1;
   --primitive-info-dark-tint: #26323b;
-  --primitive-success-light: #0f766e;
-  --primitive-success-light-tint: #e7f5f2;
-  --primitive-success-dark: #71cabc;
-  --primitive-success-dark-tint: #173633;
+  /* Success is a GREEN of its own: in the old palette action, success and
+     focus were all #0f766e, so "clickable", "healthy" and "focused" read as
+     one state. Teal stays the brand's; this green only ever means "good". */
+  --primitive-success-light: #187733;
+  --primitive-success-light-tint: #e9f7ec;
+  --primitive-success-dark: #7fd396;
+  --primitive-success-dark-tint: #16351f;
   --primitive-warning-light: #8a5d17;
   --primitive-warning-light-tint: #f8f0de;
   --primitive-warning-dark: #e8c07a;
@@ -73,6 +76,36 @@
   --brand-action-text: #0f625b;
   --on-brand-action: #ffffff;
   --focus: var(--primitive-petrol-700);
+  /* THE FOCUS-RING LAW, as numbers. The ring is drawn with `outline` and
+     never with `box-shadow` - a shadow is clipped by any ancestor that hides
+     its overflow, and fields inside clipping cards were losing their ring
+     that way. One width, and THREE offsets, none of them odd: +2 where the
+     control has room around it, -2 where it must sit flush inside something
+     that clips, and 0 where the control's own line yields to the ring. An
+     odd offset puts the ring half a pixel off the control's own edge on a
+     fractional device pixel and makes it shimmer. */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+  --focus-ring-inset: -2px;
+  --focus-ring-flush: 0;
+  /* EDGES UNDER A CHANGED GROUND, as numbers. How much of an object's own
+     ink becomes its hairline when the ground beneath it moves: two steps,
+     one for a light ground change and one for a heavy one. The share is a
+     proportion of the object's ink rather than a colour, which is why the
+     law needs no restating per theme or per console - a dark ground moves
+     further under a hover and the hairline it produces is the darker tone's
+     own. --edge-share is the number in force at this point in the tree; at
+     rest it is nothing, and only a container in a state raises it.
+     --edge-ink stays the literal token `currentColor` rather than a var(),
+     so it resolves per element instead of baking the root's ink into every
+     descendant. The hairline is one device pixel drawn inside the object's
+     own box: not a border, so it moves no neighbour. */
+  --edge-on-state: 34%;
+  --edge-on-state-strong: 46%;
+  --edge-ink: currentcolor;
+  --edge-share: 0%;
+  --edge-hairline: 1px;
+  --edge-hairline-offset: -1px;
   --info: var(--primitive-info-light);
   --info-tint: var(--primitive-info-light-tint);
   --on-info: #ffffff;
@@ -106,10 +139,11 @@
      That rule is gone; do not reintroduce it, here or globally. */
   --interactive-hover: #f1f5f3;
   /* One state change and two, as overlays so the step is the same on any ground.
-     Sized against the sidebar's approved pair - 2.51 and 5.09 dE00 - rather than picked:
-     4% measured 1.81, which is under two thirds of a state change on a white surface. */
-  --interactive-hover-layer: rgb(24 33 31 / 5.5%);
-  --interactive-pressed: rgb(24 33 31 / 11%);
+     Resweep-6: 5.5% composited to 1.11:1 on a white popover - under the
+     1.20 floor a hover needs to read peripherally; 10% lands ~1.21 and the
+     press stays a clear step past it. */
+  --interactive-hover-layer: rgb(24 33 31 / 10%);
+  --interactive-pressed: rgb(24 33 31 / 16%);
   --interactive-pressed-bg: #e7ece9;
   /* What a column heading is, in each of the four states it can be in.
      ------------------------------------------------------------------------
@@ -183,50 +217,63 @@
   /* On #eef2f0: secondary 8.1:1, muted 5.8:1 (nav rows read at a glance). */
   --sidebar-text-secondary: #3d4b47;
   --sidebar-text-muted: #53615c;
-  /* Left where the design put them. Asked to hover harder, the sidebar has
-     nowhere to go: the band's ceiling is where a press begins, and moving both
-     up far enough to see runs the press past the selected item's own fill -
-     measured at 7.65 against the selection's 6.48 - so the selected row would
-     stop being the loudest thing in the column. That is a bigger change than a
-     hover, and not one to make sideways. */
-  --sidebar-item-hover: #dae3de;
-  --sidebar-item-pressed: #cdd8d2;
-  --sidebar-item-active-text: #0d5c55;
+  /* The old #eef2f0 sidebar sat 1.6 dE00 from the canvas - the column did not
+     read as its own zone, and the white thumb had nowhere to be louder than a
+     press. At #e6ede9 the zone reads (3.8 against the canvas) and the ladder
+     orders itself - the selection is the loudest thing in the column,
+     without leaning on its ring. Resweep-6 lifted the two steps again
+     (hover ~1.22:1, press ~1.35:1 against the rail - 1.15 still read as
+     tint drift in peripheral vision). */
+  --sidebar-item-hover: #cfd7d2;
+  --sidebar-item-pressed: #c2cbc5;
+  /* The tree's scroll-edge shadow: occlusion, so ink-dark in every palette. */
+  --sidebar-scroll-shadow: rgb(24 33 31 / 10%);
   /* A count that demands attention (a waiting plan), on sidebar material -
      the content signal tint is mixed for the page's cards and does not read
      here. Ink veil over transparent so it survives the hover band too. */
   --sidebar-count-signal-bg: color-mix(in srgb, #14498f 10%, transparent);
   --sidebar-count-signal-ink: #14498f;
-  /* Selected nav item is a raised thumb, same language as segmented controls. */
-  --sidebar-thumb: #ffffff;
-  /* The ring at 6% read 2.78 against the sidebar, under both the 3.74 fill and the 5.09 a press on
-     a neighbouring row moves: pressing an unselected row was louder than the selection it sat
-     beside. At 14% the edge reads 6.25 and the order is right again. */
-  --sidebar-thumb-shadow: 0 1px 0 rgb(24 33 31 / 22%), 0 0 0 0.5px rgb(24 33 31 / 14%);
-  /* The 1px hard edge is the thumb's physical height. A press consumes it. */
-  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(24 33 31 / 14%);
+  /* THE SELECTION IS A SOLID PAIR, not a near-white thumb. A white fill
+     carrying an inverse ink is white on white, which is what the rail's
+     console shield and the "+N" tile had both become; the selected row is
+     the brand, and its ink is the brand's own. */
+  --sidebar-active-bg: #0f766e;
+  --sidebar-active-ink: #ffffff;
+  --sidebar-item-active-text: var(--sidebar-active-ink);
+  /* The ring at 6% read 2.78 against the old sidebar and lost to a press on a neighbouring row;
+     14% keeps the edge legible. The fill itself now leads the ladder (5.9 over the press's 5.3),
+     so the ring seats the thumb rather than carrying the selection. */
+  --sidebar-thumb-shadow: 0 4px 12px -8px rgb(24 33 31 / 42%), 0 1px 3px rgb(24 33 31 / 14%);
+  /* Pressed: the throw goes, the ring stays - the thumb lands, still itself. */
+  --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(24 33 31 / 12%);
+  /* The selected thumb's 1px boundary, mixed against THIS rail and tuned
+     to the 3:1 floor - not past it, which is what read as chalk. */
+  --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 50%, var(--sidebar-bg));
+  /* Focus in the sidebar is its own token: the page's focus answers the
+     PAGE's grounds, and the Root rail is dark in both page themes. */
+  --sidebar-focus: var(--primitive-petrol-700);
   /* Popovers and menus anchored to the sidebar follow its context, not the page. */
   --sidebar-popover-bg: #ffffff;
   --sidebar-popover-border: #d9e0dd;
   --sidebar-menu-text: var(--primitive-light-text);
   --sidebar-menu-muted: #53615c;
-  --sidebar-menu-hover: #eef2f0;
-  --sidebar-menu-pressed: #dfe6e3;
+  /* ~1.22:1 on the white popover - 1.15 was still tint drift in a menu
+     scanned peripherally; pressed steps past it to ~1.34. */
+  --sidebar-menu-hover: #e3e7e4;
+  --sidebar-menu-pressed: #d4dbd6;
   /* Sign out is the one destructive row in a sidebar menu, and it has to take its
      red from the surface it stands on rather than from the page. Reading `--stop`
      put the light tint under it while the Root console's menu stayed dark in light
      mode, which is a pale pink row on a near-black card. */
   --sidebar-stop: var(--primitive-danger-light);
   --sidebar-stop-tint: var(--primitive-danger-light-tint);
-  /* The segmented control inside a sidebar popover: same rules as the one in the content area,
-     against the popover's own surfaces. Hover and press step down, away from the thumb; the ring
-     carries the selection where the fill alone would lose to a press on a neighbour. */
-  --sidebar-seg-track: #eef1f0;
-  --sidebar-seg-thumb: #ffffff;
-  --sidebar-seg-border: #d9e0dd;
-  --sidebar-seg-hover: color-mix(in srgb, var(--sidebar-menu-text) 5.5%, var(--sidebar-seg-track));
-  --sidebar-seg-pressed: color-mix(in srgb, var(--sidebar-menu-text) 11%, var(--sidebar-seg-track));
-  --sidebar-seg-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 12%);
+  /* The segmented control inside a sidebar popover: the SAME three veils as the one in
+     the content area, mixed from the menu's ink rather than the page's. The thumb, the
+     border and the ring that stood here are gone with the construction they belonged
+     to - the selection is the accent, which the popover takes from the palette. */
+  --sidebar-seg-track: color-mix(in srgb, var(--sidebar-menu-text) 5%, transparent);
+  --sidebar-seg-hover: var(--interactive-hover-layer);
+  --sidebar-seg-pressed: var(--interactive-pressed);
   /* Unread dot and count pill: one vivid alert red for every sidebar context.
      The muted danger tone reads as wine on light and vanishes on the dark
      purple root sidebar; this red holds 4.9:1 under white ink and stays over
@@ -237,10 +284,11 @@
   /* One state change from the control's own ground, like every other state in the shell. It used
      to be --surface-raised, which is 0.55 dE00 from --surface-control - half a just-noticeable
      difference, so the pickers above the tables did not visibly answer the pointer at all. */
-  --control-bg-hover: color-mix(in srgb, var(--text-primary) 5.3%, var(--control-bg));
+  /* ~1.22:1 - a hover that reads as a state peripherally (6.5% measured 1.155). */
+  --control-bg-hover: color-mix(in oklab, var(--text-primary) 10%, var(--control-bg));
   /* Two, so a press reads as more than a hover. --interactive-pressed-bg is a menu-row fill and
      lands within half a just-noticeable difference of this hover on both dark palettes. */
-  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 10.9%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
   --control-border-hover: #99a7a1;
   --input-bg: var(--surface-inset);
@@ -369,12 +417,121 @@
   --space-6: 1.5rem;
   --space-7: 1.75rem;
   --space-8: 2rem;
+  /* The rhythm contract, named: every top-of-page and row-family distance
+     below is one of these decisions, so a view cannot invent its own. */
+  --rhythm-pane-top-wide: 40px;
+  --rhythm-pane-top-compact: 16px;
+  --rhythm-head-copy: 8px;
+  --rhythm-head-actions-stacked: 12px;
+  --rhythm-head-toolbar: 20px;
+  --rhythm-head-surface-wide: 24px;
+  --rhythm-head-surface-compact: 20px;
+  --rhythm-toolbar-surface: 16px;
+  --rhythm-card-head-body: 16px;
+  /* THE BAND A CARD PUTS BETWEEN ITS ROWS AND A LINE THAT IS NOT ONE.
+     Both ends of a card carry it: under the heading it is the head's own
+     margin plus the first row's air, and over a footer it is the last
+     row's air plus the footer's. One number so the two ends cannot drift,
+     and derived rather than typed so moving either term moves both. */
+  --rhythm-card-foot-band: calc(var(--rhythm-card-head-body) + var(--row-pad-default));
+  /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
+  --rhythm-card-gap: var(--space-4);
+  /* The row families' shared geometry - the values every family rule reads. */
+  --row-pad-default: 12px;
+  --row-pad-compact: 8px;
+  /* THE COPY-RHYTHM LAW: inside a card row, the rendered gap from a title
+     line's box to its description line's box is 8px - one number for every
+     family (the title vocabulary wears text-box trim, so the box edge is the
+     ink edge). Families whose geometry adds structural slack derive their
+     declared value from 8 at the token, and the derivation is written there.
+     Measured rendered, not declared: re-measure after any change to a
+     family's type or track sizing. */
+  --row-copy-gap: 8px;
+  /* object rows: the name-ROW carries ~5px of control slack below the
+     trimmed name (pills and marks set its height), so the declared grid
+     gap stays one step under the law's 8. */
+  --row-copy-gap-object: 4px;
+  /* choice cards: centred track sizing adds ~3px around the title, so the
+     declared row-gap stays under the law's 8 - renders 8.2. */
+  --row-copy-gap-choice: 5px;
+  /* kind cards: the summary pulls against the card's 12px grid gap plus
+     the head row's 4px slack - renders 8. */
+  --row-copy-gap-kind: -8px;
+  /* The other two rhythm distances the law names: between paragraphs of
+     prose, and equally around a block set into prose. Both are margins on
+     auto-height boxes rather than gaps or padding, so nothing clips when a
+     reader doubles text spacing (WCAG 1.4.12). */
+  --prose-para-gap: 16px;
+  --prose-block-gap: 20px;
+  /* THE HEAD'S LINE IS ITS TITLE'S CAP, not a round number above it. At 20
+     against a 13px cap the head reserved 3.5px of nothing over the title, so
+     a card opened its ink 3.5 inside its frame and closed it wherever the
+     last row happened to end. Every control in the head still centres on
+     this line through the formulas that read it, so shrinking it re-centres
+     them rather than moving them. */
+  --card-head-line: 13px;
+  /* An object's name sits on a declared line so a badge beside it cannot
+     change the row's height. Read in three places: the line itself, the
+     slack the block gives back to centre its ink, and the pair gap. */
+  --object-name-line: 20px;
+  /* THE SETTING-ROW LAW's threshold: the width below which the sentence
+     beside a control stops being a sentence. 13rem holds about thirty-two
+     characters at the description's size - five average English words, so a
+     line still carries a phrase rather than breaking after every word or
+     two. It is the one number the law needs, and the only thing that decides
+     whether a row stands as two columns or as two lines. */
+  --setting-say-min: 13rem;
+  /* The width a NAMED FIELD reads at, and the floor that breaks a dialog
+     line when two of them will not fit. 12rem is about 24 characters of the
+     control size. The setting row's sentence needs one more because it is
+     prose and wraps; a field is one line and does not. */
+  --entry-say-min: 12rem;
   /* The room an inheritance marker takes before the control it belongs to. A
      table header indents its label by exactly this, so the word over a column
      starts where that column's controls start rather than where its cells do. */
   --inherit-marker-size: 26px;
   --inherit-marker-gap: 6px;
   --inherit-marker-offset: calc(var(--inherit-marker-size) + var(--inherit-marker-gap));
+
+  /* THE PAIR ENTRY's geometry. Every gap inside one comes from these two air
+     units and nothing else: --pair-air on the inline axis (the shell's
+     padding, the gap between a word and its chevron, the tail lane's
+     remainder beside the x) and --pair-air-block above and below a lane. They
+     are px, not rem: the block figure is arithmetic from the control tier and
+     an inline rem against it only agrees at a 16px root.
+     The lane height is the tier minus its two borders minus two block air
+     units, declared so the lane's wash and its 1px invalid hairline land on
+     whole pixels - sized by the input's line box the lane came out fractional
+     and the hairline's edges disappeared into half pixels.
+     The tail lane is one declared column so a draft row, which has no x yet
+     but will, does not jump wider the moment it commits. */
+  --pair-air: 4px;
+  --pair-air-block: 1px;
+  --pair-lane-height: calc(var(--control-height-compact) - 2px - 2 * var(--pair-air-block));
+  --pair-lane-tail: calc(var(--pair-lane-height) + var(--pair-air));
+  --pair-lane-radius: calc(var(--r-ctl) - 1px);
+  --pair-lane-key: 7.5rem;
+  --pair-lane-value: 9.5rem;
+  /* The reserved message line, in rem so it grows with the reader's text. */
+  --pair-note-line: var(--leading-meta);
+
+  /* THE COLOUR PICKER's geometry. THE SWATCH GRID IS THE MODULE, and the
+     width is derived from it rather than typed beside it. Every one of these
+     was a literal in the component - 150, 14, 16 and the rest - so the pop
+     was wider than the tiles it held and the grid sat left in a column too
+     wide for it. A geometry nothing reads is not a geometry. */
+  --cp-cell: 26px;
+  --cp-cols: 8;
+  --cp-gap: var(--space-1);
+  --cp-pad: var(--space-2);
+  --cp-width: calc(
+    var(--cp-cell) * var(--cp-cols) + var(--cp-gap) * (var(--cp-cols) - 1) + var(--cp-pad) * 2 + 2px
+  );
+  --cp-dot: 16px;
+  --cp-hue-height: 24px;
+  --cp-hue-thumb: 16px;
+  --cp-area-height: 10rem;
+  --cp-knob: 14px;
 
   /* Below micro: for type that has to fit inside something small rather than be
      read across a page - a count in a segment, two initials in a 20px circle. */
@@ -389,6 +546,27 @@
   --font-size-card-title: 1.0625rem;
   --font-size-dialog-title: 1.25rem;
   --font-size-page-title: 1.75rem;
+  /* THE LEADING SCALE. Leading is on the rem side of the Units law: it has to
+     grow when the reader enlarges the text, and a px line-height under a rem
+     font-size crowds and then clips at 200%. The sheet had it three ways at
+     once - `round(1.5em, 1px)`, px literals, and bare ratios. A ratio is the
+     one that matters: it inherits, so 15px body copy renders 22.5 and every
+     odd-px tier under it inherits a fraction with it. round() is the right
+     idea, but an unsupported math function invalidates its whole declaration
+     and the value falls back to `normal`, the font's own fractional metric. A
+     rem multiple needs no function to land on a whole pixel. These are the
+     sizes round() was already producing, so nothing moves except the
+     fractions. */
+  --leading-flat: 1; /* a glyph box: a count, a mark, an icon */
+  --leading-tight: 1rem; /* 16px - micro type in a control or eyebrow */
+  --leading-micro: 1.0625rem; /* 17px - --font-size-micro as prose */
+  --leading-compact: 1.125rem; /* 18px - --font-size-compact as prose */
+  --leading-meta: 1.25rem; /* 20px - --font-size-meta as prose */
+  --leading-body: 1.4375rem; /* 23px - --font-size-body as prose */
+  --leading-title: 1.625rem; /* 26px - a 22px object or hero title */
+  --leading-page: 2.125rem; /* 34px - --font-size-page-title */
+  /* The width a short explanatory line runs to before it wraps. */
+  --measure-note: 26rem;
   --radius-chip: 999px;
   --radius-control: 8px;
   --radius-surface: 10px;
@@ -410,11 +588,33 @@
      pixel. A control's height is a decision, not an outcome. */
   --control-height-chip: 24px;
   --control-height-chip-small: 20px;
+  /* The quiet tier, named. Inline and quiet buttons drew at 26 in one place
+     and 28 in another - two unnamed sub-tiers where the taxonomy documents
+     one. 28 is the number both settle on. */
+  --tier-quiet: 28px;
+  /* The mark tier: a pill, a chip, a badge - set INSIDE a line of text
+     rather than standing in a row of controls. Written out at twenty
+     places before it had a name, which is also why the hit-area bleeds
+     that derive from it were literals nobody could check. */
+  --tier-mark: 20px;
   --touch-target: 44px;
+  /* A field sized by its own content takes this as its inline floor, so a
+     one-character value still has a focus ring with a body. A field that
+     fills a lane does not - its lane already gives it one. */
+  --field-target-min: 24px;
   --control-inset: 2px;
-  --icon-sm: 0.875rem;
-  --icon-md: 1.125rem;
-  --icon-lg: 1.375rem;
+
+  /* THE ICON SCALE. Six drawn sizes, in px because an icon does not grow
+     with the reader's font size - the Units law puts it on the px side, and
+     two of these were rem, which made them fractional at any root but 16.
+     13 and 14 were one tier spelled two ways - a button glyph at 13 beside a
+     tile glyph at 14 - and are unified on 13. */
+  --icon-nano: 8px;
+  --icon-micro: 10px;
+  --icon-xs: 12px;
+  --icon-sm: 13px;
+  --icon-base: 16px;
+  --icon-md: 18px;
   /* 228px, the approved shell's pages column beside the 60px rail. */
   --sidebar-width: 228px;
   --sidebar-width-collapsed: 4.5rem;
@@ -474,41 +674,59 @@
      One pair, so two things moving at once deform by the same amount. */
   --squash-along: 1.06;
   --squash-across: 0.9;
-  --layer-menu: 35;
-  --layer-sticky: 30;
-  --layer-popover: 35;
-  /* Above the mobile sidebar drawer, below every modal surface. */
-  --layer-rail: 42;
-  --layer-dialog: 45;
-  --layer-dialog-popover: 47;
+  /* THE STACKING ORDER. Every global layer is named here and nowhere else, so
+     the order can be read off one list rather than reconstructed by grepping
+     eighteen scattered declarations. Small integers inside a component (a
+     segmented thumb over its track, a sticky cell over its row) stay literal:
+     they are local to that component's own stacking context and are not
+     layers. */
+  --layer-chrome: 10; /* the collapsed navigation side */
+  --layer-sticky: 30; /* a sticky heading inside a scrolling pane */
+  --layer-scrim: 30; /* the dim behind an open side */
+  --layer-side: 40; /* the navigation side, as a drawer */
+  --layer-top-bar: 45; /* the narrow-viewport top bar */
+  --layer-rail: 50; /* the workspace rail */
+  /* Raised from 35, and the one value that moves. A popover opens from any
+     control, including one standing beside the rail, so at 35 it rendered
+     BEHIND the rail it was opened from. Above the rail, below the flyout. */
+  --layer-popover: 55;
+  --layer-menu: 55; /* a menu is a popover that happens to hold rows */
+  --layer-flyout: 60; /* a rail tip, and a flown tree page */
+  /* The scrim is always one step under the thing it dims, and on a phone the
+     side climbs over the top bar and the rail - so its scrim climbs with it.
+     Two names rather than arithmetic: a layer that has to be computed is a
+     layer nobody can read off the list. */
+  --layer-scrim-drawer: 60;
+  --layer-drawer: 70; /* the side, and its tip, over the top bar on a phone */
+  --layer-dialog: 75;
+  --layer-dialog-popover: 80;
+  --layer-toast: 85;
+  --layer-tip: 90; /* a live match tip, over a toast */
   /* Above the dialog: a tooltip explains whatever is in front of it. */
-  --layer-tooltip: 50;
+  --layer-tooltip: 95;
+  --layer-skip: 120; /* the skip link, over everything */
   --shadow-plate: 0 1px 2px var(--shadow-color);
   --shadow-popover: 0 16px 42px var(--shadow-color);
   --shadow-dialog: 0 24px 72px color-mix(in srgb, var(--shadow-color) 82%, black);
 
-  /* Segmented controls: a raised thumb on a slightly darker track.
+  /* GLASS SEGMENTED CONTROL. Every layer is a translucent veil over the page,
+     so the control reads as glass rather than paint: the track is a thin frost
+     and hover and press are deeper washes of the same ink. One axis, rest <
+     hover < press < selected, so the hierarchy survives grayscale.
 
-     Hover and press step *down* from the track, away from the thumb. Down, not up: the thumb is
-     pure white, so lightening a hovered option moves it toward the selected one. Lifting to
-     --surface-raised left 1.19 dE00 between "hovered" and "selected", against the 3.08 that is the
-     whole selected/unselected signal - hover ate two thirds of it. Darkening opens that gap to
-     5.53 and 7.91.
-
-     The sizes are the pair the sidebar already uses for one state change and two, measured rather
-     than guessed: 2.51 and 5.09 dE00. Both steps are carried by lightness alone, so they survive
-     colour-vision deficiency almost whole - 2.41 of 2.52 under deuteranopia, where mixing the
-     accent in instead would have kept about half. */
-  --segment-track: var(--surface-inset);
-  --segment-thumb: #ffffff;
-  --segment-hover: color-mix(in srgb, var(--text-primary) 5.5%, var(--segment-track));
-  --segment-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--segment-track));
-  /* Two layers, and the second is the load-bearing half: a hairline ring that gives the thumb an
-     edge. A white thumb on a near-white track separates by only 3.08 dE00 - less than the 5.06 a
-     press on a neighbouring option moves - so the fill alone leaves the selection quieter than the
-     states around it. At 14% the ring reads 6.49 against the track and the selection is once again
-     the loudest thing on the control. */
-  --segment-shadow: 0 1px 3px rgb(24 33 31 / 14%), 0 0 0 0.5px rgb(24 33 31 / 14%);
+     The veils are mixed over TRANSPARENT rather than over a surface. A track
+     mixed into --surface-inset is one flat colour decided against one ground,
+     and the control stands on canvas, on cards and inside popovers; the veil
+     lands the same step on all of them. */
+  --segment-track: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  /* The selection is the one saturated material in this control: a solid
+     palette accent, so the travelling pane stays vibrant and legible against
+     every ground the seg sits on. It was a near-white thumb, which had to be
+     ringed and shadowed into visibility because it differed from its own track
+     by 3.08 dE00 - less than a press on the option beside it moved. */
+  --segment-thumb: var(--brand-action);
+  --segment-hover: var(--interactive-hover-layer);
+  --segment-pressed: var(--interactive-pressed);
 
   /* The night surface, for a control standing on the invitation page's sky. It is
      declared once and never per theme: the sky is night in both, so a control on
@@ -587,8 +805,8 @@
   /* Light, not dark. Hover lifts a control on a dark ground, so a press that darkened it sent the
      two states in opposite directions; press is now the same gesture one step further. Sized to
      the dark sidebar's own approved pair, 5.07 and 8.92 dE00. */
-  --interactive-hover-layer: rgb(255 255 255 / 7%);
-  --interactive-pressed: rgb(255 255 255 / 12.5%);
+  --interactive-hover-layer: rgb(255 255 255 / 8.5%);
+  --interactive-pressed: rgb(255 255 255 / 14%);
   --interactive-pressed-bg: #26313d;
   /* One figure, and the whole ramp follows - see `:root`. Shorter here because
      the dark palette's action colour is a pale teal against a near-black inset,
@@ -603,44 +821,42 @@
   --sidebar-text: var(--primitive-dark-text);
   --sidebar-text-secondary: #c9d2d9;
   --sidebar-text-muted: #9caab5;
-  --sidebar-item-hover: #1a242d;
-  --sidebar-item-pressed: #223039;
-  --sidebar-item-active-text: #a1f7e6;
+  --sidebar-item-hover: #1e2932;
+  --sidebar-item-pressed: #253440;
+  /* Light, not dark: a black shade is invisible on a near-black rail, so
+     the continuation cue glows here - dark-mode elevation is lighter, not
+     deeper. */
+  --sidebar-scroll-shadow: rgb(255 255 255 / 16%);
+  --sidebar-active-bg: var(--primitive-petrol-400);
+  --sidebar-active-ink: #062c2a;
+  --sidebar-item-active-text: var(--sidebar-active-ink);
   --sidebar-count-signal-bg: color-mix(in srgb, #92c1ff 14%, transparent);
   --sidebar-count-signal-ink: #92c1ff;
   --pressed-inset: inset 0 1px 2px rgb(0 0 0 / 40%), inset 0 -1px 0 rgb(255 255 255 / 4%);
-  /* Lifted from #2a333e. The dark sidebar has no room below it - it sits 0.02 in OKLCh lightness
-     above the canvas - so its hover and press have to move up, toward the thumb. That left a
-     pressed *unselected* row 3.33 dE00 from the selected one, 73% of the way across a 9.63 gap.
-     Raising the thumb restores the margin: press now stops 5.22 short of it. */
-  --sidebar-thumb: #333b46;
-  --sidebar-thumb-shadow: 0 1px 0 rgb(0 0 0 / 65%), 0 0 0 0.5px rgb(255 255 255 / 4%);
-  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 4%);
+  --sidebar-thumb-shadow: 0 5px 14px -8px rgb(0 0 0 / 78%), 0 1px 3px rgb(0 0 0 / 38%);
+  --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(0 0 0 / 34%);
+  --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 36%, var(--sidebar-bg));
+  --sidebar-focus: var(--primitive-petrol-400);
   --sidebar-popover-bg: #1b222b;
   --sidebar-popover-border: #333d49;
   --sidebar-menu-text: var(--primitive-dark-text);
   --sidebar-menu-muted: #9caab5;
-  --sidebar-menu-hover: #232d38;
-  --sidebar-menu-pressed: #2c3844;
+  --sidebar-menu-hover: #2a323c;
+  --sidebar-menu-pressed: #323e4b;
   --sidebar-stop: var(--primitive-danger-dark);
   --sidebar-stop-tint: var(--primitive-danger-dark-tint);
-  --sidebar-seg-track: #151a21;
-  --sidebar-seg-thumb: #2c3641;
-  --sidebar-seg-border: #333d49;
-  /* Black rather than the sidebar's own ground: the popover track sits close enough to it that
-     mixing toward it saturates at 1.68 dE00, less than a state change. Pressed bottoms out at
-     black, which is why this step is 7.35 rather than the 8.92 the light side reaches. */
-  --sidebar-seg-hover: color-mix(in srgb, black 56%, var(--sidebar-seg-track));
-  --sidebar-seg-pressed: #000000;
-  /* Inset for the same reason as --segment-shadow above. */
-  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
+  /* Smoked, and the ladder climbs - the same rule the page's control follows on a dark
+     ground, because below one the WCAG +0.05 term starves downward contrast. */
+  --sidebar-seg-track: rgb(0 0 0 / 30%);
+  --sidebar-seg-hover: rgb(255 255 255 / 8.5%);
+  --sidebar-seg-pressed: rgb(255 255 255 / 14%);
   /* Same alert pair as light: the vivid red carries its own contrast, so it
      does not follow the theme's pale danger tone. */
   --unread-badge-bg: #d03339;
   --unread-badge-text: #ffffff;
   --control-border-hover: #536170;
-  --control-bg-hover: color-mix(in srgb, #ffffff 7%, var(--control-bg));
-  --control-bg-pressed: color-mix(in srgb, #ffffff 12.4%, var(--control-bg));
+  --control-bg-hover: color-mix(in srgb, #ffffff 8.5%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, #ffffff 14%, var(--control-bg));
   --table-header-bg: var(--surface-inset);
   --table-footer-bg: var(--surface-inset);
   /* Lifts rather than drops: on a dark ground the pointer raises what it is over, as it does on
@@ -648,9 +864,10 @@
   --table-row-hover: color-mix(in srgb, #ffffff 6.8%, transparent);
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, transparent);
 
-  /* Clears AA on the 14% drift-tinted board tile. The former #92c1ff
-     landed at 4.47:1 once it also contributed to the tile background. */
-  --drift: #9ac7ff;
+  /* #92c1ff measured 4.47:1 as 12px pending counters on the composed changed
+     background - under the 4.5 floor, and rounding is not permitted. #accfff
+     holds 5.2:1 there, a real production margin. */
+  --drift: #accfff;
   --diff-chg-ink: var(--drift);
   --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
   --diff-del-ink: var(--danger);
@@ -697,26 +914,22 @@
   --tile-well: color-mix(in srgb, black 20%, var(--surface-base));
   --well-shadow: inset 0 1px 3px rgb(0 0 0 / 55%), inset 0 -1px 0 rgb(255 255 255 / 5%);
 
-  /* The track is the inset surface here as it is in every other palette. It used to be the sidebar
-     primitive, which sits 0.02 above the canvas in OKLCh lightness and so left the control no room
-     to step down: the furthest a hovered option could recede was 3.68 dE00, and every larger step
-     had to move *toward* the thumb instead. On --surface-inset the same rule as light applies -
-     hover and press recede toward the canvas, away from the selected thumb. */
-  --segment-track: var(--surface-inset);
-  --segment-thumb: #2b3541;
-  /* A pressed option recedes to the page's own ground, which is the darkest surface the product
-     paints and therefore a floor rather than an arbitrary stop: 7.85 dE00 from the track, with
-     hover at 5.07 halfway there. */
-  --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
-  --segment-pressed: var(--canvas);
-  /* A black ring on a dark track is not a ring: at 20% it measured 1.54 dE00, inside the noise.
-     White at 14% reads 9.76, which clears both the 4.13 fill and the 7.85 press.
-
-     Inset, so it hugs the thumb instead of expanding into the 2px the thumb is
-     held off the track by. Outset it took the first half-pixel of that gap and
-     left a bright hairline running parallel to the track's own border, about a
-     pixel from it - two lines where the design has one. */
-  --segment-shadow: 0 1px 3px rgb(0 0 0 / 40%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
+  /* An alias bakes its var()s where it is DECLARED and descendants inherit
+     the baked value - `.force-dark` is not `:root`, so a two-up dark pane in
+     the catalogue keeps the light-baked aliases unless they are restated
+     here. */
+  --control-bg: var(--surface-control);
+  --input-bg: var(--surface-inset);
+  --popover-bg: var(--surface-base);
+  --dialog-bg: var(--surface-base);
+  /* The track is smoked here - a black veil the page shows through - and the
+     ladder climbs, because below a dark ground the WCAG +0.05 term starves
+     downward contrast. The thumb needs no restatement: it is the palette's
+     own accent, and this palette states that for itself. */
+  --segment-track: rgb(0 0 0 / 30%);
+  --segment-thumb: var(--brand-action);
+  --segment-hover: var(--interactive-hover-layer);
+  --segment-pressed: var(--interactive-pressed);
 
   --border-strong: #5b6a78;
 }
@@ -815,15 +1028,17 @@
   --table-filler-bg: var(--surface-raised);
   --input-bg: var(--surface-inset);
   --control-bg: var(--surface-control);
-  --control-bg-hover: color-mix(in srgb, var(--text-primary) 5.4%, var(--control-bg));
-  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--control-bg));
+  --control-bg-hover: color-mix(in oklab, var(--text-primary) 10%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
   --control-surface: var(--control-bg);
-  --segment-track: var(--surface-inset);
   /* Re-resolved against the Root surfaces, like the aliases above: the panel copies were computed
-     against petrol-neutral greys and would otherwise arrive here already mixed. */
-  --segment-hover: color-mix(in srgb, var(--text-primary) 5.5%, var(--segment-track));
-  --segment-pressed: color-mix(in srgb, var(--text-primary) 11%, var(--segment-track));
+     against petrol-neutral greys and would otherwise arrive here already mixed. The veils come
+     from --text-primary, so the violet comes free. */
+  --segment-track: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  --segment-hover: var(--interactive-hover-layer);
+  --segment-pressed: var(--interactive-pressed);
+  --segment-thumb: var(--brand-action);
   --popover-bg: var(--surface-base);
   --popover-border: var(--border-subtle);
   --dialog-bg: var(--surface-base);
@@ -871,14 +1086,20 @@
   --sidebar-text: #f5f2fa;
   --sidebar-text-secondary: #cfc8dc;
   --sidebar-text-muted: #aca4bb;
-  --sidebar-item-hover: #221d2e;
-  --sidebar-item-pressed: #2d263c;
-  --sidebar-item-active-text: #e4dbff;
-  /* Lifted from #352d49, for the reason the dark panel sidebar was: a pressed unselected row
-     landed 3.30 dE00 from the selected thumb. It now stops 5.25 short. */
-  --sidebar-thumb: #3d3550;
-  --sidebar-thumb-shadow: 0 1px 0 rgb(0 0 0 / 68%), 0 0 0 0.5px rgb(255 255 255 / 5%);
-  --sidebar-thumb-shadow-pressed: 0 0 0 0.5px rgb(255 255 255 / 5%);
+  --sidebar-item-hover: #282433;
+  --sidebar-item-pressed: #322c42;
+  /* The Root chrome is dark in either theme, so its cue glows for the same
+     reason the dark workspace sidebar's does. */
+  --sidebar-scroll-shadow: rgb(255 255 255 / 16%);
+  --sidebar-active-bg: #6d54bd;
+  --sidebar-active-ink: #ffffff;
+  --sidebar-item-active-text: var(--sidebar-active-ink);
+  --sidebar-thumb-shadow: 0 5px 14px -8px rgb(0 0 0 / 82%), 0 1px 3px rgb(0 0 0 / 42%);
+  --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(0 0 0 / 36%);
+  --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 36%, var(--sidebar-bg));
+  /* This rail is dark in BOTH page themes, so its focus is the light lavender
+     in both - the light page's #6d54bd would sink into this chrome. */
+  --sidebar-focus: #b9a4ff;
   /* Declared on the shell so both Root themes get them: this sidebar is dark in either. */
   --sidebar-count-signal-bg: color-mix(in srgb, #a7c7f2 14%, transparent);
   --sidebar-count-signal-ink: #a7c7f2;
@@ -886,18 +1107,16 @@
   --sidebar-popover-border: #3f3656;
   --sidebar-menu-text: #f5f2fa;
   --sidebar-menu-muted: #aca4bb;
-  --sidebar-menu-hover: #2b2439;
-  --sidebar-menu-pressed: #372e4b;
+  --sidebar-menu-hover: #332d43;
+  --sidebar-menu-pressed: #3e3552;
   /* Dark in either Root theme, like everything else declared on this shell. */
   --sidebar-stop: var(--primitive-danger-dark);
   --sidebar-stop-tint: var(--primitive-danger-dark-tint);
-  --sidebar-seg-track: #191524;
-  --sidebar-seg-thumb: #362e4b;
-  --sidebar-seg-border: #3f3656;
-  /* Declared on the shell so both Root themes get them: the Root sidebar is dark in either. */
-  --sidebar-seg-hover: color-mix(in srgb, black 36%, var(--sidebar-seg-track));
-  --sidebar-seg-pressed: color-mix(in srgb, black 66%, var(--sidebar-seg-track));
-  --sidebar-seg-shadow: 0 1px 3px rgb(0 0 0 / 46%), inset 0 0 0 0.5px rgb(255 255 255 / 14%);
+  /* Declared on the shell so both Root themes get them: the Root sidebar is dark in
+     either, so its control is smoked and its ladder climbs in both. */
+  --sidebar-seg-track: rgb(0 0 0 / 30%);
+  --sidebar-seg-hover: rgb(255 255 255 / 8.5%);
+  --sidebar-seg-pressed: rgb(255 255 255 / 14%);
 }
 
 :root[data-theme='dark'] .app-shell.root-mode,
@@ -920,19 +1139,24 @@
   --brand-action-hover: #b9a4ff;
   /* Continues up the ramp, as in the dark panel. */
   --brand-action-pressed: #cdbdff;
-  --control-bg-hover: color-mix(in srgb, #ffffff 6.7%, var(--control-bg));
-  --control-bg-pressed: color-mix(in srgb, #ffffff 11.9%, var(--control-bg));
+  --control-bg-hover: color-mix(in srgb, #ffffff 8.5%, var(--control-bg));
+  --control-bg-pressed: color-mix(in srgb, #ffffff 14%, var(--control-bg));
   --brand-action-tint: #2e2544;
   --brand-action-text: #c4b5fd;
   --on-brand-action: #1c1329;
   --table-row-hover: color-mix(in srgb, #ffffff 6.7%, transparent);
   --table-row-pressed: color-mix(in srgb, #ffffff 12.4%, transparent);
-  /* The Root shell keeps its own thumb rather than inheriting the panel's #2b3541: a blue-grey
-     thumb at hue 253 inside a violet shell at hue 300 reads as another product's control, the
-     same argument --brand-action is re-declared for above. */
-  --segment-thumb: #302b39;
-  --segment-hover: color-mix(in srgb, var(--canvas) 65%, var(--segment-track));
-  --segment-pressed: var(--canvas);
+  --sidebar-active-bg: #a78bfa;
+  --sidebar-active-ink: #1c1329;
+  --sidebar-item-active-text: var(--sidebar-active-ink);
+  /* The smoked track and white-frost ladder, RESTATED: the light Root block's
+     mixes would re-resolve here with the dark ink and land on the wrong side
+     of the track. The thumb needs no restatement - it is this palette's own
+     accent, which this block already states. */
+  --segment-track: rgb(0 0 0 / 30%);
+  --segment-thumb: var(--brand-action);
+  --segment-hover: var(--interactive-hover-layer);
+  --segment-pressed: var(--interactive-pressed);
   --tile-face: color-mix(in srgb, var(--surface-raised) 88%, #ffffff);
   --tile-border: var(--border-control);
   --tile-well: color-mix(in srgb, black 20%, var(--surface-base));
@@ -941,4 +1165,32 @@
   --diff-del-bg: #3c1f24;
   --diff-add-word: #1f4c32;
   --diff-del-word: #5c2e35;
+  /* Restated for the same reason the light Root block restates them one
+     scope up: a var() inside a custom property resolves where the property
+     is DECLARED, so every one of these arrived here already mixed from the
+     LIGHT Root palette. A tab's ink, a switch's track and every diff and
+     matrix tone were the light console's inside the dark one. */
+  --diff-add-ink: var(--verb-add);
+  --diff-del-ink: var(--danger);
+  --diff-chg-ink: var(--drift);
+  --diff-chg-bg: color-mix(in srgb, var(--drift) 16%, var(--surface-base));
+  --cell-instep: var(--text-muted);
+  --cell-pending: var(--diff-chg-ink);
+  --cell-pending-bg: var(--diff-chg-bg);
+  --cell-refused: var(--danger);
+  --cell-refused-bg: var(--danger-tint);
+  --cell-off: var(--border-control);
+  --code-comment: color-mix(in srgb, var(--text-muted) 85%, var(--text-primary));
+  --code-punct: var(--text-secondary);
+  --managed-bar: var(--brand-action);
+  --match-ink: var(--brand-action-text);
+  --tab-ink: var(--text-primary);
+  --tab-muted: var(--text-secondary);
+  --tab-indicator: var(--text-primary);
+  --tab-indicator-hover: var(--border-control);
+  --tab-count-bg: var(--surface-inset);
+  --tab-count-ink: var(--text-secondary);
+  --switch-track-off: var(--surface-inset);
+  --switch-track-off-border: var(--border-strong);
+  --switch-track-on: var(--brand-action);
 }

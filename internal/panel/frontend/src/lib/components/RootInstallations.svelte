@@ -437,8 +437,8 @@ and most visits to this route never open one.
   }
 
   :global(.installation-table-shell .installation-row:focus-visible) {
-    outline: 2px solid var(--focus);
-    outline-offset: -2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   :global(.installation-table-shell .installation-row.is-unsaved) {

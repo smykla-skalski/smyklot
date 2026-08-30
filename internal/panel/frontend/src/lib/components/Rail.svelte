@@ -493,9 +493,11 @@ would be telling everybody else about a console they cannot open.
     translate: 0 1px;
   }
 
+  /* The solid selection pair, like the nav thumb: the old near-white fill under this
+     inverse ink left the console shield white on white in the light workspace. */
   .rail-tile.is-active {
-    background: var(--sidebar-thumb);
-    border-color: var(--sidebar-border);
+    background: var(--sidebar-active-bg);
+    border-color: transparent;
     box-shadow: var(--sidebar-thumb-shadow);
     color: var(--sidebar-item-active-text);
   }
@@ -642,10 +644,12 @@ would be telling everybody else about a console they cannot open.
     text-box: trim-both cap alphabetic;
   }
 
-  /* Open, the trigger holds the same ground an active tile does. */
+  /* Open, the trigger holds the same ground an active tile does - the active PAIR,
+     not the fill alone: the ink is inverse, and over a near-white fill "+N" was
+     white on white. */
   .rail-more.menu-open {
-    background: var(--sidebar-thumb);
-    border-color: var(--sidebar-border);
+    background: var(--sidebar-active-bg);
+    border-color: transparent;
     box-shadow: var(--sidebar-thumb-shadow);
     color: var(--sidebar-item-active-text);
   }
@@ -944,6 +948,13 @@ would be telling everybody else about a console they cannot open.
     font-weight: 700;
     inline-size: 20px;
     justify-content: center;
+    /* The generated mark is a colour of its own, so it needs a boundary against the
+       menu it sits in: a white inner hairline to lift it off its own fill, and the
+       rail's line token outside that - mixed against THIS rail and tuned to the 3:1
+       floor rather than past it, which is what read as chalk. */
+    box-shadow:
+      inset 0 0 0 1px rgb(255 255 255 / 22%),
+      0 0 0 1px var(--sidebar-thumb-line);
   }
 
   .ws-mini .t {

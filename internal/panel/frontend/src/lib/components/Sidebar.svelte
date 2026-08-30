@@ -406,7 +406,33 @@ it has to answer to the same fact.
 <style>
   .side {
     align-self: start;
-    background: var(--sidebar-bg);
+    /* THE CLIPPED-EDGE CUE. A tree taller than the rail says so at the edge it is cut
+       at, and says nothing when it fits. Four layers and no script: the two `local`
+       covers travel WITH the content, so they sit over the shadows while there is
+       nothing above or below to hide; the two `scroll` shadows stay with the rail and
+       are uncovered exactly as far as the content has moved away. Occlusion, so the
+       colour is ink-dark on the light rails and a glow on the dark ones - a black
+       shade on a near-black rail is not a shadow. */
+    background:
+      linear-gradient(var(--sidebar-bg) 30%, transparent) local no-repeat,
+      linear-gradient(transparent, var(--sidebar-bg) 70%) local no-repeat,
+      radial-gradient(farthest-side at 50% 0, var(--sidebar-scroll-shadow), transparent) scroll
+        no-repeat,
+      radial-gradient(farthest-side at 50% 100%, var(--sidebar-scroll-shadow), transparent) scroll
+        no-repeat,
+      var(--sidebar-bg);
+    background-position:
+      0 0,
+      0 100%,
+      0 0,
+      0 100%,
+      0 0;
+    background-size:
+      100% 24px,
+      100% 24px,
+      100% 10px,
+      100% 10px,
+      auto;
     border-inline-end: 1px solid var(--sidebar-border);
     box-sizing: border-box;
     color: var(--sidebar-text);
@@ -498,7 +524,10 @@ it has to answer to the same fact.
      segmented control's curve; travel itself is WAAPI transform - `top`
      deliberately never eases. */
   .nav-thumb {
-    background: var(--sidebar-thumb);
+    /* The solid selection pair, not a near-white thumb. A pale fill carrying an
+       inverse ink is white on white; the selected row is the console's own accent and
+       the ink above it is that accent's. */
+    background: var(--sidebar-active-bg);
     block-size: var(--nav-thumb-height, 0px);
     border-radius: var(--nav-thumb-radius, var(--radius-control));
     box-shadow: var(--sidebar-thumb-shadow);
@@ -583,8 +612,11 @@ it has to answer to the same fact.
 
   .tree-row:focus-visible > .row-visual,
   .tree-kid:focus-visible > .row-visual {
-    outline: 2px solid var(--focus);
-    outline-offset: 2px;
+    /* THE SIDEBAR'S OWN FOCUS, not the page's. `--focus` answers the grounds the PAGE
+       has, and the Root rail is dark in both page themes - so in light Root the page's
+       violet ring measured 2.76:1 against this chrome and was a ring nobody could see. */
+    outline: var(--focus-ring-width) solid var(--sidebar-focus);
+    outline-offset: var(--focus-ring-offset);
   }
 
   .tree-row:hover {

@@ -1170,8 +1170,8 @@ and a reader should not have to navigate between them.
   }
 
   :global(.queue-row):focus-visible {
-    outline: 2px solid var(--focus);
-    outline-offset: -2px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   /* Both lines are flex rows of trimmed boxes on a shared baseline, so each

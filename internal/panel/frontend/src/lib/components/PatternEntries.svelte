@@ -210,8 +210,8 @@ fifteen behaviours.
 
   .pattern-entry:focus-within {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   .pattern-entry .pattern-input {

@@ -1345,8 +1345,8 @@ stacked left, Cancel and Done on a hairline foot.
 
   .text-inline:focus {
     border-color: var(--focus);
-    outline: 2px solid var(--focus);
-    outline-offset: -1px;
+    outline: var(--focus-ring-width) solid var(--focus);
+    outline-offset: var(--focus-ring-inset);
   }
 
   .num-input {

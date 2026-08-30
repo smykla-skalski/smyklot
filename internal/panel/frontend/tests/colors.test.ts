@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { contrast, mix, relativeLuminance as relativeLuminanceOf } from './color';
+import { contrast, deltaE, mix, relativeLuminance as relativeLuminanceOf } from './color';
 import { palettes } from './theme';
 
 /**
@@ -71,9 +71,24 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
     );
 
     it('keeps active navigation legible without an extra rail', () => {
+      /* The selection is a solid pair - a fill and the ink that goes on it - rather
+         than a near-white thumb carrying whatever the palette's active ink happened to
+         be. That pairing is what the old shape could not state: a pale fill under an
+         inverse ink is white on white, which is what the rail's console shield had
+         become. Both halves come from the palette, so this asks the pair. */
       expect(
-        contrast(color('sidebar-item-active-text'), color('sidebar-thumb')),
+        contrast(color('sidebar-item-active-text'), color('sidebar-active-bg')),
       ).toBeGreaterThanOrEqual(4.5);
+    });
+
+    it('makes the sidebar selection the loudest thing in its column', () => {
+      /* The fill leads the ladder. A press on a neighbouring row is the loudest state
+         the column has apart from the selection, so the selection has to clear it -
+         otherwise pressing an unselected row shouts over the row that is chosen. */
+      const rail = color('sidebar-bg');
+      expect(deltaE(color('sidebar-active-bg'), rail)).toBeGreaterThan(
+        deltaE(color('sidebar-item-pressed'), rail),
+      );
     });
 
     it('keeps drift counts readable on their tinted board tile', () => {
