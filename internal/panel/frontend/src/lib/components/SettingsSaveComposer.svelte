@@ -98,7 +98,7 @@
 <style>
   .settings-composer {
     align-items: center;
-    animation: composer-arrive 160ms ease-out both;
+    animation: composer-arrive var(--duration-fast) var(--ease-standard) both;
     backdrop-filter: blur(14px);
     background: color-mix(in srgb, var(--surface-base) 92%, transparent);
     border: 1px solid var(--border-subtle);

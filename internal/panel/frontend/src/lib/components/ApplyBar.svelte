@@ -25,7 +25,7 @@
 <style>
   .apply-bar {
     align-items: center;
-    animation: apply-bar-seat linear both;
+    animation: apply-bar-seat var(--ease-linear) both;
     /* NOT view() on the bar itself: Chromium folds a sticky subject's whole
        displacement into its view-timeline, so px offsets against `entry`
        land nowhere. The slot marker after the bar is plain flow - its

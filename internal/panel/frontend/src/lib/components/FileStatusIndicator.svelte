@@ -105,8 +105,8 @@
     padding: 0;
     position: relative;
     transition:
-      background-color 120ms ease-out,
-      color 120ms ease-out;
+      background-color var(--duration-press) var(--ease-standard),
+      color var(--duration-press) var(--ease-standard);
   }
 
   .symbol::before {

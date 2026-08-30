@@ -34,7 +34,8 @@
   }
 
   .panel-boot-word {
-    animation: panel-boot-appear var(--duration-normal) var(--ease-standard) 300ms both;
+    animation: panel-boot-appear var(--duration-normal) var(--ease-standard) var(--delay-boot-quiet)
+      both;
     color: var(--text-muted);
     font-size: var(--font-size-meta);
   }

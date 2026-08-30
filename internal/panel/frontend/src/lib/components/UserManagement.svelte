@@ -2550,9 +2550,9 @@
     min-height: 3.75rem;
     padding: 0.625rem;
     transition:
-      background-color 120ms ease-out,
-      border-color 120ms ease-out,
-      transform 80ms ease-out;
+      background-color var(--duration-press) var(--ease-standard),
+      border-color var(--duration-press) var(--ease-standard),
+      transform var(--duration-press) var(--ease-standard);
   }
 
   .method-option:hover {

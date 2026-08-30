@@ -425,7 +425,7 @@ positioning will replace once it is portable.
     pointer-events: none;
     position: absolute;
     transition:
-      opacity 120ms ease-out,
+      opacity var(--duration-press) var(--ease-standard),
       background-color var(--duration-press) var(--ease-standard);
     z-index: 1;
   }
@@ -513,7 +513,7 @@ positioning will replace once it is portable.
     padding: 0 0.75rem;
     position: relative;
     transition:
-      color 180ms ease-out,
+      color var(--duration-fast) var(--ease-standard),
       transform var(--duration-press) var(--ease-standard);
     z-index: 3;
   }
@@ -714,7 +714,7 @@ positioning will replace once it is portable.
 
   /* The offer: this is what the control will look like once the move is taken. */
   label.previewed .segment-label {
-    animation: segment-preview 1.6s ease-in-out infinite;
+    animation: segment-preview var(--rhythm-preview) var(--ease-inout) infinite;
     border-color: color-mix(in srgb, var(--brand-action) 70%, transparent);
     border-style: dashed;
     color: var(--text-primary);

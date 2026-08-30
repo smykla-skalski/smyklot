@@ -494,10 +494,10 @@
     pointer-events: none;
     position: absolute;
     transition:
-      block-size 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      inline-size 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      inset-inline-start 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      border-radius 240ms cubic-bezier(0.22, 1, 0.36, 1);
+      block-size var(--duration-normal) var(--ease-standard),
+      inline-size var(--duration-normal) var(--ease-standard),
+      inset-inline-start var(--duration-normal) var(--ease-standard),
+      border-radius var(--duration-normal) var(--ease-standard);
   }
 
   .tree:not(:global(.thumb-ready)) .nav-thumb {

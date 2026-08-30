@@ -565,7 +565,7 @@
        different ranges, and collapsing them was not allowed to move any of them. */
     --skeleton-from: 0.52;
     --skeleton-to: 0.9;
-    animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
+    animation: skeleton-pulse var(--rhythm-shimmer) var(--ease-inout) infinite alternate;
     background: var(--surface-inset);
     border-radius: var(--radius-control);
     display: block;

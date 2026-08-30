@@ -67,7 +67,7 @@ not, a bar or a spinner says the same thing without the lie.
      their own markup animate with the same one. Reduced motion is answered there
      too, by the blanket rule that shortens every animation. */
   .skeleton span {
-    animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
+    animation: skeleton-pulse var(--rhythm-shimmer) var(--ease-inout) infinite alternate;
     border-bottom: 1px solid var(--rule);
     display: block;
     height: var(--skeleton-row-height, 3.5rem);

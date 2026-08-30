@@ -968,7 +968,7 @@
   }
 
   .overview-loading span:not(.visually-hidden) {
-    animation: pulse 1.35s ease-in-out infinite alternate;
+    animation: pulse var(--rhythm-shimmer) var(--ease-inout) infinite alternate;
     background: var(--surface-inset);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-surface);

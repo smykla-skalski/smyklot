@@ -1369,7 +1369,7 @@
   }
 
   .next-lead.due.final {
-    animation: countdown-pulse 700ms var(--ease-out) infinite alternate;
+    animation: countdown-pulse var(--rhythm-pulse) var(--ease-inout) infinite alternate;
     color: var(--stop);
   }
 

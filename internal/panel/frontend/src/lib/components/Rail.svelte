@@ -598,7 +598,7 @@
 
   /* Alive only under the pointer - zero cost at idle. */
   .rail-ws.is-active:hover::before {
-    animation: ws-turn 9s linear infinite;
+    animation: ws-turn var(--rhythm-turn) var(--ease-linear) infinite;
   }
 
   @keyframes ws-turn {

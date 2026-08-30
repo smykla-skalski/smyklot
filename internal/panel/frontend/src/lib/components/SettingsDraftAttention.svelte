@@ -70,7 +70,7 @@
 
 <style>
   .settings-draft-attention {
-    animation: attention-arrive 160ms ease-out both;
+    animation: attention-arrive var(--duration-fast) var(--ease-standard) both;
   }
 
   .settings-draft-attention :global(.attention-surface) {

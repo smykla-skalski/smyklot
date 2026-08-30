@@ -1881,7 +1881,7 @@ thead th .icon-button:active:not(:disabled) {
 }
 
 .status-pill .status-pill-dot.live {
-  animation: live-pulse 2.6s ease-out infinite;
+  animation: live-pulse var(--rhythm-live) var(--ease-standard) infinite;
 }
 
 /* One pulse for every placeholder in the panel.

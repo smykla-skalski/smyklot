@@ -445,16 +445,31 @@
   --duration-fast: 160ms;
   --duration-normal: 220ms;
   /* A rhythm repeats while a condition holds; it does not answer a reader, so it is
-     not on the ramp above and is never the duration of a state change. */
+     not on the ramp above and is never the duration of a state change. Each is named
+     for the thing that beats at it, because they are not steps on a scale and reading
+     one as "the next size up" from another would be wrong. */
   --rhythm-pulse: 700ms;
   --rhythm-spinner: 900ms;
   --rhythm-shimmer: 1350ms;
+  --rhythm-preview: 1600ms;
+  --rhythm-live: 2600ms;
+  --rhythm-turn: 9000ms;
+  /* The pause before the panel admits it is still waiting. Most answers land inside
+     it, and a status line that appears and vanishes inside 300ms is a flash of its
+     own; past that the wait is real and worth acknowledging. */
+  --delay-boot-quiet: 300ms;
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out: var(--ease-standard);
   /* Travel that crosses a distance overshoots its mark and settles back. Only for
      position and size: a colour that overshoots is a colour nobody chose, and the
      curve's y leaves 0-1 on the way. */
   --ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* A rhythm that alternates eases at both ends, or it snaps at the turn. */
+  --ease-inout: ease-in-out;
+  /* No easing at all, and a deliberate one: a spinner that accelerated would read as
+     stuttering once a revolution, and a scroll-driven animation is paced by the scroll
+     rather than by a curve. */
+  --ease-linear: linear;
   /* How far a moving box gives along the axis it is travelling on, and across it.
      One pair, so two things moving at once deform by the same amount. */
   --squash-along: 1.06;

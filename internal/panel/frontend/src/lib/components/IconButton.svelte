@@ -53,7 +53,7 @@ to sit in a row's margin or a heading's end, where a labelled button would not f
   /* Reduced motion is already honoured: app.css caps every animation at 0.01ms
      under the query, so this settles at its start angle rather than spinning. */
   .busy :global(svg) {
-    animation: icon-button-spin 900ms linear infinite;
+    animation: icon-button-spin var(--rhythm-spinner) var(--ease-linear) infinite;
   }
 
   @keyframes icon-button-spin {
