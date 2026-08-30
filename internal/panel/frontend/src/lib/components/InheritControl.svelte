@@ -104,6 +104,8 @@
   .linked-control {
     align-items: center;
     display: inline-flex;
+    /* As wide as the control it wraps - see the note above `.chip` in app.css. */
+    inline-size: fit-content;
     gap: var(--inherit-marker-gap);
   }
 

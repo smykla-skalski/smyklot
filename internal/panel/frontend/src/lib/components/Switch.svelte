@@ -59,6 +59,9 @@ that safe.
     align-items: center;
     display: inline-flex;
     gap: var(--space-2);
+    /* As wide as the track and its word, whatever it is dropped into - see the note
+       above `.chip` in app.css for why `inline-flex` does not say that on its own. */
+    inline-size: fit-content;
     min-block-size: var(--touch-target, 2.75rem);
   }
 

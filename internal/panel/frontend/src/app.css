@@ -1103,6 +1103,10 @@ input[type='radio']:not(:disabled) {
   border-radius: var(--r-ctl);
   color: var(--text);
   display: inline-flex;
+  /* As wide as its label by default - see the note above `.chip`. A button that should
+     fill its container is a decision the call site makes, by giving it a width; nothing
+     in this app relied on the stretch, which is why the default can be the safe one. */
+  inline-size: fit-content;
   font: 500 var(--font-size-control) / 1 var(--sans);
   gap: var(--space-2);
   /* Every control in the content panes is 34px (the mock's --ctl-h); contexts
@@ -1396,6 +1400,10 @@ select:disabled {
 .link {
   border-radius: 2px;
   color: var(--brand-action-text);
+  /* Width does not apply to a non-replaced inline box, so this changes nothing in the
+     running text a link normally sits in. It is here for the one case where an anchor
+     becomes a flex item and is blockified - see the note above `.chip`. */
+  inline-size: fit-content;
   font-weight: 600;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentcolor 35%, transparent);

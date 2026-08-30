@@ -179,6 +179,8 @@
     align-items: center;
     display: inline-flex;
     flex-wrap: wrap;
+    /* As wide as the entries it holds - see the note above `.chip` in app.css. */
+    inline-size: fit-content;
     gap: var(--space-2);
   }
 
