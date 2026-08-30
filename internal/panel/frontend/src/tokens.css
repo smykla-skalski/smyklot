@@ -444,8 +444,21 @@
   --duration-press: 100ms;
   --duration-fast: 160ms;
   --duration-normal: 220ms;
+  /* A rhythm repeats while a condition holds; it does not answer a reader, so it is
+     not on the ramp above and is never the duration of a state change. */
+  --rhythm-pulse: 700ms;
+  --rhythm-spinner: 900ms;
+  --rhythm-shimmer: 1350ms;
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out: var(--ease-standard);
+  /* Travel that crosses a distance overshoots its mark and settles back. Only for
+     position and size: a colour that overshoots is a colour nobody chose, and the
+     curve's y leaves 0-1 on the way. */
+  --ease-overshoot: cubic-bezier(0.34, 1.4, 0.64, 1);
+  /* How far a moving box gives along the axis it is travelling on, and across it.
+     One pair, so two things moving at once deform by the same amount. */
+  --squash-along: 1.06;
+  --squash-across: 0.9;
   --layer-menu: 35;
   --layer-sticky: 30;
   --layer-popover: 35;

@@ -137,20 +137,19 @@ describe('configured file formatting in the development panel', () => {
       expect(geometry.quoteSegmentSpread).toBeGreaterThan(1);
       expect(geometry.thumbLeftDelta).toBeLessThanOrEqual(0.05);
       expect(geometry.thumbWidthDelta).toBeLessThanOrEqual(0.05);
-      expect(geometry.middleFillCorners).toEqual(['0px', '0px', '0px', '0px']);
-      expect(geometry.thumbCorners).toEqual(['0px', '0px', '0px', '0px']);
-      expect(geometry.firstFillCorners[0]).not.toBe('0px');
-      expect(geometry.firstFillCorners.slice(1)).toEqual([
-        '0px',
-        '0px',
-        geometry.firstFillCorners[0],
-      ]);
-      expect(geometry.lastFillCorners.slice(0, 3)).toEqual([
-        '0px',
-        geometry.lastFillCorners[2],
-        geometry.lastFillCorners[2],
-      ]);
-      expect(geometry.lastFillCorners[3]).toBe('0px');
+      /* The thumb and the hover fill both float inside the track, so both are rounded
+         on all four corners and both wear the same radius. They used to square the
+         corners that faced a neighbour and round only the pair facing the track's end,
+         which is right for something that reaches that end and wrong everywhere else:
+         at any option but the first or last the thumb was square on both sides, and on
+         a two-option control it sat mid-track with one squared edge. Read off the
+         thumb rather than written down, so the number stays the stylesheet's to pick. */
+      const [radius] = geometry.thumbCorners;
+      expect(radius).not.toBe('0px');
+      expect(geometry.thumbCorners).toEqual([radius, radius, radius, radius]);
+      expect(geometry.middleFillCorners).toEqual([radius, radius, radius, radius]);
+      expect(geometry.firstFillCorners).toEqual([radius, radius, radius, radius]);
+      expect(geometry.lastFillCorners).toEqual([radius, radius, radius, radius]);
       expect(geometry.wrapped).toEqual([]);
       expect(crashes).toEqual([]);
     } finally {

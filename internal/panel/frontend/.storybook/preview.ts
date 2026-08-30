@@ -9,6 +9,10 @@ import { NOW } from '../stories/support/fixtures.js';
 // blocks and, through its `@import`, every token in `src/tokens.css`.
 import '../src/app.css';
 
+// The Docs page's own chrome, which Storybook hardcodes light. Loaded after the
+// panel's stylesheet because it reads its tokens.
+import './docs.css';
+
 /**
  * Two axes, four palettes.
  *

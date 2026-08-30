@@ -103,6 +103,10 @@
          restores the content coordinate when a narrow control is horizontally scrolled. */
       const nodeBox = node.getBoundingClientRect();
       const left = optionBox.left - nodeBox.left - node.clientLeft + node.scrollLeft;
+      /* Read before the write, because the give below is owed to a MOVE and this runs
+         for every re-measurement: a resize, a popover opening, a label changing width.
+         Animating those would put a squeeze on the page where nothing travelled. */
+      const moved = node.style.getPropertyValue('--segment-left') !== `${left}px`;
       node.style.setProperty('--segment-left', `${left}px`);
       node.style.setProperty('--segment-width', `${optionBox.width}px`);
 
@@ -116,6 +120,17 @@
       if (!node.classList.contains('selection-ready')) {
         node.getBoundingClientRect();
         node.classList.add('selection-ready');
+      } else if (moved) {
+        /* A move rather than a first placement, so the thumb gives along the way. The
+           class is taken off and put back with a layout read between, which is what
+           restarts an animation that may still be running from the last move - without
+           it a reader clicking quickly along the options sees the give once. */
+        const thumb = node.querySelector('.selection-indicator');
+        if (thumb !== null) {
+          thumb.classList.remove('is-travelling');
+          thumb.getBoundingClientRect();
+          thumb.classList.add('is-travelling');
+        }
       }
     }
 
@@ -235,6 +250,13 @@
     display: inline-flex;
     flex: none;
     height: var(--local-control-height, var(--control-height-compact));
+    /* Wide enough for its options and no wider, whoever it is dropped into. `flex: none`
+       is not enough on its own: a flex item's `display: inline-flex` is blockified to
+       `flex`, and a cross size left `auto` is then stretched by any COLUMN flex parent -
+       which is what a two-option control spanning the whole content column was. An
+       explicit inline size is not `auto`, so `align-self: stretch` has nothing to
+       stretch. `fluid` overrides it below, which is what that prop is for. */
+    inline-size: fit-content;
     isolation: isolate;
     margin: 0;
     min-width: 0;
@@ -357,7 +379,10 @@
      --segment-hover in app.css for the measurements. */
   label::before {
     background: var(--seg-hover);
-    border-radius: 0;
+    /* The same curve the thumb wears, for the same reason: these two are the only
+       things drawn inside the track, one shows at a time, and a fill squared where the
+       thumb beside it is round reads as two different controls. */
+    border-radius: calc(var(--r-ctl) - 2px);
     content: '';
     inset: 0;
     opacity: 0;
@@ -372,16 +397,6 @@
   /* Segment fills meet without exposing track-coloured wedges at internal joins. Only the two
      edges that actually meet the rounded control shell curve; a one-option control matches both
      selectors and therefore keeps all four corners. Logical corners preserve the same rule in RTL. */
-  label:first-of-type::before {
-    border-end-start-radius: calc(var(--r-ctl) - 2px);
-    border-start-start-radius: calc(var(--r-ctl) - 2px);
-  }
-
-  label:last-of-type::before {
-    border-end-end-radius: calc(var(--r-ctl) - 2px);
-    border-start-end-radius: calc(var(--r-ctl) - 2px);
-  }
-
   label:hover:not(:has(input:disabled))::before {
     opacity: 1;
   }
@@ -490,7 +505,13 @@
     display: none;
 
     background: var(--selected-bg);
-    border-radius: 0;
+    /* Rounded on all four, always. The thumb used to square its inner corners and round
+       only the pair facing the track's end, which reads right for a thumb that reaches
+       that end and wrong everywhere else: at any option but the first or last it was
+       square on both sides, and on a two-option control it sat mid-track with one
+       squared edge. Inset by the border and the track's padding, so the curve sits
+       concentric inside the track's own. */
+    border-radius: calc(var(--r-ctl) - 2px);
     box-shadow: var(--seg-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));
@@ -498,26 +519,41 @@
     position: absolute;
     top: var(--control-inset);
     transition:
-      left 240ms cubic-bezier(0.22, 1, 0.36, 1),
-      width 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      left var(--duration-normal) var(--ease-overshoot),
+      width var(--duration-normal) var(--ease-overshoot),
       background-color var(--duration-fast) var(--ease-standard),
       box-shadow var(--duration-fast) var(--ease-standard);
     width: var(--segment-width, 0);
     z-index: 2;
   }
 
-  fieldset:has(label:first-of-type input:checked) .selection-indicator {
-    border-end-start-radius: calc(var(--r-ctl) - 2px);
-    border-start-start-radius: calc(var(--r-ctl) - 2px);
-  }
-
-  fieldset:has(label:last-of-type input:checked) .selection-indicator {
-    border-end-end-radius: calc(var(--r-ctl) - 2px);
-    border-start-end-radius: calc(var(--r-ctl) - 2px);
-  }
-
   fieldset:not(.selection-ready) .selection-indicator {
     transition: none;
+  }
+
+  /* A box that crosses a distance gives along the way: it stretches on the axis it is
+     travelling and squeezes across it, then comes back to square. Applied as an
+     animation rather than folded into the transition, because a transition only knows
+     where the box started and where it lands - the give happens in between.
+
+     Only on a move. A first placement has nowhere to have travelled from, which is
+     the same reason the transition itself waits for `selection-ready`. */
+  .selection-indicator.is-travelling {
+    animation: segment-travel var(--duration-normal) var(--ease-standard);
+  }
+
+  @keyframes segment-travel {
+    0% {
+      transform: scaleX(1) scaleY(1);
+    }
+
+    45% {
+      transform: scaleX(var(--squash-along)) scaleY(var(--squash-across));
+    }
+
+    100% {
+      transform: scaleX(1) scaleY(1);
+    }
   }
 
   /* The thumb is drawn only when something is selected.

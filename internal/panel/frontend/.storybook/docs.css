@@ -1,0 +1,111 @@
+/*
+  The Docs page's own chrome, painted from the panel's palette.
+
+  Storybook writes the documentation shell with emotion and hardcodes it light: the
+  wrapper is `#fff` and the prose `#2e3338` whatever the toolbar says, so on a dark
+  theme the page came out light around a dark story. `PanelShell` already puts
+  `data-theme` on the document - it calls the app's own `applyDocumentTheme` - so the
+  tokens are resolved here and the chrome only has to read them.
+
+  Two things every rule below has to do, and they are why the selectors look the way
+  they do.
+
+  It has to outrank emotion, whose generated classes are one class each. `#storybook-docs`
+  is the docs root and carries an id, so scoping to it wins without `!important` and
+  without counting emotion's hashes - which change on every Storybook release.
+
+  And it has to stop at a story. A Docs page embeds live stories, each inside its own
+  `.app-shell` with its own palette, so a rule reaching `p` or `code` would repaint
+  component text that a component already answered for. `:not(.app-shell *)` is what
+  holds that line; the selector is measured as supported rather than assumed.
+
+  Class names here are read off the rendered page rather than guessed: the title is
+  `sbdocs-title` with no `sbdocs` beside it, and a contract's paragraphs are bare
+  `<p>` under an unclassed wrapper, so a doubled `.sbdocs.sbdocs-p` matches nothing.
+*/
+
+#storybook-docs .sbdocs-wrapper {
+  background: var(--canvas);
+}
+
+#storybook-docs :is(h1, h2, h3, h4, h5, h6):not(.app-shell *) {
+  border-block-end-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+#storybook-docs :is(p, li, blockquote, dd, dt):not(.app-shell *) {
+  color: var(--text-secondary);
+}
+
+#storybook-docs a:not(.app-shell *) {
+  color: var(--accent);
+}
+
+/* Inline code in a contract, and the fenced source behind "Show code". */
+#storybook-docs :is(code, pre):not(.app-shell *) {
+  background: var(--surface-inset);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/* The frame a story stands in: the bordered block, the strip of actions on it, and
+   the inner sheet the story is drawn on, which is its own white box. */
+#storybook-docs .sbdocs-preview,
+#storybook-docs .sbdocs-preview-actions,
+#storybook-docs .sbdocs-preview > div:not(.app-shell) {
+  background: var(--surface-base);
+  border-color: var(--border-subtle);
+}
+
+/* The props table, whose own rules are `.docblock-argstable`-shaped. */
+#storybook-docs .docblock-argstable-head th:not(.app-shell *) {
+  color: var(--text-secondary);
+}
+
+#storybook-docs .docblock-argstable-body {
+  background: var(--surface-base);
+  box-shadow: none;
+  outline: 1px solid var(--border-subtle);
+}
+
+#storybook-docs .docblock-argstable-body tr:not(.app-shell *) {
+  background: transparent;
+  border-block-start-color: var(--border-subtle);
+}
+
+#storybook-docs .docblock-argstable-body :is(td, th):not(.app-shell *) {
+  background: transparent;
+  color: var(--text-primary);
+}
+
+/*
+  The type beside a prop ("boolean", "string", the union of tones) and the row that
+  folds the table's properties away. Emotion paints both, and paints them with
+  `!important` - an id selector does not outrank that, which is the one place in this
+  file where matching it is the only way to win. Everything above wins on specificity
+  alone, and should stay that way.
+*/
+#storybook-docs .docblock-argstable td span:not(.app-shell *) {
+  color: var(--text-secondary) !important;
+}
+
+#storybook-docs .docblock-argstable-body > tr > td:not(.app-shell *) {
+  background: transparent !important;
+}
+
+/*
+  The Controls a Docs page offers: the boolean pair, the select, the button that opens
+  a string field, and the field itself. They are chrome rather than component surface,
+  so they take the panel's control palette.
+*/
+#storybook-docs .docblock-argstable :is(label, button, select, input, textarea) {
+  background: var(--surface-control) !important;
+  border-color: var(--border-control);
+  color: var(--text-primary) !important;
+}
+
+/* The selected half of the boolean pair, which draws its own raised chip. */
+#storybook-docs .docblock-argstable label > span {
+  background: var(--surface-raised) !important;
+  color: var(--text-primary) !important;
+}
