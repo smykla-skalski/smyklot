@@ -154,6 +154,16 @@
   }
 </script>
 
+<!--
+@component
+One access request as its own page: who asked, for what, and every decision since.
+
+A page rather than a dialog because it is an address - it can be linked to and sent to
+somebody else, which is what a request under discussion actually needs. The back link
+returns to the queue it came from rather than to browser history, so arriving at the
+page directly still leads somewhere.
+-->
+
 <BackLink href={queueHref} label="Queue" onNavigate={onBack} />
 
 {#if request === null}

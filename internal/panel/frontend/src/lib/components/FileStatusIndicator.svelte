@@ -40,9 +40,20 @@
   });
 </script>
 
-<!-- The word is part of the same statement as the mark, so it explains itself on
-     hover too. Pointing at "Bypassed" and getting nothing, when the circle beside
-     it answers, is the sort of thing a reader reads as the tooltip being broken. -->
+<!--
+@component
+What became of one file in one repository, as a mark that answers when pointed at.
+
+The word beside it is part of the same statement rather than a separate thing, which is
+why it shares the mark's tooltip: pointing at "Bypassed" and getting nothing, when the
+circle beside it answers, reads as the tooltip being broken.
+
+The mark is a button and carries the sentence as its accessible name, so the outcome is
+readable without a pointer. Colour is never the only channel - the glyph differs per
+status as well, because four coloured circles are four circles to somebody who cannot
+tell them apart.
+-->
+
 <span class="file-indicator status-{status}">
   <AppTooltip {id} text={message} align="start">
     {#snippet children(props)}

@@ -94,6 +94,20 @@
   }
 </script>
 
+<!--
+@component
+A GitHub account, typed and completed against the real thing. It suggests as the
+reader types rather than validating after, because a handle that does not exist is a
+mistake worth catching before the form is sent, not after it is refused.
+
+`refused` is the server's answer to what was typed, kept separate from the suggestion
+list: one is a guess about who they mean and the other is a fact about what happened.
+
+`focusOnOpen` takes focus once, when the dialog holding it opens. It used to set an
+attribute nothing read - not this app, not Bits UI, not a test - so both dialogs that
+ask for it opened unfocused and a reader had to reach for the mouse before typing.
+-->
+
 <div class="form-field login-field">
   <label for={id}>{label}</label>
   <Combobox.Root

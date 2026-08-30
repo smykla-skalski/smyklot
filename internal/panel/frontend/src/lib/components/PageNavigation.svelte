@@ -18,6 +18,19 @@
   const items = $derived(paginationItems(currentPage, pageCount));
 </script>
 
+<!--
+@component
+Previous, next, and the numbered pages between them. A group rather than a navigation
+landmark, because it moves within one collection rather than between places.
+
+It never hides a step it cannot take: an unavailable Previous is disabled and stays
+where it is, so the row does not reflow under a reader who is pressing Next
+repeatedly.
+
+Belongs under something counted. It is `PaginationBar` that pairs it with the range and
+the page size; this half is the move alone.
+-->
+
 <div class="page-navigation" role="group" aria-label="Pages">
   <button
     class="page-step"

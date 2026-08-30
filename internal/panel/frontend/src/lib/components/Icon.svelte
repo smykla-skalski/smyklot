@@ -164,6 +164,23 @@
   });
 </script>
 
+<!--
+@component
+One drawn set, one stroke, and a closed list of names. Every glyph is built on the same
+24-unit grid at the same 1.75 stroke, which is what stops two icons beside each other
+disagreeing about weight - the thing a mixed icon library cannot promise and the reason
+this is a union type rather than a string.
+
+A glyph takes the size of the words it stands beside, so `size` is a number and not a
+scale: the places that need one - a chip, a row, a heading, a rail tile - do not agree
+on a step.
+
+It is drawn, never announced. An icon repeats something the words already say, or it
+stands inside a control that carries its own accessible name; either way a screen
+reader reading it too is a repetition rather than a help. A glyph that would be the
+only name for something means the control is missing its label.
+-->
+
 <svg
   class={className}
   data-icon={name}

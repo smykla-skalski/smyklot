@@ -40,6 +40,28 @@
   } = $props();
 </script>
 
+<!--
+@component
+The panel's own mark: the halo, the wordmark, and optionally the line naming which
+console you are in.
+
+`interior` is the one that matters. `solid` paints the halo's own dark ground behind
+the robot; `clear` leaves it open so whatever the mark stands on shows through and the
+ring reads as a window onto it, which is what the night pages want and what the sky
+carries through. The disc is drawn as a sibling behind the image rather than set in the
+asset, because the mark is an `<img>` and nothing in the host document can reach the
+SVG's own toggle - and the sidebar and the night pages want opposite answers from the
+same file.
+
+`heading` makes it the page's `<h1>`, as it is in the sidebar. Only where the mark
+really is the page's title; two `<h1>`s on one page is an accessibility fault, not a
+style.
+
+`part` names the console under the wordmark, and is omitted where the page says the
+same thing elsewhere - the invitation page has it in the footer, and twice on one
+screen is once too many.
+-->
+
 <svelte:element this={heading ? 'h1' : 'p'} class={['mark', stacked && 'stacked']}>
   <!-- The disc is a sibling behind the image rather than a setting in the file:
        the mark is an `<img>`, so nothing in the host document can reach the SVG's

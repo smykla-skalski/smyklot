@@ -88,6 +88,19 @@
   }
 </script>
 
+<!--
+@component
+The queue at a glance, on the overview: how much is waiting, split into what needs an
+approval and what needs a look. It is a summary and never the work - every row here
+leads to the queue rather than acting in place.
+
+It shows the counts even while the list is still arriving, because the number is what
+the overview is for and it lands before the rows do.
+
+An empty queue is a state worth drawing rather than a panel to hide. Nothing waiting is
+the answer somebody came to the overview to get.
+-->
+
 <article class="plate queue-panel" class:is-empty={visible.length === 0}>
   <header class="panel-head">
     <div class="panel-title">

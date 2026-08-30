@@ -69,6 +69,21 @@
   }
 </script>
 
+<!--
+@component
+Which rows to show, chosen from a closed set the column already knows. A funnel in a
+column heading is the only shape it has, because that is the only place the panel
+filters from.
+
+Open state is read from the trigger's own `aria-expanded` rather than mirrored into a
+class: the layer writes that attribute anyway, and two conventions for one fact is how
+they come to disagree.
+
+`multiple` decides whether choosing is narrowing or replacing, and `fallbackValue` is
+what an emptied filter falls back to - a set with nothing selected shows nothing, which
+is never what clearing a filter is meant to mean.
+-->
+
 <Popover bind:open {align} itemSelector=".filter-option">
   {#snippet trigger(attributes)}
     <!-- Open state is read from the trigger's own `aria-expanded`, which the

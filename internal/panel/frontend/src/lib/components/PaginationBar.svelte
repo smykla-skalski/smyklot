@@ -28,6 +28,21 @@
   const rangeEnd = $derived(total === 0 ? 0 : rangeStart + itemCount - 1);
 </script>
 
+<!--
+@component
+The count and the move, under a collection whose end is known. It is a family of its
+own rather than a card's footer: the footer band belongs to the card and carries the
+card's distance, and this pair goes wherever it is put.
+
+Where it does NOT go is under a table that loads on a cursor. Nothing there has counted
+the rows, so there is no total to say and no page to turn - a bar that reported "of 29"
+against a cursor would be reporting a number nobody measured. Those tables end where
+their data ends and say so in their own body.
+
+The range is announced politely as it changes, because a reader who pressed Next needs
+to hear where they landed and the rows themselves will not say it.
+-->
+
 <footer class="pagination-bar" aria-label={`${label} pagination`}>
   <p class="pagination-range mono" aria-live="polite">
     <strong>{rangeStart}–{rangeEnd}</strong>

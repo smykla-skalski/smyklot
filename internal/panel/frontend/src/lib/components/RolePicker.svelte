@@ -44,6 +44,20 @@
   }
 </script>
 
+<!--
+@component
+What someone may do here, chosen from the roles this installation defines. A listbox
+rather than a menu, because these are values to pick among and not acts to perform -
+which is also what a screen reader is told.
+
+The layer is `min-trigger` wide: the trigger is a role's name and the options carry the
+sentence that tells each role from its neighbours, so the list is wider than the button
+that opens it and the button is the floor rather than the measure.
+
+Focus opens on the current value rather than the top of the list, so the keyboard starts
+where the reader already is.
+-->
+
 <Popover
   bind:open
   width="min-trigger"

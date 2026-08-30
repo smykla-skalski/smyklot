@@ -35,6 +35,20 @@
   );
 </script>
 
+<!--
+@component
+Light, dark, or follow the system - a `SegmentedControl` with the three answers named,
+so all of them are visible at once rather than hidden behind a menu.
+
+`system` is what makes the third answer optional, and it is not decoration: somewhere
+that cannot keep the answer, like a page reached before signing in, is better off
+asking for a theme outright than offering to follow something it will forget on the
+next load.
+
+`name` has to be unique on the page. Two of these under one name are one radio group,
+so choosing in the sidebar would move the one in settings.
+-->
+
 <SegmentedControl
   {name}
   label="Theme"

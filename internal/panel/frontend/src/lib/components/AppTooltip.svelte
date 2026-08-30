@@ -28,6 +28,23 @@
   } = $props();
 </script>
 
+<!--
+@component
+The panel's one tooltip, and there is deliberately only one. It says what a control is
+for when the control cannot say it itself - an icon button, a label that has been cut
+off - and never anything the reader needs: a tip is not shown on a phone, it cannot be
+reached by every input, and anything that must be read belongs on the page.
+
+It takes a snippet rather than wrapping its child, so the trigger stays the caller's
+own element and keeps its own markup. That is what lets `ClippedLabel` be a plain span
+that becomes a trigger only once its text is actually clipped, and `HelpTip` a real
+button.
+
+`mono` is for a tip whose whole text is one identifier - a repository name, a ref, a
+digest. The panel writes those in the mono face everywhere else, and a name that
+changes face on its way into a tooltip reads as a different kind of thing.
+-->
+
 <Tooltip.Provider delayDuration={250}>
   <Tooltip.Root {disabled}>
     <Tooltip.Trigger>

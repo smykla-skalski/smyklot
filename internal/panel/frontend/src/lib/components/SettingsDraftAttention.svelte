@@ -44,6 +44,20 @@
   });
 </script>
 
+<!--
+@component
+The line that says a draft is waiting somewhere the reader is not looking. Settings
+drafts survive navigation, so a page can be left with changes on it and nothing on
+screen would otherwise say so.
+
+Distinct from the save composer: that one is the bar on the page that owns the draft,
+and this is the notice everywhere else. `reviewHref` is the way back to it.
+
+`storage-problem` is the other kind - a draft that could not be kept - and takes the
+warning tone, because a draft the panel has lost is the one thing here a reader cannot
+recover by going back.
+-->
+
 <div class="settings-draft-attention" data-kind={kind}>
   <Callout
     class="attention-surface"

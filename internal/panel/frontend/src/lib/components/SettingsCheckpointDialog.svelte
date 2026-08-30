@@ -227,6 +227,19 @@
   }
 </script>
 
+<!--
+@component
+One saved checkpoint, read before it is restored. Restoring is not the point - seeing
+what would change is, which is why the dialog fetches and shows the settings as they
+stood rather than offering a bare Restore.
+
+`hasUnsavedDrafts` is what makes it careful: restoring over an open draft discards work
+the reader has not saved, so the dialog says so rather than finding out afterwards.
+
+`restoreCheckpoint` is optional, and its absence is how a reader who may look but not
+act sees the same history without the button.
+-->
+
 <Modal
   id="settings-checkpoint-dialog"
   {open}

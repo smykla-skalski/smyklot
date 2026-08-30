@@ -58,6 +58,21 @@
   const groupName = $derived(`inherit-${label.replaceAll(/[^a-z0-9]+/giu, '-').toLowerCase()}`);
 </script>
 
+<!--
+@component
+A value that comes from somewhere else until this page overrides it, and the way back.
+The control shows what would apply and where it comes from, so choosing here is visibly
+a departure rather than just a setting.
+
+`onRestore` is the half that matters. An override with no way back is a decision a
+reader cannot undo without knowing what the inherited value used to be - which is
+exactly what they no longer see once they have overridden it.
+
+`sourcePronoun` exists because the sentence naming the source reads either as a thing
+or as a set, and a control that says "it" about several accounts is a control nobody
+trusts.
+-->
+
 <span class:fluid class="linked-control">
   {#if overridden}
     <AppTooltip text={brokenTip}>

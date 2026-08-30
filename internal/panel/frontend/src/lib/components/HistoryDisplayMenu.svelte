@@ -22,6 +22,16 @@
   }
 </script>
 
+<!--
+@component
+How the history reads its times: as a moment, or as how long ago. A dialog rather than
+a menu, because nothing here happens when it is pressed - it changes how the rows
+beside it are written, and the reader stays to see the effect.
+
+It is display only. Nothing chosen here changes which rows are shown or what they mean,
+which is why it sits apart from the filter beside it.
+-->
+
 <Popover align="end" role="dialog" label="Display options">
   {#snippet trigger(attributes)}
     <button

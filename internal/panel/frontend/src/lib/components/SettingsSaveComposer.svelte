@@ -45,6 +45,21 @@
   }
 </script>
 
+<!--
+@component
+The bar that appears once a settings page has unsaved changes, and the only thing on
+these pages that writes. Every control on a settings page stages a draft; this is what
+sends it, which is why a switch can be flipped without anything happening yet.
+
+It says how many changes are waiting, because "unsaved changes" without a count leaves
+a reader to go looking for what they touched.
+
+`conflict` is the case worth knowing: somebody else saved while this draft was open, so
+the choice is no longer save-or-discard but reconcile. `readOnly` keeps the bar visible
+and its actions closed - a reader who cannot save still needs to see that they have
+changed something.
+-->
+
 {#if count > 0 || saving || resolving || problem !== null || notice !== null}
   <aside class="settings-composer" aria-label="Settings draft">
     <div class="composer-copy" aria-live="polite">

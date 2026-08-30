@@ -78,6 +78,17 @@
   }
 </script>
 
+<!--
+@component
+Every decision taken on one access request, in the order they were taken. The dialog's
+subject is the request, and the record answers the question a bare status cannot: not
+what it is now, but who changed it and why.
+
+The current state is passed in and shown at the head, so the dialog is readable before
+its history arrives - the answer a reader most often wants is the one already on the
+page behind them.
+-->
+
 <Modal
   id="decision-history"
   {open}

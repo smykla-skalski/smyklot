@@ -215,6 +215,20 @@
   );
 </script>
 
+<!--
+@component
+The workspace switcher, and the way into the Root console. It is the outermost
+navigation the panel has: everything else moves within a workspace, and this is what
+changes which one you are in.
+
+A dot marks a workspace with an unsaved draft, which is how a reader who has left a
+settings page open somewhere else finds their way back to it - the same fact the draft
+notice carries, said where the workspace is chosen.
+
+The Root entry is drawn only for a viewer who has one, and drawing it disabled instead
+would be telling everybody else about a console they cannot open.
+-->
+
 <nav class="rail" bind:this={railEl} aria-label="Consoles">
   <img class="rail-halo" src={haloUrl} alt="Smyklot" width="34" height="34" decoding="async" />
 

@@ -4,6 +4,16 @@
   const { build }: { build: PanelBuild } = $props();
 </script>
 
+<!--
+@component
+What is running, said once at the bottom of the page: which build, and which service it
+is talking to.
+
+It renders nothing at all when it knows neither. An empty footer is a rule the page
+still pays for in space and a reader still has to skip past, and a panel that cannot
+say what it is running is better off not raising the subject.
+-->
+
 {#if build.version !== null || build.serviceHost !== null}
   <footer class="foot">
     <span class="foot-mark" aria-hidden="true"></span>

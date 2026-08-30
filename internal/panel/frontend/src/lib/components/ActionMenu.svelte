@@ -44,6 +44,21 @@
   }
 </script>
 
+<!--
+@component
+Acts, not navigation. A menu holds things that HAPPEN; a place a reader can go is a
+link on the page, where it can be opened in a new tab and seen before it is pressed. A
+destructive entry sits last and wears the danger ink, so the thing that cannot be taken
+back is never the thing under the pointer by accident.
+
+`onOpenChange` is the prop worth knowing about. The menu lives in a portal, so a list
+that has to hold still while one of its rows is being operated cannot work that out
+from focus or from the pointer - both have left the row by the time the layer opens.
+
+Its width is its longest description, measured rather than assumed: a guess of 224px
+once put it a hundred pixels off the button it belongs to.
+-->
+
 <!-- Hung under the button and aligned to its right edge, which is where a menu
      opened from a trailing control belongs. Its width is its longest description,
      so it is measured rather than assumed - a guess of 224px once put it a

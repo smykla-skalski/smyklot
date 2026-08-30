@@ -23,6 +23,21 @@
   } = $props();
 </script>
 
+<!--
+@component
+A request that failed, and the retry. Distinct from `TableEmptyState`, which is a
+collection that succeeded and holds nothing: an empty list is not an error and drawing
+it as one teaches a reader to distrust the page.
+
+`overContent` is the whole design. A refresh that fails over a table that is already
+loaded has not made that table wrong, so the failure becomes a line ABOVE the rows
+rather than a screen in place of them - the reader keeps what they were reading, and
+the rows already fetched stay exactly where they are.
+
+`busy` is the retry reporting on itself, so a second press cannot be sent while the
+first is still in flight.
+-->
+
 {#snippet retry()}
   <Button onclick={onRetry} disabled={busy}>
     {busy ? 'Trying again…' : 'Try again'}
