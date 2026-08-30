@@ -102,13 +102,23 @@
          system as the absolute indicator while retaining the fractional geometry; scrollLeft
          restores the content coordinate when a narrow control is horizontally scrolled. */
       const nodeBox = node.getBoundingClientRect();
-      const left = optionBox.left - nodeBox.left - node.clientLeft + node.scrollLeft;
+      /* A rect is in VISUAL pixels and a custom property is spent as LAYOUT pixels, and
+         inside a scaled subtree those are not the same unit: the scale is applied once
+         by the measurement and again by the browser when the thumb is drawn. Under a
+         page at `zoom: 3` a re-measure put a 291px option under an 874px thumb, 605px
+         off to the right. `offsetWidth` is the same box in layout pixels, so their
+         ratio IS the effective scale - and it covers a CSS `transform` as well as
+         `zoom`, which no single API reports. Divided rather than measured with
+         `offsetLeft`, because that rounds to whole pixels and the seam it leaves around
+         the thumb's corners is what the fractional geometry here exists to avoid. */
+      const scale = node.offsetWidth > 0 ? nodeBox.width / node.offsetWidth : 1;
+      const left = (optionBox.left - nodeBox.left) / scale - node.clientLeft + node.scrollLeft;
       /* Read before the write, because the give below is owed to a MOVE and this runs
          for every re-measurement: a resize, a popover opening, a label changing width.
          Animating those would put a squeeze on the page where nothing travelled. */
       const moved = node.style.getPropertyValue('--segment-left') !== `${left}px`;
       node.style.setProperty('--segment-left', `${left}px`);
-      node.style.setProperty('--segment-width', `${optionBox.width}px`);
+      node.style.setProperty('--segment-width', `${optionBox.width / scale}px`);
 
       /* Landing in place rather than sliding into it, which is a real difference and not a
          precaution: the two writes above and the class below otherwise resolve in one style
@@ -416,21 +426,19 @@
      pointing at.
 
      Logical corners and logical insets throughout, so the same rule holds in RTL. */
-  label:not(:first-of-type)::before {
+  label:has(input:checked) + label::before,
+  label.outlined + label::before,
+  label.previewed + label::before {
     border-end-start-radius: 0;
     border-start-start-radius: 0;
-  }
-
-  label:not(:last-of-type)::before {
-    border-end-end-radius: 0;
-    border-start-end-radius: 0;
-  }
-
-  label:has(input:checked) + label::before {
     inset-inline-start: calc(var(--seg-inner-radius) * -1);
   }
 
-  label:has(+ label input:checked)::before {
+  label:has(+ label input:checked)::before,
+  label:has(+ label.outlined)::before,
+  label:has(+ label.previewed)::before {
+    border-end-end-radius: 0;
+    border-start-end-radius: 0;
     inset-inline-end: calc(var(--seg-inner-radius) * -1);
   }
 
