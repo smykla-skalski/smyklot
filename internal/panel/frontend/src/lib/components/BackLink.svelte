@@ -67,7 +67,7 @@ other click to the browser.
     align-self: start;
     color: var(--brand-action-text);
     display: inline-flex;
-    font: 700 var(--font-size-micro) / 1 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     gap: var(--space-1);
     letter-spacing: 0.08em;
     margin-bottom: var(--space-3);
@@ -82,7 +82,7 @@ other click to the browser.
      grows next. */
   .back-link.is-quiet {
     color: var(--text-secondary);
-    font: 400 var(--font-size-meta) / 1 var(--sans);
+    font: 400 var(--font-size-meta) / var(--leading-flat) var(--sans);
     gap: 0.4rem;
     letter-spacing: normal;
     margin-bottom: 0;

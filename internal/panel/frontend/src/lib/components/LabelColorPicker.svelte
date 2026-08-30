@@ -510,7 +510,7 @@ the caller applies, closes and whispers.
     font-size: var(--font-size-micro);
     font-weight: 600;
     letter-spacing: 0.07em;
-    line-height: 16px;
+    line-height: var(--leading-tight);
     margin: 0;
     padding: 0 2px;
     text-transform: uppercase;
@@ -664,7 +664,7 @@ the caller applies, closes and whispers.
     display: inline-flex;
     font-size: var(--font-size-micro);
     gap: 4px;
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-micro);
   }
 
   .field-error :global(svg) {

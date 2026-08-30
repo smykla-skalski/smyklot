@@ -728,7 +728,7 @@ account again.
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     gap: 0.35rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 var(--space-2) 0 0.7rem;
   }
 
@@ -741,7 +741,7 @@ account again.
     color: var(--text-muted);
     /* Ink-true like its neighbours, so the chip's three parts share one
        centre instead of the arrow riding its line box's leading. */
-    line-height: 1;
+    line-height: var(--leading-flat);
     text-box: trim-both cap alphabetic;
   }
 
@@ -902,7 +902,7 @@ account again.
     color: var(--text-muted);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    line-height: 16px;
+    line-height: var(--leading-tight);
     padding: var(--space-1) var(--space-3) var(--space-2);
   }
 

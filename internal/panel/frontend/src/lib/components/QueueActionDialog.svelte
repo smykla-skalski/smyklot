@@ -238,7 +238,7 @@ to ask it four different ways.
     padding: var(--space-2) var(--space-3);
   }
   textarea {
-    line-height: 1.45;
+    line-height: var(--leading-body);
     resize: vertical;
   }
   .check-line {

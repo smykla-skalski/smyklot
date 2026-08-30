@@ -134,14 +134,14 @@ screen is once too many.
      which stays dark under the Root light theme while the mark does not. */
   .mark-name {
     color: var(--sidebar-text);
-    font: 700 0.8125rem / 1 var(--sans);
+    font: 700 0.8125rem / var(--leading-flat) var(--sans);
     letter-spacing: 0.11em;
     text-transform: uppercase;
   }
 
   .mark-part {
     color: var(--sidebar-text-muted);
-    font: 700 0.65625rem / 1 var(--sans);
+    font: 700 0.65625rem / var(--leading-flat) var(--sans);
     letter-spacing: 0.12em;
   }
 

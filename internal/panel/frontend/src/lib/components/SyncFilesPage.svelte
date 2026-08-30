@@ -429,7 +429,7 @@ already hold - the index ships once, matching costs no requests.
   .kind-head-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
   }
 
@@ -725,7 +725,7 @@ already hold - the index ships once, matching costs no requests.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -749,7 +749,7 @@ already hold - the index ships once, matching costs no requests.
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 

@@ -198,7 +198,7 @@ page behind them.
     font-size: var(--font-size-micro);
     font-weight: 700;
     letter-spacing: 0.05em;
-    line-height: 1.3;
+    line-height: var(--leading-micro);
     text-transform: uppercase;
   }
 
@@ -234,7 +234,7 @@ page behind them.
      compact size. */
   .history-section h3 {
     color: var(--text-secondary);
-    font: 650 var(--font-size-compact) / 1 var(--sans);
+    font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
     letter-spacing: normal;
     margin-bottom: 0.5rem;
     text-transform: none;
@@ -246,7 +246,7 @@ page behind them.
 
   .current-reason p {
     font-size: var(--font-size-meta);
-    line-height: 1.5;
+    line-height: var(--leading-meta);
     margin: 0.3rem 0 0;
   }
 
@@ -283,14 +283,14 @@ page behind them.
     display: block;
     font-size: var(--font-size-meta);
     font-weight: 700;
-    line-height: 1;
+    line-height: var(--leading-flat);
     min-width: 0;
   }
 
   .decision-meta {
     color: var(--text-muted);
     display: block;
-    font: 400 var(--font-size-compact) / 1 var(--sans);
+    font: 400 var(--font-size-compact) / var(--leading-flat) var(--sans);
     margin-top: 0.4rem;
   }
 
@@ -298,7 +298,7 @@ page behind them.
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     font-weight: 500;
-    line-height: 1;
+    line-height: var(--leading-flat);
     min-width: 4.5rem;
     white-space: nowrap;
   }

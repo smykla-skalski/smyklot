@@ -123,7 +123,7 @@
     },
     '.cm-scroller': {
       fontFamily: 'inherit',
-      lineHeight: 'round(1.65em, 1px)',
+      lineHeight: 'var(--leading-meta)',
       overflowX: 'auto',
       padding: 'var(--space-3) 0',
     },
@@ -266,7 +266,7 @@ because svelte2tsx scans script comments for tags.)
     border-radius: var(--r-ctl);
     font-family: var(--mono);
     font-size: var(--font-size-compact);
-    line-height: round(1.65em, 1px);
+    line-height: var(--leading-meta);
   }
 
   .code-editor:focus-within {

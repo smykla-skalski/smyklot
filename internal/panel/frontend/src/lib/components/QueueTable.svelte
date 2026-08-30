@@ -284,7 +284,7 @@ from the wall clock cannot be photographed.
     cursor: pointer;
     font-size: var(--font-size-body);
     font-weight: 700;
-    line-height: 1.25;
+    line-height: var(--leading-body);
     padding: 0;
     text-align: left;
   }
@@ -300,7 +300,7 @@ from the wall clock cannot be photographed.
   .queue-reason {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.35;
+    line-height: var(--leading-compact);
     margin-top: 0.35rem;
   }
   .queue-reason {
@@ -350,7 +350,7 @@ from the wall clock cannot be photographed.
   .timing-summary {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.35;
+    line-height: var(--leading-compact);
   }
   .queue-actions {
     align-items: center;

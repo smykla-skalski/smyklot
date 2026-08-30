@@ -586,7 +586,7 @@ unlisted labels are removed, and the patterns left alone either way.
   .kind-head-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
   }
 
@@ -705,7 +705,7 @@ unlisted labels are removed, and the patterns left alone either way.
   .label-name {
     font-size: var(--font-size-meta);
     font-weight: 600;
-    line-height: 20px;
+    line-height: var(--leading-meta);
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
@@ -713,7 +713,7 @@ unlisted labels are removed, and the patterns left alone either way.
   .label-desc {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: 20px;
+    line-height: var(--leading-meta);
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
@@ -911,7 +911,7 @@ unlisted labels are removed, and the patterns left alone either way.
     display: inline-flex;
     font-size: var(--font-size-micro);
     gap: 4px;
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-micro);
   }
 
   .field-error :global(svg) {

@@ -99,7 +99,7 @@ what the panel did.
     align-items: center;
     color: var(--brand-action-text);
     display: flex;
-    font: 700 var(--font-size-micro) / 1 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     gap: 0.6rem;
     grid-column: 1;
     grid-row: 1;
@@ -117,12 +117,12 @@ what the panel did.
     grid-column: 1;
     grid-row: 1;
     letter-spacing: -0.03em;
-    /* Rounded to whole pixels: 1.2 of a 28px title is 33.6, and a fractional line
-       box puts the description - and everything under it - on a half device pixel,
-       which reads as a soft edge at 2x. Keyed to 1.2em, the element's OWN size:
-       keying it to --title-size gave a 22px detail heading the 28px title's 34px
-       line box. */
-    line-height: round(1.2em, 1px);
+    /* 34px, the scale's page tier and exactly what `round(1.2em, 1px)` computed here:
+       1.2 of a 28px title is 33.6, and the half pixel put the description - and
+       everything under it - on a fractional device row. The em keying existed for a
+       22px detail heading that overrode `--title-size`; nothing overrides it now, so
+       the size and its leading are one decision again. */
+    line-height: var(--leading-page);
     margin: 0;
   }
 
@@ -133,9 +133,7 @@ what the panel did.
     font-size: var(--font-size-meta);
     grid-column: 1;
     grid-row: 2;
-    /* Whole pixels, same rule as the title: 1.5 of a 15px body is 22.5, and the half
-       pixel pushed the toolbar row under this line off the device grid. */
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     /* Baseline to cap line, now that both boxes are their bands and the title's row
        is a control tall: 18.57px, the gap the approved design measures. The number
        written here is the whole gap, rather than the number plus whatever leading the

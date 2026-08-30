@@ -56,10 +56,19 @@ html:focus-within {
 }
 
 body {
-  background: var(--ink);
-  color: var(--text);
-  font: 0.9375rem/1.5 var(--sans);
+  background: var(--canvas);
+  color: var(--text-primary);
+  /* NOT A RATIO, AND NOT IN THE SHORTHAND. A ratio inherits as a ratio, so every tier
+     under this one multiplied 1.5 by its own size and landed wherever that fell: 15px
+     body copy rendered 22.5, and 2485 elements sat on a fractional line. A rem length
+     inherits as a length, so a tier that says nothing gets a whole-pixel line and a
+     tier that has its own says so. The `font` shorthand cannot hold it, because
+     leaving leading out of a shorthand resets it to `normal` - the font's own
+     fractional metric, which is the same bug wearing a different number. */
+  font-family: var(--sans);
+  font-size: var(--font-size-body);
   font-optical-sizing: auto;
+  line-height: var(--leading-body);
   margin: 0;
   min-width: 20rem;
   -webkit-font-smoothing: antialiased;
@@ -228,7 +237,7 @@ body {
 
 .eyebrow {
   color: var(--text-muted);
-  font: 600 var(--font-size-compact) / 1.25 var(--sans);
+  font: 600 var(--font-size-compact) / var(--leading-compact) var(--sans);
   letter-spacing: 0.06em;
   margin: 0;
   text-transform: uppercase;
@@ -535,7 +544,7 @@ body {
   .data-table.stacked td::before {
     color: var(--text-muted);
     content: attr(data-label);
-    font: 650 var(--font-size-compact) / 1.2 var(--sans);
+    font: 650 var(--font-size-compact) / var(--leading-compact) var(--sans);
   }
 
   /* The empty row is one message, not a labelled field. */
@@ -1000,13 +1009,13 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
 .table-notice > strong {
   color: var(--text-primary);
   font-size: var(--font-size-card-title);
-  line-height: 1.5;
+  line-height: var(--leading-body);
 }
 
 .table-notice > span {
   color: var(--text-soft);
   font-size: var(--font-size-meta);
-  line-height: 1.5;
+  line-height: var(--leading-meta);
 }
 
 /* One square icon-only control: a row's quick action, a row's menu trigger, a
@@ -1034,7 +1043,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   flex: none;
   height: 1.75rem;
   justify-content: center;
-  line-height: 1;
+  line-height: var(--leading-flat);
   padding: 0;
   /* So a badge can ride the corner - the filter trigger's count does. Stated
      here rather than in each caller: a component that positions ITSELF cannot be
@@ -1111,7 +1120,7 @@ input[type='radio']:not(:disabled) {
      fill its container is a decision the call site makes, by giving it a width; nothing
      in this app relied on the stretch, which is why the default can be the safe one. */
   inline-size: fit-content;
-  font: 500 var(--font-size-control) / 1 var(--sans);
+  font: 500 var(--font-size-control) / var(--leading-flat) var(--sans);
   gap: var(--space-2);
   /* Every control in the content panes is 34px (the mock's --ctl-h); contexts
      that need the tall variant opt in through --local-control-height. */
@@ -1283,7 +1292,7 @@ select:disabled {
      stays visible on any surface (tint fills measure ~1:1 against inset cards). */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
   display: inline-flex;
-  font: 600 var(--font-size-compact) / 1 var(--sans);
+  font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
   gap: 0.35rem;
   /* A declared height, not an outcome of padding: a chip stood as tall as
      whatever it happened to hold, and none of those heights was whole. */
@@ -1300,7 +1309,7 @@ select:disabled {
 
 .chip-label {
   letter-spacing: 0;
-  line-height: 1;
+  line-height: var(--leading-flat);
   text-box: trim-both cap alphabetic;
 }
 
@@ -1476,7 +1485,7 @@ select:disabled {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
   color: var(--brand-action-text);
   display: inline-flex;
-  font: 700 var(--avatar-font, calc(var(--avatar-size) * 0.36)) / 1 var(--sans);
+  font: 700 var(--avatar-font, calc(var(--avatar-size) * 0.36)) / var(--leading-flat) var(--sans);
   justify-content: center;
 }
 
@@ -1488,10 +1497,13 @@ select:disabled {
   color: var(--text);
   font-size: var(--font-size-meta);
   height: var(--local-control-height, var(--control-height-compact));
-  /* Not 1: at 13px that is a line box shorter than the face it holds, and a select clips to its
-     box, so the tail of a "y" in "7 days" was cut off. The control has a fixed height and the
-     engine centres the value in it, so the leading is free to be what the font asks for. */
-  line-height: normal;
+  /* Not flat: at 13px that is a line box shorter than the face it holds, and a select
+     clips to its box, so the tail of a "y" in "7 days" was cut off. The meta tier is
+     the scale's answer for 13px prose and clears the descender with room to spare -
+     `normal` cleared it too, and is the font's own fractional metric, which is the one
+     thing the leading law exists to keep off the page. The control has a fixed height
+     and the engine centres the value in it, so the extra leading costs nothing. */
+  line-height: var(--leading-meta);
   padding: 0 0.625rem;
   transition:
     background-color var(--duration-fast) var(--ease-out),
@@ -1564,7 +1576,7 @@ select:focus-visible {
 code {
   /* 1.5, not 1.4: inline code sits inside body copy, and a shorter line box than
      its surrounding text pulls the run off the shared baseline grid. */
-  font: 0.8125rem/1.5 var(--mono);
+  font: 0.8125rem/var(--leading-meta) var(--mono);
   max-width: 100%;
 }
 
@@ -1665,7 +1677,7 @@ code {
 /* Cap-trimmed text: the box shrinks to cap..baseline so flex centers INK against
    icons and dots, not the glyph box (which carries asymmetric leading). */
 .cap-trim {
-  line-height: 1;
+  line-height: var(--leading-flat);
   text-box: trim-both cap alphabetic;
 }
 
@@ -1758,7 +1770,7 @@ thead th {
      between them. */
   border-bottom: 1px solid var(--rule);
   color: var(--heading-text);
-  font: 700 var(--font-size-micro) / 1 var(--sans);
+  font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
   letter-spacing: 0.08em;
   text-align: left;
   text-box: trim-both cap alphabetic;
@@ -1840,7 +1852,7 @@ thead th .icon-button:active:not(:disabled) {
   color: var(--text-soft);
   display: inline-flex;
   flex: none;
-  font: 700 var(--font-size-micro) / 1 var(--sans);
+  font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
   gap: 0.4rem;
   height: 1.5rem;
   letter-spacing: 0.06em;

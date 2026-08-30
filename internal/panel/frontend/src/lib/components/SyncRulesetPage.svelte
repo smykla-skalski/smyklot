@@ -1021,7 +1021,7 @@ stacked left, Cancel and Done on a hairline foot.
   .object-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
     max-width: 64ch;
   }
@@ -1187,7 +1187,7 @@ stacked left, Cancel and Done on a hairline foot.
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 var(--space-2);
   }
 
@@ -1228,7 +1228,7 @@ stacked left, Cancel and Done on a hairline foot.
     display: inline-flex;
     font-size: var(--font-size-micro);
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 var(--space-2);
   }
 
@@ -1427,7 +1427,7 @@ stacked left, Cancel and Done on a hairline foot.
     color: var(--text-muted);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    line-height: 16px;
+    line-height: var(--leading-tight);
     padding: var(--space-1) var(--space-3) var(--space-2);
   }
 
@@ -1435,7 +1435,7 @@ stacked left, Cancel and Done on a hairline foot.
     color: var(--text-secondary);
     flex: 1;
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     text-box: trim-both cap alphabetic;
   }
 

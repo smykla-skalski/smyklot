@@ -204,7 +204,7 @@ the answer somebody came to the overview to get.
     min-width: 0;
   }
   .panel-head h3 {
-    font: 700 var(--font-size-card-title) / 1 var(--sans);
+    font: 700 var(--font-size-card-title) / var(--leading-flat) var(--sans);
     letter-spacing: -0.02em;
     margin: 0;
   }
@@ -236,7 +236,7 @@ the answer somebody came to the overview to get.
     border-radius: var(--r-ctl);
     color: var(--accent);
     display: inline-flex;
-    font: 650 var(--font-size-compact) / 1 var(--sans);
+    font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: 0.2rem;
     text-decoration: none;
     white-space: nowrap;

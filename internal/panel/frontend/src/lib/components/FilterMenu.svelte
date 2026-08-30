@@ -220,7 +220,7 @@ is never what clearing a filter is meant to mean.
     box-shadow: 0 0 0 1px var(--border-subtle);
     color: var(--brand-action-text);
     display: inline-grid;
-    font: 700 0.5625rem / 1 var(--sans);
+    font: 700 0.5625rem / var(--leading-flat) var(--sans);
     height: 0.875rem;
     padding: 2px 4px;
     place-items: center;
@@ -263,13 +263,13 @@ is never what clearing a filter is meant to mean.
 
   .filter-body > header strong {
     font-size: var(--font-size-meta);
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .filter-body > header span {
     color: var(--dim);
     font-size: var(--font-size-compact);
-    line-height: 1.4;
+    line-height: var(--leading-compact);
     /* A real step between the title and the line under it: at 0.1rem the two ran
        together and the hint read as a second line of the title. */
     margin-top: var(--space-2);
@@ -292,7 +292,7 @@ is never what clearing a filter is meant to mean.
 
   .section-label {
     color: var(--dim);
-    font: 700 var(--font-size-micro) / 1 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.1em;
     margin: 0;
     padding: var(--space-2) var(--space-2) var(--space-1);
@@ -310,7 +310,7 @@ is never what clearing a filter is meant to mean.
     color: var(--text);
     column-gap: var(--space-3);
     display: grid;
-    font: 400 var(--font-size-meta) / 1 var(--sans);
+    font: 400 var(--font-size-meta) / var(--leading-flat) var(--sans);
     grid-template-columns: auto minmax(0, 1fr) auto;
     padding: var(--space-3) var(--space-2);
     row-gap: var(--space-2);
@@ -411,7 +411,7 @@ is never what clearing a filter is meant to mean.
   }
 
   .option-copy strong {
-    font: 600 var(--font-size-meta) / 1 var(--sans);
+    font: 600 var(--font-size-meta) / var(--leading-flat) var(--sans);
     grid-column: 2;
     justify-self: start;
     min-width: 0;
@@ -422,7 +422,7 @@ is never what clearing a filter is meant to mean.
     font-size: var(--font-size-compact);
     grid-column: 2 / -1;
     grid-row: 2;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   /* The quiet way out sits on the left and the committing one on the right, and

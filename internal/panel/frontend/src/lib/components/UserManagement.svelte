@@ -2310,14 +2310,14 @@ offering it.
   .user-identity strong {
     font-size: var(--font-size-body);
     font-weight: 600;
-    line-height: 1.2;
+    line-height: var(--leading-body);
   }
 
   .user-login {
     color: var(--dim);
     font-size: var(--font-size-compact);
     font-weight: 400;
-    line-height: 1.2;
+    line-height: var(--leading-compact);
   }
 
   .last-login {
@@ -2330,7 +2330,7 @@ offering it.
     align-items: center;
     display: inline-flex;
     height: var(--control-height-compact);
-    line-height: 1;
+    line-height: var(--leading-flat);
     vertical-align: middle;
   }
 
@@ -2364,7 +2364,7 @@ offering it.
     align-items: center;
     color: var(--text-secondary);
     display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: var(--space-2);
     min-height: var(--control-height-compact);
     white-space: nowrap;
@@ -2522,7 +2522,7 @@ offering it.
   .add-scope-summary small {
     color: var(--text-muted);
     display: block;
-    font: 700 var(--font-size-micro) / 1 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
@@ -2530,7 +2530,7 @@ offering it.
   .add-scope-summary strong {
     display: block;
     font-size: var(--font-size-body);
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin-top: 0.65rem;
   }
 
@@ -2624,14 +2624,14 @@ offering it.
   .method-copy strong {
     display: block;
     font-size: 0.75rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .method-copy small {
     color: var(--dim);
     display: block;
     font-size: var(--font-size-micro);
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin-top: 0.75rem;
   }
 
@@ -2662,7 +2662,7 @@ offering it.
   }
 
   .form-field > span {
-    font: 600 0.75rem / 1 var(--sans);
+    font: 600 0.75rem / var(--leading-flat) var(--sans);
   }
 
   .form-field > span small {
@@ -2700,7 +2700,7 @@ offering it.
     color: var(--dim);
     font-size: 0.6875rem;
     font-weight: 400;
-    line-height: 1.35;
+    line-height: var(--leading-micro);
     /* The grid gap is 0.4rem; the mock puts 0.35rem above helpers. */
     margin-top: -0.05rem;
   }
@@ -2717,7 +2717,7 @@ offering it.
     border: 1px solid var(--control-border);
     border-radius: var(--r-ctl);
     color: var(--text);
-    font: 0.8125rem/1.45 var(--sans);
+    font: 0.8125rem/var(--leading-meta) var(--sans);
     min-height: 6rem;
     padding: 0.625rem;
     resize: vertical;
@@ -2931,7 +2931,7 @@ offering it.
     :global(.user-table td:not(.row-actions)::before) {
       color: var(--text-muted);
       content: attr(data-label);
-      font: 650 var(--font-size-compact) / 1 var(--sans);
+      font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }

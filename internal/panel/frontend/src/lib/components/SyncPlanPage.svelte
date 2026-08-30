@@ -649,10 +649,11 @@ the button.
   }
 
   .hero h2 {
-    font-size: 2.375rem;
+    /* The page tier, as on the sync overview's hero beside it. */
+    font-size: var(--font-size-page-title);
     font-weight: 700;
     letter-spacing: -0.03em;
-    line-height: round(1.1em, 1px);
+    line-height: var(--leading-page);
     margin: 0;
     min-block-size: 29px;
     text-box: trim-both cap alphabetic;
@@ -946,7 +947,7 @@ the button.
     color: var(--danger);
     font-size: var(--font-size-micro);
     grid-column: 3;
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-micro);
     margin-block-start: calc(var(--space-1) - var(--space-3));
   }
 
@@ -969,7 +970,7 @@ the button.
     color: var(--text-secondary);
     flex: 1;
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     text-box: trim-both cap alphabetic;
   }
 
@@ -1005,7 +1006,7 @@ the button.
   .plan-rule {
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
     text-wrap: pretty;
   }
@@ -1084,7 +1085,7 @@ the button.
   .state-say {
     color: var(--text-secondary);
     font-size: var(--font-size-compact);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-compact);
     text-wrap: pretty;
   }
 
@@ -1215,7 +1216,7 @@ the button.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 

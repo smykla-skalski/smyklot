@@ -789,7 +789,7 @@ positioning will replace once it is portable.
     border-radius: 0.25rem;
     color: var(--text-muted);
     display: inline-grid;
-    font: 700 0.5625rem / 1 var(--mono);
+    font: 700 0.5625rem / var(--leading-flat) var(--mono);
     font-variant-numeric: tabular-nums;
     height: 0.875rem;
     justify-content: center;

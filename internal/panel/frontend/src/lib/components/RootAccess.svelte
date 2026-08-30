@@ -1130,7 +1130,7 @@ refuse.
   time {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.25;
+    line-height: var(--leading-compact);
   }
 
   .relationship-count,

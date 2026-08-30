@@ -82,7 +82,7 @@ tell them apart.
      Untrimmed, "Bypassed" and "Missing" ride visibly high of their glyph. */
   .status-label {
     color: currentColor;
-    font: 600 var(--font-size-meta) / 1 var(--sans);
+    font: 600 var(--font-size-meta) / var(--leading-flat) var(--sans);
   }
 
   .status-valid {

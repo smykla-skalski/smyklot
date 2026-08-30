@@ -515,7 +515,7 @@ turns the unmanaged names into rows of their own.
   .kind-head-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
   }
 

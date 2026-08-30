@@ -98,7 +98,7 @@ the page size; this half is the move alone.
     font-weight: 600;
     height: var(--local-control-height, var(--control-height-compact));
     justify-content: center;
-    line-height: 1;
+    line-height: var(--leading-flat);
     max-height: var(--local-control-height, var(--control-height-compact));
     min-height: var(--local-control-height, var(--control-height-compact));
     transition:
@@ -152,7 +152,7 @@ the page size; this half is the move alone.
   .ellipsis {
     color: var(--dim);
     display: grid;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     height: var(--local-control-height, var(--control-height-compact));
     min-width: 1.25rem;
     place-items: center;

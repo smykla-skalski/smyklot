@@ -117,7 +117,7 @@ where the reader already is.
     border-radius: var(--r-ctl);
     color: var(--text);
     display: inline-flex;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: var(--space-2);
     /* The panel's compact control height, not a third one of its own: 1.875rem
        is 30px, which lined up with nothing it ever sat beside. */
@@ -197,7 +197,7 @@ where the reader already is.
     border-radius: var(--radius-control);
     color: var(--text-secondary);
     display: grid;
-    font: 600 var(--font-size-compact) / 1 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
     /* The symbol sits closer to its word than the row does to its edge: a mark and
        the word it belongs to are one object, and at --space-2 they read as two
        columns that happen to be adjacent. */

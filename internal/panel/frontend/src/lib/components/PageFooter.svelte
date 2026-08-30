@@ -41,7 +41,7 @@ say what it is running is better off not raising the subject.
     flex-wrap: wrap;
     font-size: var(--font-size-compact);
     gap: 0.625rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin-top: 0.75rem;
     padding-top: 0.875rem;
   }
@@ -65,7 +65,7 @@ say what it is running is better off not raising the subject.
     background: var(--brand-action-tint);
     border-radius: var(--r-chip);
     color: var(--brand-action-text);
-    font: 600 0.65625rem / 1 var(--sans);
+    font: 600 0.65625rem / var(--leading-flat) var(--sans);
     letter-spacing: 0.05em;
     padding: 4px 8px;
     text-transform: uppercase;
@@ -77,7 +77,7 @@ say what it is running is better off not raising the subject.
 
   .foot-host {
     font-size: var(--font-size-compact);
-    line-height: 1;
+    line-height: var(--leading-flat);
     overflow-wrap: anywhere;
   }
 </style>

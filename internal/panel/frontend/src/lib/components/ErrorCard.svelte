@@ -84,7 +84,7 @@ means, and the one thing worth doing about it.
     --error-code-ink: 1;
 
     color: var(--text-muted);
-    font: 800 clamp(3.5rem, 16vw, 5.25rem) / 1 var(--sans);
+    font: 800 clamp(3.5rem, 16vw, 5.25rem) / var(--leading-flat) var(--sans);
     letter-spacing: 0.04em;
     margin: 0 0 var(--space-1);
     opacity: var(--error-code-ink);
@@ -94,7 +94,7 @@ means, and the one thing worth doing about it.
      rather than as a heading: the page already has one, above the card. */
   .error-lead {
     color: var(--text-primary);
-    font: 650 1.0625rem / 1.35 var(--sans);
+    font: 650 1.0625rem / var(--leading-body) var(--sans);
     margin: 0;
   }
 

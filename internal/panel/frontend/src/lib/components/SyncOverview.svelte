@@ -353,12 +353,14 @@ plan is applied, which is why these are switches and not a form.
   }
 
   .hero h2 {
-    /* 38px whole - 2.35rem was 37.6, and the trimmed cap box floors to 29
-       so the board below starts on a whole pixel. */
-    font-size: 2.375rem;
+    /* THE PAGE TIER, not a display size of its own. 2.375rem and its 42px line were
+       two values the type scale does not have, on the one heading that had reached for
+       a bigger voice than the scale offers - and a scale with a hole punched in it for
+       one page is not a scale. 28px on 34 is the top of it. */
+    font-size: var(--font-size-page-title);
     font-weight: 700;
     letter-spacing: -0.03em;
-    line-height: round(1.1em, 1px);
+    line-height: var(--leading-page);
     margin: 0;
     min-block-size: 29px;
     text-box: trim-both cap alphabetic;
@@ -735,7 +737,7 @@ plan is applied, which is why these are switches and not a form.
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -854,7 +856,7 @@ plan is applied, which is why these are switches and not a form.
     align-self: start;
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
   }
 
   /* One slot per repository, the board's order, the board's material. */

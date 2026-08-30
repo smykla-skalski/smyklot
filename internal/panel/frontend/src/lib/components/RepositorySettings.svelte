@@ -920,7 +920,7 @@ so a link points at the pane a colleague was asked to look at.
   .object-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
     max-width: 64ch;
   }
@@ -988,7 +988,7 @@ so a link points at the pane a colleague was asked to look at.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -1250,7 +1250,7 @@ so a link points at the pane a colleague was asked to look at.
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
     /* Ink-true with even padding, so the words sit on the note's centre. */
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: var(--space-3) 0 0;
     padding: var(--space-3);
     text-box: trim-both cap alphabetic;
@@ -1316,7 +1316,7 @@ so a link points at the pane a colleague was asked to look at.
   .f-copy strong {
     display: block;
     font-size: var(--font-size-meta);
-    line-height: 1;
+    line-height: var(--leading-flat);
     text-box: trim-both cap alphabetic;
   }
 
@@ -1324,7 +1324,7 @@ so a link points at the pane a colleague was asked to look at.
     color: var(--text-muted);
     display: block;
     font-size: var(--font-size-compact);
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin-top: 0.8rem;
     overflow-wrap: anywhere;
     text-box: trim-both cap alphabetic;
@@ -1336,7 +1336,7 @@ so a link points at the pane a colleague was asked to look at.
   .f-copy p {
     color: var(--danger);
     font-size: var(--font-size-compact);
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin: 0.5rem 0 0;
     text-box: trim-both cap alphabetic;
   }

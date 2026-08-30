@@ -792,7 +792,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
   time {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.25;
+    line-height: var(--leading-compact);
   }
 
   time {

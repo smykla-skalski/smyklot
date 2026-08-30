@@ -1028,7 +1028,7 @@ customization it described.
   .group-note {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-compact);
     margin: 0 0 var(--space-2);
     max-width: 72ch;
   }

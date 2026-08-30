@@ -481,7 +481,7 @@ and most visits to this route never open one.
      pull-request names already ask for, and the deepest descender here is 0.18em. */
   .installation-identity small {
     color: var(--text-muted);
-    font: 400 var(--font-size-compact) / 1.2 var(--mono);
+    font: 400 var(--font-size-compact) / var(--leading-compact) var(--mono);
     overflow: clip;
     overflow-clip-margin: 0.4em;
     text-overflow: ellipsis;
@@ -532,7 +532,7 @@ and most visits to this route never open one.
   .installation-link {
     color: var(--text-primary);
     display: block;
-    font: 700 var(--font-size-body) / 1.25 var(--sans);
+    font: 700 var(--font-size-body) / var(--leading-body) var(--sans);
     text-decoration: none;
   }
 

@@ -617,15 +617,16 @@ inside it.
     font-size: 1.375rem;
     font-weight: 700;
     letter-spacing: -0.035em;
-    /* Whole pixels, same rule as the page headers: 1.2 of 22px is 26.4, and the
-       fraction lands the avatar row and the nav under it off the device grid. */
-    line-height: round(1.2em, 1px);
+    /* 26px, which is the scale's title tier and exactly what `round(1.2em, 1px)`
+       was computing here - the fraction it was rounding away landed the avatar row
+       and the nav under it off the device grid. A rem multiple needs no function. */
+    line-height: var(--leading-title);
     margin: 0;
   }
 
   .installation-title p {
     color: var(--text-secondary);
-    font: 450 var(--font-size-compact) / 1.4 var(--mono);
+    font: 450 var(--font-size-compact) / var(--leading-compact) var(--mono);
     margin-top: var(--space-1);
   }
 
@@ -661,7 +662,7 @@ inside it.
 
   .elevation-countdown {
     color: var(--text-primary);
-    font: 700 0.9rem/1 var(--mono);
+    font: 700 0.9rem/var(--leading-flat) var(--mono);
   }
 
   .root-loading {
@@ -696,7 +697,7 @@ inside it.
   }
 
   .elevation-warning p {
-    line-height: 1.55;
+    line-height: var(--leading-body);
   }
 
   .acknowledgment,
@@ -710,7 +711,7 @@ inside it.
     cursor: pointer;
     gap: var(--space-3);
     grid-template-columns: auto minmax(0, 1fr);
-    line-height: 1.5;
+    line-height: var(--leading-body);
   }
 
   .acknowledgment input {
@@ -737,7 +738,7 @@ inside it.
 
   .reason-field textarea {
     height: auto;
-    line-height: 1.5;
+    line-height: var(--leading-body);
     padding-block: var(--space-2);
     resize: vertical;
   }

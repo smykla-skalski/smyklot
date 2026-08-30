@@ -75,7 +75,7 @@ floating in it.
 
   .sign-in-lead {
     color: var(--text-primary);
-    font: 650 1.0625rem / 1.35 var(--sans);
+    font: 650 1.0625rem / var(--leading-body) var(--sans);
     margin: 0;
   }
 

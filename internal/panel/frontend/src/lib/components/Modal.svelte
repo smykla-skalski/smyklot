@@ -191,7 +191,7 @@ belongs in `TableEmptyState`.
     font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.015em;
-    line-height: 1.25;
+    line-height: var(--leading-title);
     margin: 0;
     min-width: 0;
     overflow-wrap: anywhere;
@@ -200,7 +200,7 @@ belongs in `TableEmptyState`.
   :global(.modal-panel > header p) {
     color: var(--dim);
     font-size: 0.8125rem;
-    line-height: 1.5;
+    line-height: var(--leading-meta);
     margin: 0.45rem 0 0;
   }
 

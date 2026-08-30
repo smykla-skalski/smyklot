@@ -1104,7 +1104,7 @@ without the composer.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -1156,13 +1156,13 @@ without the composer.
 
   dt {
     color: var(--text-muted);
-    font: 700 var(--font-size-micro) / 1.3 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-micro) var(--sans);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
 
   dd {
-    font: 600 var(--font-size-compact) / 1.5 var(--mono);
+    font: 600 var(--font-size-compact) / var(--leading-compact) var(--mono);
     margin: 0.15rem 0 0;
     min-width: 0;
     overflow-wrap: anywhere;

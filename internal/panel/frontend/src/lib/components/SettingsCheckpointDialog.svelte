@@ -458,7 +458,7 @@ act sees the same history without the button.
 
   .snapshot-count strong {
     color: var(--diff-chg-ink);
-    font: 700 var(--font-size-title) / 1 var(--mono);
+    font: 700 var(--font-size-title) / var(--leading-flat) var(--mono);
   }
 
   .snapshot-count span {
@@ -625,7 +625,7 @@ act sees the same history without the button.
   .raw-state pre {
     background: var(--surface-inset);
     border-radius: var(--radius-control);
-    font: var(--font-size-compact) / 1.5 var(--mono);
+    font: var(--font-size-compact) / var(--leading-compact) var(--mono);
     margin: var(--space-2) 0 0;
     max-height: 18rem;
     overflow: auto;

@@ -748,7 +748,7 @@ it has to answer to the same fact.
     font-weight: 800;
     inline-size: 14px;
     justify-content: center;
-    line-height: 1;
+    line-height: var(--leading-flat);
     margin-inline-start: auto;
     text-box: trim-both cap alphabetic;
   }
@@ -772,7 +772,7 @@ it has to answer to the same fact.
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 var(--space-2);
   }
 
@@ -932,7 +932,7 @@ it has to answer to the same fact.
       font-size: var(--font-size-micro);
       font-weight: 600;
       letter-spacing: 0.07em;
-      line-height: 16px;
+      line-height: var(--leading-tight);
       padding: var(--space-2) var(--space-3) var(--space-1);
       text-transform: uppercase;
     }

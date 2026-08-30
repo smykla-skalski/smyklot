@@ -232,7 +232,7 @@ not.
   .workload-detail p {
     color: var(--dim);
     font-size: 0.78rem;
-    line-height: 1.5;
+    line-height: var(--leading-meta);
     margin: var(--space-2) 0 0;
   }
   .timeline ol {

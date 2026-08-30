@@ -42,7 +42,11 @@ managed gutter bar on the lines an adjustment rewrote.
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     /* Whole per line, or N lines compound the fraction. */
-    line-height: round(1.65em, 1px);
+    /* 20px, the meta tier. Code is set at the compact size and takes the tier above
+       its own, because a line of code is denser than a line of prose and needs the
+       room back - and 20 is a step the scale already has rather than a figure this
+       one surface invented. */
+    line-height: var(--leading-meta);
     overflow-x: auto;
     padding: var(--space-3) 0;
   }

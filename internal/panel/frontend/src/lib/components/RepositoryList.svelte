@@ -1679,7 +1679,7 @@ a workspace has is not a number worth blocking the first screenful on.
     /* Not bold. The name is the row's subject, and the row is already the thing
        being pressed - weight on top of that made every name read as its own
        control in a table of them. */
-    font: 400 var(--font-size-meta) / 1 var(--mono);
+    font: 400 var(--font-size-meta) / var(--leading-flat) var(--mono);
     letter-spacing: 0;
     min-width: 0;
     overflow: clip;
@@ -1703,7 +1703,7 @@ a workspace has is not a number worth blocking the first screenful on.
     border-radius: var(--r-chip);
     color: var(--text-soft);
     flex: none;
-    font: 500 var(--font-size-compact) / 1 var(--mono);
+    font: 500 var(--font-size-compact) / var(--leading-flat) var(--mono);
     padding: 0.34rem 0.5rem;
     white-space: nowrap;
   }
@@ -1714,7 +1714,7 @@ a workspace has is not a number worth blocking the first screenful on.
     display: flex;
     font-size: var(--font-size-meta);
     height: var(--control-height-compact);
-    line-height: 1;
+    line-height: var(--leading-flat);
     white-space: nowrap;
   }
 

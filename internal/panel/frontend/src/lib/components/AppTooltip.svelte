@@ -74,7 +74,7 @@ changes face on its way into a tooltip reads as a different kind of thing.
     border-radius: var(--radius-popover);
     box-shadow: var(--shadow-popover);
     color: var(--text-secondary);
-    font: 400 var(--font-size-meta) / 1.45 var(--sans);
+    font: 400 var(--font-size-meta) / var(--leading-meta) var(--sans);
     letter-spacing: normal;
     max-width: min(17rem, calc(100vw - 3rem));
     padding: 0.625rem 0.75rem;

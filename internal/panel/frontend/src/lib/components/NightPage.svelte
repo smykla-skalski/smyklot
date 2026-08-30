@@ -306,7 +306,7 @@ are written once.
      plate header gave it. */
   .night-title {
     color: rgb(246 249 255);
-    font: 700 1.0625rem / 1.3 var(--sans);
+    font: 700 1.0625rem / var(--leading-body) var(--sans);
     letter-spacing: 0;
     margin: 0;
     min-width: 0;

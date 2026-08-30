@@ -160,7 +160,7 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
   }
 
   .form-field > label {
-    font: 600 0.75rem / 1 var(--sans);
+    font: 600 0.75rem / var(--leading-flat) var(--sans);
   }
 
   :global(.login-input) {
@@ -171,7 +171,7 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
     color: var(--dim);
     font-size: 0.6875rem;
     font-weight: 400;
-    line-height: 1.35;
+    line-height: var(--leading-micro);
     margin-top: -0.05rem;
   }
 
@@ -216,12 +216,12 @@ ask for it opened unfocused and a reader had to reach for the mouse before typin
   }
 
   :global(.suggestion-login) {
-    font: 600 var(--font-size-compact) / 1 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-flat) var(--sans);
   }
 
   :global(.suggestion-name) {
     color: var(--text-secondary);
-    font: var(--font-size-compact) / 1 var(--sans);
+    font: var(--font-size-compact) / var(--leading-flat) var(--sans);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

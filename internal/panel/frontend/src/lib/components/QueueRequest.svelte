@@ -480,7 +480,7 @@ page directly still leads somewhere.
 
   .fact dt {
     color: var(--dim);
-    font: 700 var(--font-size-micro) / 1 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
@@ -538,7 +538,7 @@ page directly still leads somewhere.
   }
 
   .timeline-heading {
-    font: 700 var(--font-size-card-title) / 1.3 var(--sans);
+    font: 700 var(--font-size-card-title) / var(--leading-body) var(--sans);
     letter-spacing: -0.02em;
     margin: var(--space-6) 0 var(--space-2);
   }
@@ -662,13 +662,13 @@ page directly still leads somewhere.
   .timeline .head strong {
     font-size: var(--font-size-meta);
     font-weight: 700;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .timeline > li > time {
     align-self: center;
     color: var(--dim);
-    font: 400 var(--font-size-meta) / 1 var(--mono);
+    font: 400 var(--font-size-meta) / var(--leading-flat) var(--mono);
     grid-area: 1 / 3 / 2 / 4;
   }
 
@@ -702,7 +702,7 @@ page directly still leads somewhere.
     background: var(--well);
     border-radius: var(--r-chip);
     color: var(--text-soft);
-    font: 500 var(--font-size-micro) / 1 var(--mono);
+    font: 500 var(--font-size-micro) / var(--leading-flat) var(--mono);
     max-width: 100%;
     overflow: clip;
     overflow-clip-margin: 0.4em;

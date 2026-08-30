@@ -1251,7 +1251,7 @@ where it arises.
   .object-sub {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: 0;
     max-width: 64ch;
   }
@@ -1342,7 +1342,7 @@ where it arises.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -1521,7 +1521,7 @@ where it arises.
     font-family: var(--mono);
     font-size: var(--font-size-micro);
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 7px;
   }
 
@@ -1582,7 +1582,7 @@ where it arises.
   .list-ask-word {
     color: var(--text-primary);
     font-size: var(--font-size-compact);
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-compact);
   }
 
   .list-ask-word code {
@@ -1590,7 +1590,7 @@ where it arises.
     font-family: var(--mono);
     /* The mono face's taller metrics raised the line box 1.5px over the
        sans text around it; the words set the line, the key rides it. */
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .choice-cards {

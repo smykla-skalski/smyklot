@@ -385,7 +385,7 @@ pager - a notification list has no last page worth naming.
   .group-id,
   .group-count {
     color: var(--text-muted);
-    font: 600 var(--font-size-micro) / 1 var(--mono);
+    font: 600 var(--font-size-micro) / var(--leading-flat) var(--mono);
   }
 
   /* An identifier is one word however narrow the window gets: broken across two
@@ -399,7 +399,7 @@ pager - a notification list has no last page worth naming.
   .group-reason {
     color: var(--text-muted);
     font-size: var(--font-size-micro);
-    line-height: 1.35;
+    line-height: var(--leading-micro);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -449,7 +449,7 @@ pager - a notification list has no last page worth naming.
     color: var(--text-secondary);
     font-size: var(--font-size-meta);
     font-weight: 700;
-    line-height: 1.3;
+    line-height: var(--leading-meta);
   }
 
   article.unread .notification-title {
@@ -460,14 +460,14 @@ pager - a notification list has no last page worth naming.
   .notification-copy > p {
     color: var(--text-secondary);
     font-size: var(--font-size-compact);
-    line-height: 1.45;
+    line-height: var(--leading-compact);
     margin-top: 0.3rem;
   }
 
   .notification-meta {
     color: var(--text-muted);
     display: block;
-    font: 500 var(--font-size-micro) / 1.4 var(--mono);
+    font: 500 var(--font-size-micro) / var(--leading-micro) var(--mono);
     margin-top: 0.3rem;
   }
 
@@ -520,7 +520,7 @@ pager - a notification list has no last page worth naming.
 
   .audit-record dd {
     color: var(--text-primary);
-    font: 500 var(--font-size-compact) / 1.45 var(--mono);
+    font: 500 var(--font-size-compact) / var(--leading-compact) var(--mono);
     margin: var(--space-1) 0 0;
     overflow-wrap: anywhere;
   }
@@ -536,7 +536,7 @@ pager - a notification list has no last page worth naming.
 
   .read-state {
     color: var(--text-muted);
-    font: 600 var(--font-size-compact) / 1.5 var(--sans);
+    font: 600 var(--font-size-compact) / var(--leading-compact) var(--sans);
     gap: var(--space-2);
   }
 

@@ -246,7 +246,7 @@ other reader to a blank screen with no way to tell which of the five they hit.
 
   dt {
     color: var(--dim);
-    font: 650 var(--font-size-compact) / 1.3 var(--sans);
+    font: 650 var(--font-size-compact) / var(--leading-compact) var(--sans);
     letter-spacing: 0.02em;
   }
 
@@ -265,7 +265,7 @@ other reader to a blank screen with no way to tell which of the five they hit.
      because it qualifies the name rather than competing with it. */
   .scope-kind {
     color: var(--text-muted);
-    font: 600 var(--font-size-meta) / 1.2 var(--sans);
+    font: 600 var(--font-size-meta) / var(--leading-meta) var(--sans);
   }
 
   /* What the reader is actually being asked to consent to, so it is ruled off from

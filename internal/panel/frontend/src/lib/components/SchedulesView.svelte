@@ -1157,7 +1157,7 @@ the same page without the controls, rather than controls that refuse.
   .schedule-summary strong {
     color: var(--text-primary);
     font-size: 1.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
   .section-heading {
     align-items: flex-end;
@@ -1193,7 +1193,7 @@ the same page without the controls, rather than controls that refuse.
     color: var(--text-muted);
     display: block;
     font-size: var(--font-size-compact);
-    line-height: 1.35;
+    line-height: var(--leading-compact);
   }
   .policy-title-line {
     align-items: center;
@@ -1299,7 +1299,7 @@ the same page without the controls, rather than controls that refuse.
     color: var(--text-muted);
     display: block;
     font-size: var(--font-size-compact);
-    line-height: 1.35;
+    line-height: var(--leading-compact);
   }
   .policy-chip-line {
     align-items: center;
@@ -1458,7 +1458,7 @@ the same page without the controls, rather than controls that refuse.
     padding: var(--space-2) var(--space-3);
   }
   textarea {
-    line-height: 1.45;
+    line-height: var(--leading-body);
     resize: vertical;
   }
   .request-action {

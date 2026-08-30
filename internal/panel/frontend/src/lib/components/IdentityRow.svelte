@@ -127,12 +127,12 @@ claims to move nothing.
 
   .identity-row :global(strong) {
     font-size: var(--font-size-body);
-    line-height: 1.2;
+    line-height: var(--leading-body);
   }
 
   .identity-row :global(.mono) {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.25;
+    line-height: var(--leading-compact);
   }
 </style>

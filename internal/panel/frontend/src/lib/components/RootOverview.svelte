@@ -542,7 +542,7 @@ an overview nobody keeps open.
   .overview-panel h3 {
     font-size: var(--font-size-title);
     letter-spacing: -0.025em;
-    line-height: 1.3;
+    line-height: var(--leading-body);
     margin: 0;
   }
 
@@ -551,7 +551,7 @@ an overview nobody keeps open.
   .service-status div > p,
   .overview-panel header div > p {
     font-size: var(--font-size-compact);
-    line-height: 1.4;
+    line-height: var(--leading-compact);
     margin-top: 0.15rem;
   }
 
@@ -593,7 +593,7 @@ an overview nobody keeps open.
   .service-card dt,
   .metric-card small {
     color: var(--text-muted);
-    font: 700 var(--font-size-micro) / 1.3 var(--sans);
+    font: 700 var(--font-size-micro) / var(--leading-micro) var(--sans);
     letter-spacing: 0.05em;
     text-transform: uppercase;
   }
@@ -602,7 +602,7 @@ an overview nobody keeps open.
      mono run, so it takes the run's own advance and sits on its baseline. A
      flex gap put it a pixel out from every other value in the row. */
   .service-card dd {
-    font: 600 var(--font-size-compact) / 1.5 var(--mono);
+    font: 600 var(--font-size-compact) / var(--leading-compact) var(--mono);
     margin: 0.15rem 0 0;
   }
 
@@ -700,14 +700,14 @@ an overview nobody keeps open.
   }
 
   .metric-card strong {
-    font: 700 1.55rem/1 var(--mono);
+    font: 700 1.55rem/var(--leading-flat) var(--mono);
   }
 
   .metric-card em {
     color: var(--text-secondary);
     font-size: var(--font-size-micro);
     font-style: normal;
-    line-height: 1.3;
+    line-height: var(--leading-micro);
   }
 
   .metric-chevron {
@@ -791,11 +791,11 @@ an overview nobody keeps open.
     display: flex;
     font-size: var(--font-size-compact);
     gap: 0.55rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .ownership-list dd {
-    font: 650 var(--font-size-compact) / 1 var(--mono);
+    font: 650 var(--font-size-compact) / var(--leading-flat) var(--mono);
     margin: 0;
   }
 
@@ -816,7 +816,7 @@ an overview nobody keeps open.
     border-radius: var(--radius-control);
     font-size: var(--font-size-compact);
     gap: var(--space-2);
-    line-height: 1.5;
+    line-height: var(--leading-compact);
     padding: 0.5rem 0.75rem;
   }
 
@@ -860,7 +860,7 @@ an overview nobody keeps open.
     align-items: center;
     color: var(--accent);
     display: inline-flex;
-    font: 650 var(--font-size-compact) / 1 var(--sans);
+    font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
     gap: 0.2rem;
     text-decoration: none;
   }
@@ -898,7 +898,7 @@ an overview nobody keeps open.
   .failure-item strong {
     display: block;
     font-size: var(--font-size-meta);
-    line-height: 1.4;
+    line-height: var(--leading-meta);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -910,7 +910,7 @@ an overview nobody keeps open.
   .failure-meta {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    line-height: 1.5;
+    line-height: var(--leading-compact);
     /* The repository name is the longest unbreakable run on the line and there
        is no width on a phone at which it fits. It breaks rather than deciding
        how wide the console has to be. */

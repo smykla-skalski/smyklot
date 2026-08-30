@@ -252,7 +252,7 @@ them, and a second copy here would be a second answer to the same question.
     background: var(--brand-action-tint);
     border-radius: 0.25rem;
     color: var(--brand-action-text);
-    font: 700 var(--font-size-nano) / 1 var(--mono);
+    font: 700 var(--font-size-nano) / var(--leading-flat) var(--mono);
     min-width: 0.875rem;
     padding: 0.15rem 0.2rem;
     text-align: center;
@@ -294,7 +294,7 @@ them, and a second copy here would be a second answer to the same question.
   .tools-label {
     background: var(--layer-bg);
     color: var(--text-muted);
-    font: 650 var(--font-size-micro) / 1 var(--sans);
+    font: 650 var(--font-size-micro) / var(--leading-flat) var(--sans);
     letter-spacing: 0.08em;
     margin: 0;
     padding: var(--space-3) var(--space-2) var(--space-2);
@@ -402,7 +402,7 @@ them, and a second copy here would be a second answer to the same question.
   }
 
   .option-copy strong {
-    font: 600 var(--font-size-meta) / 1.3 var(--sans);
+    font: 600 var(--font-size-meta) / var(--leading-meta) var(--sans);
   }
 
   .option-copy span {
@@ -437,7 +437,7 @@ them, and a second copy here would be a second answer to the same question.
     border: 0;
     border-radius: var(--r-ctl);
     color: var(--text-secondary);
-    font: 600 var(--font-size-control) / 1 var(--sans);
+    font: 600 var(--font-size-control) / var(--leading-flat) var(--sans);
     min-height: 2.25rem;
     padding: 0 var(--space-2);
   }
@@ -457,7 +457,7 @@ them, and a second copy here would be a second answer to the same question.
     border: 0;
     border-radius: var(--r-ctl);
     color: var(--on-brand-action);
-    font: 600 var(--font-size-control) / 1 var(--sans);
+    font: 600 var(--font-size-control) / var(--leading-flat) var(--sans);
     min-height: 2.25rem;
     padding: 0 var(--space-4);
   }

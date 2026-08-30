@@ -1195,7 +1195,7 @@ and a reader should not have to navigate between them.
   }
 
   .pr-name > :global(*) {
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   /* Gives up its room before anything beside it does: which org a pull request is
@@ -1218,7 +1218,7 @@ and a reader should not have to navigate between them.
   }
 
   .pr-owner > span {
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   /* The end of the name, held back from the shrink so the ellipsis lands before
@@ -1321,7 +1321,7 @@ and a reader should not have to navigate between them.
 
   .pr-meta > :global(*) {
     flex: none;
-    line-height: 1;
+    line-height: var(--leading-flat);
   }
 
   .pr-meta .contract {

@@ -196,7 +196,7 @@ changing a window here changes when every policy that names it runs.
     border-inline-start: 2px solid var(--signal);
     color: var(--text-secondary);
     font-size: 0.75rem;
-    line-height: 1.5;
+    line-height: var(--leading-compact);
     margin: 0;
     padding: var(--space-3);
   }

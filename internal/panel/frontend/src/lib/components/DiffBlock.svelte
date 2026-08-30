@@ -57,7 +57,7 @@ glyph in the source column already says which side it is on.
     font-family: var(--mono);
     font-size: var(--font-size-compact);
     /* Whole per line, or N lines compound the fraction. */
-    line-height: round(1.65em, 1px);
+    line-height: var(--leading-meta);
     overflow-x: auto;
     padding: var(--space-3) 0;
   }

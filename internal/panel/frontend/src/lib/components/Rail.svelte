@@ -683,7 +683,7 @@ would be telling everybody else about a console they cannot open.
     font-size: 0.625rem;
     font-variant-numeric: tabular-nums;
     justify-content: center;
-    line-height: 1;
+    line-height: var(--leading-flat);
     min-inline-size: 14px;
     padding: 0 4px;
     position: absolute;
@@ -714,7 +714,7 @@ would be telling everybody else about a console they cannot open.
     inset-block-start: -3px;
     inset-inline-end: -3px;
     justify-content: center;
-    line-height: 1;
+    line-height: var(--leading-flat);
     position: absolute;
     text-box: trim-both cap alphabetic;
     z-index: 3;
@@ -876,7 +876,7 @@ would be telling everybody else about a console they cannot open.
     font-size: var(--font-size-micro);
     font-weight: 600;
     letter-spacing: 0.07em;
-    line-height: 16px;
+    line-height: var(--leading-tight);
     padding: var(--space-2) var(--space-3) var(--space-1);
     text-transform: uppercase;
   }
@@ -931,7 +931,7 @@ would be telling everybody else about a console they cannot open.
     color: var(--sidebar-menu-muted);
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
-    line-height: 16px;
+    line-height: var(--leading-tight);
     padding: var(--space-1) var(--space-3) var(--space-2);
   }
 

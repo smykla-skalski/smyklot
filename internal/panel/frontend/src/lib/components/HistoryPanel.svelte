@@ -1545,7 +1545,7 @@ where the record is.
     border-radius: var(--r-chip);
     color: var(--text-soft);
     display: inline-block;
-    font: 500 var(--font-size-compact) / 1 var(--mono);
+    font: 500 var(--font-size-compact) / var(--leading-flat) var(--mono);
     justify-self: start;
     max-width: 100%;
     overflow: clip;
@@ -1595,7 +1595,7 @@ where the record is.
 
   .actor strong {
     display: block;
-    font: 650 var(--font-size-meta) / 1 var(--sans);
+    font: 650 var(--font-size-meta) / var(--leading-flat) var(--sans);
     /* clip, not hidden: the trim ends the box at the baseline, so a hidden
        overflow would shave the descenders off a name like "Bart Smykla". */
     overflow: clip;
@@ -1607,7 +1607,7 @@ where the record is.
   .actor-login {
     color: var(--text-muted);
     display: block;
-    font: 400 var(--font-size-micro) / 1 var(--mono);
+    font: 400 var(--font-size-micro) / var(--leading-flat) var(--mono);
     margin-top: 0.45rem;
     min-width: 0;
     overflow: clip;
@@ -1619,7 +1619,7 @@ where the record is.
   .failure-kind {
     align-items: center;
     display: inline-flex;
-    font: 600 var(--font-size-meta) / 1.5 var(--sans);
+    font: 600 var(--font-size-meta) / var(--leading-meta) var(--sans);
     gap: var(--space-2);
     white-space: nowrap;
   }
@@ -1654,7 +1654,7 @@ where the record is.
     border-radius: 5px;
     color: var(--text-soft);
     flex: none;
-    font: 650 0.65rem / 1 var(--sans);
+    font: 650 0.65rem / var(--leading-flat) var(--sans);
     letter-spacing: 0.04em;
     padding: 0.2rem 0.35rem;
     text-transform: uppercase;
@@ -1671,7 +1671,7 @@ where the record is.
   .cell-primary {
     display: block;
     font-size: var(--font-size-meta);
-    line-height: 1.5;
+    line-height: var(--leading-meta);
     overflow: clip;
     overflow-clip-margin: 0.35em;
     overflow-wrap: anywhere;
@@ -1687,7 +1687,7 @@ where the record is.
     color: var(--dim);
     display: block;
     font-size: var(--font-size-meta);
-    line-height: 1.5;
+    line-height: var(--leading-meta);
     white-space: nowrap;
     width: fit-content;
   }
@@ -1808,7 +1808,7 @@ where the record is.
     :global(.history-table td::before) {
       color: var(--text-muted);
       content: attr(data-label);
-      font: 650 var(--font-size-compact) / 1 var(--sans);
+      font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
       letter-spacing: 0.04em;
       text-transform: uppercase;
     }

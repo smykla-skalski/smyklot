@@ -601,7 +601,7 @@ settings from them answers a different question than the one they asked.
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: 0.25rem;
-    line-height: 1;
+    line-height: var(--leading-flat);
     padding: 0 0.5rem;
   }
 
@@ -873,7 +873,7 @@ settings from them answers a different question than the one they asked.
     color: var(--warning);
     font-size: var(--font-size-meta);
     /* Ink-true with even padding, so the words sit on the note's centre. */
-    line-height: round(1.5em, 1px);
+    line-height: var(--leading-meta);
     margin: var(--space-3) 0 0;
     padding: var(--space-3);
     text-box: trim-both cap alphabetic;

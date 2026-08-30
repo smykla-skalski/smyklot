@@ -283,7 +283,7 @@ history is routed with its section. That is what makes an address like
     border-radius: var(--radius-control);
     color: var(--accent);
     display: inline-flex;
-    font: 650 1.25rem/1 var(--sans);
+    font: 650 1.25rem/var(--leading-flat) var(--sans);
     height: 2.5rem;
     justify-content: center;
     width: 2.5rem;
