@@ -475,11 +475,12 @@ it has to answer to the same fact.
     text-box: trim-both cap alphabetic;
   }
 
-  /* The fold control: 24px square, sidebar material, spanning both text rows. */
+  /* The fold control: the small-target square, sidebar material, spanning both
+     text rows. */
   .side-fold {
     align-items: center;
     background: none;
-    block-size: 24px;
+    block-size: var(--field-target-min);
     border: 0;
     border-radius: 6px;
     color: var(--sidebar-text-muted);
@@ -487,7 +488,7 @@ it has to answer to the same fact.
     display: inline-flex;
     grid-column: 2;
     grid-row: 1 / 3;
-    inline-size: 24px;
+    inline-size: var(--field-target-min);
     justify-content: center;
     padding: 0;
     transition: none;

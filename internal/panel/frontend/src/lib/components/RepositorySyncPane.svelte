@@ -1247,6 +1247,8 @@ customization it described.
      is the file this row adjusts, and a selector reaching for that must not
      also find a list rule's path or a substitution. */
   .sync-merge-path,
+  /* Three named fields on one line, and the width a named field reads at is
+     what decides when the line breaks rather than a guess per row. */
   .sync-merge-heading,
   .sync-merge-find,
   .sync-merge-list {
@@ -1254,7 +1256,7 @@ customization it described.
     flex: 1;
     flex-direction: column;
     gap: 0.25rem;
-    min-width: 12rem;
+    min-width: var(--entry-say-min);
   }
 
   /* Wide enough for a count and no wider: it holds a small ordinal, and a box

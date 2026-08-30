@@ -233,14 +233,14 @@ fifteen behaviours.
   .pattern-del {
     align-items: center;
     background: transparent;
-    block-size: 24px;
+    block-size: var(--field-target-min);
     border: 0;
     border-radius: 3px;
     color: var(--text-muted);
     cursor: pointer;
     display: inline-flex;
     flex: none;
-    inline-size: 24px;
+    inline-size: var(--field-target-min);
     justify-content: center;
     opacity: 0;
     padding: 0;

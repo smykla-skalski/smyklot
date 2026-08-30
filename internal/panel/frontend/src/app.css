@@ -96,12 +96,6 @@ body {
   }
 }
 
-.shell {
-  margin: 0 auto;
-  max-width: 72rem;
-  padding: var(--space-6) var(--space-4) 2.5rem;
-}
-
 /* Three columns, one job each: the rail is the account's consoles, the
    sidebar is the active console's map, the pane opens with content. The two
    chrome columns size themselves (the sidebar animates its own inline-size),
@@ -138,7 +132,7 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   min-width: 0;
-  padding: var(--space-6) clamp(var(--space-4), 2.4vw, var(--space-8)) 0;
+  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8)) 0;
 }
 
 .workspace-content,
@@ -1944,12 +1938,8 @@ thead th .icon-button:active:not(:disabled) {
 }
 
 @media (max-width: 38rem) {
-  .shell {
-    padding: 1rem 0.625rem 2rem;
-  }
-
   .workspace {
-    padding: var(--space-3) var(--space-3) 0;
+    padding: var(--rhythm-pane-top-compact) var(--space-3) 0;
   }
 
   .workspace > .foot {

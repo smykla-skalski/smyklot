@@ -88,7 +88,9 @@ what the panel did.
        centres. */
     grid-template-rows: minmax(var(--control-height-compact), auto) auto;
     min-height: 5.25rem;
-    padding: var(--space-2) 0 var(--space-6);
+    /* The header's exit is a rhythm decision, not a spacing one: 24px to the
+       first surface below it, and the pane's own top edge above. */
+    padding: var(--space-2) 0 var(--rhythm-head-surface-wide);
   }
 
   .page-header.has-kicker {
@@ -170,14 +172,16 @@ what the panel did.
   @media (max-width: 36rem) {
     .page-header {
       grid-template-columns: minmax(0, 1fr);
-      padding-bottom: var(--space-4);
+      padding-bottom: var(--rhythm-head-surface-compact);
     }
 
     .page-header-actions {
       grid-column: 1;
       grid-row: 3;
       justify-self: stretch;
-      margin-top: var(--space-3);
+      /* The stacked distance is its own decision: the slot has left the title's
+         row, so what separates them is no longer the head's exit. */
+      margin-top: var(--rhythm-head-actions-stacked);
       width: 100%;
     }
 

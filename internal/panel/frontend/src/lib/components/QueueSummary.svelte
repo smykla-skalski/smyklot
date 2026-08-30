@@ -287,7 +287,7 @@ the answer somebody came to the overview to get.
     gap: var(--space-3);
     grid-template-columns: 8.75rem minmax(0, 1fr) minmax(7.5rem, auto) auto;
     min-height: 3.25rem;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--row-pad-compact) var(--space-3);
     text-decoration: none;
     transition: background-color var(--duration-fast) var(--ease-out);
   }

@@ -655,7 +655,7 @@ already hold - the index ships once, matching costs no requests.
     gap: var(--space-4);
     grid-template-columns: 1fr auto;
     margin-inline: calc(var(--space-3) * -1);
-    padding: 0.75rem var(--space-3);
+    padding: var(--row-pad-default) var(--space-3);
     position: relative;
     text-decoration: none;
   }
@@ -802,7 +802,7 @@ already hold - the index ships once, matching costs no requests.
     grid-template-columns: 1fr;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: var(--touch-target);
-    padding: var(--space-3) var(--space-2);
+    padding: var(--row-pad-default) var(--space-2);
     position: relative;
   }
 

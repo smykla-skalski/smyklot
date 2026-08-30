@@ -670,7 +670,7 @@ plan is applied, which is why these are switches and not a form.
     display: grid;
     gap: var(--space-3);
     grid-template-columns: 9.5rem auto 1fr;
-    padding: 0.5rem var(--space-3);
+    padding: var(--row-pad-compact) var(--space-3);
     position: relative;
     text-decoration: none;
     transition:
@@ -932,11 +932,11 @@ plan is applied, which is why these are switches and not a form.
 
   .kind-open {
     align-items: center;
-    block-size: 24px;
+    block-size: var(--field-target-min);
     border-radius: 50%;
     color: var(--text-muted);
     display: inline-flex;
-    inline-size: 24px;
+    inline-size: var(--field-target-min);
     justify-content: center;
     padding: 0;
     transition:

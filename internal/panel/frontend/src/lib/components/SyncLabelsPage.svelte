@@ -680,7 +680,7 @@ unlisted labels are removed, and the patterns left alone either way.
     grid-template-columns: auto clamp(11rem, 30%, 22rem) minmax(0, 1fr) auto;
     margin-inline: calc(var(--space-2) * -1);
     min-block-size: 40px;
-    padding: 0.5rem var(--space-2);
+    padding: var(--row-pad-compact) var(--space-2);
     position: relative;
   }
 
@@ -752,20 +752,20 @@ unlisted labels are removed, and the patterns left alone either way.
     min-inline-size: 9rem;
   }
 
-  /* The dot's press target: a 24px round pad the 12px disc sits in, taken
-     out of the layout with negative margins so the column never moves. */
+  /* The dot's press target: the small-target round pad the 12px disc sits in,
+     taken out of the layout with negative margins so the column never moves. */
   .dot-btn {
     align-items: center;
     background: transparent;
     border: 1px solid transparent;
     border-radius: 50%;
-    block-size: 24px;
+    block-size: var(--field-target-min);
     /* A button does not inherit ink - the UA's buttontext would ride here
        and tint anything the disc ever grows. */
     color: inherit;
     cursor: pointer;
     display: inline-flex;
-    inline-size: 24px;
+    inline-size: var(--field-target-min);
     justify-content: center;
     margin: -6px;
     padding: 0;
@@ -1028,10 +1028,10 @@ unlisted labels are removed, and the patterns left alone either way.
     grid-auto-flow: column;
     grid-template-columns: 1fr;
     margin-inline: calc(var(--space-2) * -1);
-    /* 12px block padding: with trimmed text the padding IS the
+    /* The row family's own block padding: with trimmed text the padding IS the
        ink-to-hairline distance. The floor is the 44px touch target. */
     min-block-size: var(--touch-target);
-    padding: var(--space-3) var(--space-2);
+    padding: var(--row-pad-default) var(--space-2);
     position: relative;
   }
 

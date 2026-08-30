@@ -398,19 +398,15 @@
      below is one of these decisions, so a view cannot invent its own. */
   --rhythm-pane-top-wide: 40px;
   --rhythm-pane-top-compact: 16px;
-  --rhythm-head-copy: 8px;
-  --rhythm-head-actions-stacked: 12px;
-  --rhythm-head-toolbar: 20px;
+  /* The head's exit is decided by its DESTINATION: a primary surface takes
+     the wide step, a narrow pane the compact one. */
   --rhythm-head-surface-wide: 24px;
   --rhythm-head-surface-compact: 20px;
+  /* What separates the head's action slot from its copy once the slot has
+     left the title's row - a distance the wide layout does not have. */
+  --rhythm-head-actions-stacked: 12px;
   --rhythm-toolbar-surface: 16px;
   --rhythm-card-head-body: 16px;
-  /* THE BAND A CARD PUTS BETWEEN ITS ROWS AND A LINE THAT IS NOT ONE.
-     Both ends of a card carry it: under the heading it is the head's own
-     margin plus the first row's air, and over a footer it is the last
-     row's air plus the footer's. One number so the two ends cannot drift,
-     and derived rather than typed so moving either term moves both. */
-  --rhythm-card-foot-band: calc(var(--rhythm-card-head-body) + var(--row-pad-default));
   /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
   --rhythm-card-gap: var(--space-4);
   /* The row families' shared geometry - the values every family rule reads. */
@@ -427,12 +423,6 @@
   /* kind cards: the summary pulls against the card's 12px grid gap plus
      the head row's 4px slack - renders 8. */
   --row-copy-gap-kind: -8px;
-  /* The other two rhythm distances the law names: between paragraphs of
-     prose, and equally around a block set into prose. Both are margins on
-     auto-height boxes rather than gaps or padding, so nothing clips when a
-     reader doubles text spacing (WCAG 1.4.12). */
-  --prose-para-gap: 16px;
-  --prose-block-gap: 20px;
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, not a round number above it. At 20
      against a 13px cap the head reserved 3.5px of nothing over the title, so
      a card opened its ink 3.5 inside its frame and closed it wherever the

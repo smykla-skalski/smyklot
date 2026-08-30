@@ -1280,16 +1280,24 @@ where it arises.
     font-size: var(--font-size-card-title);
     font-weight: 600;
     margin: 0;
-    min-block-size: 13px;
+    min-block-size: var(--card-head-line);
     text-box: trim-both cap alphabetic;
   }
 
+  /* THE HEAD'S LINE IS ITS TITLE'S CAP, so the title-to-first-row ink never
+     depends on which adornments the card happens to carry. A control in the
+     head gives its own slack back rather than growing the line. */
   .card-head {
     align-items: center;
     display: flex;
     gap: var(--space-3);
     justify-content: space-between;
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--rhythm-card-head-body);
+    min-block-size: var(--card-head-line);
+  }
+
+  .card-head :global(.btn) {
+    margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
   }
 
   .head-tools {
@@ -1398,7 +1406,7 @@ where it arises.
     gap: var(--space-4);
     grid-template-columns: 1fr auto;
     margin-inline: calc(var(--space-3) * -1);
-    padding: 0.75rem var(--space-3);
+    padding: var(--row-pad-default) var(--space-3);
     position: relative;
     text-align: start;
     width: calc(100% + (var(--space-3) * 2));

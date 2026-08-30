@@ -700,7 +700,7 @@ the button.
      prose. The gap below is the group list's own rhythm. */
   .plan-tools {
     display: flex;
-    margin-block-end: var(--space-3);
+    margin-block-end: var(--rhythm-toolbar-surface);
   }
 
   .schedule-card {
@@ -859,7 +859,7 @@ the button.
     font-size: var(--font-size-compact);
     gap: var(--space-3);
     grid-template-columns: 4.2rem 5.2rem 1fr;
-    padding: 0.5rem var(--space-2);
+    padding: var(--row-pad-compact) var(--space-2);
   }
 
   .action-row:hover {

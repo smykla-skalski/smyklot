@@ -1100,7 +1100,7 @@
   .install-copy p {
     color: var(--dim);
     margin: var(--space-2) 0 0;
-    max-width: 26rem;
+    max-width: var(--measure-note);
   }
   .install-mark {
     align-items: center;

@@ -553,7 +553,7 @@ turns the unmanaged names into rows of their own.
     display: flex;
     gap: var(--space-3);
     justify-content: space-between;
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--rhythm-toolbar-surface);
   }
 
   .matrix-search {
