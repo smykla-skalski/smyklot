@@ -180,7 +180,23 @@ describe('the palette', () => {
         ),
       );
 
-    const base = variables('fieldset');
+    /**
+     * What a surface owes is its PAINT, which is what re-skinning means: a ground, an
+     * edge, an ink, a shadow. Geometry is the control's own and is the same on every
+     * surface - a radius re-declared four times is four places to change it and three
+     * of them to forget. Told apart by the value rather than by the name, because a
+     * name is a promise anybody can break: a length carries a unit and a colour never
+     * does, so `calc(var(--r-ctl) - 2px)` is geometry and `var(--segment-shadow)` is
+     * not.
+     */
+    const paintOnly = (rule: string): Set<string> =>
+      new Set(
+        [...body(rule).matchAll(/^\s*--(?<name>[\w-]+):\s*(?<value>[^;]+);/gmu)]
+          .filter((match) => !/\d(?:px|rem|em|%)/u.test(match.groups?.value ?? ''))
+          .map((match) => match.groups?.name ?? ''),
+      );
+
+    const base = paintOnly('fieldset');
     const surfaces = [
       ...new Set(
         [...control.matchAll(/^\s{2}(?<rule>fieldset\.on-[\w-]+) \{/gmu)].map(

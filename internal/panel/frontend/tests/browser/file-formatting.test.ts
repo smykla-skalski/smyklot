@@ -120,12 +120,26 @@ describe('configured file formatting in the development panel', () => {
         ];
         const quoteLabels = [...quoteStyle.querySelectorAll('label')];
 
+        const selectedIndex = quoteLabels.indexOf(selected);
+
         return {
           arraysWidth: width('Arrays'),
-          firstFillCorners: segmentCorners(getComputedStyle(quoteLabels[0]!, '::before')),
+          /* Each fill, with where it stands relative to the thumb, so the law can be
+             asserted for every segment rather than for three named ones. */
+          fills: quoteLabels.map((label, index) => {
+            const style = getComputedStyle(label, '::before');
+            return {
+              corners: segmentCorners(style),
+              first: index === 0,
+              /* A logical inset, so this reads the same under RTL. */
+              insets: [style.insetInlineStart, style.insetInlineEnd],
+              last: index === quoteLabels.length - 1,
+              /* Which side the thumb is on, if it is beside this segment at all. */
+              thumbSide:
+                index === selectedIndex - 1 ? 'end' : index === selectedIndex + 1 ? 'start' : null,
+            };
+          }),
           keyOrderWidth: width('Key Order'),
-          lastFillCorners: segmentCorners(getComputedStyle(quoteLabels.at(-1)!, '::before')),
-          middleFillCorners: segmentCorners(getComputedStyle(selected, '::before')),
           quoteSegmentSpread: Math.max(...quoteSegments) - Math.min(...quoteSegments),
           thumbCorners: segmentCorners(getComputedStyle(thumb)),
           thumbLeftDelta: Math.abs(thumbBox.left - selectedBox.left),
@@ -137,19 +151,44 @@ describe('configured file formatting in the development panel', () => {
       expect(geometry.quoteSegmentSpread).toBeGreaterThan(1);
       expect(geometry.thumbLeftDelta).toBeLessThanOrEqual(0.05);
       expect(geometry.thumbWidthDelta).toBeLessThanOrEqual(0.05);
-      /* The thumb and the hover fill both float inside the track, so both are rounded
-         on all four corners and both wear the same radius. They used to square the
-         corners that faced a neighbour and round only the pair facing the track's end,
-         which is right for something that reaches that end and wrong everywhere else:
-         at any option but the first or last the thumb was square on both sides, and on
-         a two-option control it sat mid-track with one squared edge. Read off the
-         thumb rather than written down, so the number stays the stylesheet's to pick. */
+      /* The thumb floats, so it is rounded on all four. It used to square the corners
+         facing a neighbour and round only the pair facing the track's end, which is
+         right for something that reaches that end and wrong everywhere else: at any
+         option but the first or last it was square on both sides, and on a two-option
+         control it sat mid-track with one squared edge. Read off the thumb rather than
+         written down, so the number stays the stylesheet's to pick. */
       const [radius] = geometry.thumbCorners;
       expect(radius).not.toBe('0px');
       expect(geometry.thumbCorners).toEqual([radius, radius, radius, radius]);
-      expect(geometry.middleFillCorners).toEqual([radius, radius, radius, radius]);
-      expect(geometry.firstFillCorners).toEqual([radius, radius, radius, radius]);
-      expect(geometry.lastFillCorners).toEqual([radius, radius, radius, radius]);
+
+      /* A fill squares the side facing another segment and keeps the track's curve where
+         it faces the track's end: a hover has to cover its whole segment, and rounded
+         against a neighbour it would leave two crescents of bare track at the join a
+         reader is looking straight at. Corners read in logical order: start-start,
+         start-end, end-end, end-start. */
+      for (const [index, fill] of geometry.fills.entries()) {
+        expect(fill.corners, `segment ${index} corners`).toEqual([
+          fill.first ? radius : '0px',
+          fill.last ? radius : '0px',
+          fill.last ? radius : '0px',
+          fill.first ? radius : '0px',
+        ]);
+        /* And against the thumb it runs on underneath by that same radius, because the
+           thumb is drawn over it and rounded, so its curve leaves a wedge belonging to
+           neither box. Only there - a bleed under an ordinary neighbour would be a hover
+           reaching into a segment nobody is pointing at. */
+        expect(
+          fill.insets,
+          `segment ${index} bleed (thumb ${fill.thumbSide ?? 'not adjacent'})`,
+        ).toEqual([
+          fill.thumbSide === 'start' ? `-${radius}` : '0px',
+          fill.thumbSide === 'end' ? `-${radius}` : '0px',
+        ]);
+      }
+      expect(
+        geometry.fills.some((fill) => fill.thumbSide !== null),
+        'no segment was adjacent to the thumb, so the bleed rule went unchecked',
+      ).toBe(true);
       expect(geometry.wrapped).toEqual([]);
       expect(crashes).toEqual([]);
     } finally {

@@ -240,6 +240,9 @@
        the track's edge to the control border every field wears. */
     --seg-border: var(--border-control);
     --seg-shadow: var(--segment-shadow);
+    /* The curve everything drawn INSIDE the track wears: the track's own, less its
+       border and its inset, so the two are concentric. */
+    --seg-inner-radius: calc(var(--r-ctl) - 2px);
     --seg-muted: var(--text-muted);
     --seg-text: var(--text);
     --selected-bg: var(--segment-thumb);
@@ -379,10 +382,10 @@
      --segment-hover in app.css for the measurements. */
   label::before {
     background: var(--seg-hover);
-    /* The same curve the thumb wears, for the same reason: these two are the only
-       things drawn inside the track, one shows at a time, and a fill squared where the
-       thumb beside it is round reads as two different controls. */
-    border-radius: calc(var(--r-ctl) - 2px);
+    /* Rounded, like the thumb: a fill floats inside the track too, and only one is ever
+       shown at a time, so there is no neighbouring fill to leave a seam against. The
+       squaring below is owed to the THUMB alone. */
+    border-radius: var(--seg-inner-radius);
     content: '';
     inset: 0;
     opacity: 0;
@@ -394,9 +397,43 @@
     z-index: 1;
   }
 
-  /* Segment fills meet without exposing track-coloured wedges at internal joins. Only the two
-     edges that actually meet the rounded control shell curve; a one-option control matches both
-     selectors and therefore keeps all four corners. Logical corners preserve the same rule in RTL. */
+  /* A fill squares the side that faces another SEGMENT, and keeps its curve where it
+     faces the track's own end.
+
+     A hover has to cover its segment's whole area, corners included: rounded against a
+     neighbour it would leave two crescents of bare track inside the control, which is
+     the join a reader is looking straight at. So an internal edge is flush and an
+     outer one follows the track's curve - which also means a control with nothing
+     selected and nothing hovered draws no squared corner anywhere, because it draws
+     nothing at all.
+
+     Against the THUMB the flush edge is not enough. The thumb is drawn over the fill
+     and is rounded on all four, so its own curve leaves a wedge of bare track that
+     belongs to neither box; the fill runs on under it by exactly that radius to fill
+     what the curve left. Only there, and only that far: the fill is `z-index: 1` under
+     the thumb's `2`, so the thumb paints over the rest of the bleed, and a bleed under
+     an ordinary neighbour would just be a hover that reaches into a segment nobody is
+     pointing at.
+
+     Logical corners and logical insets throughout, so the same rule holds in RTL. */
+  label:not(:first-of-type)::before {
+    border-end-start-radius: 0;
+    border-start-start-radius: 0;
+  }
+
+  label:not(:last-of-type)::before {
+    border-end-end-radius: 0;
+    border-start-end-radius: 0;
+  }
+
+  label:has(input:checked) + label::before {
+    inset-inline-start: calc(var(--seg-inner-radius) * -1);
+  }
+
+  label:has(+ label input:checked)::before {
+    inset-inline-end: calc(var(--seg-inner-radius) * -1);
+  }
+
   label:hover:not(:has(input:disabled))::before {
     opacity: 1;
   }
@@ -511,7 +548,7 @@
        square on both sides, and on a two-option control it sat mid-track with one
        squared edge. Inset by the border and the track's padding, so the curve sits
        concentric inside the track's own. */
-    border-radius: calc(var(--r-ctl) - 2px);
+    border-radius: var(--seg-inner-radius);
     box-shadow: var(--seg-shadow);
     bottom: var(--control-inset);
     left: var(--segment-left, var(--control-inset));
