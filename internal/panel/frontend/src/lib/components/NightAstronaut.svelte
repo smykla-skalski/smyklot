@@ -6,30 +6,6 @@
   import { fadeBlend, mixInk, type Ink } from '../ink';
   import type { SkySlots } from '../sky-slots';
 
-  /**
-   * The sky's other easter egg, rarer than the rocket: a small line-drawn
-   * astronaut tumbling slowly around itself as it drifts in a straight line
-   * from outside one edge of the canvas to outside another - sometimes
-   * across, sometimes down, sometimes on a long diagonal, each crossing at
-   * its own speed and its own rate of roll. No engine and no steering:
-   * everything about a crossing is decided when it begins, which is what
-   * makes it read as adrift rather than flown. What keeps it from reading
-   * as dead is the small life left in it - limbs stirring slowly against
-   * the tumble, and a severed tether rippling along behind.
-   *
-   * The easter eggs are independent - the rocket may well be flying while
-   * the astronaut passes - but never a crowd: a crossing takes a seat from
-   * the shared `SkySlots` budget and gives it back as it leaves. Each egg
-   * keeps to its own canvas and its own loop, and this one sleeps far more
-   * than it runs: between crossings there is no animation frame at all,
-   * only one pending timer - which is also what wakes it again after its
-   * home has been inactive through a theme switch.
-   *
-   * The same guarantees as the rocket's: the loop stops when the canvas is
-   * off screen, nothing runs or shows under `prefers-reduced-motion` (the
-   * CSS animation squash cannot reach a canvas, so the gate is here), and a
-   * hidden tab suspends the crossing where it stands.
-   */
   const {
     edges,
     active = true,
@@ -326,6 +302,32 @@
     };
   }
 </script>
+
+<!--
+@component
+The sky's other easter egg, rarer than the rocket: a small line-drawn
+astronaut tumbling slowly around itself as it drifts in a straight line
+from outside one edge of the canvas to outside another - sometimes
+across, sometimes down, sometimes on a long diagonal, each crossing at
+its own speed and its own rate of roll. No engine and no steering:
+everything about a crossing is decided when it begins, which is what
+makes it read as adrift rather than flown. What keeps it from reading
+as dead is the small life left in it - limbs stirring slowly against
+the tumble, and a severed tether rippling along behind.
+
+The easter eggs are independent - the rocket may well be flying while
+the astronaut passes - but never a crowd: a crossing takes a seat from
+the shared `SkySlots` budget and gives it back as it leaves. Each egg
+keeps to its own canvas and its own loop, and this one sleeps far more
+than it runs: between crossings there is no animation frame at all,
+only one pending timer - which is also what wakes it again after its
+home has been inactive through a theme switch.
+
+The same guarantees as the rocket's: the loop stops when the canvas is
+off screen, nothing runs or shows under `prefers-reduced-motion` (the
+CSS animation squash cannot reach a canvas, so the gate is here), and a
+hidden tab suspends the crossing where it stands.
+-->
 
 <canvas class="night-astronaut" aria-hidden="true" {@attach drifting()}></canvas>
 

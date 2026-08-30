@@ -6,35 +6,6 @@
   import { Flight, TrailEmitter, type TrailDash } from '../rocket';
   import type { SkySlots } from '../sky-slots';
 
-  /**
-   * The sky's easter egg: a small line-drawn rocket that wanders wherever
-   * this canvas is placed, leaving a dashed trail that remembers the shape of
-   * every curve it flew for a while and then dissolves. It cruises, banks,
-   * flies the odd full circle or a sudden tight turn, and sometimes glides to
-   * a stop, sits, turns on the spot and burns back up to speed. The behaviour
-   * lives in `lib/rocket.ts`; this component only sizes the canvas and draws.
-   *
-   * The flight begins and ends off screen. A rocket enters by flying in from
-   * past an allowed edge, and when its home goes inactive - a theme switch -
-   * it is not cut: it departs at full burn through the nearest allowed edge,
-   * its trail fades to nothing, and only then is the seat given back and the
-   * canvas left bare. While inactive a slow timer keeps asking whether to
-   * fly again, which is also what brings the rocket back when its home
-   * reactivates - existence is never toggled, only activity.
-   *
-   * Placed inside `NightSky`, the sky's own mask fades the rocket out with
-   * the stars, and the sky's stacking keeps it behind the page's content -
-   * neither is re-implemented here. Like the sky, the flight may run past
-   * the window's edges; the rocket drifts out of sight and back the way the
-   * stars do.
-   *
-   * It must never cost a reader anything: one rAF loop drives one canvas, the
-   * loop stops when the canvas is off screen and does not start at all under
-   * `prefers-reduced-motion` (the CSS animation squash cannot reach a canvas,
-   * so the gate has to be here), a hidden tab suspends it for free, a parked
-   * rocket over a drained trail stops repainting entirely, and between
-   * flights there is no loop at all, only the timer.
-   */
   const {
     speed = 70,
     trailLife = 7,
@@ -450,6 +421,37 @@
     };
   }
 </script>
+
+<!--
+@component
+The sky's easter egg: a small line-drawn rocket that wanders wherever
+this canvas is placed, leaving a dashed trail that remembers the shape of
+every curve it flew for a while and then dissolves. It cruises, banks,
+flies the odd full circle or a sudden tight turn, and sometimes glides to
+a stop, sits, turns on the spot and burns back up to speed. The behaviour
+lives in `lib/rocket.ts`; this component only sizes the canvas and draws.
+
+The flight begins and ends off screen. A rocket enters by flying in from
+past an allowed edge, and when its home goes inactive - a theme switch -
+it is not cut: it departs at full burn through the nearest allowed edge,
+its trail fades to nothing, and only then is the seat given back and the
+canvas left bare. While inactive a slow timer keeps asking whether to
+fly again, which is also what brings the rocket back when its home
+reactivates - existence is never toggled, only activity.
+
+Placed inside `NightSky`, the sky's own mask fades the rocket out with
+the stars, and the sky's stacking keeps it behind the page's content -
+neither is re-implemented here. Like the sky, the flight may run past
+the window's edges; the rocket drifts out of sight and back the way the
+stars do.
+
+It must never cost a reader anything: one rAF loop drives one canvas, the
+loop stops when the canvas is off screen and does not start at all under
+`prefers-reduced-motion` (the CSS animation squash cannot reach a canvas,
+so the gate has to be here), a hidden tab suspends it for free, a parked
+rocket over a drained trail stops repainting entirely, and between
+flights there is no loop at all, only the timer.
+-->
 
 <canvas class="night-rocket" aria-hidden="true" {@attach flight()}></canvas>
 

@@ -1,20 +1,6 @@
 <script lang="ts">
   import Chip from './Chip.svelte';
 
-  /**
-   * A receipt for something already on the clipboard.
-   *
-   * It is not a status the dialog carries, it is an answer to a press, so it leaves once it has
-   * been read - a confirmation that never goes away stops being read as an answer and starts being
-   * read as part of the dialog. Failures are the other kind of message and do not belong here: a
-   * clipboard that refused is an instruction to copy the field by hand, and an instruction has to
-   * stay next to the field it is about.
-   *
-   * Meant for the slot beside a dialog title. The chip is out of flow, so arriving and leaving
-   * cannot reflow the heading beside it; it hangs to the left of wherever the slot sits, which is
-   * the right edge of a modal header.
-   */
-
   const {
     shown,
     pulse,
@@ -29,6 +15,21 @@
     onDone: () => void;
   } = $props();
 </script>
+
+<!--
+@component
+A receipt for something already on the clipboard.
+
+It is not a status the dialog carries, it is an answer to a press, so it leaves once it has
+been read - a confirmation that never goes away stops being read as an answer and starts being
+read as part of the dialog. Failures are the other kind of message and do not belong here: a
+clipboard that refused is an instruction to copy the field by hand, and an instruction has to
+stay next to the field it is about.
+
+Meant for the slot beside a dialog title. The chip is out of flow, so arriving and leaving
+cannot reflow the heading beside it; it hangs to the left of wherever the slot sits, which is
+the right edge of a modal header.
+-->
 
 <!-- The region is here whether or not it holds anything: a live region inserted with its text
      already in it is announced by some readers and not others, one already in the document by all

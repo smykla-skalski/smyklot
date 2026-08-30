@@ -2,29 +2,6 @@
   import { plainClick } from '#lib/follow.js';
   import Icon from './Icon.svelte';
 
-  /**
-   * The way back from a page that stands inside a list.
-   *
-   * One of these, because there were three and they agreed on nothing: the
-   * console's was uppercase micro type in the action ink, the queue's was
-   * sentence-case meta type in `--text-soft` with a press, and the repository's
-   * was sentence-case meta type in `--text-secondary` with neither. Three ways
-   * of drawing the same idea on three pages a reader moves between.
-   *
-   * Then a fourth arrived as `Crumb`, for the sync detail pages, and it is the
-   * `quiet` tone below. It is a real difference rather than another accident:
-   * those two pages sit under a tab strip that is already loud, so the way back
-   * is said in the page's own secondary ink instead of competing with it. What
-   * it must NOT be is a second component - it carried the sentence about
-   * keeping the href real for a modified click and none of the guard that makes
-   * that true, so a Cmd-click on a crumb opened nothing.
-   *
-   * A link, never a button: it carries a real address, so it opens in a new tab
-   * on a modified click and reads as somewhere to go. `onNavigate` is only for
-   * the surfaces that want to handle it in the panel; `plainClick` leaves every
-   * other click to the browser.
-   */
-
   const {
     href,
     label,
@@ -50,6 +27,30 @@
     onNavigate();
   }
 </script>
+
+<!--
+@component
+The way back from a page that stands inside a list.
+
+One of these, because there were three and they agreed on nothing: the
+console's was uppercase micro type in the action ink, the queue's was
+sentence-case meta type in `--text-soft` with a press, and the repository's
+was sentence-case meta type in `--text-secondary` with neither. Three ways
+of drawing the same idea on three pages a reader moves between.
+
+Then a fourth arrived as `Crumb`, for the sync detail pages, and it is the
+`quiet` tone below. It is a real difference rather than another accident:
+those two pages sit under a tab strip that is already loud, so the way back
+is said in the page's own secondary ink instead of competing with it. What
+it must NOT be is a second component - it carried the sentence about
+keeping the href real for a modified click and none of the guard that makes
+that true, so a Cmd-click on a crumb opened nothing.
+
+A link, never a button: it carries a real address, so it opens in a new tab
+on a modified click and reads as somewhere to go. `onNavigate` is only for
+the surfaces that want to handle it in the panel; `plainClick` leaves every
+other click to the browser.
+-->
 
 <a class="back-link" class:is-quiet={tone === 'quiet'} {href} onclick={follow}>
   <Icon name="chevron-left" size={tone === 'quiet' ? 12 : 14} />

@@ -5,15 +5,6 @@
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
 
-  /**
-   * Which of an installation's views to draw.
-   *
-   * Passed in rather than read from the address, because there is no longer one
-   * address that reaches all of these: a view that hosts a dialog is routed with
-   * the segments that follow it, one that hosts none is routed without them, and
-   * history is routed with its section. That is what makes an address like
-   * `/i/acme/defaults/anything` resolve to nothing and answer 404 from the wire.
-   */
   const {
     view,
     clock = Date.now,
@@ -52,6 +43,17 @@
     ]);
   }
 </script>
+
+<!--
+@component
+Which of an installation's views to draw.
+
+Passed in rather than read from the address, because there is no longer one
+address that reaches all of these: a view that hosts a dialog is routed with
+the segments that follow it, one that hosts none is routed without them, and
+history is routed with its section. That is what makes an address like
+`/i/acme/defaults/anything` resolve to nothing and answer 404 from the wire.
+-->
 
 {#snippet loadingView(label: string)}
   <p class="route-loading" role="status">Loading {label}…</p>

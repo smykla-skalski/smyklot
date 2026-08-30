@@ -1,24 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  /**
-   * The top of a page: a title, what it is for, and the controls that act on it.
-   *
-   * There were two of these - `PanelHeader` and `RootPageHeader` - and 72 of their
-   * ~81 CSS lines were identical, comments included. `RootPageHeader`'s own comment
-   * said so: "one header anatomy shared with PanelHeader". `HistoryPanel` rendered
-   * one or the other for the *same page*, depending on which console it was in.
-   *
-   * What genuinely differed was a kicker line above the title, which the Root console
-   * uses to say whose authority the page is under. That is a snippet now, and it is
-   * the only thing that changes the layout: with a kicker the three rows become four,
-   * and the title, the slot and the description each move down one.
-   *
-   * Two smaller differences were drift and are gone: the panel's description balanced
-   * its line breaks and the Root one did not, and the panel's mobile action slot took
-   * the full width while the Root one stretched without asking for it. Both now do
-   * what the panel did.
-   */
   const {
     id,
     title,
@@ -40,6 +22,26 @@
     actions?: Snippet;
   } = $props();
 </script>
+
+<!--
+@component
+The top of a page: a title, what it is for, and the controls that act on it.
+
+There were two of these - `PanelHeader` and `RootPageHeader` - and 72 of their
+~81 CSS lines were identical, comments included. `RootPageHeader`'s own comment
+said so: "one header anatomy shared with PanelHeader". `HistoryPanel` rendered
+one or the other for the *same page*, depending on which console it was in.
+
+What genuinely differed was a kicker line above the title, which the Root console
+uses to say whose authority the page is under. That is a snippet now, and it is
+the only thing that changes the layout: with a kicker the three rows become four,
+and the title, the slot and the description each move down one.
+
+Two smaller differences were drift and are gone: the panel's description balanced
+its line breaks and the Root one did not, and the panel's mobile action slot took
+the full width while the Root one stretched without asking for it. Both now do
+what the panel did.
+-->
 
 <!--
   A grid rather than a flex row, so the action slot shares the TITLE's row and

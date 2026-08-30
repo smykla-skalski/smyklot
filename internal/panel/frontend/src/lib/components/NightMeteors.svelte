@@ -6,25 +6,6 @@
   import { Streak } from '../meteor';
   import type { SkySlots } from '../sky-slots';
 
-  /**
-   * The third easter egg: meteors. An appearance is a small shower - one to
-   * three streaks, seconds apart, each a straight burn across the sky with
-   * a tail streaming behind the head and nothing left where it passed. A
-   * streak begins and ends past edges that lie off screen, tail included,
-   * so no meteor ever winks out mid-page.
-   *
-   * A shower takes one seat from the shared `SkySlots` budget - the whole
-   * shower, not each streak - and gives it back once its last streak has
-   * cleared, so the sky never holds more than two easter eggs at once.
-   *
-   * The same guarantees as the others: between showers there is no
-   * animation frame at all, only one pending timer, which is also what
-   * wakes this home again after it has been inactive through a theme
-   * switch; the loop stops when the canvas is off screen; nothing runs or
-   * shows under `prefers-reduced-motion` (the CSS animation squash cannot
-   * reach a canvas, so the gate is here); a hidden tab suspends a shower
-   * where it stands.
-   */
   const {
     edges,
     active = true,
@@ -270,6 +251,27 @@
     };
   }
 </script>
+
+<!--
+@component
+The third easter egg: meteors. An appearance is a small shower - one to
+three streaks, seconds apart, each a straight burn across the sky with
+a tail streaming behind the head and nothing left where it passed. A
+streak begins and ends past edges that lie off screen, tail included,
+so no meteor ever winks out mid-page.
+
+A shower takes one seat from the shared `SkySlots` budget - the whole
+shower, not each streak - and gives it back once its last streak has
+cleared, so the sky never holds more than two easter eggs at once.
+
+The same guarantees as the others: between showers there is no
+animation frame at all, only one pending timer, which is also what
+wakes this home again after it has been inactive through a theme
+switch; the loop stops when the canvas is off screen; nothing runs or
+shows under `prefers-reduced-motion` (the CSS animation squash cannot
+reach a canvas, so the gate is here); a hidden tab suspends a shower
+where it stands.
+-->
 
 <canvas class="night-meteors" aria-hidden="true" {@attach shower()}></canvas>
 

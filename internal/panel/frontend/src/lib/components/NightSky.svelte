@@ -7,16 +7,6 @@
   import NightMeteors from './NightMeteors.svelte';
   import NightRocket from './NightRocket.svelte';
 
-  /**
-   * A patch of night sky that opens out from a point and fades into the page.
-   *
-   * Night in both themes - it is space, not a tint of the page - so the fade is
-   * what carries it onto a light canvas rather than a change of palette. Drawn
-   * entirely from gradients: no raster to load, nothing to resample, and it
-   * scales with whatever it is given.
-   *
-   * Anything laid over it needs light ink in both themes.
-   */
   let {
     width = '100vw',
     height = 'clamp(50rem, 560%, 82rem)',
@@ -82,6 +72,18 @@
   const galaxies = rollGalaxies(Math.random);
   const pulsars = rollPulsars(Math.random);
 </script>
+
+<!--
+@component
+A patch of night sky that opens out from a point and fades into the page.
+
+Night in both themes - it is space, not a tint of the page - so the fade is
+what carries it onto a light canvas rather than a change of palette. Drawn
+entirely from gradients: no raster to load, nothing to resample, and it
+scales with whatever it is given.
+
+Anything laid over it needs light ink in both themes.
+-->
 
 <!-- Sized through `style:` rather than a `style` attribute: the panel serves
      `style-src 'self'`, which drops a parsed style attribute, and the sky has no
