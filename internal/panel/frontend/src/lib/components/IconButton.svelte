@@ -18,6 +18,21 @@
   } = $props();
 </script>
 
+<!--
+@component
+A button whose glyph is the whole of it. `label` is required and is both the
+accessible name and the tooltip, because a symbol is not a word: an icon button with
+no label is a control nobody can name, and it is the one mistake this component exists
+to make impossible.
+
+`busy` turns the glyph while the work it started is still in flight, which is the
+button reporting on itself - a row that is waiting on something else says so in the
+row, not here.
+
+Reach for `Button` wherever there is room for a word. This is for a control that has
+to sit in a row's margin or a heading's end, where a labelled button would not fit.
+-->
+
 <!-- The shape and the states are `.icon-button` in app.css, shared with the menu
      trigger beside it and the filter triggers in the heading above. All this adds
      is the glyph and what happens when it is pressed. -->

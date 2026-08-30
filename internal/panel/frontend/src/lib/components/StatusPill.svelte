@@ -1,19 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
-  /**
-   * A fact about the thing beside it, not a control.
-   *
-   * The distinction from `Chip` is what it is for rather than how it looks: a chip
-   * carries a row's value and takes a tone from the vocabulary its column draws, and
-   * a pill says what is true of the surface it sits on - the scope of a page, the
-   * health of a dependency, whether changes are arriving live. It is uppercase and
-   * quieter for the same reason: it is a caption, not a value.
-   *
-   * `dot` marks a state that is true right now rather than a fixed attribute, and
-   * `live` sets it pulsing. Both were spelled by hand at seven call sites, along with
-   * the `.cap-trim` the label needs to sit on its cap height.
-   */
   const {
     dot = false,
     live = false,
@@ -32,6 +19,20 @@
     children: Snippet;
   } = $props();
 </script>
+
+<!--
+@component
+A fact about the thing beside it, not a control. The distinction from `Chip` is what
+each is for rather than how it looks: a chip carries a row's value and takes a tone
+from the vocabulary its column draws, and a pill says what is true of the surface it
+sits on - the scope of a page, the health of a dependency, whether changes are
+arriving live. It is uppercase and quieter for that same reason: it is a caption, not
+a value.
+
+`dot` marks a state that is true right now rather than a fixed attribute, and `live`
+sets it pulsing. Both were spelled by hand at seven call sites, along with the
+`.cap-trim` the label needs to sit on its cap height.
+-->
 
 <!--
   The label is trimmed to its cap height because the pill centres its children's

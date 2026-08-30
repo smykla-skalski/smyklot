@@ -1253,9 +1253,24 @@ select:disabled {
   row-gap: 2px;
 }
 
+/*
+  A mark is as wide as what it says, wherever it is put.
+  ------------------------------------------------------
+  `display: inline-flex` states that on its own everywhere EXCEPT inside a flex or
+  grid parent, which is most of this app: a flex item's display is blockified to
+  `flex`, and a cross size left `auto` is then exactly what `align-items: stretch`
+  acts on. So a pill dropped into a column came out the full width of the column with
+  its two words at the left end - the catalogue shows it because a story stands
+  directly in the content column, while the app's own rows are horizontal and hide it.
+
+  An explicit inline size is not `auto`, so there is nothing left to stretch. It says
+  the same thing as `inline-flex` and it says it in the one case that was going wrong,
+  which is why both are written rather than one.
+*/
 .chip {
   align-items: center;
   border-radius: var(--r-chip);
+  inline-size: fit-content;
   /* Self-keyed keyline: mixed from the chip's own foreground, so the fill shape
      stays visible on any surface (tint fills measure ~1:1 against inset cards). */
   box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 22%, transparent);
@@ -1791,8 +1806,10 @@ thead th .icon-button:active:not(:disabled) {
 
 /* Non-interactive status: short, round, borderless — never the bordered-control
    silhouette, so nothing next to a button reads as pressable. */
+/* As wide as what it says - see the note above `.chip`. */
 .status-pill {
   align-items: center;
+  inline-size: fit-content;
   /* The inset surface, not the brand tint: this says what is true, not what can
      be pressed, and a brand-coloured pill beside a brand-coloured button reads as
      a second control. */

@@ -23,6 +23,23 @@
   } = $props();
 </script>
 
+<!--
+@component
+A boolean a reader flips directly, rather than a button that opens a form to change
+one. Flipping it IS the change, which is why it is an input and not a button - there
+is nothing here to confirm.
+
+What the flip reaches is the caller's business, and in this panel it is always a
+draft: every call site stages the new value and marks the control dirty, so the change
+lands when the page's save composer sends it rather than when the track moves. A
+switch that applied immediately would be the same component with a different caller.
+
+The track says nothing on its own, so `label` is required - the visible `word` beside
+it is separate and usually absent. `bare` drops the 44px tap box for a head or a card
+row that sets its own rhythm; the hit area survives on the input, which is what makes
+that safe.
+-->
+
 <!-- A setting that has already taken effect: flipping it IS the change, so
      the control is an input rather than a button that opens a form. -->
 <label class="switch" class:bare>

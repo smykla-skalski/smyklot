@@ -10,20 +10,6 @@
   import type { Snippet } from 'svelte';
   import type { HTMLAttributes } from 'svelte/elements';
 
-  /**
-   * A short consequence, set off from the words around it.
-   *
-   * Eight of these were written by hand under three names - `.confirmation-note`,
-   * `.root-warning` and `.elevation-note` - and three of the four declarations were
-   * the same box. The fourth reached for `--well`, `--rule` and `--r-well`, which are
-   * aliases of `--surface-inset`, `--border-subtle` and `--radius-control`; only the
-   * background genuinely differed, `#eeebf4` against `#f0ecf6`, which is under a
-   * just-noticeable difference. So they are one box now, and the one that moved
-   * moved by less than an eye can resolve.
-   *
-   * Rest props pass through so a caller can still hand the box an id, a role or a
-   * `tabindex` of its own.
-   */
   const {
     tone = 'quiet',
     icon,
@@ -39,6 +25,27 @@
     children: Snippet;
   } & HTMLAttributes<HTMLDivElement> = $props();
 </script>
+
+<!--
+@component
+A short consequence, set off from the words around it - beside the work rather than
+instead of it. That is the line between this and `TableEmptyState`: a callout says
+something about what the reader is looking at, and an empty state stands where the
+work would have been.
+
+Two tones and no more. `quiet` states a consequence the reader should take in before
+confirming; `warning` is for the one that is genuinely hazardous and carries the tint.
+A third tone would be a third weight for a reader to rank, and the point of two is that
+the tinted one means something.
+
+Eight of these were written by hand under three names - `.confirmation-note`,
+`.root-warning`, `.elevation-note` - and three of the four declarations were already
+the same box. The fourth differed only in a background, by less than an eye can
+resolve.
+
+Rest props pass through, so a caller can still hand the box an id, a role or a
+`tabindex` of its own.
+-->
 
 <!--
   The children are not wrapped. Three call sites pass a `<span>`, one passes a `<p>`

@@ -14,6 +14,19 @@
   } = $props();
 </script>
 
+<!--
+@component
+A search that narrows what is already on screen. It reports every keystroke through
+`onInput` and holds no state of its own, so the page decides what "narrowed" means and
+how long to wait before acting on it - debouncing belongs to the caller, which is the
+only side that knows whether the answer costs a request.
+
+Its label is required and visually hidden: the magnifier says what the box is to
+somebody looking at it, and nothing says it to somebody who is not. A field that
+filters is never disabled to mean "nothing matches" - an empty result is the list's
+sentence to say, not the search's.
+-->
+
 <label class="search-field">
   <span class="visually-hidden">{label}</span>
   <span class="search-icon"><Icon name="search" size={14} strokeWidth={2} /></span>

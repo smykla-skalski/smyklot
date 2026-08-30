@@ -4,18 +4,6 @@
 
   import Icon from './Icon.svelte';
 
-  /**
-   * A select, and the chevron that says it is one.
-   *
-   * A native `<select>` cannot be given an indicator of its own, so the panel wraps
-   * it and draws one alongside - which is why the wrapper, not the select, is the
-   * layout box. Nine call sites wrote that wrapper, that chevron and its exact size
-   * and stroke by hand.
-   *
-   * Options come either as data or as markup: most call sites have a list, three
-   * build their `<option>`s in a loop or want them keyed, and forcing either into
-   * the other shape would be worse than accepting both.
-   */
   let {
     value = $bindable(),
     options,
@@ -32,6 +20,22 @@
     children?: Snippet;
   } & HTMLSelectAttributes = $props();
 </script>
+
+<!--
+@component
+A select, and the chevron that says it is one. A native `<select>` cannot be given an
+indicator of its own, so this wraps it and draws one alongside - which is why the
+wrapper, and not the select, is the layout box. Nine call sites wrote that wrapper,
+that chevron and its exact size and stroke by hand before this existed.
+
+Options come either as data or as markup: most call sites have a list, three build
+their `<option>`s in a loop or want them keyed, and forcing either into the other
+shape would be worse than accepting both.
+
+For a choice among two to five options that a reader should see all of at once, reach
+for `SegmentedControl` instead; a select is for the longer list, and for the one whose
+options are not worth the width.
+-->
 
 <span class="select-wrap">
   <select bind:value class="select-input {extra}" {...rest}>

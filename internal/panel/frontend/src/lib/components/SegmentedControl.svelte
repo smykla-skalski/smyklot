@@ -187,6 +187,29 @@
   }
 </script>
 
+<!--
+@component
+One choice from a set a reader can see all of at once, with the selection marked by a
+thumb that slides between them. Two to five options: past that the words stop fitting
+and the choice belongs in a `Select`, which is the same decision made in less width.
+
+The thumb is the highest thing drawn in the track, so it never gives way - rounded on
+all four corners, exactly the width of the option it marks. Everything else answers to
+it: a hover fill squares the edge it faces and runs under it far enough to fill the
+wedge its curve leaves, and an option with a boundary of its own paints a solid ground
+so that bleed does not show through. A fill facing nothing keeps its curve.
+
+`value` of `null` selects nothing and the thumb does not render, which is a real state
+rather than a missing one - it is how a control says the value is inherited rather
+than chosen here, and the option that would apply is drawn with `outline` instead.
+`preview` offers what a move would look like before it is taken.
+
+Its geometry is measured rather than declared: CSS cannot say "be the size of that
+sibling", so an action reads the checked option's box and the thumb is placed from it.
+That is the only reason there is script in this file, and it is what CSS anchor
+positioning will replace once it is portable.
+-->
+
 <fieldset
   class={[
     align === 'end' && 'align-end',

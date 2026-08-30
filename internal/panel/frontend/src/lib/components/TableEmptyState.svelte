@@ -15,6 +15,22 @@
   } = $props();
 </script>
 
+<!--
+@component
+What a collection says when it has nothing to show. It names what happened and offers
+the one next step, so it is never a dead end - an empty table that only says "no
+results" leaves the reader to guess whether that is the filter, the permissions or the
+data.
+
+The difference from `Callout` is who is speaking. A callout says something about the
+work a reader is looking at and sits beside it; this stands in place of the work,
+because there is none. `actionLabel` is optional for the one case where the next step
+is somewhere else entirely and the sentence has to carry it.
+
+An empty list is not an error and is not drawn as one. A request that actually failed
+is `ResultProblem`, which says so and offers the retry.
+-->
+
 <!-- The shape is `.table-notice` in app.css, shared with the failure that stands
      in the same place. All this decides is the glyph and the words. -->
 <div class="table-notice">

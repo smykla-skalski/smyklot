@@ -36,6 +36,27 @@
   }
 </script>
 
+<!--
+@component
+A dialog: work that has to be finished or abandoned before the page underneath it can
+be used again. Three widths - `dialog` for a question, `inspector` for a record being
+read alongside, `wide` for a document - and nothing else, because a size chosen per
+call site is how two dialogs asking the same question end up different shapes.
+
+`title` is required and is the accessible name; `description` is what the dialog is
+for, said once, rather than repeated in the body. `returnFocus` names the control that
+opened it, so a reader who closes with the keyboard is put back where they were rather
+than at the top of the page.
+
+It portals into `.app-shell`, which is what carries the palette - a dialog rendered
+outside it comes out unthemed. Bits UI owns the focus trap, the escape key and the
+scrim; what is written here is the shape and the three widths.
+
+A dialog is for a decision. Something the reader can carry on past belongs in a
+`Callout` beside the work, and something a page has to say about having nothing to show
+belongs in `TableEmptyState`.
+-->
+
 <Dialog.Root bind:open={openState} onOpenChange={handleOpenChange}>
   <Dialog.Portal to=".app-shell">
     <Dialog.Overlay class="modal-overlay" />
