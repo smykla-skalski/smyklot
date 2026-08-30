@@ -882,6 +882,20 @@
   const ROW_PRESS = createAttachmentKey();
 </script>
 
+<!--
+@component
+Every repository in one workspace, and what the bot is doing with each. The list is the
+workspace's main page: a repository's own page stands in place of it rather than over
+it, so the navigation still reads Repositories.
+
+`defaultEnabled` is what an unconfigured repository would do, which is why the list can
+say something about repositories that have no settings at all - the common case, and the
+one a reader most needs to understand.
+
+Rows load on a cursor rather than by page, so there is no total and no pager; the count
+a workspace has is not a number worth blocking the first screenful on.
+-->
+
 <!-- One repository's page stands in place of the list rather than over it: the
      address names a place inside this view, so the navigation still reads
      Repositories and leaving the page returns to the rows.

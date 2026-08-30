@@ -528,6 +528,16 @@
   }
 </script>
 
+<!--
+@component
+When the service is allowed to do each kind of work, and how much of it at once.
+Policies and window profiles on one page because a policy is meaningless without the
+windows it names.
+
+`canRequest` draws the acts. A reader who may see the schedule without changing it gets
+the same page without the controls, rather than controls that refuse.
+-->
+
 {#snippet policyCells(policy: QueuePolicy)}
   {@const status = policyStatus(policy.kind)}
   {@const details = jobDetails(policy)}

@@ -802,6 +802,21 @@
   }
 </script>
 
+<!--
+@component
+What has happened here, and what failed. Two records that answer different questions -
+the audit says what was decided, the failures say what could not be done - kept in one
+pane because a reader looking at either usually wants both.
+
+`context` is the whole of the difference between the installation's copy and the Root
+console's: the same records, the same table, and a wider scope. It is a prop rather than
+a second component because the two drifted apart the last time they were separate.
+
+The settings checkpoints are read from here too, which is why it takes the baseline and
+restore functions: history is where a reader goes to undo, so the way back has to be
+where the record is.
+-->
+
 <section
   class="plate history-panel"
   class:root-context={context === 'root'}

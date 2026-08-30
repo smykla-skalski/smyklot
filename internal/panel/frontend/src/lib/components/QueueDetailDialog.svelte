@@ -40,6 +40,18 @@
   }
 </script>
 
+<!--
+@component
+One piece of queued work, read alongside the queue rather than instead of it. An
+inspector, which is the widest of the three dialog shapes and the one that does not
+cover the list it came from: the reader is comparing this record against its
+neighbours, so taking the neighbours away would be the wrong help.
+
+`loading` and `error` are the dialog's own, not the queue's. It opens on a row that is
+already on screen and fetches the rest, so it has a state the list behind it does
+not.
+-->
+
 <Modal
   id="queue-detail"
   {open}

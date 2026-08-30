@@ -25,33 +25,20 @@ import { contractOf } from '../.storybook/contracts.js';
  */
 const components = fileURLToPath(new URL('../src/lib/components/', import.meta.url));
 
-/** Components still owed a contract. Only ever gets shorter. */
-const PENDING: readonly string[] = [
-  'ConfigEditor',
-  'FormattingEditor',
-  'GeneralQueueView',
-  'HistoryPanel',
-  'InboxView',
-  'InvitationPage',
-  'PolicyEditorDialog',
-  'ProfileEditorDialog',
-  'QueueActionDialog',
-  'QueueDetailDialog',
-  'QueueTable',
-  'QueueView',
-  'RepositoryList',
-  'RootAccess',
-  'RootInstallationView',
-  'RootInstallations',
-  'RootOverview',
-  'RootSettings',
-  'ScheduleWindowsEditor',
-  'SchedulesView',
-  'Sidebar',
-  'SyncOverview',
-  'TargetSettings',
-  'UserManagement',
-];
+/**
+ * Components still owed a contract. Only ever gets shorter.
+ *
+ * Empty, and that is the state to hold. All 105 carry one: 41 already had the
+ * description as a JSDoc somewhere in the script and moved whole, and 64 were written
+ * against what the component actually does.
+ *
+ * A name may be ADDED here only with a reason, and the bar is what a contract is for.
+ * It is not a summary of the props - the props carry their own JSDoc and the catalogue
+ * tabulates it - but the three things a call site cannot see: which of several
+ * near-neighbours to reach for, what the component promises about when its effect
+ * lands, and the rule that stops the next person re-deriving it wrongly.
+ */
+const PENDING: readonly string[] = [];
 
 const names = readdirSync(components)
   .filter((file) => file.endsWith('.svelte'))

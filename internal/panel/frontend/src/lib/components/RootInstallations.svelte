@@ -175,6 +175,17 @@
   ];
 </script>
 
+<!--
+@component
+Every installation the service knows, and the way into any one of them. The list and
+the single installation are one component because they are one address space: opening
+one stands in place of the list rather than over it, so the navigation still reads
+Installations and Back still means the list.
+
+The installation view is imported lazily. It is the heaviest page in the Root console
+and most visits to this route never open one.
+-->
+
 {#if route.rootView === 'installation' && selected !== null}
   {#await import('./RootInstallationView.svelte')}
     <p class="installation-loading" role="status">Loading installation…</p>

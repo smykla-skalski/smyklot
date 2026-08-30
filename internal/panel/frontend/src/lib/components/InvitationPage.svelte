@@ -100,6 +100,18 @@
   }
 </script>
 
+<!--
+@component
+The page somebody lands on from an invitation link, before they are part of anything.
+It is the panel's only page for a reader who is outside it, which is why it carries its
+own header, its own footer and its own theme control - none of the shell is there to
+supply them.
+
+It has to answer for every state the link can be in: valid, already used, expired,
+revoked, or meant for somebody else. A page that only handles the happy one sends every
+other reader to a blank screen with no way to tell which of the five they hit.
+-->
+
 <!-- The tab says "Access Invitation" for every state the page has an invitation
      for, and names the error otherwise: a 404 that leads nowhere should not be
      announcing an invitation in the one place a reader keeps it. -->

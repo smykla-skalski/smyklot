@@ -325,6 +325,17 @@
   });
 </script>
 
+<!--
+@component
+One installation as the operator sees it: its settings, its access, its history and its
+sync, from outside the workspace rather than within it.
+
+It is the same subject as the workspace's own pages and deliberately not the same
+component. The operator's question is about the installation as a record - who owns it,
+what it is permitted, what has been done to it - and the workspace's is about the work
+inside it.
+-->
+
 <section class="installation-view" aria-labelledby="root-page-heading">
   <header class="installation-heading">
     <div class="installation-title">

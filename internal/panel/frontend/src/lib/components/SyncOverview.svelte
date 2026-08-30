@@ -158,6 +158,20 @@
   }
 </script>
 
+<!--
+@component
+What the organisation expects of its repositories, and how far they are from it. The
+overview is the register the four sync pages are read in - each kind says whether it is
+enabled, what it would change, and nothing more; the detail is on the page for that
+kind.
+
+Its clock is passed in so a story renders the same minute every time. A page that says
+"4 minutes ago" from the wall clock cannot be photographed.
+
+Enabling a kind here only makes it eligible for planning. Nothing is written until a
+plan is applied, which is why these are switches and not a form.
+-->
+
 <section class="view-frame" aria-labelledby="sync-overview-heading">
   <PageHeader
     id="sync-overview-heading"

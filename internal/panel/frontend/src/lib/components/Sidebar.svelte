@@ -286,6 +286,20 @@
   }
 </script>
 
+<!--
+@component
+The pages inside one console, as a tree. It is the second level of navigation: the rail
+chooses the console, and this chooses the page within it.
+
+`kicker` is the console's voice and `title` its name, and together they are what tells a
+reader which console they are in without reading the page. The pair is why this
+component is shared between the workspace and the Root console rather than written
+twice.
+
+Collapsed is a state the shell owns rather than the sidebar, because the content beside
+it has to answer to the same fact.
+-->
+
 <aside class="side" aria-label={kicker}>
   <div class="side-head">
     <span class="side-kicker">{kicker}</span>

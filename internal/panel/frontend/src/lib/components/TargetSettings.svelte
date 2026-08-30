@@ -233,6 +233,17 @@
   }
 </script>
 
+<!--
+@component
+What a workspace does by default, which every repository inside it inherits until it
+says otherwise. This is the top of the settings chain the panel exposes, so a value set
+here is the one a repository's editor shows as inherited.
+
+`readOnly` keeps the page whole and closes the controls. A member who can see how their
+workspace is configured without being able to change it is a real reader, and hiding the
+settings from them answers a different question than the one they asked.
+-->
+
 <div class="view-frame">
   <section class="settings-page" aria-labelledby="defaults-heading">
     <PageHeader

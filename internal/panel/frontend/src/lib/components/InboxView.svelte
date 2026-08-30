@@ -153,6 +153,19 @@
   });
 </script>
 
+<!--
+@component
+What has happened that concerns you personally, rather than anything about a workspace.
+It is the panel's one personal page, which is why it lives at its own address rather
+than inside an installation.
+
+It reports its unread count back through `onUnread`, so the rail's badge answers to
+what was actually read here rather than keeping a second tally that can disagree.
+
+Pages arrive on a cursor as the reader reaches the end, so there is no total and no
+pager - a notification list has no last page worth naming.
+-->
+
 <section class="inbox-page" aria-labelledby="inbox-heading">
   <PageHeader
     id="inbox-heading"

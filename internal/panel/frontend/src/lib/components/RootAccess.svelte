@@ -472,6 +472,17 @@
   }
 </script>
 
+<!--
+@component
+Who may use the panel at all, which is the Root console's own question rather than any
+installation's. Users and invitations are two sections of one page because the answer to
+"why can this person not get in" is in whichever of the two they are not in.
+
+`canManageInvitations` draws the acts rather than disabling them. An operator who may
+read the list but not change it sees the same records without controls that would
+refuse.
+-->
+
 <section class="root-access" aria-labelledby="root-page-heading">
   <RootPageHeader
     role={rootRole}

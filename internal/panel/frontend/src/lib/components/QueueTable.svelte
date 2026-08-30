@@ -152,6 +152,18 @@
   }
 </script>
 
+<!--
+@component
+The queue's rows, and the one table in the panel that keeps its own `<table>` rather
+than using `DataTable`. That is permanent and not a migration nobody got to: its rows
+carry `animate:flip` and two transitions, and a Svelte transition is a compile-time
+directive - it cannot be passed through a shared shell's attributes, and absorbing it
+would mean measuring every row of every other table.
+
+Its clock is injected so a story or a test can hold time still. A countdown that reads
+from the wall clock cannot be photographed.
+-->
+
 {#snippet cells(item: QueueItem)}
   <th scope="row" data-label="Work">
     <div class="queue-cell band-trim-stack">

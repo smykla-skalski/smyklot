@@ -161,6 +161,18 @@
   }
 </script>
 
+<!--
+@component
+The operator's first screen: how much is waiting, what has failed, and what is asking
+for elevation. Every panel on it is a summary that leads somewhere - the overview
+answers "is anything wrong" and never "what exactly", which is the page it sends you
+to.
+
+Each panel keeps its own loading and failure state, so one endpoint being slow does not
+hold up the answer from the others. An overview that waits for its slowest question is
+an overview nobody keeps open.
+-->
+
 <RootPageHeader
   role={rootRole}
   title="Overview"

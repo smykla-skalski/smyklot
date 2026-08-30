@@ -107,6 +107,16 @@
   }
 </script>
 
+<!--
+@component
+A named set of windows during which work may run. One dialog for both making and
+editing, told apart by whether it was given a profile - the fields are identical, and
+two dialogs would be two places to add the next one.
+
+A profile is referred to by policies, so this edits the definition and never the uses:
+changing a window here changes when every policy that names it runs.
+-->
+
 <ConfirmDialog
   id="profile-editor"
   {open}

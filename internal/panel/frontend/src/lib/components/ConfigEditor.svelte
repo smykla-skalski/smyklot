@@ -172,6 +172,21 @@
   }
 </script>
 
+<!--
+@component
+The settings a scope overrides, and what each would be if it did not. Every row shows
+the inherited value beside the chosen one, so an override is always visibly a departure
+rather than just a value.
+
+`scope` decides what may be set at all - a repository can narrow what its installation
+allows and never widen it - and `only` renders a subset for a pane that shows a few
+rows in another context.
+
+The clear button is the way back to inherited, and it is what makes an override
+reversible: without it a reader who overrides a value can never return to following the
+account again.
+-->
+
 {#snippet clearButton(key: ConfigKey, what: string)}
   <button
     class="setting-clear"

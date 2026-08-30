@@ -328,6 +328,17 @@
   }
 </script>
 
+<!--
+@component
+The service's own runtime settings, which are the only ones in the panel that are not
+about a repository. Sections rather than one long form, because these are unrelated
+knobs that happen to live in the same process.
+
+`saveSettings` is optional and its absence is the read-only view: an operator who may
+see how the service is configured without being able to change it gets the same page
+without the composer.
+-->
+
 {#snippet durationValue(spec: RuntimeDurationSpec, label: string)}
   {@const value = document?.[spec.key]}
   {@const editor =

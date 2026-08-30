@@ -1266,6 +1266,23 @@
   const ROW_PRESS = createAttachmentKey();
 </script>
 
+<!--
+@component
+Who may act on one workspace, and who has been asked. Users and invitations are
+sections of one page for the same reason they are in the Root console's access page:
+the answer to "why can this person not do that" is in whichever of the two they are
+in.
+
+Its two tables keep their own markup rather than using `DataTable`, and deliberately:
+they lay a row out as a grid so the header and the body share one set of column tracks,
+and their filters live in the column headings with no tools menu behind them - hiding
+the head would remove the only way to filter.
+
+`actorTargetRole` is what decides which acts are drawn. A member cannot change a role
+above their own, and offering the control and refusing it afterwards is worse than not
+offering it.
+-->
+
 {#snippet sortButton(label: string, onSelect: () => void)}
   <button class="table-sort-button" type="button" onclick={onSelect}>
     <span class="table-heading-label">{label}</span>

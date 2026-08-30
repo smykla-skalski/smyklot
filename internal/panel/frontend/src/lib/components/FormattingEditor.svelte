@@ -149,6 +149,20 @@
   }
 </script>
 
+<!--
+@component
+How a managed file is written: quoting, indentation, line endings, the order of keys.
+Every field shows what it would inherit and what this scope overrides, so a reader can
+always see which of the two they are looking at.
+
+It reports validity out through `onValidity` rather than blocking. A formatting patch
+that cannot be applied is the save composer's business to refuse - this editor's job is
+to say which field is wrong and why, next to the field.
+
+`dirtyKeys` marks what this draft has touched, which is how a reader who has changed
+three things among thirty finds them again.
+-->
+
 <div class="formatting-editor" data-valid={valid}>
   <section class="card group-card" aria-labelledby="formatting-{scope}-{idPrefix}-policy">
     <div class="group-head">

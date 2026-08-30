@@ -131,6 +131,16 @@
   }
 </script>
 
+<!--
+@component
+How much work of one kind the service will run at once, and when it is allowed to.
+Editing a policy is editing a rule rather than a record, which is why it confirms: the
+next thing the queue does follows from it.
+
+The schedule profiles are passed in rather than fetched, so the dialog cannot offer a
+window that no longer exists by the time it opens.
+-->
+
 <ConfirmDialog
   id="policy-editor"
   open={policy !== null}

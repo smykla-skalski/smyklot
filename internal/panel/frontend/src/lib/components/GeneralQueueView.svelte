@@ -356,6 +356,20 @@
   }
 </script>
 
+<!--
+@component
+The queue as one workspace sees it, which is the same work with a different question
+asked of it: not "what is the service doing" but "what is happening to my repositories".
+
+`targetId` is what separates the two. With one, this is a workspace's own page and
+headed as such; without, it stands inside the Root console's page and takes its heading
+from there - which is why the labelling is chosen rather than fixed, and why a second
+`<h1>` never appears.
+
+`canControl` draws the acts. A reader who may watch but not act sees the same rows
+without the buttons, rather than buttons that refuse.
+-->
+
 <section
   class="general-queue"
   aria-labelledby={targetId === undefined ? 'root-page-heading' : 'queue-heading'}

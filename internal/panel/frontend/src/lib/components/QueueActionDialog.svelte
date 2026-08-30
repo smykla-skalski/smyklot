@@ -123,6 +123,18 @@
   }
 </script>
 
+<!--
+@component
+Confirming one act on one piece of queued work, with what that act would actually do
+shown before it is taken. `onPreview` is why this is a dialog rather than a button:
+rescheduling asks the service when the work would then run, and a reader agreeing to a
+new time should see the time.
+
+One dialog for every queue action rather than one per verb - the shape is the same and
+only the sentence differs, and four dialogs asking the same question is how they come
+to ask it four different ways.
+-->
+
 <ConfirmDialog
   id="queue-action"
   open={item !== null && action !== null}
