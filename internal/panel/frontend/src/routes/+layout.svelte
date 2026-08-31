@@ -601,6 +601,32 @@
     return plan.counts.create + plan.counts.update + plan.counts.delete;
   });
 
+  /* How much has stopped, said on the row that opens it. One row of the page is
+     asked for and only its total is read - the tree wants the number, not the list.
+     Both sides ask, and which one is enabled is what decides which is answered. */
+  const failureCountQuery = createQuery(
+    () => ({
+      queryKey: ['failure-count', session.isRootMode ? 'root' : (session.selectedTarget?.id ?? '')],
+      queryFn: () => {
+        const ask = { query: '', sort: 'newest' as const, limit: 1, kind: 'all' as const };
+
+        return session.isRootMode
+          ? api.fetchRootFailures(ask)
+          : api.fetchFailures(session.selectedTarget?.id ?? '', ask);
+      },
+      enabled:
+        session.isInvitation === false &&
+        session.viewer !== null &&
+        (session.isRootMode || session.selectedTarget !== null),
+    }),
+    () => queryClient,
+  );
+  const failureCount = $derived.by((): number | undefined => {
+    const total = failureCountQuery.data?.total ?? 0;
+
+    return total === 0 ? undefined : total;
+  });
+
   /**
    * The workspace tree: every page one row, under the headings that group them.
    *
@@ -704,6 +730,8 @@
           !session.isInbox &&
           session.currentView === 'history' &&
           session.currentHistorySection === 'failures',
+        count: failureCount,
+        signal: failureCount !== undefined,
       },
       {
         id: 'defaults',
@@ -809,6 +837,8 @@
       icon: 'failure',
       href: session.rootFailuresHref(),
       active: !session.isInbox && session.currentRootRoute.rootView === 'history-failures',
+      count: failureCount,
+      signal: failureCount !== undefined,
     },
     { kind: 'group', id: 'group-access', label: 'Access' },
     {
