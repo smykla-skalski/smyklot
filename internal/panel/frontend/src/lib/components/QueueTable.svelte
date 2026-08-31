@@ -1,7 +1,23 @@
+<script module lang="ts">
+  import type { QueueItem } from '#lib/types.js';
+
+  /** One card: a list, what it is called, and what it says about how much it holds. */
+  export interface QueueCard {
+    id: string;
+    title: string;
+    items: readonly QueueItem[];
+    /** "Showing 1-N of TOTAL", for this card's own list and nobody else's. */
+    count: string;
+    more: boolean;
+    busy: boolean;
+    onMore: () => void;
+  }
+</script>
+
 <script lang="ts">
-  import type { QueueActionType, QueueItem } from '#lib/types.js';
+  import type { QueueActionType } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
-  import { onMount, type Snippet } from 'svelte';
+  import { onMount } from 'svelte';
   import { flip } from 'svelte/animate';
   import { MediaQuery } from 'svelte/reactivity';
   import { fade } from 'svelte/transition';
@@ -12,33 +28,15 @@
   import Pill from './Pill.svelte';
 
   const {
-    items,
+    cards,
     clock = Date.now,
-    groupTitle,
-    doneTitle,
     reviewHref,
     onReview,
-    foot,
     onOpen,
     onAction,
   }: {
-    items: readonly QueueItem[];
+    cards: readonly QueueCard[];
     clock?: () => number;
-    /**
-     * What to call the one group a narrowed view leaves.
-     *
-     * The groups answer a reader looking at everything. A reader who has asked for the
-     * running work is told what it is by the control they pressed, and a card over it
-     * headed "Running and waiting" answers a question they have already narrowed.
-     */
-    groupTitle?: string;
-    /**
-     * What to call the finished group where it stands beside live work.
-     *
-     * On the view that shows everything it is a slice - what ended in the last day -
-     * and a card headed plainly "Done" there would claim to be the whole record.
-     */
-    doneTitle?: string;
     /**
      * Where a decision is actually made, for the rows that are waiting on one.
      *
@@ -49,14 +47,6 @@
      */
     reviewHref?: (item: QueueItem) => string | null;
     onReview?: (item: QueueItem, event: MouseEvent) => void;
-    /**
-     * What the page counts, drawn inside the card the counting ends in.
-     *
-     * A foot belongs to the list it is a foot of. Under the cards it is a strip
-     * floating on the canvas, which reads as a page control rather than as the end of
-     * what is above it.
-     */
-    foot?: Snippet;
     onOpen: (item: QueueItem) => void;
     onAction: (item: QueueItem, action: QueueActionType) => void;
   } = $props();
@@ -77,43 +67,6 @@
     const frame = window.requestAnimationFrame(() => (motionEnabled = true));
     return () => window.cancelAnimationFrame(frame);
   });
-
-  /**
-   * The three questions a reader has of a queue, in the order they have them.
-   *
-   * A decision is theirs to make and nothing moves until they make it, so it leads. Then
-   * what the service is doing on its own, and last what it already did. The states
-   * inside each group are the service's vocabulary, which nothing outside this map has
-   * to know.
-   */
-  const GROUPS = [
-    {
-      id: 'decision',
-      title: 'Needs a decision',
-      states: ['awaiting_approval'],
-    },
-    {
-      id: 'live',
-      title: 'Running and waiting',
-      states: ['running', 'ready', 'scheduled', 'blocked', 'retrying'],
-    },
-    {
-      id: 'done',
-      title: 'Done',
-      states: ['succeeded', 'failed', 'cancelled', 'superseded'],
-    },
-  ] as const satisfies ReadonlyArray<{
-    id: string;
-    title: string;
-    states: ReadonlyArray<QueueItem['state']>;
-  }>;
-
-  const grouped = $derived(
-    GROUPS.map((group) => ({
-      ...group,
-      items: items.filter((item) => (group.states as readonly string[]).includes(item.state)),
-    })).filter((group) => group.items.length > 0),
-  );
 
   function words(value: string): string {
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -330,24 +283,21 @@ Its clock is injected so a story or a test can hold time still. A countdown that
 from the wall clock cannot be photographed.
 -->
 
-{#if grouped.length === 0}
+{#if cards.length === 0}
   <div class="card">
     <div class="state-panel">
       <strong>Nothing in this view</strong>
       <span>Queued work appears here as soon as the service accepts it.</span>
     </div>
-    {@render foot?.()}
   </div>
 {:else}
-  {#each grouped as group, index (group.id)}
+  {#each cards as card (card.id)}
     <div class="card queue-group">
       <div class="card-head">
-        <h2 class="card-title">
-          {(group.id === 'done' ? doneTitle : undefined) ?? groupTitle ?? group.title}
-        </h2>
+        <h2 class="card-title">{card.title}</h2>
       </div>
       <ul class="object-list">
-        {#each group.items as item (item.id)}
+        {#each card.items as item (item.id)}
           <li animate:flip={rowMotion} in:fade={rowArriving} out:fade={rowLeaving}>
             <div class="object-row">
               <!-- The whole row opens the schedule, the progress and the audit
@@ -443,9 +393,13 @@ from the wall clock cannot be photographed.
           </li>
         {/each}
       </ul>
-      {#if index === grouped.length - 1}
-        {@render foot?.()}
-      {/if}
+      <!-- The card's own count, for the card's own list. -->
+      <div class="list-foot">
+        <span>{card.count}</span>
+        {#if card.more}
+          <Button tone="quiet" disabled={card.busy} onclick={card.onMore}>Show more</Button>
+        {/if}
+      </div>
     </div>
   {/each}
 {/if}

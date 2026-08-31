@@ -36,12 +36,24 @@
     },
   ];
 
+  const cards = [
+    {
+      id: 'live',
+      title: 'Running and waiting',
+      items,
+      count: 'Showing 1-1\u{a0}of 1',
+      more: false,
+      busy: false,
+      onMore: fn(),
+    },
+  ];
+
   const { Story } = defineMeta({
     title: 'Views/QueueTable',
     component: QueueTable,
-    args: { items, clock: () => Date.parse(now), onOpen: fn(), onAction: fn() },
+    args: { cards, clock: () => Date.parse(now), onOpen: fn(), onAction: fn() },
   });
 </script>
 
 <Story name="Scheduled work" />
-<Story name="Empty" args={{ items: [] }} />
+<Story name="Empty" args={{ cards: [] }} />

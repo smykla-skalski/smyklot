@@ -61,6 +61,27 @@
 
   /** What the queue calls finished, in every place that has to ask. */
   const DONE_STATES: QueueItem['state'][] = ['succeeded', 'failed', 'cancelled', 'superseded'];
+  const LIVE_STATES: QueueItem['state'][] = [
+    'running',
+    'ready',
+    'scheduled',
+    'blocked',
+    'retrying',
+  ];
+  /**
+   * The three questions a reader has of a queue, in the order they have them.
+   *
+   * A decision is theirs to make and nothing moves until they make it, so it leads.
+   * Then what the service is doing on its own, and last what it already did.
+   */
+  const CARDS = [
+    { id: 'decision', states: ['awaiting_approval'] as QueueItem['state'][] },
+    { id: 'live', states: LIVE_STATES },
+    { id: 'done', states: DONE_STATES },
+  ] as const;
+  type CardID = (typeof CARDS)[number]['id'];
+  /** A day, which is what "lately" means where finished work stands beside live work. */
+  const DAY_MS = 86_400_000;
   const emptyFacets: QueuePage['facets'] = {
     targets: [],
     repositories: [],
@@ -86,36 +107,65 @@
   let detailItemID = $state<string | null>(null);
   let now = $state(Date.now());
   let rangeNow = $state(Date.now());
-  /* HOW MUCH OF THE LIST IS ON SCREEN, not which page of it is. A queue is read from
-     the top - what needs somebody, then what is running - so paging away from the top
-     hides the part that matters to reach the part that does not. The foot reveals
-     more of the same list instead, which is what every other list here does. */
-  let shown = $state(0);
+  /* HOW MUCH OF EACH CARD IS ON SCREEN, not which page of the queue is.
+     A card is a list and a list counts itself: one number per card, raised by that
+     card's own foot. Counting the whole query and printing it under whichever card
+     came last said "1-4 of 4" beneath a card holding one row. */
+  let revealed = $state({ decision: 0, live: 0, done: 0 });
   let search = $state('');
   /* What the page is actually filtered by, one step behind what is being typed: every
      keystroke is a request, and the queue is the one list where a reader is often
      hunting for a repository they can only half remember. */
   let appliedSearch = $state('');
   const pageSize = 50;
-  const query = $derived.by(queueQuery);
+  /* One query per card, because one card is one list. The alternative - a single
+     query grouped in the browser - cannot say how much of a group is on screen or
+     bring more of one group down, which is what a foot inside a card promises. */
+  const decisionAsk = $derived.by(() => cardQuery('decision'));
+  const liveAsk = $derived.by(() => cardQuery('live'));
+  const doneAsk = $derived.by(() => cardQuery('done'));
 
-  const queuePageQuery = createQuery(() => ({
-    queryKey: queueListKey(targetId, query),
-    queryFn: () =>
-      targetId === undefined ? api.fetchRootQueue(query) : api.fetchTargetQueue(targetId, query),
+  const decisionQuery = createQuery(() => ({
+    queryKey: queueListKey(targetId, decisionAsk),
+    queryFn: () => fetchQueue(decisionAsk),
+    enabled: shows('decision'),
+  }));
+  const liveQuery = createQuery(() => ({
+    queryKey: queueListKey(targetId, liveAsk),
+    queryFn: () => fetchQueue(liveAsk),
+    enabled: shows('live'),
+  }));
+  const doneQuery = createQuery(() => ({
+    queryKey: queueListKey(targetId, doneAsk),
+    queryFn: () => fetchQueue(doneAsk),
+    enabled: shows('done'),
   }));
   const detailQuery = createQuery(() => ({
     queryKey: queueDetailKey(targetId, detailItemID ?? ''),
     queryFn: () => fetchDetail(detailItemID),
     enabled: detailOpen && detailItemID !== null,
   }));
-  const page = $derived<QueuePage | null>(queuePageQuery.data ?? null);
-  const items = $derived<QueueItem[]>(page?.items ?? []);
-  const facets = $derived<QueuePage['facets']>(page?.facets ?? emptyFacets);
-  const nextOffset = $derived(page?.next_offset ?? 0);
-  const total = $derived(page?.total ?? 0);
-  const loading = $derived(queuePageQuery.isFetching);
-  const error = $derived(errorMessage(queuePageQuery.error));
+
+  const cardQueries = { decision: decisionQuery, live: liveQuery, done: doneQuery };
+  /* The facets belong to the whole page rather than to one card, so they are read off
+     whichever card the view leads with - the same filter answers for all of them. */
+  const facets = $derived<QueuePage['facets']>(
+    (shows('decision') ? decisionQuery.data?.facets : undefined) ??
+      liveQuery.data?.facets ??
+      doneQuery.data?.facets ??
+      emptyFacets,
+  );
+  const answered = $derived(
+    CARDS.filter((card) => shows(card.id)).every((card) => cardQueries[card.id].data !== undefined),
+  );
+  const loading = $derived(
+    CARDS.filter((card) => shows(card.id)).some((card) => cardQueries[card.id].isFetching),
+  );
+  const error = $derived(
+    CARDS.filter((card) => shows(card.id))
+      .map((card) => errorMessage(cardQueries[card.id].error))
+      .find((message) => message !== '') ?? '',
+  );
   const detail = $derived<QueueDetail | null>(detailQuery.data ?? null);
   const detailLoading = $derived(detailQuery.isFetching);
   const detailError = $derived(errorMessage(detailQuery.error));
@@ -125,11 +175,29 @@
   const installations = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
   const states = $derived(facets.states.filter((value) => sectionStates(section).includes(value)));
-  /** What the foot counts: the top of the list down to the last row on screen. */
-  const shownRange = $derived(
-    total === 0 ? 'Nothing to show' : `Showing 1-${items.length}\u{a0}of ${total}`,
+  /**
+   * The cards a view is made of, each with its own rows, its own count and its own way
+   * to bring more of itself down.
+   */
+  const cards = $derived(
+    CARDS.filter((card) => shows(card.id))
+      .map((card) => {
+        const page = cardQueries[card.id].data;
+        const rows = page?.items ?? [];
+        const held = page?.total ?? 0;
+
+        return {
+          id: card.id,
+          title: cardTitle(card.id),
+          items: rows,
+          count: held === 0 ? 'Nothing to show' : `Showing 1-${rows.length}\u{a0}of ${held}`,
+          more: (page?.next_offset ?? 0) !== 0,
+          busy: cardQueries[card.id].isFetching,
+          onMore: () => (revealed = { ...revealed, [card.id]: revealed[card.id] + pageSize }),
+        };
+      })
+      .filter((card) => card.items.length > 0),
   );
-  const more = $derived(nextOffset !== 0);
   const queueFilters = $derived<ToolsFilter[]>([
     {
       label: 'Workload',
@@ -149,7 +217,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         workload = (values[0] ?? 'all') as QueueWorkload | 'all';
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
     {
@@ -167,7 +235,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         stateFilter = values[0] ?? 'all';
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
     {
@@ -185,7 +253,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         profile = values[0] ?? 'all';
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
     ...(targetId === undefined
@@ -205,7 +273,7 @@
             fallbackValue: 'all',
             onChange: (values: string[]) => {
               installation = values[0] ?? 'all';
-              shown = 0;
+              revealed = { decision: 0, live: 0, done: 0 };
             },
           },
         ]
@@ -225,7 +293,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         repository = values[0] ?? 'all';
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
     {
@@ -245,7 +313,7 @@
       onChange: (values: string[]) => {
         timeRange = (values[0] ?? 'all') as 'all' | '24h' | '7d';
         rangeNow = Date.now();
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
     {
@@ -266,14 +334,14 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         priority = (values[0] ?? 'all') as QueuePriority | 'all';
-        shown = 0;
+        revealed = { decision: 0, live: 0, done: 0 };
       },
     },
   ]);
 
   const debouncedSearch = useDebounce((query: string) => {
     appliedSearch = query;
-    shown = 0;
+    revealed = { decision: 0, live: 0, done: 0 };
   }, 250);
 
   $effect(() => {
@@ -352,37 +420,6 @@
     },
   }));
 
-  /**
-   * What the service finished lately, for the view that shows everything.
-   *
-   * The All view answers "what is happening", and work that ended an hour ago is part
-   * of that answer - a reader who comes back to a queue with nothing in it needs to
-   * see that something ran rather than that nothing did. Bounded by when work
-   * FINISHED rather than when it was accepted: a merge held for a day of checks is old
-   * work that ended recently.
-   */
-  const recentlyDoneQuery = createQuery(() => ({
-    queryKey: ['queue-recent-done', targetId ?? 'root', workload, priority, profile, appliedSearch],
-    queryFn: () => {
-      const params = new SvelteURLSearchParams({ limit: '10', offset: '0' });
-      params.set('state', DONE_STATES.join(','));
-      params.set('finished_after', new Date(Date.now() - 86_400_000).toISOString());
-      if (workload !== 'all') params.set('workload', workload);
-      if (priority !== 'all') params.set('priority', priority);
-      if (profile !== 'all') params.set('profile', profile);
-      if (appliedSearch !== '') params.set('search', appliedSearch);
-      const search = `?${params.toString()}`;
-
-      return targetId === undefined
-        ? api.fetchRootQueue(search)
-        : api.fetchTargetQueue(targetId, search);
-    },
-    enabled: section === 'active',
-  }));
-  const recentlyDone = $derived<QueueItem[]>(
-    section === 'active' ? (recentlyDoneQuery.data?.items ?? []) : [],
-  );
-
   const SECTION_SEGMENTS = $derived.by(() => {
     const counts = sectionCountsQuery.data;
     return QUEUE_SECTIONS.map((value) => ({
@@ -392,14 +429,54 @@
     }));
   });
 
-  function queueQuery(): string {
+  /** Whether this view draws that card at all. */
+  function shows(card: CardID): boolean {
+    if (section === 'active') return true;
+    if (section === 'approvals') return card === 'decision';
+    if (section === 'history') return card === 'done';
+
+    return card === 'live';
+  }
+
+  /**
+   * What a card is called where it stands.
+   *
+   * The heading answers the question the card is the answer to, so a view narrowed to
+   * one of them takes its own name - "Running and waiting" over a list a reader has
+   * already narrowed to the running work answers a question they did not ask.
+   */
+  function cardTitle(card: CardID): string {
+    if (section !== 'active') return SECTION_LABELS[section];
+    if (card === 'decision') return 'Needs a decision';
+    if (card === 'live') return 'Running and waiting';
+
+    return 'Done in the last day';
+  }
+
+  /**
+   * What a card asks for.
+   *
+   * Its own states, narrowed by the view and by the state filter, and its own limit -
+   * so its foot counts what it holds and brings more of itself down. The done card
+   * beside live work is bounded by when work FINISHED rather than when it was
+   * accepted: a merge held for a day of checks is old work that ended a minute ago.
+   */
+  function cardQuery(card: CardID): string {
+    const states = (CARDS.find((one) => one.id === card)?.states ?? []).filter(
+      (state) => sectionStates(section).includes(state) || section === 'history',
+    );
+    const asked =
+      stateFilter === 'all'
+        ? states
+        : states.filter((state) => state === (stateFilter as QueueItem['state']));
     const query = new SvelteURLSearchParams({
-      limit: String(pageSize + shown),
+      limit: String(pageSize + revealed[card]),
       offset: '0',
     });
-    const selectedStates =
-      stateFilter === 'all' ? sectionStates(section) : [stateFilter as QueueItem['state']];
-    query.set('state', selectedStates.join(','));
+    query.set('state', asked.join(','));
+    if (card === 'done' && section === 'active') {
+      query.set('finished_after', new Date(rangeNow - DAY_MS).toISOString());
+    }
     if (workload !== 'all') query.set('workload', workload);
     if (priority !== 'all') query.set('priority', priority);
     if (profile !== 'all') query.set('profile', profile);
@@ -409,15 +486,23 @@
     if (repository !== 'all') query.set('repository', repository);
     if (appliedSearch !== '') query.set('search', appliedSearch);
     if (timeRange !== 'all') {
-      const age = timeRange === '24h' ? 86_400_000 : 604_800_000;
+      const age = timeRange === '24h' ? DAY_MS : 7 * DAY_MS;
       query.set('created_after', new Date(rangeNow - age).toISOString());
     }
 
     return `?${query.toString()}`;
   }
 
+  function fetchQueue(query: string): Promise<QueuePage> {
+    return targetId === undefined
+      ? api.fetchRootQueue(query)
+      : api.fetchTargetQueue(targetId, query);
+  }
+
   async function load(): Promise<void> {
-    await queuePageQuery.refetch();
+    await Promise.all(
+      CARDS.filter((card) => shows(card.id)).map((card) => cardQueries[card.id].refetch()),
+    );
   }
 
   function openAction(item: QueueItem, action: QueueActionType): void {
@@ -557,9 +642,9 @@ without the buttons, rather than buttons that refuse.
   </div>
 
   <p class="visually-hidden" aria-live="polite">{announcement}</p>
-  {#if loading && items.length === 0}
+  {#if loading && !answered}
     <Plate label="Loading"><p class="dim" role="status">Reading the durable queue…</p></Plate>
-  {:else if error !== '' && page === null}
+  {:else if error !== '' && !answered}
     <Plate label="Queue unavailable" tone="alarm">
       <p>{error}</p>
       <Button onclick={() => void load()}>Try again</Button>
@@ -571,34 +656,16 @@ without the buttons, rather than buttons that refuse.
         <Button onclick={() => void load()}>Try again</Button>
       </Plate>
     {/if}
-    {#key query}
-      <QueueTable
-        items={[...items, ...recentlyDone]}
-        clock={() => now}
-        groupTitle={section === 'waiting' || section === 'running'
-          ? SECTION_LABELS[section]
-          : undefined}
-        doneTitle={section === 'active' ? 'Done in the last day' : undefined}
-        reviewHref={(item) => (item.kind === 'sync_apply' ? (planHref ?? null) : null)}
-        onReview={(_item, event) => onOpenPlan?.(event)}
-        onOpen={openDetail}
-        onAction={openAction}
-        foot={total > 0 ? queueFoot : undefined}
-      />
-    {/key}
+    <QueueTable
+      {cards}
+      clock={() => now}
+      reviewHref={(item) => (item.kind === 'sync_apply' ? (planHref ?? null) : null)}
+      onReview={(_item, event) => onOpenPlan?.(event)}
+      onOpen={openDetail}
+      onAction={openAction}
+    />
   {/if}
 </section>
-
-{#snippet queueFoot()}
-  <!-- Inside the card the counting ends in, which is where a list's foot belongs, and
-       one quiet act beside it: more of the same list rather than another page of it. -->
-  <div class="list-foot">
-    <span>{shownRange}</span>
-    {#if more}
-      <Button tone="quiet" disabled={loading} onclick={() => (shown += pageSize)}>Show more</Button>
-    {/if}
-  </div>
-{/snippet}
 
 {#key `${selected?.id ?? ''}:${selectedAction ?? ''}`}
   <QueueActionDialog
