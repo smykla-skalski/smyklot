@@ -838,13 +838,6 @@ refuse.
     min-inline-size: 0;
   }
 
-  /* The feedback and the tools menu share the end of the bar. */
-  .filter-bar .push-end {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-  }
-
   .stable-feedback {
     color: var(--text-secondary);
     flex: none;

@@ -130,11 +130,13 @@
     /**
      * Where a failure's repository lives, when the caller has an address for it.
      *
-     * A failure row's one act is to open what it failed on, and only the installation
-     * views can say where that is - the console reads failures across every workspace,
-     * so a workspace-scoped address there would be a lie.
+     * A failure row's one act is to open what it failed on. The whole failure is
+     * handed over rather than its repository's name: the console reads failures
+     * across every workspace and needs the workspace to build an address at all,
+     * and a row whose workspace is no longer readable gets no act rather than a
+     * wrong one.
      */
-    repositoryHref?: (fullName: string) => string;
+    repositoryHref?: (failure: DeliveryFailure) => string | null;
   } = $props();
 
   // Table state deliberately captures the preferences at mount; remote
@@ -212,7 +214,7 @@
   const description = $derived(
     context === 'root'
       ? historyType === 'audit'
-        ? 'Every change made through Smyklot, in every workspace'
+        ? "Every change made anywhere through Smyklot - the service's own included"
         : 'Work that stopped across every workspace, with the cause and what can help'
       : historyType === 'audit'
         ? 'Every change made through Smyklot: who, what, and where'
@@ -531,11 +533,20 @@
     return summary.charAt(0).toLocaleLowerCase() + summary.slice(1);
   }
 
-  /** What the change was made to, or nothing when the sentence already carries it. */
+  /**
+   * What the change was made to, or nothing when the sentence already carries it.
+   *
+   * The repository wherever there is one, in both consoles: a console row that named
+   * only the workspace said "in smykla-skalski" about a change to one repository
+   * inside it, and the repository - the thing that changed - was nowhere on the row.
+   * The workspace is the sum's job then.
+   */
   function auditObject(entry: AuditEntry): string | null {
-    if (context === 'root') return entry.installation?.login ?? null;
-    if (entry.repository_full_name === undefined) return null;
-    return repositoryName(entry.repository_full_name);
+    if (entry.repository_full_name !== undefined) {
+      return repositoryName(entry.repository_full_name);
+    }
+
+    return context === 'root' ? (entry.installation?.login ?? null) : null;
   }
 
   /** The whole line as one string, for a label a screen reader reads in one go. */
@@ -551,11 +562,23 @@
     return `Showing 1-${shown}\u{a0}of ${total ?? shown}`;
   }
 
+  /**
+   * The rest of the line: where it happened, and to whom.
+   *
+   * The category and the wire action used to lead it - "configuration \u00b7
+   * repository.config.updated" - which is the name of a branch of the code and the
+   * name of a database column. The sentence above already says what was done, and
+   * the category was a second, coarser word for the same thing.
+   */
   function auditDetail(entry: AuditEntry): string {
-    const parts = [entry.category, entry.action].filter(
-      (part): part is string => part !== undefined,
-    );
+    const parts: string[] = [];
+    /* Named where the row's own object is a repository, because then the sentence
+       has not said which workspace that repository is in. */
+    if (context === 'root' && entry.repository_full_name !== undefined) {
+      parts.push(entry.installation?.display_name ?? 'The service itself');
+    }
     if (entry.subject !== undefined) parts.push(`@${entry.subject.login}`);
+
     return parts.join(' \u00b7 ');
   }
 
@@ -727,6 +750,11 @@ where the record is.
       {#if entry.elevation_id !== undefined}
         <Pill tone="warning">Operator</Pill>
       {/if}
+      <!-- The console reads the service's own changes beside every workspace's, and
+           a row about the service belongs to no workspace to name. -->
+      {#if context === 'root' && entry.installation === undefined}
+        <Pill>service</Pill>
+      {/if}
     </span>
     <span class="object-sum">
       {#if auditDetail(entry) !== ''}{auditDetail(entry)} ·
@@ -890,6 +918,7 @@ where the record is.
         <Card>
           <ul class="object-list">
             {#each failureRows as failure (failure.id)}
+              {@const href = repositoryHref?.(failure) ?? null}
               <li>
                 <div class="object-row">
                   <span class="object-main">
@@ -908,7 +937,11 @@ where the record is.
                       </Pill>
                     </span>
                     <span class="object-sum" title={failureDetail(failure)}>
-                      {sentenceCase(failure.reason)}
+                      <!-- Whose work failed, on the page that reads every workspace's:
+                           the repository above is one of many called `api-gateway`. -->
+                      {#if context === 'root'}{failure.installation?.display_name ??
+                          'The service itself'} ·
+                      {/if}{sentenceCase(failure.reason)}
                       {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}
                       <RelativeTime
                         value={failure.occurred_at}
@@ -918,10 +951,10 @@ where the record is.
                     </span>
                   </span>
                   <span class="object-side">
-                    {#if repositoryHref !== undefined}
+                    {#if href !== null}
                       <Button
                         tone="quiet"
-                        href={repositoryHref(failure.repository_full_name)}
+                        {href}
                         aria-label="Open {repositoryName(failure.repository_full_name)}"
                       >
                         Open the repository

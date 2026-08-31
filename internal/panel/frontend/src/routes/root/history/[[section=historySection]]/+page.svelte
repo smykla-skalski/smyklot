@@ -4,7 +4,11 @@
   import { getPanelSession } from '#lib/session.svelte.js';
   import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
-  import type { InstallationSettingsBatchResponse, RootRuntimeSettings } from '#lib/types.js';
+  import type {
+    DeliveryFailure,
+    InstallationSettingsBatchResponse,
+    RootRuntimeSettings,
+  } from '#lib/types.js';
   import HistoryPanel from '#lib/components/HistoryPanel.svelte';
 
   import type { PageProps } from './$types';
@@ -38,6 +42,19 @@
   function hasUnsavedInstallationSettings(targetId: string): boolean {
     return settingsDrafts.hasDirty({ type: 'installation', targetId });
   }
+
+  /* The console can open the repository a failure was about, but only through the
+     workspace that holds it - so a row whose workspace the catalog no longer names
+     offers nothing rather than an address that resolves to somebody else's. */
+  function repositoryPage(failure: DeliveryFailure): string | null {
+    const account = failure.installation?.login;
+    if (account === undefined) return null;
+
+    return session.rootRepositoryHref(
+      account,
+      failure.repository_full_name.slice(failure.repository_full_name.lastIndexOf('/') + 1),
+    );
+  }
 </script>
 
 <section
@@ -61,5 +78,6 @@
     readOnly={false}
     onSettingsRestored={installationSettingsRestored}
     onRootSettingsRestored={runtimeSettingsRestored}
+    repositoryHref={repositoryPage}
   />
 </section>

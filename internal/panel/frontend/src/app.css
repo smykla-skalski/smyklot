@@ -3091,7 +3091,14 @@ button.object-row {
   margin-block-end: var(--rhythm-toolbar-surface);
 }
 
+/* THE END OF A TOOLBAR IS A ROW, like the rest of it. Every caller puts more than one
+   thing here - a live status beside a tools menu, a receipt beside a filter - and a
+   bare span is a block, so the second control stacked under the first and the bar
+   stood two rows tall to hold one line of controls. */
 .filter-bar .push-end {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
   margin-inline-start: auto;
 }
 

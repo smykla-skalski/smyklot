@@ -784,6 +784,16 @@ export class PanelSession {
     return panelAddress(this.rootInstallationRoute(account, nextView, section));
   }
 
+  /** One repository's page, read from the console rather than from its workspace. */
+  rootRepositoryHref(account: string, repository: string): string {
+    return panelAddress({
+      rootView: 'installation',
+      account,
+      view: 'repositories',
+      repository: { name: repository },
+    });
+  }
+
   returnHref(): string {
     const route = this.returnRoute();
 

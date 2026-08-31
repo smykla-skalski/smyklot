@@ -241,8 +241,12 @@ history is routed with its section. That is what makes an address like
             })}
             onSettingsRestored={() => settingsRestored(session.selectedTarget!.id)}
             prefs={session.prefs}
-            repositoryHref={(fullName: string) =>
-              session.repositoryHref(fullName.slice(fullName.lastIndexOf('/') + 1))}
+            repositoryHref={(failure) =>
+              session.repositoryHref(
+                failure.repository_full_name.slice(
+                  failure.repository_full_name.lastIndexOf('/') + 1,
+                ),
+              )}
           />
         {/key}
       {:catch error}
