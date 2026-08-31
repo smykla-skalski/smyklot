@@ -4,7 +4,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addressOf, inLanes, PANEL_ROUTES, startPanel, visit, type Panel } from './harness';
 
 /**
- * Every column holds the widest value it could ever be given.
+ * Every column - and every row that replaced one - holds the widest value it
+ * could ever be given.
  *
  * A table laid out against the data that happens to be seeded is a table that
  * has never met the value that matters. GitHub allows a hundred characters in a
@@ -46,6 +47,7 @@ interface Reading {
   route: string;
   tables: number;
   columns: number;
+  rows: number;
   faults: Fault[];
 }
 
@@ -183,11 +185,66 @@ async function measure(page: Page, route: string): Promise<Reading> {
         }
       }
 
+      /* THE ROWS THAT REPLACED THE COLUMNS take the same stress. A list row has no
+         heading to line up with and no cells to add up, so what is left of the three
+         faults is the one that matters most: something inside it drawn outside it,
+         with nothing on the way up that cuts. That is the fault that walks a name
+         over the control beside it. */
+      /* Drawn rows only. A row inside a dialog nobody has opened, or one a filter
+         has taken off the page, has no layout to hold: every child of it measures
+         outside a box that is not there, which is a hundred faults about nothing. */
+      const rows = [...document.querySelectorAll('.object-row, .setting-row, .policy-row')].filter(
+        (row) => row.checkVisibility() && row.getBoundingClientRect().width > 1,
+      );
+      for (const row of rows) {
+        /* The sentence's own words, never the atoms set inside it. A time, a
+           repository in the mono voice and a standing are each one unbreakable run
+           BY LAW - "a time is one word however many words it holds" - so filling one
+           measures a rule the design states rather than a fault. Direct text nodes
+           only, which is exactly the prose. */
+        for (const cell of row.querySelectorAll(
+          '.object-name, .object-sum, .setting-name, .setting-why, .setting-fact',
+        )) {
+          for (const node of cell.childNodes) {
+            if (node.nodeType !== Node.TEXT_NODE) continue;
+            if ((node.nodeValue ?? '').trim() === '') continue;
+            node.nodeValue = filler;
+            break;
+          }
+        }
+      }
+
+      for (const row of rows) {
+        const box = row.getBoundingClientRect();
+        const label = name(row);
+        for (const child of row.querySelectorAll('*')) {
+          const inner = child.getBoundingClientRect();
+          if (inner.width === 0) continue;
+          const out = Math.max(box.left - inner.left, inner.right - box.right);
+          if (out <= tolerance) continue;
+
+          let cut = false;
+          for (let at: Element | null = child; at !== null; at = at.parentElement) {
+            if (getComputedStyle(at).overflowX !== 'visible') {
+              cut = true;
+              break;
+            }
+            if (at === row) break;
+          }
+          if (cut) continue;
+
+          faults.push({
+            table: label,
+            detail: `${child.tagName.toLowerCase()}.${[...child.classList].filter((c) => !c.startsWith('svelte-'))[0] ?? ''} is drawn ${out.toFixed(1)}px outside its row, and nothing cuts it`,
+          });
+        }
+      }
+
       /* One of each: a table with a fault has it in every row, and a hundred
          copies of one line is a failure nobody reads to the end of. */
       const once = new Map(faults.map((fault) => [`${fault.table}:${fault.detail}`, fault]));
 
-      return { tables: tables.length, columns, faults: [...once.values()] };
+      return { tables: tables.length, columns, rows: rows.length, faults: [...once.values()] };
     },
     { filler: FILLER, tolerance: TOLERANCE },
   );
@@ -221,13 +278,17 @@ afterAll(async () => {
 });
 
 describe('the columns of every table [Integration]', () => {
-  it('found tables to stress', () => {
+  it('found something to stress', () => {
     // A route that failed to load reports no faults, which is what a route with
     // nothing wrong reports too. Counting what was looked at tells them apart.
-    const columns = readings.reduce((sum, reading) => sum + reading.columns, 0);
-    const perRoute = Object.fromEntries(readings.map((one) => [one.route, one.columns]));
+    // Rows count as well as columns now: the panel draws one table where it used
+    // to draw twelve, and the thing that carries a value here is a row.
+    const measured = readings.reduce((sum, reading) => sum + reading.columns + reading.rows, 0);
+    const perRoute = Object.fromEntries(
+      readings.map((one) => [one.route, `${one.columns} columns, ${one.rows} rows`]),
+    );
 
-    expect(columns, `columns measured per route: ${JSON.stringify(perRoute)}`).toBeGreaterThan(20);
+    expect(measured, `measured per route: ${JSON.stringify(perRoute)}`).toBeGreaterThan(100);
   });
 
   it('holds its layout when every cell holds the longest value it can', () => {

@@ -2989,9 +2989,16 @@ button.object-row {
   initial-value: 0px;
 }
 
+/* AN AUTO TRACK IS AS WIDE AS ITS WIDEST LINE, and `min-inline-size: 0` does not
+   stop it: that governs what the box may shrink to, while the track is sized
+   `minmax(auto, max-content)` and only an `fr` is capped by the space there is. So a
+   long enough name - GitHub allows a hundred characters, and a pull request title is
+   longer - drew the sentence straight over the control beside it. Stated as one
+   column that may not exceed its container. */
 .object-main {
   display: grid;
   gap: 0;
+  grid-template-columns: minmax(0, 1fr);
   min-inline-size: 0;
 }
 
@@ -3074,11 +3081,25 @@ button.object-row {
   color: var(--text-muted);
   font-size: var(--font-size-meta);
   line-height: var(--leading-meta);
+  /* Breaks like the name above it. Without this a sentence carrying one long
+     unbreakable run - a repository path, a reason from GitHub - kept going past the
+     row, and the time at its end, which never breaks by law, went with it. */
+  overflow-wrap: anywhere;
   text-box: trim-both cap alphabetic;
 }
 
 .object-sum code {
   line-height: var(--leading-flat);
+}
+
+/* A VALUE INSIDE A SENTENCE BREAKS WITH IT. A repository, a path or a key set in the
+   mono voice is part of the line it stands in, and the longest of them is longer than
+   any row is wide - so one that refused to break drew itself over whatever the row
+   carries at its end. The atoms that must never break say so for themselves, with
+   `.nowrap-atom` or by being a time. */
+:is(.object-name, .object-sum, .setting-name, .setting-why) code,
+:is(.object-name, .object-sum, .setting-name, .setting-why) .file-path {
+  overflow-wrap: anywhere;
 }
 
 /* A path, a repository, a file - the object a sentence is about, set in the mono voice
@@ -3317,6 +3338,10 @@ button.object-row {
   display: grid;
   flex: 1 1 var(--setting-say-min);
   gap: 0;
+  /* One column that may not exceed the say - the same auto-track law the object
+     row states above, and the same fault without it: a setting whose name has no
+     spaces in it drew across the control it belongs to. */
+  grid-template-columns: minmax(0, 1fr);
   min-inline-size: min(var(--setting-say-min), 100%);
 }
 
@@ -3329,6 +3354,14 @@ button.object-row {
 
 /* The trimmed cap box is 9.69px; floored to 10 the say stack stays whole, with the slack
    under the alphabetic edge where no ink reaches. */
+/* PROSE BREAKS RATHER THAN DECIDING HOW WIDE THE ROW IS - the object row's own law,
+   said for the setting row's two voices. A name with no spaces in it, or a sentence
+   carrying a key set in mono, drew across the control it belongs to. */
+.setting-name,
+.setting-why {
+  overflow-wrap: anywhere;
+}
+
 .setting-name {
   font-size: var(--font-size-meta);
   font-weight: 600;

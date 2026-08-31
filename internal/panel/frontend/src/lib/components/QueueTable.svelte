@@ -426,11 +426,15 @@ from the wall clock cannot be photographed.
     place-items: center;
   }
 
-  /* Both readings share one cell, so the row keeps its height while they cross. */
+  /* Both readings share one cell, so the row keeps its height while they cross.
+     One column that may not exceed the slot: an auto track is as wide as its widest
+     line whatever the box around it says, so a long pull request title in the
+     sentence drew straight over the acts at the end of the row. */
   .pill-swap,
   .state-swap,
   .sum-swap {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .pill-swap > .pill-value,

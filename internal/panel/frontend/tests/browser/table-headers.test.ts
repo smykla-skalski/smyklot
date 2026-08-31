@@ -22,14 +22,13 @@ import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** Every route in the panel that renders a table, and which shell it renders in. */
 const TABLES = [
-  /* Every list a workspace shows is an object list now - a person, an entry, a failure
-     or a piece of queued work is a name, a standing and one sentence - so none of them
-     has a heading band to read, and the audit reads the same way in both shells. What is
-     left here is the console's own tables, and this is what keeps THEM agreeing. */
+  /* Every list in the product is an object list now - a person, a workspace, an entry,
+     a failure or a piece of queued work is a name, a standing and one sentence - so
+     only one route still tabulates anything, and this is what keeps its heading the
+     shared one. The console's own three followed the workspace's the moment their
+     rows became sentences; what holds THOSE to account is `table-columns`, which
+     stresses a row the way it used to stress a column. */
   { route: 'root/queue/recent', shell: 'root' },
-  { route: 'root/installations', shell: 'root' },
-  { route: 'root/access/users', shell: 'root' },
-  { route: 'root/access/invitations', shell: 'root' },
 ] as const;
 
 interface Heading {
@@ -291,7 +290,10 @@ describe('the column heading [Integration]', () => {
 describe('a sortable heading [Integration]', () => {
   it('is drawn on the routes that sort', () => {
     const sortable = Object.entries(targets).filter(([, found]) => found.length > 0);
-    expect(sortable.length, 'no route drew a sortable heading at all').toBeGreaterThan(2);
+    /* One route, because one table is left. The rest of the panel sorts from the
+       tools menu beside the search, where a list of sentences has to keep it - and
+       that control is held to account by `filter-vocabulary`. */
+    expect(sortable.length, 'no route drew a sortable heading at all').toBeGreaterThan(0);
   });
 
   it('presses over the whole cell', () => {
