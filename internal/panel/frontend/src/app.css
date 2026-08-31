@@ -2579,6 +2579,13 @@ thead th .icon-button:active:not(:disabled) {
   margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
 }
 
+/* A standing said beside the title bleeds the same way a control does. Left to grow the
+   head, one card's title-to-first-row distance depended on whether that card happened to
+   carry a pill - 20px of head against every other card's 13. */
+.card-head > .pill {
+  margin-block: calc((var(--card-head-line) - var(--tier-mark)) / 2);
+}
+
 /* ---------- A card that opens ----------
 
    For what a reader rarely changes and should still be able to reach: the card is shut,
@@ -2619,9 +2626,13 @@ thead th .icon-button:active:not(:disabled) {
   rotate: 90deg;
 }
 
+/* Ink-true like every other voice: untrimmed, its 23px line box - not the 36px the head
+   declares - was what set a shut card's height, and the strip measured 39. */
 .fold-scent {
   color: var(--text-muted);
   font-size: var(--font-size-compact);
+  min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
 }
 
 /* A whole card that folds: the head bleeds into the card's own frame, so a shut card is a
