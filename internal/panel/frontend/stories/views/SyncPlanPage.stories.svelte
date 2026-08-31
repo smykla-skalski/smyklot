@@ -162,8 +162,6 @@
       readOnly: false,
       approving: false,
       discarding: false,
-      sectionHref: (section: string) => `#/sync/${section}`,
-      onOpenSection: fn(),
       onApprove: fn(),
       onDiscard: fn(),
     },

@@ -439,8 +439,6 @@ applied on save would give nobody the chance to read the deletions first.
     {approving}
     {discarding}
     runNowBusy={runningNow}
-    {sectionHref}
-    {onOpenSection}
     onApprove={(planId, digest) => void onApprove(planId, digest)}
     onDiscard={(planId) => void onDiscard(planId)}
     onRunNow={(reason) => void onRunNow(reason)}

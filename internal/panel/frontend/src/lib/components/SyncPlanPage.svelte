@@ -3,14 +3,14 @@
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
   import { SYNC_KINDS, type SyncAction, type SyncPlan } from '../types';
-  import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
+  import { SYNC_SECTION_LABELS } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
   import Icon from './Icon.svelte';
-  import PanePath from './PanePath.svelte';
+  import PageHeader from './PageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
 
   const {
@@ -21,8 +21,6 @@
     approving,
     discarding,
     runNowBusy,
-    sectionHref,
-    onOpenSection,
     onApprove,
     onDiscard,
     onRunNow,
@@ -35,8 +33,6 @@
     approving: boolean;
     discarding: boolean;
     runNowBusy: boolean;
-    sectionHref: (section: SyncSection) => string;
-    onOpenSection: (section: SyncSection) => void;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
     onRunNow: (reason: string) => void;
@@ -172,9 +168,6 @@
     else flipped.add(repository);
   }
 
-  /** The lifecycle card's demo group, open until somebody folds it. */
-  let demoOpen = $state(true);
-
   /* ---------- The apply bar and the confirmation ---------- */
 
   const approvable = $derived(plan !== null && plan.state === 'computed' && total > 0);
@@ -214,11 +207,6 @@
       timeZoneName: 'short',
     }).format(new Date(value));
   }
-
-  /* The lifecycle map speaks at the plan's own scale; its transitions keep
-     the demo fractions where the plan has not been there yet. */
-  const applyingShown = $derived(Math.min(3, Math.max(total, 1)));
-  const failedShown = $derived(Math.min(2, Math.max(total, 1)));
 </script>
 
 <!--
@@ -231,11 +219,7 @@ the button.
 -->
 
 <div class="view-frame">
-  <PanePath
-    segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-    ]}
-  />
+  <PageHeader id="sync-plan-heading" section="Sync" title="Plan" />
 
   {#if plan === null || total === 0}
     <div class="hero">
@@ -436,122 +420,6 @@ the button.
         </Button>
       </ApplyBar>
     {/if}
-
-    <div class="card block-gap-top">
-      <div class="card-head"><h3 class="card-title">The plan's lifecycle</h3></div>
-      <p class="plan-rule">
-        One plan, six states. The spine is the happy path, every exit hangs from the state it leaves
-        with its cause on the hanger - whichever holds, only the verdict line changes
-      </p>
-      <div class="state-map" role="presentation">
-        <div class="state-node is-wait">
-          <span class="state-dot"></span>
-          <span class="state-name">Waiting for you</span>
-          <span class="state-rail"></span>
-          <span class="state-say"
-            >Nothing reaches GitHub until someone applies the {total}
-            {total === 1 ? 'change' : 'changes'}</span
-          >
-          <div class="state-exits">
-            <div class="state-exit">
-              <span class="exit-cause"
-                ><span class="t">The configuration moves</span><Icon
-                  name="chevron-down"
-                  size="xs"
-                /></span
-              >
-              <span class="state-say"
-                ><span class="state-word is-stale">Stale</span> - this plan no longer says what sync would
-                do</span
-              >
-            </div>
-            <div class="state-exit">
-              <span class="exit-cause"
-                ><span class="t">Six hours pass</span><Icon name="chevron-down" size="xs" /></span
-              >
-              <span class="state-say"
-                ><span class="state-word is-expired">Expired</span> - the next sweep computes a fresh
-                one</span
-              >
-            </div>
-          </div>
-        </div>
-        <div class="state-edge">
-          <span class="t">You apply</span><Icon name="chevron-right" size="xs" />
-        </div>
-        <div class="state-node is-applying">
-          <span class="state-dot"></span>
-          <span class="state-name">Applying</span>
-          <span class="state-rail"></span>
-          <span class="state-say">{applyingShown} of {total} landed - the page follows along</span>
-          <div class="state-exits">
-            <div class="state-exit">
-              <span class="exit-cause"
-                ><span class="t">GitHub refuses a write</span><Icon
-                  name="chevron-down"
-                  size="xs"
-                /></span
-              >
-              <span class="state-say"
-                ><span class="state-word is-failed">{failedShown} of {total} failed</span> - everything
-                behind the failure was not tried</span
-              >
-            </div>
-          </div>
-        </div>
-        <div class="state-edge">
-          <span class="t">Every write lands</span><Icon name="chevron-right" size="xs" />
-        </div>
-        <div class="state-node is-applied">
-          <span class="state-dot"></span>
-          <span class="state-name">Applied</span>
-          <span class="state-say"
-            >All {total} landed - the file changes wait as pull requests in each repository</span
-          >
-        </div>
-      </div>
-      <p class="map-caption">Failed, on the rows - the error inline, the untried named</p>
-      <!-- One exit made concrete, at the demo scale the map's caption promises.
-           An illustration, deliberately not this plan's data: the failed shape
-           has to be readable before anything has failed. -->
-      <section class="repo-group" class:is-open={demoOpen}>
-        <button
-          type="button"
-          class="repo-group-head"
-          aria-expanded={demoOpen}
-          onclick={() => (demoOpen = !demoOpen)}
-        >
-          <span class="summary-icon"><Icon name="chevron-right" size="xs" /></span>
-          <span class="repo-group-name">af</span>
-          <span class="pill pill-danger"><span class="t">2 failed</span></span>
-        </button>
-        {#if demoOpen}
-          <div class="action-rows">
-            <div class="action-row" data-kind="settings">
-              <span class="action-op is-chg">~ change</span>
-              <span class="action-kind">settings</span>
-              <span class="action-what">squash merging <span class="from-to">off → on</span></span>
-              <span class="action-fail"
-                >GitHub answered 403: the App's Administration permission was revoked</span
-              >
-            </div>
-            <div class="action-row" data-kind="settings">
-              <span class="action-op is-chg">~ change</span>
-              <span class="action-kind"></span>
-              <span class="action-what">wiki <span class="from-to">on → off</span></span>
-              <span class="action-fail">not tried: squash merging failed first</span>
-            </div>
-            <div class="action-row" data-kind="labels">
-              <span class="action-op is-add">+ add</span>
-              <span class="action-kind">labels</span>
-              <span class="action-what"
-                >dependencies <span class="from-to">- applied before the failure</span></span
-              >
-            </div>
-          </div>
-        {/if}
-      </section>
-    </div>
 
     <ConfirmDialog
       id="apply-plan-dialog"
@@ -994,202 +862,6 @@ the button.
     text-wrap: pretty;
   }
 
-  /* A group nested in a card takes one honest step up - the same surface
-     twice with only a border between them is the hollow-frame defect. */
-  .card .repo-group {
-    background: var(--surface-raised);
-  }
-
-  /* ---------- The state map ----------
-     A state machine, not a wizard. Nodes are content-sized, so every spare
-     pixel goes to the EDGES, which are drawn: a shaft from name to next dot
-     with the cause on it and the arrowhead at its end. One text edge per
-     node: dot in a 16px marker column, name, sentence and exits share the
-     second column, and the rail drops from the dot down the marker column -
-     the thread the exits hang from. */
-  .state-map {
-    align-items: start;
-    column-gap: 0;
-    display: grid;
-    grid-template-columns:
-      minmax(0, 1fr) minmax(max-content, 0.5fr) minmax(0, 1fr) minmax(max-content, 0.5fr)
-      minmax(0, 1fr);
-    margin-block-start: var(--space-5);
-  }
-
-  .state-node {
-    align-items: start;
-    column-gap: var(--space-2);
-    display: grid;
-    grid-template-columns: 16px 1fr;
-    row-gap: var(--space-2);
-  }
-
-  .state-node.is-wait {
-    --state-c: var(--diff-chg-ink);
-  }
-
-  .state-node.is-applying {
-    --state-c: var(--info);
-  }
-
-  .state-node.is-applied {
-    --state-c: var(--success);
-  }
-
-  /* Dot centre and name cap centre both at 10px from the row's top. */
-  .state-dot {
-    background: var(--state-c);
-    block-size: 8px;
-    border-radius: 50%;
-    grid-column: 1;
-    grid-row: 1;
-    inline-size: 8px;
-    justify-self: start;
-    margin-block-start: 6px;
-  }
-
-  .state-name {
-    color: var(--state-c);
-    font-size: var(--font-size-meta);
-    font-weight: 650;
-    grid-column: 2;
-    grid-row: 1;
-    margin-block-start: 5px;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .state-node > .state-say {
-    grid-column: 2;
-    grid-row: 2;
-  }
-
-  .state-say {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-    text-wrap: pretty;
-  }
-
-  .state-word {
-    font-weight: 600;
-  }
-
-  .state-word.is-failed {
-    color: var(--danger);
-  }
-
-  .state-word.is-stale {
-    color: var(--warning);
-  }
-
-  .state-word.is-expired {
-    color: var(--text-muted);
-  }
-
-  /* The thread: from just under the dot to the last exit, on the dot's own
-     centre line. */
-  .state-rail {
-    align-self: stretch;
-    background: var(--border-subtle);
-    grid-column: 1;
-    grid-row: 1 / 4;
-    inline-size: 1px;
-    justify-self: start;
-    margin-block-start: 18px;
-    margin-inline-start: 3.5px;
-  }
-
-  /* The transition drawn: shaft, cause, shaft, arrowhead - the head lands at
-     the next node's dot. Flex order puts the pseudo shafts around the label
-     with the chevron last. */
-  .state-edge {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    gap: var(--space-1);
-    margin-block-start: 4px;
-    padding-inline: var(--space-2);
-  }
-
-  .state-edge::before,
-  .state-edge::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    content: '';
-    flex: 1;
-    min-inline-size: var(--space-2);
-  }
-
-  .state-edge::before {
-    order: 1;
-  }
-
-  .state-edge .t {
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    order: 2;
-    text-box: trim-both cap alphabetic;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-
-  .state-edge::after {
-    order: 3;
-  }
-
-  /* Seated on the shaft: -4px cancels the flex gap and -3 more rides the
-     glyph's own transparent lead-in, so the arrowhead grows out of the line
-     instead of floating a hair past it. */
-  .state-edge :global(svg) {
-    margin-inline-start: -7px;
-    order: 4;
-  }
-
-  /* +4 over the node's 8px row gap: every hanger hangs 12 below the
-     sentence above it, first exit and second alike. */
-  .state-exits {
-    display: grid;
-    gap: var(--space-3);
-    grid-column: 2;
-    grid-row: 3;
-    margin-block-start: var(--space-1);
-  }
-
-  .state-exit {
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .exit-cause {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    font-size: 0.625rem;
-    font-weight: 600;
-    gap: var(--space-1);
-    letter-spacing: 0.07em;
-    text-transform: uppercase;
-  }
-
-  .exit-cause .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* The demo below is one exit made concrete - the caption says which. */
-  .map-caption {
-    color: var(--text-muted);
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    margin: var(--space-5) 0 var(--space-2);
-    min-block-size: 8px;
-    text-box: trim-both cap alphabetic;
-    text-transform: uppercase;
-  }
-
   .pill {
     align-items: center;
     /* A chip's height is a decision: 20px, the app's chip-small. */
@@ -1328,24 +1000,6 @@ the button.
 
     .card {
       padding: var(--space-4);
-    }
-
-    .state-map {
-      gap: var(--space-4);
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .state-edge {
-      margin-block-start: 0;
-      min-inline-size: 0;
-      padding-inline: 0;
-    }
-
-    .state-node,
-    .state-say,
-    .exit-cause {
-      min-inline-size: 0;
-      overflow-wrap: anywhere;
     }
   }
 </style>
