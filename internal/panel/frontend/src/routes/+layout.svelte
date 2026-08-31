@@ -47,7 +47,12 @@
   import PageFooter from '#lib/components/PageFooter.svelte';
   import Plate from '#lib/components/Plate.svelte';
   import Rail from '#lib/components/Rail.svelte';
-  import Sidebar, { type SidebarEntry, type SidebarRow } from '#lib/components/Sidebar.svelte';
+  import FindPalette, { type FindEntry } from '#lib/components/FindPalette.svelte';
+  import Sidebar, {
+    isGroup,
+    type SidebarEntry,
+    type SidebarRow,
+  } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
   import SettingsSaveComposer from '#lib/components/SettingsSaveComposer.svelte';
   import SettingsDraftAttention, {
@@ -855,12 +860,132 @@
     else session.selectView(row.id as PanelView);
   }
 
+  /**
+   * What each page IS, for the palette - never what its address is.
+   *
+   * Beside the tree rather than inside it: a row carries a word a reader chooses
+   * from a list they are already looking at, and a search result carries a sentence
+   * to someone who has not found the list yet.
+   */
+  const PAGE_SAYS: Record<string, string> = {
+    repositories: 'every repository and its switch',
+    queue: 'what Smyklot is about to do',
+    schedules: 'when the background work runs',
+    'sync-overview': 'the sync board - which repositories are settled',
+    'sync-labels': 'the labels every repository should carry',
+    'sync-settings': 'repository settings the sync holds in step',
+    'sync-rulesets': 'branch protections the sync holds in step',
+    'sync-files': 'shared files the sync copies around',
+    'sync-plan': 'changes waiting for an apply',
+    'access-users': 'who is in this workspace',
+    'access-invitations': 'links that bring people in',
+    'history-audit': 'everything done here, day by day',
+    'history-failures': 'work that stopped, and why',
+    defaults: 'what every repository here inherits',
+    overview: 'what needs an operator',
+    installations: 'every workspace the service serves',
+    'runtime-service': 'the service and the database it runs on',
+    'runtime-database': 'the store, its engine and its pool',
+    'runtime-settings': 'what the deployment sets, and what you set here',
+  };
+
+  let searchOpen = $state(false);
+
+  function pageEntries(rows: readonly SidebarEntry[], cross?: string): FindEntry[] {
+    return rows
+      .filter((entry): entry is SidebarRow => !isGroup(entry))
+      .map((row) => ({
+        group: 'Pages',
+        title: row.label,
+        say: PAGE_SAYS[row.id] ?? '',
+        href: row.href,
+        cross,
+        select: () => {
+          if (cross === undefined) openSidebarRow(row);
+          else void goto(row.href);
+        },
+      }));
+  }
+
+  const findEntries = $derived.by((): FindEntry[] => {
+    const here = session.isRootMode ? rootEntries : workspaceEntries;
+    const there = session.isRootMode ? workspaceEntries : rootEntries;
+    const crossName = session.isRootMode ? 'This workspace' : 'Operations';
+    return [
+      ...pageEntries(here),
+      {
+        group: 'Pages',
+        title: 'Inbox',
+        say: 'what happened in the workspaces you belong to',
+        href: session.inboxHref(),
+        select: () => session.openInbox(),
+      },
+      ...session.targets
+        .filter((target) => target.id !== session.selectedId || session.isRootMode)
+        .map((target): FindEntry => ({
+          group: 'Workspaces',
+          title: target.account.display_name || target.account.login,
+          say: `@${target.account.login}`,
+          href: session.targetHref(target),
+          select: () => void session.selectTarget(target.id),
+        })),
+      ...pageEntries(there, crossName),
+    ];
+  });
+
+  /** Repositories and people are asked for, because only the service knows them. */
+  async function findLookup(query: string): Promise<FindEntry[]> {
+    const targetId = session.selectedTarget?.id;
+    if (targetId === undefined) return [];
+    const [repositories, people] = await Promise.all([
+      session.api
+        .fetchRepositories(targetId, {
+          query,
+          sort: 'name_asc',
+          limit: 6,
+          state: 'all',
+          files: [],
+          setting: { mode: 'all' },
+        })
+        .catch(() => null),
+      session.api.suggestUsers(targetId, query).catch(() => null),
+    ]);
+    const account = session.selectedTarget?.account.login ?? '';
+    return [
+      ...(repositories?.items ?? []).map((repository): FindEntry => ({
+        group: 'Repositories',
+        title: repository.name,
+        say: repository.effective_enabled ? 'on' : 'off - Smyklot stands down there',
+        href: session.repositoryHref(repository.name),
+        select: () => session.openRepository(repository.name),
+      })),
+      ...(people ?? []).slice(0, 5).map((person): FindEntry => ({
+        group: 'People',
+        title: person.display_name || person.login,
+        say: `@${person.login} in ${account}`,
+        href: session.accessHref('users'),
+        select: () => session.selectUserSection('users'),
+      })),
+    ];
+  }
+
+  function searchShortcut(event: KeyboardEvent): void {
+    if (event.key !== 'k' || !(event.metaKey || event.ctrlKey)) return;
+    event.preventDefault();
+    searchOpen = !searchOpen;
+  }
+
   const showSidebar = $derived(
     session.viewer !== null && (session.isRootMode || session.selectedTarget !== null),
   );
 </script>
 
-<svelte:window onkeydown={closeDrawerOnEscape} />
+<svelte:window
+  onkeydown={(event) => {
+    closeDrawerOnEscape(event);
+    searchShortcut(event);
+  }}
+/>
 
 <svelte:head>
   {#if !session.signedOut}
@@ -895,6 +1020,15 @@
     </NightPage>
   {:else}
     <a class="skip-link" href="#panel-content">Skip to panel content</a>
+    {#if showSidebar}
+      <FindPalette
+        bind:open={searchOpen}
+        placeholder={session.isRootMode ? 'Search the console' : 'Search this workspace'}
+        entries={findEntries}
+        lookup={session.isRootMode ? undefined : findLookup}
+        crossLabel={session.isRootMode ? 'this workspace' : 'the console'}
+      />
+    {/if}
     <main
       class="app-shell"
       class:sidebar-collapsed={session.effectiveSidebarCollapsed}
@@ -936,6 +1070,8 @@
           collapsed={session.effectiveSidebarCollapsed}
           onToggleCollapsed={() => session.toggleSidebar()}
           onSelectRow={openSidebarRow}
+          onOpenSearch={() => (searchOpen = true)}
+          searchLabel={session.isRootMode ? 'Search the console' : 'Search this workspace'}
           chrome={{
             targets: session.targets,
             selected: session.selectedTarget,

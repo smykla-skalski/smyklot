@@ -84,6 +84,8 @@
     onSelectRow,
     label = 'Pages',
     chrome = null,
+    onOpenSearch,
+    searchLabel = 'Search',
   }: {
     /** The console's voice above the tree: "Workspace" / "Console". */
     kicker: string;
@@ -96,6 +98,9 @@
     label?: string;
     /** What the rail carries, for the shells that draw no rail. */
     chrome?: SidebarChrome | null;
+    onOpenSearch?: () => void;
+    /** What the field searches: "Search this workspace". */
+    searchLabel?: string;
   } = $props();
 
   const consoleEntry = $derived(
@@ -361,6 +366,20 @@ it has to answer to the same fact.
       </WorkspaceMenu>
     {/if}
   </div>
+  {#if onOpenSearch !== undefined}
+    <button
+      class="side-search"
+      type="button"
+      data-tip="Search"
+      aria-label={searchLabel}
+      aria-keyshortcuts="Meta+K Control+K"
+      onclick={onOpenSearch}
+    >
+      <span class="gi"><Icon name="search" size="base" /></span>
+      <span class="t">Search</span>
+      <kbd>⌘K</kbd>
+    </button>
+  {/if}
   <nav class="tree" aria-label={label} use:followSelection={selectionKey}>
     <span class="nav-thumb" aria-hidden="true"></span>
     {#each entries as entry (entry.id)}
@@ -461,6 +480,9 @@ it has to answer to the same fact.
     padding: var(--space-4) 12px;
     padding-block-end: max(var(--space-4), env(safe-area-inset-bottom));
     position: sticky;
+    /* Lifts the tree's scroll timeline to the column, so the search field - the
+       tree's sibling - can cast its shadow from it. */
+    timeline-scope: --side-tree;
     /* Structure moves at --duration-normal, like the app shell's own columns. */
     transition: inline-size var(--duration-normal) var(--ease-standard);
     top: 0;
@@ -483,6 +505,7 @@ it has to answer to the same fact.
     overflow: hidden auto;
     padding-block: var(--space-4);
     padding-inline: 12px;
+    scroll-timeline: --side-tree block;
     scrollbar-width: thin;
   }
 
@@ -565,6 +588,85 @@ it has to answer to the same fact.
 
   .fold-glyph {
     display: inline-flex;
+  }
+
+  /* The field that summons the palette, wearing the surface the sidebar gives its
+     floating panels: one elevation step off the rail, in its own hue, in every
+     palette. An ink wash read as a hover state at rest, and the page's own
+     surface was a white slab on the console's dark violet. */
+  .side-search {
+    align-items: center;
+    background: var(--sidebar-popover-bg);
+    block-size: var(--control-height-compact);
+    border: 1px solid var(--sidebar-popover-border);
+    border-radius: var(--radius-control);
+    box-sizing: border-box;
+    color: var(--sidebar-text-secondary);
+    cursor: pointer;
+    display: flex;
+    flex: none;
+    font: inherit;
+    font-size: var(--font-size-meta);
+    font-weight: 500;
+    /* The tree's own columns: box on the rows' 12, glyph ink on their 22, label on
+       their 44. */
+    gap: var(--space-2);
+    padding: 0 var(--space-2);
+    position: relative;
+    transition: none;
+  }
+
+  /* The tree's top continuation cue: when rows sit scrolled under the field, the
+     field casts a shadow onto them - a real box-shadow, so it hugs the card's
+     rounded corners, which no straight gradient band can. It lives on a pseudo so
+     the button's own pressed shadow stays its own, and it fades in over the tree's
+     first 20px of scroll. Guarded: a browser without scroll timelines would run the
+     animation on TIME and pin the shadow on permanently, so without support there
+     is simply no top cue. */
+  .side-search::after {
+    border-radius: inherit;
+    box-shadow: 0 6px 10px -4px var(--sidebar-scroll-shadow);
+    content: '';
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+  }
+
+  @supports (animation-timeline: scroll()) {
+    .side-search::after {
+      animation: side-cast var(--ease-linear) both;
+      animation-range: 0 20px;
+      animation-timeline: --side-tree;
+    }
+  }
+
+  @keyframes side-cast {
+    to {
+      opacity: 1;
+    }
+  }
+
+  .side-search:hover {
+    background: var(--sidebar-menu-hover);
+    color: var(--sidebar-text);
+  }
+
+  .side-search:active {
+    background: var(--sidebar-menu-pressed);
+    box-shadow: var(--pressed-inset);
+    translate: 0 1px;
+  }
+
+  .side-search .t {
+    flex: 1;
+    text-align: start;
+  }
+
+  .side-search kbd {
+    color: var(--sidebar-text-muted);
+    font-family: inherit;
+    font-size: var(--font-size-micro);
   }
 
   /* The workspace mark, and the switch behind it. Drawn only where the rail is
@@ -916,6 +1018,18 @@ it has to answer to the same fact.
 
     :global(.app-shell.sidebar-collapsed) .side-ws-mini {
       display: inline-flex;
+    }
+
+    :global(.app-shell.sidebar-collapsed) .side-search {
+      block-size: var(--touch-target);
+      gap: 0;
+      justify-content: center;
+      padding: 0;
+    }
+
+    :global(.app-shell.sidebar-collapsed) .side-search .t,
+    :global(.app-shell.sidebar-collapsed) .side-search kbd {
+      display: none;
     }
 
     /* The scroll cue ends on the footer's separator - the foot pulls itself up

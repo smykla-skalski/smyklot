@@ -407,19 +407,26 @@ only name for something means the control is missing its label.
     <path d="M5 21v-6M5 11V3M12 21v-9M12 8V3M19 21v-4M19 13V3" />
     <path d="M2 15h6M9 8h6M16 17h6" />
   {:else if name === 'gauge'}
-    <path d="m12 14.5 3.6-3.6" />
-    <path d="M4.34 19.2a9.5 9.5 0 1 1 15.32 0" />
+    <!-- Dropped 0.36: the dial's arc is drawn the long way round, so its own
+         extrema - not its endpoints - put the middle at 11.64. -->
+    <path d="m12 14.86 3.6-3.6" />
+    <path d="M4.34 19.56a9.5 9.5 0 1 1 15.32 0" />
   {:else if name === 'book'}
     <path d="M4 19.5V5.5A2.5 2.5 0 0 1 6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 19.5Z" />
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
   {:else if name === 'tag'}
+    <!-- Lifted 0.75: the label runs 3.5 to 21.5 as drawn, so its middle sat at
+         12.75 in a box whose middle is 12. Only the two absolute coordinates
+         move; everything after them is relative and follows. -->
     <path
-      d="M12.6 3.5H5a1.5 1.5 0 0 0-1.5 1.5v7.6c0 .4.16.78.44 1.06l7.9 7.9a1.5 1.5 0 0 0 2.12 0l7.14-7.14a1.5 1.5 0 0 0 0-2.12l-7.9-7.9a1.5 1.5 0 0 0-1.06-.44Z"
+      d="M12.6 2.75H5a1.5 1.5 0 0 0-1.5 1.5v7.6c0 .4.16.78.44 1.06l7.9 7.9a1.5 1.5 0 0 0 2.12 0l7.14-7.14a1.5 1.5 0 0 0 0-2.12l-7.9-7.9a1.5 1.5 0 0 0-1.06-.44Z"
     />
-    <path d="M8.3 8.3h.01" />
+    <path d="M8.3 7.55h.01" />
   {:else if name === 'plan'}
-    <path d="M5 6.5h14M5 12h14M5 17.5h7" />
-    <path d="M16.5 15v5M14 17.5h5" />
+    <!-- Lifted 1.25: three lines and the plus below them ran 6.5 to 20, so the
+         middle sat at 13.25 in a box whose middle is 12. -->
+    <path d="M5 5.25h14M5 10.75h14M5 16.25h7" />
+    <path d="M16.5 13.75v5M14 16.25h5" />
   {:else if name === 'gear'}
     <circle cx="12" cy="12" r="3.2" />
     <path
