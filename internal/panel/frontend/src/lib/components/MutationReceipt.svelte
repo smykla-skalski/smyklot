@@ -111,11 +111,17 @@ dialog has closed and a receipt owned by the page underneath would go with it.
     inset-block-end: calc(
       max(var(--space-4), env(safe-area-inset-bottom)) + var(--toast-lift, 0px)
     );
-    inset-inline-start: 50%;
+    /* CENTRED BY MARGIN, never by a 50% offset. A fixed box inset from one edge takes
+       its available width from that edge to the other one, so a receipt pinned at 50%
+       and translated back has HALF the window to lay out in - on a 375px phone that
+       turned one sentence into a 228px column six lines deep. Inset on both sides and
+       the whole window is available; `fit-content` keeps it as narrow as its words. */
+    inline-size: fit-content;
+    inset-inline: 0;
+    margin-inline: auto;
     max-inline-size: min(34rem, calc(100vw - 2rem));
     padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
     position: fixed;
-    translate: -50% 0;
     z-index: var(--layer-toast);
   }
 
