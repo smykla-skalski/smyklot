@@ -460,7 +460,7 @@ stacked left, Cancel and Done on a hairline foot.
 
   {#if ruleset !== null}
     <div
-      class="card group-card"
+      class="card"
       class:is-unsaved={partDirty('enforcement')}
       data-unsaved={partDirty('enforcement') || undefined}
     >
@@ -497,12 +497,12 @@ stacked left, Cancel and Done on a hairline foot.
     </div>
 
     <div
-      class="card group-card"
+      class="card"
       class:is-unsaved={partDirty('conditions')}
       data-unsaved={partDirty('conditions') || undefined}
     >
-      <div class="group-head">
-        <h3 class="group-name">Where it applies</h3>
+      <div class="card-head">
+        <h2 class="card-title">Where it applies</h2>
       </div>
       <div class="policy-rows">
         <div
@@ -611,13 +611,13 @@ stacked left, Cancel and Done on a hairline foot.
     </div>
 
     <div
-      class="card group-card"
+      class="card"
       class:is-unsaved={partDirty('rules')}
       data-unsaved={partDirty('rules') || undefined}
     >
-      <div class="group-head">
-        <h3 class="group-name">What it enforces</h3>
-        <span class="group-tally">{onRules.length} of {RULE_CATALOGUE.length} rules on</span>
+      <div class="card-head">
+        <h2 class="card-title">What it enforces</h2>
+        <span class="card-meta">{onRules.length} of {RULE_CATALOGUE.length} rules on</span>
       </div>
       <div class="policy-rows">
         {#each onRules as rule (rule.key)}
@@ -887,13 +887,13 @@ stacked left, Cancel and Done on a hairline foot.
     </div>
 
     <div
-      class="card group-card"
+      class="card"
       class:is-unsaved={partDirty('bypass_actors')}
       data-unsaved={partDirty('bypass_actors') || undefined}
     >
-      <div class="group-head">
-        <h3 class="group-name">Who may step around it</h3>
-        <span class="group-tally">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
+      <div class="card-head">
+        <h2 class="card-title">Who may step around it</h2>
+        <span class="card-meta">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
       </div>
       {#if actors.length > 0}
         <div class="policy-rows">
@@ -1025,31 +1025,6 @@ stacked left, Cancel and Done on a hairline foot.
 
   .card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
-  .group-head {
-    align-items: end;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .group-name {
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .group-tally {
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
   }
 
   /* The remainder is a summary line and not a row, so the list still seams into it. */

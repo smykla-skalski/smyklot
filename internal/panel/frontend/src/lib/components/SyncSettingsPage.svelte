@@ -271,10 +271,13 @@ turns the unmanaged names into rows of their own.
 
   <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
     <div class="kind-head-say">
-      <h2 class="card-title">Repository settings</h2>
+      <!-- OPTIONS, not settings. The tree already has a Workspace settings row and a
+           Sync status one, and no two rows in it may share a word a reader navigates by -
+           which is also what this page is: GitHub's own repository options, held in step. -->
+      <h2 class="card-title">Repository options</h2>
       <p class="kind-head-sub">
-        Manage a setting and every repository is held to its value. Anything unmanaged is left
-        exactly as each repository has it
+        Managed options are enforced everywhere; anything unmanaged is left exactly as each
+        repository has it
       </p>
     </div>
     <Switch
@@ -308,8 +311,8 @@ turns the unmanaged names into rows of their own.
     <input
       class="matrix-search"
       type="search"
-      placeholder="Search settings"
-      aria-label="Search settings"
+      placeholder="Search options"
+      aria-label="Search options"
       bind:value={query}
     />
     <SegmentedControl
@@ -317,7 +320,7 @@ turns the unmanaged names into rows of their own.
       label="Show"
       options={[
         { value: 'managed', label: 'Managed', badge: managedCount },
-        { value: 'everything', label: 'Everything', badge: SETTINGS_FIELD_TOTAL },
+        { value: 'everything', label: 'All', badge: SETTINGS_FIELD_TOTAL },
       ]}
       value={show}
       onSelect={(value) => (show = value as 'managed' | 'everything')}
@@ -335,14 +338,14 @@ turns the unmanaged names into rows of their own.
       {@const rows = groupRows(group)}
       {@const rest = groupRest(group)}
       <section
-        class="card group-card"
+        class="card"
         class:is-unsaved={groupDirty(group)}
         data-unsaved={groupDirty(group) || undefined}
         aria-labelledby="settings-group-{group.id}"
       >
-        <div class="group-head">
-          <h3 class="group-name" id="settings-group-{group.id}">{group.title}</h3>
-          <span class="group-tally"
+        <div class="card-head">
+          <h2 class="card-title" id="settings-group-{group.id}">{group.title}</h2>
+          <span class="card-meta"
             >{group.fields.length - rest.length} of {group.fields.length} managed</span
           >
         </div>
@@ -477,7 +480,7 @@ turns the unmanaged names into rows of their own.
               >
               <Button tone="quiet" disabled={frozen} onclick={() => (picking = group.id)}>
                 {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-                Manage one
+                Manage another setting
               </Button>
             {/if}
           </div>
@@ -575,33 +578,11 @@ turns the unmanaged names into rows of their own.
     gap: var(--space-6);
   }
 
-  .group-card.is-unsaved {
+  /* The head, the title and the tally beside it are the sheet's now - `card-head`,
+     `card-title`, `card-meta` - so what is left here is the one thing only this page
+     has: a card holding a change nobody has saved. */
+  .card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
-  .group-head {
-    align-items: end;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .group-name {
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .group-tally {
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
   }
 
   .group-note {

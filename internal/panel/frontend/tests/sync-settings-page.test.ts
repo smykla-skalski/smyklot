@@ -117,7 +117,7 @@ describe('SyncSettingsPage [Component]', () => {
       },
     });
 
-    const restButtons = screen.getAllByRole('button', { name: /Manage one/ });
+    const restButtons = screen.getAllByRole('button', { name: /Manage another setting/ });
     await fireEvent.click(restButtons[0] as HTMLElement);
     const chip = [...document.querySelectorAll<HTMLButtonElement>('.add-chip')].find((held) =>
       (held.textContent ?? '').includes('Merge commits'),

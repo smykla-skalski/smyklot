@@ -194,7 +194,7 @@ describe('SyncView [Component]', () => {
       'settings',
     );
 
-    await screen.findByRole('heading', { name: 'Repository settings' });
+    await screen.findByRole('heading', { name: 'Repository options' });
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Settings sync' }));
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Wiki' }));
 
@@ -416,7 +416,7 @@ describe('SyncView [Component]', () => {
   it('says nothing of a permission while the kind is switched off', async () => {
     mount(config('labels'), config('settings', { unavailable: MISSING }));
 
-    await screen.findByRole('heading', { name: 'Repository settings' });
+    await screen.findByRole('heading', { name: 'Repository options' });
 
     expect(screen.queryByRole('status')).toBeNull();
   });
