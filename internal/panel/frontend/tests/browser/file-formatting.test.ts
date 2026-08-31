@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 
 import { startPanel, visit, type Panel } from './harness';
 
@@ -14,7 +14,7 @@ afterAll(async () => {
 });
 
 describe('configured file formatting in the development panel', () => {
-  it('renders shared and repository policies through the backend contract', async () => {
+  it('keeps the exact backend output beside each contextual editor', async () => {
     const page: Page = await panel.browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const crashes: string[] = [];
     page.on('pageerror', (error) => crashes.push(error.message));
@@ -31,8 +31,10 @@ describe('configured file formatting in the development panel', () => {
 
       await template.getByRole('button', { name: 'View diff' }).click();
       await template.locator('.format-diff').waitFor({ state: 'visible' });
+      await expectVisibleText(template, 'Draft template');
+      await expectVisibleText(template, 'Final output');
 
-      await template.getByRole('button', { name: 'Format template' }).click();
+      await template.getByRole('button', { name: 'Format', exact: true }).click();
       await template
         .getByText('Matches configured formatting', { exact: true })
         .waitFor({ state: 'visible', timeout: 30_000 });
@@ -41,6 +43,22 @@ describe('configured file formatting in the development panel', () => {
         .getByText('This template does not match configured formatting', { exact: true })
         .waitFor({ state: 'visible', timeout: 30_000 });
 
+      await template.locator('.cm-content').focus();
+      await page.keyboard.press('Alt+Shift+f');
+      await template
+        .getByText('Matches configured formatting', { exact: true })
+        .waitFor({ state: 'visible', timeout: 30_000 });
+
+      const templateFormatting = page.locator('.formatting-editor').first();
+      await templateFormatting.getByRole('region', { name: 'Common' }).waitFor();
+      await templateFormatting.getByRole('region', { name: 'JSON', exact: true }).waitFor();
+      expect(await templateFormatting.getByRole('region', { name: 'YAML' }).count()).toBe(0);
+      expect(await templateFormatting.getByRole('region', { name: 'TOML' }).count()).toBe(0);
+      expect(
+        await templateFormatting.getByText('From Template', { exact: true }).count(),
+      ).toBeGreaterThan(0);
+      await expectVisibleText(templateFormatting, 'Where formatting comes from');
+
       const repository = page
         .locator('.adjuster')
         .filter({ has: page.getByRole('button', { name: /^smyklot changes/u }) });
@@ -48,6 +66,22 @@ describe('configured file formatting in the development panel', () => {
       await repository
         .getByText('Backend rendered', { exact: true })
         .waitFor({ state: 'visible', timeout: 30_000 });
+
+      const previewGeometry = await repository
+        .locator('.repository-preview-grid')
+        .evaluate((grid) => {
+          const [editing, output] = [...grid.children].map((child) =>
+            (child as HTMLElement).getBoundingClientRect(),
+          );
+          return {
+            editingWidth: editing?.width ?? 0,
+            outputWidth: output?.width ?? 0,
+            outputFollowsEditing: (output?.left ?? 0) > (editing?.left ?? 0),
+          };
+        });
+      expect(previewGeometry.editingWidth).toBeGreaterThan(300);
+      expect(previewGeometry.outputWidth).toBeGreaterThan(300);
+      expect(previewGeometry.outputFollowsEditing).toBe(true);
 
       const formatting = repository.locator('.repository-formatting');
       expect(
@@ -63,35 +97,28 @@ describe('configured file formatting in the development panel', () => {
           .getByRole('radio', { name: 'Compact' })
           .isChecked(),
       ).toBe(true);
+      expect(
+        await formatting.getByText('From File override', { exact: true }).count(),
+      ).toBeGreaterThan(0);
+      expect(await formatting.getByRole('region', { name: 'YAML' }).count()).toBe(0);
+      expect(await formatting.getByRole('region', { name: 'TOML' }).count()).toBe(0);
 
       const exact = await repository.locator('.exact-output').innerText();
       expect(exact).toContain('"schedule": ["* 4 * * 6"]');
       expect(exact).toContain('"ignorePaths": ["crates/harness-codex-acp/**"]');
       expect(exact).toContain('\r\n');
 
-      const editor = page.locator('.formatting-editor').first();
-      const tomlQuoteStyle = editor.getByRole('group', { name: 'Quote Style' }).nth(1);
-      await tomlQuoteStyle
-        .getByRole('radio', { name: 'Prefer Basic' })
-        .locator('xpath=ancestor::label[1]')
-        .click();
-      await page.waitForTimeout(300);
-
-      const geometry = await editor.evaluate((editor) => {
+      const geometry = await formatting.evaluate((editor) => {
         const controls = [...editor.querySelectorAll<HTMLElement>('.policy-row fieldset')];
-        const width = (name: string, occurrence = 0): number =>
+        const control = (name: string): HTMLElement =>
           controls
             .filter((control) => control.querySelector('legend')?.textContent?.trim() === name)
-            .at(occurrence)
-            ?.getBoundingClientRect().width ?? 0;
-        const quoteSegments = [
-          ...controls
-            .filter(
-              (control) => control.querySelector('legend')?.textContent?.trim() === 'Quote Style',
-            )
-            .at(1)!
-            .querySelectorAll<HTMLElement>('label'),
-        ].map((label) => label.getBoundingClientRect().width);
+            .at(0)!;
+        const arrays = control('Arrays');
+        const keyOrder = control('Key Order');
+        const arraySegments = [...arrays.querySelectorAll<HTMLElement>('label')].map(
+          (label) => label.getBoundingClientRect().width,
+        );
         const wrapped = controls.flatMap((control) =>
           [...control.querySelectorAll<HTMLElement>('.band-trim')]
             .filter((label) => {
@@ -101,15 +128,8 @@ describe('configured file formatting in the development panel', () => {
             })
             .map((label) => label.textContent?.trim() ?? ''),
         );
-        const quoteStyle = controls
-          .filter(
-            (control) => control.querySelector('legend')?.textContent?.trim() === 'Quote Style',
-          )
-          .at(1)!;
-        const thumb = quoteStyle.querySelector<HTMLElement>('.selection-indicator')!;
-        const selected = quoteStyle
-          .querySelector<HTMLInputElement>('input:checked')!
-          .closest('label')!;
+        const thumb = arrays.querySelector<HTMLElement>('.selection-indicator')!;
+        const selected = arrays.querySelector<HTMLInputElement>('input:checked')!.closest('label')!;
         const thumbBox = thumb.getBoundingClientRect();
         const selectedBox = selected.getBoundingClientRect();
         const segmentCorners = (style: CSSStyleDeclaration): string[] => [
@@ -118,15 +138,15 @@ describe('configured file formatting in the development panel', () => {
           style.borderEndEndRadius,
           style.borderEndStartRadius,
         ];
-        const quoteLabels = [...quoteStyle.querySelectorAll('label')];
+        const arrayLabels = [...arrays.querySelectorAll('label')];
 
         return {
-          arraysWidth: width('Arrays'),
-          firstFillCorners: segmentCorners(getComputedStyle(quoteLabels[0]!, '::before')),
-          keyOrderWidth: width('Key Order'),
-          lastFillCorners: segmentCorners(getComputedStyle(quoteLabels.at(-1)!, '::before')),
+          arraysWidth: arrays.getBoundingClientRect().width,
+          firstFillCorners: segmentCorners(getComputedStyle(arrayLabels[0]!, '::before')),
+          keyOrderWidth: keyOrder.getBoundingClientRect().width,
+          lastFillCorners: segmentCorners(getComputedStyle(arrayLabels.at(-1)!, '::before')),
           middleFillCorners: segmentCorners(getComputedStyle(selected, '::before')),
-          quoteSegmentSpread: Math.max(...quoteSegments) - Math.min(...quoteSegments),
+          segmentSpread: Math.max(...arraySegments) - Math.min(...arraySegments),
           thumbCorners: segmentCorners(getComputedStyle(thumb)),
           thumbLeftDelta: Math.abs(thumbBox.left - selectedBox.left),
           thumbWidthDelta: Math.abs(thumbBox.width - selectedBox.width),
@@ -134,7 +154,7 @@ describe('configured file formatting in the development panel', () => {
         };
       });
       expect(geometry.arraysWidth).toBeGreaterThan(geometry.keyOrderWidth);
-      expect(geometry.quoteSegmentSpread).toBeGreaterThan(1);
+      expect(geometry.segmentSpread).toBeGreaterThan(1);
       expect(geometry.thumbLeftDelta).toBeLessThanOrEqual(0.05);
       expect(geometry.thumbWidthDelta).toBeLessThanOrEqual(0.05);
       expect(geometry.middleFillCorners).toEqual(['0px', '0px', '0px', '0px']);
@@ -158,3 +178,7 @@ describe('configured file formatting in the development panel', () => {
     }
   });
 });
+
+async function expectVisibleText(scope: Locator, text: string): Promise<void> {
+  await scope.getByText(text, { exact: true }).waitFor({ state: 'visible' });
+}

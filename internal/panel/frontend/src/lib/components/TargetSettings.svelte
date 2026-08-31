@@ -538,6 +538,7 @@
     <FormattingEditor
       patch={target.config_patch.formatting ?? {}}
       inherited={target.inherited_config.formatting}
+      sources={target.formatting_sources}
       scope="target"
       idPrefix={target.id}
       disabled={frozen}

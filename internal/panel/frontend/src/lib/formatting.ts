@@ -43,6 +43,14 @@ export function parseFormattingPatch(value: unknown): FormattingPatch | null {
   return parseNode(value, DEFINITION, false) as FormattingPatch | null;
 }
 
+/** Parse a complete provenance tree with the same shape as a formatting policy. */
+export function parseFormattingSources<Source extends string>(
+  value: unknown,
+  sources: readonly Source[],
+): FormattingSources<Source> | null {
+  return parseSourceNode(value, DEFINITION, sources) as FormattingSources<Source> | null;
+}
+
 export function cloneFormattingPolicy(policy: FormattingPolicy): FormattingPolicy {
   const parsed = parseFormattingPolicy(policy);
   if (parsed === null) throw new TypeError('formatting policy is invalid');
@@ -140,6 +148,15 @@ export function formattingPatchValue(
 ): FormattingLeafValue | undefined {
   const value = valueAtPath(patch as Record<string, unknown>, field.path);
   return typeof value === 'string' || typeof value === 'number' ? value : undefined;
+}
+
+export function formattingSourceValue<Source extends string>(
+  sources: FormattingSources<Source>,
+  field: FormattingField,
+): Source {
+  const value = valueAtPath(sources as unknown as Record<string, unknown>, field.path);
+  if (typeof value !== 'string') throw new TypeError(`formatting sources are missing ${field.key}`);
+  return value as Source;
 }
 
 export function formattingField(key: string): FormattingField | undefined {
@@ -243,6 +260,32 @@ function parseNode(
       continue;
     }
     const nested = parseNode(candidate, child, complete);
+    if (nested === null) return null;
+    parsed[key] = nested;
+  }
+  return parsed;
+}
+
+function parseSourceNode<Source extends string>(
+  value: unknown,
+  definition: DefinitionNode,
+  sources: readonly Source[],
+): Record<string, unknown> | null {
+  if (!isPlainRecord(value)) return null;
+  if (Object.keys(value).some((key) => !definition.children.has(key))) return null;
+
+  const parsed: Record<string, unknown> = {};
+  for (const [key, child] of definition.children) {
+    if (!Object.hasOwn(value, key)) return null;
+    const candidate = value[key];
+    if (child.field !== undefined) {
+      if (typeof candidate !== 'string' || !sources.some((source) => source === candidate)) {
+        return null;
+      }
+      parsed[key] = candidate;
+      continue;
+    }
+    const nested = parseSourceNode(candidate, child, sources);
     if (nested === null) return null;
     parsed[key] = nested;
   }

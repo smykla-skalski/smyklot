@@ -74,6 +74,8 @@ const (
 	SourceTarget          Source = "target"
 	SourceRepositoryFile  Source = "repository_file"
 	SourceRepositoryPanel Source = "repository_panel"
+	SourceTemplate        Source = "template"
+	SourceRepositoryPath  Source = "repository_path"
 )
 
 // Patch is a sparse configuration layer, and the authoritative description of

@@ -6,9 +6,11 @@
 
   /** The language a path's extension says it is written in. */
   export function langOf(path: string): CodeLang {
-    if (/\.(json|json5)$/i.test(path)) return 'json';
+    if (/\.jsonc?$/i.test(path)) return 'json';
+    if (/\.toml$/i.test(path)) return 'toml';
+    if (/\.ya?ml$/i.test(path)) return 'yaml';
     if (/\.(md|markdown)$/i.test(path)) return 'markdown';
-    return 'yaml';
+    return 'text';
   }
 
   /** Replaces one template while keeping the strict service-owned file shape. */
@@ -63,12 +65,7 @@
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
-  import {
-    FORMATTING_FIELDS,
-    applyFormattingPatch,
-    formattingPatchValue,
-    type FormattingPatch,
-  } from '../formatting';
+  import { FORMATTING_FIELDS, formattingPatchValue, type FormattingPatch } from '../formatting';
   import { formatJson, parseJson, type JsonValue } from '../merge';
   import type {
     SyncOverrideControlId,
@@ -83,12 +80,11 @@
     SyncFile,
     SyncFileMerge,
     SyncFileMergeEntry,
-    SyncFileRenderInput,
-    SyncFileRenderResponse,
     SyncFileRepositoryPolicy,
     SyncFilesContext,
     SyncOverride,
   } from '../types';
+  import type { SyncFileRenderInput, SyncFileRenderResponse } from '../sync-file-render.generated';
   import type { SyncSection } from '../routes';
 
   import Button from './Button.svelte';
@@ -203,7 +199,7 @@
   let renderGeneration = 0;
 
   const templateMismatch = $derived(
-    templateRender?.valid === true && templateRender.content !== templateText,
+    templateRender?.valid === true && !templateRender.matches_formatting,
   );
   const templateDiagnostic = $derived(
     templateRender?.diagnostics.map(({ message }) => message).join(' · ') ?? '',
@@ -217,22 +213,22 @@
     untrack(() => onFormattingValidity(control, valid, message));
   }
 
-  function renderInput(
-    basePolicy: SyncFileRenderInput['base_policy'],
-    merge?: SyncFileRenderInput['merge'],
-    defaultBranch?: string,
-    pathFormatting?: FormattingPatch,
-  ): SyncFileRenderInput {
-    const overlays = [templateFormatting, pathFormatting].filter(
-      (overlay): overlay is FormattingPatch => overlay !== undefined,
-    );
+  function templateRenderInput(): SyncFileRenderInput {
     return {
       path,
       draft_content: templateText,
-      base_policy: basePolicy,
-      ...(merge === undefined ? {} : { merge }),
-      ...(defaultBranch === undefined ? {} : { default_branch: defaultBranch }),
-      ...(overlays.length === 0 ? {} : { overlays }),
+      template_formatting: templateFormatting,
+    };
+  }
+
+  function repositoryRenderInput(entry: RepositoryRow): SyncFileRenderInput {
+    return {
+      ...templateRenderInput(),
+      repository: {
+        id: entry.repository_id,
+        path_formatting: entry.formatting ?? {},
+        ...(entry.merge === undefined ? {} : { merge: repositoryMergeInput(entry) }),
+      },
     };
   }
 
@@ -257,9 +253,9 @@
       const message = cause instanceof Error ? cause.message : String(cause);
       templateRender = {
         valid: false,
-        content: '',
-        changed: false,
-        diagnostics: [{ code: 'render_failed', message }],
+        final_content: '',
+        matches_formatting: false,
+        diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
       reportFormattingValidity(validationControl, false, message);
     } finally {
@@ -268,15 +264,14 @@
   }
 
   $effect(() => {
-    const basePolicy = context?.base_formatting;
     const heldFile = file;
     void templateText;
     void templateFormatting;
-    if (basePolicy === undefined || heldFile === null) return;
+    if (heldFile === null) return;
     const validationControl = renderValidationControl('template');
     const preserveValidation = templateDirty || dirtyTemplateFormatting.length > 0;
     const generation = (renderGeneration += 1);
-    const input = renderInput(basePolicy);
+    const input = templateRenderInput();
     reportFormattingValidity(
       validationControl,
       false,
@@ -306,7 +301,7 @@
 
   function applyTemplateFormatting(): void {
     if (templateRender?.valid !== true || !templateMismatch || frozen) return;
-    templateEditor?.replaceValue(templateRender.content);
+    templateEditor?.replaceValue(templateRender.final_content);
   }
 
   $effect(() => {
@@ -488,11 +483,6 @@
   );
   const openMerge = $derived((openEntry?.merge ?? null) as FileMergeSpec | null);
   const openPathFormatting = $derived(openEntry?.formatting ?? {});
-  const openInheritedFormatting = $derived(
-    openEntry === null
-      ? context?.base_formatting
-      : applyFormattingPatch(openEntry.base_policy, templateFormatting),
-  );
   const savedOpenPathFormatting = $derived(
     merges.find((entry) => entry.repository_id === openRepo)?.formatting ?? {},
   );
@@ -507,8 +497,11 @@
   let repositoryRender = $state<SyncFileRenderResponse | null>(null);
   let repositoryRendering = $state(false);
   let repositoryRenderGeneration = 0;
+  const openInheritedFormatting = $derived(repositoryRender?.formatting?.inherited_policy);
 
-  function repositoryMergeInput(entry: RepositoryRow): SyncFileRenderInput['merge'] | undefined {
+  function repositoryMergeInput(
+    entry: RepositoryRow,
+  ): NonNullable<SyncFileRenderInput['repository']>['merge'] | undefined {
     if (entry.merge === undefined) return undefined;
     const merge = { ...(entry.merge as unknown as SyncFileMerge) };
     delete (merge as Partial<SyncFileMerge>).path;
@@ -536,9 +529,9 @@
       const message = cause instanceof Error ? cause.message : String(cause);
       repositoryRender = {
         valid: false,
-        content: '',
-        changed: false,
-        diagnostics: [{ code: 'render_failed', message }],
+        final_content: '',
+        matches_formatting: false,
+        diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
       reportFormattingValidity(validationControl, false, message);
     } finally {
@@ -559,12 +552,7 @@
     const validationControl = renderValidationControl('repository', entry.repository_id);
     const preserveValidation = overrideDirty(entry.repository_id);
     const generation = (repositoryRenderGeneration += 1);
-    const input = renderInput(
-      entry.base_policy,
-      repositoryMergeInput(entry),
-      entry.default_branch,
-      entry.formatting,
-    );
+    const input = repositoryRenderInput(entry);
     reportFormattingValidity(
       validationControl,
       false,
@@ -954,8 +942,7 @@
             <Button tone="quiet" onclick={() => (templateDiffOpen = !templateDiffOpen)}>
               {templateDiffOpen ? 'Hide diff' : 'View diff'}
             </Button>
-            <Button tone="signal" disabled={frozen} onclick={applyTemplateFormatting}
-              >Format template</Button
+            <Button tone="signal" disabled={frozen} onclick={applyTemplateFormatting}>Format</Button
             >
           {/if}
           <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
@@ -966,37 +953,74 @@
         class="format-status"
         role="status"
       >
-        {#if templateRendering}
-          Checking configured formatting…
-        {:else if templateRender?.valid === false}
+        {#if templateRender?.valid === false}
           Cannot render configured formatting{templateDiagnostic === ''
             ? ''
             : ` · ${templateDiagnostic}`}
         {:else if templateMismatch}
-          This template does not match configured formatting
+          This template does not match configured formatting{templateRendering
+            ? ' · refreshing'
+            : ''}
+        {:else if templateRendering}
+          Checking configured formatting…
         {:else}
           Matches configured formatting
         {/if}
       </p>
-      <CodeEditor
-        bind:this={templateEditor}
-        value={templateText}
-        {lang}
-        readOnly={frozen}
-        onChange={stageTemplate}
-        onHistory={(depth) => (templateUndoDepth = depth)}
-      />
+      <div class="template-preview-grid">
+        <section class="preview-pane">
+          <div class="merge-pane-title">
+            <span class="t">Draft template</span>
+            <span class="output-state">Editing layer</span>
+          </div>
+          <CodeEditor
+            bind:this={templateEditor}
+            value={templateText}
+            {lang}
+            readOnly={frozen}
+            onChange={stageTemplate}
+            onHistory={(depth) => (templateUndoDepth = depth)}
+            onFormat={templateRender?.valid === true && templateMismatch
+              ? applyTemplateFormatting
+              : undefined}
+          />
+        </section>
+        <section class="preview-pane exact-output">
+          <div class="merge-pane-title">
+            <span class="t">Final output</span>
+            {#if templateRender?.valid === true}
+              <span class="output-state">Backend rendered</span>
+            {/if}
+          </div>
+          {#if templateRender?.valid === false}
+            <FormError
+              message={templateDiagnostic || 'The final output cannot be rendered safely'}
+            />
+          {:else if templateRender?.valid === true}
+            <div class:is-rendering={templateRendering} class="rendered-output">
+              <CodeBlock text={templateRender.final_content} {lang} />
+            </div>
+            {#if templateRendering}
+              <p class="render-note" role="status">Refreshing final output…</p>
+            {/if}
+          {:else}
+            <p class="sync-empty" role="status">Rendering final output…</p>
+          {/if}
+        </section>
+      </div>
       {#if templateDiffOpen && templateRender?.valid === true && templateMismatch}
         <div class="format-diff">
-          <DiffBlock before={templateText} after={templateRender.content} {lang} />
+          <DiffBlock before={templateText} after={templateRender.final_content} {lang} />
         </div>
       {/if}
     </div>
 
-    {#if context !== null}
+    {#if lang !== 'text' && templateRender?.formatting !== undefined}
       <FormattingEditor
         patch={templateFormatting}
-        inherited={context.base_formatting}
+        inherited={templateRender.formatting.inherited_policy}
+        resolution={templateRender.formatting}
+        {path}
         scope="template"
         idPrefix={path}
         disabled={frozen}
@@ -1055,43 +1079,56 @@
               {#if holdProblem !== null}
                 <FormError message={holdProblem} />
               {/if}
-              <div class="merge-pane-title">
-                <span class="t">Merge editing aid</span>
-                <span class="pane-tools">
-                  {#if editedText !== null && resultUndoDepth > 0}
-                    <Button onclick={() => resultEditor?.undoEdit()}>
-                      {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
-                      Undo
-                    </Button>
-                  {/if}
-                  {#if editedText !== null}
-                    <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
-                      {sideBySide ? 'Hide the template' : 'Show the template beside it'}
-                    </Button>
-                  {/if}
-                </span>
-              </div>
-              {#if openMerge === null}
-                <p class="sync-empty">
-                  This repository takes the shared content unchanged before its formatting policy is
-                  applied
-                </p>
-              {:else if editedText === null}
-                <p class="sync-empty">
-                  This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
-                  {lang} template - the stored override below is the whole of it
-                </p>
-                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-              {:else if sideBySide}
-                <div class="merge-two">
-                  <div>
-                    <div class="merge-pane-title"><span class="t">The template</span></div>
-                    <CodeBlock text={file.content} {lang} />
+              <div class="repository-preview-grid">
+                <section class="preview-pane">
+                  <div class="merge-pane-title">
+                    <span class="t">Merge editing aid</span>
+                    <span class="pane-tools">
+                      {#if editedText !== null && resultUndoDepth > 0}
+                        <Button onclick={() => resultEditor?.undoEdit()}>
+                          {#snippet icon()}<Icon name="undo" size={13} />{/snippet}
+                          Undo
+                        </Button>
+                      {/if}
+                      {#if editedText !== null}
+                        <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
+                          {sideBySide ? 'Hide the template' : 'Show the template beside it'}
+                        </Button>
+                      {/if}
+                    </span>
                   </div>
-                  <div>
-                    <div class="merge-pane-title">
-                      <span class="t">{entry.repository}'s copy</span>
+                  {#if openMerge === null}
+                    <p class="sync-empty">
+                      This repository takes the shared content unchanged before its formatting
+                      policy is applied
+                    </p>
+                  {:else if editedText === null}
+                    <p class="sync-empty">
+                      This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
+                      {lang} template - the stored override below is the whole of it
+                    </p>
+                    <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+                  {:else if sideBySide}
+                    <div class="merge-two">
+                      <div>
+                        <div class="merge-pane-title"><span class="t">The template</span></div>
+                        <CodeBlock text={file.content} {lang} />
+                      </div>
+                      <div>
+                        <div class="merge-pane-title">
+                          <span class="t">{entry.repository}'s copy</span>
+                        </div>
+                        <CodeEditor
+                          bind:this={resultEditor}
+                          value={editedText}
+                          readOnly={mergeFrozen}
+                          overridden={overriddenLines}
+                          onChange={stageEditorText}
+                          onHistory={(depth) => (resultUndoDepth = depth)}
+                        />
+                      </div>
                     </div>
+                  {:else}
                     <CodeEditor
                       bind:this={resultEditor}
                       value={editedText}
@@ -1100,23 +1137,39 @@
                       onChange={stageEditorText}
                       onHistory={(depth) => (resultUndoDepth = depth)}
                     />
+                  {/if}
+                  {#if editedText !== null && staged === null}
+                    <p class="sync-empty">
+                      Not JSON yet - the override picks the edit up when it parses again
+                    </p>
+                  {/if}
+                </section>
+
+                <section class="preview-pane exact-output">
+                  <div class="merge-pane-title">
+                    <span class="t">Exact final output</span>
+                    {#if repositoryRender?.valid === true}
+                      <span class="output-state">Backend rendered</span>
+                    {/if}
                   </div>
-                </div>
-              {:else}
-                <CodeEditor
-                  bind:this={resultEditor}
-                  value={editedText}
-                  readOnly={mergeFrozen}
-                  overridden={overriddenLines}
-                  onChange={stageEditorText}
-                  onHistory={(depth) => (resultUndoDepth = depth)}
-                />
-              {/if}
-              {#if editedText !== null && staged === null}
-                <p class="sync-empty">
-                  Not JSON yet - the override picks the edit up when it parses again
-                </p>
-              {/if}
+                  {#if repositoryRender?.valid === false}
+                    <FormError
+                      message={repositoryRender.diagnostics
+                        .map(({ message }) => message)
+                        .join(' · ')}
+                    />
+                  {:else if repositoryRender?.valid === true}
+                    <div class:is-rendering={repositoryRendering} class="rendered-output">
+                      <CodeBlock text={repositoryRender.final_content} {lang} />
+                    </div>
+                    {#if repositoryRendering}
+                      <p class="render-note" role="status">Refreshing final output…</p>
+                    {/if}
+                  {:else}
+                    <p class="sync-empty">Rendering the repository's complete effective policy…</p>
+                  {/if}
+                </section>
+              </div>
 
               {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
                 <div class="patch-strip">
@@ -1182,11 +1235,13 @@
                 </div>
               {/each}
 
-              {#if openInheritedFormatting !== undefined}
+              {#if lang !== 'text' && openInheritedFormatting !== undefined}
                 <div class="repository-formatting">
                   <FormattingEditor
                     patch={openPathFormatting}
                     inherited={openInheritedFormatting}
+                    resolution={repositoryRender?.formatting}
+                    {path}
                     scope="path"
                     idPrefix={`${entry.repository_id}-${path}`}
                     disabled={mergeFrozen}
@@ -1201,24 +1256,6 @@
                   />
                 </div>
               {/if}
-
-              <div class="exact-output">
-                <div class="merge-pane-title">
-                  <span class="t">Exact final output</span>
-                  {#if repositoryRender?.valid === true}
-                    <span class="output-state">Backend rendered</span>
-                  {/if}
-                </div>
-                {#if repositoryRendering}
-                  <p class="sync-empty">Rendering the repository's complete effective policy…</p>
-                {:else if repositoryRender?.valid === false}
-                  <FormError
-                    message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
-                  />
-                {:else if repositoryRender?.valid === true}
-                  <CodeBlock text={repositoryRender.content} {lang} />
-                {/if}
-              </div>
             </div>
           {/if}
         </div>
@@ -1259,6 +1296,36 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     padding: var(--space-5);
+  }
+
+  .template-preview-grid {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .repository-preview-grid {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .preview-pane {
+    min-width: 0;
+  }
+
+  .rendered-output {
+    transition: opacity 120ms ease;
+  }
+
+  .rendered-output.is-rendering {
+    opacity: 0.45;
+  }
+
+  .render-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-micro);
+    margin: var(--space-2) 0 0;
   }
 
   .card.is-unsaved {
@@ -1305,12 +1372,14 @@
   }
 
   .format-status.mismatch-warning {
+    background: color-mix(in srgb, var(--warning) 8%, transparent);
+    border-inline-start: 2px solid var(--warning);
     color: var(--warning);
+    padding: var(--space-2) var(--space-3);
   }
 
   .format-diff,
-  .repository-formatting,
-  .exact-output {
+  .repository-formatting {
     margin-top: var(--space-4);
   }
 
@@ -1482,6 +1551,8 @@
   }
 
   @media (max-width: 64rem) {
+    .template-preview-grid,
+    .repository-preview-grid,
     .merge-two {
       grid-template-columns: 1fr;
     }

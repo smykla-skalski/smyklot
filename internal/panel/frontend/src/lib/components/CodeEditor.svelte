@@ -17,7 +17,8 @@
   import { json } from '@codemirror/lang-json';
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
-  import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
+  import { toml } from '@codemirror/legacy-modes/mode/toml';
+  import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
   import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
   import {
     Decoration,
@@ -43,6 +44,7 @@
     overridden = null,
     onChange,
     onHistory,
+    onFormat,
   }: {
     value: string;
     lang?: CodeLang;
@@ -52,6 +54,8 @@
     onChange: (text: string) => void;
     /** How many steps the editor's own history can take back. */
     onHistory?: (depth: number) => void;
+    /** Applies the current backend preview. Bound to Option/Alt+Shift+F. */
+    onFormat?: () => void;
   } = $props();
 
   /** The visible twin of Ctrl/Cmd+Z - a page button steps the same history. */
@@ -184,9 +188,21 @@
      why the json surface also carries the comment ink above. */
   function language(): Extension {
     if (lang === 'yaml') return yaml();
+    if (lang === 'toml') return StreamLanguage.define(toml);
     if (lang === 'markdown') return markdown();
+    if (lang === 'text') return [];
     return [json(), commentPlugin];
   }
+
+  const formatKey = {
+    key: 'Shift-Alt-f',
+    preventDefault: true,
+    run: (): boolean => {
+      if (readOnly || onFormat === undefined) return false;
+      onFormat();
+      return true;
+    },
+  };
 
   const holds = new Compartment();
   const marks = new Compartment();
@@ -202,7 +218,7 @@
       extensions: [
         lineNumbers(),
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([formatKey, ...defaultKeymap, ...historyKeymap]),
         untrack(() => language()),
         syntaxHighlighting(inks),
         holds.of(frozen(untrack(() => readOnly))),

@@ -868,6 +868,7 @@
           <FormattingEditor
             patch={detail.config_patch.formatting ?? {}}
             inherited={detail.inherited_config.formatting}
+            sources={detail.formatting_sources}
             scope="repository"
             idPrefix={repository.id}
             {disabled}

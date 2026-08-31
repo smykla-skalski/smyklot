@@ -1,318 +1,200 @@
-import { composeMergedText } from '../src/lib/jsontext.ts';
-import { parseTree, visit, type Node, type ParseError } from 'jsonc-parser';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { dirname, resolve } from 'node:path';
+import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
+
 import {
-  applyFormattingPatch,
-  parseFormattingPatch,
   parseFormattingPolicy,
+  parseFormattingSources,
+  type FormattingPatch,
   type FormattingPolicy,
+  type FormattingSources,
 } from '../src/lib/formatting.ts';
 import type {
-  SyncFileMerge,
-  SyncFileRenderInput,
-  SyncFileRenderResponse,
-} from '../src/lib/types.ts';
+  ConfigSource,
+  SyncFileRenderDiagnostic,
+} from '../src/lib/sync-file-render.generated.ts';
+import type { SyncFileMerge } from '../src/lib/types.ts';
 
-const SUPPORTED_PATH = /\.(?:jsonc?|ya?ml|toml|md|markdown)$/iu;
+const VERSION = 1;
+const MAX_MESSAGE_BYTES = 4 << 20;
+const SOURCES: readonly ConfigSource[] = [
+  'process',
+  'target',
+  'repository_file',
+  'repository_panel',
+  'template',
+  'repository_path',
+];
 
-/**
- * Render the development server's file preview through the same typed wire
- * boundary as production.
- *
- * The browser's merge composer is intentionally only an editing aid. The mock
- * is the backend in development, so this module owns its deterministic output
- * and stays separate from the route plumbing and fixture construction.
- */
-export function renderMockSyncFile(value: unknown): SyncFileRenderResponse {
-  const input = parseInput(value);
-  if (input === null) return invalid('invalid_request', 'the render request is invalid');
-  if (!SUPPORTED_PATH.test(input.path)) return valid(input.draft_content, input.draft_content);
-
-  let policy: FormattingPolicy = input.base_policy;
-  for (const overlay of input.overlays ?? []) policy = applyFormattingPatch(policy, overlay);
-
-  const substituted =
-    input.default_branch === undefined || input.default_branch === ''
-      ? input.draft_content
-      : input.draft_content.replaceAll('{{DEFAULT_BRANCH}}', input.default_branch);
-  const composed = compose(substituted, input.merge);
-  if (composed === null) {
-    return invalid(
-      'invalid_document',
-      'the development renderer cannot safely compose this file adjustment',
-    );
-  }
-  const collections = formatCollections(composed, input.path, policy);
-  if (collections.problem !== undefined) {
-    return invalid('unsafe_formatting', collections.problem);
-  }
-  const formatted = formatCommon(collections.content, policy);
-  return valid(input.draft_content, formatted);
+export interface GoRenderLayer {
+  source: ConfigSource;
+  formatting: FormattingPatch;
 }
 
-type MockFormatResult = { content: string; problem?: never } | { content?: never; problem: string };
-
-/**
- * Keep the development preview honest for the collection rule exercised by
- * the seeded repository-path example. This is deliberately a source-span
- * renderer, not JSON.parse plus JSON.stringify: values keep their spelling,
- * object layout, and comments outside the collection being changed.
- */
-function formatCollections(
-  content: string,
-  path: string,
-  policy: FormattingPolicy,
-): MockFormatResult {
-  if (!/\.jsonc?$/iu.test(path) || policy.json.arrays === 'preserve') return { content };
-
-  const errors: ParseError[] = [];
-  const root = parseTree(content, errors, { allowTrailingComma: true });
-  if (root === undefined || errors.length > 0) {
-    return { problem: 'the development renderer cannot read the JSON collection layout' };
-  }
-
-  try {
-    return { content: renderJSONNode(content, root, policy) };
-  } catch (cause) {
-    return {
-      problem:
-        cause instanceof Error ? cause.message : 'the JSON collection cannot be formatted safely',
-    };
-  }
+export interface GoRenderInput {
+  path: string;
+  draft_content: string;
+  default_branch?: string;
+  merge: Omit<SyncFileMerge, 'path'>;
+  base_formatting: FormattingPolicy;
+  layers: GoRenderLayer[];
+  inherited_layers: number;
 }
 
-function renderJSONNode(content: string, node: Node, policy: FormattingPolicy): string {
-  const children = node.children ?? [];
-  const renderedChildren = children.map((child) => renderJSONNode(content, child, policy));
-  const preserved = replaceChildren(content, node, children, renderedChildren);
-  if (node.type !== 'array') return preserved;
+export interface GoRenderResponse {
+  valid: boolean;
+  final_content: string;
+  matches_formatting: boolean;
+  inherited_policy: FormattingPolicy;
+  effective_policy: FormattingPolicy;
+  provenance: FormattingSources<ConfigSource>;
+  diagnostics: SyncFileRenderDiagnostic[];
+}
 
-  const mode = policy.json.arrays;
-  const safeToReflow = !hasJSONComment(content.slice(node.offset, node.offset + node.length));
-  const compact = `[${renderedChildren.join(', ')}]`;
-  const oneLine = renderedChildren.every((child) => !/[\r\n]/u.test(child));
-  if (mode === 'compact') {
-    if (!safeToReflow || !oneLine) {
-      throw new Error('compact JSON arrays cannot contain comments or multiline values');
+type Pending = { resolve: (response: GoRenderResponse) => void; reject: (cause: Error) => void };
+
+/** One persistent, bounded, shell-free Go renderer for the lifetime of Vite. */
+export class GoFileRenderer {
+  readonly #pending = new Map<string, Pending>();
+  #process: ChildProcessWithoutNullStreams | null = null;
+  #sequence = 0;
+
+  render(input: GoRenderInput): Promise<GoRenderResponse> {
+    const child = this.#runningProcess();
+    const id = `render-${(this.#sequence += 1)}`;
+    const message = `${JSON.stringify({ version: VERSION, id, ...input })}\n`;
+    if (Buffer.byteLength(message) > MAX_MESSAGE_BYTES) {
+      return Promise.reject(new Error('the development render request is too large'));
     }
-    return compact;
+    return new Promise((resolve, reject) => {
+      this.#pending.set(id, { resolve, reject });
+      child.stdin.write(message, (error) => {
+        if (error === null || error === undefined) return;
+        this.#pending.delete(id);
+        reject(error);
+      });
+    });
   }
-  if (mode === 'auto') {
-    if (!safeToReflow || !oneLine) return preserved;
-    const column = sourceColumn(content, node.offset);
-    return column + compact.length <= policy.common.line_width
-      ? compact
-      : expandedJSONArray(content, node, renderedChildren, policy);
+
+  close(): void {
+    const child = this.#process;
+    this.#process = null;
+    if (child !== null) child.kill('SIGTERM');
+    this.#rejectAll(new Error('the development renderer stopped'));
   }
-  if (mode === 'expanded') {
-    if (!safeToReflow) throw new Error('expanded JSON arrays cannot move comments safely');
-    return expandedJSONArray(content, node, renderedChildren, policy);
+
+  #runningProcess(): ChildProcessWithoutNullStreams {
+    if (this.#process !== null) return this.#process;
+    const executable =
+      process.env.SMYKLOT_PANEL_RENDER_BRIDGE ??
+      resolve(dirname(fileURLToPath(import.meta.url)), '../../../../bin/panel-render-bridge');
+    const child = spawn(executable, [], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const lines = createInterface({ input: child.stdout });
+    lines.on('line', (line) => this.#receive(line));
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (message: string) => console.error(message.trimEnd()));
+    child.on('error', (error) => this.#fail(child, error));
+    child.on('exit', (code, signal) => {
+      this.#fail(
+        child,
+        new Error(`the development renderer exited (${code ?? signal ?? 'unknown'})`),
+      );
+    });
+    this.#process = child;
+    return child;
   }
-  return preserved;
-}
 
-function replaceChildren(
-  content: string,
-  node: Node,
-  children: readonly Node[],
-  renderedChildren: readonly string[],
-): string {
-  let result = '';
-  let cursor = node.offset;
-  for (const [index, child] of children.entries()) {
-    result += content.slice(cursor, child.offset);
-    result += renderedChildren[index] ?? '';
-    cursor = child.offset + child.length;
+  #receive(line: string): void {
+    let value: unknown;
+    try {
+      value = JSON.parse(line) as unknown;
+      const parsed = parseBridgeResponse(value);
+      const id = bridgeID(value);
+      const pending = this.#pending.get(id);
+      if (pending === undefined) return;
+      this.#pending.delete(id);
+      pending.resolve(parsed);
+    } catch (cause) {
+      this.close();
+      this.#rejectAll(cause instanceof Error ? cause : new Error(String(cause)));
+    }
   }
-  return result + content.slice(cursor, node.offset + node.length);
+
+  #fail(child: ChildProcessWithoutNullStreams, cause: Error): void {
+    if (this.#process !== child) return;
+    this.#process = null;
+    this.#rejectAll(cause);
+  }
+
+  #rejectAll(cause: Error): void {
+    for (const pending of this.#pending.values()) pending.reject(cause);
+    this.#pending.clear();
+  }
 }
 
-function expandedJSONArray(
-  content: string,
-  node: Node,
-  children: readonly string[],
-  policy: FormattingPolicy,
-): string {
-  if (children.length === 0) return '[]';
-  const eol = dominantEOL(content);
-  const parentIndent = sourceIndent(content, node.offset);
-  const unit =
-    policy.common.indent_style === 'tabs' ? '\t' : ' '.repeat(policy.common.indent_width);
-  const childIndent = `${parentIndent}${unit}`;
-  const entries = children.map((child) => child.replace(/\r?\n/gu, `${eol}${childIndent}`));
-  return `[${eol}${childIndent}${entries.join(`,${eol}${childIndent}`)}${eol}${parentIndent}]`;
-}
-
-function hasJSONComment(content: string): boolean {
-  let found = false;
-  visit(content, {
-    onComment: () => {
-      found = true;
-    },
-  });
-  return found;
-}
-
-function sourceColumn(content: string, offset: number): number {
-  const lineStart = Math.max(
-    content.lastIndexOf('\n', offset - 1),
-    content.lastIndexOf('\r', offset - 1),
-  );
-  return offset - lineStart - 1;
-}
-
-function sourceIndent(content: string, offset: number): string {
-  const lineStart = Math.max(
-    content.lastIndexOf('\n', offset - 1),
-    content.lastIndexOf('\r', offset - 1),
-  );
-  return /^[\t ]*/u.exec(content.slice(lineStart + 1, offset))?.[0] ?? '';
-}
-
-function parseInput(value: unknown): SyncFileRenderInput | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.path !== 'string' || value.path.length === 0) return null;
-  if (typeof value.draft_content !== 'string') return null;
-  const basePolicy = parseFormattingPolicy(value.base_policy);
-  if (basePolicy === null) return null;
-  if (value.default_branch !== undefined && typeof value.default_branch !== 'string') return null;
-  if (value.merge !== undefined && !isRecord(value.merge)) return null;
-  if (value.overlays !== undefined && !Array.isArray(value.overlays)) return null;
-  const overlays = (value.overlays ?? []).map(parseFormattingPatch);
-  if (overlays.some((overlay) => overlay === null)) return null;
+function parseBridgeResponse(value: unknown): GoRenderResponse {
+  const record = exactRecord(value, [
+    'version',
+    'id',
+    'valid',
+    'final_content',
+    'matches_formatting',
+    'inherited_policy',
+    'effective_policy',
+    'provenance',
+    'diagnostics',
+  ]);
+  const inherited = parseFormattingPolicy(record?.inherited_policy);
+  const effective = parseFormattingPolicy(record?.effective_policy);
+  const provenance = parseFormattingSources(record?.provenance, SOURCES);
+  if (
+    record === null ||
+    record.version !== VERSION ||
+    typeof record.id !== 'string' ||
+    typeof record.valid !== 'boolean' ||
+    typeof record.final_content !== 'string' ||
+    typeof record.matches_formatting !== 'boolean' ||
+    inherited === null ||
+    effective === null ||
+    provenance === null ||
+    !Array.isArray(record.diagnostics)
+  ) {
+    throw new TypeError('the Go development renderer returned an invalid response');
+  }
   return {
-    path: value.path,
-    draft_content: value.draft_content,
-    base_policy: basePolicy,
-    ...(value.default_branch === undefined ? {} : { default_branch: value.default_branch }),
-    ...(value.merge === undefined ? {} : { merge: value.merge as Omit<SyncFileMerge, 'path'> }),
-    ...(overlays.length === 0 ? {} : { overlays: overlays as NonNullable<(typeof overlays)[0]>[] }),
+    valid: record.valid,
+    final_content: record.final_content,
+    matches_formatting: record.matches_formatting,
+    inherited_policy: inherited,
+    effective_policy: effective,
+    provenance,
+    diagnostics: record.diagnostics.map(parseDiagnostic),
   };
 }
 
-function compose(content: string, merge: SyncFileRenderInput['merge']): string | null {
-  if (merge === undefined || Object.keys(merge).length === 0) return content;
-  if ((merge.strategy ?? 'deep-merge') === 'markdown') return composeMarkdown(content, merge);
-  return composeMergedText(content, merge);
-}
-
-function composeMarkdown(content: string, merge: SyncFileRenderInput['merge']): string | null {
-  if (!Array.isArray(merge?.sections)) return null;
-  let result = content;
-  for (const candidate of merge.sections) {
-    if (!isRecord(candidate) || typeof candidate.action !== 'string') return null;
-    const action = candidate.action;
-    const text = typeof candidate.content === 'string' ? candidate.content : '';
-    if (action === 'append') {
-      result = joinBlocks(result, text);
-      continue;
-    }
-    if (action === 'prepend') {
-      result = joinBlocks(text, result);
-      continue;
-    }
-    if (typeof candidate.heading !== 'string') return null;
-    const span = markdownSectionSpan(result, candidate.heading, candidate.occurrence);
-    if (span === null) return null;
-    if (action === 'before') result = insertBlock(result, span.start, text);
-    else if (action === 'after') result = insertBlock(result, span.end, text);
-    else if (action === 'replace') result = replaceSpan(result, span.start, span.end, text);
-    else if (action === 'delete') result = replaceSpan(result, span.start, span.end, '');
-    else if (action === 'patch') {
-      if (!Array.isArray(candidate.patches)) return null;
-      let section = result.slice(span.start, span.end);
-      for (const patch of candidate.patches) {
-        if (
-          !isRecord(patch) ||
-          typeof patch.find !== 'string' ||
-          typeof patch.replace !== 'string'
-        ) {
-          return null;
-        }
-        if (!section.includes(patch.find)) return null;
-        section = section.replace(patch.find, patch.replace);
-      }
-      result = `${result.slice(0, span.start)}${section}${result.slice(span.end)}`;
-    } else return null;
+function parseDiagnostic(value: unknown): SyncFileRenderDiagnostic {
+  const record = exactRecord(value, ['stage', 'code', 'message']);
+  if (
+    record === null ||
+    typeof record.stage !== 'string' ||
+    typeof record.code !== 'string' ||
+    typeof record.message !== 'string'
+  ) {
+    throw new TypeError('the Go development renderer returned an invalid diagnostic');
   }
-  return result;
+  return { stage: record.stage, code: record.code, message: record.message };
 }
 
-function markdownSectionSpan(
-  content: string,
-  wanted: string,
-  occurrence: unknown,
-): { start: number; end: number } | null {
-  const heading = /^(#{1,6})[\t ]+(.+?)[\t ]*#*[\t ]*$/u.exec(wanted);
-  if (heading === null) return null;
-  const level = heading[1]!.length;
-  const title = heading[2]!.toLocaleLowerCase();
-  const matches: Array<{ start: number; level: number; title: string }> = [];
-  const headings: Array<{ start: number; level: number; title: string }> = [];
-  const pattern = /^(#{1,6})[\t ]+(.+?)[\t ]*#*[\t ]*(?:\r?\n|$)/gmu;
-  for (const found of content.matchAll(pattern)) {
-    const at = found.index;
-    if (at === undefined) continue;
-    const item = {
-      start: at,
-      level: found[1]!.length,
-      title: found[2]!.toLocaleLowerCase(),
-    };
-    headings.push(item);
-    if (item.level === level && item.title === title) matches.push(item);
-  }
-  const requested = typeof occurrence === 'number' && occurrence > 0 ? occurrence - 1 : 0;
-  if (matches.length === 0 || requested >= matches.length) return null;
-  if (occurrence === undefined && matches.length > 1) return null;
-  const selected = matches[requested]!;
-  const selectedIndex = headings.indexOf(selected);
-  const next = headings.slice(selectedIndex + 1).find((candidate) => candidate.level <= level);
-  return { start: selected.start, end: next?.start ?? content.length };
+function bridgeID(value: unknown): string {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return '';
+  return typeof (value as Record<string, unknown>).id === 'string'
+    ? ((value as Record<string, unknown>).id as string)
+    : '';
 }
 
-function replaceSpan(content: string, start: number, end: number, replacement: string): string {
-  const before = content.slice(0, start).replace(/[\t ]*(?:\r?\n)*$/u, '');
-  const after = content.slice(end).replace(/^(?:\r?\n)*[\t ]*/u, '');
-  return [before, replacement.trim(), after].filter((part) => part !== '').join('\n\n');
-}
-
-function insertBlock(content: string, offset: number, block: string): string {
-  const before = content.slice(0, offset);
-  const rest = content.slice(offset);
-  return joinBlocks(before, joinBlocks(block, rest));
-}
-
-function joinBlocks(left: string, right: string): string {
-  if (left.trim() === '') return right.trim();
-  if (right.trim() === '') return left.trim();
-  return `${left.trimEnd()}\n\n${right.trimStart()}`;
-}
-
-function formatCommon(content: string, policy: FormattingPolicy): string {
-  let rendered = content;
-  if (policy.common.line_ending === 'lf') rendered = rendered.replaceAll('\r\n', '\n');
-  if (policy.common.line_ending === 'crlf') {
-    rendered = rendered.replaceAll('\r\n', '\n').replaceAll('\n', '\r\n');
-  }
-  const eol = policy.common.line_ending === 'crlf' ? '\r\n' : dominantEOL(rendered);
-  if (policy.common.final_newline === 'insert' && !/(?:\r\n|\n)$/u.test(rendered)) {
-    rendered += eol;
-  }
-  if (policy.common.final_newline === 'remove') rendered = rendered.replace(/(?:\r\n|\n)+$/u, '');
-  return rendered;
-}
-
-function dominantEOL(content: string): '\n' | '\r\n' {
-  return content.includes('\r\n') ? '\r\n' : '\n';
-}
-
-function valid(before: string, content: string): SyncFileRenderResponse {
-  return { valid: true, content, changed: before !== content, diagnostics: [] };
-}
-
-function invalid(code: string, message: string): SyncFileRenderResponse {
-  return { valid: false, content: '', changed: false, diagnostics: [{ code, message }] };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+function exactRecord(value: unknown, allowed: readonly string[]): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).every((key) => allowed.includes(key)) ? record : null;
 }
