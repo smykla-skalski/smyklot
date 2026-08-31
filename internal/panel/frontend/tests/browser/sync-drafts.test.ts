@@ -192,4 +192,51 @@ describe('installation Sync drafts', () => {
       await page.close();
     }
   });
+
+  /**
+   * A change that removes something reports what it removed, and hands back the way to
+   * keep it - and the receipt never covers the bar a reader is about to press.
+   */
+  it('receipts a removal, stands clear of the save bar, and undoes', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
+
+      /* The fixture's list is empty, so the row this removes is one it made: a receipt
+         has to name the label it took away, and a made row proves the name travelled. */
+      const name = 'needs-triage';
+      await page.getByRole('button', { name: 'Add a label' }).click();
+      await page.getByRole('textbox', { name: 'Label name' }).fill(name);
+      await page.getByRole('textbox', { name: 'Label name' }).press('Enter');
+
+      const first = page.locator('.label-row').first();
+      await first.getByRole('button', { name: `Remove ${name}` }).click();
+
+      const receipt = page.locator('.toast');
+      await receipt.getByText(`Removed ${name}`).waitFor();
+
+      /* The composer is up - a label just left the draft - so the receipt has to be
+         standing above it rather than on it. */
+      const clear = await page.evaluate(() => {
+        const toast = document.querySelector('.toast')?.getBoundingClientRect();
+        const bar = document
+          .querySelector('.settings-composer, .apply-bar')
+          ?.getBoundingClientRect();
+        if (toast === undefined || bar === undefined) return null;
+
+        return Math.round(bar.top - toast.bottom);
+      });
+      expect(clear === null || clear >= 0).toBe(true);
+
+      await receipt.getByRole('button', { name: 'Undo' }).click();
+      await page.locator('.toast').getByText(`${name} is back`).waitFor();
+      await page
+        .locator('.label-row')
+        .filter({ hasText: name })
+        .first()
+        .waitFor({ state: 'visible' });
+    } finally {
+      await page.close();
+    }
+  });
 });
