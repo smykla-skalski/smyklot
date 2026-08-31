@@ -6,6 +6,7 @@
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import { formatRelative, formatTimestamp, formatUntil } from '../format';
+  import { receipts } from '../receipts.svelte';
   import { monogram } from '../identity';
   import type { FilterSection } from '../filter-menu';
   import {
@@ -139,7 +140,6 @@
   const initialPrefs = prefs;
 
   let actionFailure = $state<string | null>(null);
-  let feedback = $state('');
 
   const USER_SORTS: readonly PanelUserSort[] = [
     'name_asc',
@@ -729,14 +729,20 @@
         declinedLogin = null;
         generatedLink = created.invite_url ?? '';
         await copyGeneratedLink(false);
-        feedback = `Invited @${normalizedLogin} to ${destination}`;
+        /* Sticky: the link is on the clipboard and the reader is about to paste it
+           somewhere. A receipt that took itself away mid-paste would be the only
+           record that it worked. */
+        receipts.say(
+          `Invite link made for @${normalizedLogin} - it works once and expires in ${expiresInDays} ${expiresInDays === 1 ? 'day' : 'days'}`,
+          { sticky: true },
+        );
         await reloadInvitations();
       } else {
         await addTargetUser(targetId, {
           login: normalizedLogin,
           role: addRole as GrantedTargetRole,
         });
-        feedback = `Added @${normalizedLogin} to ${destination}`;
+        receipts.say(`Access granted - @${normalizedLogin} can open ${destination} now`);
         closeAddModal();
         await reloadUsers();
       }
@@ -785,7 +791,7 @@
       // should not change what the dialog has already done for you.
       linkCopied = null;
       await copyGeneratedLink(false);
-      feedback = `Reissued invitation for @${invitation.account.login}`;
+      receipts.say(`A fresh link is out for @${invitation.account.login}`, { sticky: true });
       await reloadInvitations();
     } catch (error) {
       actionFailure = errorMessage(error);
@@ -801,7 +807,7 @@
     actionFailure = null;
     try {
       await revokeInvitation(targetId, invitation.id);
-      feedback = `Revoked invitation for @${invitation.account.login}`;
+      receipts.say(`Invitation for @${invitation.account.login} revoked`);
       closeInvitationAction();
       await reloadInvitations();
     } catch (error) {
@@ -839,7 +845,7 @@
       await navigator.clipboard.writeText(generatedLink);
       linkCopied = 'copied';
       copyReceipt += 1;
-      if (announce) feedback = 'Copied invitation link';
+      if (announce) receipts.say('Copied the invite link');
     } catch {
       linkCopied = 'failed';
       // Never claimed on the copy that happens by itself: the message below the field says what
@@ -1045,7 +1051,7 @@
         suspension_reason: suspend ? reason.trim() || undefined : undefined,
         expected_revision: access.revision,
       });
-      feedback = decisionFeedback(user, pick);
+      receipts.say(decisionFeedback(user, pick));
     });
     // A refused write leaves the dialog standing on the choice that was refused, so the
     // reason it gives is beside the thing it is about.
@@ -1077,7 +1083,7 @@
     if (url === undefined) return;
     try {
       await navigator.clipboard.writeText(url);
-      feedback = `Copied the invitation link for @${invitation.account.login}`;
+      receipts.say(`Copied the invite link for @${invitation.account.login}`);
     } catch {
       actionFailure = 'The invitation link could not be copied';
     }
@@ -1252,9 +1258,6 @@ offering it.
         onSelect={selectUserView}
       />
       <span class="push-end">
-        <!-- On the toolbar's own line rather than above the list: a receipt that
-             arrives between the bar and the first row moves every row down to say so. -->
-        <span class="stable-feedback" aria-live="polite">{feedback}</span>
         <TableToolsMenu
           sorts={[
             {
@@ -1293,7 +1296,6 @@ offering it.
         onSelect={selectInvitationView}
       />
       <span class="push-end">
-        <span class="stable-feedback" aria-live="polite">{feedback}</span>
         <TableToolsMenu
           sorts={[
             {
@@ -1865,23 +1867,6 @@ offering it.
     flex: 1;
     flex-direction: column;
     min-height: 0;
-  }
-
-  .stable-feedback {
-    color: var(--success);
-    flex: none;
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    max-width: 18rem;
-    min-width: 0;
-    overflow: hidden;
-    text-box: trim-both cap alphabetic;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stable-feedback:empty {
-    display: none;
   }
 
   .user-results,

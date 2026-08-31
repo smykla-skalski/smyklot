@@ -5,6 +5,7 @@
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
   import type { FilterSection } from '../filter-menu';
+  import { receipts } from '../receipts.svelte';
   import type {
     AddRootInvitationInput,
     InvitationDays,
@@ -294,6 +295,11 @@
       declinedLogin = null;
       generatedLink = invitation.invite_url ?? '';
       generatedFor = invitation.account.login;
+      /* Sticky: the link is the whole of what this did, and it works once. */
+      receipts.say(
+        `Operator invite link made for @${invitation.account.login} - it works once and expires in ${expiresInDays} ${expiresInDays === 1 ? 'day' : 'days'}`,
+        { sticky: true },
+      );
       await loadPage(undefined, false);
     } catch (error) {
       if (error instanceof PanelApiError && error.code === 'invitation_declined') {
@@ -311,6 +317,7 @@
     try {
       await navigator.clipboard.writeText(generatedLink);
       copyProblem = null;
+      receipts.say(`Copied the invite link for @${generatedFor}`);
     } catch {
       // A clipboard that refuses used to reject into nothing at all, so the press looked like it
       // had worked and the link was not where you went looking for it. The message says what to do
@@ -373,8 +380,12 @@
            entry the confirmation was occupying: one press of Back leaves the
            reissue rather than walking back through the question. */
         dialogRoute.open(CREATE_DIALOG);
+        receipts.say(`A fresh link is out for @${updated.account.login} - it expires in 7 days`, {
+          sticky: true,
+        });
       } else {
         await revoke(actionInvitation.id);
+        receipts.say(`Invitation for @${actionInvitation.account.login} revoked`);
         if (dialogRoute.isOpen(ACTION_DIALOG)) dialogRoute.close();
       }
       await loadPage(undefined, false);
