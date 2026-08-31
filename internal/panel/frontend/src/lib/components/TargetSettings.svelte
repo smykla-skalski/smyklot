@@ -244,7 +244,7 @@
   function saveIndexDraft(amount: string, unit: DurationUnit): boolean {
     const seconds = Math.round(Number(amount) * UNIT_SECONDS[unit]);
     if (!Number.isFinite(seconds) || seconds < 60 || seconds > 604_800) {
-      failure = 'Path index interval must be from 1 minute to 7 days';
+      failure = 'File index interval must be from 1 minute to 7 days';
       return false;
     }
     return stage(
@@ -351,15 +351,13 @@ settings from them answers a different question than the one they asked.
                 undefined}
             >
               <span class="setting-say">
-                <span class="setting-name">Path index</span>
-                <span class="setting-why"
-                  >How often each repository's file list is read again for the finder and the plans</span
-                >
+                <span class="setting-name">File index</span>
+                <span class="setting-why">How often each repository's file list is read again</span>
               </span>
               {#if target.path_index_interval_seconds_override === null}
                 <span class="policy-value">
                   <span class="setting-unmanaged"
-                    >Follows the deployment - every {formatDuration(
+                    >From the service: every {formatDuration(
                       durationParts(target.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
                     )}</span
                   >
@@ -385,7 +383,7 @@ settings from them answers a different question than the one they asked.
                   <input
                     class="num-inline num-short"
                     inputmode="numeric"
-                    aria-label="Path index interval amount"
+                    aria-label="File index interval amount"
                     value={indexAmountShown}
                     disabled={frozen}
                     oninput={(event) => typeIndexAmount(event.currentTarget.value)}
@@ -393,7 +391,7 @@ settings from them answers a different question than the one they asked.
                   />
                   <Popover
                     role="listbox"
-                    label="Path index interval unit"
+                    label="File index interval unit"
                     align="end"
                     itemSelector=".menu-item"
                   >
@@ -402,7 +400,7 @@ settings from them answers a different question than the one they asked.
                         {...attributes}
                         class="value-select"
                         type="button"
-                        aria-label="Path index interval unit"
+                        aria-label="File index interval unit"
                         disabled={frozen}
                       >
                         <span class="t">{indexUnitShown}</span>

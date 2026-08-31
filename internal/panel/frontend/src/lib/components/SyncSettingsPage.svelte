@@ -369,7 +369,7 @@ turns the unmanaged names into rows of their own.
                 </span>
                 {#if !managed}
                   <span class="policy-value">
-                    <span class="setting-unmanaged">Follows each repository</span>
+                    <span class="setting-unmanaged">From each repository</span>
                   </span>
                   <button
                     class="setting-clear"

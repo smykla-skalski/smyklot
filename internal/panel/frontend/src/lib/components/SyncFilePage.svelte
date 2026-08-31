@@ -1027,7 +1027,7 @@ where it arises.
       </div>
 
       {#if repositoryRows.length === 0}
-        <p class="sync-empty">No repositories are available for this installation</p>
+        <p class="sync-empty">No repositories are available in this workspace</p>
       {/if}
 
       {#each repositoryRows as entry (entry.repository_id)}

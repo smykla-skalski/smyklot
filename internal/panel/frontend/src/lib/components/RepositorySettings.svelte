@@ -435,7 +435,7 @@ so a link points at the pane a colleague was asked to look at.
             {#if detail.pending_ci_mode_override === null}
               <span class="policy-value">
                 <span class="setting-unmanaged"
-                  >Follows workspace - {detail.pending_ci_mode_inherited}</span
+                  >From the workspace: {detail.pending_ci_mode_inherited}</span
                 >
               </span>
               <button
@@ -518,7 +518,7 @@ so a link points at the pane a colleague was asked to look at.
             {#if detail.pending_ci_branch_patterns_override === null}
               <span class="policy-value">
                 <span class="setting-unmanaged"
-                  >Follows workspace - {detail.pending_ci_branch_patterns_inherited.include.join(
+                  >From the workspace: {detail.pending_ci_branch_patterns_inherited.include.join(
                     ', ',
                   )}</span
                 >
@@ -622,15 +622,13 @@ so a link points at the pane a colleague was asked to look at.
               undefined}
           >
             <span class="setting-say">
-              <span class="setting-name">Path index</span>
-              <span class="setting-why"
-                >How often this repository's file list is read again for the finder and the plans</span
-              >
+              <span class="setting-name">File index</span>
+              <span class="setting-why">How often this repository's file list is read again</span>
             </span>
             {#if detail.path_index_interval_seconds_override === null}
               <span class="policy-value">
                 <span class="setting-unmanaged"
-                  >Follows the installation - every {formatDuration(
+                  >From the workspace: every {formatDuration(
                     durationParts(detail.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
                   )}</span
                 >
@@ -648,7 +646,7 @@ so a link points at the pane a colleague was asked to look at.
                 <input
                   class="num-inline num-short"
                   inputmode="numeric"
-                  aria-label="Path index interval amount"
+                  aria-label="File index interval amount"
                   value={indexAmountShown}
                   disabled={readOnly}
                   oninput={(event) => typeIndexAmount(event.currentTarget.value)}
@@ -656,7 +654,7 @@ so a link points at the pane a colleague was asked to look at.
                 />
                 <Popover
                   role="listbox"
-                  label="Path index interval unit"
+                  label="File index interval unit"
                   align="end"
                   itemSelector=".menu-item"
                 >
@@ -665,7 +663,7 @@ so a link points at the pane a colleague was asked to look at.
                       {...attributes}
                       class="value-select"
                       type="button"
-                      aria-label="Path index interval unit"
+                      aria-label="File index interval unit"
                       {disabled}
                     >
                       <span class="t">{indexUnitShown}</span>
@@ -690,7 +688,7 @@ so a link points at the pane a colleague was asked to look at.
               </span>
               <button
                 class="setting-clear"
-                title="Stop answering - follow the installation"
+                title="Stop answering - take the value from the workspace"
                 {disabled}
                 onclick={() => setPathIndex(null)}
               >
@@ -779,7 +777,7 @@ so a link points at the pane a colleague was asked to look at.
                   name="repository-enabled-{repository.id}"
                   label="Smyklot in {repository.name}"
                   options={[
-                    { value: 'inherit', label: 'Follows the workspace' },
+                    { value: 'inherit', label: 'From the workspace' },
                     { value: 'enabled', label: 'On' },
                     { value: 'disabled', label: 'Off' },
                   ]}

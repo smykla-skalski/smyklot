@@ -543,7 +543,7 @@ applied on save would give nobody the chance to read the deletions first.
       id="sync-heading"
       section="Sync"
       title="Sync"
-      description="What every repository in this installation should look like, and what Smyklot would change to make that true"
+      description="What every repository in this workspace should look like, and what Smyklot would change to make that true"
     />
   </section>
 {/if}

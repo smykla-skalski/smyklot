@@ -492,7 +492,7 @@ without the composer.
             {#if current.log_level.override === null}
               <span class="policy-value">
                 <span class="setting-unmanaged"
-                  >Follows the deployment - {capitalize(current.log_level.deployment)}</span
+                  >From the deployment: {capitalize(current.log_level.deployment)}</span
                 >
               </span>
               <button
@@ -548,7 +548,7 @@ without the composer.
               </span>
               <button
                 class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
+                title="Stop overriding - take the value from the deployment"
                 disabled={saving}
                 onclick={() => setLogLevel(null)}
               >
@@ -579,7 +579,7 @@ without the composer.
             {#if current.session_lifetime.override_seconds === null}
               <span class="policy-value">
                 <span class="setting-unmanaged"
-                  >Follows the deployment - {formatDuration(
+                  >From the deployment: {formatDuration(
                     current.session_lifetime.deployment_seconds,
                     SESSION_SPEC.units,
                   )}</span
@@ -600,7 +600,7 @@ without the composer.
               </span>
               <button
                 class="setting-clear"
-                title="Stop overriding - follow the deployment configuration"
+                title="Stop overriding - take the value from the deployment"
                 disabled={saving}
                 onclick={() => setDuration(SESSION_SPEC, null)}
               >

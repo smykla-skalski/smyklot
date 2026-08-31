@@ -92,7 +92,7 @@ describe('Root runtime settings drafts', () => {
         .locator('.policy-row')
         .filter({ has: page.getByRole('textbox', { name: 'Session lifetime amount' }) });
       await sessionRow
-        .getByRole('button', { name: 'Stop overriding - follow the deployment configuration' })
+        .getByRole('button', { name: 'Stop overriding - take the value from the deployment' })
         .click();
       expect(writes).toHaveLength(1);
       const restored = runtimeUpdate(page);
@@ -102,7 +102,7 @@ describe('Root runtime settings drafts', () => {
         session_ttl_seconds: null,
         expected_revision: 1,
       });
-      await page.getByText('Follows the deployment - 1 day').waitFor({ state: 'visible' });
+      await page.getByText('From the deployment: 1 day').waitFor({ state: 'visible' });
       expect(writes).toHaveLength(2);
       expect(crashes).toEqual([]);
     } finally {

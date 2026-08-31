@@ -15,7 +15,7 @@ export function repositorySentence(
   fleet: SyncStatus | null = null,
   visibility = false,
 ): string {
-  if (!repository.available) return 'Not reachable - the installation cannot see it';
+  if (!repository.available) return 'Not reachable - Smyklot cannot see it';
 
   const parts: string[] = [];
   /* Only the page says it. The list has a column of names already narrow

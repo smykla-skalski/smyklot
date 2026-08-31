@@ -22,12 +22,16 @@
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
 
+  /* The level a value comes from, named as a place rather than as a document: the
+     dictionary allows "from the workspace" and "from the service", and the four
+     phrases this used to carry - "the application defaults", "workspace defaults",
+     "the deployment configuration" - are the words it retires. */
   const SOURCE_BY_SCOPE = {
-    target: 'the application defaults',
-    repository: 'workspace defaults',
-    runtime: 'the deployment configuration',
-    template: 'the workspace formatting policy',
-    path: 'the repository formatting policy',
+    target: 'the service',
+    repository: 'the workspace',
+    runtime: 'the deployment',
+    template: 'the workspace',
+    path: 'the repository',
   } as const;
 
   const {
@@ -242,7 +246,7 @@ three things among thirty finds them again.
             {:else}
               <span class="policy-value number-control">
                 {#if formattingPatchValue(draft, field) !== undefined}
-                  <AppTooltip text="Stop overriding - follow {source}">
+                  <AppTooltip text="Stop overriding - take the value from {source}">
                     {#snippet children(attributes)}
                       <button
                         {...attributes}
@@ -257,9 +261,7 @@ three things among thirty finds them again.
                     {/snippet}
                   </AppTooltip>
                 {:else}
-                  <AppTooltip
-                    text="Follows {source} · currently {formattingPolicyValue(baseline, field)}"
-                  >
+                  <AppTooltip text="From {source}: {formattingPolicyValue(baseline, field)}">
                     {#snippet children(attributes)}
                       <span {...attributes} class="link-toggle">
                         <Icon name="link" size="sm" strokeWidth={2} />

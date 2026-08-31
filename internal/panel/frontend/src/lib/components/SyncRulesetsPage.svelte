@@ -222,7 +222,7 @@ decisions every kind carries: removal, and the names left alone.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This installation's rulesets are stored in a form this version of Smyklot cannot read, so they
+      This workspace's rulesets are stored in a form this version of Smyklot cannot read, so they
       are not shown and nothing here can be changed. Nothing has been lost.
     </p>
   {/if}
@@ -230,7 +230,7 @@ decisions every kind carries: removal, and the names left alone.
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
       {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub.
+      workspace's App page on GitHub.
     </p>
   {/if}
 

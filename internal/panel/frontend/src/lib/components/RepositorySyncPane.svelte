@@ -704,12 +704,12 @@ customization it described.
       <span class="setting-say">
         <span class="setting-name">File sync</span>
         <span class="setting-why"
-          >Whether the organization's files are written in this repository at all</span
+          >Whether the workspace's shared files are written in this repository at all</span
         >
       </span>
       {#if wanted === null}
         <span class="policy-value">
-          <span class="setting-unmanaged">Follows the installation</span>
+          <span class="setting-unmanaged">From the workspace</span>
         </span>
         <button
           class="setting-clear"
@@ -726,7 +726,7 @@ customization it described.
         </span>
         <button
           class="setting-clear"
-          title="Stop answering - follow the installation"
+          title="Stop answering - take the value from the workspace"
           {disabled}
           onclick={() => setWanted(null)}
         >
@@ -739,10 +739,10 @@ customization it described.
       data-unsaved={dirtyDocument || undefined}
     >
       <span class="setting-say">
-        <span class="setting-name">Files to leave alone here</span>
+        <span class="setting-name">Ignored in this repository</span>
         <span class="setting-why"
-          >Paths or patterns, where * stands for any run of characters. These narrow what the
-          installation synchronizes; they never widen it</span
+          >Patterns, where * stands for any run of characters. A file named here is never written or
+          removed in this repository</span
         >
       </span>
       <div class="pattern-line">

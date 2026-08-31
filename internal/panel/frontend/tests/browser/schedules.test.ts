@@ -97,7 +97,7 @@ describe('background work schedules [Integration]', () => {
       const decide = page.locator('.card', {
         has: page.getByRole('heading', { name: 'Needs a decision' }),
       });
-      await decide.getByText(/asks: Path indexing every 30 minutes/).waitFor();
+      await decide.getByText(/asks: File indexing every 30 minutes/).waitFor();
       await decide
         .getByText('Refresh which paths are watched during the release preparation window', {
           exact: false,

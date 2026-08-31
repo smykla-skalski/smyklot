@@ -9,6 +9,10 @@
     ScheduleProfile,
     ScheduleRequest,
   } from '#lib/types.js';
+  /* One name per job, wherever it is read. A workspace used to keep a second table
+     of its own, so the row a member asked about and the row an operator answered
+     named the same job two ways. */
+  import { workloadTitle } from '#lib/workloads.js';
 
   import Button from './Button.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
@@ -36,15 +40,6 @@
     'sync_scan',
     'path_refresh',
   ]);
-
-  const WORKLOAD_TITLES: Partial<Record<QueueWorkload, string>> = {
-    pending_ci: 'Merge after CI',
-    pending_ci_gate: 'Merge-after-CI gate',
-    reaction_scan: 'Reaction commands',
-    config_migration: 'Configuration migration',
-    sync_scan: 'Organization sync',
-    path_refresh: 'Path index',
-  };
 
   const DAY = 24 * 60;
 
@@ -96,10 +91,6 @@
       profile.windows.length === 7 &&
       profile.windows.every((window) => window.start_minute === 0 && window.end_minute >= DAY)
     );
-  }
-
-  function workloadTitle(kind: QueueWorkload): string {
-    return WORKLOAD_TITLES[kind] ?? kind;
   }
 
   function requestedWindow(request: ScheduleRequest): string {

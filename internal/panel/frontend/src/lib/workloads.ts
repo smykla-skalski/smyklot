@@ -1,61 +1,65 @@
 import type { QueueWorkload } from './types';
 
 /**
- * What each background lane is called, and what it does.
+ * What each background job is called, and what it does.
  *
- * The Schedules page names them in a table and the console's overview names one
- * in a sentence, so the words live here rather than in whichever page said them
- * first. A lane whose title differs between two pages is a lane an operator
- * cannot search for.
+ * The Schedules page names them in a sentence and the console's overview names
+ * one in a row, so the words live here rather than in whichever page said them
+ * first. A job whose title differs between two pages is a job an operator cannot
+ * search for.
+ *
+ * Each description says what the job DOES, in the third person and with the job
+ * as the subject - "Accepts what GitHub sends", never "Accept and deliver GitHub
+ * events", which reads as an instruction to the reader.
  */
 export const WORKLOAD_COPY: Record<QueueWorkload, { title: string; description: string }> = {
   webhook_delivery: {
-    title: 'Webhook delivery',
-    description: 'Accept and deliver GitHub events',
+    title: 'Webhook intake',
+    description: 'Accepts what GitHub sends',
   },
   pending_ci: {
-    title: 'Pending CI checks',
-    description: 'Recheck merge requests waiting on CI',
+    title: 'CI re-checks',
+    description: 'Rechecks merge requests waiting on CI',
   },
   pending_ci_gate: {
     title: 'Deferred CI gate',
-    description: 'Wake deferred checks after their quiet period',
+    description: 'Wakes deferred checks after their quiet period',
   },
   catalog_refresh: {
     title: 'Catalog refresh',
-    description: 'Discover installations and repositories',
+    description: 'Discovers workspaces and their repositories',
   },
   reaction_scan: {
     title: 'Reaction discovery',
-    description: 'Find pull request approval reactions',
+    description: 'Finds pull request approval reactions',
   },
   config_migration: {
     title: 'Configuration migration',
-    description: 'Move repositories to the current configuration',
+    description: 'Moves repositories to the current configuration',
   },
   sync_scan: {
-    title: 'Organization sync scan',
-    description: 'Compute drift and prepare an approval plan',
+    title: 'Workspace sync scan',
+    description: 'Computes drift and prepares plans',
   },
   sync_apply: {
     title: 'Sync plan execution',
-    description: 'Apply a previously approved organization plan',
+    description: 'Applies a plan an owner has approved',
   },
   path_refresh: {
-    title: 'Path indexing',
-    description: 'Refresh repository configuration paths',
+    title: 'File indexing',
+    description: "Refreshes each repository's file list",
   },
   delivery_cleanup: {
     title: 'Delivery retention',
-    description: 'Remove expired delivery history',
+    description: 'Archives deliveries past their retention window',
   },
   auth_cleanup: {
-    title: 'Authentication cleanup',
-    description: 'Remove expired sessions and credentials',
+    title: 'Sign-in session cleanup',
+    description: 'Ends sign-in sessions and credentials past their lifetime',
   },
   schedule_change: {
     title: 'Schedule change',
-    description: 'Apply an approved recurring policy request',
+    description: 'Applies a timing change an operator has approved',
   },
 };
 

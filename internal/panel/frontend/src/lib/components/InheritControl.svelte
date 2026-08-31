@@ -31,11 +31,11 @@
   } = $props();
 
   const overridden = $derived(value !== null);
-  const linkedTip = $derived(
-    `Follows ${source} · currently ${inheritedLabel} · pick a value to override`,
-  );
+  /* A value names its source in words - "from the workspace", "set here" - rather than
+     leaving the reader to finish a dangling "follows". */
+  const linkedTip = $derived(`From ${source}: ${inheritedLabel} · pick a value to override it`);
   const brokenTip = $derived(
-    `Overrides ${source} · press to follow ${sourcePronoun} again · restores ${inheritedLabel}`,
+    `Set here · press to take the value from ${sourcePronoun} again · restores ${inheritedLabel}`,
   );
 
   /**

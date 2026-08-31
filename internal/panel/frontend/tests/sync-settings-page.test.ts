@@ -190,6 +190,6 @@ describe('SyncSettingsPage [Component]', () => {
     await fireEvent.click(everything as HTMLInputElement);
 
     expect(document.querySelectorAll('.policy-row')).toHaveLength(17);
-    expect(row('Merge commits').textContent).toContain('Follows each repository');
+    expect(row('Merge commits').textContent).toContain('From each repository');
   });
 });
