@@ -138,6 +138,42 @@
   );
   const selectionKey = $derived(`${activeRow?.id ?? ''}:${collapsed}`);
 
+  /* ---------- The collapsed strip's one tooltip ----------
+
+     Every `[data-tip]` control in the strip shares it - the rows, the fold, the
+     workspace switch, Search and the foot - because a name-on-hover per control is a
+     name-on-hover positioned inside the tree, and the tree is the scroll region. */
+
+  let tip = $state<{ text: string; x: number; y: number } | null>(null);
+
+  function showTip(target: EventTarget | null, keyboard = false): void {
+    if (!collapsed || !(target instanceof Element)) {
+      tip = null;
+      return;
+    }
+    const anchor = target.closest<HTMLElement>('[data-tip]');
+    // A keyboard tip belongs to a visible focus ring, not to any focus at all.
+    if (anchor === null || (keyboard && !anchor.matches(':focus-visible'))) {
+      tip = null;
+      return;
+    }
+    const text = anchor.dataset.tip ?? '';
+    if (text === '') {
+      tip = null;
+      return;
+    }
+    const box = anchor.getBoundingClientRect();
+    tip = {
+      text,
+      x: Math.round(box.right + 10),
+      y: Math.round(box.top + box.height / 2),
+    };
+  }
+
+  function hideTip(): void {
+    tip = null;
+  }
+
   function plainClick(event: MouseEvent): boolean {
     return !(
       event.button !== 0 ||
@@ -328,7 +364,14 @@ Collapsed is a state the shell owns rather than the sidebar, because the content
 it has to answer to the same fact.
 -->
 
-<aside class="side" aria-label={kicker}>
+<aside
+  class="side"
+  aria-label={kicker}
+  onpointerover={(event) => showTip(event.target)}
+  onpointerout={hideTip}
+  onfocusin={(event) => showTip(event.target, true)}
+  onfocusout={hideTip}
+>
   <div class="side-head">
     <span class="side-kicker">{kicker}</span>
     <span class="side-title">{title}</span>
@@ -380,7 +423,9 @@ it has to answer to the same fact.
       <kbd>⌘K</kbd>
     </button>
   {/if}
-  <nav class="tree" aria-label={label} use:followSelection={selectionKey}>
+  <!-- A scrolling tree moves the anchors out from under a fixed layer, so the tip goes
+       rather than hanging beside a row that has left. -->
+  <nav class="tree" aria-label={label} use:followSelection={selectionKey} onscroll={hideTip}>
     <span class="nav-thumb" aria-hidden="true"></span>
     {#each entries as entry (entry.id)}
       {#if isGroup(entry)}
@@ -458,6 +503,21 @@ it has to answer to the same fact.
         </AccountMenu>
       {/if}
     </div>
+  {/if}
+  <!-- ONE TOOLTIP FOR THE WHOLE STRIP, and it is fixed. A name-on-hover written as a
+       pseudo-element on each row is positioned inside the tree, which is the scroll
+       region - so the row nearest either end had its name clipped away by the very
+       overflow that makes the tree scrollable. -->
+  {#if tip !== null}
+    <!-- `style:` and not a style attribute: the panel's CSP allows the directive's
+         property set and refuses an inline attribute. -->
+    <span
+      class="side-tip"
+      role="presentation"
+      aria-hidden="true"
+      style:--tip-x="{tip.x}px"
+      style:--tip-y="{tip.y}px">{tip.text}</span
+    >
   {/if}
 </aside>
 
@@ -1126,30 +1186,27 @@ it has to answer to the same fact.
       margin: 0;
       position: absolute;
     }
+  }
 
-    /* Name-on-hover for the icon rows, the same recipe as the rail. */
-    :global(.app-shell.sidebar-collapsed) .tree-row::after {
-      background: var(--sidebar-popover-bg);
-      border: 1px solid var(--sidebar-popover-border);
-      border-radius: 6px;
-      box-shadow: var(--shadow-popover);
-      color: var(--sidebar-menu-text);
-      content: attr(data-tip);
-      font-size: var(--font-size-micro);
-      inset-inline-start: calc(100% + 10px);
-      opacity: 0;
-      padding: 0.3rem 0.5rem;
-      pointer-events: none;
-      position: absolute;
-      top: 50%;
-      translate: 0 -50%;
-      white-space: nowrap;
-      z-index: var(--layer-flyout);
-    }
-
-    :global(.app-shell.sidebar-collapsed) .tree-row:is(:hover, :focus-visible)::after {
-      opacity: 1;
-    }
+  /* The collapsed strip's one tooltip. It lives inside the sidebar so it wears the
+     ACTIVE console's material - the Root strip is dark in both page themes and its tip
+     stays dark with it - and it is FIXED, which is what carries it out of the tree's
+     own overflow. */
+  .side-tip {
+    background: var(--sidebar-popover-bg);
+    border: 1px solid var(--sidebar-popover-border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-popover);
+    color: var(--sidebar-menu-text);
+    font-size: var(--font-size-micro);
+    inset-block-start: var(--tip-y, 0);
+    inset-inline-start: var(--tip-x, 0);
+    padding: var(--space-1) var(--space-2);
+    pointer-events: none;
+    position: fixed;
+    translate: 0 -50%;
+    white-space: nowrap;
+    z-index: var(--layer-flyout);
   }
 
   /* ---------- Responsive: the sidebar becomes a drawer, never nothing ----------
