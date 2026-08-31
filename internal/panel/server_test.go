@@ -1303,6 +1303,26 @@ func TestPanelRootOverview(t *testing.T) {
 	)
 	requireResponse(t, invalid, "invalid Root audit category", http.StatusBadRequest)
 
+	// The export is the same filtered audit, written as a file rather than a page.
+	export := harness.request(
+		t, http.MethodGet,
+		"/panel/api/v1/root/history/audit.csv?category=configuration&sort=newest",
+		nil, rootSession,
+	)
+	requireResponse(
+		t, export, "Root audit export", http.StatusOK,
+		"when,actor,workspace,subject,category,action,summary,elevation",
+		"configuration,installation.settings.saved,",
+	)
+	if disposition := export.Header().Get("Content-Disposition"); !strings.Contains(
+		disposition, "attachment; filename=\"smyklot-audit-",
+	) {
+		t.Fatalf("audit export disposition = %q", disposition)
+	}
+	if kind := export.Header().Get("Content-Type"); kind != "text/csv; charset=utf-8" {
+		t.Fatalf("audit export content type = %q", kind)
+	}
+
 	rootUsers := harness.request(
 		t, http.MethodGet,
 		"/panel/api/v1/root/access/users?system_role=super_root&status=active&sort=role_desc&limit=10",

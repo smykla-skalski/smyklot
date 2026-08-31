@@ -213,7 +213,13 @@ func panelWireNameProbePaths() []string {
 
 // The event stream is not JSON and cannot be read by a request that expects a
 // body to end, so it is named here rather than left to look like an oversight.
-var notJSONRoutes = map[string]bool{"/api/v1/events": true}
+// The two readable routes that answer with something other than JSON: the event
+// stream, and the audit export, whose field names are its CSV header and are
+// checked where that header is.
+var notJSONRoutes = map[string]bool{
+	"/api/v1/events":                 true,
+	"/api/v1/root/history/audit.csv": true,
+}
 
 // The wildcards the readable routes use that the authorization matrix has no
 // reason to name, since it only walks the installation-scoped ones. A section

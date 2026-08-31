@@ -1964,6 +1964,7 @@ async function handle(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/failures$/,
     );
     const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
+    const rootAuditExport = path === '/api/v1/root/history/audit.csv';
     const rootPendingCICheck = path.match(
       /^\/api\/v1\/root\/pending-ci\/(?<request>[^/]+)\/check$/,
     );
@@ -2110,6 +2111,35 @@ async function handle(
       broadcastInvitation(state, current);
       saveDevState(state);
       respond(res, 200, publicInvitationValue(current));
+      return;
+    }
+
+    /* The same records the audit page shows, written as the service writes them:
+       a header, then one row each, filtered the way the page is filtered. */
+    if (rootAuditExport && method === 'GET') {
+      const categories = parsed.searchParams.getAll('category').filter((value) => value !== 'all');
+      const rows = rootAuditEntries(state).filter(
+        (entry) => categories.length === 0 || categories.includes(entry.category ?? ''),
+      );
+      const csv = [
+        'when,actor,workspace,subject,category,action,summary,elevation',
+        ...rows.map((entry) =>
+          [
+            entry.created_at,
+            entry.actor.login,
+            entry.installation?.login ?? '',
+            entry.subject?.login ?? '',
+            entry.category ?? '',
+            entry.action,
+            `"${entry.summary.replaceAll('"', '""')}"`,
+            String(entry.elevation_id !== undefined),
+          ].join(','),
+        ),
+      ].join('\n');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="smyklot-audit-dev.csv"');
+      res.end(`${csv}\n`);
       return;
     }
 

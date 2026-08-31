@@ -350,6 +350,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"POST "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}/restore",
 		s.postRootSettingsRestore,
 	)
+	mux.HandleFunc("GET "+base+"/api/v1/root/history/audit.csv", s.getRootAuditExport)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/access/users/{account}", s.putRootUser)

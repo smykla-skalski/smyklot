@@ -67,6 +67,7 @@
     targetId="root"
     {section}
     fetchAudit={session.api.fetchRootAudit}
+    exportAudit={session.api.rootAuditExportHref}
     fetchFailures={session.api.fetchRootFailures}
     fetchSettingsCheckpoint={session.api.fetchRootInstallationSettingsCheckpoint}
     restoreSettingsCheckpoint={session.api.restoreRootInstallationSettingsCheckpoint}

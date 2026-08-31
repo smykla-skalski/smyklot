@@ -164,6 +164,8 @@ export interface PanelApi {
     input: SettingsRestoreInput,
   ): Promise<RootRuntimeSettings>;
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
+  /** The same filtered audit as a file, said as an address the browser can download. */
+  rootAuditExportHref(request: AuditHistoryRequest): string;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
   saveRootInstallationSettings(
@@ -724,6 +726,22 @@ export function createPanelApi(
       return postDocument(
         `/api/v1/root/runtime/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
         input,
+      );
+    },
+
+    /**
+     * Where the same filtered audit can be fetched as a file.
+     *
+     * An address rather than a request: the browser downloads it with the session
+     * cookie it already has, which is what makes the button a link rather than a
+     * fetch that would have to hold the whole export in memory to hand it back.
+     */
+    rootAuditExportHref(history: AuditHistoryRequest): string {
+      return panelUrl(
+        base,
+        withHistoryQuery('/api/v1/root/history/audit.csv', history, {
+          category: history.categories ?? [],
+        }),
       );
     },
 

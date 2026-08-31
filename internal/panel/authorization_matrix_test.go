@@ -40,6 +40,7 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodPost, "/panel/api/v1/root/access/invitations/" + invitation + "/reissue"},
 		{http.MethodDelete, "/panel/api/v1/root/access/invitations/" + invitation},
 		{http.MethodGet, "/panel/api/v1/root/history/audit"},
+		{http.MethodGet, "/panel/api/v1/root/history/audit.csv"},
 		{http.MethodGet, "/panel/api/v1/root/history/failures"},
 		{http.MethodGet, "/panel/api/v1/root/runtime/settings"},
 		{http.MethodPut, "/panel/api/v1/root/runtime/settings"},

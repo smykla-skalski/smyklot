@@ -80,6 +80,7 @@
   const {
     targetId,
     fetchAudit,
+    exportAudit,
     fetchFailures,
     context = 'installation',
     section,
@@ -100,6 +101,11 @@
   }: {
     targetId: string;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
+    /**
+     * Where the same filtered audit can be downloaded, for the callers that have
+     * such an address. Absent is how a page says it offers no export.
+     */
+    exportAudit?: (request: AuditHistoryRequest) => string;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     context?: HistoryContext;
     section?: HistoryType;
@@ -244,6 +250,22 @@
       }),
     getNextPageParam: (lastPage) => lastPage.next_cursor ?? undefined,
   }));
+  /* The export carries the filters the page is wearing, so the file holds what the
+     reader is looking at rather than everything. The limit is the server's to
+     choose - it writes every page there is - so a token one is sent. */
+  const exportHref = $derived(
+    exportAudit === undefined
+      ? null
+      : exportAudit({
+          query: appliedQuery,
+          sort,
+          limit,
+          scope: auditScope,
+          change: auditChange,
+          categories: [...auditCategories],
+        }),
+  );
+
   const failureQuery = createInfiniteQuery(() => ({
     queryKey: ['failures', targetId, appliedQuery, sort, failureKind, limit],
     initialPageParam: undefined as string | undefined,
@@ -795,7 +817,15 @@ where the record is.
   aria-labelledby={context === 'root' ? 'root-page-heading' : 'history-heading'}
 >
   {#if context === 'root'}
-    <RootPageHeader title={historyType === 'audit' ? 'Audit' : 'Failures'} subtitle={description} />
+    <RootPageHeader title={historyType === 'audit' ? 'Audit' : 'Failures'} subtitle={description}>
+      <!-- The whole filtered record as a file, for the reader whose next question
+           is one no page answers. A link, not a fetch: the browser downloads it
+           with the session it already has, and nothing here holds a year of audit
+           in memory to hand it over. -->
+      {#if historyType === 'audit' && exportHref !== null}
+        <Button href={exportHref} download>Export</Button>
+      {/if}
+    </RootPageHeader>
   {:else}
     <PageHeader
       id="history-heading"
