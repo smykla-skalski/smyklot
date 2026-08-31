@@ -931,5 +931,39 @@ unlisted labels are removed, and the patterns left alone either way.
     .card-head {
       flex-wrap: wrap;
     }
+
+    /* THE ROW RE-FORMS, like every other row does here. Four columns cannot stand
+       on a 320px page: an 11rem name track and the 9rem floor an empty description
+       keeps for its own prompt are 320px between them before the swatch and the
+       delete are drawn, so the row set the document's width and Chrome answered by
+       zooming the whole page to 80%. The description takes the line below the name,
+       and an empty one asks for nothing. */
+    .label-row {
+      grid-template-columns: auto minmax(0, 1fr) auto;
+    }
+
+    .label-row .swatch-wrap {
+      grid-column: 1;
+      grid-row: 1;
+    }
+
+    .label-row .label-name {
+      grid-column: 2;
+      grid-row: 1;
+    }
+
+    .label-row .label-tail {
+      grid-column: 3;
+      grid-row: 1;
+    }
+
+    .label-row .label-desc {
+      grid-column: 2 / -1;
+      grid-row: 2;
+    }
+
+    .label-row .label-desc:empty {
+      min-inline-size: 0;
+    }
   }
 </style>

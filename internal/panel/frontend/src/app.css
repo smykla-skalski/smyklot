@@ -2550,6 +2550,16 @@ thead th .icon-button:active:not(:disabled) {
   gap: var(--rhythm-card-gap);
 }
 
+/* A GRID ITEM'S AUTOMATIC MINIMUM IS ITS CONTENT, and a card holding something that
+   scrolls has content as wide as the file inside it. Without this the stack's track
+   grew to the widest line of a rendered template - 594px of JSON on a 320px phone -
+   and Chrome answers a page it cannot fit by zooming the whole thing out. The card
+   is what scrolls, not the page. */
+.card-stack > *,
+.view-frame > * {
+  min-inline-size: 0;
+}
+
 /* A phone gives the frame less room, so the card keeps less for itself. Six pages
    said this in six scoped copies of one property of one card. */
 @media (max-width: 36rem) {
@@ -3507,6 +3517,16 @@ button.object-row {
   font-size: var(--font-size-meta);
   min-block-size: 9px;
   text-box: trim-both cap alphabetic;
+}
+
+/* A VALUE BREAKS RATHER THAN DECIDING HOW WIDE THE PAGE IS. An endpoint is one
+   unbreakable run - `https://github.com/login/oauth/authorize` is 341px - and there
+   is no phone it fits on, so a row carrying one set the document's width and Chrome
+   answered by zooming the whole page out to 88%. Nothing in a fact is a value whose
+   line breaks matter; every one of them is read, not copied by eye. */
+.setting-fact,
+.setting-fact code {
+  overflow-wrap: anywhere;
 }
 
 .setting-unmanaged {
