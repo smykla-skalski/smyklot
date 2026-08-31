@@ -22,8 +22,9 @@ import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** Every route in the panel that renders a table, and which shell it renders in. */
 const TABLES = [
-  { route: 'i/access/users', shell: 'panel' },
-  { route: 'i/access/invitations', shell: 'panel' },
+  /* The workspace's own Users and Invitations are object lists rather than tables now -
+     a person is a name, a standing and one sentence - so they have no heading band to
+     read. The console's pair still does. */
   { route: 'i/history', shell: 'panel' },
   { route: 'root/queue', shell: 'root' },
   { route: 'root/queue/recent', shell: 'root' },

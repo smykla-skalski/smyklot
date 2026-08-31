@@ -127,10 +127,10 @@ async function pressEdge(
   });
   await target.waitForURL((url) => url.pathname === pathname);
   await target.getByRole('heading', { name: heading, exact: true }).waitFor({ state: 'visible' });
-  await target
-    .locator('.table-region tbody tr:not(.virtual-spacer)')
-    .first()
-    .waitFor({ state: 'visible' });
+  /* The first row, not the table: both of these pages are object lists now, and the
+     timing this file measures is how long the ROWS take to arrive - a heading is drawn
+     from the route alone and would say nothing about the read behind it. */
+  await target.locator('.object-list > li').first().waitFor({ state: 'visible' });
   return Date.now() - started;
 }
 

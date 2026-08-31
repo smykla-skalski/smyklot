@@ -1058,11 +1058,11 @@ a workspace has is not a number worth blocking the first screenful on.
   /* The name is a repository's, so it keeps the mono voice the rest of the product
      gives one - and it wraps rather than truncating, because a name is the row's
      subject and a cut-off subject is a row about nothing. */
+  /* A repository is named in the mono voice; the breaking is the shared rule's. */
   .repository-row .object-name {
     font-family: var(--mono);
     font-weight: 400;
     letter-spacing: 0;
-    overflow-wrap: anywhere;
   }
 
   /* A row is a way in, and says so. */

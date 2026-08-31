@@ -282,11 +282,11 @@ async function measure(path: string, width: number): Promise<Measured> {
 
 /** What the top bar offers a thumb on a phone. */
 const BAR_CONTROLS = [
-  ['the menu button', '.rail-pages'],
-  ['the account menu', '.rail-user'],
+  ['the menu button', '.top-menu'],
+  ['the workspace switch', '.top-ws'],
 ] as const;
 
-/** The size the platforms ask for, and what the overlay is built to give. */
+/** The size the platforms ask for, which these controls are drawn at. */
 const THUMB = 44;
 
 async function measureTarget(selector: string, pressCorner: boolean): Promise<Target> {
@@ -304,17 +304,12 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
       const control = document.querySelector(target);
       if (control === null) throw new Error(`${target} is not on the page`);
 
+      /* The control's own box IS the target here. The rail's tiles were compact
+         squares that grew an invisible overlay to reach the thumb size; the bar
+         that replaced them draws its controls at that size to begin with, so
+         there is no pseudo-element to read and nothing to be wrong about. */
       const own = control.getBoundingClientRect();
-      /* The overlay's box, read from the resolved insets of the pseudo-element
-         that draws it. A negative inset is the expansion. */
-      const overlay = getComputedStyle(control, '::after');
-      const px = (value: string): number => Number.parseFloat(value) || 0;
-      const area = {
-        left: own.left + px(overlay.left),
-        top: own.top + px(overlay.top),
-        right: own.right - px(overlay.right),
-        bottom: own.bottom - px(overlay.bottom),
-      };
+      const area = { left: own.left, top: own.top, right: own.right, bottom: own.bottom };
 
       const CONTROLS =
         'button, a[href], input:not([type=hidden]), select, textarea, [role="button"], [role="tab"], [role="switch"], [role="menuitem"]';
@@ -335,24 +330,24 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
         );
       }
 
-      /* The rail's CONTENT edges: its end border is the seam with the page,
-         not surface a control could be centred in. */
-      const rail = document.querySelector('.rail');
-      let bar: { left: number; right: number } | null = null;
-      if (rail !== null) {
-        const rect = rail.getBoundingClientRect();
-        const railStyle = getComputedStyle(rail);
+      /* The bar's CONTENT edges: its end border is the seam with the page, not
+         surface a control could be centred in. */
+      const barEl = document.querySelector('.top-bar');
+      let bar: { top: number; bottom: number } | null = null;
+      if (barEl !== null) {
+        const rect = barEl.getBoundingClientRect();
+        const barStyle = getComputedStyle(barEl);
         bar = {
-          left: rect.left + Number.parseFloat(railStyle.borderLeftWidth),
-          right: rect.right - Number.parseFloat(railStyle.borderRightWidth),
+          top: rect.top + Number.parseFloat(barStyle.borderTopWidth),
+          bottom: rect.bottom - Number.parseFloat(barStyle.borderBottomWidth),
         };
       }
 
       return {
         control: { width: own.width, height: own.height },
-        /* The rail is a column, so a seated control has equal room at its
-           SIDES - the vertical room is the column's own flow. */
-        seat: bar === null ? null : { above: own.left - bar.left, below: bar.right - own.right },
+        /* The bar is a row, so a seated control has equal room ABOVE and below -
+           the horizontal room is the row's own flow. */
+        seat: bar === null ? null : { above: own.top - bar.top, below: bar.bottom - own.bottom },
         area: {
           width: area.right - area.left,
           height: area.bottom - area.top,
@@ -365,9 +360,8 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
 
     let cornerOpensDrawer: boolean | null = null;
     if (pressCorner) {
-      /* Pressed where only the overlay is - a couple of pixels inside the far
-         corner, well outside the 28px the reader can see. A real press rather
-         than `.click()`, which fires the handler whether or not anything would
+      /* A couple of pixels inside the target's own corner, and a real press rather
+         than `.click()` - which fires the handler whether or not anything would
          actually have received it. */
       await page.mouse.click(measurement.corner.x, measurement.corner.y);
       await page.waitForTimeout(700);
@@ -450,19 +444,15 @@ describe('every page on a phone', () => {
 });
 
 /**
- * The top bar is the one part of the panel every page is reached through, and on
- * a phone its controls are 28-32px squares because that is the weight the bar
- * wants. They keep it: what grows is an invisible overlay that takes the press,
- * so these are measurements of what a thumb can hit rather than of what is drawn.
+ * The bar is the whole of the shell on a phone: the rail and the sidebar are both
+ * gone below 48rem, so the way into the pages, the name of the page, and the way
+ * across to another workspace are all here. Its controls are drawn at the thumb
+ * size rather than growing an overlay to reach it.
  */
 describe('the top bar on a phone', () => {
   it.each(BAR_CONTROLS.map(([name]) => name))('gives %s a thumb-sized target', (name) => {
     const target = targets.get(name);
     if (target === undefined) throw new Error(`${name} was never measured`);
-
-    // The precondition: the control is still the small square it is meant to be,
-    // so a change that simply made it bigger does not pass as this being fixed.
-    expect(target.control.width, `${name} is no longer a compact control`).toBeLessThan(THUMB);
 
     expect(
       Math.round(Math.min(target.area.width, target.area.height)),
@@ -489,25 +479,20 @@ describe('the top bar on a phone', () => {
     if (target.seat === null) throw new Error('the bar was not found');
 
     /* Equal room above and below, which is the cheapest true statement about a
-       control that is placed rather than one that has fallen into the flow.
-       Growing a hit area must not move anything, and the first attempt at it
-       did: a `position: relative` added for the overlay outranked the
-       `absolute` that puts the menu button in its corner, and the button
-       dropped into the row. Every size and overlap check here still passed. */
+       control that is placed rather than one that has fallen into the flow. */
     expect(
       Math.round(target.seat.above),
-      `${name} sits ${target.seat.above.toFixed(1)}px from the rail's near edge and ` +
-        `${target.seat.below.toFixed(1)}px from its far one`,
+      `${name} sits ${target.seat.above.toFixed(1)}px from the bar's top edge and ` +
+        `${target.seat.below.toFixed(1)}px from its bottom one`,
     ).toBe(Math.round(target.seat.below));
   });
 
-  it('opens the drawer from outside the menu button’s paint', () => {
+  it('opens the drawer from the menu button’s own corner', () => {
     const target = targets.get('the menu button');
     if (target === undefined) throw new Error('the menu button was never measured');
 
-    /* The whole claim, tested where it is made: a point no part of the visible
-       button covers still opens the navigation. Without this the size checks
-       above would pass on an overlay that had `pointer-events: none`. */
+    /* A real press rather than `.click()`, at a point inside the target: the size
+       checks above would pass on a control something else was covering. */
     expect(target.cornerOpensDrawer).toBe(true);
   });
 });

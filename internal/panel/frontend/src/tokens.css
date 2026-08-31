@@ -121,6 +121,11 @@
      sends hover and press in opposite directions on dark. */
   --danger-hover: color-mix(in srgb, var(--danger) 88%, black);
   --neutral-tint: var(--primitive-light-inset);
+  /* A ROLE IS NOT AN OUTCOME. The five outcome tints are spoken for - green means
+     settled, amber means waiting, red means refused - so a role wearing any of them
+     would report a state it does not have. Its own hue is the one left. */
+  --role-tint: #efeaf9;
+  --role-ink: #5b459f;
   /* These are the measured hover grounds, and they are measured ALONE: the steps
      `tests/control-states.test.ts` pins - 2.51 and 5.09 dE00 on light, 5.07 and
      8.92 on dark - are the distance from each track to the value written here.
@@ -603,7 +608,11 @@
      layers. */
   --layer-chrome: 10; /* the collapsed navigation side */
   --layer-sticky: 30; /* a sticky heading inside a scrolling pane */
-  --layer-scrim: 30; /* the dim behind an open side */
+  /* The phone's bar: over a sticky heading inside the pane it is pinned above, and
+     UNDER the drawer and the dim it opens - a drawer covers the bar it came from, or
+     the workspace's own name in its head is hidden behind the bar that names it. */
+  --layer-top-bar: 35;
+  --layer-scrim: 36; /* the dim behind an open side */
   --layer-side: 40; /* the navigation side, as a drawer */
   --layer-rail: 50; /* the workspace rail */
   /* Raised from 35, and the one value that moves. A popover opens from any
@@ -721,6 +730,8 @@
   --on-danger: #2e0b10;
   --danger-hover: color-mix(in srgb, var(--danger) 88%, white);
   --neutral-tint: var(--primitive-dark-inset);
+  --role-tint: #2a2440;
+  --role-ink: #c4b5fd;
   --interactive-hover: var(--primitive-dark-raised);
   /* Light, not dark. Hover lifts a control on a dark ground, so a press that darkened it sent the
      two states in opposite directions; press is now the same gesture one step further. Sized to
@@ -887,6 +898,9 @@
      name shorter now: the compatibility aliases are gone, and a rule that wants
      the muted ink asks for --text-muted. */
   --neutral-tint: var(--surface-inset);
+  /* The console's own ground is violet, so the panel's role tint would vanish into it. */
+  --role-tint: #372e50;
+  --role-ink: #cfc0ff;
   /* The header ramp, re-resolved rather than re-decided: the expressions are the
      ones in `:root` and the only thing that changes is what `--brand-action` and
      `--table-header-bg` mean here. A custom property computes where it is
@@ -1083,4 +1097,34 @@
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
+}
+
+/*
+  THE PHONE READS ONE STEP LARGER, AND THE LEADING MOVES WITH IT.
+
+  A 13px word at arm's length on a desk is a 13px word held 30cm from a face, and it is
+  not the same word. Every prose size steps up here - and the page title steps DOWN,
+  because a 28px heading on a 320px screen is two lines of shouting where the bar above
+  it already said which page this is.
+
+  A size and its leading are one decision. Stepping the sizes alone leaves a phone
+  reading the whole app one step bigger on the leading it had on a desktop: trimmed to
+  their caps the single lines still look right, and every description that wraps is
+  wrong. Whole pixels at a 16px root, as the Units law asks.
+*/
+@media (max-width: 47.9375rem) {
+  :root {
+    --font-size-micro: 0.75rem;
+    --font-size-compact: 0.8125rem;
+    --font-size-meta: 0.875rem;
+    --font-size-control: 0.875rem;
+    --font-size-body: 1rem;
+    --font-size-page-title: 1.5rem;
+    --leading-micro: 1.125rem; /* 18 under 12 */
+    --leading-compact: 1.25rem; /* 20 under 13 */
+    --leading-meta: 1.375rem; /* 22 under 14 */
+    --leading-body: 1.5rem; /* 24 under 16 */
+    --leading-title: 1.75rem; /* 28 under 18 */
+    --leading-page: 2rem; /* 32 under 24 */
+  }
 }

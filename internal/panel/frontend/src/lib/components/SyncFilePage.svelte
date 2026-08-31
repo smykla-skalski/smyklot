@@ -1605,90 +1605,17 @@ where it arises.
     line-height: var(--leading-flat);
   }
 
-  .choice-cards {
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  @media (max-width: 52rem) {
-    .choice-cards {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  .choice-card {
-    align-content: start;
-    align-items: center;
-    background: var(--surface-base);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-strip);
-    cursor: pointer;
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: auto 1fr;
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .choice-card:hover {
-    background: var(--surface-raised);
-    border-color: var(--control-border-hover);
-  }
-
-  .choice-card input {
-    opacity: 0;
-    pointer-events: none;
-    position: absolute;
-  }
-
-  .choice-dot {
-    border: 1px solid var(--border-strong);
-    border-radius: 50%;
-    block-size: 15px;
-    inline-size: 15px;
-    position: relative;
-  }
-
-  .choice-card.is-chosen {
-    background: var(--brand-action-tint);
-    border-color: var(--brand-action);
-  }
-
-  .choice-card.is-chosen .choice-dot {
-    border-color: var(--brand-action);
-  }
-
-  .choice-card.is-chosen .choice-dot::after {
-    background: var(--brand-action);
-    border-radius: 50%;
-    content: '';
-    inset: 3px;
-    position: absolute;
-  }
-
-  /* An answer the edited list cannot express any more - the template's
-     entries are no longer intact inside it - stays visible but cannot be
-     chosen. */
+  /* The group, the card, the dot and the two voices are one vocabulary in `app.css`.
+     What is this page's alone is the answer it cannot offer: the edited list no longer
+     holds the template's entries intact, so the option stays visible and unchoosable
+     rather than disappearing and taking its explanation with it. */
   .choice-card.is-unaskable {
     cursor: default;
     opacity: 0.5;
   }
 
   .choice-card.is-unaskable:hover {
-    background: var(--surface-base);
-    border-color: var(--control-border);
-  }
-
-  .choice-title {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .choice-why {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    grid-column: 2;
+    background: transparent;
   }
 
   @media (max-width: 36rem) {

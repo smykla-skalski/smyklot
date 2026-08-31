@@ -99,18 +99,18 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     row-gap: var(--rhythm-head-actions-stacked);
   }
 
+  /* A head that exits onto a TOOLBAR closes tighter than one exiting onto a surface.
+     `app.css` says this too, and says it at the same specificity as the rule above -
+     so on source order the component won and every page with a filter bar under its
+     head stood 4px too far off it. Said here, where the losing rule is. */
+  .page-head:has(+ :global(.filter-bar)) {
+    margin-block-end: var(--rhythm-head-toolbar);
+  }
+
   .page-head-say {
     display: grid;
     gap: 0;
     min-inline-size: 0;
-  }
-
-  .page-head-say > :global(* + *) {
-    margin-block-start: calc(var(--leading-meta) - 1cap);
-  }
-
-  .page-head-say > .page-title {
-    margin-block-start: var(--rhythm-head-copy);
   }
 
   .page-eyebrow {
@@ -162,6 +162,20 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     text-wrap: pretty;
   }
 
+  /* AFTER the three resets above, not before them. The title and its sentence are a
+     copy pair like any other, so the distance is one line of the SENTENCE'S leading -
+     a gap cannot read `1cap`, because `1cap` resolves against whatever writes it and
+     the container's font is not the sentence's. Written first, these tied with
+     `.page-sub`'s own `margin: 0` on specificity and lost on source order, so every
+     page in the panel closed its head 10px tighter than the design's. */
+  .page-head-say > :global(* + *) {
+    margin-block-start: calc(var(--leading-meta) - 1cap);
+  }
+
+  .page-head-say > .page-title {
+    margin-block-start: var(--rhythm-head-copy);
+  }
+
   .page-actions {
     /* Header-slot controls share the toolbar height (34px) so the CTA reads as part
        of the control system, not a taller outlier. */
@@ -176,15 +190,21 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     justify-content: flex-end;
   }
 
-  @media (max-width: 36rem) {
+  /* A PHONE IS NARROWER THAN A TITLE BESIDE A CONTROL. The head becomes one column and
+     the actions stack under the copy, packed left - kept at `flex-end` they read as a
+     stray button floating at the far edge with nothing to align to. */
+  @media (max-width: 47.9375rem) {
     .page-head {
       grid-template-columns: minmax(0, 1fr);
       margin-block-end: var(--rhythm-head-surface-compact);
     }
 
+    .page-head:has(+ :global(.filter-bar)) {
+      margin-block-end: var(--rhythm-head-toolbar);
+    }
+
     .page-actions {
-      justify-self: stretch;
-      width: 100%;
+      justify-content: flex-start;
     }
   }
 </style>

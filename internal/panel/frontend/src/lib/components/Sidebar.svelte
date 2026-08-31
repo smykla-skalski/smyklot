@@ -1153,14 +1153,16 @@ it has to answer to the same fact.
   }
 
   /* ---------- Responsive: the sidebar becomes a drawer, never nothing ----------
-     Below 64rem the pages column cannot share the row with content. The rail
-     stays at every width, grows a pages toggle, and the active console's
-     sidebar slides over the content from the rail's edge, above a scrim. */
-  @media (max-width: 64rem) {
+     Below 48rem the pages column cannot share the row with content, and neither can
+     the rail: both leave together and the top bar takes their jobs. The drawer slides
+     over the content from the viewport's own edge - there is no rail left to start
+     from - above a scrim. */
+  @media (max-width: 47.9375rem) {
     .side {
       box-shadow: 8px 0 24px var(--shadow-color);
+      inline-size: min(20rem, 86vw);
       inset-block: 0;
-      inset-inline-start: 60px;
+      inset-inline-start: 0;
       position: fixed;
       transition:
         translate var(--duration-fast) var(--ease-standard),

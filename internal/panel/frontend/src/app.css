@@ -120,12 +120,22 @@ body {
   }
 }
 
-/* Below 64rem the sidebar is a drawer over the content, out of flow - its
-   track has to go with it, or the pane falls into an auto column sized to
-   its own max-content and the layout moves with the content. */
-@media (max-width: 64rem) {
+/* BELOW 48rem THE RAIL LEAVES AND THE TOP BAR ARRIVES. A phone has room for one
+   chrome column, not two, and the rail beside a drawer was two: the rail stood there
+   permanently at 60px on a 320px screen, and the pages it could not show were behind a
+   toggle on it. One 56px bar carries all three jobs instead - the pages, the page you
+   are on, and the way across - and the sidebar becomes a drawer over the content, out
+   of flow. Its track goes with it, or the pane falls into an auto column sized to its
+   own max-content and the layout moves with the content. */
+@media (max-width: 47.9375rem) {
   .app-shell {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    /* The bar above it is 56px of the viewport, so the shell is the rest of it. */
+    min-height: calc(100dvh - 56px);
+  }
+
+  .rail {
+    display: none;
   }
 
   .side-scrim {
@@ -1319,6 +1329,240 @@ select:disabled {
   padding-inline: 0.45rem;
 }
 
+/*
+  A PILL IS NOT A CHIP. A chip is a *value* - a label name, a pattern, a count - so it
+  is a rounded rect with a keyline and it can be removed. A pill is a *standing*: the
+  role somebody holds, the state a thing is in. It is fully round, it carries no
+  keyline, and there is nothing to press.
+
+  The two shapes have to stay apart, which is what `--r-chip` (6px) against
+  `--radius-chip` (999px) is for. A pill's bare form has no fill at all: a role beside
+  a name is a word, and a filled box on every row would make the one row whose STATE is
+  filled read like all the others.
+*/
+.pill {
+  align-items: center;
+  border-radius: var(--radius-chip);
+  display: inline-flex;
+  font: 600 var(--font-size-micro) / var(--leading-flat) var(--sans);
+  gap: 0.25rem;
+  inline-size: fit-content;
+  min-block-size: var(--control-height-chip-small);
+  padding-inline: var(--space-2);
+  white-space: nowrap;
+}
+
+/* A flat leading says "one line", so the voice has to say it too: a pill that wraps
+   puts two 11px lines on 11px of leading inside a 20px box, touching. */
+.pill-label {
+  display: block;
+  text-box: trim-both cap alphabetic;
+}
+
+.pill-role {
+  background: var(--role-tint);
+  color: var(--role-ink);
+}
+
+.pill-success {
+  background: var(--success-tint);
+  color: var(--success);
+}
+
+.pill-warning {
+  background: var(--warning-tint);
+  color: var(--warning);
+}
+
+.pill-danger {
+  background: var(--danger-tint);
+  color: var(--danger);
+}
+
+.pill-info {
+  background: var(--info-tint);
+  color: var(--info);
+}
+
+.pill-neutral {
+  background: var(--neutral-tint);
+  color: var(--text-secondary);
+}
+
+/*
+  A RADIO GROUP WHOSE OPTIONS EACH NEED A SENTENCE. One decision, N answers, each
+  saying what it does - so nothing has to be tried to find out.
+
+  The group is one connected surface with 2px gutters rather than N separate cards:
+  separated cards read as N decisions, and the whole point is that these are mutually
+  exclusive answers to one question. The chosen card is tint, brand ink and the radio
+  mark together, never a one-off accent bar.
+*/
+.choice-cards {
+  /* The outline and the gutters already draw the group. Using the control surface
+     directly keeps disabled copy above 4.5:1 on light, instead of darkening its
+     ground underneath muted ink. */
+  background: var(--surface-control);
+  border-radius: calc(var(--r-ctl) + 2px);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 18%, transparent),
+    0 1px 2px color-mix(in srgb, var(--shadow-color) 12%, transparent);
+  display: grid;
+  gap: 2px;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  overflow: clip;
+  padding: 2px;
+}
+
+/* One question, asked down the page: a dialog reads its answers in a column. */
+.choice-cards.ask-cards {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 52rem) {
+  .choice-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.choice-card {
+  /* Centred, not baseline: the dot is a badge beside the title, and the stretch
+     default let the first row land on a fraction. Rows pack to the top - stretched
+     tracks floated one-line descriptions mid-card. */
+  align-content: start;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  display: grid;
+  gap: 0 var(--space-3);
+  grid-template-columns: auto 1fr;
+  min-block-size: 72px;
+  padding: var(--space-3) var(--space-4);
+  position: relative;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-fast) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard);
+}
+
+.choice-card:has(input:not(:disabled)):hover {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.choice-card:has(input:not(:disabled)):active {
+  background: color-mix(in srgb, var(--text-primary) 13%, transparent);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+
+.choice-card input {
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.choice-dot {
+  /* A whole ring on a whole box - the old 1.5px stroke and its 1.6px nudge both
+     rasterised soft, and centring in the row replaced the nudge. */
+  background: var(--surface-base);
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  block-size: 16px;
+  inline-size: 16px;
+  position: relative;
+}
+
+/* The chosen state derives from the checked input itself. `.is-chosen` is the same
+   state written by a caller that drives its own selection, and both are named here so
+   the two can never drift apart. */
+.choice-card:has(input:checked),
+.choice-card.is-chosen {
+  background: color-mix(in oklab, var(--brand-action) 25%, var(--surface-base));
+  box-shadow:
+    0 1px 3px color-mix(in srgb, var(--shadow-color) 52%, transparent),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--brand-action) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--surface-base) 64%, transparent);
+  color: var(--text-primary);
+}
+
+.choice-card:has(input:checked):hover,
+.choice-card.is-chosen:hover {
+  background: color-mix(in oklab, var(--brand-action) 29%, var(--surface-base));
+}
+
+.choice-card:has(input:checked):active,
+.choice-card.is-chosen:active {
+  background: color-mix(in oklab, var(--brand-action) 29%, var(--surface-base));
+  box-shadow: var(--pressed-inset);
+}
+
+.choice-card:has(input:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-inset);
+}
+
+.choice-card:has(input:checked) .choice-dot,
+.choice-card.is-chosen .choice-dot {
+  background: var(--surface-base);
+  border-color: var(--brand-action);
+}
+
+.choice-card:has(input:checked) .choice-dot::after,
+.choice-card.is-chosen .choice-dot::after {
+  background: var(--brand-action);
+  border-radius: 50%;
+  content: '';
+  inset: 3px;
+  position: absolute;
+}
+
+/* Disabled is really disabled: no pointer, no wash, no dip - and the copy stays
+   readable in the muted ink. */
+.choice-card:has(input:disabled) {
+  background: transparent;
+  cursor: default;
+}
+
+.choice-card:has(input:disabled) :is(.choice-title, .choice-why) {
+  color: var(--text-muted);
+}
+
+.choice-card:has(input:disabled) .choice-dot {
+  border-color: var(--border-subtle);
+}
+
+.choice-card:has(input:disabled):active {
+  box-shadow: none;
+  translate: none;
+}
+
+.choice-title {
+  font-size: var(--font-size-meta);
+  font-weight: 650;
+  line-height: var(--leading-tight);
+  text-box: trim-both cap alphabetic;
+  text-wrap: pretty;
+}
+
+/* One line of its own text, less the 2.8px the card's centred tracks put below the
+   title's ink. The slack is structural, so it is a number; the line is derived, so it
+   follows the scale. */
+.choice-why {
+  color: var(--text-secondary);
+  font-size: var(--font-size-compact);
+  grid-column: 2;
+  line-height: var(--leading-compact);
+  margin-block-start: calc(var(--leading-compact) - 1cap - 2.8px);
+  text-wrap: pretty;
+}
+
+.choice-card:has(input:checked) .choice-title,
+.choice-card.is-chosen .choice-title {
+  color: var(--brand-action-text);
+}
+
 .chip-label {
   letter-spacing: 0;
   line-height: var(--leading-flat);
@@ -1943,11 +2187,11 @@ thead th .icon-button:active:not(:disabled) {
   }
 }
 
-@media (max-width: 48rem) {
-  /* The rail stays at every width - it is the way back. The drawer already
-     owns the pages column here; the shell keeps its two remaining tracks. */
+@media (max-width: 47.9375rem) {
+  /* The bar above it is 56px, and the shell's own min-height already accounts for it -
+     see `.app-shell`. This is the pane inside that shell. */
   .workspace {
-    min-height: calc(100dvh - 3.75rem);
+    min-height: 0;
     padding-top: var(--space-4);
   }
 }
@@ -2367,9 +2611,15 @@ ul.object-list {
   outline-offset: var(--focus-ring-inset);
 }
 
+/* The hit is a layer, never a control with a look of its own. It is drawn as a button
+   where what it opens is a dialog rather than an address, and a bare button brings a
+   border and a ground with it - which read as a box around the row. */
 .row-hit {
+  background: none;
+  border: 0;
   border-radius: inherit;
   inset: 0;
+  padding: 0;
   position: absolute;
   z-index: 1;
 }
@@ -2453,13 +2703,19 @@ button.object-row {
   margin-block-start: calc(var(--leading-meta) - 1cap);
 }
 
+/* THE ROW GIVES WAY BEFORE THE PAGE DOES. A name and its standings are one line until
+   there is no room for one, and then they are two - a phone is 320px wide and a pill
+   never breaks, so without this the widest name row set the document's width and the
+   browser zoomed the whole page out to fit it. */
 .object-name-row {
   --object-name-slack: calc((var(--object-name-line) - 1cap) / 2);
 
   align-items: center;
   display: flex;
+  flex-wrap: wrap;
   font-size: var(--font-size-meta);
   gap: var(--space-2);
+  min-inline-size: 0;
 }
 
 .object-name-row > :not(.object-name, .file-path, .mono-title) {
@@ -2469,6 +2725,10 @@ button.object-row {
 .object-name {
   font-size: var(--font-size-meta);
   font-weight: 600;
+  /* A name breaks rather than pushing the page wider. Anything else here - a repository
+     path, a file - already breaks the same way; this is the one rule for all of them. */
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   text-box: trim-both cap alphabetic;
 }
 
@@ -2742,4 +3002,42 @@ button.object-row {
   inset-block-start: 50%;
   inset-inline-end: 8px;
   translate: 0 -50%;
+}
+
+/*
+  WHAT A PHONE DOES TO THE SHARED VOCABULARY, LAST IN THE SHEET.
+
+  Every rule here overrides a base declared above it at the same class count, so it has
+  to come after it: written where each vocabulary is defined, the base won on source
+  order and a phone kept the desktop's layout while the sheet said otherwise.
+*/
+@media (max-width: 47.9375rem) {
+  /* A toolbar's tools sit beside what they belong to. The automatic margin pushed them
+     to the far edge of a line they were alone on. */
+  .filter-bar .push-end {
+    margin-inline-start: 0;
+  }
+
+  /* Rows re-form as cards: the name and its standings, the sentence, and then whatever
+     the row offers on its own line - never a sentence and a control crushed side by
+     side into two columns of four words each. */
+  .object-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .object-side {
+    color: var(--text-secondary);
+    justify-content: flex-start;
+  }
+
+  /* A row that offers nothing takes no line for it. */
+  .object-side:empty {
+    display: none;
+  }
+
+  /* Flush with the sentence above it: a quiet control's own inset is what separated
+     the two, and under a stacked row that reads as an indent nothing asked for. */
+  .object-side > .btn-quiet {
+    margin-inline-start: calc(var(--space-3) * -1);
+  }
 }

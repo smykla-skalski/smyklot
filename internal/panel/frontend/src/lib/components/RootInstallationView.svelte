@@ -545,9 +545,14 @@ inside it.
 </Modal>
 
 <style>
+  /* `minmax(0, 1fr)`, never a bare column: a grid item's automatic minimum is its
+     min-content, so an embedded view that cannot shrink below its widest row made this
+     column wider than the phone and the browser zoomed the whole page out to fit. The
+     views inside know how to give way; they were never asked. */
   .installation-view {
     display: grid;
     gap: 0;
+    grid-template-columns: minmax(0, 1fr);
     min-height: 0;
   }
 

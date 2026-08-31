@@ -54,6 +54,7 @@
     type SidebarRow,
   } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
+  import TopBar from '#lib/components/TopBar.svelte';
   import SettingsSaveComposer from '#lib/components/SettingsSaveComposer.svelte';
   import SettingsDraftAttention, {
     type SettingsDraftAttentionKind,
@@ -831,6 +832,28 @@
     ...rootInstallationRows,
   ]);
 
+  /**
+   * What the phone's bar says you are looking at.
+   *
+   * The tree's own word for the page, not the document title: the tab says
+   * "Users | Access | SMYKLOT" because a tab is read out of context, and the bar is
+   * read directly under the tree that named it. The inbox is not in either tree, and a
+   * page the tree does not carry falls back to the console it is in.
+   */
+  const topBarTitle = $derived.by(() => {
+    if (session.isInbox) return 'Inbox';
+    const rows = (session.isRootMode ? rootEntries : workspaceEntries).filter(
+      (entry): entry is SidebarRow => !isGroup(entry),
+    );
+    const here = rows.find((row) => row.active);
+    if (here !== undefined) return here.label;
+    return session.isRootMode
+      ? 'Operations'
+      : (session.selectedTarget?.account.display_name ??
+          session.selectedTarget?.account.login ??
+          'Workspace');
+  });
+
   /** Where a row leads, by its id. The tree is flat, so this is one switch. */
   function openSidebarRow(row: SidebarRow): void {
     drawerOpen = false;
@@ -1029,6 +1052,24 @@
         crossLabel={session.isRootMode ? 'this workspace' : 'the console'}
       />
     {/if}
+    {#if showSidebar}
+      <!-- The phone's whole shell. Above 48rem it draws nothing: the rail and the
+           sidebar are both in flow there and this would be a third chrome column. -->
+      <TopBar
+        open={drawerOpen}
+        onToggle={() => (drawerOpen = !drawerOpen)}
+        title={topBarTitle}
+        targets={session.targets}
+        selected={session.selectedTarget}
+        targetHref={(target: PanelTarget) => session.targetHref(target)}
+        onSelectTarget={(targetId: string) => void session.selectTarget(targetId)}
+        {dirtyTargetIds}
+        rootMode={session.isRootMode}
+        console={session.viewer !== null && session.viewer.system_role !== 'none'
+          ? { href: session.rootEntryHref(), onEnter: () => session.enterRoot() }
+          : null}
+      />
+    {/if}
     <main
       class="app-shell"
       class:sidebar-collapsed={session.effectiveSidebarCollapsed}
@@ -1054,8 +1095,6 @@
         theme={session.theme}
         onSelectTheme={(t: ThemeDisplay) => session.selectTheme(t)}
         onSignOut={signOut}
-        pagesOpen={drawerOpen}
-        onTogglePages={() => (drawerOpen = !drawerOpen)}
       />
 
       {#if showSidebar}

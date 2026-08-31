@@ -28,8 +28,6 @@
     theme,
     onSelectTheme,
     onSignOut,
-    pagesOpen = false,
-    onTogglePages,
   }: {
     viewer: PanelViewer | null;
     targets: readonly PanelTarget[];
@@ -51,9 +49,6 @@
     theme: ThemeDisplay;
     onSelectTheme: (theme: ThemeDisplay) => void;
     onSignOut: () => void | Promise<void>;
-    /** Narrow shells only: whether the pages drawer is open. */
-    pagesOpen?: boolean;
-    onTogglePages?: () => void;
   } = $props();
 
   /* Workspaces are the one rail section that grows without bound. The rail
@@ -194,19 +189,6 @@ would be telling everybody else about a console they cannot open.
 <nav class="rail" bind:this={railEl} aria-label="Consoles">
   <img class="rail-halo" src={haloUrl} alt="Smyklot" width="34" height="34" decoding="async" />
 
-  {#if onTogglePages !== undefined}
-    <button
-      class="rail-tile rail-pages"
-      type="button"
-      data-tip="Pages"
-      aria-expanded={pagesOpen}
-      aria-label="Pages"
-      onclick={onTogglePages}
-    >
-      <Icon name={pagesOpen ? 'sidebar-collapse' : 'sidebar-expand'} size="md" />
-    </button>
-  {/if}
-
   {#each shown as target (target.id)}
     <a
       class="rail-tile rail-ws"
@@ -340,6 +322,16 @@ would be telling everybody else about a console they cannot open.
     position: sticky;
     top: 0;
     z-index: var(--layer-rail);
+  }
+
+  /* THE RAIL LEAVES ON A PHONE. Said here rather than only in `app.css`, because a
+     scoped `.rail` carries the component's hash and outranks the shared one at the
+     same class count - so the sheet asked for this and the component went on drawing
+     itself beside a 320px page. The top bar does all three of its jobs there. */
+  @media (max-width: 47.9375rem) {
+    .rail {
+      display: none;
+    }
   }
 
   .rail > :global(:not(.rail-gap)) {
@@ -624,21 +616,6 @@ would be telling everybody else about a console they cannot open.
      the tip would. */
   .rail-tile[aria-expanded='true']::after {
     content: none;
-  }
-
-  .rail-pages {
-    display: none;
-  }
-
-  @media (max-width: 64rem) {
-    .rail {
-      position: relative;
-      z-index: var(--layer-rail);
-    }
-
-    .rail-pages {
-      display: inline-flex;
-    }
   }
 
   /* On a touch screen the name-on-hover never fires, so the tile's ::after
