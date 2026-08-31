@@ -52,7 +52,7 @@ async function resetMigration(path: string, repository: string): Promise<void> {
        mounted with the reader's place in it - it used to be torn down and built
        again from the last stored search, and what had just been typed went with
        it. */
-    await page.getByPlaceholder('Search repositories').fill(repository);
+    await page.getByPlaceholder('Find a repository').fill(repository);
     /* Not `exact`: the row's link is the name AND the override count beside it,
        so its accessible name is "search-indexer 2 overrides" for any repository
        that has overrides - which is most of the ones worth opening. */

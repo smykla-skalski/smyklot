@@ -265,7 +265,7 @@ async function measure(path: string, width: number): Promise<Measured> {
         layoutViewport: window.innerWidth,
         heading: document.querySelector('h1, h2')?.textContent?.trim() ?? null,
         contextRow:
-          [...document.querySelectorAll('.page-kicker, .pane-path, .back-link')]
+          [...document.querySelectorAll('.page-eyebrow, .pane-path, .back-link')]
             .find((element) => element.checkVisibility())
             ?.textContent?.replace(/\s+/gu, ' ')
             .trim() ?? null,

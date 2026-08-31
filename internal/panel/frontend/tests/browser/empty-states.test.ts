@@ -40,7 +40,9 @@ async function emptyStateOn(page: Page): Promise<Verdict | null> {
   const verdict = await page.evaluate(() => {
     /* `.empty-note` is the shared one a list writes; the other three are what a
        TABLE writes, where the empty state is a row. */
-    const empty = document.querySelector('.empty-row, .state-row, .table-empty-state, .empty-note');
+    const empty = document.querySelector(
+      '.empty-row, .state-row, .table-empty-state, .empty-note, .table-notice',
+    );
     const box = empty?.getBoundingClientRect();
 
     return {

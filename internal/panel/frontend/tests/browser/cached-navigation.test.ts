@@ -32,7 +32,7 @@ import { settle, startPanel, visit, type Panel } from './harness';
 
 /** The views walked between, as the sidebar spells them. */
 const FIRST = 'Repositories';
-const SECOND = 'Defaults';
+const SECOND = 'Workspace settings';
 
 async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
   await visit(page, `${panel.origin}/i/${panel.account}/repositories`);

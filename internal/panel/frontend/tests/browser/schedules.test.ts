@@ -59,12 +59,12 @@ describe('background work schedules [Integration]', () => {
       await visit(page, addressOf(panel, 'root/schedules'), {
         ready: '.schedules-view .policy-table-wrap tbody tr',
       });
-      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
 
       await visit(page, addressOf(panel, 'i/schedules'), {
         ready: '.schedules-view .policy-table-wrap tbody tr',
       });
-      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
     } finally {
       await page.close();
     }
@@ -77,7 +77,7 @@ describe('background work schedules [Integration]', () => {
         ready: '.schedules-view .policy-table-wrap tbody tr',
       });
 
-      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
       await expect
         .poll(() =>
           page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
@@ -108,7 +108,7 @@ describe('background work schedules [Integration]', () => {
         ready: '.schedules-view .policy-table-wrap tbody tr',
       });
 
-      await page.getByRole('heading', { name: 'Schedules', level: 2 }).waitFor();
+      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
       await expect
         .poll(() =>
           page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),

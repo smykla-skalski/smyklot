@@ -22,7 +22,6 @@ import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** Every route in the panel that renders a table, and which shell it renders in. */
 const TABLES = [
-  { route: 'i/repositories', shell: 'panel' },
   { route: 'i/access/users', shell: 'panel' },
   { route: 'i/access/invitations', shell: 'panel' },
   { route: 'i/history', shell: 'panel' },

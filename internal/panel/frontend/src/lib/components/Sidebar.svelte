@@ -658,15 +658,20 @@ it has to answer to the same fact.
     translate: 0 1px;
   }
 
+  /* Both runs trimmed to their own cap band, because they are two different sizes
+     on one line: an untrimmed box is ascender-to-descender, and two of those centre
+     their INK in two different places even when the boxes agree. */
   .side-search .t {
     flex: 1;
     text-align: start;
+    text-box: trim-both cap alphabetic;
   }
 
   .side-search kbd {
     color: var(--sidebar-text-muted);
     font-family: inherit;
     font-size: var(--font-size-micro);
+    text-box: trim-both cap alphabetic;
   }
 
   /* The workspace mark, and the switch behind it. Drawn only where the rail is

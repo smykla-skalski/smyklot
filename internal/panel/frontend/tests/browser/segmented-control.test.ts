@@ -48,7 +48,9 @@ const MENUS = [
   {
     name: "the account menu's theme switch",
     path: (account: string) => `/i/${account}/defaults`,
-    trigger: 'button[aria-label^="Account menu for"]',
+    /* The rail's, not the collapsed sidebar's: both open the same menu, and the
+       sidebar's is in the DOM at every width even where the rail is drawn. */
+    trigger: '.rail button[aria-label^="Account menu for"]',
   },
   {
     name: "the history page's display options",
