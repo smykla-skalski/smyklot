@@ -25,27 +25,23 @@
   } from '../types';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Button, { type ButtonTone } from './Button.svelte';
+  import Card from './Card.svelte';
+  import Chip from './Chip.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
-  import DataTable from './DataTable.svelte';
   import Select from './Select.svelte';
   import Callout from './Callout.svelte';
-  import IdentityRow from './IdentityRow.svelte';
   import Skeleton from './Skeleton.svelte';
-  import SortIndicator from './SortIndicator.svelte';
-  import Avatar from './Avatar.svelte';
-  import Chip, { type ChipTone } from './Chip.svelte';
-  import FilterMenu from './FilterMenu.svelte';
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import LoginField from './LoginField.svelte';
   import Modal from './Modal.svelte';
+  import Pill, { type PillTone } from './Pill.svelte';
   import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import TableToolsMenu from './TableToolsMenu.svelte';
-  import TableEmptyState from './TableEmptyState.svelte';
+  import TableToolsMenu, { type ToolsSort } from './TableToolsMenu.svelte';
 
   type AccessSection = 'users' | 'invitations';
   type SortColumn = 'name' | 'role' | 'last_login';
@@ -57,12 +53,14 @@
   const ACTION_DIALOG = 'root-user-action';
   const ADD_DIALOG = 'root-add-installation-user';
 
+  /* One word for what used to be three - "Root user", "Root invitation" and
+     "system-level access" all meant somebody who may operate the service. */
   const ROLE_FILTERS = [
     {
       options: [
-        { value: 'super_root', label: 'Super Root' },
-        { value: 'root', label: 'Root' },
-        { value: 'none', label: 'Regular account' },
+        { value: 'super_root', label: 'Lead operator' },
+        { value: 'root', label: 'Operator' },
+        { value: 'none', label: 'Everyone else' },
       ],
     },
   ] satisfies readonly FilterSection[];
@@ -239,6 +237,23 @@
     return sort.endsWith('desc') || sort === 'login_newest' ? 'descending' : 'ascending';
   }
 
+  /* The order lives in the tools menu now that the rows are sentences rather than
+     columns: a column heading is where a reader looks for sort, and there are no
+     headings to look at. */
+  const toolSorts = $derived<ToolsSort[]>(
+    (
+      [
+        ['Name', 'name'],
+        ['Service role', 'role'],
+        ['Last signed in', 'last_login'],
+      ] as const
+    ).map(([label, column]) => ({
+      label,
+      direction: sortDirection(column),
+      onToggle: () => toggleSort(column),
+    })),
+  );
+
   function selectRoles(values: string[]): void {
     systemRoles = values.filter((value): value is SystemRole =>
       ['none', 'root', 'super_root'].includes(value),
@@ -271,11 +286,6 @@
 
   function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
-  }
-
-  function loadFromScroll(event: Event): void {
-    const target = event.currentTarget as HTMLElement;
-    if (target.scrollHeight - target.scrollTop - target.clientHeight < 260) loadNext();
   }
 
   function clearFilters(): void {
@@ -324,31 +334,37 @@
     }
   }
 
-  function systemRoleLabel(role: SystemRole): string {
-    if (role === 'super_root') return 'Super Root';
-    if (role === 'root') return 'Root';
-    return 'Account';
+  /**
+   * A standing worth a word, or nothing at all.
+   *
+   * An ordinary account in good standing wears no pill: the column that said
+   * "Account" on every row said nothing, and a page of identical pills teaches a
+   * reader to stop reading them. What is left is what somebody might act on -
+   * who may operate the service, and who cannot get in.
+   */
+  function userStanding(user: RootPanelUser): { tone: PillTone; label: string } | null {
+    if (user.status === 'banned') return { tone: 'danger', label: 'Signed out and blocked' };
+    if (user.status === 'removed') return { tone: 'danger', label: 'Access removed' };
+    if (user.system_role === 'super_root') return { tone: 'warning', label: 'Lead operator' };
+    if (user.system_role === 'root') return { tone: 'warning', label: 'Operator' };
+
+    return null;
   }
 
-  function systemRoleTone(role: SystemRole): ChipTone {
-    if (role === 'super_root') return 'accent';
-    if (role === 'root') return 'signal';
-    return 'neutral';
-  }
+  /** What a person has in the product, said the way they would say it. */
+  function membership(user: RootPanelUser): string {
+    const owned = user.owned_installations;
+    const assigned = user.assigned_installations;
+    if (owned > 0) {
+      const said = `owns ${owned} ${owned === 1 ? 'workspace' : 'workspaces'}`;
 
-  function statusLabel(status: PanelUserStatus): string {
-    return status.charAt(0).toLocaleUpperCase() + status.slice(1);
-  }
+      return assigned === 0 ? said : `${said}, member of ${assigned} more`;
+    }
+    if (assigned > 0) {
+      return `member of ${assigned} ${assigned === 1 ? 'workspace' : 'workspaces'}`;
+    }
 
-  function statusTone(status: PanelUserStatus): ChipTone {
-    if (status === 'active') return 'clear';
-    if (status === 'banned') return 'stop';
-    return 'neutral';
-  }
-
-  function installationSummary(user: RootPanelUser): string {
-    const relationships = user.owned_installations + user.assigned_installations;
-    return `${relationships} installation${relationships === 1 ? '' : 's'}`;
+    return 'no workspaces yet';
   }
 
   function userActions(user: RootPanelUser): ActionMenuItem[] {
@@ -359,15 +375,15 @@
           ? {
               id: 'demote_root',
               icon: 'shield-slash',
-              label: 'Remove Root role',
-              description: 'Remove application-wide administration',
+              label: 'Stop being an operator',
+              description: 'Take away the console and every workspace it reaches',
               tone: 'danger',
             }
           : {
               id: 'promote_root',
               icon: 'admin',
-              label: 'Make Root',
-              description: 'Grant application-wide administration',
+              label: 'Make an operator',
+              description: 'Give the console and audited access to every workspace',
             },
       );
     }
@@ -419,8 +435,8 @@
 
   function actionTitle(): string {
     const name = actionUser?.account.display_name ?? 'this account';
-    if (pendingAction === 'promote_root') return `Make ${name} a Root?`;
-    if (pendingAction === 'demote_root') return `Remove Root access from ${name}?`;
+    if (pendingAction === 'promote_root') return `Make ${name} an operator?`;
+    if (pendingAction === 'demote_root') return `${name} stops being an operator?`;
     if (pendingAction === 'restore') return `Restore ${name}?`;
     if (pendingAction === 'ban') return `Ban ${name}?`;
     return `Remove ${name}?`;
@@ -428,10 +444,10 @@
 
   function actionDescription(): string {
     if (pendingAction === 'promote_root') {
-      return 'Root can read application-wide data and use audited installation elevation';
+      return 'An operator reads the whole service and may enter any workspace - every visit is announced and audited';
     }
     if (pendingAction === 'demote_root') {
-      return 'Their installation ownership and explicit assignments remain unchanged';
+      return 'What they own and what they were given stay exactly as they are';
     }
     if (pendingAction === 'restore') return 'The account can sign in again with retained access';
     if (pendingAction === 'ban') return 'Every active session is revoked immediately';
@@ -485,8 +501,8 @@ refuse.
   <RootPageHeader
     title={section === 'users' ? 'Users' : 'Invitations'}
     subtitle={section === 'users'
-      ? 'Every account known to Smyklot'
-      : 'Pending system-level access'}
+      ? 'People with current, pending, or previous Smyklot access and their workspace memberships'
+      : 'Invitations to operate the service, not a workspace. Every workspace visit is announced and audited'}
   >
     {#if section === 'invitations'}
       {#if canManageInvitations}
@@ -496,7 +512,7 @@ refuse.
           onclick={() => invitations?.openCreate(inviteTrigger)}
         >
           {#snippet icon()}<Icon name="user-plus" size="sm" strokeWidth={2} />{/snippet}
-          Invite Root user
+          Invite an operator
         </Button>
       {/if}
     {:else}
@@ -518,42 +534,41 @@ refuse.
       {actorLogin}
     />
   {:else}
-    <div class="access-toolbar">
-      <span class="stable-feedback" aria-live="polite">{feedback}</span>
+    <div class="filter-bar">
       <SearchField
-        label="Search Root users"
-        placeholder="Search users"
+        label="Find a user"
+        placeholder="Find a user"
         value={search}
         onInput={(value) => (search = value)}
       />
-      <!-- Both filters live in column headings, and the heading band is hidden
-           once this table becomes a stack of cards. Without this the page
-           offered a search field and nothing else. -->
-      <TableToolsMenu
-        label="Filter Root users"
-        sorts={[]}
-        filters={[
-          {
-            label: 'System role',
-            hint: 'Filter application-level privileges',
-            sections: ROLE_FILTERS,
-            selected: systemRoles,
-            multiple: true,
-            onChange: selectRoles,
-          },
-          {
-            label: 'Status',
-            hint: 'Filter account lifecycle state',
-            sections: STATUS_FILTERS,
-            selected: statuses,
-            multiple: true,
-            onChange: selectStatuses,
-          },
-        ]}
-      />
+      <span class="push-end">
+        <span class="stable-feedback" aria-live="polite">{feedback}</span>
+        <TableToolsMenu
+          label="Filter users"
+          sorts={toolSorts}
+          filters={[
+            {
+              label: 'Service role',
+              hint: 'Filter what a person may do to the service itself',
+              sections: ROLE_FILTERS,
+              selected: systemRoles,
+              multiple: true,
+              onChange: selectRoles,
+            },
+            {
+              label: 'Status',
+              hint: 'Filter account lifecycle state',
+              sections: STATUS_FILTERS,
+              selected: statuses,
+              multiple: true,
+              onChange: selectStatuses,
+            },
+          ]}
+        />
+      </span>
     </div>
 
-    <div class:loading class="user-results table-region" aria-busy={loading}>
+    <div class:loading class="user-results" aria-busy={loading}>
       <!-- A refresh that failed over a loaded table has not made the table wrong. -->
       {#if problem !== null && page !== null}
         <ResultProblem
@@ -575,137 +590,66 @@ refuse.
       {:else if loading && page === null}
         <Skeleton bars={false} --skeleton-min-height="10rem" />
       {:else}
-        <DataTable
-          class="table-scroll"
-          pinned
-          stacked
-          caption="Application accounts"
-          regionLabel="Root users table"
-          rows={users}
-          rowKey={(user) => String(user.account.id)}
-          columnCount={6}
-          onBodyScroll={loadFromScroll}
-        >
-          {#snippet head()}
-            <tr>
-              <th scope="col" aria-sort={sortDirection('name')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('name')}
-                  >
-                    <span class="table-heading-label">User</span><SortIndicator />
-                  </button>
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('role')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('role')}
-                  >
-                    <span class="table-heading-label">System role</span><SortIndicator />
-                  </button>
-                  <FilterMenu
-                    label="System role"
-                    summary={systemRoles.length === 0
-                      ? 'All system roles'
-                      : `${systemRoles.length} selected`}
-                    hint="Filter application-level privileges"
-                    sections={ROLE_FILTERS}
-                    selected={systemRoles}
-                    multiple
-                    align="end"
-                    onChange={selectRoles}
-                  />
-                </div>
-              </th>
-              <th scope="col">
-                <div class="table-heading">
-                  <span class="table-heading-label">Status</span>
-                  <FilterMenu
-                    label="Status"
-                    summary={statuses.length === 0 ? 'All statuses' : `${statuses.length} selected`}
-                    hint="Filter account lifecycle state"
-                    sections={STATUS_FILTERS}
-                    selected={statuses}
-                    multiple
-                    align="end"
-                    onChange={selectStatuses}
-                  />
-                </div>
-              </th>
-              <th scope="col">
-                <div class="table-heading">
-                  <span class="table-heading-label">Installations</span>
-                </div>
-              </th>
-              <th scope="col" aria-sort={sortDirection('last_login')}>
-                <div class="table-heading">
-                  <button
-                    class="table-sort-button"
-                    type="button"
-                    onclick={() => toggleSort('last_login')}
-                  >
-                    <span class="table-heading-label">Last login</span><SortIndicator />
-                  </button>
-                </div>
-              </th>
-              <th scope="col"><span class="visually-hidden">Actions</span></th>
-            </tr>
-          {/snippet}
-          {#snippet cells(user)}
-            <td data-label="User">
-              <IdentityRow>
-                {#snippet mark()}<Avatar account={user.account} size={32} />{/snippet}
-                {#snippet name()}<strong>{user.account.display_name}</strong>{/snippet}
-                {#snippet handle()}<span class="mono">@{user.account.login}</span>{/snippet}
-              </IdentityRow>
-            </td>
-            <td data-label="System role">
-              <Chip tone={systemRoleTone(user.system_role)}
-                >{systemRoleLabel(user.system_role)}</Chip
-              >
-            </td>
-            <td data-label="Status">
-              <Chip tone={statusTone(user.status)} dot={user.status === 'active'}
-                >{statusLabel(user.status)}</Chip
-              >
-            </td>
-            <td class="band-trim-stack" data-label="Installations">
-              <span class="relationship-count">{installationSummary(user)}</span>
-              <span class="relationship-meta"
-                >{user.owned_installations} owned · {user.assigned_installations} assigned</span
-              >
-            </td>
-            <td data-label="Last login">
-              {#if user.last_login_at !== undefined}
-                <RelativeTime class="band-trim" value={user.last_login_at} nowMs={now} />
-              {:else}<span class="dim band-trim">Never</span>{/if}
-            </td>
-            <td class="row-actions" data-label="Actions">
-              {#if userActions(user).length > 0}
-                <ActionMenu
-                  label={`Actions for @${user.account.login}`}
-                  items={userActions(user)}
-                  onSelect={(action, trigger) => chooseUserAction(user, action, trigger)}
-                />
+        <Card>
+          {#if users.length === 0}
+            <div class="state-panel">
+              {#if hasFilters}
+                <span
+                  ><strong>Nothing matches.</strong> No account here answers to what is being asked</span
+                >
+                <Button onclick={clearFilters}>Clear the filters</Button>
+              {:else}
+                <span
+                  ><strong>Nobody yet.</strong> An account appears here the first time somebody signs
+                  in</span
+                >
               {/if}
-            </td>
-          {/snippet}
-          {#snippet empty()}
-            <TableEmptyState
-              title="No accounts found"
-              description={hasFilters
-                ? 'Try another search or clear the active filters'
-                : 'Accounts appear after their first authenticated session'}
-              actionLabel={hasFilters ? 'Clear filters' : undefined}
-              onAction={hasFilters ? clearFilters : undefined}
-            />
-          {/snippet}
-        </DataTable>
+            </div>
+          {:else}
+            <ul class="object-list">
+              {#each users as user (user.account.id)}
+                {@const standing = userStanding(user)}
+                <li>
+                  <div class="object-row">
+                    <span class="object-main">
+                      <span class="object-name-row">
+                        <span class="object-name">{user.account.display_name}</span>
+                        {#if standing !== null}
+                          <Pill tone={standing.tone}>{standing.label}</Pill>
+                        {/if}
+                      </span>
+                      <!-- The handle, what they have in the product, and when they were
+                           last here: three columns became the sentence they were always
+                           read as. -->
+                      <span class="object-sum"
+                        >@{user.account.login} · {membership(user)} ·
+                        {#if user.last_login_at !== undefined}signed in
+                          <RelativeTime value={user.last_login_at} nowMs={now} />
+                        {:else}has not signed in yet{/if}</span
+                      >
+                    </span>
+                    <span class="object-side">
+                      {#if userActions(user).length > 0}
+                        <ActionMenu
+                          label={`Actions for @${user.account.login}`}
+                          items={userActions(user)}
+                          onSelect={(action, trigger) => chooseUserAction(user, action, trigger)}
+                        />
+                      {/if}
+                    </span>
+                  </div>
+                </li>
+              {/each}
+            </ul>
+            <div class="list-foot">
+              <span
+                >Showing 1-{users.length} of {page?.total ?? users.length}{hasFilters
+                  ? ' matching'
+                  : ''}</span
+              >
+            </div>
+          {/if}
+        </Card>
       {/if}
       <InfiniteLoadSentinel
         active={!loading && loadMoreProblem === null && page?.next_cursor != null}
@@ -888,17 +832,17 @@ refuse.
     min-height: 0;
   }
 
-  .access-toolbar {
-    /* One 34px row: the section switch leads, the search fills the rest. The
-       primary action lives in the header slot, same anatomy as the mock. */
-    --control-height: var(--control-height-compact);
+  .filter-bar :global(.search-field) {
+    flex: 1 1 12rem;
+    max-inline-size: 20rem;
+    min-inline-size: 0;
+  }
 
+  /* The feedback and the tools menu share the end of the bar. */
+  .filter-bar .push-end {
     align-items: center;
     display: flex;
-    flex-wrap: wrap;
     gap: var(--space-2);
-    min-height: var(--control-height);
-    padding-bottom: var(--space-3);
   }
 
   .stable-feedback {
@@ -1008,142 +952,8 @@ refuse.
     text-align: center;
   }
 
-  /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .user-results {
     min-height: 8rem;
-  }
-
-  /* Surface, keyline, corner and lift come from `.table-card`; the scroll shell,
-     the cell padding and the separator from `DataTable` and `.data-table`. What
-     is left is this table's own settings for them.
-
-     `--cell-pad-block` is still named once, because the row height below is
-     derived from it and a padding changed in one place and not the other would
-     silently un-state the row height. */
-  :global(.table-scroll) {
-    --cell-pad-block: 0.625rem;
-    --table-cell-pad-block: var(--cell-pad-block);
-    --table-empty-height: 10rem;
-    --table-cell-pad-inline: 0.75rem;
-    --table-heading-height: 2.5rem;
-    --table-layout: fixed;
-    --table-min-width: 46rem;
-
-    flex: 1;
-    max-width: 100%;
-    min-height: 0;
-  }
-
-  /* Stated, not inherited from whatever the tallest cell happens to hold.
-     It used to come out at 61px because the row menu is 40px tall, and at 60.9px
-     on the viewer's own row - which has no menu, since nobody may act on
-     themselves - where two lines of untrimmed leading happened to measure the
-     same. Trimming those lines to their band, which is what centres them, took
-     that row to 54px and left one short row in the middle of the table. A row's
-     height is a decision: the tallest control it has to hold, plus its own
-     padding and rule. */
-  /* Stated, not inherited from whatever the tallest cell happens to hold. It used
-     to come out at 61px because the row menu is 40px tall, and at 60.9px on the
-     viewer's own row - which has no menu, since nobody may act on themselves -
-     where two lines of untrimmed leading happened to measure the same. Trimming
-     those lines to their band took that row to 54px and left one short row in the
-     middle of the table. A row's height is a decision: the tallest control it has
-     to hold, plus its own padding and rule. */
-  :global(.table-scroll tbody tr) {
-    height: calc(var(--control-height) + 2 * var(--cell-pad-block) + 1px);
-  }
-
-  /* The shared phone layout turns every cell into a labelled block. Its row has
-     to grow with that stack instead of keeping the single-line desktop height. */
-  @media (max-width: 64rem) {
-    :global(.table-scroll tbody tr) {
-      height: auto;
-    }
-  }
-
-  /* The first column's wider inset, on both halves of the table so the band and
-     the rows below it start on the same edge. */
-  :global(.table-scroll td:first-child) {
-    padding-left: var(--space-4);
-  }
-
-  :global(.table-scroll thead th:first-child) {
-    --heading-pad-start: var(--space-4);
-  }
-
-  th:first-child,
-  td:first-child {
-    width: 28%;
-  }
-
-  th:nth-child(2),
-  td:nth-child(2) {
-    width: 16%;
-  }
-
-  th:nth-child(3),
-  td:nth-child(3) {
-    width: 13%;
-  }
-
-  th:nth-child(4),
-  td:nth-child(4) {
-    width: 24%;
-  }
-
-  th:nth-child(5),
-  td:nth-child(5) {
-    text-align: right;
-    width: 16%;
-  }
-
-  /* An end-aligned column: the words meet the same edge the values below them do,
-     and the arrow leads rather than trails, which is what keeps it off that edge.
-     Every design system states this rule the same way - a heading follows its
-     column's alignment, and the sort mark moves to the other side to let it. */
-  th:nth-child(5) .table-sort-button {
-    flex-direction: row-reverse;
-    justify-content: flex-start;
-  }
-
-  th:last-child,
-  td:last-child {
-    text-align: center;
-    width: 3rem;
-  }
-
-  /* The heading's row, its button and its arrow are shared - see `.table-heading`,
-     `.table-sort-button` and `.sort-indicator` in `app.css`. What was here was a
-     second copy of the button's reset, a fourth copy of the arrow's rules written
-     against a raw `<svg>`, and a `:global(.header-filter)` addressed to a class
-     the popover stopped rendering. */
-
-  .relationship-meta,
-  :global(time) {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-  }
-
-  .relationship-count,
-  .relationship-meta {
-    display: block;
-  }
-
-  .relationship-count {
-    font-size: var(--font-size-body);
-  }
-
-  .relationship-meta {
-    margin-top: 0.15rem;
-  }
-
-  :global(time) {
-    white-space: nowrap;
-  }
-
-  .row-actions {
-    padding-inline: var(--space-1);
   }
 
   .reason-field {
@@ -1174,20 +984,5 @@ refuse.
     color: var(--danger);
     font-size: var(--font-size-meta);
     margin: var(--space-3) 0 0;
-  }
-
-  /* Only where the column headings are not: they carry the same two filters while
-     the table is a table. */
-  .access-toolbar :global(.tools-trigger) {
-    display: none;
-  }
-
-  @media (max-width: 64rem) {
-    .access-toolbar :global(.tools-trigger) {
-      display: inline-flex;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
   }
 </style>

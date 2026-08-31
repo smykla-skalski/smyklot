@@ -22,12 +22,15 @@ describe('the responsive shell [Unit]', () => {
     expect(rail).toMatch(/\.rail\s*\{[^}]*z-index:\s*var\(--layer-rail\)/su);
   });
 
-  it('lets a stacked Root access row grow around all of its cells', () => {
+  /* This used to assert that a stacked table row relaxed its stated height on a
+     phone. There is no table here now: a person is a sentence in a list, and a row
+     that grows around its own words needs no breakpoint to be told so. What is
+     worth holding is that it stays that way. */
+  it('reads the console user list as rows rather than as a table', () => {
     const access = source('lib/components/RootAccess.svelte');
 
-    expect(access).toMatch(
-      /@media \(max-width: 64rem\)[^{]*\{\s*:global\(\.table-scroll tbody tr\)\s*\{[^}]*height:\s*auto/su,
-    );
+    expect(access).toContain('<ul class="object-list">');
+    expect(access).not.toContain('DataTable');
   });
 
   it('gives the mobile NightPage switch a row of its own', () => {
