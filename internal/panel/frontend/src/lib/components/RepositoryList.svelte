@@ -45,7 +45,9 @@
     RepositoryStateFilter,
     RepositorySummary,
     SyncOverride,
+    SyncStatus,
   } from '../types';
+  import { repositorySentence } from '../repository-sentence';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
@@ -119,6 +121,7 @@
     onResetConfigMigration,
     onChanged,
     onLoadSyncOverride = null,
+    onLoadSyncStatus = null,
     readOnly = false,
     prefs = EPHEMERAL_PREFS,
   }: {
@@ -140,6 +143,11 @@
      * pane whose every save is a 404.
      */
     onLoadSyncOverride?: ((repositoryId: string) => Promise<SyncOverride>) | null;
+    /**
+     * The fleet, for the one line the open repository's page says about itself -
+     * what the plan would change there. Null on the surface that has no sync.
+     */
+    onLoadSyncStatus?: (() => Promise<SyncStatus>) | null;
     readOnly?: boolean;
     prefs?: PrefsAccessor;
   } = $props();
@@ -320,6 +328,17 @@
       return onLoadSyncOverride(activeRepositoryId);
     },
   }));
+  /* Asked only while a repository page is open, and shared with every other
+     reader of the fleet through the key the sync view already uses. */
+  const syncStatusQuery = createQuery(() => ({
+    queryKey: ['sync-status', targetId],
+    enabled: onLoadSyncStatus !== null && activeRepositoryId !== null,
+    queryFn: () => {
+      if (onLoadSyncStatus === null) throw new Error('this surface has no sync');
+
+      return onLoadSyncStatus();
+    },
+  }));
   const activeRepositoryDetail = $derived.by(() => {
     if (activeRepositoryId === null) return undefined;
     const canonical = details[activeRepositoryId];
@@ -424,33 +443,6 @@
     if (repositories.length === 0) return 'Nothing to show';
     return `Showing 1-${repositories.length}\u{a0}of ${total}`;
   });
-
-  /**
-   * What the row says about itself: whether Smyklot answers there, where that was
-   * decided, and what its configuration file is doing - one sentence, in the order a
-   * reader asks those questions.
-   */
-  function repositorySentence(repository: RepositorySummary, on: boolean): string {
-    if (!repository.available) return 'Not reachable - the installation cannot see it';
-    const parts: string[] = [on ? 'On' : 'Off'];
-    if (!on) {
-      parts.push('commands are not answered here - sync still applies');
-    } else if (repository.enabled_source === 'target') {
-      parts.push('follows the workspace settings');
-    } else if (repository.config_override_count > 0) {
-      parts.push(
-        `${repository.config_override_count} setting${
-          repository.config_override_count === 1 ? '' : 's'
-        } overridden here`,
-      );
-    } else {
-      parts.push('switched on here');
-    }
-    if (repository.config_file_status === 'valid') parts.push('repository file followed');
-    if (repository.config_file_status === 'invalid') parts.push('its file does not parse');
-    if (repository.config_file_status === 'bypassed') parts.push('its file is bypassed');
-    return parts.join(' · ');
-  }
 
   const debouncedSearch = useDebounce((query: string) => {
     appliedQuery = query;
@@ -780,6 +772,7 @@ a workspace has is not a number worth blocking the first screenful on.
     enablement={draftedEnablement(repository)}
     onEnablement={(next) => void setEnabled(repository, next)}
     {offersSync}
+    fleet={syncStatusQuery.data ?? null}
     syncOverride={syncOverrideQuery.data}
     syncEnvelope={activeSyncEnvelope}
     {syncReadProblem}

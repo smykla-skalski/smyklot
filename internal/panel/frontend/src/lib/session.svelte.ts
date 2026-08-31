@@ -334,6 +334,7 @@ export class PanelSession {
     const route: InstallationRoute = { account: '', view };
     if (view === 'history') route.section = this.currentHistorySection;
     if (view === 'queue') route.queue = this.currentQueueSection;
+    if (view === 'repositories') route.repository = this.currentRepository ?? undefined;
     if (view === 'sync') {
       route.sync = this.currentSyncSection;
       route.syncRuleset = this.currentSyncRuleset ?? undefined;

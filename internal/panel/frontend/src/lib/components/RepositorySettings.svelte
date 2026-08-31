@@ -24,11 +24,14 @@
     RepositoryFileStatus,
     RepositorySummary,
     SyncOverride,
+    SyncStatus,
   } from '../types';
+  import { repositorySentence } from '../repository-sentence';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
   import Icon from './Icon.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Popover from './Popover.svelte';
@@ -65,6 +68,7 @@
     enablement = 'inherit',
     onEnablement = () => {},
     offersSync = true,
+    fleet = null,
     syncOverride = undefined,
     syncEnvelope = undefined,
     syncReadProblem = null,
@@ -97,6 +101,11 @@
      * offering to edit it there would be one whose every save is a 404.
      */
     offersSync?: boolean;
+    /**
+     * The fleet, for the sync half of the sentence under the name. Null until
+     * the read comes back, and on the surface that has no sync to read.
+     */
+    fleet?: SyncStatus | null;
     /** Undefined until the read comes back. */
     syncOverride?: SyncOverride | undefined;
     syncEnvelope?: SyncOverrideEditorEnvelope | undefined;
@@ -377,12 +386,13 @@ so a link points at the pane a colleague was asked to look at.
   <section class="repository-page" aria-labelledby={titleId}>
     <PanePath segments={[{ label: 'Repositories', href: backHref, onSelect: onBack }]} />
 
-    <header class="object-head">
-      <h2 class="mono-title" id={titleId}>{repository.name}</h2>
-      <p class="object-sub">
-        Repository settings override workspace defaults and repository-file values
-      </p>
-    </header>
+    <PageHeader
+      id={titleId}
+      section="Repository"
+      title={repository.name}
+      mono
+      description={repositorySentence(repository, repository.effective_enabled, fleet, true)}
+    />
 
     {#if failure !== null}
       <p class="form-error repository-page-error" role="alert">{failure}</p>
@@ -861,29 +871,6 @@ so a link points at the pane a colleague was asked to look at.
     display: grid;
     gap: var(--space-4);
     min-width: 0;
-  }
-
-  .object-head {
-    display: grid;
-    /* The copy-rhythm law, on the object-head family: a name and the sentence
-       under it, box to box. This head carries no controls beside the name, so it
-       needs none of the pull the kind card takes - it renders the law directly. */
-    gap: var(--row-copy-gap);
-  }
-
-  .mono-title {
-    font-family: var(--mono);
-    font-size: 1.375rem;
-    letter-spacing: -0.01em;
-    margin: 0;
-  }
-
-  .object-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-    max-width: 64ch;
   }
 
   .pane-tools {

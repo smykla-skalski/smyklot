@@ -31,6 +31,11 @@
     return session.api.fetchSyncOverride(session.selectedTarget.id, repositoryId, 'files');
   }
 
+  function loadSyncStatus() {
+    if (session.selectedTarget === null) throw new Error('select an installation first');
+    return session.api.fetchSyncStatus(session.selectedTarget.id);
+  }
+
   function chunkError(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
   }
@@ -104,6 +109,7 @@ history is routed with its section. That is what makes an address like
               session.api.resetConfigMigration(targetId, repositoryId)}
             onChanged={(targetId) => session.repositoryChanged(targetId)}
             onLoadSyncOverride={loadSyncOverride}
+            onLoadSyncStatus={loadSyncStatus}
             readOnly={!session.selectedTarget.capabilities.write}
             prefs={session.prefs}
           />

@@ -6,6 +6,7 @@
   const {
     id,
     title,
+    mono = false,
     description,
     section,
     eyebrow,
@@ -17,6 +18,11 @@
     /** The id the page's `aria-labelledby` points at. */
     id: string;
     title: string;
+    /**
+     * The title is a name the product did not choose - a ruleset, a path - so it
+     * keeps its mono voice at the header's own scale.
+     */
+    mono?: boolean;
     /** One line saying what the page is for. Not every page owes one. */
     description?: string;
     /** The group this page sits in - Sync, Access, Activity. Not every page is in one. */
@@ -86,7 +92,7 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     {:else if eyebrowText !== ''}
       <p class="page-eyebrow">{eyebrowText}</p>
     {/if}
-    <h1 class="page-title" {id}>{title}</h1>
+    <h1 class="page-title" class:mono-title={mono} {id}>{title}</h1>
     {#if description !== undefined}
       <p class="page-sub">{description}</p>
     {/if}
@@ -214,6 +220,16 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     min-block-size: 20px;
     text-box: trim-both cap alphabetic;
     text-wrap: balance;
+  }
+
+  /* A name the product did not choose keeps its mono voice, at the header's own
+     scale rather than the row scale the class carries inside a list. */
+  .page-title.mono-title {
+    font-family: var(--mono);
+    font-size: 1.625rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    min-block-size: 19px;
   }
 
   /* Focused on arrival, never ringed for a pointer - see the shell's route focus. */

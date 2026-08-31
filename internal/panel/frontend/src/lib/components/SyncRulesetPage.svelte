@@ -62,12 +62,13 @@ stacked left, Cancel and Done on a hairline foot.
 <script lang="ts">
   import { numericValue } from '../merge';
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
-  import type { SyncSection } from '../routes';
+  import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PanePath from './PanePath.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -152,6 +153,16 @@ stacked left, Cancel and Done on a hairline foot.
 
   const include = $derived(ruleset?.conditions.include ?? []);
   const exclude = $derived(ruleset?.conditions.exclude ?? []);
+
+  const coverage = $derived(
+    ruleset === null
+      ? 'No ruleset by this name - it may have been renamed or removed'
+      : include.length === 0
+        ? 'Covering no branches yet - add a pattern below'
+        : include.length === 1 && include[0] === '~DEFAULT_BRANCH'
+          ? 'Enforced on the default branch of every syncing repository'
+          : `Enforced on ${include.join(', ')} in every syncing repository`,
+  );
 
   let includeOpen = $state(false);
   let excludeOpen = $state(false);
@@ -428,31 +439,25 @@ stacked left, Cancel and Done on a hairline foot.
 </script>
 
 <div class="view-frame">
+  <!-- One crumb, to the row this page sits under. Sync is where that row lives,
+       not a second place to go back to. -->
   <PanePath
     segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
       {
-        label: 'Rulesets',
+        label: SYNC_SECTION_LABELS.rulesets,
         href: sectionHref('rulesets'),
         onSelect: () => onOpenSection('rulesets'),
       },
     ]}
   />
 
-  <header class="object-head">
-    <h2 class="mono-title">{name}</h2>
-    <p class="object-sub">
-      {#if ruleset === null}
-        No ruleset by this name - it may have been renamed or removed
-      {:else if include.length === 1 && include[0] === '~DEFAULT_BRANCH'}
-        Enforced on the default branch of every syncing repository
-      {:else if include.length === 0}
-        Covering no branches yet - add a pattern below
-      {:else}
-        Enforced on {include.join(', ')} in every syncing repository
-      {/if}
-    </p>
-  </header>
+  <PageHeader
+    id="sync-ruleset-heading"
+    section="Ruleset"
+    title={name}
+    mono
+    description={coverage}
+  />
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -1000,27 +1005,6 @@ stacked left, Cancel and Done on a hairline foot.
      measured by the slot after it. */
   .view-frame {
     timeline-scope: --bar-slot;
-  }
-
-  .object-head {
-    display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-4);
-  }
-
-  .mono-title {
-    font-family: var(--mono);
-    font-size: 1.375rem;
-    letter-spacing: -0.01em;
-    margin: 0;
-  }
-
-  .object-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-    max-width: 64ch;
   }
 
   .card.is-unsaved {

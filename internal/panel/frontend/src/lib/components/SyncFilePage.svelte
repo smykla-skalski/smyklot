@@ -91,7 +91,7 @@ where it arises.
     SyncFilesContext,
     SyncOverride,
   } from '../types';
-  import type { SyncSection } from '../routes';
+  import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import Button from './Button.svelte';
   import CodeBlock from './CodeBlock.svelte';
@@ -100,6 +100,7 @@ where it arises.
   import CodeEditor from './CodeEditor.svelte';
   import DiffBlock from './DiffBlock.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PanePath from './PanePath.svelte';
 
   const {
@@ -170,6 +171,12 @@ where it arises.
     const when = formatRelative(at, nowMs);
     return by === '' ? ` · updated ${when}` : ` · updated ${when} by ${by}`;
   });
+
+  const reach = $derived(
+    file === null
+      ? 'No template at this path - it may have been renamed or removed'
+      : `In ${context?.covered ?? 0} of ${context?.repositories ?? 0} repositories${freshness}`,
+  );
 
   const strategyPill = $derived.by(() => {
     if (merges.length === 0) return 'replaces';
@@ -919,23 +926,19 @@ where it arises.
 </script>
 
 <div class="view-frame">
+  <!-- One crumb, to the row this page sits under. Sync is where that row lives,
+       not a second place to go back to. -->
   <PanePath
     segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-      { label: 'Files', href: sectionHref('files'), onSelect: () => onOpenSection('files') },
+      {
+        label: SYNC_SECTION_LABELS.files,
+        href: sectionHref('files'),
+        onSelect: () => onOpenSection('files'),
+      },
     ]}
   />
 
-  <header class="object-head">
-    <h2 class="mono-title">{path}</h2>
-    <p class="object-sub">
-      {#if file === null}
-        No template at this path - it may have been renamed or removed
-      {:else}
-        In {context?.covered ?? 0} of {context?.repositories ?? 0} repositories{freshness}
-      {/if}
-    </p>
-  </header>
+  <PageHeader id="sync-file-heading" section="Shared file" title={path} mono description={reach} />
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -1230,30 +1233,6 @@ where it arises.
 </div>
 
 <style>
-  .object-head {
-    display: grid;
-    /* The copy-rhythm law, on the object-head family: a name and the sentence
-       under it, box to box. This head carries no controls beside the name, so it
-       needs none of the pull the kind card takes - it renders the law directly. */
-    gap: var(--row-copy-gap);
-    margin-bottom: var(--space-4);
-  }
-
-  .mono-title {
-    font-family: var(--mono);
-    font-size: 1.375rem;
-    letter-spacing: -0.01em;
-    margin: 0;
-  }
-
-  .object-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-    max-width: 64ch;
-  }
-
   .card {
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);

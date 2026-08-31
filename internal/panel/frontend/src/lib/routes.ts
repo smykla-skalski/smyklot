@@ -374,7 +374,10 @@ export function panelDocumentTitle(route: PanelRoute): string {
   const rootConsole = 'rootView' in route;
   const segments = routeTitleSegments(route);
   if (rootConsole) segments.push('root-console');
-  return [...segments.map(routeSegmentLabel), 'SMYKLOT'].join(' | ');
+  const object = routeTitleObject(route);
+  const said = segments.map(routeSegmentLabel);
+  if (object !== null) said.unshift(object);
+  return [...said, 'SMYKLOT'].join(' | ');
 }
 
 export function panelViewSection(view: ScopedPanelView): PanelSection {
@@ -457,6 +460,17 @@ function routeTitleSegments(route: PanelRoute): string[] {
      options, which is the one word the tree deliberately does not use twice. */
   const said = sync !== undefined && leaf === sync ? SYNC_SECTION_LABELS[sync] : leaf;
   return leaf === section ? [said] : [said, section];
+}
+
+/**
+ * The object one page is about, for the tab that would otherwise name only the
+ * list it came from - two ruleset tabs both reading "Rulesets" are two tabs a
+ * reader has to open to tell apart. Returned unspelled, because a name Smyklot
+ * did not choose is not a segment to capitalise.
+ */
+function routeTitleObject(route: PanelRoute): string | null {
+  if ('personal' in route || 'rootView' in route) return null;
+  return route.syncRuleset ?? route.syncFile ?? route.repository?.name ?? null;
 }
 
 /** `undefined` for "no segment", `'invalid'` for a segment that cannot be one. */
