@@ -109,31 +109,50 @@ describe('one repository as a page [Integration]', () => {
     }
   });
 
-  it('carries the open pane in the address, and reads one back cold', async () => {
+  /**
+   * The repository is the whole address, and the whole page is on it.
+   *
+   * It used to be five panes behind a switch, each with an address of its own. The page
+   * is one scroll now, so a reader who lands on it cold gets everything at once - and
+   * the pane addresses answer 404 rather than opening the page and pretending the link
+   * meant what it says.
+   */
+  it('reads a repository back cold, whole', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       // Never having seen the list: the page has to resolve the repository by the
       // name in the address rather than find it in rows it already holds.
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/data-pipeline/commands`, {
+      await page.goto(`${panel.origin}/i/${panel.account}/repositories/data-pipeline`, {
         waitUntil: 'domcontentloaded',
       });
       await page
         .getByRole('heading', { name: 'data-pipeline', exact: true })
         .waitFor({ state: 'visible', timeout: 30_000 });
-      await page.getByRole('heading', { name: 'Commands', exact: true }).waitFor({
-        state: 'visible',
-      });
 
-      /* The pane switch is a radio per option with its label drawn over it, so
-         the radio itself is never what a pointer reaches - press the label, the
-         way a reader does. */
-      await page.locator('.pane-tools').getByText('File', { exact: true }).click();
-      await page.waitForFunction(() => !window.location.pathname.endsWith('/commands'), undefined, {
-        timeout: 5_000,
-      });
-      // The File pane is where the page opens, so its address is the bare
-      // repository - a section is written only when it is not that one.
+      // Every card, on the one page, with nothing to press to reach them.
+      for (const card of ['Repository control', 'Merging', 'Behavior', 'Commands']) {
+        await page
+          .getByRole('heading', { name: card, exact: true })
+          .first()
+          .waitFor({ state: 'visible' });
+      }
+      expect(await page.locator('.pane-tools').count()).toBe(0);
       expect(new URL(page.url()).pathname).toBe(`/i/${panel.account}/repositories/data-pipeline`);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('refuses the pane addresses it used to have', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      // Answered from the wire, which is what a shared link actually hits.
+      const answered = await page.goto(
+        `${panel.origin}/i/${panel.account}/repositories/data-pipeline/commands`,
+        { waitUntil: 'domcontentloaded' },
+      );
+
+      expect(answered?.status()).toBe(404);
     } finally {
       await page.close();
     }

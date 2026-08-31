@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { BOOLEAN_FIELDS, CONFIG_KEYS } from '../config';
+  import { CONFIG_KEYS } from '../config';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import {
     FORMATTING_FIELDS,
@@ -16,7 +16,6 @@
     SyncOverrideControlId,
     SyncOverrideEditorEnvelope,
   } from '../repository-sync-override-settings';
-  import { REPOSITORY_SECTIONS, type RepositorySection } from '../routes';
   import type {
     ConfigKey,
     ConfigPatch,
@@ -56,16 +55,16 @@
   const {
     repository,
     detail,
-    section,
     failure = null,
     readOnly = false,
     busy = false,
     backHref,
     onBack,
-    onSection,
     onChange,
     onResetMigration,
-    sections = REPOSITORY_SECTIONS,
+    enablement = 'inherit',
+    onEnablement = () => {},
+    offersSync = true,
     syncOverride = undefined,
     syncEnvelope = undefined,
     syncReadProblem = null,
@@ -76,29 +75,29 @@
   }: {
     repository: RepositorySummary;
     detail: RepositoryDetail | undefined;
-    section: RepositorySection;
     failure?: string | null;
     readOnly?: boolean;
     busy?: boolean;
     backHref: string;
     onBack: () => void;
-    onSection: (section: RepositorySection) => void;
     onChange: (
       next: RepositorySettingsDocument,
       controls: readonly RepositorySettingsControlId[],
     ) => void;
     onResetMigration: () => void;
+    /** Whether Smyklot answers here: on, off, or whatever the workspace says. */
+    enablement?: 'inherit' | 'enabled' | 'disabled';
+    onEnablement?: (next: string) => void;
     /**
-     * The panes this surface offers, in the order the switch shows them.
+     * Whether this surface draws the File sync card.
      *
-     * Handed in rather than worked out here, because which panes there are is
-     * a fact about where this is being drawn. The Root view of somebody else's
-     * installation has no sync pane: sync is configured on the installation's
-     * own page and has no Root address, so a pane offering to edit it there
-     * would be a pane whose every save is a 404.
+     * Handed in rather than worked out here, because it is a fact about where this is
+     * being drawn. The Root view of somebody else's installation has none: sync is
+     * configured on the installation's own page and has no Root address, so a card
+     * offering to edit it there would be one whose every save is a 404.
      */
-    sections?: readonly RepositorySection[];
-    /** Undefined until the pane is opened and the read comes back. */
+    offersSync?: boolean;
+    /** Undefined until the read comes back. */
     syncOverride?: SyncOverride | undefined;
     syncEnvelope?: SyncOverrideEditorEnvelope | undefined;
     syncReadProblem?: string | null;
@@ -344,57 +343,18 @@
     stage({ ...document, config_patch: configPatch }, controlId(`config_patch.${key}`));
   }
 
-  /* The repository-file pane lists the behavior settings this repository
-     actually overrides, the way the approved design draws it: the file card, the
-     bypass control, then whatever this repo has changed. Someone reading the
-     file pane is asking "what does this repository do differently", and the
-     answer belongs on the same screen as the file. */
-  function overriddenBehaviorKeys(one: RepositoryDetail): ConfigKey[] {
-    return BOOLEAN_FIELDS.map((field) => field.key).filter((key) =>
-      Object.hasOwn(one.config_patch, key),
-    );
-  }
+  /* The file card used to repeat whatever this repository overrides, because Behavior was
+     behind a tab and a reader on the file pane could not see it. Both are on the page
+     now, so the repeat was the same rows twice on one screen. */
 
-  function sectionCount(
-    one: RepositoryDetail,
-    pane: 'behavior' | 'commands' | 'formatting',
-  ): number {
-    if (pane === 'formatting') return formattingOverrideCount(one.config_patch.formatting ?? {});
-    const keys: readonly ConfigKey[] =
-      pane === 'behavior'
-        ? BOOLEAN_FIELDS.map((field) => field.key)
-        : ['command_prefix', 'allowed_commands', 'command_aliases'];
+  /** What the switch's answer means here, said rather than left to the words on it. */
+  function enablementWhy(value: 'inherit' | 'enabled' | 'disabled'): string {
+    if (value === 'enabled') return 'On - commands and merges run in this repository';
+    if (value === 'disabled') return 'Off - Smyklot stands down here, whatever the workspace says';
 
-    return keys.filter((key) => Object.hasOwn(one.config_patch, key)).length;
-  }
-
-  /* How many of this repository's own settings a pane holds, where the number
-     is worth a badge. The file pane counts a broken file rather than settings,
-     and sync has nothing to count - what it holds is one switch and a list. */
-  function sectionBadge(one: RepositoryDetail, pane: RepositorySection): number | undefined {
-    if (pane === 'file') return one.config_file_error === undefined ? undefined : 1;
-    if (pane === 'sync') return undefined;
-
-    const count = sectionCount(one, pane);
-
-    return count === 0 ? undefined : count;
-  }
-
-  /* What each pane is called. Which panes exist is REPOSITORY_SECTIONS, which
-     keys this record, so a fifth one is a compile error here rather than a
-     switch quietly missing an option. Both the label under the switch and the
-     switch's own options read it. */
-  const SECTION_LABELS: Record<RepositorySection, string> = {
-    file: 'File',
-    behavior: 'Behavior',
-    commands: 'Commands',
-    formatting: 'Formatting',
-    sync: 'Sync',
-  };
-
-  /** Names the pane for a screen reader, which the switch above it does not. */
-  function sectionLabel(pane: RepositorySection): string {
-    return SECTION_LABELS[pane];
+    return repository.effective_enabled
+      ? 'The workspace has it on, so it runs here'
+      : 'The workspace has it off, so it stands down here';
   }
 
   function capitalize(value: string): string {
@@ -424,22 +384,6 @@ so a link points at the pane a colleague was asked to look at.
       </p>
     </header>
 
-    {#if detail !== undefined}
-      <div class="pane-tools">
-        <SegmentedControl
-          name="repository-{repository.id}-section"
-          label="Settings for {repository.name}"
-          options={sections.map((pane) => ({
-            value: pane,
-            label: SECTION_LABELS[pane],
-            badge: sectionBadge(detail, pane),
-          }))}
-          value={section}
-          onSelect={(next) => onSection(next as RepositorySection)}
-        />
-      </div>
-    {/if}
-
     {#if failure !== null}
       <p class="form-error repository-page-error" role="alert">{failure}</p>
     {/if}
@@ -447,9 +391,15 @@ so a link points at the pane a colleague was asked to look at.
     {#if detail === undefined}
       <p class="detail-loading" role="status">Reading repository settings…</p>
     {:else}
-      <section class="card group-card" aria-labelledby="repository-merge-ci">
-        <div class="group-head">
-          <h3 class="group-name" id="repository-merge-ci">Merge after CI</h3>
+      <!-- CONTROL FIRST: whether Smyklot answers here at all, and whether it reads the
+           repository's own file, come before anything either of them decides. Written
+           below with the rest of the detail and rendered here, because both halves of
+           that card need `detail` and this is where the page wants it read. -->
+      {@render controlCard()}
+
+      <section class="card" aria-labelledby="repository-merge-ci">
+        <div class="card-head">
+          <h2 class="card-title" id="repository-merge-ci">Merging</h2>
           {#if detail.pending_ci_gate !== undefined}
             <span class="pill {GATE_PILLS[detail.pending_ci_gate.readiness]}"
               ><span class="t">{capitalize(detail.pending_ci_gate.readiness)}</span></span
@@ -745,153 +695,163 @@ so a link points at the pane a colleague was asked to look at.
         {/if}
       </section>
 
-      <div
-        class="repository-detail-content"
-        role="group"
-        aria-label="{sectionLabel(section)} settings for {repository.name}"
-      >
-        {#if section === 'file'}
-          <section class="card group-card" aria-labelledby="repository-file-head">
-            <div class="group-head">
-              <h3 class="group-name" id="repository-file-head">Repository file</h3>
-              <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
-                ><span class="t">{capitalize(detail.repository.config_file_status)}</span></span
-              >
-            </div>
-            <p class="group-note">
-              Settings Smyklot reads from the repository itself, which override account defaults
-            </p>
-            <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
-              <!-- 14px glyph in an 18px slot, the same pairing every other icon
+      <!-- ONE SCROLL, NOT FIVE PANES. The switch over File / Behavior / Commands /
+           Formatting / Sync made a reader press four times to see what one repository
+           is set to, and hid from them that most of those panes were empty. The cards
+           are the same cards; they are all here at once - and the wrapper that used to
+           hold the open pane is gone with the panes, because it declared the page's own
+           grid and gap a second time. -->
+      {#snippet controlCard()}
+        <section class="card" aria-labelledby="repository-file-head">
+          <div class="card-head">
+            <h2 class="card-title" id="repository-file-head">Repository control</h2>
+            <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
+              ><span class="t">{capitalize(detail.repository.config_file_status)}</span></span
+            >
+          </div>
+          <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
+            <!-- 14px glyph in an 18px slot, the same pairing every other icon
                  slot in the product uses. -->
-              <span class="file-card-icon status-{detail.repository.config_file_status}">
-                <Icon name="file" size="sm" />
-              </span>
-              <div class="f-copy">
-                <strong>Configuration path</strong>
-                <!-- The file is looked for in four places plus a chosen one, so
+            <span class="file-card-icon status-{detail.repository.config_file_status}">
+              <Icon name="file" size="sm" />
+            </span>
+            <div class="f-copy">
+              <strong>Configuration path</strong>
+              <!-- The file is looked for in four places plus a chosen one, so
                    this names the one that won rather than the one that used to
                    be the only candidate. -->
-                <div><code class="mono">{detail.config_file_path || '—'}</code></div>
-                {#if detail.config_file_superseded !== undefined}
-                  <p class="f-note">
-                    Also present and not read: {detail.config_file_superseded.join(', ')}
-                  </p>
-                {/if}
-                {#if detail.config_file_error !== undefined}
-                  <p>{detail.config_file_error}</p>
-                {/if}
-                {#if detail.config_migration === 'proposed'}
-                  <p class="f-note">
-                    Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
-                      #{detail.config_migration_pr}{/if}
-                  </p>
-                {:else if detail.config_migration !== 'none'}
-                  <p class="f-note">
-                    {detail.config_migration === 'declined'
-                      ? 'The TOML migration was closed, so Smyklot will not ask again'
-                      : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
-                    <button
-                      type="button"
-                      class="f-again"
-                      disabled={readOnly || busy}
-                      onclick={onResetMigration}
-                    >
-                      Let it ask
-                    </button>
-                  </p>
-                {/if}
-              </div>
-            </div>
-            <div class="policy-rows">
-              <div
-                class={[
-                  'policy-row',
-                  { 'is-unsaved': controlDirty(controlId('ignore_repository_file')) },
-                ]}
-                data-unsaved={controlDirty(controlId('ignore_repository_file')) || undefined}
-              >
-                <span class="setting-say">
-                  <span class="setting-name">Bypass file</span>
-                  <span class="setting-why"
-                    >Repository-file settings are ignored and the exception is recorded in Audit</span
+              <div><code class="mono">{detail.config_file_path || '—'}</code></div>
+              {#if detail.config_file_superseded !== undefined}
+                <p class="f-note">
+                  Also present and not read: {detail.config_file_superseded.join(', ')}
+                </p>
+              {/if}
+              {#if detail.config_file_error !== undefined}
+                <p>{detail.config_file_error}</p>
+              {/if}
+              {#if detail.config_migration === 'proposed'}
+                <p class="f-note">
+                  Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
+                    #{detail.config_migration_pr}{/if}
+                </p>
+              {:else if detail.config_migration !== 'none'}
+                <p class="f-note">
+                  {detail.config_migration === 'declined'
+                    ? 'The TOML migration was closed, so Smyklot will not ask again'
+                    : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
+                  <button
+                    type="button"
+                    class="f-again"
+                    disabled={readOnly || busy}
+                    onclick={onResetMigration}
                   >
-                </span>
-                <span class="policy-value">
-                  <SegmentedControl
-                    name="repository-bypass-{repository.id}"
-                    label="Repository file handling"
-                    options={[
-                      { value: 'observe', label: 'Observe' },
-                      { value: 'bypass', label: 'Bypass' },
-                    ]}
-                    value={detail.ignore_repository_file ? 'bypass' : 'observe'}
-                    {disabled}
-                    compact
-                    onSelect={(value) => setBypass(value === 'bypass')}
-                  />
-                </span>
-              </div>
+                    Let it ask
+                  </button>
+                </p>
+              {/if}
             </div>
-            {#if overriddenBehaviorKeys(detail).length > 0}
-              <div class="file-overrides">
-                <ConfigEditor
-                  patch={detail.config_patch}
-                  inherited={detail.inherited_config}
-                  scope="repository"
-                  idPrefix="{repository.id}-file"
-                  section="behavior"
-                  only={overriddenBehaviorKeys(detail)}
+          </div>
+          <div class="policy-rows">
+            <div
+              class={['policy-row', { 'is-unsaved': controlDirty(controlId('enabled_override')) }]}
+              data-unsaved={controlDirty(controlId('enabled_override')) || undefined}
+            >
+              <span class="setting-say">
+                <span class="setting-name">Smyklot</span>
+                <span class="setting-why">{enablementWhy(enablement)}</span>
+              </span>
+              <span class="policy-value">
+                <!-- Three, not two. A repository can FOLLOW the workspace, and that is a
+                     different answer from being switched on here to the same value: the
+                     workspace changing carries the first and leaves the second alone. -->
+                <SegmentedControl
+                  name="repository-enabled-{repository.id}"
+                  label="Smyklot in {repository.name}"
+                  options={[
+                    { value: 'inherit', label: 'Follows the workspace' },
+                    { value: 'enabled', label: 'On' },
+                    { value: 'disabled', label: 'Off' },
+                  ]}
+                  value={enablement}
                   {disabled}
-                  dirtyKeys={dirtyConfigKeys}
-                  onChange={setConfig}
+                  compact
+                  onSelect={(next) => onEnablement(next)}
                 />
-              </div>
-            {/if}
-          </section>
-        {:else if section === 'sync'}
-          {#if syncOverride === undefined && syncReadProblem !== null}
-            <!-- A read that failed is not a read still going, and the two read
+              </span>
+            </div>
+            <div
+              class={[
+                'policy-row',
+                { 'is-unsaved': controlDirty(controlId('ignore_repository_file')) },
+              ]}
+              data-unsaved={controlDirty(controlId('ignore_repository_file')) || undefined}
+            >
+              <span class="setting-say">
+                <span class="setting-name">Repository file</span>
+                <span class="setting-why"
+                  >Bypassed, the file's settings are ignored and the exception is recorded in Audit</span
+                >
+              </span>
+              <span class="policy-value">
+                <SegmentedControl
+                  name="repository-bypass-{repository.id}"
+                  label="Repository file handling"
+                  options={[
+                    { value: 'observe', label: 'Followed' },
+                    { value: 'bypass', label: 'Bypassed' },
+                  ]}
+                  value={detail.ignore_repository_file ? 'bypass' : 'observe'}
+                  {disabled}
+                  compact
+                  onSelect={(value) => setBypass(value === 'bypass')}
+                />
+              </span>
+            </div>
+          </div>
+        </section>
+      {/snippet}
+
+      <ConfigEditor
+        patch={detail.config_patch}
+        inherited={detail.inherited_config}
+        scope="repository"
+        idPrefix={repository.id}
+        {disabled}
+        dirtyKeys={dirtyConfigKeys}
+        onChange={setConfig}
+      />
+
+      <FormattingEditor
+        patch={detail.config_patch.formatting ?? {}}
+        inherited={detail.inherited_config.formatting}
+        scope="repository"
+        idPrefix={repository.id}
+        {disabled}
+        dirtyKeys={dirtyFormattingKeys}
+        onChange={setFormatting}
+        onValidity={onFormattingValidity}
+      />
+
+      {#if offersSync}
+        {#if syncOverride === undefined && syncReadProblem !== null}
+          <!-- A read that failed is not a read still going, and the two read
                  identically in a dim line saying "Reading…". -->
-            <p class="form-error" role="alert">{syncReadProblem}</p>
-          {:else if syncOverride === undefined}
-            <p class="detail-loading" role="status">Reading what this repository adjusts…</p>
-          {:else}
-            <RepositorySyncPane
-              stored={syncOverride}
-              repositoryId={repository.id}
-              envelope={syncEnvelope}
-              {readOnly}
-              {now}
-              dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}
-              dirtyDocument={controlDirty(`repositories.${repository.id}.sync.files.document`)}
-              onChange={onChangeSync}
-            />
-          {/if}
-        {:else if section === 'formatting'}
-          <FormattingEditor
-            patch={detail.config_patch.formatting ?? {}}
-            inherited={detail.inherited_config.formatting}
-            scope="repository"
-            idPrefix={repository.id}
-            {disabled}
-            dirtyKeys={dirtyFormattingKeys}
-            onChange={setFormatting}
-            onValidity={onFormattingValidity}
-          />
+          <p class="form-error" role="alert">{syncReadProblem}</p>
+        {:else if syncOverride === undefined}
+          <p class="detail-loading" role="status">Reading what this repository adjusts…</p>
         {:else}
-          <ConfigEditor
-            patch={detail.config_patch}
-            inherited={detail.inherited_config}
-            scope="repository"
-            idPrefix={repository.id}
-            {section}
-            {disabled}
-            dirtyKeys={dirtyConfigKeys}
-            onChange={setConfig}
+          <RepositorySyncPane
+            stored={syncOverride}
+            repositoryId={repository.id}
+            envelope={syncEnvelope}
+            {readOnly}
+            {now}
+            dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}
+            dirtyDocument={controlDirty(`repositories.${repository.id}.sync.files.document`)}
+            onChange={onChangeSync}
           />
         {/if}
-      </div>
+      {/if}
     {/if}
   </section>
 </div>
@@ -943,12 +903,6 @@ so a link points at the pane a colleague was asked to look at.
     font-size: var(--font-size-meta);
     margin: 0;
     padding: var(--space-4) 0;
-  }
-
-  .repository-detail-content {
-    display: grid;
-    gap: var(--space-4);
-    min-width: 0;
   }
 
   .group-head {

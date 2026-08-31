@@ -77,10 +77,9 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     ['sync files', `/i/${account}/sync/files`],
     ['a sync file', `/i/${account}/sync/files/renovate.json`],
     ['the sync plan', `/i/${account}/sync/plan`],
+    /* One address, because the page is one scroll: the five pane addresses went with
+       the switch over them, and every card they held is measured on this one. */
     ['a repository', `/i/${account}/repositories/smyklot`],
-    ['a repository’s behavior', `/i/${account}/repositories/smyklot/behavior`],
-    ['a repository’s commands', `/i/${account}/repositories/smyklot/commands`],
-    ['a repository’s sync pane', `/i/${account}/repositories/smyklot/sync`],
     ['the inbox', `/inbox`],
     ['the Root overview', `/root`],
     ['the queue', `/root/queue`],

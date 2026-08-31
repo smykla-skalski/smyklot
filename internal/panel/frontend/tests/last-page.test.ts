@@ -31,19 +31,19 @@ function storedWith(side: PanelSide, value: string): Storage {
 }
 
 describe('the page each side was left on [Unit]', () => {
-  it('reads back the workspace page it was given, pane and all', () => {
+  it('reads back the workspace page it was given, repository and all', () => {
     const storage = memoryStorage();
     writeLastPage(
       'workspace',
-      '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
-      { account: 'acme', repository: 'api-gateway', section: 'commands' },
+      '/i/[account]/repositories/[repository]',
+      { account: 'acme', repository: 'api-gateway' },
       storage,
     );
 
     expect(readLastWorkspacePage(storage)).toEqual({
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'api-gateway', section: 'commands' },
+      repository: { name: 'api-gateway' },
     });
   });
 

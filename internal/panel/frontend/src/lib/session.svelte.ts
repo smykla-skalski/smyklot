@@ -56,7 +56,6 @@ import {
   type PanelView,
   type QueueSection,
   type RepositoryPage,
-  type RepositorySection,
   type RootInstallationView,
   type RootRoute,
   type RootRuntimeSection,
@@ -587,20 +586,8 @@ export class PanelSession {
 
   /** Opening a repository is a place to come back from, so it pushes. */
   openRepository(name: string): void {
-    void this.navigate(this.repositoryRoute({ name, section: 'file' }));
+    void this.navigate(this.repositoryRoute({ name }));
     this.resetPageScroll();
-  }
-
-  /**
-   * The pane rides the address too, so a link points at the commands a colleague
-   * was asked to look at. It replaces rather than pushes: moving between the
-   * panes is part of reading one repository, not a second place to come back
-   * from, and Back should leave for the list rather than walk the panes.
-   */
-  selectRepositorySection(section: RepositorySection): void {
-    const open = this.currentRepository;
-    if (open === null || open.section === section) return;
-    void this.navigate(this.repositoryRoute({ name: open.name, section }), true);
   }
 
   /** Back to the list. A push, so it pairs with the push that opened the page. */
@@ -609,8 +596,8 @@ export class PanelSession {
     this.resetPageScroll();
   }
 
-  repositoryHref(name: string, section: RepositorySection = 'file'): string {
-    return panelAddress(this.repositoryRoute({ name, section }));
+  repositoryHref(name: string): string {
+    return panelAddress(this.repositoryRoute({ name }));
   }
 
   /** The list this page was opened from, in whichever surface that was. */

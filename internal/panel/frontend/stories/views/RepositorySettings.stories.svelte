@@ -6,7 +6,7 @@
   import type { SyncOverride } from '#lib/types.js';
   import { REPOSITORY, REPOSITORY_DETAIL } from '../support/fixtures.js';
 
-  /* Fixed, and every timestamp an offset from it: the sync pane prints how long ago
+  /* Fixed, and every timestamp an offset from it: the sync card prints how long ago
      the override was last written, so a moving clock would make one story read
      differently on every render. The same instant `RepositorySyncPane`'s own stories
      use. */
@@ -33,13 +33,12 @@
   const base = {
     repository: REPOSITORY,
     detail: REPOSITORY_DETAIL,
-    section: 'behavior' as const,
     backHref: '#/repositories',
     onBack: fn(),
-    onSection: fn(),
     onChange: fn(),
     onResetMigration: fn(),
     now: NOW,
+    syncOverride: SYNC_OVERRIDE,
     onChangeSync: fn(),
   };
 
@@ -47,7 +46,7 @@
     title: 'Views/RepositorySettings',
     component: RepositorySettings,
     argTypes: {
-      section: { control: 'inline-radio', options: ['file', 'behavior', 'commands', 'sync'] },
+      offersSync: { control: 'boolean' },
       readOnly: { control: 'boolean' },
       busy: { control: 'boolean' },
     },
@@ -56,21 +55,16 @@
 </script>
 
 <!--
-  One repository opened from its row, on one of its three panes. The section is in the
-  address, so a reload lands where the reader was.
+  One repository opened from its row: the whole page in one scroll. It used to be five
+  panes behind a switch, which made a reader press four times to see what one repository
+  is set to and hid from them that most of those panes were empty.
 -->
-<Story name="Behaviour" />
-
-<Story name="Commands" args={{ section: 'commands' }} />
-
-<!-- The configuration file pane: what the repository wrote, and whether it parsed. -->
-<Story name="File" args={{ section: 'file' }} />
+<Story name="Default" />
 
 <!-- A file the service could not read. Nothing in it is applied, and it says so. -->
 <Story
   name="File is invalid"
   args={{
-    section: 'file',
     repository: { ...REPOSITORY, config_file_status: 'invalid' },
     detail: {
       ...REPOSITORY_DETAIL,
@@ -84,7 +78,6 @@
 <Story
   name="No file"
   args={{
-    section: 'file',
     repository: { ...REPOSITORY, config_file_status: 'missing', config_override_count: 0 },
     detail: {
       ...REPOSITORY_DETAIL,
@@ -99,39 +92,28 @@
 
 <Story name="Resetting migration" args={{ busy: true }} />
 
-<!-- The detail has not arrived yet; the panes stand in for it. -->
+<!-- The detail has not arrived yet; the page stands in for it. -->
 <Story name="Loading" args={{ detail: undefined }} />
 
 <Story name="With a problem" args={{ failure: 'GitHub refused the write: 403' }} />
 
-<!--
-  The fourth pane, which arrived with the org-wide file sync. It is the only one whose
-  contents are read when it opens rather than with the rest of the page, so `undefined`
-  is a real state here and not a slow render - see "Still reading" below.
--->
-<Story name="Sync" args={{ section: 'sync', syncOverride: SYNC_OVERRIDE }} />
-
 <!-- Nothing said here, so the organization's own answer stands. -->
 <Story
   name="Sync inherits"
-  args={{ section: 'sync', syncOverride: { ...SYNC_OVERRIDE, enabled: null, document: {} } }}
+  args={{ syncOverride: { ...SYNC_OVERRIDE, enabled: null, document: {} } }}
 />
 
 <!-- Turned off for this repository alone, whatever the organization keeps in step. -->
-<Story
-  name="Sync switched off"
-  args={{ section: 'sync', syncOverride: { ...SYNC_OVERRIDE, enabled: false } }}
-/>
+<Story name="Sync switched off" args={{ syncOverride: { ...SYNC_OVERRIDE, enabled: false } }} />
 
-<!-- The read has not come back. The pane has nothing to draw, which is not the same
+<!-- The read has not come back. The card has nothing to draw, which is not the same
      as a repository that says nothing. -->
-<Story name="Sync still reading" args={{ section: 'sync', syncOverride: undefined }} />
+<Story name="Sync still reading" args={{ syncOverride: undefined }} />
 
-<!-- A read that did not answer leaves the pane empty. -->
+<!-- A read that did not answer leaves the card empty. -->
 <Story
   name="Sync unreadable"
   args={{
-    section: 'sync',
     syncOverride: undefined,
     syncReadProblem: 'The override could not be read: 502',
   }}
@@ -140,18 +122,12 @@
 <Story
   name="Sync with unsaved document"
   args={{
-    section: 'sync',
-    syncOverride: SYNC_OVERRIDE,
     dirtyControls: [`repositories.${REPOSITORY.id}.sync.files.document`],
   }}
 />
 
 <!--
-  Root manages somebody else's installation, and sync has no Root address - so the
-  pane is not offered there at all. `sections` is what says so, and this is the story
-  that shows the switch with three panes rather than four.
+  Root manages somebody else's installation, and sync has no Root address - so the card
+  is not drawn there at all. `offersSync` is what says so.
 -->
-<Story
-  name="Sync not offered"
-  args={{ sections: ['file', 'behavior', 'commands'] as const, section: 'behavior' }}
-/>
+<Story name="Sync not offered" args={{ offersSync: false }} />

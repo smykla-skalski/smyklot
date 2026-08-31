@@ -85,29 +85,20 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', ruleset: 'main-protection' },
   },
   {
-    // A bare repository segment means the pane the page opens on, which reading it back
-    // says out loud - so the shape that comes out is the normalised one.
+    // The repository is the whole address: its page is one scroll, so there is no pane
+    // to name and nothing after the name to read back.
     route: {
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'api-gateway', section: 'file' },
+      repository: { name: 'api-gateway' },
     },
-    id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
+    id: '/i/[account]/repositories/[repository]',
     params: { account: 'acme', repository: 'api-gateway' },
   },
   {
     route: { account: 'acme', view: 'users' },
     id: '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]',
     params: { account: 'acme', section: 'users', rest: '' },
-  },
-  {
-    route: {
-      account: 'acme',
-      view: 'repositories',
-      repository: { name: 'api-gateway', section: 'commands' },
-    },
-    id: '/i/[account]/repositories/[repository]/[[section=repositorySection]]',
-    params: { account: 'acme', repository: 'api-gateway', section: 'commands' },
   },
   {
     route: {
@@ -203,10 +194,10 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
       rootView: 'installation',
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'api-gateway', section: 'behavior' },
+      repository: { name: 'api-gateway' },
     },
-    id: '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]',
-    params: { account: 'acme', repository: 'api-gateway', section: 'behavior' },
+    id: '/root/installations/[account]/repositories/[repository]',
+    params: { account: 'acme', repository: 'api-gateway' },
   },
 ];
 
@@ -271,14 +262,14 @@ describe('panel addresses [Unit]', () => {
     const route: PanelRoute = {
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'a%b', section: 'file' },
+      repository: { name: 'a%b' },
     };
     const address = panelAddress(route);
 
     expect(address).toBe(`${basePath}/i/acme/repositories/a%25b`);
     expect(
       defined(
-        panelRouteAt('/i/[account]/repositories/[repository]/[[section=repositorySection]]', {
+        panelRouteAt('/i/[account]/repositories/[repository]', {
           account: 'acme',
           repository: 'a%b',
         }),

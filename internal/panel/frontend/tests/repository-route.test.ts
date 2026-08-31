@@ -2,11 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { panelAddress } from '../src/lib/addresses';
 import { basePath } from '../src/lib/paths';
-import {
-  REPOSITORY_SECTIONS,
-  availableRepositorySections,
-  parsePanelRoute,
-} from '../src/lib/routes';
+import { parsePanelRoute } from '../src/lib/routes';
 
 /**
  * The address of one repository's page.
@@ -16,6 +12,9 @@ import {
  * segments MEAN changed, so these read the route rather than the path - a
  * `repository` on the route is a page, a `dialog` on it is something standing
  * over the list, and the two are no longer the same address.
+ *
+ * The pane is gone with the tabs that named it. A repository's page is one scroll,
+ * so the repository IS the whole address and anything after it resolves to nothing.
  *
  * Round trips through the real parser rather than through the grammar helpers,
  * because what matters is that a link somebody pastes resolves to what the panel
@@ -29,49 +28,33 @@ function roundTrip(path: string): string {
 }
 
 describe('one repository as a page [Unit]', () => {
-  it('reads the repository and its pane out of the repositories path', () => {
+  it('reads the repository out of the repositories path', () => {
     expect(parsePanelRoute('', '/i/acme/repositories/api-gateway')).toEqual({
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'api-gateway', section: 'file' },
-    });
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/commands')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      repository: { name: 'api-gateway', section: 'commands' },
+      repository: { name: 'api-gateway' },
     });
   });
 
   it('is a page, never a dialog', () => {
     // The whole point of the change: nothing about this address says something
     // is standing on top of the list, because nothing is.
-    const route = parsePanelRoute('', '/i/acme/repositories/api-gateway/behavior');
+    const route = parsePanelRoute('', '/i/acme/repositories/api-gateway');
     expect(route).not.toBeNull();
     expect(route).not.toHaveProperty('dialog');
   });
 
-  it('writes the pane only when it is not the one the page opens on', () => {
+  it('writes the repository and nothing after it', () => {
     expect(roundTrip('/i/acme/repositories/api-gateway')).toBe('/i/acme/repositories/api-gateway');
-    expect(roundTrip('/i/acme/repositories/api-gateway/file')).toBe(
-      '/i/acme/repositories/api-gateway',
-    );
-    expect(roundTrip('/i/acme/repositories/api-gateway/behavior')).toBe(
-      '/i/acme/repositories/api-gateway/behavior',
-    );
   });
 
-  it('reads a repository named like a pane', () => {
+  it('reads a repository named like one of the panes that used to exist', () => {
     /* A name is only ever read in the first position, so a repository called
-       `file` is not mistaken for the File pane of nothing. */
+       `file` is a repository and not the remains of a pane. */
     expect(parsePanelRoute('', '/i/acme/repositories/file')).toEqual({
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'file', section: 'file' },
-    });
-    expect(parsePanelRoute('', '/i/acme/repositories/behavior/behavior')).toEqual({
-      account: 'acme',
-      view: 'repositories',
-      repository: { name: 'behavior', section: 'behavior' },
+      repository: { name: 'file' },
     });
   });
 
@@ -82,9 +65,21 @@ describe('one repository as a page [Unit]', () => {
     });
   });
 
-  it('refuses a pane that is not one', () => {
-    // An address that does not resolve, rather than the page quietly opening on
-    // the pane it starts on - a mistyped pane should say so.
+  /**
+   * The retired pane addresses answer nothing.
+   *
+   * Five of them were real - `/file`, `/behavior`, `/commands`, `/formatting`, `/sync` -
+   * and a link to one may still be in somebody's message. It resolves to no route, which
+   * the wire answers 404, rather than the page quietly opening and pretending the link
+   * meant what it says. The same treatment the retired Schedules page got.
+   */
+  it('refuses the panes it used to have', () => {
+    for (const pane of ['file', 'behavior', 'commands', 'formatting', 'sync']) {
+      expect(
+        parsePanelRoute('', `/i/acme/repositories/api-gateway/${pane}`),
+        `/${pane} still resolves`,
+      ).toBeNull();
+    }
     expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/nonsense')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/file/extra')).toBeNull();
   });
@@ -93,13 +88,13 @@ describe('one repository as a page [Unit]', () => {
     const path = panelAddress({
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'a b/c', section: 'file' },
+      repository: { name: 'a b/c' },
     });
     expect(path).toBe(`${basePath}/i/acme/repositories/a%20b%2Fc`);
     expect(parsePanelRoute(basePath, path)).toEqual({
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'a b/c', section: 'file' },
+      repository: { name: 'a b/c' },
     });
   });
 
@@ -111,23 +106,19 @@ describe('one repository as a page [Unit]', () => {
 
 describe('one repository through the Root console [Unit]', () => {
   it('takes the same shape of address it has in a workspace', () => {
-    expect(
-      parsePanelRoute('', '/root/installations/acme/repositories/api-gateway/behavior'),
-    ).toEqual({
+    expect(parsePanelRoute('', '/root/installations/acme/repositories/api-gateway')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'repositories',
-      repository: { name: 'api-gateway', section: 'behavior' },
+      repository: { name: 'api-gateway' },
     });
-    expect(roundTrip('/root/installations/acme/repositories/api-gateway/behavior')).toBe(
-      '/root/installations/acme/repositories/api-gateway/behavior',
-    );
-    expect(roundTrip('/root/installations/acme/repositories/api-gateway/file')).toBe(
+    expect(roundTrip('/root/installations/acme/repositories/api-gateway')).toBe(
       '/root/installations/acme/repositories/api-gateway',
     );
   });
 
-  it('refuses a pane that is not one there either', () => {
+  it('refuses the retired panes there too', () => {
+    expect(parsePanelRoute('', '/root/installations/acme/repositories/api/behavior')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/repositories/api/nonsense')).toBeNull();
   });
 
@@ -140,42 +131,5 @@ describe('one repository through the Root console [Unit]', () => {
     expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/defaults/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
-  });
-
-  /**
-   * Which panes a surface offers, as against which panes exist.
-   *
-   * The sync pane is reachable at a Root address - the router accepts the
-   * segment, because the router's list is the complete one and the Go server is
-   * handed the same pattern - and the console has nowhere to ask about sync, so
-   * the page lands on the first pane instead of drawing an empty box. That
-   * fallback had no test at either end, and it is the whole reason this
-   * function exists rather than the list being read directly.
-   */
-  describe('the panes a surface offers', () => {
-    it('offers every pane where sync can be asked about', () => {
-      expect(availableRepositorySections(true)).toEqual([
-        'file',
-        'behavior',
-        'commands',
-        'formatting',
-        'sync',
-      ]);
-    });
-
-    it('leaves sync out where there is nowhere to ask', () => {
-      expect(availableRepositorySections(false)).toEqual([
-        'file',
-        'behavior',
-        'commands',
-        'formatting',
-      ]);
-    });
-
-    /* Filtered from the router's own list rather than written out again, so a
-       fifth pane is offered without anybody remembering this file. */
-    it('offers panes the router knows, in the order it lists them', () => {
-      expect(availableRepositorySections(true)).toEqual([...REPOSITORY_SECTIONS]);
-    });
   });
 });

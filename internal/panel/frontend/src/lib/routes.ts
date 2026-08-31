@@ -85,55 +85,19 @@ export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
 export const ROOT_RUNTIME_SECTIONS = ['service', 'database', 'settings'] as const;
 
 /**
- * The panes of one repository's own page.
- *
- * A repository is reached at `/i/acme/repositories/api-gateway`, and the pane it
- * opens on rides the address the same way history's table does, so a link points
- * at the commands a colleague was asked to look at rather than at the file pane
- * everyone starts on.
- *
- * `file` is not written into the path. It is where the page opens, so the bare
- * repository already means it, and an address that says so twice is one a reader
- * would have to be told to ignore.
- */
-export const REPOSITORY_SECTIONS = ['file', 'behavior', 'commands', 'formatting', 'sync'] as const;
-export type RepositorySection = (typeof REPOSITORY_SECTIONS)[number];
-
-/**
  * The sections of the sync view, each a sidebar row and an address.
  *
  * `overview` is not written into the path: it is where the view opens, so the
- * bare `/i/acme/sync` already means it - the same rule the repository page
- * applies to its `file` pane.
+ * bare `/i/acme/sync` already means it.
  */
 export const WRITTEN_SYNC_SECTIONS = ['labels', 'settings', 'rulesets', 'files', 'plan'] as const;
 export const SYNC_SECTIONS = ['overview', ...WRITTEN_SYNC_SECTIONS] as const;
 export type SyncSection = (typeof SYNC_SECTIONS)[number];
 
-/**
- * Which of the panes a surface can offer.
- *
- * Root manages somebody else's installation and sync has no Root address, so
- * whether there is anywhere to ask is what says the pane can be opened. Asked
- * once, here, rather than paired with `sync` at each of the places that would
- * otherwise have to remember: the switch's options and the fallback an address
- * naming a pane this surface has no answer for lands on.
- *
- * Takes what it needs as an argument and reaches for nothing. This module is
- * imported by `src/params.ts`, which the route-manifest build runs under plain
- * Node to write `routes.json` for the Go server - so a later pane answering
- * this from a store or a session would break that build with an error nowhere
- * near this file.
- */
-export function availableRepositorySections(syncOffered: boolean): readonly RepositorySection[] {
-  return REPOSITORY_SECTIONS.filter((section) => section !== 'sync' || syncOffered);
-}
-
-/** One repository, opened on one of its panes. */
+/** One repository's own page. */
 export interface RepositoryPage {
   /** Named the way a person names it - `api-gateway`, never an id. */
   name: string;
-  section: RepositorySection;
 }
 
 export type PanelView = (typeof PANEL_VIEWS)[number];
@@ -326,9 +290,12 @@ function parseTrailingRepository(
   segments: string[],
 ): RepositoryPage | undefined | 'invalid' {
   if (segments.length === 0 || view !== 'repositories') return undefined;
-  if (segments.length > 2) return 'invalid';
+  /* The repository IS the whole address now. Its page used to open on one of five
+     panes and carry the pane in a second segment; the page is one scroll, so there is
+     no pane to name and an address that names one resolves to nothing. */
+  if (segments.length > 1) return 'invalid';
 
-  const [encodedName, rawSection] = segments;
+  const [encodedName] = segments;
   if (encodedName === undefined || encodedName === '') return 'invalid';
 
   let name: string;
@@ -337,14 +304,8 @@ function parseTrailingRepository(
   } catch {
     return 'invalid';
   }
-  if (name.trim() === '') return 'invalid';
-  /* A name is only ever read in the first position, so the repository called
-     `behavior` is reachable, and `.../behavior/behavior` is its Behavior pane. */
-  if (rawSection === undefined) return { name, section: 'file' };
 
-  const section = REPOSITORY_SECTIONS.find((known) => known === rawSection);
-
-  return section === undefined ? 'invalid' : { name, section };
+  return name.trim() === '' ? 'invalid' : { name };
 }
 
 /**

@@ -10,7 +10,6 @@ import {
 } from './route-dialogs.ts';
 import {
   HISTORY_SECTIONS,
-  REPOSITORY_SECTIONS,
   WRITTEN_QUEUE_SECTIONS,
   WRITTEN_SYNC_SECTIONS,
   isScopedPanelView,
@@ -18,7 +17,6 @@ import {
   type HistorySection,
   type PanelRoute,
   type RepositoryPage,
-  type RepositorySection,
   type RootRoute,
   type SyncSection,
   type WrittenQueueSection,
@@ -86,10 +84,9 @@ export function panelAddress(route: PanelRoute): string {
   }
 
   if (route.view === 'repositories' && named(route.repository)) {
-    return resolve('/i/[account]/repositories/[repository]/[[section=repositorySection]]', {
+    return resolve('/i/[account]/repositories/[repository]', {
       account,
       repository: encodeURIComponent(route.repository.name),
-      section: writtenSection(route.repository),
     });
   }
 
@@ -188,14 +185,10 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
   }
 
   if (route.view === 'repositories' && named(route.repository)) {
-    return resolve(
-      '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]',
-      {
-        account,
-        repository: encodeURIComponent(route.repository.name),
-        section: writtenSection(route.repository),
-      },
-    );
+    return resolve('/root/installations/[account]/repositories/[repository]', {
+      account,
+      repository: encodeURIComponent(route.repository.name),
+    });
   }
 
   return resolve('/root/installations/[account]/[view=rootInstallationView]', {
@@ -212,16 +205,6 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
  */
 function named(repository: RepositoryPage | undefined): repository is RepositoryPage {
   return repository !== undefined && repository.name !== '';
-}
-
-/**
- * The pane an address spells out, which is none for the one the page opens on.
- *
- * `file` is where a repository starts, so the bare address already means it, and one
- * that says so as well is an address a reader would have to be told to ignore.
- */
-function writtenSection(repository: RepositoryPage): RepositorySection | undefined {
-  return repository.section === 'file' ? undefined : repository.section;
 }
 
 /**
@@ -287,7 +270,7 @@ export function panelRouteAt(
         syncFile: segments.join('/'),
       };
     }
-    case '/i/[account]/repositories/[repository]/[[section=repositorySection]]':
+    case '/i/[account]/repositories/[repository]':
       return { account, view: 'repositories', repository: repositoryAt(params) };
 
     case '/root':
@@ -332,7 +315,7 @@ export function panelRouteAt(
       return rootInstallation(account, section, undefined, dialogAt(section, params.rest));
     case '/root/installations/[account]/history/[[section=historySection]]':
       return rootInstallation(account, 'history', asSection(section));
-    case '/root/installations/[account]/repositories/[repository]/[[section=repositorySection]]':
+    case '/root/installations/[account]/repositories/[repository]':
       return {
         rootView: 'installation',
         account,
@@ -386,17 +369,13 @@ function asSyncSection(value: string | undefined): SyncSection | undefined {
 }
 
 /**
- * The repository an address names, opened on the pane it spells out.
+ * The repository an address names.
  *
  * The name comes back the way the reader wrote it: the router has already decoded the
- * segment, which is the half `panelAddress` encoded. A missing pane is the one the page
- * opens on rather than no pane at all - the address leaves `file` unwritten.
+ * segment, which is the half `panelAddress` encoded.
  */
 function repositoryAt(params: Readonly<Record<string, string | undefined>>): RepositoryPage {
-  return {
-    name: params.repository ?? '',
-    section: REPOSITORY_SECTIONS.find((pane) => pane === params.section) ?? 'file',
-  };
+  return { name: params.repository ?? '' };
 }
 
 /**

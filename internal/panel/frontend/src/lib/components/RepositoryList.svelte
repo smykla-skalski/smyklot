@@ -6,7 +6,6 @@
 
   import { BOOLEAN_FIELDS } from '../config';
   import type { FilterSection } from '../filter-menu';
-  import { availableRepositorySections, type RepositorySection } from '../routes';
   import {
     adoptRepositorySettings,
     overlayRepositorySettingsDocument,
@@ -264,19 +263,11 @@
      repository of the same name never meet. */
   const activeRepositoryKey = $derived(session.currentRepository?.name ?? null);
 
-  /* Which panes this surface has, worked out once here and handed to the page:
-     whether there is anywhere to ask about sync is this component's fact, and
-     the page reading `onLoadSyncOverride !== null` for itself would be the same
-     question asked in two places. */
-  const availableSections = $derived(availableRepositorySections(onLoadSyncOverride !== null));
-
-  /* An address naming a pane this view cannot offer lands on the first one
-     rather than on an empty box. Root manages somebody else's installation and
-     sync has no Root address, so this is a link followed rather than a switch
-     pressed. */
-  const activeSection = $derived<RepositorySection>(
-    offeredSection(session.currentRepository?.section ?? 'file'),
-  );
+  /* Whether the page draws its File sync card, worked out once here and handed to it:
+     Root manages somebody else's installation and sync has no Root address, so there is
+     nowhere to ask - and the page reading `onLoadSyncOverride !== null` for itself would
+     be the same question asked in two places. */
+  const offersSync = $derived(onLoadSyncOverride !== null);
   const repositoryDetailQuery = createQuery(() => ({
     queryKey: ['repository', targetId, activeRepositoryKey],
     enabled: activeRepositoryKey !== null,
@@ -312,14 +303,15 @@
    * colleague saving first left this page unable to save at all until the whole
    * thing was reloaded.
    *
-   * Only when the pane is opened. Most visits to this page are about the
-   * repository's own configuration file, and reading this with the rest of the
-   * detail would be a second request per repository for a pane nobody looked at.
+   * Only where there is somewhere to ask. The page is one scroll now, so the File sync
+   * card is on screen with the rest and its read happens with them - what still gates
+   * it is whether this surface offers sync at all: the Root view of somebody else's
+   * installation has no endpoint to ask.
    */
   const syncOverrideKey = (repositoryId: string) => ['sync-override', targetId, repositoryId];
   const syncOverrideQuery = createQuery(() => ({
     queryKey: syncOverrideKey(activeRepositoryId ?? ''),
-    enabled: onLoadSyncOverride !== null && activeRepositoryId !== null && activeSection === 'sync',
+    enabled: offersSync && activeRepositoryId !== null,
     queryFn: () => {
       if (onLoadSyncOverride === null || activeRepositoryId === null) {
         throw new Error('open a repository first');
@@ -543,10 +535,6 @@
       if (failures[repositoryId]?.source === 'read') clearFailure(repositoryId);
     });
   });
-
-  function offeredSection(section: RepositorySection): RepositorySection {
-    return availableSections.includes(section) ? section : 'file';
-  }
 
   /* The order the list is read in, now that there are no column headings to carry
      it: one sort at a time, each with its two directions, chosen from the tools
@@ -782,16 +770,16 @@ a workspace has is not a number worth blocking the first screenful on.
   <RepositorySettings
     {repository}
     detail={activeRepositoryDetail}
-    section={activeSection}
     failure={failures[repository.id]?.message ?? null}
     {readOnly}
     busy={working.has(repository.id)}
     backHref={session.repositoriesHref()}
     onBack={closeRepository}
-    onSection={(section) => session.selectRepositorySection(section)}
     onChange={(next, controls) => stageRepositoryDocument(repository.id, next, controls)}
     onResetMigration={() => resetConfigMigration(repository.id)}
-    sections={availableSections}
+    enablement={draftedEnablement(repository)}
+    onEnablement={(next) => void setEnabled(repository, next)}
+    {offersSync}
     syncOverride={syncOverrideQuery.data}
     syncEnvelope={activeSyncEnvelope}
     {syncReadProblem}

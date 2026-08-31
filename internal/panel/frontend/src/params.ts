@@ -5,7 +5,6 @@ import {
   DIRECT_PANEL_VIEWS,
   DIRECT_ROOT_INSTALLATION_VIEWS,
   HISTORY_SECTIONS,
-  REPOSITORY_SECTIONS,
   WRITTEN_QUEUE_SECTIONS,
   WRITTEN_SYNC_SECTIONS,
 } from './lib/routes.ts';
@@ -92,16 +91,6 @@ const MATCHERS = {
 
   /** Queue pages written after the bare Active address. */
   queueSection: oneOf(WRITTEN_QUEUE_SECTIONS),
-
-  /**
-   * The panes one repository's page can open on.
-   *
-   * The segment is optional in the route, so what makes it worth matching is the segment
-   * that is not one: `/i/acme/repositories/api-gateway/nonsense` resolves to no route at
-   * all and is answered 404 from the wire, rather than reaching the page and quietly
-   * opening the pane it starts on.
-   */
-  repositorySection: oneOf(REPOSITORY_SECTIONS),
 
   /**
    * The views the Root console renders for an installation, which are fewer than the
