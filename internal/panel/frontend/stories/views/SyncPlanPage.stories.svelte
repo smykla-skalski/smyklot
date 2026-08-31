@@ -25,7 +25,7 @@
      harness +2 ~1. */
   const ACTIONS: SyncAction[] = [
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'labels',
       operation: 'create',
       subject: 'dependencies',
@@ -33,14 +33,14 @@
       state: 'pending',
     },
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'labels',
       operation: 'create',
       subject: 'good first issue',
       state: 'pending',
     },
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'settings',
       operation: 'update',
       subject: 'squash merging',
@@ -49,7 +49,7 @@
       state: 'pending',
     },
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'settings',
       operation: 'update',
       subject: 'wiki',
@@ -58,7 +58,7 @@
       state: 'pending',
     },
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'files',
       operation: 'create',
       subject: 'renovate.json',
@@ -67,14 +67,14 @@
       state: 'pending',
     },
     {
-      repository: 'af',
+      repository: 'platform-infra',
       kind: 'files',
       operation: 'delete',
       subject: '.github/stale.yml',
       state: 'pending',
     },
     {
-      repository: 'afi',
+      repository: 'api-gateway',
       kind: 'settings',
       operation: 'create',
       subject: 'delete branch on merge',
@@ -82,7 +82,7 @@
       state: 'pending',
     },
     {
-      repository: 'afi',
+      repository: 'api-gateway',
       kind: 'settings',
       operation: 'create',
       subject: 'auto-merge',
@@ -90,7 +90,7 @@
       state: 'pending',
     },
     {
-      repository: 'afi',
+      repository: 'api-gateway',
       kind: 'settings',
       operation: 'update',
       subject: 'squash merging',
@@ -99,7 +99,7 @@
       state: 'pending',
     },
     {
-      repository: 'afi',
+      repository: 'api-gateway',
       kind: 'settings',
       operation: 'update',
       subject: 'wiki',
@@ -108,7 +108,7 @@
       state: 'pending',
     },
     {
-      repository: 'afi',
+      repository: 'api-gateway',
       kind: 'rulesets',
       operation: 'create',
       subject: 'main-protection',
@@ -116,7 +116,7 @@
       state: 'pending',
     },
     {
-      repository: 'harness',
+      repository: 'auth-service',
       kind: 'labels',
       operation: 'create',
       subject: 'dependencies',
@@ -124,14 +124,14 @@
       state: 'pending',
     },
     {
-      repository: 'harness',
+      repository: 'auth-service',
       kind: 'labels',
       operation: 'create',
       subject: 'good first issue',
       state: 'pending',
     },
     {
-      repository: 'harness',
+      repository: 'auth-service',
       kind: 'settings',
       operation: 'update',
       subject: 'projects',
@@ -191,7 +191,7 @@
       finished_at: minutes(3),
       actions: [
         {
-          repository: 'af',
+          repository: 'platform-infra',
           kind: 'settings',
           operation: 'update',
           subject: 'squash merging',
@@ -201,7 +201,7 @@
           error: "GitHub answered 403: the App's Administration permission was revoked",
         },
         {
-          repository: 'af',
+          repository: 'platform-infra',
           kind: 'settings',
           operation: 'update',
           subject: 'wiki',
@@ -211,7 +211,7 @@
           blocker: 'squash merging',
         },
         {
-          repository: 'af',
+          repository: 'platform-infra',
           kind: 'labels',
           operation: 'create',
           subject: 'dependencies',

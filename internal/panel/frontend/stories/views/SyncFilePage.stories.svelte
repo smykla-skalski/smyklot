@@ -49,6 +49,14 @@
     unavailable: '',
   };
 
+  /* The three repositories that adjust the template, named and identified the
+     way the installation's own repository list names them. */
+  const ADJUSTERS = [
+    { name: 'platform-infra', id: '4002' },
+    { name: 'api-gateway', id: '4005' },
+    { name: 'auth-service', id: '4006' },
+  ];
+
   const AF_MERGE = {
     path: 'renovate.json',
     strategy: 'deep-merge',
@@ -66,16 +74,21 @@
     known_paths: [],
     base_formatting: POLICY,
     repository_policies: Array.from({ length: 25 }, (_, index) => ({
-      repository: ['af', 'afi', 'harness'][index] ?? `repository-${index + 1}`,
-      repository_id: `910${index + 1}`,
+      repository: ADJUSTERS[index]?.name ?? `repository-${index + 1}`,
+      repository_id: ADJUSTERS[index]?.id ?? `40${String(index + 5).padStart(2, '0')}`,
       default_branch: 'main',
       base_policy: POLICY,
     })),
     merges: [
-      { repository: 'af', repository_id: '9101', path: 'renovate.json', merge: AF_MERGE },
       {
-        repository: 'afi',
-        repository_id: '9102',
+        repository: 'platform-infra',
+        repository_id: '4002',
+        path: 'renovate.json',
+        merge: AF_MERGE,
+      },
+      {
+        repository: 'api-gateway',
+        repository_id: '4005',
         path: 'renovate.json',
         merge: {
           path: 'renovate.json',
@@ -85,8 +98,8 @@
         },
       },
       {
-        repository: 'harness',
-        repository_id: '9103',
+        repository: 'auth-service',
+        repository_id: '4006',
         path: 'renovate.json',
         merge: { path: 'renovate.json', strategy: 'deep-merge', overrides: { automerge: null } },
       },

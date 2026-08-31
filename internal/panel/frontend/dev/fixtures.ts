@@ -594,10 +594,11 @@ export function seed(
           unreadable: false,
         },
       ],
-      /* The design's three renovate adjusters, on the board's own fleet -
-         pseudo repository ids the mock resolves names for. */
+      /* The design's three renovate adjusters, on the three repositories the
+         plan already changes - real ids, so the file page's adjuster list and
+         the board name the same repositories. */
       [
-        '9101/files',
+        '4002/files',
         {
           kind: 'files',
           enabled: null,
@@ -622,7 +623,7 @@ export function seed(
         },
       ],
       [
-        '9102/files',
+        '4005/files',
         {
           kind: 'files',
           enabled: null,
@@ -645,7 +646,7 @@ export function seed(
         },
       ],
       [
-        '9103/files',
+        '4006/files',
         {
           kind: 'files',
           enabled: null,
@@ -689,39 +690,51 @@ export function seed(
 }
 
 /**
- * The fleet the approved design draws: 25 repositories, three carrying the
- * plan's changes (af 2/2/0/2, afi 0/4/1/0, harness 2/1/0/0 - kind totals
- * labels 4 / settings 7 / rulesets 1 / files 2, fourteen in all), one refusal
- * with its reason on the row, and two repositories with kinds switched off.
+ * The fleet, over the repositories this installation actually holds.
+ *
+ * IT HAS TO BE THE SAME REPOSITORIES. The sync side of this mock named a
+ * different set of twenty-five - `af`, `afi`, `harness` and so on - and only
+ * `smyklot` was in both, so anything joining a repository to its sync state was
+ * invisible here for twenty-seven of twenty-eight. The repository page's own
+ * sentence says "syncing - 4 changes in the open plan" and could never say it.
+ *
+ * The distribution the design draws is what matters and is kept whole: three
+ * repositories carrying the plan's changes (platform-infra 2/2/0/2, api-gateway
+ * 0/4/1/0, auth-service 2/1/0/0 - kind totals labels 4 / settings 7 /
+ * rulesets 1 / files 2, fourteen in all), one refusal with its reason on the
+ * row, and two repositories with kinds switched off.
  */
 export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
   type Mark = number | 'off' | 'ref';
   const fleet: [string, Mark, Mark, Mark, Mark][] = [
-    ['.github', 0, 0, 0, 0],
-    ['af', 2, 2, 0, 2],
-    ['afi', 0, 4, 1, 0],
-    ['harness', 2, 1, 0, 0],
-    ['smyklot-legacy', 0, 0, 0, 'ref'],
-    ['dotfiles', 'off', 0, 0, 'off'],
-    ['sai', 0, 0, 0, 0],
-    ['klaudiush', 0, 0, 0, 0],
     ['smyklot', 0, 0, 0, 0],
-    ['orca', 0, 0, 0, 0],
-    ['archive-old', 'off', 'off', 'off', 'off'],
-    ['docs', 0, 0, 0, 0],
-    ['infra', 0, 0, 0, 0],
-    ['charts', 0, 0, 0, 0],
-    ['actions', 0, 0, 0, 0],
-    ['tooling', 0, 0, 0, 0],
-    ['bench', 0, 0, 0, 0],
-    ['probe', 0, 0, 0, 0],
-    ['relay', 0, 0, 0, 0],
-    ['skald', 0, 0, 0, 0],
-    ['forge', 0, 0, 0, 0],
-    ['mirror', 0, 0, 0, 0],
-    ['quill', 0, 0, 0, 0],
-    ['spore', 0, 0, 0, 0],
-    ['weft', 0, 0, 0, 0],
+    ['platform-infra', 2, 2, 0, 2],
+    ['legacy-service', 0, 0, 0, 'ref'],
+    ['migration-demo', 'off', 0, 0, 'off'],
+    ['api-gateway', 0, 4, 1, 0],
+    ['auth-service', 2, 1, 0, 0],
+    ['billing-worker', 0, 0, 0, 0],
+    ['cli-tools', 0, 0, 0, 0],
+    ['customer-portal', 0, 0, 0, 0],
+    ['data-pipeline', 0, 0, 0, 0],
+    ['deployment-config', 'off', 'off', 'off', 'off'],
+    ['design-system', 0, 0, 0, 0],
+    ['docs-site', 0, 0, 0, 0],
+    ['edge-proxy', 0, 0, 0, 0],
+    ['event-consumer', 0, 0, 0, 0],
+    ['feature-flags', 0, 0, 0, 0],
+    ['identity-provider', 0, 0, 0, 0],
+    ['internal-tools', 0, 0, 0, 0],
+    ['mobile-api', 0, 0, 0, 0],
+    ['notification-service', 0, 0, 0, 0],
+    ['observability', 0, 0, 0, 0],
+    ['payments-api', 0, 0, 0, 0],
+    ['release-automation', 0, 0, 0, 0],
+    ['runtime-images', 0, 0, 0, 0],
+    ['search-indexer', 0, 0, 0, 0],
+    ['security-policies', 0, 0, 0, 0],
+    ['support-tools', 0, 0, 0, 0],
+    ['web-frontend', 0, 0, 0, 0],
   ];
   const cell = (mark: Mark): SyncCell => {
     if (mark === 'off') return { state: 'off' };
@@ -738,8 +751,8 @@ export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
         rulesets: cell(rulesets),
         files: cell(files),
       },
-      ...(repository === 'af' ? { removals: 1 } : {}),
-      ...(repository === 'smyklot-legacy'
+      ...(repository === 'platform-infra' ? { removals: 1 } : {}),
+      ...(repository === 'legacy-service'
         ? {
             reason:
               '.github/workflows/ci.yaml needs the workflows permission - grant it on the ' +
@@ -1003,7 +1016,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
     counts: { create: 8, update: 5, delete: 1 },
     actions: [
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'labels',
         operation: 'create',
         subject: 'dependencies',
@@ -1011,14 +1024,14 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'settings',
         operation: 'update',
         subject: 'squash merging',
@@ -1027,7 +1040,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'settings',
         operation: 'update',
         subject: 'wiki',
@@ -1036,7 +1049,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'files',
         operation: 'create',
         subject: 'renovate.json',
@@ -1045,14 +1058,14 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'files',
         operation: 'delete',
         subject: '.github/stale.yml',
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'settings',
         operation: 'create',
         subject: 'delete branch on merge',
@@ -1060,7 +1073,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'settings',
         operation: 'create',
         subject: 'auto-merge',
@@ -1068,7 +1081,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'settings',
         operation: 'update',
         subject: 'squash merging',
@@ -1077,7 +1090,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'settings',
         operation: 'update',
         subject: 'wiki',
@@ -1086,7 +1099,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'rulesets',
         operation: 'create',
         subject: 'main-protection',
@@ -1094,7 +1107,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'harness',
+        repository: 'auth-service',
         kind: 'labels',
         operation: 'create',
         subject: 'dependencies',
@@ -1102,14 +1115,14 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         state: 'pending',
       },
       {
-        repository: 'harness',
+        repository: 'auth-service',
         kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
         state: 'pending',
       },
       {
-        repository: 'harness',
+        repository: 'auth-service',
         kind: 'settings',
         operation: 'update',
         subject: 'projects',
@@ -1985,17 +1998,6 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
     can_manage_system_role: user.account.id !== VIEWER.id && user.system_role !== 'super_root',
   }));
 }
-
-/**
- * The board's fleet names for the adjusting repositories the mock's
- * repository table does not hold - the sync fiction and the repository
- * fiction predate each other, and the file pages speak the board's.
- */
-export const PSEUDO_REPO_NAMES: Record<string, string> = {
-  '9101': 'af',
-  '9102': 'afi',
-  '9103': 'harness',
-};
 
 /**
  * The path index the finder matches over: every path any repository in the

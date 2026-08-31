@@ -52,20 +52,20 @@
     ],
     merges: [
       {
-        repository: 'af',
-        repository_id: '9101',
+        repository: 'platform-infra',
+        repository_id: '4002',
         path: 'renovate.json',
         merge: { path: 'renovate.json', overrides: { timezone: 'Europe/Warsaw' } },
       },
       {
-        repository: 'afi',
-        repository_id: '9102',
+        repository: 'api-gateway',
+        repository_id: '4005',
         path: 'renovate.json',
         merge: { path: 'renovate.json', overrides: {} },
       },
       {
-        repository: 'harness',
-        repository_id: '9103',
+        repository: 'auth-service',
+        repository_id: '4006',
         path: 'renovate.json',
         merge: { path: 'renovate.json', overrides: {} },
       },
@@ -87,21 +87,21 @@
     counts: { create: 1, update: 0, delete: 1 },
     actions: [
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'files',
         operation: 'create',
         subject: 'renovate.json',
         state: 'pending',
       },
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'files',
         operation: 'update',
         subject: 'renovate.json',
         state: 'pending',
       },
       {
-        repository: 'af',
+        repository: 'platform-infra',
         kind: 'files',
         operation: 'update',
         subject: 'CONTRIBUTING.md',
@@ -116,7 +116,7 @@
     checked_at: new Date(NOW - 5 * 60_000).toISOString(),
     repositories: [
       {
-        repository: 'smyklot-legacy',
+        repository: 'legacy-service',
         cells: {
           labels: { state: 'in_step' },
           settings: { state: 'in_step' },

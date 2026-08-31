@@ -73,7 +73,7 @@
     counts: { create: 1, update: 0, delete: 0 },
     actions: [
       {
-        repository: 'afi',
+        repository: 'api-gateway',
         kind: 'rulesets',
         operation: 'create',
         subject: 'main-protection',

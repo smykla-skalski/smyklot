@@ -18,14 +18,7 @@
  * handlers build. Those stay here, small enough to read, until there is a builder to
  * call instead.
  */
-import {
-  DEFAULT_CONFIG,
-  KNOWN_PATHS,
-  PSEUDO_REPO_NAMES,
-  rootPanelUsers,
-  seed,
-  VIEWER,
-} from '../../dev/fixtures.ts';
+import { DEFAULT_CONFIG, KNOWN_PATHS, rootPanelUsers, seed, VIEWER } from '../../dev/fixtures.ts';
 import { CONFIG_KEYS } from '#lib/config.js';
 import { formattingSources, parseFormattingPatch } from '#lib/formatting.js';
 
@@ -230,12 +223,10 @@ function storyFileAdjustments(): SyncFileMergeEntry[] {
     const [repositoryId, kind] = key.split('/');
     if (kind !== 'files' || repositoryId === undefined) continue;
     const repository =
-      PSEUDO_REPO_NAMES[repositoryId] ??
       MOCK.targets
         .flatMap((target) => target.repositories)
         .find((candidate) => candidate.detail.repository.id === repositoryId)?.detail.repository
-        .name ??
-      repositoryId;
+        .name ?? repositoryId;
     const merges = override.document.merges;
     if (Array.isArray(merges)) {
       for (const merge of merges as Array<Record<string, unknown>>) {
@@ -287,12 +278,9 @@ export const SYNC_FILES_CONTEXT: SyncFilesContext = {
     const found = MOCK.targets
       .flatMap((target) => target.repositories)
       .find((candidate) => candidate.detail.repository.name === row.repository)?.detail.repository;
-    const pseudoId = Object.entries(PSEUDO_REPO_NAMES).find(
-      ([, name]) => name === row.repository,
-    )?.[0];
     return {
       repository: row.repository,
-      repository_id: found?.id ?? pseudoId ?? `mock:${row.repository}`,
+      repository_id: found?.id ?? `mock:${row.repository}`,
       default_branch: found?.default_branch ?? 'main',
       base_policy: CONFIG.formatting,
     };

@@ -92,7 +92,6 @@ import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.t
    this serves, and so importing them never drags `node:fs` into a browser. */
 import {
   KNOWN_PATHS,
-  PSEUDO_REPO_NAMES,
   capabilitiesFor,
   cycled,
   DEFAULT_CONFIG,
@@ -1314,10 +1313,8 @@ async function handle(
         const [repositoryId, kind] = key.split('/');
         if (kind !== 'files' || repositoryId === undefined) continue;
         const name =
-          PSEUDO_REPO_NAMES[repositoryId] ??
           target.repositories.find((repository) => repository.detail.repository.id === repositoryId)
-            ?.detail.repository.name ??
-          repositoryId;
+            ?.detail.repository.name ?? repositoryId;
         const heldMerges = override.document.merges;
         if (Array.isArray(heldMerges)) {
           for (const merge of heldMerges as Array<Record<string, unknown>>) {
@@ -1357,17 +1354,15 @@ async function handle(
         }
       }
       const repositoryPolicies: SyncFileRepositoryPolicy[] = rows.map((row) => {
-        const pseudoId = Object.entries(PSEUDO_REPO_NAMES).find(
-          ([, name]) => name === row.repository,
-        )?.[0];
+        /* The fleet names repositories this installation holds, so the lookup
+           finds one. The `mock:` fallback is for a seed that names one it does
+           not - which is the drift this fixture used to be built on. */
         const repository = target.repositories.find(
           (candidate) => candidate.detail.repository.name === row.repository,
         );
-        const repositoryId =
-          repository?.detail.repository.id ?? pseudoId ?? `mock:${row.repository}`;
+        const repositoryId = repository?.detail.repository.id ?? `mock:${row.repository}`;
         return {
-          repository:
-            repository?.detail.repository.name ?? PSEUDO_REPO_NAMES[repositoryId] ?? row.repository,
+          repository: repository?.detail.repository.name ?? row.repository,
           repository_id: repositoryId,
           default_branch: repository?.detail.repository.default_branch ?? 'main',
           base_policy:
