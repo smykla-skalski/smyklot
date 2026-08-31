@@ -572,7 +572,7 @@ refuse.
       <!-- A refresh that failed over a loaded table has not made the table wrong. -->
       {#if problem !== null && page !== null}
         <ResultProblem
-          title="Root users could not be loaded"
+          title="The people could not be read"
           {problem}
           busy={loading}
           onRetry={() => void loadPage(undefined, false)}
@@ -582,7 +582,7 @@ refuse.
 
       {#if problem !== null && page === null}
         <ResultProblem
-          title="Root users could not be loaded"
+          title="The people could not be read"
           {problem}
           busy={loading}
           onRetry={() => void loadPage(undefined, false)}
@@ -700,8 +700,8 @@ refuse.
 <Modal
   id={ADD_DIALOG}
   open={addOpen}
-  title="Add installation user"
-  description="Choose the installation before assigning a Viewer, Editor, or Admin role"
+  title="Add someone to a workspace"
+  description="Choose the workspace before assigning a Viewer, Editor, or Admin role"
   returnFocus={addTrigger}
   onClose={closeAddUser}
 >
@@ -729,24 +729,24 @@ refuse.
     />
 
     <fieldset class="installation-fieldset">
-      <legend>Installation</legend>
+      <legend>Workspace</legend>
       <SearchField
-        label="Filter installations"
-        placeholder="Find an installation"
+        label="Find a workspace"
+        placeholder="Find a workspace"
         value={installationQuery}
         onInput={(value) => (installationQuery = value)}
       />
       {#if installationsLoading}
-        <div class="installation-state" role="status">Loading installations…</div>
+        <div class="installation-state" role="status">Reading the workspaces…</div>
       {:else if installationsProblem !== null}
         <div class="installation-state installation-problem" role="alert">
           <span>{installationsProblem}</span>
           <Button tone="quiet" onclick={() => void installationsQuery.refetch()}>Try again</Button>
         </div>
       {:else if filteredInstallations.length === 0}
-        <div class="installation-state">No installations match this search</div>
+        <div class="installation-state">No workspace matches this search</div>
       {:else}
-        <div class="installation-options" role="radiogroup" aria-label="Installation">
+        <div class="installation-options" role="radiogroup" aria-label="Workspace">
           {#each filteredInstallations as installation (installation.id)}
             <label class:unavailable={!installation.available}>
               <input
@@ -781,7 +781,7 @@ refuse.
     </fieldset>
 
     <label>
-      <span>Installation role</span>
+      <span>Role in that workspace</span>
       <Select
         bind:value={addRole}
         options={[

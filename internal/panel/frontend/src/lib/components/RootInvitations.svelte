@@ -457,7 +457,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     <!-- A refresh that failed over a loaded table has not made the table wrong. -->
     {#if problem !== null && page !== null}
       <ResultProblem
-        title="Root invitations could not be loaded"
+        title="The invitations could not be read"
         {problem}
         busy={loading}
         onRetry={() => void loadPage(undefined, false)}
@@ -467,7 +467,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
 
     {#if problem !== null && page === null}
       <ResultProblem
-        title="Root invitations could not be loaded"
+        title="The invitations could not be read"
         {problem}
         busy={loading}
         onRetry={() => void loadPage(undefined, false)}
@@ -605,7 +605,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
         <span>Expires after</span>
         <Select
           bind:value={expiresInDays}
-          aria-label="Root invitation expiry"
+          aria-label="Invitation expiry"
           options={[
             { value: 1, label: '1 day' },
             { value: 7, label: '7 days' },

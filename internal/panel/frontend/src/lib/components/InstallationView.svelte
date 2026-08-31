@@ -257,7 +257,7 @@ history is routed with its section. That is what makes an address like
     </div>
   {/if}
 {:else if session.failure === null}
-  <Plate label="No installations">
+  <Plate label="No workspaces">
     <div class="empty-panel-state">
       <span class="empty-panel-mark" aria-hidden="true">+</span>
       <div>

@@ -339,7 +339,7 @@ inside it.
 <section class="installation-view" aria-labelledby="root-page-heading">
   <header class="installation-heading">
     <div class="installation-title">
-      <BackLink href={listHref} label="Installations" onNavigate={onList} />
+      <BackLink href={listHref} label="Workspaces" onNavigate={onList} />
       <div>
         <span class="installation-mark">
           <span class="cap-trim">
@@ -408,7 +408,7 @@ inside it.
        the failure is a line above it and the panel stays where it is. -->
   {#if failure !== null && target !== null}
     <ResultProblem
-      title="Could not refresh this installation"
+      title="This workspace could not be refreshed"
       problem={failure}
       busy={loading}
       onRetry={() => void load()}
