@@ -39,8 +39,14 @@
   {/snippet}
 </Story>
 
-<!-- A page whose cards all fit on the screen gets its width back and no index at all. -->
-<Story name="Page that does not scroll" tags={['blank']}>
+<!--
+  A page whose cards all fit on the screen gets its width back and no index at all.
+
+  Not tagged `blank`: the tag says the STORY draws nothing, and this one draws the page
+  the index is missing from - which is the whole of what it has to show. What is absent
+  here is the component, and a story that renders its subject's absence still renders.
+-->
+<Story name="Page that does not scroll">
   {#snippet template(args)}
     <div class="view-frame">
       <div class="page-main">

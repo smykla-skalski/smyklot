@@ -7,7 +7,8 @@
  * should fail loudly in the catalogue rather than quietly render an empty state that
  * looks deliberate.
  *
- * The one exception is `signInUrl`, which is read synchronously to build an href.
+ * The exceptions are the three that build an address rather than ask for anything:
+ * `signInUrl` and the two audit exports, all read synchronously into an href.
  */
 import { PanelApiError, type PanelApi } from '#lib/api.js';
 
@@ -41,6 +42,8 @@ export function stubApi(over: Partial<PanelApi> = {}): PanelApi {
   return new Proxy(
     {
       signInUrl: () => 'https://github.com/login/oauth/authorize',
+      rootAuditExportHref: () => '/api/v1/root/history/audit.csv',
+      auditExportHref: (targetId: string) => `/api/v1/targets/${targetId}/audit.csv`,
       ...over,
     } as PanelApi,
     {
