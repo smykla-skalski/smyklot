@@ -201,9 +201,12 @@ async function measure(page: Page, route: string): Promise<Reading> {
            repository in the mono voice and a standing are each one unbreakable run
            BY LAW - "a time is one word however many words it holds" - so filling one
            measures a rule the design states rather than a fault. Direct text nodes
-           only, which is exactly the prose. */
+           only, which is exactly the prose - and never a voice that is ITSELF an
+           atom, which is how "4 of 10 open" is written: one short phrase that may
+           not break, and 120 unbreakable characters in its place is a sentence the
+           service cannot produce. */
         for (const cell of row.querySelectorAll(
-          '.object-name, .object-sum, .setting-name, .setting-why, .setting-fact',
+          ':is(.object-name, .object-sum, .setting-name, .setting-why, .setting-fact):not(.nowrap-atom)',
         )) {
           for (const node of cell.childNodes) {
             if (node.nodeType !== Node.TEXT_NODE) continue;
