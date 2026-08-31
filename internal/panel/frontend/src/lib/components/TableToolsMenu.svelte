@@ -25,10 +25,22 @@
     label = 'Sort and filter',
     sorts,
     filters,
+    display = [],
   }: {
     label?: string;
     sorts: readonly ToolsSort[];
     filters: readonly ToolsFilter[];
+    /**
+     * Choices that change how the rows READ rather than which rows there are -
+     * times as a moment or as an age, and nothing else so far.
+     *
+     * They are here rather than in a menu of their own because a reader who wants
+     * to change what a table shows them does not know which of the two questions
+     * they are asking, and two sliders buttons side by side asked them to guess.
+     * They are not counted on the trigger and "Clear filters" leaves them alone:
+     * a way of reading is not a narrowing to undo.
+     */
+    display?: readonly ToolsFilter[];
   } = $props();
 
   let triggerButton = $state<HTMLElement | null>(null);
@@ -182,6 +194,35 @@ them, and a second copy here would be a second answer to the same question.
                 {#if option.tone !== undefined}
                   <span class="tone tone-{option.tone}" aria-hidden="true"></span>
                 {/if}
+                <span class="option-copy">
+                  <strong>{option.label}</strong>
+                  {#if option.description !== undefined}
+                    <span>{option.description}</span>
+                  {/if}
+                </span>
+              </button>
+            {/each}
+          {/each}
+        </div>
+      {/each}
+
+      {#each display as choice (choice.label)}
+        <div class="tools-group" role="listbox" aria-label={choice.label}>
+          <p class="tools-label">{choice.label}</p>
+          {#each choice.sections as section, index (section.label ?? index)}
+            {#each section.options as option (option.value)}
+              {@const isSelected = choice.selected.includes(option.value)}
+              <button
+                type="button"
+                class="tools-option"
+                class:selected={isSelected}
+                role="option"
+                aria-selected={isSelected}
+                onclick={() => choice.onChange([option.value])}
+              >
+                <span class="selection-mark" aria-hidden="true">
+                  {#if isSelected}<span></span>{/if}
+                </span>
                 <span class="option-copy">
                   <strong>{option.label}</strong>
                   {#if option.description !== undefined}

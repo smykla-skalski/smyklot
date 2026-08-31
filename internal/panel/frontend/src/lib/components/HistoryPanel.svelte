@@ -27,7 +27,6 @@
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
-  import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import Pill from './Pill.svelte';
@@ -411,6 +410,26 @@
         ]
       : [toolSort('When', 'when'), toolSort('Repository', 'repository')],
   );
+
+  /* How the rows read, in the same menu as what they show. It was a control of its
+     own beside this one - two sliders buttons on one bar, asking a reader to know
+     which of them held "times as dates" before pressing either. */
+  const toolDisplay = $derived<ToolsFilter[]>([
+    {
+      label: 'Time display',
+      hint: 'Choose how event times appear',
+      sections: [
+        {
+          options: [
+            { value: 'relative', label: 'Relative', description: 'How long ago it happened' },
+            { value: 'absolute', label: 'Date and time', description: 'The moment it happened' },
+          ],
+        },
+      ],
+      selected: [timeDisplay],
+      onChange: (values) => selectTimeDisplay(values[0] === 'absolute' ? 'absolute' : 'relative'),
+    },
+  ]);
 
   /* The narrower questions, on the same bar: what KIND of change, and - in the console -
      which category of event. The failure state is not here; it leads the list. */
@@ -814,8 +833,7 @@ where the record is.
     {/if}
 
     <span class="push-end">
-      <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
-      <TableToolsMenu sorts={toolSorts} filters={toolFilters} />
+      <TableToolsMenu sorts={toolSorts} filters={toolFilters} display={toolDisplay} />
     </span>
   </div>
 
