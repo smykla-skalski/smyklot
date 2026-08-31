@@ -53,7 +53,7 @@
     planHref?: string;
     onOpenPlan?: (event: MouseEvent) => void;
     /**
-     * Which of the queue's three views to show. Each is still its own address - the
+     * Which of the queue's five views to show. Each is still its own address - the
      * segments change it - so a link straight to the decisions keeps working.
      */
     onSelectSection?: (value: QueueSection) => void;
@@ -86,7 +86,11 @@
   let detailItemID = $state<string | null>(null);
   let now = $state(Date.now());
   let rangeNow = $state(Date.now());
-  let offset = $state(0);
+  /* HOW MUCH OF THE LIST IS ON SCREEN, not which page of it is. A queue is read from
+     the top - what needs somebody, then what is running - so paging away from the top
+     hides the part that matters to reach the part that does not. The foot reveals
+     more of the same list instead, which is what every other list here does. */
+  let shown = $state(0);
   let search = $state('');
   /* What the page is actually filtered by, one step behind what is being typed: every
      keystroke is a request, and the queue is the one list where a reader is often
@@ -121,8 +125,11 @@
   const installations = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
   const states = $derived(facets.states.filter((value) => sectionStates(section).includes(value)));
-  const rangeStart = $derived(total === 0 ? 0 : offset + 1);
-  const rangeEnd = $derived(Math.min(offset + items.length, total));
+  /** What the foot counts: the top of the list down to the last row on screen. */
+  const shownRange = $derived(
+    total === 0 ? 'Nothing to show' : `Showing 1-${items.length}\u{a0}of ${total}`,
+  );
+  const more = $derived(nextOffset !== 0);
   const queueFilters = $derived<ToolsFilter[]>([
     {
       label: 'Workload',
@@ -142,7 +149,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         workload = (values[0] ?? 'all') as QueueWorkload | 'all';
-        offset = 0;
+        shown = 0;
       },
     },
     {
@@ -160,7 +167,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         stateFilter = values[0] ?? 'all';
-        offset = 0;
+        shown = 0;
       },
     },
     {
@@ -178,7 +185,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         profile = values[0] ?? 'all';
-        offset = 0;
+        shown = 0;
       },
     },
     ...(targetId === undefined
@@ -198,7 +205,7 @@
             fallbackValue: 'all',
             onChange: (values: string[]) => {
               installation = values[0] ?? 'all';
-              offset = 0;
+              shown = 0;
             },
           },
         ]
@@ -218,7 +225,7 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         repository = values[0] ?? 'all';
-        offset = 0;
+        shown = 0;
       },
     },
     {
@@ -238,7 +245,7 @@
       onChange: (values: string[]) => {
         timeRange = (values[0] ?? 'all') as 'all' | '24h' | '7d';
         rangeNow = Date.now();
-        offset = 0;
+        shown = 0;
       },
     },
     {
@@ -259,14 +266,14 @@
       fallbackValue: 'all',
       onChange: (values: string[]) => {
         priority = (values[0] ?? 'all') as QueuePriority | 'all';
-        offset = 0;
+        shown = 0;
       },
     },
   ]);
 
   const debouncedSearch = useDebounce((query: string) => {
     appliedSearch = query;
-    offset = 0;
+    shown = 0;
   }, 250);
 
   $effect(() => {
@@ -386,7 +393,10 @@
   });
 
   function queueQuery(): string {
-    const query = new SvelteURLSearchParams({ limit: String(pageSize), offset: String(offset) });
+    const query = new SvelteURLSearchParams({
+      limit: String(pageSize + shown),
+      offset: '0',
+    });
     const selectedStates =
       stateFilter === 'all' ? sectionStates(section) : [stateFilter as QueueItem['state']];
     query.set('state', selectedStates.join(','));
@@ -580,25 +590,13 @@ without the buttons, rather than buttons that refuse.
 </section>
 
 {#snippet queueFoot()}
-  <!-- Inside the card the counting ends in, which is where a list's foot belongs. -->
+  <!-- Inside the card the counting ends in, which is where a list's foot belongs, and
+       one quiet act beside it: more of the same list rather than another page of it. -->
   <div class="list-foot">
-    <span>Showing {rangeStart}-{rangeEnd}&nbsp;of {total}</span>
-    <span class="foot-acts">
-      <Button
-        tone="quiet"
-        disabled={offset === 0 || loading}
-        onclick={() => (offset = Math.max(0, offset - pageSize))}
-      >
-        Previous
-      </Button>
-      <Button
-        tone="quiet"
-        disabled={nextOffset === 0 || loading}
-        onclick={() => (offset = nextOffset)}
-      >
-        Next
-      </Button>
-    </span>
+    <span>{shownRange}</span>
+    {#if more}
+      <Button tone="quiet" disabled={loading} onclick={() => (shown += pageSize)}>Show more</Button>
+    {/if}
   </div>
 {/snippet}
 
@@ -639,10 +637,5 @@ without the buttons, rather than buttons that refuse.
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     text-box: trim-both cap alphabetic;
-  }
-
-  .foot-acts {
-    display: flex;
-    gap: var(--space-2);
   }
 </style>
