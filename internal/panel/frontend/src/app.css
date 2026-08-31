@@ -2985,15 +2985,15 @@ button.object-row {
   min-inline-size: 0;
 }
 
-/* The sentence stands off the name by the rest of its own line box. `.sum-swap` is the
-   same slot with two readings crossing inside it, so the rhythm is named on the slot
-   rather than on whichever of them is currently drawn - and the slot has to be set in
-   the sentence's own voice, because `1cap` is read against the element that names it.
-   Left at the row's 15px the gap resolved 1.49px short, and every queue row was tight
-   by exactly that. */
+/* THE COPY-RHYTHM LAW, WHICH IS 8px RENDERED - see `--row-copy-gap`. Both boxes here
+   are trimmed to their ink, so the declared margin IS the rendered gap and the law can
+   be named rather than derived: `calc(var(--leading-meta) - 1cap)` resolved 10.31px and
+   set every object row 2.31px looser than every setting row on the same page.
+   `.sum-swap` is the same slot with two readings crossing inside it, so the rhythm is
+   named on the slot rather than on whichever of them is currently drawn. */
 .object-main > :is(.object-sum, .sum-swap) {
   font-size: var(--font-size-meta);
-  margin-block-start: calc(var(--leading-meta) - 1cap);
+  margin-block-start: var(--row-copy-gap);
 }
 
 /* THE ROW GIVES WAY BEFORE THE PAGE DOES. A name and its standings are one line until
@@ -3279,11 +3279,11 @@ button.object-row {
   min-inline-size: min(var(--setting-say-min), 100%);
 }
 
-/* One line of body text between a name and its sentence. The distance rides the
-   description's own margin so `1cap` reads the description's font - named on the container
-   it resolves against the row's, and every row comes back tight by the difference. */
+/* THE COPY-RHYTHM LAW, WHICH IS 8px RENDERED - see `--row-copy-gap`. Both boxes are
+   trimmed to their ink, so the declared margin is the rendered gap; the derivation this
+   replaces resolved 10.31px, which is a number no law asked for. */
 .setting-say > .setting-why {
-  margin-block-start: calc(var(--leading-meta) - 1cap);
+  margin-block-start: var(--row-copy-gap);
 }
 
 /* The trimmed cap box is 9.69px; floored to 10 the say stack stays whole, with the slack
