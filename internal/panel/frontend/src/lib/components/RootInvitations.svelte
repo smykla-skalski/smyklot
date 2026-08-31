@@ -615,7 +615,8 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
       </label>
       <Callout class="root-warning">
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
-        <span>The recipient becomes a Root only after signing in and accepting this invitation</span
+        <span
+          >The recipient becomes an operator only after signing in and accepting this invitation</span
         >
       </Callout>
       <FormError message={createProblem} />

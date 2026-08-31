@@ -168,11 +168,11 @@ to ask it four different ways.
         <span>Allow this run outside the assigned window</span>
       </label>
       <Button row disabled={at === '' || previewBusy} onclick={() => void refreshPreview()}
-        >{previewBusy ? 'Calculating…' : 'Preview eligibility'}</Button
+        >{previewBusy ? 'Calculating…' : 'Preview when it runs'}</Button
       >
       {#if preview !== null && previewKey === scheduleKey()}
         <div class="schedule-preview" role="status">
-          <strong>First eligible instant</strong>
+          <strong>It would first run</strong>
           <time datetime={preview.eligible_at}>{previewTime(preview.eligible_at)}</time>
           {#if preview.profile_timezone !== undefined}
             <span

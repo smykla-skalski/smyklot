@@ -68,10 +68,10 @@ function targetSummary(document: Record<string, unknown>): string {
 function repositorySummary(document: Record<string, unknown>): string {
   const enabled =
     document.enabled_override === true
-      ? 'Enabled'
+      ? 'On'
       : document.enabled_override === false
-        ? 'Disabled'
-        : 'Inherits enablement';
+        ? 'Off'
+        : 'From the workspace';
   const repositoryFile =
     document.ignore_repository_file === true ? 'Repository file ignored' : 'Repository file read';
   const patches = countKeys(document.config_patch);
@@ -112,11 +112,7 @@ function syncConfigSummary(
 
 function syncOverrideSummary(document: Record<string, unknown>): string {
   const enabled =
-    document.enabled === true
-      ? 'Enabled'
-      : document.enabled === false
-        ? 'Disabled'
-        : 'Inherits enablement';
+    document.enabled === true ? 'On' : document.enabled === false ? 'Off' : 'From the workspace';
   const fields = countKeys(nestedDocument(document));
   return `${enabled} · ${fields} ${fields === 1 ? 'stored field' : 'stored fields'}`;
 }

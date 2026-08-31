@@ -443,8 +443,8 @@ without the composer.
                 Queue items remain durable, but webhook delivery, pending CI, sync, and maintenance
                 will not start new work.
               {:else}
-                Every queue lane can start eligible work. Use this control to stop automatic
-                dispatch without taking the panel or webhook intake offline.
+                Every job starts the work that is due. Use this control to stop automatic dispatch
+                without taking the panel or webhook intake offline.
               {/if}
             </p>
           </div>
@@ -801,8 +801,8 @@ without the composer.
   busy={pauseSaving}
 >
   <p class="confirm-copy">
-    No queue lane will lease new work. Work already running may finish, and incoming webhooks remain
-    stored for later delivery. Root can resume dispatch from this page.
+    No job will take on new work. Work already running may finish, and incoming webhooks remain
+    stored for later delivery. An operator can resume dispatch from this page.
   </p>
 </ConfirmDialog>
 

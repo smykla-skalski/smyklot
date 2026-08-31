@@ -216,13 +216,13 @@ describe('SettingsCheckpointDialog [Component]', () => {
       'Repositories on by default · Pending CI labels · 1 policy override',
     );
     expect(settingsCheckpointSummary(repository!, repository!.after.state)).toBe(
-      'Enabled · Repository file read · 0 policy overrides',
+      'On · Repository file read · 0 policy overrides',
     );
     expect(settingsCheckpointSummary(syncConfig!, syncConfig!.after.state)).toBe(
       'On · 1 label · removal allowed · 0 exclusions',
     );
     expect(settingsCheckpointSummary(syncOverride!, syncOverride!.after.state)).toBe(
-      'Inherits enablement · 1 stored field',
+      'From the workspace · 1 stored field',
     );
     expect(settingsCheckpointSummary(runtime, runtime.after.state)).toBe(
       '2 overrides · Current deployment fills the rest',

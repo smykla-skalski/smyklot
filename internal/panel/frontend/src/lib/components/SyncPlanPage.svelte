@@ -274,7 +274,7 @@ the button.
         </div>
         <dl class="schedule-facts">
           <div>
-            <dt>Earliest eligible</dt>
+            <dt>Runs no earlier than</dt>
             <dd>
               <time datetime={queued.eligible_at}>{formatDateTime(queued.eligible_at)}</time>
               <small>{formatUntil(queued.eligible_at, nowMs)} in your timezone</small>
@@ -294,7 +294,9 @@ the button.
                 ? formatDateTime(queued.estimated_start_at)
                 : 'Not estimated'}
               <small
-                >{queued.work_ahead === 0 ? 'Next in lane' : `${queued.work_ahead} items ahead`} · estimate</small
+                >{queued.work_ahead === 0
+                  ? 'Nothing ahead of it'
+                  : `${queued.work_ahead} items ahead`} · estimate</small
               >
             </dd>
           </div>

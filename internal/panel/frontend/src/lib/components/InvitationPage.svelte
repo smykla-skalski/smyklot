@@ -94,7 +94,7 @@
   }
 
   function roleLabel(value: PanelInvitation): string {
-    if (value.system_role === 'root') return 'Root';
+    if (value.system_role === 'root') return 'Operator';
     const role = value.role ?? 'viewer';
     return role.slice(0, 1).toUpperCase() + role.slice(1);
   }
