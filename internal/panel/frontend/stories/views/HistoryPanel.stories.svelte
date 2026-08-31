@@ -43,7 +43,7 @@
   installation an entry belongs to, where an installation's own panel already knows.
 -->
 <Story name="Root console">
-  {#snippet template(args)}<HistoryPanel {...args} context="root" rootRole="Super Root" />{/snippet}
+  {#snippet template(args)}<HistoryPanel {...args} context="root" />{/snippet}
 </Story>
 
 <!-- Nothing recorded yet. -->

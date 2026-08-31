@@ -28,7 +28,6 @@
     Promise.resolve({ items, next_cursor: null, total: items.length });
 
   const base = {
-    rootRole: 'Super Root',
     section: 'users' as const,
     onSection: fn(),
     fetchUsers: () => users(),
@@ -105,7 +104,7 @@
 <Story name="Read only">
   {#snippet template(args)}
     <Seeded seed={seeded}>
-      <RootAccess {...args} rootRole="Root" canManageInvitations={false} />
+      <RootAccess {...args} canManageInvitations={false} />
     </Seeded>
   {/snippet}
 </Story>

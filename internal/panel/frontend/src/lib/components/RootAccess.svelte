@@ -77,7 +77,6 @@
   ] satisfies readonly FilterSection[];
 
   const {
-    rootRole,
     section,
     fetchUsers,
     updateUser,
@@ -92,7 +91,6 @@
     suggestUsers,
     onOpenInstallationAccess,
   }: {
-    rootRole: string;
     section: AccessSection;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
     updateUser: (accountId: string, input: UpdateRootUserInput) => Promise<void>;
@@ -485,7 +483,6 @@ refuse.
 
 <section class="root-access" aria-labelledby="root-page-heading">
   <RootPageHeader
-    role={rootRole}
     title={section === 'users' ? 'Users' : 'Invitations'}
     subtitle={section === 'users'
       ? 'Every account known to Smyklot'

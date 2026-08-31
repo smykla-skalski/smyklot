@@ -1,44 +1,38 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
+  import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
-  import StatusPill from './StatusPill.svelte';
 
   const {
-    role,
     title,
     subtitle,
     headingId = 'root-page-heading',
-    showScope = true,
     children,
   }: {
-    role: string;
     title: string;
-    subtitle: string;
+    subtitle?: string;
     headingId?: string;
-    showScope?: boolean;
     children?: Snippet;
   } = $props();
 </script>
 
 <!--
 @component
-The Root console's page header: `PageHeader`, plus the line that says whose
-authority the page is under.
+The Root console's page header: `PageHeader`, with the console's own name.
+
+It used to open every page with "Root mode · Super Root" and a pill reading
+"Application scope" - three ways of saying where you are, on a purple shell
+whose sidebar is titled Operations and whose every page is the console's. The
+name is the eyebrow now, and the shield is the same mark the sidebar wears.
 
 The anatomy is shared - it used to be copied, 72 of ~81 CSS lines identical to
-`PanelHeader`'s, comments and all. What is genuinely the console's is this
-kicker, so that is all this file is now.
-
-Scope is identity, so its pill sits on the kicker line; the action slot holds
-only live status and real controls.
+`PageHeader`'s, comments and all - so what is genuinely the console's is this
+one line, and that is all this file is.
 -->
 
 <PageHeader id={headingId} {title} description={subtitle} actions={children}>
   {#snippet kicker()}
-    <span class="cap-trim">Root mode · {role}</span>
-    {#if showScope}
-      <StatusPill>Application scope</StatusPill>
-    {/if}
+    <Icon name="shield" size="xs" /><span class="cap-trim">Operations console</span>
   {/snippet}
 </PageHeader>

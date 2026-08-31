@@ -75,7 +75,7 @@
   const { Story } = defineMeta({
     title: 'Views/SchedulesView',
     component: SchedulesView,
-    args: { api, rootRole: 'Super Root' },
+    args: { api },
   });
 </script>
 

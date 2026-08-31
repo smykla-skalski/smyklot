@@ -12,7 +12,6 @@
 >
   <QueueView
     api={session.api}
-    rootRole={session.rootRole}
     section="recent"
     onOpenRequest={(request) => session.openQueueRequest(request)}
   />

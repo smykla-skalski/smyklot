@@ -15,7 +15,6 @@
   aria-labelledby="root-page-heading"
 >
   <RootAccess
-    rootRole={session.rootRole}
     {section}
     fetchUsers={session.api.fetchRootUsers}
     updateUser={session.api.updateRootUser}

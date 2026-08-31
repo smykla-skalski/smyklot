@@ -14,7 +14,6 @@
   <RootInstallations
     route={session.currentRootRoute}
     api={session.api}
-    rootRole={session.rootRole}
     actorLogin={session.viewer?.account.login ?? ''}
     listHref={session.rootInstallationsHref()}
     hrefFor={(account: string, view: RootInstallationView) =>

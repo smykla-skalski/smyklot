@@ -23,10 +23,8 @@
 
   const {
     api,
-    rootRole = '',
   }: {
     api: PanelApi;
-    rootRole?: string;
   } = $props();
 
   interface ScheduleViewData {
@@ -465,7 +463,6 @@ the same page without the controls, rather than controls that refuse.
 
 <section class="schedules-view" aria-labelledby="root-page-heading" aria-busy={loading}>
   <RootPageHeader
-    role={rootRole}
     title="Schedules"
     subtitle="Execution windows, workload cadence, retries, and installation requests"
   >

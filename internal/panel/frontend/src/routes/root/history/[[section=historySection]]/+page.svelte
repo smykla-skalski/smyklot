@@ -48,7 +48,6 @@
   <HistoryPanel
     context="root"
     targetId="root"
-    rootRole={session.rootRole}
     {section}
     fetchAudit={session.api.fetchRootAudit}
     fetchFailures={session.api.fetchRootFailures}

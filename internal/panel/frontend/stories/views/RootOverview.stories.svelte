@@ -39,7 +39,6 @@
 
   const base = {
     api: stubApi(),
-    rootRole: 'Super Root',
     installationsHref: '#/root/installations',
     elevationsHref: '#/root/access',
     failuresHref: '#/root/history',

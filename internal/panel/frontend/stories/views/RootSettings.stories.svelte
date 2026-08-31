@@ -9,7 +9,6 @@
 
   const base = {
     section: 'settings' as const,
-    rootRole: 'Super Root',
     fetchSettings: async () => RUNTIME,
   };
 

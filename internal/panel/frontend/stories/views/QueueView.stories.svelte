@@ -19,7 +19,6 @@
 
   const base = {
     api: stubApi({ fetchRootOverview: async () => OVERVIEW }),
-    rootRole: 'Super Root',
     section: 'waiting' as const,
     onSection: fn(),
     onOpenRequest: fn(),

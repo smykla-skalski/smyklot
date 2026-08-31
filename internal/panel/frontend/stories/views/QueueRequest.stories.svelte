@@ -38,7 +38,6 @@
 
   const base = {
     api: stubApi({ fetchRootPendingCI: async () => DETAIL }),
-    rootRole: 'Super Root',
     requestId: REQUEST.id,
     queueHref: '#/root/queue',
     onBack: fn(),

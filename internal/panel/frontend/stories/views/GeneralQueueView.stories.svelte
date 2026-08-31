@@ -76,7 +76,7 @@
   const { Story } = defineMeta({
     title: 'Views/GeneralQueueView',
     component: GeneralQueueView,
-    args: { api, rootRole: 'Super Root', canControl: true },
+    args: { api, canControl: true },
   });
 </script>
 

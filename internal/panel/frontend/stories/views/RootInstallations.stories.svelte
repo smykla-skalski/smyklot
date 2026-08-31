@@ -12,7 +12,6 @@
   const base = {
     route: { rootView: 'installations' as const },
     api: stubApi({ fetchRootInstallations: async () => INSTALLATIONS }),
-    rootRole: 'Super Root',
     actorLogin: 'bart',
     listHref: '#/root/installations',
     hrefFor: (account: string, view: string) => `#/root/installations/${account}/${view}`,

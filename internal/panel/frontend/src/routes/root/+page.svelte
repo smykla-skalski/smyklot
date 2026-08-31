@@ -12,7 +12,6 @@
 >
   <RootOverview
     api={session.api}
-    rootRole={session.rootRole}
     installationsHref={session.rootInstallationsHref()}
     elevationsHref={session.rootAuditHref()}
     failuresHref={session.rootFailuresHref()}

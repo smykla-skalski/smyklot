@@ -10,9 +10,5 @@
   class:root-table-view={session.tableScrollView}
   aria-labelledby="root-page-heading"
 >
-  <RootSettings
-    section="service"
-    rootRole={session.rootRole}
-    fetchSettings={session.api.fetchRootRuntimeSettings}
-  />
+  <RootSettings section="service" fetchSettings={session.api.fetchRootRuntimeSettings} />
 </section>

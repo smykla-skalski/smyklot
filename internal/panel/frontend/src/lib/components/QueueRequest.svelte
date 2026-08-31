@@ -15,13 +15,11 @@
 
   const {
     api,
-    rootRole,
     requestId,
     queueHref,
     onBack,
   }: {
     api: PanelApi;
-    rootRole: string;
     requestId: string;
     queueHref: string;
     onBack: () => void;
@@ -167,7 +165,7 @@ page directly still leads somewhere.
 <BackLink href={queueHref} label="Queue" onNavigate={onBack} />
 
 {#if request === null}
-  <RootPageHeader role={rootRole} title="Request" subtitle="Reading the record" />
+  <RootPageHeader title="Request" subtitle="Reading the record" />
   {#if problem !== null}
     <ResultProblem
       title="The request could not be read"
@@ -178,7 +176,6 @@ page directly still leads somewhere.
   {/if}
 {:else}
   <RootPageHeader
-    role={rootRole}
     title={`${request.repository_full_name} #${request.pull_request}`}
     subtitle={`Armed ${sinceLabel(request.requested_at, now)} by @${request.requester}, bound to commit ${request.head_sha.slice(0, 8)}`}
   >

@@ -31,7 +31,6 @@
   const {
     api,
     targetId,
-    rootRole = '',
     canControl = false,
     section = 'active',
     planHref,
@@ -40,7 +39,6 @@
   }: {
     api: PanelApi;
     targetId?: string;
-    rootRole?: string;
     canControl?: boolean;
     section?: QueueSection;
     /**
@@ -602,7 +600,6 @@ without the buttons, rather than buttons that refuse.
 >
   {#if targetId === undefined}
     <RootPageHeader
-      role={rootRole}
       title="Queue"
       subtitle="Everything the service is doing, across every workspace"
     >

@@ -11,7 +11,6 @@
 <section class="root-workspace" aria-labelledby="root-page-heading">
   <QueueRequest
     api={session.api}
-    rootRole={session.rootRole}
     requestId={params.id}
     queueHref={session.queueHref()}
     onBack={() => session.selectRootQueueSection('active')}

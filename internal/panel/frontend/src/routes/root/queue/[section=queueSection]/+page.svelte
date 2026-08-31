@@ -16,7 +16,6 @@
   >
     <GeneralQueueView
       api={session.api}
-      rootRole={session.rootRole}
       canControl
       section={session.currentQueueSection}
       onSelectSection={(value) => session.selectRootQueueSection(value)}

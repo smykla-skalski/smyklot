@@ -22,7 +22,6 @@
   const {
     route,
     api,
-    rootRole,
     actorLogin,
     listHref,
     hrefFor,
@@ -32,7 +31,6 @@
   }: {
     route: RootRoute;
     api: PanelApi;
-    rootRole: string;
     actorLogin: string;
     listHref: string;
     hrefFor: (account: string, view: RootInstallationView) => string;
@@ -219,7 +217,6 @@ and most visits to this route never open one.
 {:else}
   <section class="root-installations" aria-labelledby="root-page-heading">
     <RootPageHeader
-      role={rootRole}
       title="Installations"
       subtitle="Live ownership and delivery health for every GitHub installation connected to Smyklot"
     >

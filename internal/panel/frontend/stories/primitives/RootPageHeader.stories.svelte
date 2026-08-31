@@ -7,27 +7,25 @@
   const { Story } = defineMeta({
     title: 'Primitives/RootPageHeader',
     component: RootPageHeader,
-    argTypes: { showScope: { control: 'boolean' } },
     args: {
-      role: 'Super Root',
       title: 'Overview',
       subtitle: 'Live service, catalog, ownership, and security state',
-      showScope: true,
     },
   });
 </script>
 
 <!--
-  The Root console's preset over `PageHeader` - fifteen lines, all of them the kicker.
-  The anatomy used to be copied: 72 of its ~81 CSS lines were identical to the panel
-  header's, comments included.
+  The Root console's preset over `PageHeader`, and all of it is the eyebrow: the
+  console's own name, under the shield the sidebar wears.
 
-  Scope is identity, so its pill sits on the kicker line rather than in the action
-  slot, which holds only live status and real controls.
+  It used to open every page with "Root mode · Super Root" and a pill reading
+  "Application scope" - three ways of saying where you are, on a purple shell whose
+  sidebar is titled Operations and whose every page is the console's.
 -->
 <Story name="Default" />
 
-<Story name="Without scope" args={{ showScope: false }} />
+<!-- Without a sentence: a page whose title is the whole of what it is. -->
+<Story name="Title alone" args={{ subtitle: undefined }} />
 
 <Story name="With live status">
   {#snippet template({ children, ...args })}

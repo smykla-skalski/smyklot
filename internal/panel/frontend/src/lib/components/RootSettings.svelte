@@ -95,12 +95,10 @@
 
   const {
     section,
-    rootRole,
     fetchSettings,
     saveSettings,
   }: {
     section: RootRuntimeSection;
-    rootRole: string;
     fetchSettings: () => Promise<RootRuntimeSettings>;
     saveSettings?: (input: RootRuntimeSettingsInput) => Promise<RootRuntimeSettings>;
   } = $props();
@@ -387,11 +385,7 @@ without the composer.
 {/snippet}
 
 <section class="root-settings" aria-label={SECTION_COPY[section].ariaLabel}>
-  <RootPageHeader
-    role={rootRole}
-    title={SECTION_COPY[section].title}
-    subtitle={SECTION_COPY[section].subtitle}
-  >
+  <RootPageHeader title={SECTION_COPY[section].title} subtitle={SECTION_COPY[section].subtitle}>
     {#if section === 'settings'}
       <StatusPill dot={settingsDirty}>Changes wait for Save</StatusPill>
     {/if}

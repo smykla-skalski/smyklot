@@ -17,7 +17,6 @@
 
   const {
     api,
-    rootRole,
     installationsHref,
     elevationsHref,
     failuresHref,
@@ -30,7 +29,6 @@
     onOpenQueue,
   }: {
     api: PanelApi;
-    rootRole: string;
     installationsHref: string;
     elevationsHref: string;
     failuresHref: string;
@@ -168,11 +166,7 @@ hold up the answer from the others. An overview that waits for its slowest quest
 an overview nobody keeps open.
 -->
 
-<RootPageHeader
-  role={rootRole}
-  title="Overview"
-  subtitle="Live service, catalog, ownership, and security state"
->
+<RootPageHeader title="Overview" subtitle="Live service, catalog, ownership, and security state">
   <StatusPill dot live>WebSocket live</StatusPill>
 </RootPageHeader>
 

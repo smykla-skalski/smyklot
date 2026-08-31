@@ -78,7 +78,6 @@ describe('Root installation draft attention [Component]', () => {
         queryClient: queryClient(),
         route: { rootView: 'installations' },
         api: fixtureApi({ fetchRootInstallations: async () => [dirty, clean] }),
-        rootRole: 'Root',
         actorLogin: 'root-user',
         listHref: '/root/installations',
         hrefFor: (account, view) => `/root/installations/${account}/${view}`,

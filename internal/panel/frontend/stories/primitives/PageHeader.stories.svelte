@@ -68,7 +68,6 @@
 <Story name="Root console">
   {#snippet template()}
     <RootPageHeader
-      role="Super Root"
       title="Overview"
       subtitle="Live service, catalog, ownership, and security state"
     />

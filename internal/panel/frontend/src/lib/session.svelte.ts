@@ -139,10 +139,6 @@ export class PanelSession {
     return this.targets.find((t) => t.id === this.selectedId) ?? null;
   }
 
-  get rootRole(): string {
-    return this.viewer?.system_role === 'super_root' ? 'Super Root' : 'Root';
-  }
-
   get signedOut(): boolean {
     return !this.loading && this.viewer === null && this.failure === null;
   }

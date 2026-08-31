@@ -82,7 +82,6 @@
     fetchAudit,
     fetchFailures,
     context = 'installation',
-    rootRole = 'Root',
     section,
     prefs = EPHEMERAL_PREFS,
     readOnly = true,
@@ -103,7 +102,6 @@
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     context?: HistoryContext;
-    rootRole?: string;
     section?: HistoryType;
     prefs?: PrefsAccessor;
     readOnly?: boolean;
@@ -749,11 +747,7 @@ where the record is.
   aria-labelledby={context === 'root' ? 'root-page-heading' : 'history-heading'}
 >
   {#if context === 'root'}
-    <RootPageHeader
-      role={rootRole}
-      title={historyType === 'audit' ? 'Audit' : 'Failures'}
-      subtitle={description}
-    />
+    <RootPageHeader title={historyType === 'audit' ? 'Audit' : 'Failures'} subtitle={description} />
   {:else}
     <PageHeader
       id="history-heading"

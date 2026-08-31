@@ -205,7 +205,6 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
       props: {
         queryClient,
         context: 'root',
-        rootRole: 'Super Root',
         targetId: 'root',
         section: 'audit',
         readOnly: false,

@@ -113,12 +113,10 @@
 
   const {
     api,
-    rootRole,
     section,
     onOpenRequest,
   }: {
     api: PanelApi;
-    rootRole: string;
     section: QueueSection;
     onOpenRequest: (requestId: string) => void;
   } = $props();
@@ -641,7 +639,6 @@ and a reader should not have to navigate between them.
 -->
 
 <RootPageHeader
-  role={rootRole}
   title={section === 'waiting' ? 'Waiting' : 'Recent'}
   subtitle="Work the service is holding until it can act"
 />
