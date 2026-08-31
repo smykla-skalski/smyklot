@@ -290,9 +290,15 @@ what would otherwise be four visits.
                 >{item.blocked_reason ?? item.summary ?? sentenceCase(item.state)}</span
               >
             </span>
+            <!-- Every mark in this column answers ONE question - when - so every
+                 one of them is the same chip. `mx-instep` is not a chip at all:
+                 it is the quiet state, worn where there is nothing to answer, and
+                 nothing in flight is that. Keying it on `running` put two shapes
+                 in one column for what is the same kind of datum, and where the
+                 two rows read the same word it looked like nothing at all. -->
             <span class="object-side">
               {#if item.estimated_start_at !== undefined}
-                <span class="mx-mark {item.state === 'running' ? 'mx-instep' : 'mx-pending'}"
+                <span class="mx-mark mx-pending"
                   ><RelativeTime class="t" value={item.estimated_start_at} {nowMs} future /></span
                 >
               {/if}
