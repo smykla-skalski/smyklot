@@ -28,9 +28,9 @@ describe('settings draft destinations [Integration]', () => {
       await openRepositories(page);
       const repositoryRow = page.locator('.repository-row').first();
       const repositoryName =
-        (await repositoryRow.locator('.repo-copy strong').textContent())?.trim() ?? '';
+        (await repositoryRow.locator('.object-name').textContent())?.trim() ?? '';
       expect(repositoryName).not.toBe('');
-      await repositoryRow.locator('a.repo-copy').click();
+      await repositoryRow.locator('a.row-hit').click();
 
       const quietPeriod = page.getByRole('textbox', { name: 'Stable passing window' });
       await quietPeriod.waitFor({ state: 'visible', timeout: 15_000 });
@@ -66,7 +66,7 @@ describe('settings draft destinations [Integration]', () => {
 
       const markedRepository = page
         .locator('.repository-row')
-        .filter({ has: page.locator('.repo-copy strong', { hasText: repositoryName }) })
+        .filter({ has: page.locator('.object-name', { hasText: repositoryName }) })
         .first();
       await markedRepository.waitFor({ state: 'visible', timeout: 15_000 });
       expect(await markedRepository.getAttribute('data-unsaved')).toBe('true');

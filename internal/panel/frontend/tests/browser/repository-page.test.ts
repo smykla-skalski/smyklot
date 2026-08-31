@@ -33,7 +33,7 @@ async function openList(): Promise<Page> {
   await page.locator('.repository-row').first().waitFor({ state: 'visible', timeout: 30_000 });
   /* A search stored from another sweep would leave a filtered list, and a row
      index means nothing then. */
-  await page.getByPlaceholder('Search repositories').fill('');
+  await page.getByPlaceholder('Find a repository').fill('');
   await page.locator('.repository-row').nth(1).waitFor({ state: 'visible' });
 
   return page;
@@ -44,11 +44,15 @@ describe('one repository as a page [Integration]', () => {
     const page = await openList();
     try {
       const row = page.locator('.repository-row').first();
-      const name = (await row.locator('.repo-copy strong').textContent())?.trim() ?? '';
+      const name = (await row.locator('.object-name').textContent())?.trim() ?? '';
       expect(name).not.toBe('');
 
-      // The Updated cell: text, in the middle of the row, belonging to no control.
-      await row.locator('td').nth(2).click();
+      /* A real press where the row's sentence is - text belonging to no control.
+         What receives it is the layer the row's address is drawn on, which is the
+         whole point: everything that is not a control opens the repository. */
+      const sentence = await row.locator('.object-sum').boundingBox();
+      if (sentence === null) throw new Error('the row has no sentence to press');
+      await page.mouse.click(sentence.x + 8, sentence.y + sentence.height / 2);
 
       await page
         .getByRole('heading', { name, exact: true })
@@ -66,22 +70,22 @@ describe('one repository as a page [Integration]', () => {
     try {
       const row = page.locator('.repository-row').nth(1);
       const before = new URL(page.url()).pathname;
-      const enabled = row.getByText('Enabled', { exact: true });
-      const disabled = row.getByText('Disabled', { exact: true });
-      const wasEnabled = await row.locator('input[type="radio"]').first().isChecked();
+      /* The track, not the input: the checkbox is visually hidden under it, and
+         the track is what a reader presses. */
+      const track = row.locator('.switch-track');
+      const box = row.locator('input[type="checkbox"]');
+      const wasEnabled = await box.isChecked();
 
-      // The word, which is the label - the press a reader makes, and the one
-      // that used to open the repository as well as move the switch.
-      await (wasEnabled ? disabled : enabled).click();
+      await track.click();
       await page.waitForTimeout(400);
 
       expect(new URL(page.url()).pathname, 'the row opened as well as switched').toBe(before);
-      expect(await row.locator('input[type="radio"]').first().isChecked()).toBe(!wasEnabled);
+      expect(await box.isChecked()).toBe(!wasEnabled);
 
       // Put it back, because the mock keeps this and every other sweep reads it.
-      await (wasEnabled ? enabled : disabled).click();
+      await track.click();
       await page.waitForTimeout(400);
-      expect(await row.locator('input[type="radio"]').first().isChecked()).toBe(wasEnabled);
+      expect(await box.isChecked()).toBe(wasEnabled);
     } finally {
       await page.close();
     }
@@ -91,8 +95,8 @@ describe('one repository as a page [Integration]', () => {
     const page = await openList();
     try {
       const row = page.locator('.repository-row').first();
-      const name = (await row.locator('.repo-copy strong').textContent())?.trim() ?? '';
-      const link = row.locator('a.repo-copy');
+      const name = (await row.locator('.object-name').textContent())?.trim() ?? '';
+      const link = row.locator('a.row-hit');
 
       await link.focus();
       await page.keyboard.press('Enter');
@@ -151,8 +155,8 @@ describe('one repository as a page [Integration]', () => {
     const page = await openList();
     try {
       const row = page.locator('.repository-row').first();
-      const name = (await row.locator('.repo-copy strong').textContent())?.trim() ?? '';
-      await row.locator('a.repo-copy').click();
+      const name = (await row.locator('.object-name').textContent())?.trim() ?? '';
+      await row.locator('a.row-hit').click();
       await page.getByRole('heading', { name, exact: true }).waitFor({ state: 'visible' });
 
       await page.locator(selector).first().click();

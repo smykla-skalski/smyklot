@@ -2236,6 +2236,313 @@ thead th .icon-button:active:not(:disabled) {
   border-color: var(--edge-line);
 }
 
+/* ---------- The content vocabulary: cards, and the rows inside them ----------
+
+   Written once, here, because the design draws every list the same way and the app
+   had drawn it eight times - a `.card` in one component, an `.object-row` in another,
+   each with its own padding, its own separator and its own hover. What that produced
+   is what a reader sees: two lists on two pages that are the same list, and are not
+   the same shape. A component may still narrow one of these for what only it has; it
+   may not restate the shape. */
+.card {
+  background: var(--surface-base);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-strip);
+  padding: var(--space-5);
+}
+
+/* TWO CARDS ON A PAGE SIT ONE DISTANCE APART, AND IT IS THIS ONE. */
+.card + .card {
+  margin-block-start: var(--rhythm-card-gap);
+}
+
+/* A CONTAINER THAT LAYS CARDS OUT WITH A GAP ALREADY OWNS THE DISTANCE. Margins do
+   not collapse in a grid or a flex container, so the sibling rule above stacked on
+   top of the gap. */
+:is(.setting-groups, .card-grid) > .card + .card {
+  margin-block-start: 0;
+}
+
+.card-title {
+  font-size: var(--font-size-card-title);
+  font-weight: 600;
+  min-block-size: 13px;
+  text-box: trim-both cap alphabetic;
+  text-wrap: balance;
+}
+
+/* A card heading is a semantic line box, whatever rides beside the title: the grid
+   keeps everything on ONE row, and taller controls bleed symmetrically instead of
+   growing the head - so title-to-first-row ink never depends on which adornments the
+   card happens to carry. */
+.card-head {
+  align-items: center;
+  column-gap: var(--space-3);
+  display: grid;
+  grid-auto-columns: auto;
+  grid-auto-flow: column;
+  grid-template-columns: minmax(0, 1fr);
+  margin-block-end: var(--rhythm-card-head-body);
+  min-block-size: var(--card-head-line);
+}
+
+.card-head > .btn {
+  margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
+}
+
+/* A quiet qualifier on the card head's own line - prose, so a verdict card keeps its
+   freshness beside its sentence. */
+.card-note {
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+  margin-inline-start: auto;
+  text-align: end;
+}
+
+.object-list {
+  display: grid;
+}
+
+/* The list hands its last row's padding back so the last ink closes on the card's own
+   frame - but ONLY when it is holding a row. Unconditional, the pull survives an empty
+   list and eats the card's bottom frame instead: a shed is a correction to something
+   that is there. */
+.object-list:has(> li:not([hidden]) > .object-row:not([hidden])),
+.object-list:has(> .object-row:not([hidden])) {
+  margin-block-end: calc(var(--row-pad-default) * -1);
+}
+
+/* The list is a real list: ul + li, the li transparent to layout so the grid still
+   owns the rows. */
+ul.object-list {
+  list-style: none;
+  margin-block-start: 0;
+  padding-inline-start: 0;
+}
+
+.object-list > li {
+  display: contents;
+}
+
+.object-row {
+  align-items: center;
+  border-radius: var(--r-ctl);
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr auto;
+  margin-inline: calc(var(--space-3) * -1);
+  padding: var(--row-pad-default) var(--space-3);
+  position: relative;
+  text-decoration: none;
+}
+
+/* Only a row that IS an action - a link or a button - answers the pointer. A static
+   log row holding at most a child control stays still: lift and press on it promised
+   an opening that never came. */
+:is(a, button).object-row:hover {
+  background: var(--table-row-hover);
+}
+
+:is(a, button).object-row:active {
+  background: var(--table-row-pressed);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+
+/* A row whose whole ground opens something, with a control still live inside it: the
+   hit is a layer under the content rather than a wrapper around it, so the switch is
+   pressable and everything else is the link. */
+.object-row:has(.row-hit:hover) {
+  background: var(--table-row-hover);
+}
+
+.object-row:has(.row-hit:active) {
+  background: var(--table-row-pressed);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+
+.object-row:has(.row-hit:focus-visible) {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-inset);
+}
+
+.row-hit {
+  border-radius: inherit;
+  inset: 0;
+  position: absolute;
+  z-index: 1;
+}
+
+.object-row > :not(.row-hit) {
+  position: relative;
+  z-index: 2;
+}
+
+.object-row:has(.row-hit) > :is(.object-main, .object-side) {
+  pointer-events: none;
+}
+
+.object-row:has(.row-hit) :is(.switch, button, a):not(.row-hit) {
+  pointer-events: auto;
+  position: relative;
+  z-index: 3;
+}
+
+.object-row:not(:last-child)::after,
+.object-list > li:not(:last-child) > .object-row::after {
+  background: var(--border-subtle);
+  block-size: 1px;
+  bottom: 0;
+  content: '';
+  inset-inline: var(--space-3);
+  position: absolute;
+}
+
+.object-list > li:last-child > .object-row::after {
+  content: none;
+}
+
+/* The hover pill has rounded corners; a hairline crossing its edge reads as a crack
+   in it. The hovered row hides its own separator and its neighbour's - BOTH edges of
+   the pill, or the ground reads as sitting on a line at one end and floating at the
+   other. Anchored through the list, because the structural rule that draws the line
+   is one class deeper and declared later. */
+.object-list > li > :is(a, button).object-row:hover::after,
+.object-list > :is(a, button).object-row:hover::after,
+:is(a, button).object-row:hover::after,
+.object-row:has(+ :is(a, button).object-row:hover)::after,
+.object-list > li:has(+ li > :is(a, button).object-row:hover) > .object-row::after,
+.object-list > li > .object-row:has(.row-hit:hover)::after,
+.object-row:has(.row-hit:hover)::after,
+.object-list > li:has(+ li > .object-row .row-hit:hover) > .object-row::after {
+  background: transparent;
+}
+
+/* A whole row that is the button opening it; the chevron says which way. */
+button.object-row {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  inline-size: calc(100% + (var(--space-3) * 2));
+  text-align: start;
+}
+
+/* THE NAME ROW IS THE NAME'S OWN CAP, AND THE BADGES BLEED. A declared line put slack
+   over the name's cap that two other rules then had to subtract back out - and both
+   corrections were wrong the moment the name wrapped. The row is exactly the name's
+   cap tall whether or not a pill sits in it. `--object-name-slack` is REGISTERED,
+   which is what makes this possible: an unregistered custom property substitutes its
+   text and resolves `1cap` against whichever element uses it, so the pill would have
+   measured its own cap. */
+@property --object-name-slack {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+.object-main {
+  display: grid;
+  gap: 0;
+  min-inline-size: 0;
+}
+
+.object-main > .object-sum {
+  margin-block-start: calc(var(--leading-meta) - 1cap);
+}
+
+.object-name-row {
+  --object-name-slack: calc((var(--object-name-line) - 1cap) / 2);
+
+  align-items: center;
+  display: flex;
+  font-size: var(--font-size-meta);
+  gap: var(--space-2);
+}
+
+.object-name-row > :not(.object-name, .file-path, .mono-title) {
+  margin-block: calc(var(--object-name-slack) * -1);
+}
+
+.object-name {
+  font-size: var(--font-size-meta);
+  font-weight: 600;
+  text-box: trim-both cap alphabetic;
+}
+
+/* TRIMMED, like every other voice. It was the one prose line in a row family that
+   reported its ascender and descender instead of its cap and baseline, so every card
+   closing on an object list ended well above the frame its title's cap opened
+   against. */
+.object-sum {
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+  line-height: var(--leading-meta);
+  text-box: trim-both cap alphabetic;
+}
+
+.object-sum code {
+  line-height: var(--leading-flat);
+}
+
+/* Actions wrap as WHOLE controls when the row runs out of room - words never wrap
+   inside a button. */
+.object-side {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  justify-content: flex-end;
+}
+
+/* The toolbar over a list: the search leads and the segments sit beside it, 12px
+   apart - never split across the page with a dead gap between. */
+.filter-bar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-block-end: var(--rhythm-toolbar-surface);
+}
+
+.filter-bar .push-end {
+  margin-inline-start: auto;
+}
+
+/* A head that exits onto a toolbar rather than onto a surface. */
+.page-head:has(+ .filter-bar) {
+  margin-block-end: var(--rhythm-head-toolbar);
+}
+
+/* What a list says about itself once it has finished: how much of it is shown, and
+   the way to more. */
+.list-foot {
+  align-items: center;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--font-size-meta);
+  gap: var(--space-3);
+  justify-content: space-between;
+  line-height: var(--leading-meta);
+  margin-block-start: var(--rhythm-card-foot-band);
+}
+
+/* A BAND IS A DISTANCE FROM SOMETHING. With no rows above it the footer is the card's
+   only line, and the band becomes a stretch of nothing over it. */
+.card:not(:has(.object-row)) .list-foot {
+  margin-block-start: 0;
+}
+
+/* A CONTROL AT A CARD'S END STANDS ON THE TEXT LINE, NOT ON THE FRAME: a card opens
+   with a cap against its padding and closes with a baseline against it, and a button
+   is taller than the word inside it. */
+.list-foot .btn {
+  margin-block: calc((var(--control-height-compact) - var(--leading-meta)) / -2);
+}
+
 /* ---------- Console menus: the material the chrome's popovers are made of ----------
 
    Written here rather than in the rail, because the rail stopped being the only
