@@ -2690,9 +2690,58 @@ ul.object-list {
   display: contents;
 }
 
+/* ---------- The row's verdict mark ----------
+   What one row's standing is, worn at the row's end: a count of what would
+   change, a refusal, or the quiet tick of being in step. Four surfaces draw it
+   - the sync board, two of its lists and the workspace overview - and each
+   used to carry its own copy of these five rules. */
+.mx-mark {
+  align-items: center;
+  block-size: var(--tier-mark);
+  border-radius: var(--r-chip);
+  box-sizing: border-box;
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: var(--font-size-micro);
+  font-variant-numeric: tabular-nums;
+  gap: 0.25rem;
+  line-height: var(--leading-flat);
+  padding: 0 0.5rem;
+}
+
+.mx-mark .t {
+  display: block;
+  text-box: trim-both cap alphabetic;
+}
+
+/* On the board an in-step cell is the quiet norm; on a list row the same mark
+   is the row's whole verdict, standing beside a worded pending pill - here it
+   earns the success ink. */
+.mx-instep {
+  color: var(--success);
+}
+
+.mx-pending {
+  background: var(--cell-pending-bg);
+  border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
+  color: var(--cell-pending);
+  font-weight: 500;
+}
+
+.mx-refused {
+  background: var(--cell-refused-bg);
+  border: 1px solid color-mix(in srgb, var(--cell-refused) 38%, transparent);
+  color: var(--cell-refused);
+  font-weight: 500;
+}
+
 .object-row {
   align-items: center;
   border-radius: var(--r-ctl);
+  /* A row that opens something is an anchor, and an anchor without this wears
+     the browser's own link blue - the row is the affordance here, not the
+     colour of the words inside it. */
+  color: var(--text-primary);
   display: grid;
   gap: var(--space-4);
   grid-template-columns: 1fr auto;

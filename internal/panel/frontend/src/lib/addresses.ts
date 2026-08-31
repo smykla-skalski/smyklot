@@ -115,6 +115,12 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
+  /* The workspace opens on its overview, so the overview IS the workspace's
+     address. A second one naming it would be one a reader has to be told to
+     ignore - the console's own overview is the bare `/root` for the same
+     reason. */
+  if (route.view === 'overview') return resolve('/i/[account]', { account });
+
   return resolve('/i/[account]/[view=panelView]', { account, view: route.view });
 }
 
@@ -242,6 +248,8 @@ export function panelRouteAt(
     case '/search':
       return { personal: 'search' };
 
+    case '/i/[account]':
+      return { account, view: 'overview' };
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);
     case '/i/[account]/queue':

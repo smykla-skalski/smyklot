@@ -660,41 +660,6 @@ plan is applied, which is why these are switches and not a form.
     font-weight: 500;
   }
 
-  .mx-mark {
-    align-items: center;
-    border-radius: var(--r-chip);
-    /* Declared 20px, the chip-small height. */
-    block-size: var(--tier-mark);
-    box-sizing: border-box;
-    display: inline-flex;
-    gap: 0.25rem;
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .mx-mark .t {
-    display: block;
-    /* Ink-true, so the chip's words sit on the chip's own centre. */
-    text-box: trim-both cap alphabetic;
-  }
-
-  .mx-pending {
-    background: var(--cell-pending-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
-    color: var(--cell-pending);
-    font-weight: 500;
-  }
-
-  .mx-refused {
-    background: var(--cell-refused-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-refused) 38%, transparent);
-    color: var(--cell-refused);
-    font-weight: 500;
-  }
-
   /* Two across by default: four only where each card genuinely gets ~16rem. */
   .kind-grid {
     display: grid;

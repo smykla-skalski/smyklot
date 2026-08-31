@@ -696,43 +696,6 @@ already hold - the index ships once, matching costs no requests.
     color: var(--text-secondary);
   }
 
-  .mx-mark {
-    align-items: center;
-    block-size: var(--tier-mark);
-    border-radius: var(--r-chip);
-    box-sizing: border-box;
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    gap: 0.25rem;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .mx-mark .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .mx-instep {
-    color: var(--success);
-  }
-
-  .mx-pending {
-    background: var(--cell-pending-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
-    color: var(--cell-pending);
-    font-weight: 500;
-  }
-
-  .mx-refused {
-    background: var(--cell-refused-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-refused) 38%, transparent);
-    color: var(--cell-refused);
-    font-weight: 500;
-  }
-
   /* ---------- The bottom card ---------- */
 
   /* A card that is nothing but rows keeps the one row contract, and the list hands its own

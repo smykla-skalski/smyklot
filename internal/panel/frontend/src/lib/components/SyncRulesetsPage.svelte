@@ -485,39 +485,6 @@ decisions every kind carries: removal, and the names left alone.
     color: var(--text-muted);
   }
 
-  .mx-mark {
-    align-items: center;
-    block-size: var(--tier-mark);
-    border-radius: var(--r-chip);
-    box-sizing: border-box;
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    gap: 0.25rem;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .mx-mark .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* On the board an in-step cell is the quiet norm; on a list row the same
-     mark is the row's whole verdict, standing beside a worded pending pill -
-     here it earns the success ink. */
-  .mx-instep {
-    color: var(--success);
-  }
-
-  .mx-pending {
-    background: var(--cell-pending-bg);
-    border: 1px solid color-mix(in srgb, var(--cell-pending) 38%, transparent);
-    color: var(--cell-pending);
-    font-weight: 500;
-  }
-
   /* ---------- The name popover ---------- */
 
   /* The menu's 4px mat - `.menu-search` bleeds to the edges with negative

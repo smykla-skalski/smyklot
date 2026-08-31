@@ -331,10 +331,12 @@ describe('resolvePanelRoute', () => {
     });
   });
 
-  it('restores the remembered installation at the defaults route', () => {
+  /* A workspace opens on its overview - what needs somebody, not the least
+     urgent page it holds. */
+  it('restores the remembered installation at its overview', () => {
     expect(resolvePanelRoute(accounts, null, 'smykla-skalski')).toEqual({
       account: 'smykla-skalski',
-      view: 'defaults',
+      view: 'overview',
     });
   });
 
@@ -357,7 +359,7 @@ describe('resolvePanelRoute', () => {
   it('falls back to the first available installation', () => {
     expect(resolvePanelRoute(accounts, null, 'removed-org')).toEqual({
       account: 'bartsmykla',
-      view: 'defaults',
+      view: 'overview',
     });
   });
 

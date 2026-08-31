@@ -16,6 +16,11 @@ export type { RouteDialog };
  * the console. It was a page that answered a question a workspace never asks.
  */
 export const PANEL_VIEWS = [
+  /* Where a workspace OPENS - what needs somebody, what is in flight, what
+     just happened. It is the bare address rather than a written one, the way
+     the console's own overview is: a workspace that opened on its settings
+     page asked a reader to start from the least urgent thing it holds. */
+  'overview',
   'defaults',
   'repositories',
   'sync',
@@ -227,6 +232,12 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
      that does not resolve rather than the view with something appended. */
   const personal = PERSONAL_VIEWS.find((view) => view === parts[0]);
   if (personal !== undefined) return parts.length === 1 ? { personal } : null;
+  /* A workspace with nothing after it IS its overview - the page it opens on
+     takes the bare address rather than a written one, the way the console's
+     own overview takes `/root`. */
+  if (parts.length === 2 && parts[0] === 'i' && (parts[1] ?? '') !== '') {
+    return { account: decodeURIComponent(parts[1] ?? ''), view: 'overview' };
+  }
   if (parts.length < 3) return null;
 
   const [namespace, encodedAccount, rawSection] = parts;
@@ -401,7 +412,7 @@ export function resolvePanelRoute(
     requestedAccount ?? findAccount(availableAccounts, preferredAccount) ?? availableAccounts[0];
   if (account === undefined) return null;
 
-  const view = requested?.view ?? 'defaults';
+  const view = requested?.view ?? 'overview';
   /* History always resolves to a named table, so the address bar never sits on
      a bare /history that a reload would have to guess at. */
   return view === 'history'

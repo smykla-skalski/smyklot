@@ -73,7 +73,19 @@ history is routed with its section. That is what makes an address like
 {/snippet}
 
 {#if session.selectedTarget !== null}
-  {#if view === 'defaults'}
+  {#if view === 'overview'}
+    <div id="overview-panel">
+      {#await import('./WorkspaceOverview.svelte')}
+        {@render loadingView('the overview')}
+      {:then { default: WorkspaceOverview }}
+        {#key session.selectedTarget.id}
+          <WorkspaceOverview target={session.selectedTarget} />
+        {/key}
+      {:catch error}
+        {@render failedView('the overview', error)}
+      {/await}
+    </div>
+  {:else if view === 'defaults'}
     <div id="defaults-panel">
       {#await import('./TargetSettings.svelte')}
         {@render loadingView('workspace settings')}

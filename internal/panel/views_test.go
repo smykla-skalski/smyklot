@@ -56,7 +56,14 @@ func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	}
 }
 
+// installationViewPath writes a view the way its address writes it, which is
+// not always the view's own name: access is a section two views are written
+// under, and the overview is where a workspace opens, so it takes the bare
+// address rather than a segment naming it.
 func installationViewPath(base, view string) string {
+	if view == "overview" {
+		return base
+	}
 	if view == "users" || view == "invitations" {
 		return base + "/access/" + view
 	}

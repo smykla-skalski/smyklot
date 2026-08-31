@@ -613,6 +613,13 @@
   const workspaceEntries = $derived.by((): SidebarEntry[] => {
     const rows: SidebarEntry[] = [
       {
+        id: 'overview',
+        label: 'Overview',
+        icon: 'gauge',
+        href: session.viewHref('overview'),
+        active: !session.isInbox && session.currentView === 'overview',
+      },
+      {
         id: 'repositories',
         label: 'Repositories',
         icon: 'book',

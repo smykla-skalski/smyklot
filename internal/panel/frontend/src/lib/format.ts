@@ -254,6 +254,18 @@ export function formatElapsed(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
+/**
+ * A stored phrase read as the opening of a sentence: capital first letter, no
+ * trailing stop. What the service records is a fragment, and two surfaces now
+ * open a line with one - the audit diary and the workspace overview.
+ */
+export function sentenceCase(value: string): string {
+  const text = value.trim().replace(/\.+$/, '');
+  if (text === '') return text;
+
+  return text.charAt(0).toLocaleUpperCase() + text.slice(1);
+}
+
 function plural(count: number, unit: string): string {
   return count === 1 ? unit : `${unit}s`;
 }

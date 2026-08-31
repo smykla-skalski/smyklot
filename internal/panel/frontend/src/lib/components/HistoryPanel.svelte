@@ -3,7 +3,7 @@
   import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
 
-  import { formatDateTime, formatRelative, formatTimestamp } from '../format';
+  import { formatDateTime, formatRelative, formatTimestamp, sentenceCase } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
@@ -552,13 +552,6 @@
   function shownRange(shown: number, total: number | undefined): string {
     if (shown === 0) return 'Nothing to show';
     return `Showing 1-${shown}\u{a0}of ${total ?? shown}`;
-  }
-
-  function sentenceCase(value: string): string {
-    const text = value.trim().replace(/\.+$/, '');
-    if (text === '') return text;
-
-    return text.charAt(0).toLocaleUpperCase() + text.slice(1);
   }
 
   function auditDetail(entry: AuditEntry): string {

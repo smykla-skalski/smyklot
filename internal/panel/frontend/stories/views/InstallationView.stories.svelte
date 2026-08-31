@@ -22,6 +22,11 @@
   });
 </script>
 
+<!-- Where the workspace opens: what needs somebody, and what just happened. -->
+<Story name="Overview">
+  {#snippet template(args)}<InstallationView {...args} view="overview" />{/snippet}
+</Story>
+
 <!-- The repositories the bot reaches, and whether it acts on each. -->
 <Story name="Repositories">
   {#snippet template(args)}<InstallationView {...args} />{/snippet}
