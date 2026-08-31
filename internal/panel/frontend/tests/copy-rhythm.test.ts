@@ -46,8 +46,17 @@ describe('the copy-rhythm law [Unit]', () => {
    * row's edge, 4px above the sentence, and the row still the height it declares.
    */
   it('sizes a badge in a copy pair so it bleeds half the gap, no more', () => {
-    expect(rule('.object-main > .object-name-row > .pill')).toMatch(
-      /min-block-size:\s*calc\(\s*var\(--object-name-line\) - \(var\(--object-name-slack\) \* 2\) \+ var\(--row-copy-gap\)\s*\)/u,
+    const bleeding = rule(
+      '.object-main > .object-name-row > :not(.object-name, .file-path, .mono-title)',
+    );
+
+    expect(bleeding).toMatch(
+      /--badge-in-a-pair:\s*calc\(\s*var\(--object-name-line\) - \(var\(--object-name-slack\) \* 2\) \+\s*var\(--row-copy-gap\)\s*\)/u,
+    );
+    expect(bleeding).toMatch(/min-block-size:\s*var\(--badge-in-a-pair\)/u);
+    // A mark states its height outright, so a floor alone would never reach it.
+    expect(rule('.object-main > .object-name-row > .mx-mark')).toMatch(
+      /block-size:\s*var\(--badge-in-a-pair\)/u,
     );
   });
 });

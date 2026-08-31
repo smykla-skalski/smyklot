@@ -3026,11 +3026,24 @@ button.object-row {
    left is the badge's own size, and only inside a copy pair: cap plus the gap,
    which puts its bleed at exactly half the gap. The badge then stands 8px under
    the row's edge and 4px above the sentence, and every number in that row is one
-   a law names. Everywhere else a badge is the control height it always was. */
-.object-main > .object-name-row > .pill {
-  min-block-size: calc(
+   a law names. Everywhere else a badge is the control height it always was.
+
+   Said of everything that bleeds rather than of one class: a pill declares its
+   height as a floor and a matrix mark declares one outright, and both stand in
+   these rows. The set is the bleed rule's own - the name and the objects set
+   inside the line are not badges beside it. */
+.object-main > .object-name-row > :not(.object-name, .file-path, .mono-title) {
+  --badge-in-a-pair: calc(
     var(--object-name-line) - (var(--object-name-slack) * 2) + var(--row-copy-gap)
   );
+
+  min-block-size: var(--badge-in-a-pair);
+}
+
+/* A mark states `block-size`, so a floor cannot reach it. Only where it is already
+   the tier's own height: a taller thing in a name row is a control, not a badge. */
+.object-main > .object-name-row > .mx-mark {
+  block-size: var(--badge-in-a-pair);
 }
 
 .object-name {
