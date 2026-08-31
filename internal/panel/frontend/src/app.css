@@ -1826,6 +1826,13 @@ select:focus-visible {
   color: var(--text-muted);
 }
 
+/* A time is one word however many words it holds. "in about 4 minutes" broken
+   across two lines reads as two facts, and the break lands wherever the column
+   happens to end - so the element that carries a time never wraps inside itself. */
+time {
+  white-space: nowrap;
+}
+
 /* Plain monospace, no filled chrome. The mock never boxes a bare <code>; where a
    value should read as a token it gets an explicit chip recipe instead, so the
    filled look stays a deliberate choice rather than an element default. */

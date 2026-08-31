@@ -145,22 +145,22 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		ctx, store, now := runtime()
 		targetID, repositoryID := "installation:scheduled", "repository:scheduled"
 		claims := []workqueue.RecurringClaim{
-			{Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog"},
-			{Kind: workqueue.KindDeliveryCleanup, Title: "Clean up retained background work"},
-			{Kind: workqueue.KindAuthCleanup, Title: "Clean up expired authentication"},
-			{Kind: workqueue.KindSyncScan, TargetID: &targetID, Title: "Scan organization sync drift"},
-			{Kind: workqueue.KindPathRefresh, TargetID: &targetID, Title: "Refresh repository paths"},
+			{Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories"},
+			{Kind: workqueue.KindDeliveryCleanup, Title: "Tidy finished background work"},
+			{Kind: workqueue.KindAuthCleanup, Title: "Tidy expired sign-ins"},
+			{Kind: workqueue.KindSyncScan, TargetID: &targetID, Title: "Check which repositories are in step"},
+			{Kind: workqueue.KindPathRefresh, TargetID: &targetID, Title: "Refresh which paths are watched"},
 			{
 				Kind: workqueue.KindPendingCIGate, TargetID: &targetID,
-				RepositoryID: &repositoryID, Title: "Reconcile pending CI protection",
+				RepositoryID: &repositoryID, Title: "Hold pull requests until CI settles",
 			},
 			{
 				Kind: workqueue.KindConfigMigration, TargetID: &targetID,
-				RepositoryID: &repositoryID, Title: "Check configuration migration",
+				RepositoryID: &repositoryID, Title: "Check the repository's configuration file",
 			},
 			{
 				Kind: workqueue.KindReactionScan, TargetID: &targetID,
-				RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+				RepositoryID: &repositoryID, Title: "Scan for new commands",
 			},
 		}
 		for index := range claims {
@@ -476,7 +476,7 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 	It("leases, retries, and coalesces recurring occurrences", func() {
 		ctx, store, now := runtime()
 		claim := workqueue.RecurringClaim{
-			Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog",
+			Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories",
 			Now: now, LeaseDuration: time.Minute,
 		}
 		item, claimed, err := store.ClaimRecurringWork(ctx, claim)
@@ -519,7 +519,7 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 	It("holds stable recurring blockers without scheduling a retry", func() {
 		ctx, store, now := runtime()
 		item, claimed, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{
-			Kind: workqueue.KindPendingCIGate, Title: "Reconcile pending CI protection",
+			Kind: workqueue.KindPendingCIGate, Title: "Hold pull requests until CI settles",
 			Now: now, LeaseDuration: time.Minute,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -544,12 +544,12 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		claims := []workqueue.RecurringClaim{
 			{
 				Kind:  workqueue.KindCatalogRefresh,
-				Title: "Refresh installation catalog",
+				Title: "Refresh the list of repositories",
 				Now:   now, LeaseDuration: time.Minute,
 			},
 			{
 				Kind:  workqueue.KindAuthCleanup,
-				Title: "Clean up expired authentication",
+				Title: "Tidy expired sign-ins",
 				Now:   now, LeaseDuration: time.Minute,
 			},
 		}
@@ -577,7 +577,7 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		ctx, store, now := runtime()
 		account, _ := seedInstallation(ctx, store, now)
 		claim := workqueue.RecurringClaim{
-			Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog",
+			Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories",
 			Now: now, LeaseDuration: time.Minute,
 		}
 		first, claimed, err := store.ClaimRecurringWork(ctx, claim)
@@ -624,7 +624,7 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		repositoryID := "repo-1"
 		claim := workqueue.RecurringClaim{
 			Kind: workqueue.KindReactionScan, TargetID: &target.TargetID,
-			RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+			RepositoryID: &repositoryID, Title: "Scan for new commands",
 			Now: now, LeaseDuration: time.Minute,
 		}
 		scheduled, err := store.EnsureRecurringWork(ctx, claim)
@@ -981,13 +981,13 @@ func seedDispatchOrderedQueue(
 		repositoryID := "dispatch-repository-" + string(rune('a'+index))
 		_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
 			Kind: workqueue.KindReactionScan, TargetID: &targetID,
-			RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+			RepositoryID: &repositoryID, Title: "Scan for new commands",
 			Now: now, LeaseDuration: time.Minute,
 		})
 		Expect(err).NotTo(HaveOccurred())
 	}
 	_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
-		Kind: workqueue.KindCatalogRefresh, Title: "Refresh installation catalog",
+		Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories",
 		Now: now, LeaseDuration: time.Minute,
 	})
 	Expect(err).NotTo(HaveOccurred())

@@ -83,7 +83,7 @@ var _ = Describe("Production panel runtime [Unit]", func() {
 	It("keeps a durable workload failure local to its queue item", func() {
 		work := recurringWork{
 			kind:  workqueue.KindCatalogRefresh,
-			title: "Refresh installation catalog",
+			title: "Refresh the list of repositories",
 		}
 		ran, err := service.runRecurringWork(
 			GinkgoT().Context(),

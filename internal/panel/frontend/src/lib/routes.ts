@@ -66,10 +66,18 @@ export const DIRECT_ROOT_INSTALLATION_VIEWS = ['defaults', 'repositories', 'hist
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
-/** Queue sections are pages. Active owns the bare Queue address. */
-export const WRITTEN_QUEUE_SECTIONS = ['approvals', 'history'] as const;
+/**
+ * Queue sections are pages. Active owns the bare Queue address.
+ *
+ * Five, because the queue's own control offers five: which slice of the work a reader
+ * is looking at is a fact about the page, and a fact about the page is an address here.
+ * Two of them being links and three being state a reload forgets is the incoherence
+ * this list exists to refuse.
+ */
+export const WRITTEN_QUEUE_SECTIONS = ['approvals', 'waiting', 'running', 'history'] as const;
 export const QUEUE_SECTIONS = ['active', ...WRITTEN_QUEUE_SECTIONS] as const;
 export type QueueSection = (typeof QUEUE_SECTIONS)[number];
+export type WrittenQueueSection = (typeof WRITTEN_QUEUE_SECTIONS)[number];
 
 /** The tables the Root console's access page is split into. */
 export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
@@ -159,6 +167,8 @@ export type RootRoute =
         | 'history-audit'
         | 'history-failures'
         | 'queue-approvals'
+        | 'queue-waiting'
+        | 'queue-running'
         | 'queue-history'
         | 'runtime-settings'
         | 'runtime-service'
@@ -420,17 +430,17 @@ export function resolvePanelRoute(
       : { account, view };
 }
 
+/** Whether a console view is one of the queue's own sections, written as its address. */
+function isQueueSectionView(view: RootRoute['rootView']): view is `queue-${WrittenQueueSection}` {
+  return WRITTEN_QUEUE_SECTIONS.some((section) => view === `queue-${section}`);
+}
+
 export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
   if (route.rootView === 'installation') return 'installations';
-  if (
-    route.rootView === 'queue-recent' ||
-    route.rootView === 'queue-request' ||
-    route.rootView === 'queue-approvals' ||
-    route.rootView === 'queue-history'
-  )
-    return 'queue';
+  if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
+  if (isQueueSectionView(route.rootView)) return 'queue';
   if (
     route.rootView === 'runtime-settings' ||
     route.rootView === 'runtime-service' ||
@@ -551,11 +561,9 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   }
   if (parts.length === 2 && parts[1] === 'queue') return { rootView: 'queue' };
   if (parts.length === 2 && parts[1] === 'schedules') return { rootView: 'schedules' };
-  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'approvals') {
-    return { rootView: 'queue-approvals' };
-  }
-  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'history') {
-    return { rootView: 'queue-history' };
+  if (parts.length === 3 && parts[1] === 'queue') {
+    const written = WRITTEN_QUEUE_SECTIONS.find((section) => section === parts[2]);
+    if (written !== undefined) return { rootView: `queue-${written}` };
   }
   if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'recent') {
     return { rootView: 'queue-recent' };

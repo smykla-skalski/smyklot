@@ -2,21 +2,31 @@
   import type { QueueActionType, QueueItem } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
   import { onMount } from 'svelte';
+  import { flip } from 'svelte/animate';
   import { MediaQuery } from 'svelte/reactivity';
   import { fade } from 'svelte/transition';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Button from './Button.svelte';
-  import Chip, { type ChipTone } from './Chip.svelte';
-  import DataTable from './DataTable.svelte';
+  import Icon from './Icon.svelte';
+  import Pill, { type PillTone } from './Pill.svelte';
 
   const {
     items,
     clock = Date.now,
+    groupTitle,
     onOpen,
     onAction,
   }: {
     items: readonly QueueItem[];
     clock?: () => number;
+    /**
+     * What to call the one group a narrowed view leaves.
+     *
+     * The groups answer a reader looking at everything. A reader who has asked for the
+     * running work is told what it is by the control they pressed, and a card over it
+     * headed "Running and waiting" answers a question they have already narrowed.
+     */
+    groupTitle?: string;
     onOpen: (item: QueueItem) => void;
     onAction: (item: QueueItem, action: QueueActionType) => void;
   } = $props();
@@ -28,12 +38,52 @@
   const rowMotion = $derived({ duration: still ? 0 : 150, easing: cubicOut });
   const rowArriving = $derived({ duration: still ? 0 : 120, delay: still ? 0 : 15 });
   const rowLeaving = $derived({ duration: still ? 0 : 70 });
-  const valueMotion = $derived({ duration: still ? 0 : 80 });
+  /* A row's standing can change while somebody is reading it - another operator raises a
+     priority, the service starts the work - and a value that swaps with no motion at all
+     reads as text that was always there. Same swap as the console's own queue panel. */
+  const valueMotion = $derived({ duration: still ? 0 : 90 });
 
   onMount(() => {
     const frame = window.requestAnimationFrame(() => (motionEnabled = true));
     return () => window.cancelAnimationFrame(frame);
   });
+
+  /**
+   * The three questions a reader has of a queue, in the order they have them.
+   *
+   * A decision is theirs to make and nothing moves until they make it, so it leads. Then
+   * what the service is doing on its own, and last what it already did. The states
+   * inside each group are the service's vocabulary, which nothing outside this map has
+   * to know.
+   */
+  const GROUPS = [
+    {
+      id: 'decision',
+      title: 'Needs a decision',
+      states: ['awaiting_approval'],
+    },
+    {
+      id: 'live',
+      title: 'Running and waiting',
+      states: ['running', 'ready', 'scheduled', 'blocked', 'retrying'],
+    },
+    {
+      id: 'done',
+      title: 'Done',
+      states: ['succeeded', 'failed', 'cancelled', 'superseded'],
+    },
+  ] as const satisfies ReadonlyArray<{
+    id: string;
+    title: string;
+    states: ReadonlyArray<QueueItem['state']>;
+  }>;
+
+  const grouped = $derived(
+    GROUPS.map((group) => ({
+      ...group,
+      items: items.filter((item) => (group.states as readonly string[]).includes(item.state)),
+    })).filter((group) => group.items.length > 0),
+  );
 
   function words(value: string): string {
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
@@ -53,38 +103,105 @@
 
   function countdown(value: string): string {
     const seconds = Math.round((new Date(value).getTime() - clock()) / 1000);
-    if (seconds <= 0) return 'eligible now';
-    if (seconds < 60) return `in ${seconds}s`;
-    if (seconds < 3600) return `in ${Math.ceil(seconds / 60)}m`;
-    if (seconds < 86_400) return `in ${Math.ceil(seconds / 3600)}h`;
-    return `in ${Math.ceil(seconds / 86_400)}d`;
+    if (seconds <= 0) return 'now';
+    if (seconds < 60) return `in ${seconds} seconds`;
+    if (seconds < 3600) return `in ${Math.ceil(seconds / 60)} minutes`;
+    if (seconds < 86_400) return `in ${Math.ceil(seconds / 3600)} hours`;
+    return `in ${Math.ceil(seconds / 86_400)} days`;
   }
 
-  function shortInstant(value: string, timeZone?: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }).format(new Date(value));
+  function ago(value: string): string {
+    const seconds = Math.round((clock() - new Date(value).getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
+    if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hours ago`;
+    return `${Math.floor(seconds / 86_400)} days ago`;
   }
 
-  function stateTone(state: QueueItem['state']): ChipTone {
-    if (state === 'running' || state === 'ready') return 'signal';
-    if (state === 'succeeded') return 'clear';
-    if (state === 'failed') return 'stop';
-    if (state === 'blocked' || state === 'retrying') return 'warning';
-    if (state === 'awaiting_approval') return 'accent';
-    if (state === 'cancelled' || state === 'superseded') return 'absent';
-    return 'neutral';
+  /** A row's sentence, in the three pieces a time has to be an element to sit between. */
+  interface QueueLine {
+    lead: string;
+    when?: { relative: string; exact: string; iso: string };
+    tail?: string;
   }
 
-  function priorityTone(priority: QueueItem['priority']): ChipTone {
-    if (priority === 'urgent') return 'stop';
-    if (priority === 'high') return 'accent';
-    if (priority === 'low') return 'absent';
+  /**
+   * What the row says about itself: what state it is in, why, and what happens next.
+   *
+   * One relative time per row, and the exact stamp rides that time's own tooltip - a
+   * queue read at a glance is read in "in about four minutes", and a queue reasoned
+   * about is read in a timestamp. Both, in two places, is what makes a row unreadable.
+   *
+   * A wait is said as a wait rather than as the state the service files it under: the
+   * reason is what a reader can act on, and "Blocked" is a word about the queue.
+   */
+  function queueLine(item: QueueItem): QueueLine {
+    const detail = item.summary ?? words(item.kind);
+    const next = { relative: countdown(item.eligible_at), ...instant(item.eligible_at, item) };
+    switch (item.state) {
+      case 'awaiting_approval':
+        return { lead: `${detail} · waiting for somebody to decide` };
+      case 'running':
+        return {
+          lead:
+            item.progress_total > 0
+              ? `Running · ${item.progress_current} of ${item.progress_total} changes written`
+              : 'Running',
+        };
+      case 'blocked':
+        return { lead: `${item.blocked_reason ?? 'Waiting on something else'} · runs`, when: next };
+      case 'retrying':
+        return {
+          lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · tries again`,
+          when: next,
+          tail: ', on its own',
+        };
+      case 'succeeded':
+      case 'failed':
+      case 'cancelled':
+      case 'superseded': {
+        const finished = item.finished_at ?? item.updated_at;
+        return {
+          lead: `${detail} ·`,
+          when: { relative: ago(finished), ...instant(finished, item) },
+        };
+      }
+      default:
+        return { lead: `${detail} · runs`, when: next };
+    }
+  }
+
+  /** The exact instant a relative time is being relative about, said both ways. */
+  function instant(value: string, item: QueueItem): { exact: string; iso: string } {
+    return { exact: absolute(value, item.profile_timezone), iso: value };
+  }
+
+  /**
+   * A standing, in words a reader owns - never the service's own state name.
+   *
+   * Nothing that the card's own heading already says: a row under "Needs a decision"
+   * wearing a "Needs a decision" pill says it twice, and the states that are simply
+   * what the group is called wear nothing at all.
+   */
+  function stateLabel(item: QueueItem): string | null {
+    switch (item.state) {
+      case 'running':
+        return 'Running';
+      case 'awaiting_approval':
+      case 'blocked':
+      case 'retrying':
+      case 'scheduled':
+      case 'ready':
+        return null;
+      default:
+        return words(item.state);
+    }
+  }
+
+  function stateTone(item: QueueItem): PillTone {
+    if (item.state === 'failed') return 'danger';
+    if (item.state === 'succeeded') return 'success';
+    if (item.state === 'awaiting_approval' || item.state === 'running') return 'warning';
     return 'neutral';
   }
 
@@ -97,41 +214,32 @@
   }
 
   function actionItems(item: QueueItem): ActionMenuItem[] {
-    return [
-      {
-        id: 'details',
-        label: 'View details',
-        description: 'Open the schedule, progress, and audit timeline',
-        icon: 'info',
-        tone: 'default',
-      },
-      ...(item.actions ?? [])
-        .filter((action) => action !== 'run_now')
-        .map(
-          (action) =>
-            ({
-              id: action,
-              label: actionLabel(action),
-              description:
-                action === 'next_window'
-                  ? 'Keep the assigned execution window'
-                  : action === 'schedule_at'
-                    ? 'Choose the earliest acceptable time'
-                    : action === 'set_priority'
-                      ? 'Move this item to another priority band'
-                      : 'Keep the item in audited history',
-              icon:
-                action === 'next_window'
-                  ? 'pending'
-                  : action === 'schedule_at'
-                    ? 'history'
-                    : action === 'set_priority'
-                      ? 'sliders'
-                      : 'trash',
-              tone: action === 'cancel' ? 'danger' : 'default',
-            }) satisfies ActionMenuItem,
-        ),
-    ];
+    return (item.actions ?? [])
+      .filter((action) => action !== 'run_now')
+      .map(
+        (action) =>
+          ({
+            id: action,
+            label: actionLabel(action),
+            description:
+              action === 'next_window'
+                ? 'Keep the assigned execution window'
+                : action === 'schedule_at'
+                  ? 'Choose the earliest acceptable time'
+                  : action === 'set_priority'
+                    ? 'Move this item to another priority band'
+                    : 'Keep the item in audited history',
+            icon:
+              action === 'next_window'
+                ? 'pending'
+                : action === 'schedule_at'
+                  ? 'history'
+                  : action === 'set_priority'
+                    ? 'sliders'
+                    : 'trash',
+            tone: action === 'cancel' ? 'danger' : 'default',
+          }) satisfies ActionMenuItem,
+      );
   }
 
   function selectMenuAction(item: QueueItem, action: string): void {
@@ -141,257 +249,150 @@
     }
     onAction(item, action as QueueActionType);
   }
-
-  function statusDetail(item: QueueItem): string {
-    if (item.blocked_reason) return item.blocked_reason;
-    if (item.state === 'running' && item.progress_total > 0) {
-      return `${item.progress_current} of ${item.progress_total}`;
-    }
-    if (item.attempt > 0) return `Attempt ${item.attempt}`;
-    return '';
-  }
 </script>
 
 <!--
 @component
-The queue's rows, and the one table in the panel that keeps its own `<table>` rather
-than using `DataTable`. That is permanent and not a migration nobody got to: its rows
-carry `animate:flip` and two transitions, and a Svelte transition is a compile-time
-directive - it cannot be passed through a shared shell's attributes, and absorbing it
-would mean measuring every row of every other table.
+The queue's work, in the three groups a reader asks about it in: what needs them, what
+the service is doing on its own, and what it already did. A row is a sentence - what
+this is, what state it is in, and what happens next - and it carries its act rather
+than hiding it in a menu.
+
+Rows animate, which is why they are `li`s with `animate:flip` and their own fades: work
+arrives and retires while somebody is looking at it, and a row that appears without
+moving reads as the page having been replaced.
 
 Its clock is injected so a story or a test can hold time still. A countdown that reads
 from the wall clock cannot be photographed.
 -->
 
-{#snippet cells(item: QueueItem)}
-  <th scope="row" data-label="Work">
-    <div class="queue-cell band-trim-stack">
-      <button class="queue-title" type="button" onclick={() => onOpen(item)}>{item.title}</button>
-      <span class="queue-summary">{item.summary ?? words(item.kind)}</span>
+{#if grouped.length === 0}
+  <div class="card">
+    <div class="queue-empty">
+      <strong>Nothing in this view</strong>
+      <span>Queued work appears here as soon as the service accepts it.</span>
     </div>
-  </th>
-  <td data-label="State">
-    <div class="queue-cell state-cell">
-      <div class="state-line">
-        <span class="live-value state-value">
-          {#key `${item.id}:${item.state}:${item.revision}`}
-            <span class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
-              <Chip tone={stateTone(item.state)} dot={item.state === 'running'}>
-                {words(item.state)}
-              </Chip>
-            </span>
-          {/key}
-        </span>
-        <span class="live-value priority-value priority-{item.priority}">
-          {#key `${item.id}:${item.priority}:${item.revision}`}
-            <span class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
-              <Chip tone={priorityTone(item.priority)} small>{words(item.priority)}</Chip>
-            </span>
-          {/key}
-        </span>
-      </div>
-      {#if statusDetail(item) !== ''}
-        {#key `${item.id}:${statusDetail(item)}:${item.revision}`}
-          <span class="queue-reason" in:fade={valueMotion} out:fade={valueMotion}>
-            {statusDetail(item)}
-          </span>
-        {/key}
-      {/if}
-    </div>
-  </td>
-  <td data-label="Timing">
-    <div class="timing-cell band-trim-stack">
-      <div class="eligibility-line">
-        <span class="live-value eligibility-value">
-          {#key `${item.id}:${item.state}:${item.eligible_at}`}
-            <strong class="live-value-version" in:fade={valueMotion} out:fade={valueMotion}>
-              {countdown(item.eligible_at)}
-            </strong>
-          {/key}
-        </span>
-        <span aria-hidden="true">·</span>
-        <time datetime={item.eligible_at}>{absolute(item.eligible_at)}</time>
-      </div>
-      <span class="timing-summary">
-        {item.profile_name ?? words(item.profile_id ?? 'Window')}{item.profile_timezone
-          ? ` · ${shortInstant(item.eligible_at, item.profile_timezone)}`
-          : ''} · {item.estimated_start_at
-          ? `est. ${shortInstant(item.estimated_start_at)}`
-          : 'estimate pending'} · {item.work_ahead === 0
-          ? 'next in lane'
-          : `${item.work_ahead} ahead`}
-      </span>
-    </div>
-  </td>
-  <td data-label="Actions">
-    <div class="queue-actions">
-      {#if item.actions?.includes('run_now')}
-        <Button row tone="signal" onclick={() => onAction(item, 'run_now')}>Run now</Button>
-      {/if}
-      <ActionMenu
-        label={`Actions for ${item.title}`}
-        items={actionItems(item)}
-        onSelect={(action) => selectMenuAction(item, action)}
-      />
-    </div>
-  </td>
-{/snippet}
-
-{#snippet empty()}
-  <div class="queue-empty">
-    <strong>Nothing in this view</strong>
-    <span>Queued work appears here as soon as the service accepts it.</span>
   </div>
-{/snippet}
-
-<DataTable
-  rows={items}
-  rowKey={(item) => item.id}
-  caption="Background work queue"
-  regionLabel="Background work queue"
-  columns={[{ label: 'Work' }, { label: 'Status' }, { label: 'Timing' }, { label: 'Actions' }]}
-  columnWidths={['30%', '22%', '34%', '14%']}
-  {cells}
-  {empty}
-  class="general-queue-table"
-  scrollable={false}
-  stacked
-  motion={{ flip: rowMotion, arriving: rowArriving, leaving: rowLeaving }}
-/>
+{:else}
+  {#each grouped as group (group.id)}
+    <div class="card queue-group">
+      <div class="card-head">
+        <h2 class="card-title">{groupTitle ?? group.title}</h2>
+      </div>
+      <ul class="object-list">
+        {#each group.items as item (item.id)}
+          <li animate:flip={rowMotion} in:fade={rowArriving} out:fade={rowLeaving}>
+            <div class="object-row">
+              <!-- The whole row opens the schedule, the progress and the audit
+                   timeline; the acts stay pressable inside it. -->
+              <button
+                class="row-hit"
+                type="button"
+                aria-label="Open {item.title}"
+                onclick={() => onOpen(item)}
+              ></button>
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="object-name">{item.title}</span>
+                  <span class="pill-swap">
+                    {#key `${item.state}:${item.priority}:${item.revision}`}
+                      <span class="pill-value" in:fade={valueMotion} out:fade={valueMotion}>
+                        {#if stateLabel(item) !== null}
+                          <Pill tone={stateTone(item)}>{stateLabel(item)}</Pill>
+                        {/if}
+                        {#if item.priority !== 'normal'}
+                          <Pill tone={item.priority === 'urgent' ? 'danger' : 'neutral'}>
+                            {words(item.priority)}
+                          </Pill>
+                        {/if}
+                      </span>
+                    {/key}
+                  </span>
+                </span>
+                <span class="sum-swap">
+                  {#key `${item.state}:${item.priority}:${item.revision}`}
+                    {@const line = queueLine(item)}
+                    <span class="object-sum" in:fade={valueMotion} out:fade={valueMotion}>
+                      <!-- The separator rides the words, because markup whitespace
+                           beside a block is trimmed and "runs" would take the time
+                           straight onto its own last letter. -->
+                      {line.when === undefined
+                        ? line.lead
+                        : `${line.lead} `}{#if line.when !== undefined}<time
+                          datetime={line.when.iso}
+                          title={line.when.exact}>{line.when.relative}</time
+                        >{line.tail ?? ''}{/if}
+                    </span>
+                  {/key}
+                </span>
+              </span>
+              <span class="object-side">
+                {#if item.actions?.includes('run_now')}
+                  <Button tone="signal" onclick={() => onAction(item, 'run_now')}>Run now</Button>
+                {/if}
+                {#if actionItems(item).length > 0}
+                  <ActionMenu
+                    label={`Actions for ${item.title}`}
+                    items={actionItems(item)}
+                    onSelect={(action) => selectMenuAction(item, action)}
+                  />
+                {:else}
+                  <span class="row-chevron" aria-hidden="true">
+                    <Icon name="chevron-right" size="xs" />
+                  </span>
+                {/if}
+              </span>
+            </div>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/each}
+{/if}
 
 <style>
-  :global(.general-queue-table) {
-    --table-cell-font-size: var(--font-size-meta);
-    --table-cell-pad-block: 0.8rem;
-    --table-cell-pad-inline: var(--space-4);
-    --table-layout: fixed;
-    --table-min-width: 0;
-  }
-  th,
-  td {
-    vertical-align: middle;
-  }
-  .queue-title,
-  .queue-summary,
-  .queue-reason {
-    display: block;
-  }
-  .queue-title {
-    background: transparent;
-    border: 0;
-    color: var(--text-primary);
-    cursor: pointer;
-    font-size: var(--font-size-body);
-    font-weight: 700;
-    line-height: var(--leading-body);
-    padding: 0;
-    text-align: left;
-  }
-  .queue-title:hover {
-    color: var(--brand-action-text);
-  }
-  .queue-title:focus-visible {
-    border-radius: 2px;
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-offset);
-  }
-  .queue-summary,
-  .queue-reason {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-    margin-top: 0.35rem;
-  }
-  .queue-reason {
-    text-box: trim-end cap alphabetic;
-  }
-  .state-cell {
-    display: grid;
-    gap: var(--space-1);
-  }
-  .state-line {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1);
-  }
-  .live-value,
-  .live-value-version {
-    display: grid;
-    grid-area: 1 / 1;
-  }
-  .live-value-version {
-    justify-self: start;
-  }
-  .eligibility-value {
-    min-width: 5.25rem;
-  }
-  .timing-cell {
-    display: grid;
-    gap: var(--space-1);
-  }
-  /* The leading its size asks for, not the body's. Left to inherit, this line
-     drew a 12px word on a 23px line beside a 12px word on an 18px one, and the
-     cell's band came out 1.04px below every other cell in the row. */
-  /* Aligned by the CAP, not by the baseline. Every word on this line is one
-     font at one size, so once each part is trimmed to its own band the tops ARE
-     the cap line and the baselines follow - and unlike baseline alignment this
-     survives the live value, which is a grid and therefore offers the flex
-     container a baseline synthesised from its box rather than one its words
-     sit on. Trimmed, that box moved and the countdown rode 5px above the time
-     beside it. */
-  .eligibility-line {
-    align-items: start;
-    color: var(--text-secondary);
-    display: flex;
-    flex-wrap: wrap;
-    font-size: var(--font-size-compact);
-    gap: var(--space-1);
-    line-height: var(--leading-compact);
+  .queue-group + .queue-group {
+    margin-block-start: var(--rhythm-card-gap);
   }
 
-  /* The stack's trim has to reach the WORDS. `text-box` acts on an element's own
-     line boxes, and neither this line nor the live value inside it has any -
-     one is a flex container and the other a grid, so a trim asked of either
-     does nothing and the cell's top stayed the top of a line box rather than
-     the top of its capitals. Every descendant carries it: they share one font
-     and one leading, and `align-items: baseline` already holds them together,
-     so trimming all of them moves the line's edge and nothing inside it. */
-  .eligibility-line :global(*) {
-    text-box: trim-start cap alphabetic;
-  }
-  .eligibility-line strong {
-    color: var(--brand-action-text);
-    font-weight: 650;
-    text-transform: capitalize;
-  }
-  .eligibility-line time {
-    font-variant-numeric: tabular-nums;
-  }
-  .timing-summary {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-  }
-  .queue-actions {
-    align-items: center;
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-  }
   .queue-empty {
     display: grid;
     gap: var(--space-1);
     padding: var(--space-6);
     text-align: center;
   }
+
   .queue-empty span {
     color: var(--text-muted);
   }
-  @media (max-width: 64rem) {
-    .queue-actions {
-      justify-content: flex-start;
-    }
+
+  .row-chevron {
+    color: var(--text-muted);
+    display: inline-grid;
+    place-items: center;
+  }
+
+  /* Both readings share one cell, so the row keeps its height while they cross. */
+  .pill-swap,
+  .sum-swap {
+    display: grid;
+  }
+
+  .pill-swap > .pill-value,
+  .sum-swap > .object-sum {
+    grid-area: 1 / 1;
+  }
+
+  .pill-value {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  /* A row with no standing to state must not pay the name row's gap for the swap it
+     still carries. Both readings are present while they cross, so this asks whether
+     EITHER of them holds a pill rather than whether the current one does. */
+  .pill-swap:not(:has(:global(.pill))) {
+    display: none;
   }
 </style>

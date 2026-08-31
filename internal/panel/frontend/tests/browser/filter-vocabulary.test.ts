@@ -34,7 +34,10 @@ interface Pairing {
  * agree with. That is the case `tone` is omitted for.
  */
 const PLACES = [
-  { route: 'root/queue', column: 'Checks', heading: 1 },
+  /* The general queue is an object list now: its narrow filters live behind the
+     tools menu rather than in a heading, and a row wears a pill it states in words
+     rather than a chip off a column's vocabulary. What is left here is the tables
+     that still filter a column of their own. */
   { route: 'root/queue/recent', column: 'Outcome', heading: 1 },
   { route: 'root/access/users', column: 'Status', heading: null },
   { route: 'root/access/invitations', column: 'Status', heading: null },

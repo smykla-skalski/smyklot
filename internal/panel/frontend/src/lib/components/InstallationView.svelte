@@ -150,7 +150,6 @@ history is routed with its section. That is what makes an address like
             api={session.api}
             targetId={session.selectedTarget.id}
             section={session.currentQueueSection}
-            sectionHref={(value) => session.queueSectionHref(value)}
             onSelectSection={(value) => session.selectQueueSection(value)}
             canControl={session.selectedTarget.effective_role === 'admin' ||
               session.selectedTarget.effective_role === 'owner'}

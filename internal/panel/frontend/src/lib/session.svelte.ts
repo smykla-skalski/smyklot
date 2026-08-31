@@ -49,6 +49,7 @@ import {
   panelDocumentTitle,
   rootSection,
   rootSectionRoute,
+  WRITTEN_QUEUE_SECTIONS,
   type HistorySection,
   type InstallationRoute,
   type PanelRoute,
@@ -239,9 +240,10 @@ export class PanelSession {
     const route = this.parsedRoute;
     if (route === null || 'personal' in route) return 'active';
     if ('rootView' in route) {
-      if (route.rootView === 'queue-approvals') return 'approvals';
-      if (route.rootView === 'queue-history') return 'history';
-      return 'active';
+      const written = WRITTEN_QUEUE_SECTIONS.find(
+        (section) => route.rootView === `queue-${section}`,
+      );
+      return written ?? 'active';
     }
     return route.view === 'queue' ? (route.queue ?? 'active') : 'active';
   }
@@ -1035,8 +1037,7 @@ export class PanelSession {
   }
 
   private rootQueueRoute(section: QueueSection): RootRoute {
-    if (section === 'approvals') return { rootView: 'queue-approvals' };
-    if (section === 'history') return { rootView: 'queue-history' };
+    if (section !== 'active') return { rootView: `queue-${section}` };
     return { rootView: 'queue' };
   }
 

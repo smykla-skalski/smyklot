@@ -448,7 +448,7 @@ func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
 	}
 	item, err := s.store.RequestRecurringWork(r.Context(), workqueue.RecurringRequest{
 		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
-		Title: "Scan organization sync drift", ActorID: account.ID,
+		Title: "Check which repositories are in step", ActorID: account.ID,
 		Reason: input.Reason, Now: s.now().UTC(),
 	})
 	if err != nil {

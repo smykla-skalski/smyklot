@@ -125,7 +125,7 @@ func TestPanelQueueAndScheduleRoleMatrix(t *testing.T) {
 	item, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
 		ID: "queue:role-matrix", Kind: workqueue.KindReactionScan,
 		Lane: workqueue.LaneMaintenance, TargetID: pointerTo(targetID),
-		Title: "Discover pull request reactions", State: workqueue.StateScheduled,
+		Title: "Scan for new commands", State: workqueue.StateScheduled,
 		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
 		ProfileID: &profileID, NotBefore: harness.now.Add(time.Hour),
 		EligibleAt: harness.now.Add(time.Hour), CreatedAt: harness.now, UpdatedAt: harness.now,

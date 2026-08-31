@@ -63,7 +63,7 @@
      wider of what the heading needs with its own controls and what the widest value
      the SERVICE can produce needs, plus the cell's padding, rounded up to the next
      quarter rem - measured in the browser rather than chosen, with each column's
-     whole vocabulary put through it. `tests/browser/queue-columns.test.ts` measures
+     whole vocabulary put through it. `tests/browser/table-columns.test.ts` measures
      the same thing again and fails when a value stops fitting.
 
      Data rather than CSS: written as `:is(th, td):nth-child(3)` under the table's
@@ -1111,7 +1111,7 @@ and a reader should not have to navigate between them.
      rather than as rules on the elements it renders. `table-layout: fixed` was a
      rule on `.queue-table` until this table moved onto the shell, and it went on
      matching nothing in silence: the columns fell back to `auto`, so the widths
-     below stopped being honoured and `queue-columns` caught six columns either
+     below stopped being honoured and `table-columns` caught six columns either
      starved or padded. Separated borders, `border-spacing: 0` and `width: 100%`
      are the shell's own and no longer restated here. */
   :global(.queue-card) {
@@ -1411,7 +1411,7 @@ and a reader should not have to navigate between them.
      `tests/browser/vertical-alignment.test.ts` reports in every row of this
      table. Nothing needs the clamp: the column is 12rem because that is where
      every reason the service writes fits inside two lines, so the cap is the
-     WIDTH, and it is enforced by `tests/browser/queue-columns.test.ts`. */
+     WIDTH, and it is enforced by `tests/browser/table-columns.test.ts`. */
   .reason {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
@@ -1474,7 +1474,7 @@ and a reader should not have to navigate between them.
        the arrow, the 2rem a filter is given where there is one, 12px - and the
        widest value under it. Cleanup is set by its heading; Checks by its widest
        state now that the badge has no mark to carry; and the two age columns by
-       "59 min", which is what the narrow reading in `queue-columns.test.ts`
+       "59 min", which is what the narrow reading in `table-columns.test.ts`
        answered when 3.75rem was guessed at from the heading alone. */
     /* Retuned through the shell's own column variables, not as width rules on the
        cells: `DataTable` renders a `<colgroup>`, and in fixed table layout a `<col>`

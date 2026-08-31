@@ -22,11 +22,10 @@ import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** Every route in the panel that renders a table, and which shell it renders in. */
 const TABLES = [
-  /* Every list a workspace shows is an object list now - a person, an entry or a
-     failure is a name, a standing and one sentence - so none of them has a heading band
-     to read, and the audit reads the same way in both shells. What is left here is the
-     console's own tables, and this is what keeps THEM agreeing. */
-  { route: 'root/queue', shell: 'root' },
+  /* Every list a workspace shows is an object list now - a person, an entry, a failure
+     or a piece of queued work is a name, a standing and one sentence - so none of them
+     has a heading band to read, and the audit reads the same way in both shells. What is
+     left here is the console's own tables, and this is what keeps THEM agreeing. */
   { route: 'root/queue/recent', shell: 'root' },
   { route: 'root/installations', shell: 'root' },
   { route: 'root/access/users', shell: 'root' },

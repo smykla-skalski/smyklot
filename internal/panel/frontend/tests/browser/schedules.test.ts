@@ -93,7 +93,7 @@ describe('background work schedules [Integration]', () => {
       await page.locator('.profile-card', { hasText: 'Europe business hours' }).waitFor();
       await page.getByRole('heading', { name: 'Schedule requests' }).waitFor();
       await page
-        .getByText('Refresh repository paths during the release preparation window')
+        .getByText('Refresh which paths are watched during the release preparation window')
         .waitFor();
       await page.getByRole('button', { name: 'Approve' }).waitFor();
     } finally {

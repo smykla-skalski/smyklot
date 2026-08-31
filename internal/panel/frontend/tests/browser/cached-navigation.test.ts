@@ -61,7 +61,7 @@ async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
 }
 
 async function queueScheduleCallsOnReturn(page: Page, queueURL: string): Promise<string[]> {
-  await visit(page, queueURL, { ready: '.general-queue-table tbody .data-row' });
+  await visit(page, queueURL, { ready: '.general-queue .object-row' });
   await settle(
     page,
     () => page.getByRole('link', { name: 'Schedules', exact: true }).first().click(),
@@ -81,7 +81,7 @@ async function queueScheduleCallsOnReturn(page: Page, queueURL: string): Promise
       page,
       () => page.getByRole('link', { name: 'Queue', exact: true }).first().click(),
       {
-        ready: '.general-queue-table tbody .data-row',
+        ready: '.general-queue .object-row',
       },
     );
     await settle(

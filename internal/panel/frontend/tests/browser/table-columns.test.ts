@@ -204,7 +204,10 @@ beforeAll(async () => {
   readings = await inLanes(PANEL_ROUTES, async (route) => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      await visit(page, addressOf(panel, route), { ready: 'tbody td' });
+      /* A route that lists objects rather than tabulating them has no cell to wait for
+         and nothing here to measure - naming its row as well is what keeps it from
+         spending the whole mount budget proving that. */
+      await visit(page, addressOf(panel, route), { ready: 'tbody td, .object-row' });
 
       return await measure(page, route);
     } finally {

@@ -438,7 +438,7 @@ func (s *server) reconcileInstallationSync(
 	targetID := storage.InstallationID(installation.ID)
 
 	_, err := s.runRecurringWorkWithSummary(ctx, recurringWork{
-		kind: workqueue.KindSyncScan, targetID: &targetID, title: "Scan organization sync drift",
+		kind: workqueue.KindSyncScan, targetID: &targetID, title: "Check which repositories are in step",
 	}, func() (string, error) {
 		return s.sync.PlanInstallationWithSummary(
 			ctx, client, targetID, orgsync.TriggerReconcile,
@@ -451,7 +451,7 @@ func (s *server) reconcileInstallationSync(
 	// After the plan rather than before it: this feeds a control that helps
 	// somebody type a path, and nothing here is planned from it.
 	if _, err := s.runRecurringWork(ctx, recurringWork{
-		kind: workqueue.KindPathRefresh, targetID: &targetID, title: "Refresh repository paths",
+		kind: workqueue.KindPathRefresh, targetID: &targetID, title: "Refresh which paths are watched",
 	}, func() error {
 		s.sync.RefreshPaths(ctx, client, targetID, 0)
 		return nil
@@ -499,7 +499,7 @@ func (s *server) sweepRepo(
 	repositoryID := storage.RepositoryID(repo.ID)
 	_, migrationErr := s.runRecurringWork(ctx, recurringWork{
 		kind: workqueue.KindConfigMigration, targetID: &targetID,
-		repositoryID: &repositoryID, title: "Check configuration migration",
+		repositoryID: &repositoryID, title: "Check the repository's configuration file",
 	}, func() error { return s.migrateRepositoryConfig(ctx, client, targetID, repo) })
 	if migrationErr != nil {
 		logging.From(ctx).Warn("could not propose the configuration migration",
@@ -557,7 +557,7 @@ func (s *server) sweepRepo(
 
 	_, err = s.runRecurringWork(ctx, recurringWork{
 		kind: workqueue.KindReactionScan, targetID: &targetID,
-		repositoryID: &repositoryID, title: "Discover pull request reactions",
+		repositoryID: &repositoryID, title: "Scan for new commands",
 	}, func() error { return s.processRepositoryReactions(ctx, client, repo, bc, prs) })
 
 	return err

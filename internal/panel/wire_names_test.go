@@ -135,7 +135,7 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 	if _, err := harness.store.CreateQueueItem(t.Context(), workqueue.Item{
 		ID: "wire-name-queue", Kind: workqueue.KindPathRefresh,
 		Lane: workqueue.LaneMaintenance, TargetID: &targetID,
-		Title: "Refresh repository paths", State: workqueue.StateReady,
+		Title: "Refresh which paths are watched", State: workqueue.StateReady,
 		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
 		ProfileID: &profileID, NotBefore: harness.now,
 		EligibleAt: harness.now, CreatedAt: harness.now, UpdatedAt: harness.now,

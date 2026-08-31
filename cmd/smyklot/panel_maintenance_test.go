@@ -245,7 +245,7 @@ func TestMissingMaintenanceScopeIsSupersededBeforeClaim(t *testing.T) {
 	targetID, repositoryID := storage.InstallationID(1), storage.RepositoryID(11)
 	_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
 		Kind: workqueue.KindReactionScan, TargetID: &targetID,
-		RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+		RepositoryID: &repositoryID, Title: "Scan for new commands",
 		Now: time.Now().UTC().Add(-time.Hour), LeaseDuration: time.Minute,
 	})
 	if err != nil {
@@ -277,7 +277,7 @@ func TestMissingMaintenanceScopeIsSupersededAfterClaim(t *testing.T) {
 	targetID, repositoryID := "github:installation:1", "repository:removed"
 	_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
 		Kind: workqueue.KindReactionScan, TargetID: &targetID,
-		RepositoryID: &repositoryID, Title: "Discover pull request reactions",
+		RepositoryID: &repositoryID, Title: "Scan for new commands",
 		Now: time.Now().UTC().Add(-time.Hour), LeaseDuration: time.Minute,
 	})
 	if err != nil {

@@ -13,12 +13,25 @@ interface QueueMotion {
   duration: number;
 }
 
+/** One piece of queued work, in the group the queue files it under. */
+const ROW = '.general-queue .object-row';
+
+/**
+ * Press one of the queue's three views.
+ *
+ * Each segment is a radio under a label, and the label is what covers it - so the label
+ * is what a pointer reaches, here as everywhere else the pattern is pressed.
+ */
+async function showQueue(page: Page, view: string): Promise<void> {
+  await page.getByRole('radio', { name: view }).locator('xpath=ancestor::label[1]').click();
+}
+
 async function installMotionRecorder(page: Page): Promise<void> {
   await page.evaluate(() => {
     const original = Element.prototype.animate;
     document.documentElement.setAttribute('data-queue-motion', '[]');
     Element.prototype.animate = function (keyframes, options): Animation {
-      if (this.closest('.general-queue-table, .queue-panel') !== null) {
+      if (this.closest('.general-queue, .queue-panel') !== null) {
         const raw = document.documentElement.getAttribute('data-queue-motion') ?? '[]';
         const records = JSON.parse(raw) as QueueMotion[];
         records.push({
@@ -56,8 +69,8 @@ beforeAll(async () => {
   actor = await panel.browser.newPage();
   overview = await panel.browser.newPage();
   await Promise.all([
-    visit(viewer, `${panel.origin}/root/queue`, { ready: '.general-queue-table tbody .data-row' }),
-    visit(actor, `${panel.origin}/root/queue`, { ready: '.general-queue-table tbody .data-row' }),
+    visit(viewer, `${panel.origin}/root/queue`, { ready: ROW }),
+    visit(actor, `${panel.origin}/root/queue`, { ready: ROW }),
     visit(overview, `${panel.origin}/root`, { ready: '.queue-panel [data-queue-item]' }),
   ]);
   await Promise.all([installMotionRecorder(viewer), installMotionRecorder(overview)]);
@@ -75,35 +88,24 @@ describe('the general Queue live stream [Integration]', () => {
     const summary = overview.locator('.queue-panel');
     await summary.getByText('3 active · 1 awaiting approval').waitFor();
     await summary.getByText('Apply organization sync plan', { exact: true }).waitFor();
-    await summary.getByText('Discover pull request reactions', { exact: true }).waitFor();
+    await summary.getByText('Scan for new commands', { exact: true }).waitFor();
     expect(await summary.locator('[data-queue-item]').count()).toBe(3);
   });
 
   it('renders each Queue view before arming live motion', async () => {
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
-    await viewer.locator('a[href="/root/queue/approvals"]').click();
+    await showQueue(viewer, 'Needs a decision');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/approvals');
     await viewer.getByText('Review organization sync plan').waitFor({ state: 'visible' });
     await viewer.waitForTimeout(200);
-
-    const spacing = await viewer.evaluate(() => {
-      const heading = document.querySelector('.general-queue-table thead tr');
-      const row = document.querySelector('.general-queue-table tbody .data-row');
-      if (!(heading instanceof HTMLElement) || !(row instanceof HTMLElement)) return null;
-      return row.getBoundingClientRect().top - heading.getBoundingClientRect().bottom;
-    });
-    expect(spacing).not.toBeNull();
-    expect(spacing ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
-    expect(await trailingTableSpace(viewer)).toBeLessThanOrEqual(1);
     expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
 
-    await viewer.locator('a[href="/root/queue/history"]').click();
+    await showQueue(viewer, 'Done');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/history');
-    await viewer.getByText('Refresh installation catalog', { exact: true }).waitFor();
-    expect(await trailingTableSpace(viewer)).toBeLessThanOrEqual(1);
+    await viewer.getByText('Refresh the list of repositories', { exact: true }).waitFor();
 
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
-    await viewer.getByRole('link', { name: 'Active', exact: true }).click();
+    await showQueue(viewer, 'All');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue');
     await viewer.getByText('Apply organization sync plan', { exact: true }).waitFor();
     await viewer.waitForTimeout(200);
@@ -112,8 +114,10 @@ describe('the general Queue live stream [Integration]', () => {
 
   it('refreshes another reader when an audited action changes an item', async () => {
     const title = 'Merge platform-infra#184 after CI';
-    const viewerRow = viewer.locator('.general-queue-table tbody .data-row', { hasText: title });
-    await viewerRow.locator('.priority-normal').waitFor({ state: 'visible' });
+    const viewerRow = viewer.locator(ROW, { hasText: title });
+    await viewerRow.waitFor({ state: 'visible' });
+    // Normal is the priority a row says nothing about, so the standing to wait for is its absence.
+    expect(await viewerRow.getByText('High', { exact: true }).count()).toBe(0);
 
     const status = await actor.evaluate(async () => {
       const response = await fetch('/api/v1/root/queue/queue-pending-ci/actions', {
@@ -128,7 +132,9 @@ describe('the general Queue live stream [Integration]', () => {
       return response.status;
     });
     expect(status).toBe(200);
-    await viewerRow.locator('.priority-high').waitFor({ state: 'visible', timeout: 5_000 });
+    await viewerRow
+      .getByText('High', { exact: true })
+      .waitFor({ state: 'visible', timeout: 5_000 });
     await waitForFastMotion(viewer, 150);
   });
 
@@ -149,9 +155,7 @@ describe('the general Queue live stream [Integration]', () => {
   });
 
   it('animates state changes in Queue and Root Overview', async () => {
-    const viewerRow = viewer.locator('.general-queue-table tbody .data-row', {
-      hasText: 'Discover pull request reactions',
-    });
+    const viewerRow = viewer.locator(ROW, { hasText: 'Scan for new commands' });
     const overviewRow = overview.locator('[data-queue-item="queue-reaction-retry"]');
 
     const status = await actor.evaluate(async () => {
@@ -167,8 +171,11 @@ describe('the general Queue live stream [Integration]', () => {
       return response.status;
     });
     expect(status).toBe(200);
+    /* The queue says a state in the words a reader owns, so a row that becomes runnable
+       says when it runs rather than naming the state it is in. The console's overview is
+       the one place the service's own vocabulary is still on show. */
     await Promise.all([
-      viewerRow.getByText('Ready', { exact: true }).waitFor({ timeout: 5_000 }),
+      viewerRow.getByText(/ · runs /).waitFor({ timeout: 5_000 }),
       overviewRow.getByText('Ready', { exact: true }).waitFor({ timeout: 5_000 }),
     ]);
 
@@ -193,12 +200,10 @@ describe('the general Queue live stream [Integration]', () => {
       return response.status;
     });
     expect(status).toBe(200);
-    await viewer
-      .locator('.general-queue-table tbody .data-row', {
-        hasText: 'Merge platform-infra#184 after CI',
-      })
-      .locator('.priority-normal')
-      .waitFor({ state: 'visible', timeout: 5_000 });
+    const settled = viewer.locator(ROW, { hasText: 'Merge platform-infra#184 after CI' });
+    await expect
+      .poll(() => settled.getByText('High', { exact: true }).count(), { timeout: 5_000 })
+      .toBe(0);
 
     const motion = await recordedMotion(viewer);
     expect(
@@ -207,14 +212,3 @@ describe('the general Queue live stream [Integration]', () => {
     ).toBe(true);
   });
 });
-
-async function trailingTableSpace(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const table = document.querySelector('.general-queue-table table');
-    const row = document.querySelector('.general-queue-table tbody tr:last-child');
-    if (!(table instanceof HTMLElement) || !(row instanceof HTMLElement)) {
-      return Number.POSITIVE_INFINITY;
-    }
-    return table.getBoundingClientRect().bottom - row.getBoundingClientRect().bottom;
-  });
-}

@@ -304,7 +304,7 @@ function mockScheduleState(
             profile_id: europeHours.id,
             cadence: 30 * 60 * NANOSECONDS_PER_SECOND,
             default_priority: 'normal',
-            reason: 'Refresh repository paths during the release preparation window',
+            reason: 'Refresh which paths are watched during the release preparation window',
             requested_by: VIEWER.id,
             revision: 1,
             created_at: now,

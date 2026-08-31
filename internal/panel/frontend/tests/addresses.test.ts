@@ -45,6 +45,16 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', section: 'approvals' },
   },
   {
+    route: { account: 'acme', view: 'queue', queue: 'waiting' },
+    id: '/i/[account]/queue/[section=queueSection]',
+    params: { account: 'acme', section: 'waiting' },
+  },
+  {
+    route: { account: 'acme', view: 'queue', queue: 'running' },
+    id: '/i/[account]/queue/[section=queueSection]',
+    params: { account: 'acme', section: 'running' },
+  },
+  {
     route: { account: 'acme', view: 'queue', queue: 'history' },
     id: '/i/[account]/queue/[section=queueSection]',
     params: { account: 'acme', section: 'history' },
@@ -115,6 +125,16 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     route: { rootView: 'queue-approvals' },
     id: '/root/queue/[section=queueSection]',
     params: { section: 'approvals' },
+  },
+  {
+    route: { rootView: 'queue-waiting' },
+    id: '/root/queue/[section=queueSection]',
+    params: { section: 'waiting' },
+  },
+  {
+    route: { rootView: 'queue-running' },
+    id: '/root/queue/[section=queueSection]',
+    params: { section: 'running' },
   },
   {
     route: { rootView: 'queue-history' },

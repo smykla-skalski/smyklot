@@ -4,7 +4,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
-  import { QUEUE_SECTIONS, routeSegmentLabel, type QueueSection } from '#lib/routes.js';
+  import { QUEUE_SECTIONS, type QueueSection } from '#lib/routes.js';
   import type {
     QueueActionInput,
     QueueActionType,
@@ -23,6 +23,7 @@
   import QueueDetailDialog from './QueueDetailDialog.svelte';
   import QueueTable from './QueueTable.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import TableToolsMenu, { type ToolsFilter } from './TableToolsMenu.svelte';
 
   const {
@@ -31,7 +32,6 @@
     rootRole = '',
     canControl = false,
     section = 'active',
-    sectionHref,
     onSelectSection,
   }: {
     api: PanelApi;
@@ -39,11 +39,15 @@
     rootRole?: string;
     canControl?: boolean;
     section?: QueueSection;
-    /** Where each of the queue's three views lives, so the switch below is links. */
-    sectionHref?: (value: QueueSection) => string;
+    /**
+     * Which of the queue's three views to show. Each is still its own address - the
+     * segments change it - so a link straight to the decisions keeps working.
+     */
     onSelectSection?: (value: QueueSection) => void;
   } = $props();
 
+  /** What the queue calls finished, in every place that has to ask. */
+  const DONE_STATES: QueueItem['state'][] = ['succeeded', 'failed', 'cancelled', 'superseded'];
   const emptyFacets: QueuePage['facets'] = {
     targets: [],
     repositories: [],
@@ -265,11 +269,62 @@
       : api.fetchTargetQueueItem(targetId, itemID);
   }
 
+  /* APPROVALS LEAD THE PAGE, so the page a reader arrives on carries them. They have
+     their own address as well, for a link straight to the decision - what they do not
+     have is a separate place you must know about before you can find out that anything
+     is waiting for you. */
   function sectionStates(value: QueueSection): QueueItem['state'][] {
     if (value === 'approvals') return ['awaiting_approval'];
-    if (value === 'history') return ['succeeded', 'failed', 'cancelled', 'superseded'];
-    return ['scheduled', 'blocked', 'ready', 'running', 'retrying'];
+    if (value === 'waiting') return ['scheduled', 'blocked', 'ready', 'retrying'];
+    if (value === 'running') return ['running'];
+    if (value === 'history') return DONE_STATES;
+    return ['awaiting_approval', 'scheduled', 'blocked', 'ready', 'running', 'retrying'];
   }
+
+  const SECTION_LABELS: Record<QueueSection, string> = {
+    active: 'All',
+    approvals: 'Needs a decision',
+    waiting: 'Waiting',
+    running: 'Running',
+    history: 'Done',
+  };
+
+  /**
+   * How much work is in each of the three views, so the segments can say it.
+   *
+   * One count per view rather than one per state: the segments ARE the views, and a
+   * count of something the segment does not select is a number nobody can act on.
+   */
+  const sectionCountsQuery = createQuery(() => ({
+    queryKey: ['queue-section-counts', targetId ?? 'root', workload, priority, profile],
+    queryFn: async (): Promise<Record<QueueSection, number>> => {
+      const pages = await Promise.all(
+        QUEUE_SECTIONS.map((value) => {
+          const params = new SvelteURLSearchParams({ limit: '1', offset: '0' });
+          params.set('state', sectionStates(value).join(','));
+          if (workload !== 'all') params.set('workload', workload);
+          if (priority !== 'all') params.set('priority', priority);
+          if (profile !== 'all') params.set('profile', profile);
+          const search = `?${params.toString()}`;
+          return targetId === undefined
+            ? api.fetchRootQueue(search)
+            : api.fetchTargetQueue(targetId, search);
+        }),
+      );
+      return Object.fromEntries(
+        QUEUE_SECTIONS.map((value, index) => [value, pages[index]?.total ?? 0]),
+      ) as Record<QueueSection, number>;
+    },
+  }));
+
+  const SECTION_SEGMENTS = $derived.by(() => {
+    const counts = sectionCountsQuery.data;
+    return QUEUE_SECTIONS.map((value) => ({
+      value,
+      label: SECTION_LABELS[value],
+      badge: counts === undefined ? undefined : String(counts[value]),
+    }));
+  });
 
   function queueQuery(): string {
     const query = new SvelteURLSearchParams({ limit: String(pageSize), offset: String(offset) });
@@ -383,7 +438,7 @@ without the buttons, rather than buttons that refuse.
     <RootPageHeader
       role={rootRole}
       title="Queue"
-      subtitle="Every durable task, its schedule, and what is blocking it"
+      subtitle="Everything the service is doing, across every workspace"
     >
       <Button onclick={() => void load()}>
         {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
@@ -394,7 +449,7 @@ without the buttons, rather than buttons that refuse.
     <PageHeader
       id="queue-heading"
       title="Queue"
-      description="Background work accepted for this installation"
+      description="Work Smyklot is doing or waiting on in this workspace"
     >
       {#snippet actions()}
         <Button onclick={() => void load()}>
@@ -405,37 +460,24 @@ without the buttons, rather than buttons that refuse.
     </PageHeader>
   {/if}
 
-  <div class="queue-toolbar">
+  <div class="filter-bar">
+    <!-- The queue's three views, on the page they belong to rather than in the sidebar:
+         which slice of one page a reader is looking at is a filter, and the tree names
+         pages. Each is still an address, so a link to the decisions goes straight
+         there. -->
     {#if onSelectSection !== undefined}
-      <!-- The queue's three views, on the page they belong to rather than in the
-           sidebar: which slice of one page a reader is looking at is a filter, and
-           the tree names pages. -->
-      <nav class="queue-sections" aria-label="Queue views">
-        {#each QUEUE_SECTIONS as value (value)}
-          <a
-            class="queue-section"
-            class:is-active={section === value}
-            href={sectionHref?.(value) ?? ''}
-            aria-current={section === value ? 'page' : undefined}
-            onclick={(event) => {
-              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
-              event.preventDefault();
-              onSelectSection(value);
-            }}
-          >
-            <span class="t">{routeSegmentLabel(value)}</span>
-          </a>
-        {/each}
-      </nav>
+      <SegmentedControl
+        name="queue-section"
+        label="Show"
+        options={SECTION_SEGMENTS}
+        value={section}
+        onSelect={(value) => onSelectSection(value as QueueSection)}
+      />
     {/if}
-    <div class="queue-tools">
-      <span aria-live="polite">
-        {loading
-          ? 'Updating…'
-          : `${total} ${section === 'active' ? 'active' : section} item${total === 1 ? '' : 's'}`}
-      </span>
+    <span class="push-end">
+      <span class="queue-state" aria-live="polite">{loading ? 'Updating…' : ''}</span>
       <TableToolsMenu label="Filter queue" sorts={[]} filters={queueFilters} />
-    </div>
+    </span>
   </div>
 
   <p class="visually-hidden" aria-live="polite">{announcement}</p>
@@ -454,21 +496,36 @@ without the buttons, rather than buttons that refuse.
       </Plate>
     {/if}
     {#key query}
-      <QueueTable {items} clock={() => now} onOpen={openDetail} onAction={openAction} />
+      <QueueTable
+        {items}
+        clock={() => now}
+        groupTitle={section === 'waiting' || section === 'running'
+          ? SECTION_LABELS[section]
+          : undefined}
+        onOpen={openDetail}
+        onAction={openAction}
+      />
     {/key}
     {#if total > 0}
-      <nav class="queue-pagination" aria-label="Queue pages">
-        <p>Showing {rangeStart}–{rangeEnd} of {total}</p>
-        <div>
+      <div class="list-foot">
+        <span>Showing {rangeStart}-{rangeEnd}&nbsp;of {total}</span>
+        <span class="foot-acts">
           <Button
+            tone="quiet"
             disabled={offset === 0 || loading}
-            onclick={() => (offset = Math.max(0, offset - pageSize))}>Previous</Button
+            onclick={() => (offset = Math.max(0, offset - pageSize))}
           >
-          <Button disabled={nextOffset === 0 || loading} onclick={() => (offset = nextOffset)}
-            >Next</Button
+            Previous
+          </Button>
+          <Button
+            tone="quiet"
+            disabled={nextOffset === 0 || loading}
+            onclick={() => (offset = nextOffset)}
           >
-        </div>
-      </nav>
+            Next
+          </Button>
+        </span>
+      </div>
     {/if}
   {/if}
 </section>
@@ -501,78 +558,16 @@ without the buttons, rather than buttons that refuse.
     min-height: 0;
     min-width: 0;
   }
-  .queue-toolbar {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: flex-end;
-  }
-
-  /* The views, left-packed on the filter bar's own grammar. */
-  .queue-sections {
-    display: flex;
-    gap: var(--space-1);
-    margin-inline-end: auto;
-  }
-
-  .queue-section {
-    align-items: center;
-    block-size: var(--control-height-compact);
-    border-radius: var(--radius-control);
-    color: var(--text-secondary);
-    display: inline-flex;
-    font-size: var(--font-size-meta);
-    padding-inline: var(--space-3);
-    text-decoration: none;
-  }
-
-  .queue-section .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .queue-section:hover {
-    background: var(--interactive-hover-layer);
-    color: var(--text-primary);
-  }
-
-  .queue-section:active {
-    background: var(--interactive-pressed);
-    box-shadow: var(--pressed-inset);
-  }
-
-  .queue-section.is-active {
-    background: var(--brand-action-tint);
-    color: var(--brand-action-text);
-    font-weight: 600;
-  }
-  .queue-tools {
-    align-items: center;
+  /* A refresh in flight, said once beside the tools rather than as a count that
+     disagrees with the segments' own. */
+  .queue-state {
     color: var(--text-muted);
-    display: flex;
     font-size: var(--font-size-compact);
-    gap: var(--space-2);
-  }
-  .queue-tools > span {
     text-box: trim-both cap alphabetic;
   }
-  .queue-pagination {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-  }
-  .queue-pagination p {
-    color: var(--text-muted);
-    font-size: 0.78rem;
-    margin: 0;
-  }
-  .queue-pagination div {
+
+  .foot-acts {
     display: flex;
     gap: var(--space-2);
-  }
-  @media (max-width: 36rem) {
-    .queue-tools {
-      justify-content: space-between;
-    }
   }
 </style>

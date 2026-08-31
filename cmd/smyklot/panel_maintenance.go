@@ -33,7 +33,7 @@ type maintenanceJob struct {
 
 func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 	jobs := []maintenanceJob{{
-		work: recurringWork{kind: workqueue.KindDeliveryCleanup, title: "Clean up retained background work"},
+		work: recurringWork{kind: workqueue.KindDeliveryCleanup, title: "Tidy finished background work"},
 		run: func() error {
 			now := time.Now().UTC()
 			if err := s.store.ExpireSyncPlans(ctx, now); err != nil {
@@ -62,12 +62,12 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 
 	return append(jobs,
 		maintenanceJob{
-			work:           recurringWork{kind: workqueue.KindCatalogRefresh, title: "Refresh installation catalog"},
+			work:           recurringWork{kind: workqueue.KindCatalogRefresh, title: "Refresh the list of repositories"},
 			run:            func() error { return s.refreshPanelCatalog(ctx) },
 			failureMessage: "panel catalog synchronization failed",
 		},
 		maintenanceJob{
-			work:           recurringWork{kind: workqueue.KindAuthCleanup, title: "Clean up expired authentication"},
+			work:           recurringWork{kind: workqueue.KindAuthCleanup, title: "Tidy expired sign-ins"},
 			run:            func() error { return s.store.DeleteExpiredAuth(ctx, time.Now().UTC()) },
 			failureMessage: "panel authentication cleanup failed",
 		},
@@ -191,7 +191,7 @@ func (s *server) targetMaintenanceJobs(
 ) []maintenanceJob {
 	return []maintenanceJob{
 		{
-			work: recurringWork{kind: workqueue.KindSyncScan, targetID: &targetID, title: "Scan organization sync drift"},
+			work: recurringWork{kind: workqueue.KindSyncScan, targetID: &targetID, title: "Check which repositories are in step"},
 			runWithSummary: func() (string, error) {
 				client, err := s.queuedInstallationClient(installationID)
 				if err != nil {
@@ -205,7 +205,7 @@ func (s *server) targetMaintenanceJobs(
 			failureMessage: "organization sync scan failed",
 		},
 		{
-			work: recurringWork{kind: workqueue.KindPathRefresh, targetID: &targetID, title: "Refresh repository paths"},
+			work: recurringWork{kind: workqueue.KindPathRefresh, targetID: &targetID, title: "Refresh which paths are watched"},
 			run: func() error {
 				client, err := s.queuedInstallationClient(installationID)
 				if err != nil {
@@ -234,7 +234,7 @@ func (s *server) repositoryMaintenanceJobs(
 		jobs = append(jobs, maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindPendingCIGate, targetID: &targetID,
-				repositoryID: &repositoryID, title: "Reconcile pending CI protection",
+				repositoryID: &repositoryID, title: "Hold pull requests until CI settles",
 			},
 			run: func() error {
 				runErr := s.reconcileQueuedPendingCIGate(
@@ -254,7 +254,7 @@ func (s *server) repositoryMaintenanceJobs(
 		maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindConfigMigration, targetID: &targetID,
-				repositoryID: &repositoryID, title: "Check configuration migration",
+				repositoryID: &repositoryID, title: "Check the repository's configuration file",
 			},
 			run: func() error {
 				_, _, enabled, err := s.automaticRepositoryControls(
@@ -276,7 +276,7 @@ func (s *server) repositoryMaintenanceJobs(
 		maintenanceJob{
 			work: recurringWork{
 				kind: workqueue.KindReactionScan, targetID: &targetID,
-				repositoryID: &repositoryID, title: "Discover pull request reactions",
+				repositoryID: &repositoryID, title: "Scan for new commands",
 			},
 			run: func() error {
 				return s.scanQueuedReactions(ctx, targetID, installationID, repository)

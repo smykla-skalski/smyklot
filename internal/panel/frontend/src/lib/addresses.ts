@@ -11,6 +11,7 @@ import {
 import {
   HISTORY_SECTIONS,
   REPOSITORY_SECTIONS,
+  WRITTEN_QUEUE_SECTIONS,
   WRITTEN_SYNC_SECTIONS,
   isScopedPanelView,
   isRootInstallationView,
@@ -20,6 +21,7 @@ import {
   type RepositorySection,
   type RootRoute,
   type SyncSection,
+  type WrittenQueueSection,
 } from './routes.ts';
 
 /**
@@ -112,6 +114,10 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/queue');
     case 'queue-approvals':
       return resolve('/root/queue/[section=queueSection]', { section: 'approvals' });
+    case 'queue-waiting':
+      return resolve('/root/queue/[section=queueSection]', { section: 'waiting' });
+    case 'queue-running':
+      return resolve('/root/queue/[section=queueSection]', { section: 'running' });
     case 'queue-history':
       return resolve('/root/queue/[section=queueSection]', { section: 'history' });
     case 'queue-recent':
@@ -239,7 +245,7 @@ export function panelRouteAt(
     case '/i/[account]/queue':
       return { account, view: 'queue' };
     case '/i/[account]/queue/[section=queueSection]':
-      return { account, view: 'queue', queue: section === 'history' ? 'history' : 'approvals' };
+      return { account, view: 'queue', queue: writtenQueueSection(section) };
     case '/i/[account]/access':
       return withView(account, 'users');
     case '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]':
@@ -272,7 +278,7 @@ export function panelRouteAt(
     case '/root/queue':
       return { rootView: 'queue' };
     case '/root/queue/[section=queueSection]':
-      return { rootView: section === 'history' ? 'queue-history' : 'queue-approvals' };
+      return { rootView: `queue-${writtenQueueSection(section)}` };
     case '/root/queue/recent':
       return { rootView: 'queue-recent' };
     case '/root/queue/request/[id]':
@@ -342,6 +348,17 @@ function rootInstallation(
 
 function asSection(value: string | undefined): HistorySection | undefined {
   return HISTORY_SECTIONS.find((section) => section === value);
+}
+
+/**
+ * The queue section an address names.
+ *
+ * The matcher has already refused anything outside the list, so the fallback is for the
+ * type rather than for a reader: Active is the section the bare Queue address is, and
+ * the one a section that cannot be read should behave as.
+ */
+function writtenQueueSection(value: string | undefined): WrittenQueueSection {
+  return WRITTEN_QUEUE_SECTIONS.find((section) => section === value) ?? 'approvals';
 }
 
 /** The written sections only: the overview never reaches this route. */
