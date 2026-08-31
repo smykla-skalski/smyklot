@@ -307,11 +307,11 @@ visits to this route never open one.
                         'The owner list cannot be read until an organization owner grants the Members permission again'}
                     {:else}
                       {repositorySentence(installation)} · owner list synced
-                      <RelativeTime
-                        value={installation.ownership.synced_at}
-                        {nowMs}
-                      />{#if failed > 0}
-                        · {failed}
+                      <RelativeTime value={installation.ownership.synced_at} {nowMs} />
+                      <!-- The space before the block, never inside it: Svelte trims a
+                           block's leading whitespace, and the separator arrived stuck
+                           to the last letter of the time. -->
+                      {#if failed > 0}· {failed}
                         {failed === 1 ? 'failure' : 'failures'} kept{/if}
                     {/if}
                   </span>

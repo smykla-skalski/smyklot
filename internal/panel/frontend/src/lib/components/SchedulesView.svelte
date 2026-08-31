@@ -167,6 +167,17 @@
     return said.join(' · ');
   }
 
+  /** An hours profile as one sentence: where it is, when it is open, who runs on it. */
+  function hoursSentence(profile: ScheduleProfile): string {
+    const said = [`${profile.timezone} · ${windowsSentence(profile)}`];
+    const on = profile.affected_installations;
+    if (on !== undefined) {
+      said.push(`${on} ${on === 1 ? 'workspace runs' : 'workspaces run'} on it`);
+    }
+
+    return said.join(' · ');
+  }
+
   /** Who asked, by name where the account is still readable. */
   function asker(request: ScheduleRequest): string {
     return request.requester?.display_name ?? request.requester?.login ?? request.requested_by;
@@ -372,6 +383,7 @@ in their own settings.
       <div class="object-list">
         {#each shownJobs as policy (policy.kind)}
           {@const status = policyStatus(policy.kind)}
+          {@const nextAt = policy.enabled ? status?.next_eligibility_at : undefined}
           <div class="object-row">
             <span class="object-main">
               <span class="object-name-row">
@@ -385,12 +397,14 @@ in their own settings.
                   </Pill>
                 {/if}
               </span>
+              <!-- The separator rides the words rather than standing in the block:
+                   Svelte trims a block's leading whitespace, so "· next" arrived stuck
+                   to the last letter of the sentence before it. -->
               <span class="object-sum"
-                >{jobSentence(
-                  policy,
-                )}{#if policy.enabled && status?.next_eligibility_at !== undefined}
-                  · next <RelativeTime
-                    value={status.next_eligibility_at}
+                >{nextAt === undefined
+                  ? jobSentence(policy)
+                  : `${jobSentence(policy)} · next `}{#if nextAt !== undefined}<RelativeTime
+                    value={nextAt}
                     {nowMs}
                     future
                   />{/if}</span
@@ -469,13 +483,7 @@ in their own settings.
                   <Pill>built in</Pill>
                 {/if}
               </span>
-              <span class="object-sum"
-                >{profile.timezone} · {windowsSentence(
-                  profile,
-                )}{#if profile.affected_installations !== undefined}
-                  · {profile.affected_installations}
-                  {profile.affected_installations === 1 ? 'workspace runs' : 'workspaces run'} on it{/if}</span
-              >
+              <span class="object-sum">{hoursSentence(profile)}</span>
             </span>
             <span class="object-side">
               {#if !profile.system}

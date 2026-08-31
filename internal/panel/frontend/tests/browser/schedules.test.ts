@@ -27,13 +27,13 @@ describe('background work schedules [Integration]', () => {
       });
       await page.goto(addressOf(panel, 'root/schedules'), { waitUntil: 'domcontentloaded' });
 
-      const view = page.locator('.schedules-view');
+      const view = page.locator('.view-frame[aria-busy]');
       await view.waitFor();
       await expect.poll(() => view.getAttribute('aria-busy')).toBe('true');
 
       releaseResponse();
       await expect.poll(() => view.getAttribute('aria-busy')).toBe('false');
-      await view.locator('.policy-table-wrap tbody tr').first().waitFor();
+      await view.locator('.object-row').first().waitFor();
     } finally {
       releaseResponse();
       await page.close();
@@ -56,7 +56,7 @@ describe('background work schedules [Integration]', () => {
       await page.route('**/api/v1/root/job-policies', emptyOverrides);
 
       await visit(page, addressOf(panel, 'root/schedules'), {
-        ready: '.schedules-view .policy-table-wrap tbody tr',
+        ready: '.view-frame .object-row',
       });
       await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
     } finally {
@@ -64,32 +64,47 @@ describe('background work schedules [Integration]', () => {
     }
   });
 
-  it('shows Root the effective policies, named profiles, and pending decisions', async () => {
+  /**
+   * A job is a sentence, and the page opens on the four that ran most recently rather
+   * than on all eleven: a console opens on what is happening. What each card owes a
+   * reader is checked by its words, because that is the whole of what changed - a
+   * cadence is said in human units and the hours are said as a week.
+   */
+  it('says what every job does, how often, and in whose hours', async () => {
     const page = await panel.browser.newPage();
     try {
-      await visit(page, addressOf(panel, 'root/schedules'), {
-        ready: '.schedules-view .policy-table-wrap tbody tr',
-      });
+      await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
 
       await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
-      await expect
-        .poll(() =>
-          page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
-        )
-        .toBe(11);
-      await page
-        .locator('.policy-source', { hasText: 'Global policy · revision' })
+
+      const jobs = page.locator('.card', { has: page.getByRole('heading', { name: 'Jobs' }) });
+      await expect.poll(() => jobs.locator('.object-row').count()).toBe(4);
+      await jobs.getByText('Showing 4 of 11 jobs', { exact: false }).waitFor();
+      // The cadence in words, and the hours the job runs in - never 21600 seconds.
+      await jobs
+        .getByText(/every 5 minutes around the clock/)
         .first()
         .waitFor();
-      await page.getByText(/^Deployment 6h · Always Open · normal$/).waitFor();
-      await page.getByRole('heading', { name: 'Profiles' }).waitFor();
-      await page.locator('.profile-card', { hasText: 'Always Open' }).waitFor();
-      await page.locator('.profile-card', { hasText: 'Europe business hours' }).waitFor();
-      await page.getByRole('heading', { name: 'Schedule requests' }).waitFor();
-      await page
-        .getByText('Refresh which paths are watched during the release preparation window')
+
+      await jobs.getByRole('button', { name: 'Show all 11 jobs' }).click();
+      await expect.poll(() => jobs.locator('.object-row').count()).toBe(11);
+
+      const hours = page.locator('.card', { has: page.getByRole('heading', { name: 'Hours' }) });
+      await hours.getByText('Always Open', { exact: true }).waitFor();
+      await hours.getByText(/Europe\/Warsaw · Mon to Fri/).waitFor();
+
+      // A request waiting on somebody leads the page, worded as the ask it is.
+      const decide = page.locator('.card', {
+        has: page.getByRole('heading', { name: 'Needs a decision' }),
+      });
+      await decide.getByText(/asks: Path indexing every 30 minutes/).waitFor();
+      await decide
+        .getByText('Refresh which paths are watched during the release preparation window', {
+          exact: false,
+        })
         .waitFor();
-      await page.getByRole('button', { name: 'Approve' }).waitFor();
+      await decide.getByRole('button', { name: 'Approve' }).waitFor();
+      await decide.getByRole('button', { name: 'Decline' }).waitFor();
     } finally {
       await page.close();
     }
@@ -128,17 +143,17 @@ describe('background work schedules [Integration]', () => {
     }
   });
 
-  it('keeps the schedule table inside a phone viewport', async () => {
+  it('keeps every schedule row inside a phone viewport', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 390, height: 844 } });
     try {
-      await visit(page, addressOf(panel, 'root/schedules'), {
-        ready: '.schedules-view .policy-table-wrap tbody tr',
-      });
+      await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
 
       const overflow = await page.evaluate(() => {
-        const region = document.querySelector<HTMLElement>('.policy-table-wrap');
-        if (region === null) return Number.POSITIVE_INFINITY;
-        return region.getBoundingClientRect().right - document.documentElement.clientWidth;
+        const rows = [...document.querySelectorAll<HTMLElement>('.object-row')];
+        if (rows.length === 0) return Number.POSITIVE_INFINITY;
+        const width = document.documentElement.clientWidth;
+
+        return Math.max(...rows.map((row) => row.getBoundingClientRect().right - width));
       });
       expect(overflow).toBeLessThanOrEqual(1);
 

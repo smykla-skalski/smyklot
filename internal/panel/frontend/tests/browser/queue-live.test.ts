@@ -31,7 +31,7 @@ async function installMotionRecorder(page: Page): Promise<void> {
     const original = Element.prototype.animate;
     document.documentElement.setAttribute('data-queue-motion', '[]');
     Element.prototype.animate = function (keyframes, options): Animation {
-      if (this.closest('.general-queue, .queue-panel') !== null) {
+      if (this.closest('.general-queue') !== null) {
         const raw = document.documentElement.getAttribute('data-queue-motion') ?? '[]';
         const records = JSON.parse(raw) as QueueMotion[];
         records.push({
@@ -71,9 +71,9 @@ beforeAll(async () => {
   await Promise.all([
     visit(viewer, `${panel.origin}/root/queue`, { ready: ROW }),
     visit(actor, `${panel.origin}/root/queue`, { ready: ROW }),
-    visit(overview, `${panel.origin}/root`, { ready: '.queue-panel [data-queue-item]' }),
+    visit(overview, `${panel.origin}/root`, { ready: '[data-queue-item]' }),
   ]);
-  await Promise.all([installMotionRecorder(viewer), installMotionRecorder(overview)]);
+  await installMotionRecorder(viewer);
 }, 300_000);
 
 afterAll(async () => {
@@ -85,10 +85,14 @@ afterAll(async () => {
 
 describe('the general Queue live stream [Integration]', () => {
   it('shows general durable work in Root Overview', async () => {
-    const summary = overview.locator('.queue-panel');
-    await summary.getByText('3 active · 1 awaiting approval').waitFor();
+    const summary = overview.locator('.card', {
+      has: overview.getByRole('heading', { name: 'Queue', exact: true }),
+    });
     await summary.getByText('Apply organization sync plan', { exact: true }).waitFor();
     await summary.getByText('Scan for new commands', { exact: true }).waitFor();
+    /* The queue's own sentence, said the same way here as on the queue page: a wait,
+       then when the work runs. The console used to name the state instead. */
+    await summary.getByText(/GitHub rate limit; retry scheduled · tries again/).waitFor();
     expect(await summary.locator('[data-queue-item]').count()).toBe(3);
   });
 
@@ -154,7 +158,7 @@ describe('the general Queue live stream [Integration]', () => {
     expect(status).toBe(409);
   });
 
-  it('animates state changes in Queue and Root Overview', async () => {
+  it('reaches both readers when an item becomes runnable, and animates the queue', async () => {
     const viewerRow = viewer.locator(ROW, { hasText: 'Scan for new commands' });
     const overviewRow = overview.locator('[data-queue-item="queue-reaction-retry"]');
 
@@ -172,14 +176,20 @@ describe('the general Queue live stream [Integration]', () => {
     });
     expect(status).toBe(200);
     /* The queue says a state in the words a reader owns, so a row that becomes runnable
-       says when it runs rather than naming the state it is in. The console's overview is
-       the one place the service's own vocabulary is still on show. */
+       says when it runs rather than naming the state it is in - and the console's
+       overview says it in the same words, because both read one sentence. The row that
+       was retrying after a rate limit stops saying so in both places at once. */
     await Promise.all([
       viewerRow.getByText(/ · runs /).waitFor({ timeout: 5_000 }),
-      overviewRow.getByText('Ready', { exact: true }).waitFor({ timeout: 5_000 }),
+      overviewRow.getByText(/ · runs /).waitFor({ timeout: 5_000 }),
     ]);
+    expect(await overviewRow.getByText(/GitHub rate limit/).count()).toBe(0);
 
-    await Promise.all([waitForFastMotion(viewer, 150), waitForFastMotion(overview, 140)]);
+    /* Motion is the queue's, and only the queue's. The overview is a summary somebody
+       glances at on their way somewhere, and rows that slide and fade there animate
+       whenever any workspace's work moves - which is constantly, and none of it is
+       what the reader came for. */
+    await waitForFastMotion(viewer, 150);
   });
 
   it('removes queue motion when reduced motion is requested', async () => {

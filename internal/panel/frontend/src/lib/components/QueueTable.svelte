@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+  import { queueLine, words } from '#lib/queue-words.js';
   import type { QueueActionType } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
   import { onMount } from 'svelte';
@@ -76,104 +77,6 @@
     const frame = window.requestAnimationFrame(() => (motionEnabled = true));
     return () => window.cancelAnimationFrame(frame);
   });
-
-  function words(value: string): string {
-    return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
-  }
-
-  function absolute(value: string, timeZone?: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZoneName: 'short',
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }).format(new Date(value));
-  }
-
-  function countdown(value: string): string {
-    const seconds = Math.round((new Date(value).getTime() - clock()) / 1000);
-    if (seconds <= 0) return 'now';
-    if (seconds < 60) return `in ${count(seconds, 'second')}`;
-    if (seconds < 3600) return `in ${count(Math.ceil(seconds / 60), 'minute')}`;
-    if (seconds < 86_400) return `in ${count(Math.ceil(seconds / 3600), 'hour')}`;
-
-    return `in ${count(Math.ceil(seconds / 86_400), 'day')}`;
-  }
-
-  function ago(value: string): string {
-    const seconds = Math.round((clock() - new Date(value).getTime()) / 1000);
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${count(Math.floor(seconds / 60), 'minute')} ago`;
-    if (seconds < 86_400) return `${count(Math.floor(seconds / 3600), 'hour')} ago`;
-
-    return `${count(Math.floor(seconds / 86_400), 'day')} ago`;
-  }
-
-  /** One of a thing is one, not one of them: "1 hours ago" is nobody's sentence. */
-  function count(value: number, unit: string): string {
-    return `${value} ${unit}${value === 1 ? '' : 's'}`;
-  }
-
-  /** A row's sentence, in the three pieces a time has to be an element to sit between. */
-  interface QueueLine {
-    lead: string;
-    when?: { relative: string; exact: string; iso: string };
-    tail?: string;
-  }
-
-  /**
-   * What the row says about itself: what state it is in, why, and what happens next.
-   *
-   * One relative time per row, and the exact stamp rides that time's own tooltip - a
-   * queue read at a glance is read in "in about four minutes", and a queue reasoned
-   * about is read in a timestamp. Both, in two places, is what makes a row unreadable.
-   *
-   * A wait is said as a wait rather than as the state the service files it under: the
-   * reason is what a reader can act on, and "Blocked" is a word about the queue.
-   */
-  function queueLine(item: QueueItem): QueueLine {
-    const detail = item.summary ?? words(item.kind);
-    const next = { relative: countdown(item.eligible_at), ...instant(item.eligible_at, item) };
-    switch (item.state) {
-      case 'awaiting_approval':
-        return { lead: `${detail} · waiting for somebody to decide` };
-      case 'running':
-        return {
-          lead:
-            item.progress_total > 0
-              ? `Running · ${item.progress_current} of ${item.progress_total} changes written`
-              : 'Running',
-        };
-      case 'blocked':
-        return { lead: `${item.blocked_reason ?? 'Waiting on something else'} · runs`, when: next };
-      case 'retrying':
-        return {
-          lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · tries again`,
-          when: next,
-          tail: ', on its own',
-        };
-      case 'succeeded':
-      case 'failed':
-      case 'cancelled':
-      case 'superseded': {
-        const finished = item.finished_at ?? item.updated_at;
-        return {
-          lead: `${detail} ·`,
-          when: { relative: ago(finished), ...instant(finished, item) },
-        };
-      }
-      default:
-        return { lead: `${detail} · runs`, when: next };
-    }
-  }
-
-  /** The exact instant a relative time is being relative about, said both ways. */
-  function instant(value: string, item: QueueItem): { exact: string; iso: string } {
-    return { exact: absolute(value, item.profile_timezone), iso: value };
-  }
 
   /**
    * What the work is about, in the words a person names it by.
@@ -340,7 +243,7 @@ from the wall clock cannot be photographed.
                   </span>
                   <span class="sum-swap">
                     {#key `${item.state}:${item.priority}:${item.revision}`}
-                      {@const line = queueLine(item)}
+                      {@const line = queueLine(item, clock())}
                       <span class="object-sum" in:fade={valueMotion} out:fade={valueMotion}>
                         <!-- The separator rides the words, because markup whitespace
                            beside a block is trimmed and "runs" would take the time

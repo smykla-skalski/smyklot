@@ -16,6 +16,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { createQuery } from '@tanstack/svelte-query';
 
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
+  import { queueLine } from '#lib/queue-words.js';
   import type { PanelApi } from '../api';
   import { failureAct } from '../failures';
   import { formatLatency, sentenceCase } from '../format';
@@ -256,7 +257,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       <div class="object-list">
         {#each inFlight as item (item.id)}
           {@const where = queueWhere(item)}
-          <div class="object-row">
+          {@const line = queueLine(item, nowMs)}
+          <div class="object-row" data-queue-item={item.id}>
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name">{queueHeading(item)}</span>
@@ -264,16 +266,21 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
                   <span class="pill"><span class="t">{where}</span></span>
                 {/if}
               </span>
+              <!-- The queue's own sentence, so a row read here and the same row read
+                   on the queue page say the same thing about itself. The time is in
+                   it rather than beside it: what a console is asked is when the work
+                   runs, and that is the end of the sentence. The separator rides the
+                   words for the reason the queue's own row does - markup whitespace
+                   beside a block is trimmed, and "runs" would take the time straight
+                   onto its own last letter. -->
               <span class="object-sum"
-                >{item.blocked_reason ?? item.summary ?? sentenceCase(item.state)}</span
+                >{line.when === undefined
+                  ? line.lead
+                  : `${line.lead} `}{#if line.when !== undefined}<time
+                    datetime={line.when.iso}
+                    title={line.when.exact}>{line.when.relative}</time
+                  >{line.tail ?? ''}{/if}</span
               >
-            </span>
-            <span class="object-side">
-              {#if item.estimated_start_at !== undefined}
-                <span class="mx-mark mx-pending"
-                  ><RelativeTime class="t" value={item.estimated_start_at} {nowMs} future /></span
-                >
-              {/if}
             </span>
           </div>
         {/each}

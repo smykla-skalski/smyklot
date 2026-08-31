@@ -10,8 +10,11 @@
  * no option marked at all and stayed that way until a different theme was chosen, which was the
  * only thing that asked for another measurement.
  *
- * So this opens the popovers and looks. Two of them, because the bug was in the control rather
- * than in either caller, and one popover passing would not have said so.
+ * So this opens the layers and looks. Two of them, because the bug was in the control rather than
+ * in either caller, and one of them passing would not have said so. A popover is only the first
+ * way a control can be laid out for the first time after the page has settled - a section that is
+ * not rendered until somebody opens it is the same hazard with different markup, which is why the
+ * second is one of those rather than a second popover.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
@@ -43,32 +46,53 @@ interface Thumb {
   moved: { thumb: { left: number; width: number }; option: { left: number; width: number } } | null;
 }
 
-/** A popover holding a segmented control, and how to get it open. */
-const MENUS = [
+interface Menu {
+  name: string;
+  path: (account: string) => string;
+  /** What has to be on the page before the layer can be asked for. */
+  ready: string;
+  /** The layer the control is in, which matches nothing until it is open. */
+  layer: string;
+  open: (page: Page) => Promise<void>;
+}
+
+/** A layer holding a segmented control, and how to get it open. */
+const MENUS: Menu[] = [
   {
     name: "the account menu's theme switch",
     path: (account: string) => `/i/${account}/defaults`,
+    ready: '.rail button[aria-label^="Account menu for"]',
+    layer: '.app-popover[data-state="open"]',
     /* The rail's, not the collapsed sidebar's: both open the same menu, and the
        sidebar's is in the DOM at every width even where the rail is drawn. */
-    trigger: '.rail button[aria-label^="Account menu for"]',
+    open: (page) => page.locator('.rail button[aria-label^="Account menu for"]').click(),
   },
   {
-    name: "the history page's display options",
-    path: (account: string) => `/i/${account}/history/audit`,
-    trigger: 'button[aria-label="Display options"]',
+    /* The history page's display options used to stand here, and its segmented control
+       is gone: how a time is written is one question among the several that page asks,
+       and it is asked where the others are. A repository's formatting is the same
+       hazard in a plainer form - the section is not in the document at all until its
+       adjuster is opened, so the control's first layout happens long after load. */
+    name: "a repository's formatting, once its adjuster is open",
+    path: (account: string) => `/i/${account}/sync/files/renovate.json`,
+    ready: '.format-status',
+    layer: '.repository-formatting',
+    open: (page) => page.getByRole('button', { name: /^smyklot changes/u }).click(),
   },
-] as const;
+];
 
 let panel: Panel;
 const opened = new Map<string, Thumb>();
 
 beforeAll(async () => {
   panel = await startPanel();
-  await Promise.all(
-    MENUS.map(async (menu) => {
-      opened.set(menu.name, await openAndWatch(menu.path(panel.account), menu.trigger));
-    }),
-  );
+  /* One at a time, because the whole measurement is a frame-by-frame record and Chromium
+     throttles `requestAnimationFrame` to a crawl on a page that is not the front tab. Two
+     of these open at once and the one behind reports three identical frames over 800ms,
+     which reads as a thumb that never moved. */
+  for (const menu of MENUS) {
+    opened.set(menu.name, await openAndWatch(menu));
+  }
 });
 
 afterAll(async () => {
@@ -83,38 +107,50 @@ afterAll(async () => {
  * it or catches it depending on how loaded the machine is. A frame-by-frame record settles it
  * without depending on the timing at all - if the thumb slid, one of these frames saw it narrow.
  */
-async function openAndWatch(path: string, trigger: string): Promise<Thumb> {
+async function openAndWatch(menu: Menu): Promise<Thumb> {
   const page: Page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
   const crashes: string[] = [];
   page.on('pageerror', (error) => crashes.push(error.message));
 
   try {
-    await page.goto(`${panel.origin}${path}`, { waitUntil: 'domcontentloaded' });
-    await page.locator(trigger).waitFor({ state: 'visible', timeout: 30_000 });
+    await page.goto(`${panel.origin}${menu.path(panel.account)}`, {
+      waitUntil: 'domcontentloaded',
+    });
+    await page.locator(menu.ready).first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForTimeout(SETTLE_MS);
 
-    await page.evaluate(() => {
+    /* The one control this reads: the first in the layer that has an option chosen,
+       which is the whole of a popover's and one of several in a formatting editor.
+       Every measurement below comes off it, so the thumb and the checked option are
+       always the same control's - a layer holding four of them has four checked
+       inputs. Having one is part of the selector rather than an assertion, because a
+       control with no value draws no thumb on purpose: the formatting editor opens on
+       a row whose width is inherited and therefore chosen nowhere. */
+    const control = `${menu.layer} fieldset:has(.selection-indicator):has(input:checked)`;
+
+    await page.evaluate((control: string) => {
       const frames: { left: number; width: number }[] = [];
       (window as unknown as { thumbFrames: typeof frames }).thumbFrames = frames;
       const tick = (): void => {
         // Scoped to the open layer: a closed popover still has its markup, and its thumb is
         // legitimately nothing at all.
-        const indicator = document.querySelector<HTMLElement>(
-          '.app-popover[data-state="open"] .selection-indicator',
-        );
-        if (indicator !== null) {
+        const indicator = document
+          .querySelector(control)
+          ?.querySelector<HTMLElement>('.selection-indicator');
+        if (indicator !== undefined && indicator !== null) {
           frames.push({ left: indicator.offsetLeft, width: indicator.offsetWidth });
         }
         requestAnimationFrame(tick);
       };
       tick();
-    });
+    }, control);
 
-    await page.locator(trigger).click();
+    await menu.open(page);
+    await page.locator(control).first().waitFor({ state: 'visible', timeout: 30_000 });
     await page.waitForTimeout(SETTLE_MS);
 
-    const measured = await page.evaluate(() => {
-      const layer = document.querySelector('.app-popover[data-state="open"]');
+    const measured = await page.evaluate((control: string) => {
+      const layer = document.querySelector(control);
       const indicator = layer?.querySelector('.selection-indicator') ?? null;
       const checked = layer?.querySelector<HTMLInputElement>('input:checked') ?? null;
       const option = checked?.closest('label') ?? null;
@@ -132,17 +168,17 @@ async function openAndWatch(path: string, trigger: string): Promise<Thumb> {
         option: box(option),
         checked: checked?.value ?? null,
       };
-    });
+    }, control);
 
     /* Now choose a different option and watch again. Appearing in place and travelling between
        options are opposite requirements on the same transition, and only one of them was covered:
        switching the transition off entirely would satisfy every check above. The move is the half
        that says the control still animates at all. */
-    const moved = await page.evaluate(async () => {
+    const moved = await page.evaluate(async (control: string) => {
       const window_ = window as unknown as { thumbFrames: { left: number; width: number }[] };
-      const layer = document.querySelector('.app-popover[data-state="open"]');
+      const layer = document.querySelector(control);
       const options = [...(layer?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
-      const other = options.find((option) => !option.checked);
+      const other = options.find((option) => !option.checked && !option.disabled);
       if (other === undefined) return null;
 
       // Emptied in place: the sampler pushes into the array it captured, so handing it a new one
@@ -165,7 +201,7 @@ async function openAndWatch(path: string, trigger: string): Promise<Thumb> {
         thumb: box(indicator),
         option: box(option),
       };
-    });
+    }, control);
 
     if (crashes.length > 0) throw new Error(`the page crashed: ${crashes.join(', ')}`);
 
