@@ -437,7 +437,15 @@ export type QueueItem =
     })
   | (QueueItemBase & {
       kind: 'pending_ci';
-      details?: { pull_request?: number; head_sha?: string };
+      details?: {
+        pull_request?: number;
+        /**
+         * What the pull request calls itself. Absent on a row armed before
+         * Smyklot kept it, which is why a reader falls back to the act.
+         */
+        pull_request_title?: string;
+        head_sha?: string;
+      };
     })
   | (QueueItemBase & {
       kind: 'sync_apply';

@@ -2,6 +2,7 @@ package storagetest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -86,6 +87,40 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 		other, err := store.ListTargetPendingCIRepositoryGates(ctx, "installation:other")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(other).To(BeEmpty())
+	})
+
+	/* The panel lists work in flight by what it is ABOUT, and the pull
+	   request's own title is the one thing about it nothing downstream can
+	   recover - the queue holds a number, and asking GitHub means a request
+	   per row on a page the reader is already looking at. */
+	It("keeps the pull request's own title, on the request and on its queue row", func() {
+		ctx, store, now := runtime()
+		seedCheckCatalog(ctx, store, now)
+
+		arm := pendingCIArm(now, 214, 114, "head")
+		armed, err := store.Arm(ctx, arm)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(armed.Request.PullRequestTitle).To(Equal(arm.PullRequestTitle))
+
+		reread, err := store.Get(ctx, armed.Request.ID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(reread.PullRequestTitle).To(Equal(arm.PullRequestTitle))
+
+		item, err := store.GetQueueItem(ctx, "pending-ci:"+fmt.Sprint(armed.Request.ID))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(queueDetails(item)).To(HaveKeyWithValue("pull_request_title", arm.PullRequestTitle))
+
+		/* A request armed before the column existed reads back empty, and the
+		   row leaves the key out rather than carrying "" - an empty title is
+		   not a title, and a reader falls back to the act. */
+		untitled := pendingCIArm(now.Add(time.Minute), 215, 115, "head-2")
+		untitled.PullRequestTitle = ""
+		second, err := store.Arm(ctx, untitled)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(second.Request.PullRequestTitle).To(BeEmpty())
+		bare, err := store.GetQueueItem(ctx, "pending-ci:"+fmt.Sprint(second.Request.ID))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(queueDetails(bare)).NotTo(HaveKey("pull_request_title"))
 	})
 
 	It("keeps source deadlines and disabled policy state aligned with the queue", func() {
@@ -815,11 +850,27 @@ func pendingCIArm(
 	return pendingci.ArmRequest{
 		TargetID: "installation:77", InstallationID: 77,
 		RepositoryID: "repository-20", RepositoryFullName: "smykla-skalski/smyklot",
-		PullRequest: pullRequest, HeadSHA: headSHA, BaseBranch: "main",
+		PullRequest:      pullRequest,
+		PullRequestTitle: "Update rate limits for the edge tier",
+		HeadSHA:          headSHA, BaseBranch: "main",
 		MergeMethod: pendingci.MergeMethodSquash, RequiredChecksOnly: true,
 		Requester: "operator", SourceCommentID: commentID,
 		SourceRevision: requestedAt.Format(time.RFC3339Nano),
 		SourceSequence: 1, SourceOrder: commentID,
 		Label: "smyklot:pending:ci:squash:required", RequestedAt: requestedAt,
 	}
+}
+
+// queueDetails reads a row's details back as the map they were written from.
+// The column travels as raw JSON, so a key assertion on it would be a
+// substring match over a document whose key order is nobody's to promise.
+func queueDetails(item workqueue.Item) map[string]any {
+	GinkgoHelper()
+	if len(item.Details) == 0 {
+		return map[string]any{}
+	}
+	var details map[string]any
+	Expect(json.Unmarshal(item.Details, &details)).To(Succeed())
+
+	return details
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
 type PendingCICommandStore interface {
@@ -72,17 +71,9 @@ type PendingCICommand struct {
 
 func (command *PendingCICommand) arm(
 	ctx context.Context,
-	runtime *RuntimeConfig,
-	pullRequest, commentID int,
-	headSHA, baseBranch string,
-	method github.MergeMethod,
-	requiredChecksOnly bool,
-	label string,
+	activation PendingCIActivationRequest,
 ) (*pendingci.Request, error) {
-	result, err := command.Store.Arm(ctx, command.armRequest(
-		runtime, pullRequest, commentID, headSHA, baseBranch,
-		method, requiredChecksOnly, label,
-	))
+	result, err := command.Store.Arm(ctx, command.armRequest(activation))
 	if err != nil {
 		return nil, fmt.Errorf("persist pending CI command: %w", err)
 	}
@@ -93,17 +84,13 @@ func (command *PendingCICommand) arm(
 
 func (command *PendingCICommand) armCheck(
 	ctx context.Context,
-	runtime *RuntimeConfig,
-	pullRequest, commentID int,
-	headSHA, baseBranch string,
-	method github.MergeMethod,
-	requiredChecksOnly bool,
+	activation PendingCIActivationRequest,
 	checkSlotID int64,
 ) (*pendingci.Request, error) {
-	request := command.armRequest(
-		runtime, pullRequest, commentID, headSHA, baseBranch,
-		method, requiredChecksOnly, "",
-	)
+	// A check owns the artifact, so the label the command asked for is not the
+	// one this request carries.
+	activation.Label = ""
+	request := command.armRequest(activation)
 	request.ArtifactKind = pendingci.ArtifactCheck
 	request.CheckSlotID = &checkSlotID
 	result, err := command.Store.Arm(ctx, request)
@@ -117,39 +104,32 @@ func (command *PendingCICommand) armCheck(
 
 func (command *PendingCICommand) checkArm(
 	ctx context.Context,
-	runtime *RuntimeConfig,
-	pullRequest, commentID int,
-	headSHA, baseBranch string,
-	method github.MergeMethod,
-	requiredChecksOnly bool,
-	label string,
+	activation PendingCIActivationRequest,
 ) error {
-	return command.Store.CheckArm(ctx, command.armRequest(
-		runtime, pullRequest, commentID, headSHA, baseBranch,
-		method, requiredChecksOnly, label,
-	))
+	return command.Store.CheckArm(ctx, command.armRequest(activation))
 }
 
+// armRequest reads the whole activation rather than a run of positional
+// fields. It was eight arguments, three of them adjacent strings, and it grew
+// every time the request learned something new about the pull request.
 func (command *PendingCICommand) armRequest(
-	runtime *RuntimeConfig,
-	pullRequest, commentID int,
-	headSHA, baseBranch string,
-	method github.MergeMethod,
-	requiredChecksOnly bool,
-	label string,
+	activation PendingCIActivationRequest,
 ) pendingci.ArmRequest {
 	requestedAt := command.Now()
 
 	return pendingci.ArmRequest{
 		TargetID: command.TargetID, InstallationID: command.InstallationID,
 		RepositoryID: command.RepositoryID, RepositoryFullName: command.RepositoryFullName,
-		PullRequest: pullRequest, HeadSHA: headSHA, BaseBranch: baseBranch,
-		MergeMethod: pendingci.MergeMethod(method), RequiredChecksOnly: requiredChecksOnly,
-		Requester: runtime.CommentAuthor, SourceCommentID: int64(commentID),
-		SourceRevision: command.SourceRevision, SourceSequence: command.SourceSequence,
+		PullRequest: activation.PullRequest, PullRequestTitle: activation.PullRequestTitle,
+		HeadSHA: activation.HeadSHA, BaseBranch: activation.BaseBranch,
+		MergeMethod:        pendingci.MergeMethod(activation.Method),
+		RequiredChecksOnly: activation.RequiredChecksOnly,
+		Requester:          activation.Runtime.CommentAuthor,
+		SourceCommentID:    int64(activation.CommentID),
+		SourceRevision:     command.SourceRevision, SourceSequence: command.SourceSequence,
 		SourceOrder:  command.SourceOrder,
 		ArtifactKind: pendingci.ArtifactLabel,
-		Label:        label, RequestedAt: requestedAt,
+		Label:        activation.Label, RequestedAt: requestedAt,
 	}
 }
 

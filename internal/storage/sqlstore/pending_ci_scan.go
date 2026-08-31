@@ -22,6 +22,7 @@ func scanPendingCI(scanner rowScanner) (pendingci.Request, error) {
 		&request.RepositoryID,
 		&request.RepositoryFullName,
 		&request.PullRequest,
+		&request.PullRequestTitle,
 		&request.HeadSHA,
 		&request.BaseBranch,
 		&request.MergeMethod,

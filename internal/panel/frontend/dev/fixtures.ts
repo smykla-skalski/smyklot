@@ -1636,7 +1636,11 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
       estimated_start_at: iso(6 * 60_000),
       work_ahead: 1,
       blocked_reason: 'Required checks are still running',
-      details: { pull_request: 184, head_sha: '2bb2221374c1a9ee4f8b0d3c6a5e9017cc41ab8e' },
+      details: {
+        pull_request: 184,
+        pull_request_title: 'Update rate limits for the edge tier',
+        head_sha: '2bb2221374c1a9ee4f8b0d3c6a5e9017cc41ab8e',
+      },
       created_at: iso(-30 * 60_000),
       updated_at: iso(-3 * 60_000),
       actions: ['run_now', 'next_window', 'schedule_at', 'set_priority', 'cancel'],

@@ -29,10 +29,13 @@ type pendingCIArtifacts interface {
 }
 
 type PendingCIActivationRequest struct {
-	Runtime            *RuntimeConfig
-	Owner              string
-	Repository         string
-	PullRequest        int
+	Runtime     *RuntimeConfig
+	Owner       string
+	Repository  string
+	PullRequest int
+	/* Kept with the request because the panel lists work in flight by what it
+	   is about, and nothing downstream can ask GitHub for it later. */
+	PullRequestTitle   string
 	CommentID          int
 	HeadSHA            string
 	BaseBranch         string
@@ -205,11 +208,7 @@ func persistPendingCIActivation(
 		return rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, true)
 	}
 
-	_, failures.Command = command.arm(
-		ctx, request.Runtime, request.PullRequest, request.CommentID,
-		request.HeadSHA, request.BaseBranch, request.Method,
-		request.RequiredChecksOnly, request.Label,
-	)
+	_, failures.Command = command.arm(ctx, request)
 	if failures.Command != nil {
 		return handlePendingCIArmFailure(
 			ctx, artifacts, command, request, ownership, failures,
@@ -245,11 +244,7 @@ func persistPendingCICheckActivation(
 		failures.Check = err
 		return rollbackPendingCIArtifacts(ctx, artifacts, request, ownership, false)
 	}
-	_, failures.Command = command.armCheck(
-		ctx, request.Runtime, request.PullRequest, request.CommentID,
-		request.HeadSHA, request.BaseBranch, request.Method,
-		request.RequiredChecksOnly, slot.ID,
-	)
+	_, failures.Command = command.armCheck(ctx, request, slot.ID)
 	if failures.Command != nil {
 		failures.Check = RestorePendingCICheckAfterArmFailure(
 			ctx, command, target, repository, request, slot,
@@ -338,11 +333,7 @@ func preparePendingCIActivation(
 
 		return ownership, true, nil
 	}
-	failures.Command = command.checkArm(
-		ctx, request.Runtime, request.PullRequest, request.CommentID,
-		request.HeadSHA, request.BaseBranch, request.Method,
-		request.RequiredChecksOnly, request.Label,
-	)
+	failures.Command = command.checkArm(ctx, request)
 	if failures.Command != nil {
 		classifyPendingCIArmFailure(ctx, command, request, failures)
 

@@ -93,12 +93,17 @@ const (
 )
 
 type Request struct {
-	ID                   int64
-	TargetID             string
-	InstallationID       int64
-	RepositoryID         string
-	RepositoryFullName   string
-	PullRequest          int
+	ID                 int64
+	TargetID           string
+	InstallationID     int64
+	RepositoryID       string
+	RepositoryFullName string
+	PullRequest        int
+	// PullRequestTitle is what the pull request calls itself, kept because
+	// nothing else here can answer it later: the panel lists work in flight
+	// by what it is about, and a number is not what a person came to read.
+	// Empty for a request armed before this was carried.
+	PullRequestTitle     string
 	HeadSHA              string
 	BaseBranch           string
 	MergeMethod          MergeMethod
@@ -145,6 +150,7 @@ type ArmRequest struct {
 	RepositoryID       string
 	RepositoryFullName string
 	PullRequest        int
+	PullRequestTitle   string
 	HeadSHA            string
 	BaseBranch         string
 	MergeMethod        MergeMethod

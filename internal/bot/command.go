@@ -1055,7 +1055,8 @@ func recordServicePendingCI(
 		ctx, client, environment.PendingCI, environment.PendingCIActivation,
 		PendingCIActivationRequest{
 			Runtime: rc, Owner: rc.RepoOwner, Repository: rc.RepoName,
-			PullRequest: prNum, CommentID: commentID, HeadSHA: headRef,
+			PullRequest: prNum, PullRequestTitle: info.Title,
+			CommentID: commentID, HeadSHA: headRef,
 			BaseBranch: info.BaseBranch, Method: method,
 			RequiredChecksOnly: requiredChecksOnly, Label: label,
 			ArtifactKind: artifactKind, AllowDraftMerges: bc.AllowDraftMerges,

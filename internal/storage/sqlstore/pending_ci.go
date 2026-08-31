@@ -15,7 +15,8 @@ import (
 
 const pendingCISelect = `
 SELECT id, target_id, installation_id, repository_id, repository_full_name,
-       pull_request, head_sha, base_branch, merge_method, required_checks_only,
+       pull_request, pull_request_title, head_sha, base_branch, merge_method,
+       required_checks_only,
        requester, source_comment_id, source_revision, source_sequence, source_order,
 	       artifact_kind, label, check_slot_id, retired_check_slot_id,
 	       authorization_state, gate_state,
@@ -166,8 +167,26 @@ func insertArmedPendingCIQueue(
 		Summary: "Waiting for required checks", State: workqueue.StateScheduled,
 		NotBefore: arm.RequestedAt,
 		ActorID:   queueActorSystem,
-		Details:   map[string]any{"pull_request": arm.PullRequest, "head_sha": arm.HeadSHA},
+		/* The pull request's own title rides the row, because the panel lists
+		   work in flight by what it is ABOUT and the title is not derivable
+		   from anything else the queue holds. Omitted when it is empty, which
+		   is what a row armed before this column reads as. */
+		Details: pendingCIQueueDetails(arm),
 	})
+}
+
+// pendingCIQueueDetails carries what only the arm knows onto the queue row.
+//
+// An absent title and an empty one are the same fact - nobody recorded one -
+// and a key holding "" would make a reader render an empty heading rather
+// than fall back to the act.
+func pendingCIQueueDetails(arm pendingci.ArmRequest) map[string]any {
+	details := map[string]any{"pull_request": arm.PullRequest, "head_sha": arm.HeadSHA}
+	if arm.PullRequestTitle != "" {
+		details["pull_request_title"] = arm.PullRequestTitle
+	}
+
+	return details
 }
 
 // queuePendingCITitle names the act in the words the command used, so a row reads
@@ -200,18 +219,20 @@ func insertArmedPendingCI(
 	err := tx.QueryRowContext(ctx, `
 INSERT INTO pending_ci_requests (
     target_id, installation_id, repository_id, repository_full_name,
-    pull_request, head_sha, base_branch, merge_method, required_checks_only,
+    pull_request, pull_request_title, head_sha, base_branch, merge_method,
+    required_checks_only,
     requester, source_comment_id, source_revision, source_sequence, source_order,
 		artifact_kind, label, check_slot_id, authorized_by, authorized_at,
 		lifecycle, schedule, next_check_trigger,
     next_check_at, last_progress_at, requested_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING id`,
 		arm.TargetID,
 		arm.InstallationID,
 		arm.RepositoryID,
 		arm.RepositoryFullName,
 		arm.PullRequest,
+		arm.PullRequestTitle,
 		arm.HeadSHA,
 		arm.BaseBranch,
 		arm.MergeMethod,
@@ -256,7 +277,8 @@ func armedRequest(id int64, arm pendingci.ArmRequest) pendingci.Request {
 	return pendingci.Request{
 		ID: id, TargetID: arm.TargetID, InstallationID: arm.InstallationID,
 		RepositoryID: arm.RepositoryID, RepositoryFullName: arm.RepositoryFullName,
-		PullRequest: arm.PullRequest, HeadSHA: arm.HeadSHA, BaseBranch: arm.BaseBranch,
+		PullRequest: arm.PullRequest, PullRequestTitle: arm.PullRequestTitle,
+		HeadSHA: arm.HeadSHA, BaseBranch: arm.BaseBranch,
 		MergeMethod: arm.MergeMethod, RequiredChecksOnly: arm.RequiredChecksOnly,
 		Requester: arm.Requester, SourceCommentID: arm.SourceCommentID,
 		SourceRevision: arm.SourceRevision, SourceSequence: arm.SourceSequence,
