@@ -24,6 +24,7 @@ already hold - the index ships once, matching costs no requests.
 
   import { formatRelative } from '../format';
   import { rankPaths, type PathMatch } from '../pathfinder';
+  import { receipts } from '../receipts.svelte';
   import type { SyncConfig, SyncFile, SyncFilesContext, SyncPlan, SyncStatus } from '../types';
 
   import Card from './Card.svelte';
@@ -163,6 +164,9 @@ already hold - the index ships once, matching costs no requests.
     addOpen = false;
     if (!files.some((file) => file.path === clean)) {
       stage({ files: [...files, { path: clean, content: '' }] });
+      receipts.say(
+        `${clean} is shared now - the next plan opens a pull request in every syncing repository`,
+      );
     }
     onOpenFile(clean);
   }

@@ -24,6 +24,7 @@
     Page,
     RootRuntimeSettings,
   } from '../types';
+  import { receipts } from '../receipts.svelte';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
@@ -265,6 +266,22 @@
           categories: [...auditCategories],
         }),
   );
+
+  /* The download is the browser's, so nothing here knows when the file arrived - what
+     the receipt reports is what was asked for, which is the part a reader cannot see
+     from the file's name. */
+  function sayExported(): void {
+    const filtered =
+      appliedQuery.trim() !== '' ||
+      auditCategories.length > 0 ||
+      auditScope !== 'all' ||
+      auditChange !== 'all';
+    receipts.say(
+      filtered
+        ? 'Exporting the audit as CSV, filtered the way this page is'
+        : 'Exporting the whole audit as CSV',
+    );
+  }
 
   const failureQuery = createInfiniteQuery(() => ({
     queryKey: ['failures', targetId, appliedQuery, sort, failureKind, limit],
@@ -823,7 +840,7 @@ where the record is.
            with the session it already has, and nothing here holds a year of audit
            in memory to hand it over. -->
       {#if historyType === 'audit' && exportHref !== null}
-        <Button href={exportHref} download>Export</Button>
+        <Button href={exportHref} download onclick={sayExported}>Export</Button>
       {/if}
     </RootPageHeader>
   {:else}
@@ -835,7 +852,7 @@ where the record is.
     >
       {#snippet actions()}
         {#if historyType === 'audit' && exportHref !== null}
-          <Button href={exportHref} download>Export</Button>
+          <Button href={exportHref} download onclick={sayExported}>Export</Button>
         {/if}
       {/snippet}
     </PageHeader>

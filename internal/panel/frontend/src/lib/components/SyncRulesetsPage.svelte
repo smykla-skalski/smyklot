@@ -24,6 +24,7 @@ decisions every kind carries: removal, and the names left alone.
 -->
 
 <script lang="ts">
+  import { receipts } from '../receipts.svelte';
   import type { SyncConfig, SyncPlan, SyncStatus } from '../types';
 
   import Card from './Card.svelte';
@@ -158,6 +159,7 @@ decisions every kind carries: removal, and the names left alone.
       rules: {},
     };
     onChangeDocument({ ...stored, rulesets: [...rulesets, born] });
+    receipts.say(`${name} added, enforcing nothing yet - its rules are chosen on this page`);
     onOpenRuleset(name);
   }
 </script>
