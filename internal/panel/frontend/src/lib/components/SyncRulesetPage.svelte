@@ -60,6 +60,7 @@ stacked left, Cancel and Done on a hairline foot.
 -->
 
 <script lang="ts">
+  import { globRuns } from '../glob-runs';
   import { numericValue } from '../merge';
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
@@ -508,11 +509,21 @@ stacked left, Cancel and Done on a hairline foot.
           class:is-unsaved={partDirty('conditions')}
           data-unsaved={partDirty('conditions') || undefined}
         >
-          <span class="setting-say"><span class="setting-name">Included branches</span></span>
+          <span class="setting-say"
+            ><span class="setting-name">Included branches</span>
+            <span class="setting-why"
+              ><span class="glob-meta">*</span> matches one segment,
+              <span class="glob-meta">**</span> crosses them</span
+            ></span
+          >
           <span class="policy-value">
             {#each include as pattern (pattern)}
               <span class="cond-chip"
-                ><span class="t">{pattern}</span>
+                ><span class="t"
+                  >{#each globRuns(pattern) as run, at (at)}{#if run.meta}<span class="glob-meta"
+                        >{run.text}</span
+                      >{:else}{run.text}{/if}{/each}</span
+                >
                 <button
                   aria-label="Remove {pattern}"
                   disabled={frozen}
@@ -564,7 +575,11 @@ stacked left, Cancel and Done on a hairline foot.
             {:else}
               {#each exclude as pattern (pattern)}
                 <span class="cond-chip"
-                  ><span class="t">{pattern}</span>
+                  ><span class="t"
+                    >{#each globRuns(pattern) as run, at (at)}{#if run.meta}<span class="glob-meta"
+                          >{run.text}</span
+                        >{:else}{run.text}{/if}{/each}</span
+                  >
                   <button
                     aria-label="Remove {pattern}"
                     disabled={frozen}

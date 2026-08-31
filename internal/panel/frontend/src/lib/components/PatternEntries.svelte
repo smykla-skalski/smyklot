@@ -1,6 +1,8 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
+  import { globRuns } from '#lib/glob-runs.js';
+
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
 
@@ -158,7 +160,13 @@ fifteen behaviours.
     {:else}
       <span class="pattern-entry">
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <span class="t" onclick={(event) => void open(index, event)}>{pattern}</span>
+        <!-- The metacharacters inked apart from the path they sit in: a pattern is
+             read for what makes it a pattern. -->
+        <span class="t" onclick={(event) => void open(index, event)}
+          >{#each globRuns(pattern) as run, at (at)}{#if run.meta}<span class="glob-meta"
+                >{run.text}</span
+              >{:else}{run.text}{/if}{/each}</span
+        >
         <button
           class="pattern-del"
           aria-label="Remove {pattern}"

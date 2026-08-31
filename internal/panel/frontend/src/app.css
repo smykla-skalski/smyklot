@@ -3579,6 +3579,14 @@ button.object-row {
   overflow-wrap: anywhere;
 }
 
+/* THE PART OF A PATTERN THAT MAKES IT ONE. `release/*` and `release/v2` are a glyph
+   apart and only one of them is a rule, so the glyph carries the action colour and the
+   path around it stays text. A `~TOKEN` inks whole - the token IS the meaning - and a
+   `*` inks itself. */
+.glob-meta {
+  color: var(--brand-action);
+}
+
 .setting-unmanaged {
   color: var(--text-muted);
   font-size: var(--font-size-compact);
