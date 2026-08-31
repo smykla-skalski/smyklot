@@ -1026,20 +1026,8 @@ stacked left, Cancel and Done on a hairline foot.
     max-width: 64ch;
   }
 
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
   .card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
-  .card + .card {
-    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
-    margin-block-start: var(--rhythm-card-gap);
   }
 
   .group-head {
@@ -1067,116 +1055,10 @@ stacked left, Cancel and Done on a hairline foot.
     text-box: trim-both cap alphabetic;
   }
 
-  .policy-rows {
-    display: grid;
-  }
-
-  .policy-row {
-    align-items: center;
-    display: grid;
-    gap: var(--space-2) var(--space-4);
-    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
-       control stops being a sentence. 13rem holds about thirty-two characters at the
-       description's size - five average English words - so a line still carries a
-       phrase rather than breaking after every word or two. The say never narrows past
-       it; when the row cannot give it that, the control drops below instead. */
-    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
-    margin-inline: calc(var(--space-2) * -1);
-    min-block-size: 48px;
-    padding: 0.5rem var(--space-2);
-    position: relative;
-  }
-
-  .policy-row.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  /* Every row owns the line under itself; the last one keeps it only when
-     the off-rules remainder follows, where it doubles as that separator. */
-  .policy-row::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  .policy-row:last-child::after {
-    content: none;
-  }
-
+  /* The remainder is a summary line and not a row, so the list still seams into it. */
   .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
     content: '';
-  }
-
-  .setting-say {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-unmanaged {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-  }
-
-  .policy-value {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    /* The settings page's 12px, which is the design's - the 8px here made
-       every value column measure 4px per seam off the mock. */
-    gap: var(--space-3);
-    justify-content: end;
-    justify-self: end;
-  }
-
-  .setting-clear {
-    align-items: center;
-    background: transparent;
-    block-size: 26px;
-    border: 0;
-    border-radius: 50%;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    inline-size: 26px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .setting-clear:hover {
-    background: var(--interactive-hover-layer);
-    color: var(--text-primary);
-  }
-
-  .setting-clear:active {
-    background: var(--interactive-pressed);
-  }
-
-  .policy-row .setting-clear {
-    opacity: 0.45;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .policy-row:hover .setting-clear,
-  .policy-row:focus-within .setting-clear {
-    opacity: 1;
+    inset-inline: var(--space-2);
   }
 
   /* ---------- Chips: a value, and a parameter said in a word ---------- */
@@ -1290,8 +1172,8 @@ stacked left, Cancel and Done on a hairline foot.
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-ctl);
     display: grid;
+    flex-basis: 100%;
     gap: var(--space-3);
-    grid-column: 1 / -1;
     /* Back inside the halo's overhang, aligned with the card's text edge. */
     margin-block: var(--space-1) var(--space-2);
     margin-inline: var(--space-2);
@@ -1452,29 +1334,6 @@ stacked left, Cancel and Done on a hairline foot.
 
     .card {
       padding: var(--space-4);
-    }
-
-    .policy-row {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .policy-row .setting-say {
-      grid-column: 1;
-      min-inline-size: 0;
-    }
-
-    .policy-row .policy-value {
-      grid-column: 1 / -1;
-      grid-row: 2;
-      justify-content: start;
-      justify-self: stretch;
-      min-inline-size: 0;
-    }
-
-    .policy-row .setting-clear {
-      grid-column: 2;
-      grid-row: 1;
-      opacity: 1;
     }
 
     .group-rest {

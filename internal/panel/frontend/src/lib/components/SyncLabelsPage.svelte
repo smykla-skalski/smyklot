@@ -596,22 +596,11 @@ unlisted labels are removed, and the patterns left alone either way.
     min-block-size: auto;
   }
 
-  .kind-head.is-unsaved,
-  .setting-row.is-unsaved {
+  .kind-head.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .kind-head.is-unsaved {
     margin-inline: calc(var(--space-2) * -1);
     padding: var(--space-2);
-  }
-
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
   }
 
   .label-card.is-unsaved {
@@ -982,96 +971,11 @@ unlisted labels are removed, and the patterns left alone either way.
 
   /* ---------- The bottom card: the two decisions ---------- */
 
-  .setting-rows {
-    display: grid;
-  }
-
-  /* A card that is nothing but rows: the rows' own block padding is the
-     card's edge whitespace, so unswallowed it doubled onto the card's 20px
-     and the top and bottom read heavier than the sides. */
+  /* A card that is nothing but rows: the rows' own block padding is the card's edge
+     whitespace, so unswallowed it doubles onto the card's 20px and the top and bottom read
+     heavier than the sides. */
   .card > .setting-rows:only-child {
-    margin-block: calc(var(--space-5) * -1);
-  }
-
-  /* Top-aligned, not centred: centring the say against a taller control put
-     its half-slack on the seam. The switch is the exception: a lone toggle
-     reads centred against its row, and it carries no ink the seams are
-     measured to. */
-  .card > .setting-rows:only-child > .setting-row {
-    align-items: start;
-    padding-block: var(--space-5);
-  }
-
-  /* The 44px tap box stays for the finger, not for the layout. */
-  .setting-row :global(.switch) {
-    align-self: center;
-    margin-block: calc((20px - var(--touch-target)) / 2);
-  }
-
-  .setting-row {
-    align-items: center;
-    border-radius: var(--r-ctl);
-    display: grid;
-    gap: var(--space-2) var(--space-4);
-    /* Auto-flow, not `1fr auto auto`: a fixed template kept an empty third
-       track on two-child rows, and its 16px column gap pushed the switch
-       off the row's right edge. */
-    grid-auto-columns: auto;
-    grid-auto-flow: column;
-    grid-template-columns: 1fr;
-    margin-inline: calc(var(--space-2) * -1);
-    /* The row family's own block padding: with trimmed text the padding IS the
-       ink-to-hairline distance. The floor is the 44px touch target. */
-    min-block-size: var(--touch-target);
-    padding: var(--row-pad-default) var(--space-2);
-    position: relative;
-  }
-
-  .setting-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  /* 12, not 4: with name and why both ink-trimmed the gap IS the ink
-     distance - blocks must sit further apart than the lines inside them. */
-  .setting-say {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why code {
-    font-family: var(--mono);
-  }
-
-  /* The value may wrap but never push: min-size 0 lets its grid track
-     shrink below max-content, so a new entry wraps inside the row instead
-     of making the card wider. */
-  .setting-value {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    justify-content: end;
-    justify-self: end;
-    min-inline-size: 0;
+    margin-block: calc(var(--row-pad-default) * -1);
   }
 
   @media (max-width: 36rem) {
@@ -1081,16 +985,6 @@ unlisted labels are removed, and the patterns left alone either way.
 
     .card-head {
       flex-wrap: wrap;
-    }
-
-    .setting-row {
-      grid-auto-flow: row;
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .setting-value {
-      justify-content: start;
-      justify-self: stretch;
     }
   }
 </style>

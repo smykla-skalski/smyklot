@@ -2913,6 +2913,325 @@ button.object-row {
   margin-block: calc((var(--control-height-compact) - var(--leading-meta)) / -2);
 }
 
+/* ---------- The setting row: a sentence on one side, its controls on the other ----------
+
+   Eleven components drew this row and seven of them wrote the whole law out again, as a
+   grid of `minmax(--setting-say-min, 1fr) auto auto` with no cap on the controls at all -
+   so a chip cluster took 58% of a row beside a sentence that had already run out of room,
+   which is the one thing the law forbids.
+
+   THE LAW, and every clause is one term:
+
+   1. Neither side takes more than half the row. Where both want more, both get half and
+      each breaks its own contents. `max-inline-size: 50cqi`.
+   2. UNLESS a control cannot be drawn narrower than half - then it keeps that minimum and
+      the sentence gives up the difference. `min-inline-size: min-content`, which needs no
+      condition written for it: a minimum beats a maximum in CSS.
+   3. UNLESS that would leave the sentence under a width it reads at - then the sentence
+      takes the line and the controls take the next one. `flex-wrap` IS clause 3: a line
+      that cannot hold both minimums breaks, which is what stacking means. No class, no
+      measurement, no moment to apply it at.
+   4. And controls known in advance never to belong beside a sentence - a checklist - are
+      AUTHORED as two lines rather than computed into them.
+
+   TWO WAYS TO WRITE THE HALF WRONG, BOTH SILENT. `max(50%, min-content)` reads exactly
+   like clauses 1 and 2 together and is invalid, because `min-content` is not a length -
+   the declaration is dropped and there is no cap at all. And a bare percentage does not
+   break the line where the law says: a flex line breaks on each item's hypothetical size,
+   which is its basis clamped by its min and max, and a percentage maximum is
+   indeterminate at that moment. `50cqi` against the row's own containment is half as a
+   DEFINITE length, resolved before anything inside the row is laid out. A fixed length
+   there is wrong for a third reason - it becomes a second, tighter law the moment the row
+   is wider than it. Half is the law; nothing else caps this. */
+.setting-rows,
+.policy-rows {
+  display: grid;
+}
+
+/* A card closes on its own 20px frame whatever stands last in it. A row's 12px block
+   padding is ink-to-hairline distance INSIDE the list; on the card's edge it stacks onto
+   the card's padding, and every settings card ran 12px heavier below than above. The list
+   sheds it at whichever edge it is the card's own - which is what `.object-list` already
+   does. */
+.card > :is(.setting-rows, .policy-rows):first-child {
+  margin-block-start: calc(var(--row-pad-default) * -1);
+}
+
+.card > :is(.setting-rows, .policy-rows):last-child {
+  margin-block-end: calc(var(--row-pad-default) * -1);
+}
+
+.setting-row,
+.policy-row {
+  align-items: center;
+  border-radius: var(--r-ctl);
+  column-gap: var(--space-4);
+  /* The row is its own query container, which is what lets the value's half be written as
+     a definite length rather than a percentage the flex line-break step ignores. */
+  container-type: inline-size;
+  display: flex;
+  flex-wrap: wrap;
+  /* THE TWO SIDES TAKE THE TWO ENDS, and a side alone on a line takes the start. One
+     declaration doing what a margin plus a breakpoint used to do badly:
+     `margin-inline-start: auto` on the value pins it right even when it has wrapped onto
+     its own line, so a phone block had to unpin it - and that block then reached every row
+     in its range, including the ones that had not stacked. */
+  justify-content: space-between;
+  /* The halo hangs outside the text column, so row text keeps the card head's left edge. */
+  margin-inline: calc(var(--space-2) * -1);
+  /* 12px block padding: with trimmed text the padding IS the ink-to-hairline distance, and
+     8px put descenders against the separator. The floor is the touch target, which a
+     switch-only row lands on exactly (20 + 12 + 12); text rows clear it. */
+  min-block-size: var(--touch-target);
+  padding: var(--row-pad-default) var(--space-2);
+  position: relative;
+}
+
+/* The switch keeps its full 44px hit target without making a two-line row inherit 44px of
+   layout height: the visible 20px track is what the line measures, and the rest of the hit
+   area occupies the row's own padding. */
+:is(.setting-row, .policy-row) .switch {
+  margin-block: calc((20px - var(--touch-target)) / 2);
+}
+
+/* SET HERE, NOT INHERITED. The mark lives inside the row: the bar stands on the card's own
+   content edge, so the row keeps the regular card whitespace to its left, and the text
+   steps right of it on the row's own breathing rhythm. Hung outside the row it floated on
+   an edge nothing else drew. */
+:is(.setting-row, .policy-row).is-managed {
+  padding-inline-start: calc(var(--space-2) + 3px + var(--space-3));
+}
+
+:is(.setting-row, .policy-row).is-managed::before {
+  background: var(--managed-bar);
+  border-radius: 2px;
+  content: '';
+  inline-size: 3px;
+  inset-block: var(--row-pad-default);
+  inset-inline-start: var(--space-2);
+  position: absolute;
+}
+
+/* A CHANGE NOT YET SAVED IS A STATE OF THE ROW IT WAS MADE IN, so a reader looking for
+   what they touched finds it without reading the values back. Ten pages wrote this. */
+:is(.setting-row, .policy-row).is-unsaved {
+  background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+  box-shadow: inset 2px 0 var(--brand-action);
+}
+
+/* A drawn hairline, not a border: a border on a radiused row curves at its tips, and it
+   also makes sibling rows measure one pixel apart. It belongs to a row that has another
+   VISIBLE sibling after it - DOM order is not visual order once filters hide rows. */
+.setting-row::after,
+.policy-row::after {
+  background: var(--hairline, var(--border-subtle));
+  block-size: 1px;
+  bottom: 0;
+  content: none;
+  position: absolute;
+}
+
+.setting-row:not([hidden]):has(~ .setting-row:not([hidden]))::after,
+.policy-row:not([hidden]):has(~ .policy-row:not([hidden]))::after {
+  content: '';
+  inset-inline: var(--space-2);
+}
+
+/* The sentence takes what is left and never less than it can be read at.
+   `--setting-say-min` is clause 3's threshold, and it is a reading number rather than a
+   round one: at the description's size it holds about thirty-two characters, five average
+   English words - below that a line breaks after every word or two and stops being a
+   sentence to scan. Set as BOTH the basis and the floor, so the line breaks exactly where
+   the sentence would become unreadable rather than where it happens to run out of room.
+
+   A FLOOR IS A FLOOR UNTIL THE ROOM IS SMALLER THAN IT. Once stacked there is nowhere
+   further to go, and a bare floor then pushes the sentence out of a narrow pane; `min()`
+   with 100% hands the container back the moment the floor does not fit. */
+.setting-say {
+  display: grid;
+  flex: 1 1 var(--setting-say-min);
+  gap: 0;
+  min-inline-size: min(var(--setting-say-min), 100%);
+}
+
+/* One line of body text between a name and its sentence. The distance rides the
+   description's own margin so `1cap` reads the description's font - named on the container
+   it resolves against the row's, and every row comes back tight by the difference. */
+.setting-say > .setting-why {
+  margin-block-start: calc(var(--leading-meta) - 1cap);
+}
+
+/* The trimmed cap box is 9.69px; floored to 10 the say stack stays whole, with the slack
+   under the alphabetic edge where no ink reaches. */
+.setting-name {
+  font-size: var(--font-size-meta);
+  font-weight: 600;
+  min-block-size: 10px;
+  text-box: trim-both cap alphabetic;
+  text-wrap: balance;
+}
+
+/* Trimmed like the name: untrimmed, the why's bottom leading sat above every row separator
+   while the next row's trimmed name gave the line exactly its 8px, and the seam read
+   off-centre in every settings card. No measure cap either - the say column already bounds
+   the line, and a 52ch cap folded one-sentence descriptions onto two with half the card
+   standing empty beside them. */
+.setting-why {
+  color: var(--text-muted);
+  font-size: var(--font-size-meta);
+  min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
+  text-wrap: pretty;
+}
+
+.setting-why code {
+  font-family: var(--mono);
+  font-size: var(--font-size-micro);
+}
+
+.setting-value,
+.policy-value {
+  align-items: center;
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: end;
+  max-inline-size: 50cqi;
+  min-inline-size: min-content;
+}
+
+/* Whole controls wrap; a chip cluster never pushes the row wider than the law allows. */
+:is(.setting-value, .policy-value) > :is(.pattern-entry, .add-chip, .btn, .seg) {
+  flex: none;
+}
+
+/* Chips wrap towards the end they came from. The cap is the law's own - this class only
+   says "these wrap". */
+.setting-value-wrap {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* THE HALF IS A HALF OF A ROW WITH TWO SIDES ON IT. Once the row has stacked there is no
+   other side, and holding the controls to half leaves a phone's chip cluster in a 167px
+   column beside 165px of nothing. The row is its own query container, so it can be asked:
+   below the width at which a sentence and any control could stand together -
+   `--setting-say-min` plus the column gap plus the narrowest useful control - the value
+   has the line. The one threshold this law needs beyond its two numbers, and it is derived
+   from them rather than picked. */
+@container (max-width: 25rem) {
+  .setting-row > .setting-value,
+  .policy-row > .policy-value {
+    max-inline-size: 100%;
+  }
+}
+
+/* KNOWN IN ADVANCE, DECLARED IN ADVANCE. Some controls are never going to stand beside a
+   sentence and nothing has to measure to find that out: a checklist of every command the
+   bot answers is a set to read across, not a value at the end of a line. Such a row is
+   authored as two lines and says so, rather than being computed into them at the width
+   where it finally does not fit. `:has(.check-line)` is the same decision written where
+   the sheet can keep it - a row that gains a checklist becomes a stacked row without
+   anybody remembering to add the class. */
+:is(.setting-row, .policy-row):has(.check-line),
+:is(.setting-row, .policy-row).is-stacked {
+  flex-wrap: wrap;
+}
+
+:is(.setting-row, .policy-row):has(.check-line) > .setting-say,
+:is(.setting-row, .policy-row).is-stacked > .setting-say {
+  flex-basis: 100%;
+}
+
+/* The stacked value is a control under its explanation: it takes the line, packs left, and
+   the row gap is the distance. */
+:is(.setting-row, .policy-row):has(.check-line) > :is(.setting-value, .policy-value),
+:is(.setting-row, .policy-row).is-stacked > :is(.setting-value, .policy-value) {
+  justify-content: flex-start;
+  margin-inline-start: 0;
+  max-inline-size: 100%;
+}
+
+/* A read-only value in a row's value column - words, not a control. */
+.setting-fact {
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
+}
+
+.setting-unmanaged {
+  color: var(--text-muted);
+  font-size: var(--font-size-compact);
+  font-style: normal;
+  /* Ink-true, so the padding around the hairlines measures to the glyphs rather than to
+     the line box's leading. */
+  text-box: trim-both cap alphabetic;
+}
+
+/* The way back to inherited, which is what makes an override reversible. Quiet, but not
+   so faint that the glyph disappears on a dark card; hover and focus promote it. */
+.setting-clear {
+  align-items: center;
+  background: transparent;
+  block-size: var(--tier-quiet);
+  border: 0;
+  border-radius: 50%;
+  color: var(--text-muted);
+  cursor: pointer;
+  display: inline-flex;
+  inline-size: var(--tier-quiet);
+  justify-content: center;
+  padding: 0;
+}
+
+.setting-clear:hover {
+  background: var(--interactive-hover-layer);
+  color: var(--text-primary);
+}
+
+.setting-clear:active {
+  background: var(--interactive-pressed);
+}
+
+:is(.setting-row, .policy-row) .setting-clear {
+  opacity: 0.64;
+  transition: opacity var(--duration-fast) var(--ease-standard);
+}
+
+:is(.setting-row, .policy-row):hover .setting-clear,
+:is(.setting-row, .policy-row):focus-within .setting-clear {
+  opacity: 1;
+}
+
+/* The value said in a word beside the control, so a scan reads the policy without decoding
+   thumb positions. */
+.value-word {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--font-size-micro);
+  font-variant-numeric: tabular-nums;
+  min-inline-size: 1.9rem;
+  text-align: end;
+  text-box: trim-both cap alphabetic;
+}
+
+.value-word.is-on {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* A card head's quiet right-side fact, the group-tally voice. */
+.card-meta {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--font-size-compact);
+  line-height: var(--leading-compact);
+  margin-inline-start: auto;
+  text-box: trim-both cap alphabetic;
+}
+
 /* ---------- Console menus: the material the chrome's popovers are made of ----------
 
    Written here rather than in the rail, because the rail stopped being the only
@@ -3149,5 +3468,34 @@ button.object-row {
      the two, and under a stacked row that reads as an indent nothing asked for. */
   .object-side > .btn-quiet {
     margin-inline-start: calc(var(--space-3) * -1);
+  }
+
+  /* THE LAW ALREADY STACKS THESE. A phone is narrower than a sentence plus any control,
+     so the flex line breaks on its own - there is no breakpoint to write and nothing to
+     force. What is left here is what a stacked row looks like once it has stacked: the
+     sentence takes the line, the controls take the next one and pack left, and the way
+     back to inherited stays beside them in DOM order rather than orphaned on a third row.
+     The grid templates and explicit row placements seven pages carried here are gone;
+     every one of them would now fight the law. */
+  .policy-row > .setting-say {
+    flex-basis: 100%;
+  }
+
+  :is(.setting-row, .policy-row) > :is(.setting-value, .policy-value) {
+    justify-content: flex-start;
+  }
+
+  .policy-row .policy-value .value-select {
+    max-inline-size: 100%;
+  }
+
+  /* No hover on a phone, so the quiet way back has to be visible without one. */
+  :is(.setting-row, .policy-row) .setting-clear {
+    opacity: 1;
+  }
+
+  :is(.setting-row, .policy-row) .switch {
+    margin-block: 0;
+    min-block-size: 32px;
   }
 }

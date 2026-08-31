@@ -580,13 +580,6 @@ turns the unmanaged names into rows of their own.
     gap: var(--space-6);
   }
 
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
   .group-card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
   }
@@ -623,140 +616,16 @@ turns the unmanaged names into rows of their own.
     max-width: 60ch;
   }
 
-  .policy-rows {
-    display: grid;
-  }
-
-  .policy-row {
-    align-items: center;
-    display: grid;
-    gap: var(--space-2) var(--space-4);
-    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
-       control stops being a sentence. 13rem holds about thirty-two characters at the
-       description's size - five average English words - so a line still carries a
-       phrase rather than breaking after every word or two. The say never narrows past
-       it; when the row cannot give it that, the control drops below instead. */
-    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
-    /* The halo hangs outside the text column, so row text keeps the card
-       head's left edge. Whole numbers: 48 floor, 8px block padding. */
-    margin-inline: calc(var(--space-2) * -1);
-    min-block-size: 48px;
-    padding: 0.5rem var(--space-2);
-    position: relative;
-  }
-
-  .policy-row.is-unsaved,
   .group-rest.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);
   }
 
-  /* A drawn hairline, not a border: a border on a radiused row curves at
-     its tips and makes sibling rows measure one pixel apart. Every row owns
-     the line under itself, so the unmanaged remainder needs none of its own
-     and a card with no managed rows shows no line at all. */
-  .policy-row::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  .policy-row:last-child::after {
-    content: none;
-  }
-
-  /* The last row keeps its line when the unmanaged remainder follows - that
-     line IS the remainder's separator. */
+  /* The unmanaged remainder is a summary line and not a row, so the list still seams into
+     it - that line IS the remainder's separator. */
   .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
     content: '';
-  }
-
-  .setting-say {
-    display: grid;
-    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
-       apart, and it is this one. Both wear `text-box` trim, so the box edge is
-       the ink edge and the declared gap is the rendered one. */
-    gap: var(--row-copy-gap);
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .policy-value {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
-    justify-self: end;
-  }
-
-  /* The value said in a word beside the control, so a scan reads the
-     policy without decoding thumb positions. */
-  .value-word {
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    min-inline-size: 1.9rem;
-    text-align: end;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .value-word.is-on {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
-
-  .setting-unmanaged {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    font-style: normal;
-  }
-
-  .setting-clear {
-    align-items: center;
-    background: transparent;
-    block-size: 26px;
-    border: 0;
-    border-radius: 50%;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    inline-size: 26px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .setting-clear:hover {
-    background: var(--interactive-hover-layer);
-    color: var(--text-primary);
-  }
-
-  .setting-clear:active {
-    background: var(--interactive-pressed);
-  }
-
-  .policy-row .setting-clear {
-    opacity: 0.45;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .policy-row:hover .setting-clear,
-  .policy-row:focus-within .setting-clear {
-    opacity: 1;
+    inset-inline: var(--space-2);
   }
 
   /* Value select: a compact control for the 3+-choice settings. The arrow
@@ -920,28 +789,6 @@ turns the unmanaged names into rows of their own.
 
     .card {
       padding: var(--space-4);
-    }
-
-    .policy-row {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .policy-row .setting-say {
-      grid-column: 1;
-      min-inline-size: 0;
-    }
-
-    .policy-row .policy-value {
-      grid-column: 1;
-      grid-row: 2;
-      justify-self: start;
-      min-inline-size: 0;
-    }
-
-    .policy-row .setting-clear {
-      grid-column: 2;
-      grid-row: 1 / 3;
-      opacity: 1;
     }
 
     .value-select {

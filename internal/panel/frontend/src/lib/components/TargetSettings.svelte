@@ -450,7 +450,6 @@ settings from them answers a different question than the one they asked.
         <div
           class={[
             'policy-row',
-            'policy-block',
             {
               'is-unsaved': controlDirty('defaults.pending_ci_branch_patterns_default.include'),
             },
@@ -465,18 +464,17 @@ settings from them answers a different question than the one they asked.
               required</span
             >
           </span>
-          <div class="pattern-line">
+          <span class="policy-value setting-value-wrap">
             <PatternEntries
               patterns={target.pending_ci_branch_patterns_default.include}
               readOnly={frozen}
               onChange={setIncludes}
             />
-          </div>
+          </span>
         </div>
         <div
           class={[
             'policy-row',
-            'policy-block',
             {
               'is-unsaved': controlDirty('defaults.pending_ci_branch_patterns_default.exclude'),
             },
@@ -490,13 +488,13 @@ settings from them answers a different question than the one they asked.
               >Optional patterns that should keep the inherited merge behavior</span
             >
           </span>
-          <div class="pattern-line">
+          <span class="policy-value setting-value-wrap">
             <PatternEntries
               patterns={target.pending_ci_branch_patterns_default.exclude}
               readOnly={frozen}
               onChange={setExcludes}
             />
-          </div>
+          </span>
         </div>
         <div
           class={[
@@ -569,13 +567,6 @@ settings from them answers a different question than the one they asked.
     gap: var(--space-4);
   }
 
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
   .group-head {
     align-items: end;
     display: flex;
@@ -624,142 +615,9 @@ settings from them answers a different question than the one they asked.
     color: var(--text-muted);
   }
 
-  .policy-rows {
-    display: grid;
-  }
-
-  .policy-row {
-    align-items: center;
-    display: grid;
-    gap: var(--space-2) var(--space-4);
-    /* THE SETTING-ROW LAW's floor: the width below which the sentence beside a
-       control stops being a sentence. 13rem holds about thirty-two characters at the
-       description's size - five average English words - so a line still carries a
-       phrase rather than breaking after every word or two. The say never narrows past
-       it; when the row cannot give it that, the control drops below instead. */
-    grid-template-columns: minmax(var(--setting-say-min), 1fr) auto auto;
-    margin-inline: calc(var(--space-2) * -1);
-    min-block-size: 48px;
-    /* The air around a drawn hairline is the card's own padding, on both
-       sides; the edge rows shed it where no line follows, since the card
-       edge already carries that inset. */
-    padding: var(--space-5) var(--space-2);
-    position: relative;
-  }
-
-  .policy-row.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .policy-row:first-child {
-    padding-block-start: var(--space-2);
-  }
-
-  .policy-row:last-child {
-    padding-block-end: var(--space-2);
-  }
-
-  /* Every row owns the drawn hairline under itself; the last one stands
-     down, so the card ends on its own padding. */
-  .policy-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  .setting-say {
-    display: grid;
-    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
-       apart, and it is this one. Both wear `text-box` trim, so the box edge is
-       the ink edge and the declared gap is the rendered one. */
-    gap: var(--row-copy-gap);
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why code {
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-  }
-
-  .policy-value {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
-    justify-self: end;
-  }
-
-  .value-word {
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    min-inline-size: 1.9rem;
-    text-align: end;
-    text-box: trim-both cap alphabetic;
-  }
-
   .value-word.is-on {
     color: var(--text-secondary);
     font-weight: 600;
-  }
-
-  .setting-unmanaged {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    font-style: normal;
-    /* Ink-true, so the padding around the hairlines measures to the glyphs
-       rather than to the line box's leading. */
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-clear {
-    align-items: center;
-    background: transparent;
-    block-size: 26px;
-    border: 0;
-    border-radius: 50%;
-    color: var(--text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    inline-size: 26px;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .setting-clear:hover {
-    background: var(--interactive-hover-layer);
-    color: var(--text-primary);
-  }
-
-  .setting-clear:active {
-    background: var(--interactive-pressed);
-  }
-
-  .policy-row .setting-clear {
-    opacity: 0.45;
-    transition: opacity var(--duration-fast) var(--ease-standard);
-  }
-
-  .policy-row:hover .setting-clear,
-  .policy-row:focus-within .setting-clear {
-    opacity: 1;
   }
 
   .value-select {
@@ -839,15 +697,6 @@ settings from them answers a different question than the one they asked.
     white-space: nowrap;
   }
 
-  /* A block row keeps the grid for its say and lays its entries on a
-     full-width second line. The extra breathing room lives INSIDE the row,
-     above the entries - the block padding stays the shared 8px so the air
-     around every hairline is the same on both sides. */
-  .pattern-line {
-    grid-column: 1 / -1;
-    margin-block: var(--space-1) 0;
-  }
-
   .num-inline {
     background: var(--input-bg);
     border: 1px solid var(--control-border);
@@ -891,30 +740,6 @@ settings from them answers a different question than the one they asked.
   @media (max-width: 30rem) {
     .group-head {
       flex-wrap: wrap;
-    }
-
-    /* The say keeps the line and the control moves under it - beside it,
-       the copy was down to a word a line while the control still ran off
-       the screen and took the layout viewport with it. */
-    .policy-row {
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .policy-row .setting-say {
-      grid-column: 1;
-      grid-row: 1;
-    }
-
-    .policy-row .setting-clear {
-      grid-column: 2;
-      grid-row: 1;
-      opacity: 1;
-    }
-
-    .policy-row .policy-value {
-      flex-wrap: wrap;
-      grid-column: 1 / -1;
-      justify-self: start;
     }
   }
 </style>

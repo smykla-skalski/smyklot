@@ -299,13 +299,6 @@ three things among thirty finds them again.
     gap: var(--space-4);
   }
 
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
   .group-head {
     align-items: end;
     display: flex;
@@ -322,7 +315,6 @@ three things among thirty finds them again.
 
   .group-note,
   .group-tally,
-  .setting-why,
   .effective-summary {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
@@ -336,61 +328,11 @@ three things among thirty finds them again.
     white-space: nowrap;
   }
 
-  .policy-rows {
-    display: grid;
-  }
-
-  .policy-row {
-    align-items: center;
-    display: grid;
-    gap: var(--space-3) var(--space-4);
-    grid-template-columns: minmax(14rem, 1fr) auto;
-    min-block-size: 48px;
-    padding: var(--space-4) var(--space-2);
-    position: relative;
-  }
-
-  .policy-row.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .policy-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  .setting-say {
-    display: grid;
-    /* THE COPY-RHYTHM LAW: a name and the sentence under it sit one distance
-       apart, and it is this one. Both wear `text-box` trim, so the box edge is
-       the ink edge and the declared gap is the rendered one. */
-    gap: var(--row-copy-gap);
-    min-width: 0;
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
   .number-control {
     align-items: center;
     display: grid;
     gap: var(--space-2);
     grid-template-columns: var(--inherit-marker-size) 6rem;
-    justify-self: end;
   }
 
   .number-input {
@@ -440,17 +382,6 @@ three things among thirty finds them again.
     justify-self: end;
   }
 
-  @media (max-width: 900px) {
-    .policy-row {
-      align-items: start;
-      grid-template-columns: 1fr;
-    }
-
-    .number-control {
-      justify-self: start;
-    }
-  }
-
   @media (max-width: 30rem) {
     .card {
       padding: var(--space-3);
@@ -458,10 +389,6 @@ three things among thirty finds them again.
 
     .group-head {
       flex-wrap: wrap;
-    }
-
-    .policy-row {
-      padding-inline: 0;
     }
   }
 </style>

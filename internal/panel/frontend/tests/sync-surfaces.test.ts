@@ -140,13 +140,14 @@ const SURFACES: readonly {
     paints: 'declared',
   },
   {
-    // A row inside the files card's own plate, which is what paints the ground under it.
+    // A row inside the files card's own plate, which is what paints the ground under it - and the
+    // card is the shared one now, so the sheet is what has to keep painting it.
     what: 'a named object row',
     file: 'SyncFilesPage.svelte',
     className: 'object-row',
     ground: 'surface-base',
     paints: 'inherited',
-    from: { file: 'SyncFilesPage.svelte', declares: 'background: var(--surface-base)' },
+    from: { file: 'app.css', declares: 'background: var(--surface-base)' },
   },
 ];
 

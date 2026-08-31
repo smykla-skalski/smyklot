@@ -438,8 +438,7 @@ already hold - the index ships once, matching costs no requests.
   }
 
   .kind-head.is-unsaved,
-  .object-row.is-unsaved,
-  .setting-row.is-unsaved {
+  .object-row.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);
   }
@@ -447,13 +446,6 @@ already hold - the index ships once, matching costs no requests.
   .kind-head.is-unsaved {
     margin-inline: calc(var(--space-2) * -1);
     padding: var(--space-2);
-  }
-
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
   }
 
   .card.is-unsaved {
@@ -771,69 +763,10 @@ already hold - the index ships once, matching costs no requests.
 
   /* ---------- The bottom card ---------- */
 
-  .setting-rows {
-    display: grid;
-  }
-
+  /* A card that is nothing but rows keeps the one row contract, and the list hands its own
+     12px back at both edges so the first and last ink close on the card's frame. */
   .card > .setting-rows:only-child {
-    margin-block: calc(var(--space-5) * -1);
-  }
-
-  .card > .setting-rows:only-child > .setting-row {
-    align-items: start;
-    padding-block: var(--space-5);
-  }
-
-  .setting-row {
-    align-items: center;
-    border-radius: var(--r-ctl);
-    display: grid;
-    gap: var(--space-2) var(--space-4);
-    grid-auto-columns: auto;
-    grid-auto-flow: column;
-    grid-template-columns: 1fr;
-    margin-inline: calc(var(--space-2) * -1);
-    min-block-size: var(--touch-target);
-    padding: var(--row-pad-default) var(--space-2);
-    position: relative;
-  }
-
-  .setting-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-2);
-    position: absolute;
-  }
-
-  .setting-say {
-    display: grid;
-    gap: var(--space-3);
-  }
-
-  .setting-name {
-    font-size: var(--font-size-meta);
-    font-weight: 600;
-    min-block-size: 10px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .setting-value {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    justify-content: end;
-    justify-self: end;
-    min-inline-size: 0;
+    margin-block: calc(var(--row-pad-default) * -1);
   }
 
   @media (max-width: 36rem) {
@@ -865,16 +798,6 @@ already hold - the index ships once, matching costs no requests.
 
     .object-side {
       gap: var(--space-1);
-    }
-
-    .setting-row {
-      grid-auto-flow: row;
-      grid-template-columns: minmax(0, 1fr);
-    }
-
-    .setting-value {
-      justify-content: start;
-      justify-self: stretch;
     }
   }
 </style>
