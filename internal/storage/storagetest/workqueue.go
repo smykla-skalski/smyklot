@@ -216,6 +216,80 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(page.Items[0].ID).To(Equal(firstID))
 	})
 
+	It("names the repository a row is about, and finds it by its words", func() {
+		ctx, store, now := runtime()
+		account, target := seedInstallation(ctx, store, now)
+		itemID := createQueueFixture(ctx, store, account.ID, target.TargetID, "repo-1", now)
+
+		page, err := store.ListWorkQueue(ctx, workqueue.Filter{TargetID: &target.TargetID})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].RepositoryName).To(Equal("smykla-skalski/smyklot"))
+
+		item, err := store.GetQueueItem(ctx, itemID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(item.RepositoryName).To(Equal("smykla-skalski/smyklot"))
+		// Read through the same slice the positions are written onto: a detail that
+		// answered from the row as it was scanned carried neither.
+		Expect(item.ProfileName).NotTo(BeEmpty())
+
+		// Folded on both sides, because one engine matches case and the other does not.
+		page, err = store.ListWorkQueue(ctx, workqueue.Filter{Search: "REACTION"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].ID).To(Equal(itemID))
+		Expect(page.Total).To(Equal(1))
+
+		page, err = store.ListWorkQueue(ctx, workqueue.Filter{Search: "nothing here"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(BeEmpty())
+		Expect(page.Total).To(BeZero())
+	})
+
+	It("lists what finished lately rather than what was created lately", func() {
+		ctx, store, now := runtime()
+		account := testAccount(now)
+		Expect(store.UpsertAccount(ctx, account)).To(Succeed())
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		policy.Enabled, policy.Cadence = true, 5*time.Minute
+		_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+		Expect(err).NotTo(HaveOccurred())
+		for _, suffix := range []string{"a", "b"} {
+			targetID := "finish-target-" + suffix
+			_, err = store.EnsureRecurringWork(ctx, workqueue.RecurringClaim{
+				Kind: workqueue.KindReactionScan, TargetID: &targetID,
+				Title: "Scan for new commands", Now: now, LeaseDuration: time.Minute,
+			})
+			Expect(err).NotTo(HaveOccurred())
+		}
+
+		/* One finished two days ago and one a minute ago. Both were accepted at the
+		   same instant, which is the whole point: a merge held for a day of checks is
+		   old work that finished recently, and "what has this service done lately"
+		   cannot be answered from when it was accepted. */
+		finished := map[string]time.Time{}
+		for _, at := range []time.Time{now.Add(-48 * time.Hour), now.Add(-time.Minute)} {
+			item, claimed, claimErr := store.ClaimNextRecurringWork(
+				ctx,
+				workqueue.RecurringLease{Now: now, LeaseDuration: time.Minute},
+			)
+			Expect(claimErr).NotTo(HaveOccurred())
+			Expect(claimed).To(BeTrue())
+			_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, at)
+			Expect(err).NotTo(HaveOccurred())
+			finished[item.ID] = at
+		}
+
+		since := now.Add(-24 * time.Hour)
+		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
+			States: []workqueue.State{workqueue.StateSucceeded}, FinishedAfter: &since,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(finished[page.Items[0].ID]).To(Equal(now.Add(-time.Minute)))
+	})
+
 	It("limits the dispatch-ordered page after scheduler position", func() {
 		ctx, store, now := runtime()
 		account := testAccount(now)

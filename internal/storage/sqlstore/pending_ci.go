@@ -159,12 +159,28 @@ func insertArmedPendingCIQueue(
 		Lane: workqueue.LanePendingCI, TargetID: arm.TargetID,
 		RepositoryID: &arm.RepositoryID, SourceKind: queueSourcePendingCI,
 		SourceID: sourceID,
-		Title:    fmt.Sprintf("Pending CI %s #%d", arm.RepositoryFullName, arm.PullRequest),
-		Summary:  "Waiting for required checks", State: workqueue.StateScheduled,
+		/* What the work IS. The repository and the pull request ride the row as its
+		   own fields, so a title that spelled them out - "Pending CI owner/repo #184" -
+		   said the subject twice and the act not at all. */
+		Title:   queuePendingCITitle(arm.MergeMethod),
+		Summary: "Waiting for required checks", State: workqueue.StateScheduled,
 		NotBefore: arm.RequestedAt,
 		ActorID:   queueActorSystem,
 		Details:   map[string]any{"pull_request": arm.PullRequest, "head_sha": arm.HeadSHA},
 	})
+}
+
+// queuePendingCITitle names the act in the words the command used, so a row reads
+// as the thing that will happen rather than as the lane it waits in.
+func queuePendingCITitle(method pendingci.MergeMethod) string {
+	switch string(method) {
+	case "squash":
+		return "Squash when CI passes"
+	case "rebase":
+		return "Rebase when CI passes"
+	default:
+		return "Merge when CI passes"
+	}
 }
 
 func normalizedArmRequest(arm pendingci.ArmRequest) pendingci.ArmRequest {

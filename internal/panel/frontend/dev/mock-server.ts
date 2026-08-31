@@ -4734,6 +4734,8 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
   const priorities = queueQueryValues(query, 'priority');
   const after = Date.parse(query.get('created_after') ?? '');
   const before = Date.parse(query.get('created_before') ?? '');
+  const finishedAfter = Date.parse(query.get('finished_after') ?? '');
+  const search = (query.get('search') ?? '').trim().toLowerCase();
   const filtered = items.filter(
     (item) =>
       matchesQueueQuery(query, 'installation', item.target_id) &&
@@ -4743,7 +4745,10 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
       (workloads.length === 0 || workloads.includes(item.kind)) &&
       (priorities.length === 0 || priorities.includes(item.priority)) &&
       (Number.isNaN(after) || Date.parse(item.created_at) >= after) &&
-      (Number.isNaN(before) || Date.parse(item.created_at) < before),
+      (Number.isNaN(before) || Date.parse(item.created_at) < before) &&
+      (Number.isNaN(finishedAfter) ||
+        (item.finished_at !== undefined && Date.parse(item.finished_at) >= finishedAfter)) &&
+      (search === '' || `${item.title} ${item.summary ?? ''}`.toLowerCase().includes(search)),
   );
   const offset = Number(query.get('offset') ?? 0);
   const limit = Number(query.get('limit') ?? 50);

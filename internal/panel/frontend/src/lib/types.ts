@@ -396,6 +396,8 @@ interface QueueItemBase {
   lane: 'webhook' | 'pending_ci' | 'maintenance';
   target_id?: string;
   repository_id?: string;
+  /** The repository this work is about, named the way a person names it. */
+  repository_name?: string;
   source_kind?: string;
   source_id?: string;
   title: string;

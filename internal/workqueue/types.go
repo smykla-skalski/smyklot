@@ -306,11 +306,16 @@ type ScheduleDecision struct {
 }
 
 type Item struct {
-	ID               string          `json:"id"`
-	Kind             Kind            `json:"kind"`
-	Lane             Lane            `json:"lane"`
-	TargetID         *string         `json:"target_id,omitempty"`
-	RepositoryID     *string         `json:"repository_id,omitempty"`
+	ID           string  `json:"id"`
+	Kind         Kind    `json:"kind"`
+	Lane         Lane    `json:"lane"`
+	TargetID     *string `json:"target_id,omitempty"`
+	RepositoryID *string `json:"repository_id,omitempty"`
+	// RepositoryName is the repository this work is about, named the way a
+	// person names it. The id beside it is the service's handle and nobody's
+	// name for anything, so a row that could only say the id said the whole
+	// subject inside its own title instead.
+	RepositoryName   string          `json:"repository_name,omitempty"`
 	SourceKind       string          `json:"source_kind,omitempty"`
 	SourceID         string          `json:"source_id,omitempty"`
 	Title            string          `json:"title"`
@@ -365,6 +370,14 @@ type Filter struct {
 	Priorities    []Priority
 	CreatedAfter  *time.Time
 	CreatedBefore *time.Time
+	// FinishedAfter answers "what has this service done lately", which is a
+	// different question from what it accepted lately: a merge held for a day
+	// of checks was created long before it finished.
+	FinishedAfter *time.Time
+	// Search matches the words a person would read off a row - its title and
+	// its summary - folded to lower case, so a reader looks for a repository
+	// rather than for the id the row carries.
+	Search        string
 	DispatchOrder bool
 	Summary       bool
 	Limit         int

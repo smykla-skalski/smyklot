@@ -7,13 +7,15 @@
   import { fade } from 'svelte/transition';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Button from './Button.svelte';
+  import Chip, { type ChipTone } from './Chip.svelte';
   import Icon from './Icon.svelte';
-  import Pill, { type PillTone } from './Pill.svelte';
+  import Pill from './Pill.svelte';
 
   const {
     items,
     clock = Date.now,
     groupTitle,
+    doneTitle,
     onOpen,
     onAction,
   }: {
@@ -27,6 +29,13 @@
      * headed "Running and waiting" answers a question they have already narrowed.
      */
     groupTitle?: string;
+    /**
+     * What to call the finished group where it stands beside live work.
+     *
+     * On the view that shows everything it is a slice - what ended in the last day -
+     * and a card headed plainly "Done" there would claim to be the whole record.
+     */
+    doneTitle?: string;
     onOpen: (item: QueueItem) => void;
     onAction: (item: QueueItem, action: QueueActionType) => void;
   } = $props();
@@ -104,18 +113,25 @@
   function countdown(value: string): string {
     const seconds = Math.round((new Date(value).getTime() - clock()) / 1000);
     if (seconds <= 0) return 'now';
-    if (seconds < 60) return `in ${seconds} seconds`;
-    if (seconds < 3600) return `in ${Math.ceil(seconds / 60)} minutes`;
-    if (seconds < 86_400) return `in ${Math.ceil(seconds / 3600)} hours`;
-    return `in ${Math.ceil(seconds / 86_400)} days`;
+    if (seconds < 60) return `in ${count(seconds, 'second')}`;
+    if (seconds < 3600) return `in ${count(Math.ceil(seconds / 60), 'minute')}`;
+    if (seconds < 86_400) return `in ${count(Math.ceil(seconds / 3600), 'hour')}`;
+
+    return `in ${count(Math.ceil(seconds / 86_400), 'day')}`;
   }
 
   function ago(value: string): string {
     const seconds = Math.round((clock() - new Date(value).getTime()) / 1000);
     if (seconds < 60) return 'just now';
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} minutes ago`;
-    if (seconds < 86_400) return `${Math.floor(seconds / 3600)} hours ago`;
-    return `${Math.floor(seconds / 86_400)} days ago`;
+    if (seconds < 3600) return `${count(Math.floor(seconds / 60), 'minute')} ago`;
+    if (seconds < 86_400) return `${count(Math.floor(seconds / 3600), 'hour')} ago`;
+
+    return `${count(Math.floor(seconds / 86_400), 'day')} ago`;
+  }
+
+  /** One of a thing is one, not one of them: "1 hours ago" is nobody's sentence. */
+  function count(value: number, unit: string): string {
+    return `${value} ${unit}${value === 1 ? '' : 's'}`;
   }
 
   /** A row's sentence, in the three pieces a time has to be an element to sit between. */
@@ -177,11 +193,27 @@
   }
 
   /**
+   * What the work is about, in the words a person names it by.
+   *
+   * The name says what is being done and this says to what: a repository, and the
+   * pull request inside it where there is one. The owner is dropped - a workspace is
+   * one owner, and the console's rows carry their installation in the filter above
+   * them - so the pill reads as a reference rather than as a path.
+   */
+  function subject(item: QueueItem): string | null {
+    const repository = item.repository_name?.split('/').at(-1);
+    if (repository === undefined || repository === '') return null;
+    const pull = item.kind === 'pending_ci' ? item.details?.pull_request : undefined;
+
+    return pull === undefined ? repository : `${repository} #${pull}`;
+  }
+
+  /**
    * A standing, in words a reader owns - never the service's own state name.
    *
-   * Nothing that the card's own heading already says: a row under "Needs a decision"
-   * wearing a "Needs a decision" pill says it twice, and the states that are simply
-   * what the group is called wear nothing at all.
+   * At the row's end rather than beside its name, and only where the row has no act
+   * of its own: a row a reader can do something to says so with the act, and one they
+   * cannot says how it ended. Nothing the card's own heading already says.
    */
   function stateLabel(item: QueueItem): string | null {
     switch (item.state) {
@@ -198,10 +230,14 @@
     }
   }
 
-  function stateTone(item: QueueItem): PillTone {
-    if (item.state === 'failed') return 'danger';
-    if (item.state === 'succeeded') return 'success';
-    if (item.state === 'awaiting_approval' || item.state === 'running') return 'warning';
+  /** What the standing MEANS, which is what a chip's tone names. */
+  function stateTone(item: QueueItem): ChipTone {
+    if (item.state === 'failed') return 'stop';
+    if (item.state === 'succeeded') return 'clear';
+    if (item.state === 'running' || item.state === 'ready') return 'signal';
+    if (item.state === 'blocked' || item.state === 'retrying') return 'warning';
+    if (item.state === 'awaiting_approval') return 'accent';
+
     return 'neutral';
   }
 
@@ -277,7 +313,9 @@ from the wall clock cannot be photographed.
   {#each grouped as group (group.id)}
     <div class="card queue-group">
       <div class="card-head">
-        <h2 class="card-title">{groupTitle ?? group.title}</h2>
+        <h2 class="card-title">
+          {(group.id === 'done' ? doneTitle : undefined) ?? groupTitle ?? group.title}
+        </h2>
       </div>
       <ul class="object-list">
         {#each group.items as item (item.id)}
@@ -294,12 +332,12 @@ from the wall clock cannot be photographed.
               <span class="object-main">
                 <span class="object-name-row">
                   <span class="object-name">{item.title}</span>
+                  {#if subject(item) !== null}
+                    <Pill>{subject(item)}</Pill>
+                  {/if}
                   <span class="pill-swap">
-                    {#key `${item.state}:${item.priority}:${item.revision}`}
+                    {#key `${item.priority}:${item.revision}`}
                       <span class="pill-value" in:fade={valueMotion} out:fade={valueMotion}>
-                        {#if stateLabel(item) !== null}
-                          <Pill tone={stateTone(item)}>{stateLabel(item)}</Pill>
-                        {/if}
                         {#if item.priority !== 'normal'}
                           <Pill tone={item.priority === 'urgent' ? 'danger' : 'neutral'}>
                             {words(item.priority)}
@@ -336,6 +374,18 @@ from the wall clock cannot be photographed.
                     items={actionItems(item)}
                     onSelect={(action) => selectMenuAction(item, action)}
                   />
+                {:else if stateLabel(item) !== null}
+                  <!-- A row with nothing to act on says how it stands instead, at the
+                       end where the act would have been. -->
+                  <span class="state-swap">
+                    {#key `${item.state}:${item.revision}`}
+                      <span class="state-value" in:fade={valueMotion} out:fade={valueMotion}>
+                        <Chip tone={stateTone(item)} dot={item.state === 'running'}>
+                          {stateLabel(item)}
+                        </Chip>
+                      </span>
+                    {/key}
+                  </span>
                 {:else}
                   <span class="row-chevron" aria-hidden="true">
                     <Icon name="chevron-right" size="xs" />
@@ -374,11 +424,13 @@ from the wall clock cannot be photographed.
 
   /* Both readings share one cell, so the row keeps its height while they cross. */
   .pill-swap,
+  .state-swap,
   .sum-swap {
     display: grid;
   }
 
   .pill-swap > .pill-value,
+  .state-swap > .state-value,
   .sum-swap > .object-sum {
     grid-area: 1 / 1;
   }

@@ -7,7 +7,7 @@ let panel: Panel;
 
 const READY = '.general-queue .object-row';
 
-/** Press one of the queue's three views: a radio under the label that covers it. */
+/** Press one of the queue's five views: a radio under the label that covers it. */
 async function show(page: Page, view: string): Promise<void> {
   await page.getByRole('radio', { name: view }).locator('xpath=ancestor::label[1]').click();
 }
@@ -52,7 +52,14 @@ describe('the general Queue list [Integration]', () => {
           ),
         };
       });
-      expect(reading.groups).toEqual(['Needs a decision', 'Running and waiting']);
+      /* What is done is part of what is happening: the view that shows everything
+         carries the last day of it, under a heading that says so rather than claiming
+         to be the whole record. */
+      expect(reading.groups).toEqual([
+        'Needs a decision',
+        'Running and waiting',
+        'Done in the last day',
+      ]);
       expect(reading.overflow).toBeLessThanOrEqual(1);
       expect(reading.sentences).toContain('Running · 4 of 12 changes written');
       expect(reading.sentences.every((sentence) => sentence !== '')).toBe(true);
@@ -79,6 +86,23 @@ describe('the general Queue list [Integration]', () => {
         expect(row.name).not.toBe('');
         expect(row.sentence).not.toBe('');
       }
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('narrows the whole page to the words a reader types', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      await visit(page, addressOf(panel, 'root/queue'), { ready: READY });
+      await page.getByRole('searchbox', { name: 'Search the queue' }).fill('commands');
+      await expect.poll(() => page.locator(READY).count()).toBe(1);
+      await page.getByText('Scan for new commands').waitFor({ state: 'visible' });
+      /* A card with nothing left in it is not a card: the groups are what the page
+         holds, so a search that empties one takes the heading with it. */
+      expect(await page.locator('.general-queue .card-title').allTextContents()).toEqual([
+        'Running and waiting',
+      ]);
     } finally {
       await page.close();
     }

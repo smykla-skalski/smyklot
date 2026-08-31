@@ -2638,6 +2638,19 @@ ul.object-list {
   outline-offset: var(--focus-ring-inset);
 }
 
+/* A ROW IS PRESSED THE ROW'S WAY, never the button's.
+   The press law on `button:not(:disabled), a[href]` paints a pressed veil and scales
+   what is held. Both are wrong here and were plainly visible: the hit is `inset: 0`
+   over the whole row, so its veil laid a second 16% darkening over the row's own
+   10.9% pressed ground, and the 0.98 scale shrank that dark rectangle inside the row's
+   own edges while the row itself sank 1px. A row's press is the sink, the inset and
+   the pressed ground - stated once, by the row. */
+:is(a, button).object-row:active,
+.object-row .row-hit:active {
+  background-image: none;
+  transform: none;
+}
+
 /* The hit is a layer, never a control with a look of its own. It is drawn as a button
    where what it opens is a dialog rather than an address, and a bare button brings a
    border and a ground with it - which read as a box around the row. */

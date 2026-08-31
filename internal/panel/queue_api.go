@@ -18,6 +18,10 @@ const (
 	jsonFieldCurrent       = "current"
 	jsonFieldMessage       = "message"
 	errorCodeStaleRevision = "stale_revision"
+	// A search is a phrase a person typed, so it is bounded the way every other
+	// free text this service accepts is: long enough for a repository and a
+	// pull request number, short enough that nobody is scanning with it.
+	queueSearchLimit = 200
 )
 
 type queueActionInput struct {
@@ -98,6 +102,12 @@ func parseQueueFilter(r *http.Request) (workqueue.Filter, error) {
 	}
 	if raw := strings.TrimSpace(values.Get("profile")); raw != "" {
 		filter.ProfileID = &raw
+	}
+	if raw := strings.TrimSpace(values.Get("search")); raw != "" {
+		if len([]rune(raw)) > queueSearchLimit {
+			return workqueue.Filter{}, errors.New("queue search is too long")
+		}
+		filter.Search = raw
 	}
 	if err := parseQueueKinds(values, &filter); err != nil {
 		return workqueue.Filter{}, err
@@ -191,6 +201,14 @@ func parseQueueTimes(values url.Values, filter *workqueue.Filter) error {
 	if filter.CreatedAfter != nil && filter.CreatedBefore != nil &&
 		!filter.CreatedAfter.Before(*filter.CreatedBefore) {
 		return errors.New("queue created_after must be before created_before")
+	}
+	if raw := values.Get("finished_after"); raw != "" {
+		value, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return errors.New("queue finished_after must be an RFC3339 timestamp")
+		}
+		value = value.UTC()
+		filter.FinishedAfter = &value
 	}
 
 	return nil

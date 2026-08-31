@@ -17,7 +17,7 @@ interface QueueMotion {
 const ROW = '.general-queue .object-row';
 
 /**
- * Press one of the queue's three views.
+ * Press one of the queue's five views.
  *
  * Each segment is a radio under a label, and the label is what covers it - so the label
  * is what a pointer reaches, here as everywhere else the pattern is pressed.
@@ -113,7 +113,7 @@ describe('the general Queue live stream [Integration]', () => {
   });
 
   it('refreshes another reader when an audited action changes an item', async () => {
-    const title = 'Merge platform-infra#184 after CI';
+    const title = 'Merge after CI';
     const viewerRow = viewer.locator(ROW, { hasText: title });
     await viewerRow.waitFor({ state: 'visible' });
     // Normal is the priority a row says nothing about, so the standing to wait for is its absence.
@@ -200,7 +200,7 @@ describe('the general Queue live stream [Integration]', () => {
       return response.status;
     });
     expect(status).toBe(200);
-    const settled = viewer.locator(ROW, { hasText: 'Merge platform-infra#184 after CI' });
+    const settled = viewer.locator(ROW, { hasText: 'Merge after CI' });
     await expect
       .poll(() => settled.getByText('High', { exact: true }).count(), { timeout: 5_000 })
       .toBe(0);

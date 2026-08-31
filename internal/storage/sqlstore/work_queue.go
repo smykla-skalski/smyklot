@@ -79,6 +79,9 @@ ORDER BY CASE WHEN finished_at IS NULL THEN 0 ELSE 1 END,
 	if positionErr != nil {
 		return workqueue.Page{}, positionErr
 	}
+	if err := s.nameQueueSubjects(ctx, items); err != nil {
+		return workqueue.Page{}, err
+	}
 	if filter.DispatchOrder {
 		sortQueueItemsForDispatch(items)
 		items, next := paginateQueueItems(items, limit, offset)
@@ -146,7 +149,8 @@ func queueSummarySnapshotComplete(filter workqueue.Filter) bool {
 
 	return filter.TargetID == nil &&
 		filter.RepositoryID == nil && filter.ProfileID == nil && len(filter.Kinds) == 0 &&
-		len(filter.Priorities) == 0 && filter.CreatedAfter == nil && filter.CreatedBefore == nil
+		len(filter.Priorities) == 0 && filter.CreatedAfter == nil && filter.CreatedBefore == nil &&
+		filter.FinishedAfter == nil && strings.TrimSpace(filter.Search) == ""
 }
 
 func paginateQueueItems(items []workqueue.Item, limit, offset int) ([]workqueue.Item, int) {
@@ -235,6 +239,18 @@ func queueFilters(filter workqueue.Filter) ([]string, []any) {
 	if filter.CreatedBefore != nil {
 		clauses = append(clauses, "created_at < ?")
 		arguments = append(arguments, *filter.CreatedBefore)
+	}
+	if filter.FinishedAfter != nil {
+		clauses = append(clauses, "finished_at >= ?")
+		arguments = append(arguments, *filter.FinishedAfter)
+	}
+	if search := strings.TrimSpace(filter.Search); search != "" {
+		/* Folded on both sides rather than through LIKE's own rules: SQLite
+		   matches ASCII case-insensitively and PostgreSQL does not, so the same
+		   search answered differently depending on the engine. */
+		pattern := "%" + strings.ToLower(search) + "%"
+		clauses = append(clauses, "(LOWER(title) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ?)")
+		arguments = append(arguments, pattern, pattern)
 	}
 
 	return clauses, arguments
@@ -393,6 +409,39 @@ func (s *Store) addQueuePositionsFromSnapshot(
 	}
 
 	return s.decorateQueuePositions(ctx, items, positions)
+}
+
+/*
+Names the repository each row is about.
+
+One query per distinct repository rather than a join, for the reason the profile
+above takes the same shape: a page holds fifty rows and a handful of repositories,
+and the read is answered from the map after the first of each. A repository that
+has since been removed leaves the name empty, which is what a row with nothing to
+say about its subject should say.
+*/
+func (s *Store) nameQueueSubjects(ctx context.Context, items []workqueue.Item) error {
+	names := make(map[string]string)
+	for index := range items {
+		id := items[index].RepositoryID
+		if id == nil {
+			continue
+		}
+		name, known := names[*id]
+		if !known {
+			row := s.db.QueryRowContext(ctx, "SELECT full_name FROM repositories WHERE id = ?", *id)
+			switch err := row.Scan(&name); {
+			case errors.Is(err, sql.ErrNoRows):
+				name = ""
+			case err != nil:
+				return fmt.Errorf("name queue subject: %w", err)
+			}
+			names[*id] = name
+		}
+		items[index].RepositoryName = name
+	}
+
+	return nil
 }
 
 func (s *Store) decorateQueuePositions(
@@ -812,11 +861,19 @@ func (s *Store) GetQueueItem(ctx context.Context, id string) (workqueue.Item, er
 	if err != nil {
 		return workqueue.Item{}, fmt.Errorf("get queue item: %w", err)
 	}
-	if err := s.addQueuePositions(ctx, []workqueue.Item{item}); err != nil {
+	/* Decorated through the slice and returned FROM it. Passing a literal and
+	   returning `item` handed the caller the row as it was read: the window it
+	   waits in, the work ahead of it and the repository it is about are all
+	   written onto the slice's own copy. */
+	decorated := []workqueue.Item{item}
+	if err := s.addQueuePositions(ctx, decorated); err != nil {
+		return workqueue.Item{}, err
+	}
+	if err := s.nameQueueSubjects(ctx, decorated); err != nil {
 		return workqueue.Item{}, err
 	}
 
-	return item, nil
+	return decorated[0], nil
 }
 
 func getQueueItem(

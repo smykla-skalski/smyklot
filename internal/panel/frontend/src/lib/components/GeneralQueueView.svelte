@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
+  import { useDebounce } from 'runed';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
@@ -23,6 +24,7 @@
   import QueueDetailDialog from './QueueDetailDialog.svelte';
   import QueueTable from './QueueTable.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
+  import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import TableToolsMenu, { type ToolsFilter } from './TableToolsMenu.svelte';
 
@@ -74,6 +76,11 @@
   let now = $state(Date.now());
   let rangeNow = $state(Date.now());
   let offset = $state(0);
+  let search = $state('');
+  /* What the page is actually filtered by, one step behind what is being typed: every
+     keystroke is a request, and the queue is the one list where a reader is often
+     hunting for a repository they can only half remember. */
+  let appliedSearch = $state('');
   const pageSize = 50;
   const query = $derived.by(queueQuery);
 
@@ -246,6 +253,16 @@
     },
   ]);
 
+  const debouncedSearch = useDebounce((query: string) => {
+    appliedSearch = query;
+    offset = 0;
+  }, 250);
+
+  $effect(() => {
+    const value = search.trim();
+    untrack(() => void debouncedSearch(value));
+  });
+
   onMount(() => {
     const clock = window.setInterval(() => (now = Date.now()), 1_000);
     const rangeClock = window.setInterval(() => {
@@ -317,6 +334,37 @@
     },
   }));
 
+  /**
+   * What the service finished lately, for the view that shows everything.
+   *
+   * The All view answers "what is happening", and work that ended an hour ago is part
+   * of that answer - a reader who comes back to a queue with nothing in it needs to
+   * see that something ran rather than that nothing did. Bounded by when work
+   * FINISHED rather than when it was accepted: a merge held for a day of checks is old
+   * work that ended recently.
+   */
+  const recentlyDoneQuery = createQuery(() => ({
+    queryKey: ['queue-recent-done', targetId ?? 'root', workload, priority, profile, appliedSearch],
+    queryFn: () => {
+      const params = new SvelteURLSearchParams({ limit: '10', offset: '0' });
+      params.set('state', DONE_STATES.join(','));
+      params.set('finished_after', new Date(Date.now() - 86_400_000).toISOString());
+      if (workload !== 'all') params.set('workload', workload);
+      if (priority !== 'all') params.set('priority', priority);
+      if (profile !== 'all') params.set('profile', profile);
+      if (appliedSearch !== '') params.set('search', appliedSearch);
+      const search = `?${params.toString()}`;
+
+      return targetId === undefined
+        ? api.fetchRootQueue(search)
+        : api.fetchTargetQueue(targetId, search);
+    },
+    enabled: section === 'active',
+  }));
+  const recentlyDone = $derived<QueueItem[]>(
+    section === 'active' ? (recentlyDoneQuery.data?.items ?? []) : [],
+  );
+
   const SECTION_SEGMENTS = $derived.by(() => {
     const counts = sectionCountsQuery.data;
     return QUEUE_SECTIONS.map((value) => ({
@@ -338,6 +386,7 @@
       query.set('installation', installation);
     }
     if (repository !== 'all') query.set('repository', repository);
+    if (appliedSearch !== '') query.set('search', appliedSearch);
     if (timeRange !== 'all') {
       const age = timeRange === '24h' ? 86_400_000 : 604_800_000;
       query.set('created_after', new Date(rangeNow - age).toISOString());
@@ -461,7 +510,13 @@ without the buttons, rather than buttons that refuse.
   {/if}
 
   <div class="filter-bar">
-    <!-- The queue's three views, on the page they belong to rather than in the sidebar:
+    <SearchField
+      label="Search the queue"
+      placeholder="Search the queue"
+      value={search}
+      onInput={(value) => (search = value)}
+    />
+    <!-- The queue's five views, on the page they belong to rather than in the sidebar:
          which slice of one page a reader is looking at is a filter, and the tree names
          pages. Each is still an address, so a link to the decisions goes straight
          there. -->
@@ -497,11 +552,12 @@ without the buttons, rather than buttons that refuse.
     {/if}
     {#key query}
       <QueueTable
-        {items}
+        items={[...items, ...recentlyDone]}
         clock={() => now}
         groupTitle={section === 'waiting' || section === 'running'
           ? SECTION_LABELS[section]
           : undefined}
+        doneTitle={section === 'active' ? 'Done in the last day' : undefined}
         onOpen={openDetail}
         onAction={openAction}
       />
