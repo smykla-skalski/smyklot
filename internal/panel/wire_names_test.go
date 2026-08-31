@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -262,10 +261,7 @@ func assertWireNames(t *testing.T, where string, value any) {
 // reason: the new endpoint works, its own specs pass, and nobody asks what its
 // fields are called.
 func TestPanelWireNameProbesCoverEveryReadableRoute(t *testing.T) {
-	source, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatalf("read server.go: %v", err)
-	}
+	source := panelSources(t)
 	pattern := regexp.MustCompile(`"GET "\+base\+"(/api/v1/[^"]*)"`)
 
 	probed := map[string]bool{}
@@ -273,7 +269,7 @@ func TestPanelWireNameProbesCoverEveryReadableRoute(t *testing.T) {
 		probed[path] = true
 	}
 
-	for _, match := range pattern.FindAllStringSubmatch(string(source), -1) {
+	for _, match := range pattern.FindAllStringSubmatch(source, -1) {
 		if notJSONRoutes[match[1]] {
 			continue
 		}

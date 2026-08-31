@@ -288,7 +288,6 @@ func (s *Server) Handler() http.Handler {
 		"POST "+base+"/api/v1/targets/{target}/sync/plans/{plan}/approval",
 		s.postSyncPlanApproval,
 	)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit.csv", s.getAuditExport)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue", s.getTargetQueue)
@@ -351,7 +350,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"POST "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}/restore",
 		s.postRootSettingsRestore,
 	)
-	mux.HandleFunc("GET "+base+"/api/v1/root/history/audit.csv", s.getRootAuditExport)
+	s.registerExports(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/access/users/{account}", s.putRootUser)

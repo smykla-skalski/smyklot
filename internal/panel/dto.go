@@ -330,17 +330,20 @@ func repositorySummaryDTO(
 	target storage.Target,
 	repository storage.Repository,
 ) repositorySummaryResponse {
+	// The same two words the settings batch answers with, read from where they are
+	// declared: a source spelled here and a resource spelled there are one
+	// vocabulary, and the panel compares them.
 	enabled := target.RepositoryDefaultEnabled
-	source := "target"
+	source := installationSettingsResourceTarget
 	if repository.EnabledOverride != nil {
 		enabled = *repository.EnabledOverride
-		source = "repository"
+		source = installationSettingsResourceRepository
 	}
 	mode := target.PendingCIModeDefault
-	modeSource := "target"
+	modeSource := installationSettingsResourceTarget
 	if repository.PendingCIModeOverride != nil {
 		mode = *repository.PendingCIModeOverride
-		modeSource = "repository"
+		modeSource = installationSettingsResourceRepository
 	}
 
 	return repositorySummaryResponse{

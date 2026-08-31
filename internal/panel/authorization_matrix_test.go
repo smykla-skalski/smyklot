@@ -327,19 +327,47 @@ func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
 func registeredTargetRoutes(t *testing.T) []string {
 	t.Helper()
 
-	source, err := os.ReadFile("server.go")
-	if err != nil {
-		t.Fatalf("read server.go: %v", err)
-	}
-
+	source := panelSources(t)
 	pattern := regexp.MustCompile(`"(GET|PUT|POST|DELETE) "\+base\+"(/api/v1/targets/\{target\}[^"]*)"`)
 
 	var routes []string
-	for _, match := range pattern.FindAllStringSubmatch(string(source), -1) {
+	for _, match := range pattern.FindAllStringSubmatch(source, -1) {
 		routes = append(routes, match[1]+" "+match[2])
 	}
 
 	return routes
+}
+
+// panelSources is every Go file in the package, read as one string.
+//
+// The two coverage guards used to read `server.go` alone, which held only while
+// every route was registered there. The moment two of them moved into the file
+// that serves them, both guards went on passing over routes they could no longer
+// see - a hole exactly the shape of the thing they exist to catch.
+func panelSources(t *testing.T) string {
+	t.Helper()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read the package: %v", err)
+	}
+	var all strings.Builder
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		all.Write(source)
+	}
+	if all.Len() == 0 {
+		t.Fatal("the package read as empty, so every route below is unchecked")
+	}
+
+	return all.String()
 }
 
 func createOrdinarySession(t *testing.T, harness *panelHarness) *http.Cookie {

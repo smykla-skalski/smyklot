@@ -28,6 +28,15 @@ var auditExportHeader = []string{
 	"elevation",
 }
 
+// registerExports is where the reads that answer with a file are declared.
+//
+// Together, because they are one act at two scopes and the route table's own
+// grouping is by kind of answer rather than by scope.
+func (s *Server) registerExports(mux *http.ServeMux, base string) {
+	mux.HandleFunc("GET "+base+"/api/v1/root/history/audit.csv", s.getRootAuditExport)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit.csv", s.getAuditExport)
+}
+
 // getRootAuditExport writes the whole filtered audit as CSV.
 //
 // The whole of it, not the screen: an export that stopped at the page a reader
