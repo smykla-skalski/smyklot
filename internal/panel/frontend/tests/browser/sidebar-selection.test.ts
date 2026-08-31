@@ -6,12 +6,16 @@
  * stylesheet - the same shape of problem as the segmented control's indicator, and unreachable by
  * a stylesheet test for the same reason.
  *
- * The measurement used to be `offsetTop` and `offsetHeight`, which are rounded to whole pixels.
- * The console's rows sit on a fraction, because the trimmed header above them is cut to its cap
- * band and a cap height is not an integer, so the thumb was drawn a fifth of a pixel above every
- * row it was supposed to be the ground of. Small enough to survive review, and exactly the kind
- * of thing this sidebar is judged on.
+ * The measurement used to be `offsetTop` and `offsetHeight`, which are rounded to whole pixels,
+ * and the thumb was drawn a fifth of a pixel above every row it was supposed to be the ground of.
+ * Every distance in the tree is a whole number today - the leading scale is in px and the rows
+ * are a declared 34 - so a placement measured the rounded way would AGREE with this file, and no
+ * arrangement of the live sidebar can tell the two apart. The rounding is refused at the source
+ * instead, and what is measured here is that the thumb lands on its row at rest and after it
+ * travels.
  */
+import { readFileSync } from 'node:fs';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page } from 'playwright-core';
 
@@ -43,12 +47,13 @@ let queueSelectionCount: number;
 beforeAll(async () => {
   panel = await startPanel();
   page = await panel.browser.newPage({ viewport: VIEWPORT });
-  await visit(page, `${panel.origin}/root`);
+  await visit(page, `${panel.origin}/root/access/users`);
   await page
-    .locator('.tree .tree-row.is-active, .tree .tree-page.is-active > .tree-row')
+    .locator('.tree .tree-row.is-active')
     .first()
     .waitFor({ state: 'visible', timeout: 30_000 });
   await expand(page);
+  await rest(page);
   landed = await measure(page);
 
   /* Then somewhere else, because arriving and travelling are two different writes of the same two
@@ -56,7 +61,7 @@ beforeAll(async () => {
   // Slept through rather than waited out: the thumb travels on a transition, and no request
   // reports the end of one.
   await page.locator('.tree a.tree-row:not(.is-active)').first().click();
-  await page.waitForTimeout(SETTLE_MS);
+  await rest(page);
   moved = await measure(page);
 
   await visit(page, `${panel.origin}/root/queue/request/pending-ci-0`);
@@ -87,6 +92,19 @@ async function expand(target: Page): Promise<void> {
   await target.waitForTimeout(SETTLE_MS);
 }
 
+/**
+ * The pointer off the tree, and the transitions done.
+ *
+ * A selected row LIFTS its ground a pixel under the pointer, and a click leaves the
+ * pointer exactly there - so a reading taken straight after one measures the hover
+ * state and reports the thumb a pixel above its row. Where the selection rests is
+ * what this file is about.
+ */
+async function rest(target: Page): Promise<void> {
+  await target.mouse.move(VIEWPORT.width - 4, VIEWPORT.height - 4);
+  await target.waitForTimeout(SETTLE_MS);
+}
+
 async function measure(target: Page): Promise<Selection> {
   return target.evaluate(() => {
     const box = (element: Element | null): { top: number; height: number } => {
@@ -95,13 +113,7 @@ async function measure(target: Page): Promise<Selection> {
 
       return { top: rect.top, height: rect.height };
     };
-    const kid = document.querySelector<HTMLElement>('.tree .tree-kid.is-active');
-    const row =
-      kid !== null && kid.offsetParent !== null
-        ? kid
-        : document.querySelector(
-            '.tree .tree-row.is-active, .tree .tree-page.is-active > .tree-row',
-          );
+    const row = document.querySelector('.tree .tree-row.is-active');
 
     return {
       thumb: box(document.querySelector('.tree .nav-thumb')),
@@ -113,13 +125,19 @@ async function measure(target: Page): Promise<Selection> {
 }
 
 describe("the Root console sidebar's selection", () => {
-  it('sits on a fraction of a pixel, which is what makes the rest of this worth asserting', () => {
-    // The precondition, stated rather than assumed. Were the rows to land on whole pixels the
-    // rounding below could not show, and every other check here would pass by measuring nothing.
-    // The sidebar is asserted first, because a collapsed one is the way this stops being true and
-    // "the rows are on whole pixels" does not say so.
+  it('measures the row it grounds, never the rounded offset of one', () => {
+    // The precondition, stated rather than assumed: the sidebar has to be drawing full rows at
+    // all, which a collapsed one is not.
     expect(landed.expanded, 'the sidebar is collapsed, so it draws no full rows').toBe(true);
-    expect(landed.row.top % 1, `the rows are on whole pixels: ${landed.row.top}`).not.toBe(0);
+    // And the rounding itself, refused where it was written - the live tree is all whole numbers
+    // now, so nothing measurable in the browser can tell a rect from an offset.
+    const source = readFileSync(
+      new URL('../../src/lib/components/Sidebar.svelte', import.meta.url),
+      'utf8',
+    );
+    const placement = /async function place\([\s\S]*?\n {4}\}/u.exec(source)?.[0] ?? '';
+    expect(placement).toContain('getBoundingClientRect');
+    expect(placement).not.toMatch(/\boffsetTop\b|\boffsetHeight\b/u);
   });
 
   it('grounds the row it arrives on, exactly', () => {

@@ -3,7 +3,9 @@
     | 'admin'
     | 'alert'
     | 'ban'
+    | 'book'
     | 'branch'
+    | 'calendar'
     | 'chevron-down'
     | 'chevron-left'
     | 'chevron-right'
@@ -12,6 +14,7 @@
     | 'circle-dashed'
     | 'circle-slash'
     | 'close'
+    | 'database'
     | 'editor'
     | 'failure'
     | 'file'
@@ -20,6 +23,8 @@
     | 'file-missing'
     | 'file-valid'
     | 'filter'
+    | 'gauge'
+    | 'gear'
     | 'github'
     | 'globe'
     | 'history'
@@ -37,10 +42,12 @@
     | 'organization'
     | 'owner'
     | 'pending'
+    | 'plan'
     | 'plus'
     | 'repositories'
     | 'refresh'
     | 'search'
+    | 'server'
     | 'settings'
     | 'shield'
     | 'shield-slash'
@@ -54,6 +61,7 @@
     | 'sun'
     | 'sun-moon'
     | 'system'
+    | 'tag'
     | 'trash'
     | 'user'
     | 'user-plus'
@@ -75,7 +83,9 @@
     admin: [4, 3],
     alert: 3.5,
     ban: 3.5,
+    book: 4,
     branch: 5,
+    calendar: 4,
     check: 4,
     'chevron-down': 6,
     'chevron-left': 9,
@@ -85,6 +95,7 @@
     'circle-dashed': 3.5,
     'circle-slash': 3.5,
     close: 6,
+    database: 4.5,
     editor: [4, 4.9],
     failure: 3.5,
     // The whole family shares one document outline, `M6 3h8l4 4v14H6z`; the mark inside it is
@@ -95,6 +106,9 @@
     'file-missing': 6,
     'file-valid': 6,
     filter: 3.5,
+    // The dial's arc is drawn the long way round, so it bulges past its own endpoints.
+    gauge: 2.5,
+    gear: 2.8,
     /* Octicons draw to the edge of the box where this set keeps a margin, so the
        mark is nearly full-bleed. Left as it is: another product's logo is
        reproduced or it is not used. */
@@ -115,10 +129,12 @@
     organization: 4,
     owner: 5,
     pending: 3.5,
+    plan: 5,
     plus: 5,
     refresh: [3.34, 3.35],
     repositories: 4,
     search: 4,
+    server: 4,
     settings: 4,
     shield: 5,
     'shield-slash': 3.5,
@@ -132,6 +148,7 @@
     sun: 2.5,
     'sun-moon': 2.5,
     system: 3,
+    tag: [3.5, 2.46],
     trash: 4,
     user: 4.5,
     'user-plus': [2.5, 2],
@@ -389,6 +406,36 @@ only name for something means the control is missing its label.
   {:else if name === 'sliders'}
     <path d="M5 21v-6M5 11V3M12 21v-9M12 8V3M19 21v-4M19 13V3" />
     <path d="M2 15h6M9 8h6M16 17h6" />
+  {:else if name === 'gauge'}
+    <path d="m12 14.5 3.6-3.6" />
+    <path d="M4.34 19.2a9.5 9.5 0 1 1 15.32 0" />
+  {:else if name === 'book'}
+    <path d="M4 19.5V5.5A2.5 2.5 0 0 1 6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 19.5Z" />
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+  {:else if name === 'tag'}
+    <path
+      d="M12.6 3.5H5a1.5 1.5 0 0 0-1.5 1.5v7.6c0 .4.16.78.44 1.06l7.9 7.9a1.5 1.5 0 0 0 2.12 0l7.14-7.14a1.5 1.5 0 0 0 0-2.12l-7.9-7.9a1.5 1.5 0 0 0-1.06-.44Z"
+    />
+    <path d="M8.3 8.3h.01" />
+  {:else if name === 'plan'}
+    <path d="M5 6.5h14M5 12h14M5 17.5h7" />
+    <path d="M16.5 15v5M14 17.5h5" />
+  {:else if name === 'gear'}
+    <circle cx="12" cy="12" r="3.2" />
+    <path
+      d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"
+    />
+  {:else if name === 'calendar'}
+    <rect x="4" y="5.5" width="16" height="15" rx="2.5" />
+    <path d="M4 10.5h16M8.5 3.5v4M15.5 3.5v4" />
+  {:else if name === 'server'}
+    <rect x="4" y="4.5" width="16" height="6.5" rx="2" />
+    <rect x="4" y="13" width="16" height="6.5" rx="2" />
+    <path d="M7.5 7.75h.01M7.5 16.25h.01" />
+  {:else if name === 'database'}
+    <ellipse cx="12" cy="5.5" rx="7.5" ry="2.9" />
+    <path d="M4.5 5.5v13c0 1.6 3.36 2.9 7.5 2.9s7.5-1.3 7.5-2.9v-13" />
+    <path d="M4.5 12c0 1.6 3.36 2.9 7.5 2.9s7.5-1.3 7.5-2.9" />
   {:else if name === 'mail'}
     <rect x="3" y="5" width="18" height="14" rx="2" />
     <path d="m3 7.5 9 6 9-6" />

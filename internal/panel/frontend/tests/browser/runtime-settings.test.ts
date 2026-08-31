@@ -52,9 +52,9 @@ describe('Root runtime settings drafts', () => {
       await page.getByRole('option', { name: 'hours' }).click();
       expect(writes).toHaveLength(0);
 
-      await page.getByRole('link', { name: 'Service' }).click();
+      await page.getByRole('link', { name: 'Service health' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/service');
-      await page.getByRole('link', { name: 'Settings' }).click();
+      await page.getByRole('link', { name: 'Service settings' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
       await expect.poll(() => amount.inputValue()).toBe('2');
 
@@ -189,18 +189,18 @@ describe('Root Runtime routes', () => {
 
     try {
       await visit(page, `${panel.origin}/root/runtime/settings`, { ready: '#root-page-heading' });
-      const runtimeKids = page.locator('.tree-kids[data-label="Runtime"] .tree-kid');
-      expect(await runtimeKids.locator('.row-visual > .t').allTextContents()).toEqual([
-        'Service',
+      const runtimeKids = page.locator('.tree a.tree-row[href^="/root/runtime/"]');
+      expect(await runtimeKids.locator('> .t').allTextContents()).toEqual([
+        'Service health',
         'Database',
-        'Settings',
+        'Service settings',
       ]);
       expect(await page.locator('#root-page-heading').innerText()).toBe('Runtime settings');
       expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(0);
       expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(0);
       expect(await page.locator('.service-grid').count()).toBe(0);
 
-      await runtimeKids.filter({ hasText: 'Service' }).click();
+      await runtimeKids.filter({ hasText: 'Service health' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/service');
       await page.locator('#root-service').waitFor({ state: 'visible' });
 

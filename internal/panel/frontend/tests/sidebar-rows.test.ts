@@ -40,19 +40,17 @@ describe('a sidebar navigation row', () => {
   it('trims the label to its glyph bounds', () => {
     // The box the row centres has to BE the letters, or centring it centres something else.
     expect(rule('.tree-row .t')).toMatch(/text-box:\s*trim-both cap alphabetic/u);
-    expect(rule('.tree-kid .t')).toMatch(/text-box:\s*trim-both cap alphabetic/u);
   });
 
   it('gives the label no height of its own', () => {
     // A fixed height is a guess at what the text measures, and it is the guess that made the
     // letters sit low in the first place.
     expect(rule('.tree-row .t')).not.toMatch(/(^|[^-])height:/u);
-    expect(rule('.tree-kid .t')).not.toMatch(/(^|[^-])height:/u);
   });
 
   it('pads the row evenly', () => {
     // Uneven vertical padding is an optical nudge wearing a layout property.
-    const padding = /padding:\s*([^;]+);/u.exec(rule('.tree-row > .row-visual'))?.[1]?.trim() ?? '';
+    const padding = /padding:\s*([^;]+);/u.exec(rule('.tree-row'))?.[1]?.trim() ?? '';
 
     expect(padding.length).toBeGreaterThan(0);
     const parts = padding.split(/\s+/u);

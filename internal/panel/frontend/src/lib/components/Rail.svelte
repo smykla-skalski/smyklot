@@ -1,38 +1,13 @@
-<script module lang="ts">
-  /**
-   * The identity hue: hashed once from the login and rendered as `data-h`.
-   * The stylesheet does everything else - tint, line, ink and the selected
-   * aurora all derive from this one number in OKLCH.
-   */
-  export function workspaceHue(login: string): number {
-    let hash = 5381;
-    for (let i = 0; i < login.length; i += 1) {
-      hash = (hash * 33) ^ login.charCodeAt(i);
-    }
-    return (hash >>> 0) % 360;
-  }
-
-  /** "Smykla Skalski" -> "SS", "bartsmykla" -> "B", "Oak & Pine" -> "OP". */
-  export function workspaceInitials(name: string): string {
-    const words = name.split(/[^\p{L}\p{N}]+/u).filter((word) => word.length > 0);
-    if (words.length === 0) return '?';
-    return words
-      .slice(0, 2)
-      .map((word) => word[0]!.toUpperCase())
-      .join('');
-  }
-</script>
-
 <script lang="ts">
   import haloUrl from '../../assets/smyklot-halo.svg';
 
   import type { PanelTarget, PanelViewer } from '../types';
   import type { ThemeDisplay } from '../preferences';
+  import { workspaceHue, workspaceInitials } from '../workspace-mark.js';
+  import AccountMenu from './AccountMenu.svelte';
   import Avatar from './Avatar.svelte';
-  import ClippedLabel from './ClippedLabel.svelte';
   import Icon from './Icon.svelte';
-  import Popover from './Popover.svelte';
-  import ThemeSwitch from './ThemeSwitch.svelte';
+  import WorkspaceMenu from './WorkspaceMenu.svelte';
 
   const {
     viewer,
@@ -147,19 +122,6 @@
   );
 
   let moreOpen = $state(false);
-  let query = $state('');
-  const foldMatches = $derived.by(() => {
-    const needle = query.trim().toLowerCase();
-    if (needle === '') return folded;
-    return folded.filter((target) => {
-      const name = target.account.display_name || target.account.login;
-      return (
-        name.toLowerCase().includes(needle) ||
-        target.account.login.toLowerCase().includes(needle) ||
-        workspaceInitials(name).toLowerCase().includes(needle)
-      );
-    });
-  });
 
   function nameOf(target: PanelTarget): string {
     return target.account.display_name || target.account.login;
@@ -275,17 +237,13 @@ would be telling everybody else about a console they cannot open.
 
   {#if folded.length > 0}
     <span class="rail-more-wrap">
-      <Popover
+      <WorkspaceMenu
         bind:open={moreOpen}
-        side="right"
-        align="start"
-        offset={8}
-        role="menu"
+        targets={folded}
+        {targetHref}
+        {onSelectTarget}
+        {dirtyTargetIds}
         label="More workspaces"
-        skin="sidebar"
-        itemSelector=".menu-item"
-        focusSelector=".menu-search input"
-        onclose={() => (query = '')}
       >
         {#snippet trigger(attributes)}
           <button
@@ -303,48 +261,7 @@ would be telling everybody else about a console they cannot open.
             {/if}
           </button>
         {/snippet}
-        <div class="console-menu" role="none">
-          <div class="menu-search">
-            <Icon name="search" size="xs" />
-            <input
-              type="search"
-              placeholder="Find a workspace"
-              aria-label="Find a workspace"
-              bind:value={query}
-            />
-          </div>
-          <div class="menu-scroll" role="none">
-            {#each foldMatches as target (target.id)}
-              <a
-                class="menu-item"
-                class:has-dirty={targetIsDirty(target)}
-                role="menuitem"
-                href={targetHref(target)}
-                aria-label={dirtyTip(nameOf(target), targetIsDirty(target))}
-                onclick={(event) => {
-                  moreOpen = false;
-                  selectFromClick(event, target);
-                }}
-              >
-                {#if target.account.avatar_url !== null}
-                  <Avatar account={target.account} size={18} shape="workspace" />
-                {:else}
-                  <span class="ws-mini" data-h={workspaceHue(target.account.login)}>
-                    <span class="t">{workspaceInitials(nameOf(target))}</span>
-                  </span>
-                {/if}
-                <ClippedLabel class="mi-label" text={nameOf(target)} />
-                {#if targetIsDirty(target)}
-                  <span class="rail-dirty menu-dirty" aria-hidden="true">*</span>
-                {/if}
-              </a>
-            {/each}
-          </div>
-          {#if foldMatches.length === 0}
-            <div class="menu-hint">No workspace matches</div>
-          {/if}
-        </div>
-      </Popover>
+      </WorkspaceMenu>
     </span>
   {/if}
 
@@ -386,15 +303,7 @@ would be telling everybody else about a console they cannot open.
   </a>
 
   {#if viewer !== null}
-    <Popover
-      side="right"
-      align="end"
-      offset={8}
-      role="menu"
-      label="Account"
-      skin="sidebar"
-      itemSelector=".menu-item"
-    >
+    <AccountMenu {viewer} {theme} {onSelectTheme} {onSignOut} name="rail-theme">
       {#snippet trigger(attributes)}
         <button
           {...attributes}
@@ -410,17 +319,7 @@ would be telling everybody else about a console they cannot open.
           {/if}
         </button>
       {/snippet}
-      <div class="console-menu account-menu" role="none">
-        <div class="menu-eyebrow">{viewerName} - @{viewer.account.login}</div>
-        <div class="menu-theme-row">
-          <ThemeSwitch name="rail-theme" {theme} surface="sidebar" onSelect={onSelectTheme} />
-        </div>
-        <div class="menu-sep" role="none"></div>
-        <button class="menu-item is-danger" role="menuitem" onclick={() => void onSignOut()}>
-          <span class="mi-label">Sign out</span>
-        </button>
-      </div>
-    </Popover>
+    </AccountMenu>
   {/if}
 </nav>
 
@@ -696,45 +595,6 @@ would be telling everybody else about a console they cannot open.
     text-box: trim-both cap alphabetic;
   }
 
-  /* The rail cannot grow when state appears. This keyed mark sits over the
-     existing tile/menu geometry and remains legible without its warning ink. */
-  .rail-dirty {
-    align-items: center;
-    background: var(--sidebar-bg);
-    block-size: 12px;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-    box-sizing: border-box;
-    color: var(--warning);
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: 0.625rem;
-    font-weight: 800;
-    inline-size: 12px;
-    inset-block-start: -3px;
-    inset-inline-end: -3px;
-    justify-content: center;
-    line-height: var(--leading-flat);
-    position: absolute;
-    text-box: trim-both cap alphabetic;
-    z-index: 3;
-  }
-
-  .menu-item.has-dirty {
-    position: relative;
-  }
-
-  .menu-item.has-dirty :global(.mi-label) {
-    padding-inline-end: 16px;
-  }
-
-  .menu-dirty {
-    background: var(--sidebar-popover-bg);
-    inset-block-start: 50%;
-    inset-inline-end: 8px;
-    translate: 0 -50%;
-  }
-
   /* Rail tooltips: the name on hover, popover material. */
   .rail-tile::after {
     background: var(--popover-bg);
@@ -798,167 +658,6 @@ would be telling everybody else about a console they cannot open.
       pointer-events: auto;
       translate: none;
     }
-  }
-
-  /* ---------- The rail's menus: console material ---------- */
-  .console-menu {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    min-inline-size: 13rem;
-    max-inline-size: min(24rem, calc(100vw - 24px));
-    padding: var(--space-1);
-    /* Rows breathe 2px apart, so a hovered row and its chosen neighbour never
-       read as one fused pill. */
-    row-gap: 2px;
-  }
-
-  .console-menu :global(.menu-item),
-  .console-menu .menu-item {
-    align-items: center;
-    background: none;
-    border: 0;
-    border-radius: 6px;
-    block-size: 32px;
-    color: var(--sidebar-menu-text);
-    cursor: pointer;
-    display: flex;
-    font-size: var(--font-size-control);
-    gap: var(--space-2);
-    inline-size: 100%;
-    padding-inline: var(--space-3);
-    text-align: start;
-    text-decoration: none;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
-  }
-
-  .console-menu .menu-item:hover {
-    background: var(--sidebar-menu-hover);
-  }
-
-  .console-menu .menu-item:focus-visible {
-    background: var(--sidebar-menu-hover);
-    outline: none;
-  }
-
-  .console-menu .menu-item:active {
-    background: var(--sidebar-menu-pressed);
-    box-shadow: var(--pressed-inset);
-    translate: 0 1px;
-  }
-
-  .console-menu .menu-item.is-danger {
-    color: var(--sidebar-stop);
-  }
-
-  .console-menu .menu-item.is-danger:hover,
-  .console-menu .menu-item.is-danger:focus-visible {
-    background: var(--sidebar-stop-tint);
-  }
-
-  /* No cap trim here: a menu label is a name with descenders, and the trim
-     cut them off. The flex row centres it on its own. Anchored through the
-     item because the span may be ClippedLabel's markup, outside this
-     component's scope. */
-  .menu-item :global(.mi-label),
-  .mi-label {
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .menu-eyebrow {
-    color: var(--sidebar-menu-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    letter-spacing: 0.07em;
-    line-height: var(--leading-tight);
-    padding: var(--space-2) var(--space-3) var(--space-1);
-    text-transform: uppercase;
-  }
-
-  .menu-sep {
-    background: var(--sidebar-popover-border);
-    block-size: 1px;
-    margin: var(--space-1) calc(var(--space-1) * -1);
-  }
-
-  .menu-theme-row {
-    display: flex;
-    padding: var(--space-1) var(--space-2) var(--space-2);
-  }
-
-  .menu-search {
-    align-items: center;
-    /* Declared 36, and the seam is a drawn line in the gap below, not part of
-       the row's box - a border made the row 37 and the text ride 0.5 high. */
-    block-size: 36px;
-    box-shadow: 0 1px 0 var(--sidebar-popover-border);
-    color: var(--sidebar-menu-muted);
-    display: flex;
-    gap: var(--space-2);
-    margin: calc(var(--space-1) * -1) calc(var(--space-1) * -1) var(--space-1);
-    padding: 0 var(--space-3);
-  }
-
-  .menu-search input {
-    background: none;
-    block-size: 100%;
-    border: 0;
-    color: var(--sidebar-menu-text);
-    flex: 1;
-    font-size: var(--font-size-control);
-    outline: none;
-    padding: 0;
-  }
-
-  .menu-search input::placeholder {
-    color: var(--sidebar-menu-muted);
-  }
-
-  .menu-scroll {
-    display: grid;
-    max-block-size: 288px;
-    overflow: auto;
-    overscroll-behavior: contain;
-  }
-
-  .menu-hint {
-    color: var(--sidebar-menu-muted);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    line-height: var(--leading-tight);
-    padding: var(--space-1) var(--space-3) var(--space-2);
-  }
-
-  /* The workspace initial at menu size: the identity at rest voice, 20px. */
-  .ws-mini {
-    align-items: center;
-    background: var(--ws-tint);
-    border-radius: 6px;
-    block-size: var(--tier-mark);
-    color: var(--ws-ink);
-    display: inline-flex;
-    flex: none;
-    font-size: 0.5625rem;
-    font-weight: 700;
-    inline-size: 20px;
-    justify-content: center;
-    /* The generated mark is a colour of its own, so it needs a boundary against the
-       menu it sits in: a white inner hairline to lift it off its own fill, and the
-       rail's line token outside that - mixed against THIS rail and tuned to the 3:1
-       floor rather than past it, which is what read as chalk. */
-    box-shadow:
-      inset 0 0 0 1px rgb(255 255 255 / 22%),
-      0 0 0 1px var(--sidebar-thumb-line);
-  }
-
-  .ws-mini .t {
-    text-box: trim-both cap alphabetic;
   }
 
   @media (prefers-reduced-motion: reduce) {

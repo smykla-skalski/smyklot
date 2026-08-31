@@ -19,6 +19,8 @@
       rootRole={session.rootRole}
       canControl
       section={session.currentQueueSection}
+      sectionHref={(value) => session.rootQueueSectionHref(value)}
+      onSelectSection={(value) => session.selectRootQueueSection(value)}
     />
   </section>
 {/key}

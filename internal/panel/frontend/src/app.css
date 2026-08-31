@@ -106,6 +106,20 @@ body {
   min-height: 100dvh;
 }
 
+/* COLLAPSED IS ONE COLUMN, not two narrow ones. Folding the pages away used to
+   leave the rail beside an icon strip, and two chrome columns that narrow read as
+   one confused column. The strip carries the whole of it instead: the workspace
+   switch is the mark in its head, and the inbox and the account are its foot. */
+@media (min-width: 64.0625rem) {
+  .app-shell.sidebar-collapsed {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .app-shell.sidebar-collapsed .rail {
+    display: none;
+  }
+}
+
 /* Below 64rem the sidebar is a drawer over the content, out of flow - its
    track has to go with it, or the pane falls into an auto column sized to
    its own max-content and the layout moves with the content. */
@@ -1992,7 +2006,6 @@ thead th .icon-button:active:not(:disabled) {
   .rail-ws,
   .side-fold,
   .tree-row,
-  .tree-kid,
   .menu-item,
   .action-item,
   .btn,
@@ -2056,7 +2069,6 @@ thead th .icon-button:active:not(:disabled) {
   .rail-ws,
   .side-fold,
   .tree-row,
-  .tree-kid,
   .menu-item,
   .action-item,
   .btn,
@@ -2102,7 +2114,6 @@ thead th .icon-button:active:not(:disabled) {
 .rail-tile.is-active,
 .rail-ws.is-active,
 .tree-row.is-active,
-.tree-kid.is-active,
 .method-option.selected,
 .choice-card.is-chosen {
   --edge-line: var(--control-border-pressed);
@@ -2174,7 +2185,6 @@ thead th .icon-button:active:not(:disabled) {
     .rail-ws,
     .side-fold,
     .tree-row,
-    .tree-kid,
     .menu-item,
     .action-item,
     .filter-option,
@@ -2224,4 +2234,205 @@ thead th .icon-button:active:not(:disabled) {
   input:not(:checked, :disabled)
   + .switch-track {
   border-color: var(--edge-line);
+}
+
+/* ---------- Console menus: the material the chrome's popovers are made of ----------
+
+   Written here rather than in the rail, because the rail stopped being the only
+   thing that opens one. The collapsed sidebar carries the workspace switch and the
+   account menu itself - the rail is not drawn at all then - and a second copy of
+   this vocabulary is a second menu that drifts from the first. */
+.console-menu {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-inline-size: 13rem;
+  max-inline-size: min(24rem, calc(100vw - 24px));
+  padding: var(--space-1);
+  /* Rows breathe 2px apart, so a hovered row and its chosen neighbour never
+     read as one fused pill. */
+  row-gap: 2px;
+}
+
+.console-menu .menu-item {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  block-size: 32px;
+  color: var(--sidebar-menu-text);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--font-size-control);
+  gap: var(--space-2);
+  inline-size: 100%;
+  padding-inline: var(--space-3);
+  text-align: start;
+  text-decoration: none;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard),
+    box-shadow var(--duration-press) var(--ease-standard);
+}
+
+.console-menu .menu-item:hover {
+  background: var(--sidebar-menu-hover);
+}
+
+.console-menu .menu-item:focus-visible {
+  background: var(--sidebar-menu-hover);
+  outline: none;
+}
+
+.console-menu .menu-item:active {
+  background: var(--sidebar-menu-pressed);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+
+.console-menu .menu-item.is-danger {
+  color: var(--sidebar-stop);
+}
+
+.console-menu .menu-item.is-danger:hover,
+.console-menu .menu-item.is-danger:focus-visible {
+  background: var(--sidebar-stop-tint);
+}
+
+/* No cap trim here: a menu label is a name with descenders, and the trim cut them
+   off. The flex row centres it on its own. */
+.mi-label {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-eyebrow {
+  color: var(--sidebar-menu-muted);
+  font-size: var(--font-size-micro);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  line-height: var(--leading-tight);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  text-transform: uppercase;
+}
+
+.menu-sep {
+  background: var(--sidebar-popover-border);
+  block-size: 1px;
+  margin: var(--space-1) calc(var(--space-1) * -1);
+}
+
+.menu-theme-row {
+  display: flex;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+}
+
+.menu-search {
+  align-items: center;
+  /* Declared 36, and the seam is a drawn line in the gap below, not part of the
+     row's box - a border made the row 37 and the text ride 0.5 high. */
+  block-size: 36px;
+  box-shadow: 0 1px 0 var(--sidebar-popover-border);
+  color: var(--sidebar-menu-muted);
+  display: flex;
+  gap: var(--space-2);
+  margin: calc(var(--space-1) * -1) calc(var(--space-1) * -1) var(--space-1);
+  padding: 0 var(--space-3);
+}
+
+.menu-search input {
+  background: none;
+  block-size: 100%;
+  border: 0;
+  color: var(--sidebar-menu-text);
+  flex: 1;
+  font-size: var(--font-size-control);
+  outline: none;
+  padding: 0;
+}
+
+.menu-search input::placeholder {
+  color: var(--sidebar-menu-muted);
+}
+
+.menu-scroll {
+  display: grid;
+  max-block-size: 288px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.menu-hint {
+  color: var(--sidebar-menu-muted);
+  font-size: var(--font-size-micro);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+  padding: var(--space-1) var(--space-3) var(--space-2);
+}
+
+/* The workspace initial at menu size: the identity at rest voice, 20px. */
+.ws-mini {
+  align-items: center;
+  background: var(--ws-tint);
+  border-radius: 6px;
+  block-size: var(--tier-mark);
+  color: var(--ws-ink);
+  display: inline-flex;
+  flex: none;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  inline-size: 20px;
+  justify-content: center;
+  /* The generated mark is a colour of its own, so it needs a boundary against the
+     surface it sits on: a white inner hairline to lift it off its own fill, and the
+     rail's line token outside that - tuned to the 3:1 floor rather than past it,
+     which is what read as chalk. */
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 22%),
+    0 0 0 1px var(--sidebar-thumb-line);
+}
+
+.ws-mini .t {
+  text-box: trim-both cap alphabetic;
+}
+
+/* The chrome cannot grow when state appears. This keyed mark sits over the existing
+   tile/menu geometry and remains legible without its warning ink. */
+.rail-dirty {
+  align-items: center;
+  background: var(--sidebar-bg);
+  block-size: 12px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  box-sizing: border-box;
+  color: var(--warning);
+  display: inline-flex;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 800;
+  inline-size: 12px;
+  inset-block-start: -3px;
+  inset-inline-end: -3px;
+  justify-content: center;
+  line-height: var(--leading-flat);
+  position: absolute;
+  text-box: trim-both cap alphabetic;
+  z-index: 3;
+}
+
+.menu-item.has-dirty {
+  position: relative;
+}
+
+.menu-item.has-dirty .mi-label {
+  padding-inline-end: 16px;
+}
+
+.menu-dirty {
+  background: var(--sidebar-popover-bg);
+  inset-block-start: 50%;
+  inset-inline-end: 8px;
+  translate: 0 -50%;
 }

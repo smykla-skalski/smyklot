@@ -177,7 +177,7 @@ describe('installation Sync drafts', () => {
       expect(await originalWorkspace.getAttribute('aria-label')).toContain('unsaved changes');
       await originalWorkspace.click();
       await page.waitForURL((url) => url.pathname === `/i/${panel.account}/sync`);
-      await page.locator(`a.tree-kid[href="${originalPath}"]`).click();
+      await page.locator(`a.tree-row[href="${originalPath}"]`).click();
       await page.waitForURL((url) => url.pathname === originalPath);
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       expect(dialogs).toBe(0);

@@ -31,16 +31,10 @@
   import { SettingsDraftAttentionController } from '#lib/settings-draft-attention.js';
   import type { PanelTarget } from '#lib/types.js';
   import {
-    ACCESS_SECTIONS,
-    HISTORY_SECTIONS,
-    QUEUE_SECTIONS,
-    ROOT_RUNTIME_SECTIONS,
     SYNC_SECTIONS,
     panelViewSection,
     routeSegmentLabel,
-    type PanelSection,
     type PanelView,
-    type QueueSection,
     type RootInstallationView,
     type RootRuntimeSection,
     type RootSection,
@@ -53,7 +47,7 @@
   import PageFooter from '#lib/components/PageFooter.svelte';
   import Plate from '#lib/components/Plate.svelte';
   import Rail from '#lib/components/Rail.svelte';
-  import Sidebar, { type SidebarPage } from '#lib/components/Sidebar.svelte';
+  import Sidebar, { type SidebarEntry, type SidebarRow } from '#lib/components/Sidebar.svelte';
   import SignInPage from '#lib/components/SignInPage.svelte';
   import SettingsSaveComposer from '#lib/components/SettingsSaveComposer.svelte';
   import SettingsDraftAttention, {
@@ -582,251 +576,284 @@
     return plan.counts.create + plan.counts.update + plan.counts.delete;
   });
 
-  const WORKSPACE_ORDER = [
-    'defaults',
-    'repositories',
-    'sync',
-    'queue',
-    'schedules',
-    'access',
-    'history',
-  ] as const satisfies readonly PanelSection[];
-  const workspaceIcon = {
-    defaults: 'sliders',
-    repositories: 'repositories',
-    sync: 'refresh',
-    queue: 'pending',
-    schedules: 'sliders',
-    access: 'users',
-    history: 'history',
-  } as const;
+  /**
+   * The workspace tree: every page one row, under the headings that group them.
+   *
+   * The order and the words are the design's, not the route table's - "Sync status"
+   * rather than the segment `overview`, "Repository options" rather than `settings`,
+   * and "Workspace settings" standing apart at the foot rather than leading as
+   * `Defaults`. No two rows in one tree may share a label, which is why the sync
+   * board is Status and its options page says options.
+   */
+  const workspaceEntries = $derived.by((): SidebarEntry[] => {
+    const rows: SidebarEntry[] = [
+      {
+        id: 'repositories',
+        label: 'Repositories',
+        icon: 'book',
+        href: session.viewHref('repositories'),
+        active: !session.isInbox && panelViewSection(session.currentView) === 'repositories',
+        dirty: selectedSettingsDirtyAt({ section: 'repositories' }),
+      },
+      {
+        id: 'queue',
+        label: 'Queue',
+        icon: 'pending',
+        href: session.queueSectionHref('active'),
+        active: !session.isInbox && session.currentView === 'queue',
+      },
+      {
+        id: 'schedules',
+        label: 'Schedules',
+        icon: 'calendar',
+        href: session.viewHref('schedules'),
+        active: !session.isInbox && session.currentView === 'schedules',
+      },
+      { kind: 'group', id: 'group-sync', label: 'Sync' },
+      ...SYNC_SECTIONS.map((section): SidebarRow => {
+        const words = {
+          overview: { label: 'Sync status', icon: 'refresh' },
+          labels: { label: 'Labels', icon: 'tag' },
+          settings: { label: 'Repository options', icon: 'sliders' },
+          rulesets: { label: 'Rulesets', icon: 'branch' },
+          files: { label: 'Shared files', icon: 'file' },
+          plan: { label: 'Plan', icon: 'plan' },
+        } as const;
+        return {
+          id: `sync-${section}`,
+          label: words[section].label,
+          icon: words[section].icon,
+          href: session.syncSectionHref(section),
+          active:
+            !session.isInbox &&
+            session.currentView === 'sync' &&
+            session.currentSyncSection === section,
+          count: section === 'plan' ? planCount : undefined,
+          signal: section === 'plan' && planCount !== undefined,
+          dirty:
+            section !== 'overview' &&
+            section !== 'plan' &&
+            selectedSettingsDirtyAt({ section: 'sync', path: [section] }),
+        };
+      }),
+    ];
 
-  const syncKids = $derived(
-    SYNC_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.syncSectionHref(section),
-      active:
-        !session.isInbox &&
-        session.currentView === 'sync' &&
-        session.currentSyncSection === section,
-      count: section === 'plan' ? planCount : undefined,
-      signal: section === 'plan' && planCount !== undefined,
-      dirty:
-        section !== 'overview' &&
-        section !== 'plan' &&
-        selectedSettingsDirtyAt({ section: 'sync', path: [section] }),
-    })),
-  );
+    if (session.selectedTarget?.capabilities.manage_target_users === true) {
+      rows.push(
+        { kind: 'group', id: 'group-access', label: 'Access' },
+        {
+          id: 'access-users',
+          label: 'Users',
+          icon: 'users',
+          href: session.accessHref('users'),
+          active: !session.isInbox && session.currentView === 'users',
+        },
+        {
+          id: 'access-invitations',
+          label: 'Invitations',
+          icon: 'mail',
+          href: session.accessHref('invitations'),
+          active: !session.isInbox && session.currentView === 'invitations',
+        },
+      );
+    }
 
-  const accessKids = $derived(
-    ACCESS_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.accessHref(section),
-      active: !session.isInbox && session.currentView === section,
-    })),
-  );
+    rows.push(
+      { kind: 'group', id: 'group-activity', label: 'Activity' },
+      {
+        id: 'history-audit',
+        label: 'Audit',
+        icon: 'history',
+        href: session.historyHref('audit'),
+        active:
+          !session.isInbox &&
+          session.currentView === 'history' &&
+          session.currentHistorySection === 'audit',
+      },
+      {
+        id: 'history-failures',
+        label: 'Failures',
+        icon: 'failure',
+        href: session.historyHref('failures'),
+        active:
+          !session.isInbox &&
+          session.currentView === 'history' &&
+          session.currentHistorySection === 'failures',
+      },
+      {
+        id: 'defaults',
+        label: 'Workspace settings',
+        icon: 'gear',
+        href: session.viewHref('defaults'),
+        active: !session.isInbox && panelViewSection(session.currentView) === 'defaults',
+        dirty: selectedSettingsDirtyAt({ section: 'defaults' }),
+        foot: true,
+      },
+    );
 
-  const historyKids = $derived(
-    HISTORY_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.historyHref(section),
-      active:
-        !session.isInbox &&
-        session.currentView === 'history' &&
-        session.currentHistorySection === section,
-    })),
-  );
+    return rows;
+  });
 
-  const queueKids = $derived(
-    QUEUE_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.queueSectionHref(section),
-      active:
-        !session.isInbox &&
-        session.currentView === 'queue' &&
-        session.currentQueueSection === section,
-    })),
-  );
-
-  const workspacePages = $derived.by((): SidebarPage[] =>
-    WORKSPACE_ORDER.filter(
-      (section) =>
-        section !== 'access' || session.selectedTarget?.capabilities.manage_target_users === true,
-    ).map((section) => {
-      const view: PanelView = section === 'access' ? 'users' : section;
-      return {
-        id: section,
-        label: routeSegmentLabel(section),
-        icon: workspaceIcon[section],
-        href:
-          section === 'sync'
-            ? session.syncSectionHref('overview')
-            : section === 'access'
-              ? session.accessHref('users')
-              : section === 'history'
-                ? session.historyHref('audit')
-                : session.viewHref(view),
-        active: !session.isInbox && panelViewSection(session.currentView) === section,
-        dirty:
-          section === 'defaults'
-            ? selectedSettingsDirtyAt({ section: 'defaults' })
-            : section === 'repositories'
-              ? selectedSettingsDirtyAt({ section: 'repositories' })
-              : undefined,
-        kids:
-          section === 'sync'
-            ? syncKids
-            : section === 'queue'
-              ? queueKids
-              : section === 'access'
-                ? accessKids
-                : section === 'history'
-                  ? historyKids
-                  : undefined,
-      };
-    }),
-  );
-
-  const ROOT_ORDER = [
-    'overview',
-    'queue',
-    'schedules',
-    'installations',
-    'access',
-    'history',
-    'runtime',
-  ] as const satisfies readonly RootSection[];
-  const rootIcon = {
-    overview: 'system',
-    queue: 'pending',
-    schedules: 'sliders',
-    installations: 'repositories',
-    access: 'users',
-    history: 'history',
-    runtime: 'sliders',
-  } as const;
-
-  const rootAccessKids = $derived(
-    ACCESS_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.rootAccessHref(section),
-      active:
-        !session.isInbox &&
-        (section === 'users'
-          ? session.currentRootRoute.rootView === 'access-users'
-          : session.currentRootRoute.rootView === 'access-invitations'),
-    })),
-  );
-
-  const rootHistoryKids = $derived(
-    HISTORY_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: section === 'audit' ? session.rootAuditHref() : session.rootFailuresHref(),
-      active:
-        !session.isInbox &&
-        (section === 'audit'
-          ? session.currentRootRoute.rootView === 'history-audit'
-          : session.currentRootRoute.rootView === 'history-failures'),
-    })),
-  );
-
-  const rootQueueKids = $derived(
-    QUEUE_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.rootQueueSectionHref(section),
-      active:
-        !session.isInbox &&
-        session.currentRootRoute.rootView ===
-          (section === 'active'
-            ? 'queue'
-            : section === 'approvals'
-              ? 'queue-approvals'
-              : 'queue-history'),
-    })),
-  );
-
-  const rootRuntimeKids = $derived(
-    ROOT_RUNTIME_SECTIONS.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      href: session.rootRuntimeHref(section),
-      active: !session.isInbox && session.currentRootRoute.rootView === `runtime-${section}`,
-      dirty:
-        section === 'settings' &&
-        settingsDraftRegistry.dirtyAt(ROOT_SETTINGS_SCOPE, { section: 'runtime' }),
-    })),
-  );
-
-  const rootInstallationKids = $derived.by(() => {
+  /** One installation opened inside the console, as its own group of rows. */
+  const rootInstallationRows = $derived.by((): SidebarEntry[] => {
     const route = session.currentRootRoute;
-    if (route.rootView !== 'installation') return undefined;
+    if (route.rootView !== 'installation') return [];
     const target = session.targets.find(
       (candidate) => candidate.account.login.toLowerCase() === route.account.toLowerCase(),
     );
     const scope: SettingsScope | null =
       target === undefined ? null : { type: 'installation', targetId: target.id };
     const leaves = [
-      { id: 'defaults', view: 'defaults' },
-      { id: 'repositories', view: 'repositories' },
-      { id: 'users', view: 'users' },
-      { id: 'invitations', view: 'invitations' },
-      { id: 'audit', view: 'history', section: 'audit' },
-      { id: 'failures', view: 'history', section: 'failures' },
+      { id: 'defaults', view: 'defaults', label: 'Workspace settings', icon: 'gear' },
+      { id: 'repositories', view: 'repositories', label: 'Repositories', icon: 'book' },
+      { id: 'users', view: 'users', label: 'Users', icon: 'users' },
+      { id: 'invitations', view: 'invitations', label: 'Invitations', icon: 'mail' },
+      { id: 'audit', view: 'history', section: 'audit', label: 'Audit', icon: 'history' },
+      {
+        id: 'failures',
+        view: 'history',
+        section: 'failures',
+        label: 'Failures',
+        icon: 'failure',
+      },
     ] as const;
 
-    return leaves.map((leaf) => ({
-      id: leaf.id,
-      label: routeSegmentLabel(leaf.id),
-      href: session.rootInstallationHref(
-        route.account,
-        leaf.view as RootInstallationView,
-        'section' in leaf ? leaf.section : undefined,
-      ),
-      active:
-        route.view === leaf.view &&
-        (leaf.view !== 'history' ||
-          ('section' in leaf && session.currentHistorySection === leaf.section)),
-      dirty:
-        scope !== null && (leaf.id === 'defaults' || leaf.id === 'repositories')
-          ? settingsDraftRegistry.dirtyAt(scope, { section: leaf.id })
-          : undefined,
-    }));
+    return [
+      { kind: 'group', id: 'group-installation', label: target?.account.login ?? route.account },
+      ...leaves.map((leaf): SidebarRow => ({
+        id: `installation-${leaf.id}`,
+        label: leaf.label,
+        icon: leaf.icon,
+        href: session.rootInstallationHref(
+          route.account,
+          leaf.view as RootInstallationView,
+          'section' in leaf ? leaf.section : undefined,
+        ),
+        active:
+          route.view === leaf.view &&
+          (leaf.view !== 'history' ||
+            ('section' in leaf && session.currentHistorySection === leaf.section)),
+        dirty:
+          scope !== null && (leaf.id === 'defaults' || leaf.id === 'repositories')
+            ? settingsDraftRegistry.dirtyAt(scope, { section: leaf.id })
+            : undefined,
+      })),
+    ];
   });
 
-  const rootPages = $derived.by((): SidebarPage[] =>
-    ROOT_ORDER.map((section) => ({
-      id: section,
-      label: routeSegmentLabel(section),
-      icon: rootIcon[section],
-      href: session.rootHrefFor(section),
-      active: !session.isInbox && session.rootValue === section,
-      dirty:
-        section === 'installations'
-          ? dirtyTargetIds.size > 0
-          : section === 'runtime'
-            ? rootDirty
-            : undefined,
-      kids:
-        section === 'queue'
-          ? rootQueueKids
-          : section === 'access'
-            ? rootAccessKids
-            : section === 'history'
-              ? rootHistoryKids
-              : section === 'runtime'
-                ? rootRuntimeKids
-                : section === 'installations'
-                  ? rootInstallationKids
-                  : undefined,
-    })),
-  );
+  const rootEntries = $derived.by((): SidebarEntry[] => [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: 'gauge',
+      href: session.rootHrefFor('overview'),
+      active: !session.isInbox && session.rootValue === 'overview',
+    },
+    {
+      id: 'installations',
+      label: 'Workspaces',
+      icon: 'book',
+      href: session.rootHrefFor('installations'),
+      active: !session.isInbox && session.rootValue === 'installations',
+      dirty: dirtyTargetIds.size > 0,
+    },
+    {
+      id: 'queue',
+      label: 'Queue',
+      icon: 'pending',
+      href: session.rootQueueSectionHref('active'),
+      active: !session.isInbox && session.rootValue === 'queue',
+    },
+    {
+      id: 'schedules',
+      label: 'Schedules',
+      icon: 'calendar',
+      href: session.rootHrefFor('schedules'),
+      active: !session.isInbox && session.rootValue === 'schedules',
+    },
+    {
+      id: 'history-audit',
+      label: 'Audit',
+      icon: 'history',
+      href: session.rootAuditHref(),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'history-audit',
+    },
+    {
+      id: 'history-failures',
+      label: 'Failures',
+      icon: 'failure',
+      href: session.rootFailuresHref(),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'history-failures',
+    },
+    { kind: 'group', id: 'group-access', label: 'Access' },
+    {
+      id: 'access-users',
+      label: 'Users',
+      icon: 'users',
+      href: session.rootAccessHref('users'),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'access-users',
+    },
+    {
+      id: 'access-invitations',
+      label: 'Invitations',
+      icon: 'mail',
+      href: session.rootAccessHref('invitations'),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'access-invitations',
+    },
+    { kind: 'group', id: 'group-system', label: 'System' },
+    {
+      id: 'runtime-service',
+      label: 'Service health',
+      icon: 'server',
+      href: session.rootRuntimeHref('service'),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-service',
+    },
+    {
+      id: 'runtime-database',
+      label: 'Database',
+      icon: 'database',
+      href: session.rootRuntimeHref('database'),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-database',
+    },
+    {
+      id: 'runtime-settings',
+      label: 'Service settings',
+      icon: 'gear',
+      href: session.rootRuntimeHref('settings'),
+      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-settings',
+      dirty: settingsDraftRegistry.dirtyAt(ROOT_SETTINGS_SCOPE, { section: 'runtime' }),
+    },
+    ...rootInstallationRows,
+  ]);
+
+  /** Where a row leads, by its id. The tree is flat, so this is one switch. */
+  function openSidebarRow(row: SidebarRow): void {
+    drawerOpen = false;
+    const [head, tail] = row.id.split('-') as [string, string | undefined];
+
+    if (session.isRootMode) {
+      if (head === 'installation' && tail !== undefined) {
+        const route = session.currentRootRoute;
+        if (route.rootView !== 'installation') return;
+        if (tail === 'audit' || tail === 'failures') session.selectRootInstallationHistory(tail);
+        else session.selectRootInstallation(route.account, tail as RootInstallationView);
+        return;
+      }
+      if (head === 'queue') session.selectRootQueueSection('active');
+      else if (head === 'access') session.selectRootAccessSection(tail as 'users' | 'invitations');
+      else if (head === 'history') session.selectRootHistorySection(tail as 'audit' | 'failures');
+      else if (head === 'runtime') session.selectRootRuntimeSection(tail as RootRuntimeSection);
+      else if (row.id === 'installations') session.selectRootInstallations();
+      else session.selectRootSection(row.id as RootSection);
+      return;
+    }
+
+    if (head === 'sync') session.selectSyncSection(tail as SyncSection);
+    else if (head === 'access') session.selectUserSection(tail as 'users' | 'invitations');
+    else if (head === 'history') session.selectHistorySection(tail as 'audit' | 'failures');
+    else if (row.id === 'queue') session.selectQueueSection('active');
+    else session.selectView(row.id as PanelView);
+  }
 
   const showSidebar = $derived(
     session.viewer !== null && (session.isRootMode || session.selectedTarget !== null),
@@ -899,55 +926,34 @@
 
       {#if showSidebar}
         <Sidebar
-          kicker={session.isRootMode ? 'Root console' : 'Workspace'}
+          kicker={session.isRootMode ? 'Console' : 'Workspace'}
           title={session.isRootMode
             ? 'Operations'
             : (session.selectedTarget?.account.display_name ??
               session.selectedTarget?.account.login ??
               '')}
-          pages={session.isRootMode ? rootPages : workspacePages}
+          entries={session.isRootMode ? rootEntries : workspaceEntries}
           collapsed={session.effectiveSidebarCollapsed}
           onToggleCollapsed={() => session.toggleSidebar()}
-          onSelectPage={(pageRow) => {
-            drawerOpen = false;
-            if (session.isRootMode) {
-              if (pageRow.id === 'access') session.selectRootAccessSection('users');
-              else if (pageRow.id === 'history') session.selectRootHistorySection('audit');
-              else if (pageRow.id === 'installations') session.selectRootInstallations();
-              else session.selectRootSection(pageRow.id as RootSection);
-            } else if (pageRow.id === 'sync') session.selectSyncSection('overview');
-            else if (pageRow.id === 'access') session.selectUserSection('users');
-            else if (pageRow.id === 'history') session.selectHistorySection('audit');
-            else session.selectView(pageRow.id as PanelView);
-          }}
-          onSelectKid={(pageRow, kid) => {
-            drawerOpen = false;
-            if (!session.isRootMode) {
-              if (pageRow.id === 'sync') session.selectSyncSection(kid.id as SyncSection);
-              else if (pageRow.id === 'queue') session.selectQueueSection(kid.id as QueueSection);
-              else if (pageRow.id === 'access')
-                session.selectUserSection(kid.id as 'users' | 'invitations');
-              else if (pageRow.id === 'history')
-                session.selectHistorySection(kid.id as 'audit' | 'failures');
-              return;
-            }
-
-            if (pageRow.id === 'queue') session.selectRootQueueSection(kid.id as QueueSection);
-            else if (pageRow.id === 'access')
-              session.selectRootAccessSection(kid.id as 'users' | 'invitations');
-            else if (pageRow.id === 'history')
-              session.selectRootHistorySection(kid.id as 'audit' | 'failures');
-            else if (pageRow.id === 'runtime')
-              session.selectRootRuntimeSection(kid.id as RootRuntimeSection);
-            else if (pageRow.id === 'installations') {
-              const route = session.currentRootRoute;
-              if (route.rootView !== 'installation') return;
-              if (kid.id === 'audit' || kid.id === 'failures') {
-                session.selectRootInstallationHistory(kid.id);
-              } else {
-                session.selectRootInstallation(route.account, kid.id as RootInstallationView);
-              }
-            }
+          onSelectRow={openSidebarRow}
+          chrome={{
+            targets: session.targets,
+            selected: session.selectedTarget,
+            targetHref: (target: PanelTarget) => session.targetHref(target),
+            onSelectTarget: (targetId: string) => void session.selectTarget(targetId),
+            dirtyTargetIds,
+            rootMode: session.isRootMode,
+            rootEnabled: session.viewer !== null && session.viewer.system_role !== 'none',
+            rootEntryHref: session.rootEntryHref(),
+            onEnterRoot: () => session.enterRoot(),
+            inboxHref: session.inboxHref(),
+            inboxActive: session.isInbox,
+            onSelectInbox: () => session.openInbox(),
+            unreadCount: notificationUnread,
+            viewer: session.viewer,
+            theme: session.theme,
+            onSelectTheme: (t: ThemeDisplay) => session.selectTheme(t),
+            onSignOut: signOut,
           }}
         />
       {/if}

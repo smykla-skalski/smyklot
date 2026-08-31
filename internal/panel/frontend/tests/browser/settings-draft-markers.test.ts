@@ -61,7 +61,7 @@ describe('settings draft destinations [Integration]', () => {
 
       await installationLink.click();
       await page.waitForURL((url) => url.pathname === rootRepositoryHref);
-      const repositoryLeaf = page.locator(`a.tree-kid[href="${rootRepositoryHref}"]`);
+      const repositoryLeaf = page.locator(`a.tree-row[href="${rootRepositoryHref}"]`);
       expect(await repositoryLeaf.innerText()).toContain('Unsaved changes');
 
       const markedRepository = page

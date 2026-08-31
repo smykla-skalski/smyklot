@@ -4,7 +4,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
-  import type { QueueSection } from '#lib/routes.js';
+  import { QUEUE_SECTIONS, routeSegmentLabel, type QueueSection } from '#lib/routes.js';
   import type {
     QueueActionInput,
     QueueActionType,
@@ -31,12 +31,17 @@
     rootRole = '',
     canControl = false,
     section = 'active',
+    sectionHref,
+    onSelectSection,
   }: {
     api: PanelApi;
     targetId?: string;
     rootRole?: string;
     canControl?: boolean;
     section?: QueueSection;
+    /** Where each of the queue's three views lives, so the switch below is links. */
+    sectionHref?: (value: QueueSection) => string;
+    onSelectSection?: (value: QueueSection) => void;
   } = $props();
 
   const emptyFacets: QueuePage['facets'] = {
@@ -401,6 +406,28 @@ without the buttons, rather than buttons that refuse.
   {/if}
 
   <div class="queue-toolbar">
+    {#if onSelectSection !== undefined}
+      <!-- The queue's three views, on the page they belong to rather than in the
+           sidebar: which slice of one page a reader is looking at is a filter, and
+           the tree names pages. -->
+      <nav class="queue-sections" aria-label="Queue views">
+        {#each QUEUE_SECTIONS as value (value)}
+          <a
+            class="queue-section"
+            class:is-active={section === value}
+            href={sectionHref?.(value) ?? ''}
+            aria-current={section === value ? 'page' : undefined}
+            onclick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+              event.preventDefault();
+              onSelectSection(value);
+            }}
+          >
+            <span class="t">{routeSegmentLabel(value)}</span>
+          </a>
+        {/each}
+      </nav>
+    {/if}
     <div class="queue-tools">
       <span aria-live="polite">
         {loading
@@ -479,6 +506,44 @@ without the buttons, rather than buttons that refuse.
     display: flex;
     gap: var(--space-3);
     justify-content: flex-end;
+  }
+
+  /* The views, left-packed on the filter bar's own grammar. */
+  .queue-sections {
+    display: flex;
+    gap: var(--space-1);
+    margin-inline-end: auto;
+  }
+
+  .queue-section {
+    align-items: center;
+    block-size: var(--control-height-compact);
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    display: inline-flex;
+    font-size: var(--font-size-meta);
+    padding-inline: var(--space-3);
+    text-decoration: none;
+  }
+
+  .queue-section .t {
+    text-box: trim-both cap alphabetic;
+  }
+
+  .queue-section:hover {
+    background: var(--interactive-hover-layer);
+    color: var(--text-primary);
+  }
+
+  .queue-section:active {
+    background: var(--interactive-pressed);
+    box-shadow: var(--pressed-inset);
+  }
+
+  .queue-section.is-active {
+    background: var(--brand-action-tint);
+    color: var(--brand-action-text);
+    font-weight: 600;
   }
   .queue-tools {
     align-items: center;

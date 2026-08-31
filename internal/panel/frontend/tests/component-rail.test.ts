@@ -2,7 +2,8 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import Rail, { workspaceHue, workspaceInitials } from '../src/lib/components/Rail.svelte';
+import Rail from '../src/lib/components/Rail.svelte';
+import { workspaceHue, workspaceInitials } from '../src/lib/workspace-mark.js';
 
 class TestResizeObserver {
   observe(): void {}

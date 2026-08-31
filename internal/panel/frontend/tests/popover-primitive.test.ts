@@ -82,10 +82,11 @@ describe('the popover primitive', () => {
 
 describe('the components that float a layer', () => {
   const genericUsers = [
+    'AccountMenu.svelte',
     'FilterMenu.svelte',
     'HistoryDisplayMenu.svelte',
-    'Rail.svelte',
     'RolePicker.svelte',
+    'WorkspaceMenu.svelte',
   ];
 
   it.each(genericUsers)('%s gets its layer from the shared primitive', (file) => {

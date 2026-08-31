@@ -81,7 +81,7 @@ describe('the general Queue live stream [Integration]', () => {
 
   it('renders each Queue view before arming live motion', async () => {
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
-    await viewer.getByRole('link', { name: 'Approvals', exact: true }).click();
+    await viewer.locator('a[href="/root/queue/approvals"]').click();
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/approvals');
     await viewer.getByText('Review organization sync plan').waitFor({ state: 'visible' });
     await viewer.waitForTimeout(200);

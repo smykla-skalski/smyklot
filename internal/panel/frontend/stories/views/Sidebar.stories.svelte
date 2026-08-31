@@ -2,71 +2,140 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
 
-  import Sidebar, { type SidebarPage } from '#lib/components/Sidebar.svelte';
+  import Sidebar, { type SidebarEntry } from '#lib/components/Sidebar.svelte';
 
-  /* The approved mock's workspace map: Sync is the open page, its sections
-     nested under it with the Plan count speaking as a signal. */
-  const WORKSPACE_PAGES: SidebarPage[] = [
-    { id: 'defaults', label: 'Defaults', icon: 'sliders', href: '#/defaults', active: false },
+  /* The approved mock's workspace map: every page one row, grouped under the
+     headings that name them, with the Plan count speaking as a signal and
+     Workspace settings standing apart at the foot. */
+  const WORKSPACE_ENTRIES: SidebarEntry[] = [
     {
       id: 'repositories',
       label: 'Repositories',
-      icon: 'repositories',
+      icon: 'book',
       href: '#/repositories',
       active: false,
     },
+    { id: 'queue', label: 'Queue', icon: 'pending', href: '#/queue', active: false },
+    { id: 'schedules', label: 'Schedules', icon: 'calendar', href: '#/schedules', active: false },
+    { kind: 'group', id: 'group-sync', label: 'Sync' },
+    { id: 'sync-overview', label: 'Sync status', icon: 'refresh', href: '#/sync', active: true },
+    { id: 'sync-labels', label: 'Labels', icon: 'tag', href: '#/sync/labels', active: false },
     {
-      id: 'sync',
-      label: 'Sync',
-      icon: 'refresh',
-      href: '#/sync',
-      active: true,
-      kids: [
-        { id: 'overview', label: 'Overview', href: '#/sync', active: true },
-        { id: 'labels', label: 'Labels', href: '#/sync/labels', active: false },
-        { id: 'settings', label: 'Settings', href: '#/sync/settings', active: false },
-        { id: 'rulesets', label: 'Rulesets', href: '#/sync/rulesets', active: false },
-        { id: 'files', label: 'Files', href: '#/sync/files', active: false },
-        { id: 'plan', label: 'Plan', href: '#/sync/plan', active: false, count: 14, signal: true },
-      ],
+      id: 'sync-settings',
+      label: 'Repository options',
+      icon: 'sliders',
+      href: '#/sync/settings',
+      active: false,
     },
-    { id: 'access', label: 'Access', icon: 'users', href: '#/users', active: false },
-    { id: 'history', label: 'History', icon: 'history', href: '#/history', active: false },
+    {
+      id: 'sync-rulesets',
+      label: 'Rulesets',
+      icon: 'branch',
+      href: '#/sync/rulesets',
+      active: false,
+    },
+    { id: 'sync-files', label: 'Shared files', icon: 'file', href: '#/sync/files', active: false },
+    {
+      id: 'sync-plan',
+      label: 'Plan',
+      icon: 'plan',
+      href: '#/sync/plan',
+      active: false,
+      count: 14,
+      signal: true,
+    },
+    { kind: 'group', id: 'group-access', label: 'Access' },
+    { id: 'access-users', label: 'Users', icon: 'users', href: '#/users', active: false },
+    {
+      id: 'access-invitations',
+      label: 'Invitations',
+      icon: 'mail',
+      href: '#/invitations',
+      active: false,
+    },
+    { kind: 'group', id: 'group-activity', label: 'Activity' },
+    { id: 'history-audit', label: 'Audit', icon: 'history', href: '#/history', active: false },
+    {
+      id: 'history-failures',
+      label: 'Failures',
+      icon: 'failure',
+      href: '#/history/failures',
+      active: false,
+      count: 2,
+    },
+    {
+      id: 'defaults',
+      label: 'Workspace settings',
+      icon: 'gear',
+      href: '#/defaults',
+      active: false,
+      foot: true,
+    },
   ];
 
-  const ROOT_PAGES: SidebarPage[] = [
-    { id: 'overview', label: 'Overview', icon: 'system', href: '#/root', active: true },
+  const ROOT_ENTRIES: SidebarEntry[] = [
+    { id: 'overview', label: 'Overview', icon: 'gauge', href: '#/root', active: true },
     {
       id: 'installations',
-      label: 'Installations',
-      icon: 'repositories',
+      label: 'Workspaces',
+      icon: 'book',
       href: '#/root/installations',
       active: false,
     },
     { id: 'queue', label: 'Queue', icon: 'pending', href: '#/root/queue', active: false },
-    { id: 'access', label: 'Access', icon: 'users', href: '#/root/access', active: false },
-    { id: 'history', label: 'History', icon: 'history', href: '#/root/history', active: false },
-    { id: 'runtime', label: 'Runtime', icon: 'sliders', href: '#/root/runtime', active: false },
+    {
+      id: 'schedules',
+      label: 'Schedules',
+      icon: 'calendar',
+      href: '#/root/schedules',
+      active: false,
+    },
+    { id: 'history-audit', label: 'Audit', icon: 'history', href: '#/root/history', active: false },
+    {
+      id: 'history-failures',
+      label: 'Failures',
+      icon: 'failure',
+      href: '#/root/history/failures',
+      active: false,
+      count: 3,
+      signal: true,
+    },
+    { kind: 'group', id: 'group-access', label: 'Access' },
+    { id: 'access-users', label: 'Users', icon: 'users', href: '#/root/access', active: false },
+    {
+      id: 'access-invitations',
+      label: 'Invitations',
+      icon: 'mail',
+      href: '#/root/access/invitations',
+      active: false,
+    },
+    { kind: 'group', id: 'group-system', label: 'System' },
+    {
+      id: 'runtime-service',
+      label: 'Service health',
+      icon: 'server',
+      href: '#/root/runtime/service',
+      active: false,
+    },
+    {
+      id: 'runtime-settings',
+      label: 'Service settings',
+      icon: 'gear',
+      href: '#/root/runtime/settings',
+      active: false,
+    },
   ];
 
-  const kidActive = (kid: string): SidebarPage[] =>
-    WORKSPACE_PAGES.map((page) =>
-      page.id === 'sync'
-        ? {
-            ...page,
-            kids: page.kids!.map((entry) => ({ ...entry, active: entry.id === kid })),
-          }
-        : page,
+  const rowActive = (id: string): SidebarEntry[] =>
+    WORKSPACE_ENTRIES.map((entry) =>
+      entry.kind === 'group' ? entry : { ...entry, active: entry.id === id },
     );
 
-  const DIRTY_WORKSPACE_PAGES: SidebarPage[] = WORKSPACE_PAGES.map((page) => {
-    if (page.id === 'defaults') return { ...page, dirty: true };
-    if (page.id !== 'sync') return page;
-    return {
-      ...page,
-      kids: page.kids?.map((kid) => (kid.id === 'settings' ? { ...kid, dirty: true } : kid)),
-    };
-  });
+  const DIRTY_WORKSPACE_ENTRIES: SidebarEntry[] = WORKSPACE_ENTRIES.map((entry) =>
+    entry.kind !== 'group' && (entry.id === 'defaults' || entry.id === 'sync-settings')
+      ? { ...entry, dirty: true }
+      : entry,
+  );
 
   const { Story } = defineMeta({
     title: 'Views/Sidebar',
@@ -77,19 +146,17 @@
     args: {
       kicker: 'Workspace',
       title: 'Smykla Skalski',
-      pages: WORKSPACE_PAGES,
+      entries: WORKSPACE_ENTRIES,
       collapsed: false,
       onToggleCollapsed: fn(),
-      onSelectPage: fn(),
-      onSelectKid: fn(),
+      onSelectRow: fn(),
     },
   });
 </script>
 
 <!--
-  The active console's map: its pages, with the open page's sections nested
-  under it and counts on the rows. The selected row's ground is one thumb
-  that travels - between pages, and between a page row and its kids.
+  The active console's map: every page a row of its own, under the headings
+  that group them. The selected row's ground is one thumb that travels.
 -->
 <Story name="Workspace">
   {#snippet template(args)}
@@ -97,39 +164,36 @@
   {/snippet}
 </Story>
 
-<!-- The waiting plan open: the thumb morphs to the kid's 28px, 6px-corner shape. -->
-<Story name="Plan open" args={{ pages: kidActive('plan') }}>
+<!-- The waiting plan open: the count keeps speaking on the selected row. -->
+<Story name="Plan open" args={{ entries: rowActive('sync-plan') }}>
   {#snippet template(args)}
     <div class="stage"><Sidebar {...args} /></div>
   {/snippet}
 </Story>
 
 <!--
-  Dirty is not the Plan's signal: Defaults marks its own row, while Sync keeps
-  the mark on the precise Settings child because that group is visible.
+  Dirty is not the Plan's signal: each row marks its own unsaved configuration,
+  wherever in the tree that page sits.
 -->
-<Story name="Unsaved trail" args={{ pages: DIRTY_WORKSPACE_PAGES }}>
+<Story name="Unsaved trail" args={{ entries: DIRTY_WORKSPACE_ENTRIES }}>
   {#snippet template(args)}
     <div class="stage"><Sidebar {...args} /></div>
   {/snippet}
 </Story>
 
 <!-- The Root console's own map, same component, its palette from the shell. -->
-<Story
-  name="Root console"
-  args={{ kicker: 'Root console', title: 'Operations', pages: ROOT_PAGES }}
->
+<Story name="Root console" args={{ kicker: 'Console', title: 'Operations', entries: ROOT_ENTRIES }}>
   {#snippet template(args)}
     <div class="stage"><Sidebar {...args} /></div>
   {/snippet}
 </Story>
 
 <!--
-  Folded to the 4.5rem strip: rows become centred glyphs with names as
-  tooltips, sections open as a flyout, and hidden child state bubbles to its
-  page glyph. Needs a shell wider than 64rem, like the app's.
+  Folded to the icon strip: rows become centred glyphs with names as tooltips,
+  a group's heading becomes the hairline that kept its boundary, and a signal
+  survives as a dot. Needs a shell wider than 64rem, like the app's.
 -->
-<Story name="Collapsed strip" args={{ collapsed: true, pages: DIRTY_WORKSPACE_PAGES }}>
+<Story name="Collapsed strip" args={{ collapsed: true, entries: DIRTY_WORKSPACE_ENTRIES }}>
   {#snippet template(args)}
     <div class="stage app-shell sidebar-collapsed"><Sidebar {...args} /></div>
   {/snippet}

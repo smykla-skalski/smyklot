@@ -1,5 +1,5 @@
 /**
- * Access is one sidebar section with two addressable leaves.
+ * Access is one sidebar heading over two addressable rows.
  *
  * These used to be tabs inside the page. Moving between them rebuilt the page
  * underneath, showed loading rows again, and could take seconds even after both
@@ -9,8 +9,7 @@
  *
  * The edge presses are deliberate. The sidebar draws the pressed ground across
  * the entire rounded row, so every point inside that ground has to activate the
- * link. A parent row also has a destination: Access returns to Users rather than
- * looking pressable and doing nothing while Invitations is selected.
+ * link.
  */
 import type { Locator, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -42,16 +41,8 @@ beforeAll(async () => {
   await page.locator('.user-management').evaluate((element) => {
     element.setAttribute('data-navigation-probe', 'kept');
   });
-  const plainPointer = await inspectPointerStyles(
-    page,
-    sidebarLink(page, 'Defaults', 'tree-row'),
-    false,
-  );
-  const selectedPointer = await inspectPointerStyles(
-    page,
-    sidebarLink(page, 'Users', 'tree-kid'),
-    true,
-  );
+  const plainPointer = await inspectPointerStyles(page, sidebarLink(page, 'Repositories'), false);
+  const selectedPointer = await inspectPointerStyles(page, sidebarLink(page, 'Users'), true);
   plainHoverVisible = plainPointer.hover;
   plainPressVisible = plainPointer.press;
   selectedHoverVisible = selectedPointer.hover;
@@ -65,14 +56,14 @@ beforeAll(async () => {
   try {
     invitationMs = await pressEdge(
       page,
-      sidebarLink(page, 'Invitations', 'tree-kid'),
+      sidebarLink(page, 'Invitations'),
       `/i/${panel.account}/access/invitations`,
       'Invitations',
       'right',
     );
     usersMs = await pressEdge(
       page,
-      sidebarLink(page, 'Access', 'tree-row'),
+      sidebarLink(page, 'Users'),
       `/i/${panel.account}/access/users`,
       'Users',
       'left',
@@ -84,7 +75,7 @@ beforeAll(async () => {
   keptManagementView =
     (await page.locator('.user-management').getAttribute('data-navigation-probe')) === 'kept';
 
-  await sidebarLink(page, 'History', 'tree-row').click();
+  await sidebarLink(page, 'Audit').click();
   await page.waitForURL((url) => url.pathname === `/i/${panel.account}/history/audit`);
   historyDefaultsNavigated = true;
 
@@ -93,10 +84,12 @@ beforeAll(async () => {
     await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/defaults`, {
       ready: '#root-page-heading',
     });
-    await sidebarLink(rootInstallation, 'Audit', 'tree-kid').click();
-    await rootInstallation.waitForURL(
-      (url) => url.pathname === `/root/installations/${panel.account}/history/audit`,
-    );
+    /* By address, not by word: the console's own Audit row and this installation's
+       carry the same label, one above the other, and only the address tells them
+       apart. */
+    const installationAudit = `/root/installations/${panel.account}/history/audit`;
+    await rootInstallation.locator(`.tree a.tree-row[href="${installationAudit}"]`).click();
+    await rootInstallation.waitForURL((url) => url.pathname === installationAudit);
     rootAuditNavigated = true;
   } finally {
     await rootInstallation.close();
@@ -108,10 +101,10 @@ afterAll(async () => {
   await panel?.close();
 });
 
-function sidebarLink(target: Page, name: string, className: string): Locator {
+function sidebarLink(target: Page, name: string): Locator {
   return target
     .getByRole('navigation', { name: 'Pages' })
-    .locator(`a.${className}`)
+    .locator('a.tree-row')
     .filter({ hasText: name })
     .first();
 }
@@ -163,36 +156,37 @@ async function inspectPointerStyles(
 function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean): Promise<boolean> {
   return link.evaluate(
     (element, state) => {
-      const visual = element.querySelector<HTMLElement>('.row-visual');
       const label = element.querySelector<HTMLElement>('.t');
+      const glyph = element.querySelector<HTMLElement>('.gi');
       const thumb = element.closest('.tree')?.querySelector<HTMLElement>('.nav-thumb');
-      if (visual === null || label === null || thumb === null || thumb === undefined) return false;
+      if (label === null || glyph === null || thumb === null || thumb === undefined) return false;
       const linkStyle = getComputedStyle(element);
-      const visualStyle = getComputedStyle(visual);
+      const labelStyle = getComputedStyle(label);
       const thumbStyle = getComputedStyle(thumb);
+      /* THE INK DIPS, THE BOX STAYS. A row that moved its own box during
+         pointerdown moved its top edge out from under the cursor and the
+         mouseup landed elsewhere - the press painted and no click fired. So the
+         anchor is pinned at every state and the pixel is travelled by its
+         direct children, which is where this now reads it. */
+      const boxStill = linkStyle.translate === 'none' && linkStyle.transform === 'none';
       const groundVisible = state.selected
         ? thumbStyle.display !== 'none' && thumbStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
-        : visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
+        : linkStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
       return (
         (!state.pressed || element.matches(':active')) &&
-        linkStyle.translate === 'none' &&
-        linkStyle.transform === 'none' &&
-        (state.pressed || state.selected || visualStyle.boxShadow.includes('0px 1px 0px')) &&
-        /* The selected thumb is a RAISED surface, not a 1px hard edge. It used to be the
-           edge, and this asked for `0px 1px 0px` and refused anything blurred - which is
-           the thumb the design system replaced: it lifts on hover, throws a shadow, and
-           lands into a crease on the press. What is still checked is the ordering that
-           made the old assertion worth writing: a lifted thumb throws further than a
-           landed one, and a landed one keeps a shadow rather than losing it. */
+        boxStill &&
+        /* A selected row draws no ground of its own at any state: the thumb is
+           its ground, and a second fill over it reads as a well. */
+        (!state.selected || linkStyle.backgroundColor === 'rgba(0, 0, 0, 0)') &&
+        (!state.selected || linkStyle.borderRadius !== '0px') &&
+        /* The selected thumb is a RAISED surface, not a 1px hard edge: it lifts
+           on hover, throws a shadow, and lands into a crease on the press. */
         (!state.selected ||
           (state.pressed
             ? thumbStyle.boxShadow.includes('inset')
             : thumbStyle.boxShadow.split(',').length >= 2)) &&
-        (!state.pressed || visualStyle.backgroundColor !== 'rgba(0, 0, 0, 0)') &&
-        (!state.pressed || visualStyle.borderRadius !== '0px') &&
-        (!state.pressed || visualStyle.boxShadow === 'none') &&
-        (!state.pressed || visualStyle.transitionDuration === '0s') &&
-        (!state.pressed || visualStyle.translate === '0px 1px') &&
+        (!state.pressed || labelStyle.translate === '0px 1px') &&
+        (!state.pressed || getComputedStyle(glyph).translate === '0px 1px') &&
         (!state.pressed || state.selected || thumbStyle.translate === 'none') &&
         /* Read as a NUMBER, because the thumb eases its travel: the row's ink lands
            instantly and the ground under it takes the press duration to arrive, so a
@@ -201,8 +195,7 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
         (!state.pressed ||
           !state.selected ||
           Math.abs(Number.parseFloat(thumbStyle.translate.split(' ')[1] ?? '') - 1) < 0.05) &&
-        groundVisible &&
-        visual.contains(label)
+        groundVisible
       );
     },
     { pressed, selected },
