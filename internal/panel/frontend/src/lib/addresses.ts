@@ -39,9 +39,26 @@ import {
  * The panel keeps its own route vocabulary - `PanelRoute` says what is being looked at,
  * not where it is written down - so this is the one place the two meet.
  */
+/**
+ * The search results page, carrying the query in the address.
+ *
+ * A query lives in the address rather than in the page, so a reader who opens a result
+ * and presses back is given the search they left, and one who sends the link sends the
+ * search rather than an empty field. `resolve` answers the path; the query string is
+ * this function's, because a route id has no room for one.
+ */
+export function searchAddress(query: string): string {
+  const path = resolve('/search');
+  const asked = query.trim();
+
+  return asked === '' ? path : `${path}?q=${encodeURIComponent(asked)}`;
+}
+
 export function panelAddress(route: PanelRoute): string {
   if ('rootView' in route) return rootAddress(route);
-  if ('personal' in route) return resolve('/inbox');
+  if ('personal' in route) {
+    return route.personal === 'search' ? resolve('/search') : resolve('/inbox');
+  }
 
   const account = encodeURIComponent(route.account);
   if (route.view === 'users' || route.view === 'invitations') {
@@ -239,6 +256,8 @@ export function panelRouteAt(
   switch (id) {
     case '/inbox':
       return { personal: 'inbox' };
+    case '/search':
+      return { personal: 'search' };
 
     case '/i/[account]/[view=panelView]':
       return withView(account, params.view);

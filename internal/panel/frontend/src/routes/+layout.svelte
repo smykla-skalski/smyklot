@@ -48,6 +48,7 @@
   import Plate from '#lib/components/Plate.svelte';
   import Rail from '#lib/components/Rail.svelte';
   import FindPalette, { type FindEntry } from '#lib/components/FindPalette.svelte';
+  import { setFinder } from '#lib/finder.svelte.js';
   import Sidebar, {
     isGroup,
     type SidebarEntry,
@@ -79,6 +80,19 @@
   setPanelSession(session);
   const settingsDraftRegistry = new SettingsDraftRegistry();
   setSettingsDraftRegistry(settingsDraftRegistry);
+  /* A getter and not the value: what the finder can reach changes with the console and
+     the workspace, and a context holding one snapshot would hand the search page the
+     answer that was true when the shell mounted. */
+  setFinder(() => ({
+    entries: findEntries,
+    lookup: session.isRootMode ? undefined : findLookup,
+    crossLabel: session.isRootMode ? 'this workspace' : 'the console',
+    scopeName: session.isRootMode
+      ? 'Operations console'
+      : (session.selectedTarget?.account.display_name ??
+        session.selectedTarget?.account.login ??
+        ''),
+  }));
   let attentionNotice = $state<'restored' | 'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
@@ -283,10 +297,10 @@
   // --- Target resolution: watches the route's account param ---
   $effect(() => {
     if (session.viewer === null || session.loading) return;
-    if (session.isRootMode || session.isInbox || session.isInvitation) return;
+    if (session.isRootMode || session.isInvitation) return;
     const account = page.params.account;
     if (account === undefined) {
-      if (!session.isRootMode && session.targets.length > 0 && session.selectedId === null) {
+      if (session.targets.length > 0 && session.selectedId === null) {
         const last = session.prefs.get('last_installation');
         const login = prefText(last);
         const target =
@@ -294,7 +308,11 @@
           session.targets[0];
         if (target !== undefined) {
           session.selectedId = target.id;
-          void session.openTarget(target, true);
+          /* A PERSONAL PAGE STILL HAS A WORKSPACE BEHIND IT, but is not one: the inbox
+             and the search page carry no account, and opening one would take a reader
+             straight back off the page they asked for. So the workspace is selected -
+             the chrome names it and the search reaches its pages - and nothing moves. */
+          if (!session.isPersonal) void session.openTarget(target, true);
         }
       }
       return;

@@ -194,6 +194,17 @@ export class PanelSession {
     return page.route.id === '/inbox' || (page.route.id === null && at('/inbox'));
   }
 
+  /**
+   * A page that belongs to the reader rather than to a workspace or the console.
+   *
+   * Distinct from `isInbox`, which answers about one page. What the shell needs to know
+   * in most places is the wider fact: these addresses carry no account, so nothing may
+   * take a reader off one to resolve a workspace out of the path.
+   */
+  get isPersonal(): boolean {
+    return this.isInbox || page.route.id === '/search' || (page.route.id === null && at('/search'));
+  }
+
   get isInvitation(): boolean {
     return (
       page.route.id === '/invite/[token=invitationToken]' ||
@@ -271,7 +282,7 @@ export class PanelSession {
     // it, so Return would otherwise take them somewhere they had not been. `page.error`
     // covers every load failure rather than the one shape this used to test for.
     if (page.error !== null) return;
-    if (this.isInbox || this.isInvitation) return;
+    if (this.isPersonal || this.isInvitation) return;
     const route = this.parsedRoute;
     if (route === null || 'personal' in route) return;
     // Each side records only its own page, so entering one never overwrites where the

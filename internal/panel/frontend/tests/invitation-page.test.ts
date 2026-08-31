@@ -36,8 +36,11 @@ describe('the invitation page', () => {
     expect(rootLayout.indexOf('{:else if session.isInvitation}')).toBeLessThan(
       rootLayout.indexOf('{:else if session.signedOut}'),
     );
+    // The guard that keeps target resolution off this page. It no longer names the
+    // inbox: every personal address is covered further down, and what has to hold here
+    // is that an invitation never resolves a workspace out of the path.
     expect(rootLayout).toMatch(
-      /if \(session\.isRootMode \|\| session\.isInbox \|\| session\.isInvitation\) return;\s*const account = page\.params\.account/u,
+      /if \(session\.isRootMode \|\| session\.isInvitation\) return;\s*const account = page\.params\.account/u,
     );
   });
 

@@ -39,7 +39,7 @@ export const DIRECT_PANEL_VIEWS = ['defaults', 'repositories', 'sync', 'history'
  * carrying it along, because an address that says nothing about the console
  * cannot be reloaded back into one.
  */
-export const PERSONAL_VIEWS = ['inbox'] as const;
+export const PERSONAL_VIEWS = ['inbox', 'search'] as const;
 
 /**
  * The views the Root console renders for one installation, which is not every

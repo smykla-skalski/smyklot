@@ -15,6 +15,16 @@
     cross?: string;
   }
 
+  /**
+   * The shortest query worth answering.
+   *
+   * One letter matches most of the panel: every page, every workspace and whatever the
+   * service returns for it, which is a list nobody reads and a request nobody wanted.
+   * Two is where a query starts naming something. Exported because the palette and the
+   * results page are one search and must agree on where it begins.
+   */
+  export const SEARCH_MINIMUM = 2;
+
   const RECENTS_KEY = 'smyklot-panel-recent-searches';
   const RECENTS_KEPT = 5;
   /** Rows shown before the palette stops listing and says how many are left. */
@@ -79,6 +89,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
+  import { searchAddress } from '../addresses.ts';
+
   import Icon from './Icon.svelte';
 
   let {
@@ -109,12 +121,18 @@
   let looking = $state(false);
   let asked = 0;
 
+  /* Under the minimum there is no query yet: the field is being typed into, not asked
+     with. `asking` is what everything else reads, so the rows, the count and the
+     lookup all begin at the same character. */
+  const asking = $derived(query.trim().length >= SEARCH_MINIMUM);
   const terms = $derived(
-    query
-      .trim()
-      .toLowerCase()
-      .split(/\s+/u)
-      .filter((term) => term !== ''),
+    !asking
+      ? []
+      : query
+          .trim()
+          .toLowerCase()
+          .split(/\s+/u)
+          .filter((term) => term !== ''),
   );
 
   /* Scope first, then the words: a result that leaves the console the reader is in
@@ -168,7 +186,7 @@
      replace a newer one. */
   $effect(() => {
     const text = query.trim();
-    if (lookup === undefined || text === '') {
+    if (lookup === undefined || !asking) {
       untrack(() => {
         lookedUp = [];
         looking = false;
@@ -283,7 +301,11 @@ and when it is offered, it is offered under the shield, named.
     </div>
     <div class="find-menu" id="find-menu" role="listbox" aria-label="Results">
       {#if terms.length === 0}
-        {#if recents.length === 0}
+        {#if query.trim() !== ''}
+          <!-- One letter is not a question: it matches most of the panel, so saying so
+               is better than answering it with everything. -->
+          <p class="find-note">Keep typing - a search starts at {SEARCH_MINIMUM} letters</p>
+        {:else if recents.length === 0}
           <p class="find-note">Type to search - pages, repositories, people</p>
         {:else}
           <div class="find-group" role="group" aria-labelledby="find-g-recent">
@@ -367,7 +389,15 @@ and when it is offered, it is offered under the shield, named.
           </div>
         {/each}
         {#if hits.length > shown.length}
-          <p class="find-note">{hits.length - shown.length} more match what you typed</p>
+          <!-- The count used to be the end of it: a reader was told twelve of their
+               matches were on screen and left with no way to the rest.
+
+               No number on the link. This palette counts what it is scoped to and the
+               page counts both consoles, so a count here is a promise the page does not
+               keep - it said twenty and showed thirty-one. -->
+          <a class="find-note find-all" href={searchAddress(query)} onclick={() => (open = false)}>
+            See all results for “{query.trim()}”
+          </a>
         {/if}
       {/if}
       {#if crossLabel !== undefined && !allScopes && terms.length > 0}
@@ -637,6 +667,18 @@ and when it is offered, it is offered under the shield, named.
     font-size: var(--font-size-meta);
     margin: 0;
     padding: var(--space-4);
+  }
+
+  /* The way to the rest, which is a link and reads like one. */
+  .find-all {
+    color: var(--brand-action-text);
+    display: block;
+    text-decoration: none;
+  }
+
+  .find-all:hover {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
   }
 
   .find-foot {
