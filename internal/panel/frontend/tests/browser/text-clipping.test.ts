@@ -30,6 +30,49 @@ interface Clip {
   lost: number;
 }
 
+interface Weld {
+  route: string;
+  where: string;
+  text: string;
+}
+
+/**
+ * Nothing that welds a separator to the word beside it.
+ *
+ * Svelte drops the whitespace at a block's edges - the space before `{#if}` when an
+ * expression stands in front of it, the space after `{#if …}`, and the space before
+ * `{/if}` - and every one of those is a sentence that reads `clock· next` or `” ·asked`
+ * in the browser and reads correctly in the source. Four of them shipped before one was
+ * noticed by eye, which is what this is for: the separator is spaced on both sides
+ * everywhere in the product, so an unspaced one is the artefact itself.
+ */
+async function weldedOn(page: Page): Promise<Omit<Weld, 'route'>[]> {
+  return page.evaluate(() => {
+    const found: { where: string; text: string }[] = [];
+    const welded = /\S·|·\S/u;
+
+    for (const element of document.querySelectorAll<HTMLElement>('*')) {
+      const text = element.textContent ?? '';
+      if (!text.includes('·')) continue;
+      // The innermost element holding it: every ancestor holds it too.
+      if ([...element.children].some((child) => (child.textContent ?? '').includes('·'))) continue;
+      if (!element.checkVisibility()) continue;
+      const merged = text.replaceAll(/\s+/gu, ' ');
+      if (!welded.test(merged)) continue;
+
+      const classes = [...element.classList]
+        .filter((one) => !one.startsWith('svelte-'))
+        .slice(0, 2);
+      found.push({
+        where: `${element.tagName.toLowerCase()}${classes.map((one) => `.${one}`).join('')}`,
+        text: merged.slice(0, 60),
+      });
+    }
+
+    return found;
+  });
+}
+
 async function clippedOn(page: Page): Promise<{ examined: number; found: Omit<Clip, 'route'>[] }> {
   return page.evaluate(() => {
     const label = (element: Element): string => {
@@ -127,11 +170,13 @@ async function clippedOn(page: Page): Promise<{ examined: number; found: Omit<Cl
 
 let panel: Panel;
 let clipped: Clip[] = [];
+let welded: Weld[] = [];
 let examined: Record<string, number> = {};
 
 beforeAll(async () => {
   panel = await startPanel();
   clipped = [];
+  welded = [];
   examined = {};
 
   const readings = await inLanes(PANEL_ROUTES, async (route) => {
@@ -139,7 +184,7 @@ beforeAll(async () => {
     try {
       await visit(page, addressOf(panel, route));
 
-      return { route, ...(await clippedOn(page)) };
+      return { route, ...(await clippedOn(page)), welds: await weldedOn(page) };
     } finally {
       await page.close();
     }
@@ -148,6 +193,7 @@ beforeAll(async () => {
   for (const reading of readings) {
     examined[reading.route] = reading.examined;
     clipped.push(...reading.found.map((one) => ({ ...one, route: reading.route })));
+    welded.push(...reading.welds.map((one) => ({ ...one, route: reading.route })));
   }
 }, 300_000);
 
@@ -155,7 +201,7 @@ afterAll(async () => {
   await panel?.close();
 });
 
-describe('the text that trims its box [Integration]', () => {
+describe('the text every route draws [Integration]', () => {
   it('found trimmed lines to measure', () => {
     /* A route that failed to load reports nothing clipped, which is what a route with nothing
        wrong reports too. Counting what was looked at is what tells them apart.
@@ -180,6 +226,15 @@ describe('the text that trims its box [Integration]', () => {
     expect(
       worst.map((one) => `${one.route} ${one.where}`),
       `these clip the ink they trimmed their box away from:\n${summary}`,
+    ).toEqual([]);
+  });
+
+  it('never welds a separator to the word beside it', () => {
+    const summary = welded.map((one) => `  ${one.route}  ${one.where}  "${one.text}"`).join('\n');
+
+    expect(
+      welded.map((one) => `${one.route} ${one.where}`),
+      `these read as one word where the source reads as two:\n${summary}`,
     ).toEqual([]);
   });
 });

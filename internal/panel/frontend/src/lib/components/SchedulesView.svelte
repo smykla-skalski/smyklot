@@ -350,9 +350,11 @@ in their own settings.
                 </span>
                 <!-- The reason as it was written, in quotation marks: it is somebody's
                      sentence and the page is asking an operator to weigh it. -->
+                <!-- The space stands outside the block, never at the end of one:
+                     Svelte trims a block's trailing whitespace, and the reason arrived
+                     welded to the word after it. -->
                 <span class="object-sum"
-                  >{#if request.reason.trim() !== ''}“{request.reason}” ·
-                  {/if}asked by
+                  >{#if request.reason.trim() !== ''}“{request.reason}” ·{/if} asked by
                   {asker(request)},
                   <RelativeTime value={request.created_at} {nowMs} /></span
                 >
