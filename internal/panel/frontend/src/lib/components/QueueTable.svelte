@@ -16,6 +16,8 @@
     clock = Date.now,
     groupTitle,
     doneTitle,
+    reviewHref,
+    onReview,
     onOpen,
     onAction,
   }: {
@@ -36,6 +38,16 @@
      * and a card headed plainly "Done" there would claim to be the whole record.
      */
     doneTitle?: string;
+    /**
+     * Where a decision is actually made, for the rows that are waiting on one.
+     *
+     * A row that needs somebody carries the way to answer it rather than making them
+     * find the page it lives on. Absent where there is no such page - the console
+     * manages somebody else's sync and has no plan address of its own - and the row
+     * falls back to opening its own detail.
+     */
+    reviewHref?: (item: QueueItem) => string | null;
+    onReview?: (item: QueueItem, event: MouseEvent) => void;
     onOpen: (item: QueueItem) => void;
     onAction: (item: QueueItem, action: QueueActionType) => void;
   } = $props();
@@ -278,6 +290,13 @@
       );
   }
 
+  /** Where this row's decision is made, or nothing where the reader cannot make it. */
+  function review(item: QueueItem): string | null {
+    if (item.state !== 'awaiting_approval') return null;
+
+    return reviewHref?.(item) ?? null;
+  }
+
   function selectMenuAction(item: QueueItem, action: string): void {
     if ((action as QueueMenuAction) === 'details') {
       onOpen(item);
@@ -304,7 +323,7 @@ from the wall clock cannot be photographed.
 
 {#if grouped.length === 0}
   <div class="card">
-    <div class="queue-empty">
+    <div class="state-panel">
       <strong>Nothing in this view</strong>
       <span>Queued work appears here as soon as the service accepts it.</span>
     </div>
@@ -365,6 +384,15 @@ from the wall clock cannot be photographed.
                 </span>
               </span>
               <span class="object-side">
+                {#if review(item) !== null}
+                  <Button
+                    tone="signal"
+                    href={review(item) ?? ''}
+                    onclick={(event) => onReview?.(item, event)}
+                  >
+                    Review and apply
+                  </Button>
+                {/if}
                 {#if item.actions?.includes('run_now')}
                   <Button tone="signal" onclick={() => onAction(item, 'run_now')}>Run now</Button>
                 {/if}
@@ -403,17 +431,6 @@ from the wall clock cannot be photographed.
 <style>
   .queue-group + .queue-group {
     margin-block-start: var(--rhythm-card-gap);
-  }
-
-  .queue-empty {
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-6);
-    text-align: center;
-  }
-
-  .queue-empty span {
-    color: var(--text-muted);
   }
 
   .row-chevron {

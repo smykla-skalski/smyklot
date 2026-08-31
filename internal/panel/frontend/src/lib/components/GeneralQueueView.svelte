@@ -34,6 +34,8 @@
     rootRole = '',
     canControl = false,
     section = 'active',
+    planHref,
+    onOpenPlan,
     onSelectSection,
   }: {
     api: PanelApi;
@@ -41,6 +43,15 @@
     rootRole?: string;
     canControl?: boolean;
     section?: QueueSection;
+    /**
+     * Where this workspace's sync plan is read and applied.
+     *
+     * A plan waiting for a decision carries the way to make it. Absent in the console,
+     * which manages somebody else's sync through its own endpoints and has no plan
+     * address to send anybody to.
+     */
+    planHref?: string;
+    onOpenPlan?: (event: MouseEvent) => void;
     /**
      * Which of the queue's three views to show. Each is still its own address - the
      * segments change it - so a link straight to the decisions keeps working.
@@ -558,6 +569,8 @@ without the buttons, rather than buttons that refuse.
           ? SECTION_LABELS[section]
           : undefined}
         doneTitle={section === 'active' ? 'Done in the last day' : undefined}
+        reviewHref={(item) => (item.kind === 'sync_apply' ? (planHref ?? null) : null)}
+        onReview={(_item, event) => onOpenPlan?.(event)}
         onOpen={openDetail}
         onAction={openAction}
       />

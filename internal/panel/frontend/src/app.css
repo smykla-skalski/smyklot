@@ -1826,6 +1826,39 @@ select:focus-visible {
   color: var(--text-muted);
 }
 
+/* WHAT A PLACE SAYS WHEN IT HOLDS NOTHING, and the one shape it says it in.
+   A list with nothing in it, a search that matched nothing, a pane a reader has no
+   access to: all of them are a sentence in a panel rather than a page redrawn. Its
+   strong opener names the state and the rest of the line says what to do about it. */
+.state-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-ctl);
+  color: var(--text-secondary);
+  display: grid;
+  font-size: var(--font-size-meta);
+  gap: var(--space-3);
+  justify-items: start;
+  line-height: var(--leading-meta);
+  padding: var(--space-4);
+}
+
+.state-panel strong {
+  color: var(--text-primary);
+}
+
+.state-panel.is-error {
+  border-color: color-mix(in srgb, var(--danger) 35%, transparent);
+}
+
+.state-panel.is-error strong {
+  color: var(--danger);
+}
+
+.state-panel.is-warn {
+  border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
 /* A time is one word however many words it holds. "in about 4 minutes" broken
    across two lines reads as two facts, and the break lands wherever the column
    happens to end - so the element that carries a time never wraps inside itself. */

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { useQueryClient } from '@tanstack/svelte-query';
+  import { plainClick } from '#lib/follow.js';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
   import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
   import Button from './Button.svelte';
@@ -153,6 +154,12 @@ history is routed with its section. That is what makes an address like
             onSelectSection={(value) => session.selectQueueSection(value)}
             canControl={session.selectedTarget.effective_role === 'admin' ||
               session.selectedTarget.effective_role === 'owner'}
+            planHref={session.syncSectionHref('plan')}
+            onOpenPlan={(event) => {
+              if (!plainClick(event)) return;
+              event.preventDefault();
+              session.selectSyncSection('plan');
+            }}
           />
         {/key}
       {:catch error}
