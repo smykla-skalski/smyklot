@@ -136,7 +136,7 @@ func (s *Server) finishSignIn(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = s.catalog.SyncCatalog(r.Context())
 	if err != nil {
-		s.writePageError(w, r, http.StatusBadGateway, "catalog_unavailable", "GitHub installations could not be synchronized")
+		s.writePageError(w, r, http.StatusBadGateway, "catalog_unavailable", "the workspaces this account can reach could not be read from GitHub")
 		return
 	}
 	s.wakePendingCIGates()

@@ -233,7 +233,7 @@ func (s *Server) putRootInstallationJobPolicy(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if !kind.InstallationConfigurable() || !validQueuePolicyInput(kind, input) {
-		s.writeError(w, http.StatusBadRequest, "invalid_policy", "installation schedule policy is invalid")
+		s.writeError(w, http.StatusBadRequest, "invalid_policy", "the workspace schedule policy is invalid")
 		return
 	}
 	policy, err := s.store.SaveQueuePolicy(r.Context(), policyChange(

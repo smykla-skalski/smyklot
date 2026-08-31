@@ -174,7 +174,7 @@ func (s *Server) addInstallationUser(
 	if !canManageTargetUser(
 		manager.Actor, manager.ActorUser, manager.Access, subject, current, *input.Role,
 	) {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this installation role")
+		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot grant this workspace role")
 		return
 	}
 	override, err := s.store.SetTargetAccess(r.Context(), storage.TargetAccessChange{
@@ -235,7 +235,7 @@ func (s *Server) updateInstallationUser(
 	}
 	if !input.Role.Present || input.Suspended == nil || input.ExpectedRevision == nil ||
 		(input.Role.Value != nil && !validTargetInstallationRole(*input.Role.Value)) {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "installation user policy is incomplete")
+		s.writeError(w, http.StatusBadRequest, "invalid_request", "the workspace user policy is incomplete")
 		return
 	}
 	reason, ok := validAccessReason(w, input.SuspensionReason)
@@ -265,7 +265,7 @@ func (s *Server) updateInstallationUser(
 	if !canManageTargetUser(
 		manager.Actor, manager.ActorUser, manager.Access, subject, current, desired,
 	) {
-		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change this user's installation access")
+		s.writeError(w, http.StatusForbidden, "forbidden", "you cannot change this user's access to the workspace")
 		return
 	}
 	override, err := s.store.SetTargetAccess(r.Context(), storage.TargetAccessChange{
@@ -300,7 +300,7 @@ func (s *Server) requireTargetUserManager(
 		return storage.Account{}, storage.PanelUser{}, storage.TargetAccess{}, false
 	}
 	if !access.Capabilities.ManageTargetUsers {
-		s.writeError(w, http.StatusForbidden, "forbidden", "installation user management requires Admin access")
+		s.writeError(w, http.StatusForbidden, "forbidden", "managing a workspace's users requires Admin access")
 		return storage.Account{}, storage.PanelUser{}, storage.TargetAccess{}, false
 	}
 	user, err := s.store.GetPanelUser(r.Context(), account.ID)

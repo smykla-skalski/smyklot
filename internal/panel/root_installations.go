@@ -115,20 +115,20 @@ func (s *Server) requireRootTarget(
 		return context, true
 	}
 	if !target.Available {
-		s.writeError(w, http.StatusConflict, "installation_unavailable", "the installation is unavailable")
+		s.writeError(w, http.StatusConflict, "installation_unavailable", "the workspace is unavailable")
 		return rootTargetContext{}, false
 	}
 	elevation, err := s.store.GetElevation(r.Context(), sessionHash, target.ID, s.now().UTC())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.writeError(w, http.StatusForbidden, "elevation_required", "start elevated access for this installation")
+			s.writeError(w, http.StatusForbidden, "elevation_required", "start an operator visit to this workspace")
 		} else {
 			s.writeElevationError(w, err)
 		}
 		return rootTargetContext{}, false
 	}
 	if !target.Ownership.FreshAt(s.now().UTC()) {
-		s.writeError(w, http.StatusConflict, "owner_snapshot_unavailable", "fresh Owners are required for elevated writes")
+		s.writeError(w, http.StatusConflict, "owner_snapshot_unavailable", "fresh Owners are required before an operator visit")
 		return rootTargetContext{}, false
 	}
 	context.Elevation = &elevation
@@ -177,7 +177,7 @@ func (s *Server) writeRootWriteError(w http.ResponseWriter, err error) {
 		return
 	}
 	if errors.Is(err, storage.ErrConflict) {
-		s.writeError(w, http.StatusConflict, "owner_snapshot_unavailable", "fresh Owners are required for elevated writes")
+		s.writeError(w, http.StatusConflict, "owner_snapshot_unavailable", "fresh Owners are required before an operator visit")
 		return
 	}
 	s.writeStorageError(w, err)

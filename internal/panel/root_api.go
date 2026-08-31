@@ -230,7 +230,7 @@ func (s *Server) postRootElevation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.Acknowledged == nil || !*input.Acknowledged {
-		s.writeError(w, http.StatusBadRequest, "acknowledgment_required", "confirm the elevated access warning")
+		s.writeError(w, http.StatusBadRequest, "acknowledgment_required", "confirm the operator visit warning")
 		return
 	}
 	reason, ok := validAccessReason(w, input.Reason)
@@ -395,11 +395,11 @@ func parseNotificationPage(r *http.Request) (storage.NotificationPageRequest, er
 func (s *Server) writeElevationError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
-		s.writeError(w, http.StatusNotFound, "not_found", "elevated installation access was not found")
+		s.writeError(w, http.StatusNotFound, "not_found", "no operator visit to this workspace was found")
 	case errors.Is(err, storage.ErrConflict):
-		s.writeError(w, http.StatusConflict, "conflict", "elevated access is unavailable for this installation")
+		s.writeError(w, http.StatusConflict, "conflict", "this workspace cannot be visited right now")
 	case errors.Is(err, storage.ErrExpired), errors.Is(err, storage.ErrRevoked):
-		s.writeError(w, http.StatusGone, "elevation_expired", "elevated installation access has ended")
+		s.writeError(w, http.StatusGone, "elevation_expired", "the operator visit has ended")
 	default:
 		s.writeInternal(w, err)
 	}

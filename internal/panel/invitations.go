@@ -164,7 +164,7 @@ func alreadyHasAccessMessage(targetID *string) string {
 		return "this account is already in Smyklot; change its system role instead of inviting it"
 	}
 
-	return "this user already has access to this installation; change their role instead"
+	return "this user already has access to this workspace; change their role instead"
 }
 
 func (s *Server) reviewInvitation(w http.ResponseWriter, r *http.Request) {
@@ -291,7 +291,7 @@ func (s *Server) requireInvitationManager(
 	}
 	targetID := r.PathValue("target")
 	if invitation.TargetID == nil || *invitation.TargetID != targetID {
-		s.writeError(w, http.StatusNotFound, "not_found", "installation invitation not found")
+		s.writeError(w, http.StatusNotFound, "not_found", "workspace invitation not found")
 		return storage.Invitation{}, storage.Account{}, false
 	}
 	actor, actorUser, access, ok := s.requireTargetUserManager(w, r)

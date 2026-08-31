@@ -332,7 +332,7 @@ func TestRootInstallationSettingsRestoreDelegatesRootErrors(t *testing.T) {
 	}{
 		{
 			"conflict", storage.ErrConflict, http.StatusConflict,
-			"owner_snapshot_unavailable", "fresh Owners are required for elevated writes",
+			"owner_snapshot_unavailable", "fresh Owners are required before an operator visit",
 		},
 		{
 			"not found", storage.ErrNotFound, http.StatusNotFound,
@@ -340,11 +340,11 @@ func TestRootInstallationSettingsRestoreDelegatesRootErrors(t *testing.T) {
 		},
 		{
 			"expired elevation", storage.ErrExpired, http.StatusGone,
-			"elevation_expired", "elevated installation access has ended",
+			"elevation_expired", "the operator visit has ended",
 		},
 		{
 			"revoked elevation", storage.ErrRevoked, http.StatusGone,
-			"elevation_expired", "elevated installation access has ended",
+			"elevation_expired", "the operator visit has ended",
 		},
 	}
 	for _, test := range tests {

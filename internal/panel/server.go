@@ -628,14 +628,14 @@ func (s *Server) requireTarget(
 	access, err := s.store.ResolveTargetAccess(r.Context(), account.ID, targetID, s.now().UTC())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.writeError(w, http.StatusNotFound, "not_found", "installation target not found")
+			s.writeError(w, http.StatusNotFound, "not_found", "workspace not found")
 		} else {
 			s.writeInternal(w, err)
 		}
 		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 	if !access.Capabilities.Read || write && !access.Capabilities.Write {
-		s.writeError(w, http.StatusNotFound, "not_found", "installation target not found")
+		s.writeError(w, http.StatusNotFound, "not_found", "workspace not found")
 		return storage.Account{}, storage.Target{}, storage.TargetAccess{}, false
 	}
 	target, err := s.store.GetTarget(r.Context(), targetID)

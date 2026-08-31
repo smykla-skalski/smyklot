@@ -179,7 +179,7 @@ func (s *Server) requireRootInstallationInvitationManager(
 		return storage.Invitation{}, installationUserManager{}, false
 	}
 	if invitation.TargetID == nil || *invitation.TargetID != manager.TargetID {
-		s.writeError(w, http.StatusNotFound, "not_found", "installation invitation not found")
+		s.writeError(w, http.StatusNotFound, "not_found", "workspace invitation not found")
 		return storage.Invitation{}, installationUserManager{}, false
 	}
 	if invitation.Role == nil || !s.canInviteToTarget(
