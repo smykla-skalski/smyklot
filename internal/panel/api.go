@@ -312,23 +312,8 @@ func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
 		return
 	}
-	scope := storage.AuditScope(r.URL.Query().Get("scope"))
-	if scope == "" {
-		scope = storage.AuditAll
-	}
-	if scope != storage.AuditAll && scope != storage.AuditAccount &&
-		scope != storage.AuditRepositories {
-		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit scope")
-		return
-	}
-	change := storage.AuditChange(r.URL.Query().Get("change"))
-	if change == "" {
-		change = storage.AuditChangeAll
-	}
-	if change != storage.AuditChangeAll && change != storage.AuditChangeRepository &&
-		change != storage.AuditChangeAccount &&
-		change != storage.AuditChangeSync {
-		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
+	scope, change, ok := s.auditFilters(w, r)
+	if !ok {
 		return
 	}
 	result, err := s.store.ListAudit(r.Context(), targetID, storage.AuditPageRequest{
@@ -341,6 +326,38 @@ func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request
 		return
 	}
 	writeJSON(w, http.StatusOK, auditPageDTO(result))
+}
+
+// auditFilters reads the two narrowings a workspace's audit takes, or writes the
+// refusal itself. Shared by the page and the export, so the file a reader takes
+// away is filtered exactly the way the page they took it from was.
+func (s *Server) auditFilters(
+	w http.ResponseWriter,
+	r *http.Request,
+) (storage.AuditScope, storage.AuditChange, bool) {
+	scope := storage.AuditScope(r.URL.Query().Get("scope"))
+	if scope == "" {
+		scope = storage.AuditAll
+	}
+	if scope != storage.AuditAll && scope != storage.AuditAccount &&
+		scope != storage.AuditRepositories {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit scope")
+
+		return "", "", false
+	}
+	change := storage.AuditChange(r.URL.Query().Get("change"))
+	if change == "" {
+		change = storage.AuditChangeAll
+	}
+	if change != storage.AuditChangeAll && change != storage.AuditChangeRepository &&
+		change != storage.AuditChangeAccount &&
+		change != storage.AuditChangeSync {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid audit change")
+
+		return "", "", false
+	}
+
+	return scope, change, true
 }
 
 func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {

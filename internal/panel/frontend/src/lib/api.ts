@@ -166,6 +166,7 @@ export interface PanelApi {
   fetchRootAudit(request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   /** The same filtered audit as a file, said as an address the browser can download. */
   rootAuditExportHref(request: AuditHistoryRequest): string;
+  auditExportHref(targetId: string, request: AuditHistoryRequest): string;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
   saveRootInstallationSettings(
@@ -1146,6 +1147,17 @@ export function createPanelApi(
       await jsonRequest(
         `/api/v1/targets/${pathSegment(targetId)}/sync/plans/${pathSegment(planId)}`,
         { method: 'DELETE' },
+      );
+    },
+
+    /** One workspace's filtered audit as a file, on the same terms as the console's. */
+    auditExportHref(targetId: string, history: AuditHistoryRequest): string {
+      return panelUrl(
+        base,
+        withHistoryQuery(`/api/v1/targets/${pathSegment(targetId)}/audit.csv`, history, {
+          scope: history.scope ?? 'all',
+          change: history.change ?? 'all',
+        }),
       );
     },
 

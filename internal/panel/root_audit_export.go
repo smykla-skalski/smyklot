@@ -57,16 +57,8 @@ func (s *Server) getRootAuditExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stamp := s.now().UTC().Format("2006-01-02")
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set(
-		"Content-Disposition",
-		fmt.Sprintf("attachment; filename=%q", "smyklot-audit-"+stamp+".csv"),
-	)
-	w.WriteHeader(http.StatusOK)
-
-	out := csv.NewWriter(w)
-	if err := out.Write(auditExportHeader); err != nil {
+	out, started := s.startExport(w, auditExportHeader)
+	if !started {
 		return
 	}
 
@@ -94,6 +86,105 @@ func (s *Server) getRootAuditExport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// workspaceAuditExportHeader drops the two columns a workspace's own audit has no
+// answer for: every row is that workspace's, and an operator's visit is a receipt
+// in the owner's inbox rather than a column here.
+var workspaceAuditExportHeader = []string{
+	"when",
+	"actor",
+	"repository",
+	"action",
+	"summary",
+}
+
+// getAuditExport writes one workspace's filtered audit as CSV.
+//
+// The same act as the console's, scoped and filtered the way that workspace's own
+// page is: a workspace owner asked to account for a change should not have to be
+// an operator to do it.
+func (s *Server) getAuditExport(w http.ResponseWriter, r *http.Request) {
+	target, ok := s.historyTarget(w, r)
+	if !ok {
+		return
+	}
+	page, err := parseHistoryPage(r.URL.Query(), auditHistoryOrders...)
+	if err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
+		return
+	}
+	scope, change, ok := s.auditFilters(w, r)
+	if !ok {
+		return
+	}
+	page.Offset = 0
+	page.Limit = exportPage
+
+	ask := func(offset int) (storage.AuditPage, error) {
+		page.Offset = offset
+
+		return s.store.ListAudit(r.Context(), target.ID, storage.AuditPageRequest{
+			HistoryPageRequest: page, Scope: scope, Change: change,
+		})
+	}
+	result, err := ask(0)
+	if err != nil {
+		s.writeInternal(w, err)
+		return
+	}
+
+	out, ok := s.startExport(w, workspaceAuditExportHeader)
+	if !ok {
+		return
+	}
+	for {
+		for _, entry := range result.Items {
+			row := []string{
+				entry.CreatedAt.UTC().Format(time.RFC3339),
+				entry.Actor.Login,
+				derefString(entry.RepositoryFullName),
+				entry.Action,
+				entry.Summary,
+			}
+			if err := out.Write(row); err != nil {
+				return
+			}
+		}
+		out.Flush()
+		if out.Error() != nil || result.NextOffset == 0 {
+			return
+		}
+		if result, err = ask(result.NextOffset); err != nil {
+			return
+		}
+	}
+}
+
+// startExport writes the headers a download needs and the CSV's own first line.
+//
+// After the first byte there is no status left to send, so every caller reads its
+// first page before calling this.
+func (s *Server) startExport(w http.ResponseWriter, header []string) (*csv.Writer, bool) {
+	stamp := s.now().UTC().Format("2006-01-02")
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set(
+		"Content-Disposition",
+		fmt.Sprintf("attachment; filename=%q", "smyklot-audit-"+stamp+".csv"),
+	)
+	w.WriteHeader(http.StatusOK)
+
+	out := csv.NewWriter(w)
+
+	return out, out.Write(header) == nil
+}
+
+func derefString(value *string) string {
+	if value == nil {
+		return ""
+	}
+
+	return *value
 }
 
 func auditExportRow(event storage.AppAuditEvent) []string {

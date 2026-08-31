@@ -288,6 +288,7 @@ func (s *Server) Handler() http.Handler {
 		"POST "+base+"/api/v1/targets/{target}/sync/plans/{plan}/approval",
 		s.postSyncPlanApproval,
 	)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit.csv", s.getAuditExport)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue", s.getTargetQueue)

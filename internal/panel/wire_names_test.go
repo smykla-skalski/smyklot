@@ -217,8 +217,9 @@ func panelWireNameProbePaths() []string {
 // stream, and the audit export, whose field names are its CSV header and are
 // checked where that header is.
 var notJSONRoutes = map[string]bool{
-	"/api/v1/events":                 true,
-	"/api/v1/root/history/audit.csv": true,
+	"/api/v1/events":                     true,
+	"/api/v1/root/history/audit.csv":     true,
+	"/api/v1/targets/{target}/audit.csv": true,
 }
 
 // The wildcards the readable routes use that the authorization matrix has no

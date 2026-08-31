@@ -832,7 +832,13 @@ where the record is.
       section="Activity"
       title={historyType === 'audit' ? 'Audit' : 'Failures'}
       {description}
-    />
+    >
+      {#snippet actions()}
+        {#if historyType === 'audit' && exportHref !== null}
+          <Button href={exportHref} download>Export</Button>
+        {/if}
+      {/snippet}
+    </PageHeader>
   {/if}
 
   <div class="filter-bar">

@@ -229,6 +229,8 @@ history is routed with its section. That is what makes an address like
             section={session.currentHistorySection}
             fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
               session.api.fetchAudit(session.selectedTarget!.id, request)}
+            exportAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
+              session.api.auditExportHref(session.selectedTarget!.id, request)}
             fetchFailures={(request: Parameters<typeof session.api.fetchFailures>[1]) =>
               session.api.fetchFailures(session.selectedTarget!.id, request)}
             fetchSettingsCheckpoint={session.api.fetchInstallationSettingsCheckpoint}

@@ -1958,6 +1958,7 @@ async function handle(
       /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
+    const auditExport = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit\.csv$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
     const rootTargetAudit = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/audit$/);
     const rootTargetFailures = path.match(
@@ -2480,6 +2481,27 @@ async function handle(
       respond(res, 200, resetMockConfigMigration(state, target, stored));
       return;
     }
+    if (auditExport && method === 'GET') {
+      const target = findTarget(state, auditExport.groups?.target ?? '');
+      const csv = [
+        'when,actor,repository,action,summary',
+        ...target.audit.map((entry) =>
+          [
+            entry.created_at,
+            entry.actor.login,
+            entry.repository_full_name ?? '',
+            entry.action,
+            `"${entry.summary.replaceAll('"', '""')}"`,
+          ].join(','),
+        ),
+      ].join('\n');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', 'attachment; filename="smyklot-audit-dev.csv"');
+      res.end(`${csv}\n`);
+      return;
+    }
+
     if (installationAudit && method === 'GET') {
       const target = findTarget(state, installationAudit.groups?.target ?? '');
       const scope = parsed.searchParams.get('scope') ?? 'all';
