@@ -37,10 +37,9 @@ const PLACES = [
   /* The general queue is an object list now: its narrow filters live behind the
      tools menu rather than in a heading, and a row wears a pill it states in words
      rather than a chip off a column's vocabulary. What is left here is the tables
-     that still filter a column of their own. */
+     that still filter a column of their own - which is one, now that people and
+     invitations are lists of sentences and their filters have gone the same way. */
   { route: 'root/queue/recent', column: 'Outcome', heading: 1 },
-  { route: 'root/access/users', column: 'Status', heading: null },
-  { route: 'root/access/invitations', column: 'Status', heading: null },
 ] as const;
 
 let panel: Panel;
@@ -131,8 +130,9 @@ afterAll(async () => {
 describe('a filter menu and its column [Integration]', () => {
   it('found values drawn in both places', () => {
     // Nothing to compare reports no disagreement, which is what agreement reports
-    // too. Counting the pairs tells them apart.
-    expect(found.map((one) => `${one.route} ${one.label}`).length).toBeGreaterThan(4);
+    // too. Counting the pairs tells them apart - and the count is the one column
+    // still filtered from its own heading, which draws three outcomes.
+    expect(found.map((one) => `${one.route} ${one.label}`).length).toBeGreaterThan(2);
   });
 
   it('draws every filtered value the way its column draws it', () => {

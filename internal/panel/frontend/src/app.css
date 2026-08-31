@@ -3102,6 +3102,23 @@ button.object-row {
   overflow-wrap: anywhere;
 }
 
+/* AN ATOM IS ONE WORD, however many words it holds: "in about 4 minutes", "84.7 MB",
+   "public :8080". The same law a `<time>` already has, for the runs that are not
+   times - and it had none at all here, so the class the mock states was carried into
+   the app as markup with nothing behind it.
+
+   Trimmed, like every other voice. A nested run keeps its own leading, so an untrimmed
+   one reports a box 3px taller than the line it sits in - which is what put two rows
+   of Service health 2.5px off their own centre. */
+.nowrap-atom,
+:is(.setting-fact, .object-sum, .setting-why) code {
+  text-box: trim-both cap alphabetic;
+}
+
+.nowrap-atom {
+  white-space: nowrap;
+}
+
 /* A path, a repository, a file - the object a sentence is about, set in the mono voice
    INSIDE the line rather than parked in a column of its own. Excluded from the name
    row's badge bleed above, because it is part of the name rather than a badge beside

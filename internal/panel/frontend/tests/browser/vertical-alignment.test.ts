@@ -429,11 +429,36 @@ async function rowsOn(page: Page): Promise<{
         [...control.querySelectorAll('*')].some((inner) => painted(inner, getComputedStyle(inner)))
       )
         continue;
-      /* A grid surface with several children is a card with a layout, not a label painted on a
-         control. Its rows were already measured by the centre sweep above. Buttons and pills use
-         inline-flex, so this keeps testing every actual control while avoiding a second, invalid
-         question about the card's outer padding. */
-      if (style.display === 'grid' && control.children.length > 1) continue;
+      /* A surface with several children is a card with a layout, not a label painted on a
+         control. Its rows were already measured by the centre sweep above, and asking the
+         card's outer padding to centre the words inside it is the invalid question.
+
+         Said of every block-level surface rather than only of a grid one: a card that lays
+         its head and its rows out in normal flow is the same shape as one that uses a grid,
+         and only the grid was named - so Service health, whose cards paint nothing inside
+         them to disqualify themselves with, came back 2.5px off its own padding. Buttons,
+         pills and chips are inline-level, so every actual control is still measured. */
+      if (
+        control.children.length > 1 &&
+        ['block', 'flow-root', 'grid', 'flex'].includes(style.display)
+      )
+        continue;
+      /* And a surface holding ONE layout is a card too - Service health's first card is a
+         list of rows and nothing else. A layout is a block-level child that itself holds
+         elements; a button's label is block-level and holds only its words, so every real
+         control is still asked to centre them. */
+      if (
+        [...control.children].some((kid) => {
+          const kidStyle = getComputedStyle(kid);
+
+          return (
+            ['block', 'flow-root', 'grid', 'flex', 'table', 'list-item'].includes(
+              kidStyle.display,
+            ) && kid.children.length > 0
+          );
+        })
+      )
+        continue;
 
       const rect = control.getBoundingClientRect();
       if (rect.height === 0 || rect.width === 0) continue;

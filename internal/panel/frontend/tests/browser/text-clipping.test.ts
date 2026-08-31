@@ -157,12 +157,17 @@ afterAll(async () => {
 
 describe('the text that trims its box [Integration]', () => {
   it('found trimmed lines to measure', () => {
-    // A route that failed to load reports nothing clipped, which is what a route with nothing
-    // wrong reports too. Counting what was looked at is what tells them apart.
+    /* A route that failed to load reports nothing clipped, which is what a route with nothing
+       wrong reports too. Counting what was looked at is what tells them apart.
+
+       The number is smaller than it was, and the reason is the point of the whole port: a
+       truncating line is a column's answer to running out of width, and the panel has one
+       table left. A row wraps instead - which is why the sweep that matters for those is
+       `table-columns`, filling every one of them with a value no row can hold. */
     const total = Object.values(examined).reduce((sum, count) => sum + count, 0);
 
     expect(total, `trimmed lines examined per route: ${JSON.stringify(examined)}`).toBeGreaterThan(
-      40,
+      10,
     );
   });
 
