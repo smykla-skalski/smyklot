@@ -3,6 +3,7 @@
   import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
 
+  import { failureAct } from '../failures';
   import { sentenceCase } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type { TimeDisplay } from '../preferences';
@@ -895,7 +896,7 @@ where the record is.
                     <span class="object-name-row">
                       <!-- What was tried, and what it was tried on. -->
                       <span class="object-name">
-                        {sentenceCase(failure.stage)}
+                        {failureAct(failure.stage)}
                         <code class="file-path">{repositoryName(failure.repository_full_name)}</code
                         >
                       </span>

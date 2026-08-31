@@ -208,7 +208,7 @@ what would otherwise be four visits.
         {/if}
       </h2>
       {#if checked !== null}
-        <span class="card-meta"
+        <span class="card-note"
           >{attention === 0 ? 'Everything' : 'Everything else'} is running on its own · checked
           <strong><RelativeTime value={checked} {nowMs} /></strong></span
         >
@@ -216,12 +216,12 @@ what would otherwise be four visits.
     </div>
 
     {#if attention === 0}
-      <p class="state-panel">
+      <div class="state-panel">
         <span
           ><strong>Quiet.</strong> No plan is waiting and no repository file is broken. Work lands here
           as it arrives</span
         >
-      </p>
+      </div>
     {:else}
       <div class="object-list">
         {#if planWaiting}
@@ -273,7 +273,7 @@ what would otherwise be four visits.
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
     {#if inFlight.length === 0}
-      <p class="state-panel"><span>Nothing is in flight</span></p>
+      <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
       <div class="object-list">
         {#each inFlight as item (item.id)}
@@ -315,7 +315,7 @@ what would otherwise be four visits.
       <a class="btn btn-quiet" href={auditHref}><span class="button-label">Open the audit</span></a>
     </div>
     {#if lately.length === 0}
-      <p class="state-panel"><span>Nothing has happened yet</span></p>
+      <div class="state-panel"><span>Nothing has happened yet</span></div>
     {:else}
       <div class="object-list">
         {#each lately as entry (entry.id)}
@@ -346,11 +346,13 @@ what would otherwise be four visits.
   <!-- The workspace's pulse: three facts, each a link to the page that owns it. -->
   <Card>
     <div class="fact-row">
+      <!-- A fact, not a place: what the repositories page would say about itself is
+           already this sentence, so the other two carry the strip's links. -->
       <span class="fact-bit">
         <span class="fact-dot"></span>
-        <a href={repositoriesHref}
+        <span
           >{#if counts === null}Reading repositories{:else}Commands on in {counts.enabled} of {counts.all}
-            {counts.all === 1 ? 'repository' : 'repositories'}{/if}</a
+            {counts.all === 1 ? 'repository' : 'repositories'}{/if}</span
         >
       </span>
       <span class="fact-bit">
@@ -370,98 +372,3 @@ what would otherwise be four visits.
     </div>
   </Card>
 </div>
-
-<style>
-  /* The verdict is a heading and a note on one line, and the note is the
-     quieter half - the count is what a reader came for. */
-  .verdict-head {
-    align-items: baseline;
-  }
-
-  .card-title .is-drift {
-    color: var(--diff-chg-ink);
-  }
-
-  .state-panel {
-    background: var(--surface-inset);
-    border-radius: var(--r-ctl);
-    color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-    padding: var(--space-3);
-  }
-
-  .object-sum.is-refused {
-    color: var(--danger);
-  }
-
-  /* Each fact is a dot and a link, and the dot is the only colour on the strip:
-     three coloured sentences would be three alarms. */
-  .fact-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-5);
-  }
-
-  .fact-bit {
-    align-items: center;
-    color: var(--text-secondary);
-    display: flex;
-    font-size: var(--font-size-meta);
-    gap: var(--space-2);
-    line-height: var(--leading-meta);
-  }
-
-  .fact-bit a {
-    color: inherit;
-    text-decoration: none;
-  }
-
-  .fact-bit a:hover {
-    color: var(--text-primary);
-    text-decoration: underline;
-  }
-
-  .fact-dot {
-    background: var(--success);
-    block-size: 6px;
-    border-radius: 50%;
-    flex: none;
-    inline-size: 6px;
-  }
-
-  .fact-dot.is-warn {
-    background: var(--warning);
-  }
-
-  .fact-dot.is-bad {
-    background: var(--danger);
-  }
-
-  @media (max-width: 47.9375rem) {
-    /* One fact per line: three on a phone wrap into a block nobody reads as a
-       list of three separate places to go. */
-    .fact-row {
-      display: grid;
-      gap: var(--space-2);
-    }
-
-    /* The verdict and its note stop sharing a line. The head is one auto-flow
-       row, so at 375px the count wrapped to four lines and the note was drawn
-       across them - two sentences in one place, neither readable. */
-    .verdict-head {
-      align-items: start;
-      grid-auto-flow: row;
-      grid-template-columns: minmax(0, 1fr);
-      row-gap: var(--space-2);
-    }
-
-    /* The whole row is the target on a phone, so the chevron that stacked under
-       the sentence pointed at nothing and cost a line. */
-    .object-list :global(.object-row > .object-side:empty),
-    .object-list :global(a.object-row > .object-side) {
-      display: none;
-    }
-  }
-</style>

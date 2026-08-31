@@ -11,6 +11,7 @@
     ScheduleProfileInput,
     ScheduleRequest,
   } from '#lib/types.js';
+  import { workloadDescription, workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -70,57 +71,6 @@
     requests.filter((request) => request.state === 'pending').length,
   );
 
-  const workloadCopy: Record<QueueWorkload, { title: string; description: string }> = {
-    webhook_delivery: {
-      title: 'Webhook delivery',
-      description: 'Accept and deliver GitHub events',
-    },
-    pending_ci: {
-      title: 'Pending CI checks',
-      description: 'Recheck merge requests waiting on CI',
-    },
-    pending_ci_gate: {
-      title: 'Deferred CI gate',
-      description: 'Wake deferred checks after their quiet period',
-    },
-    catalog_refresh: {
-      title: 'Catalog refresh',
-      description: 'Discover installations and repositories',
-    },
-    reaction_scan: {
-      title: 'Reaction discovery',
-      description: 'Find pull request approval reactions',
-    },
-    config_migration: {
-      title: 'Configuration migration',
-      description: 'Move repositories to the current configuration',
-    },
-    sync_scan: {
-      title: 'Organization sync scan',
-      description: 'Compute drift and prepare an approval plan',
-    },
-    sync_apply: {
-      title: 'Sync plan execution',
-      description: 'Apply a previously approved organization plan',
-    },
-    path_refresh: {
-      title: 'Path indexing',
-      description: 'Refresh repository configuration paths',
-    },
-    delivery_cleanup: {
-      title: 'Delivery retention',
-      description: 'Remove expired delivery history',
-    },
-    auth_cleanup: {
-      title: 'Authentication cleanup',
-      description: 'Remove expired sessions and credentials',
-    },
-    schedule_change: {
-      title: 'Schedule change',
-      description: 'Apply an approved recurring policy request',
-    },
-  };
-
   function errorMessage(cause: unknown): string {
     if (cause === null || cause === undefined) return '';
     return cause instanceof Error ? cause.message : String(cause);
@@ -157,14 +107,6 @@
 
   function profileName(id: string): string {
     return profiles.find((profile) => profile.id === id)?.name ?? id;
-  }
-
-  function workloadTitle(kind: QueueWorkload): string {
-    return workloadCopy[kind].title;
-  }
-
-  function workloadDescription(kind: QueueWorkload): string {
-    return workloadCopy[kind].description;
   }
 
   function policyStatus(kind: QueueWorkload): QueuePolicyStatus | undefined {

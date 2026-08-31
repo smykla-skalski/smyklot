@@ -1,6 +1,5 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import { fn } from 'storybook/test';
 
   import RootOverview from '#lib/components/RootOverview.svelte';
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
@@ -37,40 +36,40 @@
 
   const QUEUE_SEED: Array<[readonly unknown[], QueuePage]> = [[ACTIVE_KEY, queuePage(active)]];
 
-  const base = {
-    api: stubApi(),
-    installationsHref: '#/root/installations',
-    elevationsHref: '#/root/access',
-    failuresHref: '#/root/history',
-    onOpenInstallations: fn(),
-    onOpenElevations: fn(),
-    onOpenFailures: fn(),
-    inboxHref: '#/inbox',
-    onOpenInbox: fn(),
-    queueHref: '#/root/queue',
-    onOpenQueue: fn(),
-  };
-
   const { Story } = defineMeta({
     title: 'Views/RootOverview',
     component: RootOverview,
-    args: base,
+    args: { api: stubApi() },
   });
 </script>
 
 <!--
-  The Root console's dashboard. Pool pressure is deliberately not part of the
-  database's health: `in_use === max` is a busy instant, not a fault, and a light that
-  flapped on one would teach an operator to ignore it. `wait_count` is the durable
-  evidence instead - it only grows.
+  Where the console opens. The verdict counts asks rather than reporting health,
+  and the service and its database are one quiet line at the foot - the page an
+  operator keeps open answers "is anything waiting for me" before it answers
+  anything about the plumbing.
 -->
-<Story name="Healthy">
+<Story name="Quiet">
+  {#snippet template(args)}
+    <Seeded
+      seed={[
+        [KEY, { ...OVERVIEW, active_elevations: 0, unread_security_events: 0 }],
+        ...QUEUE_SEED,
+      ]}
+    >
+      <RootOverview {...args} />
+    </Seeded>
+  {/snippet}
+</Story>
+
+<!-- Elevations and unread notifications, worded as asks rather than as tiles. -->
+<Story name="Needs attention">
   {#snippet template(args)}
     <Seeded seed={[[KEY, OVERVIEW], ...QUEUE_SEED]}><RootOverview {...args} /></Seeded>
   {/snippet}
 </Story>
 
-<!-- The database answering slowly, and callers having waited for a connection. -->
+<!-- The database answering slowly: the foot goes amber and says why. -->
 <Story name="Database degraded">
   {#snippet template(args)}
     <Seeded
@@ -95,20 +94,6 @@
             },
           },
         ],
-        ...QUEUE_SEED,
-      ]}
-    >
-      <RootOverview {...args} />
-    </Seeded>
-  {/snippet}
-</Story>
-
-<!-- Ownership that needs an operator: a Members approval is blocking synchronisation. -->
-<Story name="Ownership blocked">
-  {#snippet template(args)}
-    <Seeded
-      seed={[
-        [KEY, { ...OVERVIEW, ownership: { fresh: 1, stale: 0, permission_pending: 2, error: 1 } }],
         ...QUEUE_SEED,
       ]}
     >

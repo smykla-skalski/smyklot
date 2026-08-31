@@ -2683,6 +2683,33 @@ thead th .icon-button:active:not(:disabled) {
   text-align: end;
 }
 
+/* A VERDICT CARD'S HEAD IS A COLUMN. The count is the sentence a reader came for
+   and the note under it qualifies that sentence - set beside it and pushed to the
+   far edge, it reads as a second, unrelated fact, and at 375px the count wrapped
+   to four lines with the note drawn across them. */
+.card-head.verdict-head {
+  align-items: start;
+  grid-auto-flow: row;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--row-copy-gap);
+}
+
+.verdict-head .card-note {
+  margin-inline-start: 0;
+  text-align: start;
+}
+
+/* The changed half of a verdict - "2 items" - in the ink that means a difference. */
+.card-title .is-drift {
+  color: var(--diff-chg-ink);
+}
+
+/* A refusal's sentence stays in the quiet voice: the mark beside it already says
+   something is wrong, and a red sentence under a red mark says it twice. */
+.object-sum.is-refused {
+  color: var(--text-secondary);
+}
+
 .object-list {
   display: grid;
 }
@@ -3606,6 +3633,75 @@ button.object-row {
   font-weight: 600;
 }
 
+/* ---------- The pulse strip ----------
+
+   What a page says about the plumbing, at its foot: one dot and one sentence per
+   fact. The dot is the only colour on the strip - three coloured sentences would
+   be three alarms, and the point of the strip is that it is quiet until it is not. */
+.fact-row {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: var(--font-size-meta);
+  gap: var(--space-2) var(--space-5);
+}
+
+.fact-bit {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-2);
+}
+
+/* A fact is a hit target the moment it carries a link, so the line it sits on is
+   at least a target tall whether or not this one does - a strip whose rows change
+   height depending on which facts happen to link somewhere is a strip that moves. */
+.fact-bit,
+.fact-bit a {
+  min-block-size: var(--field-target-min);
+}
+
+.fact-bit a {
+  align-items: center;
+  color: inherit;
+  display: inline-flex;
+}
+
+.fact-bit a:hover {
+  color: var(--text-primary);
+}
+
+.fact-dot {
+  background: var(--success);
+  block-size: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  inline-size: 8px;
+}
+
+.fact-dot.is-warn {
+  background: var(--warning);
+}
+
+.fact-dot.is-bad {
+  background: var(--danger);
+}
+
+@media (max-width: 47.9375rem) {
+  /* One fact per line: three of them wrapped on a phone read as a block of prose
+     rather than as three separate places to go. */
+  .fact-row {
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .fact-bit,
+  .fact-bit a {
+    min-block-size: var(--touch-target);
+  }
+}
+
 /* A card head's quiet right-side fact, the group-tally voice. */
 .card-meta {
   color: var(--text-muted);
@@ -3845,6 +3941,12 @@ button.object-row {
 
   /* A row that offers nothing takes no line for it. */
   .object-side:empty {
+    display: none;
+  }
+
+  /* Nor does a chevron, once the whole row is the target: stacked, it points at
+     nothing from under the sentence and costs a line to do it. */
+  a.object-row > .object-side {
     display: none;
   }
 
