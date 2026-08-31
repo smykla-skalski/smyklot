@@ -2747,6 +2747,36 @@ button.object-row {
   line-height: var(--leading-flat);
 }
 
+/* A path, a repository, a file - the object a sentence is about, set in the mono voice
+   INSIDE the line rather than parked in a column of its own. Excluded from the name
+   row's badge bleed above, because it is part of the name rather than a badge beside
+   it. */
+.file-path {
+  font-family: var(--mono);
+  font-size: var(--font-size-compact);
+  font-weight: 500;
+  text-box: trim-both cap alphabetic;
+}
+
+/* THE DAY IS A HEADING, NOT A COLUMN. That is how a reader asks for it - "what
+   happened today" - and it is what lets the row spend its width on the sentence. */
+.day-head {
+  color: var(--text-muted);
+  font-size: var(--font-size-micro);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  line-height: var(--leading-tight);
+  margin-block: var(--space-5) var(--space-2);
+  text-box: trim-both cap alphabetic;
+  text-transform: uppercase;
+}
+
+/* The first day opens against the card's own frame, which the card's padding already
+   set. */
+.card > .day-head:first-child {
+  margin-block-start: 0;
+}
+
 /* Actions wrap as WHOLE controls when the row runs out of room - words never wrap
    inside a button. */
 .object-side {

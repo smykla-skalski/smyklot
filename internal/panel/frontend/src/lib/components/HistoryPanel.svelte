@@ -1,23 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { createInfiniteQuery, type InfiniteData } from '@tanstack/svelte-query';
-  import {
-    columnFilteringFeature,
-    createColumnHelper,
-    createTable,
-    filterFn_includesString,
-    rowSortingFeature,
-    tableFeatures,
-  } from '@tanstack/svelte-table';
-  import type { ColumnFiltersState, SortingState, Updater } from '@tanstack/svelte-table';
-  import { createVirtualizer } from '@tanstack/svelte-virtual';
-  import { MediaQuery } from 'svelte/reactivity';
-  import { get } from 'svelte/store';
+  import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
 
   import { formatDateTime, formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
-  import type { VirtualRenderRow } from '../virtual-rows.js';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
   import type {
@@ -36,20 +23,18 @@
     Page,
     RootRuntimeSettings,
   } from '../types';
-  import DataTable from './DataTable.svelte';
   import Skeleton from './Skeleton.svelte';
-  import SortIndicator from './SortIndicator.svelte';
   import Button from './Button.svelte';
-  import Avatar from './Avatar.svelte';
-  import FilterMenu from './FilterMenu.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
-  import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import PageHeader from './PageHeader.svelte';
+  import Pill from './Pill.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
+  import TableToolsMenu, { type ToolsFilter, type ToolsSort } from './TableToolsMenu.svelte';
   import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -90,44 +75,6 @@
     },
   ] satisfies readonly FilterSection[];
 
-  const FAILURE_KIND_FILTERS = [
-    {
-      options: [
-        { value: 'all', label: 'All failures' },
-        { value: 'permanent', label: 'Permanent' },
-        { value: 'retryable', label: 'Retryable' },
-      ],
-    },
-  ] satisfies readonly FilterSection[];
-  const HISTORY_TABLE_FEATURES = tableFeatures({
-    columnFilteringFeature,
-    filterFns: { includesString: filterFn_includesString },
-    rowSortingFeature,
-  });
-  const auditColumn = createColumnHelper<typeof HISTORY_TABLE_FEATURES, AuditEntry>();
-  const AUDIT_COLUMNS = auditColumn.columns([
-    auditColumn.accessor((entry) => entry.actor.display_name, {
-      id: 'actor',
-      enableColumnFilter: false,
-    }),
-    auditColumn.accessor((entry) => entry.repository_full_name ?? 'Account', { id: 'target' }),
-    auditColumn.accessor('summary', { id: 'change' }),
-    auditColumn.accessor('created_at', { id: 'when', enableColumnFilter: false }),
-  ]);
-  const failureColumn = createColumnHelper<typeof HISTORY_TABLE_FEATURES, DeliveryFailure>();
-  const FAILURE_COLUMNS = failureColumn.columns([
-    failureColumn.accessor((failure) => (failure.retryable ? 'retryable' : 'permanent'), {
-      id: 'status',
-    }),
-    failureColumn.accessor('repository_full_name', { id: 'repository', enableColumnFilter: false }),
-    failureColumn.accessor('reason', {
-      id: 'failure',
-      enableColumnFilter: false,
-      enableSorting: false,
-    }),
-    failureColumn.accessor('occurred_at', { id: 'when', enableColumnFilter: false }),
-  ]);
-
   const {
     targetId,
     fetchAudit,
@@ -148,6 +95,7 @@
     restoreRootSettingsCheckpoint,
     onSettingsRestored,
     onRootSettingsRestored,
+    repositoryHref,
   }: {
     targetId: string;
     fetchAudit: (request: AuditHistoryRequest) => Promise<Page<AuditEntry>>;
@@ -178,6 +126,14 @@
     ) => Promise<RootRuntimeSettings>;
     onSettingsRestored?: (result: InstallationSettingsBatchResponse, targetId: string) => void;
     onRootSettingsRestored?: (result: RootRuntimeSettings) => void;
+    /**
+     * Where a failure's repository lives, when the caller has an address for it.
+     *
+     * A failure row's one act is to open what it failed on, and only the installation
+     * views can say where that is - the console reads failures across every workspace,
+     * so a workspace-scoped address there would be a lie.
+     */
+    repositoryHref?: (fullName: string) => string;
   } = $props();
 
   // Table state deliberately captures the preferences at mount; remote
@@ -236,8 +192,6 @@
   let now = $state(Date.now());
   useInterval(30_000, { callback: () => (now = Date.now()) });
   let historyResults = $state<HTMLDivElement>();
-  let auditScroll = $state<HTMLTableSectionElement>();
-  let failureScroll = $state<HTMLTableSectionElement>();
   let settingsCheckpointId = $state<string | null>(null);
   let settingsCheckpointTargetId = $state<string | null>(null);
   let settingsCheckpointRoot = $state(false);
@@ -252,14 +206,16 @@
           : auditScope !== 'all' || auditChange !== 'all'
         : failureKind !== 'all'),
   );
+  /* A failure page stopped saying "webhook deliveries": the reader came to fix
+     something, not to meet the transport it arrived on. */
   const description = $derived(
     context === 'root'
       ? historyType === 'audit'
-        ? 'All application and installation events'
-        : 'Webhook delivery failures across every installation'
+        ? 'Every change made through Smyklot, in every workspace'
+        : 'Work that stopped across every workspace, with the cause and what can help'
       : historyType === 'audit'
-        ? 'Account and repository configuration changes'
-        : 'Webhook deliveries that need investigation',
+        ? 'Every change made through Smyklot: who, what, and where'
+        : 'Work that stopped, with the cause and the action that can help',
   );
   const auditQuery = createInfiniteQuery(() => ({
     queryKey: [
@@ -317,86 +273,49 @@
   );
   const auditRows = $derived(auditPage?.items ?? []);
   const failureRows = $derived(failurePage?.items ?? []);
-  const auditTable = createTable({
-    features: HISTORY_TABLE_FEATURES,
-    columns: AUDIT_COLUMNS,
-    get data() {
-      return auditRows;
-    },
-    getRowId: (entry) => entry.id,
-    manualFiltering: true,
-    manualSorting: true,
-    state: {
-      get sorting() {
-        return historySortingState('audit');
-      },
-      get columnFilters() {
-        return [
-          { id: 'target', value: auditScope },
-          { id: 'change', value: context === 'root' ? auditCategories : auditChange },
-        ];
-      },
-    },
-    onSortingChange: (next) => selectHistorySorting('audit', next),
-    onColumnFiltersChange: selectAuditColumnFilters,
+  /**
+   * The audit, grouped by the day it happened on.
+   *
+   * A day is a heading rather than a column, because that is how a reader asks for it:
+   * "what happened today", never "sort by date descending". The grouping follows the
+   * order the server returned, so it holds whichever way the list is sorted - only a
+   * newest-first list produces the runs a reader expects, which is the default.
+   */
+  const auditDays = $derived.by(() => {
+    const days: Array<{ key: string; day: string; head: string; entries: AuditEntry[] }> = [];
+    for (const entry of auditRows) {
+      const day = entry.created_at.slice(0, 10);
+      const last = days.at(-1);
+      if (last !== undefined && last.day === day) last.entries.push(entry);
+      else {
+        /* The RUN is the key, not the day: sorted by actor rather than by time the
+           same day opens more than one run, and two groups keyed alike is a crash. */
+        days.push({
+          key: `${day}#${days.length}`,
+          day,
+          head: dayHead(entry.created_at),
+          entries: [entry],
+        });
+      }
+    }
+    return days;
   });
-  const failureTable = createTable({
-    features: HISTORY_TABLE_FEATURES,
-    columns: FAILURE_COLUMNS,
-    get data() {
-      return failureRows;
-    },
-    getRowId: (failure) => failure.id,
-    manualFiltering: true,
-    manualSorting: true,
-    state: {
-      get sorting() {
-        return historySortingState('failures');
-      },
-      get columnFilters() {
-        return [{ id: 'status', value: failureKind }];
-      },
-    },
-    onSortingChange: (next) => selectHistorySorting('failures', next),
-    onColumnFiltersChange: selectFailureColumnFilters,
-  });
-  const auditTableRows = $derived(auditTable.getRowModel().rows);
-  const failureTableRows = $derived(failureTable.getRowModel().rows);
-  const desktopTableLayout = new MediaQuery('min-width: 64.001rem', true);
-  const auditVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
-    count: 0,
-    estimateSize: () => 48,
-    getScrollElement: () => auditScroll ?? null,
-    overscan: 6,
-  });
-  const failureVirtualizer = createVirtualizer<HTMLTableSectionElement, HTMLTableRowElement>({
-    count: 0,
-    estimateSize: () => 48,
-    getScrollElement: () => failureScroll ?? null,
-    overscan: 6,
-  });
-  const auditRenderRows: VirtualRenderRow[] = $derived.by(() =>
-    desktopTableLayout.current
-      ? $auditVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
-      : auditTableRows.map((row, index) => ({
-          index,
-          key: row.id,
-          size: 0,
-          start: 0,
-          virtual: false as const,
-        })),
-  );
-  const failureRenderRows: VirtualRenderRow[] = $derived.by(() =>
-    desktopTableLayout.current
-      ? $failureVirtualizer.getVirtualItems().map((row) => ({ ...row, virtual: true as const }))
-      : failureTableRows.map((row, index) => ({
-          index,
-          key: row.id,
-          size: 0,
-          start: 0,
-          virtual: false as const,
-        })),
-  );
+
+  /** "Today", "Yesterday", and then the day named in full. */
+  function dayHead(value: string): string {
+    const midnight = (at: Date): number =>
+      new Date(at.getFullYear(), at.getMonth(), at.getDate()).getTime();
+    const day = new Date(value);
+    const days = Math.round((midnight(new Date(now)) - midnight(day)) / 86_400_000);
+    if (days === 0) return 'Today';
+    if (days === 1) return 'Yesterday';
+    return day.toLocaleDateString(undefined, {
+      weekday: days < 7 ? 'long' : undefined,
+      day: 'numeric',
+      month: 'short',
+      year: day.getFullYear() === new Date(now).getFullYear() ? undefined : 'numeric',
+    });
+  }
 
   const debouncedSearch = useDebounce((value: string) => (appliedQuery = value), 250);
   $effect(() => {
@@ -435,43 +354,6 @@
     }
   });
 
-  $effect(() => {
-    const rows = auditTableRows;
-    const desktop = desktopTableLayout.current;
-    untrack(() => {
-      get(auditVirtualizer).setOptions({
-        count: desktop ? rows.length : 0,
-        getScrollElement: () => auditScroll ?? null,
-        getItemKey: (index) => rows[index]?.id ?? index,
-      });
-    });
-  });
-
-  $effect(() => {
-    const rows = failureTableRows;
-    const desktop = desktopTableLayout.current;
-    untrack(() => {
-      get(failureVirtualizer).setOptions({
-        count: desktop ? rows.length : 0,
-        getScrollElement: () => failureScroll ?? null,
-        getItemKey: (index) => rows[index]?.id ?? index,
-      });
-    });
-  });
-
-  $effect(() => {
-    if (!desktopTableLayout.current) return;
-    const rows = historyType === 'audit' ? auditTableRows : failureTableRows;
-    const items =
-      historyType === 'audit'
-        ? $auditVirtualizer.getVirtualItems()
-        : $failureVirtualizer.getVirtualItems();
-    const last = items.at(-1);
-    if (last !== undefined && last.index >= rows.length - 5) {
-      untrack(() => void loadNextPage());
-    }
-  });
-
   function selectTimeDisplay(value: TimeDisplay): void {
     timeDisplay = value;
   }
@@ -489,93 +371,116 @@
     prefs.set('history.time_display', timeDisplay);
   });
 
-  function toggleSort(
-    column: 'actor' | 'target' | 'change' | 'status' | 'repository' | 'when',
-  ): void {
-    const table = historyType === 'audit' ? auditTable : failureTable;
-    const target = table.getColumn(column);
-    target?.toggleSorting(target.getIsSorted() === 'asc');
+  /* The order each record is read in, chosen from the tools menu beside the search now
+     that there are no column headings to carry it: one sort at a time, each with its
+     two directions. `when` is the pair every list has and the one both default to. */
+  const SORT_PAIRS = {
+    actor: ['actor_asc', 'actor_desc'],
+    target: ['target_asc', 'target_desc'],
+    change: ['change_asc', 'change_desc'],
+    status: ['status_asc', 'status_desc'],
+    repository: ['repository_asc', 'repository_desc'],
+    when: ['oldest', 'newest'],
+  } as const satisfies Record<string, readonly [HistorySort, HistorySort]>;
+
+  function toggleSort(column: keyof typeof SORT_PAIRS): void {
+    const [ascending, descending] = SORT_PAIRS[column];
+    sort = sort === ascending ? descending : ascending;
   }
 
-  function sortDirection(
-    column: 'actor' | 'target' | 'change' | 'status' | 'repository' | 'when',
-  ): 'ascending' | 'descending' | undefined {
-    const table = historyType === 'audit' ? auditTable : failureTable;
-    const direction = table.getColumn(column)?.getIsSorted();
-    return direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : undefined;
+  function sortDirection(column: keyof typeof SORT_PAIRS): 'ascending' | 'descending' | undefined {
+    const [ascending, descending] = SORT_PAIRS[column];
+    if (sort === ascending) return 'ascending';
+    return sort === descending ? 'descending' : undefined;
   }
 
-  function historySortingState(type: HistoryType): SortingState {
-    const allowed =
-      type === 'audit'
-        ? new Set<HistorySort>([
-            'actor_asc',
-            'actor_desc',
-            'target_asc',
-            'target_desc',
-            'change_asc',
-            'change_desc',
-          ])
-        : new Set<HistorySort>(['status_asc', 'status_desc', 'repository_asc', 'repository_desc']);
-    if (sort === 'newest' || sort === 'oldest') return [{ id: 'when', desc: sort === 'newest' }];
-    if (!allowed.has(sort)) return [{ id: 'when', desc: true }];
-    const [id, direction] = sort.split('_');
-    return [{ id: id ?? 'when', desc: direction === 'desc' }];
+  function toolSort(label: string, column: keyof typeof SORT_PAIRS): ToolsSort {
+    return { label, direction: sortDirection(column), onToggle: () => toggleSort(column) };
   }
 
-  function selectHistorySorting(type: HistoryType, next: Updater<SortingState>): void {
-    const current = historySortingState(type);
-    const resolved = typeof next === 'function' ? next(current) : next;
-    const selected = resolved[0];
-    if (selected === undefined) return;
-    if (selected.id === 'when') {
-      sort = selected.desc ? 'newest' : 'oldest';
-      return;
-    }
-    const candidate = `${selected.id}_${selected.desc ? 'desc' : 'asc'}` as HistorySort;
-    sort = candidate;
-  }
+  const toolSorts = $derived(
+    historyType === 'audit'
+      ? [
+          toolSort('When', 'when'),
+          toolSort('Actor', 'actor'),
+          toolSort(context === 'root' ? 'Workspace' : 'Target', 'target'),
+          toolSort('Change', 'change'),
+        ]
+      : [toolSort('When', 'when'), toolSort('Repository', 'repository')],
+  );
 
-  function selectAuditColumnFilters(next: Updater<ColumnFiltersState>): void {
-    const current: ColumnFiltersState = [
-      { id: 'target', value: auditScope },
-      { id: 'change', value: auditChange },
-    ];
-    const resolved = typeof next === 'function' ? next(current) : next;
-    const target = resolved.find((filter) => filter.id === 'target')?.value;
-    const change = resolved.find((filter) => filter.id === 'change')?.value;
-    selectAuditScope(target === undefined ? ['all'] : [String(target)]);
+  /* The narrower questions, on the same bar: what KIND of change, and - in the console -
+     which category of event. The failure state is not here; it leads the list. */
+  const toolFilters = $derived.by((): ToolsFilter[] => {
+    if (historyType === 'failures') return [];
     if (context === 'root') {
-      selectAuditCategories(
-        Array.isArray(change)
-          ? change.map(String)
-          : change === undefined
-            ? ['all']
-            : [String(change)],
-      );
-    } else {
-      selectAuditChange(change === undefined ? ['all'] : [String(change)]);
+      return [
+        {
+          label: 'Event category',
+          hint: 'Choose which application events to show',
+          sections: ROOT_AUDIT_CATEGORY_FILTERS,
+          selected: auditCategories.length === 0 ? ['all'] : auditCategories,
+          multiple: true,
+          fallbackValue: 'all',
+          onChange: selectAuditCategories,
+        },
+      ];
     }
-  }
+    return [
+      {
+        label: 'Target',
+        hint: 'Choose which configuration changes to show',
+        sections: AUDIT_SCOPE_FILTERS,
+        selected: [auditScope],
+        fallbackValue: 'all',
+        onChange: selectAuditScope,
+      },
+      {
+        label: 'Change',
+        hint: 'Choose which configuration changes to show',
+        sections: AUDIT_CHANGE_FILTERS,
+        selected: [auditChange],
+        fallbackValue: 'all',
+        onChange: selectAuditChange,
+      },
+    ];
+  });
 
-  function selectFailureColumnFilters(next: Updater<ColumnFiltersState>): void {
-    const current: ColumnFiltersState = [{ id: 'status', value: failureKind }];
-    const resolved = typeof next === 'function' ? next(current) : next;
-    const value = resolved.find((filter) => filter.id === 'status')?.value;
-    selectFailureKind(value === undefined ? ['all'] : [String(value)]);
-  }
+  /**
+   * How many failures are in each state, so the segments can say it.
+   *
+   * Both counts carry the search, because a count that ignores what is on screen is a
+   * count of something else. Only asked for while the failures are being read - the
+   * audit never shows these segments, and a page that is not showing a number should
+   * not be fetching one.
+   */
+  const failureCountsQuery = createQuery(() => ({
+    queryKey: ['failure-state-counts', targetId, appliedQuery, historyType],
+    enabled: historyType === 'failures',
+    queryFn: async (): Promise<{ all: number; retryable: number }> => {
+      const shared = { query: appliedQuery, sort: 'newest' as HistorySort, limit: 1 };
+      const [all, retryable] = await Promise.all([
+        fetchFailures({ ...shared, kind: 'all' }),
+        fetchFailures({ ...shared, kind: 'retryable' }),
+      ]);
+      return { all: all.total, retryable: retryable.total };
+    },
+  }));
 
-  function auditEntryAt(index: number): AuditEntry {
-    const row = auditTableRows[index];
-    if (row === undefined) throw new Error(`missing virtual audit row ${index}`);
-    return row.original;
-  }
-
-  function failureAt(index: number): DeliveryFailure {
-    const row = failureTableRows[index];
-    if (row === undefined) throw new Error(`missing virtual failure row ${index}`);
-    return row.original;
-  }
+  const FAILURE_SEGMENTS = $derived.by(() => {
+    const counts = failureCountsQuery.data;
+    const badge = (value: number | undefined): string | undefined =>
+      value === undefined ? undefined : String(value);
+    return [
+      { value: 'all', label: 'All', badge: badge(counts?.all) },
+      { value: 'retryable', label: 'Retrying', badge: badge(counts?.retryable) },
+      {
+        value: 'permanent',
+        label: 'Needs a fix',
+        badge: badge(counts === undefined ? undefined : Math.max(0, counts.all - counts.retryable)),
+      },
+    ];
+  });
 
   function selectAuditScope(values: string[]): void {
     const value = values[0];
@@ -608,42 +513,45 @@
     if (value === 'all' || value === 'permanent' || value === 'retryable') failureKind = value;
   }
 
-  function auditScopeLabel(): string {
-    return (
-      AUDIT_SCOPE_FILTERS[0]?.options.find((option) => option.value === auditScope)?.label ?? ''
-    );
-  }
-
-  function auditChangeLabel(): string {
-    return (
-      AUDIT_CHANGE_FILTERS[0]?.options.find((option) => option.value === auditChange)?.label ?? ''
-    );
-  }
-
-  function auditCategoryLabel(): string {
-    if (auditCategories.length === 0) return 'All event categories';
-    if (auditCategories.length === 1) {
-      return (
-        ROOT_AUDIT_CATEGORY_FILTERS[0]?.options.find(
-          (option) => option.value === auditCategories[0],
-        )?.label ?? 'Event category'
-      );
-    }
-    return `${auditCategories.length} event categories`;
-  }
-
-  function failureKindLabel(): string {
-    return (
-      FAILURE_KIND_FILTERS[0]?.options.find((option) => option.value === failureKind)?.label ?? ''
-    );
-  }
-
   function displayTime(value: string): string {
     return timeDisplay === 'relative' ? formatRelative(value, now) : formatDateTime(value);
   }
 
   function auditSummary(value: string): string {
     return sentenceCase(value.replace(/\s+for\s*$/i, ''));
+  }
+
+  /* An audit line is one sentence: who, what they did, and what they did it to. The
+     three parts are separate so the object can be set in the mono voice inside the
+     line rather than parked in a column of its own. */
+  function auditActor(entry: AuditEntry): string {
+    return entry.actor.display_name;
+  }
+
+  /** Lower-cased, because the actor already opened the sentence. */
+  function auditVerb(entry: AuditEntry): string {
+    const summary = auditSummary(entry.summary);
+    return summary.charAt(0).toLocaleLowerCase() + summary.slice(1);
+  }
+
+  /** What the change was made to, or nothing when the sentence already carries it. */
+  function auditObject(entry: AuditEntry): string | null {
+    if (context === 'root') return entry.installation?.login ?? null;
+    if (entry.repository_full_name === undefined) return null;
+    return repositoryName(entry.repository_full_name);
+  }
+
+  /** The whole line as one string, for a label a screen reader reads in one go. */
+  function auditSentence(entry: AuditEntry): string {
+    const object = auditObject(entry);
+    return `${auditActor(entry)} ${auditVerb(entry)}${object === null ? '' : ` in ${object}`}`;
+  }
+
+  /* The space before "of" is a non-breaking one, written as an escape: the count and
+     what it counts are one atom. */
+  function shownRange(shown: number, total: number | undefined): string {
+    if (shown === 0) return 'Nothing to show';
+    return `Showing 1-${shown}\u{a0}of ${total ?? shown}`;
   }
 
   function sentenceCase(value: string): string {
@@ -681,14 +589,12 @@
     }
   }
 
+  /* Back to the first row when the question changes: the list is the page's own scroll
+     now, so what has to move is the window rather than a pane inside it. */
   function scrollResultsToTop(): void {
-    if (isDesktopTableLayout()) {
-      historyResults?.querySelector<HTMLElement>('[data-panel-scroll]')?.scrollTo({ top: 0 });
-    }
-  }
-
-  function isDesktopTableLayout(): boolean {
-    return window.matchMedia('(min-width: 64.001rem)').matches;
+    const top = historyResults?.getBoundingClientRect().top;
+    if (top === undefined || top >= 0) return;
+    window.scrollBy({ top, behavior: 'instant' });
   }
 
   function retry(): void {
@@ -817,6 +723,36 @@ restore functions: history is where a reader goes to undo, so the way back has t
 where the record is.
 -->
 
+{#snippet auditLine(entry: AuditEntry, opens: boolean)}
+  <span class="object-main">
+    <span class="object-name-row">
+      <!-- The sentence NAMES its object, or it is not an audit line: "changed two
+           settings in smyklot", never "Updated two repository settings". -->
+      <span class="object-name">
+        {auditActor(entry)}
+        {auditVerb(entry)}{#if auditObject(entry) !== null}&nbsp;in
+          <code class="file-path">{auditObject(entry)}</code>{/if}
+      </span>
+      <!-- The one act somebody outside this workspace took inside it. -->
+      {#if entry.elevation_id !== undefined}
+        <Pill tone="warning">Operator</Pill>
+      {/if}
+    </span>
+    <span class="object-sum">
+      {#if auditDetail(entry) !== ''}{auditDetail(entry)} ·
+      {/if}
+      <time datetime={entry.created_at} title={formatTimestamp(entry.created_at)}>
+        {displayTime(entry.created_at)}
+      </time>
+    </span>
+  </span>
+  <span class="object-side">
+    {#if opens}
+      <span class="row-chevron" aria-hidden="true"><Icon name="chevron-right" size="xs" /></span>
+    {/if}
+  </span>
+{/snippet}
+
 <section
   class="plate history-panel"
   class:root-context={context === 'root'}
@@ -838,7 +774,7 @@ where the record is.
     />
   {/if}
 
-  <div class="history-tools">
+  <div class="filter-bar">
     <SearchField
       label="Search history"
       placeholder={historyType === 'audit' ? 'Search changes' : 'Search failures'}
@@ -846,15 +782,29 @@ where the record is.
       onInput={(value) => (search = value)}
     />
 
-    {#if historyType === 'audit' && ((context === 'root' && fetchRootSettingsBaseline !== undefined) || (context === 'installation' && fetchSettingsBaseline !== undefined))}
-      <Button
-        tone="quiet"
-        class="baseline-trigger"
-        onclick={(event) => openSettingsBaseline(event.currentTarget)}>Initial snapshot</Button
-      >
+    <!-- What a failure needs from the reader is the question the list leads with:
+         whether Smyklot is still trying, or whether it has stopped and is waiting for
+         somebody. The audit has no such question - it is a record, not a queue. -->
+    {#if historyType === 'failures'}
+      <SegmentedControl
+        name="failure-state"
+        label="Show"
+        options={FAILURE_SEGMENTS}
+        value={failureKind}
+        onSelect={(value) => selectFailureKind([value])}
+      />
     {/if}
 
-    <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
+    {#if historyType === 'audit' && ((context === 'root' && fetchRootSettingsBaseline !== undefined) || (context === 'installation' && fetchSettingsBaseline !== undefined))}
+      <Button tone="quiet" onclick={(event) => openSettingsBaseline(event.currentTarget)}>
+        Initial snapshot
+      </Button>
+    {/if}
+
+    <span class="push-end">
+      <HistoryDisplayMenu value={timeDisplay} onSelect={selectTimeDisplay} />
+      <TableToolsMenu sorts={toolSorts} filters={toolFilters} />
+    </span>
   </div>
 
   <div
@@ -890,334 +840,126 @@ where the record is.
         --skeleton-bar-b-width="min(16rem, 32%)"
       />
     {:else if historyType === 'audit'}
-      <DataTable
-        class="table-scroll"
-        tableClass="history-table audit-table"
-        caption="Audit history"
-        regionLabel="Audit history table"
-        rows={auditRenderRows}
-        rowKey={(virtualRow) => virtualRow.key}
-        columnCount={4}
-        bind:body={auditScroll}
-        rowAttrs={(virtualRow) =>
-          virtualRow.virtual
-            ? {
-                class: 'data-row virtual-row',
-                /* The offset travels as `--row-y`, never as an inline `transform`.
-                   `.data-row` composes the translate with the press scale in the
-                   stylesheet; an inline transform replaces the whole thing, and the
-                   scale is silently dropped. */
-                style: `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`,
-              }
-            : { class: 'data-row' }}
-      >
-        {#snippet colgroup()}
-          <colgroup>
-            <col class="actor-column" />
-            <col class="target-column" />
-            <col class="change-column" />
-            <col class="time-column" />
-          </colgroup>
-        {/snippet}
-        {#snippet head()}
-          <tr>
-            <th scope="col" aria-sort={sortDirection('actor')}>
-              <div class="table-heading">
-                <button class="table-sort-button" type="button" onclick={() => toggleSort('actor')}>
-                  <span class="table-heading-label">Actor</span>
-                  <SortIndicator />
-                </button>
-              </div>
-            </th>
-            <th scope="col" aria-sort={sortDirection('target')}>
-              <div class="table-heading">
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('target')}
-                >
-                  <span class="table-heading-label">Target</span>
-                  <SortIndicator />
-                </button>
-                {#if context === 'installation'}
-                  <FilterMenu
-                    label="Target"
-                    summary={auditScopeLabel()}
-                    hint="Choose which configuration changes to show"
-                    sections={AUDIT_SCOPE_FILTERS}
-                    selected={[auditScope]}
-                    fallbackValue="all"
-                    align="end"
-                    onChange={(values) => auditTable.getColumn('target')?.setFilterValue(values[0])}
-                  />
-                {/if}
-              </div>
-            </th>
-            <th scope="col" aria-sort={sortDirection('change')}>
-              <div class="table-heading">
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('change')}
-                >
-                  <span class="table-heading-label">Change</span>
-                  <SortIndicator />
-                </button>
-                {#if context === 'root'}
-                  <FilterMenu
-                    label="Event category"
-                    summary={auditCategoryLabel()}
-                    hint="Choose which application events to show"
-                    sections={ROOT_AUDIT_CATEGORY_FILTERS}
-                    selected={auditCategories.length === 0 ? ['all'] : auditCategories}
-                    fallbackValue="all"
-                    align="end"
-                    multiple
-                    onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values)}
-                  />
-                {:else}
-                  <FilterMenu
-                    label="Change"
-                    summary={auditChangeLabel()}
-                    hint="Choose which configuration changes to show"
-                    sections={AUDIT_CHANGE_FILTERS}
-                    selected={[auditChange]}
-                    fallbackValue="all"
-                    align="end"
-                    onChange={(values) => auditTable.getColumn('change')?.setFilterValue(values[0])}
-                  />
-                {/if}
-              </div>
-            </th>
-            <th scope="col" aria-sort={sortDirection('when')}>
-              <div class="table-heading">
-                <button class="table-sort-button" type="button" onclick={() => toggleSort('when')}>
-                  <span class="table-heading-label">When</span>
-                  <SortIndicator />
-                </button>
-              </div>
-            </th>
-          </tr>
-        {/snippet}
-        {#snippet lead()}
-          {#if desktopTableLayout.current}
-            <tr
-              class="virtual-spacer"
-              aria-hidden="true"
-              style:height={`${$auditVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-            >
-          {/if}
-        {/snippet}
-        {#snippet cells(virtualRow)}
-          {@const entry = auditEntryAt(virtualRow.index)}
-          <td data-label="Actor">
-            <span class="actor">
-              <Avatar account={entry.actor} size={24} />
-              <span class="actor-copy">
-                <strong class="band-trim">{entry.actor.display_name}</strong>
-                <small class="actor-login mono band-trim">@{entry.actor.login}</small>
-              </span>
-            </span>
-          </td>
-          <td data-label="Target">
-            {#if context === 'root' && entry.installation !== undefined}
-              <span class="cell-primary band-trim" title={`@${entry.installation.login}`}>
-                {entry.installation.display_name}
-              </span>
-            {:else if context === 'root'}
-              <span class="cell-primary band-trim">Smyklot</span>
-            {:else if entry.repository_full_name !== undefined}
-              <code class="band-trim" title={entry.repository_full_name}>
-                {repositoryName(entry.repository_full_name)}
-              </code>
-            {:else}
-              <span class="cell-primary band-trim">Account</span>
+      {#if auditRows.length === 0}
+        <div class="card">
+          <TableEmptyState
+            title="Nothing yet"
+            description={hasFilters
+              ? 'Try another search or clear the active filters'
+              : 'Every change made through Smyklot here will land on this page, day by day'}
+            actionLabel={hasFilters ? 'Clear filters' : undefined}
+            onAction={hasFilters ? clearFilters : undefined}
+          />
+        </div>
+      {:else}
+        <div class="card">
+          {#each auditDays as day (day.key)}
+            <h2 class="day-head">{day.head}</h2>
+            <ul class="object-list">
+              {#each day.entries as entry (entry.id)}
+                {@const opens =
+                  entry.settings_checkpoint_id !== undefined && canInspectSettingsCheckpoint(entry)}
+                <li>
+                  {#if opens}
+                    <!-- A row that opens the exact before and after IS the button; one
+                         that has nothing behind it stays a static line rather than
+                         promising an opening that never comes. -->
+                    <button
+                      class="object-row"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-label={`${auditSentence(entry)}, inspect the settings snapshot`}
+                      onclick={(event) => openSettingsCheckpoint(entry, event.currentTarget)}
+                    >
+                      {@render auditLine(entry, true)}
+                    </button>
+                  {:else}
+                    <div class="object-row">{@render auditLine(entry, false)}</div>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/each}
+          <div class="list-foot">
+            <span>{shownRange(auditRows.length, auditPage?.total)}</span>
+            {#if auditPage?.next_cursor != null}
+              <Button tone="quiet" disabled={loading} onclick={() => void loadNextPage()}>
+                Older entries
+              </Button>
             {/if}
-          </td>
-          <td data-label="Change" title={auditDetail(entry)}>
-            <span class="change-line">
-              {#if entry.category !== undefined}
-                <!-- Symmetric about its own band, so the equal padding above and
-                     below is the whole of what centres the word on the tag. -->
-                <span class="category-tag band-trim" aria-hidden="true">{entry.category}</span>
-              {/if}
-              {#if entry.settings_checkpoint_id !== undefined && canInspectSettingsCheckpoint(entry)}
-                <button
-                  class="checkpoint-trigger band-trim"
-                  type="button"
-                  aria-label={`${auditSummary(entry.summary)}, inspect settings snapshot`}
-                  onclick={(event) => openSettingsCheckpoint(entry, event.currentTarget)}
-                >
-                  <span>{auditSummary(entry.summary)}</span>
-                  <small>Inspect</small>
-                </button>
-              {:else}
-                <span class="cell-primary band-trim">{auditSummary(entry.summary)}</span>
-              {/if}
-            </span>
-          </td>
-          <td data-label="When">
-            <time
-              class="table-time band-trim"
-              datetime={entry.created_at}
-              title={formatTimestamp(entry.created_at)}
-            >
-              {displayTime(entry.created_at)}
-            </time>
-          </td>
-        {/snippet}
-        {#snippet empty()}
-          <TableEmptyState
-            title="No configuration changes found"
-            description={hasFilters
-              ? 'Try another search or clear the active filters'
-              : 'Configuration changes will appear here'}
-            actionLabel={hasFilters ? 'Clear filters' : undefined}
-            onAction={hasFilters ? clearFilters : undefined}
-          />
-        {/snippet}
-      </DataTable>
+          </div>
+        </div>
+      {/if}
     {:else}
-      <DataTable
-        class="table-scroll"
-        tableClass="history-table failure-table"
-        caption="Delivery failure history"
-        regionLabel="Delivery failure history table"
-        rows={failureRenderRows}
-        rowKey={(virtualRow) => virtualRow.key}
-        columnCount={4}
-        bind:body={failureScroll}
-        rowAttrs={(virtualRow) =>
-          virtualRow.virtual
-            ? {
-                class: 'failure-row data-row virtual-row',
-                /* The offset travels as `--row-y`, never as an inline `transform`.
-                   `.data-row` composes the translate with the press scale in the
-                   stylesheet; an inline transform replaces the whole thing, and the
-                   scale is silently dropped. */
-                style: `height:${virtualRow.size}px;--row-y:${virtualRow.start}px`,
-              }
-            : { class: 'failure-row data-row' }}
-      >
-        {#snippet colgroup()}
-          <colgroup>
-            <col class="status-column" />
-            <col class="repository-column" />
-            <col class="failure-column" />
-            <col class="time-column" />
-          </colgroup>
-        {/snippet}
-        {#snippet head()}
-          <tr>
-            <th scope="col" aria-sort={sortDirection('status')}>
-              <div class="table-heading">
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('status')}
-                >
-                  <span class="table-heading-label">Status</span>
-                  <SortIndicator />
-                </button>
-                <FilterMenu
-                  label="Status"
-                  summary={failureKindLabel()}
-                  hint="Choose which delivery failures to show"
-                  sections={FAILURE_KIND_FILTERS}
-                  selected={[failureKind]}
-                  fallbackValue="all"
-                  align="end"
-                  onChange={(values) => failureTable.getColumn('status')?.setFilterValue(values[0])}
-                />
-              </div>
-            </th>
-            <th scope="col" aria-sort={sortDirection('repository')}>
-              <div class="table-heading">
-                <button
-                  class="table-sort-button"
-                  type="button"
-                  onclick={() => toggleSort('repository')}
-                >
-                  <span class="table-heading-label">Repository</span>
-                  <SortIndicator />
-                </button>
-              </div>
-            </th>
-            <th scope="col">
-              <div class="table-heading"><span class="table-heading-label">Failure</span></div>
-            </th>
-            <th scope="col" aria-sort={sortDirection('when')}>
-              <div class="table-heading">
-                <button class="table-sort-button" type="button" onclick={() => toggleSort('when')}>
-                  <span class="table-heading-label">When</span>
-                  <SortIndicator />
-                </button>
-              </div>
-            </th>
-          </tr>
-        {/snippet}
-        {#snippet lead()}
-          {#if desktopTableLayout.current}
-            <tr
-              class="virtual-spacer"
-              aria-hidden="true"
-              style:height={`${$failureVirtualizer.getTotalSize()}px`}><td colspan="4"></td></tr
-            >
-          {/if}
-        {/snippet}
-        {#snippet cells(virtualRow)}
-          {@const failure = failureAt(virtualRow.index)}
-          <td data-label="Status">
-            <span class={['failure-kind', failure.retryable ? 'retryable' : 'permanent']}>
-              <span class="cell-symbol" aria-hidden="true">
-                <Icon name={failure.retryable ? 'refresh' : 'failure'} size="sm" />
-              </span>
-              <span class="cap-trim">{failure.retryable ? 'Retryable' : 'Permanent'}</span>
-            </span>
-          </td>
-          <td data-label="Repository">
-            <code
-              class="band-trim"
-              title={failure.installation === undefined
-                ? failure.repository_full_name
-                : `${failure.repository_full_name} \u00b7 @${failure.installation.login}`}
-            >
-              {repositoryName(failure.repository_full_name)}
-            </code>
-          </td>
-          <td data-label="Failure" title={failureDetail(failure)}>
-            <span class="cell-primary band-trim">{sentenceCase(failure.reason)}</span>
-          </td>
-          <td data-label="When">
-            <time
-              class="table-time band-trim"
-              datetime={failure.occurred_at}
-              title={formatTimestamp(failure.occurred_at)}
-            >
-              {displayTime(failure.occurred_at)}
-            </time>
-          </td>
-        {/snippet}
-        {#snippet empty()}
+      {#if failureRows.length === 0}
+        <div class="card">
           <TableEmptyState
-            title="No delivery failures found"
+            title={hasFilters ? 'Nothing matches' : 'No failures'}
             description={hasFilters
-              ? 'Try another search or clear the active filters'
-              : 'Delivery failures will appear here'}
-            actionLabel={hasFilters ? 'Clear filters' : undefined}
+              ? 'Try another search, or show them all'
+              : 'When Smyklot cannot finish something here, the row lands on this page with its cause and the one act that helps'}
+            actionLabel={hasFilters ? 'Show them all' : undefined}
             onAction={hasFilters ? clearFilters : undefined}
           />
-        {/snippet}
-      </DataTable>
+        </div>
+      {:else}
+        <div class="card">
+          <ul class="object-list">
+            {#each failureRows as failure (failure.id)}
+              <li>
+                <div class="object-row">
+                  <span class="object-main">
+                    <span class="object-name-row">
+                      <!-- What was tried, and what it was tried on. -->
+                      <span class="object-name">
+                        {sentenceCase(failure.stage)}
+                        <code class="file-path">{repositoryName(failure.repository_full_name)}</code
+                        >
+                      </span>
+                      <!-- A verdict, not a taxonomy: "Retryable/Permanent" told a
+                           reader which branch of the code they were in. This says
+                           whether anybody has to do anything. -->
+                      <Pill tone={failure.retryable ? 'warning' : 'danger'}>
+                        {failure.retryable ? 'Retrying' : 'Needs a fix'}
+                      </Pill>
+                    </span>
+                    <span class="object-sum" title={failureDetail(failure)}>
+                      {sentenceCase(failure.reason)}
+                      {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}
+                      <time
+                        datetime={failure.occurred_at}
+                        title={formatTimestamp(failure.occurred_at)}
+                      >
+                        {displayTime(failure.occurred_at)}
+                      </time>
+                    </span>
+                  </span>
+                  <span class="object-side">
+                    {#if repositoryHref !== undefined}
+                      <Button
+                        tone="quiet"
+                        href={repositoryHref(failure.repository_full_name)}
+                        aria-label="Open {repositoryName(failure.repository_full_name)}"
+                      >
+                        Open the repository
+                      </Button>
+                    {/if}
+                  </span>
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <div class="list-foot">
+            <span>{shownRange(failureRows.length, failurePage?.total)}</span>
+            {#if failurePage?.next_cursor != null}
+              <Button tone="quiet" disabled={loading} onclick={() => void loadNextPage()}>
+                Show more
+              </Button>
+            {/if}
+          </div>
+        </div>
+      {/if}
     {/if}
-    <InfiniteLoadSentinel
-      active={!desktopTableLayout.current &&
-        !loading &&
-        loadMoreProblem === null &&
-        currentPage?.next_cursor != null}
-      cursor={currentPage?.next_cursor}
-      onVisible={() => void loadNextPage()}
-    />
     {#if loadMoreProblem !== null}
       <div class="load-more-alert" role="alert">
         <span>{loadMoreProblem}</span>
@@ -1263,18 +1005,6 @@ where the record is.
     overflow: visible;
   }
 
-  .history-tools {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    border-radius: 0;
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: minmax(12rem, 1fr) auto auto;
-    padding: 0 0 var(--space-3);
-  }
-
-  /* Layout, keyline and corner come from `.table-region` in `app.css`. */
   .history-results {
     min-height: 5rem;
   }
@@ -1305,565 +1035,14 @@ where the record is.
     cursor: progress;
   }
 
-  /* Surface, keyline, corner and lift come from `.table-card` in `app.css`. */
-  :global(.table-scroll) {
-    max-width: 100%;
-  }
-
-  :global(.history-table) {
-    background: var(--surface-base);
-    /* Separated, not collapsed: a collapsed border is shared between adjacent
-       rows, so each cell owns half of it and every row box lands on a .5. */
-    border-collapse: separate;
-    border-spacing: 0;
-    min-width: 40rem;
-    table-layout: fixed;
-    width: 100%;
-  }
-
-  /* The header's own rule comes from `thead th` in `app.css`, so every table in
-     the product draws it the same. This is the separator between rows. */
-  :global(.history-table td) {
-    border-bottom: 1px solid var(--border-subtle);
-    font-size: var(--font-size-meta);
-    padding: 0.625rem 0.75rem;
-    text-align: left;
-    vertical-align: middle;
-  }
-
-  :global(.history-table td:first-child) {
-    padding-left: var(--space-3);
-  }
-
-  :global(.history-table td:last-child) {
-    padding-right: var(--space-3);
-  }
-
-  :global(.failure-table th:last-child),
-  :global(.failure-table td:last-child),
-  :global(.audit-table th:last-child),
-  :global(.audit-table td:last-child) {
-    text-align: right;
-  }
-
-  /* The header band is 2.5rem of content plus its own rule. Putting the height
-     on the th instead would fold the border into it and leave the band 1px
-     shallower than the other four tables. The rest of the heading - the cell
-     with no padding, the button carrying it, the inset a wordless heading takes
-     - is shared, in `thead th` and `.table-heading` in `app.css`. */
-  :global(.history-table thead .table-heading) {
-    height: 2.5rem;
-  }
-
-  :global(.history-table tbody tr) {
-    transition: background-color var(--duration-fast) var(--ease-standard);
-  }
-
-  .checkpoint-trigger {
-    align-items: baseline;
-    background: transparent;
-    border: 0;
-    color: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    font: inherit;
-    gap: var(--space-2);
-    min-width: 0;
-    padding: 0;
-    text-align: left;
-  }
-
-  .checkpoint-trigger span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .checkpoint-trigger small {
-    color: var(--brand-action);
-    flex: none;
-    font-size: var(--font-size-compact);
-  }
-
-  .checkpoint-trigger:hover span,
-  .checkpoint-trigger:focus-visible span {
-    text-decoration: underline;
-  }
-
-  @media (min-width: 64.001rem) {
-    .history-results {
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    :global(.table-scroll) {
-      display: flex;
-      flex: 1;
-      min-height: 0;
-      overflow-x: auto;
-    }
-
-    :global(.history-table) {
-      display: flex;
-      flex: 1;
-      flex-direction: column;
-      min-height: 0;
-    }
-
-    :global(.history-table colgroup) {
-      display: none;
-    }
-
-    :global(.history-table thead) {
-      display: block;
-      flex: none;
-    }
-
-    :global(.history-table tbody) {
-      background: var(--table-filler-bg);
-      display: block;
-      flex: 1;
-      min-height: 0;
-      overflow-y: auto;
-      position: relative;
-    }
-
-    :global(.history-table thead tr),
-    :global(.history-table tbody tr) {
-      display: grid;
-      grid-template-columns: var(--history-columns);
-      width: 100%;
-    }
-
-    /* Pin the grid track to the row's fixed height: auto-sizing would take the
-       tallest cell's border-box, push the bottom border one pixel past the
-       virtual row, and let the next row paint over every separator. */
-    :global(.history-table tbody tr:not(.virtual-spacer)) {
-      grid-template-rows: 100%;
-    }
-
-    /* Only the rows not handed to `.data-row` - see the same pair in
-       `UserManagement`. Painted on every row, one wearing the class never showed
-       the shared hover, because this rule outranks `app.css` by a class. */
-    :global(.history-table tbody tr:not(.virtual-spacer, .data-row)) {
-      background: var(--surface-base);
-    }
-
-    :global(.history-table tbody tr:not(.virtual-spacer) td) {
-      align-content: center;
-      display: grid;
-    }
-
-    :global(.history-table tbody tr:not(.virtual-spacer) td:last-child) {
-      justify-items: end;
-    }
-
-    /* In flow, and tall enough to be seen.
-       ------------------------------------
-       This used to fill the body it sits in - `position: absolute; inset: 0` -
-       which works only while something else is giving that body a height. Nothing
-       does: the rows are the height, they are what is missing, and the workspace
-       is sized to its content rather than to the window on purpose. So the body
-       measured zero, the row measured zero inside it, and a search that matched
-       nothing answered with a column header and a strip of background. Both
-       sections, and it was the failures one that got looked at.
-
-       The row carries the height itself now, which is also what makes the card
-       around it the size of an answer rather than the size of a header. */
-    :global(.history-table tbody .state-row) {
-      background: var(--surface-base);
-      border: 0;
-      display: flex;
-      min-height: 9rem;
-    }
-
-    :global(.history-table tbody .state-row .empty-cell) {
-      align-items: center;
-      display: flex;
-      flex: 1;
-      grid-column: 1 / -1;
-      justify-content: center;
-      padding: var(--space-6);
-    }
-
-    :global(.history-table tbody .virtual-row) {
-      left: 0;
-      position: absolute;
-      top: 0;
-    }
-
-    :global(.history-table tbody .virtual-spacer) {
-      background: transparent;
-      border: 0;
-      display: block;
-      pointer-events: none;
-      width: 1px;
-    }
-
-    .virtual-spacer td {
-      display: none;
-    }
-
-    :global(.audit-table) {
-      --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 7.5rem;
-    }
-
-    :global(.failure-table) {
-      --history-columns: minmax(0, 1.1fr) minmax(0, 1.2fr) minmax(0, 2.4fr) minmax(0, 1fr);
-    }
-
-    :global(.absolute-time .audit-table) {
-      --history-columns: minmax(13rem, 1.1fr) minmax(9rem, 0.8fr) minmax(0, 2.2fr) 9.5rem;
-    }
-
-    :global(.absolute-time .failure-table) {
-      --history-columns: 8rem minmax(9rem, 0.9fr) minmax(0, 2.4fr) 9.5rem;
-    }
-  }
-
-  /* The heading's row, its button and its arrow are all shared now - see
-     `.table-heading`, `.table-sort-button` and `.sort-indicator` in `app.css`.
-     What was here was a second copy of the reset, a `:global(.header-filter)`
-     addressed to a class the popover stopped rendering, and a `flex: 1` the
-     shared class states itself. */
-  :global(.history-table th:last-child .table-sort-button) {
-    /* Right-aligned sortable column: the indicator leads, so the label ink lands
-       on the same edge as the times below it. Which side the arrow takes follows
-       the column's alignment - the one rule every design system agrees on, and
-       the reason an end-aligned heading does not read as indented. */
-    flex-direction: row-reverse;
-    justify-content: flex-start;
-  }
-
-  /* One repository token for the whole panel: the audit table's Target and the
-     failure table's Repository name the same thing, so they wear the same mono
-     chip the repositories pane uses rather than one chip and one bare string.
-     `clip` rather than `hidden` - the trim ends the box at the baseline and a
-     hidden overflow would shave the descenders. */
-  :global(.history-table code) {
-    background: var(--surface-inset);
-    border-radius: var(--r-chip);
-    color: var(--text-secondary);
-    display: inline-block;
-    font: 500 var(--font-size-compact) / var(--leading-flat) var(--mono);
-    justify-self: start;
-    max-width: 100%;
-    overflow: clip;
-    overflow-clip-margin: 0.35em;
-    padding: 0.34rem 0.5rem;
-    text-overflow: ellipsis;
-    vertical-align: middle;
-    white-space: nowrap;
-    width: max-content;
-  }
-
-  .actor-column {
-    width: 8.5rem;
-  }
-
-  .target-column,
-  .repository-column {
-    width: 11rem;
-  }
-
-  .status-column {
-    width: 7rem;
-  }
-
-  .time-column {
-    width: 7.5rem;
-  }
-
-  .absolute-time .time-column {
-    width: 9.5rem;
-  }
-
-  /* Name over handle, the same identity block the installations catalog uses.
-     Both lines are trimmed to cap..baseline, so the pair's box equals its ink
-     and centring the row centres what the eye reads rather than a line box. */
-  .actor {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .actor-copy {
-    display: block;
-    min-width: 0;
-  }
-
-  .actor strong {
-    display: block;
-    font: 650 var(--font-size-meta) / var(--leading-flat) var(--sans);
-    /* clip, not hidden: the trim ends the box at the baseline, so a hidden
-       overflow would shave the descenders off a name like "Bart Smykla". */
-    overflow: clip;
-    overflow-clip-margin: 0.35em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .actor-login {
+  /* An audit row that opens the exact before and after says so with the arrow every
+     other opening row in the panel uses. */
+  .row-chevron {
     color: var(--text-muted);
-    display: block;
-    font: 400 var(--font-size-micro) / var(--leading-flat) var(--mono);
-    margin-top: 0.45rem;
-    min-width: 0;
-    overflow: clip;
-    overflow-clip-margin: 0.35em;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .failure-kind {
-    align-items: center;
-    display: inline-flex;
-    font: 600 var(--font-size-meta) / var(--leading-meta) var(--sans);
-    gap: var(--space-2);
-    white-space: nowrap;
-  }
-
-  .failure-kind.retryable {
-    color: var(--warning);
-  }
-
-  .failure-kind.permanent {
-    color: var(--danger);
-  }
-
-  .cell-symbol {
-    display: grid;
-    flex: none;
-    height: 1.125rem;
+    display: inline-grid;
     place-items: center;
-    width: 1.125rem;
   }
 
-  .change-line {
-    align-items: center;
-    display: flex;
-    gap: 0.5rem;
-    min-width: 0;
-  }
-
-  /* The event category rides along as a quiet tag; the raw event code lives
-     in the row tooltip rather than repeating under every line. */
-  .category-tag {
-    background: var(--neutral-tint);
-    border-radius: 5px;
-    color: var(--text-secondary);
-    flex: none;
-    font: 650 0.65rem / var(--leading-flat) var(--sans);
-    letter-spacing: 0.04em;
-    padding: 0.2rem 0.35rem;
-    text-transform: uppercase;
-  }
-
-  /* One rule, not the two that had grown here - the second quietly replaced the
-     first's `overflow-wrap` reasoning with `nowrap` and an ellipsis.
-     `overflow: clip` rather than `hidden`, with a margin: the trim ends this box
-     on the baseline, so `hidden` would shave the tail off every g, p and y in the
-     table. The margin is vertical room the clip gives back; horizontally there is
-     nothing to give back, since the ellipsis truncates inside the box.
-     `overflow-wrap` does nothing against `nowrap` here, and earns its place on a
-     phone, where the card lets the text wrap and a long name has to break. */
-  .cell-primary {
-    display: block;
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    overflow: clip;
-    overflow-clip-margin: 0.35em;
-    overflow-wrap: anywhere;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Block-level, so `.band-trim` has line boxes to trim and the cell has a box to
-     centre. As an inline-flex it had neither: the trim was a no-op on a flex
-     container, and inline it rode the row's strut instead of the cell's middle,
-     which put the timestamp 0.59px below every other column. */
-  .table-time {
-    color: var(--text-muted);
-    display: block;
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    white-space: nowrap;
-    width: fit-content;
-  }
-
-  /* Shorter than the shared 12rem, because this panel's empty state sits under a
-     toolbar and a section switch and a full one pushed both off a laptop screen. */
-  :global(.table-scroll) {
-    --table-empty-height: 9rem;
-  }
-
-  :global(.table-scroll .empty-cell) {
-    text-align: center !important;
-  }
-
-  @media (max-width: 48rem) {
-    :global(.table-scroll) {
-      overflow: visible;
-      padding: var(--space-3);
-    }
-
-    :global(.history-table) {
-      display: block;
-      min-width: 0;
-    }
-
-    :global(.history-table colgroup) {
-      clip-path: inset(50%);
-      height: 1px;
-      overflow: hidden;
-      position: absolute;
-      white-space: nowrap;
-      width: 1px;
-    }
-
-    :global(.history-table thead) {
-      display: block;
-    }
-
-    /* Wrapped, and from the start rather than the end. Four sort chips do not
-       fit one phone-width line, and a flex row justified to the end overflows
-       backwards: the first chip - Actor - hung 52px off the left of the screen,
-       where nothing can scroll to it and nothing says it is there. */
-    :global(.history-table thead tr) {
-      border: 0;
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-      padding: 0 0 var(--space-3);
-    }
-
-    :global(.history-table thead th) {
-      padding: 0;
-    }
-
-    :global(.history-table thead th:not(:has(.table-sort-button))) {
-      clip-path: inset(50%);
-      height: 1px;
-      overflow: hidden;
-      position: absolute;
-      white-space: nowrap;
-      width: 1px;
-    }
-
-    /* On a phone a heading is a chip in a wrapped row, not a band, so it takes a
-       real ground and its own width - which is the one place the shared full-cell
-       target does not apply, because there is no cell left to fill. The funnel
-       goes back into the flow beside the words for the same reason: there is no
-       cell for it to ride. */
-    :global(.history-table thead .table-heading),
-    :global(.history-table thead .table-sort-button) {
-      height: var(--control-height-compact);
-      width: auto;
-    }
-
-    :global(.history-table thead .filter-trigger) {
-      inset: auto;
-      margin-block: 0;
-      position: relative;
-    }
-
-    :global(.history-table thead .table-sort-button) {
-      background: var(--control-bg);
-      border: 1px solid var(--control-border);
-      border-radius: var(--radius-control);
-      color: var(--text-muted);
-      padding-inline: var(--space-3);
-    }
-
-    :global(.history-table thead .table-sort-button:hover),
-    :global(.history-table thead .table-sort-button:focus-visible) {
-      background: var(--control-bg-hover);
-      color: var(--text-primary);
-    }
-
-    :global(.history-table tbody) {
-      display: grid;
-      gap: var(--space-2);
-    }
-
-    :global(.history-table tbody tr) {
-      background: var(--surface-raised);
-      border: 1px solid var(--border-subtle);
-      border-radius: var(--radius-control);
-      display: grid;
-      gap: var(--space-3);
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      padding: var(--space-3);
-    }
-
-    :global(.history-table td) {
-      border: 0;
-      display: grid;
-      gap: var(--space-1);
-      padding: 0;
-      text-align: left !important;
-    }
-
-    :global(.history-table td::before) {
-      color: var(--text-muted);
-      content: attr(data-label);
-      font: 650 var(--font-size-compact) / var(--leading-flat) var(--sans);
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-
-    /* What the entry is actually about, given the card's width to say it in.
-       Sharing a two-column row with the timestamp, and standing beside the
-       category tag inside its own cell, the description had 30px: every audit
-       entry on the Root console read "CONFIGURATION Up…" while the half of the
-       card beside it was empty. */
-    :global(.history-table td[data-label='Change']),
-    :global(.history-table td[data-label='Failure']) {
-      grid-column: 1 / -1;
-    }
-
-    /* A card has no column to keep to, so the line wraps rather than being cut.
-       Truncation is a table's answer to a fixed column width, and there is no
-       fixed column here. */
-    :global(.history-table .cell-primary) {
-      overflow: visible;
-      white-space: normal;
-    }
-
-    :global(.history-table .empty-cell) {
-      display: block;
-      grid-column: 1 / -1;
-      height: auto;
-      padding: var(--space-5);
-    }
-
-    :global(.history-table .empty-cell::before) {
-      display: none;
-    }
-  }
-
-  @media (max-width: 36rem) {
-    .history-tools {
-      grid-template-columns: 1fr auto;
-    }
-
-    .history-tools :global(.search-field) {
-      grid-column: 1 / -1;
-    }
-  }
-
-  @media (max-width: 22rem) {
-    .history-tools {
-      grid-template-columns: 1fr;
-    }
-
-    .history-tools :global(.search-field) {
-      grid-column: auto;
-    }
-
-    :global(.history-table tbody tr) {
-      grid-template-columns: minmax(0, 1fr);
-    }
-  }
+  /* The row's own stacking on a phone is `app.css`'s - every object list does it the
+     same way, and this one has nothing to add. */
 </style>

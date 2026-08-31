@@ -22,16 +22,15 @@ import { inLanes, startPanel, visit, type Panel } from './harness';
 
 /** Every route in the panel that renders a table, and which shell it renders in. */
 const TABLES = [
-  /* The workspace's own Users and Invitations are object lists rather than tables now -
-     a person is a name, a standing and one sentence - so they have no heading band to
-     read. The console's pair still does. */
-  { route: 'i/history', shell: 'panel' },
+  /* Every list a workspace shows is an object list now - a person, an entry or a
+     failure is a name, a standing and one sentence - so none of them has a heading band
+     to read, and the audit reads the same way in both shells. What is left here is the
+     console's own tables, and this is what keeps THEM agreeing. */
   { route: 'root/queue', shell: 'root' },
   { route: 'root/queue/recent', shell: 'root' },
   { route: 'root/installations', shell: 'root' },
   { route: 'root/access/users', shell: 'root' },
   { route: 'root/access/invitations', shell: 'root' },
-  { route: 'root/history/audit', shell: 'root' },
 ] as const;
 
 interface Heading {
@@ -255,6 +254,9 @@ describe('the column heading [Integration]', () => {
             .filter((heading): heading is Heading => typeof heading !== 'string')
             .map((heading) => heading[property]),
         );
+        // A shell with no tables left has nothing to disagree about. The panel is that
+        // shell now, and one day the console will be too.
+        if (values.size === 0) continue;
         expect([...values], `${shell} tables disagree about ${property}`).toHaveLength(1);
       }
     },
@@ -290,7 +292,7 @@ describe('the column heading [Integration]', () => {
 describe('a sortable heading [Integration]', () => {
   it('is drawn on the routes that sort', () => {
     const sortable = Object.entries(targets).filter(([, found]) => found.length > 0);
-    expect(sortable.length, 'no route drew a sortable heading at all').toBeGreaterThan(4);
+    expect(sortable.length, 'no route drew a sortable heading at all').toBeGreaterThan(2);
   });
 
   it('presses over the whole cell', () => {

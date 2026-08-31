@@ -172,14 +172,16 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
   it('uses generic settings checkpoints as the only inspection path', async () => {
     const { fetchSettingsCheckpoint } = mount();
     const settingsInspect = await screen.findByRole('button', {
-      name: 'Saved installation settings, inspect settings snapshot',
+      name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
     });
     await fireEvent.click(settingsInspect);
     await screen.findByRole('dialog', { name: 'Settings history' });
     expect(fetchSettingsCheckpoint).toHaveBeenCalledWith('target-from-entry', 'settings-1');
     expect(screen.getByText('You can inspect this snapshot, but cannot restore it')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Restore selected' })).toBeNull();
-    expect(screen.getByText('Reset migrated repository configuration')).toBeTruthy();
+    // The entry with no checkpoint behind it is still a line in the record - it just
+    // opens nothing, so it is read as a sentence rather than found as a control.
+    expect(screen.getByText(/reset migrated repository configuration/u)).toBeTruthy();
   });
 
   it('routes targetless Root history through runtime checkpoint inspection and restore', async () => {
@@ -231,7 +233,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
     await fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Saved runtime settings, inspect settings snapshot',
+        name: 'Bart Smykla saved runtime settings, inspect the settings snapshot',
       }),
     );
     await screen.findByRole('dialog', { name: 'Settings history' });
@@ -285,7 +287,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
     await fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Saved installation settings, inspect settings snapshot',
+        name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
       }),
     );
     await screen.findByRole('dialog', { name: 'Settings history' });
@@ -322,7 +324,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
     await fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Saved installation settings, inspect settings snapshot',
+        name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
       }),
     );
     expect(
