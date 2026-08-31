@@ -3,7 +3,7 @@
   import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
 
-  import { formatDateTime, formatRelative, formatTimestamp, sentenceCase } from '../format';
+  import { sentenceCase } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type { TimeDisplay } from '../preferences';
   import { EPHEMERAL_PREFS, prefOption, prefText, type PrefsAccessor } from '../preferences-sync';
@@ -29,6 +29,7 @@
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import Pill from './Pill.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -513,10 +514,6 @@
     if (value === 'all' || value === 'permanent' || value === 'retryable') failureKind = value;
   }
 
-  function displayTime(value: string): string {
-    return timeDisplay === 'relative' ? formatRelative(value, now) : formatDateTime(value);
-  }
-
   function auditSummary(value: string): string {
     return sentenceCase(value.replace(/\s+for\s*$/i, ''));
   }
@@ -734,9 +731,7 @@ where the record is.
     <span class="object-sum">
       {#if auditDetail(entry) !== ''}{auditDetail(entry)} ·
       {/if}
-      <time datetime={entry.created_at} title={formatTimestamp(entry.created_at)}>
-        {displayTime(entry.created_at)}
-      </time>
+      <RelativeTime value={entry.created_at} nowMs={now} exact={timeDisplay === 'absolute'} />
     </span>
   </span>
   <span class="object-side">
@@ -919,12 +914,11 @@ where the record is.
                     <span class="object-sum" title={failureDetail(failure)}>
                       {sentenceCase(failure.reason)}
                       {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}
-                      <time
-                        datetime={failure.occurred_at}
-                        title={formatTimestamp(failure.occurred_at)}
-                      >
-                        {displayTime(failure.occurred_at)}
-                      </time>
+                      <RelativeTime
+                        value={failure.occurred_at}
+                        nowMs={now}
+                        exact={timeDisplay === 'absolute'}
+                      />
                     </span>
                   </span>
                   <span class="object-side">

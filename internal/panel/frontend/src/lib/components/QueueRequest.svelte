@@ -3,13 +3,13 @@
   import { useInterval } from 'runed';
 
   import type { PanelApi } from '#lib/api.js';
-  import { formatTimestamp } from '#lib/format.js';
   import { cleanupState, outcomeState, queueNext, queueState, sinceLabel } from '#lib/queue.js';
   import type { PendingCIEvent } from '#lib/types.js';
   import Button from './Button.svelte';
   import BackLink from './BackLink.svelte';
   import Chip from './Chip.svelte';
   import Icon, { type IconName } from './Icon.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
 
@@ -287,9 +287,12 @@ page directly still leads somewhere.
       <div class="fact">
         <dt class="band-trim">Armed</dt>
         <dd>
-          <span class="cap-trim" title={formatTimestamp(request.requested_at)}
-            >{sinceLabel(request.requested_at, now)}</span
-          >
+          <RelativeTime
+            class="cap-trim"
+            value={request.requested_at}
+            nowMs={now}
+            label={sinceLabel(request.requested_at, now)}
+          />
         </dd>
       </div>
       <div class="fact">
@@ -341,11 +344,11 @@ page directly still leads somewhere.
           <!-- The same size as the title beside it: at 11px the two runs share a
                line but their cap bands no longer share a centre, and the column
                is a real datum rather than a footnote. -->
-          <time
+          <RelativeTime
             class="band-trim"
-            datetime={event.created_at}
-            title={formatTimestamp(event.created_at)}>{clockOf(event.created_at)}</time
-          >
+            value={event.created_at}
+            label={clockOf(event.created_at)}
+          />
           <div class="body">
             <p class="band-trim">{event.summary}</p>
             {#if event.event_key !== undefined || event.delivery_id !== undefined}
@@ -598,7 +601,7 @@ page directly still leads somewhere.
     background: var(--table-row-hover);
   }
 
-  .timeline li:hover > time {
+  .timeline li:hover > :global(time) {
     color: var(--text-primary);
   }
 
@@ -665,7 +668,7 @@ page directly still leads somewhere.
     line-height: var(--leading-flat);
   }
 
-  .timeline > li > time {
+  .timeline > li > :global(time) {
     align-self: center;
     color: var(--text-muted);
     font: 400 var(--font-size-meta) / var(--leading-flat) var(--mono);

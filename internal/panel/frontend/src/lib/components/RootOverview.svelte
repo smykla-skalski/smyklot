@@ -4,19 +4,14 @@
   import { onMount } from 'svelte';
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import type { PanelApi } from '../api';
-  import {
-    formatBytes,
-    formatElapsed,
-    formatLatency,
-    formatRelative,
-    formatTimestamp,
-  } from '../format';
+  import { formatBytes, formatElapsed, formatLatency } from '../format';
   import type { DependencyState, QueueItem, RootOverview } from '../types';
   import type { ChipTone } from './Chip.svelte';
   import StatusPill from './StatusPill.svelte';
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import Icon from './Icon.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import QueueSummary from './QueueSummary.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
 
@@ -460,11 +455,7 @@ an overview nobody keeps open.
                 <span class="failure-meta">
                   {item.installation.display_name} ·
                   <code>{item.failure.repository_full_name}</code> ·
-                  <time
-                    datetime={item.failure.occurred_at}
-                    title={formatTimestamp(item.failure.occurred_at)}
-                    >{formatRelative(item.failure.occurred_at, now)}</time
-                  >
+                  <RelativeTime value={item.failure.occurred_at} nowMs={now} />
                 </span>
               </div>
               <span class="failure-kind">
@@ -918,7 +909,7 @@ an overview nobody keeps open.
   }
 
   .failure-item code,
-  .failure-item time {
+  .failure-item :global(time) {
     color: inherit;
     font-size: inherit;
   }

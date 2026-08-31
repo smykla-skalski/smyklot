@@ -1,7 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
 
-  import { formatDateTime, formatTimestamp } from '#lib/format.js';
+  import { formatDateTime } from '#lib/format.js';
+
+  import RelativeTime from './RelativeTime.svelte';
   import {
     settingsCheckpointActionLabel,
     settingsCheckpointItemLabel,
@@ -259,9 +261,7 @@ act sees the same history without the button.
           >{settingsCheckpointActionLabel(checkpoint.action)} by {checkpoint.actor
             .display_name}</strong
         >
-        <time datetime={checkpoint.created_at} title={formatTimestamp(checkpoint.created_at)}
-          >{formatDateTime(checkpoint.created_at)}</time
-        >
+        <RelativeTime value={checkpoint.created_at} label={formatDateTime(checkpoint.created_at)} />
       </div>
       <div class="snapshot-count">
         <strong>{changedCount}</strong>
@@ -441,7 +441,7 @@ act sees the same history without the button.
     white-space: nowrap;
   }
 
-  .snapshot-author time,
+  .snapshot-author :global(time),
   .checkpoint-items legend small,
   .item-title span {
     color: var(--text-muted);

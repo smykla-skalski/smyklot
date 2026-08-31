@@ -4,7 +4,6 @@
   import { useDebounce, useInterval } from 'runed';
   import { PanelApiError } from '../api';
   import { dialogRoute } from '../dialog-route.svelte';
-  import { formatDateTime, formatRelative, formatTimestamp, formatUntil } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type {
     AddRootInvitationInput,
@@ -31,6 +30,7 @@
   import Icon from './Icon.svelte';
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import Modal from './Modal.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
   import SortIndicator from './SortIndicator.svelte';
@@ -536,26 +536,18 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
           </td>
           <td data-label="Expires">
             {#if invitation.status === 'pending'}
-              <time
-                class="expires-soon"
-                datetime={invitation.expires_at}
-                title={formatTimestamp(invitation.expires_at)}
-              >
-                {formatUntil(invitation.expires_at, now)}
-              </time>
+              <RelativeTime class="expires-soon" value={invitation.expires_at} nowMs={now} future />
             {:else if invitation.status === 'expired'}
-              <time datetime={invitation.expires_at} title={formatTimestamp(invitation.expires_at)}>
-                {formatDateTime(invitation.expires_at)}
-              </time>
+              <!-- Already gone, so the date IS the reading - pressing swaps it for
+                   the whole instant rather than for a countdown to the past. -->
+              <RelativeTime value={invitation.expires_at} nowMs={now} exact />
             {:else}
               <!-- Expiry stops meaning anything once the invitation is resolved. -->
               <span class="cell-dash" aria-hidden="true">—</span>
             {/if}
           </td>
           <td data-label="Created">
-            <time datetime={invitation.created_at} title={formatTimestamp(invitation.created_at)}>
-              {formatRelative(invitation.created_at, now)}
-            </time>
+            <RelativeTime value={invitation.created_at} nowMs={now} />
           </td>
           <td class="row-actions" data-label="Actions">
             {#if actionItems(invitation).length > 0}
@@ -789,13 +781,10 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
      rotationally-symmetric `sort` glyph, which says a column can be sorted and
      never which way it is. */
 
-  time {
+  :global(time) {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     line-height: var(--leading-compact);
-  }
-
-  time {
     white-space: nowrap;
   }
 
@@ -804,7 +793,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     opacity: 0.6;
   }
 
-  .expires-soon {
+  :global(.expires-soon) {
     color: var(--text-secondary);
     font-weight: 600;
   }

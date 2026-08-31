@@ -2690,6 +2690,48 @@ ul.object-list {
   display: contents;
 }
 
+/* ---------- Exact times: visible relative, exact one press away ----------
+   The time renders exactly like the text it replaced - no inflated box, so a
+   pill it sits inside keeps its geometry and the dotted affordance rides the
+   words. The hit area is a hit-only pseudo overlay: it catches the press
+   without touching layout. */
+time[data-exact] {
+  cursor: pointer;
+  position: relative;
+  text-decoration: underline dotted color-mix(in srgb, var(--text-muted) 55%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+/* The interactive CHILD carries the hover - the static row around it does not. */
+time[data-exact]:hover {
+  color: var(--text-secondary);
+  text-decoration-color: var(--text-secondary);
+}
+
+time[data-exact]::after {
+  content: '';
+  inset: -8px -6px;
+  position: absolute;
+}
+
+/* Showing the whole instant, the affordance has done its job and stands down.
+   The `nowrap` a surface put on the relative reading stands down too: "2 days
+   ago" must not break, but the whole instant is twice as long and a column
+   sized for the short one clipped it - which loses the reader exactly what
+   they pressed for. */
+time[data-exact].is-exact {
+  color: var(--text-secondary);
+  text-decoration-color: transparent;
+  white-space: normal;
+}
+
+time[data-exact]:focus-visible {
+  border-radius: 3px;
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
 /* ---------- The row's verdict mark ----------
    What one row's standing is, worn at the row's end: a count of what would
    change, a refusal, or the quiet tick of being in step. Four surfaces draw it

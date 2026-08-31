@@ -36,8 +36,9 @@ three roles rather than one sentence, so each takes its own ink weight.
 -->
 
 <script lang="ts">
-  import { formatRelative, formatTimestamp } from '../format';
   import type { SyncStatus } from '../types';
+
+  import RelativeTime from './RelativeTime.svelte';
 
   const {
     kind,
@@ -88,9 +89,7 @@ three roles rather than one sentence, so each takes its own ink weight.
   <strong class="sf-status">{said}</strong><span class="sf-why">{why}</span
   >{#if changed !== null}<span class="sf-hist"
       >Changed by {updatedBy}
-      <time datetime={changed} title={formatTimestamp(changed)}
-        >{formatRelative(changed, nowMs)}</time
-      ></span
+      <RelativeTime value={changed} {nowMs} /></span
     >{/if}
 </p>
 

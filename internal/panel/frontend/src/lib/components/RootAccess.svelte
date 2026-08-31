@@ -4,7 +4,6 @@
   import { useDebounce, useInterval } from 'runed';
 
   import { dialogRoute } from '../dialog-route.svelte';
-  import { formatRelative, formatTimestamp } from '../format';
   import type { FilterSection } from '../filter-menu';
   import type {
     Page,
@@ -40,6 +39,7 @@
   import InfiniteLoadSentinel from './InfiniteLoadSentinel.svelte';
   import LoginField from './LoginField.svelte';
   import Modal from './Modal.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
@@ -685,12 +685,7 @@ refuse.
             </td>
             <td data-label="Last login">
               {#if user.last_login_at !== undefined}
-                <time
-                  class="band-trim"
-                  datetime={user.last_login_at}
-                  title={formatTimestamp(user.last_login_at)}
-                  >{formatRelative(user.last_login_at, now)}</time
-                >
+                <RelativeTime class="band-trim" value={user.last_login_at} nowMs={now} />
               {:else}<span class="dim band-trim">Never</span>{/if}
             </td>
             <td class="row-actions" data-label="Actions">
@@ -1127,7 +1122,7 @@ refuse.
      the popover stopped rendering. */
 
   .relationship-meta,
-  time {
+  :global(time) {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     line-height: var(--leading-compact);
@@ -1146,7 +1141,7 @@ refuse.
     margin-top: 0.15rem;
   }
 
-  time {
+  :global(time) {
     white-space: nowrap;
   }
 

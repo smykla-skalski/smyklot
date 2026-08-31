@@ -9,12 +9,12 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   import type { PanelApi } from '../api';
-  import { formatRelative, formatTimestamp } from '../format';
   import type { NotificationPage, SecurityNotification } from '../types';
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
   import PageHeader from './PageHeader.svelte';
   import Pill from './Pill.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
 
   const {
@@ -260,11 +260,7 @@ pager - a notification list has no last page worth naming.
                     </span>
                     <span class="object-sum"
                       >{notification.actor.display_name}, as operator ·
-                      <time
-                        datetime={notification.created_at}
-                        title={formatTimestamp(notification.created_at)}
-                        >{formatRelative(notification.created_at, now)}</time
-                      >
+                      <RelativeTime value={notification.created_at} nowMs={now} />
                       ·
                       {#if auditHref !== undefined}
                         <a href={auditHref(notification)}

@@ -55,12 +55,13 @@ what would otherwise be four visits.
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { formatRelative, formatTimestamp, formatUntil, sentenceCase } from '../format';
+  import { formatUntil, sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
+  import RelativeTime from './RelativeTime.svelte';
 
   const { target }: { target: PanelTarget } = $props();
 
@@ -208,11 +209,7 @@ what would otherwise be four visits.
       {#if checked !== null}
         <span class="card-meta"
           >{attention === 0 ? 'Everything' : 'Everything else'} is running on its own · checked
-          <strong
-            ><time datetime={checked} title={formatTimestamp(checked)}
-              >{formatRelative(checked, nowMs)}</time
-            ></strong
-          ></span
+          <strong><RelativeTime value={checked} {nowMs} /></strong></span
         >
       {/if}
     </div>
@@ -295,9 +292,7 @@ what would otherwise be four visits.
             <span class="object-side">
               {#if item.estimated_start_at !== undefined}
                 <span class="mx-mark {item.state === 'running' ? 'mx-instep' : 'mx-pending'}"
-                  ><span class="t" title={formatTimestamp(item.estimated_start_at)}
-                    >{formatUntil(item.estimated_start_at, nowMs)}</span
-                  ></span
+                  ><RelativeTime class="t" value={item.estimated_start_at} {nowMs} future /></span
                 >
               {/if}
             </span>
@@ -332,9 +327,7 @@ what would otherwise be four visits.
               </span>
               <span class="object-sum"
                 >By {entry.actor.display_name} ·
-                <time datetime={entry.created_at} title={formatTimestamp(entry.created_at)}
-                  >{formatRelative(entry.created_at, nowMs)}</time
-                ></span
+                <RelativeTime value={entry.created_at} {nowMs} /></span
               >
             </span>
           </div>

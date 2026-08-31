@@ -8,7 +8,7 @@
 
   import type { PanelApi } from '#lib/api.js';
   import type { FilterSection } from '#lib/filter-menu.js';
-  import { formatTimestamp } from '#lib/format.js';
+  import RelativeTime from './RelativeTime.svelte';
   import {
     cleanupState,
     endReason,
@@ -960,9 +960,12 @@ and a reader should not have to navigate between them.
                      one, which is the column's own question answered wrongly. -->
           <span class="age band-trim" title="Armed again, and running now">Running</span>
         {:else}
-          <span class="age band-trim" title={formatTimestamp(request.finished_at)}
-            >{shortAge(request.finished_at, now)}</span
-          >
+          <RelativeTime
+            class="age band-trim"
+            value={request.finished_at}
+            nowMs={now}
+            label={shortAge(request.finished_at, now)}
+          />
         {/if}
       </td>
     {:else}
@@ -1007,9 +1010,12 @@ and a reader should not have to navigate between them.
         <div class="next-sub band-trim">{next.sub}</div>
       </td>
       <td class="armed-column" data-label="Armed">
-        <span class="age band-trim" title={formatTimestamp(request.requested_at)}
-          >{shortAge(request.requested_at, now)}</span
-        >
+        <RelativeTime
+          class="age band-trim"
+          value={request.requested_at}
+          nowMs={now}
+          label={shortAge(request.requested_at, now)}
+        />
       </td>
     {/if}
     <td class="row-actions" data-label="Actions">
@@ -1397,7 +1403,10 @@ and a reader should not have to navigate between them.
     margin-top: var(--line-gap);
   }
 
-  .age {
+  /* `:global`, because two of the three ages are a component's own element and
+     carry its scope rather than this one's. Svelte cannot warn about the half
+     that stopped matching - the third is still a plain span here. */
+  :global(.age) {
     color: var(--text-secondary);
     display: block;
     font-size: var(--font-size-meta);

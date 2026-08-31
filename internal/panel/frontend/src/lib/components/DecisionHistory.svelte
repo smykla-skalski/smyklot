@@ -1,11 +1,12 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
-  import { formatDate, formatTimestamp } from '../format';
+  import { formatDate } from '../format';
   import type { AccessDecision } from '../types';
   import Button from './Button.svelte';
   import Avatar from './Avatar.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
+  import RelativeTime from './RelativeTime.svelte';
 
   const {
     open,
@@ -110,9 +111,7 @@ page behind them.
       <dt>Decided</dt>
       <dd>
         {#if decidedAt !== undefined}
-          <time datetime={decidedAt} title={formatTimestamp(decidedAt)}>
-            {formatDate(decidedAt)}
-          </time>
+          <RelativeTime value={decidedAt} label={formatDate(decidedAt)} />
         {:else}
           <span class="dim">Unknown</span>
         {/if}
@@ -150,13 +149,11 @@ page behind them.
               </span>
             </span>
             <Chip tone={decisionTone(decision.action)}>{decisionLabel(decision.action)}</Chip>
-            <time
+            <RelativeTime
               class="decision-date mono band-trim"
-              datetime={decision.created_at}
-              title={formatTimestamp(decision.created_at)}
-            >
-              {formatDate(decision.created_at)}
-            </time>
+              value={decision.created_at}
+              label={formatDate(decision.created_at)}
+            />
           </article>
         {:else}
           <p class="state dim">No earlier decisions in this scope</p>
@@ -212,7 +209,9 @@ page behind them.
     min-width: 0;
   }
 
-  dd time {
+  /* `:global`, because the time is a component's element and carries its scope
+     rather than this one's. */
+  dd :global(time) {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -294,7 +293,7 @@ page behind them.
     margin-top: 0.4rem;
   }
 
-  .decision-date {
+  :global(.decision-date) {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     font-weight: 500;
@@ -330,7 +329,7 @@ page behind them.
     }
 
     article :global(.chip),
-    .decision-date {
+    :global(.decision-date) {
       grid-column: 2;
     }
   }

@@ -56,6 +56,38 @@ export function formatDateTime(value: string): string {
   });
 }
 
+/**
+ * The whole instant, named: "26 Aug 2026, 05:41 UTC+2".
+ *
+ * What a relative time turns into when somebody presses it, so it carries the
+ * zone as well - "05:41" without one is the answer to a question nobody asked.
+ * One formatter for every such stamp, because a second date order or a
+ * parenthesised zone creeping in through one row's markup is how a product
+ * comes to write its dates two ways.
+ *
+ * `shortOffset` spells the zone `GMT+2`; UTC is what this product says
+ * everywhere else - the store pins it, the panel names it - and they denote
+ * the same offset.
+ */
+export function formatExact(value: string): string {
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return value;
+  }
+
+  return new Date(parsed)
+    .toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+      timeZoneName: 'shortOffset',
+    })
+    .replace('GMT', 'UTC');
+}
+
 /** How far in the past a timestamp is, in the coarsest unit that still says it. */
 export type RelativeBucket =
   | { kind: 'just-now' }
