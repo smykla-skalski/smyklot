@@ -344,7 +344,7 @@ function serializeInstallationAttempt(
     }
     if (resource.type === 'target-defaults') {
       const document = parseTargetDefaultsDocument(entry.value);
-      if (document === null) return invalidEntry(entry, 'Workspace defaults are not valid');
+      if (document === null) return invalidEntry(entry, 'Workspace settings are not valid');
       input.target = { ...document, expected_revision: entry.expectedRevision };
       continue;
     }

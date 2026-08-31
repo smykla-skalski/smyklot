@@ -70,7 +70,12 @@ describe('the popover primitive', () => {
      * it is found by the browser's own find, and it prints. Those are named here
      * one at a time, with the reason, so the ban still holds everywhere else.
      */
-    const IN_FLOW = new Set(['PlanGroup.svelte']);
+    const IN_FLOW = new Set([
+      'PlanGroup.svelte',
+      // The Timing card: a card of the page, shut because it is rarely wanted. It sits in
+      // the flow, the page's own index links to it, and nothing about it floats.
+      'TargetSettings.svelte',
+    ]);
 
     const offenders = others
       .filter(([file, source]) => !IN_FLOW.has(file) && /<details[\s>]/u.test(source))

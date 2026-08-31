@@ -1230,11 +1230,6 @@ where it arises.
 </div>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .object-head {
     display: grid;
     /* The copy-rhythm law, on the object-head family: a name and the sentence

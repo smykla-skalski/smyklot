@@ -630,11 +630,14 @@ so a link points at the pane a colleague was asked to look at.
           >
             <span class="setting-say">
               <label class="setting-name" for="repository-quiet-{repository.id}"
-                >Stable passing window</label
+                >Quiet period after checks pass</label
               >
-              <span class="setting-why">Seconds; leave blank to inherit</span>
+              <span class="setting-why"
+                >Checks must pass and stay green this long before Smyklot merges. Blank inherits</span
+              >
             </span>
-            <span class="policy-value">
+            <!-- The unit beside the number, as the workspace page says it. -->
+            <span class="policy-value entry-suffix">
               <input
                 id="repository-quiet-{repository.id}"
                 class="num-inline"
@@ -646,6 +649,7 @@ so a link points at the pane a colleague was asked to look at.
                 oninput={(event) => typeQuiet(event.currentTarget.value)}
                 onblur={finishQuiet}
               />
+              <span class="entry-unit">seconds</span>
             </span>
           </div>
           <div
@@ -893,11 +897,6 @@ so a link points at the pane a colleague was asked to look at.
 </div>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .repository-page {
     display: grid;
     gap: var(--space-4);

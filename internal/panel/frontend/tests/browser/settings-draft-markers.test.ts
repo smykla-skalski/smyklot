@@ -32,7 +32,7 @@ describe('settings draft destinations [Integration]', () => {
       expect(repositoryName).not.toBe('');
       await repositoryRow.locator('a.row-hit').click();
 
-      const quietPeriod = page.getByRole('textbox', { name: 'Stable passing window' });
+      const quietPeriod = page.getByRole('textbox', { name: 'Quiet period after checks pass' });
       await quietPeriod.waitFor({ state: 'visible', timeout: 15_000 });
       const savedValue = await quietPeriod.inputValue();
       await quietPeriod.fill(savedValue === '45' ? '46' : '45');

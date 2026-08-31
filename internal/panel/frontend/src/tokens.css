@@ -549,6 +549,9 @@
      100rem the pane kept growing with the display and every card in it grew with the pane, so a
      wide monitor produced lines nobody wants to read and tables with acres between columns. */
   --content-max: 70rem;
+  /* The index beside a long page, and the width the frame grows by to carry it: the reading column
+     keeps its measure and nothing reflows to make room. */
+  --toc-width: 12rem;
   --pagination-height: 2.75rem;
   /* One press, everywhere: the control shrinks toward its own centre, which is what reads as
      pushed in. Half the app was nudging elements down by a pixel instead - the same gesture said

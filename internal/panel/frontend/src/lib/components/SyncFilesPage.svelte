@@ -408,11 +408,6 @@ already hold - the index ships once, matching costs no requests.
 </div>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .kind-head {
     align-items: start;
     display: flex;

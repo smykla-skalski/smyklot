@@ -627,14 +627,10 @@ the button.
 </div>
 
 <style>
+  /* The reading column is the sheet's; what is this page's own is the apply bar's seat -
+     the marker's named view timeline is declared in the slot after it and handed back up
+     here. */
   .view-frame {
-    box-sizing: border-box;
-    inline-size: 100%;
-    margin-inline: auto;
-    max-width: var(--content-max);
-    min-inline-size: 0;
-    /* The apply bar's seat is measured by the slot after it: the marker's
-       named view timeline is declared there and handed back up here. */
     timeline-scope: --bar-slot;
   }
 

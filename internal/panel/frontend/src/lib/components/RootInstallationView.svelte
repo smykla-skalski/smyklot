@@ -281,7 +281,7 @@
   function settingsProblemLabel(control: SettingsDirtyControl | undefined): string | undefined {
     const nextView = settingsProblemView(control);
     return nextView === 'defaults'
-      ? 'Workspace defaults'
+      ? 'Workspace settings'
       : nextView === 'repositories'
         ? 'Repositories'
         : undefined;

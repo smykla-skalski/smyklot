@@ -996,12 +996,9 @@ stacked left, Cancel and Done on a hairline foot.
 </div>
 
 <style>
+  /* The reading column is the sheet's; what is this page's own is the apply bar's seat,
+     measured by the slot after it. */
   .view-frame {
-    box-sizing: border-box;
-    inline-size: 100%;
-    margin-inline: auto;
-    max-width: var(--content-max);
-    min-inline-size: 0;
     timeline-scope: --bar-slot;
   }
 

@@ -51,7 +51,7 @@ describe('RepositorySettings shared drafts [Component]', () => {
       }),
     });
 
-    const quiet = screen.getByLabelText('Stable passing window') as HTMLInputElement;
+    const quiet = screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement;
     await fireEvent.input(quiet, { target: { value: '45' } });
 
     expect(changes).toHaveLength(1);
@@ -64,16 +64,16 @@ describe('RepositorySettings shared drafts [Component]', () => {
   it('keeps ordinary controls editable while the migration reset command is busy', () => {
     render(RepositorySettings, { ...base({ busy: true }) });
 
-    expect((screen.getByLabelText('Stable passing window') as HTMLInputElement).disabled).toBe(
-      false,
-    );
+    expect(
+      (screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement).disabled,
+    ).toBe(false);
   });
 
   it('marks the exact dirty row without adding a save receipt', () => {
     const control = `repositories.${REPOSITORY.id}.pending_ci_quiet_period_seconds_override`;
     render(RepositorySettings, { ...base({ dirtyControls: [control] }) });
 
-    const quiet = screen.getByLabelText('Stable passing window');
+    const quiet = screen.getByLabelText('Quiet period after checks pass');
     expect(quiet.closest('[data-unsaved]')?.getAttribute('data-unsaved')).toBe('true');
     expect(screen.queryByText('Saved')).toBeNull();
   });

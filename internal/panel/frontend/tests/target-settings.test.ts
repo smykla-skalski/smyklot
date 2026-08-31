@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import {
@@ -19,8 +19,15 @@ function registry(): SettingsDraftRegistry {
   return drafts;
 }
 
+class TestResizeObserver {
+  observe(): void {}
+  disconnect(): void {}
+}
+
 describe('TargetSettings shared drafts [Component]', () => {
   beforeEach(() => {
+    // The page's index asks whether the document scrolls, which jsdom has no observer for.
+    vi.stubGlobal('ResizeObserver', TestResizeObserver);
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
@@ -30,20 +37,25 @@ describe('TargetSettings shared drafts [Component]', () => {
     render(TargetSettingsHarness, { props: { drafts, target } });
 
     await waitFor(() => expect(drafts.resource(targetDefaultsResource(target.id))).not.toBeNull());
-    const toggle = screen.getByLabelText('Unconfigured repositories') as HTMLInputElement;
-    expect(toggle.checked).toBe(false);
+    const off = screen.getByRole('radio', { name: 'Start off' }) as HTMLInputElement;
+    const on = screen.getByRole('radio', { name: 'Start on' }) as HTMLInputElement;
+    expect(off.checked).toBe(true);
 
-    await fireEvent.click(toggle);
+    await fireEvent.click(on);
 
     expect(targetDefaultsDraftDocument(drafts, target).repository_default_enabled).toBe(true);
     expect(drafts.dirtyControls()).toMatchObject([
       { id: 'defaults.repository_default_enabled', saved: false, value: true },
     ]);
-    expect(toggle.closest('[data-unsaved]')?.getAttribute('data-unsaved')).toBe('true');
+    expect(on.closest('[data-unsaved]')?.getAttribute('data-unsaved')).toBe('true');
 
     expect(drafts.discardResource(targetDefaultsResource(target.id))).toBe(true);
-    await waitFor(() => expect(toggle.checked).toBe(false));
-    expect(toggle.closest('[data-unsaved]')).toBeNull();
+    await waitFor(() =>
+      expect((screen.getByRole('radio', { name: 'Start off' }) as HTMLInputElement).checked).toBe(
+        true,
+      ),
+    );
+    expect(screen.getByRole('radio', { name: 'Start off' }).closest('[data-unsaved]')).toBeNull();
   });
 
   it('keeps every setting disabled for a read-only viewer', async () => {
@@ -51,12 +63,13 @@ describe('TargetSettings shared drafts [Component]', () => {
     render(TargetSettingsHarness, { props: { drafts, target: TARGET, readOnly: true } });
 
     await waitFor(() => expect(drafts.resource(targetDefaultsResource(TARGET.id))).not.toBeNull());
-    expect((screen.getByLabelText('Unconfigured repositories') as HTMLInputElement).disabled).toBe(
+    // The segmented control closes at its fieldset, which is what shuts every option in it.
+    expect(screen.getByRole('radio', { name: 'Start on' }).closest('fieldset')?.disabled).toBe(
       true,
     );
-    expect((screen.getByLabelText('Stable passing window') as HTMLInputElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement).disabled,
+    ).toBe(true);
     expect((screen.getByLabelText('Prefix') as HTMLInputElement).disabled).toBe(true);
   });
 
@@ -65,7 +78,7 @@ describe('TargetSettings shared drafts [Component]', () => {
     render(TargetSettingsHarness, { props: { drafts, target: TARGET } });
     await waitFor(() => expect(drafts.resource(targetDefaultsResource(TARGET.id))).not.toBeNull());
 
-    const quiet = screen.getByLabelText('Stable passing window') as HTMLInputElement;
+    const quiet = screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement;
     await fireEvent.input(quiet, { target: { value: '1' } });
     const attempt = drafts.beginSave({ type: 'installation', targetId: TARGET.id });
     expect(attempt).not.toBeNull();

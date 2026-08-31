@@ -23,7 +23,7 @@
 
   /* The linked-value rows name their inheritance source per scope. */
   const SOURCE_BY_SCOPE = {
-    target: 'the application defaults',
+    target: "Smyklot's defaults",
     repository: 'workspace defaults',
     runtime: 'the deployment configuration',
   } as const;
@@ -33,6 +33,7 @@
     inherited,
     scope,
     idPrefix,
+    anchorPrefix,
     disabled = false,
     section = 'all',
     only,
@@ -43,6 +44,8 @@
     inherited: ConfigValues;
     scope: 'target' | 'repository' | 'runtime';
     idPrefix: string;
+    /** Names the cards so a page index can link to them: `<prefix>-behavior`, `-commands`. */
+    anchorPrefix?: string;
     disabled?: boolean;
     section?: 'all' | 'behavior' | 'commands';
     /** Render only these behavior rows. Used by the repository-file pane, which
@@ -170,6 +173,19 @@
   function cloneValue<T>(value: T): T {
     return JSON.parse(JSON.stringify(value)) as T;
   }
+
+  /**
+   * What the unset settings are, said as scent rather than as a list.
+   *
+   * Every name spelled out ran the row's sentence to three lines and made the remainder
+   * the loudest thing in the card; three names and a count says the same thing in one.
+   */
+  function scent(fields: readonly BooleanField[]): string {
+    const names = fields.map((field) => field.label.toLowerCase());
+    if (names.length <= 4) return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+    const rest = names.length - 3;
+    return `${names.slice(0, 3).join(', ')}, and ${rest} ${rest === 1 ? 'other' : 'others'}`;
+  }
 </script>
 
 <!--
@@ -187,16 +203,15 @@ reversible: without it a reader who overrides a value can never return to follow
 account again.
 -->
 
-{#snippet clearButton(key: ConfigKey, what: string)}
-  <button
-    class="setting-clear"
+{#snippet resetButton(key: ConfigKey)}
+  <!-- A WORD, NOT A GLYPH. The bare x read as "delete this setting" where it means
+       "stop answering here and follow the account again". -->
+  <Button
+    tone="quiet"
     title="Stop overriding - follow {source}"
-    aria-label="Stop overriding {what}"
     disabled={editorDisabled}
-    onclick={() => clearField(key)}
+    onclick={() => clearField(key)}>Reset</Button
   >
-    <Icon name="close" size="micro" />
-  </button>
 {/snippet}
 
 <div class="config-editor">
@@ -208,7 +223,7 @@ account again.
         {#each overriddenFields as field (field.key)}
           {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
           <div
-            class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+            class={['policy-row', 'is-managed', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
             data-unsaved={dirtyKeySet.has(field.key) || undefined}
           >
             <span class="setting-say">
@@ -223,96 +238,109 @@ account again.
                 disabled={editorDisabled}
                 onToggle={(next) => toggleBoolean(field, next)}
               />
+              {@render resetButton(field.key)}
             </span>
-            {@render clearButton(field.key, field.label)}
           </div>
         {/each}
       </div>
     {:else}
-      <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-behavior">
-        <div class="group-head">
-          <h3 class="group-name" id="config-{scope}-{idPrefix}-behavior">Behavior</h3>
-          <span class="group-tally"
-            >{overriddenFields.length} of {shownFields.length} overridden</span
-          >
+      <section
+        class="card"
+        id={anchorPrefix === undefined ? undefined : `${anchorPrefix}-behavior`}
+        aria-labelledby="config-{scope}-{idPrefix}-behavior"
+      >
+        <div class="card-head">
+          <h2 class="card-title" id="config-{scope}-{idPrefix}-behavior">Behavior</h2>
+          <span class="card-meta">{overriddenFields.length} of {shownFields.length} set here</span>
         </div>
-        <p class="group-note">How Smyklot replies and which safeguards apply</p>
-        {#if overriddenFields.length > 0}
-          <div class="policy-rows">
-            {#each overriddenFields as field (field.key)}
-              {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
-              <div
-                class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
-                data-unsaved={dirtyKeySet.has(field.key) || undefined}
-              >
-                <span class="setting-say">
-                  <span class="setting-name">{field.label}</span>
-                  <span class="setting-why">{field.help}</span>
-                </span>
-                <span class="policy-value">
-                  <span class="value-word" class:is-on={on}>{on ? 'On' : 'Off'}</span>
-                  <Switch
-                    checked={on}
-                    label={field.label}
-                    disabled={editorDisabled}
-                    onToggle={(next) => toggleBoolean(field, next)}
-                  />
-                </span>
-                {@render clearButton(field.key, field.label)}
-              </div>
-            {/each}
-          </div>
-        {/if}
-        {#if restFields.length > 0}
-          {@const names = restFields.map((field) => field.label)}
-          <div class="group-rest" class:is-open={picking}>
-            {#if picking}
-              <span class="rest-say"
-                ><span class="rest-count">{restFields.length} follow {source}</span> - pick one to override:</span
-              >
-              <span class="rest-picks">
-                {#each restFields as field (field.key)}
-                  <button class="add-chip" disabled={editorDisabled} onclick={() => manage(field)}>
-                    <Icon name="plus" size="xs" />
-                    <span class="t">{field.label}</span>
-                  </button>
-                {/each}
-                <Button tone="quiet" onclick={() => (picking = false)}>Cancel</Button>
+        <div class="policy-rows">
+          {#each overriddenFields as field (field.key)}
+            {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
+            <div
+              class={['policy-row', 'is-managed', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+              data-unsaved={dirtyKeySet.has(field.key) || undefined}
+            >
+              <span class="setting-say">
+                <span class="setting-name">{field.label}</span>
+                <span class="setting-why">{field.help}</span>
               </span>
-            {:else}
-              <span class="rest-say"
-                ><span class="rest-count">{restFields.length} follow {source}</span> - {names.join(
-                  ', ',
-                )}</span
-              >
-              <Button tone="quiet" disabled={editorDisabled} onclick={() => (picking = true)}>
-                {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-                Override one
-              </Button>
-            {/if}
-          </div>
-        {/if}
+              <span class="policy-value">
+                <span class="value-word" class:is-on={on}>{on ? 'On' : 'Off'}</span>
+                <Switch
+                  checked={on}
+                  label={field.label}
+                  disabled={editorDisabled}
+                  onToggle={(next) => toggleBoolean(field, next)}
+                />
+                {@render resetButton(field.key)}
+              </span>
+            </div>
+          {/each}
+          <!-- THE REMAINDER IS A ROW, not a footer under the list. It is one more thing
+               this card has to say about the same nine settings, and said in a strip of
+               its own it read as a second card's worth of chrome. -->
+          {#if restFields.length > 0}
+            <div class="policy-row" class:is-stacked={picking}>
+              <span class="setting-say">
+                <span class="setting-name"
+                  >{restFields.length}
+                  {overriddenFields.length === 0 ? '' : 'more '}follow {source}</span
+                >
+                <span class="setting-why">{scent(restFields)}</span>
+              </span>
+              {#if picking}
+                <span class="policy-value setting-value-wrap">
+                  {#each restFields as field (field.key)}
+                    <button
+                      class="add-chip"
+                      disabled={editorDisabled}
+                      onclick={() => manage(field)}
+                    >
+                      <Icon name="plus" size="xs" />
+                      <span class="t">{field.label}</span>
+                    </button>
+                  {/each}
+                  <Button tone="quiet" onclick={() => (picking = false)}>Cancel</Button>
+                </span>
+              {:else}
+                <span class="policy-value">
+                  <Button tone="quiet" disabled={editorDisabled} onclick={() => (picking = true)}>
+                    {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
+                    Override another
+                  </Button>
+                </span>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </section>
     {/if}
   {/if}
 
   {#if only === undefined && (section === 'all' || section === 'commands')}
-    <section class="card group-card" aria-labelledby="config-{scope}-{idPrefix}-commands">
-      <div class="group-head">
-        <h3 class="group-name" id="config-{scope}-{idPrefix}-commands">Commands</h3>
-        <span class="group-tally">{commandsOverridden} of 3 overridden</span>
+    <section
+      class="card"
+      id={anchorPrefix === undefined ? undefined : `${anchorPrefix}-commands`}
+      aria-labelledby="config-{scope}-{idPrefix}-commands"
+    >
+      <div class="card-head">
+        <h2 class="card-title" id="config-{scope}-{idPrefix}-commands">Commands</h2>
+        <span class="card-meta">{commandsOverridden} of 3 set here</span>
       </div>
-      <p class="group-note">How commands are invoked and which words trigger them</p>
       <div class="policy-rows">
         <div
-          class={['policy-row', { 'is-unsaved': dirtyKeySet.has('command_prefix') }]}
+          class={[
+            'policy-row',
+            { 'is-managed': Object.hasOwn(draft, 'command_prefix') },
+            { 'is-unsaved': dirtyKeySet.has('command_prefix') },
+          ]}
           data-unsaved={dirtyKeySet.has('command_prefix') || undefined}
         >
           <span class="setting-say">
             <label class="setting-name" for="config-{scope}-{idPrefix}-prefix">Prefix</label>
             <span class="setting-why"
-              >Characters required before a command when prefix invocation is used. Editing the
-              inherited value creates an override</span
+              >What a comment starts with to address Smyklot. Editing the inherited value creates an
+              override</span
             >
           </span>
           <span class="policy-value">
@@ -323,134 +351,154 @@ account again.
               {disabled}
               oninput={(event) => typePrefix(event.currentTarget.value)}
             />
+            {#if Object.hasOwn(draft, 'command_prefix')}
+              {@render resetButton('command_prefix')}
+            {/if}
           </span>
-          {#if Object.hasOwn(draft, 'command_prefix')}
-            {@render clearButton('command_prefix', 'the command prefix')}
-          {/if}
         </div>
 
+        <!-- A CHECKLIST, NOT A VALUE AT THE END OF A LINE. The command set is a set to
+             read across, so the row is authored as two lines rather than computed into
+             them at the width where it finally does not fit. -->
         <div
-          class={['policy-row', { 'is-unsaved': dirtyKeySet.has('allowed_commands') }]}
+          class={[
+            'policy-row',
+            { 'is-managed': Object.hasOwn(draft, 'allowed_commands') },
+            { 'is-unsaved': dirtyKeySet.has('allowed_commands') },
+          ]}
           data-unsaved={dirtyKeySet.has('allowed_commands') || undefined}
         >
           <span class="setting-say">
-            <span class="setting-name">Allowed commands</span>
+            <span class="setting-name" id="config-{scope}-{idPrefix}-allowed"
+              >Commands it answers</span
+            >
             <span class="setting-why"
-              >The command words Smyklot accepts. At least one must remain on</span
+              >A command turned off here is refused, with a comment saying so. At least one must
+              remain on</span
             >
           </span>
           <span class="policy-value">
-            <span class="value-word is-on">{allowedCount} of {COMMANDS.length}</span>
+            <span
+              class="check-line"
+              role="group"
+              aria-labelledby="config-{scope}-{idPrefix}-allowed"
+            >
+              {#each COMMANDS as command (command)}
+                {@const on = commandIsAllowed(allowedList, command)}
+                <label class="check-item">
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={editorDisabled || (on && allowedCount === 1)}
+                    onchange={() => toggleCommand(command)}
+                  />
+                  <span class="check-box"><Icon name="check" size="micro" /></span>
+                  <span class="check-word">{command}</span>
+                </label>
+              {/each}
+            </span>
+            {#if Object.hasOwn(draft, 'allowed_commands')}
+              {@render resetButton('allowed_commands')}
+            {/if}
           </span>
-          {#if Object.hasOwn(draft, 'allowed_commands')}
-            {@render clearButton('allowed_commands', 'allowed commands')}
-          {/if}
-          <div class="chip-line" role="group" aria-label="Allowed commands">
-            {#each COMMANDS as command (command)}
-              {@const on = commandIsAllowed(allowedList, command)}
-              <button
-                class="cmd-chip"
-                class:is-on={on}
-                aria-pressed={on}
-                disabled={editorDisabled || (on && allowedCount === 1)}
-                onclick={() => toggleCommand(command)}
-              >
-                <Icon name={on ? 'check' : 'plus'} size="micro" />
-                <span class="t">{command}</span>
-              </button>
-            {/each}
-          </div>
         </div>
 
         <div
-          class={['policy-row', { 'is-unsaved': dirtyKeySet.has('command_aliases') }]}
+          class={[
+            'policy-row',
+            { 'is-managed': Object.hasOwn(draft, 'command_aliases') },
+            { 'is-unsaved': dirtyKeySet.has('command_aliases') },
+          ]}
           data-unsaved={dirtyKeySet.has('command_aliases') || undefined}
         >
           <span class="setting-say">
             <span class="setting-name" id="config-{scope}-{idPrefix}-aliases">Aliases</span>
-            <span class="setting-why">Extra command words mapped to the commands they invoke</span>
+            <span class="setting-why">Extra words mapped to the commands they run</span>
           </span>
-          <span class="policy-value">
-            <span class="value-word" class:is-on={aliasEntries.length > 0}
-              >{aliasEntries.length === 0 ? 'none' : aliasEntries.length}</span
+          <span class="policy-value setting-value-wrap">
+            <span
+              class="chip-line"
+              role="group"
+              aria-labelledby="config-{scope}-{idPrefix}-aliases"
             >
-          </span>
-          {#if Object.hasOwn(draft, 'command_aliases')}
-            {@render clearButton('command_aliases', 'command aliases')}
-          {/if}
-          <div class="chip-line" role="group" aria-labelledby="config-{scope}-{idPrefix}-aliases">
-            {#each aliasEntries as [name, command] (name)}
-              <span class="alias-chip">
-                <span class="t">{name}</span>
-                <span class="alias-arrow" aria-hidden="true">→</span>
-                <Popover
-                  role="listbox"
-                  label="Command {name} invokes"
-                  align="start"
-                  itemSelector=".menu-item"
-                >
-                  {#snippet trigger(attributes)}
-                    <button
-                      {...attributes}
-                      class="alias-target"
-                      type="button"
-                      disabled={editorDisabled}
-                      aria-label="Command {name} invokes"
-                    >
-                      <span class="t">{command}</span>
-                    </button>
-                  {/snippet}
-                  <div class="menu-list">
-                    {#each COMMANDS as candidate (candidate)}
+              {#each aliasEntries as [name, command] (name)}
+                <span class="alias-chip">
+                  <span class="t">{name}</span>
+                  <span class="alias-arrow" aria-hidden="true">→</span>
+                  <Popover
+                    role="listbox"
+                    label="Command {name} invokes"
+                    align="start"
+                    itemSelector=".menu-item"
+                  >
+                    {#snippet trigger(attributes)}
                       <button
-                        class="menu-item"
-                        role="option"
-                        aria-selected={candidate === command}
-                        onclick={() => retargetAlias(name, candidate)}
+                        {...attributes}
+                        class="alias-target"
+                        type="button"
+                        disabled={editorDisabled}
+                        aria-label="Command {name} invokes"
                       >
-                        <span class="menu-check">
-                          {#if candidate === command}<Icon name="check" size="base" />{/if}
-                        </span>
-                        <span class="mi-label">{candidate}</span>
+                        <span class="t">{command}</span>
                       </button>
-                    {/each}
+                    {/snippet}
+                    <div class="menu-list">
+                      {#each COMMANDS as candidate (candidate)}
+                        <button
+                          class="menu-item"
+                          role="option"
+                          aria-selected={candidate === command}
+                          onclick={() => retargetAlias(name, candidate)}
+                        >
+                          <span class="menu-check">
+                            {#if candidate === command}<Icon name="check" size="base" />{/if}
+                          </span>
+                          <span class="mi-label">{candidate}</span>
+                        </button>
+                      {/each}
+                    </div>
+                  </Popover>
+                  <button
+                    aria-label="Remove alias {name}"
+                    disabled={editorDisabled}
+                    onclick={() => removeAlias(name)}
+                  >
+                    <Icon name="close" size="nano" />
+                  </button>
+                </span>
+              {/each}
+              <Popover role="dialog" label="Name the alias" align="start" bind:open={aliasOpen}>
+                {#snippet trigger(attributes)}
+                  <button {...attributes} class="add-chip" disabled={editorDisabled}>
+                    <Icon name="plus" size="xs" />
+                    <span class="t">Add an alias</span>
+                  </button>
+                {/snippet}
+                <div class="name-menu">
+                  <div class="menu-search">
+                    <Icon name="search" size="xs" />
+                    <input
+                      placeholder="ship"
+                      aria-label="Name for the new alias"
+                      spellcheck="false"
+                      bind:value={aliasName}
+                      onkeydown={(event) => {
+                        if (event.key === 'Enter') addAlias();
+                      }}
+                    />
                   </div>
-                </Popover>
-                <button
-                  aria-label="Remove alias {name}"
-                  disabled={editorDisabled}
-                  onclick={() => removeAlias(name)}
-                >
-                  <Icon name="close" size="nano" />
-                </button>
-              </span>
-            {/each}
-            <Popover role="dialog" label="Name the alias" align="start" bind:open={aliasOpen}>
-              {#snippet trigger(attributes)}
-                <button {...attributes} class="add-chip" disabled={editorDisabled}>
-                  <Icon name="plus" size="xs" />
-                  <span class="t">Add an alias</span>
-                </button>
-              {/snippet}
-              <div class="name-menu">
-                <div class="menu-search">
-                  <Icon name="search" size="xs" />
-                  <input
-                    placeholder="ship"
-                    aria-label="Name for the new alias"
-                    spellcheck="false"
-                    bind:value={aliasName}
-                    onkeydown={(event) => {
-                      if (event.key === 'Enter') addAlias();
-                    }}
-                  />
+                  <div class="menu-hint">
+                    {aliasTaken
+                      ? 'That word is taken'
+                      : 'Enter adds it as approve · retarget after'}
+                  </div>
                 </div>
-                <div class="menu-hint">
-                  {aliasTaken ? 'That word is taken' : 'Enter adds it as approve · retarget after'}
-                </div>
-              </div>
-            </Popover>
-          </div>
+              </Popover>
+            </span>
+            {#if Object.hasOwn(draft, 'command_aliases')}
+              {@render resetButton('command_aliases')}
+            {/if}
+          </span>
         </div>
       </div>
     </section>
@@ -461,29 +509,6 @@ account again.
   .config-editor {
     display: grid;
     gap: var(--space-4);
-  }
-
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
-  .group-head {
-    align-items: end;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .group-name {
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
   }
 
   .group-tally {
@@ -500,13 +525,6 @@ account again.
     font-size: var(--font-size-compact);
     margin: 0 0 var(--space-2);
     max-width: 60ch;
-  }
-
-  /* The remainder is a summary line and not a row, so the list still seams into it -
-     otherwise the card ends on a slab of air with the last setting floating in it. */
-  .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
-    content: '';
-    inset-inline: var(--space-2);
   }
 
   /* ---------- The command rows' own controls ---------- */

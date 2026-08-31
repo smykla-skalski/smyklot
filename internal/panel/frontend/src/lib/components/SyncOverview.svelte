@@ -353,11 +353,6 @@ plan is applied, which is why these are switches and not a form.
 </section>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   /* A VERDICT HEAD keeps its qualifier ON the verdict - directly under it, never
      parked at the card's far edge, which is where a card's quiet right-side note
      belongs and a verdict's freshness does not. */

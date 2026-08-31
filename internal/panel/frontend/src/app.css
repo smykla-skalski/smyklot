@@ -2579,6 +2579,72 @@ thead th .icon-button:active:not(:disabled) {
   margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
 }
 
+/* ---------- A card that opens ----------
+
+   For what a reader rarely changes and should still be able to reach: the card is shut,
+   its head says what is inside without opening it, and opening it happens in place. A
+   `<details>`, so the browser owns the state, the keyboard and the accessibility of it. */
+.fold {
+  border-radius: var(--r-ctl);
+}
+
+.fold summary {
+  align-items: center;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--font-size-meta);
+  gap: var(--space-2);
+  /* Declared whole, not derived from padding. */
+  min-block-size: 36px;
+  padding: 0 var(--space-3);
+}
+
+.fold summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold summary:hover {
+  background: var(--table-row-hover);
+}
+
+.fold summary svg {
+  block-size: var(--icon-xs);
+  color: var(--text-muted);
+  inline-size: var(--icon-xs);
+  transition: rotate var(--duration-fast) var(--ease-standard);
+}
+
+.fold[open] summary svg {
+  rotate: 90deg;
+}
+
+.fold-scent {
+  color: var(--text-muted);
+  font-size: var(--font-size-compact);
+}
+
+/* A whole card that folds: the head bleeds into the card's own frame, so a shut card is a
+   strip rather than a card with a strip inside it. */
+.card.fold {
+  border-radius: var(--r-strip);
+}
+
+.card.fold > summary {
+  border-radius: 6px;
+  gap: var(--space-2);
+  margin: calc(var(--space-2) * -1);
+  padding: var(--space-2);
+}
+
+.card.fold > summary .card-title {
+  min-block-size: 0;
+}
+
+.card.fold > summary .fold-scent {
+  margin-inline-start: auto;
+}
+
 /* A quiet qualifier on the card head's own line - prose, so a verdict card keeps its
    freshness beside its sentence. */
 .card-note {
@@ -2985,6 +3051,10 @@ button.object-row {
   min-block-size: var(--touch-target);
   padding: var(--row-pad-default) var(--space-2);
   position: relative;
+  /* The distance a stacked row's controls stand off its sentence. Both sides are ink-
+     trimmed, so this is the ink gap - without it the seg sat on the descenders of the
+     line above it. */
+  row-gap: var(--space-2);
 }
 
 /* The switch keeps its full 44px hit target without making a two-line row inherit 44px of
@@ -3153,6 +3223,98 @@ button.object-row {
   max-inline-size: 100%;
 }
 
+/* ---------- The checkbox cluster: several things on at once ----------
+
+   A switch is one thing on or off; a command set is a checklist. One content-hugging
+   line, left-packed, so the eye takes the whole set in a sweep - and each box is still
+   its own 34px press target with the row veil under it. The container's negative start
+   margin puts the first box's ink on the card's own text edge. */
+.check-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--space-3);
+  margin-inline-start: -8px;
+}
+
+.check-item {
+  align-items: center;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  display: inline-flex;
+  gap: 8px;
+  min-block-size: 34px;
+  padding-inline: 8px;
+  position: relative;
+}
+
+.check-item:hover {
+  background: var(--table-row-hover);
+}
+
+.check-item:has(input:disabled) {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.check-item:has(input:disabled):hover {
+  background: none;
+}
+
+.check-item input {
+  inset: 0;
+  opacity: 0;
+  position: absolute;
+}
+
+.check-item input:checked ~ .check-box {
+  background: var(--brand-action);
+  border-color: var(--brand-action);
+  color: var(--on-brand-action);
+}
+
+.check-item input:focus-visible ~ .check-box {
+  outline: var(--focus-ring-width) solid var(--focus);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.check-box {
+  align-items: center;
+  background: var(--input-bg);
+  block-size: 18px;
+  border: 1px solid var(--control-border);
+  border-radius: 5px;
+  color: transparent;
+  display: inline-flex;
+  flex: none;
+  inline-size: 18px;
+  justify-content: center;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard);
+}
+
+.check-word {
+  font-family: var(--mono);
+  font-size: var(--font-size-compact);
+  min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
+}
+
+/* A field with its unit written beside the number, never buried in the prose above it. */
+.entry-suffix {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.entry-unit {
+  color: var(--text-muted);
+  font-size: var(--font-size-compact);
+  min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
+}
+
 /* A read-only value in a row's value column - words, not a control. */
 .setting-fact {
   color: var(--text-secondary);
@@ -3219,6 +3381,107 @@ button.object-row {
 
 .value-word.is-on {
   color: var(--text-secondary);
+  font-weight: 600;
+}
+
+/* THE READING COLUMN A PAGE STANDS IN, centred in whatever pane holds it. Ten pages said
+   this themselves, which is nine chances for one of them to say it differently - and the
+   index below cannot widen a column it does not own. */
+.view-frame {
+  box-sizing: border-box;
+  inline-size: 100%;
+  margin-inline: auto;
+  max-inline-size: var(--content-max);
+  min-inline-size: 0;
+}
+
+/* ---------- The index beside a long page ----------
+
+   An index is for a page a reader has to travel; where the page is short, the answer is a
+   shorter page and not a signpost at the top of one. So it exists only where there is room
+   for it OUTSIDE the reading column: the frame widens by exactly the rail and its gutter,
+   the prose keeps its measure, and below that width the index is gone rather than narrowed
+   or stacked - the pages it indexes are one screen's scroll on a phone. */
+.page-toc {
+  display: none;
+}
+
+@media (min-width: 72rem) {
+  /* TWO ITEMS, NOT TWO COLUMNS OF MANY ROWS. As a grid item spanning every row - the usual
+     way to give a sticky element somewhere to travel - the index's own height is
+     distributed back across the tracks it spans, and a tall index over a short page head
+     stretches that head's row and leaves a void under the title. The page's content is one
+     item, so the two children's heights owe each other nothing. */
+  .view-frame:has(> .page-toc) {
+    align-items: start;
+    column-gap: var(--space-6);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--toc-width);
+    max-inline-size: calc(var(--content-max) + var(--toc-width) + var(--space-6));
+  }
+
+  /* Only a page that scrolls is given an index; a page whose cards are all on screen gets
+     its full width back. */
+  .view-frame:has(> .page-toc):not(.page-scrolls) {
+    display: block;
+    max-inline-size: var(--content-max);
+  }
+
+  .view-frame:has(> .page-toc):not(.page-scrolls) > .page-toc {
+    display: none;
+  }
+
+  .view-frame:has(> .page-toc) > .page-main {
+    grid-column: 1;
+    min-inline-size: 0;
+  }
+
+  .page-toc {
+    align-self: start;
+    display: grid;
+    gap: var(--space-1);
+    grid-column: 2;
+    grid-row: 1;
+    inset-block-start: var(--rhythm-pane-top-wide);
+    position: sticky;
+  }
+}
+
+/* THE LABEL STARTS AT THE COLUMN'S EDGE. Indented to line up with the links it read as the
+   first entry of its own list - and the entries are indented because they hang off a rule,
+   which the label does not. */
+.toc-title {
+  color: var(--text-muted);
+  font-size: var(--font-size-micro);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 0 0 var(--space-2);
+  text-box: trim-both cap alphabetic;
+  text-transform: uppercase;
+}
+
+.page-toc a {
+  align-items: center;
+  border-inline-start: 2px solid var(--border-subtle);
+  border-radius: 0 var(--radius-chip) var(--radius-chip) 0;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--font-size-compact);
+  min-block-size: var(--tier-quiet);
+  padding-inline: var(--space-3);
+  text-decoration: none;
+}
+
+.page-toc a:hover {
+  background: var(--control-bg-hover);
+  color: var(--text-primary);
+}
+
+/* The reader's place in the page, not a selection they made - so it is said with the rule
+   and the ink, and never with a filled ground. */
+.page-toc a.is-here {
+  border-inline-start-color: var(--brand-action);
+  color: var(--text-primary);
   font-weight: 600;
 }
 

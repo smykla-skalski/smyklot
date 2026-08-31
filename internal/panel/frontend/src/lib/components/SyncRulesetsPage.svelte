@@ -322,11 +322,6 @@ decisions every kind carries: removal, and the names left alone.
 </div>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .kind-head {
     align-items: start;
     display: flex;

@@ -494,11 +494,6 @@ turns the unmanaged names into rows of their own.
 />
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .kind-head {
     align-items: start;
     display: flex;

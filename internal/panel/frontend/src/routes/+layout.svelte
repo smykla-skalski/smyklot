@@ -540,7 +540,7 @@
       const section = syncSection(control);
       return section === null ? 'Sync' : routeSegmentLabel(section);
     }
-    return control.location.section === 'repositories' ? 'Repositories' : 'Workspace defaults';
+    return control.location.section === 'repositories' ? 'Repositories' : 'Workspace settings';
   }
 
   function openSettingsProblem(): void {

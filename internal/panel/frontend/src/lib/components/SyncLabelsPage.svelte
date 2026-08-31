@@ -564,11 +564,6 @@ unlisted labels are removed, and the patterns left alone either way.
 </div>
 
 <style>
-  .view-frame {
-    margin-inline: auto;
-    max-width: var(--content-max);
-  }
-
   .kind-head {
     align-items: start;
     display: flex;

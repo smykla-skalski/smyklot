@@ -34,6 +34,7 @@
     inherited,
     scope,
     idPrefix,
+    anchor,
     disabled = false,
     dirtyKeys = [],
     onChange,
@@ -43,6 +44,8 @@
     inherited: FormattingPolicy;
     scope: keyof typeof SOURCE_BY_SCOPE;
     idPrefix: string;
+    /** Names the first card, so a page index can link to where the editor starts. */
+    anchor?: string;
     disabled?: boolean;
     dirtyKeys?: readonly FormattingFieldKey[];
     onChange: (next: FormattingPatch, changedKey: FormattingFieldKey) => void;
@@ -164,10 +167,10 @@ three things among thirty finds them again.
 -->
 
 <div class="formatting-editor" data-valid={valid}>
-  <section class="card group-card" aria-labelledby="formatting-{scope}-{idPrefix}-policy">
-    <div class="group-head">
-      <h3 class="group-name" id="formatting-{scope}-{idPrefix}-policy">Formatting</h3>
-      <span class="group-tally">{overridden} of {FORMATTING_FIELDS.length} overridden</span>
+  <section class="card" id={anchor} aria-labelledby="formatting-{scope}-{idPrefix}-policy">
+    <div class="card-head">
+      <h2 class="card-title" id="formatting-{scope}-{idPrefix}-policy">Formatting</h2>
+      <span class="card-meta">{overridden} of {FORMATTING_FIELDS.length} set here</span>
     </div>
     <p class="group-note">Presentation rules applied after semantic file merges</p>
     <div
@@ -178,28 +181,33 @@ three things among thirty finds them again.
         <span class="setting-name">Preset</span>
         <span class="setting-why">{presetField.description}</span>
       </span>
-      <InheritControl
-        label="Formatting preset"
-        {source}
-        inheritedValue={inherited.preset}
-        inheritedLabel={optionLabel(inherited.preset)}
-        value={draft.preset ?? null}
-        options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
-        {disabled}
-        fluid
-        onSelect={(value) => pick(presetField, value)}
-        onRestore={() => clear(presetField)}
-      />
+      <!-- `fluid` fits the segments to the column they are in, and the column is the row
+           law's own half - so the control never sets the page's width. Without it a
+           segment's longest word decided the document at 320px. -->
+      <span class="policy-value">
+        <InheritControl
+          label="Formatting preset"
+          {source}
+          inheritedValue={inherited.preset}
+          inheritedLabel={optionLabel(inherited.preset)}
+          value={draft.preset ?? null}
+          options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
+          {disabled}
+          fluid
+          onSelect={(value) => pick(presetField, value)}
+          onRestore={() => clear(presetField)}
+        />
+      </span>
     </div>
   </section>
 
   {#each FORMATTING_GROUPS as group (group.key)}
-    <section class="card group-card" aria-labelledby="formatting-{scope}-{idPrefix}-{group.key}">
-      <div class="group-head">
-        <h3 class="group-name" id="formatting-{scope}-{idPrefix}-{group.key}">{group.label}</h3>
-        <span class="group-tally"
+    <section class="card" aria-labelledby="formatting-{scope}-{idPrefix}-{group.key}">
+      <div class="card-head">
+        <h2 class="card-title" id="formatting-{scope}-{idPrefix}-{group.key}">{group.label}</h2>
+        <span class="card-meta"
           >{fieldsIn(group.key).filter((field) => formattingPatchValue(draft, field) !== undefined)
-            .length} of {fieldsIn(group.key).length} overridden</span
+            .length} of {fieldsIn(group.key).length} set here</span
         >
       </div>
       <p class="group-note">{group.description}</p>
@@ -216,20 +224,22 @@ three things among thirty finds them again.
               <span class="setting-why">{field.description}</span>
             </span>
             {#if field.kind === 'enum'}
-              <InheritControl
-                label={fieldLabel(field)}
-                {source}
-                inheritedValue={String(formattingPolicyValue(baseline, field))}
-                inheritedLabel={optionLabel(String(formattingPolicyValue(baseline, field)))}
-                value={formattingPatchValue(draft, field)?.toString() ?? null}
-                options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
-                {disabled}
-                fluid
-                onSelect={(value) => pick(field, value)}
-                onRestore={() => clear(field)}
-              />
+              <span class="policy-value">
+                <InheritControl
+                  label={fieldLabel(field)}
+                  {source}
+                  inheritedValue={String(formattingPolicyValue(baseline, field))}
+                  inheritedLabel={optionLabel(String(formattingPolicyValue(baseline, field)))}
+                  value={formattingPatchValue(draft, field)?.toString() ?? null}
+                  options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
+                  {disabled}
+                  fluid
+                  onSelect={(value) => pick(field, value)}
+                  onRestore={() => clear(field)}
+                />
+              </span>
             {:else}
-              <span class="number-control">
+              <span class="policy-value number-control">
                 {#if formattingPatchValue(draft, field) !== undefined}
                   <AppTooltip text="Stop overriding - follow {source}">
                     {#snippet children(attributes)}
