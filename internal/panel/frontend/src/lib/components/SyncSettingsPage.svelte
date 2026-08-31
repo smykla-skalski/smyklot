@@ -150,6 +150,7 @@ turns the unmanaged names into rows of their own.
   import type { SyncConfig, SyncStatus } from '../types';
 
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -337,16 +338,11 @@ turns the unmanaged names into rows of their own.
     <p class="empty-note">No setting matches "{query.trim()}"</p>
   {/if}
 
-  <div class="setting-groups">
+  <div class="setting-groups card-stack">
     {#each visibleGroups as group (group.id)}
       {@const rows = groupRows(group)}
       {@const rest = groupRest(group)}
-      <section
-        class="card"
-        class:is-unsaved={groupDirty(group)}
-        data-unsaved={groupDirty(group) || undefined}
-        aria-labelledby="settings-group-{group.id}"
-      >
+      <Card unsaved={groupDirty(group)} labelledby="settings-group-{group.id}">
         <div class="card-head">
           <h2 class="card-title" id="settings-group-{group.id}">{group.title}</h2>
           <span class="card-meta"
@@ -489,7 +485,7 @@ turns the unmanaged names into rows of their own.
             {/if}
           </div>
         {/if}
-      </section>
+      </Card>
     {/each}
   </div>
 </div>
@@ -544,11 +540,6 @@ turns the unmanaged names into rows of their own.
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-4);
     min-block-size: 3rem;
-  }
-
-  .setting-groups {
-    display: grid;
-    gap: var(--space-6);
   }
 
   /* The head, the title and the tally beside it are the sheet's now - `card-head`,
@@ -734,10 +725,6 @@ turns the unmanaged names into rows of their own.
 
     .matrix-search {
       width: 100%;
-    }
-
-    .card {
-      padding: var(--space-4);
     }
 
     .value-select {

@@ -26,6 +26,7 @@ already hold - the index ships once, matching costs no requests.
   import { rankPaths, type PathMatch } from '../pathfinder';
   import type { SyncConfig, SyncFile, SyncFilesContext, SyncPlan, SyncStatus } from '../types';
 
+  import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -320,7 +321,7 @@ already hold - the index ships once, matching costs no requests.
     </Popover>
   {/snippet}
 
-  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
+  <Card unsaved={dirtyDocument}>
     <div class="card-head">
       <h2 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h2>
     </div>
@@ -365,9 +366,9 @@ already hold - the index ships once, matching costs no requests.
     {:else if !unreadable}
       <p class="sync-empty">No templates yet</p>
     {/if}
-  </div>
+  </Card>
 
-  <div class="card">
+  <Card>
     <div class="setting-rows">
       <div
         class="setting-row"
@@ -411,7 +412,7 @@ already hold - the index ships once, matching costs no requests.
         </span>
       </div>
     </div>
-  </div>
+  </Card>
 </div>
 
 <style>
@@ -422,11 +423,6 @@ already hold - the index ships once, matching costs no requests.
 
   .card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
-  .card + .card {
-    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
-    margin-block-start: var(--rhythm-card-gap);
   }
 
   .card-head {
@@ -696,19 +692,7 @@ already hold - the index ships once, matching costs no requests.
     color: var(--text-secondary);
   }
 
-  /* ---------- The bottom card ---------- */
-
-  /* A card that is nothing but rows keeps the one row contract, and the list hands its own
-     12px back at both edges so the first and last ink close on the card's frame. */
-  .card > .setting-rows:only-child {
-    margin-block: calc(var(--row-pad-default) * -1);
-  }
-
   @media (max-width: 36rem) {
-    .card {
-      padding: var(--space-4);
-    }
-
     .object-row {
       gap: var(--space-2);
       grid-template-columns: minmax(0, 1fr) auto;

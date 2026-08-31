@@ -26,6 +26,7 @@ decisions every kind carries: removal, and the names left alone.
 <script lang="ts">
   import type { SyncConfig, SyncPlan, SyncStatus } from '../types';
 
+  import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -233,7 +234,7 @@ decisions every kind carries: removal, and the names left alone.
     </p>
   {/if}
 
-  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
+  <Card unsaved={dirtyDocument}>
     <div class="card-head">
       <h2 class="card-title">{rulesets.length} {rulesets.length === 1 ? 'ruleset' : 'rulesets'}</h2>
     </div>
@@ -280,9 +281,9 @@ decisions every kind carries: removal, and the names left alone.
     {:else if !unreadable}
       <p class="sync-empty">No rulesets yet</p>
     {/if}
-  </div>
+  </Card>
 
-  <div class="card">
+  <Card>
     <div class="setting-rows">
       <div
         class="setting-row"
@@ -326,7 +327,7 @@ decisions every kind carries: removal, and the names left alone.
         </span>
       </div>
     </div>
-  </div>
+  </Card>
 </div>
 
 <style>
@@ -531,17 +532,7 @@ decisions every kind carries: removal, and the names left alone.
 
   /* ---------- The bottom card ---------- */
 
-  /* A card that is nothing but rows hands the list's own block padding back at both edges,
-     so the first and last ink close on the card's frame rather than 12px inside it. */
-  .card > .setting-rows:only-child {
-    margin-block: calc(var(--row-pad-default) * -1);
-  }
-
   @media (max-width: 36rem) {
-    .card {
-      padding: var(--space-4);
-    }
-
     .object-row {
       gap: var(--space-2);
       grid-template-columns: minmax(0, 1fr) auto;

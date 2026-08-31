@@ -2,6 +2,7 @@
   import type { PanelApi } from '../api';
   import { panelUrl, type PanelBuild } from '../base';
   import { describeFailure, type PanelFailure } from '../panel-error';
+  import Card from './Card.svelte';
   import ErrorCard from './ErrorCard.svelte';
   import NightPage from './NightPage.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -55,7 +56,7 @@ lib/panel-error.ts.
        on a not-found page reads as a report on the repositories. -->
   <div class="view-frame">
     <PageHeader id="panel-error-heading" title={content.title} />
-    <div class="card">
+    <Card>
       <div class="state-panel">
         <span><strong>{content.lead}.</strong> {content.note}</span>
       </div>
@@ -66,7 +67,7 @@ lib/panel-error.ts.
           {/each}
         </p>
       {/if}
-    </div>
+    </Card>
   </div>
 {:else}
   <NightPage title={content.title} documentTitle={content.title} {build}>

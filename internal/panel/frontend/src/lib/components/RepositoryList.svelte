@@ -50,6 +50,7 @@
   import { repositorySentence } from '../repository-sentence';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Chip from './Chip.svelte';
   import FileStatusIndicator from './FileStatusIndicator.svelte';
   import Icon from './Icon.svelte';
@@ -882,7 +883,7 @@ a workspace has is not a number worth blocking the first screenful on.
           --skeleton-bar-b-left="48%"
         />
       {:else if repositories.length === 0}
-        <div class="card">
+        <Card>
           <TableEmptyState
             title={hasFilters ? 'No repositories match' : 'No repositories installed'}
             description={hasFilters
@@ -891,9 +892,9 @@ a workspace has is not a number worth blocking the first screenful on.
             actionLabel={hasFilters ? 'Clear filters' : undefined}
             onAction={hasFilters ? clearFilters : undefined}
           />
-        </div>
+        </Card>
       {:else}
-        <div class="card">
+        <Card>
           <ul class="object-list">
             {#each repositories as repository (repository.id)}
               {@const dirty = repositoryDirty(repository.id)}
@@ -974,7 +975,7 @@ a workspace has is not a number worth blocking the first screenful on.
               </Button>
             {/if}
           </div>
-        </div>
+        </Card>
       {/if}
       {#if loadMoreProblem !== null}
         <div class="load-more-alert" role="alert">

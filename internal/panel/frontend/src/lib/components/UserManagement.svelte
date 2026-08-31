@@ -40,6 +40,7 @@
   import Callout from './Callout.svelte';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Pill, { type PillTone } from './Pill.svelte';
   import CopyReceipt from './CopyReceipt.svelte';
   import DecisionHistory from './DecisionHistory.svelte';
@@ -1362,7 +1363,7 @@ offering it.
           {/if}
           {#if users.length === 0}
             {@const narrowed = userQuery !== '' || userView !== 'all'}
-            <div class="card">
+            <Card>
               <TableEmptyState
                 title={narrowed ? 'Nobody matches' : 'Just you'}
                 description={narrowed
@@ -1371,9 +1372,9 @@ offering it.
                 actionLabel={narrowed ? 'Show everyone' : undefined}
                 onAction={narrowed ? clearUserFilters : undefined}
               />
-            </div>
+            </Card>
           {:else}
-            <div class="card">
+            <Card>
               <ul class="object-list">
                 {#each users as user (user.account.id)}
                   {@const state = stateLabel(user)}
@@ -1432,7 +1433,7 @@ offering it.
                   </Button>
                 {/if}
               </div>
-            </div>
+            </Card>
           {/if}
         {/if}
         {#if userLoadMoreFailure !== null}
@@ -1475,7 +1476,7 @@ offering it.
           {/if}
           {#if invitations.length === 0}
             {@const narrowed = invitationQuery !== '' || invitationView !== 'all'}
-            <div class="card">
+            <Card>
               <TableEmptyState
                 title={narrowed ? 'No invitations match' : 'No invitations are out'}
                 description={narrowed
@@ -1484,9 +1485,9 @@ offering it.
                 actionLabel={narrowed ? 'Show them all' : undefined}
                 onAction={narrowed ? clearInvitationFilters : undefined}
               />
-            </div>
+            </Card>
           {:else}
-            <div class="card">
+            <Card>
               <ul class="object-list">
                 {#each invitations as invitation (invitation.id)}
                   {@const settled =
@@ -1569,7 +1570,7 @@ offering it.
                   </Button>
                 {/if}
               </div>
-            </div>
+            </Card>
           {/if}
         {/if}
         {#if invitationLoadMoreFailure !== null}

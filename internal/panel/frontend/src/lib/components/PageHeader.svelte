@@ -120,8 +120,11 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     /* The header's exit is a rhythm decision: 24px to the first surface below it,
-       and the pane's own top edge above. */
-    margin-block-end: var(--rhythm-head-surface-wide);
+       and the pane's own top edge above. The frame it sits in is a card stack, so
+       its gap already gives part of that distance and the header owes the rest -
+       written as the difference rather than as a second number, because two numbers
+       for one distance is how this drifts. */
+    margin-block-end: calc(var(--rhythm-head-surface-wide) - var(--rhythm-card-gap));
     row-gap: var(--rhythm-head-actions-stacked);
   }
 
@@ -130,7 +133,7 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
      so on source order the component won and every page with a filter bar under its
      head stood 4px too far off it. Said here, where the losing rule is. */
   .page-head:has(+ :global(.filter-bar)) {
-    margin-block-end: var(--rhythm-head-toolbar);
+    margin-block-end: calc(var(--rhythm-head-toolbar) - var(--rhythm-card-gap));
   }
 
   /* A head carrying a status band is three areas rather than two columns, and
@@ -281,7 +284,7 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
   @media (max-width: 47.9375rem) {
     .page-head {
       grid-template-columns: minmax(0, 1fr);
-      margin-block-end: var(--rhythm-head-surface-compact);
+      margin-block-end: calc(var(--rhythm-head-surface-compact) - var(--rhythm-card-gap));
     }
 
     .page-head:has(+ :global(.filter-bar)) {

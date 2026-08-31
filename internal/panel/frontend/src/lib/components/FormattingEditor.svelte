@@ -18,6 +18,7 @@
     type FormattingPolicy,
   } from '../formatting';
   import AppTooltip from './AppTooltip.svelte';
+  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
 
@@ -166,8 +167,8 @@ to say which field is wrong and why, next to the field.
 three things among thirty finds them again.
 -->
 
-<div class="formatting-editor" data-valid={valid}>
-  <section class="card" id={anchor} aria-labelledby="formatting-{scope}-{idPrefix}-policy">
+<div class="formatting-editor card-stack" data-valid={valid}>
+  <Card id={anchor} labelledby="formatting-{scope}-{idPrefix}-policy">
     <div class="card-head">
       <h2 class="card-title" id="formatting-{scope}-{idPrefix}-policy">Formatting</h2>
       <span class="card-meta">{overridden} of {FORMATTING_FIELDS.length} set here</span>
@@ -199,10 +200,10 @@ three things among thirty finds them again.
         />
       </span>
     </div>
-  </section>
+  </Card>
 
   {#each FORMATTING_GROUPS as group (group.key)}
-    <section class="card" aria-labelledby="formatting-{scope}-{idPrefix}-{group.key}">
+    <Card labelledby="formatting-{scope}-{idPrefix}-{group.key}">
       <div class="card-head">
         <h2 class="card-title" id="formatting-{scope}-{idPrefix}-{group.key}">{group.label}</h2>
         <span class="card-meta"
@@ -295,7 +296,7 @@ three things among thirty finds them again.
           </div>
         {/each}
       </div>
-    </section>
+    </Card>
   {/each}
 
   <span class="effective-summary" aria-live="polite">
@@ -304,11 +305,6 @@ three things among thirty finds them again.
 </div>
 
 <style>
-  .formatting-editor {
-    display: grid;
-    gap: var(--space-4);
-  }
-
   .group-head {
     align-items: end;
     display: flex;

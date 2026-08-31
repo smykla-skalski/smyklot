@@ -59,6 +59,7 @@ what would otherwise be four visits.
   import { getPanelSession } from '../session.svelte';
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
+  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import RelativeTime from './RelativeTime.svelte';
@@ -197,7 +198,7 @@ what would otherwise be four visits.
 <div class="view-frame">
   <PageHeader id="overview-heading" title="Overview" />
 
-  <div class="card">
+  <Card>
     <div class="card-head verdict-head">
       <h2 class="card-title">
         {#if attention === 0}
@@ -264,9 +265,9 @@ what would otherwise be four visits.
         {/each}
       </div>
     {/if}
-  </div>
+  </Card>
 
-  <div class="card block-gap-top">
+  <Card>
     <div class="card-head">
       <h2 class="card-title">Active work</h2>
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
@@ -300,9 +301,9 @@ what would otherwise be four visits.
         {/each}
       </div>
     {/if}
-  </div>
+  </Card>
 
-  <div class="card block-gap-top">
+  <Card>
     <div class="card-head">
       <h2 class="card-title">Recent activity</h2>
       <a class="btn btn-quiet" href={auditHref}><span class="button-label">Open the audit</span></a>
@@ -334,10 +335,10 @@ what would otherwise be four visits.
         {/each}
       </div>
     {/if}
-  </div>
+  </Card>
 
   <!-- The workspace's pulse: three facts, each a link to the page that owns it. -->
-  <div class="card block-gap-top">
+  <Card>
     <div class="fact-row">
       <span class="fact-bit">
         <span class="fact-dot"></span>
@@ -361,7 +362,7 @@ what would otherwise be four visits.
         >
       </span>
     </div>
-  </div>
+  </Card>
 </div>
 
 <style>

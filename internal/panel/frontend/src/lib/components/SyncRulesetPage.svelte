@@ -66,6 +66,7 @@ stacked left, Cancel and Done on a hairline foot.
 
   import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -464,11 +465,7 @@ stacked left, Cancel and Done on a hairline foot.
   {/if}
 
   {#if ruleset !== null}
-    <div
-      class="card"
-      class:is-unsaved={partDirty('enforcement')}
-      data-unsaved={partDirty('enforcement') || undefined}
-    >
+    <Card unsaved={partDirty('enforcement')}>
       <div class="policy-rows">
         <div
           class="policy-row"
@@ -499,13 +496,9 @@ stacked left, Cancel and Done on a hairline foot.
           </span>
         </div>
       </div>
-    </div>
+    </Card>
 
-    <div
-      class="card"
-      class:is-unsaved={partDirty('conditions')}
-      data-unsaved={partDirty('conditions') || undefined}
-    >
+    <Card unsaved={partDirty('conditions')}>
       <div class="card-head">
         <h2 class="card-title">Where it applies</h2>
       </div>
@@ -613,13 +606,9 @@ stacked left, Cancel and Done on a hairline foot.
           </span>
         </div>
       </div>
-    </div>
+    </Card>
 
-    <div
-      class="card"
-      class:is-unsaved={partDirty('rules')}
-      data-unsaved={partDirty('rules') || undefined}
-    >
+    <Card unsaved={partDirty('rules')}>
       <div class="card-head">
         <h2 class="card-title">What it enforces</h2>
         <span class="card-meta">{onRules.length} of {RULE_CATALOGUE.length} rules on</span>
@@ -889,13 +878,9 @@ stacked left, Cancel and Done on a hairline foot.
           {/if}
         </div>
       {/if}
-    </div>
+    </Card>
 
-    <div
-      class="card"
-      class:is-unsaved={partDirty('bypass_actors')}
-      data-unsaved={partDirty('bypass_actors') || undefined}
-    >
+    <Card unsaved={partDirty('bypass_actors')}>
       <div class="card-head">
         <h2 class="card-title">Who may step around it</h2>
         <span class="card-meta">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
@@ -985,7 +970,7 @@ stacked left, Cancel and Done on a hairline foot.
           </Button>
         {/if}
       </div>
-    </div>
+    </Card>
 
     {#if !readOnly}
       <ApplyBar>
@@ -1286,10 +1271,6 @@ stacked left, Cancel and Done on a hairline foot.
   @media (max-width: 36rem) {
     .view-frame {
       overflow-x: hidden;
-    }
-
-    .card {
-      padding: var(--space-4);
     }
 
     .group-rest {

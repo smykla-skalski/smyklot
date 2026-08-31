@@ -23,6 +23,7 @@
   import { fade } from 'svelte/transition';
   import ActionMenu, { type ActionMenuItem } from './ActionMenu.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Icon from './Icon.svelte';
   import Pill from './Pill.svelte';
@@ -283,134 +284,132 @@ Its clock is injected so a story or a test can hold time still. A countdown that
 from the wall clock cannot be photographed.
 -->
 
-{#if cards.length === 0}
-  <div class="card">
-    <div class="state-panel">
-      <strong>Nothing in this view</strong>
-      <span>Queued work appears here as soon as the service accepts it.</span>
-    </div>
-  </div>
-{:else}
-  {#each cards as card (card.id)}
-    <div class="card queue-group">
-      <div class="card-head">
-        <h2 class="card-title">{card.title}</h2>
+<div class="card-stack">
+  {#if cards.length === 0}
+    <Card>
+      <div class="state-panel">
+        <strong>Nothing in this view</strong>
+        <span>Queued work appears here as soon as the service accepts it.</span>
       </div>
-      <ul class="object-list">
-        {#each card.items as item (item.id)}
-          <li animate:flip={rowMotion} in:fade={rowArriving} out:fade={rowLeaving}>
-            <div class="object-row">
-              <!-- The whole row opens the schedule, the progress and the audit
+    </Card>
+  {:else}
+    {#each cards as card (card.id)}
+      <Card class="queue-group">
+        <div class="card-head">
+          <h2 class="card-title">{card.title}</h2>
+        </div>
+        <ul class="object-list">
+          {#each card.items as item (item.id)}
+            <li animate:flip={rowMotion} in:fade={rowArriving} out:fade={rowLeaving}>
+              <div class="object-row">
+                <!-- The whole row opens the schedule, the progress and the audit
                    timeline; the acts stay pressable inside it. -->
-              <button
-                class="row-hit"
-                type="button"
-                aria-label="Open {item.title}"
-                onclick={() => onOpen(item)}
-              ></button>
-              <span class="object-main">
-                <span class="object-name-row">
-                  <span class="object-name">{item.title}</span>
-                  {#if subject(item) !== null}
-                    <Pill>{subject(item)}</Pill>
-                  {/if}
-                  <span class="pill-swap">
-                    {#key `${item.priority}:${item.revision}`}
-                      <span class="pill-value" in:fade={valueMotion} out:fade={valueMotion}>
-                        {#if item.priority !== 'normal'}
-                          <Pill tone={item.priority === 'urgent' ? 'danger' : 'neutral'}>
-                            {words(item.priority)}
-                          </Pill>
-                        {/if}
-                      </span>
-                    {/key}
+                <button
+                  class="row-hit"
+                  type="button"
+                  aria-label="Open {item.title}"
+                  onclick={() => onOpen(item)}
+                ></button>
+                <span class="object-main">
+                  <span class="object-name-row">
+                    <span class="object-name">{item.title}</span>
+                    {#if subject(item) !== null}
+                      <Pill>{subject(item)}</Pill>
+                    {/if}
+                    <span class="pill-swap">
+                      {#key `${item.priority}:${item.revision}`}
+                        <span class="pill-value" in:fade={valueMotion} out:fade={valueMotion}>
+                          {#if item.priority !== 'normal'}
+                            <Pill tone={item.priority === 'urgent' ? 'danger' : 'neutral'}>
+                              {words(item.priority)}
+                            </Pill>
+                          {/if}
+                        </span>
+                      {/key}
+                    </span>
                   </span>
-                </span>
-                <span class="sum-swap">
-                  {#key `${item.state}:${item.priority}:${item.revision}`}
-                    {@const line = queueLine(item)}
-                    <span class="object-sum" in:fade={valueMotion} out:fade={valueMotion}>
-                      <!-- The separator rides the words, because markup whitespace
+                  <span class="sum-swap">
+                    {#key `${item.state}:${item.priority}:${item.revision}`}
+                      {@const line = queueLine(item)}
+                      <span class="object-sum" in:fade={valueMotion} out:fade={valueMotion}>
+                        <!-- The separator rides the words, because markup whitespace
                            beside a block is trimmed and "runs" would take the time
                            straight onto its own last letter. -->
-                      {line.when === undefined
-                        ? line.lead
-                        : `${line.lead} `}{#if line.when !== undefined}<time
-                          datetime={line.when.iso}
-                          title={line.when.exact}>{line.when.relative}</time
-                        >{line.tail ?? ''}{/if}
-                    </span>
-                  {/key}
-                </span>
-              </span>
-              <span class="object-side">
-                <!-- ONE FILLED ACT ON THE PAGE, and it is the decision. Everything
-                     else a row offers is a bordered control: a queue where every row
-                     shouts has nothing left to say when one of them needs somebody. -->
-                <!-- `signal` is the filled one here: the mock's `.btn-brand` is a solid
-                     fill of the action colour, and this sheet's `.btn-brand` is the
-                     console's 12% tint of it. The look is what has to match. -->
-                {#if review(item) !== null}
-                  <Button
-                    tone="signal"
-                    href={review(item) ?? ''}
-                    onclick={(event) => onReview?.(item, event)}
-                  >
-                    Review and apply
-                  </Button>
-                {/if}
-                {#if item.actions?.includes('run_now')}
-                  <Button onclick={() => onAction(item, 'run_now')}>Run now</Button>
-                {/if}
-                {#if actionItems(item).length > 0}
-                  <ActionMenu
-                    label={`Actions for ${item.title}`}
-                    items={actionItems(item)}
-                    onSelect={(action) => selectMenuAction(item, action)}
-                  />
-                {:else if stateLabel(item) !== null}
-                  <!-- A row with nothing to act on says how it stands instead, at the
-                       end where the act would have been. -->
-                  <span class="state-swap">
-                    {#key `${item.state}:${item.revision}`}
-                      <span class="state-value" in:fade={valueMotion} out:fade={valueMotion}>
-                        <Chip tone={stateTone(item)} dot={item.state === 'running'}>
-                          {stateLabel(item)}
-                        </Chip>
+                        {line.when === undefined
+                          ? line.lead
+                          : `${line.lead} `}{#if line.when !== undefined}<time
+                            datetime={line.when.iso}
+                            title={line.when.exact}>{line.when.relative}</time
+                          >{line.tail ?? ''}{/if}
                       </span>
                     {/key}
                   </span>
-                {:else if review(item) === null && !(item.actions?.includes('run_now') ?? false)}
-                  <!-- The way in, for a row that offers nothing else. A chevron beside
+                </span>
+                <span class="object-side">
+                  <!-- ONE FILLED ACT ON THE PAGE, and it is the decision. Everything
+                     else a row offers is a bordered control: a queue where every row
+                     shouts has nothing left to say when one of them needs somebody. -->
+                  <!-- `signal` is the filled one here: the mock's `.btn-brand` is a solid
+                     fill of the action colour, and this sheet's `.btn-brand` is the
+                     console's 12% tint of it. The look is what has to match. -->
+                  {#if review(item) !== null}
+                    <Button
+                      tone="signal"
+                      href={review(item) ?? ''}
+                      onclick={(event) => onReview?.(item, event)}
+                    >
+                      Review and apply
+                    </Button>
+                  {/if}
+                  {#if item.actions?.includes('run_now')}
+                    <Button onclick={() => onAction(item, 'run_now')}>Run now</Button>
+                  {/if}
+                  {#if actionItems(item).length > 0}
+                    <ActionMenu
+                      label={`Actions for ${item.title}`}
+                      items={actionItems(item)}
+                      onSelect={(action) => selectMenuAction(item, action)}
+                    />
+                  {:else if stateLabel(item) !== null}
+                    <!-- A row with nothing to act on says how it stands instead, at the
+                       end where the act would have been. -->
+                    <span class="state-swap">
+                      {#key `${item.state}:${item.revision}`}
+                        <span class="state-value" in:fade={valueMotion} out:fade={valueMotion}>
+                          <Chip tone={stateTone(item)} dot={item.state === 'running'}>
+                            {stateLabel(item)}
+                          </Chip>
+                        </span>
+                      {/key}
+                    </span>
+                  {:else if review(item) === null && !(item.actions?.includes('run_now') ?? false)}
+                    <!-- The way in, for a row that offers nothing else. A chevron beside
                        an act is a second way to say the row opens, and the act is the
                        one a reader came for. -->
-                  <span class="row-chevron" aria-hidden="true">
-                    <Icon name="chevron-right" size="xs" />
-                  </span>
-                {/if}
-              </span>
-            </div>
-          </li>
-        {/each}
-      </ul>
-      <!-- ONLY WHERE THE CARD IS HOLDING SOMETHING BACK. A count under a list a reader
+                    <span class="row-chevron" aria-hidden="true">
+                      <Icon name="chevron-right" size="xs" />
+                    </span>
+                  {/if}
+                </span>
+              </div>
+            </li>
+          {/each}
+        </ul>
+        <!-- ONLY WHERE THE CARD IS HOLDING SOMETHING BACK. A count under a list a reader
            can see the whole of answers a question nobody asked, and the rows above it
            already say how many there are. -->
-      {#if card.more}
-        <div class="list-foot">
-          <span>{card.count}</span>
-          <Button tone="quiet" disabled={card.busy} onclick={card.onMore}>Show more</Button>
-        </div>
-      {/if}
-    </div>
-  {/each}
-{/if}
+        {#if card.more}
+          <div class="list-foot">
+            <span>{card.count}</span>
+            <Button tone="quiet" disabled={card.busy} onclick={card.onMore}>Show more</Button>
+          </div>
+        {/if}
+      </Card>
+    {/each}
+  {/if}
+</div>
 
 <style>
-  .queue-group + .queue-group {
-    margin-block-start: var(--rhythm-card-gap);
-  }
-
   .row-chevron {
     color: var(--text-muted);
     display: inline-grid;

@@ -17,6 +17,7 @@
   import { COMMANDS } from '../types';
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../types';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
@@ -214,7 +215,7 @@ account again.
   >
 {/snippet}
 
-<div class="config-editor">
+<div class="config-editor card-stack">
   {#if section === 'all' || section === 'behavior'}
     {#if only !== undefined}
       <!-- The repository-file pane's list: just the rows in effect, no card of
@@ -244,10 +245,9 @@ account again.
         {/each}
       </div>
     {:else}
-      <section
-        class="card"
+      <Card
         id={anchorPrefix === undefined ? undefined : `${anchorPrefix}-behavior`}
-        aria-labelledby="config-{scope}-{idPrefix}-behavior"
+        labelledby="config-{scope}-{idPrefix}-behavior"
       >
         <div class="card-head">
           <h2 class="card-title" id="config-{scope}-{idPrefix}-behavior">Behavior</h2>
@@ -313,15 +313,14 @@ account again.
             </div>
           {/if}
         </div>
-      </section>
+      </Card>
     {/if}
   {/if}
 
   {#if only === undefined && (section === 'all' || section === 'commands')}
-    <section
-      class="card"
+    <Card
       id={anchorPrefix === undefined ? undefined : `${anchorPrefix}-commands`}
-      aria-labelledby="config-{scope}-{idPrefix}-commands"
+      labelledby="config-{scope}-{idPrefix}-commands"
     >
       <div class="card-head">
         <h2 class="card-title" id="config-{scope}-{idPrefix}-commands">Commands</h2>
@@ -501,16 +500,11 @@ account again.
           </span>
         </div>
       </div>
-    </section>
+    </Card>
   {/if}
 </div>
 
 <style>
-  .config-editor {
-    display: grid;
-    gap: var(--space-4);
-  }
-
   .group-tally {
     color: var(--text-muted);
     font-family: var(--mono);

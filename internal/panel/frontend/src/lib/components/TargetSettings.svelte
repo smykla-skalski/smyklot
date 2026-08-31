@@ -22,6 +22,7 @@
   import type { PanelApi } from '../api';
   import type { ConfigKey, ConfigPatch, PanelTarget, PendingCIMode } from '../types';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
@@ -274,7 +275,7 @@ settings from them answers a different question than the one they asked.
 
 <div class="view-frame">
   <div class="page-main">
-    <section class="settings-page" aria-labelledby="defaults-heading">
+    <section class="settings-page card-stack" aria-labelledby="defaults-heading">
       <PageHeader
         id="defaults-heading"
         title="Workspace settings"
@@ -285,7 +286,7 @@ settings from them answers a different question than the one they asked.
         <FormError message={failure} />
       {/if}
 
-      <section class="card" id="ws-newrepos" aria-labelledby="settings-repositories">
+      <Card id="ws-newrepos" labelledby="settings-repositories">
         <div class="card-head">
           <h2 class="card-title" id="settings-repositories">New repositories</h2>
         </div>
@@ -324,7 +325,7 @@ settings from them answers a different question than the one they asked.
             </span>
           </div>
         </div>
-      </section>
+      </Card>
 
       {#snippet timingCard()}
         <details class="card fold" id="ws-timing">
@@ -441,7 +442,7 @@ settings from them answers a different question than the one they asked.
         </details>
       {/snippet}
 
-      <section class="card" id="ws-merging" aria-labelledby="settings-merge-ci">
+      <Card id="ws-merging" labelledby="settings-merge-ci">
         <div class="card-head">
           <h2 class="card-title" id="settings-merge-ci">Merging</h2>
           <span class="pill {mergePill.tone}"><span class="t">{mergePill.word}</span></span>
@@ -594,7 +595,7 @@ settings from them answers a different question than the one they asked.
             blocked until GitHub approves both permissions.
           </p>
         {/if}
-      </section>
+      </Card>
 
       <ConfigEditor
         patch={target.config_patch}
@@ -626,11 +627,6 @@ settings from them answers a different question than the one they asked.
 </div>
 
 <style>
-  .settings-page {
-    display: grid;
-    gap: var(--space-4);
-  }
-
   .group-head {
     align-items: end;
     display: flex;

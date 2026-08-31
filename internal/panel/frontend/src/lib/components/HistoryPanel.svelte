@@ -25,6 +25,7 @@
   } from '../types';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import HistoryDisplayMenu from './HistoryDisplayMenu.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -829,7 +830,7 @@ where the record is.
       />
     {:else if historyType === 'audit'}
       {#if auditRows.length === 0}
-        <div class="card">
+        <Card>
           <TableEmptyState
             title="Nothing yet"
             description={hasFilters
@@ -838,9 +839,9 @@ where the record is.
             actionLabel={hasFilters ? 'Clear filters' : undefined}
             onAction={hasFilters ? clearFilters : undefined}
           />
-        </div>
+        </Card>
       {:else}
-        <div class="card">
+        <Card>
           {#each auditDays as day (day.key)}
             <h2 class="day-head">{day.head}</h2>
             <ul class="object-list">
@@ -876,11 +877,11 @@ where the record is.
               </Button>
             {/if}
           </div>
-        </div>
+        </Card>
       {/if}
     {:else}
       {#if failureRows.length === 0}
-        <div class="card">
+        <Card>
           <TableEmptyState
             title={hasFilters ? 'Nothing matches' : 'No failures'}
             description={hasFilters
@@ -889,9 +890,9 @@ where the record is.
             actionLabel={hasFilters ? 'Show them all' : undefined}
             onAction={hasFilters ? clearFilters : undefined}
           />
-        </div>
+        </Card>
       {:else}
-        <div class="card">
+        <Card>
           <ul class="object-list">
             {#each failureRows as failure (failure.id)}
               <li>
@@ -944,7 +945,7 @@ where the record is.
               </Button>
             {/if}
           </div>
-        </div>
+        </Card>
       {/if}
     {/if}
     {#if loadMoreProblem !== null}

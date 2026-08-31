@@ -2535,16 +2535,34 @@ thead th .icon-button:active:not(:disabled) {
   padding: var(--space-5);
 }
 
-/* TWO CARDS ON A PAGE SIT ONE DISTANCE APART, AND IT IS THIS ONE. */
-.card + .card {
-  margin-block-start: var(--rhythm-card-gap);
+/* HOW FAR APART CARDS SIT, SAID ONCE, BY THE THING THAT STACKS THEM.
+   A gap and not a margin on the card: a margin is a property of one card that has
+   to be CANCELLED wherever anything else already spaces it, and every way this
+   number went wrong was somebody meeting one of those cancellations - a
+   `block-gap-top` invented at 24px on one page, the rule copied into three scoped
+   styles, one container spacing at 24 where the rest of the panel used 16, and
+   margins that do not collapse inside a grid and so simply added. A gap belongs to
+   the container, applies to everything it holds, and cannot double.
+   `.view-frame` is one, so a page that lays its cards out directly needs nothing. */
+.card-stack,
+.view-frame {
+  display: grid;
+  gap: var(--rhythm-card-gap);
 }
 
-/* A CONTAINER THAT LAYS CARDS OUT WITH A GAP ALREADY OWNS THE DISTANCE. Margins do
-   not collapse in a grid or a flex container, so the sibling rule above stacked on
-   top of the gap. */
-:is(.setting-groups, .card-grid) > .card + .card {
-  margin-block-start: 0;
+/* A phone gives the frame less room, so the card keeps less for itself. Six pages
+   said this in six scoped copies of one property of one card. */
+@media (max-width: 36rem) {
+  .card {
+    padding: var(--space-4);
+  }
+}
+
+/* A card that is NOTHING BUT ROWS: the rows' own block padding is the card's edge
+   whitespace, so unswallowed it doubles onto the card's 20px and the top and bottom
+   read heavier than the sides. Three pages each carried a copy. */
+.card > :is(.setting-rows, .policy-rows):only-child {
+  margin-block: calc(var(--row-pad-default) * -1);
 }
 
 /* A card title is a heading, and a heading carries the browser's own margin until
@@ -3050,9 +3068,10 @@ button.object-row {
   margin-inline-start: auto;
 }
 
-/* A head that exits onto a toolbar rather than onto a surface. */
+/* A head that exits onto a toolbar rather than onto a surface. Less the stack's own
+   gap, which already gives part of the distance. */
 .page-head:has(+ .filter-bar) {
-  margin-block-end: var(--rhythm-head-toolbar);
+  margin-block-end: calc(var(--rhythm-head-toolbar) - var(--rhythm-card-gap));
 }
 
 /* What a list says about itself once it has finished: how much of it is shown, and

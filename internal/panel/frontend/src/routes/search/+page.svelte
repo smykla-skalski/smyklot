@@ -6,6 +6,7 @@
   import { findMarks, findMatches, SEARCH_MINIMUM } from '#lib/components/FindPalette.svelte';
   import type { FindEntry } from '#lib/components/FindPalette.svelte';
   import Button from '#lib/components/Button.svelte';
+  import Card from '#lib/components/Card.svelte';
   import Icon from '#lib/components/Icon.svelte';
   import PageHeader from '#lib/components/PageHeader.svelte';
   import Pill from '#lib/components/Pill.svelte';
@@ -125,7 +126,7 @@ rather than as two that happen to share a field.
     />
   </div>
 
-  <div class="card">
+  <Card>
     {#if terms.length === 0}
       <div class="state-panel">
         {#if asked.trim() === ''}
@@ -203,7 +204,7 @@ rather than as two that happen to share a field.
         </div>
       {/if}
     {/if}
-  </div>
+  </Card>
 </div>
 
 <style>

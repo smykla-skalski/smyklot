@@ -31,6 +31,7 @@
   import ConfigEditor from './ConfigEditor.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
   import Icon from './Icon.svelte';
+  import Card from './Card.svelte';
   import PageHeader from './PageHeader.svelte';
   import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
@@ -407,7 +408,7 @@ so a link points at the pane a colleague was asked to look at.
            that card need `detail` and this is where the page wants it read. -->
       {@render controlCard()}
 
-      <section class="card" aria-labelledby="repository-merge-ci">
+      <Card labelledby="repository-merge-ci">
         <div class="card-head">
           <h2 class="card-title" id="repository-merge-ci">Merging</h2>
           {#if detail.pending_ci_gate !== undefined}
@@ -703,7 +704,7 @@ so a link points at the pane a colleague was asked to look at.
             {detail.pending_ci_gate.reason}
           </p>
         {/if}
-      </section>
+      </Card>
 
       <!-- ONE SCROLL, NOT FIVE PANES. The switch over File / Behavior / Commands /
            Formatting / Sync made a reader press four times to see what one repository
@@ -712,7 +713,7 @@ so a link points at the pane a colleague was asked to look at.
            hold the open pane is gone with the panes, because it declared the page's own
            grid and gap a second time. -->
       {#snippet controlCard()}
-        <section class="card" aria-labelledby="repository-file-head">
+        <Card labelledby="repository-file-head">
           <div class="card-head">
             <h2 class="card-title" id="repository-file-head">Repository control</h2>
             <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
@@ -818,7 +819,7 @@ so a link points at the pane a colleague was asked to look at.
               </span>
             </div>
           </div>
-        </section>
+        </Card>
       {/snippet}
 
       <ConfigEditor

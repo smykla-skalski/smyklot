@@ -36,6 +36,7 @@
     RootRuntimeSettingsInput,
   } from '../types';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
@@ -411,10 +412,9 @@ without the composer.
 
     {#if section === 'settings'}
       {#if saveSettings !== undefined}
-        <section
-          class:paused={current.background_work_paused}
-          class="card emergency-card"
-          aria-labelledby="background-work-control"
+        <Card
+          class={current.background_work_paused ? 'emergency-card paused' : 'emergency-card'}
+          labelledby="background-work-control"
         >
           <div class="emergency-copy">
             <div class="emergency-heading">
@@ -450,7 +450,7 @@ without the composer.
               Pause automatic work
             </Button>
           {/if}
-        </section>
+        </Card>
       {/if}
 
       <ConfigEditor
@@ -480,7 +480,7 @@ without the composer.
         onValidity={setFormattingValidity}
       />
 
-      <section class="card group-card" aria-labelledby="root-runtime">
+      <Card class="group-card" labelledby="root-runtime">
         <div class="group-head">
           <h3 class="group-name" id="root-runtime">Runtime</h3>
           <span class="group-tally">{runtimeOverridden} of 2 overridden</span>
@@ -618,7 +618,7 @@ without the composer.
             {/if}
           </div>
         </div>
-      </section>
+      </Card>
 
       {#if current.updated_at !== undefined}
         <p class="updated-note">
@@ -632,7 +632,7 @@ without the composer.
     {/if}
 
     {#if section === 'database'}
-      <section class="card group-card" aria-labelledby="root-database">
+      <Card class="group-card" labelledby="root-database">
         <div class="group-head">
           <h3 class="group-name" id="root-database">Database</h3>
           <StatusPill dot state={current.service.database.state}>
@@ -684,11 +684,11 @@ without the composer.
             </div>
           {/if}
         </dl>
-      </section>
+      </Card>
     {/if}
 
     {#if section === 'service'}
-      <section class="card group-card" aria-labelledby="root-service">
+      <Card class="group-card" labelledby="root-service">
         <div class="group-head">
           <h3 class="group-name" id="root-service">Service and deployment</h3>
         </div>
@@ -753,7 +753,7 @@ without the composer.
             </dd>
           </div>
         </dl>
-      </section>
+      </Card>
     {/if}
   {/if}
 </section>

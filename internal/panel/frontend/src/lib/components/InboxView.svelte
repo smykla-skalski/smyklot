@@ -11,6 +11,7 @@
   import type { PanelApi } from '../api';
   import type { NotificationPage, SecurityNotification } from '../types';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Chip from './Chip.svelte';
   import PageHeader from './PageHeader.svelte';
   import Pill from './Pill.svelte';
@@ -238,9 +239,9 @@ pager - a notification list has no last page worth naming.
            know is why somebody with operator access was in their workspace; the session
            it happened under is bookkeeping, and it lives on the audit entry each row
            links to rather than at the head of the card that opens with the reason. -->
-      <div class="notification-list" aria-live="polite">
+      <div class="notification-list card-stack" aria-live="polite">
         {#each groups as group (group.id)}
-          <section class="card" aria-label={group.events[0]?.reason ?? 'Operator access'}>
+          <Card label={group.events[0]?.reason ?? 'Operator access'}>
             <div class="card-head">
               <h2 class="card-title">{group.events[0]?.reason ?? 'Operator access'}</h2>
               <span class="card-meta"
@@ -286,16 +287,16 @@ pager - a notification list has no last page worth naming.
                 </div>
               {/each}
             </div>
-          </section>
+          </Card>
         {:else}
-          <div class="card">
+          <Card>
             <div class="state-panel">
               <span
                 ><strong>Nothing has needed your attention.</strong> When an operator writes to a workspace
                 you own, the receipt lands here</span
               >
             </div>
-          </div>
+          </Card>
         {/each}
       </div>
 
@@ -324,12 +325,6 @@ pager - a notification list has no last page worth naming.
   .inbox-card {
     background: var(--surface-base);
     margin-bottom: 0;
-  }
-
-  /* THE CARDS SIT ONE CARD-GAP APART, which `app.css` gives every `.card + .card` -
-     the list only has to be a column that does not add a second distance of its own. */
-  .notification-list {
-    display: grid;
   }
 
   /* One block per group rather than per row: what is arriving is groups, and a

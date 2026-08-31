@@ -47,6 +47,7 @@ unlisted labels are removed, and the patterns left alone either way.
   import type { SyncConfig, SyncLabel, SyncStatus } from '../types';
 
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import LabelColorPicker from './LabelColorPicker.svelte';
@@ -416,11 +417,7 @@ unlisted labels are removed, and the patterns left alone either way.
     </p>
   {/if}
 
-  <div
-    class="card label-card"
-    class:is-unsaved={dirtyControlSet.has('sync.labels.labels')}
-    data-unsaved={dirtyControlSet.has('sync.labels.labels') || undefined}
-  >
+  <Card class="label-card" unsaved={dirtyControlSet.has('sync.labels.labels')}>
     <div class="card-head">
       <h2 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h2>
     </div>
@@ -516,9 +513,9 @@ unlisted labels are removed, and the patterns left alone either way.
         </li>
       {/each}
     </ul>
-  </div>
+  </Card>
 
-  <div class="card">
+  <Card>
     <div class="setting-rows">
       <div
         class="setting-row"
@@ -563,18 +560,13 @@ unlisted labels are removed, and the patterns left alone either way.
         </span>
       </div>
     </div>
-  </div>
+  </Card>
 </div>
 
 <style>
   .label-card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
     box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .card + .card {
-    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
-    margin-block-start: var(--rhythm-card-gap);
   }
 
   .card-head {
@@ -935,18 +927,7 @@ unlisted labels are removed, and the patterns left alone either way.
 
   /* ---------- The bottom card: the two decisions ---------- */
 
-  /* A card that is nothing but rows: the rows' own block padding is the card's edge
-     whitespace, so unswallowed it doubles onto the card's 20px and the top and bottom read
-     heavier than the sides. */
-  .card > .setting-rows:only-child {
-    margin-block: calc(var(--row-pad-default) * -1);
-  }
-
   @media (max-width: 36rem) {
-    .card {
-      padding: var(--space-4);
-    }
-
     .card-head {
       flex-wrap: wrap;
     }

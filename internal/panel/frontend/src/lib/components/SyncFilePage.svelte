@@ -94,6 +94,7 @@ where it arises.
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import CodeBlock from './CodeBlock.svelte';
   import Icon from './Icon.svelte';
   import FormError from './FormError.svelte';
@@ -945,7 +946,7 @@ where it arises.
   {/if}
 
   {#if file !== null}
-    <div class="card" class:is-unsaved={templateDirty} data-unsaved={templateDirty || undefined}>
+    <Card unsaved={templateDirty}>
       <div class="card-head">
         <h3 class="card-title">Template</h3>
         <div class="head-tools">
@@ -996,7 +997,7 @@ where it arises.
           <DiffBlock before={templateText} after={templateRender.content} {lang} />
         </div>
       {/if}
-    </div>
+    </Card>
 
     {#if context !== null}
       <FormattingEditor
@@ -1016,11 +1017,7 @@ where it arises.
       />
     {/if}
 
-    <div
-      class="card"
-      class:is-unsaved={anyOverrideDirty}
-      data-unsaved={anyOverrideDirty || undefined}
-    >
+    <Card unsaved={anyOverrideDirty}>
       <div class="card-head">
         <h3 class="card-title">Repository outputs</h3>
         <span class="object-sum"
@@ -1228,28 +1225,11 @@ where it arises.
           {/if}
         </div>
       {/each}
-    </div>
+    </Card>
   {/if}
 </div>
 
 <style>
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .card + .card {
-    /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
-    margin-block-start: var(--rhythm-card-gap);
-  }
-
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, so the title-to-first-row ink never
      depends on which adornments the card happens to carry. A control in the
      head gives its own slack back rather than growing the line. */
@@ -1585,10 +1565,6 @@ where it arises.
   }
 
   @media (max-width: 36rem) {
-    .card {
-      padding: var(--space-4);
-    }
-
     .card-head {
       align-items: start;
       flex-wrap: wrap;

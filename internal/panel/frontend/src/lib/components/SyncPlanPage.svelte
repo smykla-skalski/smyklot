@@ -833,19 +833,6 @@ the button.
     text-box: trim-both cap alphabetic;
   }
 
-  /* ---------- The lifecycle card ---------- */
-
-  .card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-5);
-  }
-
-  .block-gap-top {
-    margin-top: var(--space-6);
-  }
-
   .card-head {
     align-items: center;
     display: flex;
@@ -996,10 +983,6 @@ the button.
       margin-block-start: 0;
       min-inline-size: 0;
       overflow-wrap: anywhere;
-    }
-
-    .card {
-      padding: var(--space-4);
     }
   }
 </style>

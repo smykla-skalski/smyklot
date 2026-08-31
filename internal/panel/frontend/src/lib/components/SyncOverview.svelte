@@ -20,6 +20,7 @@
   import type { SyncConfig, SyncPlan, SyncRepositoryStatus, SyncStatus } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
   import Switch from './Switch.svelte';
@@ -250,7 +251,7 @@ plan is applied, which is why these are switches and not a form.
        the row. The board shows the shape; this says the words - in the same row
        grammar every other list on the panel uses. -->
   {#if attention.length > 0}
-    <div class="card">
+    <Card>
       <div class="card-head">
         <h2 class="card-title" id="sync-attention-label">Needs attention</h2>
       </div>
@@ -290,7 +291,7 @@ plan is applied, which is why these are switches and not a form.
           </li>
         {/each}
       </ul>
-    </div>
+    </Card>
   {/if}
 
   <!-- Kind cards: the strip repeats the board's slots in the board's order. -->
