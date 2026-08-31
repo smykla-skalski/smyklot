@@ -9,6 +9,7 @@
     ScheduleProfile,
     ScheduleRequest,
   } from '#lib/types.js';
+  import { receipts } from '#lib/receipts.svelte.js';
   /* One name per job, wherever it is read. A workspace used to keep a second table
      of its own, so the row a member asked about and the row an operator answered
      named the same job two ways. */
@@ -104,7 +105,6 @@
   let opener = $state<HTMLButtonElement | null>(null);
   let busy = $state(false);
   let problem = $state('');
-  let notice = $state('');
 
   let kind = $state<QueueWorkload>('sync_scan');
   let windowMode = $state<'existing' | 'custom'>('existing');
@@ -191,7 +191,7 @@
       });
       reason = '';
       open = false;
-      notice = 'Sent to the operators for a decision';
+      receipts.say('Sent to the operators for a decision');
       await schedules.refetch();
     } catch (cause) {
       problem = cause instanceof Error ? cause.message : String(cause);
@@ -205,7 +205,7 @@
     problem = '';
     try {
       await api.withdrawTargetScheduleRequest(targetId, request.id, request.revision);
-      notice = 'Request withdrawn';
+      receipts.say('Request withdrawn - the operators will not see it');
       await schedules.refetch();
     } catch (cause) {
       problem = cause instanceof Error ? cause.message : String(cause);
@@ -264,8 +264,6 @@ answered a question a workspace never asks and hid the one it does.
 
 {#if problem !== ''}
   <p class="state-panel is-error" role="alert">{problem}</p>
-{:else if notice !== ''}
-  <p class="state-panel" role="status">{notice}</p>
 {/if}
 
 <Modal
@@ -436,7 +434,8 @@ answered a question a workspace never asks and hid the one it does.
     outline: 2px solid var(--focus);
   }
 
-  /* The notice stands under the rows on the card's own text edge, not inside one. */
+  /* A refusal stands under the rows on the card's own text edge, not inside one. What
+     SUCCEEDED is a receipt at the foot of the window, so only this is left here. */
   .state-panel {
     margin-block-start: var(--space-3);
   }

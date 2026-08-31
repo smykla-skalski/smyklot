@@ -62,6 +62,7 @@ stacked left, Cancel and Done on a hairline foot.
 <script lang="ts">
   import { globRuns } from '../glob-runs';
   import { numericValue } from '../merge';
+  import { receipts } from '../receipts.svelte';
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
@@ -154,6 +155,9 @@ stacked left, Cancel and Done on a hairline foot.
       ...stored,
       rulesets: rulesets.filter((held) => held.name !== name),
     });
+    receipts.say(`${name} will be removed from every syncing repository by the next plan`, {
+      undo: restoreRuleset,
+    });
   }
 
   function restoreRuleset(): void {
@@ -163,6 +167,7 @@ stacked left, Cancel and Done on a hairline foot.
     next.splice(Math.max(0, held.at), 0, held.ruleset);
     removed = null;
     onChangeDocument({ ...stored, rulesets: next });
+    receipts.say(`Put back - ${held.ruleset.name} stays`);
   }
 
   /* ---------- Where it applies ---------- */

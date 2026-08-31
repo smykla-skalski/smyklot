@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '#lib/api.js';
+  import { receipts } from '#lib/receipts.svelte.js';
   import { hoursPhrase, windowsSentence } from '#lib/schedule-words.js';
   import type {
     QueuePolicy,
@@ -63,7 +64,6 @@
   const loading = $derived(schedulesQuery.isFetching);
   const queryError = $derived(errorMessage(schedulesQuery.error));
   const error = $derived(operationError || queryError);
-  let notice = $state('');
   let editingPolicy = $state<QueuePolicy | null>(null);
   let revertingPolicy = $state<QueuePolicy | null>(null);
   let editingProfile = $state<ScheduleProfile | null>(null);
@@ -200,7 +200,7 @@
               editingPolicy.kind,
               input,
             );
-      notice = `${workloadTitle(saved.kind)} schedule saved`;
+      receipts.say(`Saved - ${workloadTitle(saved.kind)} runs on its new schedule`);
       editingPolicy = null;
       dialogError = '';
       await load();
@@ -220,7 +220,7 @@
         revertingPolicy.kind,
         revertingPolicy.revision,
       );
-      notice = `${workloadTitle(revertingPolicy.kind)} now runs on the deployment schedule`;
+      receipts.say(`${workloadTitle(revertingPolicy.kind)} now runs on the deployment schedule`);
       revertingPolicy = null;
       dialogError = '';
       await load();
@@ -238,7 +238,7 @@
         editingProfile === null
           ? await api.createRootScheduleProfile(input)
           : await api.updateRootScheduleProfile(editingProfile.id, input);
-      notice = `${saved.name} saved`;
+      receipts.say(`Saved - ${saved.name}`);
       profileOpen = false;
       editingProfile = null;
       dialogError = '';
@@ -255,7 +255,7 @@
     dialogBusy = true;
     try {
       await api.archiveRootScheduleProfile(archivingProfile.id, archivingProfile.revision);
-      notice = `${archivingProfile.name} archived`;
+      receipts.say(`${archivingProfile.name} archived - nothing runs on it any more`);
       archivingProfile = null;
       dialogError = '';
       await load();
@@ -284,7 +284,11 @@
         reason: decisionReason.trim(),
         expected_revision: deciding.revision,
       });
-      notice = `Schedule request ${saved.state}`;
+      receipts.say(
+        saved.state === 'approved'
+          ? `Approved - ${workspaceName(saved.target_id)} runs ${workloadTitle(saved.kind).toLowerCase()} on its own schedule`
+          : `Declined - ${workspaceName(saved.target_id)} keeps the deployment schedule`,
+      );
       deciding = null;
       await load();
     } catch (cause) {
@@ -320,8 +324,6 @@ in their own settings.
       New hours profile
     </Button>
   </RootPageHeader>
-
-  <p class="visually-hidden" aria-live="polite">{notice}</p>
 
   {#if loading && policies.length === 0 && profiles.length === 0}
     <Plate label="Loading"><p class="dim" role="status">Reading the schedules…</p></Plate>

@@ -44,6 +44,7 @@ unlisted labels are removed, and the patterns left alone either way.
 <script lang="ts">
   import { tick, untrack } from 'svelte';
 
+  import { receipts } from '../receipts.svelte';
   import type { SyncConfig, SyncLabel, SyncStatus } from '../types';
 
   import Button from './Button.svelte';
@@ -329,9 +330,22 @@ unlisted labels are removed, and the patterns left alone either way.
 
   function removeLabel(index: number): void {
     if (frozen) return;
+    const gone = rows[index];
     rows = rows.filter((_, at) => at !== index);
     editing = null;
     push('sync.labels.labels');
+    /* A row that leaves is the one change on this page with nothing left on screen to
+       read it back from, so the receipt carries both the name and the way back. */
+    receipts.say(`Removed ${gone?.name === '' || gone === undefined ? 'the label' : gone.name}`, {
+      undo:
+        gone === undefined
+          ? undefined
+          : () => {
+              rows = [...rows.slice(0, index), gone, ...rows.slice(index)];
+              push('sync.labels.labels');
+              receipts.say(`${gone.name === '' ? 'The label' : gone.name} is back`);
+            },
+    });
   }
 
   /* ---------- Outside is the exit ---------- */

@@ -17,6 +17,7 @@
     QueueSchedulePreview,
     QueueWorkload,
   } from '#lib/types.js';
+  import { receipts } from '#lib/receipts.svelte.js';
   import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
@@ -569,6 +570,22 @@
     actionError = '';
   }
 
+  /** What an act did, said as the act rather than as the state it left behind. */
+  function actionReceipt(action: QueueActionType, title: string): string {
+    switch (action) {
+      case 'run_now':
+        return `Running now - ${title}`;
+      case 'next_window':
+        return `${title} runs in its next hours`;
+      case 'schedule_at':
+        return `${title} is scheduled`;
+      case 'set_priority':
+        return `${title} moved to another priority`;
+      default:
+        return `Cancelled - ${title}`;
+    }
+  }
+
   async function submitAction(input: QueueActionInput): Promise<void> {
     if (selected === null) return;
     actionBusy = true;
@@ -589,6 +606,9 @@
         current === undefined ? current : { ...current, item: updated },
       );
       announcement = `${updated.title}: ${updated.state.replaceAll('_', ' ')}`;
+      /* An act on the queue leaves the dialog it was made in, and the row it changed is
+         one of many - so what happened is said once, in the words the row uses. */
+      receipts.say(actionReceipt(input.type, updated.title));
       selected = null;
       selectedAction = null;
       actionError = '';

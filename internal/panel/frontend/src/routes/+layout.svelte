@@ -49,6 +49,7 @@
   import Plate from '#lib/components/Plate.svelte';
   import Rail from '#lib/components/Rail.svelte';
   import FindPalette, { type FindEntry } from '#lib/components/FindPalette.svelte';
+  import MutationReceipt from '#lib/components/MutationReceipt.svelte';
   import { setFinder } from '#lib/finder.svelte.js';
   import Sidebar, {
     isGroup,
@@ -1260,6 +1261,9 @@
       </div>
     </main>
   {/if}
+  <!-- The shell's, not a page's: a change made in a dialog is reported once the dialog
+       has closed, and a receipt a page owned would leave with the page. -->
+  <MutationReceipt />
 </QueryClientProvider>
 
 <style>

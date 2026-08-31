@@ -626,6 +626,10 @@
   --layer-flyout: 60; /* a rail tip, and a flown tree page */
   --layer-dialog: 75;
   --layer-dialog-popover: 80;
+  /* A receipt reports what just happened and offers the way back, so it stands over
+     the dialog a change may have been made in - and under a tooltip, which explains
+     the receipt's own Undo. */
+  --layer-toast: 85;
   /* Above the dialog: a tooltip explains whatever is in front of it. */
   --layer-tooltip: 95;
   --layer-skip: 120; /* the skip link, over everything */
