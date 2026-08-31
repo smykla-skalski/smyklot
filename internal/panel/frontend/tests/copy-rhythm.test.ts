@@ -38,4 +38,16 @@ describe('the copy-rhythm law [Unit]', () => {
       expect(rule(selector)).toMatch(/margin-block-start:\s*var\(--row-copy-gap\)/u);
     },
   );
+
+  /*
+   * A badge on a name row bleeds past the name's cap, and the copy gap is where it
+   * bleeds to. At the shared control height it came within 2.84px of the sentence
+   * below it; sized from the gap, its bleed is exactly half of one - 8px under the
+   * row's edge, 4px above the sentence, and the row still the height it declares.
+   */
+  it('sizes a badge in a copy pair so it bleeds half the gap, no more', () => {
+    expect(rule('.object-main > .object-name-row > .pill')).toMatch(
+      /min-block-size:\s*calc\(\s*var\(--object-name-line\) - \(var\(--object-name-slack\) \* 2\) \+ var\(--row-copy-gap\)\s*\)/u,
+    );
+  });
 });

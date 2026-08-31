@@ -3015,6 +3015,24 @@ button.object-row {
   margin-block: calc(var(--object-name-slack) * -1);
 }
 
+/* A BADGE BLEEDS INTO THE COPY GAP, SO IT MAY NOT BLEED MORE THAN HALF OF IT.
+   At the shared 20px control height a badge stands 5.16px past the name's cap on
+   each side, and the copy gap under it is 8px - so the badge came within 2.84px of
+   the sentence while sitting 6.84px under the row's top edge, which reads as a
+   badge falling into the line below it.
+
+   Two laws meet here and neither gives: a name row is the name's own cap tall so a
+   badge cannot change the row's height, and the copy gap is 8px of ink. What is
+   left is the badge's own size, and only inside a copy pair: cap plus the gap,
+   which puts its bleed at exactly half the gap. The badge then stands 8px under
+   the row's edge and 4px above the sentence, and every number in that row is one
+   a law names. Everywhere else a badge is the control height it always was. */
+.object-main > .object-name-row > .pill {
+  min-block-size: calc(
+    var(--object-name-line) - (var(--object-name-slack) * 2) + var(--row-copy-gap)
+  );
+}
+
 .object-name {
   font-size: var(--font-size-meta);
   font-weight: 600;
