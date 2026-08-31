@@ -551,10 +551,13 @@ without the buttons, rather than buttons that refuse.
 />
 
 <style>
+  /* No gap: the rhythm is the blocks' own. A toolbar states its distance to what it
+     filters and a card states its distance to the card above it, so a container gap is
+     added to both - the filter bar stood 28px off the first card where the sheet says
+     16, and every card pair with it. */
   .general-queue {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
     min-height: 0;
     min-width: 0;
   }

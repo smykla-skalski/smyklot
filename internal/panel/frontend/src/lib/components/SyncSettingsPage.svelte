@@ -530,14 +530,6 @@ turns the unmanaged names into rows of their own.
     padding: var(--space-2);
   }
 
-  .card-title {
-    font-size: var(--font-size-card-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 13px;
-    text-box: trim-both cap alphabetic;
-  }
-
   .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);

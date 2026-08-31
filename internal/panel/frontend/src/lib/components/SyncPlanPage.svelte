@@ -995,14 +995,6 @@ the button.
     margin-bottom: var(--space-4);
   }
 
-  .card-title {
-    font-size: var(--font-size-card-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 13px;
-    text-box: trim-both cap alphabetic;
-  }
-
   .plan-rule {
     color: var(--text-secondary);
     font-size: var(--font-size-meta);

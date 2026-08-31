@@ -2514,10 +2514,15 @@ thead th .icon-button:active:not(:disabled) {
   margin-block-start: 0;
 }
 
+/* A card title is a heading, and a heading carries the browser's own margin until
+   something says otherwise. Six pages said it themselves, each in a scoped copy of this
+   whole rule; the ones that did not - a card head measured 41px against the 13 it is -
+   sat a title in three times the room its own line asks for. */
 .card-title {
   font-size: var(--font-size-card-title);
   font-weight: 600;
-  min-block-size: 13px;
+  margin: 0;
+  min-block-size: var(--card-head-line);
   text-box: trim-both cap alphabetic;
   text-wrap: balance;
 }
@@ -2585,6 +2590,21 @@ ul.object-list {
   padding: var(--row-pad-default) var(--space-3);
   position: relative;
   text-decoration: none;
+}
+
+/* A row answers the pointer with paint and a one-pixel sink, so it eases the way every
+   other pressable surface does. The law on `button:not(:disabled)` above cannot reach
+   it: a row that opens something is a div with the button UNDER it, so its hover and
+   its press were arriving instantly while every control beside them eased. `translate`
+   rather than `transform`, because that is the property the sink sets. */
+.object-row {
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    border-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard),
+    box-shadow var(--duration-press) var(--ease-standard);
 }
 
 /* Only a row that IS an action - a link or a button - answers the pointer. A static
@@ -2706,7 +2726,14 @@ button.object-row {
   min-inline-size: 0;
 }
 
-.object-main > .object-sum {
+/* The sentence stands off the name by the rest of its own line box. `.sum-swap` is the
+   same slot with two readings crossing inside it, so the rhythm is named on the slot
+   rather than on whichever of them is currently drawn - and the slot has to be set in
+   the sentence's own voice, because `1cap` is read against the element that names it.
+   Left at the row's 15px the gap resolved 1.49px short, and every queue row was tight
+   by exactly that. */
+.object-main > :is(.object-sum, .sum-swap) {
+  font-size: var(--font-size-meta);
   margin-block-start: calc(var(--leading-meta) - 1cap);
 }
 

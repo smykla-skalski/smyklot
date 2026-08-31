@@ -465,14 +465,6 @@ already hold - the index ships once, matching costs no requests.
     margin-block-start: var(--rhythm-card-gap);
   }
 
-  .card-title {
-    font-size: var(--font-size-card-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 13px;
-    text-box: trim-both cap alphabetic;
-  }
-
   .card-head {
     align-items: center;
     display: flex;

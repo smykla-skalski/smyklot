@@ -379,14 +379,6 @@ decisions every kind carries: removal, and the names left alone.
     margin-block-start: var(--rhythm-card-gap);
   }
 
-  .card-title {
-    font-size: var(--font-size-card-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: var(--card-head-line);
-    text-box: trim-both cap alphabetic;
-  }
-
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, so the title-to-first-row ink never
      depends on which adornments the card happens to carry. A control in the
      head gives its own slack back rather than growing the line. */
