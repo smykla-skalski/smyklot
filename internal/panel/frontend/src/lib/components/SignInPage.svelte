@@ -39,12 +39,17 @@ floating in it.
 <NightPage {title} documentTitle={title} {build} size="compact">
   <div class="sign-in-body">
     {#if notice === null}
-      <!-- Names the place and stops. It used to explain what Smyklot does and then
-           list what the panel is for, which is a paragraph that goes stale the
-           first time a feature is added and that nobody standing at a sign-in
-           screen is reading anyway. -->
-      <p class="sign-in-lead">The Smyklot control panel</p>
-      <p class="sign-in-note">You need to be signed in to open it</p>
+      <!-- THE FRONT DOOR SAYS WHAT THE PRODUCT DOES. This named the place and stopped,
+           on the reasoning that nobody standing at a sign-in screen reads a paragraph -
+           but the people who arrive here are the ones who have just installed Smyklot
+           and the ones who followed a link to it, and for both of them the sentence
+           existed only on the invitation page. One sentence, about what it does rather
+           than what the panel contains, so a feature cannot make it stale. -->
+      <p class="sign-in-lead">Smyklot</p>
+      <p class="sign-in-note">
+        Approves and merges pull requests for your GitHub organization or account, driven by slash
+        commands and the owners file you already keep
+      </p>
     {:else}
       <p class="sign-in-lead">{notice.lead}</p>
       <p class="sign-in-note">{notice.note}</p>
@@ -62,7 +67,9 @@ floating in it.
            GitHub offers public profile read alone, and the token is used for one
            `GET /user` and then dropped. Keep this true if that changes, in
            `newGitHubSignIn` in internal/panel/github.go. -->
-      <p class="sign-in-consent">GitHub is asked for your public profile and nothing else</p>
+      <p class="sign-in-consent">
+        GitHub is asked for your public profile and nothing else, and you come back here afterwards
+      </p>
     {/if}
   </div>
 </NightPage>
