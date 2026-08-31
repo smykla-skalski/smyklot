@@ -2895,7 +2895,6 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		// Every dialog the panel gives an address to. A link to one, and a reload
 		// of one, has to answer with the shell rather than the not-found page.
 		"/panel/i/smykla-skalski/repositories/api-gateway",
-		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
 		"/panel/i/smykla-skalski/access/users/add",
 		"/panel/i/smykla-skalski/access/users/octocat/history",
 		"/panel/i/smykla-skalski/access/users/octocat/remove-access",
@@ -2903,7 +2902,6 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/access/users/octocat/ban",
 		"/panel/root/access/invitations/new",
 		"/panel/root/access/invitations/inv-1/reissue",
-		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
 		"/panel/root/installations/smykla-skalski/access/users/octocat/history",
 		// A trailing slash is not part of the address; the panel's router reads
 		// `/inbox/` as `/inbox`, and the server has to agree.
@@ -2958,6 +2956,10 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/invitations",
 		// A view still has to be a view, and a dialog is one segment or two.
 		"/panel/root/installations/smykla-skalski",
+		// A repository is the whole address; its five pane addresses are gone
+		// rather than redirected, and the refusal is on the wire.
+		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
+		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
 		"/panel/smykla-skalski/repositories",

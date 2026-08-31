@@ -2275,6 +2275,19 @@ func DeclareSpecs(harness Harness) {
 		Expect(older.Items).To(HaveLen(1))
 		Expect(older.Items[0].DeliveryID).To(Equal(first.DeliveryID))
 
+		/* "How many failed lately" is a count, so the filter has to reach the
+		   TOTAL and not just the page - a caller reading one page and counting
+		   its rows answers a different question as soon as there are two. */
+		since := now.Add(2 * time.Minute)
+		lately, err := store.ListFailures(ctx, target.TargetID, storage.FailurePageRequest{
+			HistoryPageRequest: storage.HistoryPageRequest{Limit: 10},
+			Since:              &since,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(lately.Total).To(Equal(1))
+		Expect(lately.Items).To(HaveLen(1))
+		Expect(lately.Items[0].DeliveryID).To(Equal(second.DeliveryID))
+
 		Expect(store.PruneDeliveries(ctx, now.Add(2*time.Minute))).To(Succeed())
 		retryable := true
 		matching, err := store.ListFailures(ctx, target.TargetID, storage.FailurePageRequest{

@@ -1142,6 +1142,12 @@ export interface AuditHistoryRequest extends HistoryRequest {
 
 export interface FailureHistoryRequest extends HistoryRequest {
   kind: FailureKind;
+  /**
+   * Keep only what failed at or after this instant, as RFC3339. The page's
+   * `total` is then the answer to "how many lately" - counting the rows one
+   * page happens to hold answers a different question.
+   */
+  since?: string;
 }
 
 export interface Page<T> {

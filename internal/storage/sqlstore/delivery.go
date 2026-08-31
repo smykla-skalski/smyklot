@@ -545,6 +545,10 @@ func failureFilters(
 		clauses = append(clauses, "retryable = ?")
 		arguments = append(arguments, *page.Retryable)
 	}
+	if page.Since != nil {
+		clauses = append(clauses, "finished_at >= ?")
+		arguments = append(arguments, *page.Since)
+	}
 
 	return clauses, arguments
 }

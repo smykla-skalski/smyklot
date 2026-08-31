@@ -816,6 +816,10 @@ type AuditPageRequest struct {
 type FailurePageRequest struct {
 	HistoryPageRequest
 	Retryable *bool
+	// Since keeps only failures that finished at or after it, so "how many
+	// lately" is answered by the page's total rather than by counting rows a
+	// caller happens to have been handed.
+	Since *time.Time
 }
 
 // AuditPage is one page of immutable audit entries.

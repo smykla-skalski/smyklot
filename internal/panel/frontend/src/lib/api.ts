@@ -1147,6 +1147,7 @@ export function createPanelApi(
       return jsonRequest(
         withHistoryQuery(`/api/v1/targets/${pathSegment(targetId)}/failures`, history, {
           kind: history.kind,
+          ...(history.since === undefined ? {} : { since: history.since }),
         }),
       );
     },

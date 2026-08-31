@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -369,15 +370,39 @@ func (s *Server) getInstallationFailurePage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid failure kind")
 		return
 	}
+	since, ok := failuresSince(r.URL.Query())
+	if !ok {
+		s.writeError(w, http.StatusBadRequest, "invalid_history_query", "invalid failure window")
+		return
+	}
 	result, err := s.store.ListFailures(r.Context(), targetID, storage.FailurePageRequest{
 		HistoryPageRequest: page,
 		Retryable:          retryable,
+		Since:              since,
 	})
 	if err != nil {
 		s.writeInternal(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, failurePageDTO(result))
+}
+
+// failuresSince reads the window a caller asked for, or none. The false return
+// is a malformed one, which is a different answer from an absent one: a page
+// silently widened to all of history would read as "nothing failed lately"
+// only by luck.
+func failuresSince(values url.Values) (*time.Time, bool) {
+	raw := values.Get("since")
+	if raw == "" {
+		return nil, true
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, false
+	}
+	value = value.UTC()
+
+	return &value, true
 }
 
 func (s *Server) historyTarget(

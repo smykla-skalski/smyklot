@@ -165,17 +165,11 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/access/users/octocat/ban",
 		"/root/access/invitations/new",
 		"/root/installations/acme/history/audit",
-		"/root/installations/acme/repositories/api-gateway/file",
-		// The console has no sync pane and the page falls back to the first
-		// one, but the segment is a section like any other and the server
-		// serves the shell for it. The matcher is generated from one list, and
-		// a second copy of that list is how the sync view came to answer 404.
-		"/root/installations/acme/repositories/api-gateway/sync",
+		"/root/installations/acme/repositories/api-gateway",
 		"/i/acme/defaults",
 		"/i/acme/history",
 		"/i/acme/history/failures",
 		"/i/acme/repositories/api-gateway",
-		"/i/acme/repositories/api-gateway/sync",
 		// Sync is six sections and two of them name one of their own. A file's
 		// path keeps its separators, which is why that one is a rest parameter:
 		// the server matches the decoded address, so a path travelling as
@@ -209,7 +203,13 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/access/owners",
 		"/root/access/users/octocat/ban/extra",
 		"/i//repositories",
-		"/i/acme/repositories//file",
+		// A repository is the whole address, and the whole page is on it. The
+		// five pane addresses it used to have are gone rather than redirected,
+		// so a shared link says so on the wire instead of opening the page and
+		// pretending it meant what it says.
+		"/i/acme/repositories/api-gateway/behavior",
+		"/i/acme/repositories/api-gateway/sync",
+		"/root/installations/acme/repositories/api-gateway/file",
 		"/i/acme/repositories/api-gateway/file/extra",
 		"/i/acme/inbox",
 		"/i/acme/settings",

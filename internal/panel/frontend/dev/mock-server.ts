@@ -2507,6 +2507,10 @@ async function handle(
     if (installationFailures && method === 'GET') {
       const target = findTarget(state, installationFailures.groups?.target ?? '');
       const kind = parsed.searchParams.get('kind') ?? 'all';
+      /* Only failures take a window, because only the failures endpoint does.
+         A mock that accepted `since` everywhere would be more permissive than
+         the service, which is how a fixture starts lying about the wire. */
+      const since = Date.parse(parsed.searchParams.get('since') ?? '');
       respond(
         res,
         200,
@@ -2530,9 +2534,10 @@ async function handle(
               failure.reason,
             ].some((value) => value.toLocaleLowerCase().includes(query)),
           (failure) =>
-            kind === 'all' ||
-            (kind === 'retryable' && failure.retryable) ||
-            (kind === 'permanent' && !failure.retryable),
+            (kind === 'all' ||
+              (kind === 'retryable' && failure.retryable) ||
+              (kind === 'permanent' && !failure.retryable)) &&
+            (Number.isNaN(since) || Date.parse(failure.occurred_at) >= since),
         ),
       );
       return;
