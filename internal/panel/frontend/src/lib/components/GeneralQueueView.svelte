@@ -82,6 +82,16 @@
   type CardID = (typeof CARDS)[number]['id'];
   /** A day, which is what "lately" means where finished work stands beside live work. */
   const DAY_MS = 86_400_000;
+  /**
+   * A MOVING BOUNDARY IS A NEW QUESTION EVERY MILLISECOND, and a new question is a new
+   * cache key: seeded from `Date.now()` at mount, the done card's "in the last day" asked
+   * the server again every time a reader came back to the Queue, because the boundary had
+   * moved by the time it took them to walk away and return. Floored to the hour it is the
+   * same question for an hour at a time - which is all the precision "the last day" ever
+   * had - so returning to a view already read costs nothing, and the one refetch an hour
+   * is the window genuinely having moved.
+   */
+  const HOUR_MS = 3_600_000;
   const emptyFacets: QueuePage['facets'] = {
     targets: [],
     repositories: [],
@@ -475,7 +485,8 @@
     });
     query.set('state', asked.join(','));
     if (card === 'done' && section === 'active') {
-      query.set('finished_after', new Date(rangeNow - DAY_MS).toISOString());
+      const settled = Math.floor(rangeNow / HOUR_MS) * HOUR_MS;
+      query.set('finished_after', new Date(settled - DAY_MS).toISOString());
     }
     if (workload !== 'all') query.set('workload', workload);
     if (priority !== 'all') query.set('priority', priority);
