@@ -4,6 +4,7 @@
   import { useDebounce } from 'runed';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
+  import { sentenceCase } from '#lib/format.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
   import { QUEUE_SECTIONS, type QueueSection } from '#lib/routes.js';
   import type {
@@ -16,6 +17,7 @@
     QueueSchedulePreview,
     QueueWorkload,
   } from '#lib/types.js';
+  import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -182,6 +184,33 @@
   const profiles = $derived(facets.profiles);
   const installations = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
+
+  /* The queue speaks in target ids - the rows carry one and the facets are a list of
+     them - and nobody reading the console knows a workspace by its id. The catalog is
+     what turns one into a name, and the console has it cached already: the workspaces
+     page and the overview both read this key. */
+  const catalogQuery = createQuery(() => ({
+    queryKey: ['root-installations'],
+    queryFn: () => api.fetchRootInstallations(),
+    enabled: targetId === undefined,
+  }));
+  const catalog = $derived(
+    new Map((catalogQuery.data ?? []).map((row) => [row.id, row.account.display_name])),
+  );
+
+  function workspaceName(id: string): string {
+    return catalog.get(id) ?? id;
+  }
+
+  /* Named on every row, because this page is every workspace at once: the filter above
+     says "Every workspace" until somebody narrows it, and a row that names only its
+     repository leaves a reader guessing whose repository it is. A workspace's own queue
+     drops the name - there it is the only answer. */
+  function rowWorkspace(item: QueueItem): string | null {
+    if (targetId !== undefined || item.target_id === undefined) return null;
+
+    return workspaceName(item.target_id);
+  }
   const states = $derived(facets.states.filter((value) => sectionStates(section).includes(value)));
   /**
    * The cards a view is made of, each with its own rows, its own count and its own way
@@ -214,10 +243,9 @@
         {
           options: [
             { value: 'all', label: 'All workloads' },
-            ...workloads.map((kind) => ({
-              value: kind,
-              label: kind.replaceAll('_', ' '),
-            })),
+            /* The lane's own title, the one Schedules prints - underscores taken out
+               of the wire name spelled "pending ci" and left it there. */
+            ...workloads.map((kind) => ({ value: kind, label: workloadTitle(kind) })),
           ],
         },
       ],
@@ -235,7 +263,10 @@
         {
           options: [
             { value: 'all', label: 'All states' },
-            ...states.map((value) => ({ value, label: value.replaceAll('_', ' ') })),
+            ...states.map((value) => ({
+              value,
+              label: sentenceCase(value.replaceAll('_', ' ')),
+            })),
           ],
         },
       ],
@@ -267,13 +298,13 @@
     ...(targetId === undefined
       ? [
           {
-            label: 'Installation',
-            hint: 'Limit work to one installation',
+            label: 'Workspace',
+            hint: 'Limit work to one workspace',
             sections: [
               {
                 options: [
-                  { value: 'all', label: 'All installations' },
-                  ...installations.map((value) => ({ value, label: value })),
+                  { value: 'all', label: 'Every workspace' },
+                  ...installations.map((value) => ({ value, label: workspaceName(value) })),
                 ],
               },
             ],
@@ -666,6 +697,7 @@ without the buttons, rather than buttons that refuse.
     {/if}
     <QueueTable
       {cards}
+      workspace={rowWorkspace}
       clock={() => now}
       reviewHref={(item) => (item.kind === 'sync_apply' ? (planHref ?? null) : null)}
       onReview={(_item, event) => onOpenPlan?.(event)}

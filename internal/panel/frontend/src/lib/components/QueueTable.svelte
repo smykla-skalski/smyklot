@@ -30,6 +30,7 @@
 
   const {
     cards,
+    workspace,
     clock = Date.now,
     reviewHref,
     onReview,
@@ -37,6 +38,13 @@
     onAction,
   }: {
     cards: readonly QueueCard[];
+    /**
+     * Whose work a row is, where that is a question worth answering.
+     *
+     * The console reads every workspace at once, so its rows lead with the name; a
+     * workspace's own queue passes nothing, because there the answer is the page.
+     */
+    workspace?: (item: QueueItem) => string | null;
     clock?: () => number;
     /**
      * Where a decision is actually made, for the rows that are waiting on one.
@@ -171,16 +179,18 @@
    * What the work is about, in the words a person names it by.
    *
    * The name says what is being done and this says to what: a repository, and the
-   * pull request inside it where there is one. The owner is dropped - a workspace is
-   * one owner, and the console's rows carry their installation in the filter above
-   * them - so the pill reads as a reference rather than as a path.
+   * pull request inside it where there is one, led by the workspace where the page is
+   * reading more than one. The owner is dropped from the repository either way - a
+   * workspace is one owner - so the pill reads as a reference rather than as a path.
    */
   function subject(item: QueueItem): string | null {
+    const where = workspace?.(item) ?? null;
     const repository = item.repository_name?.split('/').at(-1);
-    if (repository === undefined || repository === '') return null;
+    if (repository === undefined || repository === '') return where;
     const pull = item.kind === 'pending_ci' ? item.details?.pull_request : undefined;
+    const said = pull === undefined ? repository : `${repository} #${pull}`;
 
-    return pull === undefined ? repository : `${repository} #${pull}`;
+    return where === null ? said : `${where} · ${said}`;
   }
 
   /**
