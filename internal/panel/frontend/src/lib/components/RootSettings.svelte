@@ -71,25 +71,18 @@
     }
   > = {
     settings: {
-      ariaLabel: 'Root runtime settings',
-      title: 'Runtime settings',
-      subtitle: 'Runtime behavior and deployment-backed defaults',
-      loading: 'Loading runtime settings…',
-      unavailable: 'Runtime settings are unavailable',
+      ariaLabel: 'Service settings',
+      title: 'Service settings',
+      subtitle: 'Service configuration and the defaults every workspace inherits',
+      loading: 'Reading the settings…',
+      unavailable: 'The settings could not be read',
     },
     service: {
-      ariaLabel: 'Root service and deployment',
-      title: 'Service and deployment',
-      subtitle: 'Running service identity, listeners, endpoints, and credentials',
-      loading: 'Loading service information…',
-      unavailable: 'Service information is unavailable',
-    },
-    database: {
-      ariaLabel: 'Root database',
-      title: 'Database',
-      subtitle: 'Persistence health, capacity, and schema compatibility',
-      loading: 'Loading database status…',
-      unavailable: 'Database status is unavailable',
+      ariaLabel: 'Service health',
+      title: 'Service health',
+      subtitle: 'The running service, its listeners, credentials, and state store',
+      loading: 'Reading the service…',
+      unavailable: 'The service could not describe itself',
     },
   };
 
@@ -316,6 +309,34 @@
 
   function capitalize(value: string): string {
     return value.charAt(0).toUpperCase() + value.slice(1);
+  }
+
+  /* What each credential is FOR, because "OAuth" on its own tells an operator
+     nothing about what breaks when it is missing. */
+  const CREDENTIALS = [
+    {
+      key: 'webhook',
+      name: 'Webhook secret',
+      why: 'Verifies every delivery GitHub sends',
+    },
+    {
+      key: 'app',
+      name: 'GitHub App key',
+      why: 'Signs the tokens every workspace call runs on',
+    },
+    {
+      key: 'oauth',
+      name: 'OAuth app secret',
+      why: 'Signs sign-in sessions. If it is wrong, sign-in fails',
+    },
+  ] as const;
+
+  function waitsSentence(connections: { wait_count: number; wait_ms: number }): string {
+    if (connections.wait_count === 0) {
+      return 'No caller has waited for a free connection since this service started';
+    }
+
+    return `Callers have waited ${connections.wait_count} ${connections.wait_count === 1 ? 'time' : 'times'} since startup, for ${formatElapsed(connections.wait_ms)} in total`;
   }
 
   function formatUptime(seconds: number): string {
@@ -616,7 +637,7 @@ without the composer.
 
       {#if current.updated_at !== undefined}
         <p class="updated-note">
-          Runtime settings last changed <time datetime={current.updated_at}
+          Service settings last changed <time datetime={current.updated_at}
             >{new Date(current.updated_at).toLocaleString()}</time
           >
           {#if current.updated_by !== undefined}
@@ -625,128 +646,140 @@ without the composer.
       {/if}
     {/if}
 
-    {#if section === 'database'}
-      <Card class="group-card" labelledby="root-database">
-        <div class="group-head">
-          <h3 class="group-name" id="root-database">Database</h3>
-          <StatusPill dot state={current.service.database.state}>
-            {current.service.database.state}
-          </StatusPill>
+    {#if section === 'service'}
+      {@const database = current.service.database}
+      <!-- One page and one voice. The service was one card and its database another,
+           each opening with a card title that repeated the page's own, and each
+           laying its facts out as a grid of labels: "WAITS SINCE START 2 · 41 ms"
+           is two numbers and a riddle. Every fact here is a row that says what it
+           means. -->
+      <Card>
+        <div class="setting-rows">
+          <div class="setting-row">
+            <span class="setting-say"><span class="setting-name">Version</span></span>
+            <span class="setting-value">
+              <span class="setting-fact"
+                >{current.service.version || 'development'} · up
+                <span class="nowrap-atom">{formatUptime(current.service.uptime_seconds)}</span
+                ></span
+              >
+            </span>
+          </div>
+          <div class="setting-row">
+            <span class="setting-say">
+              <span class="setting-name">Listeners</span>
+              <span class="setting-why"
+                >The webhook port faces GitHub; the admin port stays inside</span
+              >
+            </span>
+            <span class="setting-value">
+              <span class="setting-fact"
+                ><span class="nowrap-atom">public {current.service.listeners.public}</span> ·
+                <span class="nowrap-atom">admin {current.service.listeners.admin}</span></span
+              >
+            </span>
+          </div>
+          <div class="setting-row">
+            <span class="setting-say">
+              <span class="setting-name">Paths</span>
+              <span class="setting-why">Where this panel and GitHub's deliveries arrive</span>
+            </span>
+            <span class="setting-value">
+              <span class="setting-fact"
+                ><span class="nowrap-atom">panel {current.service.public_paths.panel}</span> ·
+                <span class="nowrap-atom">webhook {current.service.public_paths.webhook}</span
+                ></span
+              >
+            </span>
+          </div>
         </div>
-        <dl class="service-grid">
-          <div>
-            <dt>Engine</dt>
-            <dd>{current.service.database.engine}</dd>
+      </Card>
+
+      <!-- Every credential the panel depends on, with its state: sign-in's behaviour
+           and this page can never tell different stories. -->
+      <Card>
+        <div class="card-head"><h2 class="card-title">Credentials</h2></div>
+        <div class="setting-rows">
+          {#each CREDENTIALS as credential (credential.key)}
+            {@const present = current.service.credential_presence[credential.key]}
+            <div class="setting-row">
+              <span class="setting-say">
+                <span class="setting-name">{credential.name}</span>
+                <span class="setting-why">{credential.why}</span>
+              </span>
+              <span class="setting-value">
+                <span class="mx-mark" class:mx-instep={present} class:mx-refused={!present}>
+                  <span class="t">{present ? 'Configured' : 'Missing'}</span>
+                </span>
+              </span>
+            </div>
+          {/each}
+        </div>
+      </Card>
+
+      <Card>
+        <div class="card-head">
+          <h2 class="card-title">Database</h2>
+          <StatusPill dot state={database.state}>{database.state}</StatusPill>
+        </div>
+        <div class="setting-rows">
+          <div class="setting-row">
+            <span class="setting-say"><span class="setting-name">Engine</span></span>
+            <span class="setting-value">
+              <span class="setting-fact"
+                >{database.engine}{database.version === '' ? '' : ` ${database.version}`} · schema
+                {database.schema_version} ·
+                <span class="nowrap-atom">{formatBytes(database.size_bytes)}</span></span
+              >
+            </span>
           </div>
-          <div>
-            <dt>Server version</dt>
-            <dd>{current.service.database.version || 'unknown'}</dd>
+          <div class="setting-row">
+            <span class="setting-say"><span class="setting-name">Responsiveness</span></span>
+            <span class="setting-value">
+              <span class="setting-fact"
+                >answers in
+                <span class="nowrap-atom">{formatLatency(database.latency_ms)}</span></span
+              >
+            </span>
           </div>
-          <div>
-            <dt>Schema version</dt>
-            <dd>{current.service.database.schema_version}</dd>
+          <div class="setting-row">
+            <span class="setting-say">
+              <span class="setting-name">Connections</span>
+              <!-- The waits are cumulative, unlike the counts beside them: a pool
+                   that reads idle now may still have held the service up an hour
+                   ago, which is the only reason this number is worth keeping. -->
+              <span class="setting-why">{waitsSentence(database.connections)}</span>
+            </span>
+            <span class="setting-value">
+              <span class="setting-fact nowrap-atom"
+                >{database.connections.in_use} of {database.connections.max} open</span
+              >
+            </span>
           </div>
-          <div>
-            <dt>Size</dt>
-            <dd>{formatBytes(current.service.database.size_bytes)}</dd>
-          </div>
-          <div>
-            <dt>Response</dt>
-            <dd>{formatLatency(current.service.database.latency_ms)}</dd>
-          </div>
-          <div class="wide">
-            <dt>Connections</dt>
-            <dd>
-              {current.service.database.connections.in_use} in use · {current.service.database
-                .connections.open} open · {current.service.database.connections.max} maximum
-            </dd>
-          </div>
-          <div>
-            <!-- Cumulative, unlike the counts beside it: a pool that reads idle
-                 now may still have held the service up earlier. -->
-            <dt>Waits since start</dt>
-            <dd>
-              {current.service.database.connections.wait_count} · {formatElapsed(
-                current.service.database.connections.wait_ms,
-              )}
-            </dd>
-          </div>
-          {#if current.service.database.detail !== undefined}
-            <div class="full">
-              <dt>Reported</dt>
-              <dd class="database-detail">{current.service.database.detail}</dd>
+          {#if database.detail !== undefined}
+            <div class="setting-row">
+              <span class="setting-say">
+                <span class="setting-name">Reported</span>
+                <span class="setting-why">{database.detail}</span>
+              </span>
+              <span class="setting-value"></span>
             </div>
           {/if}
-        </dl>
-      </Card>
-    {/if}
-
-    {#if section === 'service'}
-      <Card class="group-card" labelledby="root-service">
-        <div class="group-head">
-          <h3 class="group-name" id="root-service">Service and deployment</h3>
         </div>
-        <dl class="service-grid">
-          <div>
-            <dt>Version</dt>
-            <dd>{current.service.version}</dd>
-          </div>
-          <div>
-            <dt>Uptime</dt>
-            <dd>{formatUptime(current.service.uptime_seconds)}</dd>
-          </div>
-          <div>
-            <dt>Public listener</dt>
-            <dd><code>{current.service.listeners.public}</code></dd>
-          </div>
-          <div>
-            <dt>Admin listener</dt>
-            <dd><code>{current.service.listeners.admin}</code></dd>
-          </div>
-          <div>
-            <dt>Panel path</dt>
-            <dd><code>{current.service.public_paths.panel}</code></dd>
-          </div>
-          <div>
-            <dt>Webhook path</dt>
-            <dd><code>{current.service.public_paths.webhook}</code></dd>
-          </div>
-          <div class="full">
-            <dt>GitHub API</dt>
-            <dd><code>{current.service.provider_endpoints.api}</code></dd>
-          </div>
-          <div class="full">
-            <dt>OAuth authorization</dt>
-            <dd><code>{current.service.provider_endpoints.authorize}</code></dd>
-          </div>
-          <div class="full">
-            <dt>OAuth token exchange</dt>
-            <dd><code>{current.service.provider_endpoints.token}</code></dd>
-          </div>
-          <div class="wide">
-            <dt>Credentials present</dt>
-            <dd class="credential-list">
-              <span
-                class="pill"
-                class:pill-success={current.service.credential_presence.webhook}
-                class:pill-muted={!current.service.credential_presence.webhook}
-                ><span class="t">Webhook</span></span
-              >
-              <span
-                class="pill"
-                class:pill-success={current.service.credential_presence.app}
-                class:pill-muted={!current.service.credential_presence.app}
-                ><span class="t">GitHub App</span></span
-              >
-              <span
-                class="pill"
-                class:pill-success={current.service.credential_presence.oauth}
-                class:pill-muted={!current.service.credential_presence.oauth}
-                ><span class="t">OAuth</span></span
-              >
-            </dd>
-          </div>
-        </dl>
+      </Card>
+
+      <Card>
+        <div class="card-head"><h2 class="card-title">Where it talks to GitHub</h2></div>
+        <div class="setting-rows">
+          {#each [{ name: 'API', value: current.service.provider_endpoints.api }, { name: 'Sign-in', value: current.service.provider_endpoints.authorize }, { name: 'Token exchange', value: current.service.provider_endpoints.token }] as endpoint (endpoint.name)}
+            <div class="setting-row">
+              <span class="setting-say"><span class="setting-name">{endpoint.name}</span></span>
+              <span class="setting-value">
+                <span class="setting-fact"><code>{endpoint.value}</code></span>
+              </span>
+            </div>
+          {/each}
+        </div>
       </Card>
     {/if}
   {/if}
@@ -993,62 +1026,6 @@ without the composer.
     color: var(--text-muted);
   }
 
-  /* A definition list, not a wall of boxed tiles: every other read-only key/value
-     block in the product (the overview's service card, the ownership legend, the
-     audit record) is a plain dl with an uppercase micro key over a mono value.
-     Boxing each field drew ten competing surfaces inside one plate and left
-     holes wherever a row did not fill its four columns. */
-  .service-grid {
-    display: grid;
-    gap: var(--space-4) var(--space-6);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    margin: 0;
-  }
-
-  .service-grid > div {
-    min-width: 0;
-  }
-
-  .service-grid .wide {
-    grid-column: span 2;
-  }
-
-  .service-grid .full {
-    grid-column: 1 / -1;
-  }
-
-  /* A driver's own words, which wrap and do not shorten. Everything else in
-     this grid is a value that fits its cell. */
-  .database-detail {
-    overflow-wrap: anywhere;
-    white-space: normal;
-  }
-
-  dt {
-    color: var(--text-muted);
-    font: 700 var(--font-size-micro) / var(--leading-micro) var(--sans);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
-
-  dd {
-    font: 600 var(--font-size-compact) / var(--leading-compact) var(--mono);
-    margin: 0.15rem 0 0;
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
-
-  /* The value is already mono; a nested code element would only re-declare it. */
-  dd code {
-    font: inherit;
-  }
-
-  .credential-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
   .updated-note {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
@@ -1072,22 +1049,6 @@ without the composer.
     align-items: flex-start;
     display: flex;
     flex-direction: column;
-  }
-
-  @media (max-width: 64rem) {
-    .service-grid {
-      grid-template-columns: 1fr 1fr;
-    }
-  }
-
-  @media (max-width: 40rem) {
-    .service-grid {
-      grid-template-columns: 1fr;
-    }
-
-    .service-grid .wide {
-      grid-column: auto;
-    }
   }
 
   /* On a phone the head's three parts cannot share one line - the tally or

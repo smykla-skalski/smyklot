@@ -30,7 +30,7 @@ export function settingsCheckpointItemLabel(item: SettingsCheckpointItem): strin
     case 'sync_override':
       return `${item.repository_full_name ?? 'Repository'} · ${syncKind} override`;
     case 'runtime':
-      return 'Runtime settings';
+      return 'Service settings';
   }
 }
 

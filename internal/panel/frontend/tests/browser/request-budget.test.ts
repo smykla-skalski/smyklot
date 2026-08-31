@@ -43,7 +43,6 @@ const ADDRESSES = [
   '/root/access/users',
   '/root/history/audit',
   '/root/runtime/service',
-  '/root/runtime/database',
   '/root/runtime/settings',
 ] as const;
 

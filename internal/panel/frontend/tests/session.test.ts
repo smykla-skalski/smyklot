@@ -243,16 +243,15 @@ describe('PanelSession [Unit]', () => {
     });
   });
 
-  it('navigates between the three Runtime leaves', () => {
+  it('navigates between the two Runtime leaves', () => {
     const session = createSession();
     session.viewer = { system_role: 'root' } as PanelViewer;
-    routePage.url = at('/root/runtime/database');
+    routePage.url = at('/root/runtime/settings');
     routePage.params = {};
-    routePage.route = { id: '/root/runtime/database' };
+    routePage.route = { id: '/root/runtime/settings' };
 
     expect(session.rootValue).toBe('runtime');
     expect(session.rootRuntimeHref('service')).toBe(`${basePath}/root/runtime/service`);
-    expect(session.rootRuntimeHref('database')).toBe(`${basePath}/root/runtime/database`);
     expect(session.rootRuntimeHref('settings')).toBe(`${basePath}/root/runtime/settings`);
 
     session.selectRootRuntimeSection('service');

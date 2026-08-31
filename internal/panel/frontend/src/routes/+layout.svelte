@@ -834,13 +834,6 @@
       active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-service',
     },
     {
-      id: 'runtime-database',
-      label: 'Database',
-      icon: 'database',
-      href: session.rootRuntimeHref('database'),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-database',
-    },
-    {
       id: 'runtime-settings',
       label: 'Service settings',
       icon: 'gear',
@@ -926,8 +919,7 @@
     defaults: 'what every repository here inherits',
     overview: 'what needs an operator',
     installations: 'every workspace the service serves',
-    'runtime-service': 'the service and the database it runs on',
-    'runtime-database': 'the store, its engine and its pool',
+    'runtime-service': 'the service, its credentials and the store it runs on',
     'runtime-settings': 'what the deployment sets, and what you set here',
   };
 
@@ -1224,7 +1216,7 @@
             problemHref={rootProblemControl === undefined
               ? undefined
               : session.rootRuntimeHref('settings')}
-            problemLabel={rootProblemControl === undefined ? undefined : 'Runtime settings'}
+            problemLabel={rootProblemControl === undefined ? undefined : 'Service settings'}
             notice={rootSettingsOperation.notice}
             conflict={rootSettingsConflict}
             onSave={() => void saveRootSettings()}

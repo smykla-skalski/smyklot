@@ -86,8 +86,8 @@ export type WrittenQueueSection = (typeof WRITTEN_QUEUE_SECTIONS)[number];
 /** The tables the Root console's access page is split into. */
 export const ACCESS_SECTIONS = ['users', 'invitations'] as const;
 
-/** The three addressable pages nested under Root Runtime. */
-export const ROOT_RUNTIME_SECTIONS = ['service', 'database', 'settings'] as const;
+/** The two addressable pages nested under Root Runtime. */
+export const ROOT_RUNTIME_SECTIONS = ['service', 'settings'] as const;
 
 /**
  * The sections of the sync view, each a sidebar row and an address.
@@ -157,8 +157,7 @@ export type RootRoute =
         | 'queue-running'
         | 'queue-history'
         | 'runtime-settings'
-        | 'runtime-service'
-        | 'runtime-database';
+        | 'runtime-service';
     }
   /**
    * Work the service has accepted and will do later, on a schedule it chooses.
@@ -433,12 +432,9 @@ export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'installation') return 'installations';
   if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
   if (isQueueSectionView(route.rootView)) return 'queue';
-  if (
-    route.rootView === 'runtime-settings' ||
-    route.rootView === 'runtime-service' ||
-    route.rootView === 'runtime-database'
-  )
+  if (route.rootView === 'runtime-settings' || route.rootView === 'runtime-service') {
     return 'runtime';
+  }
   return route.rootView;
 }
 
@@ -467,6 +463,10 @@ export function isRootInstallationView(value: string | undefined): value is Root
  */
 const ROOT_VIEW_WORDS: Partial<Record<RootRoute['rootView'], string>> = {
   installations: 'workspaces',
+  /* "Runtime" is the address's word for the two pages under it, and neither page
+     says it: this one is Service health and the other is Service settings. */
+  'runtime-service': 'service-health',
+  'runtime-settings': 'service-settings',
 };
 
 function routeTitleSegments(route: PanelRoute): string[] {
@@ -564,7 +564,10 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 3 && parts[1] === 'runtime') {
     if (parts[2] === 'settings') return { rootView: 'runtime-settings' };
     if (parts[2] === 'service') return { rootView: 'runtime-service' };
-    if (parts[2] === 'database') return { rootView: 'runtime-database' };
+    /* The database's own page is part of Service health now. The address still
+       resolves - a route redirects it - so this answers with the page it lands on
+       rather than with a 404. */
+    if (parts[2] === 'database') return { rootView: 'runtime-service' };
     return null;
   }
   if (parts.length >= 3 && parts[1] === 'access') {

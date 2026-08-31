@@ -237,7 +237,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
     );
     await screen.findByRole('dialog', { name: 'Settings history' });
     expect(fetchRootSettingsCheckpoint).toHaveBeenCalledWith('runtime-1');
-    expect(screen.getByRole('checkbox', { name: 'Restore Runtime settings' })).toHaveProperty(
+    expect(screen.getByRole('checkbox', { name: 'Restore Service settings' })).toHaveProperty(
       'checked',
       true,
     );

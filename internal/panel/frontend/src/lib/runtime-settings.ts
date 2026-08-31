@@ -328,7 +328,7 @@ export function serializeRuntimeSettingsDraft(
     return {
       ok: false,
       controlId: 'runtime.log_level',
-      problem: 'Runtime settings revision is invalid',
+      problem: 'Service settings revision is invalid',
     };
   }
   const parsed = parseRuntimeSettingsDraftDocument(document);
@@ -336,7 +336,7 @@ export function serializeRuntimeSettingsDraft(
     return {
       ok: false,
       controlId: 'runtime.log_level',
-      problem: 'Runtime settings draft is invalid',
+      problem: 'Service settings draft is invalid',
     };
   }
   const durations: Partial<Record<RuntimeDurationKey, number | null>> = {};

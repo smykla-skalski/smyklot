@@ -150,8 +150,6 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/runtime/settings');
     case 'runtime-service':
       return resolve('/root/runtime/service');
-    case 'runtime-database':
-      return resolve('/root/runtime/database');
     case 'history-audit':
     case 'history-failures':
       return resolve('/root/history/[[section=historySection]]', {
@@ -301,8 +299,10 @@ export function panelRouteAt(
       return { rootView: 'runtime-settings' };
     case '/root/runtime/service':
       return { rootView: 'runtime-service' };
+    /* The address survives its page: a redirect sends it to Service health, which
+       is where the database now lives. Read back as the page it lands on. */
     case '/root/runtime/database':
-      return { rootView: 'runtime-database' };
+      return { rootView: 'runtime-service' };
     case '/root/history/[[section=historySection]]':
       return { rootView: section === 'failures' ? 'history-failures' : 'history-audit' };
 

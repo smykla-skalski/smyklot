@@ -194,7 +194,7 @@ function failConflict(
   attempt: SettingsSaveAttempt,
   latest: RootRuntimeSettings,
 ): void {
-  registry.failSave(attempt, 'Runtime settings changed in another session', [
+  registry.failSave(attempt, 'Service settings changed in another session', [
     {
       resource: RUNTIME_RESOURCE,
       actualRevision: latest.revision,

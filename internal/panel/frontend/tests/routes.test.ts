@@ -151,9 +151,6 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/runtime/service')).toEqual({
       rootView: 'runtime-service',
     });
-    expect(parsePanelRoute('', '/root/runtime/database')).toEqual({
-      rootView: 'runtime-database',
-    });
     expect(parsePanelRoute('', '/root/installations/smykla-skalski/repositories')).toEqual({
       rootView: 'installation',
       account: 'smykla-skalski',
@@ -246,9 +243,8 @@ describe('panel document titles', () => {
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
     [{ rootView: 'history-failures' }, 'Failures | History | Root Console | SMYKLOT'],
     [{ rootView: 'queue-history' }, 'History | Queue | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime-service' }, 'Service | Runtime | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime-database' }, 'Database | Runtime | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime-settings' }, 'Settings | Runtime | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-service' }, 'Service Health | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-settings' }, 'Service Settings | Root Console | SMYKLOT'],
     [
       { rootView: 'installation', account: 'acme', view: 'repositories' },
       'Repositories | Root Console | SMYKLOT',
@@ -272,12 +268,17 @@ describe('panel document titles', () => {
     expect(routeSegmentLabel('root-console')).toBe('Root Console');
   });
 
-  it('orders and groups the Runtime leaves while opening the section on settings', () => {
-    expect(ROOT_RUNTIME_SECTIONS).toEqual(['service', 'database', 'settings']);
+  it('orders and groups the Runtime leaves while opening the section on service', () => {
+    expect(ROOT_RUNTIME_SECTIONS).toEqual(['service', 'settings']);
     expect(rootSection({ rootView: 'runtime-service' })).toBe('runtime');
-    expect(rootSection({ rootView: 'runtime-database' })).toBe('runtime');
     expect(rootSection({ rootView: 'runtime-settings' })).toBe('runtime');
     expect(rootSectionRoute('runtime')).toEqual({ rootView: 'runtime-service' });
+  });
+
+  /* The database was a page and is a card on Service health. Its address is kept
+     and answered, because an operator's bookmark is not a reason to 404. */
+  it('reads the retired database address as the page it lands on', () => {
+    expect(parsePanelRoute('', '/root/runtime/database')).toEqual({ rootView: 'runtime-service' });
   });
 });
 

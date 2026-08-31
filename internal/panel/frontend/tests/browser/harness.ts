@@ -59,7 +59,6 @@ export const PANEL_ROUTES = [
   'i/access/invitations',
   'i/history',
   'root/runtime/service',
-  'root/runtime/database',
   'root/runtime/settings',
   'root/queue',
   'root/queue/recent',

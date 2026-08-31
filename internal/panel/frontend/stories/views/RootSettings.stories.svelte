@@ -19,22 +19,19 @@
   });
 </script>
 
-<!-- Read-only process and deployment facts live on their own Runtime leaf. -->
-<Story name="Service" args={{ section: 'service' }}>
+<!--
+  The service, its credentials and the store it runs on - one page, because a
+  database that is answering slowly is a fact about the service, and an operator
+  who came to ask whether the service is well should not have to visit twice.
+-->
+<Story name="Service health" args={{ section: 'service' }}>
   {#snippet template(args)}
     <Seeded seed={[[KEY, RUNTIME]]}><RootSettings {...args} /></Seeded>
   {/snippet}
 </Story>
 
-<!-- The database has its own address and page; no editable runtime controls follow it. -->
-<Story name="Database" args={{ section: 'database' }}>
-  {#snippet template(args)}
-    <Seeded seed={[[KEY, RUNTIME]]}><RootSettings {...args} /></Seeded>
-  {/snippet}
-</Story>
-
-<!-- The database answering slowly, reported on the dedicated database page. -->
-<Story name="Database degraded" args={{ section: 'database' }}>
+<!-- The database answering slowly, on the same page as everything else. -->
+<Story name="Database degraded" args={{ section: 'service' }}>
   {#snippet template(args)}
     <Seeded
       seed={[

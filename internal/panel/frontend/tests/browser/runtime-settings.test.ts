@@ -167,10 +167,10 @@ describe('Root runtime settings drafts', () => {
       expect(writes).toHaveLength(0);
       expect(await amount.getAttribute('aria-invalid')).toBe('true');
 
-      await page.getByRole('link', { name: 'Database' }).click();
-      await page.waitForURL((url) => url.pathname === '/root/runtime/database');
+      await page.getByRole('link', { name: 'Service health' }).click();
+      await page.waitForURL((url) => url.pathname === '/root/runtime/service');
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByRole('link', { name: 'Settings' }).click();
+      await page.getByRole('link', { name: 'Service settings' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
       expect(
         await page.getByRole('textbox', { name: 'Session lifetime amount' }).inputValue(),
@@ -184,7 +184,7 @@ describe('Root runtime settings drafts', () => {
 });
 
 describe('Root Runtime routes', () => {
-  it('orders and isolates service, database, and editable settings leaves', async () => {
+  it('holds the service and its store on one page, apart from the editable settings', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
 
     try {
@@ -192,33 +192,27 @@ describe('Root Runtime routes', () => {
       const runtimeKids = page.locator('.tree a.tree-row[href^="/root/runtime/"]');
       expect(await runtimeKids.locator('> .t').allTextContents()).toEqual([
         'Service health',
-        'Database',
         'Service settings',
       ]);
-      expect(await page.locator('#root-page-heading').innerText()).toBe('Runtime settings');
-      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(0);
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Service settings');
+      expect(await page.getByRole('heading', { name: 'Credentials' }).count()).toBe(0);
       expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(0);
-      expect(await page.locator('.service-grid').count()).toBe(0);
 
       await runtimeKids.filter({ hasText: 'Service health' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/service');
-      await page.locator('#root-service').waitFor({ state: 'visible' });
+      await page.getByRole('heading', { name: 'Credentials' }).waitFor({ state: 'visible' });
 
-      expect(await page.locator('#root-page-heading').innerText()).toBe('Service and deployment');
-      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(2);
-      expect(await page.getByRole('heading', { name: 'Runtime', exact: true }).count()).toBe(0);
-      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(0);
-      expect(await page.locator('.service-grid').count()).toBe(1);
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Service health');
+      // The database is a card here, and the page does not repeat its own name.
+      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(1);
+      expect(await page.getByRole('heading', { name: 'Service health', exact: true }).count()).toBe(
+        1,
+      );
 
-      await runtimeKids.filter({ hasText: 'Database' }).click();
-      await page.waitForURL((url) => url.pathname === '/root/runtime/database');
-      await page.locator('#root-database').waitFor({ state: 'visible' });
-
-      expect(await page.locator('#root-page-heading').innerText()).toBe('Database');
-      expect(await page.getByRole('heading', { name: 'Database', exact: true }).count()).toBe(2);
-      expect(await page.getByRole('heading', { name: 'Runtime', exact: true }).count()).toBe(0);
-      expect(await page.getByRole('heading', { name: 'Service and deployment' }).count()).toBe(0);
-      expect(await page.locator('.service-grid').count()).toBe(1);
+      // The database's old address is kept, and lands on the page that absorbed it.
+      await page.goto(`${panel.origin}/root/runtime/database`, { waitUntil: 'domcontentloaded' });
+      await page.waitForURL((url) => url.pathname === '/root/runtime/service');
+      expect(await page.locator('#root-page-heading').innerText()).toBe('Service health');
     } finally {
       await page.close();
     }

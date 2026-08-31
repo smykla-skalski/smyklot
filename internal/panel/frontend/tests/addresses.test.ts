@@ -139,7 +139,6 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { id: 'req-1' },
   },
   { route: { rootView: 'runtime-service' }, id: '/root/runtime/service', params: {} },
-  { route: { rootView: 'runtime-database' }, id: '/root/runtime/database', params: {} },
   { route: { rootView: 'runtime-settings' }, id: '/root/runtime/settings', params: {} },
   {
     route: { rootView: 'history-audit' },

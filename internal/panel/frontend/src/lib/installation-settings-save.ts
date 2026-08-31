@@ -381,7 +381,7 @@ function serializeInstallationAttempt(
       syncConfigs.push(serialized.input);
       continue;
     }
-    return invalidEntry(entry, 'Runtime settings need the Root settings save');
+    return invalidEntry(entry, 'Service settings are saved from the console, not from here');
   }
 
   if (repositories.length > 0) input.repositories = repositories;

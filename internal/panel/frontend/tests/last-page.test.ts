@@ -88,8 +88,10 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage('console', '/root/runtime/service', {}, storage);
     expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-service' });
 
+    /* A page remembered before the database joined Service health reads back as
+       the page it now lands on, rather than as a leaf that no longer exists. */
     writeLastPage('console', '/root/runtime/database', {}, storage);
-    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-database' });
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-service' });
 
     writeLastPage('console', '/root/runtime/settings', {}, storage);
     expect(readLastConsolePage(storage)).toEqual({ rootView: 'runtime-settings' });
