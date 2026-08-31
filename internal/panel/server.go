@@ -229,6 +229,7 @@ func (s *Server) Handler() http.Handler {
 		"PUT "+base+"/api/v1/notifications/{notification}/read",
 		s.putSecurityNotificationRead,
 	)
+	mux.HandleFunc("PUT "+base+"/api/v1/notifications/read", s.putSecurityNotificationsAllRead)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
 	s.registerRootRoutes(mux, base)
 	s.registerInstallationSettingsRoutes(mux, base)

@@ -383,6 +383,12 @@ func DeclareSpecs(harness Harness) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(notifications.Unread).To(BeZero())
 
+		// Marking every one read is what the inbox's own control does, and it answers
+		// how many it touched - none, here, because the one there was is already read.
+		cleared, err := store.MarkAllSecurityNotificationsRead(ctx, owner.ID, now.Add(3*time.Minute))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(cleared).To(BeZero())
+
 		Expect(store.DeleteExpiredAuth(ctx, now.Add(16*time.Minute))).To(Succeed())
 		_, err = store.GetElevation(ctx, session.TokenHash, target.TargetID, now.Add(16*time.Minute))
 		Expect(errors.Is(err, storage.ErrExpired)).To(BeTrue())

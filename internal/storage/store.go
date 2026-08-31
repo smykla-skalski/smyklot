@@ -140,6 +140,10 @@ type SecurityStore interface {
 	EndSessionElevations(context.Context, string, ElevationEndReason, time.Time) error
 	ListSecurityNotifications(context.Context, string, NotificationPageRequest) (NotificationPage, error)
 	MarkSecurityNotificationRead(context.Context, string, int64, time.Time) (SecurityNotification, error)
+	// MarkAllSecurityNotificationsRead clears one recipient's whole inbox and answers how
+	// many were unread. A count rather than the rows: the caller is a control that empties
+	// a list, not one that reads it.
+	MarkAllSecurityNotificationsRead(context.Context, string, time.Time) (int, error)
 }
 
 // PreferenceStore owns per-account synced panel preferences.

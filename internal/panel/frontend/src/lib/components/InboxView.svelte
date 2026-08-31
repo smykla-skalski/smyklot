@@ -13,19 +13,27 @@
   import type { NotificationPage, SecurityNotification } from '../types';
   import Button from './Button.svelte';
   import Chip from './Chip.svelte';
-  import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
+  import Pill from './Pill.svelte';
   import ResultProblem from './ResultProblem.svelte';
 
   const {
     fetchPage,
     markRead,
+    markAllRead,
     onUnread,
+    viewerName = 'Personal',
+    auditHref,
   }: {
     fetchPage: PanelApi['fetchNotifications'];
     markRead: PanelApi['markNotificationRead'];
+    markAllRead?: PanelApi['markAllNotificationsRead'];
     /** Reports the count back, so the sidebar's badge answers to what was read here. */
     onUnread?: (unread: number) => void;
+    /** Whose inbox it is, which is what the page's eyebrow says. */
+    viewerName?: string;
+    /** Where one receipt's audit entry lives, when the reader can reach that workspace. */
+    auditHref?: (notification: SecurityNotification) => string | undefined;
   } = $props();
 
   const PAGE_SIZE = 20;
@@ -60,7 +68,6 @@
   const pages = $derived(notificationsQuery.data?.pages ?? []);
   const items = $derived(mergePages(pages));
   const unread = $derived(pages[0]?.unread ?? 0);
-  const total = $derived(pages[0]?.total ?? 0);
   const loading = $derived(notificationsQuery.isFetching && !notificationsQuery.isFetchingNextPage);
   const loadingMore = $derived(notificationsQuery.isFetchingNextPage);
   let actionProblem = $state<string | null>(null);
@@ -74,7 +81,6 @@
   );
   const loaded = $derived(notificationsQuery.data !== undefined);
   let now = $state(0);
-  let expandedAuditId = $state<string | null>(null);
   const groups = $derived(groupNotifications(items));
 
   async function load(reset = true): Promise<void> {
@@ -82,15 +88,26 @@
     else if (notificationsQuery.hasNextPage) await notificationsQuery.fetchNextPage();
   }
 
-  /* A disclosure, so the control is a button. It was an anchor whose href named
-     the article it sat inside, which made every modified click a promise the
-     page could not keep: Cmd-click opened a second tab scrolled to the same
-     place with nothing expanded, and a plain click had to swallow the address
-     to stop it going anywhere. */
-  function toggleAuditRecord(notification: SecurityNotification): void {
-    expandedAuditId =
-      expandedAuditId === notification.audit_event_id ? null : notification.audit_event_id;
-    void read(notification);
+  let clearing = $state(false);
+
+  /**
+   * Every unread one at once, in one request.
+   *
+   * A loop over the loaded pages would be a lie the moment the list has a page the
+   * reader has not reached: the button says all, so the server empties all.
+   */
+  async function readEverything(): Promise<void> {
+    if (markAllRead === undefined || clearing) return;
+    clearing = true;
+    actionProblem = null;
+    try {
+      await markAllRead();
+      await notificationsQuery.refetch();
+    } catch (error) {
+      actionProblem = error instanceof Error ? error.message : String(error);
+    } finally {
+      clearing = false;
+    }
   }
 
   async function read(notification: SecurityNotification): Promise<void> {
@@ -169,12 +186,22 @@ pager - a notification list has no last page worth naming.
 <section class="inbox-page" aria-labelledby="inbox-heading">
   <PageHeader
     id="inbox-heading"
-    eyebrow="Personal"
+    eyebrow={viewerName}
     title="Inbox"
-    description="Audited Root activity on workspaces you own"
+    description="When an operator touches a workspace you own, the receipt lands here"
   >
     {#snippet actions()}
-      <Chip tone="accent">{unread === 0 ? 'All read' : `${unread} unread`} · {total} retained</Chip>
+      <!-- The unread count is the only number the head owes a reader. "Retained" was a
+           second one that answered nothing they can act on - the list itself says how
+           much there is, and there is a control for the one thing they want to do. -->
+      {#if unread > 0}
+        <Chip tone="accent">{unread} unread</Chip>
+        <Button tone="quiet" disabled={clearing} onclick={() => void readEverything()}>
+          {clearing ? 'Marking…' : 'Mark all read'}
+        </Button>
+      {:else}
+        <Chip tone="clear">All read</Chip>
+      {/if}
     {/snippet}
   </PageHeader>
 
@@ -207,92 +234,71 @@ pager - a notification list has no last page worth naming.
       </div>
       <p class="visually-hidden" role="status">Reading security notifications</p>
     {:else}
+      <!-- ONE ELEVATION IS ONE CARD, AND THE REASON IS ITS TITLE. What a reader wants to
+           know is why somebody with operator access was in their workspace; the session
+           it happened under is bookkeeping, and it lives on the audit entry each row
+           links to rather than at the head of the card that opens with the reason. -->
       <div class="notification-list" aria-live="polite">
         {#each groups as group (group.id)}
-          <section class="notification-group" aria-label={`Elevation ${group.id}`}>
-            <header>
-              <span class="group-id">Elevation {group.id.slice(-10)}</span>
-              <span class="group-reason">{group.events[0]?.reason ?? ''}</span>
-              <span class="group-count"
-                >{group.events.length} {group.events.length === 1 ? 'event' : 'events'}</span
+          <section class="card" aria-label={group.events[0]?.reason ?? 'Operator access'}>
+            <div class="card-head">
+              <h2 class="card-title">{group.events[0]?.reason ?? 'Operator access'}</h2>
+              <span class="card-meta"
+                >{group.events[0]?.installation.display_name ?? ''} · {group.events.length}
+                {group.events.length === 1 ? 'event' : 'events'}</span
               >
-            </header>
-            {#each group.events as notification (notification.id)}
-              <article class:unread={notification.read_at === undefined}>
-                <span class="unread-slot" aria-hidden="true"></span>
-                <div class="notification-copy">
-                  <div class="notification-title">{actionLabel(notification.action)}</div>
-                  <p>
-                    {notification.actor.display_name} used elevated access on
-                    {notification.installation.display_name}
-                  </p>
-                  <div class="notification-meta">
-                    <time
-                      datetime={notification.created_at}
-                      title={formatTimestamp(notification.created_at)}
-                      >{formatRelative(notification.created_at, now)}</time
-                    ><button
-                      type="button"
-                      class="audit-toggle"
-                      aria-expanded={expandedAuditId === notification.audit_event_id}
-                      onclick={() => toggleAuditRecord(notification)}
-                      >Audit #{notification.audit_event_id}</button
-                    >
-                  </div>
-                  {#if expandedAuditId === notification.audit_event_id}
-                    <dl class="audit-record">
-                      <div>
-                        <dt>Event</dt>
-                        <dd>#{notification.audit_event_id}</dd>
-                      </div>
-                      <div>
-                        <dt>Action</dt>
-                        <dd>{notification.action}</dd>
-                      </div>
-                      <div>
-                        <dt>Installation</dt>
-                        <dd>@{notification.installation.login}</dd>
-                      </div>
-                      <div>
-                        <dt>Actor</dt>
-                        <dd>@{notification.actor.login}</dd>
-                      </div>
-                      <div>
-                        <dt>Elevation</dt>
-                        <dd>{notification.elevation_id}</dd>
-                      </div>
-                      {#if notification.reason !== undefined}
-                        <div class="wide">
-                          <dt>Reason</dt>
-                          <dd>{notification.reason}</dd>
-                        </div>
+            </div>
+            <div class="object-list">
+              {#each group.events as notification (notification.id)}
+                <div class="object-row">
+                  <span class="object-main">
+                    <span class="object-name-row">
+                      <span class="object-name">{actionLabel(notification.action)}</span>
+                      {#if notification.read_at === undefined}
+                        <Pill tone="warning">Unread</Pill>
                       {/if}
-                    </dl>
-                  {/if}
+                    </span>
+                    <span class="object-sum"
+                      >{notification.actor.display_name}, as operator ·
+                      <time
+                        datetime={notification.created_at}
+                        title={formatTimestamp(notification.created_at)}
+                        >{formatRelative(notification.created_at, now)}</time
+                      >
+                      ·
+                      {#if auditHref !== undefined}
+                        <a href={auditHref(notification)}
+                          >audit entry in {notification.installation.display_name}</a
+                        >
+                      {:else}
+                        audit entry #{notification.audit_event_id}
+                      {/if}
+                      {#if notification.read_at !== undefined}· read{/if}</span
+                    >
+                  </span>
+                  <span class="object-side">
+                    {#if notification.read_at === undefined}
+                      <Button
+                        tone="quiet"
+                        aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
+                        onclick={() => read(notification)}
+                      >
+                        Mark read
+                      </Button>
+                    {/if}
+                  </span>
                 </div>
-                {#if notification.read_at === undefined}
-                  <Button
-                    class="mark-read"
-                    aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
-                    onclick={() => read(notification)}
-                  >
-                    Mark read
-                  </Button>
-                {:else}
-                  <span class="read-state"
-                    ><span class="read-slot"><Icon name="check" size="sm" /></span><span
-                      class="cap-trim">Read</span
-                    ></span
-                  >
-                {/if}
-              </article>
-            {/each}
+              {/each}
+            </div>
           </section>
         {:else}
-          <div class="plate inbox-card inbox-empty">
-            <span><Icon name="success" size={22} /></span>
-            <strong>No security events</strong>
-            <p>Audited Root writes to workspaces you own will appear here</p>
+          <div class="card">
+            <div class="state-panel">
+              <span
+                ><strong>Nothing has needed your attention.</strong> When an operator writes to a workspace
+                you own, the receipt lands here</span
+              >
+            </div>
           </div>
         {/each}
       </div>
@@ -324,245 +330,10 @@ pager - a notification list has no last page worth naming.
     margin-bottom: 0;
   }
 
-  .notification-copy p,
-  .inbox-empty p {
-    margin: 0;
-  }
-
-  .inbox-empty > span {
-    align-items: center;
-    background: var(--brand-action-tint);
-    border-radius: var(--radius-control);
-    color: var(--brand-action);
-    display: inline-flex;
-    height: 2.5rem;
-    justify-content: center;
-    width: 2.5rem;
-  }
-
+  /* THE CARDS SIT ONE CARD-GAP APART, which `app.css` gives every `.card + .card` -
+     the list only has to be a column that does not add a second distance of its own. */
   .notification-list {
     display: grid;
-    gap: var(--space-3);
-  }
-
-  /* No grid gap: each item already draws its own top rule, so a 1px gap showing
-     the group's inset behind it doubled the divider and made the group 2px
-     taller than the approved one. */
-  .notification-group {
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: grid;
-    overflow: hidden;
-  }
-
-  /* Flex, not a fixed three-track grid: on the grid the middle track took all
-     the slack and ellipsised a reason that fits, while the count sat away from
-     the edge. Here the reason is only clipped when it genuinely overruns.
-
-     `min-width: 0` because this is a grid item, and a grid item's automatic
-     minimum size is its min-content width: without it the header refused to
-     shrink to the card, and the group clipped what stuck out. On a 390px window
-     that put the event count 69px past the edge, off screen entirely, while the
-     reason it was making room for was not ellipsised at all. */
-  .notification-group > header {
-    align-items: baseline;
-    display: flex;
-    gap: 0.6rem;
-    min-width: 0;
-    padding: 0.6rem var(--space-3) 0.55rem;
-  }
-
-  .notification-group > header .group-count {
-    margin-left: auto;
-    white-space: nowrap;
-  }
-
-  .notification-group > header .group-reason {
-    min-width: 0;
-  }
-
-  .group-id,
-  .group-count {
-    color: var(--text-muted);
-    font: 600 var(--font-size-micro) / var(--leading-flat) var(--mono);
-  }
-
-  /* An identifier is one word however narrow the window gets: broken across two
-     lines it stops being something a reader can match against the audit trail. */
-  .group-id {
-    color: var(--text-secondary);
-    flex: none;
-    white-space: nowrap;
-  }
-
-  .group-reason {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    line-height: var(--leading-micro);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  article {
-    align-items: start;
-    background: var(--surface-base);
-    border: 0;
-    border-top: 1px solid var(--border-subtle);
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    padding: var(--space-3);
-  }
-
-  article.unread {
-    background: color-mix(in srgb, var(--brand-action) 4%, var(--surface-base));
-  }
-
-  /* Fixed-width in every item so read and unread text columns align; the dot
-     rides the title line of unread items only. */
-  .unread-slot {
-    padding-top: 0.265rem;
-    width: 0.5rem;
-  }
-
-  article.unread .unread-slot::before {
-    background: var(--brand-action);
-    border-radius: 50%;
-    content: '';
-    display: block;
-    height: 0.5rem;
-    width: 0.5rem;
-  }
-
-  .notification-copy {
-    min-width: 0;
-  }
-
-  .read-state {
-    align-items: center;
-    display: flex;
-  }
-
-  .notification-title {
-    color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-    font-weight: 700;
-    line-height: var(--leading-meta);
-  }
-
-  article.unread .notification-title {
-    color: var(--text-primary);
-    font-weight: 700;
-  }
-
-  .notification-copy > p {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-    margin-top: 0.3rem;
-  }
-
-  .notification-meta {
-    color: var(--text-muted);
-    display: block;
-    font: 500 var(--font-size-micro) / var(--leading-micro) var(--mono);
-    margin-top: 0.3rem;
-  }
-
-  /* The separator belongs to the meta line, not to the link: non-breaking
-     spaces so it keeps the mono advance the approved line measures, and muted
-     so the dot does not read as part of the link's label. */
-  .audit-toggle::before {
-    color: var(--text-muted);
-    content: '\00a0\00b7\00a0';
-  }
-
-  .audit-toggle {
-    background: none;
-    border: 0;
-    color: var(--brand-action-text);
-    font: inherit;
-    padding: 0;
-    text-decoration: none;
-  }
-
-  .audit-toggle:hover {
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-  }
-
-  .audit-record {
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: grid;
-    gap: var(--space-2) var(--space-3);
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin: var(--space-3) 0 0;
-    padding: var(--space-3);
-  }
-
-  .audit-record div {
-    min-width: 0;
-  }
-
-  .audit-record .wide {
-    grid-column: 1 / -1;
-  }
-
-  .audit-record dt {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    text-transform: uppercase;
-  }
-
-  .audit-record dd {
-    color: var(--text-primary);
-    font: 500 var(--font-size-compact) / var(--leading-compact) var(--mono);
-    margin: var(--space-1) 0 0;
-    overflow-wrap: anywhere;
-  }
-
-  /* `:global` because `Button` renders the control, so it wears that component's
-     scope class and a bare `.mark-read` no longer matches. Anchored to the list, so
-     it still reaches nothing outside this component. Load-bearing: without it the
-     control loses its vertical centring against the event beside it. */
-  .notification-list :global(.mark-read),
-  .read-state {
-    align-self: center;
-  }
-
-  .read-state {
-    color: var(--text-muted);
-    font: 600 var(--font-size-compact) / var(--leading-compact) var(--sans);
-    gap: var(--space-2);
-  }
-
-  .read-slot {
-    display: grid;
-    flex: none;
-    height: 1.125rem;
-    place-items: center;
-    width: 1.125rem;
-  }
-
-  .inbox-empty {
-    align-items: center;
-    color: var(--text-secondary);
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
-    justify-content: center;
-    margin: 0;
-    min-height: 10rem;
-    padding: var(--space-6);
-    text-align: center;
-  }
-
-  .inbox-empty p {
-    font-size: var(--font-size-compact);
   }
 
   /* One block per group rather than per row: what is arriving is groups, and a
@@ -589,35 +360,7 @@ pager - a notification list has no last page worth naming.
     margin: var(--space-4) auto 0;
   }
 
-  @media (max-width: 38rem) {
-    article {
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-
-    article > :last-child {
-      grid-column: 1 / -1;
-      justify-self: start;
-    }
-
-    .audit-record {
-      grid-template-columns: 1fr;
-    }
-
-    .audit-record .wide {
-      grid-column: auto;
-    }
-
-    /* The reason is the only part of this header a reader has not already got
-       from the elevation id, and sharing the line with both of the others left
-       it 121px: "Restore command handling during production i…". It takes the
-       line below instead, where it can say the whole thing. */
-    .notification-group > header {
-      flex-wrap: wrap;
-    }
-
-    .notification-group > header .group-reason {
-      flex-basis: 100%;
-      white-space: normal;
-    }
-  }
+  /* No phone block. The row is an `.object-row` and the card head is a `.card-head`,
+     and both already know what to do at every width - which is the point of using
+     them rather than a shape only this page draws. */
 </style>

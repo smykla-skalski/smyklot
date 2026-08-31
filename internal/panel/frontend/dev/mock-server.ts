@@ -2193,6 +2193,17 @@ async function handle(
       return;
     }
 
+    if (path === route('/api/v1/notifications/read') && method === 'PUT') {
+      let cleared = 0;
+      state.notifications = state.notifications.map((notification) => {
+        if (notification.read_at !== undefined) return notification;
+        cleared += 1;
+        return { ...notification, read_at: new Date().toISOString() };
+      });
+      respond(res, 200, { read: cleared });
+      return;
+    }
+
     if (notificationRead && method === 'PUT') {
       const id = decodeURIComponent(notificationRead.groups?.notification ?? '');
       const index = state.notifications.findIndex((notification) => notification.id === id);

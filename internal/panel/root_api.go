@@ -332,6 +332,27 @@ func (s *Server) putSecurityNotificationRead(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, securityNotificationDTO(notification))
 }
 
+// putSecurityNotificationsAllRead empties one reader's inbox. It answers the count
+// rather than the rows: the page that calls this already holds the list and refetches
+// it, and sending every notification back to say the same word about each is a page of
+// JSON to report a single fact.
+func (s *Server) putSecurityNotificationsAllRead(w http.ResponseWriter, r *http.Request) {
+	if !s.requireSameOrigin(w, r) {
+		return
+	}
+	account, ok := s.requireViewer(w, r)
+	if !ok {
+		return
+	}
+	cleared, err := s.store.MarkAllSecurityNotificationsRead(r.Context(), account.ID, s.now().UTC())
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	s.events.announce(panelEvent{Type: panelEventResync})
+	writeJSON(w, http.StatusOK, map[string]int{"read": cleared})
+}
+
 func (s *Server) announceElevationExpiry(elevation storage.Elevation) {
 	delay := elevation.ExpiresAt.Sub(s.now().UTC())
 	if delay <= 0 {

@@ -203,6 +203,31 @@ WHERE id = ? AND recipient_account_id = ? AND read_at IS NULL`,
 	return notification, nil
 }
 
+// MarkAllSecurityNotificationsRead clears one recipient's whole inbox in a single
+// statement and answers how many were unread. No transaction and no read back: the
+// caller wants the list emptied, not the rows, and `read_at IS NULL` makes the write
+// idempotent on its own.
+func (s *Store) MarkAllSecurityNotificationsRead(
+	ctx context.Context,
+	recipientAccountID string,
+	readAt time.Time,
+) (int, error) {
+	result, err := s.db.ExecContext(ctx, `
+UPDATE security_notifications SET read_at = ?
+WHERE recipient_account_id = ? AND read_at IS NULL`,
+		readAt, recipientAccountID,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("mark every security notification read: %w", err)
+	}
+	cleared, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("count security notifications read: %w", err)
+	}
+
+	return int(cleared), nil
+}
+
 const notificationSelect = `
 SELECT
     n.id, n.recipient_account_id, n.target_id, n.elevation_id, n.audit_event_id,

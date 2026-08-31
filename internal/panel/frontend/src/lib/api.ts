@@ -217,6 +217,8 @@ export interface PanelApi {
   ): Promise<Page<DeliveryFailure>>;
   fetchNotifications(request: NotificationPageRequest): Promise<NotificationPage>;
   markNotificationRead(notificationId: string): Promise<SecurityNotification>;
+  /** Empties the inbox, and answers how many were unread rather than which. */
+  markAllNotificationsRead(): Promise<{ read: number }>;
   fetchTargetUsers(targetId: string, request: PanelUserPageRequest): Promise<Page<PanelUser>>;
   addTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser>;
   /** Logins offered while one is being typed; see `UserCompletion`. */
@@ -920,6 +922,10 @@ export function createPanelApi(
 
     markNotificationRead(notificationId: string): Promise<SecurityNotification> {
       return putJson(`/api/v1/notifications/${pathSegment(notificationId)}/read`, {});
+    },
+
+    markAllNotificationsRead(): Promise<{ read: number }> {
+      return putJson('/api/v1/notifications/read', {});
     },
 
     fetchTargetUsers(targetId: string, userPage: PanelUserPageRequest): Promise<Page<PanelUser>> {
