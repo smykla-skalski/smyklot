@@ -94,6 +94,24 @@ export const WRITTEN_SYNC_SECTIONS = ['labels', 'settings', 'rulesets', 'files',
 export const SYNC_SECTIONS = ['overview', ...WRITTEN_SYNC_SECTIONS] as const;
 export type SyncSection = (typeof SYNC_SECTIONS)[number];
 
+/**
+ * What each sync section is CALLED, which is not what it is addressed by.
+ *
+ * `overview` is written "Sync status" and `settings` is written "Repository
+ * options" - the tree already carries a Workspace settings row, and no two
+ * rows in it may share a word a reader navigates by. Held here because the
+ * tree, the overview board, the plan and the browser tab all say it, and a
+ * word spelled in four places is a word that drifts in three.
+ */
+export const SYNC_SECTION_LABELS: Record<SyncSection, string> = {
+  overview: 'Sync status',
+  labels: 'Labels',
+  settings: 'Repository options',
+  rulesets: 'Rulesets',
+  files: 'Shared files',
+  plan: 'Plan',
+};
+
 /** One repository's own page. */
 export interface RepositoryPage {
   /** Named the way a person names it - `api-gateway`, never an id. */
@@ -432,12 +450,13 @@ function routeTitleSegments(route: PanelRoute): string[] {
   }
   const view = route.view;
   const section = panelViewSection(view);
-  const leaf =
-    route.section ??
-    ('sync' in route ? route.sync : undefined) ??
-    ('queue' in route ? route.queue : undefined) ??
-    view;
-  return leaf === section ? [leaf] : [leaf, section];
+  const sync = 'sync' in route ? route.sync : undefined;
+  const leaf = route.section ?? sync ?? ('queue' in route ? route.queue : undefined) ?? view;
+  /* A sync section is named rather than spelled from its address: the tab
+     would otherwise read "Settings" on the page whose title is Repository
+     options, which is the one word the tree deliberately does not use twice. */
+  const said = sync !== undefined && leaf === sync ? SYNC_SECTION_LABELS[sync] : leaf;
+  return leaf === section ? [said] : [said, section];
 }
 
 /** `undefined` for "no segment", `'invalid'` for a segment that cannot be one. */

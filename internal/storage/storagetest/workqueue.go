@@ -12,7 +12,21 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
-func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+// queueRuntime is what every queue spec asks for: a live context, the store
+// under test, and the instant the suite calls now.
+type queueRuntime = func() (context.Context, storage.Store, time.Time)
+
+// declareWorkQueueSpecs runs the queue's conformance suite on one engine, in
+// four groups: what the policies say, what a reader can list, what a schedule
+// permits, and what leasing actually does.
+func declareWorkQueueSpecs(runtime queueRuntime) {
+	declareQueuePolicySpecs(runtime)
+	declareQueueListingSpecs(runtime)
+	declareQueueScheduleSpecs(runtime)
+	declareQueueLeaseSpecs(runtime)
+}
+
+func declareQueuePolicySpecs(runtime queueRuntime) {
 	It("seeds the always-open profile and current workload policies", func() {
 		ctx, store, _ := runtime()
 
@@ -140,7 +154,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(webhook.Enabled).To(BeTrue())
 		Expect(webhook.Cadence).To(BeZero())
 	})
+}
 
+func declareQueueListingSpecs(runtime queueRuntime) {
 	It("publishes every recurring workload through the shared scheduler", func() {
 		ctx, store, now := runtime()
 		targetID, repositoryID := "installation:scheduled", "repository:scheduled"
@@ -313,7 +329,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 			Priorities: []workqueue.Priority{},
 		}))
 	})
+}
 
+func declareQueueScheduleSpecs(runtime queueRuntime) {
 	It("applies audited optimistic queue controls", func() {
 		ctx, store, now := runtime()
 		account, target := seedInstallation(ctx, store, now)
@@ -546,7 +564,9 @@ func declareWorkQueueSpecs(runtime func() (context.Context, storage.Store, time.
 		Expect(err).NotTo(HaveOccurred())
 		Expect(stale.State).To(Equal(workqueue.RequestStale))
 	})
+}
 
+func declareQueueLeaseSpecs(runtime queueRuntime) {
 	It("leases, retries, and coalesces recurring occurrences", func() {
 		ctx, store, now := runtime()
 		claim := workqueue.RecurringClaim{

@@ -5,6 +5,8 @@
   import SyncLabelsPage from '#lib/components/SyncLabelsPage.svelte';
   import type { SyncConfig } from '#lib/types.js';
 
+  import { SYNC_STATUS } from '../support/fixtures.js';
+
   const NOW = Date.UTC(2026, 7, 18, 12, 0, 0);
   const hours = (count: number): string => new Date(NOW - count * 3_600_000).toISOString();
 
@@ -45,8 +47,8 @@
       config: CONFIG,
       readOnly: false,
       problem: null,
-      sectionHref: (section: string) => `#/sync/${section}`,
-      onOpenSection: fn(),
+      syncStatus: SYNC_STATUS,
+      nowMs: NOW,
       onChange: fn(() => true),
     },
   });

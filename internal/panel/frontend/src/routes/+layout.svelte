@@ -32,6 +32,7 @@
   import type { PanelTarget } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
+    SYNC_SECTION_LABELS,
     panelViewSection,
     routeSegmentLabel,
     type PanelView,
@@ -628,18 +629,18 @@
       },
       { kind: 'group', id: 'group-sync', label: 'Sync' },
       ...SYNC_SECTIONS.map((section): SidebarRow => {
-        const words = {
-          overview: { label: 'Sync status', icon: 'refresh' },
-          labels: { label: 'Labels', icon: 'tag' },
-          settings: { label: 'Repository options', icon: 'sliders' },
-          rulesets: { label: 'Rulesets', icon: 'branch' },
-          files: { label: 'Shared files', icon: 'file' },
-          plan: { label: 'Plan', icon: 'plan' },
+        const icons = {
+          overview: 'refresh',
+          labels: 'tag',
+          settings: 'sliders',
+          rulesets: 'branch',
+          files: 'file',
+          plan: 'plan',
         } as const;
         return {
           id: `sync-${section}`,
-          label: words[section].label,
-          icon: words[section].icon,
+          label: SYNC_SECTION_LABELS[section],
+          icon: icons[section],
           href: session.syncSectionHref(section),
           active:
             !session.isInbox &&

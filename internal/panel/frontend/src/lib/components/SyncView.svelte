@@ -451,8 +451,8 @@ applied on save would give nobody the chance to read the deletions first.
       {config}
       {readOnly}
       problem={labelsError}
-      {sectionHref}
-      {onOpenSection}
+      {syncStatus}
+      {nowMs}
       onChange={stageLabels}
       {dirtyControls}
     />
@@ -477,8 +477,8 @@ applied on save would give nobody the chance to read the deletions first.
       {plan}
       {readOnly}
       problem={documentError.rulesets}
-      {sectionHref}
-      {onOpenSection}
+      {syncStatus}
+      {nowMs}
       {rulesetHref}
       {onOpenRuleset}
       onToggleEnabled={(wanted) => toggleKind(RULESETS, wanted)}
@@ -514,12 +514,10 @@ applied on save would give nobody the chance to read the deletions first.
       savedDocument={canonicalConfigs.files?.document}
       context={filesContext}
       {plan}
-      status={syncStatus}
+      {syncStatus}
       {nowMs}
       {readOnly}
       problem={documentError.files}
-      {sectionHref}
-      {onOpenSection}
       {fileHref}
       {onOpenFile}
       onToggleEnabled={(wanted) => toggleKind(FILES, wanted)}
@@ -534,8 +532,8 @@ applied on save would give nobody the chance to read the deletions first.
     savedDocument={canonicalConfigs.settings?.document}
     {readOnly}
     problem={documentError.settings}
-    {sectionHref}
-    {onOpenSection}
+    {syncStatus}
+    {nowMs}
     onToggleEnabled={(wanted) => toggleKind(SETTINGS, wanted)}
     onChangeDocument={(document) => void stageDocument(SETTINGS, document)}
     dirtyEnabled={dirtyControls.includes('sync.settings.enabled')}

@@ -45,6 +45,8 @@ describe('the ruleset pages [Component]', () => {
     };
   }
 
+  /* The detail page still sits under Rulesets and says so with a crumb; the
+     list page IS the tree row, so its way back is the tree. */
   const shared = {
     readOnly: false,
     problem: null,
@@ -54,7 +56,10 @@ describe('the ruleset pages [Component]', () => {
   };
 
   const listShared = {
-    ...shared,
+    readOnly: false,
+    problem: null,
+    nowMs: Date.UTC(2026, 7, 18, 12, 0, 0),
+    onChangeDocument: () => {},
     plan: null,
     rulesetHref: (name: string) => `#/${name}`,
     onOpenRuleset: () => {},

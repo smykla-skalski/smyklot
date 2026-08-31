@@ -5,6 +5,8 @@
   import SyncRulesetsPage from '#lib/components/SyncRulesetsPage.svelte';
   import type { SyncConfig, SyncPlan } from '#lib/types.js';
 
+  import { SYNC_STATUS } from '../support/fixtures.js';
+
   const NOW = Date.UTC(2026, 7, 18, 12, 0, 0);
   const at = (offset: number): string => new Date(NOW + offset).toISOString();
 
@@ -91,8 +93,8 @@
       plan: PLAN,
       readOnly: false,
       problem: null,
-      sectionHref: (section: string) => `#/sync/${section}`,
-      onOpenSection: fn(),
+      syncStatus: SYNC_STATUS,
+      nowMs: NOW,
       rulesetHref: (name: string) => `#/sync/rulesets/${name}`,
       onOpenRuleset: fn(),
       onToggleEnabled: fn(),

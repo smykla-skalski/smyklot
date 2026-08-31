@@ -25,26 +25,24 @@ already hold - the index ships once, matching costs no requests.
   import { formatRelative } from '../format';
   import { rankPaths, type PathMatch } from '../pathfinder';
   import type { SyncConfig, SyncFile, SyncFilesContext, SyncPlan, SyncStatus } from '../types';
-  import type { SyncSection } from '../routes';
 
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
-  import PanePath from './PanePath.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
+  import SyncKindFacts, { syncSwitchLabel, syncSwitchWord } from './SyncKindFacts.svelte';
 
   const {
     config,
     savedDocument = {},
     context,
     plan,
-    status,
+    syncStatus,
     nowMs,
     readOnly,
     problem = null,
-    sectionHref,
-    onOpenSection,
     fileHref,
     onOpenFile,
     onToggleEnabled,
@@ -56,12 +54,11 @@ already hold - the index ships once, matching costs no requests.
     savedDocument?: Record<string, unknown>;
     context: SyncFilesContext | null;
     plan: SyncPlan | null;
-    status: SyncStatus | null;
+    /** The fleet, for how far this kind reaches and which repositories refused. */
+    syncStatus: SyncStatus | null;
     nowMs: number;
     readOnly: boolean;
     problem?: string | null;
-    sectionHref: (section: SyncSection) => string;
-    onOpenSection: (section: SyncSection) => void;
     fileHref: (path: string) => string;
     onOpenFile: (path: string) => void;
     onToggleEnabled: (enabled: boolean) => void;
@@ -132,7 +129,7 @@ already hold - the index ships once, matching costs no requests.
   }
 
   function refusals(path: string): number {
-    const rows = status?.repositories ?? [];
+    const rows = syncStatus?.repositories ?? [];
     return rows.filter(
       (row) => row.cells.files.state === 'refused' && (row.reason ?? '').includes(path),
     ).length;
@@ -189,28 +186,34 @@ already hold - the index ships once, matching costs no requests.
 </script>
 
 <div class="view-frame">
-  <PanePath
-    segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-    ]}
-  />
-
-  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
-    <div class="kind-head-say">
-      <h2 class="card-title">Shared files</h2>
-      <p class="kind-head-sub">
-        What every repository should carry, and what it should say. A file that differs arrives as a
-        pull request the repository can merge or close
-      </p>
-    </div>
-    <Switch
-      checked={enabled}
-      label="File sync"
-      word="Syncing"
-      disabled={frozen}
-      onToggle={onToggleEnabled}
-    />
-  </div>
+  <PageHeader
+    id="sync-files-heading"
+    section="Sync"
+    title="Shared files"
+    description="Shared templates reach repositories through pull requests they can merge or close"
+    statusUnsaved={dirtyEnabled}
+  >
+    {#snippet actions()}
+      {@render addFile()}
+    {/snippet}
+    {#snippet status()}
+      <SyncKindFacts
+        kind="files"
+        {enabled}
+        status={syncStatus}
+        updatedBy={config?.updated_by ?? ''}
+        updatedAt={config?.updated_at ?? ''}
+        {nowMs}
+      />
+      <Switch
+        checked={enabled}
+        label={syncSwitchLabel('files', enabled)}
+        word={syncSwitchWord(enabled)}
+        disabled={frozen}
+        onToggle={onToggleEnabled}
+      />
+    {/snippet}
+  </PageHeader>
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -230,93 +233,96 @@ already hold - the index ships once, matching costs no requests.
     </p>
   {/if}
 
-  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
-    <div class="card-head">
-      <h3 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h3>
-      <Popover
-        bind:open={addOpen}
-        role="dialog"
-        label="Add a file"
-        align="start"
-        focusSelector=".finder-search input"
-        onopen={() => (query = '')}
-      >
-        {#snippet trigger(attributes)}
-          <!-- A raw .btn: Button's own props collide with the trigger's
+  {#snippet addFile()}
+    <Popover
+      bind:open={addOpen}
+      role="dialog"
+      label="Add a file"
+      align="start"
+      focusSelector=".finder-search input"
+      onopen={() => (query = '')}
+    >
+      {#snippet trigger(attributes)}
+        <!-- A raw .btn: Button's own props collide with the trigger's
                spread attributes, the way every other Popover trigger here
                already found. -->
-          <button {...attributes} type="button" class="btn add-file" disabled={frozen}>
-            <Icon name="plus" size="sm" />
-            <span class="button-label">Add a file</span>
-          </button>
-        {/snippet}
-        <Command.Root
-          class="finder-palette"
-          label="Path of the file to manage"
-          shouldFilter={false}
-          loop
-        >
-          <div class="menu-search finder-search">
-            <Icon name="search" size="xs" />
-            <Command.Input
-              bind:value={query}
-              placeholder="renovate.json, or a path no repository has yet"
-              spellcheck="false"
-              autocomplete="off"
-            />
-          </div>
-          <div class="finder-scope">
-            <span>Paths across this installation</span>
-            <span
-              >{(context?.known_paths ?? []).length.toLocaleString('en-US')} known · {context?.repositories ??
-                0} repositories</span
-            >
-          </div>
-          <Command.List class="finder-list">
-            <Command.Viewport>
-              {#each ranked as match (match.path)}
-                <Command.Item
-                  class="finder-opt"
-                  value={match.path}
-                  onSelect={() => choose(match.path)}
+        <button {...attributes} type="button" class="btn add-file" disabled={frozen}>
+          <Icon name="plus" size="sm" />
+          <span class="button-label">Add a file</span>
+        </button>
+      {/snippet}
+      <Command.Root
+        class="finder-palette"
+        label="Path of the file to manage"
+        shouldFilter={false}
+        loop
+      >
+        <div class="menu-search finder-search">
+          <Icon name="search" size="xs" />
+          <Command.Input
+            bind:value={query}
+            placeholder="renovate.json, or a path no repository has yet"
+            spellcheck="false"
+            autocomplete="off"
+          />
+        </div>
+        <div class="finder-scope">
+          <span>Paths across this installation</span>
+          <span
+            >{(context?.known_paths ?? []).length.toLocaleString('en-US')} known · {context?.repositories ??
+              0} repositories</span
+          >
+        </div>
+        <Command.List class="finder-list">
+          <Command.Viewport>
+            {#each ranked as match (match.path)}
+              <Command.Item
+                class="finder-opt"
+                value={match.path}
+                onSelect={() => choose(match.path)}
+              >
+                <span class="finder-path">
+                  {#each markedParts(match) as part, index (index)}<span
+                      class:dir={!part.base}
+                      class:base={part.base}
+                      class:is-mark={part.mark}>{part.text}</span
+                    >{/each}
+                </span>
+                <span class="finder-count"
+                  >in {match.repositories}
+                  {match.repositories === 1 ? 'repo' : 'repos'}</span
                 >
-                  <span class="finder-path">
-                    {#each markedParts(match) as part, index (index)}<span
-                        class:dir={!part.base}
-                        class:base={part.base}
-                        class:is-mark={part.mark}>{part.text}</span
-                      >{/each}
-                  </span>
-                  <span class="finder-count"
-                    >in {match.repositories}
-                    {match.repositories === 1 ? 'repo' : 'repos'}</span
-                  >
-                </Command.Item>
-              {/each}
-              {#if startable}
-                <Command.Item
-                  class="finder-opt finder-new"
-                  value={'start: ' + cleanQuery}
-                  onSelect={() => choose(cleanQuery)}
+              </Command.Item>
+            {/each}
+            {#if startable}
+              <Command.Item
+                class="finder-opt finder-new"
+                value={'start: ' + cleanQuery}
+                onSelect={() => choose(cleanQuery)}
+              >
+                <Icon name="plus" size="xs" />
+                <span
+                  >Start <span class="file-path">{cleanQuery}</span> - no repository has it yet</span
                 >
-                  <Icon name="plus" size="xs" />
-                  <span
-                    >Start <span class="file-path">{cleanQuery}</span> - no repository has it yet</span
-                  >
-                </Command.Item>
-              {/if}
-              {#if ranked.length === 0 && !startable}
-                <div class="finder-empty">Type a path - matches appear as you go</div>
-              {/if}
-            </Command.Viewport>
-          </Command.List>
-          <div class="finder-keys">
-            <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span
-              ><kbd>esc</kbd> close</span
-            >
-          </div>
-        </Command.Root>
-      </Popover>
+              </Command.Item>
+            {/if}
+            {#if ranked.length === 0 && !startable}
+              <div class="finder-empty">Type a path - matches appear as you go</div>
+            {/if}
+          </Command.Viewport>
+        </Command.List>
+        <div class="finder-keys">
+          <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> choose</span><span
+            ><kbd>esc</kbd> close</span
+          >
+        </div>
+      </Command.Root>
+    </Popover>
+  {/snippet}
+
+  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
+    <div class="card-head">
+      <h2 class="card-title">{files.length} {files.length === 1 ? 'template' : 'templates'}</h2>
     </div>
 
     {#if files.length > 0}
@@ -371,8 +377,8 @@ already hold - the index ships once, matching costs no requests.
         <span class="setting-say">
           <span class="setting-name">Paths to remove</span>
           <span class="setting-why"
-            >Deleted wherever a repository still has them - the only thing here that deletes
-            anything</span
+            >Deleted from every syncing repository that still has them, except ignored matches - the
+            only thing here that deletes anything</span
           >
         </span>
         <span class="setting-value">
@@ -390,9 +396,10 @@ already hold - the index ships once, matching costs no requests.
           undefined}
       >
         <span class="setting-say">
-          <span class="setting-name">Paths to leave alone</span>
+          <span class="setting-name">Ignored paths</span>
           <span class="setting-why"
-            >Patterns. Neither written nor removed, whatever the lists above say</span
+            >Patterns. Neither written nor removed - ignoring wins over both lists above, removal
+            included</span
           >
         </span>
         <span class="setting-value">
@@ -408,39 +415,9 @@ already hold - the index ships once, matching costs no requests.
 </div>
 
 <style>
-  .kind-head {
-    align-items: start;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-    margin-bottom: var(--space-4);
-  }
-
-  .kind-head-say {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .kind-head-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-  }
-
-  .kind-head :global(.switch) {
-    min-block-size: auto;
-  }
-
-  .kind-head.is-unsaved,
   .object-row.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .kind-head.is-unsaved {
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2);
   }
 
   .card.is-unsaved {

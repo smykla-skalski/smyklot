@@ -11,6 +11,8 @@
     eyebrow,
     kicker,
     actions,
+    status,
+    statusUnsaved = false,
   }: {
     /** The id the page's `aria-labelledby` points at. */
     id: string;
@@ -25,6 +27,15 @@
     kicker?: Snippet;
     /** Live status and the controls that act on the page. Never identity. */
     actions?: Snippet;
+    /**
+     * A band under the copy, spanning the whole head: the page's own state and
+     * the one switch that changes it. Its own row rather than a third thing in
+     * the action group, because a consequence is prose and reads across the
+     * width - the sync kind pages state what pausing costs before the switch.
+     */
+    status?: Snippet;
+    /** The band holds a control whose change is staged and not yet saved. */
+    statusUnsaved?: boolean;
   } = $props();
 
   /**
@@ -85,6 +96,15 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
       {@render actions()}
     </div>
   {/if}
+  {#if status !== undefined}
+    <div
+      class="page-status"
+      class:is-unsaved={statusUnsaved}
+      data-unsaved={statusUnsaved || undefined}
+    >
+      {@render status()}
+    </div>
+  {/if}
 </header>
 
 <style>
@@ -105,6 +125,55 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
      head stood 4px too far off it. Said here, where the losing rule is. */
   .page-head:has(+ :global(.filter-bar)) {
     margin-block-end: var(--rhythm-head-toolbar);
+  }
+
+  /* A head carrying a status band is three areas rather than two columns, and
+     the band spans both - keyed on the band being there rather than on a
+     modifier, because its presence is the whole condition. */
+  .page-head:has(> .page-status) {
+    align-items: center;
+    grid-template-areas:
+      'copy actions'
+      'status status';
+    row-gap: var(--space-3);
+  }
+
+  .page-head:has(> .page-status):not(:has(> .page-actions)) {
+    grid-template-areas:
+      'copy copy'
+      'status status';
+  }
+
+  .page-head:has(> .page-status) > .page-head-say {
+    grid-area: copy;
+  }
+
+  .page-head:has(> .page-status) > .page-actions {
+    grid-area: actions;
+  }
+
+  .page-status {
+    align-items: center;
+    display: grid;
+    gap: var(--space-4);
+    grid-area: status;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-block-size: 34px;
+  }
+
+  /* The switch's tap box must not set the band's height - the hit area survives
+     on the input itself, which is what the band's own 34px already covers. */
+  .page-status :global(.switch) {
+    min-block-size: 32px;
+  }
+
+  /* The panel's one unsaved marker, on the band that holds the staged switch
+     rather than on the whole head - the title is not what changed. */
+  .page-status.is-unsaved {
+    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
+    box-shadow: inset 2px 0 var(--brand-action);
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
   }
 
   .page-head-say {
@@ -201,6 +270,19 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
 
     .page-head:has(+ :global(.filter-bar)) {
       margin-block-end: var(--rhythm-head-toolbar);
+    }
+
+    /* One column: the complete action group stacks AFTER the state it acts on. */
+    .page-head:has(> .page-status) {
+      grid-template-areas: 'copy' 'status' 'actions';
+    }
+
+    .page-head:has(> .page-status):not(:has(> .page-actions)) {
+      grid-template-areas: 'copy' 'status';
+    }
+
+    .page-status {
+      align-items: start;
     }
 
     .page-actions {

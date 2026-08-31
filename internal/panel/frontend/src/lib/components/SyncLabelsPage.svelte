@@ -44,31 +44,32 @@ unlisted labels are removed, and the patterns left alone either way.
 <script lang="ts">
   import { tick, untrack } from 'svelte';
 
-  import type { SyncConfig, SyncLabel } from '../types';
-  import type { SyncSection } from '../routes';
+  import type { SyncConfig, SyncLabel, SyncStatus } from '../types';
 
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import LabelColorPicker from './LabelColorPicker.svelte';
-  import PanePath from './PanePath.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Switch from './Switch.svelte';
+  import SyncKindFacts, { syncSwitchLabel, syncSwitchWord } from './SyncKindFacts.svelte';
 
   const {
     config,
     readOnly,
     problem = null,
-    sectionHref,
-    onOpenSection,
+    syncStatus = null,
+    nowMs,
     onChange,
     dirtyControls = [],
   }: {
     config: SyncConfig | null;
     readOnly: boolean;
     problem?: string | null;
-    sectionHref: (section: SyncSection) => string;
-    onOpenSection: (section: SyncSection) => void;
+    /** The fleet, for how far this kind reaches. */
+    syncStatus?: SyncStatus | null;
+    nowMs: number;
     /** Stages one semantic labels control in the application-wide draft. */
     onChange: (
       input: LabelsSaveInput,
@@ -365,32 +366,37 @@ unlisted labels are removed, and the patterns left alone either way.
 <svelte:document onclick={outside} onkeydown={keys} />
 
 <div class="view-frame">
-  <PanePath
-    segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-    ]}
-  />
-
-  <div
-    class="kind-head"
-    class:is-unsaved={dirtyControlSet.has('sync.labels.enabled')}
-    data-unsaved={dirtyControlSet.has('sync.labels.enabled') || undefined}
+  <PageHeader
+    id="sync-labels-heading"
+    section="Sync"
+    title="Labels"
+    description="The labels every syncing repository should carry; changes enter the next plan"
+    statusUnsaved={dirtyControlSet.has('sync.labels.enabled')}
   >
-    <div class="kind-head-say">
-      <h2 class="card-title">Labels</h2>
-      <p class="kind-head-sub">
-        The labels every repository should carry. Changes here feed the next plan - nothing reaches
-        GitHub until you apply one
-      </p>
-    </div>
-    <Switch
-      checked={enabled}
-      label="Label sync"
-      word="Syncing"
-      disabled={frozen}
-      onToggle={(next) => push('sync.labels.enabled', { enabled: next })}
-    />
-  </div>
+    {#snippet actions()}
+      <Button class="label-add" disabled={frozen} onclick={addLabel}>
+        {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
+        Add a label
+      </Button>
+    {/snippet}
+    {#snippet status()}
+      <SyncKindFacts
+        kind="labels"
+        {enabled}
+        status={syncStatus}
+        updatedBy={config?.updated_by ?? ''}
+        updatedAt={config?.updated_at ?? ''}
+        {nowMs}
+      />
+      <Switch
+        checked={enabled}
+        label={syncSwitchLabel('labels', enabled)}
+        word={syncSwitchWord(enabled)}
+        disabled={frozen}
+        onToggle={(next) => push('sync.labels.enabled', { enabled: next })}
+      />
+    {/snippet}
+  </PageHeader>
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -416,15 +422,11 @@ unlisted labels are removed, and the patterns left alone either way.
     data-unsaved={dirtyControlSet.has('sync.labels.labels') || undefined}
   >
     <div class="card-head">
-      <h3 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h3>
-      <Button class="label-add" disabled={frozen} onclick={addLabel}>
-        {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-        Add a label
-      </Button>
+      <h2 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h2>
     </div>
     <p class="label-hint">
-      Press any name, description or colour dot to change it here. Edits stay in the draft until you
-      save them below.
+      Edit any name, description or colour. Each edit enters the draft as it commits; press Escape
+      to take one back.
     </p>
     <ul class="label-rows">
       {#each rows as row, index (index)}
@@ -524,15 +526,15 @@ unlisted labels are removed, and the patterns left alone either way.
         data-unsaved={dirtyControlSet.has('sync.labels.allow_removal') || undefined}
       >
         <span class="setting-say">
-          <span class="setting-name">Remove labels this list does not name</span>
+          <span class="setting-name">Delete unlisted labels</span>
           <span class="setting-why"
-            >Off, a repository may keep labels of its own. On, the list above is the whole truth and
-            everything else is deleted</span
+            >On deletes labels missing above from every syncing repository, except ignored matches.
+            Off keeps repository-only labels</span
           >
         </span>
         <Switch
           checked={allowRemoval}
-          label="Remove labels this list does not name"
+          label="Delete unlisted labels"
           disabled={frozen}
           onToggle={(next) => push('sync.labels.allow_removal', { allow_removal: next })}
         />
@@ -543,9 +545,10 @@ unlisted labels are removed, and the patterns left alone either way.
         data-unsaved={dirtyControlSet.has('sync.labels.excludes') || undefined}
       >
         <span class="setting-say">
-          <span class="setting-name">Labels to leave alone</span>
+          <span class="setting-name">Ignored labels</span>
           <span class="setting-why"
-            >Patterns, where <code>*</code> stands for any run of characters. Neither written nor removed</span
+            >Patterns, where <code>*</code> stands for any run of characters. Neither written nor removed
+            - ignoring wins over every list above, deletion included</span
           >
         </span>
         <span class="setting-value">
@@ -564,40 +567,6 @@ unlisted labels are removed, and the patterns left alone either way.
 </div>
 
 <style>
-  .kind-head {
-    align-items: start;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-    margin-bottom: var(--space-4);
-  }
-
-  .kind-head-say {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  /* Uncapped like the setting whys: the head's own width is the measure. */
-  .kind-head-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-  }
-
-  /* The tap box must not inflate the head - the hit area survives on the
-     input itself. */
-  .kind-head :global(.switch) {
-    min-block-size: auto;
-  }
-
-  .kind-head.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2);
-  }
-
   .label-card.is-unsaved {
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
     box-shadow: inset 2px 0 var(--brand-action);

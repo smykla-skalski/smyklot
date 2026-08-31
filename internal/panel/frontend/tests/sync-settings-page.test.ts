@@ -47,8 +47,7 @@ describe('SyncSettingsPage [Component]', () => {
   const base = {
     readOnly: false,
     problem: null,
-    sectionHref: () => '#',
-    onOpenSection: () => {},
+    nowMs: Date.UTC(2026, 7, 18, 12, 0, 0),
     onToggleEnabled: () => {},
     onChangeDocument: () => {},
   };
@@ -142,7 +141,7 @@ describe('SyncSettingsPage [Component]', () => {
       },
     });
 
-    await fireEvent.click(screen.getByLabelText('Settings sync'));
+    await fireEvent.click(screen.getByLabelText('Resume repository option syncing'));
 
     expect(sent).toEqual([true]);
   });

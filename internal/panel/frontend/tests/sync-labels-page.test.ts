@@ -50,12 +50,11 @@ describe('SyncLabelsPage [Component]', () => {
       config: config(),
       readOnly: false,
       problem: null,
-      sectionHref: () => '#',
-      onOpenSection: vi.fn(),
+      nowMs: Date.UTC(2026, 7, 18, 12, 0, 0),
       onChange,
     });
 
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
 
     expect(sent).toHaveLength(2);
@@ -73,16 +72,13 @@ describe('SyncLabelsPage [Component]', () => {
       config: config(),
       readOnly: false,
       problem: null,
-      sectionHref: () => '#',
-      onOpenSection: vi.fn(),
+      nowMs: Date.UTC(2026, 7, 18, 12, 0, 0),
       onChange,
     };
     const page = render(SyncLabelsPage, props);
 
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
-    await fireEvent.click(
-      screen.getByRole('checkbox', { name: 'Remove labels this list does not name' }),
-    );
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Delete unlisted labels' }));
 
     // The parent overlays the registry draft while its canonical revision
     // advances, so the component follows that overlaid value rather than the
@@ -101,8 +97,7 @@ describe('SyncLabelsPage [Component]', () => {
       config: config(),
       readOnly: false,
       problem: null,
-      sectionHref: () => '#',
-      onOpenSection: vi.fn(),
+      nowMs: Date.UTC(2026, 7, 18, 12, 0, 0),
       onChange: vi.fn(() => true),
     };
     const page = render(SyncLabelsPage, props);

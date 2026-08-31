@@ -137,12 +137,10 @@
       config: CONFIG,
       context: CONTEXT,
       plan: PLAN,
-      status: STATUS,
+      syncStatus: STATUS,
       nowMs: NOW,
       readOnly: false,
       problem: null,
-      sectionHref: (section: string) => `#/sync/${section}`,
-      onOpenSection: fn(),
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: fn(),
       onToggleEnabled: fn(),
@@ -168,7 +166,7 @@
     config: { ...CONFIG, document: { files: [], retired: [], excludes: [] } },
     context: { ...CONTEXT, merges: [] },
     plan: null,
-    status: null,
+    syncStatus: null,
   }}
 />
 

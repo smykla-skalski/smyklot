@@ -25,6 +25,13 @@ async function flip(page: Page, name: string): Promise<void> {
   await page.locator('label.switch').filter({ has: input }).click();
 }
 
+/* The kind switch says what pressing it would DO - "Pause label syncing" when
+   it is on, "Resume" when it is off - so the stable handle is where it sits
+   rather than what it currently reads. */
+async function flipKind(page: Page): Promise<void> {
+  await page.locator('.page-status label.switch').click();
+}
+
 describe('installation Sync drafts', () => {
   it('persists across routes and workspaces, then saves every setting once', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -39,17 +46,17 @@ describe('installation Sync drafts', () => {
     });
 
     try {
-      await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
-      await flip(page, 'Remove labels this list does not name');
+      await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h1' });
+      await flip(page, 'Delete unlisted labels');
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       expect(saves).toHaveLength(0);
 
       await page.locator(`a[href="/i/${panel.account}/sync/settings"]`).click();
-      await page.getByRole('heading', { name: 'Settings' }).waitFor({ state: 'visible' });
+      await page.getByRole('heading', { name: 'Repository options' }).waitFor({ state: 'visible' });
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       expect(saves).toHaveLength(0);
 
-      await flip(page, 'Settings sync');
+      await flipKind(page);
       await page.getByText('2 changed settings').waitFor({ state: 'visible' });
       const saved = page.waitForRequest(batchSave);
       await page.getByRole('button', { name: 'Save' }).click();
@@ -156,7 +163,7 @@ describe('installation Sync drafts', () => {
       expect(checkpointProof.restoredCheckpointId).toBeTruthy();
 
       await page.locator(`a[href="/i/${panel.account}/sync/labels"]`).click();
-      await flip(page, 'Remove labels this list does not name');
+      await flip(page, 'Delete unlisted labels');
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
       await page.reload({ waitUntil: 'domcontentloaded' });

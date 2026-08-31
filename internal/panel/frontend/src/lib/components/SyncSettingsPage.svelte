@@ -147,25 +147,25 @@ turns the unmanaged names into rows of their own.
 -->
 
 <script lang="ts">
-  import type { SyncConfig } from '../types';
-  import type { SyncSection } from '../routes';
+  import type { SyncConfig, SyncStatus } from '../types';
 
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
-  import PanePath from './PanePath.svelte';
+  import PageHeader from './PageHeader.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
+  import SyncKindFacts, { syncSwitchLabel, syncSwitchWord } from './SyncKindFacts.svelte';
 
   const {
     config,
     savedDocument = {},
     readOnly,
     problem = null,
-    sectionHref,
-    onOpenSection,
+    syncStatus = null,
+    nowMs,
     onToggleEnabled,
     onChangeDocument,
     dirtyEnabled = false,
@@ -175,8 +175,9 @@ turns the unmanaged names into rows of their own.
     savedDocument?: Record<string, unknown>;
     readOnly: boolean;
     problem?: string | null;
-    sectionHref: (section: SyncSection) => string;
-    onOpenSection: (section: SyncSection) => void;
+    /** The fleet, for how far this kind reaches. */
+    syncStatus?: SyncStatus | null;
+    nowMs: number;
     onToggleEnabled: (enabled: boolean) => void;
     onChangeDocument: (document: Record<string, unknown>) => void;
     dirtyEnabled?: boolean;
@@ -263,31 +264,34 @@ turns the unmanaged names into rows of their own.
 </script>
 
 <div class="view-frame">
-  <PanePath
-    segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-    ]}
-  />
-
-  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
-    <div class="kind-head-say">
-      <!-- OPTIONS, not settings. The tree already has a Workspace settings row and a
-           Sync status one, and no two rows in it may share a word a reader navigates by -
-           which is also what this page is: GitHub's own repository options, held in step. -->
-      <h2 class="card-title">Repository options</h2>
-      <p class="kind-head-sub">
-        Managed options are enforced everywhere; anything unmanaged is left exactly as each
-        repository has it
-      </p>
-    </div>
-    <Switch
-      checked={enabled}
-      label="Settings sync"
-      word="Syncing"
-      disabled={frozen}
-      onToggle={onToggleEnabled}
-    />
-  </div>
+  <!-- OPTIONS, not settings. The tree already has a Workspace settings row and a
+       Sync status one, and no two rows in it may share a word a reader navigates by -
+       which is also what this page is: GitHub's own repository options, held in step. -->
+  <PageHeader
+    id="sync-settings-heading"
+    section="Sync"
+    title="Repository options"
+    description="Managed options are enforced everywhere; anything unmanaged is left exactly as each repository has it"
+    statusUnsaved={dirtyEnabled}
+  >
+    {#snippet status()}
+      <SyncKindFacts
+        kind="settings"
+        {enabled}
+        status={syncStatus}
+        updatedBy={config?.updated_by ?? ''}
+        updatedAt={config?.updated_at ?? ''}
+        {nowMs}
+      />
+      <Switch
+        checked={enabled}
+        label={syncSwitchLabel('settings', enabled)}
+        word={syncSwitchWord(enabled)}
+        disabled={frozen}
+        onToggle={onToggleEnabled}
+      />
+    {/snippet}
+  </PageHeader>
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -497,37 +501,6 @@ turns the unmanaged names into rows of their own.
 />
 
 <style>
-  .kind-head {
-    align-items: start;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-    margin-bottom: var(--space-4);
-  }
-
-  .kind-head-say {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .kind-head-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-  }
-
-  .kind-head :global(.switch) {
-    min-block-size: auto;
-  }
-
-  .kind-head.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2);
-  }
-
   .sync-notice {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);

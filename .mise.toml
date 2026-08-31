@@ -431,7 +431,7 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 #   empty-states      what six tables say when they have no rows
 #   file-formatting   backend render preview, mismatch actions, and exact repository output
 #   filter-vocabulary that a filter menu offers the states its column draws
-#   queue-columns     the Queue table against the approved design, to the pixel
+#   queue-list        the Queue against the approved design, to the pixel
 #   queue-live        the queue re-sorting under a reader, and holding still
 #   repository-page   a repository opened from its row, and its three panes
 #   schedules         Root and installation schedule policy, requests and phone layout
@@ -446,7 +446,7 @@ npm run test:browser -- \
   tests/browser/empty-states.test.ts \
   tests/browser/file-formatting.test.ts \
   tests/browser/filter-vocabulary.test.ts \
-  tests/browser/queue-columns.test.ts \
+  tests/browser/queue-list.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
   tests/browser/schedules.test.ts \

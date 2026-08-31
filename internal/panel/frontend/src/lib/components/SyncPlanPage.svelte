@@ -3,7 +3,7 @@
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
   import { SYNC_KINDS, type SyncAction, type SyncPlan } from '../types';
-  import type { SyncSection } from '../routes';
+  import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
@@ -47,12 +47,7 @@
 
   /* ---------- The kind filter ---------- */
 
-  const KIND_LABEL: Record<string, string> = {
-    labels: 'Labels',
-    settings: 'Repository options',
-    rulesets: 'Rulesets',
-    files: 'Files',
-  };
+  const KIND_LABEL: Record<string, string> = SYNC_SECTION_LABELS;
 
   let filter = $state('all');
 

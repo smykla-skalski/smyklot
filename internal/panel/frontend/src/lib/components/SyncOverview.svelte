@@ -18,7 +18,7 @@
 <script lang="ts">
   import { formatRelative, formatUntil } from '../format';
   import type { SyncConfig, SyncPlan, SyncRepositoryStatus, SyncStatus } from '../types';
-  import type { SyncSection } from '../routes';
+  import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -90,12 +90,7 @@
     return words;
   }
 
-  const KIND_LABEL: Record<SyncKind, string> = {
-    labels: 'Labels',
-    settings: 'Repository options',
-    rulesets: 'Rulesets',
-    files: 'Files',
-  };
+  const KIND_LABEL = SYNC_SECTION_LABELS;
   const KIND_SECTION: Record<SyncKind, SyncSection> = {
     labels: 'labels',
     settings: 'settings',

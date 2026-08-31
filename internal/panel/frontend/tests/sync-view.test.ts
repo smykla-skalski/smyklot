@@ -166,20 +166,21 @@ describe('SyncView [Component]', () => {
     );
 
     await screen.findByRole('heading', { name: 'Labels' });
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
 
     expect(drafts.dirtyControls().map(({ id }) => id)).toEqual([
       'sync.labels.enabled',
       'sync.labels.labels',
     ]);
-    expect(document.querySelector('.kind-head')?.getAttribute('data-unsaved')).toBe('true');
+    expect(document.querySelector('.page-status')?.getAttribute('data-unsaved')).toBe('true');
     expect(document.querySelector('.label-card')?.getAttribute('data-unsaved')).toBe('true');
 
     expect(drafts.discardScope({ type: 'installation', targetId: 'target-1' })).toBe(1);
     await waitFor(() =>
       expect(
-        (screen.getByRole('checkbox', { name: 'Label sync' }) as HTMLInputElement).checked,
+        (screen.getByRole('checkbox', { name: 'Resume label syncing' }) as HTMLInputElement)
+          .checked,
       ).toBe(false),
     );
     expect(screen.getByRole('button', { name: 'Remove bug' })).toBeTruthy();
@@ -195,7 +196,9 @@ describe('SyncView [Component]', () => {
     );
 
     await screen.findByRole('heading', { name: 'Repository options' });
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Settings sync' }));
+    await fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Resume repository option syncing' }),
+    );
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Wiki' }));
 
     expect(drafts.dirtyControls().map(({ id }) => id)).toEqual([
@@ -292,7 +295,7 @@ describe('SyncView [Component]', () => {
       { drafts: registry(storage) },
     );
     await screen.findByRole('heading', { name: 'Labels' });
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Label sync' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
     first.page.unmount();
 
     const restarted = registry(storage);
@@ -301,9 +304,11 @@ describe('SyncView [Component]', () => {
       drafts: restarted,
     });
 
+    /* On, so the switch now offers to pause - the restored draft is legible in
+       the name as well as in the state. */
     await waitFor(() =>
       expect(
-        (screen.getByRole('checkbox', { name: 'Label sync' }) as HTMLInputElement).checked,
+        (screen.getByRole('checkbox', { name: 'Pause label syncing' }) as HTMLInputElement).checked,
       ).toBe(true),
     );
   });

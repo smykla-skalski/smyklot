@@ -24,15 +24,15 @@ decisions every kind carries: removal, and the names left alone.
 -->
 
 <script lang="ts">
-  import type { SyncConfig, SyncPlan } from '../types';
-  import type { SyncSection } from '../routes';
+  import type { SyncConfig, SyncPlan, SyncStatus } from '../types';
 
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
-  import PanePath from './PanePath.svelte';
+  import PageHeader from './PageHeader.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
+  import SyncKindFacts, { syncSwitchLabel, syncSwitchWord } from './SyncKindFacts.svelte';
 
   const {
     config,
@@ -40,8 +40,8 @@ decisions every kind carries: removal, and the names left alone.
     plan,
     readOnly,
     problem = null,
-    sectionHref,
-    onOpenSection,
+    syncStatus = null,
+    nowMs,
     rulesetHref,
     onOpenRuleset,
     onToggleEnabled,
@@ -54,8 +54,9 @@ decisions every kind carries: removal, and the names left alone.
     plan: SyncPlan | null;
     readOnly: boolean;
     problem?: string | null;
-    sectionHref: (section: SyncSection) => string;
-    onOpenSection: (section: SyncSection) => void;
+    /** The fleet, for how far this kind reaches. */
+    syncStatus?: SyncStatus | null;
+    nowMs: number;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
     onToggleEnabled: (enabled: boolean) => void;
@@ -161,50 +162,14 @@ decisions every kind carries: removal, and the names left alone.
 </script>
 
 <div class="view-frame">
-  <PanePath
-    segments={[
-      { label: 'Sync', href: sectionHref('overview'), onSelect: () => onOpenSection('overview') },
-    ]}
-  />
-
-  <div class="kind-head" class:is-unsaved={dirtyEnabled} data-unsaved={dirtyEnabled || undefined}>
-    <div class="kind-head-say">
-      <h2 class="card-title">Rulesets</h2>
-      <p class="kind-head-sub">
-        A ruleset named here is owned whole: what it does not say stops being enforced, and the plan
-        shows exactly that before anything changes
-      </p>
-    </div>
-    <Switch
-      checked={enabled}
-      label="Ruleset sync"
-      word="Syncing"
-      disabled={frozen}
-      onToggle={onToggleEnabled}
-    />
-  </div>
-
-  {#if problem !== null}
-    <FormError message={problem} />
-  {/if}
-
-  {#if unreadable}
-    <p class="sync-notice" role="alert">
-      This installation's rulesets are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
-    </p>
-  {/if}
-
-  {#if unavailable !== '' && enabled}
-    <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub.
-    </p>
-  {/if}
-
-  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
-    <div class="card-head">
-      <h3 class="card-title">{rulesets.length} {rulesets.length === 1 ? 'ruleset' : 'rulesets'}</h3>
+  <PageHeader
+    id="sync-rulesets-heading"
+    section="Sync"
+    title="Rulesets"
+    description="Smyklot owns synced rulesets end to end; the next plan previews enforcement changes"
+    statusUnsaved={dirtyEnabled}
+  >
+    {#snippet actions()}
       <Popover role="dialog" label="Name the ruleset" align="end" bind:open={adding}>
         {#snippet trigger(attributes)}
           <button {...attributes} class="btn" disabled={frozen}>
@@ -230,6 +195,47 @@ decisions every kind carries: removal, and the names left alone.
           </div>
         </div>
       </Popover>
+    {/snippet}
+    {#snippet status()}
+      <SyncKindFacts
+        kind="rulesets"
+        {enabled}
+        status={syncStatus}
+        updatedBy={config?.updated_by ?? ''}
+        updatedAt={config?.updated_at ?? ''}
+        {nowMs}
+      />
+      <Switch
+        checked={enabled}
+        label={syncSwitchLabel('rulesets', enabled)}
+        word={syncSwitchWord(enabled)}
+        disabled={frozen}
+        onToggle={onToggleEnabled}
+      />
+    {/snippet}
+  </PageHeader>
+
+  {#if problem !== null}
+    <FormError message={problem} />
+  {/if}
+
+  {#if unreadable}
+    <p class="sync-notice" role="alert">
+      This installation's rulesets are stored in a form this version of Smyklot cannot read, so they
+      are not shown and nothing here can be changed. Nothing has been lost.
+    </p>
+  {/if}
+
+  {#if unavailable !== '' && enabled}
+    <p class="sync-notice" role="status">
+      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
+      installation's page on GitHub.
+    </p>
+  {/if}
+
+  <div class="card" class:is-unsaved={dirtyDocument} data-unsaved={dirtyDocument || undefined}>
+    <div class="card-head">
+      <h2 class="card-title">{rulesets.length} {rulesets.length === 1 ? 'ruleset' : 'rulesets'}</h2>
     </div>
     {#if rulesets.length > 0}
       <div class="object-list">
@@ -285,14 +291,15 @@ decisions every kind carries: removal, and the names left alone.
           undefined}
       >
         <span class="setting-say">
-          <span class="setting-name">Remove rulesets this list does not name</span>
+          <span class="setting-name">Delete unlisted rulesets</span>
           <span class="setting-why"
-            >Off, a repository may keep rulesets of its own. On, everything unnamed is deleted</span
+            >Off, a repository may keep rulesets of its own. On, unnamed rulesets are deleted from
+            every syncing repository, except ignored matches</span
           >
         </span>
         <Switch
           checked={allowRemoval}
-          label="Remove rulesets this list does not name"
+          label="Delete unlisted rulesets"
           disabled={frozen}
           onToggle={(next) => stage({ allow_removal: next })}
         />
@@ -304,9 +311,10 @@ decisions every kind carries: removal, and the names left alone.
           undefined}
       >
         <span class="setting-say">
-          <span class="setting-name">Rulesets to leave alone</span>
+          <span class="setting-name">Ignored rulesets</span>
           <span class="setting-why"
-            >Name or pattern. Neither written nor removed, whatever the list above says</span
+            >Names or globs Smyklot never creates, updates, or deletes. Ignoring overrides every
+            list above</span
           >
         </span>
         <span class="setting-value">
@@ -322,39 +330,9 @@ decisions every kind carries: removal, and the names left alone.
 </div>
 
 <style>
-  .kind-head {
-    align-items: start;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-    margin-bottom: var(--space-4);
-  }
-
-  .kind-head-say {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .kind-head-sub {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    margin: 0;
-  }
-
-  .kind-head :global(.switch) {
-    min-block-size: auto;
-  }
-
-  .kind-head.is-unsaved,
   .object-row.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .kind-head.is-unsaved {
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2);
   }
 
   .card.is-unsaved {
