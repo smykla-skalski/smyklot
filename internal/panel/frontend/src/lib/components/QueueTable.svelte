@@ -393,13 +393,15 @@ from the wall clock cannot be photographed.
           </li>
         {/each}
       </ul>
-      <!-- The card's own count, for the card's own list. -->
-      <div class="list-foot">
-        <span>{card.count}</span>
-        {#if card.more}
+      <!-- ONLY WHERE THE CARD IS HOLDING SOMETHING BACK. A count under a list a reader
+           can see the whole of answers a question nobody asked, and the rows above it
+           already say how many there are. -->
+      {#if card.more}
+        <div class="list-foot">
+          <span>{card.count}</span>
           <Button tone="quiet" disabled={card.busy} onclick={card.onMore}>Show more</Button>
-        {/if}
-      </div>
+        </div>
+      {/if}
     </div>
   {/each}
 {/if}
