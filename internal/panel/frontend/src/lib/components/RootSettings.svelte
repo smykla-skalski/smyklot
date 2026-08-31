@@ -468,33 +468,9 @@ without the composer.
         </Card>
       {/if}
 
-      <ConfigEditor
-        patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
-        )}
-        inherited={current.behavior_defaults.deployment}
-        scope="runtime"
-        idPrefix="root"
-        disabled={saving}
-        dirtyKeys={dirtyConfigKeys}
-        onChange={updateBehavior}
-      />
-
-      <FormattingEditor
-        patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
-        ).formatting ?? {}}
-        inherited={current.behavior_defaults.deployment.formatting}
-        scope="runtime"
-        idPrefix="root"
-        disabled={saving}
-        dirtyKeys={dirtyFormattingKeys}
-        onChange={updateFormatting}
-        onValidity={setFormattingValidity}
-      />
-
+      <!-- The service's own settings lead the page, and what workspaces inherit
+           follows: a reader who came to change the log level was reading past ten
+           cards of defaults to find two rows about the process they are running. -->
       <Card class="group-card" labelledby="root-runtime">
         <div class="group-head">
           <h3 class="group-name" id="root-runtime">Runtime</h3>
@@ -592,9 +568,9 @@ without the composer.
             data-unsaved={controlDirty('runtime.session_ttl_seconds') || undefined}
           >
             <span class="setting-say">
-              <span class="setting-name">Panel sessions</span>
+              <span class="setting-name">Sign-in sessions</span>
               <span class="setting-why"
-                >Reductions shorten active sessions; increases apply to new sessions</span
+                >Shorter limits end active sessions sooner; longer limits affect new sessions</span
               >
               {#if durationProblem(SESSION_SPEC) !== null}
                 <span class="setting-problem">{durationProblem(SESSION_SPEC)}</span>
@@ -634,6 +610,33 @@ without the composer.
           </div>
         </div>
       </Card>
+
+      <ConfigEditor
+        patch={runtimeConfigPatch(
+          current.behavior_defaults.deployment,
+          current.behavior_defaults.override,
+        )}
+        inherited={current.behavior_defaults.deployment}
+        scope="runtime"
+        idPrefix="root"
+        disabled={saving}
+        dirtyKeys={dirtyConfigKeys}
+        onChange={updateBehavior}
+      />
+
+      <FormattingEditor
+        patch={runtimeConfigPatch(
+          current.behavior_defaults.deployment,
+          current.behavior_defaults.override,
+        ).formatting ?? {}}
+        inherited={current.behavior_defaults.deployment.formatting}
+        scope="runtime"
+        idPrefix="root"
+        disabled={saving}
+        dirtyKeys={dirtyFormattingKeys}
+        onChange={updateFormatting}
+        onValidity={setFormattingValidity}
+      />
 
       {#if current.updated_at !== undefined}
         <p class="updated-note">

@@ -220,7 +220,7 @@
     context === 'root'
       ? historyType === 'audit'
         ? "Every change made anywhere through Smyklot - the service's own included"
-        : 'Work that stopped across every workspace, with the cause and what can help'
+        : 'What Smyklot tried and could not finish, in any workspace - the cause and the action that can help'
       : historyType === 'audit'
         ? 'Every change made through Smyklot: who, what, and where'
         : 'Work that stopped, with the cause and the action that can help',
