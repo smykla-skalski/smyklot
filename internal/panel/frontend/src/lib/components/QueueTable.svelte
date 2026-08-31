@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { QueueActionType, QueueItem } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
-  import { onMount } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
   import { flip } from 'svelte/animate';
   import { MediaQuery } from 'svelte/reactivity';
   import { fade } from 'svelte/transition';
@@ -18,6 +18,7 @@
     doneTitle,
     reviewHref,
     onReview,
+    foot,
     onOpen,
     onAction,
   }: {
@@ -48,6 +49,14 @@
      */
     reviewHref?: (item: QueueItem) => string | null;
     onReview?: (item: QueueItem, event: MouseEvent) => void;
+    /**
+     * What the page counts, drawn inside the card the counting ends in.
+     *
+     * A foot belongs to the list it is a foot of. Under the cards it is a strip
+     * floating on the canvas, which reads as a page control rather than as the end of
+     * what is above it.
+     */
+    foot?: Snippet;
     onOpen: (item: QueueItem) => void;
     onAction: (item: QueueItem, action: QueueActionType) => void;
   } = $props();
@@ -327,9 +336,10 @@ from the wall clock cannot be photographed.
       <strong>Nothing in this view</strong>
       <span>Queued work appears here as soon as the service accepts it.</span>
     </div>
+    {@render foot?.()}
   </div>
 {:else}
-  {#each grouped as group (group.id)}
+  {#each grouped as group, index (group.id)}
     <div class="card queue-group">
       <div class="card-head">
         <h2 class="card-title">
@@ -384,6 +394,12 @@ from the wall clock cannot be photographed.
                 </span>
               </span>
               <span class="object-side">
+                <!-- ONE FILLED ACT ON THE PAGE, and it is the decision. Everything
+                     else a row offers is a bordered control: a queue where every row
+                     shouts has nothing left to say when one of them needs somebody. -->
+                <!-- `signal` is the filled one here: the mock's `.btn-brand` is a solid
+                     fill of the action colour, and this sheet's `.btn-brand` is the
+                     console's 12% tint of it. The look is what has to match. -->
                 {#if review(item) !== null}
                   <Button
                     tone="signal"
@@ -394,7 +410,7 @@ from the wall clock cannot be photographed.
                   </Button>
                 {/if}
                 {#if item.actions?.includes('run_now')}
-                  <Button tone="signal" onclick={() => onAction(item, 'run_now')}>Run now</Button>
+                  <Button onclick={() => onAction(item, 'run_now')}>Run now</Button>
                 {/if}
                 {#if actionItems(item).length > 0}
                   <ActionMenu
@@ -414,7 +430,10 @@ from the wall clock cannot be photographed.
                       </span>
                     {/key}
                   </span>
-                {:else}
+                {:else if review(item) === null && !(item.actions?.includes('run_now') ?? false)}
+                  <!-- The way in, for a row that offers nothing else. A chevron beside
+                       an act is a second way to say the row opens, and the act is the
+                       one a reader came for. -->
                   <span class="row-chevron" aria-hidden="true">
                     <Icon name="chevron-right" size="xs" />
                   </span>
@@ -424,6 +443,9 @@ from the wall clock cannot be photographed.
           </li>
         {/each}
       </ul>
+      {#if index === grouped.length - 1}
+        {@render foot?.()}
+      {/if}
     </div>
   {/each}
 {/if}

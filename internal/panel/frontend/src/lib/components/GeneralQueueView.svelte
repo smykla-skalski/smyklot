@@ -573,31 +573,34 @@ without the buttons, rather than buttons that refuse.
         onReview={(_item, event) => onOpenPlan?.(event)}
         onOpen={openDetail}
         onAction={openAction}
+        foot={total > 0 ? queueFoot : undefined}
       />
     {/key}
-    {#if total > 0}
-      <div class="list-foot">
-        <span>Showing {rangeStart}-{rangeEnd}&nbsp;of {total}</span>
-        <span class="foot-acts">
-          <Button
-            tone="quiet"
-            disabled={offset === 0 || loading}
-            onclick={() => (offset = Math.max(0, offset - pageSize))}
-          >
-            Previous
-          </Button>
-          <Button
-            tone="quiet"
-            disabled={nextOffset === 0 || loading}
-            onclick={() => (offset = nextOffset)}
-          >
-            Next
-          </Button>
-        </span>
-      </div>
-    {/if}
   {/if}
 </section>
+
+{#snippet queueFoot()}
+  <!-- Inside the card the counting ends in, which is where a list's foot belongs. -->
+  <div class="list-foot">
+    <span>Showing {rangeStart}-{rangeEnd}&nbsp;of {total}</span>
+    <span class="foot-acts">
+      <Button
+        tone="quiet"
+        disabled={offset === 0 || loading}
+        onclick={() => (offset = Math.max(0, offset - pageSize))}
+      >
+        Previous
+      </Button>
+      <Button
+        tone="quiet"
+        disabled={nextOffset === 0 || loading}
+        onclick={() => (offset = nextOffset)}
+      >
+        Next
+      </Button>
+    </span>
+  </div>
+{/snippet}
 
 {#key `${selected?.id ?? ''}:${selectedAction ?? ''}`}
   <QueueActionDialog
