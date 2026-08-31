@@ -29,9 +29,9 @@
 </script>
 
 <!--
-  Live ownership and delivery health for every installation. Stale is drift rather
-  than danger, so it takes the neutral tone and stays out of the problem count; only
-  the warning and danger states are things an operator has to act on.
+  Every workspace as one sentence. A standing appears only where somebody has to do
+  something about it: an ageing snapshot is what the next sweep is for, so a stale
+  owner list wears nothing and says when it last synced instead.
 -->
 <Story name="Catalogue">
   {#snippet template(args)}

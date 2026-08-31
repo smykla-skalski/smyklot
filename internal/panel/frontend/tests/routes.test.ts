@@ -240,7 +240,7 @@ describe('panel document titles', () => {
     [{ account: 'acme', view: 'queue', queue: 'approvals' }, 'Approvals | Queue | SMYKLOT'],
     [{ personal: 'inbox' }, 'Inbox | SMYKLOT'],
     [{ rootView: 'overview' }, 'Overview | Root Console | SMYKLOT'],
-    [{ rootView: 'installations' }, 'Installations | Root Console | SMYKLOT'],
+    [{ rootView: 'installations' }, 'Workspaces | Root Console | SMYKLOT'],
     [{ rootView: 'access-users' }, 'Users | Access | Root Console | SMYKLOT'],
     [{ rootView: 'access-invitations' }, 'Invitations | Access | Root Console | SMYKLOT'],
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],

@@ -457,9 +457,24 @@ export function isRootInstallationView(value: string | undefined): value is Root
   return ROOT_INSTALLATION_VIEWS.some((view) => view === value);
 }
 
+/**
+ * Console views the product does not call what the address calls them.
+ *
+ * `/root/installations` is where the grants live, which is GitHub's word for
+ * them; the console, the tree and the page all say Workspaces, so the tab does
+ * too. The address is the one place the old word survives, and renaming it
+ * would break every link an operator has kept.
+ */
+const ROOT_VIEW_WORDS: Partial<Record<RootRoute['rootView'], string>> = {
+  installations: 'workspaces',
+};
+
 function routeTitleSegments(route: PanelRoute): string[] {
   if ('personal' in route) return [route.personal];
   if ('rootView' in route && route.rootView !== 'installation') {
+    const said = ROOT_VIEW_WORDS[route.rootView];
+    if (said !== undefined) return [said];
+
     return route.rootView.split('-').reverse();
   }
   const view = route.view;

@@ -350,11 +350,9 @@ export class PanelSession {
         );
       }
 
-      return (
-        this.rootValue === 'history' ||
-        this.rootValue === 'access' ||
-        route.rootView === 'installations'
-      );
+      /* Workspaces is a card of rows now, not a table: given the table scroller
+         it would be pinned at the viewport with its own bar inside the page. */
+      return this.rootValue === 'history' || this.rootValue === 'access';
     }
 
     return (

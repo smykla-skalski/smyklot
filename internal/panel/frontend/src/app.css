@@ -3232,7 +3232,7 @@ button.object-row {
 
 /* A CHANGE NOT YET SAVED IS A STATE OF THE ROW IT WAS MADE IN, so a reader looking for
    what they touched finds it without reading the values back. Ten pages wrote this. */
-:is(.setting-row, .policy-row).is-unsaved {
+:is(.setting-row, .policy-row, .object-row).is-unsaved {
   background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
   box-shadow: inset 2px 0 var(--brand-action);
 }

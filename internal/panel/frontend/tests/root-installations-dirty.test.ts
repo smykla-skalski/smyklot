@@ -87,16 +87,20 @@ describe('Root installation draft attention [Component]', () => {
       },
     });
 
-    const dirtyRow = (await screen.findByText('Dirty installation')).closest('tr');
-    const cleanRow = screen.getByText('Clean installation').closest('tr');
+    const dirtyRow = (await screen.findByText('Dirty installation')).closest<HTMLElement>(
+      '.object-row',
+    );
+    const cleanRow = screen.getByText('Clean installation').closest<HTMLElement>('.object-row');
     expect(dirtyRow).not.toBeNull();
     expect(cleanRow).not.toBeNull();
-    expect(within(dirtyRow!).getByText('Unsaved changes')).toBeTruthy();
+    expect(within(dirtyRow!).getByText('1 unsaved setting')).toBeTruthy();
     expect(
-      within(dirtyRow!).getByRole('link', { name: 'Dirty installation' }).getAttribute('href'),
+      within(dirtyRow!)
+        .getByRole('link', { name: 'Open Dirty installation as operator' })
+        .getAttribute('href'),
     ).toBe('/root/installations/dirty-installation/repositories');
     expect(dirtyRow?.getAttribute('data-unsaved')).toBe('true');
-    expect(within(cleanRow!).queryByText('Unsaved changes')).toBeNull();
+    expect(within(cleanRow!).queryByText(/unsaved/)).toBeNull();
     expect(cleanRow?.hasAttribute('data-unsaved')).toBe(false);
   });
 });
