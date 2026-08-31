@@ -65,7 +65,6 @@ stacked left, Cancel and Done on a hairline foot.
   import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
-  import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import FormError from './FormError.svelte';
@@ -142,13 +141,28 @@ stacked left, Cancel and Done on a hairline foot.
     patch({ rules });
   }
 
+  /* What was deleted and where it stood, so the page can put it back. The document is
+     the only record of a ruleset, so a delete that left for the list took the way back
+     with it - and nothing has happened on GitHub yet, which is exactly the moment an
+     undo is worth offering. */
+  let removed = $state<{ ruleset: SyncRuleset; at: number } | null>(null);
+
   function deleteRuleset(): void {
-    if (frozen) return;
+    if (frozen || ruleset === null) return;
+    removed = { ruleset, at: rulesets.findIndex((held) => held.name === name) };
     onChangeDocument({
       ...stored,
       rulesets: rulesets.filter((held) => held.name !== name),
     });
-    onOpenSection('rulesets');
+  }
+
+  function restoreRuleset(): void {
+    const held = removed;
+    if (held === null || frozen) return;
+    const next = [...rulesets];
+    next.splice(Math.max(0, held.at), 0, held.ruleset);
+    removed = null;
+    onChangeDocument({ ...stored, rulesets: next });
   }
 
   /* ---------- Where it applies ---------- */
@@ -157,13 +171,15 @@ stacked left, Cancel and Done on a hairline foot.
   const exclude = $derived(ruleset?.conditions.exclude ?? []);
 
   const coverage = $derived(
-    ruleset === null
-      ? 'No ruleset by this name - it may have been renamed or removed'
-      : include.length === 0
-        ? 'Covering no branches yet - add a pattern below'
-        : include.length === 1 && include[0] === '~DEFAULT_BRANCH'
-          ? 'Enforced on the default branch of every syncing repository'
-          : `Enforced on ${include.join(', ')} in every syncing repository`,
+    ruleset === null && removed !== null
+      ? 'Pending removal - nothing has changed on GitHub yet'
+      : ruleset === null
+        ? 'No ruleset by this name - it may have been renamed or removed'
+        : include.length === 0
+          ? 'Covering no branches yet - add a pattern below'
+          : include.length === 1 && include[0] === '~DEFAULT_BRANCH'
+            ? 'Enforced on the default branch of every syncing repository'
+            : `Enforced on ${include.join(', ')} in every syncing repository`,
   );
 
   let includeOpen = $state(false);
@@ -977,7 +993,7 @@ stacked left, Cancel and Done on a hairline foot.
           </div>
         {:else}
           <span class="rest-say"
-            >An actor here steps around every rule above, everywhere this ruleset applies</span
+            >Anyone here may push past every rule above, wherever this ruleset applies</span
           >
           <Button tone="quiet" disabled={frozen} onclick={() => (addingActor = true)}>
             {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
@@ -987,16 +1003,40 @@ stacked left, Cancel and Done on a hairline foot.
       </div>
     </Card>
 
+    <!-- The one destructive act on the page, in the row grammar every other setting
+         here is written in: what it does on the left, the act on the right. -->
     {#if !readOnly}
-      <ApplyBar>
-        <span class="apply-note"
-          >Deleting removes this ruleset from every syncing repository on the next plan</span
-        >
-        <Button tone="stop-quiet" disabled={frozen} onclick={deleteRuleset}>
-          Delete this ruleset
-        </Button>
-      </ApplyBar>
+      <Card class="danger-zone">
+        <div class="card-head"><h2 class="card-title">Danger zone</h2></div>
+        <div class="setting-rows">
+          <div class="setting-row">
+            <span class="setting-say">
+              <span class="setting-name">Delete this ruleset</span>
+              <span class="setting-why"
+                >Removes {name} from every syncing repository on the next plan</span
+              >
+            </span>
+            <span class="setting-value">
+              <Button tone="stop-quiet" disabled={frozen} onclick={deleteRuleset}>
+                Delete this ruleset
+              </Button>
+            </span>
+          </div>
+        </div>
+      </Card>
     {/if}
+  {:else if removed !== null}
+    <!-- Deleted here, not yet on GitHub: the configuration has stopped carrying it and
+         the next applied plan is what removes it, so the way back is offered until
+         then rather than on the list this used to leave for. -->
+    <div class="state-panel is-warn">
+      <span
+        ><strong>Pending removal.</strong> The configuration no longer carries {name}; the next
+        applied plan removes it from every syncing repository. On GitHub it stays enforced until
+        that plan runs</span
+      >
+      <Button disabled={frozen} onclick={restoreRuleset}>Undo - keep this ruleset</Button>
+    </div>
   {/if}
 </div>
 
@@ -1273,14 +1313,6 @@ stacked left, Cancel and Done on a hairline foot.
     font-variant-numeric: tabular-nums;
     line-height: var(--leading-tight);
     padding: var(--space-1) var(--space-3) var(--space-2);
-  }
-
-  .apply-note {
-    color: var(--text-secondary);
-    flex: 1;
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
-    text-box: trim-both cap alphabetic;
   }
 
   @media (max-width: 36rem) {

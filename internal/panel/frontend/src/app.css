@@ -2568,6 +2568,19 @@ thead th .icon-button:active:not(:disabled) {
   }
 }
 
+/* THE CARD THAT HOLDS THE ONE ACT THERE IS NO WAY BACK FROM. Its frame carries a
+   trace of the danger colour and its heading carries the colour itself - enough for
+   the eye to find it while scrolling, and not so much that a page ends in alarm. The
+   act inside is an ordinary quiet-stop button: the card is what says which room this
+   is, so the button does not have to shout it a second time. */
+.danger-zone {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border-subtle));
+}
+
+.danger-zone .card-title {
+  color: var(--danger);
+}
+
 /* A card that is NOTHING BUT ROWS: the rows' own block padding is the card's edge
    whitespace, so unswallowed it doubles onto the card's 20px and the top and bottom
    read heavier than the sides. Three pages each carried a copy. */
