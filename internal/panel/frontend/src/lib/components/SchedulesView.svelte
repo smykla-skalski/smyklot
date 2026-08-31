@@ -1,6 +1,7 @@
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '#lib/api.js';
+  import { hoursPhrase, windowsSentence } from '#lib/schedule-words.js';
   import type {
     QueuePolicy,
     QueuePolicyInput,
@@ -11,15 +12,16 @@
     ScheduleProfileInput,
     ScheduleRequest,
   } from '#lib/types.js';
-  import { workloadDescription, workloadTitle } from '#lib/workloads.js';
+  import { cadenceWords, workloadDescription, workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
-  import Chip, { type ChipTone } from './Chip.svelte';
+  import Card from './Card.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
-  import DataTable from './DataTable.svelte';
-  import Icon, { type IconName } from './Icon.svelte';
+  import Icon from './Icon.svelte';
+  import Pill from './Pill.svelte';
   import Plate from './Plate.svelte';
   import PolicyEditorDialog from './PolicyEditorDialog.svelte';
   import ProfileEditorDialog from './ProfileEditorDialog.svelte';
+  import RelativeTime from './RelativeTime.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
 
   const {
@@ -41,6 +43,17 @@
     queryKey: ['schedules', 'root'],
     queryFn: fetchSchedules,
   }));
+
+  /* Requests and overrides are asked for by a workspace, and the wire says which by
+     id. The catalog is what turns one into a name, and the console has it cached. */
+  const catalogQuery = createQuery(() => ({
+    queryKey: ['root-installations'],
+    queryFn: () => api.fetchRootInstallations(),
+  }));
+  const catalog = $derived(
+    new Map((catalogQuery.data ?? []).map((row) => [row.id, row.account.display_name])),
+  );
+
   const scheduleData = $derived<ScheduleViewData | null>(schedulesQuery.data ?? null);
   const policies = $derived<QueuePolicy[]>(scheduleData?.policies ?? []);
   const policySet = $derived<SchedulePolicySet | null>(scheduleData?.policySet ?? null);
@@ -63,13 +76,29 @@
   let decisionReason = $state('');
   let promoteProfile = $state(false);
 
+  /* One clock for the page, floored to the minute: every row reads a time against it. */
+  const nowMs = Math.floor(Date.now() / 60_000) * 60_000;
+
+  /* Four, because a console opens on what is happening rather than on the whole
+     deployment: the jobs that ran most recently are the ones somebody came to look
+     at, and the rest are one press away. */
+  const JOBS_SHOWN = 4;
+  let allJobs = $state(false);
+
   const policyOverrides = $derived(policySet?.overrides ?? []);
-  const activeWorkloads = $derived(
-    policies.filter((policy) => policyStatus(policy.kind)?.current_state !== undefined).length,
-  );
-  const pendingRequests = $derived(
-    requests.filter((request) => request.state === 'pending').length,
-  );
+  const waiting = $derived(requests.filter((request) => request.state === 'pending'));
+  const decided = $derived(requests.filter((request) => request.state !== 'pending').slice(0, 5));
+
+  /* Most recently run first, and a job that has never run sorts last: it has nothing
+     to be recent about. */
+  const jobs = $derived([...policies].sort((left, right) => ran(right.kind) - ran(left.kind)));
+  const shownJobs = $derived(allJobs ? jobs : jobs.slice(0, JOBS_SHOWN));
+
+  function ran(kind: QueueWorkload): number {
+    const at = policyStatus(kind)?.last_run_at;
+
+    return at === undefined ? 0 : Date.parse(at);
+  }
 
   function errorMessage(cause: unknown): string {
     if (cause === null || cause === undefined) return '';
@@ -96,93 +125,56 @@
     await schedulesQuery.refetch();
   }
 
-  function duration(value: number): string {
-    const seconds = Math.round(value / 1_000_000_000);
-    if (seconds === 0) return 'Immediate';
-    if (seconds % 86_400 === 0) return `${seconds / 86_400}d`;
-    if (seconds % 3_600 === 0) return `${seconds / 3_600}h`;
-    if (seconds % 60 === 0) return `${seconds / 60}m`;
-    return `${seconds}s`;
+  function profileById(id: string): ScheduleProfile | undefined {
+    return profiles.find((profile) => profile.id === id);
   }
 
-  function profileName(id: string): string {
-    return profiles.find((profile) => profile.id === id)?.name ?? id;
+  function workspaceName(id: string | undefined): string {
+    if (id === undefined) return 'this deployment';
+
+    return catalog.get(id) ?? id;
   }
 
   function policyStatus(kind: QueueWorkload): QueuePolicyStatus | undefined {
     return statuses.find((status) => status.kind === kind);
   }
 
-  function runtimeTone(state?: string): ChipTone {
-    if (state === 'running' || state === 'ready') return 'signal';
-    if (state === 'failed') return 'stop';
-    if (state === 'blocked' || state === 'retrying') return 'warning';
-    if (state === 'succeeded') return 'clear';
-    if (state === undefined) return 'absent';
-    return 'neutral';
+  function overridesFor(kind: QueueWorkload): QueuePolicy[] {
+    return policyOverrides.filter((policy) => policy.kind === kind);
   }
 
-  function requestTone(state: ScheduleRequest['state']): ChipTone {
-    if (state === 'approved') return 'clear';
-    if (state === 'rejected' || state === 'stale') return 'stop';
-    if (state === 'pending') return 'warning';
-    return 'absent';
-  }
+  /**
+   * A job as one sentence: what it does, how often, in whose hours.
+   *
+   * The four columns this replaced said the same thing in fragments - `6h`,
+   * `Always Open`, `Est. 31 Aug, 20:36 · next` - and left a reader to assemble it.
+   */
+  function jobSentence(policy: QueuePolicy): string {
+    const said = [workloadDescription(policy.kind)];
+    said.push(
+      policy.enabled
+        ? `${cadenceWords(policy.cadence)} ${hoursPhrase(profileById(policy.profile_id), policy.profile_id)}`
+        : 'paused - it does not run at all',
+    );
 
-  function summaryIcon(index: number): IconName {
-    return (['sliders', 'refresh', 'history', 'pending'] as const)[index] ?? 'sliders';
-  }
-
-  function compactInstant(value?: string): string {
-    if (value === undefined) return 'not scheduled';
-    return new Intl.DateTimeFormat(undefined, {
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(new Date(value));
-  }
-
-  function deploymentDefault(kind: QueueWorkload): QueuePolicy | undefined {
-    return policySet?.deployment_defaults.find((policy) => policy.kind === kind);
-  }
-
-  function deploymentSummary(policy: QueuePolicy): string {
-    const cadence = policy.enabled ? duration(policy.cadence) : 'disabled';
-    return `Deployment ${cadence} · ${profileName(policy.profile_id)} · ${policy.default_priority}`;
-  }
-
-  function numberSetting(policy: QueuePolicy, key: string): number | undefined {
-    const value = policy.configuration?.[key];
-    return typeof value === 'number' ? value : undefined;
-  }
-
-  function jobDetails(policy: QueuePolicy): string[] {
-    const details: string[] = [];
-    if (policy.approval_ttl !== undefined)
-      details.push(`Approval lifetime ${duration(policy.approval_ttl)}`);
-    if (policy.retention !== undefined) details.push(`Retention ${duration(policy.retention)}`);
-    if (policy.kind === 'pending_ci') {
-      const timing: Array<[string, string]> = [
-        ['Active', 'active_check_seconds'],
-        ['Discovery grace', 'no_check_grace_seconds'],
-        ['Defer after', 'defer_after_seconds'],
-        ['Deferred', 'deferred_check_seconds'],
-        ['Quiet', 'passing_quiet_seconds'],
-      ];
-      for (const [label, key] of timing) {
-        const seconds = numberSetting(policy, key);
-        if (seconds !== undefined) details.push(`${label} ${duration(seconds * 1_000_000_000)}`);
-      }
-    }
-    if (policy.kind === 'webhook_delivery') {
-      const maxDelay = numberSetting(policy, 'max_delay_seconds');
-      const maxAttempts = numberSetting(policy, 'max_attempts');
-      if (maxDelay !== undefined) details.push(`Retry cap ${duration(maxDelay * 1_000_000_000)}`);
-      if (maxAttempts !== undefined) details.push(`${maxAttempts} attempts`);
+    const overrides = overridesFor(policy.kind);
+    if (overrides.length > 0) {
+      said.push(
+        `overridden for ${overrides.map((override) => workspaceName(override.target_id)).join(', ')}`,
+      );
     }
 
-    return details;
+    return said.join(' · ');
+  }
+
+  /** Who asked, by name where the account is still readable. */
+  function asker(request: ScheduleRequest): string {
+    return request.requester?.display_name ?? request.requester?.login ?? request.requested_by;
+  }
+
+  /** What a workspace is asking for, in the words it asked in. */
+  function requestSentence(request: ScheduleRequest): string {
+    return `${workspaceName(request.target_id)} asks: ${workloadTitle(request.kind)} ${cadenceWords(request.cadence)}`;
   }
 
   async function savePolicy(input: QueuePolicyInput): Promise<void> {
@@ -197,7 +189,7 @@
               editingPolicy.kind,
               input,
             );
-      notice = `${saved.kind.replaceAll('_', ' ')} policy saved`;
+      notice = `${workloadTitle(saved.kind)} schedule saved`;
       editingPolicy = null;
       dialogError = '';
       await load();
@@ -217,7 +209,7 @@
         revertingPolicy.kind,
         revertingPolicy.revision,
       );
-      notice = `${revertingPolicy.kind.replaceAll('_', ' ')} now inherits the global policy`;
+      notice = `${workloadTitle(revertingPolicy.kind)} now runs on the deployment schedule`;
       revertingPolicy = null;
       dialogError = '';
       await load();
@@ -294,132 +286,34 @@
 
 <!--
 @component
-When the service is allowed to do each kind of work, and how much of it at once.
-Policies and window profiles on one page because a policy is meaningless without the
-windows it names.
+How often background jobs run, and when.
 
-`canRequest` draws the acts. A reader who may see the schedule without changing it gets
-the same page without the controls, rather than controls that refuse.
+A job is one sentence - what it does, how often, in whose hours - rather than six
+duration fragments across four columns, and cadence is said the way a person says it:
+"every 30 minutes", never 1800000000000. What a workspace has asked for leads the page,
+because it is the only thing here waiting on somebody.
+
+This page is the operators'. A workspace's members see the one row of it that is theirs,
+in their own settings.
 -->
 
-{#snippet policyCells(policy: QueuePolicy)}
-  {@const status = policyStatus(policy.kind)}
-  {@const details = jobDetails(policy)}
-  {@const baseline = deploymentDefault(policy.kind)}
-  {@const statusTone = runtimeTone(status?.current_state)}
-  <th scope="row" data-label="Workload">
-    <div class="policy-work band-trim-stack">
-      <div class="policy-title-line">
-        <strong>{workloadTitle(policy.kind)}</strong>
-        <Chip tone={policy.enabled ? 'accent' : 'absent'} small>
-          {policy.enabled ? 'Enabled' : 'Disabled'}
-        </Chip>
-      </div>
-      <span class="policy-description">{workloadDescription(policy.kind)}</span>
-      <span class="policy-source">Global policy · revision {policy.revision}</span>
-    </div>
-  </th>
-  <td data-label="Schedule">
-    <dl class="policy-facts">
-      <div>
-        <dt>Cadence</dt>
-        <dd>{duration(policy.cadence)}</dd>
-      </div>
-      <div>
-        <dt>Window</dt>
-        <dd>{profileName(policy.profile_id)}</dd>
-      </div>
-    </dl>
-  </td>
-  <td data-label="Runtime">
-    <div class="runtime-summary band-trim-stack">
-      <span class="runtime-state runtime-state-{statusTone}">
-        <span class="runtime-dot" aria-hidden="true"></span>
-        <strong>{status?.current_state?.replaceAll('_', ' ') ?? 'Idle'}</strong>
-      </span>
-      <span>Next {compactInstant(status?.next_eligibility_at)}</span>
-      <span>Last {compactInstant(status?.last_run_at)}</span>
-      {#if status?.estimated_start_at}
-        <span
-          >Est. {compactInstant(status.estimated_start_at)} · {status.work_ahead === 0
-            ? 'next'
-            : `${status.work_ahead} ahead`}</span
-        >
-      {/if}
-    </div>
-  </td>
-  <td data-label="Policy">
-    <div class="policy-detail band-trim-stack">
-      <div class="policy-chip-line">
-        <Chip tone={policy.default_priority === 'urgent' ? 'stop' : 'neutral'} small>
-          {policy.default_priority} priority
-        </Chip>
-        <span>Retry {duration(policy.retry_delay)}</span>
-      </div>
-      {#each details as detail (detail)}<span>{detail}</span>{/each}
-      {#if details.length === 0}<span>Standard retry and retention</span>{/if}
-      {#if baseline !== undefined}
-        <span>{deploymentSummary(baseline)}</span>
-      {/if}
-    </div>
-  </td>
-  <td data-label="Action">
-    <div class="policy-action">
-      <Button
-        row
-        onclick={() => {
-          editingPolicy = policy;
-          dialogError = '';
-        }}>Configure</Button
-      >
-    </div>
-  </td>
-{/snippet}
-
-{#snippet overrideCells(policy: QueuePolicy)}
-  <th class="override-installation" scope="row" data-label="Installation">
-    <div class="override-stack band-trim-stack">
-      <code>{policy.target_id}</code>
-      <span>{workloadTitle(policy.kind)}</span>
-    </div>
-  </th>
-  <td class="override-value" data-label="Schedule">
-    <div class="override-stack band-trim-stack">
-      <strong>{duration(policy.cadence)}</strong>
-      <span>{profileName(policy.profile_id)}</span>
-    </div>
-  </td>
-  <td class="override-value" data-label="Policy">
-    <div class="override-stack band-trim-stack">
-      <Chip tone="neutral" small>{policy.default_priority} priority</Chip>
-      <span>Revision {policy.revision}</span>
-    </div>
-  </td>
-  <td data-label="Actions">
-    <div class="request-buttons">
-      <Button row onclick={() => (editingPolicy = policy)}>Configure</Button>
-      <Button row tone="stop-quiet" onclick={() => (revertingPolicy = policy)}>Use global</Button>
-    </div>
-  </td>
-{/snippet}
-
-<section class="schedules-view" aria-labelledby="root-page-heading" aria-busy={loading}>
-  <RootPageHeader
-    title="Schedules"
-    subtitle="Execution windows, workload cadence, retries, and installation requests"
-  >
+<div class="view-frame" aria-busy={loading}>
+  <RootPageHeader title="Schedules" subtitle="How often background jobs run and when">
     <Button
-      tone="signal"
       onclick={() => {
         editingProfile = null;
         profileOpen = true;
-      }}>New profile</Button
+      }}
     >
+      {#snippet icon()}<Icon name="plus" size="sm" strokeWidth={2} />{/snippet}
+      New hours profile
+    </Button>
   </RootPageHeader>
 
   <p class="visually-hidden" aria-live="polite">{notice}</p>
+
   {#if loading && policies.length === 0 && profiles.length === 0}
-    <Plate label="Loading"><p class="dim" role="status">Reading schedule policy…</p></Plate>
+    <Plate label="Loading"><p class="dim" role="status">Reading the schedules…</p></Plate>
   {:else if error !== '' && scheduleData === null}
     <Plate label="Schedules unavailable" tone="alarm"
       ><p>{error}</p>
@@ -432,179 +326,204 @@ the same page without the controls, rather than controls that refuse.
         <Button onclick={() => void load()}>Try again</Button>
       </Plate>
     {/if}
-    <div class="schedule-summary" aria-label="Schedule overview">
-      {#each [{ label: 'Workloads', value: policies.length, detail: 'global policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
-        <article>
-          <span class="summary-mark"><Icon name={summaryIcon(index)} size="base" /></span>
-          <div>
-            <span>{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <small>{metric.detail}</small>
-          </div>
-        </article>
-      {/each}
-    </div>
 
-    <section class="schedule-section" aria-labelledby="policy-heading">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">Effective settings</span>
-          <h2 id="policy-heading">Workload policies</h2>
+    {#if waiting.length > 0}
+      <Card>
+        <div class="card-head"><h2 class="card-title">Needs a decision</h2></div>
+        <div class="object-list">
+          {#each waiting as request (request.id)}
+            <div class="object-row">
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="object-name">{requestSentence(request)}</span>
+                </span>
+                <!-- The reason as it was written, in quotation marks: it is somebody's
+                     sentence and the page is asking an operator to weigh it. -->
+                <span class="object-sum"
+                  >{#if request.reason.trim() !== ''}“{request.reason}” ·
+                  {/if}asked by
+                  {asker(request)},
+                  <RelativeTime value={request.created_at} {nowMs} /></span
+                >
+              </span>
+              <span class="object-side">
+                <Button tone="signal" onclick={() => openDecision(request, 'approve')}>
+                  Approve
+                </Button>
+                <Button tone="quiet" onclick={() => openDecision(request, 'reject')}>
+                  Decline
+                </Button>
+              </span>
+            </div>
+          {/each}
         </div>
-        <span class="dim">{policies.length} workloads</span>
-      </div>
-      <DataTable
-        rows={policies}
-        rowKey={(policy) => policy.kind}
-        caption="Workload policies"
-        regionLabel="Workload policies"
-        columns={[
-          { label: 'Workload' },
-          { label: 'Schedule' },
-          { label: 'Runtime' },
-          { label: 'Policy' },
-          { label: 'Action' },
-        ]}
-        columnWidths={['27%', '16%', '25%', '20%', '12%']}
-        cells={policyCells}
-        class="policy-table-wrap"
-        scrollable={false}
-        stacked
-      />
-    </section>
-
-    {#if policyOverrides.length > 0}
-      <section class="schedule-section" aria-labelledby="overrides-heading">
-        <div class="section-heading">
-          <div>
-            <span class="eyebrow">Approved installation settings</span>
-            <h2 id="overrides-heading">Overrides</h2>
-          </div>
-          <span class="dim">{policyOverrides.length} active</span>
-        </div>
-        <DataTable
-          rows={policyOverrides}
-          rowKey={(policy) => `${policy.target_id}:${policy.kind}`}
-          caption="Installation overrides"
-          regionLabel="Installation overrides"
-          columns={[
-            { label: 'Installation' },
-            { label: 'Schedule' },
-            { label: 'Policy' },
-            { label: 'Actions' },
-          ]}
-          columnWidths={['30%', '24%', '20%', '26%']}
-          cells={overrideCells}
-          class="policy-table-wrap overrides-table"
-          scrollable={false}
-          stacked
-        />
-      </section>
+      </Card>
     {/if}
 
-    <section class="schedule-section" aria-labelledby="profile-heading">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">Named windows</span>
-          <h2 id="profile-heading">Profiles</h2>
-        </div>
+    <Card>
+      <div class="card-head">
+        <h2 class="card-title">Jobs</h2>
+        <span class="card-meta"
+          >Showing {shownJobs.length} of {jobs.length}
+          {jobs.length === 1 ? 'job' : 'jobs'}{#if policyOverrides.length > 0}&nbsp;· {policyOverrides.length}
+            overridden{/if}</span
+        >
       </div>
-      <div class="profile-grid">
-        {#each profiles as profile (profile.id)}
-          <article class="profile-card">
-            <div class="profile-heading">
-              <span class="profile-mark"><Icon name="history" size="base" /></span>
-              <div>
-                <strong>{profile.name}</strong>
-                <span>Revision {profile.revision}</span>
-              </div>
-              <Chip tone={profile.system ? 'accent' : 'neutral'} small>
-                {profile.system ? 'System' : 'Custom'}
-              </Chip>
+      <div class="object-list">
+        {#each shownJobs as policy (policy.kind)}
+          {@const status = policyStatus(policy.kind)}
+          <div class="object-row">
+            <span class="object-main">
+              <span class="object-name-row">
+                <span class="object-name">{workloadTitle(policy.kind)}</span>
+                {#if !policy.enabled}
+                  <Pill tone="neutral">Paused</Pill>
+                {/if}
+                {#if policy.default_priority !== 'normal'}
+                  <Pill tone={policy.default_priority === 'urgent' ? 'danger' : 'warning'}>
+                    {policy.default_priority === 'urgent' ? 'Urgent' : 'High'} priority
+                  </Pill>
+                {/if}
+              </span>
+              <span class="object-sum"
+                >{jobSentence(
+                  policy,
+                )}{#if policy.enabled && status?.next_eligibility_at !== undefined}
+                  · next <RelativeTime
+                    value={status.next_eligibility_at}
+                    {nowMs}
+                    future
+                  />{/if}</span
+              >
+            </span>
+            <span class="object-side">
+              <Button
+                tone="quiet"
+                aria-label="Edit the {workloadTitle(policy.kind)} schedule"
+                onclick={() => {
+                  editingPolicy = policy;
+                  dialogError = '';
+                }}
+              >
+                Edit schedule
+              </Button>
+            </span>
+          </div>
+        {/each}
+      </div>
+      {#if jobs.length > JOBS_SHOWN}
+        <div class="list-foot">
+          <span
+            >{allJobs
+              ? `All ${jobs.length} jobs`
+              : `Showing the ${JOBS_SHOWN} most recently run`}</span
+          >
+          <Button tone="quiet" onclick={() => (allJobs = !allJobs)}>
+            {allJobs ? 'Show the recent ones' : `Show all ${jobs.length} jobs`}
+          </Button>
+        </div>
+      {/if}
+    </Card>
+
+    {#if policyOverrides.length > 0}
+      <!-- What a workspace was granted, and the way back off it. The job rows above
+           say a workspace has its own hours; this is where that is read and undone. -->
+      <Card>
+        <div class="card-head"><h2 class="card-title">Workspace overrides</h2></div>
+        <div class="object-list">
+          {#each policyOverrides as policy (`${policy.target_id}:${policy.kind}`)}
+            <div class="object-row">
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="object-name"
+                    >{workspaceName(policy.target_id)} · {workloadTitle(policy.kind)}</span
+                  >
+                </span>
+                <span class="object-sum"
+                  >{policy.enabled
+                    ? `${cadenceWords(policy.cadence)} ${hoursPhrase(profileById(policy.profile_id), policy.profile_id)}`
+                    : 'paused - it does not run at all'} · {policy.default_priority} priority</span
+                >
+              </span>
+              <span class="object-side">
+                <Button tone="quiet" onclick={() => (editingPolicy = policy)}>Edit schedule</Button>
+                <Button tone="quiet" onclick={() => (revertingPolicy = policy)}>
+                  Use the deployment schedule
+                </Button>
+              </span>
             </div>
-            <dl class="profile-facts">
-              <div>
-                <dt>Timezone</dt>
-                <dd>{profile.timezone}</dd>
-              </div>
-              <div>
-                <dt>Weekly</dt>
-                <dd>{profile.windows.length} windows</dd>
-              </div>
-              <div>
-                <dt>Exceptions</dt>
-                <dd>{profile.exceptions.length}</dd>
-              </div>
-            </dl>
-            <p class="profile-impact">
-              {profile.affected_installations ?? 0} installations · {profile.affected_items ?? 0}
-              queued items
-            </p>
-            {#if !profile.system}
-              <div class="profile-actions">
+          {/each}
+        </div>
+      </Card>
+    {/if}
+
+    <Card>
+      <div class="card-head"><h2 class="card-title">Hours</h2></div>
+      <div class="object-list">
+        {#each profiles as profile (profile.id)}
+          <div class="object-row">
+            <span class="object-main">
+              <span class="object-name-row">
+                <span class="object-name">{profile.name}</span>
+                {#if profile.system}
+                  <Pill>built in</Pill>
+                {/if}
+              </span>
+              <span class="object-sum"
+                >{profile.timezone} · {windowsSentence(
+                  profile,
+                )}{#if profile.affected_installations !== undefined}
+                  · {profile.affected_installations}
+                  {profile.affected_installations === 1 ? 'workspace runs' : 'workspaces run'} on it{/if}</span
+              >
+            </span>
+            <span class="object-side">
+              {#if !profile.system}
                 <Button
-                  row
+                  tone="quiet"
+                  aria-label="Edit the {profile.name} profile"
                   onclick={() => {
                     editingProfile = profile;
                     profileOpen = true;
                     dialogError = '';
-                  }}>Edit</Button
+                  }}
                 >
-                <Button
-                  row
-                  tone="stop-quiet"
-                  onclick={() => {
-                    archivingProfile = profile;
-                    dialogError = '';
-                  }}>Archive</Button
-                >
-              </div>
-            {/if}
-          </article>
+                  Edit
+                </Button>
+                <Button tone="quiet" onclick={() => (archivingProfile = profile)}>Archive</Button>
+              {/if}
+            </span>
+          </div>
         {/each}
       </div>
-    </section>
+    </Card>
 
-    <section class="schedule-section" aria-labelledby="requests-heading">
-      <div class="section-heading">
-        <div>
-          <span class="eyebrow">Approval trail</span>
-          <h2 id="requests-heading">Schedule requests</h2>
+    {#if decided.length > 0}
+      <Card>
+        <div class="card-head"><h2 class="card-title">Recently decided</h2></div>
+        <div class="object-list">
+          {#each decided as request (request.id)}
+            <div class="object-row">
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="object-name">{requestSentence(request)}</span>
+                  <Pill tone={request.state === 'approved' ? 'success' : 'neutral'}>
+                    {request.state}
+                  </Pill>
+                </span>
+                <span class="object-sum"
+                  >Asked by {asker(request)},
+                  <RelativeTime value={request.created_at} {nowMs} /> · decided
+                  <RelativeTime value={request.updated_at} {nowMs} /></span
+                >
+              </span>
+            </div>
+          {/each}
         </div>
-      </div>
-      {#if requests.length === 0}<p class="dim">No schedule requests yet.</p>{/if}
-      {#each requests as request (request.id)}
-        <article class="request-row">
-          <div class="request-copy">
-            <div class="request-title">
-              <strong>{workloadTitle(request.kind)}</strong>
-              <Chip tone={requestTone(request.state)} small>{request.state}</Chip>
-            </div>
-            <span class="request-detail">{request.reason}</span>
-            {#if request.custom_profile !== undefined}<span class="request-detail"
-                >{request.custom_profile.name} · {request.custom_profile.timezone}</span
-              >{/if}
-            <span class="request-detail"
-              >{duration(request.cadence)} cadence · {request.default_priority} priority · base revision
-              {request.base_revision} ({request.base_target_id === undefined
-                ? 'global policy'
-                : 'installation override'})</span
-            >
-          </div>
-          {#if request.state === 'pending'}
-            <div class="request-buttons">
-              <Button row tone="signal" onclick={() => openDecision(request, 'approve')}
-                >Approve</Button
-              ><Button row tone="stop-quiet" onclick={() => openDecision(request, 'reject')}
-                >Reject</Button
-              >
-            </div>
-          {/if}
-        </article>
-      {/each}
-    </section>
+      </Card>
+    {/if}
   {/if}
-</section>
+</div>
 
 {#key editingPolicy?.kind ?? ''}
   <PolicyEditorDialog
@@ -631,12 +550,12 @@ the same page without the controls, rather than controls that refuse.
 <ConfirmDialog
   id="revert-installation-policy"
   open={revertingPolicy !== null}
-  title="Use deployment default?"
+  title="Use the deployment schedule?"
   description={revertingPolicy === null
     ? undefined
-    : `${revertingPolicy.target_id} will stop overriding ${revertingPolicy.kind.replaceAll('_', ' ')}.`}
+    : `${workspaceName(revertingPolicy.target_id)} will stop overriding ${workloadTitle(revertingPolicy.kind)}.`}
   busy={dialogBusy}
-  confirmLabel="Use default"
+  confirmLabel="Use the deployment schedule"
   confirmTone="stop"
   onClose={() => {
     if (!dialogBusy) revertingPolicy = null;
@@ -648,10 +567,10 @@ the same page without the controls, rather than controls that refuse.
 <ConfirmDialog
   id="schedule-decision"
   open={deciding !== null}
-  title={decision === 'approve' ? 'Approve schedule request' : 'Reject schedule request'}
+  title={decision === 'approve' ? 'Approve schedule request' : 'Decline schedule request'}
   description={deciding?.reason}
   busy={dialogBusy}
-  confirmLabel={decision === 'approve' ? 'Approve' : 'Reject'}
+  confirmLabel={decision === 'approve' ? 'Approve' : 'Decline'}
   confirmTone={decision === 'approve' ? 'signal' : 'stop'}
   confirmDisabled={decisionReason.trim() === ''}
   onClose={() => {
@@ -673,10 +592,10 @@ the same page without the controls, rather than controls that refuse.
 <ConfirmDialog
   id="archive-profile"
   open={archivingProfile !== null}
-  title="Archive window profile"
+  title="Archive hours profile"
   description={archivingProfile === null
     ? undefined
-    : `${archivingProfile.name} can only be archived after every policy is reassigned.`}
+    : `${archivingProfile.name} can only be archived after every job is reassigned.`}
   busy={dialogBusy}
   confirmLabel="Archive profile"
   confirmTone="stop"
@@ -689,371 +608,39 @@ the same page without the controls, rather than controls that refuse.
 </ConfirmDialog>
 
 <style>
-  .schedules-view {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    min-width: 0;
-  }
-  .schedule-section {
-    display: grid;
-    gap: var(--space-3);
-  }
-  .schedule-summary {
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .schedule-summary article {
-    align-items: center;
-    background: var(--surface-base);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
-    border-radius: var(--radius-surface);
-    box-shadow: var(--shadow-plate);
-    display: flex;
-    gap: var(--space-3);
-    min-width: 0;
-    padding: var(--space-3) var(--space-4);
-  }
-  .summary-mark,
-  .profile-mark {
-    align-items: center;
-    background: color-mix(in srgb, var(--brand-action) 12%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--brand-action-text);
-    display: inline-flex;
-    flex: none;
-    justify-content: center;
-  }
-  .summary-mark {
-    height: 2rem;
-    width: 2rem;
-  }
-  .schedule-summary article > div {
-    display: grid;
-    gap: 0.12rem;
-    min-width: 0;
-  }
-  .schedule-summary article > div > :first-child {
-    text-box: trim-start cap alphabetic;
-  }
-  .schedule-summary article > div > :last-child {
-    text-box: trim-end cap alphabetic;
-  }
-  .schedule-summary article div > span,
-  .schedule-summary small {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-  }
-  .schedule-summary article div > span {
-    font-weight: 650;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-  .schedule-summary strong {
-    color: var(--text-primary);
-    font-size: var(--font-size-dialog-title);
-    line-height: var(--leading-flat);
-  }
-  .section-heading {
-    align-items: flex-end;
-    display: flex;
-    justify-content: space-between;
-  }
-  .section-heading h2 {
-    font-size: var(--font-size-title);
-    letter-spacing: -0.015em;
-    margin: var(--space-1) 0 0;
-  }
-  .eyebrow {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  :global(.policy-table-wrap) {
-    --table-cell-font-size: var(--font-size-meta);
-    --table-cell-pad-block: var(--space-3);
-    --table-cell-pad-inline: var(--space-4);
-    --table-layout: fixed;
-    --table-min-width: 0;
-  }
-  th,
-  td {
-    vertical-align: middle;
-  }
-  .policy-description,
-  .policy-source,
-  .request-detail {
-    color: var(--text-muted);
-    display: block;
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-  }
-  .policy-title-line {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-  .policy-title-line > strong {
-    color: var(--text-primary);
-    font-size: var(--font-size-body);
-    text-box: trim-both cap alphabetic;
-  }
-  .policy-work,
-  .override-stack {
-    display: grid;
-  }
-  .policy-work {
-    gap: var(--space-1);
-  }
-  .policy-description {
-    margin-top: 0;
-  }
-  .policy-source,
-  .request-detail {
-    margin-top: 0;
-  }
-  .policy-source {
-    font-size: var(--font-size-micro);
-  }
-  .policy-facts,
-  .profile-facts {
-    display: grid;
-    gap: var(--space-1);
-    margin: 0;
-  }
-  .policy-facts > div {
-    display: grid;
-    gap: 0.1rem;
-  }
-  .policy-facts > :first-child > dt {
-    text-box: trim-start cap alphabetic;
-  }
-  .policy-facts > :last-child > dd {
-    text-box: trim-end cap alphabetic;
-  }
-  .policy-facts dt,
-  .profile-facts dt {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .policy-facts dd,
-  .profile-facts dd {
+  .decision-reason,
+  .promote-profile {
     color: var(--text-secondary);
+    display: grid;
     font-size: var(--font-size-compact);
-    margin: 0;
-  }
-  .runtime-summary,
-  .policy-detail {
-    display: grid;
-    gap: var(--space-1);
-  }
-  .runtime-summary {
-    justify-items: start;
-  }
-  .runtime-state {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    gap: var(--space-1);
-  }
-  .runtime-state strong {
-    font-size: var(--font-size-compact);
-    font-weight: 650;
-    text-box: trim-both cap alphabetic;
-    text-transform: capitalize;
-  }
-  .runtime-dot {
-    background: currentcolor;
-    border-radius: 50%;
-    height: 0.4rem;
-    width: 0.4rem;
-  }
-  .runtime-state-signal,
-  .runtime-state-accent {
-    color: var(--brand-action-text);
-  }
-  .runtime-state-warning {
-    color: var(--warning);
-  }
-  .runtime-state-stop {
-    color: var(--danger);
-  }
-  .runtime-state-clear {
-    color: var(--success);
-  }
-  .runtime-summary > span,
-  .policy-detail > span,
-  .policy-chip-line > span,
-  .override-stack > span {
-    color: var(--text-muted);
-    display: block;
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-  }
-  .policy-chip-line {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
     gap: var(--space-2);
   }
-  .policy-chip-line > span {
-    text-box: trim-both cap alphabetic;
-  }
-  .policy-action {
-    align-items: center;
-    display: flex;
-    justify-content: flex-start;
-  }
-  .override-stack {
-    gap: var(--space-1);
-  }
-  .profile-grid {
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  }
-  .profile-card,
-  .request-row {
-    background: var(--surface-base);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 10%, var(--border-subtle));
-    border-radius: var(--radius-surface);
-    box-shadow: var(--shadow-plate);
-    padding: var(--space-4);
-  }
-  .profile-card {
-    display: grid;
-    gap: var(--space-3);
-  }
-  .profile-heading {
-    align-items: center;
-    display: grid;
-    gap: var(--space-2);
-    grid-template-columns: auto minmax(0, 1fr) auto;
-  }
-  .profile-mark {
-    height: 1.75rem;
-    width: 1.75rem;
-  }
-  .profile-heading > div {
-    display: block;
-    min-width: 0;
-  }
-  .profile-heading > div > :first-child {
-    text-box: trim-start cap alphabetic;
-  }
-  .profile-heading > div > :last-child {
-    text-box: trim-end cap alphabetic;
-  }
-  .profile-heading strong,
-  .profile-heading div > span {
-    display: block;
-  }
-  .profile-heading strong {
-    color: var(--text-primary);
-    font-size: var(--font-size-meta);
-  }
-  .profile-heading div > span,
-  .profile-impact {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: var(--space-1) 0 0;
-  }
-  .profile-facts {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-  .profile-facts > div {
-    display: grid;
-    gap: var(--space-1);
-  }
-  .profile-actions,
-  .request-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-  .profile-actions {
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-3);
-  }
-  .request-row {
-    align-items: center;
-    display: flex;
-    gap: var(--space-4);
-    justify-content: space-between;
-  }
-  .request-copy {
-    min-width: 0;
-  }
-  .request-title {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-  .request-title strong {
-    color: var(--text-primary);
-    font-size: var(--font-size-meta);
-  }
-  .decision-reason {
-    color: var(--text-muted);
-    display: grid;
-    font-size: var(--font-size-micro);
-    font-weight: 700;
-    gap: var(--space-1);
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-  }
+
   .promote-profile {
     align-items: center;
-    display: flex;
-    gap: var(--space-2);
+    grid-auto-flow: column;
+    justify-content: start;
   }
-  :is(input, textarea) {
-    background: var(--input-bg);
+
+  .decision-reason textarea {
+    background: var(--surface-base);
     border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
+    border-radius: var(--r-ctl);
     color: var(--text-primary);
     font: inherit;
-    min-height: var(--control-height);
-    padding: var(--space-2) var(--space-3);
-  }
-  textarea {
-    line-height: var(--leading-body);
+    padding: var(--space-2);
     resize: vertical;
+    width: 100%;
   }
+
   .form-error {
     color: var(--danger);
+    font-size: var(--font-size-compact);
+    margin: 0;
   }
-  @media (max-width: 64rem) {
-    .schedule-summary {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .request-row {
-      align-items: flex-start;
-      flex-direction: column;
-    }
-  }
-  @media (max-width: 34rem) {
-    .schedule-summary {
-      grid-template-columns: 1fr;
-    }
-    .schedule-summary article {
-      padding: var(--space-3);
-    }
-    .profile-facts {
-      grid-template-columns: 1fr;
-    }
-    .section-heading {
-      align-items: flex-start;
-      flex-direction: column;
-      gap: var(--space-1);
-    }
+
+  .dim {
+    color: var(--text-secondary);
+    margin: 0;
   }
 </style>

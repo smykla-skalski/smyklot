@@ -83,7 +83,7 @@ const CADENCE_UNITS: ReadonlyArray<{ seconds: number; one: string; many: string 
  */
 export function cadenceWords(nanoseconds: number): string {
   const seconds = Math.round(nanoseconds / 1_000_000_000);
-  if (seconds <= 0) return 'continuously';
+  if (seconds <= 0) return 'immediately';
 
   const unit =
     CADENCE_UNITS.find((candidate) => seconds % candidate.seconds === 0) ?? CADENCE_UNITS[3];

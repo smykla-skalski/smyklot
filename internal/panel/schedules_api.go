@@ -387,6 +387,42 @@ func (s *Server) deploymentQueuePolicies() []workqueue.Policy {
 	})
 }
 
+// scheduleRequestResponse carries the person who asked, not only their id.
+//
+// A request is one workspace asking an operator for something, and the panel
+// prints it as a sentence with their name in it. The store holds the account id
+// the request was made under, so the join happens here rather than in the page:
+// a console that printed the id would be asking a reader to recognise one.
+type scheduleRequestResponse struct {
+	workqueue.ScheduleRequest
+
+	Requester *accountResponse `json:"requester,omitempty"`
+}
+
+func (s *Server) scheduleRequestsDTO(
+	r *http.Request,
+	requests []workqueue.ScheduleRequest,
+) []scheduleRequestResponse {
+	// One lookup per person rather than per request, and an account that cannot
+	// be read leaves the name absent rather than failing the page - the id is
+	// still on the row, and a deleted asker is not a reason to refuse the list.
+	people := make(map[string]*accountResponse, len(requests))
+	decorated := make([]scheduleRequestResponse, 0, len(requests))
+	for _, request := range requests {
+		who, known := people[request.RequestedBy]
+		if !known {
+			if account, err := s.store.GetAccount(r.Context(), request.RequestedBy); err == nil {
+				dto := accountDTO(account)
+				who = &dto
+			}
+			people[request.RequestedBy] = who
+		}
+		decorated = append(decorated, scheduleRequestResponse{ScheduleRequest: request, Requester: who})
+	}
+
+	return decorated
+}
+
 func (s *Server) getRootScheduleRequests(w http.ResponseWriter, r *http.Request) {
 	if _, _, ok := s.requireRoot(w, r); !ok {
 		return
@@ -396,7 +432,7 @@ func (s *Server) getRootScheduleRequests(w http.ResponseWriter, r *http.Request)
 		s.writeStorageError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": requests})
+	writeJSON(w, http.StatusOK, map[string]any{"requests": s.scheduleRequestsDTO(r, requests)})
 }
 
 func (s *Server) getTargetScheduleRequests(w http.ResponseWriter, r *http.Request) {
@@ -409,7 +445,7 @@ func (s *Server) getTargetScheduleRequests(w http.ResponseWriter, r *http.Reques
 		s.writeStorageError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"requests": requests})
+	writeJSON(w, http.StatusOK, map[string]any{"requests": s.scheduleRequestsDTO(r, requests)})
 }
 
 func (s *Server) postTargetScheduleRequest(w http.ResponseWriter, r *http.Request) {

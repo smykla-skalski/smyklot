@@ -588,6 +588,8 @@ export interface ScheduleRequest {
   configuration?: Record<string, unknown>;
   reason: string;
   requested_by: string;
+  /** Who asked, where the account is still readable. The id is what the store holds. */
+  requester?: PanelAccount;
   revision: number;
   created_at: string;
   updated_at: string;
