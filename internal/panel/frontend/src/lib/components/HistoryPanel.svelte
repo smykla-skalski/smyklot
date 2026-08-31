@@ -70,7 +70,7 @@
         { value: 'configuration', label: 'Configuration' },
         { value: 'access', label: 'Access' },
         { value: 'ownership', label: 'Ownership' },
-        { value: 'elevation', label: 'Elevation' },
+        { value: 'elevation', label: 'Operator visit' },
         { value: 'notification', label: 'Notification' },
         { value: 'runtime', label: 'Runtime' },
       ],

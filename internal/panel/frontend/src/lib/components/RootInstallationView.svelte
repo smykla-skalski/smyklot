@@ -354,17 +354,16 @@ inside it.
     </div>
 
     <div class="access-summary">
+      <!-- Nothing where the answer is already on the page: an owner reading their own
+           workspace is told so by every control being live, and a visit in progress is
+           announced by the strip below rather than by a pill beside the heading that
+           says the same word a second time. -->
       {#if target !== null && ownsInstallation}
         <StatusPill>
           {#snippet icon()}<Icon name="shield" size="sm" />{/snippet}
-          Owner access
+          You own this workspace
         </StatusPill>
-      {:else if elevation !== null}
-        <StatusPill>
-          {#snippet icon()}<Icon name="warning" size="sm" />{/snippet}
-          Elevated
-        </StatusPill>
-      {:else}
+      {:else if elevation === null}
         <Button
           tone="brand"
           bind:element={elevationTrigger}
@@ -372,7 +371,7 @@ inside it.
           onclick={openElevation}
         >
           {#snippet icon()}<Icon name="lock" size="base" />{/snippet}
-          Request write access
+          Visit as an operator
         </Button>
       {/if}
     </div>
@@ -382,9 +381,9 @@ inside it.
     <aside class="elevation-banner">
       <span class="elevation-icon"><Icon name="warning" size="md" /></span>
       <div>
-        <strong>Elevated access to {installation.account.display_name}</strong>
+        <strong>Operator visit to {installation.account.display_name}</strong>
         <p>
-          Every write is audited and notifies Owners
+          Every change lands in the workspace audit and its owners' inboxes
           {#if elevation.reason !== undefined}
             · {elevation.reason}{/if}
         </p>
@@ -392,7 +391,7 @@ inside it.
       <span class="elevation-countdown" title={`Ends ${formatTimestamp(elevation.expires_at)}`}>
         {countdown(remainingSeconds)}
       </span>
-      <Button tone="stop" disabled={elevationPending} onclick={endElevation}>End access</Button>
+      <Button tone="stop" disabled={elevationPending} onclick={endElevation}>End the visit</Button>
     </aside>
   {/if}
 
@@ -401,7 +400,7 @@ inside it.
   {/if}
 
   {#if !ownsInstallation && elevation === null && !canElevate}
-    <p class="access-hint">Fresh Owners are required before elevated access can start</p>
+    <p class="access-hint">Fresh Owners are required before an operator visit can start</p>
   {/if}
 
   <!-- A refresh that failed over a loaded view has not made the view wrong, so
@@ -498,7 +497,7 @@ inside it.
 <Modal
   id={ELEVATION_DIALOG}
   open={elevationModalOpen}
-  title={`Elevate access to ${installation.account.display_name}`}
+  title={`Visit ${installation.account.display_name} as an operator`}
   description="This grants write access for 15 minutes. It cannot be extended by activity"
   returnFocus={elevationTrigger}
   onClose={closeElevation}
@@ -506,16 +505,14 @@ inside it.
   <div class="elevation-warning">
     <span><Icon name="warning" size={22} /></span>
     <p>
-      You do not own this installation. Every change is permanently audited and every identified
-      Owner receives an in-app security notification
+      You do not own this workspace. Every change is permanently audited and every identified Owner
+      receives an in-app security notification
     </p>
   </div>
 
   <label class="acknowledgment">
     <input type="checkbox" bind:checked={elevationAcknowledged} />
-    <span>
-      I understand the consequences and want to enter audited elevated access for this installation
-    </span>
+    <span> I understand the consequences and want to visit this workspace as an operator </span>
   </label>
 
   <label class="reason-field">
@@ -524,7 +521,7 @@ inside it.
       class="text-input"
       rows="3"
       maxlength="500"
-      placeholder="For example: investigating failed repository deliveries"
+      placeholder="For example: investigating a repository whose sync keeps failing"
       bind:value={elevationReason}></textarea>
   </label>
 
@@ -539,7 +536,7 @@ inside it.
       disabled={!elevationAcknowledged || elevationPending}
       onclick={beginElevation}
     >
-      {elevationPending ? 'Starting access…' : 'Start 15-minute access'}
+      {elevationPending ? 'Starting the visit…' : 'Start a 15-minute visit'}
     </Button>
   {/snippet}
 </Modal>

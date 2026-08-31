@@ -771,7 +771,7 @@ refuse.
                 {installation.owned_by_viewer
                   ? 'Owned'
                   : installation.available
-                    ? 'Elevation required'
+                    ? 'Needs an operator visit'
                     : 'Unavailable'}
               </Chip>
             </label>

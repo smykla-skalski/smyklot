@@ -278,12 +278,12 @@
       },
     },
     {
-      label: 'Window',
-      hint: 'Filter by assigned execution window',
+      label: 'Hours',
+      hint: 'Filter by the hours a job runs in',
       sections: [
         {
           options: [
-            { value: 'all', label: 'All windows' },
+            { value: 'all', label: 'All hours' },
             ...profiles.map((value) => ({ value, label: value })),
           ],
         },

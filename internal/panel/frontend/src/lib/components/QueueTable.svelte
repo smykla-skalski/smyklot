@@ -147,7 +147,7 @@
             label: actionLabel(action),
             description:
               action === 'next_window'
-                ? 'Keep the assigned execution window'
+                ? "Keep the job's hours"
                 : action === 'schedule_at'
                   ? 'Choose the earliest acceptable time'
                   : action === 'set_priority'

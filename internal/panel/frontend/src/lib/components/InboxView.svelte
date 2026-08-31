@@ -241,9 +241,9 @@ pager - a notification list has no last page worth naming.
            links to rather than at the head of the card that opens with the reason. -->
       <div class="notification-list card-stack" aria-live="polite">
         {#each groups as group (group.id)}
-          <Card label={group.events[0]?.reason ?? 'Operator access'}>
+          <Card label={group.events[0]?.reason ?? 'Operator visit'}>
             <div class="card-head">
-              <h2 class="card-title">{group.events[0]?.reason ?? 'Operator access'}</h2>
+              <h2 class="card-title">{group.events[0]?.reason ?? 'Operator visit'}</h2>
               <span class="card-meta"
                 >{group.events[0]?.installation.display_name ?? ''} · {group.events.length}
                 {group.events.length === 1 ? 'event' : 'events'}</span

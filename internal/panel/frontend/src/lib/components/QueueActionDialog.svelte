@@ -150,9 +150,9 @@ to ask it four different ways.
 >
   <div class="queue-action-form">
     {#if action === 'run_now'}
-      <p>This bypasses cadence and the assigned window once. Running work is never interrupted.</p>
+      <p>This bypasses the cadence and the job's hours once. Running work is never interrupted.</p>
     {:else if action === 'next_window'}
-      <p>The delay is cleared, but the assigned execution window still applies.</p>
+      <p>The delay is cleared, but the job's hours still apply.</p>
     {:else if action === 'schedule_at'}
       <label for="queue-action-time">Not before</label>
       <input id="queue-action-time" type="datetime-local" bind:value={at} />

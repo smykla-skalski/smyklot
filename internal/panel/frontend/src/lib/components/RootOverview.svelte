@@ -210,17 +210,19 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name"
-                  >{elevations === 1 ? 'A write window is open' : 'Write windows are open'}</span
+                  >{elevations === 1
+                    ? 'An operator is visiting a workspace'
+                    : 'Operators are visiting workspaces'}</span
                 >
                 <span class="mx-mark mx-pending"
                   ><span class="t"
                     >{elevations}
-                    {elevations === 1 ? 'operator' : 'operators'}</span
+                    {elevations === 1 ? 'visit' : 'visits'}</span
                   ></span
                 >
               </span>
               <span class="object-sum"
-                >Somebody is holding a fifteen-minute window to write to a workspace · the audit
+                >Somebody may write in a workspace they do not own for fifteen minutes · the audit
                 says who and what changed</span
               >
             </span>

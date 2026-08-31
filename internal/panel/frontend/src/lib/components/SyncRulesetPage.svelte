@@ -381,7 +381,7 @@ stacked left, Cancel and Done on a hairline foot.
     if (list === 'tools' && !scanTools.includes(value)) scanTools = [...scanTools, value];
   }
 
-  /* ---------- Who may step around it ---------- */
+  /* ---------- The bypass list ---------- */
 
   const actors = $derived(ruleset?.bypass_actors ?? []);
 
@@ -508,7 +508,7 @@ stacked left, Cancel and Done on a hairline foot.
           class:is-unsaved={partDirty('conditions')}
           data-unsaved={partDirty('conditions') || undefined}
         >
-          <span class="setting-say"><span class="setting-name">Branches it covers</span></span>
+          <span class="setting-say"><span class="setting-name">Included branches</span></span>
           <span class="policy-value">
             {#each include as pattern (pattern)}
               <span class="cond-chip"
@@ -557,7 +557,7 @@ stacked left, Cancel and Done on a hairline foot.
           class:is-unsaved={partDirty('conditions')}
           data-unsaved={partDirty('conditions') || undefined}
         >
-          <span class="setting-say"><span class="setting-name">Branches it leaves out</span></span>
+          <span class="setting-say"><span class="setting-name">Excluded branches</span></span>
           <span class="policy-value">
             {#if exclude.length === 0}
               <span class="setting-unmanaged">None</span>
@@ -882,7 +882,7 @@ stacked left, Cancel and Done on a hairline foot.
 
     <Card unsaved={partDirty('bypass_actors')}>
       <div class="card-head">
-        <h2 class="card-title">Who may step around it</h2>
+        <h2 class="card-title">Bypass list</h2>
         <span class="card-meta">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
       </div>
       {#if actors.length > 0}
