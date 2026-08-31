@@ -348,7 +348,7 @@ export function seed(
       ...auditSeed(
         'audit-1',
         'ownership.synced',
-        'refreshed installation ownership',
+        "refreshed the workspace's owner list",
         undefined,
         iso(-12 * 60_000),
       ),
@@ -392,7 +392,7 @@ export function seed(
   ];
   const auditActions = [
     ['repository.config_migration.reset', 'reset migrated repository configuration for'],
-    ['target.access.updated', 'updated installation access'],
+    ['target.access.updated', 'updated who may act in the workspace'],
     ['invitation.created', 'invited a workspace member'],
   ] as const;
   for (let index = 0; index < 34; index += 1) {
@@ -413,7 +413,7 @@ export function seed(
   const failureReasons = [
     'repository configuration is invalid',
     'GitHub request timed out after credentials were refreshed',
-    'installation no longer has access to this repository',
+    'Smyklot no longer has access to this repository',
     'command could not be applied to the pull request state',
   ] as const;
   for (let index = 0; index < 27; index += 1) {
@@ -756,7 +756,7 @@ export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
         ? {
             reason:
               '.github/workflows/ci.yaml needs the workflows permission - grant it on the ' +
-              "installation's page",
+              "workspace's App page",
           }
         : {}),
     })),
@@ -1648,7 +1648,7 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
       eligible_at: iso(5 * 60_000),
       estimated_start_at: iso(6 * 60_000),
       work_ahead: 1,
-      blocked_reason: 'Required checks are still running',
+      blocked_reason: 'Waiting on required checks',
       details: {
         pull_request: 184,
         pull_request_title: 'Update rate limits for the edge tier',

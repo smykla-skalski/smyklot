@@ -1615,7 +1615,7 @@ async function handle(
         (policy) => policy.kind === kind && policy.target_id === target.value.id,
       );
       if (override === undefined)
-        throw new MockApiError(404, 'not_found', 'installation schedule override not found');
+        throw new MockApiError(404, 'not_found', 'workspace schedule override not found');
       if (Number(parsed.searchParams.get('expected_revision')) !== override.revision) {
         throw new MockApiError(409, 'conflict', 'schedule policy changed; reload and try again');
       }
@@ -2249,7 +2249,7 @@ async function handle(
       const target = findTarget(state, rootElevation.groups?.target ?? '');
       const elevation = activeMockElevation(state, target.value.id);
       if (elevation === undefined)
-        throw new MockApiError(404, 'not_found', 'elevated installation access was not found');
+        throw new MockApiError(404, 'not_found', 'no operator visit to this workspace was found');
       respond(res, 200, elevation);
       return;
     }
@@ -2263,7 +2263,7 @@ async function handle(
           'confirm the elevated access warning',
         );
       if (mockRootOwns(target))
-        throw new MockApiError(409, 'conflict', 'you already own this installation');
+        throw new MockApiError(409, 'conflict', 'you already own this workspace');
       if (!rootInstallationValue(target).available)
         throw new MockApiError(409, 'conflict', 'fresh Owners are required');
       const started = new Date();
@@ -2282,7 +2282,7 @@ async function handle(
       const id = decodeURIComponent(rootElevationEnd.groups?.elevation ?? '');
       const entry = [...state.elevations.entries()].find(([, elevation]) => elevation.id === id);
       if (entry === undefined)
-        throw new MockApiError(404, 'not_found', 'elevated installation access was not found');
+        throw new MockApiError(404, 'not_found', 'no operator visit to this workspace was found');
       const [targetId, elevation] = entry;
       const ended = { ...elevation, ended_at: new Date().toISOString() };
       state.elevations.delete(targetId);
@@ -2351,7 +2351,7 @@ async function handle(
       if (rootScopedInvitationReissue !== null) requireRootWrite(state, target);
       const current = findInvitation(state, installationInvitationReissue.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
-        throw new MockApiError(404, 'not_found', 'installation invitation not found');
+        throw new MockApiError(404, 'not_found', 'workspace invitation not found');
       }
       const input = await readBody<{ expires_in_days: InvitationDays }>(req);
       requireReissuable(current);
@@ -2373,7 +2373,7 @@ async function handle(
       if (rootScopedInvitation !== null) requireRootWrite(state, target);
       const current = findInvitation(state, installationInvitation.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
-        throw new MockApiError(404, 'not_found', 'installation invitation not found');
+        throw new MockApiError(404, 'not_found', 'workspace invitation not found');
       }
       current.status = 'revoked';
       current.responded_at = new Date().toISOString();
@@ -2436,7 +2436,7 @@ async function handle(
       }
       const access = targetAccessFor(state, target.value.id);
       if (access.has(user.account.id)) {
-        throw new MockApiError(409, 'conflict', 'this user already has installation access');
+        throw new MockApiError(409, 'conflict', 'this user already has access to this workspace');
       }
       access.set(user.account.id, targetAccess(input.role, false, 1));
       broadcast(state, { type: 'access.changed', target_id: target.value.id });
@@ -2618,8 +2618,7 @@ function applyScenario(state: MockState, scenario: string | null): void {
 function findTarget(state: MockState, encodedId: string): MockTarget {
   const id = decodeURIComponent(encodedId);
   const target = state.targets.find((entry) => entry.value.id === id);
-  if (target === undefined)
-    throw new MockApiError(404, 'not_found', 'installation target not found');
+  if (target === undefined) throw new MockApiError(404, 'not_found', 'workspace not found');
   return target;
 }
 
