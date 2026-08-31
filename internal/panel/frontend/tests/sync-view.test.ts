@@ -510,7 +510,7 @@ describe('SyncView [Component]', () => {
       status,
     });
 
-    await screen.findByRole('heading', { name: '1 of 1 are out of step' });
+    await screen.findByRole('heading', { name: '1 of 1 syncing repositories are out of step' });
     expect(screen.getByText('5 minutes ago')).toBeTruthy();
     expect(screen.getByText(/Expires in 6 hours/u)).toBeTruthy();
   });

@@ -832,7 +832,7 @@ where the record is.
   {:else}
     <PageHeader
       id="history-heading"
-      eyebrow="History"
+      section="Activity"
       title={historyType === 'audit' ? 'Audit' : 'Failures'}
       {description}
     />

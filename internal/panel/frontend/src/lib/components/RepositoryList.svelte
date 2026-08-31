@@ -433,12 +433,6 @@
     return `Showing 1-${repositories.length}\u{a0}of ${total}`;
   });
 
-  const workspaceName = $derived(
-    session.selectedTarget?.account.display_name ||
-      session.selectedTarget?.account.login ||
-      'Workspace',
-  );
-
   /**
    * What the row says about itself: whether Smyklot answers there, where that was
    * decided, and what its configuration file is doing - one sentence, in the order a
@@ -818,7 +812,6 @@ a workspace has is not a number worth blocking the first screenful on.
   <section class="plate repository-panel" aria-labelledby="repositories-heading">
     <PageHeader
       id="repositories-heading"
-      eyebrow={workspaceName}
       title="Repositories"
       description="Where Smyklot answers commands. Sync is separate - the sync pages name their own scope"
     />

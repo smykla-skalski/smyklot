@@ -1307,7 +1307,7 @@ offering it.
 <section class="plate user-management" aria-labelledby="user-management-heading">
   <PageHeader
     id="user-management-heading"
-    eyebrow="Access"
+    section="Access"
     title={activeSection === 'users' ? 'Users' : 'Invitations'}
     description={activeSection === 'users'
       ? 'Roles and access decisions for this workspace'

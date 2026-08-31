@@ -1,10 +1,13 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
 
+  import { panelSessionOrNull } from '../session.svelte';
+
   const {
     id,
     title,
     description,
+    section,
     eyebrow,
     kicker,
     actions,
@@ -14,13 +17,40 @@
     title: string;
     /** One line saying what the page is for. Not every page owes one. */
     description?: string;
-    /** Where this page is: the workspace it belongs to, and the group inside it. */
+    /** The group this page sits in - Sync, Access, Activity. Not every page is in one. */
+    section?: string;
+    /** The whole eyebrow, for a page whose scope is not the open workspace. */
     eyebrow?: string;
     /** Above the title - on the Root console, whose authority this page is under. */
     kicker?: Snippet;
     /** Live status and the controls that act on the page. Never identity. */
     actions?: Snippet;
   } = $props();
+
+  /**
+   * WHERE this page is, said by the shell rather than by the page.
+   *
+   * Every workspace page's eyebrow opens with the workspace it belongs to, and every
+   * console page's says the console. A page knows the group it is in and nothing
+   * about which workspace is open, so it names the group and this composes the rest -
+   * which is also what stops thirty pages spelling one word thirty ways.
+   *
+   * Nullable, because the same page rendered by a story or a component test stands
+   * outside the shell: there the eyebrow is the group alone rather than nothing at all.
+   */
+  const session = panelSessionOrNull();
+  const scope = $derived(
+    session === null
+      ? ''
+      : session.isRootMode
+        ? 'Operations console'
+        : (session.selectedTarget?.account.display_name ??
+          session.selectedTarget?.account.login ??
+          ''),
+  );
+  const eyebrowText = $derived(
+    eyebrow ?? [scope, section].filter((part) => part !== undefined && part !== '').join(' · '),
+  );
 </script>
 
 <!--
@@ -42,8 +72,8 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
   <div class="page-head-say">
     {#if kicker !== undefined}
       <p class="page-eyebrow">{@render kicker()}</p>
-    {:else if eyebrow !== undefined}
-      <p class="page-eyebrow">{eyebrow}</p>
+    {:else if eyebrowText !== ''}
+      <p class="page-eyebrow">{eyebrowText}</p>
     {/if}
     <h1 class="page-title" {id}>{title}</h1>
     {#if description !== undefined}

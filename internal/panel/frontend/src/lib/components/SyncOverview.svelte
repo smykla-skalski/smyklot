@@ -92,7 +92,7 @@
 
   const KIND_LABEL: Record<SyncKind, string> = {
     labels: 'Labels',
-    settings: 'Settings',
+    settings: 'Repository options',
     rulesets: 'Rulesets',
     files: 'Files',
   };
@@ -173,30 +173,27 @@ plan is applied, which is why these are switches and not a form.
 -->
 
 <section class="view-frame" aria-labelledby="sync-overview-heading">
-  <PageHeader
-    id="sync-overview-heading"
-    eyebrow="Sync"
-    title="Overview"
-    description="Repository alignment and the configuration each Sync kind currently applies"
-  />
-
-  <!-- The verdict: the overview's first CONTENT, not a second header. One
-       freshness fact, sharing the verdict's baseline. -->
-  <div class="hero">
-    <h2>
-      {#if rows.length === 0}No repositories to check{:else if outOfStep > 0}<span class="is-drift"
-          >{outOfStep} of {rows.length}</span
-        >
-        are out of step{:else if legendCounts.off === rows.length}All {rows.length} are switched off here{:else if legendCounts.off > 0}{rows.length -
-          legendCounts.off} active in step ·
-        {legendCounts.off} switched off{:else}All {rows.length} are in step{/if}
-    </h2>
-    <span class="hero-meta"
-      >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong></span
-    >
-  </div>
+  <PageHeader id="sync-overview-heading" section="Sync" title="Sync status" />
 
   <div class="board">
+    <!-- The verdict HEADS the board rather than floating above it: a free-standing
+         statement over a card is a second page title, and the thing it is a verdict
+         about is the board underneath. Its freshness sits directly under it, not
+         parked at the card's far edge. -->
+    <div class="card-head verdict-head">
+      <h2 class="card-title">
+        {#if rows.length === 0}No repositories to check{:else if outOfStep > 0}<span
+            class="is-drift">{outOfStep} of {rows.length}</span
+          >
+          syncing repositories are out of step{:else if legendCounts.off === rows.length}All
+          {rows.length} are switched off here{:else if legendCounts.off > 0}{rows.length -
+            legendCounts.off} active in step ·
+          {legendCounts.off} switched off{:else}All {rows.length} are in step{/if}
+      </h2>
+      <span class="card-note"
+        >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong></span
+      >
+    </div>
     <div class="board-lay">
       <!-- The fleet: one raised tile per repository, a numeral where changes
            wait, dashed sockets where sync is off. -->
@@ -254,31 +251,50 @@ plan is applied, which is why these are switches and not a form.
     {/if}
   </div>
 
-  <!-- The out-of-step list: every repository the board colours, with its
-       reason on the row. The board shows the shape; this says the words. -->
+  <!-- The out-of-step list: every repository the board colours, with its reason on
+       the row. The board shows the shape; this says the words - in the same row
+       grammar every other list on the panel uses. -->
   {#if attention.length > 0}
-    <div class="attn">
-      {#each attention as row (row.repository)}
-        {@const refused = states.get(row.repository) === 'refused'}
-        <a
-          class="attn-row"
-          href={sectionHref(refused ? 'files' : 'plan')}
-          onclick={(event) => open(event, refused ? 'files' : 'plan')}
-        >
-          <span class="attn-repo">{row.repository}</span>
-          <span class="attn-what">
-            {#if refused}
-              <span class="mx-mark mx-refused"><span class="t">refused</span></span>
-            {:else}
-              <span class="mx-mark mx-pending"><span class="t">{changesOf(row)} changes</span></span
-              >
-            {/if}
-          </span>
-          <span class="attn-why" class:is-refused={refused}
-            >{refused ? (row.reason ?? '') : attnWhy(row)}</span
-          >
-        </a>
-      {/each}
+    <div class="card">
+      <div class="card-head">
+        <h2 class="card-title" id="sync-attention-label">Needs attention</h2>
+      </div>
+      <ul class="object-list" aria-labelledby="sync-attention-label">
+        {#each attention as row (row.repository)}
+          {@const refused = states.get(row.repository) === 'refused'}
+          <li>
+            <a
+              class="object-row"
+              href={sectionHref(refused ? 'files' : 'plan')}
+              onclick={(event) => open(event, refused ? 'files' : 'plan')}
+            >
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="object-name"><span class="file-path">{row.repository}</span></span>
+                  {#if refused}
+                    <span class="mx-mark mx-refused" role="img" aria-label="refused"
+                      ><span class="t">refused</span></span
+                    >
+                  {:else}
+                    <span
+                      class="mx-mark mx-pending"
+                      role="img"
+                      aria-label="would change, {changesOf(row)} changes"
+                      ><span class="t">{changesOf(row)} changes</span></span
+                    >
+                  {/if}
+                </span>
+                <span class="object-sum" class:is-refused={refused}
+                  >{refused ? (row.reason ?? '') : attnWhy(row)}</span
+                >
+              </span>
+              <span class="object-side">
+                <span class="gi"><Icon name="chevron-right" size="xs" /></span>
+              </span>
+            </a>
+          </li>
+        {/each}
+      </ul>
     </div>
   {/if}
 
@@ -342,42 +358,27 @@ plan is applied, which is why these are switches and not a form.
     max-width: var(--content-max);
   }
 
-  /* End-aligned: both sides are trimmed to the alphabetic edge, so end IS the
-     shared baseline - and the row stays whole where baseline union drifted. */
-  .hero {
-    align-items: end;
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: 1fr auto;
-    margin-block: var(--space-2) var(--space-4);
+  /* A VERDICT HEAD keeps its qualifier ON the verdict - directly under it, never
+     parked at the card's far edge, which is where a card's quiet right-side note
+     belongs and a verdict's freshness does not. */
+  .verdict-head {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    gap: var(--row-copy-gap);
+    justify-content: flex-start;
   }
 
-  .hero h2 {
-    /* THE PAGE TIER, not a display size of its own. 2.375rem and its 42px line were
-       two values the type scale does not have, on the one heading that had reached for
-       a bigger voice than the scale offers - and a scale with a hole punched in it for
-       one page is not a scale. 28px on 34 is the top of it. */
-    font-size: var(--font-size-page-title);
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: var(--leading-page);
-    margin: 0;
-    min-block-size: 29px;
-    text-box: trim-both cap alphabetic;
+  .verdict-head .card-note {
+    margin-inline-start: 0;
+    text-align: start;
   }
 
-  .hero h2 .is-drift {
+  .verdict-head .card-title .is-drift {
     color: var(--diff-chg-ink);
   }
 
-  .hero-meta {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .hero-meta strong {
+  .verdict-head .card-note strong {
     color: var(--text-secondary);
     font-weight: 600;
   }
@@ -657,73 +658,16 @@ plan is applied, which is why these are switches and not a form.
     text-box: trim-both cap alphabetic;
   }
 
-  .attn {
-    display: grid;
-    margin-top: var(--space-4);
-  }
-
-  .attn-row {
-    align-items: baseline;
-    border-radius: var(--r-ctl);
-    color: inherit;
-    cursor: pointer;
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: 9.5rem auto 1fr;
-    padding: var(--row-pad-compact) var(--space-3);
-    position: relative;
-    text-decoration: none;
-    transition:
-      background-color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
-      box-shadow var(--duration-press) var(--ease-standard);
-  }
-
-  .attn-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-3);
-    position: absolute;
-  }
-
-  /* The hover pill has rounded corners; a hairline crossing its edge reads
-     as a crack in it. The hovered row hides its own separator and the one
-     its neighbour would draw over it. */
-  .attn-row:hover::after,
-  .attn-row:has(+ .attn-row:hover)::after {
-    background: transparent;
-  }
-
-  .attn-row:hover {
-    background: var(--table-row-hover);
-  }
-
-  .attn-row:active {
-    background: var(--table-row-pressed);
-    box-shadow: var(--pressed-inset);
-    translate: 0 1px;
-  }
-
-  .attn-repo {
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-  }
-
-  .attn-what {
-    display: flex;
-    gap: var(--space-2);
-  }
-
-  .attn-why {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-  }
-
-  .attn-why.is-refused {
+  /* A refused row's account steps up one ink - louder than routine metadata,
+     calmer than the mark that already carries the state. */
+  .object-sum.is-refused {
     color: var(--text-secondary);
+  }
+
+  /* A repository name in a row keeps the mono voice the product gives one. */
+  .file-path {
+    font-family: var(--mono);
+    font-weight: 500;
   }
 
   .mx-mark {
@@ -980,12 +924,6 @@ plan is applied, which is why these are switches and not a form.
     }
 
     .kind-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  @media (max-width: 30rem) {
-    .attn-row {
       grid-template-columns: 1fr;
     }
   }

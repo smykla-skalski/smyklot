@@ -545,7 +545,7 @@ applied on save would give nobody the chance to read the deletions first.
   <section class="sync-page" aria-labelledby="sync-heading">
     <PageHeader
       id="sync-heading"
-      eyebrow="Sync"
+      section="Sync"
       title="Sync"
       description="What every repository in this installation should look like, and what Smyklot would change to make that true"
     />

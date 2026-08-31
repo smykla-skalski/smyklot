@@ -248,7 +248,6 @@ settings from them answers a different question than the one they asked.
   <section class="settings-page" aria-labelledby="defaults-heading">
     <PageHeader
       id="defaults-heading"
-      eyebrow="Workspace"
       title="Workspace defaults"
       description="Defaults every repository inherits unless a repository overrides them"
     />

@@ -9,7 +9,7 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { page } from '$app/state';
-import { createContext } from 'svelte';
+import { getContext, setContext } from 'svelte';
 import { MediaQuery } from 'svelte/reactivity';
 
 import type { QueryClient } from '@tanstack/svelte-query';
@@ -1094,4 +1094,33 @@ export class PanelSession {
   }
 }
 
-export const [getPanelSession, setPanelSession] = createContext<PanelSession>();
+/**
+ * The session, on the context.
+ *
+ * `setContext`/`getContext` with a key of our own rather than `createContext`, because
+ * one caller has to be able to ask whether there IS a session: a component drawn
+ * inside the shell always has one, and the same component rendered by a story or a
+ * component test does not. `createContext` hides its key and, at the version pinned
+ * here, hands back no `has`, so the question cannot be asked through it.
+ */
+const PANEL_SESSION = Symbol('panel-session');
+
+export function setPanelSession(session: PanelSession): PanelSession {
+  return setContext(PANEL_SESSION, session);
+}
+
+export function getPanelSession(): PanelSession {
+  const session = getContext<PanelSession | undefined>(PANEL_SESSION);
+  if (session === undefined) throw new Error('the panel session is not on the context');
+  return session;
+}
+
+/**
+ * The session where there is one.
+ *
+ * A component that only wants to say WHERE it is - the workspace a page belongs to -
+ * degrades to saying nothing outside the shell rather than refusing to render.
+ */
+export function panelSessionOrNull(): PanelSession | null {
+  return getContext<PanelSession | undefined>(PANEL_SESSION) ?? null;
+}

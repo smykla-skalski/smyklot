@@ -49,7 +49,7 @@
 
   const KIND_LABEL: Record<string, string> = {
     labels: 'Labels',
-    settings: 'Settings',
+    settings: 'Repository options',
     rulesets: 'Rulesets',
     files: 'Files',
   };
