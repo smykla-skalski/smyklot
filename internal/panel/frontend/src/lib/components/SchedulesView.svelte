@@ -4,7 +4,6 @@
   import type {
     QueuePolicy,
     QueuePolicyInput,
-    QueuePriority,
     QueueWorkload,
     QueuePolicyStatus,
     SchedulePolicySet,
@@ -17,26 +16,17 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DataTable from './DataTable.svelte';
   import Icon, { type IconName } from './Icon.svelte';
-  import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import PolicyEditorDialog from './PolicyEditorDialog.svelte';
   import ProfileEditorDialog from './ProfileEditorDialog.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
-  import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
-  import Select from './Select.svelte';
 
   const {
     api,
-    targetId,
     rootRole = '',
-    canRequest = false,
-    actorAccountId = '',
   }: {
     api: PanelApi;
-    targetId?: string;
     rootRole?: string;
-    canRequest?: boolean;
-    actorAccountId?: string;
   } = $props();
 
   interface ScheduleViewData {
@@ -49,7 +39,7 @@
 
   let operationError = $state('');
   const schedulesQuery = createQuery(() => ({
-    queryKey: targetId === undefined ? ['schedules', 'root'] : ['schedules', 'target', targetId],
+    queryKey: ['schedules', 'root'],
     queryFn: fetchSchedules,
   }));
   const scheduleData = $derived<ScheduleViewData | null>(schedulesQuery.data ?? null);
@@ -70,45 +60,13 @@
   let dialogError = $state('');
   let deciding = $state<ScheduleRequest | null>(null);
   let archivingProfile = $state<ScheduleProfile | null>(null);
-  let withdrawingRequest = $state<ScheduleRequest | null>(null);
   let decision = $state<'approve' | 'reject'>('approve');
   let decisionReason = $state('');
   let promoteProfile = $state(false);
 
-  let requestKind = $state<QueueWorkload>('sync_scan');
-  let requestProfile = $state<string | null>(null);
-  let requestWindowMode = $state<'existing' | 'custom'>('existing');
-  let requestCustomName = $state('Installation hours');
-  let requestTimezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
-  let requestWindows = $state.raw<EditableWindow[]>([
-    { id: 'request-1', weekday: 1, start: '09:00', end: '17:00' },
-    { id: 'request-2', weekday: 2, start: '09:00', end: '17:00' },
-    { id: 'request-3', weekday: 3, start: '09:00', end: '17:00' },
-    { id: 'request-4', weekday: 4, start: '09:00', end: '17:00' },
-    { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
-  ]);
-  let requestExceptions = $state('');
-  let requestCadence = $state<number | null | undefined>(undefined);
-  let requestPriority = $state<QueuePriority | null>(null);
-  let requestReason = $state('');
-  let requestBusy = $state(false);
-
-  const installationKinds = new Set<QueueWorkload>([
-    'pending_ci',
-    'pending_ci_gate',
-    'reaction_scan',
-    'config_migration',
-    'sync_scan',
-    'path_refresh',
-  ]);
-  const requestablePolicies = $derived(
-    policies.filter((policy) => installationKinds.has(policy.kind)),
-  );
-  const displayedPolicies = $derived(targetId === undefined ? policies : requestablePolicies);
   const policyOverrides = $derived(policySet?.overrides ?? []);
   const activeWorkloads = $derived(
-    displayedPolicies.filter((policy) => policyStatus(policy.kind)?.current_state !== undefined)
-      .length,
+    policies.filter((policy) => policyStatus(policy.kind)?.current_state !== undefined).length,
   );
   const pendingRequests = $derived(
     requests.filter((request) => request.state === 'pending').length,
@@ -171,30 +129,16 @@
   }
 
   async function fetchSchedules(): Promise<ScheduleViewData> {
-    if (targetId === undefined) {
-      const [loadedProfiles, policyDocument, loadedRequests] = await Promise.all([
-        api.fetchRootScheduleProfiles(),
-        api.fetchRootJobPolicies(),
-        api.fetchRootScheduleRequests(),
-      ]);
-      return {
-        profiles: loadedProfiles,
-        policies: policyDocument.policies,
-        policySet: policyDocument.policy_set,
-        statuses: policyDocument.statuses,
-        requests: loadedRequests,
-      };
-    }
-
-    const [schedules, loadedRequests] = await Promise.all([
-      api.fetchTargetSchedules(targetId),
-      api.fetchTargetScheduleRequests(targetId),
+    const [loadedProfiles, policyDocument, loadedRequests] = await Promise.all([
+      api.fetchRootScheduleProfiles(),
+      api.fetchRootJobPolicies(),
+      api.fetchRootScheduleRequests(),
     ]);
     return {
-      profiles: schedules.profiles,
-      policies: schedules.policies.effective,
-      policySet: schedules.policies,
-      statuses: schedules.statuses,
+      profiles: loadedProfiles,
+      policies: policyDocument.policies,
+      policySet: policyDocument.policy_set,
+      statuses: policyDocument.statuses,
       requests: loadedRequests,
     };
   }
@@ -259,11 +203,6 @@
     }).format(new Date(value));
   }
 
-  function policySource(kind: QueueWorkload): string {
-    if (policyOverrides.some((policy) => policy.kind === kind)) return 'Installation override';
-    return 'Global policy';
-  }
-
   function deploymentDefault(kind: QueueWorkload): QueuePolicy | undefined {
     return policySet?.deployment_defaults.find((policy) => policy.kind === kind);
   }
@@ -276,30 +215,6 @@
   function numberSetting(policy: QueuePolicy, key: string): number | undefined {
     const value = policy.configuration?.[key];
     return typeof value === 'number' ? value : undefined;
-  }
-
-  function selectRequestKind(kind: QueueWorkload): void {
-    requestKind = kind;
-    requestCadence = undefined;
-    requestPriority = null;
-    requestProfile = null;
-  }
-
-  function selectedRequestPolicy(): QueuePolicy | undefined {
-    return policies.find((candidate) => candidate.kind === requestKind);
-  }
-
-  function requestCadenceValue(): number | null {
-    if (requestCadence !== undefined) return requestCadence;
-    return Math.round((selectedRequestPolicy()?.cadence ?? 0) / 1_000_000_000);
-  }
-
-  function requestPriorityValue(): QueuePriority {
-    return requestPriority ?? selectedRequestPolicy()?.default_priority ?? 'normal';
-  }
-
-  function requestProfileValue(): string {
-    return requestProfile ?? selectedRequestPolicy()?.profile_id ?? profiles[0]?.id ?? '';
   }
 
   function jobDetails(policy: QueuePolicy): string[] {
@@ -408,26 +323,6 @@
     }
   }
 
-  async function withdrawRequest(): Promise<void> {
-    if (targetId === undefined || withdrawingRequest === null) return;
-    dialogBusy = true;
-    try {
-      await api.withdrawTargetScheduleRequest(
-        targetId,
-        withdrawingRequest.id,
-        withdrawingRequest.revision,
-      );
-      notice = 'Schedule request withdrawn';
-      withdrawingRequest = null;
-      dialogError = '';
-      await load();
-    } catch (cause) {
-      dialogError = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      dialogBusy = false;
-    }
-  }
-
   function openDecision(request: ScheduleRequest, choice: 'approve' | 'reject'): void {
     deciding = request;
     decision = choice;
@@ -455,77 +350,6 @@
       dialogBusy = false;
     }
   }
-
-  async function submitRequest(): Promise<void> {
-    if (targetId === undefined || requestReason.trim() === '' || requestCadenceInvalid()) return;
-    const current = policies.find((policy) => policy.kind === requestKind);
-    if (current === undefined) return;
-    const cadence = requestCadenceValue();
-    if (cadence === null) return;
-    requestBusy = true;
-    try {
-      const customProfile: ScheduleProfile = {
-        id: '',
-        name: requestCustomName.trim(),
-        timezone: requestTimezone.trim(),
-        system: false,
-        revision: 0,
-        windows: requestWindows.map((window) => ({
-          weekday: window.weekday,
-          start_minute: timeMinute(window.start),
-          end_minute: timeMinute(window.end),
-        })),
-        exceptions: parseRequestExceptions(),
-      };
-      await api.createTargetScheduleRequest(targetId, {
-        kind: requestKind,
-        base_revision: current.revision,
-        ...(requestWindowMode === 'existing'
-          ? { profile_id: requestProfileValue() }
-          : { custom_profile: customProfile }),
-        cadence_seconds: cadence,
-        default_priority: requestPriorityValue(),
-        configuration: current.configuration,
-        reason: requestReason.trim(),
-      });
-      requestReason = '';
-      notice = 'Schedule change sent to Root for approval';
-      await load();
-    } catch (cause) {
-      operationError = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      requestBusy = false;
-    }
-  }
-
-  function requestCadenceInvalid(): boolean {
-    const cadence = requestCadenceValue();
-    if (cadence === null || !Number.isFinite(cadence)) return true;
-    return cadence < 0 || (requestKind !== 'pending_ci' && cadence <= 0);
-  }
-
-  function timeMinute(value: string): number {
-    const [hour = '0', minute = '0'] = value.split(':');
-    return Number(hour) * 60 + Number(minute);
-  }
-
-  function parseRequestExceptions(): ScheduleProfile['exceptions'] {
-    return requestExceptions
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [date = '', span = 'closed'] = line.split(/\s+/, 2);
-        if (span === 'closed') return { date, closed: true };
-        const [from = '00:00', to = '00:00'] = span.split('-', 2);
-        return {
-          date,
-          closed: false,
-          start_minute: timeMinute(from),
-          end_minute: timeMinute(to),
-        };
-      });
-  }
 </script>
 
 <!--
@@ -552,10 +376,7 @@ the same page without the controls, rather than controls that refuse.
         </Chip>
       </div>
       <span class="policy-description">{workloadDescription(policy.kind)}</span>
-      <span class="policy-source">
-        {targetId === undefined ? 'Global policy' : policySource(policy.kind)} · revision
-        {policy.revision}
-      </span>
+      <span class="policy-source">Global policy · revision {policy.revision}</span>
     </div>
   </th>
   <td data-label="Schedule">
@@ -597,24 +418,22 @@ the same page without the controls, rather than controls that refuse.
       </div>
       {#each details as detail (detail)}<span>{detail}</span>{/each}
       {#if details.length === 0}<span>Standard retry and retention</span>{/if}
-      {#if targetId === undefined && baseline !== undefined}
+      {#if baseline !== undefined}
         <span>{deploymentSummary(baseline)}</span>
       {/if}
     </div>
   </td>
-  {#if targetId === undefined}
-    <td data-label="Action">
-      <div class="policy-action">
-        <Button
-          row
-          onclick={() => {
-            editingPolicy = policy;
-            dialogError = '';
-          }}>Configure</Button
-        >
-      </div>
-    </td>
-  {/if}
+  <td data-label="Action">
+    <div class="policy-action">
+      <Button
+        row
+        onclick={() => {
+          editingPolicy = policy;
+          dialogError = '';
+        }}>Configure</Button
+      >
+    </div>
+  </td>
 {/snippet}
 
 {#snippet overrideCells(policy: QueuePolicy)}
@@ -644,32 +463,20 @@ the same page without the controls, rather than controls that refuse.
   </td>
 {/snippet}
 
-<section
-  class="schedules-view"
-  aria-labelledby={targetId === undefined ? 'root-page-heading' : 'schedules-heading'}
-  aria-busy={loading}
->
-  {#if targetId === undefined}
-    <RootPageHeader
-      role={rootRole}
-      title="Schedules"
-      subtitle="Execution windows, workload cadence, retries, and installation requests"
+<section class="schedules-view" aria-labelledby="root-page-heading" aria-busy={loading}>
+  <RootPageHeader
+    role={rootRole}
+    title="Schedules"
+    subtitle="Execution windows, workload cadence, retries, and installation requests"
+  >
+    <Button
+      tone="signal"
+      onclick={() => {
+        editingProfile = null;
+        profileOpen = true;
+      }}>New profile</Button
     >
-      <Button
-        tone="signal"
-        onclick={() => {
-          editingProfile = null;
-          profileOpen = true;
-        }}>New profile</Button
-      >
-    </RootPageHeader>
-  {:else}
-    <PageHeader
-      id="schedules-heading"
-      title="Schedules"
-      description="Effective background-work policy for this installation"
-    />
-  {/if}
+  </RootPageHeader>
 
   <p class="visually-hidden" aria-live="polite">{notice}</p>
   {#if loading && policies.length === 0 && profiles.length === 0}
@@ -687,7 +494,7 @@ the same page without the controls, rather than controls that refuse.
       </Plate>
     {/if}
     <div class="schedule-summary" aria-label="Schedule overview">
-      {#each [{ label: 'Workloads', value: displayedPolicies.length, detail: targetId === undefined ? 'global policies' : 'installation policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
+      {#each [{ label: 'Workloads', value: policies.length, detail: 'global policies' }, { label: 'Active now', value: activeWorkloads, detail: 'visible Queue items' }, { label: 'Profiles', value: profiles.length, detail: 'named execution windows' }, { label: 'Requests', value: pendingRequests, detail: 'awaiting a decision' }] as metric, index (metric.label)}
         <article>
           <span class="summary-mark"><Icon name={summaryIcon(index)} size="base" /></span>
           <div>
@@ -705,30 +512,21 @@ the same page without the controls, rather than controls that refuse.
           <span class="eyebrow">Effective settings</span>
           <h2 id="policy-heading">Workload policies</h2>
         </div>
-        <span class="dim">{displayedPolicies.length} workloads</span>
+        <span class="dim">{policies.length} workloads</span>
       </div>
       <DataTable
-        rows={displayedPolicies}
+        rows={policies}
         rowKey={(policy) => policy.kind}
         caption="Workload policies"
         regionLabel="Workload policies"
-        columns={targetId === undefined
-          ? [
-              { label: 'Workload' },
-              { label: 'Schedule' },
-              { label: 'Runtime' },
-              { label: 'Policy' },
-              { label: 'Action' },
-            ]
-          : [
-              { label: 'Workload' },
-              { label: 'Schedule' },
-              { label: 'Runtime' },
-              { label: 'Policy' },
-            ]}
-        columnWidths={targetId === undefined
-          ? ['27%', '16%', '25%', '20%', '12%']
-          : ['30%', '18%', '28%', '24%']}
+        columns={[
+          { label: 'Workload' },
+          { label: 'Schedule' },
+          { label: 'Runtime' },
+          { label: 'Policy' },
+          { label: 'Action' },
+        ]}
+        columnWidths={['27%', '16%', '25%', '20%', '12%']}
         cells={policyCells}
         class="policy-table-wrap"
         scrollable={false}
@@ -736,7 +534,7 @@ the same page without the controls, rather than controls that refuse.
       />
     </section>
 
-    {#if targetId === undefined && policyOverrides.length > 0}
+    {#if policyOverrides.length > 0}
       <section class="schedule-section" aria-labelledby="overrides-heading">
         <div class="section-heading">
           <div>
@@ -799,13 +597,11 @@ the same page without the controls, rather than controls that refuse.
                 <dd>{profile.exceptions.length}</dd>
               </div>
             </dl>
-            {#if targetId === undefined}
-              <p class="profile-impact">
-                {profile.affected_installations ?? 0} installations · {profile.affected_items ?? 0}
-                queued items
-              </p>
-            {/if}
-            {#if targetId === undefined && !profile.system}
+            <p class="profile-impact">
+              {profile.affected_installations ?? 0} installations · {profile.affected_items ?? 0}
+              queued items
+            </p>
+            {#if !profile.system}
               <div class="profile-actions">
                 <Button
                   row
@@ -829,121 +625,6 @@ the same page without the controls, rather than controls that refuse.
         {/each}
       </div>
     </section>
-
-    {#if targetId !== undefined && canRequest}
-      <section class="schedule-section request-form" aria-labelledby="request-heading">
-        <div class="section-heading">
-          <div>
-            <span class="eyebrow">Installation override</span>
-            <h2 id="request-heading">Request a recurring change</h2>
-          </div>
-        </div>
-        <label>
-          <span>Workload</span>
-          <Select
-            value={requestKind}
-            onchange={(event) =>
-              selectRequestKind((event.currentTarget as HTMLSelectElement).value as QueueWorkload)}
-          >
-            {#each requestablePolicies as policy (policy.kind)}
-              <option value={policy.kind}>{workloadTitle(policy.kind)}</option>
-            {/each}
-          </Select>
-        </label>
-        <label>
-          <span>Window source</span>
-          <Select bind:value={requestWindowMode}>
-            <option value="existing">Named profile</option>
-            <option value="custom">Custom hours</option>
-          </Select>
-        </label>
-        {#if requestWindowMode === 'existing'}
-          <label>
-            <span>Window</span>
-            <Select
-              aria-label="Window profile"
-              value={requestProfileValue()}
-              onchange={(event) =>
-                (requestProfile = (event.currentTarget as HTMLSelectElement).value)}
-            >
-              {#each profiles as profile (profile.id)}
-                <option value={profile.id}>{profile.name}</option>
-              {/each}
-            </Select>
-          </label>
-        {:else}
-          <label>
-            <span>Profile name</span>
-            <input class="text-input" bind:value={requestCustomName} />
-          </label>
-          <label>
-            <span>Timezone</span>
-            <input class="text-input" bind:value={requestTimezone} placeholder="Europe/Warsaw" />
-          </label>
-          <div class="custom-window">
-            <ScheduleWindowsEditor
-              idPrefix="request-window"
-              windows={requestWindows}
-              onChange={(next) => (requestWindows = next)}
-            />
-          </div>
-          <label class="request-exceptions">
-            <span>Date exceptions</span>
-            <textarea
-              class="text-input"
-              rows="4"
-              bind:value={requestExceptions}
-              placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea>
-          </label>
-          <p class="request-helper">
-            One local date per line: <code>YYYY-MM-DD closed</code> or
-            <code>YYYY-MM-DD HH:MM-HH:MM</code>.
-          </p>
-        {/if}
-        <label>
-          <span>Cadence seconds</span>
-          <input
-            class="text-input"
-            type="number"
-            min={requestKind === 'pending_ci' ? 0 : 1}
-            step="60"
-            value={requestCadenceValue() ?? ''}
-            oninput={(event) => {
-              const cadence = (event.currentTarget as HTMLInputElement).valueAsNumber;
-              requestCadence = Number.isFinite(cadence) ? cadence : null;
-            }}
-          />
-        </label>
-        <label>
-          <span>Priority</span>
-          <Select
-            value={requestPriorityValue()}
-            onchange={(event) =>
-              (requestPriority = (event.currentTarget as HTMLSelectElement).value as QueuePriority)}
-          >
-            <option value="low">Low</option>
-            <option value="normal">Normal</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </Select>
-        </label>
-        <label class="reason-field">
-          <span>Reason</span>
-          <textarea
-            class="text-input"
-            rows="3"
-            bind:value={requestReason}
-            placeholder="Explain the operational need"></textarea>
-        </label>
-        <div class="request-action">
-          <Button
-            tone="signal"
-            disabled={requestBusy || requestReason.trim() === '' || requestCadenceInvalid()}
-            onclick={() => void submitRequest()}>{requestBusy ? 'Sending…' : 'Send request'}</Button
-          >
-        </div>
-      </section>
-    {/if}
 
     <section class="schedule-section" aria-labelledby="requests-heading">
       <div class="section-heading">
@@ -971,7 +652,7 @@ the same page without the controls, rather than controls that refuse.
                 : 'installation override'})</span
             >
           </div>
-          {#if targetId === undefined && request.state === 'pending'}
+          {#if request.state === 'pending'}
             <div class="request-buttons">
               <Button row tone="signal" onclick={() => openDecision(request, 'approve')}
                 >Approve</Button
@@ -979,15 +660,6 @@ the same page without the controls, rather than controls that refuse.
                 >Reject</Button
               >
             </div>
-          {:else if targetId !== undefined && request.state === 'pending' && request.requested_by === actorAccountId}
-            <Button
-              row
-              tone="stop-quiet"
-              onclick={() => {
-                withdrawingRequest = request;
-                dialogError = '';
-              }}>Withdraw</Button
-            >
           {/if}
         </article>
       {/each}
@@ -1073,21 +745,6 @@ the same page without the controls, rather than controls that refuse.
     if (!dialogBusy) archivingProfile = null;
   }}
   onConfirm={() => void archiveProfile()}
->
-  {#if dialogError !== ''}<p class="form-error" role="alert">{dialogError}</p>{/if}
-</ConfirmDialog>
-<ConfirmDialog
-  id="withdraw-schedule-request"
-  open={withdrawingRequest !== null}
-  title="Withdraw schedule request"
-  description="Root will no longer be able to approve this request. The audit record remains."
-  busy={dialogBusy}
-  confirmLabel="Withdraw request"
-  confirmTone="stop"
-  onClose={() => {
-    if (!dialogBusy) withdrawingRequest = null;
-  }}
-  onConfirm={() => void withdrawRequest()}
 >
   {#if dialogError !== ''}<p class="form-error" role="alert">{dialogError}</p>{/if}
 </ConfirmDialog>
@@ -1405,43 +1062,14 @@ the same page without the controls, rather than controls that refuse.
     color: var(--text-primary);
     font-size: var(--font-size-meta);
   }
-  .request-form {
-    background: var(--surface-base);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 13%, var(--border-subtle));
-    border-radius: var(--radius-surface);
-    box-shadow: var(--shadow-plate);
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    padding: var(--space-5);
-  }
-  .request-form .section-heading,
-  .reason-field,
-  .custom-window,
-  .request-exceptions,
-  .request-helper {
-    grid-column: 1 / -1;
-  }
-  .request-form label,
-  .decision-reason {
-    display: grid;
-    gap: var(--space-1);
-  }
-  .request-form label > span,
   .decision-reason {
     color: var(--text-muted);
+    display: grid;
     font-size: var(--font-size-micro);
     font-weight: 700;
+    gap: var(--space-1);
     letter-spacing: 0.05em;
     text-transform: uppercase;
-  }
-  .custom-window {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    overflow: hidden;
-  }
-  .request-helper {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: calc(var(--space-2) * -1) 0 0;
   }
   .promote-profile {
     align-items: center;
@@ -1461,11 +1089,6 @@ the same page without the controls, rather than controls that refuse.
     line-height: var(--leading-body);
     resize: vertical;
   }
-  .request-action {
-    display: flex;
-    grid-column: 1 / -1;
-    justify-content: flex-end;
-  }
   .form-error {
     color: var(--danger);
   }
@@ -1473,17 +1096,13 @@ the same page without the controls, rather than controls that refuse.
     .schedule-summary {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .request-form {
-      grid-template-columns: 1fr 1fr;
-    }
     .request-row {
       align-items: flex-start;
       flex-direction: column;
     }
   }
   @media (max-width: 34rem) {
-    .schedule-summary,
-    .request-form {
+    .schedule-summary {
       grid-template-columns: 1fr;
     }
     .schedule-summary article {

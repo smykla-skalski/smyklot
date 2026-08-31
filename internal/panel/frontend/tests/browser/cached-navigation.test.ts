@@ -60,13 +60,23 @@ async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
   return asked;
 }
 
-async function queueScheduleCallsOnReturn(page: Page, queueURL: string): Promise<string[]> {
+/**
+ * Queue, away to a neighbour, and back - watching what the return costs.
+ *
+ * The neighbour differs by console: Root walks to its Schedules page, and a workspace
+ * has none any more, so it walks to the settings page that took the Timing row over.
+ */
+async function queueCallsOnReturn(
+  page: Page,
+  queueURL: string,
+  away: { link: string; ready: string },
+): Promise<string[]> {
   await visit(page, queueURL, { ready: '.general-queue .object-row' });
   await settle(
     page,
-    () => page.getByRole('link', { name: 'Schedules', exact: true }).first().click(),
+    () => page.getByRole('link', { name: away.link, exact: true }).first().click(),
     {
-      ready: '.schedule-summary',
+      ready: away.ready,
     },
   );
 
@@ -86,8 +96,8 @@ async function queueScheduleCallsOnReturn(page: Page, queueURL: string): Promise
     );
     await settle(
       page,
-      () => page.getByRole('link', { name: 'Schedules', exact: true }).first().click(),
-      { ready: '.schedule-summary' },
+      () => page.getByRole('link', { name: away.link, exact: true }).first().click(),
+      { ready: away.ready },
     );
     await page.waitForTimeout(1_000);
   } finally {
@@ -126,10 +136,14 @@ beforeAll(async () => {
       });
     });
     live = await apiCallsOnReturn(page, panel);
-    rootQueueSchedules = await queueScheduleCallsOnReturn(page, `${panel.origin}/root/queue`);
-    targetQueueSchedules = await queueScheduleCallsOnReturn(
+    rootQueueSchedules = await queueCallsOnReturn(page, `${panel.origin}/root/queue`, {
+      link: 'Schedules',
+      ready: '.schedule-summary',
+    });
+    targetQueueSchedules = await queueCallsOnReturn(
       page,
       `${panel.origin}/i/${panel.account}/queue`,
+      { link: 'Workspace settings', ready: '#ws-newrepos' },
     );
     sockets = await page.evaluate(
       () => (window as unknown as { __panelSockets: number }).__panelSockets,
@@ -162,7 +176,7 @@ describe('coming back to a view already read [Integration]', () => {
     ).toEqual([]);
   });
 
-  it('keeps installation Queue and Schedules in the live cache', () => {
+  it('keeps installation Queue and its settings page in the live cache', () => {
     expect(
       targetQueueSchedules,
       `installation navigation asked for:\n${targetQueueSchedules.join('\n')}`,

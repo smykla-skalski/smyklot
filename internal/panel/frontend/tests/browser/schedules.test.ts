@@ -54,14 +54,8 @@ describe('background work schedules [Integration]', () => {
     };
     try {
       await page.route('**/api/v1/root/job-policies', emptyOverrides);
-      await page.route('**/api/v1/targets/*/schedules', emptyOverrides);
 
       await visit(page, addressOf(panel, 'root/schedules'), {
-        ready: '.schedules-view .policy-table-wrap tbody tr',
-      });
-      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
-
-      await visit(page, addressOf(panel, 'i/schedules'), {
         ready: '.schedules-view .policy-table-wrap tbody tr',
       });
       await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
@@ -101,45 +95,34 @@ describe('background work schedules [Integration]', () => {
     }
   });
 
-  it('shows installation owners their effective schedule and request controls', async () => {
-    const page = await panel.browser.newPage();
+  /**
+   * A workspace has no Schedules page any more: timing is the service's to set, so what a
+   * workspace gets is one row on its settings page saying when Smyklot acts and the way to
+   * ask for that to change. This walks the row, opens the ask and sends it.
+   */
+  it('gives a workspace when Smyklot acts, and the way to ask for a change', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      await visit(page, addressOf(panel, 'i/schedules'), {
-        ready: '.schedules-view .policy-table-wrap tbody tr',
-      });
+      await visit(page, addressOf(panel, 'i/defaults'), { ready: '#ws-timing' });
 
-      await page.getByRole('heading', { name: 'Schedules', level: 1 }).waitFor();
-      await expect
-        .poll(() =>
-          page.locator('.schedules-view .policy-table-wrap').first().locator('tbody tr').count(),
-        )
-        .toBe(6);
-      await page
-        .locator('.policy-source', { hasText: 'Global policy · revision' })
-        .first()
-        .waitFor();
-      await page
-        .locator('.policy-source', { hasText: 'Installation override · revision' })
-        .waitFor();
-      await page.getByRole('heading', { name: 'Request a recurring change' }).waitFor();
-      await page.getByRole('button', { name: 'Send request' }).waitFor();
-      await page.getByText('Europe business hours').first().waitFor();
-      await page.getByRole('button', { name: 'Withdraw' }).waitFor();
+      const timing = page.locator('#ws-timing');
+      await timing.locator('summary').click();
+      await timing.getByText('When Smyklot acts', { exact: true }).waitFor();
+      // Read from the windows, not from a name: the fixture's policies name two profiles.
+      await timing.locator('.setting-fact').waitFor();
 
-      const form = page.locator('.request-form');
-      await form.getByLabel('Workload').selectOption('pending_ci');
-      await expect.poll(() => form.getByLabel('Cadence seconds').inputValue()).toBe('30');
-      await expect.poll(() => form.getByLabel('Priority').inputValue()).toBe('normal');
-      await expect.poll(() => form.getByLabel('Window profile').inputValue()).toBe('always-open');
+      const dialog = page.locator('#workspace-timing-request');
+      await timing.getByRole('button', { name: 'Request a change' }).click();
+      await dialog.waitFor({ state: 'visible' });
 
-      const cadence = form.getByLabel('Cadence seconds');
-      const sendRequest = form.getByRole('button', { name: 'Send request' });
-      await form.getByLabel('Reason').fill('Keep checks inside the release window');
-      await cadence.fill('');
-      await expect.poll(() => cadence.inputValue()).toBe('');
-      await expect.poll(() => sendRequest.isDisabled()).toBe(true);
-      await cadence.fill('30');
-      await expect.poll(() => sendRequest.isEnabled()).toBe(true);
+      const send = dialog.getByRole('button', { name: 'Send request' });
+      await expect.poll(() => send.isDisabled()).toBe(true);
+      await dialog.getByLabel('Reason').fill('Keep the sync inside the release window');
+      await expect.poll(() => send.isEnabled()).toBe(true);
+
+      await send.click();
+      await timing.getByText('A change to', { exact: false }).first().waitFor();
+      await page.getByText('Sent to the operators for a decision').waitFor();
     } finally {
       await page.close();
     }

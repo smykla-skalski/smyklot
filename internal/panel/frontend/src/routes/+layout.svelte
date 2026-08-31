@@ -608,13 +608,6 @@
         href: session.queueSectionHref('active'),
         active: !session.isInbox && session.currentView === 'queue',
       },
-      {
-        id: 'schedules',
-        label: 'Schedules',
-        icon: 'calendar',
-        href: session.viewHref('schedules'),
-        active: !session.isInbox && session.currentView === 'schedules',
-      },
       { kind: 'group', id: 'group-sync', label: 'Sync' },
       ...SYNC_SECTIONS.map((section): SidebarRow => {
         const words = {

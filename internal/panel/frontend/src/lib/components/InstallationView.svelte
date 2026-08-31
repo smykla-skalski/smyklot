@@ -71,16 +71,22 @@ history is routed with its section. That is what makes an address like
   {#if view === 'defaults'}
     <div id="defaults-panel">
       {#await import('./TargetSettings.svelte')}
-        {@render loadingView('workspace defaults')}
+        {@render loadingView('workspace settings')}
       {:then { default: TargetSettings }}
         {#key session.selectedTarget.id}
           <TargetSettings
             target={session.selectedTarget}
             readOnly={!session.selectedTarget.capabilities.write}
+            timing={{
+              api: session.api,
+              canRequest:
+                session.selectedTarget.effective_role === 'admin' ||
+                session.selectedTarget.effective_role === 'owner',
+            }}
           />
         {/key}
       {:catch error}
-        {@render failedView('workspace defaults', error)}
+        {@render failedView('workspace settings', error)}
       {/await}
     </div>
   {:else if view === 'repositories'}
@@ -166,24 +172,6 @@ history is routed with its section. That is what makes an address like
         {@render failedView('queue', error)}
       {/await}
     </div>
-  {:else if view === 'schedules'}
-    <div id="schedules-panel">
-      {#await import('./SchedulesView.svelte')}
-        {@render loadingView('schedules')}
-      {:then { default: SchedulesView }}
-        {#key session.selectedTarget.id}
-          <SchedulesView
-            api={session.api}
-            targetId={session.selectedTarget.id}
-            actorAccountId={session.viewer?.account.id ?? ''}
-            canRequest={session.selectedTarget.effective_role === 'admin' ||
-              session.selectedTarget.effective_role === 'owner'}
-          />
-        {/key}
-      {:catch error}
-        {@render failedView('schedules', error)}
-      {/await}
-    </div>
   {:else if view === 'users' || view === 'invitations'}
     <div id="access-panel">
       {#await import('./UserManagement.svelte')}
@@ -263,7 +251,6 @@ history is routed with its section. That is what makes an address like
 <style>
   #repositories-panel,
   #queue-panel,
-  #schedules-panel,
   #access-panel,
   #history-panel {
     display: flex;

@@ -9,25 +9,24 @@ import {
 
 export type { RouteDialog };
 
+/**
+ * A workspace has no Schedules page. Timing is the service's to set, so what a workspace
+ * has is one row on its settings page saying when Smyklot acts and the way to ask for
+ * that to change; the tables of policies and profiles are the operators' own and stay on
+ * the console. It was a page that answered a question a workspace never asks.
+ */
 export const PANEL_VIEWS = [
   'defaults',
   'repositories',
   'sync',
   'queue',
-  'schedules',
   'users',
   'invitations',
   'history',
 ] as const;
 
 /** Views written directly after an installation account in the route tree. */
-export const DIRECT_PANEL_VIEWS = [
-  'defaults',
-  'repositories',
-  'sync',
-  'schedules',
-  'history',
-] as const;
+export const DIRECT_PANEL_VIEWS = ['defaults', 'repositories', 'sync', 'history'] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.

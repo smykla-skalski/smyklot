@@ -19,6 +19,7 @@
     targetDefaultsResource,
     type TargetDefaultsControlId,
   } from '../target-defaults-settings';
+  import type { PanelApi } from '../api';
   import type { ConfigKey, ConfigPatch, PanelTarget, PendingCIMode } from '../types';
   import Button from './Button.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
@@ -31,6 +32,7 @@
   import PageToc, { type TocEntry } from './PageToc.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import WorkspaceTiming from './WorkspaceTiming.svelte';
 
   const PENDING_CI_CHOICES = [
     { value: 'checks', label: 'Checks' },
@@ -57,9 +59,16 @@
   const {
     target: canonicalTarget,
     readOnly = false,
+    timing,
   }: {
     target: PanelTarget;
     readOnly?: boolean;
+    /**
+     * What the Timing card needs to say when Smyklot acts and to carry a request to the
+     * operators. Absent where the page is rendered outside the shell - a story, a
+     * component spec - and the card then holds the settings this page owns and no more.
+     */
+    timing?: { api: PanelApi; canRequest: boolean };
   } = $props();
 
   const drafts = getSettingsDraftRegistry();
@@ -322,8 +331,15 @@ settings from them answers a different question than the one they asked.
           <summary>
             <Icon name="chevron-right" size="xs" />
             <h2 class="card-title">Timing</h2>
-            <span class="fold-scent">How often Smyklot reads a repository - rarely changed</span>
+            <span class="fold-scent">When Smyklot acts, and how often - rarely changed</span>
           </summary>
+          {#if timing !== undefined}
+            <WorkspaceTiming
+              api={timing.api}
+              targetId={canonicalTarget.id}
+              canRequest={timing.canRequest}
+            />
+          {/if}
           <div class="policy-rows">
             <div
               class={[
