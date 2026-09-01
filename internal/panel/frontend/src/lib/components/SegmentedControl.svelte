@@ -152,16 +152,23 @@
          for every re-measurement: a resize, a popover opening, a label changing width.
          Animating those would put a squeeze on the page where nothing travelled. */
       const moved = node.style.getPropertyValue('--segment-left') !== `${left}px`;
+      const width = `${optionBox.width / scale}px`;
+      const resized = node.style.getPropertyValue('--segment-width') !== width;
       /* A CONTROL THAT RE-MEASURES ITSELF HAS NOT MOVED, so it is placed again rather
          than animated to. The thumb is where it was and the option under it has changed
          width - a count arriving in a label, a webfont landing, a pane taking its own
          width - and easing to the new number draws a thumb growing under a reader who
          did nothing. On the queue page the counts arrive about a second in, and the
          thumb grew 18px on every load. Taking `selection-ready` off is the mechanism
-         that is already here for a first placement, and this is one. */
-      if (!moved) node.classList.remove('selection-ready');
+         that is already here for a first placement, and this is one.
+
+         BOTH TERMS, because a re-measure that finds NOTHING changed must not touch the
+         class at all: this runs on every observer tick, one of which lands while a
+         travel is still in flight, and dropping `selection-ready` there cancels the
+         transition mid-way and the thumb arrives in a jump. */
+      if (!moved && resized) node.classList.remove('selection-ready');
       node.style.setProperty('--segment-left', `${left}px`);
-      node.style.setProperty('--segment-width', `${optionBox.width / scale}px`);
+      node.style.setProperty('--segment-width', width);
 
       /* Landing in place rather than sliding into it, which is a real difference and not a
          precaution: the two writes above and the class below otherwise resolve in one style

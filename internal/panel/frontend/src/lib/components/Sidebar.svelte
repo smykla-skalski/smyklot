@@ -445,7 +445,7 @@ it has to answer to the same fact.
           aria-current={entry.active ? 'page' : undefined}
           onclick={(event) => rowFromClick(event, entry)}
         >
-          <span class="gi"><Icon name={entry.icon} size="xs" /></span>
+          <span class="gi"><Icon name={entry.icon} size="base" /></span>
           <span class="t">{entry.label}</span>
           {#if entry.count !== undefined}
             <span class="tab-count" class:is-signal={entry.signal === true}>
@@ -473,7 +473,7 @@ it has to answer to the same fact.
         aria-current={chrome.inboxActive ? 'page' : undefined}
         onclick={inboxFromClick}
       >
-        <span class="gi"><Icon name="notifications" size="xs" /></span>
+        <span class="gi"><Icon name="notifications" size="base" /></span>
         <span class="t">Inbox</span>
         {#if chrome.unreadCount > 0}
           <span class="rail-badge" aria-hidden="true"><span class="t">{unreadLabel}</span></span>
@@ -527,6 +527,16 @@ it has to answer to the same fact.
 
 <style>
   .side {
+    /* THE TREE'S GUTTER, and there is only one of it.
+       ------------------------------------------------------------------------
+       A row's glyph and a section heading's first letter stand in the same column, and
+       they do so because the row's inline padding and the heading's inline margin are
+       THE SAME NUMBER rather than two numbers that happen to agree. Written separately
+       they drifted - 8px on the row and 12px on the heading - so every heading in the
+       sidebar sat four pixels to the right of the icons it named. The search field takes
+       it too: it is the tree's first row in everything but name. */
+    --tree-gutter: var(--space-3);
+
     align-self: start;
     background: var(--sidebar-bg);
     border-inline-end: 1px solid var(--sidebar-border);
@@ -559,7 +569,15 @@ it has to answer to the same fact.
      The scrollport claims the column's full width and both flex gaps - the
      negative margins reach the sidebar's edges and the padding puts the same
      insets back INSIDE the scroller. So the scrollbar lives in the right inset
-     instead of over the rows, and the scroll shadow ends on the edge below. */
+     instead of over the rows, and the scroll shadow ends on the edge below.
+
+     AND THE TOP PADDING PAYS THE COLUMN'S GAP BACK. Reaching the sidebar's top edge
+     means eating the 16px the column puts between the search field and the tree, and
+     nothing else was replacing it: the first row began 16px under the search, which is
+     the gap between two rows plus a hair. Doubled here it is the column's gap and the
+     scroller's own inset, which is the distance the search was always meant to have -
+     and the scrollport still starts where it did, so the shadow and the scrollbar are
+     untouched. */
   .side > .tree {
     align-content: start;
     flex: 1 1 auto;
@@ -567,7 +585,7 @@ it has to answer to the same fact.
     margin-inline: -12px;
     min-block-size: 0;
     overflow: hidden auto;
-    padding-block: var(--space-4);
+    padding-block: calc(var(--space-4) * 2) var(--space-4);
     padding-inline: 12px;
     scroll-timeline: --side-tree block;
     scrollbar-width: thin;
@@ -671,10 +689,12 @@ it has to answer to the same fact.
     font: inherit;
     font-size: var(--font-size-meta);
     font-weight: 500;
-    /* The tree's own columns: box on the rows' 12, glyph ink on their 22, label on
-       their 44. */
+    /* The tree's own columns, through the tree's own gutter - less this field's own
+       rule, which the rows do not have. Border-box counts a border inside the box and
+       not inside the padding, so the same gutter put this glyph one pixel right of every
+       glyph below it. */
     gap: var(--space-2);
-    padding: 0 var(--space-2);
+    padding: 0 calc(var(--tree-gutter) - 1px);
     position: relative;
   }
 
@@ -900,7 +920,7 @@ it has to answer to the same fact.
     font-size: var(--font-size-meta);
     font-weight: 500;
     gap: var(--space-2);
-    padding: 0 var(--space-2);
+    padding: 0 var(--tree-gutter);
     /* Positioned so the ink paints above the thumb sliding underneath. */
     position: relative;
     text-decoration: none;
@@ -918,7 +938,12 @@ it has to answer to the same fact.
 
   /* The glyph sits in a gutter rather than hugging its word: a column of icons
      down the tree stays a column, which is what the app's ink-bearing pull
-     would break if the symbol were the row's own first child. */
+     would break if the symbol were the row's own first child.
+
+     ONE TIER FOR THE WHOLE TREE, and it is the one the search field already wore. The
+     rows were a tier and a half below it - 12px glyphs against the search's 16 - so the
+     column a reader scans down changed weight at its own first row, and a 12px mark in a
+     34px row read as a row with a gap in it rather than a row with a symbol. */
   .gi {
     align-items: center;
     display: inline-flex;
@@ -962,14 +987,19 @@ it has to answer to the same fact.
     box-shadow: none;
   }
 
-  /* Section headers in the sidebar - ksai's tree-group, verbatim scale. */
+  /* Section headers in the sidebar - ksai's tree-group, verbatim scale.
+
+     The inline margin is the tree's gutter, so the word starts on the left edge of the
+     glyphs below it. The block pair is unequal on purpose and in one direction: a
+     heading belongs to what FOLLOWS it, so the air above it is the boundary between two
+     groups and the air below it is one step of the tree's own rhythm. */
   .tree-group {
     color: var(--sidebar-text-muted);
     font-size: 0.625rem;
     font-weight: 650;
     letter-spacing: 0.09em;
     line-height: var(--leading-tight);
-    margin: var(--space-5) var(--space-3) var(--space-1);
+    margin: var(--space-5) var(--tree-gutter) var(--space-2);
     text-transform: uppercase;
   }
 
