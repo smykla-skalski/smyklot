@@ -14,6 +14,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
 
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { useInterval } from 'runed';
 
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import { queueLine } from '#lib/queue-words.js';
@@ -41,10 +42,11 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
 
   const session = getPanelSession();
 
-  /* One clock for the page, floored to the minute: every row reads a relative
-     time against it, and a value that moves on its own would make three cards
-     re-render at three different instants. */
-  const nowMs = Math.floor(Date.now() / 60_000) * 60_000;
+  /* ONE clock for the page, and it moves - see `WorkspaceOverview` for what a stopped
+     one costs. Every row reads its relative time against this, so the cards agree on the
+     instant, and the queue's own countdown arrives instead of standing still. */
+  let nowMs = $state(Date.now());
+  useInterval(1_000, { callback: () => (nowMs = Date.now()) });
 
   const overviewQuery = createQuery(() => ({
     queryKey: ['root-overview'],
