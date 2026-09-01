@@ -507,12 +507,15 @@ the button.
 
   /* ---------- The hero, in the overview's own register ---------- */
 
+  /* No margin above: the frame's gap is what stands this off the head, and the 8px
+     here was added to it - the one page whose head exited at 32 where every other
+     exits at 24. */
   .hero {
     align-items: end;
     display: grid;
     gap: var(--space-4);
     grid-template-columns: 1fr auto;
-    margin-block: var(--space-2) var(--space-4);
+    margin-block-end: var(--space-4);
   }
 
   .hero h2 {

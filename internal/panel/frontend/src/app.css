@@ -2388,6 +2388,15 @@ thead th .icon-button:active:not(:disabled) {
 .view-frame {
   display: grid;
   gap: var(--rhythm-card-gap);
+  /* AND IT SAYS SO, for the one child that has to know. A page head's exit is a
+     distance to the thing under it, and where the container already gives part of
+     it the head owes only the rest - so the head subtracts whatever this says and
+     a container that spaces nothing says nothing. Declared by the container rather
+     than listed in the head, because the head cannot ask what its parent does and a
+     list of parent class names is a list that goes stale: Service settings and
+     Workspace settings both space their children and neither is `.view-frame`, so
+     a rule written against that one name stood their heads 40px off the page. */
+  --head-exit-gap: var(--rhythm-card-gap);
 }
 
 /* A GRID ITEM'S AUTOMATIC MINIMUM IS ITS CONTENT, and a card holding something that

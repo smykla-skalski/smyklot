@@ -813,6 +813,9 @@ without the composer.
   .root-settings {
     display: grid;
     gap: var(--space-4);
+    /* This stack spaces its children, so the head it holds owes only the rest of
+       its exit - see `--head-exit-gap` in `app.css`. */
+    --head-exit-gap: var(--space-4);
   }
 
   .group-head {

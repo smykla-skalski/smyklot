@@ -120,31 +120,27 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     /* The header's exit is a rhythm decision: 24px to the first surface below it,
-       and the pane's own top edge above. Declared WHOLE here and reduced below by
-       the frame's gap only where the frame is what it sits in - a head inside a
-       plate has no gap under it at all, and written as the difference outright it
-       closed 4px above the search bar on every page built that way. */
-    margin-block-end: var(--rhythm-head-surface-wide);
+       and the pane's own top edge above. Whatever the container already gives is
+       subtracted - `--head-exit-gap`, declared by a container that spaces its
+       children and absent on one that does not, so this is the whole distance in
+       a plate and the difference in a stack. Written as one term rather than as
+       two numbers, because two numbers for one distance is how this drifts. */
+    margin-block-end: calc(var(--rhythm-head-surface-wide) - var(--head-exit-gap, 0px));
     row-gap: var(--rhythm-head-actions-stacked);
   }
 
   /* A head that exits onto a TOOLBAR closes tighter than one exiting onto a surface.
      `app.css` says this too, and says it at the same specificity as the rule above -
      so on source order the component won and every page with a filter bar under its
-     head stood 4px too far off it. Said here, where the losing rule is. */
-  .page-head:has(+ :global(.filter-bar)) {
-    margin-block-end: var(--rhythm-head-toolbar);
-  }
+     head stood 4px too far off it. Said here, where the losing rule is.
 
-  /* WHERE THE FRAME IS THE PARENT its gap gives part of the distance and the head
-     owes the rest. Written as the difference rather than as a second number,
-     because two numbers for one distance is how this drifts. */
-  :global(.view-frame) > .page-head {
-    margin-block-end: calc(var(--rhythm-head-surface-wide) - var(--rhythm-card-gap));
-  }
-
-  :global(.view-frame) > .page-head:has(+ :global(.filter-bar)) {
-    margin-block-end: calc(var(--rhythm-head-toolbar) - var(--rhythm-card-gap));
+     All three toolbars, not just the filter bar: the sync pages draw `.matrix-tools`
+     and `.plan-tools`, which are the same thing under different names, and named
+     alone the filter bar left those two heads exiting as if onto a surface. */
+  .page-head:has(+ :global(.filter-bar)),
+  .page-head:has(+ :global(.matrix-tools)),
+  .page-head:has(+ :global(.plan-tools)) {
+    margin-block-end: calc(var(--rhythm-head-toolbar) - var(--head-exit-gap, 0px));
   }
 
   /* A head carrying a status band is three areas rather than two columns, and
@@ -295,17 +291,13 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
   @media (max-width: 47.9375rem) {
     .page-head {
       grid-template-columns: minmax(0, 1fr);
-      margin-block-end: var(--rhythm-head-surface-compact);
+      margin-block-end: calc(var(--rhythm-head-surface-compact) - var(--head-exit-gap, 0px));
     }
 
-    .page-head:has(+ :global(.filter-bar)) {
-      margin-block-end: var(--rhythm-head-toolbar);
-    }
-
-    /* And the same stand-down: the frame's gap carries part of it where the frame
-       is the parent, and nothing carries it where a plate is. */
-    :global(.view-frame) > .page-head {
-      margin-block-end: calc(var(--rhythm-head-surface-compact) - var(--rhythm-card-gap));
+    .page-head:has(+ :global(.filter-bar)),
+    .page-head:has(+ :global(.matrix-tools)),
+    .page-head:has(+ :global(.plan-tools)) {
+      margin-block-end: calc(var(--rhythm-head-toolbar) - var(--head-exit-gap, 0px));
     }
 
     /* One column: the complete action group stacks AFTER the state it acts on. */

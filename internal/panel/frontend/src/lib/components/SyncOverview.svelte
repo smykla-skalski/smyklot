@@ -96,6 +96,11 @@
     return others > 0 ? `${said}; the other ${others} answer commands only` : said;
   });
 
+  /* Carried WITH its separator rather than behind an `{#if}`. Svelte drops the
+     whitespace at a block's edges, so a leading " · " inside one arrives welded
+     to the word before it: "Checked 5 minutes ago· 28 of 28 repositories sync". */
+  const reachSuffix = $derived(reachWord === '' ? '' : ` · ${reachWord}`);
+
   const totalChanges = $derived(rows.reduce((total, row) => total + changesOf(row), 0));
   const changedRepos = $derived(rows.filter((row) => changesOf(row) > 0).length);
   const removals = $derived(rows.reduce((total, row) => total + (row.removals ?? 0), 0));
@@ -214,8 +219,7 @@ plan is applied, which is why these are switches and not a form.
           {legendCounts.off} switched off{:else}All {rows.length} are in step{/if}
       </h2>
       <span class="card-note"
-        >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong>{#if reachWord !== ''}
-          · {reachWord}{/if}</span
+        >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong>{reachSuffix}</span
       >
     </div>
     {#if rows.length === 0}

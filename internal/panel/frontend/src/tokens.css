@@ -378,6 +378,11 @@
   --space-8: 2rem;
   /* The rhythm contract, named: every top-of-page and row-family distance
      below is one of these decisions, so a view cannot invent its own. */
+  /* WHERE A PAGE STARTS, and it is the drawing's own 40. Nothing requires it -
+     no criterion in WCAG touches leading whitespace and the platform has no
+     opinion - so it is a typographic call, and it was made: 24 was tried and the
+     drawing's step kept. Recorded so the question is not reopened by the next
+     reader who notices it is the largest distance on the page. */
   --rhythm-pane-top-wide: 40px;
   --rhythm-pane-top-compact: 16px;
   /* The head's exit is decided by its DESTINATION: a primary surface takes
