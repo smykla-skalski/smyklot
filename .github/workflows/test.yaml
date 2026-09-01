@@ -308,13 +308,15 @@ jobs:
           # Nineteen routes at two widths, so half the suite's pages are here.
           - area: phone
             files: tests/browser/mobile-layout.test.ts
-          # Where the words sit, and whether any of them is cut off getting there.
+          # Which words the pages use, where those words sit, and whether any of
+          # them is cut off getting there.
           - area: type
             files: >-
               tests/browser/vertical-alignment.test.ts
               tests/browser/table-headers.test.ts
               tests/browser/text-clipping.test.ts
               tests/browser/control-heights.test.ts
+              tests/browser/dictionary.test.ts
           # Every cell of every table given a run longer than the service can
           # produce. Alone, at 74s: it found the same fault in five tables at
           # once, which is what a sweep is for and what it costs.
