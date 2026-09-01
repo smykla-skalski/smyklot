@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { QueueDetail, QueueItem } from '#lib/types.js';
+  import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
   import Modal from './Modal.svelte';
 
@@ -57,7 +58,7 @@ not.
   {open}
   variant="inspector"
   title={detail?.item.title ?? 'Queue item'}
-  description="Durable schedule, execution facts, and audited transitions"
+  description="When it runs, what it has done, and every change it has been through"
   {onClose}
 >
   {#if loading && detail === null}
@@ -67,8 +68,8 @@ not.
   {:else if detail !== null}
     <dl class="facts">
       <div>
-        <dt>Workload</dt>
-        <dd>{words(detail.item.kind)}</dd>
+        <dt>Job</dt>
+        <dd>{workloadTitle(detail.item.kind)}</dd>
       </div>
       <div>
         <dt>State</dt>
@@ -83,7 +84,7 @@ not.
         <dd>{words(detail.item.priority)}</dd>
       </div>
       <div>
-        <dt>Window</dt>
+        <dt>Hours</dt>
         <dd>
           {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
             ? ` · ${detail.item.profile_timezone}`
@@ -91,12 +92,12 @@ not.
         </dd>
       </div>
       <div>
-        <dt>Viewer-local eligibility</dt>
+        <dt>Ready, in your timezone</dt>
         <dd>{absolute(detail.item.eligible_at)}</dd>
       </div>
       {#if detail.item.profile_timezone}
         <div>
-          <dt>Window-local eligibility</dt>
+          <dt>Ready, in the job's timezone</dt>
           <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
         </div>
       {/if}
@@ -123,7 +124,7 @@ not.
     </dl>
 
     <section class="workload-detail" aria-labelledby="queue-workload-detail">
-      <h3 id="queue-workload-detail">Workload detail</h3>
+      <h3 id="queue-workload-detail">What this job is doing</h3>
       {#if detail.item.kind === 'webhook_delivery'}
         {#if detail.item.details}
           <p>
@@ -144,9 +145,13 @@ not.
           {detail.item.details?.delete ?? 0} delete
         </p>
       {:else if detail.item.kind === 'schedule_change'}
-        <p>Requested policy: {words(detail.item.details?.policy_kind ?? 'unknown')}</p>
+        <p>
+          The job asked about: {detail.item.details?.policy_kind === undefined
+            ? 'unknown'
+            : workloadTitle(detail.item.details.policy_kind)}
+        </p>
       {:else}
-        <p>{detail.item.summary ?? 'No workload-specific detail was recorded.'}</p>
+        <p>{detail.item.summary ?? 'Nothing further was recorded about this job.'}</p>
       {/if}
       {#if detail.item.blocked_reason}
         <p class="blocking"><strong>Blocked:</strong> {detail.item.blocked_reason}</p>

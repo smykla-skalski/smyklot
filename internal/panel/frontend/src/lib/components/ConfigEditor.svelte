@@ -26,7 +26,7 @@
   const SOURCE_BY_SCOPE = {
     target: "Smyklot's defaults",
     repository: 'workspace defaults',
-    runtime: 'the deployment configuration',
+    runtime: 'the deployment',
   } as const;
 
   const {

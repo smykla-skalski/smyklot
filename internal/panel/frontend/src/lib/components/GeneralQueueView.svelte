@@ -238,13 +238,13 @@
   );
   const queueFilters = $derived<ToolsFilter[]>([
     {
-      label: 'Workload',
+      label: 'Job',
       hint: 'Show one kind of background work',
       sections: [
         {
           options: [
-            { value: 'all', label: 'All workloads' },
-            /* The lane's own title, the one Schedules prints - underscores taken out
+            { value: 'all', label: 'All jobs' },
+            /* The job's own title, the one Schedules prints - underscores taken out
                of the wire name spelled "pending ci" and left it there. */
             ...workloads.map((kind) => ({ value: kind, label: workloadTitle(kind) })),
           ],

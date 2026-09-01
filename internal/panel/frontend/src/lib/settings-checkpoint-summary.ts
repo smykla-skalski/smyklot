@@ -22,7 +22,7 @@ export function settingsCheckpointItemLabel(item: SettingsCheckpointItem): strin
       : item.sync_kind[0]?.toLocaleUpperCase() + item.sync_kind.slice(1);
   switch (item.kind) {
     case 'target':
-      return 'Installation defaults';
+      return 'Workspace settings';
     case 'repository':
       return item.repository_full_name ?? 'Repository settings';
     case 'sync_config':

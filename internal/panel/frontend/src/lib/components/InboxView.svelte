@@ -122,15 +122,29 @@
     }
   }
 
+  /**
+   * The wire's word for a scope, said the way the reader's dictionary says it.
+   *
+   * A notification is raised for every audit action an operator's visit writes, and that
+   * set is open - so the words are translated rather than the actions listed. Four titles
+   * used to be spelled out here and everything else fell through to the wire, which is how
+   * the inbox came to announce "Installation settings saved" and would have announced
+   * "Elevation started" the moment either action reached it.
+   */
+  const SCOPE_WORDS: Record<string, string> = {
+    installation: 'workspace',
+    target: 'workspace',
+    elevation: 'operator visit',
+    runtime: 'service',
+  };
+
   function actionLabel(action: string): string {
-    if (action === 'installation.settings.saved') return 'Installation settings saved';
-    if (action === 'installation.settings.restored') return 'Installation settings restored';
-    if (action === 'runtime.settings.saved') return 'Service settings saved';
-    if (action === 'runtime.settings.restored') return 'Service settings restored';
-    return action
+    const said = action
       .split('.')
-      .map((part) => part[0]?.toLocaleUpperCase() + part.slice(1))
+      .map((part) => SCOPE_WORDS[part] ?? part.replaceAll('_', ' '))
       .join(' ');
+
+    return said.charAt(0).toLocaleUpperCase() + said.slice(1);
   }
 
   function mergePages(notificationPages: NotificationPage[]): SecurityNotification[] {

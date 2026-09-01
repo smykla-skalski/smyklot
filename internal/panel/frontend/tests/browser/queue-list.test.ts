@@ -125,7 +125,7 @@ describe('the general Queue list [Integration]', () => {
     }
   });
 
-  it('opens workload detail and the immutable transition timeline', async () => {
+  it('opens what a job is doing and the immutable transition timeline', async () => {
     const page = await panel.browser.newPage();
     try {
       await visit(page, addressOf(panel, 'root/queue'), { ready: READY });
@@ -134,9 +134,9 @@ describe('the general Queue list [Integration]', () => {
         .click();
       const dialog = page.getByRole('dialog', { name: 'Apply organization sync plan' });
       await dialog.waitFor({ state: 'visible' });
-      await dialog.getByRole('heading', { name: 'Workload detail' }).waitFor();
-      await dialog.getByText('Viewer-local eligibility').waitFor();
-      await dialog.getByText('Window-local eligibility').waitFor();
+      await dialog.getByRole('heading', { name: 'What this job is doing' }).waitFor();
+      await dialog.getByText('Ready, in your timezone').waitFor();
+      await dialog.getByText("Ready, in the job's timezone").waitFor();
       await dialog.getByText('3 create · 7 update · 2 delete').waitFor();
       await dialog.getByRole('heading', { name: 'Timeline' }).waitFor();
     } finally {

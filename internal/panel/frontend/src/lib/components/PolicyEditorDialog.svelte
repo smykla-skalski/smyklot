@@ -6,6 +6,7 @@
     QueuePriority,
     ScheduleProfile,
   } from '#lib/types.js';
+  import { workloadTitle } from '#lib/workloads.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
 
   const {
@@ -144,11 +145,11 @@ window that no longer exists by the time it opens.
 <ConfirmDialog
   id="policy-editor"
   open={policy !== null}
-  title="Configure workload"
-  description={policy?.kind.replaceAll('_', ' ')}
+  title="Configure job"
+  description={policy === null ? undefined : workloadTitle(policy.kind)}
   {busy}
   busyLabel="Saving…"
-  confirmLabel="Save policy"
+  confirmLabel="Save job"
   confirmTone="signal"
   confirmDisabled={invalid()}
   {onClose}
@@ -156,9 +157,9 @@ window that no longer exists by the time it opens.
 >
   <div class="policy-form">
     <label class="check-line"
-      ><input type="checkbox" bind:checked={enabled} /><span>Scheduling enabled</span></label
+      ><input type="checkbox" bind:checked={enabled} /><span>Run this job</span></label
     >
-    <label for="policy-cadence">Cadence in seconds</label>
+    <label for="policy-cadence">How often, in seconds</label>
     <input
       id="policy-cadence"
       type="number"
@@ -166,7 +167,7 @@ window that no longer exists by the time it opens.
       step="30"
       bind:value={cadence}
     />
-    <label for="policy-window">Execution window</label>
+    <label for="policy-window">Hours</label>
     <select id="policy-window" bind:value={profileId}>
       {#each profiles as profile (profile.id)}
         <option value={profile.id}>{profile.name} · {profile.timezone}</option>
@@ -179,43 +180,43 @@ window that no longer exists by the time it opens.
       <option value="high">High</option>
       <option value="urgent">Urgent</option>
     </select>
-    <label for="policy-retry">Retry delay in seconds</label>
+    <label for="policy-retry">Wait before retrying, in seconds</label>
     <input id="policy-retry" type="number" min="0" step="5" bind:value={retryDelay} />
     <label class="check-line"
       ><input type="checkbox" bind:checked={retentionEnabled} /><span
-        >Retain terminal records for a fixed period</span
+        >Delete finished records after a while</span
       ></label
     >
     {#if retentionEnabled}
-      <label for="policy-retention">Retention in seconds</label>
+      <label for="policy-retention">Keep finished records for, in seconds</label>
       <input id="policy-retention" type="number" min="0" step="3600" bind:value={retention} />
     {/if}
     {#if policy?.kind === 'sync_scan'}
       <fieldset>
         <legend>Sync plan safety</legend>
-        <label for="policy-approval">Approval lifetime in seconds</label>
+        <label for="policy-approval">An approval expires after, in seconds</label>
         <input id="policy-approval" type="number" min="1" step="60" bind:value={approvalLifetime} />
       </fieldset>
     {:else if policy?.kind === 'pending_ci'}
       <fieldset class="job-fields">
         <legend>Pending CI timing</legend>
-        <label for="policy-active-check">Active check interval</label>
+        <label for="policy-active-check">Look again every, in seconds</label>
         <input id="policy-active-check" type="number" min="1" bind:value={activeCheck} />
-        <label for="policy-no-check">No-check grace period</label>
+        <label for="policy-no-check">Wait for checks to appear, in seconds</label>
         <input id="policy-no-check" type="number" min="1" bind:value={noCheckGrace} />
-        <label for="policy-defer-after">Defer after</label>
+        <label for="policy-defer-after">Slow down after no progress for, in seconds</label>
         <input id="policy-defer-after" type="number" min="1" bind:value={deferAfter} />
-        <label for="policy-deferred-check">Deferred check interval</label>
+        <label for="policy-deferred-check">Then look every, in seconds</label>
         <input id="policy-deferred-check" type="number" min="1" bind:value={deferredCheck} />
-        <label for="policy-quiet">Passing quiet period</label>
+        <label for="policy-quiet">Quiet period after checks pass, in seconds</label>
         <input id="policy-quiet" type="number" min="0" bind:value={passingQuiet} />
       </fieldset>
     {:else if policy?.kind === 'webhook_delivery'}
       <fieldset class="job-fields">
         <legend>Webhook retry budget</legend>
-        <label for="policy-webhook-max-delay">Maximum retry delay</label>
+        <label for="policy-webhook-max-delay">Longest wait between attempts, in seconds</label>
         <input id="policy-webhook-max-delay" type="number" min="1" bind:value={webhookMaxDelay} />
-        <label for="policy-webhook-attempts">Maximum attempts</label>
+        <label for="policy-webhook-attempts">Attempts before giving up</label>
         <input
           id="policy-webhook-attempts"
           type="number"

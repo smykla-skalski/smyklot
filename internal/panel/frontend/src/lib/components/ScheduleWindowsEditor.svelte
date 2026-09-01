@@ -46,8 +46,8 @@ equivalent to is a change they did not make.
 
 <div class="windows-editor">
   <div class="windows-heading">
-    <span>Weekly open windows</span>
-    <Button row onclick={() => onChange([...windows, newWindow()])}>Add window</Button>
+    <span>Open hours, week by week</span>
+    <Button row onclick={() => onChange([...windows, newWindow()])}>Add a day</Button>
   </div>
   {#each windows as window, index (window.id)}
     <div class="window-row">

@@ -150,7 +150,10 @@ to ask it four different ways.
 >
   <div class="queue-action-form">
     {#if action === 'run_now'}
-      <p>This bypasses the cadence and the job's hours once. Running work is never interrupted.</p>
+      <p>
+        Smyklot runs this once now, ignoring how often the job runs and the hours it keeps. Work
+        already running is never interrupted.
+      </p>
     {:else if action === 'next_window'}
       <p>The delay is cleared, but the job's hours still apply.</p>
     {:else if action === 'schedule_at'}
@@ -165,7 +168,7 @@ to ask it four different ways.
             previewKey = '';
           }}
         />
-        <span>Allow this run outside the assigned window</span>
+        <span>Allow this run outside the job's hours</span>
       </label>
       <Button row disabled={at === '' || previewBusy} onclick={() => void refreshPreview()}
         >{previewBusy ? 'Calculating…' : 'Preview when it runs'}</Button
@@ -180,7 +183,7 @@ to ask it four different ways.
               {previewTime(preview.eligible_at, preview.profile_timezone)}</span
             >
           {:else}
-            <span>One-time outside-window bypass</span>
+            <span>This once, outside the job's hours</span>
           {/if}
         </div>
       {:else if previewError !== ''}

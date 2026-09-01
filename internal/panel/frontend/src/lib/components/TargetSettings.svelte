@@ -565,8 +565,8 @@ settings from them answers a different question than the one they asked.
                 >Quiet period after checks pass</label
               >
               <span class="setting-why"
-                >Checks must pass and stay green this long before Smyklot merges. Zero still
-                requires two matching passing observations</span
+                >Checks must pass and stay green this long before Smyklot merges. At zero seconds
+                Smyklot merges as soon as a second look agrees</span
               >
             </span>
             <!-- THE UNIT LIVES BESIDE THE NUMBER, never buried in the sentence: a reader

@@ -166,7 +166,7 @@ func parseQueueKinds(values url.Values, filter *workqueue.Filter) error {
 	for _, raw := range splitQueueValues(values["workload"]) {
 		kind := workqueue.Kind(raw)
 		if !kind.Valid() {
-			return errors.New("queue workload is invalid")
+			return errors.New("queue job is invalid")
 		}
 		filter.Kinds = append(filter.Kinds, kind)
 	}

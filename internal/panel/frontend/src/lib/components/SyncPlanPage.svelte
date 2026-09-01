@@ -281,7 +281,7 @@ the button.
             </dd>
           </div>
           <div>
-            <dt>Window</dt>
+            <dt>Hours</dt>
             <dd>
               {queued.profile_name ?? queued.profile_id ?? 'One-time bypass'}
               <small>{profileTime(queued.eligible_at, queued.profile_timezone)}</small>

@@ -276,7 +276,7 @@ answered a question a workspace never asks and hid the one it does.
 >
   <div class="request-form">
     <label>
-      <span>Workload</span>
+      <span>Job</span>
       <Select
         value={kind}
         onchange={(event) =>
@@ -289,18 +289,18 @@ answered a question a workspace never asks and hid the one it does.
     </label>
 
     <label>
-      <span>Window source</span>
+      <span>Hours</span>
       <Select bind:value={windowMode}>
-        <option value="existing">Named window</option>
+        <option value="existing">A named set of hours</option>
         <option value="custom">Hours of your own</option>
       </Select>
     </label>
 
     {#if windowMode === 'existing'}
       <label>
-        <span>Window</span>
+        <span>Which hours</span>
         <Select
-          aria-label="Window profile"
+          aria-label="Which hours"
           value={profileShown}
           onchange={(event) => (chosenProfile = (event.currentTarget as HTMLSelectElement).value)}
         >

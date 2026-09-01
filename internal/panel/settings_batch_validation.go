@@ -347,7 +347,7 @@ func (s *Server) installationBatchRepositories(
 		if errors.Is(err, storage.ErrNotFound) || (err == nil && !repository.Available) {
 			return nil, &installationSettingsBatchInputError{
 				status: http.StatusNotFound, code: "not_found",
-				message: "a requested repository is unavailable for this installation",
+				message: "a requested repository is unavailable in this workspace",
 			}
 		}
 		if err != nil {

@@ -317,7 +317,7 @@ func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileC
 	var config orgsync.FileConfig
 	if err := json.Unmarshal(stored.Document, &config); err != nil {
 		return orgsync.FileConfig{}, fmt.Errorf(
-			"%w: the files this installation synchronizes are stored in a form this "+
+			"%w: the files this workspace syncs are stored in a form this "+
 				"version cannot read, so an adjustment cannot be checked against them",
 			orgsync.ErrInvalidConfig)
 	}
