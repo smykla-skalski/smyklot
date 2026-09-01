@@ -244,4 +244,61 @@ describe('The dictionary [Browser]', () => {
     );
     expect(opened.flatMap((one) => one.hits).map(say)).toEqual([]);
   }, 240_000);
+
+  /**
+   * One relative time per row, and the whole instant always within reach.
+   *
+   * The other half of the same contract: a row says how long ago once, and the exact
+   * stamp with its timezone is somewhere a reader can get to. The panel spells the
+   * second half as a press rather than as the `title` the language view names -
+   * `RelativeTime` says why, and the reasons are a phone and a keyboard - so what is
+   * measured is reachability, which either spelling satisfies.
+   *
+   * Two relative times in one row is the failure the rule exists for: a row carrying
+   * both when a thing happened and when it will next happen makes the reader work out
+   * which of the two "in 4 minutes" belongs to.
+   */
+  it('shows one relative time per row, and the whole instant is reachable', async () => {
+    const found = (
+      await inLanes(PANEL_ROUTES, async (route): Promise<string[]> => {
+        const page = await panel.browser.newPage({ viewport: { width: 1440, height: 960 } });
+        try {
+          await visit(page, addressOf(panel, route));
+          await openFolds(page);
+
+          return (
+            await page.evaluate(() => {
+              const said: string[] = [];
+              const ROWS =
+                '.object-row, .repo-row, .policy-row, .label-row, .data-row, .attn-row, tbody tr';
+
+              for (const row of document.querySelectorAll<HTMLElement>(ROWS)) {
+                const times = [...row.querySelectorAll('time')].filter((one) =>
+                  one.checkVisibility(),
+                );
+                const words = (row.textContent ?? '').replaceAll(/\s+/gu, ' ').trim().slice(0, 70);
+                /* A row inside a row is one row: the outer holds the inner's times too. */
+                if (row.querySelector(ROWS) === null && times.length > 1) {
+                  said.push(`${times.length} relative times in one row: "${words}"`);
+                }
+                for (const time of times) {
+                  const reachable =
+                    time.hasAttribute('data-exact') ||
+                    time.getAttribute('title') !== null ||
+                    time.closest('[title]') !== null;
+                  if (!reachable) said.push(`no exact instant behind "${time.textContent}"`);
+                }
+              }
+
+              return said;
+            })
+          ).map((one) => `${route} ${one}`);
+        } finally {
+          await page.close();
+        }
+      })
+    ).flat();
+
+    expect([...new Set(found)]).toEqual([]);
+  }, 240_000);
 });
