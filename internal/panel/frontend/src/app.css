@@ -628,13 +628,13 @@ body {
   }
 
   /* The empty row is one message, not a labelled field. */
-  .data-table.stacked .state-row td {
+  .data-table.stacked .row-notice td {
     display: flex;
     height: 12rem;
     justify-content: center;
   }
 
-  .data-table.stacked .state-row td::before {
+  .data-table.stacked .row-notice td::before {
     content: none;
   }
 }
@@ -1080,60 +1080,13 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   outline-offset: var(--focus-ring-inset);
 }
 
-/* What a table body says when it has no rows to show: nothing matched, nothing
-   has happened yet, or it could not be read. Three answers to one question, so
-   they are one shape - a mark, a line, a sentence and a way forward, with the
-   approved mock's air around them. They were two shapes, and the failure had no
-   mark at all, so a table that could not be read looked like a different product
-   from the same table with nothing in it. */
-.table-notice {
-  align-items: center;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  justify-content: center;
-  /* Narrower than the cell it sits in, so it has to place itself. Every caller
-     used to do this, which meant every caller could forget - and the queue did,
-     leaving its empty state flush against the first column while the cell it
-     filled was centred. Auto margins also absorb free space in a flex parent, so
-     the tables that centre by making the cell a flex container still agree. */
-  margin-inline: auto;
-  max-width: 30rem;
-  padding: var(--space-8) var(--space-4);
-  text-align: center;
-}
-
-/* Round and tinted, without a keyline: a rounded square with an inset fill reads
-   as a disabled control, which is the wrong thing to put at the centre of a
-   table with nothing in it. Its tone is the notice's own. */
-.table-notice-mark {
-  align-items: center;
-  background: var(--brand-action-tint);
-  border-radius: 50%;
-  color: var(--brand-action-text);
-  display: flex;
-  flex: none;
-  height: 2.75rem;
-  justify-content: center;
-  width: 2.75rem;
-}
-
-.table-notice-mark.alarmed {
-  background: var(--danger-tint);
-  color: var(--danger);
-}
-
-.table-notice > strong {
-  color: var(--text-primary);
-  font-size: var(--font-size-card-title);
-  line-height: var(--leading-body);
-}
-
-.table-notice > span {
-  color: var(--text-secondary);
-  font-size: var(--font-size-meta);
-  line-height: var(--leading-meta);
-}
+/* What a table body says when it has no rows to show used to be `.table-notice`
+   here: a centred column under a 2.75rem tinted disc, capped at 30rem, sized and
+   spaced unlike anything else answering the same question. It is `.state-panel`
+   now - the one recipe - so the three states a collection can be in (nothing
+   matched, nothing yet, could not be read) differ in their words and their tone
+   and in nothing else. The disc went with it: a magnifying glass over a list that
+   was never searched says a query came up dry when nothing was ever asked. */
 
 /* One square icon-only control: a row's quick action, a row's menu trigger, a
    column's filter. Three components drew their own and disagreed on all three of
@@ -1951,6 +1904,18 @@ select:focus-visible {
 
 .state-panel.is-warn {
   border-color: color-mix(in srgb, var(--warning) 40%, transparent);
+}
+
+/* IN A TABLE BODY THE NOTICE IS A ROW, so it reads across: the sentence and the
+   one act that answers it on one line, wrapping rather than stacking the way a
+   page-sized panel does. A panel filling a `colspan` cell is as wide as the whole
+   table, and a button dropped under a sentence that ends a third of the way along
+   leaves the rest of that width empty. */
+.data-table .row-notice .state-panel {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
 }
 
 /* A time is one word however many words it holds. "in about 4 minutes" broken

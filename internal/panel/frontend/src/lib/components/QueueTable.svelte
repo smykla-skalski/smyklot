@@ -201,8 +201,10 @@ from the wall clock cannot be photographed.
   {#if cards.length === 0}
     <Card>
       <div class="state-panel">
-        <strong>Nothing in this view</strong>
-        <span>Queued work appears here as soon as the service accepts it.</span>
+        <span
+          ><strong>Nothing in this view.</strong> Queued work appears here as soon as the service accepts
+          it</span
+        >
       </div>
     </Card>
   {:else}

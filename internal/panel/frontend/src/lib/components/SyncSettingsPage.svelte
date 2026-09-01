@@ -334,8 +334,16 @@ turns the unmanaged names into rows of their own.
 
   {#if visibleGroups.length === 0}
     <!-- The one honest answer to a search that matches nothing: the groups
-         stand down whole, so without this line the page went silently blank. -->
-    <p class="empty-note">No setting matches "{query.trim()}"</p>
+         stand down whole, so without this the page went silently blank. It is a
+         `.state-panel` like every other nothing-to-show, and it carries the way
+         back - it used to be a muted line offering none. -->
+    <div class="state-panel">
+      <span
+        ><strong>Nothing matches</strong> "{query.trim()}" here. Check the spelling, or clear the
+        search to see every setting again</span
+      >
+      <Button onclick={() => (query = '')}>Clear the search</Button>
+    </div>
   {/if}
 
   <div class="setting-groups card-stack">
@@ -532,14 +540,10 @@ turns the unmanaged names into rows of their own.
 
   /* ---------- Policy groups: the page is the policy ---------- */
 
-  /* Tall enough to read as a state, not a stray line - the empty-state
-     sweep holds every answer to a 40px floor. */
-  .empty-note {
-    align-content: center;
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: 0 0 var(--space-4);
-    min-block-size: 3rem;
+  /* The no-match answer is a `.state-panel` from the shared sheet now, so the
+     only thing left to say here is where it sits in the page's rhythm. */
+  .view-frame > .state-panel {
+    margin-block-end: var(--space-4);
   }
 
   /* The head, the title and the tally beside it are the sheet's now - `card-head`,

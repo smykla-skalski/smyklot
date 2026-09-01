@@ -14,8 +14,9 @@
   });
 </script>
 
-<!-- The shape is `.table-notice` in app.css, shared with the failure that stands in
-     the same place. All this decides is the glyph and the words. -->
+<!-- The shape is `.state-panel` in app.css - the one recipe for every non-happy state a
+     page can be in, shared with the failure that stands in the same place and with the
+     no-match answer on every searchable list. All this decides is the words. -->
 <Story name="Nothing to show" />
 
 <Story name="With a way out" args={{ actionLabel: 'Clear filters', onAction: fn() }} />

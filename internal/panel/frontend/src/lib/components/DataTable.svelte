@@ -350,7 +350,7 @@ eight pay nothing.
       -->
       {#if rows.length === 0}
         {#if empty !== undefined}
-          <tr class="state-row">
+          <tr class="row-notice">
             <td colspan={columnCount ?? columns?.length ?? 1} class="empty-cell">
               {@render empty()}
             </td>
@@ -429,7 +429,7 @@ eight pay nothing.
   /* The one row that is not a row. Six tables declared this pair identically, and
      the two that also had to say `background: transparent` were the two whose row
      rules were general enough to paint it - which is not a state, it is a table
-     saying "the thing I painted was not meant to include this". `.state-row` never
+     saying "the thing I painted was not meant to include this". `.row-notice` never
      gets `.data-row`, so nothing paints it in the first place. */
   .empty-cell {
     color: var(--text-secondary);

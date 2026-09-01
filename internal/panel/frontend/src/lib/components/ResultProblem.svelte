@@ -1,6 +1,5 @@
 <script lang="ts">
   import Button from './Button.svelte';
-  import Icon from './Icon.svelte';
 
   const {
     title,
@@ -54,14 +53,10 @@ first is still in flight.
   </div>
 {:else}
   <!-- The same shape the empty state has, because it stands in the same place and
-       answers the same question. Only the mark's tone and glyph differ: this one
-       is a thing that went wrong rather than a thing that is not there. -->
-  <div class="table-notice" role="alert">
-    <span class="table-notice-mark alarmed" aria-hidden="true"
-      ><Icon name="warning" size={22} /></span
-    >
-    <strong>{title}</strong>
-    <span>{problem}</span>
+       answers the same question. `is-error` is the whole difference: a thing that
+       went wrong rather than a thing that is not there. -->
+  <div class="state-panel is-error" role="alert">
+    <span><strong>{title}.</strong> {problem}</span>
     {@render retry()}
   </div>
 {/if}

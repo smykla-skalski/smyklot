@@ -16,6 +16,7 @@
   import RelativeTime from './RelativeTime.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
+  import Skeleton from './Skeleton.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
 
   const {
@@ -246,102 +247,108 @@ visits to this route never open one.
       />
     </div>
 
-    <Card>
-      {#if visible.length === 0}
-        <div class="state-panel">
-          {#if loading && workspaces.length === 0}
-            <span>Reading the catalog</span>
-          {:else if failure !== null}
-            <span role="alert"><strong>The catalog could not be read.</strong> {failure}</span>
-          {:else if query.trim() === ''}
-            <span
-              ><strong>No workspaces yet.</strong> A workspace appears here once somebody installs Smyklot
-              on their organization or account</span
-            >
-          {:else}
-            <span><strong>Nothing matches.</strong> No workspace is called “{query.trim()}”</span>
-          {/if}
-        </div>
-      {:else}
-        <ul class="object-list">
-          {#each shown as workspace (workspace.id)}
-            {@const dirtyCount = dirtyWorkspaceCount(workspace.id)}
-            {@const destination = dirtyWorkspaceView(workspace.id)}
-            {@const failed = workspace.delivery_health.failed}
-            <li>
-              <div
-                class="object-row"
-                class:is-unsaved={dirtyCount > 0}
-                data-unsaved={dirtyCount > 0 || undefined}
+    {#if loading && workspaces.length === 0}
+      <!-- The first answer is waited for the way every other table waits for
+           one: a skeleton standing in the rows' own geometry. It used to be the
+           words "Reading the catalog" in a state panel, which is the shape a
+           page uses for having nothing rather than for not knowing yet. -->
+      <Skeleton label="Loading workspaces" />
+    {:else}
+      <Card>
+        {#if visible.length === 0}
+          <div class="state-panel">
+            {#if failure !== null}
+              <span role="alert"><strong>The catalog could not be read.</strong> {failure}</span>
+            {:else if query.trim() === ''}
+              <span
+                ><strong>No workspaces yet.</strong> A workspace appears here once somebody installs Smyklot
+                on their organization or account</span
               >
-                <span class="object-main">
-                  <span class="object-name-row">
-                    <!-- The name is not a link, and the row is not a target. Opening a
+            {:else}
+              <span><strong>Nothing matches.</strong> No workspace is called “{query.trim()}”</span>
+            {/if}
+          </div>
+        {:else}
+          <ul class="object-list">
+            {#each shown as workspace (workspace.id)}
+              {@const dirtyCount = dirtyWorkspaceCount(workspace.id)}
+              {@const destination = dirtyWorkspaceView(workspace.id)}
+              {@const failed = workspace.delivery_health.failed}
+              <li>
+                <div
+                  class="object-row"
+                  class:is-unsaved={dirtyCount > 0}
+                  data-unsaved={dirtyCount > 0 || undefined}
+                >
+                  <span class="object-main">
+                    <span class="object-name-row">
+                      <!-- The name is not a link, and the row is not a target. Opening a
                          workspace here reopens the whole shell inside it, wearing the
                          operator strip - a consequence a stray press on a row should
                          not have, so it is asked for by name. -->
-                    <span class="object-name">{workspace.account.display_name}</span>
-                    {#if attentionPill(workspace) !== null}
-                      <Pill tone={attentionPill(workspace)?.tone}>
-                        {attentionPill(workspace)?.label}
-                      </Pill>
-                    {/if}
-                    {#if dirtyCount > 0}
-                      <Pill tone="warning">
-                        {dirtyCount} unsaved {dirtyCount === 1 ? 'setting' : 'settings'}
-                      </Pill>
-                    {/if}
-                  </span>
-                  <!-- One sentence, not five columns. What a workspace is (how much of
+                      <span class="object-name">{workspace.account.display_name}</span>
+                      {#if attentionPill(workspace) !== null}
+                        <Pill tone={attentionPill(workspace)?.tone}>
+                          {attentionPill(workspace)?.label}
+                        </Pill>
+                      {/if}
+                      {#if dirtyCount > 0}
+                        <Pill tone="warning">
+                          {dirtyCount} unsaved {dirtyCount === 1 ? 'setting' : 'settings'}
+                        </Pill>
+                      {/if}
+                    </span>
+                    <!-- One sentence, not five columns. What a workspace is (how much of
                        it Smyklot answers in), when its owner list last synced, and
                        whether anything has failed - and where the owner list cannot be
                        read at all, the reason stands in place of the rest, because a
                        sync time on a list nobody could read is a lie. -->
-                  <span class="object-sum" class:is-refused={unreadable(workspace)}>
-                    {#if unreadable(workspace)}
-                      {workspace.ownership.detail ??
-                        'The owner list cannot be read until an organization owner grants the Members permission again'}
-                    {:else}
-                      {repositorySentence(workspace)} · owner list synced
-                      <RelativeTime value={workspace.ownership.synced_at} {nowMs} />
-                      <!-- The space before the block, never inside it: Svelte trims a
+                    <span class="object-sum" class:is-refused={unreadable(workspace)}>
+                      {#if unreadable(workspace)}
+                        {workspace.ownership.detail ??
+                          'The owner list cannot be read until an organization owner grants the Members permission again'}
+                      {:else}
+                        {repositorySentence(workspace)} · owner list synced
+                        <RelativeTime value={workspace.ownership.synced_at} {nowMs} />
+                        <!-- The space before the block, never inside it: Svelte trims a
                            block's leading whitespace, and the separator arrived stuck
                            to the last letter of the time. -->
-                      {#if failed > 0}· {failed}
-                        {failed === 1 ? 'failure' : 'failures'} kept{/if}
-                    {/if}
+                        {#if failed > 0}· {failed}
+                          {failed === 1 ? 'failure' : 'failures'} kept{/if}
+                      {/if}
+                    </span>
                   </span>
-                </span>
-                <span class="object-side">
-                  <a
-                    class="btn btn-quiet"
-                    href={hrefFor(workspace.account.login, destination)}
-                    onclick={(event) => navigate(event, workspace, destination)}
-                    aria-label="Open as operator - {workspace.account.display_name}"
-                  >
-                    <span class="button-label">Open as operator</span>
-                  </a>
-                </span>
-              </div>
-            </li>
-          {/each}
-        </ul>
-        <div class="list-foot">
-          <span
-            >Showing 1-{shown.length} of {visible.length}{query.trim() === ''
-              ? ''
-              : ` matching · ${workspaces.length} in all`}</span
-          >
-          {#if shown.length < visible.length}
-            <button class="btn btn-quiet" type="button" onclick={() => (limit += PAGE)}>
-              <span class="button-label"
-                >Show {Math.min(PAGE, visible.length - shown.length)} more</span
-              >
-            </button>
-          {/if}
-        </div>
-      {/if}
-    </Card>
+                  <span class="object-side">
+                    <a
+                      class="btn btn-quiet"
+                      href={hrefFor(workspace.account.login, destination)}
+                      onclick={(event) => navigate(event, workspace, destination)}
+                      aria-label="Open as operator - {workspace.account.display_name}"
+                    >
+                      <span class="button-label">Open as operator</span>
+                    </a>
+                  </span>
+                </div>
+              </li>
+            {/each}
+          </ul>
+          <div class="list-foot">
+            <span
+              >Showing 1-{shown.length} of {visible.length}{query.trim() === ''
+                ? ''
+                : ` matching · ${workspaces.length} in all`}</span
+            >
+            {#if shown.length < visible.length}
+              <button class="btn btn-quiet" type="button" onclick={() => (limit += PAGE)}>
+                <span class="button-label"
+                  >Show {Math.min(PAGE, visible.length - shown.length)} more</span
+                >
+              </button>
+            {/if}
+          </div>
+        {/if}
+      </Card>
+    {/if}
   </div>
 {/if}
 

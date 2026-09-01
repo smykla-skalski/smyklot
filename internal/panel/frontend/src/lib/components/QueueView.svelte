@@ -30,6 +30,7 @@
   import ResultProblem from './ResultProblem.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
+  import Skeleton from './Skeleton.svelte';
   import SortIndicator from './SortIndicator.svelte';
   import TableEmptyState from './TableEmptyState.svelte';
   import TableToolsMenu from './TableToolsMenu.svelte';
@@ -1062,7 +1063,9 @@ and a reader should not have to navigate between them.
         busy={loading}
       />
     {:else if loading && !loaded}
-      Reading the queue…
+      <!-- A wait is a skeleton standing in the rows' geometry, not a phrase where a
+           sentence about having nothing would go. -->
+      <Skeleton rows={3} label="Reading the queue" />
     {:else}
       <TableEmptyState
         title={hasFilters

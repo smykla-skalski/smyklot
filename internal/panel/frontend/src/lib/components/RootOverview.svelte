@@ -272,7 +272,12 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
     {#if active.rows.length === 0}
-      <div class="state-panel"><span>Nothing is in flight</span></div>
+      <div class="state-panel">
+        <span
+          ><strong>Nothing is in flight.</strong> Work the service has accepted appears here while it
+          runs</span
+        >
+      </div>
     {:else}
       <div class="object-list">
         {#each active.rows as item (item.id)}
@@ -322,7 +327,12 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       >
     </div>
     {#if failures.length === 0}
-      <div class="state-panel"><span>Nothing has failed lately</span></div>
+      <div class="state-panel">
+        <span
+          ><strong>Nothing has failed lately.</strong> A failure in any workspace lands here with its
+          cause</span
+        >
+      </div>
     {:else}
       <div class="object-list">
         {#each failures as item (item.failure.id)}

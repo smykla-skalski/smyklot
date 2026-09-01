@@ -263,7 +263,9 @@ answered a question a workspace never asks and hid the one it does.
 </div>
 
 {#if problem !== ''}
-  <p class="state-panel is-error" role="alert">{problem}</p>
+  <div class="state-panel is-error" role="alert">
+    <span><strong>The request did not go through.</strong> {problem}</span>
+  </div>
 {/if}
 
 <Modal

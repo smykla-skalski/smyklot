@@ -27,6 +27,9 @@ interface Verdict {
   rows: number;
   emptyHeight: number;
   text: string;
+  /** The panel's opener - the words inside its `strong`. */
+  opens: string;
+  says: number;
 }
 
 async function emptyStateOn(page: Page): Promise<Verdict | null> {
@@ -38,20 +41,24 @@ async function emptyStateOn(page: Page): Promise<Verdict | null> {
   await page.waitForTimeout(1200);
 
   const verdict = await page.evaluate(() => {
-    /* `.state-panel` is the shared one, and `.empty-note` a page's own; the other
-       three are what a TABLE writes, where the empty state is a row. */
-    const empty = document.querySelector(
-      '.empty-row, .state-row, .table-empty-state, .state-panel, .empty-note, .table-notice',
-    );
+    /* One selector, because there is one recipe. This used to name six - two of
+       which no longer existed and two of which were a second and a third shape
+       for the same answer. A list of accepted spellings is how a design system
+       stops being one. */
+    const empty = document.querySelector('.state-panel');
     const box = empty?.getBoundingClientRect();
+    const opener = empty?.querySelector('strong');
 
     return {
       route: location.pathname,
-      rows: document.querySelectorAll(
-        'tbody tr:not(.empty-row):not(.state-row):not(.virtual-spacer)',
-      ).length,
+      rows: document.querySelectorAll('tbody tr:not(.row-notice):not(.virtual-spacer)').length,
       emptyHeight: box?.height ?? 0,
       text: (empty?.textContent ?? '').trim().slice(0, 60),
+      /* The shape, not just the presence: a state names what happened in an
+         opener and then says what to do about it. Panels that were only half of
+         that read as a stray line rather than as an answer. */
+      opens: (opener?.textContent ?? '').trim(),
+      says: (empty?.textContent ?? '').trim().length,
     };
   });
 
@@ -107,6 +114,26 @@ describe('the tables with nothing to show [Integration]', () => {
       silent.map((one) => one.route),
       `these answered a search that matches nothing with no visible empty state:\n${silent
         .map((one) => `  ${one.route}  ${one.emptyHeight.toFixed(1)}px  "${one.text}"`)
+        .join('\n')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The panel names the state and then says something about it.
+   *
+   * Both halves, because either alone is the shape this sweep exists to refuse: an
+   * opener with nothing after it is a headline where an answer should be, and a
+   * sentence with no opener is the stray line four of these were before the one
+   * recipe reached them.
+   */
+  it('name the state and then say what follows from it', () => {
+    const shown = verdicts.filter((one) => one.rows === 0 && one.emptyHeight >= VISIBLE_HEIGHT);
+    const bare = shown.filter((one) => one.opens === '' || one.says <= one.opens.length + 1);
+
+    expect(
+      bare.map((one) => one.route),
+      `these said too little to be an answer:\n${bare
+        .map((one) => `  ${one.route}  opener "${one.opens}"  whole "${one.text}"`)
         .join('\n')}`,
     ).toEqual([]);
   });

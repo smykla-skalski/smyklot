@@ -307,7 +307,11 @@ what would otherwise be four visits.
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
     {#if active.rows.length === 0}
-      <div class="state-panel"><span>Nothing is in flight</span></div>
+      <div class="state-panel">
+        <span
+          ><strong>Nothing is in flight.</strong> A command lands here the moment Smyklot accepts it</span
+        >
+      </div>
     {:else}
       <div class="object-list">
         {#each active.rows as item (item.id)}
@@ -356,7 +360,12 @@ what would otherwise be four visits.
       <a class="btn btn-quiet" href={auditHref}><span class="button-label">Open the audit</span></a>
     </div>
     {#if lately.length === 0}
-      <div class="state-panel"><span>Nothing has happened yet</span></div>
+      <div class="state-panel">
+        <span
+          ><strong>Nothing has happened yet.</strong> Every change made through Smyklot here lands on
+          this list</span
+        >
+      </div>
     {:else}
       <div class="object-list">
         {#each lately as entry (entry.id)}
