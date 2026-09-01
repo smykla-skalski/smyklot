@@ -175,14 +175,25 @@ export interface MockState {
   pendingCI: PendingCIRequest[];
   queue: QueueItem[];
   /**
-   * The requests this process has watched all the way through, and may therefore arm again.
+   * The work this process has watched all the way through, and may therefore arm again.
    *
    * The reconciler recycles what it finishes, so the loop can be watched more than once. What it did
    * not finish is the past: the three seeded outcomes are what the Recent table exists to show, and
    * a past that arms itself again is not a past. Keyed off the trigger instead, one of them matched
    * - `pending-ci-3` merged two hours before the process started - and Recent quietly lost a row.
+   *
+   * Both tables are in here. The two id spaces do not meet, and the rule is the same one.
    */
   queueLoop: Set<string>;
+  /**
+   * What each queue row rests as, so the reconciler can put it back.
+   *
+   * The seeds are the shape worth showing - one row running, one waiting on checks, one
+   * retrying after a rate limit - and the reconciler walks each of them to done. Without
+   * somewhere to read the resting shape from, re-arming would have to guess which
+   * waiting state a finished row came from and what it was blocked on.
+   */
+  queueRest: Map<string, QueueItem>;
   runtime: {
     backgroundWorkPaused: boolean;
     behaviorOverride: ConfigValues | null;
@@ -480,6 +491,7 @@ export function seed(
     source: 'suspended',
     capabilities: capabilitiesFor('none'),
   });
+  const queue = queueSeeds(iso);
   const sync = new Map([
     [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
     [`${organization.value.id}/settings`, syncSettingsSeed(iso)],
@@ -517,8 +529,9 @@ export function seed(
     elevations: new Map(),
     notifications,
     pendingCI: pendingCISeeds(iso),
-    queue: queueSeeds(iso),
+    queue,
     queueLoop: new Set(),
+    queueRest: new Map(queue.map((item) => [item.id, item])),
     runtime: {
       backgroundWorkPaused: false,
       behaviorOverride: null,

@@ -696,7 +696,163 @@ function reconcile(state: MockState): void {
     changed = true;
   }
 
+  if (advanceQueue(state, now)) changed = true;
+
   if (changed) broadcast(state, { type: 'resync' });
+}
+
+/**
+ * One row's loop: it waits, it runs, it rests, it waits again.
+ *
+ * Proportioned so a reader watching the overview sees both marks: a row spends a third
+ * of its cycle running, and the rows are held apart in phase, so the column almost
+ * always carries one of each.
+ */
+const QUEUE_WAIT_MS = 45_000;
+const QUEUE_RUN_MS = 30_000;
+const QUEUE_REST_MS = 10_000;
+const QUEUE_CYCLE_MS = QUEUE_WAIT_MS + QUEUE_RUN_MS + QUEUE_REST_MS;
+
+const QUEUE_DONE = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
+
+/**
+ * The queue's rows, walked the way the pending-CI table's already are.
+ *
+ * The seeds carried the variety - one row running, one waiting on required checks, one
+ * retrying after a rate limit - and nothing moved them, so every estimate in them was
+ * stamped once at startup and went stale within the hour. A dev server left open for an
+ * afternoon showed three rows all reading "now", which is not one of the states the
+ * fixture describes and is not a state the service can be in either.
+ *
+ * So each row runs its own loop: a waiting row whose estimate passes starts, a running
+ * row fills its progress and finishes, and a finished row rests and then waits again with
+ * a fresh estimate. The resting shape comes off `queueRest`, so a row goes back to being
+ * blocked on the thing it was blocked on rather than to a guess.
+ *
+ * Rows that are somebody's decision rather than the service's - `awaiting_approval` -
+ * stand still, because nothing but a person moves them.
+ */
+function advanceQueue(state: MockState, now: number): boolean {
+  let changed = false;
+
+  /* Phase, not identity: the rows that take part are counted so each can be given a
+     different slice of one cycle to start in, and they keep that difference for ever
+     after - every row's cycle is the same length. */
+  const looping = state.queue.filter((item) => state.queueRest.has(item.id));
+
+  for (const [index, item] of state.queue.entries()) {
+    const next = advanceQueueItem(state, item, now, looping.indexOf(item), looping.length);
+    if (next === item) continue;
+    state.queue[index] = next;
+    changed = true;
+  }
+
+  return changed;
+}
+
+function advanceQueueItem(
+  state: MockState,
+  item: QueueItem,
+  now: number,
+  place: number,
+  count: number,
+): QueueItem {
+  const at = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+  const rest = state.queueRest.get(item.id);
+  if (item.state === 'awaiting_approval' || rest === undefined) return item;
+
+  if (QUEUE_DONE.has(item.state)) {
+    /* Only what this process watched finish - the same rule the pending-CI table
+       follows. The seeded terminal rows are the past that Recent exists to show, and a
+       past that arms itself again is not a past. */
+    if (!state.queueLoop.has(item.id)) return item;
+    const finished = Date.parse(item.finished_at ?? item.updated_at);
+    if (Number.isNaN(finished) || now - finished < QUEUE_REST_MS) return item;
+
+    /* A row rests as a WAITING row, whatever it was seeded as. `queue-sync-apply` is
+       seeded mid-run, because that is the picture the fixture is drawing; putting that
+       shape back would hand it a start time from before the process began and finish it
+       again on the next tick, so it would flap between running and done and never be
+       seen waiting. */
+    const waiting: QueueItem = { ...rest };
+    delete waiting.started_at;
+    delete waiting.finished_at;
+
+    return {
+      ...waiting,
+      state: rest.state === 'running' || QUEUE_DONE.has(rest.state) ? 'scheduled' : rest.state,
+      ...(rest.progress_total === undefined ? {} : { progress_current: 0 }),
+      not_before: at(0),
+      eligible_at: at(QUEUE_WAIT_MS),
+      estimated_start_at: at(QUEUE_WAIT_MS),
+      created_at: at(0),
+      updated_at: at(0),
+      revision: item.revision + 1,
+    };
+  }
+
+  if (item.state === 'running') {
+    const started = Date.parse(item.started_at ?? item.updated_at);
+    if (Number.isNaN(started)) return item;
+    const through = Math.min(1, (now - started) / QUEUE_RUN_MS);
+    const total = item.progress_total;
+    if (through < 1) {
+      /* A row with no progress to report still runs; it just has nothing to say while
+         it does, so only the ones carrying a total tick. */
+      if (total === undefined) return item;
+      const done = Math.max(1, Math.min(total, Math.round(through * total)));
+      if (done === item.progress_current) return item;
+
+      return { ...item, progress_current: done, updated_at: at(0), revision: item.revision + 1 };
+    }
+
+    state.queueLoop.add(item.id);
+
+    return {
+      ...item,
+      state: 'succeeded',
+      progress_current: total,
+      finished_at: at(0),
+      updated_at: at(0),
+      revision: item.revision + 1,
+    };
+  }
+
+  /* Everything else is waiting on its estimate, which is the row Active work draws its
+     chip for. It starts when the estimate passes and not before.
+     A seeded estimate can be further out than a whole cycle - the fixture describes a
+     screenshot, where four and six minutes read well - so the first tick pulls it into
+     this loop, each row at its own point in the cycle. */
+  const due = Date.parse(item.estimated_start_at ?? item.eligible_at);
+  if (Number.isNaN(due)) return item;
+  if (due - now > QUEUE_WAIT_MS) {
+    const slot = count === 0 ? QUEUE_WAIT_MS : (QUEUE_CYCLE_MS * (place + 1)) / count;
+
+    return {
+      ...item,
+      eligible_at: at(slot),
+      estimated_start_at: at(slot),
+      updated_at: at(0),
+      revision: item.revision + 1,
+    };
+  }
+  if (due > now) return item;
+
+  const running: QueueItem = { ...item };
+  /* What it was waiting on is not what it is doing: a running row that still carried its
+     blocked reason read "Waiting on required checks" while it ran. */
+  delete running.blocked_reason;
+
+  return {
+    ...running,
+    state: 'running',
+    started_at: at(0),
+    estimated_start_at: at(0),
+    work_ahead: 0,
+    ...(item.progress_total === undefined ? {} : { progress_current: 0 }),
+    updated_at: at(0),
+    revision: item.revision + 1,
+  };
 }
 
 /**
