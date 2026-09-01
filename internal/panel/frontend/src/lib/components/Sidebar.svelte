@@ -235,7 +235,11 @@
 
     function pointerDown(event: PointerEvent): void {
       stopFret();
-      const row = (event.target as Element | null)?.closest?.('a');
+      /* By the row's own class rather than by `a`, which is what the tree happens to
+         render one as. Every row is an anchor today and the two agree; the class is what
+         this is actually asking about, and a row that opened something instead of
+         navigating would still be a row. */
+      const row = (event.target as Element | null)?.closest?.('.tree-row');
       if (row === null || row === undefined || row.classList.contains('is-active')) return;
       if (!node.contains(row)) return;
       fretTimer = setTimeout(beginFret, 120);
@@ -634,7 +638,6 @@ it has to answer to the same fact.
     inline-size: var(--control-height-compact);
     justify-content: center;
     padding: 0;
-    transition: none;
   }
 
   .side-fold:hover {
@@ -673,7 +676,6 @@ it has to answer to the same fact.
     gap: var(--space-2);
     padding: 0 var(--space-2);
     position: relative;
-    transition: none;
   }
 
   /* The tree's top continuation cue: when rows sit scrolled under the field, the
@@ -748,7 +750,6 @@ it has to answer to the same fact.
     inline-size: 100%;
     justify-content: center;
     padding: 0;
-    transition: none;
   }
 
   .side-ws-mini:hover {
@@ -892,7 +893,12 @@ it has to answer to the same fact.
     /* Positioned so the ink paints above the thumb sliding underneath. */
     position: relative;
     text-decoration: none;
-    transition: none;
+    /* NO `transition: none` here, and none on the three controls above. It was on all
+       four, uncommented, and it cancelled the shared ground fade every button and link
+       in the product gets - so the tree's rows snapped between grounds while the thumb
+       gliding under them eased for the whole travel duration and its pressed fill for
+       the press one. What a reader saw was one object moving and its neighbours
+       flicking. */
   }
 
   .tree-row .t {
