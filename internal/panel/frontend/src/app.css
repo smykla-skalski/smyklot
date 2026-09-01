@@ -79,6 +79,33 @@ body {
   outline-offset: var(--focus-ring-offset);
 }
 
+/* NOTHING MOVES WHILE THE PAGE IS STILL ARRIVING.
+   ------------------------------------------------------------------------
+   Motion in this product means something CHANGED, and until the page has settled
+   nothing has: the first paint is a first placement and the geometry after it is the
+   layout finding its answer - a webfont landing, a pane taking its width - not an
+   answer moving. Drawn as motion that reads as a control jittering on every reload,
+   and it was: the queue page's segmented thumb slid 90px and grew 19px over 130ms
+   with the reader touching nothing.
+
+   Transitions and the travel animation only. Anything that loops - a spinner, a live
+   dot - is saying the page is still working, which is exactly what is true here, so
+   suppressing it would replace a jitter with a lie. `!important` because a blanket
+   `*` loses to every rule that states a transition, which is all of them; the reduced
+   motion block below does the same for the same reason.
+
+   Released one frame after the routed tree has mounted and the fonts have loaded -
+   see `panelHasSettled` in `lib/boot.ts`. */
+:root.is-booting *,
+:root.is-booting *::before,
+:root.is-booting *::after {
+  transition: none !important;
+}
+
+:root.is-booting .selection-indicator.is-travelling {
+  animation: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

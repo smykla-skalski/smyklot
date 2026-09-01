@@ -152,6 +152,14 @@
          for every re-measurement: a resize, a popover opening, a label changing width.
          Animating those would put a squeeze on the page where nothing travelled. */
       const moved = node.style.getPropertyValue('--segment-left') !== `${left}px`;
+      /* A CONTROL THAT RE-MEASURES ITSELF HAS NOT MOVED, so it is placed again rather
+         than animated to. The thumb is where it was and the option under it has changed
+         width - a count arriving in a label, a webfont landing, a pane taking its own
+         width - and easing to the new number draws a thumb growing under a reader who
+         did nothing. On the queue page the counts arrive about a second in, and the
+         thumb grew 18px on every load. Taking `selection-ready` off is the mechanism
+         that is already here for a first placement, and this is one. */
+      if (!moved) node.classList.remove('selection-ready');
       node.style.setProperty('--segment-left', `${left}px`);
       node.style.setProperty('--segment-width', `${optionBox.width / scale}px`);
 

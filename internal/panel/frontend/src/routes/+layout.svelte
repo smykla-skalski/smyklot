@@ -4,7 +4,7 @@
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
 
-  import { initializePanel } from '#lib/boot.js';
+  import { initializePanel, panelHasSettled } from '#lib/boot.js';
   import { createPanelApi } from '#lib/api.js';
   import { panelAddress } from '#lib/addresses.js';
   import { readPanelBuild } from '#lib/base.js';
@@ -239,6 +239,12 @@
   );
 
   const { children } = $props();
+
+  /* Reads nothing, so it runs once the routed tree is mounted - which is one of the two
+     things the page was waiting on. See `panelHasSettled`. */
+  $effect(() => {
+    void panelHasSettled(document);
+  });
 
   $effect(() => {
     // `syncRouteContext` reads the route and its parameters, so tracking them is what
