@@ -936,6 +936,23 @@ without the buttons, rather than buttons that refuse.
     white-space: nowrap;
   }
 
+  /* AND ON A NARROW SCREEN THE WORDS GIVE, NOT THE BUTTON. Both are held at their full
+     width so nothing moves, which is right until the header has less room than that:
+     under about 340px the group ran five pixels past the page and Chrome drew the whole
+     thing at 98%. `min-inline-size: 0` lifts the automatic minimum a nowrap phrase would
+     otherwise hold, so these two clip while the control that answers them keeps its
+     label - a button's own min-content is that label, so flex never takes it below.
+
+     ACROSS ONLY. These boxes are trimmed to their cap band, so the ink stands proud of
+     the box at both ends by design, and `overflow: hidden` cut 2.64px off it. `clip` is
+     the one value that takes an axis on its own - `hidden` on one axis makes the other a
+     scroll container, which is why the pair cannot be written with it. */
+  .queue-state,
+  .queue-behind {
+    min-inline-size: 0;
+    overflow-x: clip;
+  }
+
   .queue-behind.is-saying {
     visibility: visible;
   }

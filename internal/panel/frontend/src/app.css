@@ -2628,9 +2628,16 @@ thead th .icon-button:active:not(:disabled) {
    scrolls has content as wide as the file inside it. Without this the stack's track
    grew to the widest line of a rendered template - 594px of JSON on a 320px phone -
    and Chrome answers a page it cannot fit by zooming the whole thing out. The card
-   is what scrolls, not the page. */
+   is what scrolls, not the page.
+
+   SAID OF THE CARD AS WELL AS OF THE TWO CONTAINERS, because it is a fact about the
+   card: it is a block of content inside a column and must never be what decides that
+   column's width. Written only for `.card-stack` and `.view-frame`, a page that laid
+   its cards out in a grid of its own got none of it - Service settings is one, and at
+   320px its widest setting row took the column to 427 and Chrome drew the page at 73%. */
 .card-stack > *,
-.view-frame > * {
+.view-frame > *,
+.card {
   min-inline-size: 0;
 }
 
@@ -2726,15 +2733,36 @@ thead th .icon-button:active:not(:disabled) {
    keeps everything on ONE row, and taller controls bleed symmetrically instead of
    growing the head - so title-to-first-row ink never depends on which adornments the
    card happens to carry. */
+/* A HEAD IS A ROW THAT CAN BREAK, and it has to be: a column grid cannot, at any width.
+   Three companions beside a title - a count, the act that clears it, the way into the
+   page - are 250px of auto tracks, and on a 320px phone the head took the card to 351
+   and Chrome drew the whole page at 91%.
+
+   Flex rather than a breakpoint, and for the reason the setting row states as its third
+   clause: a line that cannot hold its contents breaks, which is what stacking means. No
+   class, no query, no width to have chosen. Wide enough, this lays out exactly as the
+   grid did - the title takes the room and the companions sit at the end. */
 .card-head {
   align-items: center;
   column-gap: var(--space-3);
-  display: grid;
-  grid-auto-columns: auto;
-  grid-auto-flow: column;
-  grid-template-columns: minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   margin-block-end: var(--rhythm-card-head-body);
   min-block-size: var(--card-head-line);
+  /* What a broken line stands off the one above it - the ink gap, both sides trimmed. */
+  row-gap: var(--space-2);
+}
+
+/* The title takes the room, and `min-inline-size: 0` lets it give the room back rather
+   than hold the line open at its longest word. Every companion keeps flex's own default,
+   which shrinks it to its min-content and no further: a button's is its label, because a
+   button does not wrap, and a note's is its longest word, because prose does. Pinning
+   them at `flex: none` instead read as correct and took the Root overview to 488px on a
+   phone - a card note is a companion here, and a sentence that may not shrink is a
+   sentence drawn at the width of the whole sentence. */
+.card-head > .card-title {
+  flex: 1 1 auto;
+  min-inline-size: 0;
 }
 
 /* WHAT STANDS BESIDE A HEADING DOES NOT SET THE HEADING'S HEIGHT.
