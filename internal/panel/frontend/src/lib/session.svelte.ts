@@ -340,29 +340,23 @@ export class PanelSession {
     return panelDocumentTitle(route);
   }
 
+  /**
+   * NOTHING IS GLUED. A page scrolls as a page, on every route.
+   *
+   * This used to answer true for the four list views - repositories, users,
+   * invitations, history - and on those the pane was pinned to `100dvh` with the
+   * rows scrolling inside it, so the page head and the search bar stayed put
+   * while the list moved under them. The other pages scrolled as documents, and
+   * a reader crossing between them met two different pages.
+   *
+   * One decision point rather than thirteen: the class it drives is still read by
+   * `app.css` and by every Root route, so the behaviour comes back by making this
+   * answer true again. Bart's call - the drawing scrolls as a document
+   * everywhere, and the two things it does glue (the plan's apply bar and the
+   * settings index) glue themselves.
+   */
   get tableScrollView(): boolean {
-    if (this.isRootMode) {
-      const route = this.currentRootRoute;
-      if (route.rootView === 'workspace') {
-        return (
-          ['repositories', 'users', 'invitations', 'history'].includes(route.view) &&
-          (route.view !== 'repositories' || route.repository === undefined)
-        );
-      }
-
-      /* Workspaces is a card of rows now, not a table: given the table scroller
-         it would be pinned at the viewport with its own bar inside the page. */
-      return this.rootValue === 'history' || this.rootValue === 'access';
-    }
-
-    return (
-      this.selectedTarget !== null &&
-      ['repositories', 'users', 'invitations', 'history'].includes(this.currentView) &&
-      /* Repository lists own a bounded table scroller. A repository detail is a
-         document-length settings page, so trapping its workspace at 100dvh clips
-         the controls below the fold with no element left that can scroll. */
-      (this.currentView !== 'repositories' || this.currentRepository === null)
-    );
+    return false;
   }
 
   // --- Session lifecycle ---

@@ -467,10 +467,40 @@ describe('SyncView [Component]', () => {
     await screen.findByRole('heading', { name: '1 active in step · 1 switched off' });
   });
 
-  it('gives an empty fleet an honest verdict', async () => {
+  /**
+   * An empty fleet is two different silences, and the page used to answer both
+   * with "No repositories to check" over an empty board and a legend of four
+   * zeros - which reads as a fleet that failed to load, and is untrue besides
+   * for a workspace that holds repositories and simply syncs none of them.
+   *
+   * The verdict names which silence it is; the panel says what follows and
+   * carries the way out. Neither says the other's sentence.
+   */
+  it('names which silence an empty fleet is, and offers the way out', async () => {
     mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview');
 
-    await screen.findByRole('heading', { name: 'No repositories to check' });
+    await screen.findByRole('heading', { name: 'Sync is off here' });
+    const panel = document.querySelector('.state-panel');
+    expect(panel?.textContent).toContain('Nothing is being kept in step');
+    // Not a dead end: the kind cards are gone with the board, so the one next
+    // step is named here rather than pointed at.
+    expect(screen.getByRole('link', { name: 'Open Labels' })).toBeTruthy();
+    expect(document.querySelector('.kind-grid'), 'kind cards over an empty board').toBeNull();
+  });
+
+  it('tells a syncing workspace that its repositories opted out', async () => {
+    mount(
+      config('labels', { enabled: true }),
+      config('settings'),
+      config('rulesets'),
+      config('files'),
+      'overview',
+    );
+
+    await screen.findByRole('heading', { name: 'No repository syncs yet' });
+    expect(document.querySelector('.state-panel')?.textContent).toContain(
+      'Every repository has turned this off for itself',
+    );
   });
 
   it('renders relative plan times against an injected catalogue clock', async () => {

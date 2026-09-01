@@ -573,18 +573,30 @@ function spacingAudit(page: Page): Promise<Omit<Finding, 'route'>[]> {
 /**
  * WHAT IS STILL OPEN, and it is a design decision rather than an oversight.
  *
- * Six targets across three components render under 24px with another target inside the
- * spacing exception: a queue row's pull-request link (203x10), two bare switches and one
- * file-status mark. Each was tried with a pseudo-element that grows the pressable area
- * without touching layout - the trick that works for a switch in a settings row - and in
- * these three the extended band is covered by something painted above it, so the press
- * lands elsewhere and the trick buys a real reader nothing. Making them 24px means making
- * the rows taller, which is a decision about the design rather than a fix to slip in.
+ * One target: a queue row's pull-request link, 203x10, with another target inside the
+ * spacing exception. It was tried with a pseudo-element that grows the pressable area
+ * without touching layout - the trick that works for a switch in a settings row - and
+ * here the extended band is covered by something painted above it, so the press lands
+ * elsewhere and the trick buys a real reader nothing. Making it 24px means making the
+ * rows taller, which is a decision about the design rather than a fix to slip in.
+ *
+ * The switch and the file-status mark are GONE from this list, and nothing about
+ * either changed.
+ *
+ * They were never really failing: a bare switch already grows its press area to
+ * 44px with a pseudo-element, and this sweep asks the page directly - it presses
+ * 12px out from the centre and sees who answers. What it cannot do is press at a
+ * coordinate outside the viewport, where `elementFromPoint` returns null. The
+ * four list views used to pin the pane to the viewport and scroll their rows
+ * inside it, which put row after row past the bottom edge with the probe unable
+ * to reach any of them, so every one of their controls measured at its bare box.
+ *
+ * Letting those pages scroll as documents put the rows back on a page the probe
+ * can press, and the findings went with them. What is left is the one that is
+ * genuinely open.
  */
 const OPEN: ReadonlyArray<{ where: string; hits: number }> = [
   { where: 'a.pr-name.band-trim-kids', hits: 3 },
-  { where: 'input', hits: 2 },
-  { where: 'button.symbol', hits: 1 },
 ];
 
 describe('WCAG 2.2, on every route [Integration]', () => {

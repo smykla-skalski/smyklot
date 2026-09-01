@@ -281,7 +281,12 @@ decisions every kind carries: removal, and the names left alone.
         {/each}
       </div>
     {:else if !unreadable}
-      <p class="sync-empty">No rulesets yet</p>
+      <div class="state-panel">
+        <span
+          ><strong>No rulesets are synced here.</strong> Every repository keeps whatever protections it
+          sets itself - add one and the next plan previews it everywhere</span
+        >
+      </div>
     {/if}
   </Card>
 
@@ -368,12 +373,6 @@ decisions every kind carries: removal, and the names left alone.
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-4);
     padding: var(--space-2) var(--space-3);
-  }
-
-  .sync-empty {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: 0;
   }
 
   /* ---------- The list: one pressable row per named object ---------- */

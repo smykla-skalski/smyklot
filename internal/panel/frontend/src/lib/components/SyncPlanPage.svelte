@@ -7,6 +7,7 @@
 
   import ApplyBar from './ApplyBar.svelte';
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
   import Icon from './Icon.svelte';
@@ -222,18 +223,23 @@ the button.
   <PageHeader id="sync-plan-heading" section="Sync" title="Plan" />
 
   {#if plan === null || total === 0}
-    <div class="hero">
-      <h2>Nothing is waiting</h2>
-      {#if canControl}
-        <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
-          >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
+    <!-- Having no plan is a state, not a verdict: the page-tier heading and the
+         paragraph under it were the loaded page's shape worn by the empty one.
+         `Check drift now` is the panel's one act rather than a button beside a
+         headline about nothing. -->
+    <Card>
+      <div class="state-panel">
+        <span
+          ><strong>No plan is open.</strong> Every repository matches the configuration - a reconcile
+          runs on a timer and writes a plan here the moment something drifts</span
         >
-      {/if}
-    </div>
-    <p class="plan-rule">
-      A reconcile runs on a timer and proposes whatever differs - a plan appears here the moment one
-      does
-    </p>
+        {#if canControl}
+          <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
+            >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
+          >
+        {/if}
+      </div>
+    </Card>
   {:else}
     <div class="hero">
       <h2>
@@ -557,11 +563,12 @@ the button.
     text-box: trim-both cap alphabetic;
   }
 
-  /* The kind filter on its own line - a control never shares a line with
-     prose. The gap below is the group list's own rhythm. */
+  /* The kind filter on its own line - a control never shares a line with prose.
+     No margin below: this bar is always a child of the frame, whose gap is the
+     distance to what it acts on, and a margin here as well made 32px where the
+     drawing has 16. */
   .plan-tools {
     display: flex;
-    margin-block-end: var(--rhythm-toolbar-surface);
   }
 
   .schedule-card {

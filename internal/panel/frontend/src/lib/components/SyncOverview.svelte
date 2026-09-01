@@ -31,6 +31,7 @@
     plan,
     configs,
     nowMs,
+    repositories = null,
     sectionHref,
     onOpenSection,
     onToggleKind,
@@ -42,6 +43,12 @@
     configs: Partial<Record<SyncKind, SyncConfig>>;
     /** The clock, passed in so a story renders the same minute every time. */
     nowMs: number;
+    /**
+     * How many repositories the workspace holds, which is not how many sync.
+     * The freshness line says both - "checked X · N of M repositories sync" -
+     * and reach is the half a count of syncing repositories cannot supply.
+     */
+    repositories?: number | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onToggleKind: (kind: SyncKind, enabled: boolean) => void;
@@ -70,6 +77,24 @@
 
   /* The legend is key AND filter: press a row and the board dims the rest. */
   let filter = $state<TileState | null>(null);
+
+  /* With no rows there are two different silences, and they want different words:
+     the workspace syncs nothing at all, or it syncs and every repository has opted
+     out. The switches below are the way out of the first and not of the second. */
+  const anyKindOn = $derived(SYNC_KINDS.some((kind) => configs[kind]?.enabled === true));
+
+  /* How far sync reaches, said beside the freshness the way the drawing has it.
+     Silent where the total is unknown rather than guessing it from the rows,
+     which would make "2 of 2 sync" true of a workspace holding twenty. */
+  const reachWord = $derived.by(() => {
+    /* Nothing to report a share of: "0 of 0 repositories sync" is the freshness
+       line carrying a fact with no content in it. */
+    if (repositories === null || repositories === 0) return '';
+    const others = repositories - rows.length;
+    const said = `${rows.length} of ${repositories} ${repositories === 1 ? 'repository' : 'repositories'} sync`;
+
+    return others > 0 ? `${said}; the other ${others} answer commands only` : said;
+  });
 
   const totalChanges = $derived(rows.reduce((total, row) => total + changesOf(row), 0));
   const changedRepos = $derived(rows.filter((row) => changesOf(row) > 0).length);
@@ -178,8 +203,10 @@ plan is applied, which is why these are switches and not a form.
          parked at the card's far edge. -->
     <div class="card-head verdict-head">
       <h2 class="card-title">
-        {#if rows.length === 0}No repositories to check{:else if outOfStep > 0}<span
-            class="is-drift">{outOfStep} of {rows.length}</span
+        {#if rows.length === 0}{anyKindOn
+            ? 'No repository syncs yet'
+            : 'Sync is off here'}{:else if outOfStep > 0}<span class="is-drift"
+            >{outOfStep} of {rows.length}</span
           >
           syncing repositories are out of step{:else if legendCounts.off === rows.length}All
           {rows.length} are switched off here{:else if legendCounts.off > 0}{rows.length -
@@ -187,46 +214,76 @@ plan is applied, which is why these are switches and not a form.
           {legendCounts.off} switched off{:else}All {rows.length} are in step{/if}
       </h2>
       <span class="card-note"
-        >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong></span
+        >Checked <strong>{formatRelative(status.checked_at, nowMs)}</strong>{#if reachWord !== ''}
+          · {reachWord}{/if}</span
       >
     </div>
-    <div class="board-lay">
-      <!-- The fleet: one raised tile per repository, a numeral where changes
+    {#if rows.length === 0}
+      <!-- A board of nothing is not a board. Drawn anyway it was an empty grey
+           trough over a legend of four zeros, which reads as a fleet that failed
+           to load rather than as a workspace with nothing to check - so the card
+           says what it has instead, the way every other page with nothing does. -->
+      <!-- The head says WHICH state this is; the panel says what follows from it.
+           They said the same fact twice, in two voices, one above the other. -->
+      <div class="state-panel">
+        <span>
+          {#if anyKindOn}
+            <strong>Every repository has turned this off for itself.</strong> The workspace still syncs,
+            so switching one back on in a repository puts it on the board at the next sweep
+          {:else}
+            <strong>Nothing is being kept in step.</strong> Open a kind and switch it on - the next sweep
+            compares every repository against it, and nothing reaches GitHub until a plan is applied
+          {/if}
+        </span>
+        {#if !anyKindOn}
+          <!-- The one next step, named rather than pointed at. The kind cards used
+               to carry the switches and this said "below"; with the cards gone that
+               word pointed at empty canvas, which is the dead end a state panel is
+               not allowed to be. Each kind's own page carries the same switch. -->
+          <a class="btn" href={sectionHref('labels')} onclick={(event) => open(event, 'labels')}>
+            <span class="button-label">Open Labels</span>
+          </a>
+        {/if}
+      </div>
+    {:else}
+      <div class="board-lay">
+        <!-- The fleet: one raised tile per repository, a numeral where changes
            wait, dashed sockets where sync is off. -->
-      <div class="board-well">
-        {#each rows as row (row.repository)}
-          {@const state = states.get(row.repository) ?? 'settled'}
-          <button
-            type="button"
-            class={`tile is-${state}`}
-            class:is-dim={filter !== null && state !== filter}
-            aria-label={`${row.repository} - ${state}`}
-            data-name={row.repository}
-            onclick={() => onOpenSection(state === 'refused' ? 'files' : 'plan')}
-          >
-            {#if state === 'change'}<span class="t">{changesOf(row)}</span
-              >{:else if state === 'refused'}<Icon
-                name="failure"
-                size="sm"
-              />{:else if state === 'settled'}<Icon name="check" size="xs" />{/if}
-          </button>
-        {/each}
+        <div class="board-well">
+          {#each rows as row (row.repository)}
+            {@const state = states.get(row.repository) ?? 'settled'}
+            <button
+              type="button"
+              class={`tile is-${state}`}
+              class:is-dim={filter !== null && state !== filter}
+              aria-label={`${row.repository} - ${state}`}
+              data-name={row.repository}
+              onclick={() => onOpenSection(state === 'refused' ? 'files' : 'plan')}
+            >
+              {#if state === 'change'}<span class="t">{changesOf(row)}</span
+                >{:else if state === 'refused'}<Icon
+                  name="failure"
+                  size="sm"
+                />{:else if state === 'settled'}<Icon name="check" size="xs" />{/if}
+            </button>
+          {/each}
+        </div>
+        <div class="legend">
+          {#each [['settled', 'In step', legendCounts.settled], ['change', 'Would change', legendCounts.change], ['refused', 'Refused', legendCounts.refused], ['off', 'Switched off here', legendCounts.off]] as [state, word, count] (state)}
+            <button
+              type="button"
+              class="legend-row"
+              aria-pressed={filter === state}
+              onclick={() => (filter = filter === state ? null : (state as TileState))}
+            >
+              <span class={`legend-swatch is-${state}`}></span>
+              <span class="legend-word">{word}</span>
+              <span class="legend-count">{count}</span>
+            </button>
+          {/each}
+        </div>
       </div>
-      <div class="legend">
-        {#each [['settled', 'In step', legendCounts.settled], ['change', 'Would change', legendCounts.change], ['refused', 'Refused', legendCounts.refused], ['off', 'Switched off here', legendCounts.off]] as [state, word, count] (state)}
-          <button
-            type="button"
-            class="legend-row"
-            aria-pressed={filter === state}
-            onclick={() => (filter = filter === state ? null : (state as TileState))}
-          >
-            <span class={`legend-swatch is-${state}`}></span>
-            <span class="legend-word">{word}</span>
-            <span class="legend-count">{count}</span>
-          </button>
-        {/each}
-      </div>
-    </div>
+    {/if}
     {#if totalChanges > 0}
       <div class="board-foot">
         <div class="board-foot-say">
@@ -294,58 +351,70 @@ plan is applied, which is why these are switches and not a form.
     </Card>
   {/if}
 
-  <!-- Kind cards: the strip repeats the board's slots in the board's order. -->
-  <div class="kind-grid">
-    {#each SYNC_KINDS as kind (kind)}
-      {@const config = configs[kind]}
-      <div
-        class="kind-card"
-        class:is-off={config?.enabled === false}
-        class:is-unsaved={kindDirty(kind)}
-        data-unsaved={kindDirty(kind) || undefined}
-      >
-        <div class="kind-card-head">
-          <a
-            class="kind-name"
-            href={sectionHref(KIND_SECTION[kind])}
-            onclick={(event) => open(event, KIND_SECTION[kind])}>{KIND_LABEL[kind]}</a
-          >
-          <Switch
-            checked={config?.enabled === true}
-            label={`${KIND_LABEL[kind]} sync`}
-            bare
-            disabled={readOnly || config === undefined}
-            onToggle={(next) => onToggleKind(kind, next)}
-          />
-        </div>
-        <span class="kind-sum">{kindSum(kind)}</span>
-        <div class="kind-strip-row">
-          <div class="kind-strip">
-            {#each rows as row (row.repository)}
-              {@const cell = row.cells[kind]}
-              <span
-                class:is-change={(cell.changes ?? 0) > 0}
-                class:is-refused={cell.state === 'refused'}
-                class:is-off={cell.state === 'off'}
-                title={row.repository}
-              ></span>
-            {/each}
+  <!-- Kind cards: the strip repeats the board's slots in the board's order - so
+       with no slots to repeat there is no card to draw. Four of them saying
+       "0 labels", "0 of 17 managed", "0 rulesets", "0 templates" under a panel
+       that has just said the workspace syncs nothing is the same nothing, four
+       more times, and the drawing has none of them here. The switches move onto
+       each kind's own page, which the tree still reaches. -->
+  {#if rows.length > 0}
+    <div class="kind-grid">
+      {#each SYNC_KINDS as kind (kind)}
+        {@const config = configs[kind]}
+        <div
+          class="kind-card"
+          class:is-off={config?.enabled === false}
+          class:is-unsaved={kindDirty(kind)}
+          data-unsaved={kindDirty(kind) || undefined}
+        >
+          <!-- The sheet's own head, not a private copy of it: `card-head` carries
+               the fixed head line that puts a title's cap the same distance from
+               every card's top edge whatever stands beside it, and `card-title`
+               carries the tier. Written out here, this head had neither - so its
+               name sat 4px lower than the two cards above it and one tier down. -->
+          <div class="card-head kind-card-head">
+            <a
+              class="card-title kind-name"
+              href={sectionHref(KIND_SECTION[kind])}
+              onclick={(event) => open(event, KIND_SECTION[kind])}>{KIND_LABEL[kind]}</a
+            >
+            <Switch
+              checked={config?.enabled === true}
+              label={`${KIND_LABEL[kind]} sync`}
+              bare
+              disabled={readOnly || config === undefined}
+              onToggle={(next) => onToggleKind(kind, next)}
+            />
           </div>
+          <span class="kind-sum">{kindSum(kind)}</span>
+          <div class="kind-strip-row">
+            <div class="kind-strip">
+              {#each rows as row (row.repository)}
+                {@const cell = row.cells[kind]}
+                <span
+                  class:is-change={(cell.changes ?? 0) > 0}
+                  class:is-refused={cell.state === 'refused'}
+                  class:is-off={cell.state === 'off'}
+                  title={row.repository}
+                ></span>
+              {/each}
+            </div>
+          </div>
+          <span class="kind-foot">
+            <span class="kind-when">{kindWhen(kind)}</span>
+            <a
+              class="kind-open"
+              href={sectionHref(KIND_SECTION[kind])}
+              aria-label={`Open ${KIND_LABEL[kind].toLowerCase()}`}
+              onclick={(event) => open(event, KIND_SECTION[kind])}
+            >
+              <Icon name="chevron-right" size="micro" />
+            </a>
+          </span>
         </div>
-        <span class="kind-foot">
-          <span class="kind-when">{kindWhen(kind)}</span>
-          <a
-            class="kind-open"
-            href={sectionHref(KIND_SECTION[kind])}
-            aria-label={`Open ${KIND_LABEL[kind].toLowerCase()}`}
-            onclick={(event) => open(event, KIND_SECTION[kind])}
-          >
-            <Icon name="chevron-right" size="micro" />
-          </a>
-        </span>
-      </div>
-    {/each}
-  </div>
+      {/each}
+    </div>
+  {/if}
 </section>
 
 <style>
@@ -354,11 +423,14 @@ plan is applied, which is why these are switches and not a form.
      copy alone - and when that copy stopped applying, this one went on looking right and
      hid it. */
 
+  /* A card in everything but its class - it wears the sheet's own surface
+     tokens, and its padding is the surface padding rather than a number of
+     its own. It held its content 4px closer than every card beside it. */
   .board {
     background: var(--surface-base);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
-    padding: var(--space-4);
+    padding: var(--rhythm-surface-pad);
   }
 
   /* start, not the stretch default: stretched, the well grew to the legend
@@ -642,11 +714,13 @@ plan is applied, which is why these are switches and not a form.
   }
 
   /* Two across by default: four only where each card genuinely gets ~16rem. */
+  /* No margin: the frame's gap is what separates this from the card above it,
+     and a margin on top of it made the one distance on the page that was 40px
+     where every other pair is 16. */
   .kind-grid {
     display: grid;
     gap: var(--space-4);
     grid-template-columns: repeat(2, 1fr);
-    margin-block: var(--space-6);
   }
 
   @media (min-width: 85rem) {
@@ -666,7 +740,7 @@ plan is applied, which is why these are switches and not a form.
        a fleet's worth of strip slots sets the track's floor and all four
        cards march past the frame together. */
     min-width: 0;
-    padding: var(--space-4);
+    padding: var(--rhythm-surface-pad);
     position: relative;
     text-decoration: none;
     transition:
@@ -712,19 +786,21 @@ plan is applied, which is why these are switches and not a form.
     z-index: 1;
   }
 
+  /* `.card-head` gives the tier, the trim and the head line - the title's cap,
+     which is what puts it the same distance below every card's edge. The margin
+     below belongs to the grid's gap, not to the head. */
+  /* The head keeps the sheet's line - the title's cap - so the name opens the
+     same 20px below the card's edge that the stamp closes above it and the words
+     hold from the sides. The switch centres on that line and overflows it, which
+     is what the line is for: a control is placed by it, never sized by it. */
   .kind-card-head {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
     justify-content: space-between;
+    margin-block-end: 0;
   }
 
+  /* `.card-title` gives the tier and the trim; this only says it is a link. */
   .kind-name {
     color: inherit;
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
     text-decoration: none;
   }
 
@@ -810,31 +886,54 @@ plan is applied, which is why these are switches and not a form.
     min-block-size: auto;
   }
 
+  /* THE GROUND AND THE TARGET COME BACK AS PAINT, NOT AS LAYOUT - the same
+     trade the bare switch makes. Laid out at 24px this was the tallest thing in
+     the foot, so the card's last line of ink floated 28.9px above an edge whose
+     sides were 20: the reader sees the stamp, not the round ground that appears
+     under a pointer. Sized to its glyph, the foot's box IS its ink and the card
+     closes 20px below the words. The pseudo keeps the 24px WCAG 2.5.8 asks for
+     and the ground a hover paints, both centred on the glyph. */
   .kind-open {
     align-items: center;
-    block-size: var(--field-target-min);
-    border-radius: 50%;
     color: var(--text-muted);
     display: inline-flex;
-    inline-size: var(--field-target-min);
     justify-content: center;
     padding: 0;
+    position: relative;
+    transition:
+      color var(--duration-fast) var(--ease-standard),
+      translate var(--duration-press) var(--ease-standard);
+  }
+
+  .kind-open::before {
+    block-size: var(--field-target-min);
+    border-radius: 50%;
+    content: '';
+    inline-size: var(--field-target-min);
+    inset-block-start: 50%;
+    inset-inline-start: 50%;
+    position: absolute;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
+    translate: -50% -50%;
   }
 
   .kind-open:hover {
-    background: var(--interactive-hover-layer);
     color: var(--text-primary);
   }
 
+  .kind-open:hover::before {
+    background: var(--interactive-hover-layer);
+  }
+
   .kind-open:active {
+    translate: 0 1px;
+  }
+
+  .kind-open:active::before {
     background: var(--interactive-pressed);
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   .kind-card.is-off .kind-sum,

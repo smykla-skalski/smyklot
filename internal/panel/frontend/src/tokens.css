@@ -391,6 +391,12 @@
   /* What separates the head's action slot from its copy once the slot has
      left the title's row - a distance the wide layout does not have. */
   --rhythm-head-actions-stacked: 12px;
+  /* A TOOLBAR'S DISTANCE TO WHAT IT ACTS ON. Carried as a margin, because a
+     toolbar is not always a child of the frame - inside a plate it is one of
+     several rows in a flex column with no gap of its own, and dropping the
+     margin there closed the search bar onto the list it filters. Where the
+     frame IS the parent its gap already says this and the margin stands down,
+     which is the doubling that put 32px under every other search bar. */
   --rhythm-toolbar-surface: 16px;
   --rhythm-card-head-body: 16px;
   /* A list's foot stands a card head's distance plus a row's own padding below the
@@ -399,6 +405,14 @@
   --rhythm-card-foot-band: calc(var(--rhythm-card-head-body) + var(--row-pad-default));
   /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
   --rhythm-card-gap: var(--space-4);
+  /* WHAT A FRAMED SURFACE KEEPS BETWEEN ITS EDGE AND ITS CONTENT, and there is
+     only one of those either. `.card` said 20px while the sync board and its
+     kind cards said 16, so three surfaces of the same material sat side by side
+     on one page holding their content at two different distances. Named, so a
+     fourth surface has something to read rather than a number to pick. */
+  --rhythm-surface-pad: var(--space-5);
+  /* A phone gives the frame less room, so a surface keeps less for itself. */
+  --rhythm-surface-pad-compact: var(--space-4);
   /* The row families' shared geometry - the values every family rule reads. */
   --row-pad-default: 12px;
   --row-pad-compact: 8px;
@@ -410,9 +424,11 @@
      Measured rendered, not declared: re-measure after any change to a
      family's type or track sizing. */
   --row-copy-gap: 8px;
-  /* kind cards: the summary pulls against the card's 12px grid gap plus
-     the head row's 4px slack - renders 8. */
-  --row-copy-gap-kind: -8px;
+  /* kind cards: the summary pulls against the card's 12px grid gap plus the
+     head row's own slack - renders 8. Re-derived when the head took the
+     sheet's title tier and a line that contains its switch: at -8 against the
+     new head it rendered 4, which is the squeeze the pair is named to prevent. */
+  --row-copy-gap-kind: -4px;
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, not a round number above it. At 20
      against a 13px cap the head reserved 3.5px of nothing over the title, so
      a card opened its ink 3.5 inside its frame and closed it wherever the

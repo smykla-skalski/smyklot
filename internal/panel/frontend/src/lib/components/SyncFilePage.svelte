@@ -1027,7 +1027,12 @@ where it arises.
       </div>
 
       {#if repositoryRows.length === 0}
-        <p class="sync-empty">No repositories are available in this workspace</p>
+        <div class="state-panel">
+          <span
+            ><strong>No repository takes this file yet.</strong> Every syncing repository would get it
+            exactly as written above, and any that adjusts it appears here</span
+          >
+        </div>
       {/if}
 
       {#each repositoryRows as entry (entry.repository_id)}
@@ -1074,12 +1079,12 @@ where it arises.
                 </span>
               </div>
               {#if openMerge === null}
-                <p class="sync-empty">
+                <p class="sync-note">
                   This repository takes the shared content unchanged before its formatting policy is
                   applied
                 </p>
               {:else if editedText === null}
-                <p class="sync-empty">
+                <p class="sync-note">
                   This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
                   {lang} template - the stored override below is the whole of it
                 </p>
@@ -1115,7 +1120,7 @@ where it arises.
                 />
               {/if}
               {#if editedText !== null && staged === null}
-                <p class="sync-empty">
+                <p class="sync-note">
                   Not JSON yet - the override picks the edit up when it parses again
                 </p>
               {/if}
@@ -1212,7 +1217,7 @@ where it arises.
                   {/if}
                 </div>
                 {#if repositoryRendering}
-                  <p class="sync-empty">Rendering the repository's complete effective policy…</p>
+                  <p class="sync-note">Rendering the repository's complete effective policy…</p>
                 {:else if repositoryRender?.valid === false}
                   <FormError
                     message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
@@ -1252,7 +1257,12 @@ where it arises.
     gap: var(--space-2);
   }
 
-  .sync-empty {
+  /* A line ABOUT a row, not a page with nothing in it - what one repository
+     does with the template, why an editor cannot compose, what is being waited
+     for. It was `.sync-empty`, which is how three of these came to wear the
+     name of a state they are not: a page that has nothing says so in a
+     `.state-panel`. */
+  .sync-note {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-2);

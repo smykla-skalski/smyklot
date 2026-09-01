@@ -368,7 +368,12 @@ already hold - the index ships once, matching costs no requests.
         {/each}
       </div>
     {:else if !unreadable}
-      <p class="sync-empty">No templates yet</p>
+      <div class="state-panel">
+        <span
+          ><strong>No shared files yet.</strong> A template added here is copied into every syncing repository
+          as a pull request it can merge or close</span
+        >
+      </div>
     {/if}
   </Card>
 
@@ -442,12 +447,6 @@ already hold - the index ships once, matching costs no requests.
     font-size: var(--font-size-meta);
     margin: 0 0 var(--space-4);
     padding: var(--space-2) var(--space-3);
-  }
-
-  .sync-empty {
-    color: var(--text-muted);
-    font-size: var(--font-size-meta);
-    margin: 0;
   }
 
   /* ---------- The finder ---------- */

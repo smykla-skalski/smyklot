@@ -344,6 +344,18 @@ turns the unmanaged names into rows of their own.
       >
       <Button onclick={() => (query = '')}>Clear the search</Button>
     </div>
+  {:else if managedCount === 0 && show === 'managed'}
+    <!-- Nothing is managed, so every group below is a heading over "0 of 6" and
+         nothing else. The page said that four times and never once said what it
+         meant. The groups stay, because their "Manage another setting" line is
+         the way out of this state - the panel names it and points at them. -->
+    <div class="state-panel">
+      <span
+        ><strong>No options are managed here.</strong> Every repository keeps its own GitHub settings
+        until one is managed below, and then every syncing repository is held to it</span
+      >
+      <Button onclick={() => (show = 'everything')}>Show every option</Button>
+    </div>
   {/if}
 
   <div class="setting-groups card-stack">
@@ -515,12 +527,16 @@ turns the unmanaged names into rows of their own.
 
   /* ---------- The tools row ---------- */
 
+  /* No margin below: this bar is always a child of the frame, whose gap is the
+     distance to what it acts on. A margin here as well made 32px where the
+     drawing has 16 - and stating it and standing it down in `app.css` does not
+     work from here, because a scoped rule TIES with the shared one and wins on
+     source order. */
   .matrix-tools {
     align-items: center;
     display: flex;
     gap: var(--space-3);
     justify-content: space-between;
-    margin-bottom: var(--rhythm-toolbar-surface);
   }
 
   .matrix-search {

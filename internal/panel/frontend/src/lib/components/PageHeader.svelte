@@ -120,11 +120,11 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     /* The header's exit is a rhythm decision: 24px to the first surface below it,
-       and the pane's own top edge above. The frame it sits in is a card stack, so
-       its gap already gives part of that distance and the header owes the rest -
-       written as the difference rather than as a second number, because two numbers
-       for one distance is how this drifts. */
-    margin-block-end: calc(var(--rhythm-head-surface-wide) - var(--rhythm-card-gap));
+       and the pane's own top edge above. Declared WHOLE here and reduced below by
+       the frame's gap only where the frame is what it sits in - a head inside a
+       plate has no gap under it at all, and written as the difference outright it
+       closed 4px above the search bar on every page built that way. */
+    margin-block-end: var(--rhythm-head-surface-wide);
     row-gap: var(--rhythm-head-actions-stacked);
   }
 
@@ -133,6 +133,17 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
      so on source order the component won and every page with a filter bar under its
      head stood 4px too far off it. Said here, where the losing rule is. */
   .page-head:has(+ :global(.filter-bar)) {
+    margin-block-end: var(--rhythm-head-toolbar);
+  }
+
+  /* WHERE THE FRAME IS THE PARENT its gap gives part of the distance and the head
+     owes the rest. Written as the difference rather than as a second number,
+     because two numbers for one distance is how this drifts. */
+  :global(.view-frame) > .page-head {
+    margin-block-end: calc(var(--rhythm-head-surface-wide) - var(--rhythm-card-gap));
+  }
+
+  :global(.view-frame) > .page-head:has(+ :global(.filter-bar)) {
     margin-block-end: calc(var(--rhythm-head-toolbar) - var(--rhythm-card-gap));
   }
 
@@ -284,11 +295,17 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
   @media (max-width: 47.9375rem) {
     .page-head {
       grid-template-columns: minmax(0, 1fr);
-      margin-block-end: calc(var(--rhythm-head-surface-compact) - var(--rhythm-card-gap));
+      margin-block-end: var(--rhythm-head-surface-compact);
     }
 
     .page-head:has(+ :global(.filter-bar)) {
       margin-block-end: var(--rhythm-head-toolbar);
+    }
+
+    /* And the same stand-down: the frame's gap carries part of it where the frame
+       is the parent, and nothing carries it where a plate is. */
+    :global(.view-frame) > .page-head {
+      margin-block-end: calc(var(--rhythm-head-surface-compact) - var(--rhythm-card-gap));
     }
 
     /* One column: the complete action group stacks AFTER the state it acts on. */

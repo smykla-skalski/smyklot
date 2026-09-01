@@ -585,7 +585,10 @@ it has to answer to the same fact.
     margin-inline: -12px;
     min-block-size: 0;
     overflow: hidden auto;
-    padding-block: calc(var(--space-4) * 2) var(--space-4);
+    /* One space under the search, the same one the content pane puts under its
+       own. Bart's call: the drawing gives the tree a doubled one and the two
+       search bars then disagreed about how far their list sits below them. */
+    padding-block: var(--space-4);
     padding-inline: 12px;
     scroll-timeline: --side-tree block;
     scrollbar-width: thin;

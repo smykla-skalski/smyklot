@@ -435,10 +435,21 @@ unlisted labels are removed, and the patterns left alone either way.
     <div class="card-head">
       <h2 class="card-title">{rows.length} {rows.length === 1 ? 'label' : 'labels'}</h2>
     </div>
-    <p class="label-hint">
-      Edit any name, description or colour. Each edit enters the draft as it commits; press Escape
-      to take one back.
-    </p>
+    {#if rows.length === 0}
+      <!-- The hint below explains how to edit a row, and there are none - so the
+           card said "0 labels" over a sentence about editing and then stopped. -->
+      <div class="state-panel">
+        <span
+          ><strong>No labels are synced here yet.</strong> Every repository keeps its own until one is
+          added - then every syncing repository is held to the list</span
+        >
+      </div>
+    {:else}
+      <p class="label-hint">
+        Edit any name, description or colour. Each edit enters the draft as it commits; press Escape
+        to take one back.
+      </p>
+    {/if}
     <ul class="label-rows">
       {#each rows as row, index (index)}
         {@const open = editing !== null && editing.index === index ? editing.piece : null}

@@ -419,6 +419,7 @@ applied on save would give nobody the chance to read the deletions first.
         files: documents.files ?? undefined,
       }}
       {nowMs}
+      repositories={filesContext?.repositories ?? null}
       {sectionHref}
       {onOpenSection}
       onToggleKind={toggleKind}
