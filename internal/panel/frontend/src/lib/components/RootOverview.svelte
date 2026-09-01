@@ -15,6 +15,9 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
   import { useInterval } from 'runed';
+  import { fade } from 'svelte/transition';
+
+  import { collapse, LiveList, rowMotion } from '#lib/live-list.svelte.js';
 
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import { queueLine } from '#lib/queue-words.js';
@@ -73,6 +76,10 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
   const installations = $derived<RootInstallation[]>(installationsQuery.data ?? []);
   const inFlight = $derived<QueueItem[]>(queueQuery.data?.items ?? []);
+  const active = new LiveList(
+    () => inFlight,
+    (item) => item.id,
+  );
   /* Three, like the cards beside it: the overview says whether deliveries are
      failing, and the failures page says which. */
   const failures = $derived<RootOverviewFailure[]>((overview?.recent_failures ?? []).slice(0, 3));
@@ -255,14 +262,22 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       <h2 class="card-title">Queue</h2>
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
-    {#if inFlight.length === 0}
+    {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
-      <div class="object-list">
-        {#each inFlight as item (item.id)}
+      <!-- Held while it is read, and moved rather than teleported the rest of the
+           time - `LiveList` carries both rules and why they exist. -->
+      <div class="object-list" {...active.holdAttrs}>
+        {#each active.rows as item (item.id)}
           {@const where = queueWhere(item)}
           {@const line = queueLine(item, nowMs)}
-          <div class="object-row" data-queue-item={item.id}>
+          <!-- No `animate:flip` - see `WorkspaceOverview` for the 51px it costs. -->
+          <div
+            class="object-row"
+            data-queue-item={item.id}
+            in:fade={rowMotion.arriving}
+            out:collapse={rowMotion.leaving}
+          >
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name">{queueHeading(item)}</span>

@@ -55,6 +55,9 @@ what would otherwise be four visits.
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
   import { useInterval } from 'runed';
+  import { fade } from 'svelte/transition';
+
+  import { collapse, LiveList, rowMotion } from '#lib/live-list.svelte.js';
 
   import { formatUntil, sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
@@ -172,6 +175,10 @@ what would otherwise be four visits.
   const fleet = $derived(statusQuery.data ?? null);
   const broken: RepositorySummary[] = $derived(brokenQuery.data?.items ?? []);
   const inFlight: QueueItem[] = $derived(activeQuery.data?.items ?? []);
+  const active = new LiveList(
+    () => inFlight,
+    (item) => item.id,
+  );
   const lately: AuditEntry[] = $derived(auditQuery.data?.items ?? []);
   const failures = $derived(failuresQuery.data?.total ?? 0);
   const counts = $derived(countsQuery.data ?? null);
@@ -279,13 +286,22 @@ what would otherwise be four visits.
       <h2 class="card-title">Active work</h2>
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
-    {#if inFlight.length === 0}
+    {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
-      <div class="object-list">
-        {#each inFlight as item (item.id)}
+      <!-- Held while it is read, and moved rather than teleported the rest of the
+           time - `LiveList` carries both rules and why they exist. -->
+      <div class="object-list" {...active.holdAttrs}>
+        {#each active.rows as item (item.id)}
           {@const subject = queueSubject(item)}
-          <div class="object-row">
+          <!-- No `animate:flip` here, and that is the point. Svelte takes an outroing
+               row OUT OF FLOW so its siblings can be flipped into place, which hands
+               back the row's whole height in one frame - the card shuts by 51px and
+               every card below it jumps, which is the thing being prevented. In flow,
+               `collapse` gives the space back over its own duration and the rows below
+               follow it down. The queue's table can afford the flip because a table
+               holds its own rows; a list of blocks has nothing holding the space. -->
+          <div class="object-row" in:fade={rowMotion.arriving} out:collapse={rowMotion.leaving}>
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name">{queueHeading(item)}</span>
