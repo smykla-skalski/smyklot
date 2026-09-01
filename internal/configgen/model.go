@@ -667,10 +667,20 @@ func parseTag(literal *ast.BasicLit) reflect.StructTag {
 // what follows leaves a sentence about the setting.
 func describe(name, doc string) string {
 	if rest, found := strings.CutPrefix(doc, name+" "); found {
-		return mapFirstRune(rest, unicode.ToUpper)
+		return unstop(mapFirstRune(rest, unicode.ToUpper))
 	}
 
-	return doc
+	return unstop(doc)
+}
+
+// unstop drops the sentence-ending period a Go doc comment is required to have.
+//
+// The comment keeps it - `Doc` is the comment as written, and godoc wants the stop.
+// This is the other half of the same string: a line of interface copy, which the panel
+// sets beside a control, and the product's copy carries no trailing stop. Only the last
+// one goes, so a description made of two sentences keeps the break between them.
+func unstop(text string) string {
+	return strings.TrimSuffix(text, ".")
 }
 
 // mapFirstRune applies f to the first rune of text, leaving the rest alone.

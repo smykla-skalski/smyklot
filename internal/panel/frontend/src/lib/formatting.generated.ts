@@ -140,12 +140,12 @@ export const FORMATTING_PRESETS = {
 } as const satisfies Record<FormattingPreset, FormattingPolicy>;
 
 export const FORMATTING_GROUPS = [
-  { key: 'common', label: 'Common', description: 'Carries presentation choices shared by every supported format.' },
-  { key: 'json', label: 'JSON', description: 'Carries strict JSON presentation choices.' },
-  { key: 'jsonc', label: 'JSONC', description: 'Carries comment-aware JSON presentation choices.' },
-  { key: 'yaml', label: 'YAML', description: 'Carries YAML presentation choices.' },
-  { key: 'toml', label: 'TOML', description: 'Carries TOML presentation choices.' },
-  { key: 'markdown', label: 'Markdown', description: 'Carries Markdown presentation choices.' },
+  { key: 'common', label: 'Common', description: 'Carries presentation choices shared by every supported format' },
+  { key: 'json', label: 'JSON', description: 'Carries strict JSON presentation choices' },
+  { key: 'jsonc', label: 'JSONC', description: 'Carries comment-aware JSON presentation choices' },
+  { key: 'yaml', label: 'YAML', description: 'Carries YAML presentation choices' },
+  { key: 'toml', label: 'TOML', description: 'Carries TOML presentation choices' },
+  { key: 'markdown', label: 'Markdown', description: 'Carries Markdown presentation choices' },
 ] as const;
 
 export type FormattingGroup = (typeof FORMATTING_GROUPS)[number];
@@ -157,7 +157,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'conventional'],
-    description: 'Resets every formatting leaf before sibling overrides are applied.',
+    description: 'Resets every formatting leaf before sibling overrides are applied',
   },
   {
     key: 'formatting.common.indent_style',
@@ -165,7 +165,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'spaces', 'tabs'],
-    description: 'Chooses spaces, tabs, or the document\'s existing indentation.',
+    description: 'Chooses spaces, tabs, or the document\'s existing indentation',
   },
   {
     key: 'formatting.common.indent_width',
@@ -174,7 +174,7 @@ export const FORMATTING_FIELDS = [
     defaultValue: 2,
     minimum: 1,
     maximum: 16,
-    description: 'Is the number of spaces represented by one indentation level.',
+    description: 'Is the number of spaces represented by one indentation level',
   },
   {
     key: 'formatting.common.line_width',
@@ -183,7 +183,7 @@ export const FORMATTING_FIELDS = [
     defaultValue: 100,
     minimum: 40,
     maximum: 320,
-    description: 'Is the target width used by automatic collection and prose layout.',
+    description: 'Is the target width used by automatic collection and prose layout',
   },
   {
     key: 'formatting.common.line_ending',
@@ -191,7 +191,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'lf', 'crlf'],
-    description: 'Chooses LF, CRLF, or the document\'s existing endings.',
+    description: 'Chooses LF, CRLF, or the document\'s existing endings',
   },
   {
     key: 'formatting.common.final_newline',
@@ -199,7 +199,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'insert', 'remove'],
-    description: 'Inserts, removes, or preserves the last line ending.',
+    description: 'Inserts, removes, or preserves the last line ending',
   },
   {
     key: 'formatting.json.arrays',
@@ -207,7 +207,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'auto', 'compact', 'expanded'],
-    description: 'Controls JSON array layout.',
+    description: 'Controls JSON array layout',
   },
   {
     key: 'formatting.json.objects',
@@ -215,7 +215,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'auto', 'compact', 'expanded'],
-    description: 'Controls JSON object layout.',
+    description: 'Controls JSON object layout',
   },
   {
     key: 'formatting.json.key_order',
@@ -223,7 +223,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'sort'],
-    description: 'Preserves insertion order or sorts object keys.',
+    description: 'Preserves insertion order or sorts object keys',
   },
   {
     key: 'formatting.jsonc.trailing_commas',
@@ -231,7 +231,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'insert', 'remove'],
-    description: 'Inserts, removes, or preserves JSONC trailing commas.',
+    description: 'Inserts, removes, or preserves JSONC trailing commas',
   },
   {
     key: 'formatting.yaml.sequences',
@@ -239,7 +239,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'auto', 'flow', 'block'],
-    description: 'Controls YAML sequence layout.',
+    description: 'Controls YAML sequence layout',
   },
   {
     key: 'formatting.yaml.mappings',
@@ -247,7 +247,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'auto', 'flow', 'block'],
-    description: 'Controls YAML mapping layout.',
+    description: 'Controls YAML mapping layout',
   },
   {
     key: 'formatting.yaml.quote_style',
@@ -255,7 +255,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'prefer_plain', 'prefer_single', 'prefer_double'],
-    description: 'Controls safe scalar quote preference.',
+    description: 'Controls safe scalar quote preference',
   },
   {
     key: 'formatting.yaml.sequence_indent',
@@ -263,7 +263,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'indented', 'indentless'],
-    description: 'Controls indentation of block sequence markers.',
+    description: 'Controls indentation of block sequence markers',
   },
   {
     key: 'formatting.yaml.document_start',
@@ -271,7 +271,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'insert', 'remove'],
-    description: 'Inserts, removes, or preserves the YAML document marker.',
+    description: 'Inserts, removes, or preserves the YAML document marker',
   },
   {
     key: 'formatting.toml.arrays',
@@ -279,7 +279,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'auto', 'compact', 'expanded'],
-    description: 'Controls TOML array layout.',
+    description: 'Controls TOML array layout',
   },
   {
     key: 'formatting.toml.trailing_commas',
@@ -287,7 +287,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'multiline', 'remove'],
-    description: 'Controls commas in multiline TOML arrays.',
+    description: 'Controls commas in multiline TOML arrays',
   },
   {
     key: 'formatting.toml.quote_style',
@@ -295,7 +295,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'prefer_basic', 'prefer_literal'],
-    description: 'Controls safe TOML string quote preference.',
+    description: 'Controls safe TOML string quote preference',
   },
   {
     key: 'formatting.toml.align_entries',
@@ -303,7 +303,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'align', 'compact'],
-    description: 'Aligns or compacts neighbouring TOML assignments.',
+    description: 'Aligns or compacts neighbouring TOML assignments',
   },
   {
     key: 'formatting.toml.align_comments',
@@ -311,7 +311,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'align', 'compact'],
-    description: 'Aligns or compacts neighbouring TOML comments.',
+    description: 'Aligns or compacts neighbouring TOML comments',
   },
   {
     key: 'formatting.toml.key_order',
@@ -319,7 +319,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'sort'],
-    description: 'Preserves insertion order or sorts TOML keys.',
+    description: 'Preserves insertion order or sorts TOML keys',
   },
   {
     key: 'formatting.markdown.prose_wrap',
@@ -327,7 +327,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'always', 'never'],
-    description: 'Wraps safe prose, removes soft wraps, or preserves it.',
+    description: 'Wraps safe prose, removes soft wraps, or preserves it',
   },
   {
     key: 'formatting.markdown.list_spacing',
@@ -335,7 +335,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'tight', 'loose'],
-    description: 'Makes safe lists tight or loose, or preserves their spacing.',
+    description: 'Makes safe lists tight or loose, or preserves their spacing',
   },
   {
     key: 'formatting.markdown.tables',
@@ -343,7 +343,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'align', 'compact'],
-    description: 'Aligns or compacts safe GFM tables, or preserves them.',
+    description: 'Aligns or compacts safe GFM tables, or preserves them',
   },
 ] as const;
 

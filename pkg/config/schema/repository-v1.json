@@ -8,17 +8,17 @@
   "properties": {
     "allow_draft_merges": {
       "type": "boolean",
-      "description": "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them.",
+      "description": "Lets a merge command mark a draft pull request ready for review before continuing. Off by default: drafts stay protected until a person explicitly publishes them",
       "default": false
     },
     "allow_self_approval": {
       "type": "boolean",
-      "description": "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes.",
+      "description": "Lets the author of a pull request approve it. Off by default: an approval is meant to be a second pair of eyes",
       "default": false
     },
     "allowed_commands": {
       "type": "array",
-      "description": "Narrows what may be run. An empty list allows every command; naming any command forbids the rest.",
+      "description": "Narrows what may be run. An empty list allows every command; naming any command forbids the rest",
       "items": {
         "type": "string"
       },
@@ -26,7 +26,7 @@
     },
     "command_aliases": {
       "type": "object",
-      "description": "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\".",
+      "description": "Maps a spelling somebody uses onto the command it means, such as \"app\" onto \"approve\"",
       "additionalProperties": {
         "type": "string"
       },
@@ -34,47 +34,47 @@
     },
     "command_prefix": {
       "type": "string",
-      "description": "Opens a slash-style command, as \"/\" does in \"/approve\".",
+      "description": "Opens a slash-style command, as \"/\" does in \"/approve\"",
       "default": "/"
     },
     "disable_bare_commands": {
       "type": "boolean",
-      "description": "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own.",
+      "description": "Stops Smyklot answering an unprefixed word such as \"approve\" or \"lgtm\" on a line of its own",
       "default": false
     },
     "disable_deleted_comments": {
       "type": "boolean",
-      "description": "Stops Smyklot reporting that a comment carrying a command was deleted.",
+      "description": "Stops Smyklot reporting that a comment carrying a command was deleted",
       "default": false
     },
     "disable_mentions": {
       "type": "boolean",
-      "description": "Stops Smyklot answering a mention, such as \"@smyklot approve\".",
+      "description": "Stops Smyklot answering a mention, such as \"@smyklot approve\"",
       "default": false
     },
     "disable_reactions": {
       "type": "boolean",
-      "description": "Stops a reaction on the pull request body counting as a command at all.",
+      "description": "Stops a reaction on the pull request body counting as a command at all",
       "default": false
     },
     "disable_unapprove": {
       "type": "boolean",
-      "description": "Withdraws the unapprove and disapprove commands.",
+      "description": "Withdraws the unapprove and disapprove commands",
       "default": false
     },
     "formatting": {
       "type": "object",
-      "description": "Controls file presentation independently of semantic merge. Every dimension defaults to preserve, so adding the feature does not rewrite an existing template.",
+      "description": "Controls file presentation independently of semantic merge. Every dimension defaults to preserve, so adding the feature does not rewrite an existing template",
       "additionalProperties": false,
       "properties": {
         "common": {
           "type": "object",
-          "description": "Carries presentation choices shared by every supported format.",
+          "description": "Carries presentation choices shared by every supported format",
           "additionalProperties": false,
           "properties": {
             "final_newline": {
               "type": "string",
-              "description": "Inserts, removes, or preserves the last line ending.",
+              "description": "Inserts, removes, or preserves the last line ending",
               "enum": [
                 "preserve",
                 "insert",
@@ -84,7 +84,7 @@
             },
             "indent_style": {
               "type": "string",
-              "description": "Chooses spaces, tabs, or the document's existing indentation.",
+              "description": "Chooses spaces, tabs, or the document's existing indentation",
               "enum": [
                 "preserve",
                 "spaces",
@@ -94,14 +94,14 @@
             },
             "indent_width": {
               "type": "integer",
-              "description": "Is the number of spaces represented by one indentation level.",
+              "description": "Is the number of spaces represented by one indentation level",
               "minimum": 1,
               "maximum": 16,
               "default": 2
             },
             "line_ending": {
               "type": "string",
-              "description": "Chooses LF, CRLF, or the document's existing endings.",
+              "description": "Chooses LF, CRLF, or the document's existing endings",
               "enum": [
                 "preserve",
                 "lf",
@@ -111,7 +111,7 @@
             },
             "line_width": {
               "type": "integer",
-              "description": "Is the target width used by automatic collection and prose layout.",
+              "description": "Is the target width used by automatic collection and prose layout",
               "minimum": 40,
               "maximum": 320,
               "default": 100
@@ -127,12 +127,12 @@
         },
         "json": {
           "type": "object",
-          "description": "Carries strict JSON presentation choices.",
+          "description": "Carries strict JSON presentation choices",
           "additionalProperties": false,
           "properties": {
             "arrays": {
               "type": "string",
-              "description": "Controls JSON array layout.",
+              "description": "Controls JSON array layout",
               "enum": [
                 "preserve",
                 "auto",
@@ -143,7 +143,7 @@
             },
             "key_order": {
               "type": "string",
-              "description": "Preserves insertion order or sorts object keys.",
+              "description": "Preserves insertion order or sorts object keys",
               "enum": [
                 "preserve",
                 "sort"
@@ -152,7 +152,7 @@
             },
             "objects": {
               "type": "string",
-              "description": "Controls JSON object layout.",
+              "description": "Controls JSON object layout",
               "enum": [
                 "preserve",
                 "auto",
@@ -170,12 +170,12 @@
         },
         "jsonc": {
           "type": "object",
-          "description": "Carries comment-aware JSON presentation choices.",
+          "description": "Carries comment-aware JSON presentation choices",
           "additionalProperties": false,
           "properties": {
             "trailing_commas": {
               "type": "string",
-              "description": "Inserts, removes, or preserves JSONC trailing commas.",
+              "description": "Inserts, removes, or preserves JSONC trailing commas",
               "enum": [
                 "preserve",
                 "insert",
@@ -190,12 +190,12 @@
         },
         "markdown": {
           "type": "object",
-          "description": "Carries Markdown presentation choices.",
+          "description": "Carries Markdown presentation choices",
           "additionalProperties": false,
           "properties": {
             "list_spacing": {
               "type": "string",
-              "description": "Makes safe lists tight or loose, or preserves their spacing.",
+              "description": "Makes safe lists tight or loose, or preserves their spacing",
               "enum": [
                 "preserve",
                 "tight",
@@ -205,7 +205,7 @@
             },
             "prose_wrap": {
               "type": "string",
-              "description": "Wraps safe prose, removes soft wraps, or preserves it.",
+              "description": "Wraps safe prose, removes soft wraps, or preserves it",
               "enum": [
                 "preserve",
                 "always",
@@ -215,7 +215,7 @@
             },
             "tables": {
               "type": "string",
-              "description": "Aligns or compacts safe GFM tables, or preserves them.",
+              "description": "Aligns or compacts safe GFM tables, or preserves them",
               "enum": [
                 "preserve",
                 "align",
@@ -232,7 +232,7 @@
         },
         "preset": {
           "type": "string",
-          "description": "Resets every formatting leaf before sibling overrides are applied.",
+          "description": "Resets every formatting leaf before sibling overrides are applied",
           "enum": [
             "preserve",
             "conventional"
@@ -241,12 +241,12 @@
         },
         "toml": {
           "type": "object",
-          "description": "Carries TOML presentation choices.",
+          "description": "Carries TOML presentation choices",
           "additionalProperties": false,
           "properties": {
             "align_comments": {
               "type": "string",
-              "description": "Aligns or compacts neighbouring TOML comments.",
+              "description": "Aligns or compacts neighbouring TOML comments",
               "enum": [
                 "preserve",
                 "align",
@@ -256,7 +256,7 @@
             },
             "align_entries": {
               "type": "string",
-              "description": "Aligns or compacts neighbouring TOML assignments.",
+              "description": "Aligns or compacts neighbouring TOML assignments",
               "enum": [
                 "preserve",
                 "align",
@@ -266,7 +266,7 @@
             },
             "arrays": {
               "type": "string",
-              "description": "Controls TOML array layout.",
+              "description": "Controls TOML array layout",
               "enum": [
                 "preserve",
                 "auto",
@@ -277,7 +277,7 @@
             },
             "key_order": {
               "type": "string",
-              "description": "Preserves insertion order or sorts TOML keys.",
+              "description": "Preserves insertion order or sorts TOML keys",
               "enum": [
                 "preserve",
                 "sort"
@@ -286,7 +286,7 @@
             },
             "quote_style": {
               "type": "string",
-              "description": "Controls safe TOML string quote preference.",
+              "description": "Controls safe TOML string quote preference",
               "enum": [
                 "preserve",
                 "prefer_basic",
@@ -296,7 +296,7 @@
             },
             "trailing_commas": {
               "type": "string",
-              "description": "Controls commas in multiline TOML arrays.",
+              "description": "Controls commas in multiline TOML arrays",
               "enum": [
                 "preserve",
                 "multiline",
@@ -316,12 +316,12 @@
         },
         "yaml": {
           "type": "object",
-          "description": "Carries YAML presentation choices.",
+          "description": "Carries YAML presentation choices",
           "additionalProperties": false,
           "properties": {
             "document_start": {
               "type": "string",
-              "description": "Inserts, removes, or preserves the YAML document marker.",
+              "description": "Inserts, removes, or preserves the YAML document marker",
               "enum": [
                 "preserve",
                 "insert",
@@ -331,7 +331,7 @@
             },
             "mappings": {
               "type": "string",
-              "description": "Controls YAML mapping layout.",
+              "description": "Controls YAML mapping layout",
               "enum": [
                 "preserve",
                 "auto",
@@ -342,7 +342,7 @@
             },
             "quote_style": {
               "type": "string",
-              "description": "Controls safe scalar quote preference.",
+              "description": "Controls safe scalar quote preference",
               "enum": [
                 "preserve",
                 "prefer_plain",
@@ -353,7 +353,7 @@
             },
             "sequence_indent": {
               "type": "string",
-              "description": "Controls indentation of block sequence markers.",
+              "description": "Controls indentation of block sequence markers",
               "enum": [
                 "preserve",
                 "indented",
@@ -363,7 +363,7 @@
             },
             "sequences": {
               "type": "string",
-              "description": "Controls YAML sequence layout.",
+              "description": "Controls YAML sequence layout",
               "enum": [
                 "preserve",
                 "auto",
@@ -423,22 +423,22 @@
     },
     "quiet_pending": {
       "type": "boolean",
-      "description": "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction.",
+      "description": "Drops the comment announcing that a merge is waiting on CI, leaving only its reaction",
       "default": false
     },
     "quiet_reactions": {
       "type": "boolean",
-      "description": "Drops the comment an approval or merge driven by a reaction would post.",
+      "description": "Drops the comment an approval or merge driven by a reaction would post",
       "default": false
     },
     "quiet_success": {
       "type": "boolean",
-      "description": "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment.",
+      "description": "Drops the comment a successful command would post, leaving only its reaction. Errors and warnings still comment",
       "default": false
     },
     "runner": {
       "type": "string",
-      "description": "Names the entry point that acts on this repository, so the other one stands down. It is settable only in the repository's own file: the panel cannot write it, because a repository that has moved back to the Action must be able to say so itself.",
+      "description": "Names the entry point that acts on this repository, so the other one stands down. It is settable only in the repository's own file: the panel cannot write it, because a repository that has moved back to the Action must be able to say so itself",
       "enum": [
         "service",
         "action"
