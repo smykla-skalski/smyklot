@@ -34,6 +34,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   } from '../types';
   import { cadenceWords, workloadTitle } from '../workloads';
 
+  import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import Pill from './Pill.svelte';
@@ -262,12 +263,20 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       <h2 class="card-title">Queue</h2>
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
+    {#if active.changed > 0}
+      <!-- The set of rows moves when the reader says so - see `LiveList`. -->
+      <div class="list-changed">
+        <span
+          >{active.changed}
+          {active.changed === 1 ? 'item has' : 'items have'} changed</span
+        >
+        <Button tone="quiet" row onclick={() => active.refresh()}>Refresh</Button>
+      </div>
+    {/if}
     {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
-      <!-- Held while it is read, and moved rather than teleported the rest of the
-           time - `LiveList` carries both rules and why they exist. -->
-      <div class="object-list" {...active.holdAttrs}>
+      <div class="object-list">
         {#each active.rows as item (item.id)}
           {@const where = queueWhere(item)}
           {@const line = queueLine(item, nowMs)}

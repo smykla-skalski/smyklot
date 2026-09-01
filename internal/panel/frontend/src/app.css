@@ -1847,6 +1847,26 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
+/* ---------- What a live card has not shown yet ----------
+   The set of rows on the two queue cards moves when the reader presses, never on its
+   own, so this is where the service's own changes wait. Quiet on purpose: it reports
+   that something is available, not that anything is wrong, and it sits above the rows
+   it would change so the reader can see what it is offering to disturb. */
+.list-changed {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  font-size: var(--font-size-meta);
+  gap: var(--space-3);
+  justify-content: space-between;
+  line-height: var(--leading-meta);
+  padding-block-end: var(--space-3);
+}
+
+.list-changed span {
+  text-box: trim-both cap alphabetic;
+}
+
 .state-panel.is-error {
   border-color: color-mix(in srgb, var(--danger) 35%, transparent);
 }

@@ -63,6 +63,7 @@ what would otherwise be four visits.
   import { getPanelSession } from '../session.svelte';
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
+  import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -286,12 +287,22 @@ what would otherwise be four visits.
       <h2 class="card-title">Active work</h2>
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
+    {#if active.changed > 0}
+      <!-- The set of rows moves when the reader says so, never on its own. `LiveList`
+           carries why: an overview that reshuffles itself is a moving target, and the
+           rules about auto-updating content all point the same way. -->
+      <div class="list-changed">
+        <span
+          >{active.changed}
+          {active.changed === 1 ? 'item has' : 'items have'} changed</span
+        >
+        <Button tone="quiet" row onclick={() => active.refresh()}>Refresh</Button>
+      </div>
+    {/if}
     {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
-      <!-- Held while it is read, and moved rather than teleported the rest of the
-           time - `LiveList` carries both rules and why they exist. -->
-      <div class="object-list" {...active.holdAttrs}>
+      <div class="object-list">
         {#each active.rows as item (item.id)}
           {@const subject = queueSubject(item)}
           <!-- No `animate:flip` here, and that is the point. Svelte takes an outroing
