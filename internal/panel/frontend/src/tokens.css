@@ -974,8 +974,12 @@
   --control-bg-hover: color-mix(in oklab, var(--text-primary) 10%, var(--control-bg));
   --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
-  /* The console is a dark ground in either theme, so its rim takes the dark step. */
-  --control-border-hover: var(--primitive-dark-control-border-hover);
+  /* NO `--control-border-hover` here. The ramps around it are re-resolved against the
+     Root surfaces because they are mixes and would otherwise arrive already blended,
+     but this one is a flat value the theme owns - the console takes the light step in
+     the light theme and the dark step in the dark one, like every other surface. Given
+     the dark step outright it wore a blue-grey rim over a violet ground, two steps
+     darker than the line it was resting on. */
   /* Re-resolved against the Root surfaces, like the derived tokens above: the panel copies were computed
      against petrol-neutral greys and would otherwise arrive here already mixed. The veils come
      from --text-primary, so the violet comes free. */
