@@ -51,9 +51,9 @@
   {#snippet template(args)}<InstallationView {...args} view="history" />{/snippet}
 </Story>
 
-<!-- The account defaults every repository inherits until it overrides one. -->
-<Story name="Workspace defaults">
-  {#snippet template(args)}<InstallationView {...args} view="defaults" />{/snippet}
+<!-- What every repository inherits until it overrides one. -->
+<Story name="Workspace settings">
+  {#snippet template(args)}<InstallationView {...args} view="settings" />{/snippet}
 </Story>
 
 <!--

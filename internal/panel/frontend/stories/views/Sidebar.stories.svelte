@@ -64,10 +64,10 @@
       count: 2,
     },
     {
-      id: 'defaults',
+      id: 'settings',
       label: 'Workspace settings',
       icon: 'gear',
-      href: '#/defaults',
+      href: '#/settings',
       active: false,
       foot: true,
     },
@@ -132,7 +132,7 @@
     );
 
   const DIRTY_WORKSPACE_ENTRIES: SidebarEntry[] = WORKSPACE_ENTRIES.map((entry) =>
-    entry.kind !== 'group' && (entry.id === 'defaults' || entry.id === 'sync-settings')
+    entry.kind !== 'group' && (entry.id === 'settings' || entry.id === 'sync-settings')
       ? { ...entry, dirty: true }
       : entry,
   );
