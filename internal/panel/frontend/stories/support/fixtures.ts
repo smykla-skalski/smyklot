@@ -305,7 +305,7 @@ export const OVERVIEW: RootOverview = {
       connections: { open: 4, in_use: 1, idle: 3, max: 16, wait_count: 0, wait_ms: 0 },
     },
   },
-  catalog: { installations: 3, repositories: 41, enabled_repositories: 28 },
+  catalog: { workspaces: 3, repositories: 41, enabled_repositories: 28 },
   ownership: { fresh: 2, stale: 1, permission_pending: 0, error: 0 },
   active_elevations: 0,
   unread_security_events: 2,

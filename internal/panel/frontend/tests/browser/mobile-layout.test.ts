@@ -87,19 +87,19 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     /* Armed, so the row of actions this file exists for is on the page. An ended
        request draws no buttons and would measure the easy half of the view. */
     ['a queue request', `/root/queue/request/pending-ci-0`],
-    ['the installation catalog', `/root/installations`],
+    ['the installation catalog', `/root/workspaces`],
     ['Root access users', `/root/access/users`],
     ['Root access invitations', `/root/access/invitations`],
     ['Root audit history', `/root/history/audit`],
     ['Root failure history', `/root/history/failures`],
     ['Service health', `/root/runtime/service`],
     ['Service settings', `/root/runtime/settings`],
-    ['a Root installation', `/root/installations/${account}/settings`],
-    ['a Root installation’s repositories', `/root/installations/${account}/repositories`],
-    ['a Root installation’s users', `/root/installations/${account}/access/users`],
-    ['a Root installation’s invitations', `/root/installations/${account}/access/invitations`],
-    ['a Root installation’s audit history', `/root/installations/${account}/history/audit`],
-    ['a Root installation’s failure history', `/root/installations/${account}/history/failures`],
+    ['a Root installation', `/root/workspaces/${account}/settings`],
+    ['a Root installation’s repositories', `/root/workspaces/${account}/repositories`],
+    ['a Root installation’s users', `/root/workspaces/${account}/access/users`],
+    ['a Root installation’s invitations', `/root/workspaces/${account}/access/invitations`],
+    ['a Root installation’s audit history', `/root/workspaces/${account}/history/audit`],
+    ['a Root installation’s failure history', `/root/workspaces/${account}/history/failures`],
   ] as const;
 }
 

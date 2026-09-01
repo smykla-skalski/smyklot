@@ -331,7 +331,7 @@ func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base str
 
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	s.registerRootQueueScheduleRoutes(mux, base)
-	mux.HandleFunc("GET "+base+"/api/v1/root/installations", s.getRootInstallations)
+	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces", s.getRootInstallations)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
 	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
@@ -363,13 +363,13 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"DELETE "+base+"/api/v1/root/access/invitations/{invitation}",
 		s.deleteRootInvitation,
 	)
-	mux.HandleFunc("POST "+base+"/api/v1/root/installations/sync", s.postRootInstallationSync)
+	mux.HandleFunc("POST "+base+"/api/v1/root/workspaces/sync", s.postRootInstallationSync)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/elevation",
+		"GET "+base+"/api/v1/root/workspaces/{target}/elevation",
 		s.getRootElevation,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/elevation",
+		"POST "+base+"/api/v1/root/workspaces/{target}/elevation",
 		s.postRootElevation,
 	)
 	mux.HandleFunc(
@@ -378,56 +378,56 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	)
 	s.registerRootInstallationSettingsRoutes(mux, base)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/repositories",
+		"GET "+base+"/api/v1/root/workspaces/{target}/repositories",
 		s.getRootRepositories,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/repositories/{repository}",
+		"GET "+base+"/api/v1/root/workspaces/{target}/repositories/{repository}",
 		s.getRootRepository,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/repositories/{repository}/config-migration",
+		"POST "+base+"/api/v1/root/workspaces/{target}/repositories/{repository}/config-migration",
 		s.postRootRepositoryConfigMigrationReset,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/users",
+		"GET "+base+"/api/v1/root/workspaces/{target}/users",
 		s.getRootTargetUsers,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/users",
+		"POST "+base+"/api/v1/root/workspaces/{target}/users",
 		s.postRootTargetUser,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/user-suggestions",
+		"GET "+base+"/api/v1/root/workspaces/{target}/user-suggestions",
 		s.getRootTargetUserSuggestions,
 	)
 	mux.HandleFunc(
-		"PUT "+base+"/api/v1/root/installations/{target}/users/{account}",
+		"PUT "+base+"/api/v1/root/workspaces/{target}/users/{account}",
 		s.putRootTargetUser,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/users/{account}/decisions",
+		"GET "+base+"/api/v1/root/workspaces/{target}/users/{account}/decisions",
 		s.getRootTargetUserDecisions,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/invitations",
+		"GET "+base+"/api/v1/root/workspaces/{target}/invitations",
 		s.getRootTargetInvitations,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/invitations",
+		"POST "+base+"/api/v1/root/workspaces/{target}/invitations",
 		s.postRootTargetInvitation,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/invitations/{invitation}/reissue",
+		"POST "+base+"/api/v1/root/workspaces/{target}/invitations/{invitation}/reissue",
 		s.reissueRootTargetInvitation,
 	)
 	mux.HandleFunc(
-		"DELETE "+base+"/api/v1/root/installations/{target}/invitations/{invitation}",
+		"DELETE "+base+"/api/v1/root/workspaces/{target}/invitations/{invitation}",
 		s.deleteRootTargetInvitation,
 	)
 	s.registerRootTargetAuditRoute(mux, base)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/failures",
+		"GET "+base+"/api/v1/root/workspaces/{target}/failures",
 		s.getRootTargetFailures,
 	)
 }
@@ -443,38 +443,38 @@ func (s *Server) registerRootQueueScheduleRoutes(mux *http.ServeMux, base string
 	mux.HandleFunc("DELETE "+base+"/api/v1/root/schedule-profiles/{profile}", s.deleteRootScheduleProfile)
 	mux.HandleFunc("GET "+base+"/api/v1/root/job-policies", s.getRootJobPolicies)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/job-policies/{kind}", s.putRootJobPolicy)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
-	mux.HandleFunc("DELETE "+base+"/api/v1/root/installations/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
 	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-requests", s.getRootScheduleRequests)
 	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-requests/{request}/decision", s.postRootScheduleDecision)
 }
 
 func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/settings",
+		"GET "+base+"/api/v1/root/workspaces/{target}/settings",
 		s.getRootTargetSettings,
 	)
 	mux.HandleFunc(
-		"PUT "+base+"/api/v1/root/installations/{target}/settings",
+		"PUT "+base+"/api/v1/root/workspaces/{target}/settings",
 		s.putRootInstallationSettingsBatch,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/settings/checkpoints/baseline",
+		"GET "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/baseline",
 		s.getRootInstallationSettingsBaseline,
 	)
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/settings/checkpoints/{checkpoint}",
+		"GET "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/{checkpoint}",
 		s.getRootInstallationSettingsCheckpoint,
 	)
 	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/installations/{target}/settings/checkpoints/{checkpoint}/restore",
+		"POST "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/{checkpoint}/restore",
 		s.postRootInstallationSettingsRestore,
 	)
 }
 
 func (s *Server) registerRootTargetAuditRoute(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/installations/{target}/audit",
+		"GET "+base+"/api/v1/root/workspaces/{target}/audit",
 		s.getRootTargetAudit,
 	)
 }

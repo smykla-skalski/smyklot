@@ -145,7 +145,7 @@ func millisecondsDTO(value time.Duration) float64 {
 }
 
 type rootCatalogResponse struct {
-	Installations       int `json:"installations"`
+	Workspaces          int `json:"workspaces"`
 	Repositories        int `json:"repositories"`
 	EnabledRepositories int `json:"enabled_repositories"`
 }
@@ -323,7 +323,7 @@ func rootOverviewDTO(
 			Storage: databaseStatus.State, Database: databaseStatus,
 		},
 		Catalog: rootCatalogResponse{
-			Installations: overview.InstallationCount, Repositories: overview.RepositoryCount,
+			Workspaces: overview.InstallationCount, Repositories: overview.RepositoryCount,
 			EnabledRepositories: overview.EnabledRepositoryCount,
 		},
 		Ownership: rootOwnershipSummaryResponse{

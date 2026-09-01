@@ -599,7 +599,7 @@ func TestPanelBroadcastsRootSecurityChanges(t *testing.T) {
 	started := harness.request(
 		t,
 		http.MethodPost,
-		"/panel/api/v1/root/installations/"+elevatedTarget.TargetID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+elevatedTarget.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"live event proof"}`),
 		session,
 	)
@@ -1203,7 +1203,7 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 	}
 
 	synced := harness.request(
-		t, http.MethodPost, "/panel/api/v1/root/installations/sync", nil, rootSession,
+		t, http.MethodPost, "/panel/api/v1/root/workspaces/sync", nil, rootSession,
 	)
 	requireResponse(
 		t, synced, "Root installation sync", http.StatusOK,
@@ -1231,13 +1231,13 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 		t.Fatal(err)
 	}
 	blocked := harness.request(
-		t, http.MethodPost, "/panel/api/v1/root/installations/sync", nil,
+		t, http.MethodPost, "/panel/api/v1/root/workspaces/sync", nil,
 		&http.Cookie{Name: sessionCookieName, Value: ordinaryToken},
 	)
 	requireResponse(t, blocked, "ordinary installation sync", http.StatusForbidden)
 	blockedElevation := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/github:installation:10/elevation",
+		"/panel/api/v1/root/workspaces/github:installation:10/elevation",
 		strings.NewReader(`{"acknowledged":true}`),
 		&http.Cookie{Name: sessionCookieName, Value: ordinaryToken},
 	)
@@ -1273,7 +1273,7 @@ func TestPanelRootOverview(t *testing.T) {
 	requireResponse(
 		t, overview, "Root overview", http.StatusOK,
 		`"status":"healthy"`, `"version":"1.0.0"`,
-		`"installations":1`, `"repositories":1`,
+		`"workspaces":1`, `"repositories":1`,
 		`"fresh":1`, `"delivery_id":"overview-failure"`,
 		`"storage":"healthy"`,
 		`"database":{"state":"healthy","engine":"`+engine+`","version":"`,
@@ -1424,7 +1424,7 @@ func TestPanelRetiredSettingsAndSyncRoutesAreRemoved(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	target := "/panel/api/v1/targets/github:installation:10"
-	rootTarget := "/panel/api/v1/root/installations/github:installation:10"
+	rootTarget := "/panel/api/v1/root/workspaces/github:installation:10"
 
 	for _, probe := range []struct {
 		method string
@@ -1781,14 +1781,14 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	owner, target := seedNonOwnedInstallation(t, harness)
 
 	installations := harness.request(
-		t, http.MethodGet, "/panel/api/v1/root/installations", nil, rootSession,
+		t, http.MethodGet, "/panel/api/v1/root/workspaces", nil, rootSession,
 	)
 	requireResponse(
 		t, installations, "Root installations", http.StatusOK,
 		`"id":"github:installation:20"`, `"owner_count":1`,
 		`"delivery_health":{"failed":0}`,
 	)
-	rootSettingsPath := "/panel/api/v1/root/installations/" + target.TargetID + "/settings"
+	rootSettingsPath := "/panel/api/v1/root/workspaces/" + target.TargetID + "/settings"
 	settings := harness.request(t, http.MethodGet, rootSettingsPath, nil, rootSession)
 	requireResponse(
 		t, settings, "Root installation settings", http.StatusOK,
@@ -1808,7 +1808,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	)
 	blockedAccessWrite := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.TargetID+"/users",
+		"/panel/api/v1/root/workspaces/"+target.TargetID+"/users",
 		strings.NewReader(`{"login":"support-user","role":"viewer"}`), rootSession,
 	)
 	requireResponse(
@@ -1817,7 +1817,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	)
 	missingAcknowledgment := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+target.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":false}`), rootSession,
 	)
 	requireResponse(
@@ -1828,7 +1828,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	reason := "investigate an installation incident"
 	started := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+target.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"`+reason+`"}`), rootSession,
 	)
 	requireResponse(t, started, "start Root elevation", http.StatusCreated, `"reason":"`+reason+`"`)
@@ -1838,7 +1838,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	}
 	current := harness.request(
 		t, http.MethodGet,
-		"/panel/api/v1/root/installations/"+target.TargetID+"/elevation", nil, rootSession,
+		"/panel/api/v1/root/workspaces/"+target.TargetID+"/elevation", nil, rootSession,
 	)
 	requireResponse(t, current, "current Root elevation", http.StatusOK, elevation.ID)
 
@@ -1881,7 +1881,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	}
 	migrationReset := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.TargetID+
+		"/panel/api/v1/root/workspaces/"+target.TargetID+
 			"/repositories/repository-30/config-migration",
 		strings.NewReader(`{}`), rootSession,
 	)
@@ -1895,7 +1895,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		Login: "support-user", DisplayName: "Support User", UpdatedAt: harness.now,
 	}
 	harness.server.users = fakeUserResolver{account: subject}
-	rootAccessBase := "/panel/api/v1/root/installations/" + target.TargetID
+	rootAccessBase := "/panel/api/v1/root/workspaces/" + target.TargetID
 	added := harness.request(
 		t, http.MethodPost, rootAccessBase+"/users",
 		strings.NewReader(`{"login":"support-user","role":"viewer"}`), rootSession,
@@ -2894,16 +2894,16 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/history/failures",
 		"/panel/i/auth/settings",
 		"/panel/root",
-		"/panel/root/installations",
+		"/panel/root/workspaces",
 		"/panel/root/access",
 		"/panel/root/history",
 		// The three the queue shipped with, and that a reload answered 404 for.
 		"/panel/root/queue",
 		"/panel/root/queue/recent",
 		"/panel/root/queue/request/pending-ci-1",
-		"/panel/root/installations/smykla-skalski/repositories",
-		"/panel/root/installations/smykla-skalski/history/audit",
-		"/panel/root/installations/smykla-skalski/history/failures",
+		"/panel/root/workspaces/smykla-skalski/repositories",
+		"/panel/root/workspaces/smykla-skalski/history/audit",
+		"/panel/root/workspaces/smykla-skalski/history/failures",
 		"/panel/root/access/users",
 		"/panel/root/access/invitations",
 		"/panel/root/history/audit",
@@ -2922,7 +2922,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/access/users/octocat/ban",
 		"/panel/root/access/invitations/new",
 		"/panel/root/access/invitations/inv-1/reissue",
-		"/panel/root/installations/smykla-skalski/access/users/octocat/history",
+		"/panel/root/workspaces/smykla-skalski/access/users/octocat/history",
 		// A trailing slash is not part of the address; the panel's router reads
 		// `/inbox/` as `/inbox`, and the server has to agree.
 		"/panel/inbox/",
@@ -2975,11 +2975,11 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/users",
 		"/panel/i/smykla-skalski/invitations",
 		// A view still has to be a view, and a dialog is one segment or two.
-		"/panel/root/installations/smykla-skalski",
+		"/panel/root/workspaces/smykla-skalski",
 		// A repository is the whole address; its five pane addresses are gone
 		// rather than redirected, and the refusal is on the wire.
 		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
-		"/panel/root/installations/smykla-skalski/repositories/api-gateway/file",
+		"/panel/root/workspaces/smykla-skalski/repositories/api-gateway/file",
 		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
 		"/panel/smykla-skalski/repositories",
@@ -2990,8 +2990,8 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/i/smykla-skalski/settings/anything",
 		"/panel/i/smykla-skalski/sync/anything",
 		"/panel/i/smykla-skalski/history/unknown",
-		"/panel/root/installations/smykla-skalski/settings/anything",
-		"/panel/root/installations/smykla-skalski/history/unknown",
+		"/panel/root/workspaces/smykla-skalski/settings/anything",
+		"/panel/root/workspaces/smykla-skalski/history/unknown",
 		"/panel/auth/settings",
 		"/panel/webhook/history",
 		"/panel/i/smykla-skalski/help",
@@ -3002,9 +3002,9 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/history/unknown",
 		"/panel/root/runtime/unknown",
 		"/panel/root/settings/database",
-		"/panel/root/installations/smykla-skalski/defaults",
-		"/panel/root/installations/smykla-skalski/users/octocat/history",
-		"/panel/root/installations/smykla-skalski/unknown",
+		"/panel/root/workspaces/smykla-skalski/defaults",
+		"/panel/root/workspaces/smykla-skalski/users/octocat/history",
+		"/panel/root/workspaces/smykla-skalski/unknown",
 		"/panel/@smykla-skalski/repositories",
 		"/panel/invite/too-short",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH.01234567",

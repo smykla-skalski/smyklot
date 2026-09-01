@@ -10,7 +10,7 @@
   const KEY = ['root-installations'] as const;
 
   const base = {
-    route: { rootView: 'installations' as const },
+    route: { rootView: 'workspaces' as const },
     api: stubApi({ fetchRootInstallations: async () => INSTALLATIONS }),
     actorLogin: 'bart',
     listHref: '#/root/installations',

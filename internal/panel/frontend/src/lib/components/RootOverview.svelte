@@ -162,8 +162,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       </h2>
       {#if overview !== null}
         <span class="card-note"
-          >{overview.catalog.installations}
-          {overview.catalog.installations === 1 ? 'workspace' : 'workspaces'} ·
+          >{overview.catalog.workspaces}
+          {overview.catalog.workspaces === 1 ? 'workspace' : 'workspaces'} ·
           {overview.catalog.enabled_repositories}
           {overview.catalog.enabled_repositories === 1 ? 'repository' : 'repositories'} with commands
           on · {wellness}</span

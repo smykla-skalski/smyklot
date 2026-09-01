@@ -39,7 +39,7 @@ const ADDRESSES = [
   '/i/{account}/history/audit',
   '/inbox',
   '/root',
-  '/root/installations',
+  '/root/workspaces',
   '/root/access/users',
   '/root/history/audit',
   '/root/runtime/service',

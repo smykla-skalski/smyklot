@@ -315,13 +315,13 @@ func TestRootInstallationSettingsRestoreDelegatesRootErrors(t *testing.T) {
 	session := harness.signIn(t)
 	_, snapshot := seedNonOwnedInstallation(t, harness)
 	elevated := harness.request(t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+snapshot.TargetID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"test restore failure mapping"}`),
 		session)
 	requireResponse(t, elevated, "start Root settings elevation", http.StatusCreated)
 
 	realStore := harness.store
-	path := "/panel/api/v1/root/installations/" + snapshot.TargetID +
+	path := "/panel/api/v1/root/workspaces/" + snapshot.TargetID +
 		"/settings/checkpoints/1/restore"
 	tests := []struct {
 		name    string

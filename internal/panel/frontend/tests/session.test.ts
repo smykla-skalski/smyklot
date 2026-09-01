@@ -145,9 +145,9 @@ describe('PanelSession [Unit]', () => {
 
     // Visiting another installation view inside Root does not replace the
     // workspace context the Return action promises to restore.
-    routePage.url = at('/root/installations/acme/settings');
+    routePage.url = at('/root/workspaces/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
-    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
+    routePage.route = { id: '/root/workspaces/[account]/[view=rootWorkspaceView]' };
     session.syncRouteContext();
     session.returnToPanel();
 
@@ -165,9 +165,9 @@ describe('PanelSession [Unit]', () => {
     openRepository(session);
 
     session.enterRoot();
-    routePage.url = at('/root/installations/acme/settings');
+    routePage.url = at('/root/workspaces/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
-    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
+    routePage.route = { id: '/root/workspaces/[account]/[view=rootWorkspaceView]' };
     session.syncRouteContext();
 
     expect(session.returnHref()).toBe(`${basePath}/i/acme/repositories/api-gateway`);
@@ -191,9 +191,9 @@ describe('PanelSession [Unit]', () => {
   it('lets Root repository detail pages scroll with the document', () => {
     const session = createSession();
     session.viewer = { system_role: 'root' } as PanelViewer;
-    routePage.url = at('/root/installations/acme/repositories/api-gateway');
+    routePage.url = at('/root/workspaces/acme/repositories/api-gateway');
     routePage.params = { account: 'acme', repository: 'api-gateway' };
-    routePage.route = { id: '/root/installations/[account]/repositories/[repository]' };
+    routePage.route = { id: '/root/workspaces/[account]/repositories/[repository]' };
 
     expect(session.tableScrollView).toBe(false);
   });

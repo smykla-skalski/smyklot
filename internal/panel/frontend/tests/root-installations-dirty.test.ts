@@ -76,11 +76,11 @@ describe('Root installation draft attention [Component]', () => {
       props: {
         drafts,
         queryClient: queryClient(),
-        route: { rootView: 'installations' },
+        route: { rootView: 'workspaces' },
         api: fixtureApi({ fetchRootInstallations: async () => [dirty, clean] }),
         actorLogin: 'root-user',
-        listHref: '/root/installations',
-        hrefFor: (account, view) => `/root/installations/${account}/${view}`,
+        listHref: '/root/workspaces',
+        hrefFor: (account, view) => `/root/workspaces/${account}/${view}`,
         onList: vi.fn(),
         onNavigate: vi.fn(),
         historySection: 'audit',
@@ -98,7 +98,7 @@ describe('Root installation draft attention [Component]', () => {
       within(dirtyRow!)
         .getByRole('link', { name: 'Open as operator - Dirty installation' })
         .getAttribute('href'),
-    ).toBe('/root/installations/dirty-installation/repositories');
+    ).toBe('/root/workspaces/dirty-installation/repositories');
     expect(dirtyRow?.getAttribute('data-unsaved')).toBe('true');
     expect(within(cleanRow!).queryByText(/unsaved/)).toBeNull();
     expect(cleanRow?.hasAttribute('data-unsaved')).toBe(false);

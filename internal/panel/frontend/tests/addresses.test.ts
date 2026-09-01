@@ -110,7 +110,7 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     params: { account: 'acme', section: 'users', rest: 'octocat/suspend' },
   },
   { route: { rootView: 'overview' }, id: '/root', params: {} },
-  { route: { rootView: 'installations' }, id: '/root/installations', params: {} },
+  { route: { rootView: 'workspaces' }, id: '/root/workspaces', params: {} },
   { route: { rootView: 'queue' }, id: '/root/queue', params: {} },
   {
     route: { rootView: 'queue-approvals' },
@@ -170,22 +170,22 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'settings' },
-    id: '/root/installations/[account]/[view=rootInstallationView]',
+    id: '/root/workspaces/[account]/[view=rootWorkspaceView]',
     params: { account: 'acme', view: 'settings' },
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'repositories' },
-    id: '/root/installations/[account]/[view=rootInstallationView]',
+    id: '/root/workspaces/[account]/[view=rootWorkspaceView]',
     params: { account: 'acme', view: 'repositories' },
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'invitations' },
-    id: '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+    id: '/root/workspaces/[account]/access/[section=accessSection]/[...rest=dialogPath]',
     params: { account: 'acme', section: 'invitations', rest: '' },
   },
   {
     route: { rootView: 'installation', account: 'acme', view: 'history', section: 'failures' },
-    id: '/root/installations/[account]/history/[[section=historySection]]',
+    id: '/root/workspaces/[account]/history/[[section=historySection]]',
     params: { account: 'acme', section: 'failures' },
   },
   {
@@ -195,7 +195,7 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
       view: 'repositories',
       repository: { name: 'api-gateway' },
     },
-    id: '/root/installations/[account]/repositories/[repository]',
+    id: '/root/workspaces/[account]/repositories/[repository]',
     params: { account: 'acme', repository: 'api-gateway' },
   },
 ];

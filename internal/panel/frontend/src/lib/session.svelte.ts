@@ -669,7 +669,7 @@ export class PanelSession {
   }
 
   selectRootInstallations(): void {
-    void this.navigate({ rootView: 'installations' });
+    void this.navigate({ rootView: 'workspaces' });
     this.resetPageScroll();
   }
 
@@ -750,7 +750,7 @@ export class PanelSession {
   }
 
   rootInstallationsHref(): string {
-    return panelAddress({ rootView: 'installations' });
+    return panelAddress({ rootView: 'workspaces' });
   }
 
   rootAuditHref(): string {

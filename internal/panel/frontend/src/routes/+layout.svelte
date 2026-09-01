@@ -820,8 +820,8 @@
       id: 'installations',
       label: 'Workspaces',
       icon: 'book',
-      href: session.rootHrefFor('installations'),
-      active: !session.isInbox && session.rootValue === 'installations',
+      href: session.rootHrefFor('workspaces'),
+      active: !session.isInbox && session.rootValue === 'workspaces',
       dirty: dirtyTargetIds.size > 0,
     },
     {

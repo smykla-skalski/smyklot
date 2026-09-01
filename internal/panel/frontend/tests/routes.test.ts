@@ -133,8 +133,8 @@ describe('panel routes', () => {
       rootView: 'queue-approvals',
     });
     expect(parsePanelRoute('', '/root/queue/history')).toEqual({ rootView: 'queue-history' });
-    expect(parsePanelRoute('/panel', '/panel/root/installations')).toEqual({
-      rootView: 'installations',
+    expect(parsePanelRoute('/panel', '/panel/root/workspaces')).toEqual({
+      rootView: 'workspaces',
     });
     expect(parsePanelRoute('', '/root/access/users')).toEqual({ rootView: 'access-users' });
     expect(parsePanelRoute('', '/root/access/invitations')).toEqual({
@@ -151,7 +151,7 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/runtime/service')).toEqual({
       rootView: 'runtime-service',
     });
-    expect(parsePanelRoute('', '/root/installations/smykla-skalski/repositories')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/smykla-skalski/repositories')).toEqual({
       rootView: 'installation',
       account: 'smykla-skalski',
       view: 'repositories',
@@ -164,7 +164,7 @@ describe('panel routes', () => {
        settings` - and the word is one the dictionary retires, so the page is `settings`
        again and `defaults` is the removed one. */
     expect(parsePanelRoute('', '/i/acme/defaults')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/defaults')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/acme/defaults')).toBeNull();
     expect(parsePanelRoute('', '/root/settings')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/users')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/invitations')).toBeNull();
@@ -187,7 +187,7 @@ describe('panel routes', () => {
     expect(parsePanelRoute('', '/root/history/unknown')).toBeNull();
     expect(parsePanelRoute('', '/root/runtime/unknown')).toBeNull();
     expect(parsePanelRoute('', '/root/settings/database')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/smykla-skalski/unknown')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/smykla-skalski/unknown')).toBeNull();
   });
 
   it('recognizes only exact invitation review routes', () => {
@@ -223,7 +223,7 @@ describe('panel routes', () => {
         account: 'smykla-skalski',
         view: 'history',
       }),
-    ).toBe(`${basePath}/root/installations/smykla-skalski/history`);
+    ).toBe(`${basePath}/root/workspaces/smykla-skalski/history`);
     expect(panelAddress({ account: 'bartsmykla', view: 'invitations' })).toBe(
       `${basePath}/i/bartsmykla/access/invitations`,
     );
@@ -241,7 +241,7 @@ describe('panel document titles', () => {
     [{ account: 'acme', view: 'queue', queue: 'approvals' }, 'Approvals | Queue | SMYKLOT'],
     [{ personal: 'inbox' }, 'Inbox | SMYKLOT'],
     [{ rootView: 'overview' }, 'Overview | Root Console | SMYKLOT'],
-    [{ rootView: 'installations' }, 'Workspaces | Root Console | SMYKLOT'],
+    [{ rootView: 'workspaces' }, 'Workspaces | Root Console | SMYKLOT'],
     [{ rootView: 'access-users' }, 'Users | Access | Root Console | SMYKLOT'],
     [{ rootView: 'access-invitations' }, 'Invitations | Access | Root Console | SMYKLOT'],
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
@@ -394,7 +394,7 @@ describe('personal routes', () => {
       account: 'inbox',
       view: 'settings',
     });
-    expect(parsePanelRoute('', '/root/installations/inbox/repositories')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/inbox/repositories')).toEqual({
       rootView: 'installation',
       account: 'inbox',
       view: 'repositories',
@@ -411,7 +411,7 @@ describe('personal routes', () => {
       dialog: { name: 'root-user-action', params: { user: 'octocat', action: 'ban' } },
     });
     // The same person inside an installation still has one.
-    expect(parsePanelRoute('', '/root/installations/acme/access/users/octocat/history')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/acme/access/users/octocat/history')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'users',
@@ -462,7 +462,7 @@ describe('history sections are addressable', () => {
   });
 
   it('carries the section through a root installation route', () => {
-    expect(parsePanelRoute('', '/root/installations/acme/history/failures')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/acme/history/failures')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'history',
@@ -475,6 +475,6 @@ describe('history sections are addressable', () => {
         view: 'history',
         section: 'failures',
       }),
-    ).toBe(`${basePath}/root/installations/acme/history/failures`);
+    ).toBe(`${basePath}/root/workspaces/acme/history/failures`);
   });
 });

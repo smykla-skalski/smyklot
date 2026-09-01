@@ -290,7 +290,7 @@ describe('targets and repositories', () => {
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/targets/target%2F1/settings',
-      '/panel/api/v1/root/installations/target%2F1/settings',
+      '/panel/api/v1/root/workspaces/target%2F1/settings',
     ]);
     expect(stub.calls.every((call) => call.init?.method === 'PUT')).toBe(true);
     expect(JSON.parse(String(stub.calls[0]?.init?.body))).toEqual(input);
@@ -417,8 +417,8 @@ describe('Root installation access', () => {
     });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/root/installations/target%2F1/settings/checkpoints/checkpoint%2F1',
-      '/panel/api/v1/root/installations/target%2F1/settings/checkpoints/checkpoint%2F1/restore',
+      '/panel/api/v1/root/workspaces/target%2F1/settings/checkpoints/checkpoint%2F1',
+      '/panel/api/v1/root/workspaces/target%2F1/settings/checkpoints/checkpoint%2F1/restore',
     ]);
     expect(stub.calls[1]?.init?.method).toBe('POST');
     expect(JSON.parse(String(stub.calls[1]?.init?.body))).toEqual({
@@ -432,7 +432,7 @@ describe('Root installation access', () => {
     const api = createPanelApi('/panel', stub.fetch);
 
     await expect(api.syncRootInstallations()).resolves.toEqual(['target.1', 'target.2']);
-    expect(stub.calls[0]?.url).toBe('/panel/api/v1/root/installations/sync');
+    expect(stub.calls[0]?.url).toBe('/panel/api/v1/root/workspaces/sync');
     expect(stub.calls[0]?.init?.method).toBe('POST');
   });
 
@@ -564,13 +564,13 @@ describe('Root installation access', () => {
           uptime_seconds: 120,
           storage: 'healthy',
         },
-        catalog: { installations: 1, repositories: 1, enabled_repositories: 0 },
+        catalog: { workspaces: 1, repositories: 1, enabled_repositories: 0 },
         ownership: { fresh: 1, stale: 0, permission_pending: 0, error: 0 },
         active_elevations: 0,
         unread_security_events: 0,
         recent_failures: [],
       }),
-      jsonResponse(200, { installations: [installation] }),
+      jsonResponse(200, { workspaces: [installation] }),
       jsonResponse(200, TARGET),
       jsonResponse(200, { items: [REPOSITORY], next_cursor: null, total: 1 }),
       jsonResponse(200, DETAIL),
@@ -592,7 +592,7 @@ describe('Root installation access', () => {
 
     await expect(api.fetchRootOverview()).resolves.toMatchObject({
       service: { status: 'healthy', version: '1.0.0' },
-      catalog: { installations: 1, repositories: 1 },
+      catalog: { workspaces: 1, repositories: 1 },
     });
     await expect(api.fetchRootInstallations()).resolves.toEqual([installation]);
     await api.fetchRootTargetSettings('target.1');
@@ -619,12 +619,12 @@ describe('Root installation access', () => {
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/root/overview',
-      '/panel/api/v1/root/installations',
-      '/panel/api/v1/root/installations/target%2E1/settings',
-      '/panel/api/v1/root/installations/target%2E1/repositories?sort=name_asc&limit=20&state=all',
-      '/panel/api/v1/root/installations/target%2E1/repositories/repo%2E1',
-      '/panel/api/v1/root/installations/target%2E1/elevation',
-      '/panel/api/v1/root/installations/target%2E1/elevation',
+      '/panel/api/v1/root/workspaces',
+      '/panel/api/v1/root/workspaces/target%2E1/settings',
+      '/panel/api/v1/root/workspaces/target%2E1/repositories?sort=name_asc&limit=20&state=all',
+      '/panel/api/v1/root/workspaces/target%2E1/repositories/repo%2E1',
+      '/panel/api/v1/root/workspaces/target%2E1/elevation',
+      '/panel/api/v1/root/workspaces/target%2E1/elevation',
       '/panel/api/v1/root/elevations/elevation%2E1',
       '/panel/api/v1/root/access/users?cursor=20&q=ada&sort=role_desc&limit=20&system_role=root&system_role=super_root&status=active&status=banned',
       '/panel/api/v1/root/access/users/account%2E1',
@@ -721,16 +721,16 @@ describe('Root installation access', () => {
     });
 
     expect(stub.calls.map((call) => call.url)).toEqual([
-      '/panel/api/v1/root/installations/target%2E1/users?q=ada&sort=role_desc&limit=20&role=editor&status=active',
-      '/panel/api/v1/root/installations/target%2E1/users',
-      '/panel/api/v1/root/installations/target%2E1/users/github%3Auser%3A1',
-      '/panel/api/v1/root/installations/target%2E1/users/github%3Auser%3A1/decisions',
-      '/panel/api/v1/root/installations/target%2E1/invitations?q=ada&sort=expiry_soonest&limit=20&role=viewer&status=pending',
-      '/panel/api/v1/root/installations/target%2E1/invitations',
-      '/panel/api/v1/root/installations/target%2E1/invitations/invite%2E1/reissue',
-      '/panel/api/v1/root/installations/target%2E1/invitations/invite%2E1',
-      '/panel/api/v1/root/installations/target%2E1/audit?sort=newest&limit=20&scope=all&change=all',
-      '/panel/api/v1/root/installations/target%2E1/failures?sort=newest&limit=20&kind=all',
+      '/panel/api/v1/root/workspaces/target%2E1/users?q=ada&sort=role_desc&limit=20&role=editor&status=active',
+      '/panel/api/v1/root/workspaces/target%2E1/users',
+      '/panel/api/v1/root/workspaces/target%2E1/users/github%3Auser%3A1',
+      '/panel/api/v1/root/workspaces/target%2E1/users/github%3Auser%3A1/decisions',
+      '/panel/api/v1/root/workspaces/target%2E1/invitations?q=ada&sort=expiry_soonest&limit=20&role=viewer&status=pending',
+      '/panel/api/v1/root/workspaces/target%2E1/invitations',
+      '/panel/api/v1/root/workspaces/target%2E1/invitations/invite%2E1/reissue',
+      '/panel/api/v1/root/workspaces/target%2E1/invitations/invite%2E1',
+      '/panel/api/v1/root/workspaces/target%2E1/audit?sort=newest&limit=20&scope=all&change=all',
+      '/panel/api/v1/root/workspaces/target%2E1/failures?sort=newest&limit=20&kind=all',
     ]);
   });
 });
@@ -980,7 +980,7 @@ describe('settings checkpoint baselines', () => {
 
     expect(stub.calls.map((call) => call.url)).toEqual([
       '/panel/api/v1/targets/target%2F1/settings/checkpoints/baseline',
-      '/panel/api/v1/root/installations/target%2F1/settings/checkpoints/baseline',
+      '/panel/api/v1/root/workspaces/target%2F1/settings/checkpoints/baseline',
       '/panel/api/v1/root/runtime/settings/checkpoints/baseline',
     ]);
   });

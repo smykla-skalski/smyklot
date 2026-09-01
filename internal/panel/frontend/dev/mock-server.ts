@@ -1591,16 +1591,16 @@ async function handle(
       return;
     }
 
-    if (path === route('/api/v1/root/installations') && method === 'GET') {
+    if (path === route('/api/v1/root/workspaces') && method === 'GET') {
       const ordered = [...state.targets].sort((left, right) =>
         left.value.type === right.value.type ? 0 : left.value.type === 'Organization' ? -1 : 1,
       );
       respond(res, 200, {
-        installations: ordered.map((target) => rootInstallationValue(target)),
+        workspaces: ordered.map((target) => rootInstallationValue(target)),
       });
       return;
     }
-    if (path === route('/api/v1/root/installations/sync') && method === 'POST') {
+    if (path === route('/api/v1/root/workspaces/sync') && method === 'POST') {
       broadcast(state, { type: 'resync' });
       respond(res, 200, { target_ids: state.targets.map((target) => target.value.id) });
       return;
@@ -1760,7 +1760,7 @@ async function handle(
       return;
     }
     const rootInstallationPolicy = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/job-policies\/(?<kind>[^/]+)$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/job-policies\/(?<kind>[^/]+)$/,
     );
     if (rootInstallationPolicy && method === 'PUT') {
       const target = findTarget(state, rootInstallationPolicy.groups?.target ?? '');
@@ -2055,23 +2055,21 @@ async function handle(
 
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
     const rootTargetSettings = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/settings$/,
     );
     const targetSettingsCheckpoint = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
     );
     const rootTargetSettingsCheckpoint = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/settings\/checkpoints\/(?<checkpoint>[^/]+)(?<restore>\/restore)?$/,
     );
-    const rootElevation = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/elevation$/,
-    );
+    const rootElevation = path.match(/^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/elevation$/);
     const rootElevationEnd = path.match(/^\/api\/v1\/root\/elevations\/(?<elevation>[^/]+)$/);
     const notificationRead = path.match(/^\/api\/v1\/notifications\/(?<notification>[^/]+)\/read$/);
     const scopedUsers = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/users$/);
-    const rootScopedUsers = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users$/);
+    const rootScopedUsers = path.match(/^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/users$/);
     const userSuggestions = path.match(
-      /^\/api\/v1\/(?:targets|root\/installations)\/(?<target>[^/]+)\/user-suggestions$/,
+      /^\/api\/v1\/(?:targets|root\/workspaces)\/(?<target>[^/]+)\/user-suggestions$/,
     );
     const rootUser = path.match(/^\/api\/v1\/root\/access\/users\/(?<account>[^/]+)$/);
     const rootInvitationReissue = path.match(
@@ -2084,52 +2082,52 @@ async function handle(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
     const rootScopedUser = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/users\/(?<account>[^/]+)$/,
     );
     const scopedUserDecisions = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
     );
     const rootScopedUserDecisions = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/users\/(?<account>[^/]+)\/decisions$/,
     );
     const scopedInvitations = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations$/);
     const rootScopedInvitations = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/invitations$/,
     );
     const reissueInvitation = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
     );
     const rootScopedInvitationReissue = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)\/reissue$/,
     );
     const invitation = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
     );
     const rootScopedInvitation = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/invitations\/(?<invitation>[^/]+)$/,
     );
     const repositories = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories$/);
     const rootRepositories = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/repositories$/,
     );
     const repository = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
     );
     const rootRepository = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)$/,
     );
     const repositoryConfigMigration = path.match(
       /^\/api\/v1\/targets\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
     );
     const rootRepositoryConfigMigration = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/repositories\/(?<repository>[^/]+)\/config-migration$/,
     );
     const audit = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit$/);
     const auditExport = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/audit\.csv$/);
     const failures = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/failures$/);
-    const rootTargetAudit = path.match(/^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/audit$/);
+    const rootTargetAudit = path.match(/^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/audit$/);
     const rootTargetFailures = path.match(
-      /^\/api\/v1\/root\/installations\/(?<target>[^/]+)\/failures$/,
+      /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/failures$/,
     );
     const rootHistory = path.match(/^\/api\/v1\/root\/history\/(?<history>audit|failures)$/);
     const rootAuditExport = path === '/api/v1/root/history/audit.csv';
@@ -4723,7 +4721,7 @@ function rootOverviewValue(state: MockState): RootOverview {
       database: mockDatabaseStatus(),
     },
     catalog: {
-      installations: state.targets.length,
+      workspaces: state.targets.length,
       repositories: repositories.length,
       enabled_repositories: repositories.filter(
         (repository) => repository.detail.repository.effective_enabled,

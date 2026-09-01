@@ -476,15 +476,13 @@ export function createPanelApi(
     },
 
     async fetchRootInstallations(): Promise<RootInstallation[]> {
-      const body = await jsonRequest<{ installations: RootInstallation[] }>(
-        '/api/v1/root/installations',
-      );
-      return body.installations;
+      const body = await jsonRequest<{ workspaces: RootInstallation[] }>('/api/v1/root/workspaces');
+      return body.workspaces;
     },
 
     async syncRootInstallations(): Promise<string[]> {
       const body = await postJson<{ target_ids: string[] }>(
-        '/api/v1/root/installations/sync',
+        '/api/v1/root/workspaces/sync',
         undefined,
       );
       return body.target_ids;
@@ -612,7 +610,7 @@ export function createPanelApi(
       input: QueuePolicyInput,
     ): Promise<QueuePolicy> {
       return putJson(
-        `/api/v1/root/installations/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}`,
         input,
       );
     },
@@ -623,7 +621,7 @@ export function createPanelApi(
       expectedRevision: number,
     ): Promise<QueuePolicy> {
       return jsonRequest(
-        `/api/v1/root/installations/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}` +
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/job-policies/${pathSegment(kind)}` +
           `?expected_revision=${expectedRevision}`,
         { method: 'DELETE' },
       );
@@ -769,19 +767,19 @@ export function createPanelApi(
     },
 
     fetchRootTargetSettings(targetId: string): Promise<PanelTarget> {
-      return jsonRequest(`/api/v1/root/installations/${pathSegment(targetId)}/settings`);
+      return jsonRequest(`/api/v1/root/workspaces/${pathSegment(targetId)}/settings`);
     },
 
     saveRootInstallationSettings(
       targetId: string,
       input: InstallationSettingsBatchInput,
     ): Promise<InstallationSettingsBatchResponse> {
-      return putDocument(`/api/v1/root/installations/${pathSegment(targetId)}/settings`, input);
+      return putDocument(`/api/v1/root/workspaces/${pathSegment(targetId)}/settings`, input);
     },
 
     fetchRootInstallationSettingsBaseline(targetId: string): Promise<SettingsCheckpoint> {
       return documentRequest(
-        `/api/v1/root/installations/${pathSegment(targetId)}/settings/checkpoints/baseline`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/settings/checkpoints/baseline`,
       );
     },
 
@@ -790,7 +788,7 @@ export function createPanelApi(
       checkpointId: string,
     ): Promise<SettingsCheckpoint> {
       return documentRequest(
-        `/api/v1/root/installations/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}`,
       );
     },
 
@@ -800,7 +798,7 @@ export function createPanelApi(
       input: SettingsRestoreInput,
     ): Promise<InstallationSettingsBatchResponse> {
       return postDocument(
-        `/api/v1/root/installations/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
         input,
       );
     },
@@ -811,7 +809,7 @@ export function createPanelApi(
     ): Promise<Page<RepositorySummary>> {
       return jsonRequest(
         withRepositoryQuery(
-          `/api/v1/root/installations/${pathSegment(targetId)}/repositories`,
+          `/api/v1/root/workspaces/${pathSegment(targetId)}/repositories`,
           repositoryPage,
         ),
       );
@@ -819,16 +817,16 @@ export function createPanelApi(
 
     fetchRootRepository(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
       return jsonRequest(
-        `/api/v1/root/installations/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/repositories/${pathSegment(repositoryId)}`,
       );
     },
 
     fetchRootElevation(targetId: string): Promise<RootElevation> {
-      return jsonRequest(`/api/v1/root/installations/${pathSegment(targetId)}/elevation`);
+      return jsonRequest(`/api/v1/root/workspaces/${pathSegment(targetId)}/elevation`);
     },
 
     beginRootElevation(targetId: string, input: RootElevationInput): Promise<RootElevation> {
-      return postJson(`/api/v1/root/installations/${pathSegment(targetId)}/elevation`, input);
+      return postJson(`/api/v1/root/workspaces/${pathSegment(targetId)}/elevation`, input);
     },
 
     endRootElevation(elevationId: string): Promise<RootElevation> {
@@ -842,12 +840,12 @@ export function createPanelApi(
       userPage: PanelUserPageRequest,
     ): Promise<Page<PanelUser>> {
       return jsonRequest(
-        withAccessPageQuery(`/api/v1/root/installations/${pathSegment(targetId)}/users`, userPage),
+        withAccessPageQuery(`/api/v1/root/workspaces/${pathSegment(targetId)}/users`, userPage),
       );
     },
 
     addRootTargetUser(targetId: string, input: AddTargetUserInput): Promise<PanelUser> {
-      return postJson(`/api/v1/root/installations/${pathSegment(targetId)}/users`, input);
+      return postJson(`/api/v1/root/workspaces/${pathSegment(targetId)}/users`, input);
     },
 
     updateRootTargetUser(
@@ -856,7 +854,7 @@ export function createPanelApi(
       input: UpdateTargetUserInput,
     ): Promise<PanelUser> {
       return putJson(
-        `/api/v1/root/installations/${pathSegment(targetId)}/users/${pathSegment(accountId)}`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/users/${pathSegment(accountId)}`,
         input,
       );
     },
@@ -867,7 +865,7 @@ export function createPanelApi(
     ): Promise<Page<PanelInvitation>> {
       return jsonRequest(
         withAccessPageQuery(
-          `/api/v1/root/installations/${pathSegment(targetId)}/invitations`,
+          `/api/v1/root/workspaces/${pathSegment(targetId)}/invitations`,
           invitationPage,
         ),
       );
@@ -877,7 +875,7 @@ export function createPanelApi(
       targetId: string,
       input: AddTargetInvitationInput,
     ): Promise<PanelInvitation> {
-      return postJson(`/api/v1/root/installations/${pathSegment(targetId)}/invitations`, input);
+      return postJson(`/api/v1/root/workspaces/${pathSegment(targetId)}/invitations`, input);
     },
 
     reissueRootTargetInvitation(
@@ -886,14 +884,14 @@ export function createPanelApi(
       expiresInDays: InvitationDays,
     ): Promise<PanelInvitation> {
       return postJson(
-        `/api/v1/root/installations/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}/reissue`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}/reissue`,
         { expires_in_days: expiresInDays },
       );
     },
 
     revokeRootTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation> {
       return jsonRequest(
-        `/api/v1/root/installations/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/invitations/${pathSegment(invitationId)}`,
         { method: 'DELETE' },
       );
     },
@@ -903,7 +901,7 @@ export function createPanelApi(
       targetId: string,
     ): Promise<AccessDecision[]> {
       const body = await jsonRequest<{ decisions: AccessDecision[] }>(
-        `/api/v1/root/installations/${pathSegment(targetId)}/users/${pathSegment(accountId)}/decisions`,
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/users/${pathSegment(accountId)}/decisions`,
       );
       return body.decisions;
     },
@@ -913,7 +911,7 @@ export function createPanelApi(
       history: AuditHistoryRequest,
     ): Promise<Page<AuditEntry>> {
       return jsonRequest(
-        withHistoryQuery(`/api/v1/root/installations/${pathSegment(targetId)}/audit`, history, {
+        withHistoryQuery(`/api/v1/root/workspaces/${pathSegment(targetId)}/audit`, history, {
           scope: history.scope ?? 'all',
           change: history.change ?? 'all',
         }),
@@ -925,7 +923,7 @@ export function createPanelApi(
       history: FailureHistoryRequest,
     ): Promise<Page<DeliveryFailure>> {
       return jsonRequest(
-        withHistoryQuery(`/api/v1/root/installations/${pathSegment(targetId)}/failures`, history, {
+        withHistoryQuery(`/api/v1/root/workspaces/${pathSegment(targetId)}/failures`, history, {
           kind: history.kind,
         }),
       );
@@ -962,7 +960,7 @@ export function createPanelApi(
     },
 
     suggestRootTargetUsers(targetId: string, query: string): Promise<PanelAccount[]> {
-      return suggest(`/api/v1/root/installations/${pathSegment(targetId)}/user-suggestions`, query);
+      return suggest(`/api/v1/root/workspaces/${pathSegment(targetId)}/user-suggestions`, query);
     },
 
     updateTargetUser(
@@ -1073,7 +1071,7 @@ export function createPanelApi(
 
     resetRootConfigMigration(targetId: string, repositoryId: string): Promise<RepositoryDetail> {
       return postJson(
-        `/api/v1/root/installations/${pathSegment(targetId)}/repositories/` +
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/repositories/` +
           `${pathSegment(repositoryId)}/config-migration`,
         {},
       );

@@ -73,7 +73,7 @@ describe('the TOML migration reset in the development panel', () => {
 
   it('works through the Root installation API', async () => {
     await resetMigration(
-      `/root/installations/${panel.account}/repositories/search-indexer`,
+      `/root/workspaces/${panel.account}/repositories/search-indexer`,
       'search-indexer',
     );
   });

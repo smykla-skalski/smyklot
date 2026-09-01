@@ -52,8 +52,8 @@ describe('settings draft destinations [Integration]', () => {
       await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
-      await page.goto(`${panel.origin}/root/installations`, { waitUntil: 'domcontentloaded' });
-      const rootRepositoryHref = `/root/installations/${panel.account}/repositories`;
+      await page.goto(`${panel.origin}/root/workspaces`, { waitUntil: 'domcontentloaded' });
+      const rootRepositoryHref = `/root/workspaces/${panel.account}/repositories`;
       /* The console's catalog is a list of sentences now, and a workspace is opened by
          name rather than by pressing its row - so the link is the row's one act, and it
          still carries where the unsaved work is. */

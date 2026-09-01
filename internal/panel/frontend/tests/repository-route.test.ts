@@ -106,20 +106,20 @@ describe('one repository as a page [Unit]', () => {
 
 describe('one repository through the Root console [Unit]', () => {
   it('takes the same shape of address it has in a workspace', () => {
-    expect(parsePanelRoute('', '/root/installations/acme/repositories/api-gateway')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/acme/repositories/api-gateway')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'repositories',
       repository: { name: 'api-gateway' },
     });
-    expect(roundTrip('/root/installations/acme/repositories/api-gateway')).toBe(
-      '/root/installations/acme/repositories/api-gateway',
+    expect(roundTrip('/root/workspaces/acme/repositories/api-gateway')).toBe(
+      '/root/workspaces/acme/repositories/api-gateway',
     );
   });
 
   it('refuses the retired panes there too', () => {
-    expect(parsePanelRoute('', '/root/installations/acme/repositories/api/behavior')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/repositories/api/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/acme/repositories/api/behavior')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/acme/repositories/api/nonsense')).toBeNull();
   });
 
   /* Sync is not a console view, and defaults hosts nothing after it. Neither
@@ -129,7 +129,7 @@ describe('one repository through the Root console [Unit]', () => {
     expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/acme/settings/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/root/workspaces/acme/settings/api-gateway')).toBeNull();
   });
 });

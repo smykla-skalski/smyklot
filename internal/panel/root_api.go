@@ -214,7 +214,7 @@ func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, rootInstallationDTO(target, now, owned))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{panelInstallationsResource: items})
+	writeJSON(w, http.StatusOK, map[string]any{panelWorkspacesResource: items})
 }
 
 func (s *Server) postRootElevation(w http.ResponseWriter, r *http.Request) {

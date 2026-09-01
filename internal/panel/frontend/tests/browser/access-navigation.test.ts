@@ -81,13 +81,13 @@ beforeAll(async () => {
 
   const rootInstallation = await panel.browser.newPage({ viewport: VIEWPORT });
   try {
-    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/settings`, {
+    await visit(rootInstallation, `${panel.origin}/root/workspaces/${panel.account}/settings`, {
       ready: '#root-page-heading',
     });
     /* By address, not by word: the console's own Audit row and this installation's
        carry the same label, one above the other, and only the address tells them
        apart. */
-    const installationAudit = `/root/installations/${panel.account}/history/audit`;
+    const installationAudit = `/root/workspaces/${panel.account}/history/audit`;
     await rootInstallation.locator(`.tree a.tree-row[href="${installationAudit}"]`).click();
     await rootInstallation.waitForURL((url) => url.pathname === installationAudit);
     rootAuditNavigated = true;

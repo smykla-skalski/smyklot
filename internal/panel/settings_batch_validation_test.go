@@ -78,14 +78,14 @@ func TestInstallationSettingsRejectsLegacyFlatDocuments(t *testing.T) {
 	_, snapshot := seedNonOwnedInstallation(t, harness)
 	started := harness.request(
 		t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+snapshot.TargetID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"verify canonical settings input"}`),
 		session,
 	)
 	requireResponse(t, started, "start Root settings elevation", http.StatusCreated)
 	root := harness.request(
 		t, http.MethodPut,
-		"/panel/api/v1/root/installations/"+snapshot.TargetID+"/settings",
+		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/settings",
 		strings.NewReader(flatDocument), session,
 	)
 	requireResponse(t, root, "flat Root installation settings", http.StatusBadRequest,
@@ -100,14 +100,14 @@ func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "/panel/api/v1/root/installations/" + target.ID + "/settings"
+	path := "/panel/api/v1/root/workspaces/" + target.ID + "/settings"
 	body := targetInstallationSettingsBatchBody(t, target, true)
 
 	blocked := harness.request(t, http.MethodPut, path, bytes.NewReader(body), rootSession)
 	requireResponse(t, blocked, "Root batch without elevation", http.StatusForbidden,
 		`"code":"elevation_required"`)
 	started := harness.request(t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.ID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+target.ID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"edit installation settings"}`),
 		rootSession)
 	requireResponse(t, started, "start batch elevation", http.StatusCreated)

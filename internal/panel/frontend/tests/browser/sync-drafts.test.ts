@@ -91,7 +91,7 @@ describe('installation Sync drafts', () => {
           }>;
         };
         const rootInspection = (await (
-          await fetch(`/api/v1/root/installations/2001/settings/checkpoints/${checkpointId}`)
+          await fetch(`/api/v1/root/workspaces/2001/settings/checkpoints/${checkpointId}`)
         ).json()) as { id: string };
         const labels = source.items.find(
           (item) => item.kind === 'sync_config' && item.sync_kind === 'labels',

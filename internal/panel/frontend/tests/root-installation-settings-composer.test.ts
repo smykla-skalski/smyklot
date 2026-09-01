@@ -139,7 +139,7 @@ function viewProps(drafts: SettingsDraftRegistry, client: QueryClient, api: Pane
     actorLogin: 'root-user',
     historySection: 'audit' as const,
     api,
-    listHref: '/root/installations',
+    listHref: '/root/workspaces',
     onList: vi.fn(),
   };
 }
@@ -256,7 +256,7 @@ describe('Root installation settings composer [Component]', () => {
     expect(saveRootInstallationSettings).not.toHaveBeenCalled();
     expect(await screen.findByText('Settings were not saved')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open Repositories' }).getAttribute('href')).toBe(
-      `/__smyklot_panel_base__/root/installations/${ROOT_INSTALLATION.account.login}/repositories`,
+      `/__smyklot_panel_base__/root/workspaces/${ROOT_INSTALLATION.account.login}/repositories`,
     );
   });
 

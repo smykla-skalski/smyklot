@@ -56,7 +56,7 @@ describe('the page each side was left on [Unit]', () => {
 
   it('keeps the two sides apart', () => {
     const storage = memoryStorage();
-    writeLastPage('console', '/root/installations', {}, storage);
+    writeLastPage('console', '/root/workspaces', {}, storage);
     writeLastPage(
       'workspace',
       '/i/[account]/[view=panelView]',
@@ -64,7 +64,7 @@ describe('the page each side was left on [Unit]', () => {
       storage,
     );
 
-    expect(readLastConsolePage(storage)).toEqual({ rootView: 'installations' });
+    expect(readLastConsolePage(storage)).toEqual({ rootView: 'workspaces' });
     expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'settings' });
   });
 
@@ -129,7 +129,7 @@ describe('the page each side was left on [Unit]', () => {
   it('reads nothing and writes nothing when the tab has no storage', () => {
     expect(readLastWorkspacePage(null)).toBeNull();
     expect(readLastConsolePage(null)).toBeNull();
-    expect(() => writeLastPage('console', '/root/installations', {}, null)).not.toThrow();
+    expect(() => writeLastPage('console', '/root/workspaces', {}, null)).not.toThrow();
   });
 
   it('costs nothing but the memory when the store refuses the write', () => {
@@ -138,6 +138,6 @@ describe('the page each side was left on [Unit]', () => {
       throw new DOMException('QuotaExceededError');
     };
 
-    expect(() => writeLastPage('console', '/root/installations', {}, storage)).not.toThrow();
+    expect(() => writeLastPage('console', '/root/workspaces', {}, storage)).not.toThrow();
   });
 });

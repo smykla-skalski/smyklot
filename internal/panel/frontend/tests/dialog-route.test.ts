@@ -124,14 +124,14 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('keeps a pathless dialog in the query across reloads', () => {
-    routePage.url = at('/root/installations/acme/settings');
+    routePage.url = at('/root/workspaces/acme/settings');
     routePage.params = { account: 'acme', view: 'settings' };
-    routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
+    routePage.route = { id: '/root/workspaces/[account]/[view=rootWorkspaceView]' };
 
     dialogRoute.open('root-elevation', { reason: 'change settings' });
 
     expect(navigation.goto).toHaveBeenCalledWith(
-      `${basePath}/root/installations/acme/settings?dialog=root-elevation&reason=change+settings`,
+      `${basePath}/root/workspaces/acme/settings?dialog=root-elevation&reason=change+settings`,
       {
         shallow: true,
         replace: false,
@@ -144,7 +144,7 @@ describe('SvelteKit dialog route adapter', () => {
 
     routePage.state = {};
     routePage.url = at(
-      '/root/installations/acme/settings?dialog=root-elevation&reason=change+settings',
+      '/root/workspaces/acme/settings?dialog=root-elevation&reason=change+settings',
     );
     expect(dialogRoute.current).toEqual({
       name: 'root-elevation',
@@ -153,12 +153,12 @@ describe('SvelteKit dialog route adapter', () => {
   });
 
   it('removes a cold query dialog from the address when it closes', () => {
-    routePage.url = at('/root/installations/acme/settings?dialog=root-elevation');
+    routePage.url = at('/root/workspaces/acme/settings?dialog=root-elevation');
     routePage.params = { account: 'acme', view: 'settings' };
 
     dialogRoute.close();
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/root/installations/acme/settings`, {
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/root/workspaces/acme/settings`, {
       shallow: true,
       replace: true,
       state: expect.objectContaining({ smyklotDialogClosed: true }),

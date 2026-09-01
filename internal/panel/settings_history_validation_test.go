@@ -78,7 +78,7 @@ func TestInstallationSettingsCheckpointCannotCrossScopeOrTarget(t *testing.T) {
 	saved := saveTargetSettingsCheckpoint(t, harness, session, target, true)
 	_, other := seedNonOwnedInstallation(t, harness)
 	wrongTarget := harness.request(t, http.MethodGet,
-		"/panel/api/v1/root/installations/"+other.TargetID+"/settings/checkpoints/"+
+		"/panel/api/v1/root/workspaces/"+other.TargetID+"/settings/checkpoints/"+
 			*saved.CheckpointID, nil, session)
 	requireResponse(t, wrongTarget, "checkpoint through another target",
 		http.StatusNotFound, `"code":"not_found"`)
@@ -127,7 +127,7 @@ func TestRootInstallationSettingsRestoreRequiresElevation(t *testing.T) {
 		t, harness, *first.Target, target.RepositoryDefaultEnabled, owner.ID,
 		harness.now.Add(2*time.Minute),
 	)
-	path := "/panel/api/v1/root/installations/" + target.ID + "/settings/checkpoints/" +
+	path := "/panel/api/v1/root/workspaces/" + target.ID + "/settings/checkpoints/" +
 		strconv.FormatInt(*first.CheckpointID, 10)
 	inspection := harness.request(t, http.MethodGet, path, nil, rootSession)
 	requireResponse(t, inspection, "Root settings inspection", http.StatusOK,
@@ -139,7 +139,7 @@ func TestRootInstallationSettingsRestoreRequiresElevation(t *testing.T) {
 		http.StatusForbidden, `"code":"elevation_required"`)
 
 	elevated := harness.request(t, http.MethodPost,
-		"/panel/api/v1/root/installations/"+target.ID+"/elevation",
+		"/panel/api/v1/root/workspaces/"+target.ID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"restore settings history"}`),
 		rootSession)
 	requireResponse(t, elevated, "start settings elevation", http.StatusCreated)

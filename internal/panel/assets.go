@@ -23,7 +23,7 @@ const (
 	panelHistoryAuditPath      = "audit"
 	panelHistoryFailuresPath   = "failures"
 	panelInvitationsPath       = "invitations"
-	panelInstallationsResource = "installations"
+	panelWorkspacesResource    = "workspaces"
 )
 
 // The documents the panel serves by name rather than as plain static files.

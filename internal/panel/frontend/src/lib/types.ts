@@ -666,7 +666,7 @@ export interface RootOverview {
     database: DatabaseStatus;
   };
   catalog: {
-    installations: number;
+    workspaces: number;
     repositories: number;
     enabled_repositories: number;
   };

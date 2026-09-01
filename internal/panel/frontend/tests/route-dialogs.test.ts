@@ -131,14 +131,14 @@ describe('dialog addresses in the Root console [Unit]', () => {
   });
 
   it('carries a dialog on an installation seen through the Root console', () => {
-    expect(parsePanelRoute('', '/root/installations/acme/access/users/octocat/suspend')).toEqual({
+    expect(parsePanelRoute('', '/root/workspaces/acme/access/users/octocat/suspend')).toEqual({
       rootView: 'installation',
       account: 'acme',
       view: 'users',
       dialog: { name: 'user-action', params: { user: 'octocat', action: 'suspend' } },
     });
-    expect(roundTrip('/root/installations/acme/access/users/octocat/history')).toBe(
-      '/root/installations/acme/access/users/octocat/history',
+    expect(roundTrip('/root/workspaces/acme/access/users/octocat/history')).toBe(
+      '/root/workspaces/acme/access/users/octocat/history',
     );
   });
 

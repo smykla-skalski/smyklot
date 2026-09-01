@@ -3,7 +3,7 @@ import { defineParams } from '@sveltejs/kit/params';
 import {
   ACCESS_SECTIONS,
   DIRECT_PANEL_VIEWS,
-  DIRECT_ROOT_INSTALLATION_VIEWS,
+  DIRECT_ROOT_WORKSPACE_VIEWS,
   HISTORY_SECTIONS,
   WRITTEN_QUEUE_SECTIONS,
   WRITTEN_SYNC_SECTIONS,
@@ -101,7 +101,7 @@ const MATCHERS = {
    * page rather than with a shell that says the view is unavailable, which reads as a
    * fault. The two lists used to be told apart by a third copy of both, written in Go.
    */
-  rootInstallationView: oneOf(DIRECT_ROOT_INSTALLATION_VIEWS),
+  rootWorkspaceView: oneOf(DIRECT_ROOT_WORKSPACE_VIEWS),
 
   /**
    * The sync sections written into an address; the overview leaves the bare

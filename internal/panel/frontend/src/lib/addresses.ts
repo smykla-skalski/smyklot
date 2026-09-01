@@ -128,8 +128,8 @@ function rootAddress(route: RootRoute): string {
   switch (route.rootView) {
     case 'overview':
       return resolve('/root');
-    case 'installations':
-      return resolve('/root/installations');
+    case 'workspaces':
+      return resolve('/root/workspaces');
     case 'queue':
       return resolve('/root/queue');
     case 'queue-approvals':
@@ -172,7 +172,7 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
   const account = encodeURIComponent(route.account);
   if (route.view === 'users' || route.view === 'invitations') {
     return resolve(
-      '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]',
+      '/root/workspaces/[account]/access/[section=accessSection]/[...rest=dialogPath]',
       {
         account,
         section: route.view,
@@ -182,20 +182,20 @@ function rootInstallationAddress(route: RootRoute & { rootView: 'installation' }
   }
 
   if (route.view === 'history') {
-    return resolve('/root/installations/[account]/history/[[section=historySection]]', {
+    return resolve('/root/workspaces/[account]/history/[[section=historySection]]', {
       account,
       section: route.section,
     });
   }
 
   if (route.view === 'repositories' && named(route.repository)) {
-    return resolve('/root/installations/[account]/repositories/[repository]', {
+    return resolve('/root/workspaces/[account]/repositories/[repository]', {
       account,
       repository: encodeURIComponent(route.repository.name),
     });
   }
 
-  return resolve('/root/installations/[account]/[view=rootInstallationView]', {
+  return resolve('/root/workspaces/[account]/[view=rootWorkspaceView]', {
     account,
     view: route.view,
   });
@@ -281,8 +281,8 @@ export function panelRouteAt(
 
     case '/root':
       return { rootView: 'overview' };
-    case '/root/installations':
-      return { rootView: 'installations' };
+    case '/root/workspaces':
+      return { rootView: 'workspaces' };
     case '/root/queue':
       return { rootView: 'queue' };
     case '/root/queue/[section=queueSection]':
@@ -315,15 +315,15 @@ export function panelRouteAt(
       return { rootView: host, dialog: dialogAt(host, params.rest) };
     }
 
-    case '/root/installations/[account]/[view=rootInstallationView]':
+    case '/root/workspaces/[account]/[view=rootWorkspaceView]':
       return rootInstallation(account, params.view);
-    case '/root/installations/[account]/access':
+    case '/root/workspaces/[account]/access':
       return rootInstallation(account, 'users');
-    case '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]':
+    case '/root/workspaces/[account]/access/[section=accessSection]/[...rest=dialogPath]':
       return rootInstallation(account, section, undefined, dialogAt(section, params.rest));
-    case '/root/installations/[account]/history/[[section=historySection]]':
+    case '/root/workspaces/[account]/history/[[section=historySection]]':
       return rootInstallation(account, 'history', asSection(section));
-    case '/root/installations/[account]/repositories/[repository]':
+    case '/root/workspaces/[account]/repositories/[repository]':
       return {
         rootView: 'installation',
         account,

@@ -50,14 +50,14 @@ function withoutDialogState(): App.PageState {
 }
 
 function isRootInstallation(): boolean {
-  return page.url.pathname.startsWith(`${basePath}/root/installations/`);
+  return page.url.pathname.startsWith(`${basePath}/root/workspaces/`);
 }
 
 function installationAccessView(): string | undefined {
   const id = page.route.id;
   if (
     id === '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]' ||
-    id === '/root/installations/[account]/access/[section=accessSection]/[...rest=dialogPath]'
+    id === '/root/workspaces/[account]/access/[section=accessSection]/[...rest=dialogPath]'
   ) {
     return page.params.section;
   }

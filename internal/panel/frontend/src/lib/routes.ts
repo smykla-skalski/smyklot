@@ -66,7 +66,7 @@ export const ROOT_INSTALLATION_VIEWS = [
 ] as const;
 
 /** Root installation views written directly after the installation account. */
-export const DIRECT_ROOT_INSTALLATION_VIEWS = ['settings', 'repositories', 'history'] as const;
+export const DIRECT_ROOT_WORKSPACE_VIEWS = ['settings', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
@@ -141,11 +141,11 @@ export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
 export type RootRuntimeSection = (typeof ROOT_RUNTIME_SECTIONS)[number];
 export type RootSection =
-  'overview' | 'queue' | 'schedules' | 'installations' | 'access' | 'history' | 'runtime';
+  'overview' | 'queue' | 'schedules' | 'workspaces' | 'access' | 'history' | 'runtime';
 export type PanelSection = Exclude<ScopedPanelView, 'users' | 'invitations'> | 'access';
 export type RootRoute =
   | {
-      rootView: 'overview' | 'installations' | 'schedules' | 'access-users' | 'access-invitations';
+      rootView: 'overview' | 'workspaces' | 'schedules' | 'access-users' | 'access-invitations';
       dialog?: RouteDialog;
     }
   | {
@@ -449,7 +449,7 @@ function isQueueSectionView(view: RootRoute['rootView']): view is `queue-${Writt
 export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
-  if (route.rootView === 'installation') return 'installations';
+  if (route.rootView === 'installation') return 'workspaces';
   if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
   if (isQueueSectionView(route.rootView)) return 'queue';
   if (route.rootView === 'runtime-settings' || route.rootView === 'runtime-service') {
@@ -476,13 +476,12 @@ export function isRootInstallationView(value: string | undefined): value is Root
 /**
  * Console views the product does not call what the address calls them.
  *
- * `/root/installations` is where the grants live, which is GitHub's word for
- * them; the console, the tree and the page all say Workspaces, so the tab does
- * too. The address is the one place the old word survives, and renaming it
- * would break every link an operator has kept.
+ * `installations` used to be here, because the address said GitHub's word for a grant
+ * while the console, the tree and the page all said Workspaces. The address says
+ * Workspaces now too: one word for one thing, everywhere a reader can see it, which is
+ * worth more than the links an operator kept to the old one.
  */
 const ROOT_VIEW_WORDS: Partial<Record<RootRoute['rootView'], string>> = {
-  installations: 'workspaces',
   /* "Runtime" is the address's word for the two pages under it, and neither page
      says it: this one is Service health and the other is Service settings. */
   'runtime-service': 'service-health',
@@ -579,7 +578,7 @@ function parseTrailingQueue(
 
 function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 1) return { rootView: 'overview' };
-  if (parts.length === 2 && parts[1] === 'installations') return { rootView: 'installations' };
+  if (parts.length === 2 && parts[1] === 'workspaces') return { rootView: 'workspaces' };
   if (parts.length === 2 && parts[1] === 'runtime') return { rootView: 'runtime-service' };
   if (parts.length === 3 && parts[1] === 'runtime') {
     if (parts[2] === 'settings') return { rootView: 'runtime-settings' };
@@ -629,13 +628,13 @@ function parseRootRoute(parts: string[]): RootRoute | null {
      through to the installation default. */
   if (parts.length === 2 && parts[1] === 'history') return { rootView: 'history-audit' };
   if (parts.length === 2 && parts[1] === 'access') return { rootView: 'access-users' };
-  if (parts.length < 4 || parts[1] !== 'installations') return null;
+  if (parts.length < 4 || parts[1] !== 'workspaces') return null;
 
   const rawView = parts[3] ?? '';
   const accessView =
     rawView === 'access' ? ACCESS_SECTIONS.find((section) => section === parts[4]) : undefined;
   if (rawView === 'access' && parts.length > 4 && accessView === undefined) return null;
-  if (rawView !== 'access' && !DIRECT_ROOT_INSTALLATION_VIEWS.some((view) => view === rawView)) {
+  if (rawView !== 'access' && !DIRECT_ROOT_WORKSPACE_VIEWS.some((view) => view === rawView)) {
     return null;
   }
   const view = rawView === 'access' ? (accessView ?? 'users') : rawView;
