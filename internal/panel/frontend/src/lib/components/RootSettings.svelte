@@ -441,10 +441,10 @@ without the composer.
             <p class="group-note emergency-note">
               {#if current.background_work_paused}
                 Queue items remain durable, but webhook delivery, pending CI, sync, and maintenance
-                will not start new work.
+                will not start new work
               {:else}
                 Every job starts the work that is due. Use this control to stop automatic dispatch
-                without taking the panel or webhook intake offline.
+                without taking the panel or webhook intake offline
               {/if}
             </p>
           </div>
@@ -478,7 +478,7 @@ without the composer.
         </div>
         <p class="group-note">
           Applied to the running process without a restart. Background-work cadence and timing are
-          managed in <a href="/root/schedules">Schedules</a>.
+          managed in <a href="/root/schedules">Schedules</a>
         </p>
         <div class="policy-rows">
           <div
@@ -820,17 +820,10 @@ without the composer.
     margin-bottom: var(--space-2);
   }
 
-  .emergency-card {
-    align-items: center;
-    display: flex;
-    gap: var(--space-5);
-    justify-content: space-between;
-  }
-
-  .emergency-card.paused {
-    background: color-mix(in srgb, var(--warning) 7%, var(--surface-base));
-    border-color: color-mix(in srgb, var(--warning) 42%, var(--border-subtle));
-  }
+  /* `.emergency-card` and its paused tint are in `app.css`. They are worn by `Card`'s own
+     root element, which never carries this component's scope class - so written here they
+     matched nothing, the row never became a row, and the button sat under the sentence
+     with no space between them. */
 
   .emergency-copy {
     display: grid;
@@ -842,11 +835,14 @@ without the composer.
     align-items: center;
     display: flex;
     gap: var(--space-3);
+    /* The line this heading's companions are held to - its own title's cap. */
+    --head-line: 12px;
   }
 
+  /* No measure, like every other card note: the copy column is already bounded by the
+     act beside it, and a cap on top of that broke one sentence across two lines. */
   .emergency-note {
     margin: 0;
-    max-width: 76ch;
   }
 
   .confirm-copy {
@@ -858,6 +854,10 @@ without the composer.
     font-size: var(--font-size-title);
     font-weight: 600;
     margin: 0;
+    /* This heading's own cap, which is not the card title's: the type is a step smaller.
+       Forced to the card's 13px line the box gained 1.1px it could not fill, and since a
+       block box fills from the top the words sat half a pixel above their own centre -
+       which the alignment sweep reads, correctly, as a row that does not centre. */
     min-block-size: 12px;
     text-box: trim-both cap alphabetic;
   }

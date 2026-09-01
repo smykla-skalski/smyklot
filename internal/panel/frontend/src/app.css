@@ -2186,7 +2186,7 @@ thead th .icon-button:active:not(:disabled) {
   flex: none;
   font: 700 var(--font-size-micro) / var(--leading-flat) var(--sans);
   gap: 0.4rem;
-  height: 1.5rem;
+  height: var(--status-pill-line);
   letter-spacing: 0.06em;
   padding: 0 0.6rem;
   text-transform: uppercase;
@@ -2627,6 +2627,48 @@ thead th .icon-button:active:not(:disabled) {
   border-color: color-mix(in srgb, var(--danger) 30%, var(--border-subtle));
 }
 
+/* THE PAUSE CONTROL IS A ROW, not a stack: one sentence about the running service and
+   the one act on it, side by side. Here rather than in `RootSettings` for the reason
+   `.danger-zone` is - the class is worn by `Card`'s root element, which never carries a
+   caller's scope class, so the rule matched nothing and the button sat directly under
+   the sentence's last line with no space at all between them. */
+.emergency-card {
+  align-items: center;
+  display: flex;
+  gap: var(--space-5);
+  justify-content: space-between;
+  /* AND IT IS NOT A SETTINGS CARD. Everything else on this page is a group of values a
+     reader edits and saves together; this one acts on the running service the moment it
+     is pressed, and it read as the first settings card because it wore the same ground.
+     So it is set INTO the page where the others stand on it - a difference of depth
+     rather than of hue.
+
+     THE FRAME CARRIES IT, NOT THE FILL, and that is a measured result rather than a
+     preference. A tone had to be a hue, and every hue here either means something
+     already or belongs to one palette - tinted with the info primitive it came out a
+     cool grey-blue on the console's violet ground. Moving it to the inset surface fixed
+     the hue and broke two things a card this size cannot afford: the note fell from 5.21
+     to 4.59 against its ground, and the running pill's own fill landed at 1.06 - no
+     separation at all, so the badge had only its keyline left to be a shape with.
+
+     A firmer rule and a plate's lift say the same thing and cost neither: every ratio in
+     the card is the one it was tuned at, because the ground did not move. The paused
+     state still takes the warning tone, because there it is not decoration - it is what
+     the card is saying.
+
+     The rule is the palette's firm one, two steps along its own ramp from the subtle
+     rule the settings cards take. `--border-strong` is firmer still and comes out grey:
+     it is mixed from the ink, and the console's ink is nearly neutral, so the one card
+     meant to belong to that page was the one wearing none of its colour. */
+  border-color: var(--border-firm);
+  box-shadow: var(--shadow-plate);
+}
+
+.emergency-card.paused {
+  background: color-mix(in srgb, var(--warning) 7%, var(--surface-base));
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--border-subtle));
+}
+
 .danger-zone .card-title {
   color: var(--danger);
 }
@@ -2671,8 +2713,35 @@ thead th .icon-button:active:not(:disabled) {
   min-block-size: var(--card-head-line);
 }
 
-.card-head > .btn {
-  margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
+/* WHAT STANDS BESIDE A HEADING DOES NOT SET THE HEADING'S HEIGHT.
+   ------------------------------------------------------------------------
+   A heading's box is its text's cap box, and the air above a heading is measured to the
+   WORDS. Left alone, a companion taller than the line grows it and the card's own frame
+   is spent on the companion instead: a 24px status pill beside a 13px heading put the
+   card's 20px of air above the badge and the words 27px down, and a reader sees one
+   heading in a column of cards sitting lower than the rest.
+
+   So every companion sheds the difference at both ends, and it is stated here for every
+   head in the product rather than per head: two rules knew about `.card-head` alone, so
+   a group head or a card that built its own heading row got none of it. Adding a family
+   is one line here; adding a heading is none at all.
+
+   `--head-line` is the heading's own cap, and it is a variable because it is a fact
+   about that heading's type rather than one number for all of them: a head set a step
+   smaller has a smaller cap, and forcing its box to the card title's line gives the box
+   a pixel it cannot fill - which, since a block box fills from the top, puts the words
+   half a pixel above their own centre. The default is the card head's, so a heading that
+   uses the card's type says nothing. */
+:is(.card-head, .group-head, .emergency-heading) > .btn {
+  margin-block: calc((var(--head-line, var(--card-head-line)) - var(--control-height-compact)) / 2);
+}
+
+:is(.card-head, .group-head, .emergency-heading) > .status-pill {
+  margin-block: calc((var(--head-line, var(--card-head-line)) - var(--status-pill-line)) / 2);
+}
+
+:is(.card-head, .group-head, .emergency-heading) > .switch {
+  margin-block: calc((var(--head-line, var(--card-head-line)) - var(--touch-target)) / 2);
 }
 
 /* A CARD'S NOTE IS ITS TITLE'S SECOND LINE, not the card's body.
@@ -2696,7 +2765,10 @@ thead th .icon-button:active:not(:disabled) {
   font-size: var(--font-size-compact);
   line-height: var(--leading-compact);
   margin-block: calc(var(--leading-compact) - 1cap) var(--rhythm-card-head-body);
-  max-inline-size: 60ch;
+  /* NO measure. The card is the measure: a note is one line about the card it opens, and
+     capped at 60ch inside a 1080px card it broke a sentence that fits in one line across
+     two - which reads as a paragraph that ran out of room rather than as a subtitle. The
+     copies this replaced each carried one, and no two agreed. */
   text-box: trim-both cap alphabetic;
   text-wrap: pretty;
 }
@@ -2704,8 +2776,8 @@ thead th .icon-button:active:not(:disabled) {
 /* A standing said beside the title bleeds the same way a control does. Left to grow the
    head, one card's title-to-first-row distance depended on whether that card happened to
    carry a pill - 20px of head against every other card's 13. */
-.card-head > .pill {
-  margin-block: calc((var(--card-head-line) - var(--tier-mark)) / 2);
+:is(.card-head, .group-head, .emergency-heading) > :is(.pill, .tab-count, .rail-badge) {
+  margin-block: calc((var(--head-line, var(--card-head-line)) - var(--tier-mark)) / 2);
 }
 
 /* ---------- A card that opens ----------
@@ -3347,11 +3419,15 @@ button.object-row {
    the card's padding, and every settings card ran 12px heavier below than above. The list
    sheds it at whichever edge it is the card's own - which is what `.object-list` already
    does. */
-.card > :is(.setting-rows, .policy-rows):first-child {
+/* A LONE ROW IS A LIST OF ONE, and sheds the same padding. Written for the list
+   wrappers only, a card whose whole body is a single row kept the 12px - so the
+   Formatting card stood 12px deeper below its one row than the Runtime card above it
+   stood below its three. */
+.card > :is(.setting-rows, .policy-rows, .setting-row, .policy-row):first-child {
   margin-block-start: calc(var(--row-pad-default) * -1);
 }
 
-.card > :is(.setting-rows, .policy-rows):last-child {
+.card > :is(.setting-rows, .policy-rows, .setting-row, .policy-row):last-child {
   margin-block-end: calc(var(--row-pad-default) * -1);
 }
 

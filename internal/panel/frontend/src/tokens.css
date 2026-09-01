@@ -65,6 +65,12 @@
   --surface-control: var(--primitive-light-control);
   --border-subtle: var(--primitive-light-rule);
   --border-control: var(--primitive-light-control-border);
+  /* A third step on the same ramp, for the rare surface that has to read as firmer
+     than a card without changing its ground. `--border-strong` is mixed from the ink
+     and lands grey wherever the ink is; this one continues the palette's own rule
+     colours, so a violet console keeps its hue. Where a palette does not restate it,
+     the ink mix is the honest answer. */
+  --border-firm: var(--border-strong);
   /* The edge a photograph is given, so a portrait ending in the card's own colour
      still reads as a circle. Ink on light grounds, light on dark ones. */
   --avatar-ring: rgb(24 33 31 / 22%);
@@ -530,6 +536,9 @@
      places before it had a name, which is also why the hit-area bleeds
      that derive from it were literals nobody could check. */
   --tier-mark: 20px;
+  /* The status pill's own line, named so the pill and the law that keeps it from growing
+     a heading read the same number. */
+  --status-pill-line: 1.5rem;
   --touch-target: 44px;
   /* A field sized by its own content takes this as its inline floor, so a
      one-character value still has a focus ring with a body. A field that
@@ -893,6 +902,7 @@
   --surface-control: #f8f6fb;
   --border-subtle: #ded8e8;
   --border-control: #c9c0d8;
+  --border-firm: #a99bc0;
   --avatar-ring: rgb(35 24 47 / 22%);
   --interactive-hover: #f0ecf6;
   --interactive-pressed-bg: #e7e1ef;
@@ -1071,6 +1081,7 @@
   --surface-control: #1b1724;
   --border-subtle: #342d40;
   --border-control: #4a405a;
+  --border-firm: #6c5f80;
   --avatar-ring: rgb(255 255 255 / 22%);
   --text-primary: #f4f1f8;
   --text-secondary: #cbc3d4;
