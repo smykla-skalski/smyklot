@@ -53,6 +53,26 @@
     };
   });
 
+  /**
+   * What is standing over the receipt, if anything.
+   *
+   * Escape belongs to the TOPMOST surface only. A dialog, the drawer, an open menu or
+   * popover each takes its own, and none of them may reach past to something behind:
+   * a reader pressing Escape to leave a dialog means the dialog, and a receipt that
+   * took the press would take the Undo away with it.
+   */
+  function covered(): boolean {
+    return (
+      document.querySelector('[role="dialog"], [role="menu"], .app-popover') !== null ||
+      document.querySelector('.app-shell.side-open') !== null
+    );
+  }
+
+  function escape(event: KeyboardEvent): void {
+    if (event.key !== 'Escape' || current === null || covered()) return;
+    receipts.dismiss();
+  }
+
   function hold(): void {
     held = true;
   }
@@ -73,6 +93,8 @@ The receipt for a change: what happened, and the way back where there is one.
 Mounted once by the shell, because a change made in a dialog is reported after the
 dialog has closed and a receipt owned by the page underneath would go with it.
 -->
+
+<svelte:window onkeydown={escape} />
 
 {#if current !== null}
   <div
@@ -130,5 +152,25 @@ dialog has closed and a receipt owned by the page underneath would go with it.
     /* The words wrap; the buttons beside them never shrink. */
     min-inline-size: 0;
     text-box: trim-both cap alphabetic;
+  }
+
+  .toast :global(.btn) {
+    flex: none;
+  }
+
+  /* Compact screens: the sentence owns its own line and the actions wrap beneath it,
+     so a long receipt never squeezes into a tall one-word column. */
+  @media (max-width: 30rem) {
+    .toast {
+      flex-wrap: wrap;
+      inline-size: min(100% - 2rem, 26.25rem);
+      justify-content: flex-end;
+      max-inline-size: none;
+      padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
+    }
+
+    .toast-say {
+      flex: 1 1 100%;
+    }
   }
 </style>

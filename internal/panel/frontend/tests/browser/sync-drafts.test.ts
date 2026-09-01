@@ -235,6 +235,12 @@ describe('installation Sync drafts', () => {
         .filter({ hasText: name })
         .first()
         .waitFor({ state: 'visible' });
+
+      /* Escape takes the receipt away, which is the design system's rule and the one
+         way out of it that needs no pointer. It is the TOPMOST surface's press here -
+         nothing is open over the page - and the receipt is what answers. */
+      await page.keyboard.press('Escape');
+      await page.locator('.toast').waitFor({ state: 'detached' });
     } finally {
       await page.close();
     }
