@@ -326,7 +326,7 @@ in their own settings.
   </RootPageHeader>
 
   {#if loading && policies.length === 0 && profiles.length === 0}
-    <Plate label="Loading"><p class="dim" role="status">Reading the schedules…</p></Plate>
+    <Plate label="Loading…"><p class="dim" role="status">Reading the schedules…</p></Plate>
   {:else if error !== '' && scheduleData === null}
     <Plate label="Schedules unavailable" tone="alarm"
       ><p>{error}</p>

@@ -5,6 +5,7 @@
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
   import { sentenceCase } from '#lib/format.js';
+  import { LiveList } from '#lib/live-list.svelte.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
   import { QUEUE_SECTIONS, type QueueSection } from '#lib/routes.js';
   import type {
@@ -172,6 +173,64 @@
   const loading = $derived(
     CARDS.filter((card) => shows(card.id)).some((card) => cardQueries[card.id].isFetching),
   );
+  /* A REFRESH THAT ANSWERS QUICKLY SAYS NOTHING.
+     ------------------------------------------------------------------------
+     Most of these reads come back inside a frame or two, and a word that arrives and
+     leaves inside 150ms is a flicker rather than a status - the eye catches the change
+     and has nothing to read by the time it looks. So the say waits out the window in
+     which a reader still experiences the app as instant, and once it HAS been said it
+     stays long enough to be read, however fast the answer then arrives. Without the
+     floor the delay only narrows the flicker's window rather than closing it.
+
+     What it must never do is move anything already on the page. It is drawn inside the
+     header's action group, which is packed to the right, so the word grows the group's
+     left edge and the button it belongs to does not move a pixel. */
+  const SAY_AFTER_MS = 400;
+  const SAY_AT_LEAST_MS = 600;
+  let updating = $state(false);
+  let saidAt = 0;
+  let waitTimer: ReturnType<typeof setTimeout> | null = null;
+  let holdTimer: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    const busy = loading;
+    untrack(() => {
+      if (busy) {
+        if (holdTimer !== null) {
+          clearTimeout(holdTimer);
+          holdTimer = null;
+        }
+        if (updating || waitTimer !== null) return;
+        waitTimer = setTimeout(() => {
+          waitTimer = null;
+          updating = true;
+          saidAt = Date.now();
+        }, SAY_AFTER_MS);
+        return;
+      }
+      if (waitTimer !== null) {
+        clearTimeout(waitTimer);
+        waitTimer = null;
+      }
+      if (!updating || holdTimer !== null) return;
+      holdTimer = setTimeout(
+        () => {
+          holdTimer = null;
+          updating = false;
+        },
+        Math.max(0, SAY_AT_LEAST_MS - (Date.now() - saidAt)),
+      );
+    });
+  });
+
+  /* Reads nothing, so it runs once and its teardown is the component's. A cleanup on the
+     effect above would fire on every change of `loading`, which is precisely when the
+     timer it would clear is the one still counting. */
+  $effect(() => () => {
+    if (waitTimer !== null) clearTimeout(waitTimer);
+    if (holdTimer !== null) clearTimeout(holdTimer);
+  });
+
   const error = $derived(
     CARDS.filter((card) => shows(card.id))
       .map((card) => errorMessage(cardQueries[card.id].error))
@@ -217,18 +276,60 @@
    * The cards a view is made of, each with its own rows, its own count and its own way
    * to bring more of itself down.
    */
+  /* THE ROWS HOLD STILL UNTIL THE READER ASKS FOR THE NEW ONES.
+     ------------------------------------------------------------------------
+     These three cards are the live state of the service, and the service does not wait
+     to be read: a job finishing took its row out from under a pointer and lifted every
+     card below it. So each card draws the set it was given, with every row's contents
+     read fresh from the live copy - a countdown still counts, a mark still changes - and
+     what a new or departed row does is raise the count in the header instead.
+
+     Overview holds its Active work card the same way, and says the same words. */
+  const held = {
+    decision: new LiveList<QueueItem>(
+      () => decisionQuery.data?.items ?? [],
+      (item) => item.id,
+    ),
+    live: new LiveList<QueueItem>(
+      () => liveQuery.data?.items ?? [],
+      (item) => item.id,
+    ),
+    done: new LiveList<QueueItem>(
+      () => doneQuery.data?.items ?? [],
+      (item) => item.id,
+    ),
+  };
+
+  function takeAll(): void {
+    for (const card of CARDS) held[card.id].refresh();
+  }
+
+  /* The reader's OWN changes are not something to be told about: a search, a section, a
+     press of "Show more" all change which rows belong on the page, and holding those
+     back would answer a press with a notice asking for a second one. */
+  $effect(() => {
+    void appliedSearch;
+    void section;
+    void revealed;
+    untrack(takeAll);
+  });
+
+  const behind = $derived(
+    CARDS.filter((card) => shows(card.id)).reduce((sum, card) => sum + held[card.id].changed, 0),
+  );
+
   const cards = $derived(
     CARDS.filter((card) => shows(card.id))
       .map((card) => {
         const page = cardQueries[card.id].data;
-        const rows = page?.items ?? [];
-        const held = page?.total ?? 0;
+        const rows = held[card.id].rows;
+        const total = page?.total ?? 0;
 
         return {
           id: card.id,
           title: cardTitle(card.id),
           items: rows,
-          count: held === 0 ? 'Nothing to show' : `Showing 1-${rows.length}\u{a0}of ${held}`,
+          count: total === 0 ? 'Nothing to show' : `Showing 1-${rows.length}\u{a0}of ${total}`,
           more: (page?.next_offset ?? 0) !== 0,
           busy: cardQueries[card.id].isFetching,
           onMore: () => (revealed = { ...revealed, [card.id]: revealed[card.id] + pageSize }),
@@ -540,10 +641,14 @@
       : api.fetchTargetQueue(targetId, query);
   }
 
+  /* Take the new rows AFTER the read, not before: taken first, the answer already on its
+     way arrives as another set the reader has not asked for, and the notice comes back
+     with a count the press was meant to clear. */
   async function load(): Promise<void> {
     await Promise.all(
       CARDS.filter((card) => shows(card.id)).map((card) => cardQueries[card.id].refetch()),
     );
+    takeAll();
   }
 
   function openAction(item: QueueItem, action: QueueActionType): void {
@@ -654,10 +759,17 @@ without the buttons, rather than buttons that refuse.
       title="Queue"
       subtitle="Everything the service is doing, across every workspace"
     >
-      <Button onclick={() => void load()}>
-        {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
-        Refresh
-      </Button>
+      <span class="queue-refresh">
+        <span class="queue-state" class:is-saying={updating} aria-hidden="true">Updating…</span>
+        <span class="card-meta queue-behind" class:is-saying={behind > 0} aria-hidden="true">
+          <span class="queue-behind-count">{behind}</span>
+          {behind === 1 ? 'item' : 'items'} behind
+        </span>
+        <Button onclick={() => void load()}>
+          {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
+          Refresh
+        </Button>
+      </span>
     </RootPageHeader>
   {:else}
     <PageHeader
@@ -666,10 +778,17 @@ without the buttons, rather than buttons that refuse.
       description="Work Smyklot is doing or waiting on in this workspace"
     >
       {#snippet actions()}
-        <Button onclick={() => void load()}>
-          {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
-          Refresh
-        </Button>
+        <span class="queue-refresh">
+          <span class="queue-state" class:is-saying={updating} aria-hidden="true">Updating…</span>
+          <span class="card-meta queue-behind" class:is-saying={behind > 0} aria-hidden="true">
+            <span class="queue-behind-count">{behind}</span>
+            {behind === 1 ? 'item' : 'items'} behind
+          </span>
+          <Button onclick={() => void load()}>
+            {#snippet icon()}<Icon name="refresh" size="sm" strokeWidth={2} />{/snippet}
+            Refresh
+          </Button>
+        </span>
       {/snippet}
     </PageHeader>
   {/if}
@@ -695,14 +814,19 @@ without the buttons, rather than buttons that refuse.
       />
     {/if}
     <span class="push-end">
-      <span class="queue-state" aria-live="polite">{loading ? 'Updating…' : ''}</span>
       <TableToolsMenu label="Filter queue" sorts={[]} filters={queueFilters} />
     </span>
   </div>
 
   <p class="visually-hidden" aria-live="polite">{announcement}</p>
+  <!-- Its own region, because the word beside the button is drawn with `visibility` and a
+       hidden node is not in the accessibility tree to be announced from. -->
+  <p class="visually-hidden" aria-live="polite">{updating ? 'Updating…' : ''}</p>
+  <p class="visually-hidden" aria-live="polite">
+    {behind > 0 ? `${behind} ${behind === 1 ? 'item' : 'items'} behind` : ''}
+  </p>
   {#if loading && !answered}
-    <Plate label="Loading"><p class="dim" role="status">Reading the durable queue…</p></Plate>
+    <Plate label="Loading…"><p class="dim" role="status">Reading the durable queue…</p></Plate>
   {:else if error !== '' && !answered}
     <Plate label="Queue unavailable" tone="alarm">
       <p>{error}</p>
@@ -758,11 +882,71 @@ without the buttons, rather than buttons that refuse.
     min-height: 0;
     min-width: 0;
   }
-  /* A refresh in flight, said once beside the tools rather than as a count that
-     disagrees with the segments' own. */
+  /* A refresh in flight, said beside the control that started it. It used to live at the
+     other end of the filter bar next to the tools menu, which is where a reader who has
+     just pressed Refresh is not looking.
+
+     THE WORD IS ALWAYS THERE AND ONLY ITS INK COMES AND GOES. Written as text that
+     arrives, it changed the width of the action group, and the group wraps: under about
+     900px the word took a line of its own, grew the header 20px and pushed the whole
+     page down every time a refresh ran long. Held with `visibility`, its box is measured
+     once and nothing on the page moves for it, ever - which is the whole point of saying
+     something while a reader waits. The announcement is a hidden live region of its own,
+     because a node held this way is not in the accessibility tree to be announced from. */
   .queue-state {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     text-box: trim-both cap alphabetic;
+    visibility: hidden;
+  }
+
+  .queue-state.is-saying {
+    visibility: visible;
+  }
+
+  /* ONE ITEM IN THE HEADER, so what it says can never re-lay the header out.
+     ------------------------------------------------------------------------
+     Both of these words arrive because the SERVICE moved on, not because the reader
+     asked for anything, so neither may move the page it is reporting on. Left as
+     siblings in the action group they did: that group wraps, and a flex line WRAPS
+     before it shrinks, so `min-inline-size: 0` on the words changed nothing - at 980px
+     they took a line of their own, grew the header 20px and pushed the page down.
+
+     As one item the group has nothing to wrap. Inside it the line does not wrap either,
+     so the words shrink instead, and the button - the thing that answers them - keeps
+     its full width at every width. On a phone the count clips rather than the control. */
+  .queue-refresh {
+    align-items: center;
+    display: flex;
+    flex-wrap: nowrap;
+    /* Wider than the gap between two controls: what stands to the left of the button
+       here is a sentence rather than another control, and at the control gap it read as
+       the button's own label run on. */
+    gap: var(--space-4);
+    min-inline-size: 0;
+  }
+
+  /* AND ITS PLACE IS RESERVED, for the same reason the word above it is: a count that
+     grew the group took width from the header's copy column, and the title wrapped -
+     20px of page, on a change the reader did not make. Held with `visibility` the group
+     is its full width from the first paint and stays there, so the only thing left that
+     could move is a digit, which tabular figures pin to one width. */
+  .queue-behind {
+    visibility: hidden;
+    white-space: nowrap;
+  }
+
+  .queue-behind.is-saying {
+    visibility: visible;
+  }
+
+  /* Two digits' worth, right-aligned into it: 99 items behind is a queue nobody is
+     reading down, and a third digit widens the group by one figure rather than reflowing
+     the sentence. */
+  .queue-behind-count {
+    display: inline-block;
+    font-variant-numeric: tabular-nums;
+    min-inline-size: 2ch;
+    text-align: end;
   }
 </style>

@@ -24,7 +24,7 @@ own; past that the wait is real and worth acknowledging.
 -->
 
 <div class="panel-boot" role="status" aria-live="polite">
-  <span class="panel-boot-word band-trim">Loading</span>
+  <span class="panel-boot-word band-trim">Loading…</span>
 </div>
 
 <style>
