@@ -545,6 +545,14 @@ positioning will replace once it is portable.
 
   fieldset.fluid {
     flex: 1 1 auto;
+    /* AND IT SCROLLS WHEN THE WORDS WILL NOT FIT. The track clips, which is right for a
+       thumb sliding inside it and wrong for the one case where the options themselves
+       are wider than the row: under the letter spacing a reader may set for 1.4.12 these
+       labels ran 5px past the track and those 5px were simply gone. `clip` on the block
+       axis keeps the thumb where it belongs; `auto` on the inline one gives the words a
+       way out. */
+    overflow-x: auto;
+    overflow-y: clip;
     width: 100%;
   }
 

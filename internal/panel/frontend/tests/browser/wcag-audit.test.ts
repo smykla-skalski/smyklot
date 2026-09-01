@@ -28,7 +28,9 @@ beforeAll(async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
       await visit(page, addressOf(panel, route));
-      return (await audit(page)).map((one) => ({ ...one, route }));
+      const still = await audit(page);
+      const spaced = await spacingAudit(page);
+      return [...still, ...spaced].map((one) => ({ ...one, route }));
     } finally {
       await page.close();
     }
@@ -353,6 +355,94 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
       previous = level;
     }
 
+    /* SC 2.4.7 Focus Visible (A) - every control that takes focus shows that it has it.
+       Asked of the STYLESHEET rather than by focusing each one: `:focus-visible` matches
+       on a real keyboard journey and not reliably on a scripted `focus()`, so a probe
+       that focused everything would report the indicator missing wherever the browser
+       decided the focus was not keyboard-driven. What can be settled exactly is whether
+       a rule exists that reaches this element and paints something. */
+    const focusPainters = new Set<string>();
+    for (const sheet of document.styleSheets) {
+      let rules: CSSRuleList;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        continue;
+      }
+      const walk = (list: CSSRuleList): void => {
+        for (const rule of list) {
+          if (rule instanceof CSSGroupingRule) walk(rule.cssRules);
+          if (!(rule instanceof CSSStyleRule)) continue;
+          if (!rule.selectorText.includes(':focus')) continue;
+          const paints = ['outline', 'outline-color', 'box-shadow', 'border-color', 'background']
+            .map((property) => rule.style.getPropertyValue(property))
+            .some((value) => value !== '' && value !== 'none' && value !== 'transparent');
+          if (!paints) continue;
+          for (const one of rule.selectorText.split(/,(?![^(]*\))/u)) {
+            focusPainters.add(one.replaceAll(/:focus(-visible|-within)?/gu, '').trim());
+          }
+        }
+      };
+      walk(rules);
+    }
+    for (const control of interactive) {
+      const lit = [...focusPainters].some((selector) => {
+        /* A bare `:focus-visible` strips to nothing, and nothing is what the whole
+           document matches - the panel has exactly one such rule and it is the reason
+           most of these controls have a ring at all. Read as "matches nobody", it
+           reported 991 controls with no focus style and buried the question. */
+        if (selector === '') return true;
+        try {
+          return control.matches(selector);
+        } catch {
+          return false;
+        }
+      });
+      if (!lit) {
+        found.push({
+          rule: '2.4.7 Focus Visible',
+          where: name(control),
+          detail: 'no :focus rule reaches it that paints anything',
+        });
+      }
+    }
+
+    /* SC 2.4.11 Focus Not Obscured (Minimum) (AA) - when a control takes focus it is not
+       ENTIRELY hidden by author-created content. The criterion is about the thing that
+       floats: a sticky bar, a docked toolbar, a fixed footer. So the question is asked of
+       those and not of the paint stack in general - read the other way it reported every
+       transparent input behind its own switch track, which is not content on top but the
+       control's own construction. */
+    const floating = [...document.querySelectorAll<HTMLElement>('*')].filter((element) => {
+      const style = getComputedStyle(element);
+      return (
+        (style.position === 'sticky' || style.position === 'fixed') &&
+        element.checkVisibility() &&
+        solid(style.backgroundColor)
+      );
+    });
+    for (const control of interactive) {
+      const box = control.getBoundingClientRect();
+      if (box.bottom < 0 || box.top > window.innerHeight || box.width === 0) continue;
+      const buried = floating.some((cover) => {
+        if (cover.contains(control) || control.contains(cover)) return false;
+        const over = cover.getBoundingClientRect();
+        return (
+          over.left <= box.left &&
+          over.right >= box.right &&
+          over.top <= box.top &&
+          over.bottom >= box.bottom
+        );
+      });
+      if (buried) {
+        found.push({
+          rule: '2.4.11 Focus Not Obscured',
+          where: name(control),
+          detail: 'wholly covered by a sticky or fixed element',
+        });
+      }
+    }
+
     /* SC 2.4.2 Page Titled (A) and 3.1.1 Language of Page (A). */
     if (document.title.trim() === '') {
       found.push({ rule: '2.4.2 Page Titled', where: 'document', detail: 'no title' });
@@ -389,6 +479,93 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
       }
     }
 
+    return found;
+  });
+}
+
+/**
+ * SC 1.4.12 Text Spacing (AA), applied exactly as the criterion words it.
+ *
+ * A reader may set line height to 1.5x the font size, space after a paragraph to 2x,
+ * letter spacing to 0.12em and word spacing to 0.16em, and no content or function may be
+ * lost. It is a real test rather than a review: the four declarations go on, and anything
+ * whose words are then cut off by a box that clips is content the reader lost.
+ *
+ * A page that scrolls is not a failure - growing taller is what is supposed to happen.
+ * What fails is a box that keeps its size and hides the difference, which is why this
+ * asks only about elements that clip on an axis their content has outgrown.
+ */
+function spacingAudit(page: Page): Promise<Omit<Finding, 'route'>[]> {
+  return page.evaluate(() => {
+    const sheet = document.createElement('style');
+    sheet.textContent = `* {
+      line-height: 1.5 !important;
+      letter-spacing: 0.12em !important;
+      word-spacing: 0.16em !important;
+    }
+    p { margin-block-end: 2em !important; }`;
+    document.head.append(sheet);
+    /* Forced, so the measurements below are taken after the reflow rather than during. */
+    void document.body.getBoundingClientRect();
+
+    const found: { rule: string; where: string; detail: string }[] = [];
+    const named = (element: Element): string => {
+      const classes = element.className;
+      const list = typeof classes === 'string' ? classes : '';
+      const own = list
+        .split(/\s+/u)
+        .filter((one) => one !== '' && !one.startsWith('svelte-'))
+        .slice(0, 2)
+        .join('.');
+      return element.tagName.toLowerCase() + (own === '' ? '' : `.${own}`);
+    };
+
+    for (const element of document.querySelectorAll<HTMLElement>('*')) {
+      if (!element.checkVisibility()) continue;
+      const text = (element.textContent ?? '').trim();
+      if (text === '') continue;
+      /* A box that clips ON PURPOSE and is not showing anything: the visually-hidden
+         recipe is a 1px clipped box, and every one of them "loses" its words to a
+         reader who was never going to see them. */
+      if (element.closest('.visually-hidden') !== null) continue;
+      const style = getComputedStyle(element);
+      if (Number.parseFloat(style.opacity) < 0.99) continue;
+      /* The same recipe written without the class - a `<legend>` naming a fieldset is
+         4x1px under `clip-path: inset(50%)` - is the same thing and not a loss. Read as
+         one, it filed 105 findings against words nobody was ever shown. */
+      const box = element.getBoundingClientRect();
+      if (box.width <= 8 || box.height <= 8) continue;
+      if (style.clipPath.startsWith('inset(50%')) continue;
+      /* And a box whose overflow is hidden but which HOLDS a scroller has lost nothing:
+         the reader reaches the rest by scrolling, which is what the criterion allows a
+         page to do. Only a clip with no way past it is a loss. */
+      const scrollable = [...element.querySelectorAll<HTMLElement>('*')].some((inner) => {
+        const own = getComputedStyle(inner);
+        return (
+          own.overflowY === 'auto' ||
+          own.overflowY === 'scroll' ||
+          own.overflowX === 'auto' ||
+          own.overflowX === 'scroll'
+        );
+      });
+      if (scrollable) continue;
+      const clipsY = style.overflowY === 'hidden' || style.overflowY === 'clip';
+      const clipsX = style.overflowX === 'hidden' || style.overflowX === 'clip';
+      /* A single line that says so is not a loss: `text-overflow: ellipsis` is a
+         deliberate truncation with the whole string still in the accessible name, and
+         the criterion's own understanding treats that as content still available. */
+      if (style.textOverflow === 'ellipsis') continue;
+      const lostY = clipsY && element.scrollHeight > element.clientHeight + 1;
+      const lostX = clipsX && element.scrollWidth > element.clientWidth + 1;
+      if (!lostY && !lostX) continue;
+      found.push({
+        rule: '1.4.12 Text Spacing',
+        where: named(element),
+        detail: `${lostY ? `${element.scrollHeight - element.clientHeight}px of height` : `${element.scrollWidth - element.clientWidth}px of width`} is cut off — "${text.slice(0, 26)}"`,
+      });
+    }
+
+    sheet.remove();
     return found;
   });
 }
