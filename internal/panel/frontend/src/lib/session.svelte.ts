@@ -96,7 +96,7 @@ export class PanelSession {
 
   theme = $state<ThemeDisplay>('system');
   sidebarCollapsed = $state(false);
-  private lastScopedView = $state<PanelView>('defaults');
+  private lastScopedView = $state<PanelView>('settings');
   private lastScopedHistorySection = $state<HistorySection>('audit');
   private lastScopedQueueSection = $state<QueueSection>('active');
   /**

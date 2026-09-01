@@ -126,10 +126,10 @@ describe('one repository through the Root console [Unit]', () => {
      takes a repository, and the trailing segment has to stay refused rather than
      be read as one now that the repositories view reads its own. */
   it('does not let another view carry a repository', () => {
-    expect(parsePanelRoute('', '/i/acme/defaults/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/defaults/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/installations/acme/settings/api-gateway')).toBeNull();
   });
 });

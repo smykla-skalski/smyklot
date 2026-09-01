@@ -527,7 +527,7 @@
       return section === null ? session.viewHref('sync') : session.syncSectionHref(section);
     }
     if (control.location.section === 'repositories') return session.viewHref('repositories');
-    if (control.location.section === 'defaults') return session.viewHref('defaults');
+    if (control.location.section === 'defaults') return session.viewHref('settings');
     return undefined;
   }
 
@@ -543,7 +543,7 @@
       return panelAddress({ account, view: 'repositories' });
     }
     if (control.location.section === 'defaults') {
-      return panelAddress({ account, view: 'defaults' });
+      return panelAddress({ account, view: 'settings' });
     }
     if (control.location.section === 'sync') {
       const section = syncSection(control) ?? 'overview';
@@ -571,7 +571,7 @@
     } else if (control.location.section === 'repositories') {
       session.selectView('repositories');
     } else if (control.location.section === 'defaults') {
-      session.selectView('defaults');
+      session.selectView('settings');
     }
   }
 
@@ -735,11 +735,11 @@
         signal: failureCount !== undefined,
       },
       {
-        id: 'defaults',
+        id: 'settings',
         label: 'Workspace settings',
         icon: 'gear',
-        href: session.viewHref('defaults'),
-        active: !session.isInbox && panelViewSection(session.currentView) === 'defaults',
+        href: session.viewHref('settings'),
+        active: !session.isInbox && panelViewSection(session.currentView) === 'settings',
         dirty: selectedSettingsDirtyAt({ section: 'defaults' }),
         foot: true,
       },
@@ -758,7 +758,7 @@
     const scope: SettingsScope | null =
       target === undefined ? null : { type: 'installation', targetId: target.id };
     const leaves = [
-      { id: 'defaults', view: 'defaults', label: 'Workspace settings', icon: 'gear' },
+      { id: 'settings', view: 'settings', label: 'Workspace settings', icon: 'gear' },
       { id: 'repositories', view: 'repositories', label: 'Repositories', icon: 'book' },
       { id: 'users', view: 'users', label: 'Users', icon: 'users' },
       { id: 'invitations', view: 'invitations', label: 'Invitations', icon: 'mail' },
@@ -787,9 +787,14 @@
           route.view === leaf.view &&
           (leaf.view !== 'history' ||
             ('section' in leaf && session.currentHistorySection === leaf.section)),
+        /* The tree's word and the draft store's word part company here: the page is
+           addressed and written "settings", and what it holds is still the workspace's
+           defaults for its repositories, which is what the store files them under. */
         dirty:
-          scope !== null && (leaf.id === 'defaults' || leaf.id === 'repositories')
-            ? settingsDraftRegistry.dirtyAt(scope, { section: leaf.id })
+          scope !== null && (leaf.id === 'settings' || leaf.id === 'repositories')
+            ? settingsDraftRegistry.dirtyAt(scope, {
+                section: leaf.id === 'settings' ? 'defaults' : leaf.id,
+              })
             : undefined,
       })),
     ];
@@ -947,7 +952,7 @@
     'access-invitations': 'links that bring people in',
     'history-audit': 'everything done here, day by day',
     'history-failures': 'work that stopped, and why',
-    defaults: 'what every repository here inherits',
+    settings: 'what every repository here inherits',
     overview: 'what needs an operator',
     installations: 'every workspace the service serves',
     'runtime-service': 'the service, its credentials and the store it runs on',

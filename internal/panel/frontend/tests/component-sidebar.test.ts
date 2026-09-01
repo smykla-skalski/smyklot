@@ -43,10 +43,10 @@ const ENTRIES: SidebarEntry[] = [
     signal: true,
   },
   {
-    id: 'defaults',
+    id: 'settings',
     label: 'Workspace settings',
     icon: 'gear',
-    href: '/defaults',
+    href: '/settings',
     active: false,
     foot: true,
   },

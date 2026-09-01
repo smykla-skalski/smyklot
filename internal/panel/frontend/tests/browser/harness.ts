@@ -37,7 +37,7 @@ export interface Panel {
  * checked and is not.
  */
 export const PANEL_ROUTES = [
-  'i/defaults',
+  'i/settings',
   'i/queue',
   'i/repositories',
   /* One repository's own page, which is a route in its own right and was in none
@@ -65,7 +65,7 @@ export const PANEL_ROUTES = [
   'root/queue/request/pending-ci-0',
   'root/schedules',
   'root/installations',
-  'root/installations/{account}/defaults',
+  'root/installations/{account}/settings',
   'root/installations/{account}/repositories',
   'root/installations/{account}/access/users',
   'root/installations/{account}/access/invitations',

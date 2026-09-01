@@ -33,7 +33,7 @@ const IDLE_MS = 2000;
 
 /** `{account}` is whichever workspace the mock seeded, read rather than named. */
 const ADDRESSES = [
-  '/i/{account}/defaults',
+  '/i/{account}/settings',
   '/i/{account}/repositories',
   '/i/{account}/access/users',
   '/i/{account}/history/audit',
@@ -121,7 +121,7 @@ async function walk(): Promise<Measurement> {
     const mounted = page.waitForRequest((request) => request.url().includes('/api/'), {
       timeout: 30_000,
     });
-    await page.goto(`${panel.origin}/i/${panel.account}/defaults`, {
+    await page.goto(`${panel.origin}/i/${panel.account}/settings`, {
       waitUntil: 'domcontentloaded',
     });
     await mounted;

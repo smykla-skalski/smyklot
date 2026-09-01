@@ -103,7 +103,7 @@ describe('PanelSession [Unit]', () => {
 
     session.returnToPanel(true);
 
-    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/defaults`, { replace: true });
+    expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/i/acme/settings`, { replace: true });
   });
 
   it('records nothing from a page that failed to load', () => {
@@ -145,8 +145,8 @@ describe('PanelSession [Unit]', () => {
 
     // Visiting another installation view inside Root does not replace the
     // workspace context the Return action promises to restore.
-    routePage.url = at('/root/installations/acme/defaults');
-    routePage.params = { account: 'acme', view: 'defaults' };
+    routePage.url = at('/root/installations/acme/settings');
+    routePage.params = { account: 'acme', view: 'settings' };
     routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
     session.syncRouteContext();
     session.returnToPanel();
@@ -165,8 +165,8 @@ describe('PanelSession [Unit]', () => {
     openRepository(session);
 
     session.enterRoot();
-    routePage.url = at('/root/installations/acme/defaults');
-    routePage.params = { account: 'acme', view: 'defaults' };
+    routePage.url = at('/root/installations/acme/settings');
+    routePage.params = { account: 'acme', view: 'settings' };
     routePage.route = { id: '/root/installations/[account]/[view=rootInstallationView]' };
     session.syncRouteContext();
 
@@ -220,7 +220,7 @@ describe('PanelSession [Unit]', () => {
     routePage.params = {};
     routePage.route = { id: '/root' };
 
-    expect(reloaded.returnHref()).toBe(`${basePath}/i/other-org/defaults`);
+    expect(reloaded.returnHref()).toBe(`${basePath}/i/other-org/settings`);
   });
 
   it('opens the console on the page it was last left on', () => {

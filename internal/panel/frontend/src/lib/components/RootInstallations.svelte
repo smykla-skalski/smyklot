@@ -134,7 +134,7 @@
       (candidate) =>
         candidate.location.section === 'defaults' || candidate.location.section === 'repositories',
     );
-    return control?.location.section === 'repositories' ? 'repositories' : 'defaults';
+    return control?.location.section === 'repositories' ? 'repositories' : 'settings';
   }
 
   /* A standing appears only where somebody has to do something about it. Stale is

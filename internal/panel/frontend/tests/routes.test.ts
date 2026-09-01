@@ -159,8 +159,12 @@ describe('panel routes', () => {
   });
 
   it('rejects removed compatibility addresses', () => {
-    expect(parsePanelRoute('', '/i/acme/settings')).toBeNull();
-    expect(parsePanelRoute('', '/root/installations/acme/settings')).toBeNull();
+    /* `defaults` is what this page was addressed while the console's own settings page
+       was `/root/settings`. That collision is gone - the console's is `/root/runtime/
+       settings` - and the word is one the dictionary retires, so the page is `settings`
+       again and `defaults` is the removed one. */
+    expect(parsePanelRoute('', '/i/acme/defaults')).toBeNull();
+    expect(parsePanelRoute('', '/root/installations/acme/defaults')).toBeNull();
     expect(parsePanelRoute('', '/root/settings')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/users')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/invitations')).toBeNull();
@@ -197,8 +201,8 @@ describe('panel routes', () => {
     expect(panelAddress({ account: 'smykla skalski', view: 'history' })).toBe(
       `${basePath}/i/smykla%20skalski/history`,
     );
-    expect(panelAddress({ account: 'bartsmykla', view: 'defaults' })).toBe(
-      `${basePath}/i/bartsmykla/defaults`,
+    expect(panelAddress({ account: 'bartsmykla', view: 'settings' })).toBe(
+      `${basePath}/i/bartsmykla/settings`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'queue' })).toBe(
       `${basePath}/i/bartsmykla/queue`,
@@ -228,7 +232,7 @@ describe('panel routes', () => {
 
 describe('panel document titles', () => {
   it.each([
-    [{ account: 'acme', view: 'defaults' }, 'Defaults | SMYKLOT'],
+    [{ account: 'acme', view: 'settings' }, 'Workspace settings | SMYKLOT'],
     [{ account: 'acme', view: 'repositories' }, 'Repositories | SMYKLOT'],
     [{ account: 'acme', view: 'users' }, 'Users | Access | SMYKLOT'],
     [{ account: 'acme', view: 'invitations' }, 'Invitations | Access | SMYKLOT'],
@@ -243,8 +247,8 @@ describe('panel document titles', () => {
     [{ rootView: 'history-audit' }, 'Audit | History | Root Console | SMYKLOT'],
     [{ rootView: 'history-failures' }, 'Failures | History | Root Console | SMYKLOT'],
     [{ rootView: 'queue-history' }, 'History | Queue | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime-service' }, 'Service Health | Root Console | SMYKLOT'],
-    [{ rootView: 'runtime-settings' }, 'Service Settings | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-service' }, 'Service health | Root Console | SMYKLOT'],
+    [{ rootView: 'runtime-settings' }, 'Service settings | Root Console | SMYKLOT'],
     [
       { rootView: 'installation', account: 'acme', view: 'repositories' },
       'Repositories | Root Console | SMYKLOT',
@@ -386,9 +390,9 @@ describe('personal routes', () => {
      still an account. Reading it anywhere else would take a workspace away from
      whoever owns that name. */
   it('leaves an account of the same name alone', () => {
-    expect(parsePanelRoute('', '/i/inbox/defaults')).toEqual({
+    expect(parsePanelRoute('', '/i/inbox/settings')).toEqual({
       account: 'inbox',
-      view: 'defaults',
+      view: 'settings',
     });
     expect(parsePanelRoute('', '/root/installations/inbox/repositories')).toEqual({
       rootView: 'installation',
@@ -440,7 +444,6 @@ describe('history sections are addressable', () => {
   });
 
   it('refuses a section on a view that has none, and an unknown section', () => {
-    expect(parsePanelRoute('', '/i/acme/defaults/audit')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/settings/audit')).toBeNull();
     expect(parsePanelRoute('', '/i/acme/history/everything')).toBeNull();
   });
@@ -450,7 +453,7 @@ describe('history sections are addressable', () => {
       `${basePath}/i/acme/history/failures`,
     );
     expect(panelAddress({ account: 'acme', view: 'history' })).toBe(`${basePath}/i/acme/history`);
-    expect(panelAddress({ account: 'acme', view: 'defaults' })).toBe(`${basePath}/i/acme/defaults`);
+    expect(panelAddress({ account: 'acme', view: 'settings' })).toBe(`${basePath}/i/acme/settings`);
   });
 
   it('resolves a bare root section path to that section default', () => {

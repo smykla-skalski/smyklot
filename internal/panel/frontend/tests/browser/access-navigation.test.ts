@@ -81,7 +81,7 @@ beforeAll(async () => {
 
   const rootInstallation = await panel.browser.newPage({ viewport: VIEWPORT });
   try {
-    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/defaults`, {
+    await visit(rootInstallation, `${panel.origin}/root/installations/${panel.account}/settings`, {
       ready: '#root-page-heading',
     });
     /* By address, not by word: the console's own Audit row and this installation's

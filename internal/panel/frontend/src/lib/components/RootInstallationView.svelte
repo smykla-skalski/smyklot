@@ -280,7 +280,7 @@
 
   function settingsProblemLabel(control: SettingsDirtyControl | undefined): string | undefined {
     const nextView = settingsProblemView(control);
-    return nextView === 'defaults'
+    return nextView === 'settings'
       ? 'Workspace settings'
       : nextView === 'repositories'
         ? 'Repositories'
@@ -289,8 +289,8 @@
 
   function settingsProblemView(
     control: SettingsDirtyControl | undefined,
-  ): 'defaults' | 'repositories' | undefined {
-    if (control?.location.section === 'defaults') return 'defaults';
+  ): 'settings' | 'repositories' | undefined {
+    if (control?.location.section === 'defaults') return 'settings';
     if (control?.location.section === 'repositories') return 'repositories';
     return undefined;
   }
@@ -427,7 +427,7 @@ inside it.
         {loading ? 'Trying again…' : 'Try again'}
       </Button>
     </div>
-  {:else if target !== null && view === 'defaults'}
+  {:else if target !== null && view === 'settings'}
     <TargetSettings {target} readOnly={!canWrite} />
   {:else if target !== null && view === 'repositories'}
     <RepositoryList

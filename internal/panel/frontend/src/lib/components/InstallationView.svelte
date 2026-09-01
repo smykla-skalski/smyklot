@@ -85,7 +85,7 @@ history is routed with its section. That is what makes an address like
         {@render failedView('the overview', error)}
       {/await}
     </div>
-  {:else if view === 'defaults'}
+  {:else if view === 'settings'}
     <div id="defaults-panel">
       {#await import('./TargetSettings.svelte')}
         {@render loadingView('workspace settings')}

@@ -60,12 +60,12 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage(
       'workspace',
       '/i/[account]/[view=panelView]',
-      { account: 'acme', view: 'defaults' },
+      { account: 'acme', view: 'settings' },
       storage,
     );
 
     expect(readLastConsolePage(storage)).toEqual({ rootView: 'installations' });
-    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'defaults' });
+    expect(readLastWorkspacePage(storage)).toEqual({ account: 'acme', view: 'settings' });
   });
 
   it('drops pages remembered under removed route vocabulary', () => {
@@ -73,7 +73,7 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage(
       'workspace',
       '/i/[account]/[view=panelView]',
-      { account: 'acme', view: 'settings' },
+      { account: 'acme', view: 'defaults' },
       storage,
     );
 
@@ -102,7 +102,7 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage(
       'console',
       '/i/[account]/[view=panelView]',
-      { account: 'acme', view: 'defaults' },
+      { account: 'acme', view: 'settings' },
       storage,
     );
 

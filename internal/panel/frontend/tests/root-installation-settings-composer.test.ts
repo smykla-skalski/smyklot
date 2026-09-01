@@ -135,7 +135,7 @@ function viewProps(drafts: SettingsDraftRegistry, client: QueryClient, api: Pane
     drafts,
     queryClient: client,
     installation: ROOT_INSTALLATION,
-    view: 'defaults' as const,
+    view: 'settings' as const,
     actorLogin: 'root-user',
     historySection: 'audit' as const,
     api,

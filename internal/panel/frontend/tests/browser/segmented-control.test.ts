@@ -60,7 +60,7 @@ interface Menu {
 const MENUS: Menu[] = [
   {
     name: "the account menu's theme switch",
-    path: (account: string) => `/i/${account}/defaults`,
+    path: (account: string) => `/i/${account}/settings`,
     ready: '.rail button[aria-label^="Account menu for"]',
     layer: '.app-popover[data-state="open"]',
     /* The rail's, not the collapsed sidebar's: both open the same menu, and the

@@ -118,7 +118,7 @@ describe('background work schedules [Integration]', () => {
   it('gives a workspace when Smyklot acts, and the way to ask for a change', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      await visit(page, addressOf(panel, 'i/defaults'), { ready: '#ws-timing' });
+      await visit(page, addressOf(panel, 'i/settings'), { ready: '#ws-timing' });
 
       const timing = page.locator('#ws-timing');
       await timing.locator('summary').click();

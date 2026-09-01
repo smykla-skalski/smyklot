@@ -21,7 +21,7 @@ export const PANEL_VIEWS = [
      the console's own overview is: a workspace that opened on its settings
      page asked a reader to start from the least urgent thing it holds. */
   'overview',
-  'defaults',
+  'settings',
   'repositories',
   'sync',
   'queue',
@@ -31,7 +31,7 @@ export const PANEL_VIEWS = [
 ] as const;
 
 /** Views written directly after an installation account in the route tree. */
-export const DIRECT_PANEL_VIEWS = ['defaults', 'repositories', 'sync', 'history'] as const;
+export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
@@ -58,7 +58,7 @@ export const PERSONAL_VIEWS = ['inbox', 'search'] as const;
  * view is unavailable" looks like a fault rather than a boundary.
  */
 export const ROOT_INSTALLATION_VIEWS = [
-  'defaults',
+  'settings',
   'repositories',
   'users',
   'invitations',
@@ -66,7 +66,7 @@ export const ROOT_INSTALLATION_VIEWS = [
 ] as const;
 
 /** Root installation views written directly after the installation account. */
-export const DIRECT_ROOT_INSTALLATION_VIEWS = ['defaults', 'repositories', 'history'] as const;
+export const DIRECT_ROOT_INSTALLATION_VIEWS = ['settings', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
 
@@ -394,11 +394,31 @@ export function panelViewSection(view: ScopedPanelView): PanelSection {
   return view === 'users' || view === 'invitations' ? 'access' : view;
 }
 
+/**
+ * Where a segment is not simply its own word capitalised.
+ *
+ * The tab says what the sidebar row and the heading say, which for the settings pages
+ * is more than the segment: the tree carries a Workspace settings row and a Service
+ * settings row, so a tab reading "Settings" says which of the two only by luck. The
+ * page used to be addressed `defaults` and the tab read "Defaults", which is a word the
+ * dictionary retires and the only place in the panel it still reached a reader.
+ */
+const SEGMENT_LABELS: Record<string, string> = {
+  settings: 'Workspace settings',
+  /* Two words apiece, and only the first is capitalised: spelling these from the
+     segment gave "Service Health", which is the sidebar's row in title case. */
+  'service-health': 'Service health',
+  'service-settings': 'Service settings',
+};
+
 export function routeSegmentLabel(segment: string): string {
-  return segment
-    .split('-')
-    .map((word) => word.slice(0, 1).toUpperCase() + word.slice(1))
-    .join(' ');
+  return (
+    SEGMENT_LABELS[segment] ??
+    segment
+      .split('-')
+      .map((word) => word.slice(0, 1).toUpperCase() + word.slice(1))
+      .join(' ')
+  );
 }
 
 export function resolvePanelRoute(
