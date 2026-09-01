@@ -349,30 +349,10 @@ plan is applied, which is why these are switches and not a form.
 </section>
 
 <style>
-  /* A VERDICT HEAD keeps its qualifier ON the verdict - directly under it, never
-     parked at the card's far edge, which is where a card's quiet right-side note
-     belongs and a verdict's freshness does not. */
-  .verdict-head {
-    align-items: flex-start;
-    display: flex;
-    flex-direction: column;
-    gap: var(--row-copy-gap);
-    justify-content: flex-start;
-  }
-
-  .verdict-head .card-note {
-    margin-inline-start: 0;
-    text-align: start;
-  }
-
-  .verdict-head .card-title .is-drift {
-    color: var(--diff-chg-ink);
-  }
-
-  .verdict-head .card-note strong {
-    color: var(--text-secondary);
-    font-weight: 600;
-  }
+  /* `.verdict-head` and everything it carries are in `app.css`. Three cards wear the
+     class and only this one had these rules, so the other two were laid out by the shared
+     copy alone - and when that copy stopped applying, this one went on looking right and
+     hid it. */
 
   .board {
     background: var(--surface-base);

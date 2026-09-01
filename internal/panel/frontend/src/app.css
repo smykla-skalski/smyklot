@@ -2384,6 +2384,7 @@ thead th .icon-button:active:not(:disabled) {
   .repo-group-head,
   .kind-card,
   .kind-open,
+  .check-item,
   .choice-card,
   .tile,
   .finder-opt,
@@ -2451,6 +2452,7 @@ thead th .icon-button:active:not(:disabled) {
   .repo-group-head,
   .kind-card,
   .kind-open,
+  .check-item,
   .choice-card,
   .tile,
   .finder-opt,
@@ -2486,7 +2488,10 @@ thead th .icon-button:active:not(:disabled) {
   :is([aria-disabled='true'], :disabled),
 :is(.btn, .menu-item, .action-item, .icon-button)[aria-disabled='true'],
 :is(.btn, .menu-item, .action-item, .icon-button):disabled,
-.choice-card:has(input:disabled) {
+.choice-card:has(input:disabled),
+/* Same shape, same reason: this one cancels its own hover ground when its input is
+   disabled, so there is no changed ground for anything on it to be seen against. */
+.check-item:has(input:disabled) {
   --edge-line: var(--control-border);
   --edge-share: 0%;
   --edge-style: none;
@@ -2554,6 +2559,7 @@ thead th .icon-button:active:not(:disabled) {
     .method-option,
     .repo-group-head,
     .kind-card,
+    .check-item,
     .choice-card,
     .tile,
     .finder-opt,
@@ -2562,6 +2568,16 @@ thead th .icon-button:active:not(:disabled) {
     .user-table tbody tr
   ):not(.selected, .is-chosen, .is-active):is(:hover, :active)
   :is(.selection-mark, .method-check, .choice-dot):not(:focus-visible) {
+  border-color: var(--edge-line);
+}
+
+/* A FOURTH MARK WHOSE RING IS THE CONTROL, in its own spelling for the reason the two
+   containers below are in theirs: this one's selection is an input's state rather than a
+   class on the box, so "only while it is unselected" cannot be said in the list above. A
+   checked box is tone-bordered and keeps its tone; a disabled one draws no ground change
+   to be seen against, so it has nothing to step for. */
+.check-item:is(:hover, :active):not(:has(input:checked, input:disabled))
+  .check-box:not(:focus-visible) {
   border-color: var(--edge-line);
 }
 
@@ -2581,6 +2597,7 @@ thead th .icon-button:active:not(:disabled) {
     .panel-row,
     .repo-group-head,
     .kind-card,
+    .check-item,
     .choice-card,
     .tile,
     .finder-opt,
@@ -2914,17 +2931,28 @@ thead th .icon-button:active:not(:disabled) {
 /* A VERDICT CARD'S HEAD IS A COLUMN. The count is the sentence a reader came for
    and the note under it qualifies that sentence - set beside it and pushed to the
    far edge, it reads as a second, unrelated fact, and at 375px the count wrapped
-   to four lines with the note drawn across them. */
+   to four lines with the note drawn across them.
+
+   Said in the terms the head is laid out in, which are flex now and were grid: written
+   as `grid-auto-flow: row` this went inert the moment the head became a row that can
+   break, and two of the three verdict cards silently went back to one line - the third
+   kept working only because it had a scoped copy of this rule, which is what hid it. */
 .card-head.verdict-head {
   align-items: start;
-  grid-auto-flow: row;
-  grid-template-columns: minmax(0, 1fr);
+  flex-direction: column;
   row-gap: var(--row-copy-gap);
 }
 
 .verdict-head .card-note {
   margin-inline-start: 0;
   text-align: start;
+}
+
+/* The freshness inside a verdict's note steps up one weight: it is the only part of that
+   line a reader is actually reading. */
+.verdict-head .card-note strong {
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
 /* The changed half of a verdict - "2 items" - in the ink that means a difference. */
