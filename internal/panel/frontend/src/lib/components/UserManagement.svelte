@@ -1091,7 +1091,7 @@
 
   function requiredTargetAccess(user: PanelUser): NonNullable<PanelUser['target_access']> {
     const access = user.target_access;
-    if (access === undefined) throw new Error('installation access is missing');
+    if (access === undefined) throw new Error('workspace access is missing');
     return access;
   }
 

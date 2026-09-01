@@ -203,7 +203,7 @@ visits to this route never open one.
     {/key}
   {:catch error}
     <TableEmptyState
-      title="Installation view could not be loaded"
+      title="Workspace view could not be loaded"
       description={error instanceof Error ? error.message : String(error)}
       actionLabel="Reload panel"
       onAction={() => window.location.reload()}
@@ -211,8 +211,8 @@ visits to this route never open one.
   {/await}
 {:else if route.rootView === 'installation' && !loading}
   <TableEmptyState
-    title="Installation not found"
-    description="This installation is no longer present in the Root catalog"
+    title="Workspace not found"
+    description="This workspace is no longer present in the Root catalog"
     actionLabel="Sync now"
     onAction={syncCatalog}
   />

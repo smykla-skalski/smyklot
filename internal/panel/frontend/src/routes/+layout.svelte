@@ -1083,7 +1083,7 @@
   {:else if session.signedOut}
     <SignInPage {api} {build} ended={session.sessionEnded} />
   {:else if session.awaitingInstallation}
-    <NightPage title="No installations" documentTitle="No installations" {build} size="compact">
+    <NightPage title="No workspaces" documentTitle="No workspaces" {build} size="compact">
       <div class="install-prompt">
         <span class="install-mark" aria-hidden="true">+</span>
         <div class="install-copy">

@@ -888,7 +888,7 @@ a workspace has is not a number worth blocking the first screenful on.
             title={hasFilters ? 'No repositories match' : 'No repositories installed'}
             description={hasFilters
               ? 'Try another search or clear the active filters'
-              : 'Repositories will appear after the installation catalog is refreshed'}
+              : 'Repositories will appear after the workspace catalog is refreshed'}
             actionLabel={hasFilters ? 'Clear filters' : undefined}
             onAction={hasFilters ? clearFilters : undefined}
           />

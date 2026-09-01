@@ -22,10 +22,7 @@ const MOCK = process.env.SMYKLOT_MOCK_ORIGIN ?? 'http://localhost:8123/shell-red
 /** Mock view, and the route in the app that has to match it. */
 const PAGES: ReadonlyArray<readonly [view: string, route: string]> = [
   ['root-overview', 'root'],
-  /* The mock calls it Workspaces and the address is `installations` - the word the
-     product uses to a reader and the word GitHub uses for the thing are not the same,
-     which is a decision the dictionary already records. */
-  ['root-workspaces', 'root/installations'],
+  ['root-workspaces', 'root/workspaces'],
   ['root-queue', 'root/queue'],
   ['root-schedules', 'root/schedules'],
   ['root-audit', 'root/history/audit'],
