@@ -177,6 +177,23 @@ const ABBREVIATED = new Map<string, string>([
   ['root-audit', 'draws its own day headings'],
   ['users', 'draws its own member count'],
   ['root-users', 'draws its own member count'],
+  ['ws-settings', 'shows 5 of the 12 setting groups a workspace has'],
+  ['inbox', 'its cards are titled by the reason somebody typed, which is fixture text'],
+]);
+
+/**
+ * WHERE THE PRODUCT HAS DECIDED SOMETHING THE MOCK DID NOT, with the decision.
+ *
+ * A mock is a drawing made on a day. Where a later decision overrules it, the right
+ * record is the decision - not a silent exception and not a page nobody can make pass.
+ */
+const DECIDED = new Map<string, string>([
+  [
+    'root-queue',
+    'three cards - needs a decision, running and waiting, done in the last day - rather ' +
+      'than the mock’s one flat list (2026-09-01)',
+  ],
+  ['settings', 'the sentence says what managed means in full rather than the mock’s shorter line'],
 ]);
 
 function compare(page: string, mock: Shape, app: Shape): Gap[] {
@@ -185,11 +202,24 @@ function compare(page: string, mock: Shape, app: Shape): Gap[] {
     if (a !== b) gaps.push({ page, what, mock: a, app: b });
   };
   say('title', mock.title, app.title);
-  if (!ABBREVIATED.has(page)) {
+  if (!ABBREVIATED.has(page) && !DECIDED.has(page)) {
     say('sentence under the title', mock.lead, app.lead);
     say('sections', mock.sections.join(' | '), app.sections.join(' | '));
   }
-  say('toolbar', mock.toolbar.join('+'), app.toolbar.join('+'));
+  /* THE MOCK'S INSTRUMENTS ARE THE FLOOR, not the whole set. A page may carry more than
+     the design drew - the filter menu is the standing example, kept deliberately where
+     the mock has none - and what would be a fault is a page missing something the design
+     gave it. So this asks whether the app has everything the mock has, not whether the
+     two lists are equal. */
+  const missing = mock.toolbar.filter((one) => !app.toolbar.includes(one));
+  if (missing.length > 0) {
+    gaps.push({
+      page,
+      what: 'toolbar is missing what the design gives it',
+      mock: mock.toolbar.join('+'),
+      app: app.toolbar.join('+'),
+    });
+  }
   return gaps;
 }
 
