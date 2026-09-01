@@ -54,6 +54,7 @@ what would otherwise be four visits.
 
 <script lang="ts">
   import { createQuery } from '@tanstack/svelte-query';
+  import { useInterval } from 'runed';
 
   import { formatUntil, sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
@@ -70,13 +71,19 @@ what would otherwise be four visits.
   const api = $derived(session.api);
   const targetId = $derived(target.id);
 
-  /* One clock for the page, floored to the minute: every row reads a relative
-     time against it, and a value that moves on its own would make three cards
-     re-render at three different instants. */
-  const nowMs = Math.floor(Date.now() / 60_000) * 60_000;
-  /* Floored to the hour, so "the last day" is a stable cache key across a
-     remount rather than a new question every time the page opens. */
-  const dayAgo = new Date(Math.floor(nowMs / 3_600_000) * 3_600_000 - 86_400_000).toISOString();
+  /* ONE clock for the page, and it moves. Every row reads its relative time against
+     this, so the cards agree on the instant - but it was a const floored to the minute,
+     which meant the page's whole sense of time was the moment it opened. Active work
+     counts down to when Smyklot will act, and a countdown against a stopped clock never
+     arrives: a row said "in 4 minutes" for as long as the tab stayed open, and the
+     estimate the reader was watching had passed several minutes ago. */
+  let nowMs = $state(Date.now());
+  useInterval(1_000, { callback: () => (nowMs = Date.now()) });
+  /* The query key does NOT move with it. Floored to the hour and read once, so "the last
+     day" is one question this page asks rather than a new one every second. */
+  const dayAgo = new Date(
+    Math.floor(Date.now() / 3_600_000) * 3_600_000 - 86_400_000,
+  ).toISOString();
 
   const planQuery = createQuery(() => ({
     queryKey: ['sync-plan', targetId],
@@ -290,15 +297,15 @@ what would otherwise be four visits.
                 >{item.blocked_reason ?? item.summary ?? sentenceCase(item.state)}</span
               >
             </span>
-            <!-- Every mark in this column answers ONE question - when - so every
-                 one of them is the same chip. `mx-instep` is not a chip at all:
-                 it is the quiet state, worn where there is nothing to answer, and
-                 nothing in flight is that. Keying it on `running` put two shapes
-                 in one column for what is the same kind of datum, and where the
-                 two rows read the same word it looked like nothing at all. -->
+            <!-- The mark says which of the two states the row is in, and the time is
+                 what it reads: a row that is running wears the quiet mark, and one
+                 still waiting wears the chip. Two shapes in one column looked wrong
+                 on the dev fixture, where every row's estimate is the same instant
+                 and the words said nothing the shapes did not - it is the fixture
+                 that was wrong. -->
             <span class="object-side">
               {#if item.estimated_start_at !== undefined}
-                <span class="mx-mark mx-pending"
+                <span class="mx-mark {item.state === 'running' ? 'mx-instep' : 'mx-pending'}"
                   ><RelativeTime class="t" value={item.estimated_start_at} {nowMs} future /></span
                 >
               {/if}
