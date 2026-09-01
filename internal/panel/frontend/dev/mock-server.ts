@@ -711,7 +711,6 @@ function reconcile(state: MockState): void {
 const QUEUE_WAIT_MS = 45_000;
 const QUEUE_RUN_MS = 30_000;
 const QUEUE_REST_MS = 10_000;
-const QUEUE_CYCLE_MS = QUEUE_WAIT_MS + QUEUE_RUN_MS + QUEUE_REST_MS;
 
 const QUEUE_DONE = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
 
@@ -762,10 +761,13 @@ function advanceQueueItem(
   if (item.state === 'awaiting_approval' || rest === undefined) return item;
 
   if (QUEUE_DONE.has(item.state)) {
-    /* Only what this process watched finish - the same rule the pending-CI table
-       follows. The seeded terminal rows are the past that Recent exists to show, and a
-       past that arms itself again is not a past. */
-    if (!state.queueLoop.has(item.id)) return item;
+    /* Only what this process watched SUCCEED, and only the loop's own doing. The seeded
+       terminal rows are the past that Recent exists to show, and a past that arms itself
+       again is not a past - that is the rule the pending-CI table follows. The state is
+       checked as well as the id, because a row somebody cancelled is also terminal and
+       also in the loop: without it the mock put a cancelled row back ten seconds later,
+       which is the mock overruling the person using it. */
+    if (item.state !== 'succeeded' || !state.queueLoop.has(item.id)) return item;
     const finished = Date.parse(item.finished_at ?? item.updated_at);
     if (Number.isNaN(finished) || now - finished < QUEUE_REST_MS) return item;
 
@@ -803,7 +805,12 @@ function advanceQueueItem(
       const done = Math.max(1, Math.min(total, Math.round(through * total)));
       if (done === item.progress_current) return item;
 
-      return { ...item, progress_current: done, updated_at: at(0), revision: item.revision + 1 };
+      /* Progress does NOT bump the revision. The revision is the token a reader holds
+         between opening a row's dialog and pressing its button, and a row that bumped it
+         every second refused every action with a conflict - which made every queue
+         control in the panel untestable against this mock. A state change still bumps
+         it: that is a row which genuinely is not what the reader was looking at. */
+      return { ...item, progress_current: done, updated_at: at(0) };
     }
 
     state.queueLoop.add(item.id);
@@ -826,7 +833,11 @@ function advanceQueueItem(
   const due = Date.parse(item.estimated_start_at ?? item.eligible_at);
   if (Number.isNaN(due)) return item;
   if (due - now > QUEUE_WAIT_MS) {
-    const slot = count === 0 ? QUEUE_WAIT_MS : (QUEUE_CYCLE_MS * (place + 1)) / count;
+    /* Inside the wait, never past it. A slot beyond `QUEUE_WAIT_MS` is further out than
+       the test that put it there, so the next tick pulls it in again to the same place
+       and the row never comes due at all - the whole table sat in waiting states and
+       nothing moved for as long as anyone watched. */
+    const slot = count === 0 ? QUEUE_WAIT_MS : (QUEUE_WAIT_MS * (place + 1)) / count;
 
     return {
       ...item,
