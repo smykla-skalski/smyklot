@@ -2645,6 +2645,11 @@ thead th .icon-button:active:not(:disabled) {
 .card-title {
   font-size: var(--font-size-card-title);
   font-weight: 600;
+  /* A TITLE'S LEADING, not the body's. The trim means one line looks the same either
+     way, so this only shows when a title wraps - and then a heading set on the body's
+     leading closes up against itself while everything it sits above stays open. The
+     sheet names a leading for titles; this was the one title reading the body's. */
+  line-height: var(--leading-title);
   margin: 0;
   min-block-size: var(--card-head-line);
   text-box: trim-both cap alphabetic;
