@@ -387,12 +387,10 @@ would be telling everybody else about a console they cannot open.
     color: var(--sidebar-text);
   }
 
-  /* The ground and the inset are this tile's own; the SINK is not. In the rail and the
-     sidebar a press moves the contents and leaves the surface where it is - the law and
-     its reason live beside it in `app.css`. */
+  /* The ground is this tile's own; the sink, the scale and the crease come from the
+     shell press law in `app.css`, which this tile now takes whole. */
   .rail-tile:active {
     background: var(--sidebar-item-pressed);
-    box-shadow: var(--pressed-inset);
   }
 
   /* The solid selection pair, like the nav thumb: the old near-white fill under this
@@ -404,8 +402,12 @@ would be telling everybody else about a console they cannot open.
     color: var(--sidebar-item-active-text);
   }
 
+  /* Both, as the nav thumb takes both: the selection's own throw settles to its pressed
+     value and the crease of a held surface is laid inside it. Stating only the throw
+     replaced the crease the shell law gives every other tile, so the one tile a reader
+     presses most was the one that did not read as going in. */
   .rail-tile.is-active:active {
-    box-shadow: var(--sidebar-thumb-shadow-pressed);
+    box-shadow: var(--sidebar-pressed-inset), var(--sidebar-thumb-shadow-pressed);
   }
 
   /* ---------- Workspace identity paint ----------
@@ -480,7 +482,7 @@ would be telling everybody else about a console they cannot open.
 
   .rail-ws.is-active:active {
     --ws-ground: oklch(43% 0.14 var(--ws-h));
-    box-shadow: var(--pressed-inset);
+    box-shadow: var(--sidebar-pressed-inset);
   }
 
   .rail-ws.is-active::before {

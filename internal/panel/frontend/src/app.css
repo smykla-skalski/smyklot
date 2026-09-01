@@ -644,6 +644,7 @@ a[href] {
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
     transform var(--duration-press) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard),
     box-shadow var(--duration-press) var(--ease-standard);
   -webkit-tap-highlight-color: transparent;
 }
@@ -654,40 +655,36 @@ a[href]:active {
   transform: scale(var(--press-scale));
 }
 
-/* THE SHELL IS PRESSED THE SHELL'S WAY: the contents move, the surface does not.
+/* THE SHELL IS PRESSED THE WAY EVERYTHING ELSE IS: the surface goes in.
    ------------------------------------------------------------------------
-   Everywhere else a press sinks the whole control 1px. In the rail and the sidebar it
-   cannot, for two reasons and the first is not cosmetic: a control that moves its own
-   box during pointerdown moves its top edge out from under the cursor, and the mouseup
-   then lands somewhere else - the press painted and no click fired. The second is that
-   these surfaces are not alone on their ground: the nav thumb slides under the tree and
-   the selection fill sits under a rail tile, so a row that sank would take its own ink
-   1px away from a background that stayed put. The thumb, which is the thing actually
-   selected, takes its own press where it is drawn.
+   A press in this product is three things at once, and it takes all three to read as a
+   real surface being pushed rather than as a colour changing: the box sinks 1px, it
+   takes the crease of a surface with something above it, and it scales down a touch
+   about its own centre. An object row does it, a choice card does it, and so does the
+   menu item inside this very sidebar - which is what made the rail and the tree the one
+   family in the app that answered a press with a flat repaint.
+
+   The two reasons this family used to be exempt do not survive being checked. A 1px
+   move was said to take the control's edge out from under the cursor and lose the
+   click: every other pressable surface in the app moves exactly that far and none of
+   them do. And the thumb under the tree was said to stay put while its row sank: it
+   does not have to - it is the surface actually selected, so it takes the same sink and
+   the same scale, and the pair moves as one object.
 
    One rule for the whole family, and it has to be here rather than in either component:
    a scoped rule carries its component's hash and outranks a shared one, so this was
-   written five times in two files, agreed in three of them, and the two rail tiles and
-   the search button went on sinking while every tree row stayed put. */
-:is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):is(
-  :hover,
-  :active
-) {
-  translate: none;
-}
+   written five times in two files and agreed in three of them.
 
-:is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):active
-  > * {
-  translate: 0 1px;
-}
-
-/* And they opt out of the veil and the scale above, which are for a control that owns
-   its whole box. Both were plainly visible here: the veil laid a second darkening over
-   the row's own pressed ground, and the scale shrank the ink inside a surface that had
-   not moved. */
+   The veil is the one thing they still decline. These surfaces paint their own pressed
+   ground from the sidebar's palette, and the shared darkening laid over it is a second
+   press on top of the first. The crease comes from that palette too: `--pressed-inset`
+   is answered by the PAGE's theme, and this chrome is not on the page's theme - in the
+   Root console it is dark under a light page, so the page's crease arrived as a 12% ink
+   film on a dark ground and there was nothing to see. */
 :is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):active {
   background-image: none;
-  transform: none;
+  box-shadow: var(--sidebar-pressed-inset);
+  translate: 0 1px;
 }
 
 /* One column heading, for every table.
@@ -4048,7 +4045,7 @@ button.object-row {
 
 .console-menu .menu-item:active {
   background: var(--sidebar-menu-pressed);
-  box-shadow: var(--pressed-inset);
+  box-shadow: var(--sidebar-pressed-inset);
   translate: 0 1px;
 }
 

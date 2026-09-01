@@ -161,40 +161,56 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
       const thumb = element.closest('.tree')?.querySelector<HTMLElement>('.nav-thumb');
       if (label === null || glyph === null || thumb === null || thumb === undefined) return false;
       const linkStyle = getComputedStyle(element);
-      const labelStyle = getComputedStyle(label);
       const thumbStyle = getComputedStyle(thumb);
-      /* THE INK DIPS, THE BOX STAYS. A row that moved its own box during
-         pointerdown moved its top edge out from under the cursor and the
-         mouseup landed elsewhere - the press painted and no click fired. So the
-         anchor is pinned at every state and the pixel is travelled by its
-         direct children, which is where this now reads it. */
-      const boxStill = linkStyle.translate === 'none' && linkStyle.transform === 'none';
+      /* Read as NUMBERS, because both the sink and the scale are eased: a reading
+         taken 100ms into a 100ms transition catches 0.998757px, and an equality
+         check on `0px 1px` fails a row doing exactly what it should. */
+      const sunk = (value: string): boolean =>
+        Math.abs(Number.parseFloat(value.split(' ')[1] ?? '') - 1) < 0.05;
+      const pressScale = Number.parseFloat(
+        getComputedStyle(document.documentElement).getPropertyValue('--press-scale'),
+      );
+      const scaled = (value: string): boolean => {
+        const matched = /matrix\(([\d.]+)/u.exec(value);
+        return (
+          matched !== null && Math.abs(Number.parseFloat(matched[1] ?? '') - pressScale) < 0.01
+        );
+      };
+      /* THE SURFACE GOES IN, whole: it sinks a pixel, it scales about its own centre,
+         and it takes the crease of a held surface - the same press an object row or a
+         menu item answers with, which is what this family used to be exempt from. */
+      const boxPressed = sunk(linkStyle.translate) && scaled(linkStyle.transform);
       const groundVisible = state.selected
         ? thumbStyle.display !== 'none' && thumbStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
         : linkStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
       return (
         (!state.pressed || element.matches(':active')) &&
-        boxStill &&
+        /* At rest and on hover the box is exactly where it was drawn. */
+        (state.pressed || (linkStyle.translate === 'none' && linkStyle.transform === 'none')) &&
+        (!state.pressed || boxPressed) &&
+        /* Nothing inside moves on its own any more - the row carries its own ink. */
+        (!state.pressed || getComputedStyle(label).translate === 'none') &&
+        (!state.pressed || getComputedStyle(glyph).translate === 'none') &&
         /* A selected row draws no ground of its own at any state: the thumb is
            its ground, and a second fill over it reads as a well. */
         (!state.selected || linkStyle.backgroundColor === 'rgba(0, 0, 0, 0)') &&
         (!state.selected || linkStyle.borderRadius !== '0px') &&
+        /* An unselected row wears the crease itself, since it has no thumb to wear it. */
+        (!state.pressed || state.selected || linkStyle.boxShadow.includes('inset')) &&
         /* The selected thumb is a RAISED surface, not a 1px hard edge: it lifts
            on hover, throws a shadow, and lands into a crease on the press. */
         (!state.selected ||
           (state.pressed
             ? thumbStyle.boxShadow.includes('inset')
             : thumbStyle.boxShadow.split(',').length >= 2)) &&
-        (!state.pressed || labelStyle.translate === '0px 1px') &&
-        (!state.pressed || getComputedStyle(glyph).translate === '0px 1px') &&
+        /* And it is the selected row's surface, so it takes the row's whole press:
+           the same sink and the same scale, or the ink shrinks inside a fill that
+           stayed where it was. */
         (!state.pressed || state.selected || thumbStyle.translate === 'none') &&
-        /* Read as a NUMBER, because the thumb eases its travel: the row's ink lands
-           instantly and the ground under it takes the press duration to arrive, so a
-           reading taken 100ms in caught 0.998757px and an equality check on `0px 1px`
-           failed a thumb that was doing exactly what it should. */
+        (!state.pressed || !state.selected || sunk(thumbStyle.translate)) &&
         (!state.pressed ||
           !state.selected ||
-          Math.abs(Number.parseFloat(thumbStyle.translate.split(' ')[1] ?? '') - 1) < 0.05) &&
+          Math.abs(Number.parseFloat(thumbStyle.scale) - pressScale) < 0.01) &&
         groundVisible
       );
     },

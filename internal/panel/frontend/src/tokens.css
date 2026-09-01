@@ -249,6 +249,12 @@
   --sidebar-thumb-shadow: 0 4px 12px -8px rgb(24 33 31 / 42%), 0 1px 3px rgb(24 33 31 / 14%);
   /* Pressed: the throw goes, the ring stays - the thumb lands, still itself. */
   --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(24 33 31 / 12%);
+  /* THE CREASE OF A HELD SURFACE, on chrome rather than on a page. `--pressed-inset` is
+     answered by the page's theme, and the rail is not on the page's theme: in the Root
+     console it is dark under a light page, so the page's crease is an ink film at 12%
+     laid on a dark ground - which is a press a reader cannot see. This chrome is light,
+     so here the two agree; the ones below do not. */
+  --sidebar-pressed-inset: inset 0 1px 2px rgb(24 33 31 / 12%);
   /* The selected thumb's 1px boundary, mixed against THIS rail and tuned
      to the 3:1 floor - not past it, which is what read as chalk. */
   --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 50%, var(--sidebar-bg));
@@ -803,6 +809,7 @@
   --pressed-inset: inset 0 1px 2px rgb(0 0 0 / 40%), inset 0 -1px 0 rgb(255 255 255 / 4%);
   --sidebar-thumb-shadow: 0 5px 14px -8px rgb(0 0 0 / 78%), 0 1px 3px rgb(0 0 0 / 38%);
   --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(0 0 0 / 34%);
+  --sidebar-pressed-inset: inset 0 1px 2px rgb(0 0 0 / 40%), inset 0 -1px 0 rgb(255 255 255 / 4%);
   --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 36%, var(--sidebar-bg));
   --sidebar-focus: var(--primitive-petrol-400);
   --sidebar-popover-bg: #1b222b;
@@ -1042,6 +1049,9 @@
   --sidebar-item-active-text: var(--sidebar-active-ink);
   --sidebar-thumb-shadow: 0 5px 14px -8px rgb(0 0 0 / 82%), 0 1px 3px rgb(0 0 0 / 42%);
   --sidebar-thumb-shadow-pressed: 0 1px 2px rgb(0 0 0 / 36%);
+  /* Dark in both page themes, so the dark crease in both - stated here rather than left
+     to `--pressed-inset`, which under a light page answers the page. */
+  --sidebar-pressed-inset: inset 0 1px 2px rgb(0 0 0 / 40%), inset 0 -1px 0 rgb(255 255 255 / 4%);
   --sidebar-thumb-line: color-mix(in srgb, var(--sidebar-text) 36%, var(--sidebar-bg));
   /* This rail is dark in BOTH page themes, so its focus is the light lavender
      in both - the light page's #6d54bd would sink into this chrome. */

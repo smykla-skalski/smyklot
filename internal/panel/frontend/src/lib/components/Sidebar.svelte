@@ -714,9 +714,10 @@ it has to answer to the same fact.
     color: var(--sidebar-text);
   }
 
+  /* Only the ground. The crease, the sink and the scale come from the shell press law,
+     and this scoped copy carried the PAGE's crease - which outranked the chrome's. */
   .side-search:active {
     background: var(--sidebar-menu-pressed);
-    box-shadow: var(--pressed-inset);
   }
 
   /* Both runs trimmed to their own cap band, because they are two different sizes
@@ -854,6 +855,7 @@ it has to answer to the same fact.
       inset-inline-start var(--duration-travel) var(--ease-travel),
       border-radius var(--duration-travel) var(--ease-travel),
       translate var(--duration-press) var(--ease-standard),
+      scale var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
   }
 
@@ -871,10 +873,19 @@ it has to answer to the same fact.
      simply collapsed, which reads as a shadow leaving rather than as a surface
      being held. The fill advances from the thumb's OWN material, a veil laid
      over the identity colour rather than a neutral grey film: a grey one made
-     the selection read as a plain hovered row, and the selection vanished. */
+     the selection read as a plain hovered row, and the selection vanished.
+
+     THE THUMB IS THE SELECTED ROW'S SURFACE, so it takes the row's whole press and not
+     a part of it: the same sink, the same scale, about the same centre, because it is
+     drawn at exactly the row's bounds. Sinking without scaling left the ink shrinking
+     inside a fill that did not, which is the seam the exemption above was written to
+     avoid rather than to fix. Through `scale` rather than `transform`: travel between
+     rows is a WAAPI animation on this element's transform, and a press must not be
+     something that animation has to carry. */
   .tree:has(.tree-row.is-active:active) .nav-thumb {
     background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
-    box-shadow: var(--pressed-inset), var(--sidebar-thumb-shadow-pressed);
+    box-shadow: var(--sidebar-pressed-inset), var(--sidebar-thumb-shadow-pressed);
+    scale: var(--press-scale);
     translate: 0 1px;
   }
 
@@ -923,9 +934,8 @@ it has to answer to the same fact.
     background: var(--sidebar-item-pressed);
   }
 
-  /* THE INK DIPS, THE BOX STAYS - stated for the whole rail-and-sidebar family in
-     `app.css`, with the reason. It was written here for `a.tree-row` alone, so the
-     button rows, the folds and the rail's own tiles went on sinking. */
+  /* THE BOX GOES IN - stated for the whole rail-and-sidebar family in `app.css`, with
+     the reason. Only the ground is this row's own. */
 
   .tree-row:focus-visible {
     /* THE SIDEBAR'S OWN FOCUS, not the page's. `--focus` answers the grounds the PAGE
@@ -942,8 +952,10 @@ it has to answer to the same fact.
     font-weight: 600;
   }
 
-  /* A pressed thumb LANDS rather than sinks, and its row sheds every ground of
-     its own so the transparent ink never draws a well over the thumb. */
+  /* The selected row sheds every ground and every edge of its own: the thumb underneath
+     is its surface, and a second crease drawn over it is a well inside a well. What the
+     row keeps is the sink and the scale the shell law gives it, which is what carries
+     its ink down with the thumb. */
   .tree-row.is-active:hover,
   .tree-row.is-active:active {
     background: transparent;
