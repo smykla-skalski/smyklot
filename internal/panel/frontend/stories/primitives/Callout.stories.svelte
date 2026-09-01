@@ -1,7 +1,6 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
-  import Button from '#lib/components/Button.svelte';
   import Callout, { type CalloutTone } from '#lib/components/Callout.svelte';
   import Icon from '#lib/components/Icon.svelte';
 
@@ -68,37 +67,6 @@
           floating somewhere in the middle of it. This is the same reason a bullet is not centred
           against its paragraph.
         </span>
-      </Callout>
-    </div>
-  {/snippet}
-</Story>
-
-<!--
-  The act rides the END of the line, which is where this family has always put it: the
-  words are what the reader came for and the act is what they leave by. At most one -
-  a second act is a decision, and a decision belongs in a dialog where it can be read
-  before it is made.
--->
-<Story name="With one act">
-  {#snippet template()}
-    <div class="stack">
-      <Callout>
-        {#snippet icon()}<Icon name="info" size="md" />{/snippet}
-        <span
-          >This list is <strong>2 items</strong> behind - the queue has moved on since you last took it</span
-        >
-        {#snippet act()}
-          <Button>Refresh now</Button>
-        {/snippet}
-      </Callout>
-      <Callout tone="warning">
-        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
-        <span
-          >Operator visit - every change lands in the workspace audit and its owners' inboxes</span
-        >
-        {#snippet act()}
-          <Button>End the visit</Button>
-        {/snippet}
       </Callout>
     </div>
   {/snippet}

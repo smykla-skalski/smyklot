@@ -35,7 +35,6 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { cadenceWords, workloadTitle } from '../workloads';
 
   import Button from './Button.svelte';
-  import Callout from './Callout.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import Pill from './Pill.svelte';
@@ -260,25 +259,18 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   </Card>
 
   <Card>
+    <!-- In the head, where it cannot push the list down - see `WorkspaceOverview`. -->
     <div class="card-head">
       <h2 class="card-title">Queue</h2>
+      {#if active.changed > 0}
+        <span class="card-meta" role="status"
+          >{active.changed}
+          {active.changed === 1 ? 'item' : 'items'} behind</span
+        >
+        <Button tone="quiet" row onclick={() => active.refresh()}>Refresh now</Button>
+      {/if}
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
-    {#if active.changed > 0}
-      <!-- The set of rows moves when the reader says so - see `LiveList`, and
-           `WorkspaceOverview` for why this is a Callout rather than a state panel. -->
-      <Callout role="status">
-        <span
-          >This list is <strong
-            >{active.changed}
-            {active.changed === 1 ? 'item' : 'items'}</strong
-          > behind - the queue has moved on since you last took it</span
-        >
-        {#snippet act()}
-          <Button onclick={() => active.refresh()}>Refresh now</Button>
-        {/snippet}
-      </Callout>
-    {/if}
     {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}

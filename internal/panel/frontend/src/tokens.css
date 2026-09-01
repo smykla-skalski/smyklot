@@ -10,6 +10,7 @@
   --primitive-light-control: #f8faf9;
   --primitive-light-rule: #e3e8e6;
   --primitive-light-control-border: #c4cec9;
+  --primitive-light-control-border-hover: #99a7a1;
   --primitive-light-text: #18211f;
   --primitive-light-secondary: #4c5b57;
   --primitive-light-muted: #63716c;
@@ -20,6 +21,7 @@
   --primitive-dark-control: #1a2029;
   --primitive-dark-rule: #2a323d;
   --primitive-dark-control-border: #3a4653;
+  --primitive-dark-control-border-hover: #536170;
   --primitive-dark-text: #f3f6f7;
   --primitive-dark-secondary: #c4cdd4;
   --primitive-dark-muted: #95a1ab;
@@ -285,6 +287,10 @@
      lands within half a just-noticeable difference of this hover on both dark palettes. */
   --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
+  /* What a control's OWN rim does under the pointer, and it is a step rather than a
+     jump: the ramp's states belong to the hairline an object borrows, not to the box
+     the reader is pointing at. */
+  --control-border-hover: var(--primitive-light-control-border-hover);
   --input-bg: var(--surface-inset);
   --popover-bg: var(--surface-base);
   --popover-border: var(--border-subtle);
@@ -697,8 +703,14 @@
      Two state steps, for the same reason a fill has them - a rim that stays put
      while the ground under it answers reads as a control that did not. */
   --border-strong: color-mix(in srgb, var(--text-primary) 53%, var(--surface-base));
-  --control-border-hover: color-mix(in srgb, var(--text-primary) 66%, var(--surface-base));
-  --control-border-pressed: color-mix(in srgb, var(--text-primary) 78%, var(--surface-base));
+  /* THE LINE A STATE BORROWS, which is not the line a control wears. These two are the
+     boundary ramp's own steps and their only reader is the borrowed hairline - an object
+     standing on a ground that just moved, keeping its silhouette against it. A control's
+     own rim answers the pointer far more lightly: see `--control-border-hover`, which
+     these were doing double duty as, so every button and field went to a 66% ink on
+     hover where the design asks for #99a7a1. */
+  --line-control-hover: color-mix(in srgb, var(--text-primary) 66%, var(--surface-base));
+  --line-control-pressed: color-mix(in srgb, var(--text-primary) 78%, var(--surface-base));
 }
 
 :root[data-theme='dark'],
@@ -712,6 +724,7 @@
   --surface-control: var(--primitive-dark-control);
   --border-subtle: var(--primitive-dark-rule);
   --border-control: var(--primitive-dark-control-border);
+  --control-border-hover: var(--primitive-dark-control-border-hover);
   --avatar-ring: rgb(255 255 255 / 22%);
   --text-primary: var(--primitive-dark-text);
   --text-secondary: var(--primitive-dark-secondary);
@@ -860,8 +873,8 @@
      chalk. 40% clears 3.61 on a card, 3.07 on an inset track, 3.90 on the
      canvas. */
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
+  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 .app-shell.root-mode {
@@ -953,6 +966,8 @@
   --control-bg-hover: color-mix(in oklab, var(--text-primary) 10%, var(--control-bg));
   --control-bg-pressed: color-mix(in srgb, var(--text-primary) 16%, var(--control-bg));
   --control-border: var(--border-control);
+  /* The console is a dark ground in either theme, so its rim takes the dark step. */
+  --control-border-hover: var(--primitive-dark-control-border-hover);
   /* Re-resolved against the Root surfaces, like the derived tokens above: the panel copies were computed
      against petrol-neutral greys and would otherwise arrive here already mixed. The veils come
      from --text-primary, so the violet comes free. */
@@ -1031,8 +1046,8 @@
      the light block's ramp would carry onto this violet ground. The Root
      console is a dark ground in either theme, so it takes the dark shares. */
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
+  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 :root[data-theme='dark'] .app-shell.root-mode,
@@ -1099,8 +1114,8 @@
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --control-border-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --control-border-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
+  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
+  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);

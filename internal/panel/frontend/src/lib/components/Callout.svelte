@@ -13,7 +13,6 @@
   const {
     tone = 'quiet',
     icon,
-    act,
     class: extra = '',
     children,
     ...rest
@@ -21,15 +20,6 @@
     tone?: CalloutTone;
     /** The mark beside the words, when the words alone do not carry the weight. */
     icon?: Snippet;
-    /**
-     * The one thing to do about it, riding the end of the line.
-     *
-     * At most one, and only where the consequence has a next step: a second act here is
-     * a decision, and a decision belongs in a dialog where it can be read before it is
-     * made. It sits at the end because that is where this family has always put it -
-     * the words are what the reader came for, and the act is what they leave by.
-     */
-    act?: Snippet;
     /** The caller's own layout - a grid column to span, say. Never the box's paint. */
     class?: string;
     children: Snippet;
@@ -68,20 +58,9 @@ Rest props pass through, so a caller can still hand the box an id, a role or a
     {@render icon()}
   {/if}
   {@render children()}
-  {#if act !== undefined}
-    <span class="callout-act">{@render act()}</span>
-  {/if}
 </div>
 
 <style>
-  /* Wrapped, unlike the children: the act is one element and needs a box that can be
-     pushed to the end without the caller knowing how this row is laid out. */
-  .callout-act {
-    display: flex;
-    flex: none;
-    margin-inline-start: auto;
-  }
-
   .callout {
     border-radius: var(--radius-control);
     color: var(--text-secondary);

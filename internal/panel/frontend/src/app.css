@@ -1883,19 +1883,6 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-/* A card that is behind the service says so in a Callout, above the rows the act would
-   change. It wants no family of its own; what it wants is the gap - and the gap is the
-   card's head-to-body rhythm counted to the first row's INK, not to its box.
-
-   The row carries its own padding, so a plain 16px here put 16 of white on top of the
-   row's 12 and stood the rows 11px further from the callout than the callout stands
-   from the card's heading. Same arithmetic as `--rhythm-card-foot-band`, which subtracts
-   nothing because it is measured from the last row's ink downwards; this one is measured
-   into the first row's, so the row's padding comes off. */
-.card > .callout + .object-list {
-  margin-block-start: calc(var(--rhythm-card-head-body) - var(--row-pad-default));
-}
-
 .state-panel.is-error {
   border-color: color-mix(in srgb, var(--danger) 35%, transparent);
 }
@@ -2386,7 +2373,7 @@ thead th .icon-button:active:not(:disabled) {
   .user-table tbody tr,
   thead th
 ):hover {
-  --edge-line: var(--control-border-hover);
+  --edge-line: var(--line-control-hover);
   --edge-share: var(--edge-on-state);
   --edge-style: solid;
 }
@@ -2397,7 +2384,7 @@ thead th .icon-button:active:not(:disabled) {
    it rather than the row itself. */
 .switch:hover input:not(:disabled) + .switch-track,
 .object-row:has(.row-hit:hover) {
-  --edge-line: var(--control-border-hover);
+  --edge-line: var(--line-control-hover);
   --edge-share: var(--edge-on-state);
   --edge-style: solid;
 }
@@ -2458,13 +2445,13 @@ thead th .icon-button:active:not(:disabled) {
 .tree-row.is-active,
 .method-option.selected,
 .choice-card.is-chosen {
-  --edge-line: var(--control-border-pressed);
+  --edge-line: var(--line-control-pressed);
   --edge-share: var(--edge-on-state-strong);
   --edge-style: solid;
 }
 .switch:active input:not(:disabled) + .switch-track,
 .object-row:has(.row-hit:active) {
-  --edge-line: var(--control-border-pressed);
+  --edge-line: var(--line-control-pressed);
   --edge-share: var(--edge-on-state-strong);
   --edge-style: solid;
 }

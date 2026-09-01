@@ -64,7 +64,6 @@ what would otherwise be four visits.
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
   import Button from './Button.svelte';
-  import Callout from './Callout.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -284,35 +283,29 @@ what would otherwise be four visits.
   </Card>
 
   <Card>
+    <!-- IN THE HEAD, because a notice that pushes the list down is the one thing the
+         guidance on shifting layouts names outright: do not insert content above
+         content the reader is already looking at, unless they asked for it. The head is
+         where it cannot - `.card-head` holds a stated `min-block-size` and negative-
+         margins the controls in it precisely so that what it carries never changes the
+         card's height - and it costs no reserved row and covers nothing, which the two
+         other ways of not shifting each do.
+
+         `role="status"` because this appears without the reader doing anything: it has
+         to reach a screen reader without taking focus from whatever they were reading.
+         The count is on the same element as the words, so what is announced is the
+         whole sentence rather than a bare number. -->
     <div class="card-head">
       <h2 class="card-title">Active work</h2>
+      {#if active.changed > 0}
+        <span class="card-meta" role="status"
+          >{active.changed}
+          {active.changed === 1 ? 'item' : 'items'} behind</span
+        >
+        <Button tone="quiet" row onclick={() => active.refresh()}>Refresh now</Button>
+      {/if}
       <a class="btn btn-quiet" href={queueHref}><span class="button-label">Open the queue</span></a>
     </div>
-    {#if active.changed > 0}
-      <!-- The set of rows moves when the reader says so, never on its own. `LiveList`
-           carries why: an overview that reshuffles itself is a moving target, and the
-           rules about auto-updating content all point the same way.
-
-           A Callout, not a StatePanel: this states a standing fact about the list
-           beside it and carries one act, which is that family's whole job - a state
-           panel stands where the work would have been, and the work is right here.
-           One sentence with the number set in it, and the act at the end.
-
-           `role="status"` because a notice that appears without the reader doing
-           anything is a status message, and it has to reach a screen reader without
-           taking focus from whatever they were reading. -->
-      <Callout role="status">
-        <span
-          >This list is <strong
-            >{active.changed}
-            {active.changed === 1 ? 'item' : 'items'}</strong
-          > behind - the queue has moved on since you last took it</span
-        >
-        {#snippet act()}
-          <Button onclick={() => active.refresh()}>Refresh now</Button>
-        {/snippet}
-      </Callout>
-    {/if}
     {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
     {:else}
