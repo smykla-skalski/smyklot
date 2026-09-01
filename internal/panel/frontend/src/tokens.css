@@ -595,6 +595,14 @@
   --delay-boot-quiet: 300ms;
   --ease-standard: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-out: var(--ease-standard);
+  /* TRAVEL, which is neither a state change nor a rhythm: one box crossing a distance
+     from where it was to where it now belongs. The sidebar's nav thumb is the only one,
+     and it wants its own pair - `--ease-standard` is an expo-out, which covers most of
+     the distance in the first few frames and then creeps to a stop. On a 4px chip that
+     reads as crisp; on a 203px thumb sliding the height of the tree it reads as lag,
+     because the eye follows the box rather than glimpsing it. */
+  --duration-travel: 240ms;
+  --ease-travel: cubic-bezier(0.22, 1, 0.36, 1);
   /* Travel that crosses a distance overshoots its mark and settles back. Only for
      position and size: a colour that overshoots is a colour nobody chose, and the
      curve's y leaves 0-1 on the way. */

@@ -843,11 +843,15 @@ it has to answer to the same fact.
     inset-inline-start: var(--nav-thumb-left, 0px);
     pointer-events: none;
     position: absolute;
+    /* The four that carry it from one row to another take the TRAVEL pair; the two that
+       answer a pointer take the press one. They were all on the state ramp, which is a
+       frame quicker and an expo-out - a curve that arrives almost at once and then
+       creeps, so a thumb the width of the tree crawled the last of the way. */
     transition:
-      block-size var(--duration-normal) var(--ease-standard),
-      inline-size var(--duration-normal) var(--ease-standard),
-      inset-inline-start var(--duration-normal) var(--ease-standard),
-      border-radius var(--duration-normal) var(--ease-standard),
+      block-size var(--duration-travel) var(--ease-travel),
+      inline-size var(--duration-travel) var(--ease-travel),
+      inset-inline-start var(--duration-travel) var(--ease-travel),
+      border-radius var(--duration-travel) var(--ease-travel),
       translate var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
   }
@@ -856,13 +860,12 @@ it has to answer to the same fact.
     display: none;
   }
 
-  /* The selected row's pointer answers happen to the THUMB: the ink's lift and
-     land are mirrored here so the ground and the ink move as one object. */
-  .tree:has(.tree-row.is-active:hover:not(:active)) .nav-thumb {
-    translate: 0 -1px;
-  }
+  /* NOTHING IN HERE LIFTS. The thumb had a hover lift mirroring the row's, from back
+     when the rows lifted too; they do not, and neither does it - the mock declares that
+     lift and then cancels it with a later rule of its own. What the pointer gets in this
+     tree is a ground change, and what a press gets is the sink below.
 
-  /* The press, on the selected row. Every pressable surface owes the shared
+     The press, on the selected row. Every pressable surface owes the shared
      pressed fill AND the inset crease, and this thumb had neither: its throw
      simply collapsed, which reads as a shadow leaving rather than as a surface
      being held. The fill advances from the thumb's OWN material, a veil laid
