@@ -102,7 +102,6 @@ other click to the browser.
   /* Leans the way it points, which is the queue's own press and worth keeping:
      the origin is the left edge so the chevron stays put and the word moves. */
   .back-link:active {
-    transform: scale(var(--press-scale-compact));
-    transform-origin: left center;
+    translate: 0 1px;
   }
 </style>

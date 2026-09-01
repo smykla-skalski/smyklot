@@ -831,14 +831,11 @@ positioning will replace once it is portable.
     color: var(--seg-text);
   }
 
-  /* THE PRESS, on the word: INTO the track, not down it. A segmented option is set
-     inside a shared well rather than standing proud of a page, so the gesture is a key
-     going in - the surface recedes toward its own centre and the word recedes with it.
-     A downward slide would be the whole option moving within the track, which is a
-     thing sliding rather than a thing being held. */
-  label:active:not(:has(input:disabled)) .segment-label {
-    scale: var(--press-scale-compact);
-  }
+  /* THE PRESS, on the word: the ink alone. The rule above already darkens it, which is
+     the whole of an unselected option's press - it has no ground of its own to repaint
+     and no line of its own to crease. It used to recede on a scale as well; that scale
+     is gone from the product, and on a word it was the one part of a press that reads
+     as the type resizing rather than as the option being held. */
 
   .selection-indicator {
     /* Hidden until something is selected - see the rule below the transition. */
@@ -938,16 +935,14 @@ positioning will replace once it is portable.
 
   /* And the press is one more step along the same ramp, with the well beneath it. */
   fieldset:has(label:active input:checked:not(:disabled)) .selection-indicator {
+    /* THE ONE PRESSED SURFACE THAT MAY NOT SINK. Everything else in the product moves a
+       pixel down; this thumb is set INSIDE a shared track, so a pixel down reads as the
+       option sliding within its own well rather than as a key going in. So it takes the
+       other two thirds of the press and not the pixel: the ground darkens and the throw
+       settles into a crease. It used to recede on a scale, which is the part of a press
+       the product no longer has anywhere. */
     background: var(--selected-pressed);
-    box-shadow: var(--seg-thumb-shadow-pressed);
-    /* `scale`, not a `transform`: the travel animation owns `transform`, and the two
-       are separate properties that compose - so a press during a flight squashes the
-       pane without either gesture cancelling the other.
-
-       A pressed thumb recedes, and the well it recedes into is the track. The fills
-       either side keep their own edges, which is what makes that read as the pane
-       sinking rather than as its neighbours moving. */
-    scale: var(--press-scale-compact);
+    box-shadow: var(--pressed-inset), var(--seg-thumb-shadow-pressed);
   }
 
   /* The value the control falls back to, drawn as a boundary rather than a fill: it is where this

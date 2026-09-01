@@ -875,7 +875,6 @@ it has to answer to the same fact.
       inset-inline-start var(--duration-travel) var(--ease-travel),
       border-radius var(--duration-travel) var(--ease-travel),
       translate var(--duration-press) var(--ease-standard),
-      scale var(--duration-press) var(--ease-standard),
       box-shadow var(--duration-press) var(--ease-standard);
   }
 
@@ -905,7 +904,6 @@ it has to answer to the same fact.
   .tree:has(.tree-row.is-active:active) .nav-thumb {
     background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
     box-shadow: var(--sidebar-pressed-inset), var(--sidebar-thumb-shadow-pressed);
-    scale: var(--press-scale);
     translate: 0 1px;
   }
 

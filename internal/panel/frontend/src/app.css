@@ -116,10 +116,23 @@ body {
     transition-duration: 0.01ms !important;
   }
 
-  .btn:active:not(:disabled),
-  button:active:not(:disabled),
-  a[href]:active {
-    transform: none;
+  /* THE SINK IS THE MOTION, so the sink is what goes. This cancelled `transform`
+     instead, which by then held only the press scale - so the one part of a press that
+     actually travels survived a setting asked for precisely to stop things travelling.
+     The ground and the crease stay: neither moves anything. */
+  :is(.btn, button, a[href], .rail-tile, .rail-ws, .side-fold, .side-search, .tree-row):active,
+  .object-row:active,
+  .object-row:has(.row-hit:active),
+  .choice-card:has(input:not(:disabled)):active,
+  .console-menu .menu-item:active,
+  .tree:has(.tree-row.is-active:active) .nav-thumb {
+    translate: none;
+  }
+
+  /* This one carries its press inside a transform it shares with a virtualised row's
+     own offset, so the offset is restored rather than the whole property cleared. */
+  .data-row.pressing {
+    transform: translateY(var(--row-y, 0px));
   }
 }
 
@@ -439,11 +452,13 @@ body {
   background: var(--table-row-hover);
 }
 
-/* A row is a wide surface, so it takes the smallest of the three press scales:
-   a full-width strip moving as far as a button reads as the table lurching. */
+/* The offset is composed here, so a virtualised row's own position and the press's
+   pixel coexist - written to the element's `style` instead, the offset would be an
+   inline transform nothing could extend. */
 .data-row.pressing {
   background: var(--table-row-pressed);
-  transform: translateY(var(--row-y, 0px)) scale(var(--press-scale-surface));
+  box-shadow: var(--pressed-inset);
+  transform: translateY(calc(var(--row-y, 0px) + 1px));
 }
 
 .table-card :is(th, td) {
@@ -676,18 +691,25 @@ a[href] {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* A PRESS IS A GROUND, A CREASE AND A PIXEL, and it used to be those three plus a
+   scale. The scale was one token producing three unrelated effects: 0.98 on a 203px
+   row pulled the sides in 2.03px and the top and bottom 0.34px, which reads as a
+   horizontal squeeze rather than a recede, and on a 38px tile it was 0.38px in every
+   direction - under one device pixel, invisible. It also fought the sink it stood
+   beside: the sink puts the box 1px down while the scale pulls the top edge down 0.34
+   and the bottom edge UP 0.34, so the box shortened by 0.68px on the way in. */
 button:active:not(:disabled),
 a[href]:active {
   background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
-  transform: scale(var(--press-scale));
+  translate: 0 1px;
 }
 
 /* THE SHELL IS PRESSED THE WAY EVERYTHING ELSE IS: the surface goes in.
    ------------------------------------------------------------------------
    A press in this product is three things at once, and it takes all three to read as a
-   real surface being pushed rather than as a colour changing: the box sinks 1px, it
-   takes the crease of a surface with something above it, and it scales down a touch
-   about its own centre. An object row does it, a choice card does it, and so does the
+   real surface being pushed rather than as a colour changing: the ground repaints, the
+   box sinks a pixel, and it takes the crease of a surface with something above it. An
+   object row does it, a choice card does it, and so does the
    menu item inside this very sidebar - which is what made the rail and the tree the one
    family in the app that answered a press with a flat repaint.
 
@@ -695,8 +717,8 @@ a[href]:active {
    move was said to take the control's edge out from under the cursor and lose the
    click: every other pressable surface in the app moves exactly that far and none of
    them do. And the thumb under the tree was said to stay put while its row sank: it
-   does not have to - it is the surface actually selected, so it takes the same sink and
-   the same scale, and the pair moves as one object.
+   does not have to - it is the surface actually selected, so it takes the same sink,
+   and the pair moves as one object.
 
    One rule for the whole family, and it has to be here rather than in either component:
    a scoped rule carries its component's hash and outranks a shared one, so this was
@@ -997,9 +1019,6 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
 }
 
 .table-sort-button {
-  /* A header runs the width of its column, so it takes the surface figure. */
-  --press-scale: var(--press-scale-surface);
-
   /* The WHOLE button reset, here rather than in each table. It was half here and
      half in a `.sort-button` each table wrote for itself, so this class alone drew
      a heading inside a UA border with its own font - the two tables that had the
@@ -1151,11 +1170,9 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
   color: var(--text-primary);
 }
 
-/* The disc scale, like every other round-ish target of this size. */
 .icon-button:active:not(:disabled) {
   background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
   color: var(--text-primary);
-  transform: scale(var(--press-scale-disc));
 }
 
 .icon-button:disabled {
@@ -1231,8 +1248,8 @@ input[type='radio']:not(:disabled) {
 
 .btn:active:not(:disabled) {
   background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
+  box-shadow: var(--pressed-inset);
   filter: none;
-  transform: scale(var(--press-scale));
 }
 
 .btn:disabled,

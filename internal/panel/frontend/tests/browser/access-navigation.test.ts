@@ -162,24 +162,17 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
       if (label === null || glyph === null || thumb === null || thumb === undefined) return false;
       const linkStyle = getComputedStyle(element);
       const thumbStyle = getComputedStyle(thumb);
-      /* Read as NUMBERS, because both the sink and the scale are eased: a reading
-         taken 100ms into a 100ms transition catches 0.998757px, and an equality
-         check on `0px 1px` fails a row doing exactly what it should. */
+      /* Read as a NUMBER, because the sink is eased: a reading taken 100ms into a 100ms
+         transition catches 0.998757px, and an equality check on `0px 1px` fails a row
+         doing exactly what it should. */
       const sunk = (value: string): boolean =>
         Math.abs(Number.parseFloat(value.split(' ')[1] ?? '') - 1) < 0.05;
-      const pressScale = Number.parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue('--press-scale'),
-      );
-      const scaled = (value: string): boolean => {
-        const matched = /matrix\(([\d.]+)/u.exec(value);
-        return (
-          matched !== null && Math.abs(Number.parseFloat(matched[1] ?? '') - pressScale) < 0.01
-        );
-      };
-      /* THE SURFACE GOES IN, whole: it sinks a pixel, it scales about its own centre,
-         and it takes the crease of a held surface - the same press an object row or a
-         menu item answers with, which is what this family used to be exempt from. */
-      const boxPressed = sunk(linkStyle.translate) && scaled(linkStyle.transform);
+      /* THE SURFACE GOES IN: the ground repaints, the box sinks a pixel, and it takes
+         the crease of a held surface - the same press an object row or a menu item
+         answers with, which is what this family used to be exempt from. There is no
+         scale any more: one proportional figure gave a 203px row a 2.03px horizontal
+         squeeze and a 38px tile 0.38px of nothing. */
+      const boxPressed = sunk(linkStyle.translate);
       const groundVisible = state.selected
         ? thumbStyle.display !== 'none' && thumbStyle.backgroundColor !== 'rgba(0, 0, 0, 0)'
         : linkStyle.backgroundColor !== 'rgba(0, 0, 0, 0)';
@@ -203,14 +196,10 @@ function pointerStyleVisible(link: Locator, pressed: boolean, selected: boolean)
           (state.pressed
             ? thumbStyle.boxShadow.includes('inset')
             : thumbStyle.boxShadow.split(',').length >= 2)) &&
-        /* And it is the selected row's surface, so it takes the row's whole press:
-           the same sink and the same scale, or the ink shrinks inside a fill that
-           stayed where it was. */
+        /* And it is the selected row's surface, so it takes the row's sink with it, or
+           the ink travels away from a fill that stayed where it was. */
         (!state.pressed || state.selected || thumbStyle.translate === 'none') &&
         (!state.pressed || !state.selected || sunk(thumbStyle.translate)) &&
-        (!state.pressed ||
-          !state.selected ||
-          Math.abs(Number.parseFloat(thumbStyle.scale) - pressScale) < 0.01) &&
         groundVisible
       );
     },

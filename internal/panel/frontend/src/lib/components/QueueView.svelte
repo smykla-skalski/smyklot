@@ -1279,8 +1279,7 @@ and a reader should not have to navigate between them.
   }
 
   .pr-name:active {
-    transform: scale(var(--press-scale-compact));
-    transform-origin: left center;
+    translate: 0 1px;
   }
 
   .pr-name:active .pr-repo,

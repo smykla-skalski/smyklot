@@ -138,7 +138,7 @@ where the reader already is.
 
   .role-trigger:active:not(:disabled) {
     background: var(--control-bg-pressed);
-    transform: scale(var(--press-scale-compact));
+    box-shadow: var(--pressed-inset);
   }
 
   .role-trigger:focus-visible {

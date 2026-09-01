@@ -556,19 +556,16 @@
      keeps its measure and nothing reflows to make room. */
   --toc-width: 12rem;
   --pagination-height: 2.75rem;
-  /* One press, everywhere: the control shrinks toward its own centre, which is what reads as
-     pushed in. Half the app was nudging elements down by a pixel instead - the same gesture said
-     two different ways, and on a wide row a downward nudge reads as the row shifting rather than
-     the control depressing.
+  /* FOUR PRESS SCALES USED TO LIVE HERE, and the four figures were the argument against
+     them: a scale is proportional, so one number produces a different gesture on every
+     size of control, and four numbers is what it took to keep the edge travelling about
+     the same distance. Measured at the end, 0.98 pulled a 203px row's sides in 2.03px
+     and its top and bottom 0.34px - a horizontal squeeze rather than a recede - while on
+     a 38px tile it was 0.38px in every direction, under one device pixel. It also fought
+     the sink beside it: the box shortened 0.68px on its way down.
 
-     Three figures rather than one because a scale is proportional and the pressables here run from
-     a 28px disc to a 400px table header. Each is picked so the edge travels roughly a pixel and a
-     half either way: 0.98 moves a 215px nav row 2.2px, 0.9 moves a 32px disc 1.6px, and 0.995
-     keeps a wide header from lurching 4px when the same 0.98 would. */
-  --press-scale: 0.98;
-  --press-scale-disc: 0.9;
-  --press-scale-compact: 0.96;
-  --press-scale-surface: 0.995;
+     A press is a ground, a crease and a pixel now. All three are absolute, so a 38px
+     tile and a 400px header are pressed the same way. */
   /* The shell's press grammar: 1px straight down, and the hold reads as
      DEPTH - the well's exact inset recipe, not a harsher one. The pressed
      fill carries the state; the crease only confirms it. */
