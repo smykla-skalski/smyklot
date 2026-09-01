@@ -321,7 +321,7 @@ visits to this route never open one.
                     class="btn btn-quiet"
                     href={hrefFor(installation.account.login, destination)}
                     onclick={(event) => navigate(event, installation, destination)}
-                    aria-label="Open {installation.account.display_name} as operator"
+                    aria-label="Open as operator - {installation.account.display_name}"
                   >
                     <span class="button-label">Open as operator</span>
                   </a>

@@ -1548,7 +1548,7 @@ offering it.
                             <Button
                               tone="quiet"
                               disabled={invitationBusy === invitation.id}
-                              aria-label="Invite @{invitation.account.login} again"
+                              aria-label="Invite again - @{invitation.account.login}"
                               onclick={(event) => void reissue(invitation, event.currentTarget)}
                             >
                               Invite again

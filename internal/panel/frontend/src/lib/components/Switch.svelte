@@ -66,10 +66,21 @@ that safe.
   }
 
   /* Where the switch stands beside content that sets the rhythm (a card
-     head), the tap box must not inflate the row - the hit area survives on
-     the input itself. */
+     head), the tap box must not inflate the row. */
   .switch.bare {
     min-block-size: auto;
+  }
+
+  /* AND THE TAP BOX COMES BACK AS PAINT RATHER THAN AS LAYOUT. The note here used to say
+     the hit area survived on the input - it does not, and could not: that input is
+     absolutely positioned, transparent and `pointer-events: none`, so a bare switch's
+     whole target was its 34x20 track. WCAG 2.5.8 asks for 24px; this takes the same 44
+     the label gives up, which fits because the rows these stand in are 51px apart and
+     the box grows only where nothing is laid out. */
+  .switch.bare .switch-track::before {
+    content: '';
+    inset: calc((20px - var(--touch-target)) / 2) 0;
+    position: absolute;
   }
 
   .switch input {

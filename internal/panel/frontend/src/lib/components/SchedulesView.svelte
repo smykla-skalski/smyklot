@@ -417,7 +417,7 @@ in their own settings.
             <span class="object-side">
               <Button
                 tone="quiet"
-                aria-label="Edit the {workloadTitle(policy.kind)} schedule"
+                aria-label="Edit schedule - {workloadTitle(policy.kind)}"
                 onclick={() => {
                   editingPolicy = policy;
                   dialogError = '';
@@ -493,7 +493,7 @@ in their own settings.
               {#if !profile.system}
                 <Button
                   tone="quiet"
-                  aria-label="Edit the {profile.name} profile"
+                  aria-label="Edit - the {profile.name} profile"
                   onclick={() => {
                     editingProfile = profile;
                     profileOpen = true;

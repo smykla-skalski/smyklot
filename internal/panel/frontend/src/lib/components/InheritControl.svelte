@@ -96,7 +96,10 @@ trusts.
   {:else}
     <AppTooltip text={linkedTip}>
       {#snippet children(props)}
-        <span {...props} class="link-toggle">
+        <!-- NAMED, because it is focusable: a tooltip trigger takes the keyboard, so
+             this mark is a stop on the tab ring and an unnamed stop announces nothing
+             when a reader arrives at it. The name is what the tooltip says. -->
+        <span {...props} class="link-toggle" role="note" aria-label={linkedTip}>
           <Icon name="link" size="sm" strokeWidth={2} />
         </span>
       {/snippet}

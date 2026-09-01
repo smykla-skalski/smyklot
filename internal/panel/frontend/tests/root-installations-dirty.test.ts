@@ -96,7 +96,7 @@ describe('Root installation draft attention [Component]', () => {
     expect(within(dirtyRow!).getByText('1 unsaved setting')).toBeTruthy();
     expect(
       within(dirtyRow!)
-        .getByRole('link', { name: 'Open Dirty installation as operator' })
+        .getByRole('link', { name: 'Open as operator - Dirty installation' })
         .getAttribute('href'),
     ).toBe('/root/installations/dirty-installation/repositories');
     expect(dirtyRow?.getAttribute('data-unsaved')).toBe('true');

@@ -459,7 +459,9 @@ so a link points at the pane a colleague was asked to look at.
                       {...attributes}
                       class="value-select"
                       type="button"
-                      aria-label="Repository protection"
+                      aria-label="{detail.pending_ci_mode_override === 'checks'
+                        ? 'Checks'
+                        : 'Labels'} - repository protection"
                       {disabled}
                     >
                       <span class="t"
@@ -663,7 +665,7 @@ so a link points at the pane a colleague was asked to look at.
                       {...attributes}
                       class="value-select"
                       type="button"
-                      aria-label="File index interval unit"
+                      aria-label="{indexUnitShown} - file index interval unit"
                       {disabled}
                     >
                       <span class="t">{indexUnitShown}</span>

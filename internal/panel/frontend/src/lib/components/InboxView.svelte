@@ -291,7 +291,7 @@ pager - a notification list has no last page worth naming.
                     {#if notification.read_at === undefined}
                       <Button
                         tone="quiet"
-                        aria-label={`Mark ${actionLabel(notification.action)} for ${notification.installation.display_name} as read`}
+                        aria-label={`Mark read - ${actionLabel(notification.action)} for ${notification.installation.display_name}`}
                         onclick={() => read(notification)}
                       >
                         Mark read

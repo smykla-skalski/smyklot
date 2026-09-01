@@ -412,7 +412,7 @@ turns the unmanaged names into rows of their own.
                           {...attributes}
                           class="value-select"
                           type="button"
-                          aria-label={field.label}
+                          aria-label={`${choiceWord(field)} - ${field.label}`}
                           disabled={frozen}
                         >
                           <span class="t">{choiceWord(field)}</span>

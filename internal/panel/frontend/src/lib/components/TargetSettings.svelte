@@ -472,7 +472,9 @@ settings from them answers a different question than the one they asked.
                     {...attributes}
                     class="value-select"
                     type="button"
-                    aria-label="Repository protection"
+                    aria-label="{target.pending_ci_mode_default === 'checks'
+                      ? 'Checks'
+                      : 'Labels'} - repository protection"
                     disabled={frozen}
                   >
                     <span class="t"

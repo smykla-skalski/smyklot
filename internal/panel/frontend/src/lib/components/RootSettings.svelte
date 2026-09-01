@@ -433,7 +433,10 @@ without the composer.
         >
           <div class="emergency-copy">
             <div class="emergency-heading">
-              <h3 class="group-name" id="background-work-control">Automatic background work</h3>
+              <!-- h2, like every card title on this page: these groups are the page's
+                   own sections, so an h3 under the page's h1 announced a level that was
+                   not there and then went back up to h2 for the cards below. -->
+              <h2 class="group-name" id="background-work-control">Automatic background work</h2>
               <StatusPill dot state={current.background_work_paused ? 'warning' : 'healthy'}>
                 {current.background_work_paused ? 'Paused' : 'Running'}
               </StatusPill>
@@ -473,7 +476,7 @@ without the composer.
            cards of defaults to find two rows about the process they are running. -->
       <Card class="group-card" labelledby="root-runtime">
         <div class="group-head">
-          <h3 class="group-name" id="root-runtime">Runtime</h3>
+          <h2 class="group-name" id="root-runtime">Runtime</h2>
           <span class="group-tally">{runtimeOverridden} of 2 overridden</span>
         </div>
         <p class="group-note">

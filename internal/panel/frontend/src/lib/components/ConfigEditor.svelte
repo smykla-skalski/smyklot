@@ -436,7 +436,7 @@ account again.
                         class="alias-target"
                         type="button"
                         disabled={editorDisabled}
-                        aria-label="Command {name} invokes"
+                        aria-label="{command} - the command {name} invokes"
                       >
                         <span class="t">{command}</span>
                       </button>

@@ -314,7 +314,8 @@ page directly still leads somewhere.
     </dl>
   </section>
 
-  <h3 class="timeline-heading band-trim">Timeline</h3>
+  <!-- h2: the page's own h1 is its title, and this is the first section under it. -->
+  <h2 class="timeline-heading band-trim">Timeline</h2>
   <p class="timeline-lede band-trim">
     Every durable event, newest last, with the delivery that caused it
   </p>

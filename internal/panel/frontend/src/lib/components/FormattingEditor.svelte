@@ -261,9 +261,19 @@ three things among thirty finds them again.
                     {/snippet}
                   </AppTooltip>
                 {:else}
+                  <!-- NAMED, because it is focusable. A tooltip trigger takes the
+                       keyboard - that is how a tooltip is reached without a pointer - so
+                       this mark is a stop on the tab ring, and an unnamed stop is a stop
+                       that announces nothing when a reader arrives at it. The name is
+                       what the tooltip says, because that is what the mark means. -->
                   <AppTooltip text="From {source}: {formattingPolicyValue(baseline, field)}">
                     {#snippet children(attributes)}
-                      <span {...attributes} class="link-toggle">
+                      <span
+                        {...attributes}
+                        class="link-toggle"
+                        role="note"
+                        aria-label="{fieldLabel(field)} comes from {source}"
+                      >
                         <Icon name="link" size="sm" strokeWidth={2} />
                       </span>
                     {/snippet}
