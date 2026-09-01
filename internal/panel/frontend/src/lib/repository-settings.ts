@@ -4,8 +4,8 @@ import type {
   ConfigKey,
   ConfigPatch,
   FormattingFieldKey,
-  InstallationRepositorySettingsInput,
-  InstallationRepositorySettingsState,
+  WorkspaceRepositorySettingsInput,
+  WorkspaceRepositorySettingsState,
   PendingCIBranchPatterns,
   PendingCIMode,
   RepositoryDetail,
@@ -278,12 +278,12 @@ export function repositorySettingsSavedControls(
   return controls as Record<RepositorySettingsControlId, SettingsJson>;
 }
 
-/** Serialize the complete draft for the atomic installation settings request. */
+/** Serialize the complete draft for the atomic workspace settings request. */
 export function repositorySettingsBatchInput(
   repositoryId: string,
   expectedRevision: number,
   document: RepositorySettingsDocument,
-): InstallationRepositorySettingsInput {
+): WorkspaceRepositorySettingsInput {
   if (!isRevision(expectedRevision))
     throw new TypeError('repository revision must be non-negative');
   const parsed = parseRepositorySettingsDocument(document);
@@ -295,7 +295,7 @@ export function repositorySettingsBatchInput(
 /** Convert a compact canonical batch response into the registry's commit result. */
 export function repositorySettingsCommittedResource(
   targetId: string,
-  state: InstallationRepositorySettingsState,
+  state: WorkspaceRepositorySettingsState,
 ): SettingsCommittedResource {
   const value = parseRepositorySettingsDocument({
     enabled_override: state.enabled_override,

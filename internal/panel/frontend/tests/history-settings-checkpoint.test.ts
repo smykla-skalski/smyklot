@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import HistoryPanelHarness from './support/HistoryPanelHarness.svelte';
 import type {
   AuditEntry,
-  InstallationSettingsBatchResponse,
+  WorkspaceSettingsBatchResponse,
   RootRuntimeSettings,
   SettingsCheckpoint,
   SettingsRestoreInput,
@@ -126,7 +126,7 @@ function auditEntries(): AuditEntry[] {
       target_id: 'target-from-entry',
       actor,
       action: 'installation.settings.saved',
-      summary: 'Saved installation settings',
+      summary: 'Saved workspace settings',
       settings_checkpoint_id: genericCheckpoint.id,
       created_at: genericCheckpoint.created_at,
     },
@@ -172,7 +172,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
   it('uses generic settings checkpoints as the only inspection path', async () => {
     const { fetchSettingsCheckpoint } = mount();
     const settingsInspect = await screen.findByRole('button', {
-      name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
+      name: 'Bart Smykla saved workspace settings, inspect the settings snapshot',
     });
     await fireEvent.click(settingsInspect);
     await screen.findByRole('dialog', { name: 'Settings history' });
@@ -255,7 +255,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
   it('restores a target checkpoint from global Root history', async () => {
     const fetchSettingsCheckpoint = vi.fn(async () => genericCheckpoint);
-    const restored = { checkpoint_id: 'restored-1' } satisfies InstallationSettingsBatchResponse;
+    const restored = { checkpoint_id: 'restored-1' } satisfies WorkspaceSettingsBatchResponse;
     const restoreSettingsCheckpoint = vi.fn(
       async (targetId: string, checkpointId: string, input: SettingsRestoreInput) => {
         void targetId;
@@ -286,7 +286,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
     await fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
+        name: 'Bart Smykla saved workspace settings, inspect the settings snapshot',
       }),
     );
     await screen.findByRole('dialog', { name: 'Settings history' });
@@ -323,7 +323,7 @@ describe('HistoryPanel settings checkpoints [Component]', () => {
 
     await fireEvent.click(
       await screen.findByRole('button', {
-        name: 'Bart Smykla saved installation settings, inspect the settings snapshot',
+        name: 'Bart Smykla saved workspace settings, inspect the settings snapshot',
       }),
     );
     expect(

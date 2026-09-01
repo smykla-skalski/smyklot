@@ -4,7 +4,7 @@ import type {
   ConfigKey,
   ConfigPatch,
   FormattingFieldKey,
-  InstallationTargetSettingsState,
+  WorkspaceTargetSettingsState,
   PanelTarget,
   PendingCIBranchPatterns,
   PendingCIMode,
@@ -269,7 +269,7 @@ export function targetDefaultsCommittedResource(target: PanelTarget): SettingsCo
 
 /** Convert the compact atomic-save state without needing inherited presentation metadata. */
 export function targetDefaultsCommittedState(
-  state: InstallationTargetSettingsState,
+  state: WorkspaceTargetSettingsState,
 ): SettingsCommittedResource {
   const value = parseTargetDefaultsDocument({
     repository_default_enabled: state.repository_default_enabled,

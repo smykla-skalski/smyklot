@@ -171,7 +171,7 @@ func TestPathIndexReportsItsStalestReading(t *testing.T) {
 		t.Errorf("observed_at = %s, wanted the stalest reading %s", answer.ObservedAt, stale)
 	}
 	// One repository GitHub would not list whole makes the whole answer some of
-	// what the installation holds.
+	// what the workspace holds.
 	if !answer.Partial {
 		t.Error("partial = false, wanted true: one of these lists is incomplete")
 	}

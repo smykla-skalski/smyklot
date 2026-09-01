@@ -265,24 +265,24 @@ func (h *panelHarness) advance(d time.Duration) {
 	*h.clock = h.clock.Add(d)
 }
 
-func seedNonOwnedInstallation(
+func seedNonOwnedWorkspace(
 	t *testing.T,
 	harness *panelHarness,
 ) (storage.Account, storage.InstallationSnapshot) {
 	t.Helper()
 	owner := storage.Account{
 		ID: "github:test:user:owner-2", Provider: "github:test", SubjectID: "owner-2",
-		Login: "installation-owner", DisplayName: "Installation Owner", UpdatedAt: harness.now,
+		Login: "workspace-owner", DisplayName: "Workspace Owner", UpdatedAt: harness.now,
 	}
 	targetAccount := storage.Account{
 		ID: "github:test:account:20", Provider: "github:test", SubjectID: "20",
-		Login: "other-installation", DisplayName: "Other Installation", UpdatedAt: harness.now,
+		Login: "other-workspace", DisplayName: "Other Workspace", UpdatedAt: harness.now,
 	}
 	target := storage.InstallationSnapshot{
 		TargetID: "github:installation:20", InstallationID: "20",
 		Kind: storage.TargetOrganization, Account: targetAccount,
 		Repositories: []storage.RepositorySnapshot{{
-			ID: "repository-30", Name: "other", FullName: "other-installation/other",
+			ID: "repository-30", Name: "other", FullName: "other-workspace/other",
 			DefaultBranch: "main",
 		}},
 		Ownership: storage.OwnershipSnapshot{
@@ -308,7 +308,7 @@ func activateOwnerSession(
 	if err != nil || !active {
 		t.Fatalf("activate Owner = %v, error %v", active, err)
 	}
-	const token = "installation-owner-session"
+	const token = "workspace-owner-session"
 	if err := harness.store.CreateSession(t.Context(), storage.Session{
 		TokenHash: tokenHash(token), AccountID: owner.ID,
 		CreatedAt: harness.now, ExpiresAt: harness.now.Add(time.Hour),
@@ -473,7 +473,7 @@ func TestPanelSignInAndSettings(t *testing.T) {
 	if updated.Code != http.StatusOK {
 		t.Fatalf("target update = %d %s", updated.Code, updated.Body.String())
 	}
-	var answer installationSettingsBatchResponse
+	var answer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(updated.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestPanelWebSocketEvents(t *testing.T) {
 func TestPanelBroadcastsRootSecurityChanges(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
-	_, elevatedTarget := seedNonOwnedInstallation(t, harness)
+	_, elevatedTarget := seedNonOwnedWorkspace(t, harness)
 	subscriber, unsubscribe := harness.server.events.subscribe("", "root-live-test")
 	t.Cleanup(unsubscribe)
 
@@ -872,36 +872,36 @@ func TestEventHubAnnounceAccount(t *testing.T) {
 }
 
 func TestQueueEventVisibilityFollowsAuthorizationScope(t *testing.T) {
-	t.Run("installation owner", func(t *testing.T) {
+	t.Run("workspace owner", func(t *testing.T) {
 		harness := newPanelHarnessForSubject(t, "owner", "42")
 		if _, err := harness.server.catalog.SyncCatalog(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 		harness.signIn(t)
-		_, unrelated := seedNonOwnedInstallation(t, harness)
+		_, unrelated := seedNonOwnedWorkspace(t, harness)
 		accountID := "github:test:user:42"
 
 		if !harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
 			Type: panelEventQueueChanged, TargetID: "github:installation:10",
 		}) {
-			t.Fatal("owner could not receive their installation queue event")
+			t.Fatal("owner could not receive their workspace queue event")
 		}
 		if harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
 			Type: panelEventQueueChanged, TargetID: unrelated.TargetID,
 		}) {
-			t.Fatal("queue event leaked from another installation")
+			t.Fatal("queue event leaked from another workspace")
 		}
 		if harness.server.panelEventVisible(t.Context(), accountID, panelEvent{
 			Type: panelEventQueueChanged,
 		}) {
-			t.Fatal("global queue event leaked to an installation user")
+			t.Fatal("global queue event leaked to an workspace user")
 		}
 	})
 
 	t.Run("root", func(t *testing.T) {
 		harness := newPanelHarness(t, "root")
 		harness.signIn(t)
-		_, unrelated := seedNonOwnedInstallation(t, harness)
+		_, unrelated := seedNonOwnedWorkspace(t, harness)
 		accountID := "github:test:user:1"
 
 		for _, event := range []panelEvent{
@@ -973,7 +973,7 @@ func TestPanelEnforcesResolvedRoleCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	input := targetInstallationSettingsBatchBody(t, target, true)
+	input := targetWorkspaceSettingsBatchBody(t, target, true)
 	denied := harness.request(
 		t,
 		http.MethodPut,
@@ -1072,7 +1072,7 @@ func TestPanelAuthorizesActiveUserWithOnlyTargetAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !authorized {
-		t.Fatal("active user with installation access was not authorized")
+		t.Fatal("active user with workspace access was not authorized")
 	}
 }
 
@@ -1121,7 +1121,7 @@ func TestPanelActivatesFreshDerivedOwnerOnSignIn(t *testing.T) {
 	}
 }
 
-func TestPanelManagesInstallationUsers(t *testing.T) {
+func TestPanelManagesWorkspaceUsers(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	ownerSession := harness.signIn(t)
 	managed := storage.Account{
@@ -1188,11 +1188,11 @@ func TestPanelManagesInstallationUsers(t *testing.T) {
 	requireResponse(
 		t, targetDecisions, "list target access decisions", http.StatusOK,
 		`"action":"target.access.suspended"`,
-		`"summary":"suspended installation access: incident review"`,
+		`"summary":"suspended workspace access: incident review"`,
 	)
 }
 
-func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
+func TestPanelSeparatesRootAndWorkspaceAccessRoutes(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	rootSession := harness.signIn(t)
 	for _, path := range []string{"/panel/api/v1/users", "/panel/api/v1/invitations"} {
@@ -1206,7 +1206,7 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 		t, http.MethodPost, "/panel/api/v1/root/workspaces/sync", nil, rootSession,
 	)
 	requireResponse(
-		t, synced, "Root installation sync", http.StatusOK,
+		t, synced, "Root workspace sync", http.StatusOK,
 		`"target_ids":["github:installation:10"]`,
 	)
 
@@ -1234,7 +1234,7 @@ func TestPanelSeparatesRootAndInstallationAccessRoutes(t *testing.T) {
 		t, http.MethodPost, "/panel/api/v1/root/workspaces/sync", nil,
 		&http.Cookie{Name: sessionCookieName, Value: ordinaryToken},
 	)
-	requireResponse(t, blocked, "ordinary installation sync", http.StatusForbidden)
+	requireResponse(t, blocked, "ordinary workspace sync", http.StatusForbidden)
 	blockedElevation := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/workspaces/github:installation:10/elevation",
@@ -1254,7 +1254,7 @@ func TestPanelRootOverview(t *testing.T) {
 	}
 	updated := harness.request(
 		t, http.MethodPut, "/panel/api/v1/targets/github:installation:10/settings",
-		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, true)),
+		bytes.NewReader(targetWorkspaceSettingsBatchBody(t, target, true)),
 		rootSession,
 	)
 	requireResponse(t, updated, "seed Root audit", http.StatusOK, `"revision":2`)
@@ -1287,7 +1287,7 @@ func TestPanelRootOverview(t *testing.T) {
 	requireResponse(
 		t, audit, "Root audit", http.StatusOK,
 		`"category":"configuration"`, `"action":"installation.settings.saved"`,
-		`"installation":{"id":"github:test:account:2"`,
+		`"workspace":{"id":"github:test:account:2"`,
 	)
 	failures := harness.request(
 		t, http.MethodGet,
@@ -1330,8 +1330,8 @@ func TestPanelRootOverview(t *testing.T) {
 	)
 	requireResponse(
 		t, rootUsers, "Root users", http.StatusOK,
-		`"system_role":"super_root"`, `"owned_installations":1`,
-		`"assigned_installations":0`, `"can_manage_system_role":false`,
+		`"system_role":"super_root"`, `"owned_workspaces":1`,
+		`"assigned_workspaces":0`, `"can_manage_system_role":false`,
 	)
 	invalidUsers := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/access/users?system_role=owner", nil, rootSession,
@@ -1778,27 +1778,27 @@ func TestPanelManagesRootInvitations(t *testing.T) {
 func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	rootSession := harness.signIn(t)
-	owner, target := seedNonOwnedInstallation(t, harness)
+	owner, target := seedNonOwnedWorkspace(t, harness)
 
-	installations := harness.request(
+	workspaces := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/workspaces", nil, rootSession,
 	)
 	requireResponse(
-		t, installations, "Root installations", http.StatusOK,
+		t, workspaces, "Root workspaces", http.StatusOK,
 		`"id":"github:installation:20"`, `"owner_count":1`,
 		`"delivery_health":{"failed":0}`,
 	)
 	rootSettingsPath := "/panel/api/v1/root/workspaces/" + target.TargetID + "/settings"
 	settings := harness.request(t, http.MethodGet, rootSettingsPath, nil, rootSession)
 	requireResponse(
-		t, settings, "Root installation settings", http.StatusOK,
+		t, settings, "Root workspace settings", http.StatusOK,
 		`"access_source":"root"`, `"write":false`,
 	)
 	targetSettings, err := harness.store.GetTarget(t.Context(), target.TargetID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	settingsInput := targetInstallationSettingsBatchBody(t, targetSettings, true)
+	settingsInput := targetWorkspaceSettingsBatchBody(t, targetSettings, true)
 	blockedWrite := harness.request(
 		t, http.MethodPut, rootSettingsPath, bytes.NewReader(settingsInput), rootSession,
 	)
@@ -1825,7 +1825,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		http.StatusBadRequest, `"code":"acknowledgment_required"`,
 	)
 
-	reason := "investigate an installation incident"
+	reason := "investigate an workspace incident"
 	started := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/workspaces/"+target.TargetID+"/elevation",
@@ -1907,7 +1907,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	listedUsers := harness.request(
 		t, http.MethodGet, rootAccessBase+"/users?role=viewer&limit=10", nil, rootSession,
 	)
-	requireResponse(t, listedUsers, "Root installation users", http.StatusOK, `"login":"support-user"`)
+	requireResponse(t, listedUsers, "Root workspace users", http.StatusOK, `"login":"support-user"`)
 	updatedUser := harness.request(
 		t, http.MethodPut, rootAccessBase+"/users/"+subject.ID,
 		strings.NewReader(`{"role":"editor","suspended":false,"expected_revision":1}`),
@@ -1920,7 +1920,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	decisions := harness.request(
 		t, http.MethodGet, rootAccessBase+"/users/"+subject.ID+"/decisions", nil, rootSession,
 	)
-	requireResponse(t, decisions, "Root installation decisions", http.StatusOK, `"target.access.updated"`)
+	requireResponse(t, decisions, "Root workspace decisions", http.StatusOK, `"target.access.updated"`)
 
 	// support-user is an editor here by now, so an invitation would offer what they hold.
 	refusedInvitation := harness.request(
@@ -1955,7 +1955,7 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		t, http.MethodGet, rootAccessBase+"/invitations?status=pending&limit=10", nil, rootSession,
 	)
 	requireResponse(
-		t, listedInvitations, "Root installation invitations", http.StatusOK, invitation.ID,
+		t, listedInvitations, "Root workspace invitations", http.StatusOK, invitation.ID,
 	)
 	reissuedInvitation := harness.request(
 		t, http.MethodPost, rootAccessBase+"/invitations/"+invitation.ID+"/reissue",
@@ -1968,11 +1968,11 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 	requireResponse(
 		t, revokedInvitation, "Root invitation revoke", http.StatusOK, `"status":"revoked"`,
 	)
-	installationAudit := harness.request(
+	workspaceAudit := harness.request(
 		t, http.MethodGet, rootAccessBase+"/audit?sort=oldest&limit=20", nil, rootSession,
 	)
 	requireResponse(
-		t, installationAudit, "Root installation audit", http.StatusOK,
+		t, workspaceAudit, "Root workspace audit", http.StatusOK,
 		`"target.access.updated"`, `"invitation.created"`,
 		`"repository.config_migration.reset"`,
 	)
@@ -1985,10 +1985,10 @@ func TestPanelRootElevationAndOwnerNotifications(t *testing.T) {
 		`"category":"notification"`, `"action":"owner.notification.created"`,
 		`"elevation_id":"`+elevation.ID+`"`,
 	)
-	installationFailures := harness.request(
+	workspaceFailures := harness.request(
 		t, http.MethodGet, rootAccessBase+"/failures?limit=20", nil, rootSession,
 	)
-	requireResponse(t, installationFailures, "Root installation failures", http.StatusOK, `"total":0`)
+	requireResponse(t, workspaceFailures, "Root workspace failures", http.StatusOK, `"total":0`)
 
 	ownerSession := activateOwnerSession(t, harness, owner)
 	notifications := harness.request(
@@ -2077,7 +2077,7 @@ func TestPanelInvitesNamedGitHubUserThroughOAuth(t *testing.T) {
 	// The invitation page names the scope to someone who has not signed in and may
 	// never have heard of it, so the display name alone is not enough: the login is
 	// what identifies the account on GitHub, and the kind says whether accepting
-	// joins an organisation or one person's installation.
+	// joins an organisation or one person's workspace.
 	requireResponse(
 		t, review, "review invitation scope", http.StatusOK,
 		`"target_name":"Smykla Skalski"`,
@@ -2520,7 +2520,7 @@ func assertAuditPagination(t *testing.T, harness *panelHarness, targetPath strin
 	first := harness.request(
 		t,
 		http.MethodGet,
-		targetPath+"/audit?scope=account&q=installation+settings&sort=oldest&limit=1",
+		targetPath+"/audit?scope=account&q=workspace+settings&sort=oldest&limit=1",
 		nil,
 		session,
 	)
@@ -2541,7 +2541,7 @@ func assertAuditPagination(t *testing.T, harness *panelHarness, targetPath strin
 	second := harness.request(
 		t,
 		http.MethodGet,
-		targetPath+"/audit?scope=account&q=installation+settings&sort=oldest&limit=1&cursor="+
+		targetPath+"/audit?scope=account&q=workspace+settings&sort=oldest&limit=1&cursor="+
 			url.QueryEscape(*firstPage.NextCursor),
 		nil,
 		session,
@@ -2887,12 +2887,12 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/",
 		"/panel/inbox",
 		"/panel/invite/abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567",
-		"/panel/i/smykla-skalski/repositories",
-		"/panel/i/smykla-skalski/access/users",
-		"/panel/i/smykla-skalski/access/invitations",
-		"/panel/i/smykla-skalski/history/audit",
-		"/panel/i/smykla-skalski/history/failures",
-		"/panel/i/auth/settings",
+		"/panel/workspace/smykla-skalski/repositories",
+		"/panel/workspace/smykla-skalski/access/users",
+		"/panel/workspace/smykla-skalski/access/invitations",
+		"/panel/workspace/smykla-skalski/history/audit",
+		"/panel/workspace/smykla-skalski/history/failures",
+		"/panel/workspace/auth/settings",
 		"/panel/root",
 		"/panel/root/workspaces",
 		"/panel/root/access",
@@ -2914,11 +2914,11 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/runtime/settings",
 		// Every dialog the panel gives an address to. A link to one, and a reload
 		// of one, has to answer with the shell rather than the not-found page.
-		"/panel/i/smykla-skalski/repositories/api-gateway",
-		"/panel/i/smykla-skalski/access/users/add",
-		"/panel/i/smykla-skalski/access/users/octocat/history",
-		"/panel/i/smykla-skalski/access/users/octocat/remove-access",
-		"/panel/i/smykla-skalski/access/invitations/inv-1/revoke",
+		"/panel/workspace/smykla-skalski/repositories/api-gateway",
+		"/panel/workspace/smykla-skalski/access/users/add",
+		"/panel/workspace/smykla-skalski/access/users/octocat/history",
+		"/panel/workspace/smykla-skalski/access/users/octocat/remove-access",
+		"/panel/workspace/smykla-skalski/access/invitations/inv-1/revoke",
 		"/panel/root/access/users/octocat/ban",
 		"/panel/root/access/invitations/new",
 		"/panel/root/access/invitations/inv-1/reissue",
@@ -2926,7 +2926,7 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		// A trailing slash is not part of the address; the panel's router reads
 		// `/inbox/` as `/inbox`, and the server has to agree.
 		"/panel/inbox/",
-		"/panel/i/smykla-skalski/history/audit/",
+		"/panel/workspace/smykla-skalski/history/audit/",
 		"/panel/root/access/users/",
 	} {
 		response := harness.request(t, http.MethodGet, path, nil, nil)
@@ -2970,32 +2970,32 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/invitations",
 		"/panel/help",
 		"/panel/inbox/security",
-		"/panel/i/smykla-skalski/inbox",
-		"/panel/i/smykla-skalski/defaults",
-		"/panel/i/smykla-skalski/users",
-		"/panel/i/smykla-skalski/invitations",
+		"/panel/workspace/smykla-skalski/inbox",
+		"/panel/workspace/smykla-skalski/defaults",
+		"/panel/workspace/smykla-skalski/users",
+		"/panel/workspace/smykla-skalski/invitations",
 		// A view still has to be a view, and a dialog is one segment or two.
 		"/panel/root/workspaces/smykla-skalski",
 		// A repository is the whole address; its five pane addresses are gone
 		// rather than redirected, and the refusal is on the wire.
-		"/panel/i/smykla-skalski/repositories/api-gateway/behavior",
+		"/panel/workspace/smykla-skalski/repositories/api-gateway/behavior",
 		"/panel/root/workspaces/smykla-skalski/repositories/api-gateway/file",
-		"/panel/i/smykla-skalski/repositories/api-gateway/file/extra",
+		"/panel/workspace/smykla-skalski/repositories/api-gateway/file/extra",
 		"/panel/root/access/users/octocat/ban/extra",
 		"/panel/smykla-skalski/repositories",
 		// Nothing follows a view that hosts no dialog, and history takes one of
 		// two sections. Both are the route tree's to say, and it says them: there
 		// is no route these resolve to, so the refusal is on the wire rather than
 		// drawn by the panel after a 200.
-		"/panel/i/smykla-skalski/settings/anything",
-		"/panel/i/smykla-skalski/sync/anything",
-		"/panel/i/smykla-skalski/history/unknown",
+		"/panel/workspace/smykla-skalski/settings/anything",
+		"/panel/workspace/smykla-skalski/sync/anything",
+		"/panel/workspace/smykla-skalski/history/unknown",
 		"/panel/root/workspaces/smykla-skalski/settings/anything",
 		"/panel/root/workspaces/smykla-skalski/history/unknown",
 		"/panel/auth/settings",
 		"/panel/webhook/history",
-		"/panel/i/smykla-skalski/help",
-		"/panel/i/smykla-skalski/unknown",
+		"/panel/workspace/smykla-skalski/help",
+		"/panel/workspace/smykla-skalski/unknown",
 		"/panel/root/unknown",
 		"/panel/root/settings",
 		"/panel/root/access/owners",

@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   createPanelQueryClient,
-  invalidateRootInstallationSettings,
+  invalidateRootWorkspaceSettings,
   STALE_WITHOUT_STREAM,
 } from '../src/lib/query-client';
 
@@ -67,14 +67,14 @@ describe('how long the panel trusts an answer [Unit]', () => {
 });
 
 describe('panel query client [Unit]', () => {
-  it('refreshes Root aggregates after installation settings change', async () => {
+  it('refreshes Root aggregates after workspace settings change', async () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
 
-    await invalidateRootInstallationSettings(queryClient, 'target-1');
+    await invalidateRootWorkspaceSettings(queryClient, 'target-1');
 
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
-      ['root-installations'],
+      ['root-workspaces'],
       ['root-overview'],
       ['repositories', 'target-1'],
       ['targets'],

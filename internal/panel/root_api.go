@@ -190,7 +190,7 @@ func parseRootFailureKind(r *http.Request) (*bool, error) {
 	}
 }
 
-func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getRootWorkspaces(w http.ResponseWriter, r *http.Request) {
 	account, _, ok := s.requireRoot(w, r)
 	if !ok {
 		return
@@ -201,7 +201,7 @@ func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now().UTC()
-	items := make([]rootInstallationResponse, 0, len(targets))
+	items := make([]rootWorkspaceResponse, 0, len(targets))
 	for _, target := range targets {
 		owned := false
 		if target.Available {
@@ -212,7 +212,7 @@ func (s *Server) getRootInstallations(w http.ResponseWriter, r *http.Request) {
 			}
 			owned = access.Role == storage.InstallationRoleOwner
 		}
-		items = append(items, rootInstallationDTO(target, now, owned))
+		items = append(items, rootWorkspaceDTO(target, now, owned))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{panelWorkspacesResource: items})
 }

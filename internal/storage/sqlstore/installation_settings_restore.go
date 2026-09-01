@@ -396,7 +396,7 @@ func (s *Store) recordInstallationSettingsRestore(
 		return 0, 0, err
 	}
 	sourceKind := settingsCheckpointSourceKind
-	summary := fmt.Sprintf("Restored %d installation settings", len(work.items))
+	summary := fmt.Sprintf("Restored %d workspace settings", len(work.items))
 	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID: request.TargetID, SettingsCheckpointID: &checkpointID,
 		ActorAccountID: request.ActorAccountID, ElevationID: request.ElevationID,

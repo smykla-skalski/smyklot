@@ -52,7 +52,7 @@
 </script>
 
 <!--
-  What every repository in an installation should share, and what would change if it
+  What every repository in a workspace should share, and what would change if it
   were applied. Nothing happens on GitHub until a plan is approved - the plan is the
   whole point of the screen, and it is why the labels editor and the Apply button are
   never the same press.

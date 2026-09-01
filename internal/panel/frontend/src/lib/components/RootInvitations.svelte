@@ -399,7 +399,7 @@
 
 <!--
 @component
-Every invitation across the whole installation, which is the operator's view of them -
+Every invitation across every workspace, which is the operator's view of them -
 who was asked, by whom, and what has become of it.
 
 ## Why this is not merged with `UserManagement`'s invitation half
@@ -415,7 +415,7 @@ the primitives and the table shell did the work a wrapper component was going to
 
 What is left is not duplication:
 
-- **Different features.** This one reissues AND revokes; the installation's half
+- **Different features.** This one reissues AND revokes; the workspace's half
   only revokes. This one has a three-stage create - form, a confirmation when the
   invitee has declined before, then the link - and the other has two. `createStage`
   appears eleven times here and nowhere there.

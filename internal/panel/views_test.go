@@ -27,40 +27,40 @@ const panelViewsSource = "frontend/src/lib/routes.ts"
 // it, and those are what carry the difference this checks.
 func TestEveryBrowserViewIsServedOnReload(t *testing.T) {
 	table := shippedRouteTable(t)
-	installation := browserPanelViews(t, "PANEL_VIEWS")
+	workspace := browserPanelViews(t, "PANEL_VIEWS")
 
-	for _, view := range installation {
-		if !table.matches(installationViewPath("/i/acme", view)) {
+	for _, view := range workspace {
+		if !table.matches(workspaceViewPath("/workspace/acme", view)) {
 			t.Errorf("the browser has a %q view and a reload of it is refused", view)
 		}
 	}
 
 	// The console's own subset, at its own addresses. It renders fewer views
-	// than an installation has, and what it does not render must not be served
+	// than an workspace has, and what it does not render must not be served
 	// either - an address answered with a shell that says the view is
 	// unavailable reads as a fault rather than a boundary.
-	console := browserPanelViews(t, "ROOT_INSTALLATION_VIEWS")
+	console := browserPanelViews(t, "ROOT_WORKSPACE_VIEWS")
 	for _, view := range console {
-		if !table.matches(installationViewPath("/root/workspaces/acme", view)) {
+		if !table.matches(workspaceViewPath("/root/workspaces/acme", view)) {
 			t.Errorf("the console has a %q view and a reload of it is refused", view)
 		}
 	}
 
-	for _, view := range installation {
+	for _, view := range workspace {
 		if slices.Contains(console, view) {
 			continue
 		}
-		if table.matches(installationViewPath("/root/workspaces/acme", view)) {
+		if table.matches(workspaceViewPath("/root/workspaces/acme", view)) {
 			t.Errorf("the console renders no %q view and its address is served anyway", view)
 		}
 	}
 }
 
-// installationViewPath writes a view the way its address writes it, which is
+// workspaceViewPath writes a view the way its address writes it, which is
 // not always the view's own name: access is a section two views are written
 // under, and the overview is where a workspace opens, so it takes the bare
 // address rather than a segment naming it.
-func installationViewPath(base, view string) string {
+func workspaceViewPath(base, view string) string {
 	if view == "overview" {
 		return base
 	}
@@ -121,11 +121,11 @@ func TestEveryBrowserViewHasSomethingToRender(t *testing.T) {
 			"PANEL_VIEWS",
 			// The routes are thin now - three of them, one per shape of address -
 			// and the switch they all render lives here.
-			"frontend/src/lib/components/InstallationView.svelte",
+			"frontend/src/lib/components/WorkspaceView.svelte",
 		},
 		{
-			"ROOT_INSTALLATION_VIEWS",
-			"frontend/src/lib/components/RootInstallationView.svelte",
+			"ROOT_WORKSPACE_VIEWS",
+			"frontend/src/lib/components/RootWorkspaceView.svelte",
 		},
 	} {
 		source, err := os.ReadFile(surface.page)

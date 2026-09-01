@@ -166,23 +166,23 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/access/invitations/new",
 		"/root/workspaces/acme/history/audit",
 		"/root/workspaces/acme/repositories/api-gateway",
-		"/i/acme/settings",
-		"/i/acme/history",
-		"/i/acme/history/failures",
-		"/i/acme/repositories/api-gateway",
+		"/workspace/acme/settings",
+		"/workspace/acme/history",
+		"/workspace/acme/history/failures",
+		"/workspace/acme/repositories/api-gateway",
 		// Sync is six sections and two of them name one of their own. A file's
 		// path keeps its separators, which is why that one is a rest parameter:
 		// the server matches the decoded address, so a path travelling as
 		// `%2F` would arrive here as a path this table cannot find.
-		"/i/acme/sync",
-		"/i/acme/sync/labels",
-		"/i/acme/sync/plan",
-		"/i/acme/sync/rulesets",
-		"/i/acme/sync/rulesets/main-branch-protection",
-		"/i/acme/sync/files",
-		"/i/acme/sync/files/.github/workflows/test.yaml",
-		"/i/acme/access/users/add",
-		"/i/acme/access/invitations/inv-1/revoke",
+		"/workspace/acme/sync",
+		"/workspace/acme/sync/labels",
+		"/workspace/acme/sync/plan",
+		"/workspace/acme/sync/rulesets",
+		"/workspace/acme/sync/rulesets/main-branch-protection",
+		"/workspace/acme/sync/files",
+		"/workspace/acme/sync/files/.github/workflows/test.yaml",
+		"/workspace/acme/access/users/add",
+		"/workspace/acme/access/invitations/inv-1/revoke",
 		"/invite/" + token,
 	} {
 		if !table.matches(path) {
@@ -202,28 +202,28 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/workspaces//repositories",
 		"/root/access/owners",
 		"/root/access/users/octocat/ban/extra",
-		"/i//repositories",
+		"/workspace//repositories",
 		// A repository is the whole address, and the whole page is on it. The
 		// five pane addresses it used to have are gone rather than redirected,
 		// so a shared link says so on the wire instead of opening the page and
 		// pretending it meant what it says.
-		"/i/acme/repositories/api-gateway/behavior",
-		"/i/acme/repositories/api-gateway/sync",
+		"/workspace/acme/repositories/api-gateway/behavior",
+		"/workspace/acme/repositories/api-gateway/sync",
 		"/root/workspaces/acme/repositories/api-gateway/file",
-		"/i/acme/repositories/api-gateway/file/extra",
-		"/i/acme/inbox",
-		"/i/acme/defaults",
-		"/i/acme/users/add",
-		"/i/acme/invitations/inv-1/revoke",
+		"/workspace/acme/repositories/api-gateway/file/extra",
+		"/workspace/acme/inbox",
+		"/workspace/acme/defaults",
+		"/workspace/acme/users/add",
+		"/workspace/acme/invitations/inv-1/revoke",
 		// A view that hosts no dialog has no route with anything after it, and
 		// history's section has to be one of the two there are.
-		"/i/acme/settings/anything",
-		"/i/acme/sync/anything",
+		"/workspace/acme/settings/anything",
+		"/workspace/acme/sync/anything",
 		// The overview is the bare address, so writing it is an address that
 		// says the same thing twice - and a ruleset is one name, never a path.
-		"/i/acme/sync/overview",
-		"/i/acme/sync/rulesets/main/extra",
-		"/i/acme/history/everything",
+		"/workspace/acme/sync/overview",
+		"/workspace/acme/sync/rulesets/main/extra",
+		"/workspace/acme/history/everything",
 		"/root/workspaces/acme/settings/anything",
 		"/root/workspaces/acme/defaults",
 		"/root/workspaces/acme/users/octocat/history",

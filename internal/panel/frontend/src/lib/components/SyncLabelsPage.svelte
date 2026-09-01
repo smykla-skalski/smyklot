@@ -35,7 +35,7 @@
 The labels page: staged, per-segment editing. Pressing a name,
 a description or the colour dot swaps only that piece into its edit
 state, in place - the in-place input is the hover ghost made real, so
-the swap moves nothing. Everything updates the installation draft as it
+the swap moves nothing. Everything updates the workspace draft as it
 commits; pressing anywhere else closes the open piece. Below, the two
 decisions that shape what the list means: whether
 unlisted labels are removed, and the patterns left alone either way.
@@ -419,15 +419,15 @@ unlisted labels are removed, and the patterns left alone either way.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This installation's labels are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
+      This workspace's labels are stored in a form this version of Smyklot cannot read, so they are
+      not shown and nothing here can be changed. Nothing has been lost.
     </p>
   {/if}
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
       {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub.
+      workspace's page on GitHub.
     </p>
   {/if}
 

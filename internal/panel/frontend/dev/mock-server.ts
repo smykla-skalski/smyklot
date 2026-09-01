@@ -47,7 +47,7 @@ import type {
   RepositorySummary,
   RootElevation,
   RootElevationInput,
-  RootInstallation,
+  RootWorkspace,
   RootOverview,
   SyncConfig,
   SyncFileMergeEntry,
@@ -65,17 +65,17 @@ import type {
   UpdateTargetUserInput,
   UpdateRootUserInput,
   InvitationDays,
-  InstallationRepositorySettingsInput,
-  InstallationRepositorySettingsState,
-  InstallationSettingsBatchInput,
-  InstallationSettingsBatchResponse,
-  InstallationSettingsConflict,
-  InstallationSyncConfigSettingsInput,
-  InstallationSyncConfigSettingsState,
-  InstallationSyncOverrideSettingsInput,
-  InstallationSyncOverrideSettingsState,
-  InstallationTargetSettingsInput,
-  InstallationTargetSettingsState,
+  WorkspaceRepositorySettingsInput,
+  WorkspaceRepositorySettingsState,
+  WorkspaceSettingsBatchInput,
+  WorkspaceSettingsBatchResponse,
+  WorkspaceSettingsConflict,
+  WorkspaceSyncConfigSettingsInput,
+  WorkspaceSyncConfigSettingsState,
+  WorkspaceSyncOverrideSettingsInput,
+  WorkspaceSyncOverrideSettingsState,
+  WorkspaceTargetSettingsInput,
+  WorkspaceTargetSettingsState,
 } from '../src/lib/types.ts';
 import { SYNC_KINDS } from '../src/lib/types.ts';
 import { CONFIG_KEYS } from '../src/lib/config.ts';
@@ -141,7 +141,7 @@ class MockApiError extends Error {
 }
 
 /**
- * mockSyncConfig answers what an installation has configured, inventing an
+ * mockSyncConfig answers what a workspace has configured, inventing an
  * empty answer the first time. Never configured is not an error and not the
  * same as configured and switched off, which is what the server says too.
  */
@@ -211,7 +211,7 @@ function mockScheduleState(
     timezone: 'UTC',
     system: true,
     revision: 1,
-    affected_installations: fixtures.targets.length,
+    affected_workspaces: fixtures.targets.length,
     affected_items: fixtures.queue.filter((item) => item.profile_id === 'always-open').length,
     affected_policies: MOCK_SCHEDULE_KINDS.length,
     windows: Array.from({ length: 7 }, (_, weekday) => ({
@@ -227,7 +227,7 @@ function mockScheduleState(
     timezone: 'Europe/Warsaw',
     system: false,
     revision: 3,
-    affected_installations: 1,
+    affected_workspaces: 1,
     affected_items: 2,
     affected_policies: 1,
     windows: [1, 2, 3, 4, 5].map((weekday) => ({
@@ -1345,7 +1345,7 @@ async function handle(
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,
-        /* A Root with no installations keeps the panel shell, because the console
+        /* A Root with no workspaces keeps the panel shell, because the console
            is still there to reach. `?scenario=empty` is for the other reader -
            signed in, nothing installed, nothing else to do - so it hands back a
            regular account. */
@@ -1368,7 +1368,7 @@ async function handle(
     const syncPath = path.slice(route('').length);
     const syncConfigMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/config\/([^/]+)$/.exec(syncPath);
     if (syncConfigMatch) {
-      // Keyed by installation and kind together, because an installation
+      // Keyed by workspace and kind together, because a workspace
       // configures each kind separately and the server stores them that way.
       const targetId = decodeURIComponent(syncConfigMatch[1] ?? '');
       const kind = decodeURIComponent(syncConfigMatch[2] ?? '');
@@ -1408,7 +1408,7 @@ async function handle(
 
     // Every repository's answer about one kind, which is what the page about a
     // shared file reads: "who adjusts this" is a question about the whole
-    // installation.
+    // workspace.
     const syncOverrideMatch =
       /^\/api\/v1\/targets\/([^/]+)\/repositories\/([^/]+)\/sync\/([^/]+)$/.exec(
         path.slice(route('').length),
@@ -1446,7 +1446,7 @@ async function handle(
     );
     if (syncStatusMatch && method === 'GET') {
       const targetId = decodeURIComponent(syncStatusMatch[1] ?? '');
-      /* An installation the seed never drew is a fleet nothing covers yet,
+      /* A workspace the seed never drew is a fleet nothing covers yet,
          not an error - the overview renders the empty answer. */
       respond(
         res,
@@ -1522,7 +1522,7 @@ async function handle(
         }
       }
       const repositoryPolicies: SyncFileRepositoryPolicy[] = rows.map((row) => {
-        /* The fleet names repositories this installation holds, so the lookup
+        /* The fleet names repositories this workspace holds, so the lookup
            finds one. The `mock:` fallback is for a seed that names one it does
            not - which is the drift this fixture used to be built on. */
         const repository = target.repositories.find(
@@ -1596,7 +1596,7 @@ async function handle(
         left.value.type === right.value.type ? 0 : left.value.type === 'Organization' ? -1 : 1,
       );
       respond(res, 200, {
-        workspaces: ordered.map((target) => rootInstallationValue(target)),
+        workspaces: ordered.map((target) => rootWorkspaceValue(target)),
       });
       return;
     }
@@ -1759,15 +1759,15 @@ async function handle(
       respond(res, 200, policy);
       return;
     }
-    const rootInstallationPolicy = path.match(
+    const rootWorkspacePolicy = path.match(
       /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/job-policies\/(?<kind>[^/]+)$/,
     );
-    if (rootInstallationPolicy && method === 'PUT') {
-      const target = findTarget(state, rootInstallationPolicy.groups?.target ?? '');
+    if (rootWorkspacePolicy && method === 'PUT') {
+      const target = findTarget(state, rootWorkspacePolicy.groups?.target ?? '');
       const input = await readBody<QueuePolicyInput>(req);
       const policy = saveMockQueuePolicy(
         state,
-        decodeURIComponent(rootInstallationPolicy.groups?.kind ?? '') as QueueWorkload,
+        decodeURIComponent(rootWorkspacePolicy.groups?.kind ?? '') as QueueWorkload,
         input,
         target.value.id,
       );
@@ -1775,9 +1775,9 @@ async function handle(
       respond(res, 200, policy);
       return;
     }
-    if (rootInstallationPolicy && method === 'DELETE') {
-      const target = findTarget(state, rootInstallationPolicy.groups?.target ?? '');
-      const kind = decodeURIComponent(rootInstallationPolicy.groups?.kind ?? '') as QueueWorkload;
+    if (rootWorkspacePolicy && method === 'DELETE') {
+      const target = findTarget(state, rootWorkspacePolicy.groups?.target ?? '');
+      const kind = decodeURIComponent(rootWorkspacePolicy.groups?.kind ?? '') as QueueWorkload;
       const override = state.schedulePolicies.find(
         (policy) => policy.kind === kind && policy.target_id === target.value.id,
       );
@@ -2135,50 +2135,50 @@ async function handle(
       /^\/api\/v1\/root\/pending-ci\/(?<request>[^/]+)\/check$/,
     );
     const rootPendingCI = path.match(/^\/api\/v1\/root\/pending-ci\/(?<request>[^/]+)$/);
-    const installationUsers = scopedUsers ?? rootScopedUsers;
-    const installationUser = scopedUser ?? rootScopedUser;
-    const installationUserDecisions = scopedUserDecisions ?? rootScopedUserDecisions;
-    const installationInvitations = scopedInvitations ?? rootScopedInvitations;
-    const installationInvitationReissue = reissueInvitation ?? rootScopedInvitationReissue;
-    const installationInvitation = invitation ?? rootScopedInvitation;
-    const installationAudit = audit ?? rootTargetAudit;
-    const installationFailures = failures ?? rootTargetFailures;
-    const installationSettings = targetSettings ?? rootTargetSettings;
-    const installationSettingsCheckpoint = targetSettingsCheckpoint ?? rootTargetSettingsCheckpoint;
+    const workspaceUsers = scopedUsers ?? rootScopedUsers;
+    const workspaceUser = scopedUser ?? rootScopedUser;
+    const workspaceUserDecisions = scopedUserDecisions ?? rootScopedUserDecisions;
+    const workspaceInvitations = scopedInvitations ?? rootScopedInvitations;
+    const workspaceInvitationReissue = reissueInvitation ?? rootScopedInvitationReissue;
+    const workspaceInvitation = invitation ?? rootScopedInvitation;
+    const workspaceAudit = audit ?? rootTargetAudit;
+    const workspaceFailures = failures ?? rootTargetFailures;
+    const workspaceSettings = targetSettings ?? rootTargetSettings;
+    const workspaceSettingsCheckpoint = targetSettingsCheckpoint ?? rootTargetSettingsCheckpoint;
 
     if (
-      installationSettingsCheckpoint !== null &&
+      workspaceSettingsCheckpoint !== null &&
       method === 'GET' &&
-      installationSettingsCheckpoint.groups?.restore === undefined
+      workspaceSettingsCheckpoint.groups?.restore === undefined
     ) {
-      const target = findTarget(state, installationSettingsCheckpoint.groups?.target ?? '');
-      const checkpoint = findMockInstallationSettingsCheckpoint(
+      const target = findTarget(state, workspaceSettingsCheckpoint.groups?.target ?? '');
+      const checkpoint = findMockWorkspaceSettingsCheckpoint(
         state,
         target.value.id,
-        installationSettingsCheckpoint.groups?.checkpoint ?? '',
+        workspaceSettingsCheckpoint.groups?.checkpoint ?? '',
       );
-      respond(res, 200, inspectMockInstallationSettingsCheckpoint(state, target, checkpoint));
+      respond(res, 200, inspectMockWorkspaceSettingsCheckpoint(state, target, checkpoint));
       return;
     }
 
-    if (installationSettingsCheckpoint?.groups?.restore !== undefined && method === 'POST') {
-      const target = findTarget(state, installationSettingsCheckpoint.groups?.target ?? '');
+    if (workspaceSettingsCheckpoint?.groups?.restore !== undefined && method === 'POST') {
+      const target = findTarget(state, workspaceSettingsCheckpoint.groups?.target ?? '');
       if (rootTargetSettingsCheckpoint !== null) requireRootWrite(state, target);
-      const checkpoint = findMockInstallationSettingsCheckpoint(
+      const checkpoint = findMockWorkspaceSettingsCheckpoint(
         state,
         target.value.id,
-        installationSettingsCheckpoint.groups?.checkpoint ?? '',
+        workspaceSettingsCheckpoint.groups?.checkpoint ?? '',
       );
       const input = await readBody<SettingsRestoreInput>(req);
-      respond(res, 200, restoreMockInstallationSettings(state, target, checkpoint, input));
+      respond(res, 200, restoreMockWorkspaceSettings(state, target, checkpoint, input));
       return;
     }
 
-    if (installationSettings && method === 'PUT') {
-      const target = findTarget(state, installationSettings.groups?.target ?? '');
+    if (workspaceSettings && method === 'PUT') {
+      const target = findTarget(state, workspaceSettings.groups?.target ?? '');
       if (rootTargetSettings !== null) requireRootWrite(state, target);
-      const input = await readBody<InstallationSettingsBatchInput>(req);
-      respond(res, 200, saveMockInstallationSettings(state, target, input));
+      const input = await readBody<WorkspaceSettingsBatchInput>(req);
+      respond(res, 200, saveMockWorkspaceSettings(state, target, input));
       return;
     }
 
@@ -2293,7 +2293,7 @@ async function handle(
           [
             entry.created_at,
             entry.actor.login,
-            entry.installation?.login ?? '',
+            entry.workspace?.login ?? '',
             entry.subject?.login ?? '',
             entry.category ?? '',
             entry.action,
@@ -2324,7 +2324,7 @@ async function handle(
             (entry, sort) => {
               if (sort.startsWith('actor_')) return entry.actor.display_name.toLocaleLowerCase();
               if (sort.startsWith('target_')) {
-                return (entry.installation?.display_name ?? 'Smyklot').toLocaleLowerCase();
+                return (entry.workspace?.display_name ?? 'Smyklot').toLocaleLowerCase();
               }
               if (sort.startsWith('change_')) return entry.summary.toLocaleLowerCase();
               return entry.created_at;
@@ -2332,8 +2332,8 @@ async function handle(
             (entry, query) =>
               [
                 entry.category ?? '',
-                entry.installation?.display_name ?? 'Smyklot',
-                entry.installation?.login ?? '',
+                entry.workspace?.display_name ?? 'Smyklot',
+                entry.workspace?.login ?? '',
                 entry.actor.display_name,
                 entry.actor.login,
                 entry.subject?.display_name ?? '',
@@ -2348,7 +2348,7 @@ async function handle(
         const kind = parsed.searchParams.get('kind') ?? 'all';
         const items = state.targets.flatMap((target) =>
           target.failures.map((failure) => ({
-            installation: target.value.account,
+            workspace: target.value.account,
             failure,
           })),
         );
@@ -2368,8 +2368,8 @@ async function handle(
             },
             (item, query) =>
               [
-                item.installation.display_name,
-                item.installation.login,
+                item.workspace.display_name,
+                item.workspace.login,
                 item.failure.delivery_id,
                 item.failure.repository_full_name,
                 item.failure.event,
@@ -2429,7 +2429,7 @@ async function handle(
         );
       if (mockRootOwns(target))
         throw new MockApiError(409, 'conflict', 'you already own this workspace');
-      if (!rootInstallationValue(target).available)
+      if (!rootWorkspaceValue(target).available)
         throw new MockApiError(409, 'conflict', 'fresh Owners are required');
       const started = new Date();
       const elevation: RootElevation = {
@@ -2478,9 +2478,9 @@ async function handle(
       return;
     }
 
-    if (installationUserDecisions && method === 'GET') {
-      const target = findTarget(state, installationUserDecisions.groups?.target ?? '');
-      const accountId = decodeURIComponent(installationUserDecisions.groups?.account ?? '');
+    if (workspaceUserDecisions && method === 'GET') {
+      const target = findTarget(state, workspaceUserDecisions.groups?.target ?? '');
+      const accountId = decodeURIComponent(workspaceUserDecisions.groups?.account ?? '');
       const user = targetUsers(state, target.value.id).find(
         (entry) => entry.account.id === accountId,
       );
@@ -2489,8 +2489,8 @@ async function handle(
       return;
     }
 
-    if (installationInvitations && method === 'GET') {
-      const target = findTarget(state, installationInvitations.groups?.target ?? '');
+    if (workspaceInvitations && method === 'GET') {
+      const target = findTarget(state, workspaceInvitations.groups?.target ?? '');
       respond(
         res,
         200,
@@ -2501,8 +2501,8 @@ async function handle(
       );
       return;
     }
-    if (installationInvitations && method === 'POST') {
-      const target = findTarget(state, installationInvitations.groups?.target ?? '');
+    if (workspaceInvitations && method === 'POST') {
+      const target = findTarget(state, workspaceInvitations.groups?.target ?? '');
       if (rootScopedInvitations !== null) requireRootWrite(state, target);
       const input = await readBody<AddTargetInvitationInput>(req);
       const created = createMockInvitation(state, input, target.value);
@@ -2511,10 +2511,10 @@ async function handle(
       respond(res, 201, invitationValue(created));
       return;
     }
-    if (installationInvitationReissue && method === 'POST') {
-      const target = findTarget(state, installationInvitationReissue.groups?.target ?? '');
+    if (workspaceInvitationReissue && method === 'POST') {
+      const target = findTarget(state, workspaceInvitationReissue.groups?.target ?? '');
       if (rootScopedInvitationReissue !== null) requireRootWrite(state, target);
-      const current = findInvitation(state, installationInvitationReissue.groups?.invitation ?? '');
+      const current = findInvitation(state, workspaceInvitationReissue.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
         throw new MockApiError(404, 'not_found', 'workspace invitation not found');
       }
@@ -2533,10 +2533,10 @@ async function handle(
       respond(res, 200, invitationValue(current));
       return;
     }
-    if (installationInvitation && method === 'DELETE') {
-      const target = findTarget(state, installationInvitation.groups?.target ?? '');
+    if (workspaceInvitation && method === 'DELETE') {
+      const target = findTarget(state, workspaceInvitation.groups?.target ?? '');
       if (rootScopedInvitation !== null) requireRootWrite(state, target);
-      const current = findInvitation(state, installationInvitation.groups?.invitation ?? '');
+      const current = findInvitation(state, workspaceInvitation.groups?.invitation ?? '');
       if (current.target_id !== target.value.id) {
         throw new MockApiError(404, 'not_found', 'workspace invitation not found');
       }
@@ -2555,7 +2555,7 @@ async function handle(
         return;
       }
       /* Stands in for the organization roster the service reads from GitHub.
-         People already on the installation are dropped, the same as the service
+         People already on the workspace are dropped, the same as the service
          does - they are not candidates for being added to it. */
       const held = new Set(
         targetUsers(state, target.value.id).map((user) => user.account.login.toLowerCase()),
@@ -2579,13 +2579,13 @@ async function handle(
       return;
     }
 
-    if (installationUsers && method === 'GET') {
-      const target = findTarget(state, installationUsers.groups?.target ?? '');
+    if (workspaceUsers && method === 'GET') {
+      const target = findTarget(state, workspaceUsers.groups?.target ?? '');
       respond(res, 200, userPage(targetUsers(state, target.value.id), parsed.searchParams));
       return;
     }
-    if (installationUsers && method === 'POST') {
-      const target = findTarget(state, installationUsers.groups?.target ?? '');
+    if (workspaceUsers && method === 'POST') {
+      const target = findTarget(state, workspaceUsers.groups?.target ?? '');
       if (rootScopedUsers !== null) requireRootWrite(state, target);
       const input = await readBody<AddTargetUserInput>(req);
       let user = state.users.find(
@@ -2608,10 +2608,10 @@ async function handle(
       respond(res, 201, scopedUserValue(state, target.value.id, user));
       return;
     }
-    if (installationUser && method === 'PUT') {
-      const target = findTarget(state, installationUser.groups?.target ?? '');
+    if (workspaceUser && method === 'PUT') {
+      const target = findTarget(state, workspaceUser.groups?.target ?? '');
       if (rootScopedUser !== null) requireRootWrite(state, target);
-      const user = findUser(state, installationUser.groups?.account ?? '');
+      const user = findUser(state, workspaceUser.groups?.account ?? '');
       const input = await readBody<UpdateTargetUserInput>(req);
       const access = targetAccessFor(state, target.value.id);
       const current = access.get(user.account.id);
@@ -2667,8 +2667,8 @@ async function handle(
       return;
     }
 
-    if (installationAudit && method === 'GET') {
-      const target = findTarget(state, installationAudit.groups?.target ?? '');
+    if (workspaceAudit && method === 'GET') {
+      const target = findTarget(state, workspaceAudit.groups?.target ?? '');
       const scope = parsed.searchParams.get('scope') ?? 'all';
       const change = parsed.searchParams.get('change') ?? 'all';
       respond(
@@ -2718,8 +2718,8 @@ async function handle(
       );
       return;
     }
-    if (installationFailures && method === 'GET') {
-      const target = findTarget(state, installationFailures.groups?.target ?? '');
+    if (workspaceFailures && method === 'GET') {
+      const target = findTarget(state, workspaceFailures.groups?.target ?? '');
       const kind = parsed.searchParams.get('kind') ?? 'all';
       /* Only failures take a window, because only the failures endpoint does.
          A mock that accepted `since` everywhere would be more permissive than
@@ -2775,7 +2775,7 @@ function applyScenario(state: MockState, scenario: string | null): void {
   state.signedIn = scenario !== 'signed-out';
   /* Kept apart from the live list rather than emptying it, because a scenario is
      a way of looking at the mock and not a change to it. Emptying it stuck: every
-     later request in the same process saw an account with no installations, and
+     later request in the same process saw an account with no workspaces, and
      whatever was being looked at next quietly measured the wrong panel. */
   state.hideTargets = scenario === 'empty';
 }
@@ -2789,7 +2789,7 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
 
 function changedMockSyncConfig(
   config: SyncConfig,
-  input: InstallationSyncConfigSettingsInput,
+  input: WorkspaceSyncConfigSettingsInput,
 ): SyncConfig {
   const now = new Date().toISOString();
   const nextRevision = config.revision + 1;
@@ -2808,7 +2808,7 @@ function changedMockSyncConfig(
   };
 }
 
-interface MockInstallationSettingsPlan {
+interface MockWorkspaceSettingsPlan {
   target?: MockPreparedChange<PanelTarget>;
   repositories: Array<MockPreparedChange<RepositoryDetail> & { stored: MockRepository }>;
   syncConfigs: Array<MockPreparedChange<SyncConfig> & { key: string }>;
@@ -2820,17 +2820,17 @@ interface MockInstallationSettingsPlan {
 interface MockPreparedChange<T> {
   before: T | null;
   changed: boolean;
-  conflict: InstallationSettingsConflict | null;
+  conflict: WorkspaceSettingsConflict | null;
   next: T;
 }
 
-function saveMockInstallationSettings(
+function saveMockWorkspaceSettings(
   state: MockState,
   target: MockTarget,
-  input: InstallationSettingsBatchInput,
-): InstallationSettingsBatchResponse {
-  validateMockInstallationSettingsBatch(input);
-  const plan = prepareMockInstallationSettings(state, target, input);
+  input: WorkspaceSettingsBatchInput,
+): WorkspaceSettingsBatchResponse {
+  validateMockWorkspaceSettingsBatch(input);
+  const plan = prepareMockWorkspaceSettings(state, target, input);
   const conflicts = [
     ...(plan.target?.conflict === null || plan.target?.conflict === undefined
       ? []
@@ -2853,26 +2853,26 @@ function saveMockInstallationSettings(
     plan.repositories.some(({ changed }) => changed) ||
     plan.syncConfigs.some(({ changed }) => changed) ||
     plan.syncOverrides.some(({ changed }) => changed);
-  const before = changed ? mockInstallationSettingsSnapshot(state, target) : null;
-  if (changed) ensureMockInstallationSettingsBaseline(state, target);
-  applyMockInstallationSettingsPlan(state, target, plan);
+  const before = changed ? mockWorkspaceSettingsSnapshot(state, target) : null;
+  if (changed) ensureMockWorkspaceSettingsBaseline(state, target);
+  applyMockWorkspaceSettingsPlan(state, target, plan);
   const checkpoint =
     before === null
       ? null
-      : createMockInstallationSettingsCheckpoint(
+      : createMockWorkspaceSettingsCheckpoint(
           state,
           target,
           'installation.settings.saved',
           before,
-          mockInstallationSettingsSnapshot(state, target),
+          mockWorkspaceSettingsSnapshot(state, target),
         );
-  const response = mockInstallationSettingsResponse(state, target, plan);
+  const response = mockWorkspaceSettingsResponse(state, target, plan);
   if (checkpoint !== null) {
     response.checkpoint_id = checkpoint.id;
     addAudit(
       target,
       checkpoint.action,
-      mockInstallationSettingsAuditSummary(
+      mockWorkspaceSettingsAuditSummary(
         'Saved',
         checkpoint.items.filter(({ changed }) => changed).length,
       ),
@@ -2884,10 +2884,10 @@ function saveMockInstallationSettings(
   return response;
 }
 
-function applyMockInstallationSettingsPlan(
+function applyMockWorkspaceSettingsPlan(
   state: MockState,
   target: MockTarget,
-  plan: MockInstallationSettingsPlan,
+  plan: MockWorkspaceSettingsPlan,
 ): void {
   if (plan.target?.changed === true) target.value = plan.target.next;
   for (const change of plan.repositories) {
@@ -2904,29 +2904,29 @@ function applyMockInstallationSettingsPlan(
   }
 }
 
-function mockInstallationSettingsResponse(
+function mockWorkspaceSettingsResponse(
   state: MockState,
   target: MockTarget,
-  plan: MockInstallationSettingsPlan,
-): InstallationSettingsBatchResponse {
-  const response: InstallationSettingsBatchResponse = {};
-  if (plan.target !== undefined) response.target = mockInstallationTargetState(target.value);
+  plan: MockWorkspaceSettingsPlan,
+): WorkspaceSettingsBatchResponse {
+  const response: WorkspaceSettingsBatchResponse = {};
+  if (plan.target !== undefined) response.target = mockWorkspaceTargetState(target.value);
   if (plan.repositories.length > 0) {
     response.repositories = plan.repositories
-      .map(({ stored }) => mockInstallationRepositoryState(stored.detail))
+      .map(({ stored }) => mockWorkspaceRepositoryState(stored.detail))
       .sort((left, right) => left.repository_id.localeCompare(right.repository_id));
   }
   if (plan.syncConfigs.length > 0) {
     response.sync_configs = plan.syncConfigs
       .map(({ key, next }) =>
-        mockInstallationSyncConfigState(target.value.id, state.sync.get(key) ?? next),
+        mockWorkspaceSyncConfigState(target.value.id, state.sync.get(key) ?? next),
       )
       .sort((left, right) => left.kind.localeCompare(right.kind));
   }
   if (plan.syncOverrides.length > 0) {
     response.sync_overrides = plan.syncOverrides
       .map(({ key, next, repository }) =>
-        mockInstallationSyncOverrideState(
+        mockWorkspaceSyncOverrideState(
           target.value.id,
           repository.detail.repository.id,
           state.syncOverrides.get(key) ?? next,
@@ -2941,11 +2941,11 @@ function mockInstallationSettingsResponse(
   return response;
 }
 
-function prepareMockInstallationSettings(
+function prepareMockWorkspaceSettings(
   state: MockState,
   target: MockTarget,
-  input: InstallationSettingsBatchInput,
-): MockInstallationSettingsPlan {
+  input: WorkspaceSettingsBatchInput,
+): MockWorkspaceSettingsPlan {
   return {
     target:
       input.target === undefined ? undefined : prepareMockTargetSettings(target, input.target),
@@ -2963,9 +2963,9 @@ function prepareMockInstallationSettings(
 
 function prepareMockTargetSettings(
   target: MockTarget,
-  input: InstallationTargetSettingsInput,
+  input: WorkspaceTargetSettingsInput,
 ): MockPreparedChange<PanelTarget> {
-  const current = mockInstallationTargetDocument(target.value);
+  const current = mockWorkspaceTargetDocument(target.value);
   const proposed = {
     repository_default_enabled: input.repository_default_enabled,
     pending_ci_mode_default: input.pending_ci_mode_default,
@@ -2989,14 +2989,14 @@ function prepareMockTargetSettings(
             target_id: target.value.id,
             expected_revision: input.expected_revision,
             actual_revision: target.value.revision,
-            latest: mockInstallationTargetState(target.value),
+            latest: mockWorkspaceTargetState(target.value),
           },
   };
 }
 
 function prepareMockRepositorySettings(
   target: MockTarget,
-  input: InstallationRepositorySettingsInput,
+  input: WorkspaceRepositorySettingsInput,
 ): MockPreparedChange<RepositoryDetail> & { stored: MockRepository } {
   const stored = findRepository(target, input.repository_id);
   const proposed = {
@@ -3009,7 +3009,7 @@ function prepareMockRepositorySettings(
     ignore_repository_file: input.ignore_repository_file,
   };
   const next = structuredClone(stored.detail);
-  const changed = !sameMockDocument(mockInstallationRepositoryDocument(stored.detail), proposed);
+  const changed = !sameMockDocument(mockWorkspaceRepositoryDocument(stored.detail), proposed);
   if (changed) {
     next.repository.enabled_override = proposed.enabled_override;
     next.pending_ci_mode_override = proposed.pending_ci_mode_override;
@@ -3036,7 +3036,7 @@ function prepareMockRepositorySettings(
             repository_id: stored.detail.repository.id,
             expected_revision: input.expected_revision,
             actual_revision: stored.detail.revision,
-            latest: mockInstallationRepositoryState(stored.detail),
+            latest: mockWorkspaceRepositoryState(stored.detail),
           },
   };
 }
@@ -3044,7 +3044,7 @@ function prepareMockRepositorySettings(
 function prepareMockSyncConfigSettings(
   state: MockState,
   targetId: string,
-  input: InstallationSyncConfigSettingsInput,
+  input: WorkspaceSyncConfigSettingsInput,
 ): MockPreparedChange<SyncConfig> & { key: string } {
   const key = `${targetId}/${input.kind}`;
   const stored = state.sync.get(key);
@@ -3074,7 +3074,7 @@ function prepareMockSyncConfigSettings(
             kind: input.kind,
             expected_revision: input.expected_revision,
             actual_revision: current.revision,
-            latest: mockInstallationSyncConfigState(targetId, current),
+            latest: mockWorkspaceSyncConfigState(targetId, current),
           },
   };
 }
@@ -3082,7 +3082,7 @@ function prepareMockSyncConfigSettings(
 function prepareMockSyncOverrideSettings(
   state: MockState,
   target: MockTarget,
-  input: InstallationSyncOverrideSettingsInput,
+  input: WorkspaceSyncOverrideSettingsInput,
 ): MockPreparedChange<SyncOverride> & { key: string; repository: MockRepository } {
   const repository = findRepository(target, input.repository_id);
   const key = `${input.repository_id}/${input.kind}`;
@@ -3116,7 +3116,7 @@ function prepareMockSyncOverrideSettings(
             kind: input.kind,
             expected_revision: input.expected_revision,
             actual_revision: current.revision,
-            latest: mockInstallationSyncOverrideState(
+            latest: mockWorkspaceSyncOverrideState(
               target.value.id,
               repository.detail.repository.id,
               current,
@@ -3125,7 +3125,7 @@ function prepareMockSyncOverrideSettings(
   };
 }
 
-function validateMockInstallationSettingsBatch(input: InstallationSettingsBatchInput): void {
+function validateMockWorkspaceSettingsBatch(input: WorkspaceSettingsBatchInput): void {
   const repositories = mockBatchArray(input.repositories, 'repositories');
   const syncConfigs = mockBatchArray(input.sync_configs, 'Sync configurations');
   const syncOverrides = mockBatchArray(input.sync_overrides, 'repository Sync settings');
@@ -3173,11 +3173,11 @@ function validateMockRevision(revision: number): void {
 }
 
 function compareMockSettingsConflicts(
-  left: InstallationSettingsConflict,
-  right: InstallationSettingsConflict,
+  left: WorkspaceSettingsConflict,
+  right: WorkspaceSettingsConflict,
 ): number {
   const order = ['target', 'repository', 'sync_config', 'sync_override'];
-  const key = (conflict: InstallationSettingsConflict): string =>
+  const key = (conflict: WorkspaceSettingsConflict): string =>
     [
       order.indexOf(conflict.resource),
       'repository_id' in conflict ? conflict.repository_id : '',
@@ -3186,7 +3186,7 @@ function compareMockSettingsConflicts(
   return key(left).localeCompare(key(right));
 }
 
-interface MockInstallationSnapshotEntry {
+interface MockWorkspaceSnapshotEntry {
   kind: SettingsCheckpointItem['kind'];
   repository_id?: string;
   repository_full_name?: string;
@@ -3194,20 +3194,20 @@ interface MockInstallationSnapshotEntry {
   state: SettingsCheckpointState;
 }
 
-type MockInstallationSettingsSnapshot = Map<string, MockInstallationSnapshotEntry>;
+type MockWorkspaceSettingsSnapshot = Map<string, MockWorkspaceSnapshotEntry>;
 
-function mockInstallationSettingsSnapshot(
+function mockWorkspaceSettingsSnapshot(
   state: MockState,
   target: MockTarget,
-): MockInstallationSettingsSnapshot {
-  const snapshot: MockInstallationSettingsSnapshot = new Map();
-  const add = (entry: MockInstallationSnapshotEntry): void => {
-    snapshot.set(mockInstallationCheckpointIdentity(entry), entry);
+): MockWorkspaceSettingsSnapshot {
+  const snapshot: MockWorkspaceSettingsSnapshot = new Map();
+  const add = (entry: MockWorkspaceSnapshotEntry): void => {
+    snapshot.set(mockWorkspaceCheckpointIdentity(entry), entry);
   };
   add({
     kind: 'target',
-    state: mockInstallationCheckpointState(
-      mockInstallationTargetCheckpointDocument(target.value),
+    state: mockWorkspaceCheckpointState(
+      mockWorkspaceTargetCheckpointDocument(target.value),
       target.value.revision,
     ),
   });
@@ -3216,8 +3216,8 @@ function mockInstallationSettingsSnapshot(
       kind: 'repository',
       repository_id: repository.detail.repository.id,
       repository_full_name: repository.detail.repository.full_name,
-      state: mockInstallationCheckpointState(
-        mockInstallationRepositoryCheckpointDocument(repository.detail),
+      state: mockWorkspaceCheckpointState(
+        mockWorkspaceRepositoryCheckpointDocument(repository.detail),
         repository.detail.revision,
       ),
     });
@@ -3227,8 +3227,8 @@ function mockInstallationSettingsSnapshot(
     add({
       kind: 'sync_config',
       sync_kind: config.kind as SyncKind,
-      state: mockInstallationCheckpointState(
-        mockInstallationSyncConfigCheckpointDocument(config),
+      state: mockWorkspaceCheckpointState(
+        mockWorkspaceSyncConfigCheckpointDocument(config),
         config.revision,
       ),
     });
@@ -3243,8 +3243,8 @@ function mockInstallationSettingsSnapshot(
         repository_id: repositoryId,
         repository_full_name: repository.detail.repository.full_name,
         sync_kind: override.kind as SyncKind,
-        state: mockInstallationCheckpointState(
-          mockInstallationSyncOverrideCheckpointDocument(override),
+        state: mockWorkspaceCheckpointState(
+          mockWorkspaceSyncOverrideCheckpointDocument(override),
           override.revision,
         ),
       });
@@ -3253,37 +3253,37 @@ function mockInstallationSettingsSnapshot(
   return snapshot;
 }
 
-function ensureMockInstallationSettingsBaseline(
+function ensureMockWorkspaceSettingsBaseline(
   state: MockState,
   target: MockTarget,
 ): SettingsCheckpoint {
-  const existing = [...state.installationSettings.checkpoints.entries()].find(
+  const existing = [...state.workspaceSettings.checkpoints.entries()].find(
     ([key, checkpoint]) =>
       key.startsWith(`${target.value.id}\u0000`) &&
       checkpoint.action === 'installation.settings.baseline',
   )?.[1];
   if (existing !== undefined) return existing;
-  return createMockInstallationSettingsCheckpoint(
+  return createMockWorkspaceSettingsCheckpoint(
     state,
     target,
     'installation.settings.baseline',
     new Map(),
-    mockInstallationSettingsSnapshot(state, target),
+    mockWorkspaceSettingsSnapshot(state, target),
     undefined,
     undefined,
     false,
   );
 }
 
-function createMockInstallationSettingsCheckpoint(
+function createMockWorkspaceSettingsCheckpoint(
   state: MockState,
   target: MockTarget,
   action:
     | 'installation.settings.baseline'
     | 'installation.settings.saved'
     | 'installation.settings.restored',
-  before: MockInstallationSettingsSnapshot,
-  after: MockInstallationSettingsSnapshot,
+  before: MockWorkspaceSettingsSnapshot,
+  after: MockWorkspaceSettingsSnapshot,
   restoredFromId?: string,
   restoredSide?: SettingsRestoreInput['state'],
   beforeCaptured = true,
@@ -3293,8 +3293,8 @@ function createMockInstallationSettingsCheckpoint(
     const earlier = before.get(key);
     const later = after.get(key);
     const identity = later ?? earlier;
-    if (identity === undefined) throw new Error('empty installation checkpoint identity');
-    return mockInstallationCheckpointItem(
+    if (identity === undefined) throw new Error('empty workspace checkpoint identity');
+    return mockWorkspaceCheckpointItem(
       identity,
       earlier?.state ?? null,
       later?.state ?? null,
@@ -3303,8 +3303,8 @@ function createMockInstallationSettingsCheckpoint(
     );
   });
 
-  const id = String(state.installationSettings.checkpointCounter);
-  state.installationSettings.checkpointCounter += 1;
+  const id = String(state.workspaceSettings.checkpointCounter);
+  state.workspaceSettings.checkpointCounter += 1;
   const checkpoint: SettingsCheckpoint = {
     id,
     action,
@@ -3315,16 +3315,16 @@ function createMockInstallationSettingsCheckpoint(
     affected_kinds: [...new Set(items.filter(({ changed }) => changed).map(({ kind }) => kind))],
     items,
   };
-  state.installationSettings.checkpoints.set(
-    mockInstallationCheckpointKey(target.value.id, id),
+  state.workspaceSettings.checkpoints.set(
+    mockWorkspaceCheckpointKey(target.value.id, id),
     structuredClone(checkpoint),
   );
   return checkpoint;
 }
 
-function mockInstallationCheckpointItem(
+function mockWorkspaceCheckpointItem(
   identity: Pick<
-    MockInstallationSnapshotEntry,
+    MockWorkspaceSnapshotEntry,
     'kind' | 'repository_id' | 'repository_full_name' | 'sync_kind'
   >,
   before: SettingsCheckpointState | null,
@@ -3353,11 +3353,11 @@ function mockInstallationCheckpointItem(
   };
 }
 
-function mockInstallationSettingsAuditSummary(verb: 'Saved' | 'Restored', count: number): string {
-  return `${verb} ${count} installation ${count === 1 ? 'setting' : 'settings'}`;
+function mockWorkspaceSettingsAuditSummary(verb: 'Saved' | 'Restored', count: number): string {
+  return `${verb} ${count} workspace ${count === 1 ? 'setting' : 'settings'}`;
 }
 
-function mockInstallationTargetDocument(target: PanelTarget) {
+function mockWorkspaceTargetDocument(target: PanelTarget) {
   return {
     repository_default_enabled: target.repository_default_enabled,
     pending_ci_mode_default: target.pending_ci_mode_default,
@@ -3368,7 +3368,7 @@ function mockInstallationTargetDocument(target: PanelTarget) {
   };
 }
 
-function mockInstallationRepositoryDocument(detail: RepositoryDetail) {
+function mockWorkspaceRepositoryDocument(detail: RepositoryDetail) {
   return {
     enabled_override: detail.repository.enabled_override,
     pending_ci_mode_override: detail.pending_ci_mode_override,
@@ -3380,22 +3380,22 @@ function mockInstallationRepositoryDocument(detail: RepositoryDetail) {
   };
 }
 
-function mockInstallationTargetCheckpointDocument(target: PanelTarget): Record<string, unknown> {
+function mockWorkspaceTargetCheckpointDocument(target: PanelTarget): Record<string, unknown> {
   return {
     repository_default_enabled: target.repository_default_enabled,
     pending_ci_mode_default: target.pending_ci_mode_default,
     pending_ci_branch_patterns_default: structuredClone(target.pending_ci_branch_patterns_default),
-    pending_ci_quiet_period_override: mockInstallationCheckpointDuration(
+    pending_ci_quiet_period_override: mockWorkspaceCheckpointDuration(
       target.pending_ci_quiet_period_seconds_override,
     ),
-    path_index_interval_override: mockInstallationCheckpointDuration(
+    path_index_interval_override: mockWorkspaceCheckpointDuration(
       target.path_index_interval_seconds_override,
     ),
     config_patch: structuredClone(target.config_patch),
   };
 }
 
-function mockInstallationRepositoryCheckpointDocument(
+function mockWorkspaceRepositoryCheckpointDocument(
   detail: RepositoryDetail,
 ): Record<string, unknown> {
   return {
@@ -3404,10 +3404,10 @@ function mockInstallationRepositoryCheckpointDocument(
     pending_ci_branch_patterns_override: structuredClone(
       detail.pending_ci_branch_patterns_override,
     ),
-    pending_ci_quiet_period_override: mockInstallationCheckpointDuration(
+    pending_ci_quiet_period_override: mockWorkspaceCheckpointDuration(
       detail.pending_ci_quiet_period_seconds_override,
     ),
-    path_index_interval_override: mockInstallationCheckpointDuration(
+    path_index_interval_override: mockWorkspaceCheckpointDuration(
       detail.path_index_interval_seconds_override,
     ),
     config_patch: structuredClone(detail.config_patch),
@@ -3415,14 +3415,14 @@ function mockInstallationRepositoryCheckpointDocument(
   };
 }
 
-function mockInstallationSyncConfigCheckpointDocument(config: SyncConfig): Record<string, unknown> {
+function mockWorkspaceSyncConfigCheckpointDocument(config: SyncConfig): Record<string, unknown> {
   return {
     enabled: config.enabled,
     document: canonicalStringify(mockSyncConfigDocument(config)),
   };
 }
 
-function mockInstallationSyncOverrideCheckpointDocument(
+function mockWorkspaceSyncOverrideCheckpointDocument(
   override: SyncOverride,
 ): Record<string, unknown> {
   return {
@@ -3431,11 +3431,11 @@ function mockInstallationSyncOverrideCheckpointDocument(
   };
 }
 
-function mockInstallationCheckpointDuration(seconds: number | null): number | null {
+function mockWorkspaceCheckpointDuration(seconds: number | null): number | null {
   return seconds === null ? null : seconds * 1_000_000_000;
 }
 
-function mockInstallationCheckpointState(
+function mockWorkspaceCheckpointState(
   document: Record<string, unknown>,
   revision: number,
 ): SettingsCheckpointState {
@@ -3447,13 +3447,13 @@ function mockInstallationCheckpointState(
   };
 }
 
-function mockInstallationCheckpointIdentity(
+function mockWorkspaceCheckpointIdentity(
   item: Pick<SettingsCheckpointItem, 'kind' | 'repository_id' | 'sync_kind'>,
 ): string {
   return [item.kind, item.repository_id ?? '', item.sync_kind ?? ''].join('\u0000');
 }
 
-function mockInstallationCheckpointKey(targetId: string, checkpointId: string): string {
+function mockWorkspaceCheckpointKey(targetId: string, checkpointId: string): string {
   return `${targetId}\u0000${checkpointId}`;
 }
 
@@ -3464,13 +3464,13 @@ function mockAuditCheckpointChangedKind(
   kinds: readonly SettingsCheckpointItemKind[],
 ): boolean {
   if (entry.settings_checkpoint_id === undefined) return false;
-  const checkpoint = state.installationSettings.checkpoints.get(
-    mockInstallationCheckpointKey(targetId, entry.settings_checkpoint_id),
+  const checkpoint = state.workspaceSettings.checkpoints.get(
+    mockWorkspaceCheckpointKey(targetId, entry.settings_checkpoint_id),
   );
   return checkpoint?.items.some((item) => item.changed && kinds.includes(item.kind)) ?? false;
 }
 
-function findMockInstallationSettingsCheckpoint(
+function findMockWorkspaceSettingsCheckpoint(
   state: MockState,
   targetId: string,
   encodedCheckpointId: string,
@@ -3483,10 +3483,10 @@ function findMockInstallationSettingsCheckpoint(
   }
   if (checkpointId === 'baseline') {
     const target = findTarget(state, encodeURIComponent(targetId));
-    return ensureMockInstallationSettingsBaseline(state, target);
+    return ensureMockWorkspaceSettingsBaseline(state, target);
   }
-  const checkpoint = state.installationSettings.checkpoints.get(
-    mockInstallationCheckpointKey(targetId, checkpointId),
+  const checkpoint = state.workspaceSettings.checkpoints.get(
+    mockWorkspaceCheckpointKey(targetId, checkpointId),
   );
   if (checkpoint === undefined) {
     throw new MockApiError(404, 'not_found', 'settings checkpoint not found');
@@ -3494,18 +3494,18 @@ function findMockInstallationSettingsCheckpoint(
   return checkpoint;
 }
 
-function inspectMockInstallationSettingsCheckpoint(
+function inspectMockWorkspaceSettingsCheckpoint(
   state: MockState,
   target: MockTarget,
   checkpoint: SettingsCheckpoint,
 ): SettingsCheckpoint {
   const inspection = structuredClone(checkpoint);
-  const seen = new Set(inspection.items.map(mockInstallationCheckpointIdentity));
-  for (const entry of mockInstallationSettingsSnapshot(state, target).values()) {
+  const seen = new Set(inspection.items.map(mockWorkspaceCheckpointIdentity));
+  for (const entry of mockWorkspaceSettingsSnapshot(state, target).values()) {
     if (entry.kind !== 'sync_config' && entry.kind !== 'sync_override') continue;
-    if (seen.has(mockInstallationCheckpointIdentity(entry))) continue;
+    if (seen.has(mockWorkspaceCheckpointIdentity(entry))) continue;
     inspection.items.push(
-      mockInstallationCheckpointItem(
+      mockWorkspaceCheckpointItem(
         entry,
         null,
         null,
@@ -3515,23 +3515,21 @@ function inspectMockInstallationSettingsCheckpoint(
     );
   }
   inspection.items = inspection.items.map((item) => {
-    const { current, incompatibility } = mockInstallationCheckpointCurrent(state, target, item);
+    const { current, incompatibility } = mockWorkspaceCheckpointCurrent(state, target, item);
     return {
       ...item,
       current: structuredClone(current),
-      before: inspectMockInstallationCheckpointSide(item, item.before, current, incompatibility),
-      after: inspectMockInstallationCheckpointSide(item, item.after, current, incompatibility),
+      before: inspectMockWorkspaceCheckpointSide(item, item.before, current, incompatibility),
+      after: inspectMockWorkspaceCheckpointSide(item, item.after, current, incompatibility),
     };
   });
   inspection.items.sort((left, right) =>
-    mockInstallationCheckpointIdentity(left).localeCompare(
-      mockInstallationCheckpointIdentity(right),
-    ),
+    mockWorkspaceCheckpointIdentity(left).localeCompare(mockWorkspaceCheckpointIdentity(right)),
   );
   return inspection;
 }
 
-function inspectMockInstallationCheckpointSide(
+function inspectMockWorkspaceCheckpointSide(
   item: SettingsCheckpointItem,
   side: SettingsCheckpointItem['before'],
   current: SettingsCheckpointState | null,
@@ -3548,7 +3546,7 @@ function inspectMockInstallationCheckpointSide(
   };
 }
 
-function mockInstallationCheckpointCurrent(
+function mockWorkspaceCheckpointCurrent(
   state: MockState,
   target: MockTarget,
   item: Pick<SettingsCheckpointItem, 'kind' | 'repository_id' | 'sync_kind'>,
@@ -3558,8 +3556,8 @@ function mockInstallationCheckpointCurrent(
 } {
   if (item.kind === 'target') {
     return {
-      current: mockInstallationCheckpointState(
-        mockInstallationTargetCheckpointDocument(target.value),
+      current: mockWorkspaceCheckpointState(
+        mockWorkspaceTargetCheckpointDocument(target.value),
         target.value.revision,
       ),
     };
@@ -3573,12 +3571,12 @@ function mockInstallationCheckpointCurrent(
         current: null,
         incompatibility: {
           code: 'repository_unavailable',
-          reason: 'This repository is no longer available in this installation',
+          reason: 'This repository is no longer available in this workspace',
         },
       };
     }
-    const current = mockInstallationCheckpointState(
-      mockInstallationRepositoryCheckpointDocument(repository.detail),
+    const current = mockWorkspaceCheckpointState(
+      mockWorkspaceRepositoryCheckpointDocument(repository.detail),
       repository.detail.revision,
     );
     return repository.detail.repository.available
@@ -3587,7 +3585,7 @@ function mockInstallationCheckpointCurrent(
           current,
           incompatibility: {
             code: 'repository_unavailable',
-            reason: 'This repository is no longer available in this installation',
+            reason: 'This repository is no longer available in this workspace',
           },
         };
   }
@@ -3597,8 +3595,8 @@ function mockInstallationCheckpointCurrent(
       current:
         config === undefined
           ? null
-          : mockInstallationCheckpointState(
-              mockInstallationSyncConfigCheckpointDocument(config),
+          : mockWorkspaceCheckpointState(
+              mockWorkspaceSyncConfigCheckpointDocument(config),
               config.revision,
             ),
     };
@@ -3616,7 +3614,7 @@ function mockInstallationCheckpointCurrent(
         current: null,
         incompatibility: {
           code: 'repository_unavailable',
-          reason: 'This repository is no longer available in this installation',
+          reason: 'This repository is no longer available in this workspace',
         },
       };
     }
@@ -3625,8 +3623,8 @@ function mockInstallationCheckpointCurrent(
       current:
         override === undefined
           ? null
-          : mockInstallationCheckpointState(
-              mockInstallationSyncOverrideCheckpointDocument(override),
+          : mockWorkspaceCheckpointState(
+              mockWorkspaceSyncOverrideCheckpointDocument(override),
               override.revision,
             ),
     };
@@ -3635,7 +3633,7 @@ function mockInstallationCheckpointCurrent(
     current: null,
     incompatibility: {
       code: 'resource_unavailable',
-      reason: 'This resource is not part of installation settings',
+      reason: 'This resource is not part of workspace settings',
     },
   };
 }
@@ -3648,32 +3646,32 @@ function sameMockCheckpointState(
   return left.digest === right.digest;
 }
 
-function restoreMockInstallationSettings(
+function restoreMockWorkspaceSettings(
   state: MockState,
   target: MockTarget,
   source: SettingsCheckpoint,
   input: SettingsRestoreInput,
-): InstallationSettingsBatchResponse {
-  const inspection = inspectMockInstallationSettingsCheckpoint(state, target, source);
-  const selections = validateMockInstallationRestoreSelections(input);
+): WorkspaceSettingsBatchResponse {
+  const inspection = inspectMockWorkspaceSettingsCheckpoint(state, target, source);
+  const selections = validateMockWorkspaceRestoreSelections(input);
   const items = new Map(
-    inspection.items.map((item) => [mockInstallationCheckpointIdentity(item), item]),
+    inspection.items.map((item) => [mockWorkspaceCheckpointIdentity(item), item]),
   );
-  const batch: InstallationSettingsBatchInput = {};
+  const batch: WorkspaceSettingsBatchInput = {};
   const removals: Array<{
     key: string;
     item: SettingsCheckpointItem;
   }> = [];
 
   for (const selection of selections) {
-    const key = mockInstallationCheckpointIdentity(selection);
+    const key = mockWorkspaceCheckpointIdentity(selection);
     const item = items.get(key);
     if (item === undefined) {
-      blockedMockInstallationRestore('selected resource is not represented by the checkpoint');
+      blockedMockWorkspaceRestore('selected resource is not represented by the checkpoint');
     }
     const selectedSide = item[input.state];
     if (!selectedSide.restorable) {
-      blockedMockInstallationRestore(
+      blockedMockWorkspaceRestore(
         selectedSide.incompatibility?.reason ?? 'the selected settings cannot be restored',
       );
     }
@@ -3688,15 +3686,15 @@ function restoreMockInstallationSettings(
     if (sameMockCheckpointState(selectedSide.state, item.current)) continue;
     if (selectedSide.state === null) {
       if (item.kind !== 'sync_config' && item.kind !== 'sync_override') {
-        blockedMockInstallationRestore('the selected checkpoint state is incomplete');
+        blockedMockWorkspaceRestore('the selected checkpoint state is incomplete');
       }
       removals.push({ key, item });
       continue;
     }
-    appendMockInstallationRestoreInput(batch, selection, selectedSide.state.document);
+    appendMockWorkspaceRestoreInput(batch, selection, selectedSide.state.document);
   }
 
-  const plan = mockInstallationRestorePlan(state, target, batch);
+  const plan = mockWorkspaceRestorePlan(state, target, batch);
   const changed =
     plan.target?.changed === true ||
     plan.repositories.some(({ changed }) => changed) ||
@@ -3711,9 +3709,9 @@ function restoreMockInstallationSettings(
     );
   }
 
-  ensureMockInstallationSettingsBaseline(state, target);
-  const before = mockInstallationSettingsSnapshot(state, target);
-  applyMockInstallationSettingsPlan(state, target, plan);
+  ensureMockWorkspaceSettingsBaseline(state, target);
+  const before = mockWorkspaceSettingsSnapshot(state, target);
+  applyMockWorkspaceSettingsPlan(state, target, plan);
   for (const { item } of effectiveRemovals) {
     if (item.kind === 'sync_config' && item.sync_kind !== undefined) {
       state.sync.delete(`${target.value.id}/${item.sync_kind}`);
@@ -3725,21 +3723,21 @@ function restoreMockInstallationSettings(
       state.syncOverrides.delete(`${item.repository_id}/${item.sync_kind}`);
     }
   }
-  const checkpoint = createMockInstallationSettingsCheckpoint(
+  const checkpoint = createMockWorkspaceSettingsCheckpoint(
     state,
     target,
     'installation.settings.restored',
     before,
-    mockInstallationSettingsSnapshot(state, target),
+    mockWorkspaceSettingsSnapshot(state, target),
     source.id,
     input.state,
   );
-  const response = mockInstallationSettingsResponse(state, target, plan);
+  const response = mockWorkspaceSettingsResponse(state, target, plan);
   response.checkpoint_id = checkpoint.id;
   addAudit(
     target,
     checkpoint.action,
-    mockInstallationSettingsAuditSummary(
+    mockWorkspaceSettingsAuditSummary(
       'Restored',
       checkpoint.items.filter(({ changed }) => changed).length,
     ),
@@ -3750,7 +3748,7 @@ function restoreMockInstallationSettings(
   return response;
 }
 
-function validateMockInstallationRestoreSelections(
+function validateMockWorkspaceRestoreSelections(
   input: SettingsRestoreInput,
 ): SettingsRestoreInput['selections'] {
   if (input.state !== 'before' && input.state !== 'after') {
@@ -3778,7 +3776,7 @@ function validateMockInstallationRestoreSelections(
         repository !== '' &&
         syncKind !== undefined &&
         SYNC_KINDS.includes(syncKind));
-    const key = mockInstallationCheckpointIdentity(selection);
+    const key = mockWorkspaceCheckpointIdentity(selection);
     if (!valid || seen.has(key)) {
       invalidMockSettingsBatch('restore selections must be known and unique');
     }
@@ -3787,11 +3785,11 @@ function validateMockInstallationRestoreSelections(
   return input.selections;
 }
 
-function mockInstallationRestorePlan(
+function mockWorkspaceRestorePlan(
   state: MockState,
   target: MockTarget,
-  batch: InstallationSettingsBatchInput,
-): MockInstallationSettingsPlan {
+  batch: WorkspaceSettingsBatchInput,
+): MockWorkspaceSettingsPlan {
   const hasResources =
     batch.target !== undefined ||
     (batch.repositories?.length ?? 0) > 0 ||
@@ -3800,16 +3798,16 @@ function mockInstallationRestorePlan(
   if (!hasResources) {
     return { repositories: [], syncConfigs: [], syncOverrides: [] };
   }
-  validateMockInstallationSettingsBatch(batch);
-  return prepareMockInstallationSettings(state, target, batch);
+  validateMockWorkspaceSettingsBatch(batch);
+  return prepareMockWorkspaceSettings(state, target, batch);
 }
 
-function blockedMockInstallationRestore(message: string): never {
+function blockedMockWorkspaceRestore(message: string): never {
   throw new MockApiError(409, 'settings_restore_blocked', message);
 }
 
-function appendMockInstallationRestoreInput(
-  batch: InstallationSettingsBatchInput,
+function appendMockWorkspaceRestoreInput(
+  batch: WorkspaceSettingsBatchInput,
   selection: SettingsRestoreInput['selections'][number],
   document: Record<string, unknown>,
 ): void {
@@ -3833,7 +3831,7 @@ function appendMockInstallationRestoreInput(
       return;
     case 'repository':
       if (selection.repository_id === undefined) {
-        blockedMockInstallationRestore('repository selection is incomplete');
+        blockedMockWorkspaceRestore('repository selection is incomplete');
       }
       (batch.repositories ??= []).push({
         repository_id: selection.repository_id,
@@ -3857,7 +3855,7 @@ function appendMockInstallationRestoreInput(
       return;
     case 'sync_config': {
       if (selection.sync_kind === undefined) {
-        blockedMockInstallationRestore('Sync selection is incomplete');
+        blockedMockWorkspaceRestore('Sync selection is incomplete');
       }
       const enabled = mockCheckpointBoolean(document.enabled);
       const nested = mockCheckpointNestedDocument(document.document);
@@ -3882,7 +3880,7 @@ function appendMockInstallationRestoreInput(
     }
     case 'sync_override':
       if (selection.repository_id === undefined || selection.sync_kind === undefined) {
-        blockedMockInstallationRestore('repository Sync selection is incomplete');
+        blockedMockWorkspaceRestore('repository Sync selection is incomplete');
       }
       (batch.sync_overrides ??= []).push({
         repository_id: selection.repository_id,
@@ -3893,13 +3891,13 @@ function appendMockInstallationRestoreInput(
       });
       return;
     default:
-      blockedMockInstallationRestore('unsupported installation settings selection');
+      blockedMockWorkspaceRestore('unsupported workspace settings selection');
   }
 }
 
 function mockCheckpointBoolean(value: unknown): boolean {
   if (typeof value !== 'boolean') {
-    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+    blockedMockWorkspaceRestore('the selected checkpoint contains invalid settings');
   }
   return value;
 }
@@ -3911,7 +3909,7 @@ function mockCheckpointNullableBoolean(value: unknown): boolean | null {
 
 function mockCheckpointPendingCIMode(value: unknown): 'labels' | 'checks' {
   if (value !== 'labels' && value !== 'checks') {
-    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+    blockedMockWorkspaceRestore('the selected checkpoint contains invalid settings');
   }
   return value;
 }
@@ -3922,7 +3920,7 @@ function mockCheckpointNullablePendingCIMode(value: unknown): 'labels' | 'checks
 
 function mockCheckpointBranchPatterns(value: unknown): { include: string[]; exclude: string[] } {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    blockedMockInstallationRestore('the selected checkpoint contains invalid settings');
+    blockedMockWorkspaceRestore('the selected checkpoint contains invalid settings');
   }
   const patterns = value as Record<string, unknown>;
   return {
@@ -3945,25 +3943,25 @@ function mockCheckpointSeconds(value: unknown): number | null {
     value < 0 ||
     value % 1_000_000_000 !== 0
   ) {
-    blockedMockInstallationRestore('the selected checkpoint contains an invalid duration');
+    blockedMockWorkspaceRestore('the selected checkpoint contains an invalid duration');
   }
   return value / 1_000_000_000;
 }
 
 function mockCheckpointConfigPatch(value: unknown): ConfigPatch {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+    blockedMockWorkspaceRestore('the selected checkpoint contains an invalid policy');
   }
   const patch = value as Record<string, unknown>;
   for (const [key, held] of Object.entries(patch)) {
     if (key === 'formatting') {
       if (parseFormattingPatch(held) === null) {
-        blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+        blockedMockWorkspaceRestore('the selected checkpoint contains an invalid policy');
       }
       continue;
     }
     if (!CONFIG_KEYS.includes(key as ConfigKey) || !isMockConfigValue(key as ConfigKey, held)) {
-      blockedMockInstallationRestore('the selected checkpoint contains an invalid policy');
+      blockedMockWorkspaceRestore('the selected checkpoint contains an invalid policy');
     }
   }
   return structuredClone(patch) as ConfigPatch;
@@ -3985,36 +3983,36 @@ function isMockConfigValue(key: ConfigKey, value: unknown): boolean {
 
 function mockCheckpointNestedDocument(value: unknown): Record<string, unknown> {
   if (typeof value !== 'string') {
-    blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+    blockedMockWorkspaceRestore('the selected checkpoint contains an invalid Sync document');
   }
   try {
     const parsed: unknown = JSON.parse(value);
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+      blockedMockWorkspaceRestore('the selected checkpoint contains an invalid Sync document');
     }
     return parsed as Record<string, unknown>;
   } catch (error) {
     if (error instanceof MockApiError) throw error;
-    blockedMockInstallationRestore('the selected checkpoint contains an invalid Sync document');
+    blockedMockWorkspaceRestore('the selected checkpoint contains an invalid Sync document');
   }
 }
 
 function mockCheckpointStrings(value: unknown): string[] {
   if (!Array.isArray(value) || !value.every(isStringValue)) {
-    blockedMockInstallationRestore('the selected checkpoint contains an invalid string list');
+    blockedMockWorkspaceRestore('the selected checkpoint contains an invalid string list');
   }
   return structuredClone(value);
 }
 
 function mockCheckpointLabels(
   value: unknown,
-): Extract<InstallationSyncConfigSettingsInput, { kind: 'labels' }>['labels'] {
+): Extract<WorkspaceSyncConfigSettingsInput, { kind: 'labels' }>['labels'] {
   if (!Array.isArray(value)) {
-    blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+    blockedMockWorkspaceRestore('the selected checkpoint contains invalid labels');
   }
   const labels = value.map((entry) => {
     if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
-      blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+      blockedMockWorkspaceRestore('the selected checkpoint contains invalid labels');
     }
     const label = entry as Record<string, unknown>;
     if (
@@ -4022,7 +4020,7 @@ function mockCheckpointLabels(
       typeof label.color !== 'string' ||
       (label.description !== undefined && typeof label.description !== 'string')
     ) {
-      blockedMockInstallationRestore('the selected checkpoint contains invalid labels');
+      blockedMockWorkspaceRestore('the selected checkpoint contains invalid labels');
     }
     return {
       name: label.name,
@@ -4043,28 +4041,26 @@ function mockSyncConfigDocument(config: SyncConfig): Record<string, unknown> {
     : structuredClone(config.document);
 }
 
-function mockInstallationTargetState(target: PanelTarget): InstallationTargetSettingsState {
+function mockWorkspaceTargetState(target: PanelTarget): WorkspaceTargetSettingsState {
   return {
     target_id: target.id,
-    ...structuredClone(mockInstallationTargetDocument(target)),
+    ...structuredClone(mockWorkspaceTargetDocument(target)),
     revision: target.revision,
   };
 }
 
-function mockInstallationRepositoryState(
-  detail: RepositoryDetail,
-): InstallationRepositorySettingsState {
+function mockWorkspaceRepositoryState(detail: RepositoryDetail): WorkspaceRepositorySettingsState {
   return {
     repository_id: detail.repository.id,
-    ...structuredClone(mockInstallationRepositoryDocument(detail)),
+    ...structuredClone(mockWorkspaceRepositoryDocument(detail)),
     revision: detail.revision,
   };
 }
 
-function mockInstallationSyncConfigState(
+function mockWorkspaceSyncConfigState(
   targetId: string,
   config: SyncConfig,
-): InstallationSyncConfigSettingsState {
+): WorkspaceSyncConfigSettingsState {
   if (!SYNC_KINDS.includes(config.kind as SyncKind)) throw new Error('mock Sync kind is invalid');
   return {
     target_id: targetId,
@@ -4075,11 +4071,11 @@ function mockInstallationSyncConfigState(
   };
 }
 
-function mockInstallationSyncOverrideState(
+function mockWorkspaceSyncOverrideState(
   targetId: string,
   repositoryId: string,
   override: SyncOverride,
-): InstallationSyncOverrideSettingsState {
+): WorkspaceSyncOverrideSettingsState {
   if (!SYNC_KINDS.includes(override.kind as SyncKind)) throw new Error('mock Sync kind is invalid');
   return {
     target_id: targetId,
@@ -4126,7 +4122,7 @@ function invalidMockSettingsBatch(message: string): never {
   throw new MockApiError(400, 'invalid_request', message);
 }
 
-function rootInstallationValue(target: MockTarget): RootInstallation {
+function rootWorkspaceValue(target: MockTarget): RootWorkspace {
   const login = target.value.account.login;
   const permissionPending = login === 'team-01';
   const syncError = login === 'team-02';
@@ -4700,11 +4696,11 @@ function copyConfig(value: ConfigValues): ConfigValues {
 }
 
 function rootOverviewValue(state: MockState): RootOverview {
-  const installations = state.targets.map((target) => rootInstallationValue(target));
+  const workspaces = state.targets.map((target) => rootWorkspaceValue(target));
   const repositories = state.targets.flatMap((target) => target.repositories);
   const recentFailures = state.targets
     .flatMap((target) =>
-      target.failures.map((failure) => ({ installation: target.value.account, failure })),
+      target.failures.map((failure) => ({ workspace: target.value.account, failure })),
     )
     .sort(
       (left, right) => Date.parse(right.failure.occurred_at) - Date.parse(left.failure.occurred_at),
@@ -4728,18 +4724,16 @@ function rootOverviewValue(state: MockState): RootOverview {
       ).length,
     },
     ownership: {
-      fresh: installations.filter(
-        (installation) =>
-          installation.ownership.status === 'fresh' && !installation.ownership.stale,
+      fresh: workspaces.filter(
+        (workspace) => workspace.ownership.status === 'fresh' && !workspace.ownership.stale,
       ).length,
-      stale: installations.filter(
-        (installation) => installation.ownership.status === 'fresh' && installation.ownership.stale,
+      stale: workspaces.filter(
+        (workspace) => workspace.ownership.status === 'fresh' && workspace.ownership.stale,
       ).length,
-      permission_pending: installations.filter(
-        (installation) => installation.ownership.status === 'permission_pending',
+      permission_pending: workspaces.filter(
+        (workspace) => workspace.ownership.status === 'permission_pending',
       ).length,
-      error: installations.filter((installation) => installation.ownership.status === 'error')
-        .length,
+      error: workspaces.filter((workspace) => workspace.ownership.status === 'error').length,
     },
     active_elevations: [...state.elevations.values()].filter(
       (elevation) => Date.parse(elevation.expires_at) > Date.now(),
@@ -4859,7 +4853,7 @@ function saveMockScheduleProfile(
     timezone: input.timezone,
     system: existing?.system ?? false,
     revision: (existing?.revision ?? 0) + 1,
-    affected_installations: existing?.affected_installations ?? 0,
+    affected_workspaces: existing?.affected_workspaces ?? 0,
     affected_items: existing?.affected_items ?? 0,
     affected_policies: existing?.affected_policies ?? 0,
     windows: structuredClone(input.windows),
@@ -4967,7 +4961,7 @@ function mockQueuePage(items: QueueItem[], query = new URLSearchParams()): Queue
   const search = (query.get('search') ?? '').trim().toLowerCase();
   const filtered = items.filter(
     (item) =>
-      matchesQueueQuery(query, 'installation', item.target_id) &&
+      matchesQueueQuery(query, 'workspace', item.target_id) &&
       matchesQueueQuery(query, 'repository', item.repository_id) &&
       matchesQueueQuery(query, 'profile', item.profile_id ?? 'immediate') &&
       (states.length === 0 || states.includes(item.state)) &&
@@ -5205,16 +5199,16 @@ function pendingCIDetail(request: PendingCIRequest): PendingCIDetail {
 }
 
 function rootAuditEntries(state: MockState): AuditEntry[] {
-  const installationEvents = state.targets.flatMap((target) =>
+  const workspaceEvents = state.targets.flatMap((target) =>
     target.audit.map((entry) => ({
       ...entry,
       id: `${target.value.id}-${entry.id}`,
       category: 'configuration' as const,
       target_id: target.value.id,
-      installation: target.value.account,
+      workspace: target.value.account,
     })),
   );
-  const primaryInstallation = state.targets[0]?.value.account;
+  const primaryWorkspace = state.targets[0]?.value.account;
   const subject = state.users[0]?.account;
   const now = Date.now();
   const systemEvents: AuditEntry[] = [
@@ -5229,36 +5223,36 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
     {
       id: 'root-elevation-1',
       category: 'elevation',
-      installation: primaryInstallation,
+      workspace: primaryWorkspace,
       actor: VIEWER,
       elevation_id: 'elevation-204',
       action: 'elevation.started',
-      summary: 'Started audited installation access',
+      summary: 'Started audited workspace access',
       created_at: new Date(now - 22 * 60_000).toISOString(),
     },
     {
       id: 'root-access-1',
       category: 'access',
-      installation: primaryInstallation,
+      workspace: primaryWorkspace,
       actor: VIEWER,
       subject,
       action: 'target.access.updated',
-      summary: 'Updated installation access',
+      summary: 'Updated workspace access',
       created_at: new Date(now - 48 * 60_000).toISOString(),
     },
     {
       id: 'root-ownership-1',
       category: 'ownership',
-      installation: primaryInstallation,
+      workspace: primaryWorkspace,
       actor: VIEWER,
       action: 'ownership.synced',
-      summary: 'Synchronized installation owners',
+      summary: 'Synchronized workspace owners',
       created_at: new Date(now - 76 * 60_000).toISOString(),
     },
     {
       id: 'root-notification-1',
       category: 'notification',
-      installation: primaryInstallation,
+      workspace: primaryWorkspace,
       actor: VIEWER,
       action: 'owner.notification.created',
       summary: 'Notified owners about elevated access',
@@ -5266,7 +5260,7 @@ function rootAuditEntries(state: MockState): AuditEntry[] {
     },
   ];
 
-  return [...installationEvents, ...state.runtime.audit, ...systemEvents].sort(
+  return [...workspaceEvents, ...state.runtime.audit, ...systemEvents].sort(
     (left, right) => Date.parse(right.created_at) - Date.parse(left.created_at),
   );
 }
@@ -5292,7 +5286,7 @@ function rootTargetValue(state: MockState, target: MockTarget): PanelTarget {
 
 function requireRootWrite(state: MockState, target: MockTarget): void {
   if (mockRootOwns(target) || activeMockElevation(state, target.value.id) !== undefined) return;
-  throw new MockApiError(403, 'elevation_required', 'start elevated access for this installation');
+  throw new MockApiError(403, 'elevation_required', 'start elevated access for this workspace');
 }
 
 function findUser(state: MockState, encodedId: string): PanelUser {
@@ -5347,7 +5341,7 @@ function refuseUnusableInvitation(
       throw new MockApiError(
         409,
         'already_has_access',
-        'this user already has access to this installation; change their role instead',
+        'this user already has access to this workspace; change their role instead',
       );
     }
   }
@@ -5522,7 +5516,7 @@ function targetAccessFor(state: MockState, targetId: string): Map<string, Target
 
 function scopedUserValue(state: MockState, targetId: string, user: PanelUser): PanelUser {
   const access = targetAccessFor(state, targetId).get(user.account.id);
-  if (access === undefined) throw new MockApiError(404, 'not_found', 'installation role not found');
+  if (access === undefined) throw new MockApiError(404, 'not_found', 'workspace role not found');
   return { ...structuredClone(user), target_access: structuredClone(access) };
 }
 
@@ -5618,7 +5612,7 @@ function mockDecisions(user: PanelUser, target: PanelTarget): AccessDecision[] {
     user.target_access?.suspended === true
       ? {
           action: 'target.access.suspended',
-          summary: `suspended installation access${user.target_access.suspension_reason === undefined ? '' : `: ${user.target_access.suspension_reason}`}`,
+          summary: `suspended workspace access${user.target_access.suspension_reason === undefined ? '' : `: ${user.target_access.suspension_reason}`}`,
           created_at: user.target_access.updated_at ?? new Date(now - 3 * 86_400_000).toISOString(),
         }
       : {
@@ -5636,7 +5630,7 @@ function mockDecisions(user: PanelUser, target: PanelTarget): AccessDecision[] {
       id: `${user.account.id}-decision-2`,
       actor: VIEWER,
       action: 'target.access.updated',
-      summary: 'updated installation access',
+      summary: 'updated workspace access',
       created_at: new Date(now - 18 * 86_400_000).toISOString(),
     },
     {

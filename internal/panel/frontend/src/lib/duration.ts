@@ -5,7 +5,7 @@ export type DurationUnit = 'seconds' | 'minutes' | 'hours' | 'days';
  * A number of seconds, said the way somebody would say it.
  *
  * Three settings pages now hold a duration a person types - the process's file
- * list refresh interval, an installation's, and one repository's - and each was
+ * list refresh interval, a workspace's, and one repository's - and each was
  * about to work out "3600 is an hour" for itself. The seconds are what the wire
  * carries; these are what a field shows.
  */

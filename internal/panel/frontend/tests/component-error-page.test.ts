@@ -23,8 +23,8 @@ describe('ErrorPage [Component]', () => {
       failure: { status: 404, code: '', message: 'Not found' },
       insidePanel: true,
       destinations: [
-        { label: 'Repositories', href: '/i/acme/repositories' },
-        { label: 'Queue', href: '/i/acme/queue' },
+        { label: 'Repositories', href: '/workspace/acme/repositories' },
+        { label: 'Queue', href: '/workspace/acme/queue' },
       ],
     });
 

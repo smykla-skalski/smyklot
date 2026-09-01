@@ -6,11 +6,11 @@
   import Chip from '#lib/components/Chip.svelte';
   import IdentityRow from '#lib/components/IdentityRow.svelte';
   import TableEmptyState from '#lib/components/TableEmptyState.svelte';
-  import { INSTALLATIONS } from '../support/fixtures.js';
+  import { WORKSPACES } from '../support/fixtures.js';
 
-  type Installation = (typeof INSTALLATIONS)[number];
+  type Workspace = (typeof WORKSPACES)[number];
 
-  const COLUMNS = [{ label: 'Installation' }, { label: 'Repositories' }, { label: 'Ownership' }];
+  const COLUMNS = [{ label: 'Workspace' }, { label: 'Repositories' }, { label: 'Ownership' }];
 
   const { Story } = defineMeta({
     title: 'Primitives/DataTable',
@@ -19,8 +19,8 @@
        Storybook's meta types the component as `unknown`, so the generic only infers
        where the props are written on the element itself. */
     args: {
-      caption: 'Installation catalog',
-      regionLabel: 'Installation catalog table',
+      caption: 'Workspace catalog',
+      regionLabel: 'Workspace catalog table',
       columns: COLUMNS,
     },
   });
@@ -46,25 +46,25 @@
 <Story name="Rows">
   {#snippet template()}
     <DataTable
-      caption="Installation catalog"
-      regionLabel="Installation catalog table"
+      caption="Workspace catalog"
+      regionLabel="Workspace catalog table"
       columns={COLUMNS}
-      rows={INSTALLATIONS}
-      rowKey={(row: Installation) => row.id}
+      rows={WORKSPACES}
+      rowKey={(row: Workspace) => row.id}
     >
-      {#snippet cells(installation: Installation)}
+      {#snippet cells(workspace: Workspace)}
         <th scope="row">
           <IdentityRow>
-            {#snippet mark()}<span class="mono">{installation.account.login.slice(0, 2)}</span
+            {#snippet mark()}<span class="mono">{workspace.account.login.slice(0, 2)}</span
               >{/snippet}
-            {#snippet name()}<strong>{installation.account.display_name}</strong>{/snippet}
-            {#snippet handle()}<span class="mono">@{installation.account.login}</span>{/snippet}
+            {#snippet name()}<strong>{workspace.account.display_name}</strong>{/snippet}
+            {#snippet handle()}<span class="mono">@{workspace.account.login}</span>{/snippet}
           </IdentityRow>
         </th>
-        <td>{installation.repository_counts.enabled} of {installation.repository_counts.total}</td>
+        <td>{workspace.repository_counts.enabled} of {workspace.repository_counts.total}</td>
         <td>
-          <Chip tone={installation.ownership.stale ? 'neutral' : 'clear'} dot>
-            {installation.ownership.stale ? 'Stale' : 'Fresh'}
+          <Chip tone={workspace.ownership.stale ? 'neutral' : 'clear'} dot>
+            {workspace.ownership.stale ? 'Stale' : 'Fresh'}
           </Chip>
         </td>
       {/snippet}
@@ -80,16 +80,16 @@
 <Story name="Empty">
   {#snippet template()}
     <DataTable
-      caption="Installation catalog"
-      regionLabel="Installation catalog table"
+      caption="Workspace catalog"
+      regionLabel="Workspace catalog table"
       columns={COLUMNS}
       rows={[]}
-      rowKey={(row: Installation) => row.id}
+      rowKey={(row: Workspace) => row.id}
     >
       {#snippet cells()}{/snippet}
       {#snippet empty()}
         <TableEmptyState
-          title="No installations match"
+          title="No workspaces match"
           description="Nothing in the catalog matches this search"
           actionLabel="Clear search"
           onAction={fn()}
@@ -103,16 +103,16 @@
 <Story name="Clickable rows">
   {#snippet template()}
     <DataTable
-      caption="Installation catalog"
-      regionLabel="Installation catalog table"
+      caption="Workspace catalog"
+      regionLabel="Workspace catalog table"
       columns={COLUMNS}
-      rows={INSTALLATIONS}
-      rowKey={(row: Installation) => row.id}
+      rows={WORKSPACES}
+      rowKey={(row: Workspace) => row.id}
       rowAttrs={() => ({ class: 'data-row', tabindex: 0, onclick: fn() })}
     >
-      {#snippet cells(installation: Installation)}
-        <th scope="row">{installation.account.display_name}</th>
-        <td>{installation.repository_counts.total}</td>
+      {#snippet cells(workspace: Workspace)}
+        <th scope="row">{workspace.account.display_name}</th>
+        <td>{workspace.repository_counts.total}</td>
         <td><Chip tone="clear" dot>Fresh</Chip></td>
       {/snippet}
     </DataTable>

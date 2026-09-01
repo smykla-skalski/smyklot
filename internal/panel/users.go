@@ -21,12 +21,12 @@ type addUserRequest struct {
 	Role  *storage.InstallationRole `json:"role"`
 }
 
-type nullableInstallationRole struct {
+type nullableWorkspaceRole struct {
 	Value   *storage.InstallationRole
 	Present bool
 }
 
-func (value *nullableInstallationRole) UnmarshalJSON(data []byte) error {
+func (value *nullableWorkspaceRole) UnmarshalJSON(data []byte) error {
 	value.Present = true
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		value.Value = nil
@@ -43,13 +43,13 @@ func (value *nullableInstallationRole) UnmarshalJSON(data []byte) error {
 }
 
 type updateTargetUserRequest struct {
-	Role             nullableInstallationRole `json:"role"`
-	Suspended        *bool                    `json:"suspended"`
-	SuspensionReason *string                  `json:"suspension_reason"`
-	ExpectedRevision *int64                   `json:"expected_revision"`
+	Role             nullableWorkspaceRole `json:"role"`
+	Suspended        *bool                 `json:"suspended"`
+	SuspensionReason *string               `json:"suspension_reason"`
+	ExpectedRevision *int64                `json:"expected_revision"`
 }
 
-type installationUserManager struct {
+type workspaceUserManager struct {
 	Actor            storage.Account
 	ActorUser        storage.PanelUser
 	Access           storage.TargetAccess
@@ -64,15 +64,15 @@ func (s *Server) getTargetUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.listInstallationUsers(w, r, installationUserManager{
+	s.listWorkspaceUsers(w, r, workspaceUserManager{
 		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
 	})
 }
 
-func (s *Server) listInstallationUsers(
+func (s *Server) listWorkspaceUsers(
 	w http.ResponseWriter,
 	r *http.Request,
-	manager installationUserManager,
+	manager workspaceUserManager,
 ) {
 	page, err := parsePanelUserPage(r.URL.Query())
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *Server) listInstallationUsers(
 		r.Context(), manager.TargetID, s.now().UTC(), page,
 	)
 	if err != nil {
-		s.writeInstallationMutationError(w, manager, err)
+		s.writeWorkspaceMutationError(w, manager, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, targetPanelUserPageDTO(users, func(user storage.TargetPanelUser) bool {
@@ -97,10 +97,10 @@ func (s *Server) getTargetUserDecisions(w http.ResponseWriter, r *http.Request) 
 	if _, _, _, ok := s.requireTargetUserManager(w, r); !ok {
 		return
 	}
-	s.listInstallationUserDecisions(w, r, r.PathValue("target"))
+	s.listWorkspaceUserDecisions(w, r, r.PathValue("target"))
 }
 
-func (s *Server) listInstallationUserDecisions(
+func (s *Server) listWorkspaceUserDecisions(
 	w http.ResponseWriter,
 	r *http.Request,
 	targetID string,
@@ -131,15 +131,15 @@ func (s *Server) postTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.addInstallationUser(w, r, installationUserManager{
+	s.addWorkspaceUser(w, r, workspaceUserManager{
 		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
 	})
 }
 
-func (s *Server) addInstallationUser(
+func (s *Server) addWorkspaceUser(
 	w http.ResponseWriter,
 	r *http.Request,
-	manager installationUserManager,
+	manager workspaceUserManager,
 ) {
 	var input addUserRequest
 	if !decodeJSON(w, r, &input) {
@@ -161,7 +161,7 @@ func (s *Server) addInstallationUser(
 	}
 	subject, err := s.ensurePanelUser(r, account, manager.Actor.ID)
 	if err != nil {
-		s.writeInstallationMutationError(w, manager, err)
+		s.writeWorkspaceMutationError(w, manager, err)
 		return
 	}
 	current, err := s.store.ResolveTargetAccess(
@@ -183,7 +183,7 @@ func (s *Server) addInstallationUser(
 		Role: input.Role, ExpectedRevision: 0, ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeInstallationMutationError(w, manager, err)
+		s.writeWorkspaceMutationError(w, manager, err)
 		return
 	}
 	access, err := s.store.ResolveTargetAccess(
@@ -199,9 +199,9 @@ func (s *Server) addInstallationUser(
 	}, true))
 }
 
-func (s *Server) writeInstallationMutationError(
+func (s *Server) writeWorkspaceMutationError(
 	w http.ResponseWriter,
-	manager installationUserManager,
+	manager workspaceUserManager,
 	err error,
 ) {
 	if manager.RootWrite {
@@ -219,22 +219,22 @@ func (s *Server) putTargetUser(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.updateInstallationUser(w, r, installationUserManager{
+	s.updateWorkspaceUser(w, r, workspaceUserManager{
 		Actor: actor, ActorUser: actorUser, Access: actorAccess, TargetID: r.PathValue("target"),
 	})
 }
 
-func (s *Server) updateInstallationUser(
+func (s *Server) updateWorkspaceUser(
 	w http.ResponseWriter,
 	r *http.Request,
-	manager installationUserManager,
+	manager workspaceUserManager,
 ) {
 	var input updateTargetUserRequest
 	if !decodeJSON(w, r, &input) {
 		return
 	}
 	if !input.Role.Present || input.Suspended == nil || input.ExpectedRevision == nil ||
-		(input.Role.Value != nil && !validTargetInstallationRole(*input.Role.Value)) {
+		(input.Role.Value != nil && !validTargetWorkspaceRole(*input.Role.Value)) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request", "the workspace user policy is incomplete")
 		return
 	}
@@ -275,7 +275,7 @@ func (s *Server) updateInstallationUser(
 		ExpectedRevision: *input.ExpectedRevision, ChangedAt: s.now().UTC(),
 	})
 	if err != nil {
-		s.writeInstallationMutationError(w, manager, err)
+		s.writeWorkspaceMutationError(w, manager, err)
 		return
 	}
 	access, err := s.store.ResolveTargetAccess(
@@ -387,13 +387,13 @@ func validAccessReason(w http.ResponseWriter, raw *string) (*string, bool) {
 	return &value, true
 }
 
-func validTargetInstallationRole(role storage.InstallationRole) bool {
+func validTargetWorkspaceRole(role storage.InstallationRole) bool {
 	return role == storage.InstallationRoleNone || role == storage.InstallationRoleViewer ||
 		role == storage.InstallationRoleEditor || role == storage.InstallationRoleAdmin
 }
 
 func validTargetUserFilterRole(role storage.InstallationRole) bool {
-	return validTargetInstallationRole(role) || role == storage.InstallationRoleOwner
+	return validTargetWorkspaceRole(role) || role == storage.InstallationRoleOwner
 }
 
 func validGrantedTargetRole(role storage.InstallationRole) bool {

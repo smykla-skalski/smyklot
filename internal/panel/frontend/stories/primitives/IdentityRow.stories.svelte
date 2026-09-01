@@ -75,7 +75,7 @@
   {/snippet}
 </Story>
 
-<!-- The installations table leads with a monogram and links the name. -->
+<!-- The workspaces table leads with a monogram and links the name. -->
 <Story name="Monogram and link">
   {#snippet template()}
     <IdentityRow>

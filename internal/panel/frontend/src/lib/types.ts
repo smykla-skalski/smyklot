@@ -59,7 +59,7 @@ export interface PanelAccount {
   avatar_url: string | null;
 }
 
-export type InstallationRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
+export type WorkspaceRole = 'none' | 'viewer' | 'editor' | 'admin' | 'owner';
 export type SystemRole = 'none' | 'root' | 'super_root';
 export type PanelUserStatus = 'active' | 'banned' | 'removed';
 export type AccessSource = 'owner' | 'target' | 'suspended' | 'root' | 'elevation' | 'denied';
@@ -78,15 +78,15 @@ export interface PanelViewer {
 }
 
 export interface TargetUserAccess {
-  role: Exclude<InstallationRole, 'owner'> | null;
+  role: Exclude<WorkspaceRole, 'owner'> | null;
   suspended: boolean;
   suspension_reason?: string;
   revision: number;
-  affected_installations?: number;
+  affected_workspaces?: number;
   affected_items?: number;
   affected_policies?: number;
   updated_at?: string;
-  effective_role: InstallationRole;
+  effective_role: WorkspaceRole;
   source: AccessSource;
   capabilities: PanelCapabilities;
 }
@@ -121,7 +121,7 @@ export interface PanelUserPageRequest {
   query: string;
   sort: PanelUserSort;
   limit: number;
-  roles: InstallationRole[];
+  roles: WorkspaceRole[];
   statuses: PanelUserListStatus[];
 }
 
@@ -134,8 +134,8 @@ export interface RootPanelUser {
   removed_at?: string;
   last_login_at?: string;
   revision: number;
-  owned_installations: number;
-  assigned_installations: number;
+  owned_workspaces: number;
+  assigned_workspaces: number;
   manageable: boolean;
   can_manage_system_role: boolean;
 }
@@ -165,11 +165,11 @@ export type UpdateRootUserInput =
 
 export interface AddTargetUserInput {
   login: string;
-  role: Exclude<InstallationRole, 'none' | 'owner'>;
+  role: Exclude<WorkspaceRole, 'none' | 'owner'>;
 }
 
 export interface UpdateTargetUserInput {
-  role: Exclude<InstallationRole, 'owner'> | null;
+  role: Exclude<WorkspaceRole, 'owner'> | null;
   suspended: boolean;
   suspension_reason?: string;
   expected_revision: number;
@@ -186,7 +186,7 @@ export interface PanelInvitation {
   /** The scope's GitHub login, which is what identifies it there. */
   target_login?: string;
   target_kind?: 'Organization' | 'User';
-  role?: Exclude<InstallationRole, 'none'>;
+  role?: Exclude<WorkspaceRole, 'none'>;
   system_role?: Exclude<SystemRole, 'none' | 'super_root'>;
   status: InvitationStatus;
   expires_at: string;
@@ -218,7 +218,7 @@ export interface InvitationPageRequest {
   query: string;
   sort: InvitationSort;
   limit: number;
-  roles: Exclude<InstallationRole, 'none'>[];
+  roles: Exclude<WorkspaceRole, 'none'>[];
   statuses: InvitationStatus[];
 }
 
@@ -232,7 +232,7 @@ export interface AccessDecision {
 
 export interface AddTargetInvitationInput {
   login: string;
-  role: Exclude<InstallationRole, 'none' | 'owner'>;
+  role: Exclude<WorkspaceRole, 'none' | 'owner'>;
   expires_in_days: InvitationDays;
   /** Set only on the second, deliberate attempt after the invited identity declined. */
   acknowledge_declined?: boolean;
@@ -259,12 +259,12 @@ export interface PanelTarget {
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
   /**
-   * What this installation would use if it set nothing: what the running
+   * What this workspace would use if it set nothing: what the running
    * service resolved. Never null, so the panel prefills the deployment's own
    * answer rather than a number typed into a component.
    */
   pending_ci_quiet_period_seconds_inherited: number;
-  /** How often this installation's repositories have their file lists checked. */
+  /** How often this workspace's repositories have their file lists checked. */
   path_index_interval_seconds_override: number | null;
   path_index_interval_seconds_inherited: number;
   pending_ci_permissions: PendingCIPermissions;
@@ -275,7 +275,7 @@ export interface PanelTarget {
   formatting_sources: FormattingSources<ConfigSource>;
   revision: number;
   repository_counts: RepositoryCounts;
-  effective_role: InstallationRole;
+  effective_role: WorkspaceRole;
   access_source: AccessSource;
   capabilities: PanelCapabilities;
   suspension_reason?: string;
@@ -293,7 +293,7 @@ export interface OwnershipState {
   stale: boolean;
 }
 
-export interface RootInstallation {
+export interface RootWorkspace {
   id: string;
   installation_id: string;
   type: 'Organization' | 'User';
@@ -309,7 +309,7 @@ export interface RootInstallation {
 }
 
 export interface RootOverviewFailure {
-  installation: PanelAccount;
+  workspace: PanelAccount;
   failure: DeliveryFailure;
 }
 
@@ -522,7 +522,7 @@ export interface ScheduleProfile {
   system: boolean;
   archived_at?: string;
   revision: number;
-  affected_installations?: number;
+  affected_workspaces?: number;
   affected_items?: number;
   affected_policies?: number;
   windows: Array<{ weekday: number; start_minute: number; end_minute: number }>;
@@ -770,7 +770,7 @@ export interface RootRuntimeSettingsInput {
 
 export interface SecurityNotification {
   id: string;
-  installation: PanelAccount;
+  workspace: PanelAccount;
   actor: PanelAccount;
   elevation_id: string;
   audit_event_id: string;
@@ -894,8 +894,8 @@ export interface RepositoryPageRequest {
   setting: RepositorySettingFilter;
 }
 
-/** A complete installation-defaults document in one atomic settings save. */
-export interface InstallationTargetSettingsInput {
+/** A complete workspace-defaults document in one atomic settings save. */
+export interface WorkspaceTargetSettingsInput {
   repository_default_enabled: boolean;
   pending_ci_mode_default: PendingCIMode;
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
@@ -906,7 +906,7 @@ export interface InstallationTargetSettingsInput {
 }
 
 /** A complete repository-settings document in one atomic settings save. */
-export interface InstallationRepositorySettingsInput {
+export interface WorkspaceRepositorySettingsInput {
   repository_id: string;
   enabled_override: boolean | null;
   pending_ci_mode_override: PendingCIMode | null;
@@ -918,7 +918,7 @@ export interface InstallationRepositorySettingsInput {
   expected_revision: number;
 }
 
-export type InstallationSyncConfigSettingsInput =
+export type WorkspaceSyncConfigSettingsInput =
   | {
       kind: 'labels';
       enabled: boolean;
@@ -934,7 +934,7 @@ export type InstallationSyncConfigSettingsInput =
       expected_revision: number;
     };
 
-export interface InstallationSyncOverrideSettingsInput {
+export interface WorkspaceSyncOverrideSettingsInput {
   repository_id: string;
   kind: SyncKind;
   enabled: boolean | null;
@@ -942,29 +942,29 @@ export interface InstallationSyncOverrideSettingsInput {
   expected_revision: number;
 }
 
-export interface InstallationSettingsBatchInput {
-  target?: InstallationTargetSettingsInput;
-  repositories?: InstallationRepositorySettingsInput[];
-  sync_configs?: InstallationSyncConfigSettingsInput[];
-  sync_overrides?: InstallationSyncOverrideSettingsInput[];
+export interface WorkspaceSettingsBatchInput {
+  target?: WorkspaceTargetSettingsInput;
+  repositories?: WorkspaceRepositorySettingsInput[];
+  sync_configs?: WorkspaceSyncConfigSettingsInput[];
+  sync_overrides?: WorkspaceSyncOverrideSettingsInput[];
 }
 
-export interface InstallationTargetSettingsState extends Omit<
-  InstallationTargetSettingsInput,
+export interface WorkspaceTargetSettingsState extends Omit<
+  WorkspaceTargetSettingsInput,
   'expected_revision'
 > {
   target_id: string;
   revision: number;
 }
 
-export interface InstallationRepositorySettingsState extends Omit<
-  InstallationRepositorySettingsInput,
+export interface WorkspaceRepositorySettingsState extends Omit<
+  WorkspaceRepositorySettingsInput,
   'expected_revision'
 > {
   revision: number;
 }
 
-export interface InstallationSyncConfigSettingsState {
+export interface WorkspaceSyncConfigSettingsState {
   target_id: string;
   kind: SyncKind;
   enabled: boolean;
@@ -972,7 +972,7 @@ export interface InstallationSyncConfigSettingsState {
   revision: number;
 }
 
-export interface InstallationSyncOverrideSettingsState {
+export interface WorkspaceSyncOverrideSettingsState {
   target_id: string;
   repository_id: string;
   kind: SyncKind;
@@ -981,12 +981,12 @@ export interface InstallationSyncOverrideSettingsState {
   revision: number;
 }
 
-export interface InstallationSettingsBatchResponse {
+export interface WorkspaceSettingsBatchResponse {
   checkpoint_id?: string;
-  target?: InstallationTargetSettingsState;
-  repositories?: InstallationRepositorySettingsState[];
-  sync_configs?: InstallationSyncConfigSettingsState[];
-  sync_overrides?: InstallationSyncOverrideSettingsState[];
+  target?: WorkspaceTargetSettingsState;
+  repositories?: WorkspaceRepositorySettingsState[];
+  sync_configs?: WorkspaceSyncConfigSettingsState[];
+  sync_overrides?: WorkspaceSyncOverrideSettingsState[];
 }
 
 export type SettingsCheckpointItemKind =
@@ -1056,13 +1056,13 @@ export interface SettingsRestoreInput {
   selections: SettingsRestoreSelection[];
 }
 
-export type InstallationSettingsConflict =
+export type WorkspaceSettingsConflict =
   | {
       resource: 'target';
       target_id: string;
       expected_revision: number;
       actual_revision: number;
-      latest?: InstallationTargetSettingsState;
+      latest?: WorkspaceTargetSettingsState;
     }
   | {
       resource: 'repository';
@@ -1070,7 +1070,7 @@ export type InstallationSettingsConflict =
       repository_id: string;
       expected_revision: number;
       actual_revision: number;
-      latest?: InstallationRepositorySettingsState;
+      latest?: WorkspaceRepositorySettingsState;
     }
   | {
       resource: 'sync_config';
@@ -1078,7 +1078,7 @@ export type InstallationSettingsConflict =
       kind: SyncKind;
       expected_revision: number;
       actual_revision: number;
-      latest?: InstallationSyncConfigSettingsState;
+      latest?: WorkspaceSyncConfigSettingsState;
     }
   | {
       resource: 'sync_override';
@@ -1087,14 +1087,14 @@ export type InstallationSettingsConflict =
       kind: SyncKind;
       expected_revision: number;
       actual_revision: number;
-      latest?: InstallationSyncOverrideSettingsState;
+      latest?: WorkspaceSyncOverrideSettingsState;
     };
 
 export interface AuditEntry {
   id: string;
   category?: AuditCategory;
   target_id?: string;
-  installation?: PanelAccount;
+  workspace?: PanelAccount;
   actor: PanelAccount;
   subject?: PanelAccount;
   elevation_id?: string;
@@ -1110,7 +1110,7 @@ export type AuditCategory =
 
 export interface DeliveryFailure {
   id: string;
-  installation?: PanelAccount;
+  workspace?: PanelAccount;
   delivery_id: string;
   repository_full_name: string;
   event: string;
@@ -1171,11 +1171,11 @@ export interface PanelErrorBody {
     code: string;
     message: string;
     kind?: SyncKind;
-    conflicts?: InstallationSettingsConflict[];
+    conflicts?: WorkspaceSettingsConflict[];
   };
 }
 
-/** One label an installation expects its repositories to carry. */
+/** One label a workspace expects its repositories to carry. */
 export interface SyncLabel {
   name: string;
   color: string;
@@ -1188,7 +1188,7 @@ export interface SyncLabel {
 }
 
 /**
- * One ruleset an installation expects its repositories to enforce.
+ * One ruleset a workspace expects its repositories to enforce.
  *
  * Values rather than optionals wherever GitHub has no third state, because a
  * ruleset is written by replacement: the request defines the whole object and
@@ -1347,7 +1347,7 @@ export interface SyncSection {
 /** What one repository says about one kind of sync. */
 export interface SyncOverride {
   kind: string;
-  /** null where the repository inherits the installation's answer. */
+  /** null where the repository inherits the workspace's answer. */
   enabled: boolean | null;
   document: Record<string, unknown>;
   revision: number;
@@ -1365,7 +1365,7 @@ export interface SyncOverride {
 
 /** What a repository's answer is saved as. */
 /**
- * Every path this installation's repositories are known to hold, and how many
+ * Every path this workspace's repositories are known to hold, and how many
  * hold each.
  *
  * A picture rather than a fact - whatever each default branch held when it was
@@ -1399,7 +1399,7 @@ export interface SyncPathIndex {
  * this list answers, and ids would mean a request per row to turn each one back
  * into a word.
  */
-/** An installation's label sync configuration, as saved. */
+/** A workspace's label sync configuration, as saved. */
 export interface SyncConfig {
   kind: string;
   enabled: boolean;
@@ -1424,7 +1424,7 @@ export interface SyncConfig {
    */
   unreadable: boolean;
   /**
-   * What this kind needs and the installation has not granted, or empty. A
+   * What this kind needs and the workspace has not granted, or empty. A
    * switch that is on means nothing without the permission behind it: the sweep
    * leaves the kind out, nothing is planned and nothing fails, and an empty
    * plan list looks exactly like a sweep that has not come round yet.
@@ -1472,7 +1472,7 @@ export interface SyncStatus {
  * list can count adjusters and the file page can show them.
  */
 export interface SyncFilesContext {
-  /** How many repositories the installation covers. */
+  /** How many repositories the workspace covers. */
   repositories: number;
   /** How many of them file sync reaches - the rest switched it off. */
   covered: number;

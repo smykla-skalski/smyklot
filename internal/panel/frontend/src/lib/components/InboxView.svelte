@@ -130,6 +130,9 @@
    * used to be spelled out here and everything else fell through to the wire, which is how
    * the inbox came to announce "Installation settings saved" and would have announced
    * "Elevation started" the moment either action reached it.
+   *
+   * `installation` is a KEY here, not a word: it is what the stored audit action says,
+   * and rows already written say it. The value beside it is what a reader is shown.
    */
   const SCOPE_WORDS: Record<string, string> = {
     installation: 'workspace',
@@ -189,7 +192,7 @@
 @component
 What has happened that concerns you personally, rather than anything about a workspace.
 It is the panel's one personal page, which is why it lives at its own address rather
-than inside an installation.
+than inside a workspace.
 
 It reports its unread count back through `onUnread`, so the rail's badge answers to
 what was actually read here rather than keeping a second tally that can disagree.
@@ -259,7 +262,7 @@ pager - a notification list has no last page worth naming.
             <div class="card-head">
               <h2 class="card-title">{group.events[0]?.reason ?? 'Operator visit'}</h2>
               <span class="card-meta"
-                >{group.events[0]?.installation.display_name ?? ''} · {group.events.length}
+                >{group.events[0]?.workspace.display_name ?? ''} · {group.events.length}
                 {group.events.length === 1 ? 'event' : 'events'}</span
               >
             </div>
@@ -279,7 +282,7 @@ pager - a notification list has no last page worth naming.
                       ·
                       {#if auditHref !== undefined}
                         <a href={auditHref(notification)}
-                          >audit entry in {notification.installation.display_name}</a
+                          >audit entry in {notification.workspace.display_name}</a
                         >
                       {:else}
                         audit entry #{notification.audit_event_id}
@@ -291,7 +294,7 @@ pager - a notification list has no last page worth naming.
                     {#if notification.read_at === undefined}
                       <Button
                         tone="quiet"
-                        aria-label={`Mark read - ${actionLabel(notification.action)} for ${notification.installation.display_name}`}
+                        aria-label={`Mark read - ${actionLabel(notification.action)} for ${notification.workspace.display_name}`}
                         onclick={() => read(notification)}
                       >
                         Mark read

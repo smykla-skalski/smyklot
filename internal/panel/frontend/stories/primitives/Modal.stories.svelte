@@ -31,7 +31,7 @@
 <Story name="Dialog">
   {#snippet template({ children, ...args })}
     <Modal {...args}>
-      <p>Marta Wisniewska loses access to every repository in this installation.</p>
+      <p>Marta Wisniewska loses access to every repository in this workspace.</p>
     </Modal>
   {/snippet}
 </Story>
@@ -39,7 +39,7 @@
 <Story name="With footer">
   {#snippet template({ children, ...args })}
     <Modal {...args}>
-      <p>Marta Wisniewska loses access to every repository in this installation.</p>
+      <p>Marta Wisniewska loses access to every repository in this workspace.</p>
       {#snippet footer()}
         <button class="btn" type="button">Cancel</button>
         <button class="btn btn-stop" type="button">Remove access</button>

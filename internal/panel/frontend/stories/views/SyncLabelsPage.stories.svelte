@@ -57,7 +57,7 @@
 <!--
   The labels page: staged, per-segment editing. Press any name,
   description or colour dot and only that piece becomes its editor, in
-  place; the installation composer saves every dirty Sync section. Below, whether
+  place; the workspace composer saves every dirty Sync section. Below, whether
   unlisted labels are removed, and the patterns left alone either way.
 -->
 <Story name="Five labels" />
@@ -71,7 +71,7 @@
      and the page says why rather than showing an empty list. -->
 <Story name="Unreadable" args={{ config: { ...CONFIG, labels: [], unreadable: true } }} />
 
-<!-- A permission the installation has not granted, surfaced while the kind
+<!-- A permission the workspace has not granted, surfaced while the kind
      is switched on and waiting on it. -->
 <Story
   name="Missing permission"

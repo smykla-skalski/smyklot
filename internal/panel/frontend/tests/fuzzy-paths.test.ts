@@ -103,7 +103,7 @@ describe('matchPaths [Unit]', () => {
    * far. `'I'.toLowerCase()` is two code units, so one Turkish-named file in one
    * repository made a match near the end read `path[length]` - `undefined` -
    * and `undefined.toLowerCase()` threw inside `bonusAt`, which took the finder
-   * down for the whole installation rather than for that one path.
+   * down for the whole workspace rather than for that one path.
    */
   describe('a path the case fold would lengthen', () => {
     it('does not throw', () => {

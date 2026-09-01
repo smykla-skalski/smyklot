@@ -59,7 +59,7 @@ func TestPathIndexDurationRefusesWhatOverflows(t *testing.T) {
 }
 
 // A request that does not mention the interval leaves the stored one alone,
-// which is what carries an installation's setting through a save of something
+// which is what carries a workspace's setting through a save of something
 // else on the same page.
 func TestPathIndexOverrideKeepsWhatIsStored(t *testing.T) {
 	t.Parallel()

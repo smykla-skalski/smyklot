@@ -46,7 +46,7 @@ async function geometry(): Promise<Geometry> {
 beforeAll(async () => {
   panel = await startPanel();
   page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
-  await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
+  await visit(page, addressOf(panel, 'workspace/sync/labels'), { ready: 'h2' });
 
   await page.getByRole('button', { name: 'Add', exact: true }).click();
   const initialRows = await page.locator('.label-row').count();

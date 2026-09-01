@@ -130,13 +130,13 @@ type Server struct {
 	// matches commit order (see applyPrefsPatch).
 	prefsMu sync.Mutex
 
-	// pathIndex holds one aggregated path list per installation, keyed by a
+	// pathIndex holds one aggregated path list per workspace, keyed by a
 	// fingerprint of the rows it was built from (see pathIndexStamp).
 	//
 	// A `sync.Map` because the shape fits it exactly: written about once a day
-	// per installation, read on every finder open, and never iterated. One
-	// entry per installation this process has served, which is bounded by the
-	// installations it has - and each holds paths this process was going to
+	// per workspace, read on every finder open, and never iterated. One
+	// entry per workspace this process has served, which is bounded by the
+	// workspaces it has - and each holds paths this process was going to
 	// send anyway.
 	pathIndex sync.Map
 }
@@ -232,7 +232,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT "+base+"/api/v1/notifications/read", s.putSecurityNotificationsAllRead)
 	mux.HandleFunc("GET "+base+"/api/v1/invites/{token}", s.reviewInvitation)
 	s.registerRootRoutes(mux, base)
-	s.registerInstallationSettingsRoutes(mux, base)
+	s.registerWorkspaceSettingsRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/users", s.getTargetUsers)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/user-suggestions",
@@ -310,28 +310,28 @@ func (s *Server) Handler() http.Handler {
 	return s.secureHeaders(mux)
 }
 
-func (s *Server) registerInstallationSettingsRoutes(mux *http.ServeMux, base string) {
+func (s *Server) registerWorkspaceSettingsRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/targets/{target}/settings",
-		s.putInstallationSettingsBatch,
+		s.putWorkspaceSettingsBatch,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/settings/checkpoints/baseline",
-		s.getInstallationSettingsBaseline,
+		s.getWorkspaceSettingsBaseline,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/targets/{target}/settings/checkpoints/{checkpoint}",
-		s.getInstallationSettingsCheckpoint,
+		s.getWorkspaceSettingsCheckpoint,
 	)
 	mux.HandleFunc(
 		"POST "+base+"/api/v1/targets/{target}/settings/checkpoints/{checkpoint}/restore",
-		s.postInstallationSettingsRestore,
+		s.postWorkspaceSettingsRestore,
 	)
 }
 
 func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	s.registerRootQueueScheduleRoutes(mux, base)
-	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces", s.getRootInstallations)
+	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces", s.getRootWorkspaces)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
 	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
@@ -363,7 +363,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"DELETE "+base+"/api/v1/root/access/invitations/{invitation}",
 		s.deleteRootInvitation,
 	)
-	mux.HandleFunc("POST "+base+"/api/v1/root/workspaces/sync", s.postRootInstallationSync)
+	mux.HandleFunc("POST "+base+"/api/v1/root/workspaces/sync", s.postRootWorkspaceSync)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/elevation",
 		s.getRootElevation,
@@ -376,7 +376,7 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 		"DELETE "+base+"/api/v1/root/elevations/{elevation}",
 		s.deleteRootElevation,
 	)
-	s.registerRootInstallationSettingsRoutes(mux, base)
+	s.registerRootWorkspaceSettingsRoutes(mux, base)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/repositories",
 		s.getRootRepositories,
@@ -443,32 +443,32 @@ func (s *Server) registerRootQueueScheduleRoutes(mux *http.ServeMux, base string
 	mux.HandleFunc("DELETE "+base+"/api/v1/root/schedule-profiles/{profile}", s.deleteRootScheduleProfile)
 	mux.HandleFunc("GET "+base+"/api/v1/root/job-policies", s.getRootJobPolicies)
 	mux.HandleFunc("PUT "+base+"/api/v1/root/job-policies/{kind}", s.putRootJobPolicy)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.putRootInstallationJobPolicy)
-	mux.HandleFunc("DELETE "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.deleteRootInstallationJobPolicy)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.putRootWorkspaceJobPolicy)
+	mux.HandleFunc("DELETE "+base+"/api/v1/root/workspaces/{target}/job-policies/{kind}", s.deleteRootWorkspaceJobPolicy)
 	mux.HandleFunc("GET "+base+"/api/v1/root/schedule-requests", s.getRootScheduleRequests)
 	mux.HandleFunc("POST "+base+"/api/v1/root/schedule-requests/{request}/decision", s.postRootScheduleDecision)
 }
 
-func (s *Server) registerRootInstallationSettingsRoutes(mux *http.ServeMux, base string) {
+func (s *Server) registerRootWorkspaceSettingsRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/settings",
 		s.getRootTargetSettings,
 	)
 	mux.HandleFunc(
 		"PUT "+base+"/api/v1/root/workspaces/{target}/settings",
-		s.putRootInstallationSettingsBatch,
+		s.putRootWorkspaceSettingsBatch,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/baseline",
-		s.getRootInstallationSettingsBaseline,
+		s.getRootWorkspaceSettingsBaseline,
 	)
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/{checkpoint}",
-		s.getRootInstallationSettingsCheckpoint,
+		s.getRootWorkspaceSettingsCheckpoint,
 	)
 	mux.HandleFunc(
 		"POST "+base+"/api/v1/root/workspaces/{target}/settings/checkpoints/{checkpoint}/restore",
-		s.postRootInstallationSettingsRestore,
+		s.postRootWorkspaceSettingsRestore,
 	)
 }
 
@@ -489,9 +489,9 @@ func (s *Server) Announce(targetID, repositoryID string) {
 	s.events.announce(event)
 }
 
-// AnnounceCatalog tells browsers that one complete installation snapshot has
+// AnnounceCatalog tells browsers that one complete workspace snapshot has
 // committed. It emits even when the new snapshot is empty, so removing the
-// final installation cannot leave an open panel displaying stale targets.
+// final workspace cannot leave an open panel displaying stale targets.
 func (s *Server) AnnounceCatalog() {
 	s.events.announce(panelEvent{Type: panelEventResync})
 }

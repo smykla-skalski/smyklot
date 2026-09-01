@@ -32,7 +32,7 @@ async function flipKind(page: Page): Promise<void> {
   await page.locator('.page-status label.switch').click();
 }
 
-describe('installation Sync drafts', () => {
+describe('workspace Sync drafts', () => {
   it('persists across routes and workspaces, then saves every setting once', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     const saves: Request[] = [];
@@ -46,12 +46,12 @@ describe('installation Sync drafts', () => {
     });
 
     try {
-      await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h1' });
+      await visit(page, addressOf(panel, 'workspace/sync/labels'), { ready: 'h1' });
       await flip(page, 'Delete unlisted labels');
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       expect(saves).toHaveLength(0);
 
-      await page.locator(`a[href="/i/${panel.account}/sync/settings"]`).click();
+      await page.locator(`a[href="/workspace/${panel.account}/sync/settings"]`).click();
       await page.getByRole('heading', { name: 'Repository options' }).waitFor({ state: 'visible' });
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       expect(saves).toHaveLength(0);
@@ -162,7 +162,7 @@ describe('installation Sync drafts', () => {
       });
       expect(checkpointProof.restoredCheckpointId).toBeTruthy();
 
-      await page.locator(`a[href="/i/${panel.account}/sync/labels"]`).click();
+      await page.locator(`a[href="/workspace/${panel.account}/sync/labels"]`).click();
       await flip(page, 'Delete unlisted labels');
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
@@ -171,20 +171,22 @@ describe('installation Sync drafts', () => {
       await page.reload({ waitUntil: 'domcontentloaded' });
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
-      const workspaces = page.locator('nav[aria-label="Consoles"] a[href^="/i/"]');
+      const workspaces = page.locator('nav[aria-label="Consoles"] a[href^="/workspace/"]');
       expect(await workspaces.count()).toBeGreaterThan(1);
       const originalWorkspace = page.locator(
-        `nav[aria-label="Consoles"] a[href^="/i/${panel.account}/"]`,
+        `nav[aria-label="Consoles"] a[href^="/workspace/${panel.account}/"]`,
       );
       const other = page
-        .locator(`nav[aria-label="Consoles"] a[href^="/i/"]:not([href^="/i/${panel.account}/"])`)
+        .locator(
+          `nav[aria-label="Consoles"] a[href^="/workspace/"]:not([href^="/workspace/${panel.account}/"])`,
+        )
         .first();
       const originalPath = new URL(page.url()).pathname;
       await other.click();
       await page.waitForURL((url) => url.pathname !== originalPath);
       expect(await originalWorkspace.getAttribute('aria-label')).toContain('unsaved changes');
       await originalWorkspace.click();
-      await page.waitForURL((url) => url.pathname === `/i/${panel.account}/sync`);
+      await page.waitForURL((url) => url.pathname === `/workspace/${panel.account}/sync`);
       await page.locator(`a.tree-row[href="${originalPath}"]`).click();
       await page.waitForURL((url) => url.pathname === originalPath);
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
@@ -201,7 +203,7 @@ describe('installation Sync drafts', () => {
   it('receipts a removal, stands clear of the save bar, and undoes', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     try {
-      await visit(page, addressOf(panel, 'i/sync/labels'), { ready: 'h2' });
+      await visit(page, addressOf(panel, 'workspace/sync/labels'), { ready: 'h2' });
 
       /* The fixture's list is empty, so the row this removes is one it made: a receipt
          has to name the label it took away, and a made row proves the name travelled. */

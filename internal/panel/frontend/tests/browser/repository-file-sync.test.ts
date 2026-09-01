@@ -35,7 +35,7 @@ afterAll(async () => {
  * is a guess in both directions, and it is most of what this suite costs.
  */
 async function repositoryPage(page: Page, name: string) {
-  await visit(page, `${panel.origin}/i/${panel.account}/repositories/${name}`, {
+  await visit(page, `${panel.origin}/workspace/${panel.account}/repositories/${name}`, {
     ready: '.repository-page',
   });
   await page
@@ -106,9 +106,12 @@ describe('the repository file sync card in the development panel', () => {
     });
 
     try {
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/smyklot/constructor`, {
-        waitUntil: 'domcontentloaded',
-      });
+      await page.goto(
+        `${panel.origin}/workspace/${panel.account}/repositories/smyklot/constructor`,
+        {
+          waitUntil: 'domcontentloaded',
+        },
+      );
       await page.locator('.error-body').waitFor({ state: 'visible', timeout: 30_000 });
 
       expect(await page.locator('body').innerText()).toContain('Not found');

@@ -6,7 +6,7 @@
   const { Story } = defineMeta({
     title: 'Primitives/FormError',
     component: FormError,
-    args: { message: 'That login is already a Root on this installation' },
+    args: { message: 'That login is already a Root on this workspace' },
   });
 </script>
 

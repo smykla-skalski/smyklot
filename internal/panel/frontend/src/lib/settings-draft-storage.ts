@@ -13,7 +13,7 @@ export type SettingsResource =
   | { type: 'sync-override'; targetId: string; repositoryId: string; kind: SyncKind }
   | { type: 'runtime' };
 
-export type SettingsScope = { type: 'installation'; targetId: string } | { type: 'root' };
+export type SettingsScope = { type: 'workspace'; targetId: string } | { type: 'root' };
 export type SettingsSection = 'defaults' | 'repositories' | 'sync' | 'runtime';
 
 export interface SettingsLocation {
@@ -121,7 +121,7 @@ export function settingsResourceKey(resource: SettingsResource): string {
 export function settingsScopeOf(resource: SettingsResource): SettingsScope {
   return resource.type === 'runtime'
     ? { type: 'root' }
-    : { type: 'installation', targetId: resource.targetId };
+    : { type: 'workspace', targetId: resource.targetId };
 }
 
 export function settingsScopeKey(scope: SettingsScope): string {

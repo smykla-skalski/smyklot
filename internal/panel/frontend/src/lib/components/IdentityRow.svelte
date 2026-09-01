@@ -5,7 +5,7 @@
    * Who a row is about: a mark, a name, and the handle under it.
    *
    * Five tables wrote this by hand under five class names - `.identity`,
-   * `.user-identity`, `.option-copy`, `.who-*`, `.installation-identity` - and the
+   * `.user-identity`, `.option-copy`, `.who-*`, `.workspace-identity` - and the
    * copies disagreed about the one thing that is hard to see and easy to lose.
    *
    * **The stack is trimmed, always.** A name over a handle is two elements, so the
@@ -101,7 +101,7 @@ claims to move nothing.
      truncate rather than wrapping, because a row is one line tall.
 
      Two tables declared exactly this and a third wrote its own. Anything a caller
-     genuinely needs to differ - the installations table's monospace handle - it
+     genuinely needs to differ - the workspaces table's monospace handle - it
      still says for itself, on a class of its own. */
   /* `clip` with a margin, not `hidden`.
      ------------------------------------
@@ -115,7 +115,7 @@ claims to move nothing.
      ink that escaped would land in the row beneath. 0.4em is what the queue's
      pull-request names already ask for; the deepest descender here is 0.18em.
 
-     The installations table had found this and the other two had not, so two of the
+     The workspaces table had found this and the other two had not, so two of the
      three were clipping their own descenders. Here it is the default, which is the
      point of the component. */
   .identity-row > :global(.band-trim-stack) > :global(*) {

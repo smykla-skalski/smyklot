@@ -7,8 +7,8 @@ import {
   type FormattingPatch,
 } from './formatting';
 import type {
-  InstallationSyncOverrideSettingsInput,
-  InstallationSyncOverrideSettingsState,
+  WorkspaceSyncOverrideSettingsInput,
+  WorkspaceSyncOverrideSettingsState,
   SyncOverride,
 } from './types';
 import type { SettingsCommittedResource, SettingsDraftRegistry } from './settings-drafts.svelte';
@@ -70,7 +70,7 @@ export interface SyncOverrideControlDefinition {
 }
 
 export type SyncOverrideSerializationResult =
-  { ok: true; input: InstallationSyncOverrideSettingsInput } | { ok: false; problem: string };
+  { ok: true; input: WorkspaceSyncOverrideSettingsInput } | { ok: false; problem: string };
 
 interface DocumentSerializationSuccess {
   ok: true;
@@ -260,7 +260,7 @@ export function syncOverrideSavedControls(
   } as Record<SyncOverrideControlId, SettingsJson>;
 }
 
-/** Validate and serialize the controlled state for one atomic installation save. */
+/** Validate and serialize the controlled state for one atomic workspace save. */
 export function syncOverrideBatchInput(
   repositoryId: string,
   expectedRevision: number,
@@ -369,7 +369,7 @@ function serializeFormats(value: unknown): FormatsSerialization {
 
 /** Convert a canonical compact batch response into a registry commit result. */
 export function syncOverrideCommittedResource(
-  state: InstallationSyncOverrideSettingsState,
+  state: WorkspaceSyncOverrideSettingsState,
 ): SettingsCommittedResource {
   if (state.kind !== 'files') throw new TypeError('only file sync overrides have an editor');
   const envelope = buildSyncOverrideEditorEnvelope({

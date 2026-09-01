@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fuzzyCandidates } from '../src/lib/fuzzy';
 
 const candidates = [
-  { id: 'global', label: 'Global', keywords: ['all installations'] },
+  { id: 'global', label: 'Global', keywords: ['all workspaces'] },
   { id: 'platform', label: 'Platform Engineering', keywords: ['kong-platform'] },
   { id: 'security', label: 'Security', keywords: ['sec-team'] },
 ];
@@ -20,7 +20,7 @@ describe('fuzzy candidate search', () => {
 
   it('matches subsequences, keywords, and diacritics', () => {
     expect(fuzzyCandidates(candidates, 'pfeng').map(({ id }) => id)).toEqual(['platform']);
-    expect(fuzzyCandidates(candidates, 'all install').map(({ id }) => id)).toEqual(['global']);
+    expect(fuzzyCandidates(candidates, 'all works').map(({ id }) => id)).toEqual(['global']);
     expect(fuzzyCandidates([{ id: 'one', label: 'Zażółć' }], 'zazolc').map(({ id }) => id)).toEqual(
       ['one'],
     );

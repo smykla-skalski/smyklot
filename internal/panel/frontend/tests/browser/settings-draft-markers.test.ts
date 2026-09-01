@@ -14,14 +14,14 @@ afterAll(async () => {
 });
 
 async function openRepositories(page: Page): Promise<void> {
-  await page.goto(`${panel.origin}/i/${panel.account}/repositories`, {
+  await page.goto(`${panel.origin}/workspace/${panel.account}/repositories`, {
     waitUntil: 'domcontentloaded',
   });
   await page.locator('.repository-row').first().waitFor({ state: 'visible', timeout: 30_000 });
 }
 
 describe('settings draft destinations [Integration]', () => {
-  it('identifies the dirty installation, section, repository, and exact setting', async () => {
+  it('identifies the dirty workspace, section, repository, and exact setting', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
 
     try {
@@ -57,13 +57,13 @@ describe('settings draft destinations [Integration]', () => {
       /* The console's catalog is a list of sentences now, and a workspace is opened by
          name rather than by pressing its row - so the link is the row's one act, and it
          still carries where the unsaved work is. */
-      const installationLink = page.locator(`a[href="${rootRepositoryHref}"]`);
-      await installationLink.waitFor({ state: 'visible', timeout: 30_000 });
-      const installationRow = page.locator('.object-row', { has: installationLink });
-      expect(await installationRow.getAttribute('data-unsaved')).toBe('true');
-      expect(await installationRow.innerText()).toContain('1 unsaved setting');
+      const workspaceLink = page.locator(`a[href="${rootRepositoryHref}"]`);
+      await workspaceLink.waitFor({ state: 'visible', timeout: 30_000 });
+      const workspaceRow = page.locator('.object-row', { has: workspaceLink });
+      expect(await workspaceRow.getAttribute('data-unsaved')).toBe('true');
+      expect(await workspaceRow.innerText()).toContain('1 unsaved setting');
 
-      await installationLink.click();
+      await workspaceLink.click();
       await page.waitForURL((url) => url.pathname === rootRepositoryHref);
       const repositoryLeaf = page.locator(`a.tree-row[href="${rootRepositoryHref}"]`);
       expect(await repositoryLeaf.innerText()).toContain('Unsaved changes');

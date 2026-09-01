@@ -25,8 +25,8 @@ class MemoryStorage {
   }
 }
 
-const targetOne: SettingsScope = { type: 'installation', targetId: 'target-1' };
-const targetTwo: SettingsScope = { type: 'installation', targetId: 'target-2' };
+const targetOne: SettingsScope = { type: 'workspace', targetId: 'target-1' };
+const targetTwo: SettingsScope = { type: 'workspace', targetId: 'target-2' };
 const root: SettingsScope = { type: 'root' };
 
 const defaults: SettingsResource = { type: 'target-defaults', targetId: 'target-1' };

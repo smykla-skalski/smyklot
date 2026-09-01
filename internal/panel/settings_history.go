@@ -13,14 +13,14 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const maxInstallationSettingsRestoreBody = 1 << 20
+const maxWorkspaceSettingsRestoreBody = 1 << 20
 
-type installationSettingsRestoreRequest struct {
-	State      string                                        `json:"state"`
-	Selections []installationSettingsRestoreSelectionRequest `json:"selections"`
+type workspaceSettingsRestoreRequest struct {
+	State      string                                     `json:"state"`
+	Selections []workspaceSettingsRestoreSelectionRequest `json:"selections"`
 }
 
-type installationSettingsRestoreSelectionRequest struct {
+type workspaceSettingsRestoreSelectionRequest struct {
 	Kind             string `json:"kind"`
 	RepositoryID     string `json:"repository_id,omitempty"`
 	SyncKind         string `json:"sync_kind,omitempty"`
@@ -69,7 +69,7 @@ type settingsCheckpointIncompatibility struct {
 	Reason string `json:"reason"`
 }
 
-type installationSettingsRestoreActor struct {
+type workspaceSettingsRestoreActor struct {
 	accountID        string
 	elevationID      *string
 	sessionTokenHash string
@@ -77,39 +77,39 @@ type installationSettingsRestoreActor struct {
 	writeError       func(http.ResponseWriter, error)
 }
 
-func (s *Server) getInstallationSettingsCheckpoint(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getWorkspaceSettingsCheckpoint(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
-	s.writeInstallationSettingsCheckpoint(w, r, target)
+	s.writeWorkspaceSettingsCheckpoint(w, r, target)
 }
 
-func (s *Server) getRootInstallationSettingsCheckpoint(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getRootWorkspaceSettingsCheckpoint(w http.ResponseWriter, r *http.Request) {
 	root, ok := s.requireRootTarget(w, r, false)
 	if !ok {
 		return
 	}
-	s.writeInstallationSettingsCheckpoint(w, r, root.Target)
+	s.writeWorkspaceSettingsCheckpoint(w, r, root.Target)
 }
 
-func (s *Server) getInstallationSettingsBaseline(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getWorkspaceSettingsBaseline(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
-	s.writeInstallationSettingsBaseline(w, r, target)
+	s.writeWorkspaceSettingsBaseline(w, r, target)
 }
 
-func (s *Server) getRootInstallationSettingsBaseline(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getRootWorkspaceSettingsBaseline(w http.ResponseWriter, r *http.Request) {
 	root, ok := s.requireRootTarget(w, r, false)
 	if !ok {
 		return
 	}
-	s.writeInstallationSettingsBaseline(w, r, root.Target)
+	s.writeWorkspaceSettingsBaseline(w, r, root.Target)
 }
 
-func (s *Server) writeInstallationSettingsBaseline(
+func (s *Server) writeWorkspaceSettingsBaseline(
 	w http.ResponseWriter,
 	r *http.Request,
 	target storage.Target,
@@ -122,7 +122,7 @@ func (s *Server) writeInstallationSettingsBaseline(
 	s.writeSettingsCheckpointInspection(w, r, inspection)
 }
 
-func (s *Server) writeInstallationSettingsCheckpoint(
+func (s *Server) writeWorkspaceSettingsCheckpoint(
 	w http.ResponseWriter,
 	r *http.Request,
 	target storage.Target,
@@ -157,7 +157,7 @@ func (s *Server) writeSettingsCheckpointInspection(
 	writeJSON(w, http.StatusOK, settingsCheckpointDTO(inspection, actor))
 }
 
-func (s *Server) postInstallationSettingsRestore(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postWorkspaceSettingsRestore(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -165,12 +165,12 @@ func (s *Server) postInstallationSettingsRestore(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	s.restoreInstallationSettingsCheckpoint(w, r, target, installationSettingsRestoreActor{
+	s.restoreWorkspaceSettingsCheckpoint(w, r, target, workspaceSettingsRestoreActor{
 		accountID: account.ID, writeError: s.writeStorageError,
 	})
 }
 
-func (s *Server) postRootInstallationSettingsRestore(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postRootWorkspaceSettingsRestore(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -178,35 +178,35 @@ func (s *Server) postRootInstallationSettingsRestore(w http.ResponseWriter, r *h
 	if !ok {
 		return
 	}
-	s.restoreInstallationSettingsCheckpoint(w, r, root.Target, installationSettingsRestoreActor{
+	s.restoreWorkspaceSettingsCheckpoint(w, r, root.Target, workspaceSettingsRestoreActor{
 		accountID: root.Account.ID, elevationID: elevationID(root.Elevation),
 		sessionTokenHash: root.SessionHash, root: true, writeError: s.writeRootWriteError,
 	})
 }
 
-func (s *Server) restoreInstallationSettingsCheckpoint(
+func (s *Server) restoreWorkspaceSettingsCheckpoint(
 	w http.ResponseWriter,
 	r *http.Request,
 	target storage.Target,
-	actor installationSettingsRestoreActor,
+	actor workspaceSettingsRestoreActor,
 ) {
-	request, ok := s.prepareInstallationSettingsRestore(w, r, target.ID, actor)
+	request, ok := s.prepareWorkspaceSettingsRestore(w, r, target.ID, actor)
 	if !ok {
 		return
 	}
-	result, err := s.restoreInstallationSettings(r.Context(), request)
+	result, err := s.restoreWorkspaceSettings(r.Context(), request)
 	if err != nil {
-		s.writeInstallationSettingsRestoreError(w, err, actor)
+		s.writeWorkspaceSettingsRestoreError(w, err, actor)
 		return
 	}
-	s.signalInstallationSettingsBatch(target.ID, result)
-	writeJSON(w, http.StatusOK, installationSettingsRestoreAnswer(target.ID, result))
+	s.signalWorkspaceSettingsBatch(target.ID, result)
+	writeJSON(w, http.StatusOK, workspaceSettingsRestoreAnswer(target.ID, result))
 }
 
-func (s *Server) writeInstallationSettingsRestoreError(
+func (s *Server) writeWorkspaceSettingsRestoreError(
 	w http.ResponseWriter,
 	err error,
-	actor installationSettingsRestoreActor,
+	actor workspaceSettingsRestoreActor,
 ) {
 	if actor.root && (errors.Is(err, storage.ErrNotFound) ||
 		errors.Is(err, storage.ErrConflict) ||
@@ -219,18 +219,18 @@ func (s *Server) writeInstallationSettingsRestoreError(
 	s.writeSettingsHistoryError(w, err, actor.writeError)
 }
 
-func (s *Server) prepareInstallationSettingsRestore(
+func (s *Server) prepareWorkspaceSettingsRestore(
 	w http.ResponseWriter,
 	r *http.Request,
 	targetID string,
-	actor installationSettingsRestoreActor,
+	actor workspaceSettingsRestoreActor,
 ) (storage.RestoreInstallationSettingsRequest, bool) {
 	checkpointID, ok := s.settingsCheckpointID(w, r)
 	if !ok {
 		return storage.RestoreInstallationSettingsRequest{}, false
 	}
-	var input installationSettingsRestoreRequest
-	if !decodeJSONWithin(w, r, &input, maxInstallationSettingsRestoreBody) {
+	var input workspaceSettingsRestoreRequest
+	if !decodeJSONWithin(w, r, &input, maxWorkspaceSettingsRestoreBody) {
 		return storage.RestoreInstallationSettingsRequest{}, false
 	}
 	request := storage.RestoreInstallationSettingsRequest{
@@ -267,7 +267,7 @@ func (s *Server) writeInvalidSettingsRestore(w http.ResponseWriter) {
 		"each selected setting must be known, unique, and name its current revision")
 }
 
-func (s *Server) restoreInstallationSettings(
+func (s *Server) restoreWorkspaceSettings(
 	ctx context.Context,
 	request storage.RestoreInstallationSettingsRequest,
 ) (storage.SaveInstallationSettingsResult, error) {
@@ -275,14 +275,14 @@ func (s *Server) restoreInstallationSettings(
 		return s.store.RestoreInstallationSettings(ctx, request)
 	}
 	if settingsRestoreIncludesTarget(request.Selections) {
-		return s.saveInstallationTargetSettingsBatch(ctx, request.TargetID, operation)
+		return s.saveWorkspaceTargetSettingsBatch(ctx, request.TargetID, operation)
 	}
 	repositoryIDs := settingsRestoreRepositoryIDs(request.Selections)
 	if len(repositoryIDs) == 0 {
 		return operation()
 	}
 
-	return saveInstallationSettingsExclusive(s, ctx, repositoryIDs, operation)
+	return saveWorkspaceSettingsExclusive(s, ctx, repositoryIDs, operation)
 }
 
 func settingsRestoreIncludesTarget(
@@ -429,6 +429,9 @@ func settingsCheckpointStateDTO(
 }
 
 func settingsCheckpointAction(checkpoint storage.SettingsCheckpoint) string {
+	// The stored audit key, which is data rather than vocabulary: rows already
+	// written say `installation.settings.*`, and renaming it here would orphan
+	// every one of them.
 	prefix := "installation"
 	if checkpoint.Scope == storage.SettingsCheckpointScopeRoot {
 		prefix = "runtime"
@@ -443,25 +446,25 @@ func settingsCheckpointAction(checkpoint storage.SettingsCheckpoint) string {
 	}
 }
 
-func installationSettingsRestoreAnswer(
+func workspaceSettingsRestoreAnswer(
 	targetID string,
 	result storage.SaveInstallationSettingsResult,
-) installationSettingsBatchResponse {
-	answer := installationSettingsBatchResponse{CheckpointID: stringID(result.CheckpointID)}
+) workspaceSettingsBatchResponse {
+	answer := workspaceSettingsBatchResponse{CheckpointID: stringID(result.CheckpointID)}
 	if result.Target != nil {
-		state := installationTargetSettingsStateFrom(*result.Target)
+		state := workspaceTargetSettingsStateFrom(*result.Target)
 		answer.Target = &state
 	}
 	for _, repository := range result.Repositories {
 		answer.Repositories = append(
-			answer.Repositories, installationRepositorySettingsStateFrom(repository),
+			answer.Repositories, workspaceRepositorySettingsStateFrom(repository),
 		)
 	}
 	sort.Slice(answer.Repositories, func(left, right int) bool {
 		return answer.Repositories[left].RepositoryID < answer.Repositories[right].RepositoryID
 	})
-	answer.SyncConfigs = installationSyncConfigSettingsStates(targetID, result.SyncConfigs)
-	answer.SyncOverrides = installationSyncOverrideSettingsStates(targetID, result.SyncOverrides)
+	answer.SyncConfigs = workspaceSyncConfigSettingsStates(targetID, result.SyncConfigs)
+	answer.SyncOverrides = workspaceSyncOverrideSettingsStates(targetID, result.SyncOverrides)
 
 	return answer
 }

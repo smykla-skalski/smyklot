@@ -103,8 +103,8 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 func TestPanelRegularRouteRejectsNonOwnedRootMatrix(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	rootSession := harness.signIn(t)
-	_, installation := seedNonOwnedInstallation(t, harness)
-	probes := regularRouteProbes("/panel/api/v1/targets/" + installation.TargetID)
+	_, workspace := seedNonOwnedWorkspace(t, harness)
+	probes := regularRouteProbes("/panel/api/v1/targets/" + workspace.TargetID)
 
 	for _, probe := range probes {
 		probe := probe
@@ -228,7 +228,7 @@ var routePlaceholders = map[string]string{
 	"{request}":    "request",
 }
 
-// regularRouteProbes is every installation-scoped route, with the concrete
+// regularRouteProbes is every workspace-scoped route, with the concrete
 // values a request needs. Shared so the matrix and its completeness check
 // cannot describe different route sets.
 func regularRouteProbes(target string) []authorizationProbe {
@@ -284,7 +284,7 @@ func regularRouteProbes(target string) []authorizationProbe {
 // The matrix above is a hand-written list, and a hand-written list is a thing
 // you can forget to add to. Nothing downstream notices: the new route works,
 // its specs pass, and the one question nobody asked is whether somebody else's
-// installation can reach it. So the list is checked against the routes the
+// workspace can reach it. So the list is checked against the routes the
 // server actually registers.
 func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
 	registered := registeredTargetRoutes(t)
@@ -292,7 +292,7 @@ func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
 		t.Fatal("read no target routes out of server.go")
 	}
 
-	const target = "/panel/api/v1/targets/the-installation"
+	const target = "/panel/api/v1/targets/the-workspace"
 
 	probed := map[string]bool{}
 	for _, probe := range regularRouteProbes(target) {
@@ -302,7 +302,7 @@ func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
 	for _, route := range registered {
 		method, pattern, _ := strings.Cut(route, " ")
 
-		concrete := strings.Replace(pattern, "{target}", "the-installation", 1)
+		concrete := strings.Replace(pattern, "{target}", "the-workspace", 1)
 		for placeholder, value := range routePlaceholders {
 			concrete = strings.ReplaceAll(concrete, placeholder, value)
 		}
@@ -318,7 +318,7 @@ func TestPanelRegularRouteMatrixCoversEveryRoute(t *testing.T) {
 	}
 }
 
-// registeredTargetRoutes reads the installation-scoped routes out of the file
+// registeredTargetRoutes reads the workspace-scoped routes out of the file
 // that registers them.
 //
 // Reading the source rather than the mux, because http.ServeMux does not report

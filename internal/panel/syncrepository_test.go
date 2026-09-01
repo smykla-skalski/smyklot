@@ -81,7 +81,7 @@ const overridePath = "/panel/api/v1/targets/github:installation:10" +
 	"/repositories/repository-20/sync/"
 
 // TestSyncFilesContextCountsRepositoryOptIn covers the inverse of the global
-// baseline: a repository can turn file sync on while the installation leaves
+// baseline: a repository can turn file sync on while the workspace leaves
 // it off, and the page's coverage count must use that effective answer.
 func TestSyncFilesContextCountsRepositoryOptIn(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
@@ -127,7 +127,7 @@ func TestSyncFilesContextNormalizesFormattingPoliciesAndPathAdjustments(t *testi
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 
-	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	saved := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"target":{"repository_default_enabled":true,"pending_ci_mode_default":"checks",
 			"pending_ci_branch_patterns_default":{"include":["~DEFAULT_BRANCH"],"exclude":[]},
 			"pending_ci_quiet_period_seconds_override":null,
@@ -185,12 +185,12 @@ func TestSyncFilesContextNormalizesFormattingPoliciesAndPathAdjustments(t *testi
 //
 // The helpers were the whole of what these specs used to reach, so the
 // validation the endpoint does - and the fitting of an adjustment against what
-// the installation synchronizes - was covered by nothing.
+// the workspace synchronizes - was covered by nothing.
 func TestSyncOverrideRoundTripsThroughTheEndpoint(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 
-	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	saved := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"sync_configs":[{"kind":"files","enabled":true,"expected_revision":0,
 			"document":{"files":[{"path":"renovate.json","content":"{}"}]}}],
 		"sync_overrides":[{"repository_id":"repository-20","kind":"files",
@@ -247,7 +247,7 @@ func TestSyncOverrideAnswersAKindNobodyHasAdjusted(t *testing.T) {
 }
 
 // TestSyncOverrideRefusesAKindNothingSynchronizes is the same refusal the
-// installation's own configuration makes, at the same address shape.
+// workspace's own configuration makes, at the same address shape.
 func TestSyncOverrideRefusesAKindNothingSynchronizes(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
@@ -259,7 +259,7 @@ func TestSyncOverrideRefusesAKindNothingSynchronizes(t *testing.T) {
 }
 
 // TestSyncOverrideReadsARepositoryThatHasNeverAnswered is the same guard the
-// installation's own configuration carries: a repository that has said nothing
+// workspace's own configuration carries: a repository that has said nothing
 // and one that said no are different, and the browser gets one shape either
 // way.
 func TestSyncOverrideReadsARepositoryThatHasNeverAnswered(t *testing.T) {
@@ -363,7 +363,7 @@ func TestSyncOverrideKeepsARefusalThroughASave(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 
-	configured := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	configured := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"sync_configs":[{"kind":"files","enabled":true,"expected_revision":0,
 			"document":{"files":[{"path":"renovate.json","content":"{}"}]}}]}`), session)
 	if configured.Code != http.StatusOK {
@@ -380,7 +380,7 @@ func TestSyncOverrideKeepsARefusalThroughASave(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	saved := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"sync_overrides":[{"repository_id":"repository-20","kind":"files",
 			"enabled":null,"expected_revision":0,"document":{"merges":[
 				{"path":"renovate.json","overrides":{"timezone":"Europe/Warsaw"}}]}}]}`), session)
@@ -416,7 +416,7 @@ func TestSyncConfigTakesTheTemplatesItValidates(t *testing.T) {
 			"document":{"files":[{"path":"CONTRIBUTING.md","content":%q}]}}]}`,
 		strings.Repeat("a line of a shared template\n", 4000))
 
-	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath,
+	saved := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
 		strings.NewReader(document), session)
 	if saved.Code != http.StatusOK {
 		t.Fatalf("saving %d bytes of templates = %d %s",
@@ -446,7 +446,7 @@ func TestSyncConfigKeepsTheOrdinaryBoundOnEveryOtherKind(t *testing.T) {
 			"labels":[%s],"allow_removal":false,"excludes":[]}]}`,
 		strings.Join(labels, ","))
 
-	refused := harness.request(t, http.MethodPut, installationSettingsBatchPath,
+	refused := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
 		strings.NewReader(document), session)
 	if refused.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("saving %d bytes of labels = %d %s",
@@ -465,7 +465,7 @@ func TestSyncConfigSaysWhenTheRequestIsTooLarge(t *testing.T) {
 			"document":{"files":[{"path":"CONTRIBUTING.md","content":%q}]}}]}`,
 		strings.Repeat("x", 5<<20))
 
-	refused := harness.request(t, http.MethodPut, installationSettingsBatchPath,
+	refused := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
 		strings.NewReader(document), session)
 	if refused.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("saving an oversized document = %d %s",
@@ -508,7 +508,7 @@ func TestSyncOverrideDropsARefusalOnceTheKindIsOff(t *testing.T) {
 		t.Fatal("a repository the planner refused was answered as though it were fine")
 	}
 
-	off := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	off := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"sync_overrides":[{"repository_id":"repository-20","kind":"files",
 			"enabled":false,"expected_revision":0,"document":{}}]}`), session)
 	if off.Code != http.StatusOK {
@@ -527,7 +527,7 @@ func TestSyncOverrideDropsARefusalOnceTheKindIsOff(t *testing.T) {
 }
 
 // TestSyncOverrideReportsNoProblemWhereNothingHasLooked keeps a fresh
-// installation quiet. A repository nothing has planned yet is not a repository
+// workspace quiet. A repository nothing has planned yet is not a repository
 // with something wrong with it.
 func TestSyncOverrideReportsNoProblemWhereNothingHasLooked(t *testing.T) {
 	harness := newPanelHarness(t, "owner")

@@ -28,7 +28,7 @@
       title: 'Users',
       targets: TARGETS,
       selected: TARGETS[0],
-      targetHref: (target: PanelTarget) => `#/i/${target.account.login}`,
+      targetHref: (target: PanelTarget) => `#/workspace/${target.account.login}`,
       onSelectTarget: fn(),
       rootMode: false,
       console: null,

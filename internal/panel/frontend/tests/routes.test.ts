@@ -28,88 +28,88 @@ function accepts(name: keyof typeof patterns, value: string): boolean {
 }
 
 describe('panel routes', () => {
-  it('reads installation routes at the public root', () => {
-    expect(parsePanelRoute('', '/i/smykla-skalski/repositories')).toEqual({
+  it('reads workspace routes at the public root', () => {
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/repositories')).toEqual({
       account: 'smykla-skalski',
       view: 'repositories',
     });
   });
 
   it('reads routes below a configured panel mount', () => {
-    expect(parsePanelRoute('/panel', '/panel/i/bartsmykla/history/')).toEqual({
+    expect(parsePanelRoute('/panel', '/panel/workspace/bartsmykla/history/')).toEqual({
       account: 'bartsmykla',
       view: 'history',
     });
   });
 
-  it('keeps access datasets inside installation routes', () => {
+  it('keeps access datasets inside workspace routes', () => {
     expect(parsePanelRoute('', '/help')).toBeNull();
     expect(parsePanelRoute('/panel', '/panel/help/')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/help')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/help')).toBeNull();
     expect(parsePanelRoute('', '/users')).toBeNull();
     expect(parsePanelRoute('', '/invitations')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/access/users')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/access/users')).toEqual({
       account: 'smykla-skalski',
       view: 'users',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/access/invitations')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/access/invitations')).toEqual({
       account: 'smykla-skalski',
       view: 'invitations',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/access/owners')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/access/owners')).toBeNull();
   });
 
   it('parses sync sections and refuses what is not one', () => {
     // The bare view is the overview - the section is not written into the path.
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
       sync: 'plan',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/labels')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/labels')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
       sync: 'labels',
     });
     // `overview` is never written, so an address naming it does not resolve.
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/overview')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/plan/extra')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/overview')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan/extra')).toBeNull();
   });
 
   it('parses Queue pages and refuses non-pages', () => {
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue')).toEqual({
       account: 'smykla-skalski',
       view: 'queue',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue/approvals')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue/approvals')).toEqual({
       account: 'smykla-skalski',
       view: 'queue',
       queue: 'approvals',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue/history')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue/history')).toEqual({
       account: 'smykla-skalski',
       view: 'queue',
       queue: 'history',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue/active')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/queue/history/extra')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue/active')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/queue/history/extra')).toBeNull();
   });
 
   it('parses one ruleset page and refuses names anywhere else', () => {
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/main-protection')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/rulesets/main-protection')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
       sync: 'rulesets',
       syncRuleset: 'main-protection',
     });
     // Encoded names come back decoded, like a repository's do.
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/main%20guard')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/rulesets/main%20guard')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
       sync: 'rulesets',
@@ -117,16 +117,16 @@ describe('panel routes', () => {
     });
     // Only rulesets lists named objects - a name after any other section is
     // an address that does not resolve.
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/labels/anything')).toBeNull();
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/')).toEqual({
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/labels/anything')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/rulesets/')).toEqual({
       account: 'smykla-skalski',
       view: 'sync',
       sync: 'rulesets',
     });
-    expect(parsePanelRoute('', '/i/smykla-skalski/sync/rulesets/a/b')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/rulesets/a/b')).toBeNull();
   });
 
-  it('parses Root routes without treating them as installations', () => {
+  it('parses Root routes without treating them as workspaces', () => {
     expect(parsePanelRoute('', '/root')).toEqual({ rootView: 'overview' });
     expect(parsePanelRoute('', '/root/schedules')).toEqual({ rootView: 'schedules' });
     expect(parsePanelRoute('', '/root/queue/approvals')).toEqual({
@@ -152,7 +152,7 @@ describe('panel routes', () => {
       rootView: 'runtime-service',
     });
     expect(parsePanelRoute('', '/root/workspaces/smykla-skalski/repositories')).toEqual({
-      rootView: 'installation',
+      rootView: 'workspace',
       account: 'smykla-skalski',
       view: 'repositories',
     });
@@ -163,11 +163,11 @@ describe('panel routes', () => {
        was `/root/settings`. That collision is gone - the console's is `/root/runtime/
        settings` - and the word is one the dictionary retires, so the page is `settings`
        again and `defaults` is the removed one. */
-    expect(parsePanelRoute('', '/i/acme/defaults')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/defaults')).toBeNull();
     expect(parsePanelRoute('', '/root/workspaces/acme/defaults')).toBeNull();
     expect(parsePanelRoute('', '/root/settings')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/users')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/invitations')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/users')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/invitations')).toBeNull();
   });
 
   it('treats the panel root as an unresolved destination', () => {
@@ -176,12 +176,12 @@ describe('panel routes', () => {
   });
 
   it('rejects unknown tabs and paths outside the panel mount', () => {
-    expect(parsePanelRoute('', '/i/smykla-skalski/billing')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/billing')).toBeNull();
     expect(parsePanelRoute('', '/smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('', '/auth/settings')).toBeNull();
     expect(parsePanelRoute('', '/webhook/history')).toBeNull();
     expect(parsePanelRoute('', '/@smykla-skalski/settings')).toBeNull();
-    expect(parsePanelRoute('/panel', '/i/smykla-skalski/settings')).toBeNull();
+    expect(parsePanelRoute('/panel', '/workspace/smykla-skalski/settings')).toBeNull();
     expect(parsePanelRoute('/panel', '/panel/too/many/parts')).toBeNull();
     expect(parsePanelRoute('', '/root/access/owners')).toBeNull();
     expect(parsePanelRoute('', '/root/history/unknown')).toBeNull();
@@ -199,33 +199,33 @@ describe('panel routes', () => {
 
   it('encodes account slugs when building links', () => {
     expect(panelAddress({ account: 'smykla skalski', view: 'history' })).toBe(
-      `${basePath}/i/smykla%20skalski/history`,
+      `${basePath}/workspace/smykla%20skalski/history`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'settings' })).toBe(
-      `${basePath}/i/bartsmykla/settings`,
+      `${basePath}/workspace/bartsmykla/settings`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'queue' })).toBe(
-      `${basePath}/i/bartsmykla/queue`,
+      `${basePath}/workspace/bartsmykla/queue`,
     );
     expect(panelAddress({ account: 'bartsmykla', view: 'queue', queue: 'approvals' })).toBe(
-      `${basePath}/i/bartsmykla/queue/approvals`,
+      `${basePath}/workspace/bartsmykla/queue/approvals`,
     );
     expect(panelAddress({ rootView: 'queue-history' })).toBe(`${basePath}/root/queue/history`);
     expect(panelAddress({ account: 'bartsmykla', view: 'users' })).toBe(
-      `${basePath}/i/bartsmykla/access/users`,
+      `${basePath}/workspace/bartsmykla/access/users`,
     );
     expect(panelAddress({ rootView: 'overview' })).toBe(`${basePath}/root`);
     expect(panelAddress({ rootView: 'schedules' })).toBe(`${basePath}/root/schedules`);
     expect(panelAddress({ rootView: 'access-users' })).toBe(`${basePath}/root/access/users`);
     expect(
       panelAddress({
-        rootView: 'installation',
+        rootView: 'workspace',
         account: 'smykla-skalski',
         view: 'history',
       }),
     ).toBe(`${basePath}/root/workspaces/smykla-skalski/history`);
     expect(panelAddress({ account: 'bartsmykla', view: 'invitations' })).toBe(
-      `${basePath}/i/bartsmykla/access/invitations`,
+      `${basePath}/workspace/bartsmykla/access/invitations`,
     );
   });
 });
@@ -250,12 +250,12 @@ describe('panel document titles', () => {
     [{ rootView: 'runtime-service' }, 'Service health | Root Console | SMYKLOT'],
     [{ rootView: 'runtime-settings' }, 'Service settings | Root Console | SMYKLOT'],
     [
-      { rootView: 'installation', account: 'acme', view: 'repositories' },
+      { rootView: 'workspace', account: 'acme', view: 'repositories' },
       'Repositories | Root Console | SMYKLOT',
     ],
     [
       {
-        rootView: 'installation',
+        rootView: 'workspace',
         account: 'acme',
         view: 'history',
         section: 'audit',
@@ -324,7 +324,7 @@ describe('the direct panel view matcher', () => {
 describe('resolvePanelRoute', () => {
   const accounts = ['bartsmykla', 'smykla-skalski'];
 
-  it('lets an explicit route win over the remembered installation', () => {
+  it('lets an explicit route win over the remembered workspace', () => {
     const requested: PanelRoute = { account: 'SMYKLA-SKALSKI', view: 'history' };
 
     /* History resolves with a section: the address never sits on a bare
@@ -338,20 +338,20 @@ describe('resolvePanelRoute', () => {
 
   /* A workspace opens on its overview - what needs somebody, not the least
      urgent page it holds. */
-  it('restores the remembered installation at its overview', () => {
+  it('restores the remembered workspace at its overview', () => {
     expect(resolvePanelRoute(accounts, null, 'smykla-skalski')).toEqual({
       account: 'smykla-skalski',
       view: 'overview',
     });
   });
 
-  it('preserves the requested tab when its installation is unavailable', () => {
+  it('preserves the requested tab when its workspace is unavailable', () => {
     expect(
       resolvePanelRoute(accounts, { account: 'removed-org', view: 'repositories' }, 'bartsmykla'),
     ).toEqual({ account: 'bartsmykla', view: 'repositories' });
   });
 
-  it('preserves the requested Queue page across installations', () => {
+  it('preserves the requested Queue page across workspaces', () => {
     expect(
       resolvePanelRoute(
         accounts,
@@ -361,14 +361,14 @@ describe('resolvePanelRoute', () => {
     ).toEqual({ account: 'bartsmykla', view: 'queue', queue: 'approvals' });
   });
 
-  it('falls back to the first available installation', () => {
+  it('falls back to the first available workspace', () => {
     expect(resolvePanelRoute(accounts, null, 'removed-org')).toEqual({
       account: 'bartsmykla',
       view: 'overview',
     });
   });
 
-  it('has no destination without an installation', () => {
+  it('has no destination without a workspace', () => {
     expect(resolvePanelRoute([], null, 'bartsmykla')).toBeNull();
   });
 });
@@ -382,7 +382,7 @@ describe('personal routes', () => {
 
   it('refuses anything hanging off it, or scoped to a workspace', () => {
     expect(parsePanelRoute('', '/inbox/security')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/inbox')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/inbox')).toBeNull();
     expect(parsePanelRoute('', '/root/inbox')).toBeNull();
   });
 
@@ -390,19 +390,19 @@ describe('personal routes', () => {
      still an account. Reading it anywhere else would take a workspace away from
      whoever owns that name. */
   it('leaves an account of the same name alone', () => {
-    expect(parsePanelRoute('', '/i/inbox/settings')).toEqual({
+    expect(parsePanelRoute('', '/workspace/inbox/settings')).toEqual({
       account: 'inbox',
       view: 'settings',
     });
     expect(parsePanelRoute('', '/root/workspaces/inbox/repositories')).toEqual({
-      rootView: 'installation',
+      rootView: 'workspace',
       account: 'inbox',
       view: 'repositories',
     });
   });
 
-  /* The Root user table offers no history - decisions are made inside an
-     installation - so an address naming one does not resolve, rather than
+  /* The Root user table offers no history - decisions are made inside a
+     workspace - so an address naming one does not resolve, rather than
      resolving to the table with nothing open on it. */
   it('refuses a Root user history that nothing opens', () => {
     expect(parsePanelRoute('', '/root/access/users/octocat/history')).toBeNull();
@@ -410,9 +410,9 @@ describe('personal routes', () => {
       rootView: 'access-users',
       dialog: { name: 'root-user-action', params: { user: 'octocat', action: 'ban' } },
     });
-    // The same person inside an installation still has one.
+    // The same person inside a workspace still has one.
     expect(parsePanelRoute('', '/root/workspaces/acme/access/users/octocat/history')).toEqual({
-      rootView: 'installation',
+      rootView: 'workspace',
       account: 'acme',
       view: 'users',
       dialog: { name: 'decision-history', params: { user: 'octocat' } },
@@ -421,13 +421,13 @@ describe('personal routes', () => {
 });
 
 describe('history sections are addressable', () => {
-  it('parses the section off an installation history path', () => {
-    expect(parsePanelRoute('', '/i/acme/history/failures')).toEqual({
+  it('parses the section off a workspace history path', () => {
+    expect(parsePanelRoute('', '/workspace/acme/history/failures')).toEqual({
       account: 'acme',
       view: 'history',
       section: 'failures',
     });
-    expect(parsePanelRoute('', '/i/acme/history/audit')).toEqual({
+    expect(parsePanelRoute('', '/workspace/acme/history/audit')).toEqual({
       account: 'acme',
       view: 'history',
       section: 'audit',
@@ -435,7 +435,10 @@ describe('history sections are addressable', () => {
   });
 
   it('leaves a bare history path sectionless, and resolves it to audit', () => {
-    expect(parsePanelRoute('', '/i/acme/history')).toEqual({ account: 'acme', view: 'history' });
+    expect(parsePanelRoute('', '/workspace/acme/history')).toEqual({
+      account: 'acme',
+      view: 'history',
+    });
     expect(resolvePanelRoute(['acme'], { account: 'acme', view: 'history' }, null)).toEqual({
       account: 'acme',
       view: 'history',
@@ -444,16 +447,20 @@ describe('history sections are addressable', () => {
   });
 
   it('refuses a section on a view that has none, and an unknown section', () => {
-    expect(parsePanelRoute('', '/i/acme/settings/audit')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/history/everything')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/settings/audit')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/history/everything')).toBeNull();
   });
 
   it('writes the section back into the path', () => {
     expect(panelAddress({ account: 'acme', view: 'history', section: 'failures' })).toBe(
-      `${basePath}/i/acme/history/failures`,
+      `${basePath}/workspace/acme/history/failures`,
     );
-    expect(panelAddress({ account: 'acme', view: 'history' })).toBe(`${basePath}/i/acme/history`);
-    expect(panelAddress({ account: 'acme', view: 'settings' })).toBe(`${basePath}/i/acme/settings`);
+    expect(panelAddress({ account: 'acme', view: 'history' })).toBe(
+      `${basePath}/workspace/acme/history`,
+    );
+    expect(panelAddress({ account: 'acme', view: 'settings' })).toBe(
+      `${basePath}/workspace/acme/settings`,
+    );
   });
 
   it('resolves a bare root section path to that section default', () => {
@@ -461,16 +468,16 @@ describe('history sections are addressable', () => {
     expect(parsePanelRoute('', '/root/access')).toEqual({ rootView: 'access-users' });
   });
 
-  it('carries the section through a root installation route', () => {
+  it('carries the section through a root workspace route', () => {
     expect(parsePanelRoute('', '/root/workspaces/acme/history/failures')).toEqual({
-      rootView: 'installation',
+      rootView: 'workspace',
       account: 'acme',
       view: 'history',
       section: 'failures',
     });
     expect(
       panelAddress({
-        rootView: 'installation',
+        rootView: 'workspace',
         account: 'acme',
         view: 'history',
         section: 'failures',

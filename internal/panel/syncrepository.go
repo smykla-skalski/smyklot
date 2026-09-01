@@ -36,7 +36,7 @@ type syncOverrideDTO struct {
 	ProblemAt *time.Time `json:"problem_at,omitempty"`
 }
 
-// syncPathDTO is one path and how many of this installation's repositories
+// syncPathDTO is one path and how many of this workspace's repositories
 // already hold it.
 //
 // The count is the whole point of aggregating: the same file across twenty-five
@@ -47,7 +47,7 @@ type syncPathDTO struct {
 	Repositories int    `json:"repositories"`
 }
 
-// heldPathIndex is one installation's aggregated path list, and the reading of
+// heldPathIndex is one workspace's aggregated path list, and the reading of
 // the stored rows it was built from.
 //
 // Held rather than rebuilt because building it is the expensive part: the union
@@ -79,10 +79,10 @@ func pathIndexStamp(scans []orgsync.RepositoryPathScan) string {
 	return hex.EncodeToString(digest.Sum(nil))
 }
 
-// listSyncPaths answers with every path this installation's repositories are
+// listSyncPaths answers with every path this workspace's repositories are
 // known to hold.
 //
-// Shipped whole and matched in the browser: it is a list this installation
+// Shipped whole and matched in the browser: it is a list this workspace
 // already has, it changes about once a day, and a request per keystroke to
 // filter it would be a request per keystroke.
 //
@@ -161,7 +161,7 @@ func syncPathIndex(rows []orgsync.RepositoryPaths) map[string]any {
 			observed = row.ObservedAt
 		}
 		// One repository GitHub would not finish listing makes the whole answer
-		// some of what this installation holds. Said rather than left to look
+		// some of what this workspace holds. Said rather than left to look
 		// like a short list that is complete.
 		partial = partial || row.Partial
 		for _, path := range row.Paths {
@@ -184,7 +184,7 @@ func syncPathIndex(rows []orgsync.RepositoryPaths) map[string]any {
 		return strings.Compare(left.Path, right.Path)
 	})
 
-	// `repositories` counts the rows this was built FROM, not the installation's
+	// `repositories` counts the rows this was built FROM, not the workspace's
 	// repositories: it is the denominator under "held by 4 of 6", and counting
 	// repositories nothing has ever looked at would put a ceiling there that no
 	// path can reach.
@@ -271,7 +271,7 @@ func (s *Server) answerSyncOverride(
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
 		// Nothing has planned this repository for this kind yet, which is the
-		// ordinary answer on a fresh installation and says nothing is wrong.
+		// ordinary answer on a fresh workspace and says nothing is wrong.
 	case err != nil:
 		// Reported rather than left out. A refusal this page could not read is
 		// the one thing it exists to show, and rendering the pane without it
@@ -290,7 +290,7 @@ func (s *Server) answerSyncOverride(
 }
 
 // adjustsBeyond reports a save naming a path this repository was not already
-// adjusting, which is the only thing the installation's configuration decides.
+// adjusting, which is the only thing the workspace's configuration decides.
 func adjustsBeyond(adjustments orgsync.FileOverride, keeping []string) bool {
 	for _, path := range adjustments.Adjusted() {
 		if !slices.Contains(keeping, path) {
@@ -301,7 +301,7 @@ func adjustsBeyond(adjustments orgsync.FileOverride, keeping []string) bool {
 	return false
 }
 
-// syncFileConfig reads what the installation synchronizes.
+// syncFileConfig reads what the workspace synchronizes.
 func (s *Server) syncFileConfig(r *http.Request, targetID string) (orgsync.FileConfig, error) {
 	stored, err := s.store.GetSyncConfig(r.Context(), targetID, orgsync.KindFiles)
 	if errors.Is(err, storage.ErrNotFound) {

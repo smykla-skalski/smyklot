@@ -27,7 +27,7 @@
     Page,
     PanelAccount,
     PanelInvitation,
-    InstallationRole,
+    WorkspaceRole,
     PanelUser,
     PanelUserListStatus,
     PanelUserPageRequest,
@@ -63,7 +63,7 @@
   const INVITATION_DIALOG = 'invitation-action';
   const HISTORY_DIALOG = 'decision-history';
 
-  type TargetRole = Exclude<InstallationRole, 'owner'>;
+  type TargetRole = Exclude<WorkspaceRole, 'owner'>;
   type GrantedTargetRole = Exclude<TargetRole, 'none'>;
 
   const ACCESS_METHODS = [
@@ -106,7 +106,7 @@
     targetName: string;
     /** The signed-in login, so the one refusal the panel can make for itself is made here. */
     actorLogin: string;
-    actorTargetRole: InstallationRole;
+    actorTargetRole: WorkspaceRole;
     readOnly?: boolean;
     fetchTargetUsers: (targetId: string, request: PanelUserPageRequest) => Promise<Page<PanelUser>>;
     addTargetUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
@@ -167,7 +167,7 @@
   let userSort = $state<PanelUserSort>(
     prefOption(initialPrefs.get('table.users.sort'), USER_SORTS, 'name_asc'),
   );
-  let userRoles = $state<InstallationRole[]>(
+  let userRoles = $state<WorkspaceRole[]>(
     prefList(initialPrefs.get('table.users.roles'), ['none', 'viewer', 'editor', 'admin']),
   );
   let userStatuses = $state<PanelUserListStatus[]>(
@@ -180,7 +180,7 @@
   let invitationSort = $state<InvitationSort>(
     prefOption(initialPrefs.get('table.invitations.sort'), INVITATION_SORTS, 'name_asc'),
   );
-  let invitationRoles = $state<Exclude<InstallationRole, 'none'>[]>(
+  let invitationRoles = $state<Exclude<WorkspaceRole, 'none'>[]>(
     prefList(initialPrefs.get('table.invitations.roles'), ['viewer', 'editor', 'admin']),
   );
   let invitationStatuses = $state<InvitationStatus[]>(
@@ -273,7 +273,7 @@
   let addButton = $state<HTMLButtonElement | null>(null);
   let addReturnFocus = $state<HTMLElement | null>(null);
   let login = $state('');
-  let addRole = $state<InstallationRole>('viewer');
+  let addRole = $state<WorkspaceRole>('viewer');
   let accessMethod = $state<'add' | 'invite'>('add');
   /**
    * Why the dialog was opened, kept apart from which method is selected in it.
@@ -391,7 +391,7 @@
     removed: { roles: ['none'], statuses: [] },
   } as const satisfies Record<
     string,
-    { roles: readonly InstallationRole[]; statuses: readonly PanelUserListStatus[] }
+    { roles: readonly WorkspaceRole[]; statuses: readonly PanelUserListStatus[] }
   >;
   type UserView = keyof typeof USER_VIEWS;
   const USER_VIEW_NAMES = Object.keys(USER_VIEWS) as UserView[];
@@ -1063,7 +1063,7 @@
     if (pick === 'suspend') return `Suspended ${handle} for ${targetName}`;
     if (pick === 'restore') return `Lifted the suspension of ${handle}`;
     if (pick === 'role:none') return `Removed ${handle} from ${targetName}`;
-    return `${handle} is now ${roleLabel(pick.slice(5) as InstallationRole)} in ${targetName}`;
+    return `${handle} is now ${roleLabel(pick.slice(5) as WorkspaceRole)} in ${targetName}`;
   }
 
   /**
@@ -1095,7 +1095,7 @@
     return access;
   }
 
-  function addRoles(): InstallationRole[] {
+  function addRoles(): WorkspaceRole[] {
     return actorTargetRole === 'owner' ? ['viewer', 'editor', 'admin'] : ['viewer', 'editor'];
   }
 
@@ -1103,7 +1103,7 @@
     return user.target_access?.role ?? 'none';
   }
 
-  function shownRole(user: PanelUser): InstallationRole {
+  function shownRole(user: PanelUser): WorkspaceRole {
     return user.target_access?.effective_role ?? 'none';
   }
 
@@ -1137,7 +1137,7 @@
   }
 
   /** Only the standing that outranks everyone else's is tinted; the rest are words. */
-  function roleTone(role: InstallationRole): PillTone {
+  function roleTone(role: WorkspaceRole): PillTone {
     return role === 'owner' ? 'role' : 'bare';
   }
 
@@ -1173,12 +1173,12 @@
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
 
-  function roleLabel(role: InstallationRole): string {
+  function roleLabel(role: WorkspaceRole): string {
     if (role === 'none') return 'No access';
     return role[0]?.toLocaleUpperCase() + role.slice(1);
   }
 
-  function roleIcon(role: InstallationRole): IconName {
+  function roleIcon(role: WorkspaceRole): IconName {
     if (role === 'owner') return 'owner';
     if (role === 'admin') return 'admin';
     if (role === 'editor') return 'editor';
@@ -1187,7 +1187,7 @@
   }
 
   function selectInvitationFilters(values: string[]): void {
-    invitationRoles = values.filter((value): value is Exclude<InstallationRole, 'none'> =>
+    invitationRoles = values.filter((value): value is Exclude<WorkspaceRole, 'none'> =>
       ['admin', 'editor', 'viewer'].includes(value),
     );
   }
@@ -1694,7 +1694,7 @@ offering it.
           <Select
             value={addRole}
             aria-label="Role"
-            onchange={(event) => (addRole = event.currentTarget.value as InstallationRole)}
+            onchange={(event) => (addRole = event.currentTarget.value as WorkspaceRole)}
           >
             {#each addRoleOptions as option (option.value)}
               <option value={option.value}>{option.label}</option>

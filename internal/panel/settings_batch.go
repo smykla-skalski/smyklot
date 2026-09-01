@@ -13,16 +13,16 @@ import (
 // A batch may contain the one files document, plus the smaller documents and
 // repository settings around it. It is deliberately finite even though every
 // resource inside it is bounded again during preflight.
-const maxInstallationSettingsBatchBody = 8 << 20
+const maxWorkspaceSettingsBatchBody = 8 << 20
 
-type installationSettingsBatchActor struct {
+type workspaceSettingsBatchActor struct {
 	accountID        string
 	elevationID      *string
 	sessionTokenHash string
 	writeError       func(http.ResponseWriter, error)
 }
 
-func (s *Server) putInstallationSettingsBatch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) putWorkspaceSettingsBatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -30,12 +30,12 @@ func (s *Server) putInstallationSettingsBatch(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	s.putAuthorizedInstallationSettingsBatch(w, r, target, installationSettingsBatchActor{
+	s.putAuthorizedWorkspaceSettingsBatch(w, r, target, workspaceSettingsBatchActor{
 		accountID: account.ID, writeError: s.writeStorageError,
 	})
 }
 
-func (s *Server) putRootInstallationSettingsBatch(w http.ResponseWriter, r *http.Request) {
+func (s *Server) putRootWorkspaceSettingsBatch(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -43,48 +43,48 @@ func (s *Server) putRootInstallationSettingsBatch(w http.ResponseWriter, r *http
 	if !ok {
 		return
 	}
-	s.putAuthorizedInstallationSettingsBatch(w, r, root.Target, installationSettingsBatchActor{
+	s.putAuthorizedWorkspaceSettingsBatch(w, r, root.Target, workspaceSettingsBatchActor{
 		accountID: root.Account.ID, elevationID: elevationID(root.Elevation),
 		sessionTokenHash: root.SessionHash, writeError: s.writeRootWriteError,
 	})
 }
 
-func (s *Server) putAuthorizedInstallationSettingsBatch(
+func (s *Server) putAuthorizedWorkspaceSettingsBatch(
 	w http.ResponseWriter,
 	r *http.Request,
 	target storage.Target,
-	actor installationSettingsBatchActor,
+	actor workspaceSettingsBatchActor,
 ) {
-	var input installationSettingsBatchRequest
-	if !decodeJSONWithin(w, r, &input, maxInstallationSettingsBatchBody) {
+	var input workspaceSettingsBatchRequest
+	if !decodeJSONWithin(w, r, &input, maxWorkspaceSettingsBatchBody) {
 		return
 	}
-	request, err := s.prepareInstallationSettingsBatch(r, target, actor, input)
+	request, err := s.prepareWorkspaceSettingsBatch(r, target, actor, input)
 	if err != nil {
-		s.writeInstallationSettingsBatchPreparationError(w, err, actor.writeError)
+		s.writeWorkspaceSettingsBatchPreparationError(w, err, actor.writeError)
 		return
 	}
-	result, err := s.saveInstallationSettingsBatch(r.Context(), request)
+	result, err := s.saveWorkspaceSettingsBatch(r.Context(), request)
 	if err != nil {
 		if errors.Is(err, orgsync.ErrInvalidConfig) {
 			s.writeError(w, http.StatusBadRequest, "invalid_sync_config", err.Error())
 			return
 		}
 		if errors.Is(err, storage.ErrConflict) &&
-			s.writeInstallationSettingsBatchConflict(w, r.Context(), request) {
+			s.writeWorkspaceSettingsBatchConflict(w, r.Context(), request) {
 			return
 		}
 		actor.writeError(w, err)
 		return
 	}
-	answer := installationSettingsBatchAnswer(request, result)
-	s.signalInstallationSettingsBatch(target.ID, result)
+	answer := workspaceSettingsBatchAnswer(request, result)
+	s.signalWorkspaceSettingsBatch(target.ID, result)
 	writeJSON(w, http.StatusOK, answer)
 }
 
-// saveInstallationSettingsBatch holds the Pending CI exclusion while calling
+// saveWorkspaceSettingsBatch holds the Pending CI exclusion while calling
 // the storage transaction exactly once.
-func (s *Server) saveInstallationSettingsBatch(
+func (s *Server) saveWorkspaceSettingsBatch(
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,
 ) (storage.SaveInstallationSettingsResult, error) {
@@ -92,7 +92,7 @@ func (s *Server) saveInstallationSettingsBatch(
 		return s.store.SaveInstallationSettings(ctx, request)
 	}
 	if request.Target != nil {
-		return s.saveInstallationTargetSettingsBatch(ctx, request.TargetID, operation)
+		return s.saveWorkspaceTargetSettingsBatch(ctx, request.TargetID, operation)
 	}
 	if len(request.Repositories) == 0 {
 		return operation()
@@ -103,10 +103,10 @@ func (s *Server) saveInstallationSettingsBatch(
 	}
 	sort.Strings(repositoryIDs)
 
-	return saveInstallationSettingsExclusive(s, ctx, repositoryIDs, operation)
+	return saveWorkspaceSettingsExclusive(s, ctx, repositoryIDs, operation)
 }
 
-func (s *Server) saveInstallationTargetSettingsBatch(
+func (s *Server) saveWorkspaceTargetSettingsBatch(
 	ctx context.Context,
 	targetID string,
 	operation func() (storage.SaveInstallationSettingsResult, error),
@@ -123,7 +123,7 @@ func (s *Server) saveInstallationTargetSettingsBatch(
 		}
 		sort.Strings(repositoryIDs)
 		var saveErr error
-		result, saveErr = saveInstallationSettingsExclusive(s, ctx, repositoryIDs, operation)
+		result, saveErr = saveWorkspaceSettingsExclusive(s, ctx, repositoryIDs, operation)
 
 		return saveErr
 	})
@@ -131,7 +131,7 @@ func (s *Server) saveInstallationTargetSettingsBatch(
 	return result, err
 }
 
-func saveInstallationSettingsExclusive(
+func saveWorkspaceSettingsExclusive(
 	s *Server,
 	ctx context.Context,
 	repositoryIDs []string,
@@ -148,7 +148,7 @@ func saveInstallationSettingsExclusive(
 	return result, err
 }
 
-func (s *Server) signalInstallationSettingsBatch(
+func (s *Server) signalWorkspaceSettingsBatch(
 	targetID string,
 	result storage.SaveInstallationSettingsResult,
 ) {

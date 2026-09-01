@@ -11,7 +11,7 @@
     timezone: 'Europe/Warsaw',
     system: false,
     revision: 4,
-    affected_installations: 3,
+    affected_workspaces: 3,
     affected_items: 8,
     affected_policies: 2,
     windows: [1, 2, 3, 4, 5].map((weekday) => ({
@@ -34,7 +34,7 @@
   };
   const request: ScheduleRequest = {
     id: 'request:17',
-    target_id: 'github:installation:42',
+    target_id: 'github:workspace:42',
     kind: 'sync_scan',
     state: 'pending',
     base_revision: 3,

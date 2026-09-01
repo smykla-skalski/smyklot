@@ -46,7 +46,7 @@
 
 <!--
 @component
-What someone may do here, chosen from the roles this installation defines. A listbox
+What someone may do here, chosen from the roles this workspace defines. A listbox
 rather than a menu, because these are values to pick among and not acts to perform -
 which is also what a screen reader is told.
 

@@ -86,7 +86,7 @@ const BASENAME_BAND = 1000;
  * `'I'.toLowerCase()` is two code units (`i` + U+0307), so one Turkish-named
  * file made every index past it point one place too far, and a match near the
  * end read `path[length]`, which is `undefined` - and `undefined.toLowerCase()`
- * threw, taking the whole finder down for the installation that held it.
+ * threw, taking the whole finder down for the workspace that held it.
  *
  * A character whose lowercase is not one code unit keeps its own case. It then
  * fails a case-insensitive comparison it would otherwise have passed, which

@@ -8,7 +8,7 @@ export const DEFAULT_SIDEBAR_DISPLAY: SidebarDisplay = 'expanded';
 export const DEFAULT_THEME_DISPLAY: ThemeDisplay = 'system';
 
 const TIME_DISPLAY_KEY = 'smyklot.panel.history.time-display';
-const LAST_INSTALLATION_KEY = 'smyklot.panel.last-installation';
+const LAST_WORKSPACE_KEY = 'smyklot.panel.last-workspace';
 const SIDEBAR_DISPLAY_KEY = 'smyklot.panel.sidebar.display';
 const THEME_DISPLAY_KEY = 'smyklot.panel.theme';
 
@@ -99,13 +99,13 @@ export function readTimeDisplay(storage: PreferenceReader | null = browserStorag
   }
 }
 
-export function readLastInstallation(
+export function readLastWorkspace(
   storage: PreferenceReader | null = browserStorage(),
 ): string | null {
   if (storage === null) return null;
 
   try {
-    const value = storage.getItem(LAST_INSTALLATION_KEY)?.trim();
+    const value = storage.getItem(LAST_WORKSPACE_KEY)?.trim();
     return value === undefined || value === '' ? null : value;
   } catch {
     return null;

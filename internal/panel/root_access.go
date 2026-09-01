@@ -18,7 +18,7 @@ type createRootInvitationRequest struct {
 	Login         string `json:"login"`
 	ExpiresInDays int    `json:"expires_in_days"`
 
-	// AcknowledgeDeclined carries the same second press as the installation scope.
+	// AcknowledgeDeclined carries the same second press as the workspace scope.
 	AcknowledgeDeclined bool `json:"acknowledge_declined"`
 }
 

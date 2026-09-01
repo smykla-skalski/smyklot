@@ -29,7 +29,7 @@ function roundTrip(path: string): string {
 
 describe('one repository as a page [Unit]', () => {
   it('reads the repository out of the repositories path', () => {
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway')).toEqual({
+    expect(parsePanelRoute('', '/workspace/acme/repositories/api-gateway')).toEqual({
       account: 'acme',
       view: 'repositories',
       repository: { name: 'api-gateway' },
@@ -39,19 +39,21 @@ describe('one repository as a page [Unit]', () => {
   it('is a page, never a dialog', () => {
     // The whole point of the change: nothing about this address says something
     // is standing on top of the list, because nothing is.
-    const route = parsePanelRoute('', '/i/acme/repositories/api-gateway');
+    const route = parsePanelRoute('', '/workspace/acme/repositories/api-gateway');
     expect(route).not.toBeNull();
     expect(route).not.toHaveProperty('dialog');
   });
 
   it('writes the repository and nothing after it', () => {
-    expect(roundTrip('/i/acme/repositories/api-gateway')).toBe('/i/acme/repositories/api-gateway');
+    expect(roundTrip('/workspace/acme/repositories/api-gateway')).toBe(
+      '/workspace/acme/repositories/api-gateway',
+    );
   });
 
   it('reads a repository named like one of the panes that used to exist', () => {
     /* A name is only ever read in the first position, so a repository called
        `file` is a repository and not the remains of a pane. */
-    expect(parsePanelRoute('', '/i/acme/repositories/file')).toEqual({
+    expect(parsePanelRoute('', '/workspace/acme/repositories/file')).toEqual({
       account: 'acme',
       view: 'repositories',
       repository: { name: 'file' },
@@ -59,7 +61,7 @@ describe('one repository as a page [Unit]', () => {
   });
 
   it('leaves the bare list alone', () => {
-    expect(parsePanelRoute('', '/i/acme/repositories')).toEqual({
+    expect(parsePanelRoute('', '/workspace/acme/repositories')).toEqual({
       account: 'acme',
       view: 'repositories',
     });
@@ -76,12 +78,12 @@ describe('one repository as a page [Unit]', () => {
   it('refuses the panes it used to have', () => {
     for (const pane of ['file', 'behavior', 'commands', 'formatting', 'sync']) {
       expect(
-        parsePanelRoute('', `/i/acme/repositories/api-gateway/${pane}`),
+        parsePanelRoute('', `/workspace/acme/repositories/api-gateway/${pane}`),
         `/${pane} still resolves`,
       ).toBeNull();
     }
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/repositories/api-gateway/file/extra')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/repositories/api-gateway/nonsense')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/repositories/api-gateway/file/extra')).toBeNull();
   });
 
   it('escapes a repository name that needs it', () => {
@@ -90,7 +92,7 @@ describe('one repository as a page [Unit]', () => {
       view: 'repositories',
       repository: { name: 'a b/c' },
     });
-    expect(path).toBe(`${basePath}/i/acme/repositories/a%20b%2Fc`);
+    expect(path).toBe(`${basePath}/workspace/acme/repositories/a%20b%2Fc`);
     expect(parsePanelRoute(basePath, path)).toEqual({
       account: 'acme',
       view: 'repositories',
@@ -99,15 +101,15 @@ describe('one repository as a page [Unit]', () => {
   });
 
   it('refuses a name that decodes to nothing', () => {
-    expect(parsePanelRoute('', '/i/acme/repositories/%zz')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/repositories/%20')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/repositories/%zz')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/repositories/%20')).toBeNull();
   });
 });
 
 describe('one repository through the Root console [Unit]', () => {
   it('takes the same shape of address it has in a workspace', () => {
     expect(parsePanelRoute('', '/root/workspaces/acme/repositories/api-gateway')).toEqual({
-      rootView: 'installation',
+      rootView: 'workspace',
       account: 'acme',
       view: 'repositories',
       repository: { name: 'api-gateway' },
@@ -126,9 +128,9 @@ describe('one repository through the Root console [Unit]', () => {
      takes a repository, and the trailing segment has to stay refused rather than
      be read as one now that the repositories view reads its own. */
   it('does not let another view carry a repository', () => {
-    expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/settings/api-gateway')).toBeNull();
-    expect(parsePanelRoute('', '/i/acme/sync/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/settings/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/settings/api-gateway')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/acme/sync/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/workspaces/acme/settings/api-gateway')).toBeNull();
     expect(parsePanelRoute('', '/root/workspaces/acme/settings/api-gateway')).toBeNull();
   });

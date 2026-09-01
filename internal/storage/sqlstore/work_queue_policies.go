@@ -267,7 +267,7 @@ func (s *Store) DeleteQueuePolicyOverride(
 	actorID string,
 	at time.Time,
 ) (workqueue.Policy, error) {
-	if !kind.InstallationConfigurable() || targetID == "" || expectedRevision < 1 {
+	if !kind.WorkspaceConfigurable() || targetID == "" || expectedRevision < 1 {
 		return workqueue.Policy{}, errors.New("queue policy override identity is invalid")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

@@ -69,7 +69,7 @@ func (kind Kind) Recurring() bool {
 	}
 }
 
-func (kind Kind) InstallationConfigurable() bool {
+func (kind Kind) WorkspaceConfigurable() bool {
 	switch kind {
 	case KindPendingCI, KindPendingCIGate, KindReactionScan,
 		KindConfigMigration, KindSyncScan, KindPathRefresh:
@@ -175,20 +175,20 @@ type Exception struct {
 }
 
 type Profile struct {
-	ID                    string      `json:"id"`
-	TargetID              *string     `json:"target_id,omitempty"`
-	Name                  string      `json:"name"`
-	Timezone              string      `json:"timezone"`
-	System                bool        `json:"system"`
-	ArchivedAt            *time.Time  `json:"archived_at,omitempty"`
-	Revision              int64       `json:"revision"`
-	Windows               []Window    `json:"windows"`
-	Exceptions            []Exception `json:"exceptions"`
-	CreatedAt             time.Time   `json:"created_at"`
-	UpdatedAt             time.Time   `json:"updated_at"`
-	AffectedInstallations int         `json:"affected_installations,omitempty"`
-	AffectedItems         int         `json:"affected_items,omitempty"`
-	AffectedPolicies      int         `json:"affected_policies,omitempty"`
+	ID                 string      `json:"id"`
+	TargetID           *string     `json:"target_id,omitempty"`
+	Name               string      `json:"name"`
+	Timezone           string      `json:"timezone"`
+	System             bool        `json:"system"`
+	ArchivedAt         *time.Time  `json:"archived_at,omitempty"`
+	Revision           int64       `json:"revision"`
+	Windows            []Window    `json:"windows"`
+	Exceptions         []Exception `json:"exceptions"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+	AffectedWorkspaces int         `json:"affected_workspaces,omitempty"`
+	AffectedItems      int         `json:"affected_items,omitempty"`
+	AffectedPolicies   int         `json:"affected_policies,omitempty"`
 }
 
 type Policy struct {

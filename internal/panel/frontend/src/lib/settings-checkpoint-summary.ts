@@ -5,6 +5,15 @@ import type {
   SyncKind,
 } from './types';
 
+/**
+ * THE ONE PLACE THE OLD WORD STAYS, and it is not vocabulary - it is data.
+ *
+ * These strings are what `internal/storage` wrote into the audit table, row by row, on a
+ * running service. They are keys to history rather than words anybody reads: this
+ * function is the thing that turns them into words. Renaming them would orphan every
+ * audit row already written, which is a migration and not a rename, so the audit keeps
+ * its spelling and the reader still sees "Restored".
+ */
 export function settingsCheckpointActionLabel(action: SettingsCheckpoint['action']): string {
   if (action === 'installation.settings.restored' || action === 'runtime.settings.restored') {
     return 'Restored';

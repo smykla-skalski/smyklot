@@ -1,6 +1,6 @@
 import { CONFIG_KEYS } from './config.ts';
 import {
-  readLastInstallation,
+  readLastWorkspace,
   readSidebarDisplay,
   readThemeDisplay,
   readTimeDisplay,
@@ -30,7 +30,7 @@ export const PREF_DEFAULTS = {
   theme: 'system',
   sidebar: 'expanded',
   'history.time_display': 'relative',
-  last_installation: null,
+  last_workspace: null,
   'table.repositories.sort': 'name_asc',
   'table.repositories.state': 'all',
   'table.repositories.files': [],
@@ -248,16 +248,16 @@ export function migrateLegacyPreferences(storage: PreferenceStore | null = brows
     if (timeDisplay !== PREF_DEFAULTS['history.time_display']) {
       doc.pending['history.time_display'] = timeDisplay;
     }
-    const lastInstallation = readLastInstallation(storage);
-    if (lastInstallation !== null) {
-      doc.pending.last_installation = sanitizePrefString(lastInstallation);
+    const lastWorkspace = readLastWorkspace(storage);
+    if (lastWorkspace !== null) {
+      doc.pending.last_workspace = sanitizePrefString(lastWorkspace);
     }
 
     writePrefsDoc(doc, storage);
     storage.removeItem('smyklot.panel.theme');
     storage.removeItem('smyklot.panel.sidebar.display');
     storage.removeItem('smyklot.panel.history.time-display');
-    storage.removeItem('smyklot.panel.last-installation');
+    storage.removeItem('smyklot.panel.last-workspace');
   } catch {
     // Browser preferences are best-effort and must never block the panel
   }

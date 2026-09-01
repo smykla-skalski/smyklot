@@ -20,7 +20,7 @@ import (
 // needs struct tags, so it marshalled under its Go field names, and the panel read
 // `enabled` and `disabled` off an object that spelled them `Enabled` and `Disabled`.
 // Adding two undefined numbers is what wrote "of NaN enabled" across the Root
-// console's installations table.
+// console's workspaces table.
 //
 // Nothing caught it. The types compile either way, the Go tests asserted on the
 // struct rather than the JSON, and the development fixture spells these fields the
@@ -222,7 +222,7 @@ var notJSONRoutes = map[string]bool{
 }
 
 // The wildcards the readable routes use that the authorization matrix has no
-// reason to name, since it only walks the installation-scoped ones. A section
+// reason to name, since it only walks the workspace-scoped ones. A section
 // wildcard stands for one of its sections; the probe list above asks for both.
 var readableRoutePlaceholders = map[string]string{
 	"{token}":   "abcdefghijklmnopqrstuvwxyzABCDEFGH_01234567",

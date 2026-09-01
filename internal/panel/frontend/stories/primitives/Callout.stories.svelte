@@ -40,7 +40,7 @@
       <Callout tone="warning">
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
-          This installation is not yours. Continue to its Access view to acknowledge and start the
+          This workspace is not yours. Continue to its Access view to acknowledge and start the
           audited 15-minute elevation before adding the user.
         </span>
       </Callout>

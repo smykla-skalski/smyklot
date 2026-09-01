@@ -27,7 +27,7 @@ afterAll(async () => {
 
 async function openList(): Promise<Page> {
   const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
-  await page.goto(`${panel.origin}/i/${panel.account}/repositories`, {
+  await page.goto(`${panel.origin}/workspace/${panel.account}/repositories`, {
     waitUntil: 'domcontentloaded',
   });
   await page.locator('.repository-row').first().waitFor({ state: 'visible', timeout: 30_000 });
@@ -58,7 +58,7 @@ describe('one repository as a page [Integration]', () => {
         .getByRole('heading', { name, exact: true })
         .waitFor({ state: 'visible', timeout: 15_000 });
       expect(new URL(page.url()).pathname).toBe(
-        `/i/${panel.account}/repositories/${encodeURIComponent(name)}`,
+        `/workspace/${panel.account}/repositories/${encodeURIComponent(name)}`,
       );
     } finally {
       await page.close();
@@ -122,7 +122,7 @@ describe('one repository as a page [Integration]', () => {
     try {
       // Never having seen the list: the page has to resolve the repository by the
       // name in the address rather than find it in rows it already holds.
-      await page.goto(`${panel.origin}/i/${panel.account}/repositories/data-pipeline`, {
+      await page.goto(`${panel.origin}/workspace/${panel.account}/repositories/data-pipeline`, {
         waitUntil: 'domcontentloaded',
       });
       await page
@@ -137,7 +137,9 @@ describe('one repository as a page [Integration]', () => {
           .waitFor({ state: 'visible' });
       }
       expect(await page.locator('.pane-tools').count()).toBe(0);
-      expect(new URL(page.url()).pathname).toBe(`/i/${panel.account}/repositories/data-pipeline`);
+      expect(new URL(page.url()).pathname).toBe(
+        `/workspace/${panel.account}/repositories/data-pipeline`,
+      );
     } finally {
       await page.close();
     }
@@ -148,7 +150,7 @@ describe('one repository as a page [Integration]', () => {
     try {
       // Answered from the wire, which is what a shared link actually hits.
       const answered = await page.goto(
-        `${panel.origin}/i/${panel.account}/repositories/data-pipeline/commands`,
+        `${panel.origin}/workspace/${panel.account}/repositories/data-pipeline/commands`,
         { waitUntil: 'domcontentloaded' },
       );
 
@@ -181,7 +183,7 @@ describe('one repository as a page [Integration]', () => {
       await page.locator(selector).first().click();
 
       await page.locator('.repository-row').first().waitFor({ state: 'visible', timeout: 15_000 });
-      expect(new URL(page.url()).pathname).toBe(`/i/${panel.account}/repositories`);
+      expect(new URL(page.url()).pathname).toBe(`/workspace/${panel.account}/repositories`);
     } finally {
       await page.close();
     }

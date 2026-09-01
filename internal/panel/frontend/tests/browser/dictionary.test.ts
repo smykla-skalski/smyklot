@@ -94,7 +94,7 @@ const BEHIND_A_CONTROL = [
   { route: 'root/queue', press: 'button.row-hit', opens: '#queue-detail', ready: '.facts' },
   { route: 'root/queue', press: 'button:has-text("Run now")', opens: '#queue-action' },
   {
-    route: 'i/settings',
+    route: 'workspace/settings',
     press: 'button:has-text("Request a change")',
     opens: '#workspace-timing-request',
   },

@@ -63,23 +63,23 @@ const targets = new Map<string, Target>();
 /** Every addressable page, named as the reader would say it. */
 function routes(account: string): ReadonlyArray<readonly [string, string]> {
   return [
-    ['settings', `/i/${account}/settings`],
-    ['repositories', `/i/${account}/repositories`],
-    ['users', `/i/${account}/access/users`],
-    ['invitations', `/i/${account}/access/invitations`],
-    ['audit history', `/i/${account}/history/audit`],
-    ['failure history', `/i/${account}/history/failures`],
-    ['sync overview', `/i/${account}/sync`],
-    ['sync labels', `/i/${account}/sync/labels`],
-    ['sync settings', `/i/${account}/sync/settings`],
-    ['sync rulesets', `/i/${account}/sync/rulesets`],
-    ['a sync ruleset', `/i/${account}/sync/rulesets/main-protection`],
-    ['sync files', `/i/${account}/sync/files`],
-    ['a sync file', `/i/${account}/sync/files/renovate.json`],
-    ['the sync plan', `/i/${account}/sync/plan`],
+    ['settings', `/workspace/${account}/settings`],
+    ['repositories', `/workspace/${account}/repositories`],
+    ['users', `/workspace/${account}/access/users`],
+    ['invitations', `/workspace/${account}/access/invitations`],
+    ['audit history', `/workspace/${account}/history/audit`],
+    ['failure history', `/workspace/${account}/history/failures`],
+    ['sync overview', `/workspace/${account}/sync`],
+    ['sync labels', `/workspace/${account}/sync/labels`],
+    ['sync settings', `/workspace/${account}/sync/settings`],
+    ['sync rulesets', `/workspace/${account}/sync/rulesets`],
+    ['a sync ruleset', `/workspace/${account}/sync/rulesets/main-protection`],
+    ['sync files', `/workspace/${account}/sync/files`],
+    ['a sync file', `/workspace/${account}/sync/files/renovate.json`],
+    ['the sync plan', `/workspace/${account}/sync/plan`],
     /* One address, because the page is one scroll: the five pane addresses went with
        the switch over them, and every card they held is measured on this one. */
-    ['a repository', `/i/${account}/repositories/smyklot`],
+    ['a repository', `/workspace/${account}/repositories/smyklot`],
     ['the inbox', `/inbox`],
     ['the Root overview', `/root`],
     ['the queue', `/root/queue`],
@@ -87,19 +87,19 @@ function routes(account: string): ReadonlyArray<readonly [string, string]> {
     /* Armed, so the row of actions this file exists for is on the page. An ended
        request draws no buttons and would measure the easy half of the view. */
     ['a queue request', `/root/queue/request/pending-ci-0`],
-    ['the installation catalog', `/root/workspaces`],
+    ['the workspace catalog', `/root/workspaces`],
     ['Root access users', `/root/access/users`],
     ['Root access invitations', `/root/access/invitations`],
     ['Root audit history', `/root/history/audit`],
     ['Root failure history', `/root/history/failures`],
     ['Service health', `/root/runtime/service`],
     ['Service settings', `/root/runtime/settings`],
-    ['a Root installation', `/root/workspaces/${account}/settings`],
-    ['a Root installation’s repositories', `/root/workspaces/${account}/repositories`],
-    ['a Root installation’s users', `/root/workspaces/${account}/access/users`],
-    ['a Root installation’s invitations', `/root/workspaces/${account}/access/invitations`],
-    ['a Root installation’s audit history', `/root/workspaces/${account}/history/audit`],
-    ['a Root installation’s failure history', `/root/workspaces/${account}/history/failures`],
+    ['a Root workspace', `/root/workspaces/${account}/settings`],
+    ['a Root workspace’s repositories', `/root/workspaces/${account}/repositories`],
+    ['a Root workspace’s users', `/root/workspaces/${account}/access/users`],
+    ['a Root workspace’s invitations', `/root/workspaces/${account}/access/invitations`],
+    ['a Root workspace’s audit history', `/root/workspaces/${account}/history/audit`],
+    ['a Root workspace’s failure history', `/root/workspaces/${account}/history/failures`],
   ] as const;
 }
 
@@ -296,7 +296,7 @@ async function measureTarget(selector: string, pressCorner: boolean): Promise<Ta
   });
 
   try {
-    await visit(page, `${panel.origin}/i/${panel.account}/settings`);
+    await visit(page, `${panel.origin}/workspace/${panel.account}/settings`);
 
     const measurement = await page.evaluate((target: string) => {
       const control = document.querySelector(target);

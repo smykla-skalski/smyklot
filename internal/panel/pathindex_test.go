@@ -14,7 +14,7 @@ import (
 // the fields nothing on screen states plainly: `repositories` is the
 // denominator under "held by 4 of 6", and `observed_at` decides whether the
 // notice above the finder says the list is stale. The mock counted every
-// repository the installation has and stamped every answer with now(), so the
+// repository the workspace has and stamped every answer with now(), so the
 // notice could not appear in development at all.
 //
 // One table, two implementations, the way `filemerge` holds the composer.

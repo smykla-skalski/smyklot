@@ -18,7 +18,7 @@
     FailureHistoryRequest,
     FailureKind,
     HistorySort,
-    InstallationSettingsBatchResponse,
+    WorkspaceSettingsBatchResponse,
     SettingsCheckpoint,
     SettingsRestoreInput,
     Page,
@@ -41,7 +41,7 @@
   import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
-  type HistoryContext = 'installation' | 'root';
+  type HistoryContext = 'workspace' | 'root';
 
   const AUDIT_SCOPE_FILTERS = [
     {
@@ -83,7 +83,7 @@
     fetchAudit,
     exportAudit,
     fetchFailures,
-    context = 'installation',
+    context = 'workspace',
     section,
     prefs = EPHEMERAL_PREFS,
     readOnly = true,
@@ -124,14 +124,14 @@
       targetId: string,
       checkpointId: string,
       input: SettingsRestoreInput,
-    ) => Promise<InstallationSettingsBatchResponse>;
+    ) => Promise<WorkspaceSettingsBatchResponse>;
     fetchRootSettingsBaseline?: () => Promise<SettingsCheckpoint>;
     fetchRootSettingsCheckpoint?: (checkpointId: string) => Promise<SettingsCheckpoint>;
     restoreRootSettingsCheckpoint?: (
       checkpointId: string,
       input: SettingsRestoreInput,
     ) => Promise<RootRuntimeSettings>;
-    onSettingsRestored?: (result: InstallationSettingsBatchResponse, targetId: string) => void;
+    onSettingsRestored?: (result: WorkspaceSettingsBatchResponse, targetId: string) => void;
     onRootSettingsRestored?: (result: RootRuntimeSettings) => void;
     /**
      * Where a failure's repository lives, when the caller has an address for it.
@@ -382,7 +382,7 @@
 
   // Follow the prop only when it actually changes. Comparing it against the
   // local state instead would fight the toggle: a caller that never updates
-  // `section` (the installation views pass none) would snap every local
+  // `section` (the workspace views pass none) would snap every local
   // switch straight back to its constant default.
   // svelte-ignore state_referenced_locally
   let observedSection = section;
@@ -604,7 +604,7 @@
       return repositoryName(entry.repository_full_name);
     }
 
-    return context === 'root' ? (entry.installation?.login ?? null) : null;
+    return context === 'root' ? (entry.workspace?.login ?? null) : null;
   }
 
   /** The whole line as one string, for a label a screen reader reads in one go. */
@@ -633,7 +633,7 @@
     /* Named where the row's own object is a repository, because then the sentence
        has not said which workspace that repository is in. */
     if (context === 'root' && entry.repository_full_name !== undefined) {
-      parts.push(entry.installation?.display_name ?? 'The service itself');
+      parts.push(entry.workspace?.display_name ?? 'The service itself');
     }
     if (entry.subject !== undefined) parts.push(`@${entry.subject.login}`);
 
@@ -785,7 +785,7 @@ What has happened here, and what failed. Two records that answer different quest
 the audit says what was decided, the failures say what could not be done - kept in one
 pane because a reader looking at either usually wants both.
 
-`context` is the whole of the difference between the installation's copy and the Root
+`context` is the whole of the difference between the workspace's copy and the Root
 console's: the same records, the same table, and a wider scope. It is a prop rather than
 a second component because the two drifted apart the last time they were separate.
 
@@ -810,7 +810,7 @@ where the record is.
       {/if}
       <!-- The console reads the service's own changes beside every workspace's, and
            a row about the service belongs to no workspace to name. -->
-      {#if context === 'root' && entry.installation === undefined}
+      {#if context === 'root' && entry.workspace === undefined}
         <Pill>service</Pill>
       {/if}
     </span>
@@ -879,7 +879,7 @@ where the record is.
       />
     {/if}
 
-    {#if historyType === 'audit' && ((context === 'root' && fetchRootSettingsBaseline !== undefined) || (context === 'installation' && fetchSettingsBaseline !== undefined))}
+    {#if historyType === 'audit' && ((context === 'root' && fetchRootSettingsBaseline !== undefined) || (context === 'workspace' && fetchSettingsBaseline !== undefined))}
       <Button tone="quiet" onclick={(event) => openSettingsBaseline(event.currentTarget)}>
         Initial snapshot
       </Button>
@@ -1010,7 +1010,7 @@ where the record is.
                     <span class="object-sum" title={failureDetail(failure)}>
                       <!-- Whose work failed, on the page that reads every workspace's:
                            the repository above is one of many called `api-gateway`. -->
-                      {#if context === 'root'}{failure.installation?.display_name ??
+                      {#if context === 'root'}{failure.workspace?.display_name ??
                           'The service itself'} ·
                       {/if}{sentenceCase(failure.reason)}
                       {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}

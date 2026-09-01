@@ -135,8 +135,8 @@ changing a window here changes when every policy that names it runs.
       <p class="impact" role="status">
         Saving recomputes {profile.affected_items ?? 0} future queue
         {profile.affected_items === 1 ? ' item' : ' items'} across
-        {profile.affected_installations ?? 0}
-        {profile.affected_installations === 1 ? ' installation' : ' installations'}.
+        {profile.affected_workspaces ?? 0}
+        {profile.affected_workspaces === 1 ? ' workspace' : ' workspaces'}.
         {profile.affected_policies ?? 0}
         {profile.affected_policies === 1 ? ' policy uses' : ' policies use'} this profile.
       </p>

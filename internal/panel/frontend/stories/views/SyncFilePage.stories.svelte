@@ -50,7 +50,7 @@
   };
 
   /* The three repositories that adjust the template, named and identified the
-     way the installation's own repository list names them. */
+     way the workspace's own repository list names them. */
   const ADJUSTERS = [
     { name: 'platform-infra', id: '4002' },
     { name: 'api-gateway', id: '4005' },

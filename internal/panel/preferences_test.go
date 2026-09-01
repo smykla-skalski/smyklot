@@ -30,12 +30,12 @@ var prefsChecksumVectors = []struct {
 	{
 		name: "sorted keys with every value shape",
 		values: map[string]json.RawMessage{
-			prefKeyTheme:            json.RawMessage(`"system"`),
-			prefKeyUsersRoles:       json.RawMessage(`["viewer","admin"]`),
-			prefKeyLastInstallation: json.RawMessage(`"smykla-skalski"`),
+			prefKeyTheme:         json.RawMessage(`"system"`),
+			prefKeyUsersRoles:    json.RawMessage(`["viewer","admin"]`),
+			prefKeyLastWorkspace: json.RawMessage(`"smykla-skalski"`),
 		},
-		canonical: `{"last_installation":"smykla-skalski","table.users.roles":["viewer","admin"],"theme":"system"}`,
-		checksum:  "7f918baa90c14181",
+		canonical: `{"last_workspace":"smykla-skalski","table.users.roles":["viewer","admin"],"theme":"system"}`,
+		checksum:  "1e72d4a9604723ef",
 	},
 	{
 		name: "JSON.stringify escaping",
@@ -89,7 +89,7 @@ func TestValidatePrefChanges(t *testing.T) {
 		{name: "theme wrong type", key: "theme", value: `["dark"]`},
 		{name: "sidebar enum", key: "sidebar", value: `"collapsed"`, accepted: `"collapsed"`},
 		{name: "time display enum", key: "history.time_display", value: `"absolute"`, accepted: `"absolute"`},
-		{name: "last installation", key: "last_installation", value: `"smykla-skalski"`, accepted: `"smykla-skalski"`},
+		{name: "last workspace", key: "last_workspace", value: `"smykla-skalski"`, accepted: `"smykla-skalski"`},
 		{name: "repository sort", key: "table.repositories.sort", value: `"file_desc"`, accepted: `"file_desc"`},
 		{name: "repository sort unknown", key: "table.repositories.sort", value: `"size_asc"`},
 		{name: "history sort", key: "table.history.sort", value: `"repository_desc"`, accepted: `"repository_desc"`},

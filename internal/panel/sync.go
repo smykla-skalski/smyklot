@@ -52,20 +52,20 @@ type syncConfigDTO struct {
 
 	// Unreadable is a stored document this version cannot decode. The lists
 	// above are then empty because nothing could be read out of them, not
-	// because the installation configured nothing - and a panel that could not
+	// because the workspace configured nothing - and a panel that could not
 	// tell those apart would offer an empty form somebody saves, wiping a label
 	// set that was never shown to them.
 	Unreadable bool `json:"unreadable"`
 
-	// Unavailable says what this kind needs and the installation has not
+	// Unavailable says what this kind needs and the workspace has not
 	// granted, or is empty.
 	//
 	// Saving before the permission is approved is the ordinary order during a
 	// rollout, so nothing here refuses the save. What it prevents is the answer
-	// afterwards: a kind switched on that the installation cannot act on plans
+	// afterwards: a kind switched on that the workspace cannot act on plans
 	// nothing and fails at nothing, and an empty plan list reads exactly like a
 	// sweep that has not come round yet. Settings sync is the first kind to
-	// need a permission no existing installation has, which makes this the
+	// need a permission no existing workspace has, which makes this the
 	// ordinary first-use answer rather than a corner of one.
 	Unavailable string `json:"unavailable"`
 }
@@ -137,7 +137,7 @@ func (s *Server) syncKind(w http.ResponseWriter, r *http.Request) (orgsync.Kind,
 // syncKindKey is the wildcard the sync routes name a kind by.
 const syncKindKey = "kind"
 
-// getSyncConfig reads an installation's sync configuration for one kind.
+// getSyncConfig reads an workspace's sync configuration for one kind.
 func (s *Server) getSyncConfig(w http.ResponseWriter, r *http.Request) {
 	_, target, _, ok := s.requireTarget(w, r, false)
 	if !ok {
@@ -289,7 +289,7 @@ func readableDocument(document json.RawMessage) (json.RawMessage, bool) {
 }
 
 // syncConfigAnswer is one kind's configuration together with whether the
-// installation may act on it.
+// workspace may act on it.
 //
 // Two questions in one answer because they are read as one: a switch that is on
 // means nothing without the permission behind it, and the panel asks for the
@@ -382,7 +382,7 @@ func (s *Server) syncEditorLogin(ctx context.Context, accountID string) (string,
 	return account.Login, nil
 }
 
-// getSyncPlan reads whatever plan an installation has in flight.
+// getSyncPlan reads whatever plan an workspace has in flight.
 func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 	_, target, access, ok := s.requireTarget(w, r, false)
 	if !ok {

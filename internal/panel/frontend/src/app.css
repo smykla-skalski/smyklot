@@ -378,7 +378,7 @@ body {
    toolbar above the table and the pagination below it. The card is the scroller
    in between, and five of the six tables were not drawing one: a background and
    nothing else, so the rows ran to the edge of the page with no keyline, no
-   corner and no lift, while the installation catalog alone had a border and the
+   corner and no lift, while the workspace catalog alone had a border and the
    approved design has all three.
 
    `overflow` is not `visible` here, which is what clips the header's corners to
@@ -1142,7 +1142,7 @@ th[aria-sort='descending'] .table-sort-button:where(:hover, :focus-visible) .sor
    It stands on the quiet tier because that is what the filter triggers in the
    same header row already are, and because the action column is sized for it: a
    2.5rem trigger overflowed its cell's own padding and sat 12px proud of every
-   other column's right edge, in the Queue, Recent, Access and Installations
+   other column's right edge, in the Queue, Recent, Access and Workspaces
    tables alike.
 
    The states are LAYERS rather than fills. This button sits inside a row that
@@ -1325,7 +1325,7 @@ select:disabled {
 
 /* The console's own action: tinted with whatever `--brand-action` is where it is
    drawn, so it reads as the Root console's rather than the panel's.
-   Two class names in `RootInstallationView` carried this, one of them on a control
+   Two class names in `RootWorkspaceView` carried this, one of them on a control
    inside a portalled dialog - which leaves the component's DOM, so nothing there can
    reach it by descent. A tone is the only home it can have. */
 .btn-brand {
@@ -1816,7 +1816,7 @@ select:disabled {
 
 /* A workspace is drawn square, a person round. GitHub's own distinction, and the
    panel already keeps it in the rounded square the Root console gives an
-   installation's monogram — this puts the same shape on the avatar itself, so
+   workspace's monogram — this puts the same shape on the avatar itself, so
    the two can stand side by side with no labels and still say which is which.
 
    Proportional rather than the flat control radius: the same 8px reads as a
@@ -2211,7 +2211,7 @@ thead th .icon-button:active:not(:disabled) {
 
 /* The second selector above is the same chip one wrapper down. A cell often holds
    its chip inside a `<span title>` carrying the row's explanation, and a rule that
-   only reached the direct child left two columns of the installation catalog
+   only reached the direct child left two columns of the workspace catalog
    0.66px adrift while the columns beside them were exact.
    ------------------------------------------------------------------------
    Two: the words in a cell carry their leading with them, so the content box is

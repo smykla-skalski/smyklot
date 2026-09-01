@@ -75,7 +75,7 @@
   const drafts = getSettingsDraftRegistry();
   const resource = $derived(targetDefaultsResource(canonicalTarget.id));
   const settingsScope = $derived({
-    type: 'installation',
+    type: 'workspace',
     targetId: canonicalTarget.id,
   } as const satisfies SettingsScope);
   const document = $derived(targetDefaultsDraftDocument(drafts, canonicalTarget));

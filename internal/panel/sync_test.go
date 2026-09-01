@@ -34,7 +34,7 @@ func TestSyncConfigShowsTheEditorLogin(t *testing.T) {
 	session := harness.signIn(t)
 	path := "/panel/api/v1/targets/github:installation:10/sync/config/labels"
 
-	saved := harness.request(t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(
+	saved := harness.request(t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(
 		`{"sync_configs":[{"kind":"labels","enabled":true,"expected_revision":0,`+
 			`"labels":[],"allow_removal":false,"excludes":[]}]}`), session)
 	if saved.Code != http.StatusOK {
@@ -466,7 +466,7 @@ func TestSyncDocumentStoresTheRulesetsType(t *testing.T) {
 
 // TestSyncConfigNeverAnswersNullLists guards the shape rather than the values.
 // A JSON null where the browser expects a list is a crash in the view, and an
-// installation that has configured nothing is the ordinary case.
+// workspace that has configured nothing is the ordinary case.
 func TestSyncConfigNeverAnswersNullLists(t *testing.T) {
 	dto := syncConfigToDTO(orgsync.Config{Kind: orgsync.KindLabels, Document: []byte(`{}`)}, "")
 
@@ -499,7 +499,7 @@ func TestSyncConfigReadsAKindNobodyConfigured(t *testing.T) {
 // TestSyncConfigSaysWhatThePermissionIsMissing is the guard on the answer an
 // operator gets when they switch a kind on and nothing happens.
 //
-// Settings sync is the first kind needing a permission no existing installation
+// Settings sync is the first kind needing a permission no existing workspace
 // has granted. Without the permission the sweep leaves the kind out and says so
 // in a server log nobody reading the panel can see, so the page shows an empty
 // plan list - which is also exactly what a sweep that has not come round yet
@@ -512,7 +512,7 @@ func TestSyncConfigSaysWhatThePermissionIsMissing(t *testing.T) {
 		orgsync.Config{Kind: orgsync.KindSettings, Enabled: true}, ungranted, "")
 
 	if dto.Unavailable == "" {
-		t.Fatal("a kind the installation cannot act on was answered as though it could")
+		t.Fatal("a kind the workspace cannot act on was answered as though it could")
 	}
 	if !strings.Contains(dto.Unavailable, "administration") {
 		t.Errorf("unavailable = %q, wanted the permission somebody has to grant named",
@@ -521,7 +521,7 @@ func TestSyncConfigSaysWhatThePermissionIsMissing(t *testing.T) {
 }
 
 // And the other half: a granted permission must not be reported as missing, or
-// every installation would be told to grant what it already has.
+// every workspace would be told to grant what it already has.
 func TestSyncConfigSaysNothingOfAPermissionItHas(t *testing.T) {
 	granted := storage.Target{Permissions: map[string]string{"administration": "write"}}
 

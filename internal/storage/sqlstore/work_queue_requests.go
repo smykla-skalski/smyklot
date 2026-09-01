@@ -123,7 +123,7 @@ func validateScheduleRequestCreate(create workqueue.ScheduleRequestCreate) error
 		strings.TrimSpace(create.Reason) == "" || strings.TrimSpace(create.RequestedBy) == "" {
 		return errors.New("schedule request identity, scope, requester, and reason are required")
 	}
-	if !create.Kind.InstallationConfigurable() ||
+	if !create.Kind.WorkspaceConfigurable() ||
 		!create.DefaultPriority.Valid() || create.Cadence < 0 ||
 		(create.Kind.Recurring() && create.Cadence <= 0) {
 		return errors.New("schedule request policy is invalid")

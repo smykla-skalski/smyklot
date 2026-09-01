@@ -20,7 +20,7 @@ describe('configured file formatting in the development panel', () => {
     page.on('pageerror', (error) => crashes.push(error.message));
 
     try {
-      await visit(page, `${panel.origin}/i/${panel.account}/sync/files/renovate.json`, {
+      await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/renovate.json`, {
         ready: '.format-status',
       });
 

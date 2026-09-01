@@ -13,7 +13,7 @@ import { syncPathIndex, type PathIndexAnswer, type PathScanRow } from '../dev/pa
  * `repositories` nor `observed_at` is drawn as itself - one is the denominator
  * under "held by 4 of 6" and the other decides whether the notice above the
  * finder says the list is stale. The mock counted every repository the
- * installation has rather than the rows read, and stamped every answer with
+ * workspace has rather than the rows read, and stamped every answer with
  * `now()`, so the stale notice could not appear in development at all.
  *
  * One table, two implementations, the way `filemerge` holds the composer.

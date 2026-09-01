@@ -35,7 +35,7 @@ const FIRST = 'Repositories';
 const SECOND = 'Workspace settings';
 
 async function apiCallsOnReturn(page: Page, panel: Panel): Promise<string[]> {
-  await visit(page, `${panel.origin}/i/${panel.account}/repositories`);
+  await visit(page, `${panel.origin}/workspace/${panel.account}/repositories`);
   // Away, so the first view's queries go inactive and its data is only in cache.
   await settle(page, () => page.getByRole('link', { name: SECOND, exact: true }).first().click(), {
     mount: 2_000,
@@ -142,7 +142,7 @@ beforeAll(async () => {
     });
     targetQueueSchedules = await queueCallsOnReturn(
       page,
-      `${panel.origin}/i/${panel.account}/queue`,
+      `${panel.origin}/workspace/${panel.account}/queue`,
       { link: 'Workspace settings', ready: '#ws-newrepos' },
     );
     sockets = await page.evaluate(
@@ -176,10 +176,10 @@ describe('coming back to a view already read [Integration]', () => {
     ).toEqual([]);
   });
 
-  it('keeps installation Queue and its settings page in the live cache', () => {
+  it('keeps workspace Queue and its settings page in the live cache', () => {
     expect(
       targetQueueSchedules,
-      `installation navigation asked for:\n${targetQueueSchedules.join('\n')}`,
+      `workspace navigation asked for:\n${targetQueueSchedules.join('\n')}`,
     ).toEqual([]);
   });
 });

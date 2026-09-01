@@ -10,7 +10,7 @@
       id: 'sync-plan:42',
       kind: 'sync_apply',
       lane: 'maintenance',
-      target_id: 'github:installation:42',
+      target_id: 'github:workspace:42',
       repository_id: 'github:repository:7',
       title: 'Apply organization sync plan',
       state: 'running',

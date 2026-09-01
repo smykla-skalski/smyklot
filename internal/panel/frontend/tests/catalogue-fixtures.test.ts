@@ -8,7 +8,7 @@ import {
   FAILURES,
   INVITATIONS,
   REPOSITORIES,
-  ROOT_INSTALLATION,
+  ROOT_WORKSPACE,
   ROOT_TARGET,
   SYNC_CONFIGS,
   SYNC_FILES_CONTEXT,
@@ -23,12 +23,12 @@ const syncViewStory = readFileSync(
   new URL('../stories/views/SyncView.stories.svelte', import.meta.url),
   'utf8',
 );
-const installationView = readFileSync(
-  new URL('../src/lib/components/InstallationView.svelte', import.meta.url),
+const workspaceView = readFileSync(
+  new URL('../src/lib/components/WorkspaceView.svelte', import.meta.url),
   'utf8',
 );
-const installationViewStory = readFileSync(
-  new URL('../stories/views/InstallationView.stories.svelte', import.meta.url),
+const workspaceViewStory = readFileSync(
+  new URL('../stories/views/WorkspaceView.stories.svelte', import.meta.url),
   'utf8',
 );
 const preview = readFileSync(new URL('../.storybook/preview.ts', import.meta.url), 'utf8');
@@ -58,7 +58,7 @@ describe('catalogue fixtures [Unit]', () => {
     );
   });
 
-  it('answers every read needed to open the root installation views', async () => {
+  it('answers every read needed to open the root workspace views', async () => {
     const api = fixtureApi({ fetchRootTargetSettings: async () => ROOT_TARGET });
     const [target, repositories, users, invitations, audit, failures] = await Promise.all([
       api.fetchRootTargetSettings(TARGET.id),
@@ -94,7 +94,7 @@ describe('catalogue fixtures [Unit]', () => {
     ]);
 
     expect(target).toEqual(ROOT_TARGET);
-    expect(ROOT_INSTALLATION).toMatchObject({
+    expect(ROOT_WORKSPACE).toMatchObject({
       id: target.id,
       installation_id: target.installation_id,
       type: target.type,
@@ -158,9 +158,9 @@ describe('catalogue fixtures [Unit]', () => {
     expect(plannedLabels.every((label) => desiredLabels.has(label))).toBe(true);
   });
 
-  it('keeps the installation wrapper on the fixture clock', () => {
-    expect(installationViewStory).toContain('clock: () => NOW');
-    expect(installationView).toMatch(/<SyncView[\s\S]*?\n\s+\{clock\}\n\s+\/>/u);
+  it('keeps the workspace wrapper on the fixture clock', () => {
+    expect(workspaceViewStory).toContain('clock: () => NOW');
+    expect(workspaceView).toMatch(/<SyncView[\s\S]*?\n\s+\{clock\}\n\s+\/>/u);
   });
 
   it('opens the unreadable story on a surface that displays the warning', () => {

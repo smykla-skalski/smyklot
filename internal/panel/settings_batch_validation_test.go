@@ -11,7 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-func targetInstallationSettingsBatchBody(
+func targetWorkspaceSettingsBatchBody(
 	t *testing.T,
 	target storage.Target,
 	enabled bool,
@@ -33,25 +33,25 @@ func targetInstallationSettingsBatchBody(
 	return encoded
 }
 
-func TestInstallationSettingsBatchAuthorizationAndSameOrigin(t *testing.T) {
+func TestWorkspaceSettingsBatchAuthorizationAndSameOrigin(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := targetInstallationSettingsBatchBody(t, target, true)
+	body := targetWorkspaceSettingsBatchBody(t, target, true)
 
 	unauthenticated := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, bytes.NewReader(body), nil,
+		t, http.MethodPut, workspaceSettingsBatchPath, bytes.NewReader(body), nil,
 	)
 	requireResponse(t, unauthenticated, "unauthenticated batch", http.StatusUnauthorized)
 	ordinary := createOrdinarySession(t, harness)
 	unauthorized := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, bytes.NewReader(body), ordinary,
+		t, http.MethodPut, workspaceSettingsBatchPath, bytes.NewReader(body), ordinary,
 	)
 	requireResponse(t, unauthorized, "unowned batch", http.StatusNotFound)
-	request := httptest.NewRequest(http.MethodPut, installationSettingsBatchPath, bytes.NewReader(body))
+	request := httptest.NewRequest(http.MethodPut, workspaceSettingsBatchPath, bytes.NewReader(body))
 	request.AddCookie(session)
 	request.Header.Set("Origin", "https://untrusted.example")
 	request.Header.Set("Content-Type", "application/json")
@@ -60,7 +60,7 @@ func TestInstallationSettingsBatchAuthorizationAndSameOrigin(t *testing.T) {
 	requireResponse(t, response, "cross-origin batch", http.StatusForbidden)
 }
 
-func TestInstallationSettingsRejectsLegacyFlatDocuments(t *testing.T) {
+func TestWorkspaceSettingsRejectsLegacyFlatDocuments(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	const flatDocument = `{"repository_default_enabled":true,
@@ -70,12 +70,12 @@ func TestInstallationSettingsRejectsLegacyFlatDocuments(t *testing.T) {
 		"path_index_interval_seconds_override":null,"config_patch":{},"expected_revision":1}`
 
 	ordinary := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(flatDocument), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(flatDocument), session,
 	)
-	requireResponse(t, ordinary, "flat installation settings", http.StatusBadRequest,
+	requireResponse(t, ordinary, "flat workspace settings", http.StatusBadRequest,
 		`"code":"invalid_request"`)
 
-	_, snapshot := seedNonOwnedInstallation(t, harness)
+	_, snapshot := seedNonOwnedWorkspace(t, harness)
 	started := harness.request(
 		t, http.MethodPost,
 		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/elevation",
@@ -88,27 +88,27 @@ func TestInstallationSettingsRejectsLegacyFlatDocuments(t *testing.T) {
 		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/settings",
 		strings.NewReader(flatDocument), session,
 	)
-	requireResponse(t, root, "flat Root installation settings", http.StatusBadRequest,
+	requireResponse(t, root, "flat Root workspace settings", http.StatusBadRequest,
 		`"code":"invalid_request"`)
 }
 
-func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) {
+func TestRootWorkspaceSettingsBatchRequiresAndRecordsElevation(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	rootSession := harness.signIn(t)
-	_, snapshot := seedNonOwnedInstallation(t, harness)
+	_, snapshot := seedNonOwnedWorkspace(t, harness)
 	target, err := harness.store.GetTarget(t.Context(), snapshot.TargetID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	path := "/panel/api/v1/root/workspaces/" + target.ID + "/settings"
-	body := targetInstallationSettingsBatchBody(t, target, true)
+	body := targetWorkspaceSettingsBatchBody(t, target, true)
 
 	blocked := harness.request(t, http.MethodPut, path, bytes.NewReader(body), rootSession)
 	requireResponse(t, blocked, "Root batch without elevation", http.StatusForbidden,
 		`"code":"elevation_required"`)
 	started := harness.request(t, http.MethodPost,
 		"/panel/api/v1/root/workspaces/"+target.ID+"/elevation",
-		strings.NewReader(`{"acknowledged":true,"reason":"edit installation settings"}`),
+		strings.NewReader(`{"acknowledged":true,"reason":"edit workspace settings"}`),
 		rootSession)
 	requireResponse(t, started, "start batch elevation", http.StatusCreated)
 	var elevation elevationResponse
@@ -124,7 +124,7 @@ func TestRootInstallationSettingsBatchRequiresAndRecordsElevation(t *testing.T) 
 		`"elevation_id":"`+elevation.ID+`"`, `"action":"installation.settings.saved"`)
 }
 
-func TestInstallationSettingsBatchRejectsMalformedResourcesBeforeWrite(t *testing.T) {
+func TestWorkspaceSettingsBatchRejectsMalformedResourcesBeforeWrite(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	tests := []struct {
@@ -148,7 +148,7 @@ func TestInstallationSettingsBatchRejectsMalformedResourcesBeforeWrite(t *testin
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			response := harness.request(
-				t, http.MethodPut, installationSettingsBatchPath,
+				t, http.MethodPut, workspaceSettingsBatchPath,
 				strings.NewReader(test.body), session,
 			)
 			requireResponse(t, response, test.name, test.status, test.fragment)
@@ -160,20 +160,20 @@ func TestInstallationSettingsBatchRejectsMalformedResourcesBeforeWrite(t *testin
 	}
 }
 
-func TestInstallationSettingsBatchBoundsTheWholeRequest(t *testing.T) {
+func TestWorkspaceSettingsBatchBoundsTheWholeRequest(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	body := `{"sync_configs":[{"kind":"files","enabled":true,"document":{"files":[{
-		"path":"README.md","content":"` + strings.Repeat("x", maxInstallationSettingsBatchBody) +
+		"path":"README.md","content":"` + strings.Repeat("x", maxWorkspaceSettingsBatchBody) +
 		`"}]},"expected_revision":0}]}`
 	response := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(body), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(body), session,
 	)
 	requireResponse(t, response, "oversized settings batch", http.StatusRequestEntityTooLarge,
 		`"code":"request_too_large"`)
 }
 
-func TestInstallationSettingsBatchRejectsUnavailableRepository(t *testing.T) {
+func TestWorkspaceSettingsBatchRejectsUnavailableRepository(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
@@ -201,7 +201,7 @@ func TestInstallationSettingsBatchRejectsUnavailableRepository(t *testing.T) {
 		"path_index_interval_seconds_override":null,"config_patch":{},
 		"ignore_repository_file":false,"expected_revision":1}]}`
 	response := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(body), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(body), session,
 	)
 	requireResponse(t, response, "unavailable repository", http.StatusNotFound,
 		`"code":"not_found"`)

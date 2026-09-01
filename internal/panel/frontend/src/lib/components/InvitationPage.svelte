@@ -261,7 +261,7 @@ other reader to a blank screen with no way to tell which of the five they hit.
     flex-wrap: wrap;
   }
 
-  /* Whether accepting joins an organisation or one person's installation. Quiet,
+  /* Whether accepting joins an organisation or one person's workspace. Quiet,
      because it qualifies the name rather than competing with it. */
   .scope-kind {
     color: var(--text-muted);

@@ -15,15 +15,15 @@ Completing a GitHub login as it is typed.
 The dialogs that add or invite somebody used to take a login typed in full and
 say nothing until it was submitted, at which point a typo came back as "GitHub
 user could not be resolved". The names being typed are almost always people in
-the organization the installation belongs to, and the panel can read that roster,
+the organization the workspace belongs to, and the panel can read that roster,
 so it offers it.
 
 It is completion, not a picker. Whatever is typed is still what gets submitted,
 and a login the roster does not carry - somebody outside the organization, or a
-personal installation, which has no roster at all - resolves on submit exactly as
+personal workspace, which has no roster at all - resolves on submit exactly as
 it did before.
 
-GitHub's own user search is not one of the endpoints a GitHub App installation
+GitHub's own user search is not one of the endpoints a GitHub App workspace
 token may call, and the panel holds no other credential: it reads the signed-in
 person's profile once at sign-in and discards the OAuth token rather than keeping
 one per session, which is what makes the consent screen ask for nothing. Storing
@@ -41,7 +41,7 @@ const minSuggestionPrefix = 2
 
 // candidateDirectory reads the roster a login can be completed against. It is
 // separate from userResolver because a deployment can resolve logins without
-// being able to list anybody: an installation on a personal account has no
+// being able to list anybody: an workspace on a personal account has no
 // roster, and the panel is expected to work there with no completion at all.
 type candidateDirectory interface {
 	ListTargetCandidates(context.Context, string) ([]storage.Account, error)
@@ -58,7 +58,7 @@ func (s *Server) getTargetUserSuggestions(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) getRootTargetUserSuggestions(w http.ResponseWriter, r *http.Request) {
-	manager, ok := s.requireRootInstallationManager(w, r, false)
+	manager, ok := s.requireRootWorkspaceManager(w, r, false)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ rankCandidates orders a roster against what has been typed.
 
 A login that starts with the query comes before one that merely contains it,
 which is what someone typing the first letters of a name expects to see. People
-who already have access to this installation are dropped: they are not candidates
+who already have access to this workspace are dropped: they are not candidates
 for being added to it, and offering them is an invitation to a conflict.
 */
 func rankCandidates(

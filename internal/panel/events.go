@@ -363,9 +363,9 @@ func (s *Server) servePanelEvents(
 	}
 }
 
-// panelEventVisible keeps installation-scoped queue changes inside the same
-// authorization boundary as the queue API. Root sees global and installation
-// work; an installation user sees only targets they can still access. Access
+// panelEventVisible keeps workspace-scoped queue changes inside the same
+// authorization boundary as the queue API. Root sees global and workspace
+// work; an workspace user sees only targets they can still access. Access
 // is resolved when the event is delivered so a long-lived connection cannot
 // retain a scope after ownership or an explicit role changes.
 func (s *Server) panelEventVisible(

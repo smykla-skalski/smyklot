@@ -42,7 +42,7 @@ beforeAll(async () => {
       });
     });
 
-    await page.goto(`${panel.origin}/i/${panel.account}/repositories`, {
+    await page.goto(`${panel.origin}/workspace/${panel.account}/repositories`, {
       waitUntil: 'domcontentloaded',
     });
 

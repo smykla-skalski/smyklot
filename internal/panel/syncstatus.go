@@ -79,7 +79,7 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if facts.checked.IsZero() {
-		// Nothing has been looked at yet - a fresh installation. The board is
+		// Nothing has been looked at yet - a fresh workspace. The board is
 		// still an answer, dated to the moment it was composed.
 		facts.checked = s.now().UTC()
 	}
@@ -312,7 +312,7 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 }
 
 // syncCoverageDelta adjusts a baseline count when a repository explicitly
-// answers differently from the installation.
+// answers differently from the workspace.
 func syncCoverageDelta(defaultEnabled bool, override *bool) int {
 	if override == nil || *override == defaultEnabled {
 		return 0

@@ -49,14 +49,14 @@ function withoutDialogState(): App.PageState {
   return state;
 }
 
-function isRootInstallation(): boolean {
+function isRootWorkspace(): boolean {
   return page.url.pathname.startsWith(`${basePath}/root/workspaces/`);
 }
 
-function installationAccessView(): string | undefined {
+function workspaceAccessView(): string | undefined {
   const id = page.route.id;
   if (
-    id === '/i/[account]/access/[section=accessSection]/[...rest=dialogPath]' ||
+    id === '/workspace/[account]/access/[section=accessSection]/[...rest=dialogPath]' ||
     id === '/root/workspaces/[account]/access/[section=accessSection]/[...rest=dialogPath]'
   ) {
     return page.params.section;
@@ -105,8 +105,8 @@ function dialogHostFromPage(): DialogHost | null {
   const view = page.params.view;
   if (view !== undefined && isDialogHost(view)) return view;
   const section = page.params.section;
-  const installationView = installationAccessView();
-  if (installationView !== undefined && isDialogHost(installationView)) return installationView;
+  const workspaceView = workspaceAccessView();
+  if (workspaceView !== undefined && isDialogHost(workspaceView)) return workspaceView;
   if (
     section !== undefined &&
     page.route.id === '/root/access/[section=accessSection]/[...rest=dialogPath]'
@@ -124,11 +124,11 @@ function pathForDialog(host: DialogHost, dialog: RouteDialog): string | null {
     return panelAddress({ rootView: host, dialog } as RootRoute);
   }
 
-  const view = page.params.view ?? installationAccessView();
+  const view = page.params.view ?? workspaceAccessView();
   const account = page.params.account;
   if (view === undefined || account === undefined || !isDialogHost(view)) return null;
-  if (isRootInstallation()) {
-    return panelAddress({ rootView: 'installation', account, view, dialog } as RootRoute);
+  if (isRootWorkspace()) {
+    return panelAddress({ rootView: 'workspace', account, view, dialog } as RootRoute);
   }
   return panelAddress({ account, view, dialog } as PanelRoute);
 }
@@ -141,11 +141,11 @@ function bareHostPath(): string | null {
     } as RootRoute);
   }
 
-  const view = page.params.view ?? installationAccessView();
+  const view = page.params.view ?? workspaceAccessView();
   const account = page.params.account;
   if (view === undefined || account === undefined) return null;
-  return isRootInstallation()
-    ? panelAddress({ rootView: 'installation', account, view } as RootRoute)
+  return isRootWorkspace()
+    ? panelAddress({ rootView: 'workspace', account, view } as RootRoute)
     : panelAddress({ account, view } as PanelRoute);
 }
 

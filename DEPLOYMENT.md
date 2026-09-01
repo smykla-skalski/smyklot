@@ -230,7 +230,7 @@ In the App's settings:
 
 The App needs **Checks** write, **Commit statuses** read, **Administration** write, and **Merge queues** read in addition to its command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset; Merge queues read lets it fail closed on repositories whose queue commits Smyklot does not support. Existing installations must approve the new permissions after the App registration changes.
 
-Organization sync asks for more. Label sync needs only the **Issues** write access the bot already holds, so it works the day it is switched on. Settings and ruleset sync need **Administration** write. File sync needs **Contents** write, and **Workflows** write on top of it wherever a synchronized path sits under `.github/workflows/` - GitHub keeps those behind a permission of their own and refuses the push without it. Until an installation approves one, that kind stands down and names the permission in the panel; the rest of the sync runs. Nothing is written to a repository on a permissions listing the service could not read.
+Organization sync asks for more. Label sync needs only the **Issues** write access the bot already holds, so it works the day it is switched on. Settings and ruleset sync need **Administration** write. File sync needs **Contents** write, and **Workflows** write on top of it wherever a synchronized path sits under `.github/workflows/` - GitHub keeps those behind a permission of their own and refuses the push without it. Until a workspace's installation approves one, that kind stands down and names the permission in the panel; the rest of the sync runs. Nothing is written to a repository on a permissions listing the service could not read.
 
 ### 2. Create the Secret
 
@@ -446,7 +446,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/auth/github/start
 
 The expected results are 200 for health and the panel, then 302 to GitHub for
 the sign-in start. Complete one sign-in as `bartsmykla` and verify that a reload
-preserves the selected installation and settings before enabling repositories.
+preserves the selected workspace and settings before enabling repositories.
 
 Set the App's webhook URL to `https://smyklot.com/webhook` once that returns 200, not before - GitHub validates the endpoint when you save it. Confirm the endpoint end to end by redelivering a past delivery rather than waiting for a real comment:
 
@@ -596,7 +596,7 @@ curl localhost:9090/readyz
 curl -sS -o /dev/null -w '%{http_code}\n' https://smyklot.com/
 ```
 
-Sign in to the panel and confirm the installation, its settings and the audit trail are the ones you had. Only then:
+Sign in to the panel and confirm the workspace, its settings and the audit trail are the ones you had. Only then:
 
 ```bash
 fly volumes list --app smyklot

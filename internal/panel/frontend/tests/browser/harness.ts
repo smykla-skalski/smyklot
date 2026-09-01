@@ -29,7 +29,7 @@ export interface Panel {
 
 /**
  * Every shape of page the panel has, addressed the way its own router spells it: a workspace view
- * under `/i/<account>`, the console under `/root`, and the inbox under neither, since it belongs
+ * under `/workspace/<account>`, the console under `/root`, and the inbox under neither, since it belongs
  * to the reader.
  *
  * Here rather than in one of the files that walks it, because more than one does and a second copy
@@ -37,27 +37,27 @@ export interface Panel {
  * checked and is not.
  */
 export const PANEL_ROUTES = [
-  'i/settings',
-  'i/queue',
-  'i/repositories',
+  'workspace/settings',
+  'workspace/queue',
+  'workspace/repositories',
   /* One repository's own page, which is a route in its own right and was in none
      of these sweeps: it has a header, a switch, a way back and three panes, and
      every rule the others are held to applies to it too. */
-  'i/repositories/api-gateway',
-  'i/sync',
-  /* Sync is six sections and two of them name one of their own, so `i/sync`
+  'workspace/repositories/api-gateway',
+  'workspace/sync',
+  /* Sync is six sections and two of them name one of their own, so `workspace/sync`
      alone reaches the overview and none of the rest. Every browser sweep runs
      off this list, so what is missing here is not measured anywhere - which is
      how a row's state mark went uncounted while standing beside a chip it did
      not match. */
-  'i/sync/labels',
-  'i/sync/settings',
-  'i/sync/plan',
-  'i/sync/rulesets',
-  'i/sync/files',
-  'i/access/users',
-  'i/access/invitations',
-  'i/history',
+  'workspace/sync/labels',
+  'workspace/sync/settings',
+  'workspace/sync/plan',
+  'workspace/sync/rulesets',
+  'workspace/sync/files',
+  'workspace/access/users',
+  'workspace/access/invitations',
+  'workspace/history',
   'root/runtime/service',
   'root/runtime/settings',
   'root/queue',
@@ -80,8 +80,8 @@ export const PANEL_ROUTES = [
 /** One of those routes as an address, filling in the workspace that signing in found. */
 export function addressOf(panel: Panel, route: string): string {
   const path = route.replace('{account}', panel.account);
-  return path.startsWith('i/')
-    ? `${panel.origin}/i/${panel.account}/${path.slice(2)}`
+  return path.startsWith('workspace/')
+    ? `${panel.origin}/workspace/${panel.account}/${path.slice('workspace/'.length)}`
     : `${panel.origin}/${path}`;
 }
 
@@ -172,7 +172,7 @@ export async function startPanel(): Promise<Panel> {
  *    window, which is what makes this cover a route that loads a list and then a page of it.
  *  - Nothing on the page may still say it is loading. Quiet alone is not enough and CI proved it:
  *    a view whose query has resolved but whose next one has not yet been issued is quiet, and
- *    `i/users` was measured in exactly that gap - the table header it renders was still a skeleton,
+ *    `workspace/access/users` was measured in exactly that gap - the table header it renders was still a skeleton,
  *    and the run reported the panel drawing no table header at all. The panel announces the state
  *    itself, in `aria-busy` and in the skeleton it puts up in place of rows, so that announcement
  *    is what gets read rather than a longer guess at how big the gap might be.
@@ -349,7 +349,7 @@ async function signIn(browser: Browser, origin: string): Promise<string> {
     try {
       await page.waitForURL(
         (url) =>
-          /^\/i\/[^/]+\//u.test(url.pathname) ||
+          /^\/workspace\/[^/]+\//u.test(url.pathname) ||
           url.pathname === '/root' ||
           url.pathname.startsWith('/root/'),
         { timeout: 30_000 },
@@ -359,11 +359,11 @@ async function signIn(browser: Browser, origin: string): Promise<string> {
       // than Playwright's generic navigation timeout.
     }
     const landing = new URL(page.url()).pathname;
-    const match = /^\/i\/([^/]+)\//u.exec(landing);
+    const match = /^\/workspace\/([^/]+)\//u.exec(landing);
     if (match?.[1] !== undefined) return decodeURIComponent(match[1]);
 
-    // Root viewers deliberately land in the application console instead of an
-    // installation. Ask the same authenticated API the workspace switcher uses
+    // Root viewers deliberately land in the application console instead of a
+    // workspace. Ask the same authenticated API the workspace switcher uses
     // rather than teaching this fixture the seeded account's name.
     if (landing === '/root' || landing.startsWith('/root/')) {
       const account = await page.evaluate(async () => {

@@ -54,11 +54,11 @@ const checksumVectors: { name: string; values: PrefValues; canonical: string; ch
       values: {
         theme: 'system',
         'table.users.roles': ['viewer', 'admin'],
-        last_installation: 'smykla-skalski',
+        last_workspace: 'smykla-skalski',
       },
       canonical:
-        '{"last_installation":"smykla-skalski","table.users.roles":["viewer","admin"],"theme":"system"}',
-      checksum: '7f918baa90c14181',
+        '{"last_workspace":"smykla-skalski","table.users.roles":["viewer","admin"],"theme":"system"}',
+      checksum: '1e72d4a9604723ef',
     },
     {
       name: 'JSON.stringify escaping',
@@ -154,7 +154,7 @@ describe('effective preferences', () => {
     expect(effectivePref(doc, 'sidebar')).toBe('collapsed');
     expect(effectivePref(doc, 'theme')).toBe(PREF_DEFAULTS.theme);
     expect(effectivePref(doc, 'table.users.sort')).toBe('name_asc');
-    expect(effectivePref(doc, 'last_installation')).toBeNull();
+    expect(effectivePref(doc, 'last_workspace')).toBeNull();
   });
 
   it('compares values structurally', () => {
@@ -191,7 +191,7 @@ describe('legacy preference migration', () => {
     storage.setItem('smyklot.panel.theme', 'dark');
     storage.setItem('smyklot.panel.sidebar.display', 'collapsed');
     storage.setItem('smyklot.panel.history.time-display', 'relative');
-    storage.setItem('smyklot.panel.last-installation', 'smykla-skalski');
+    storage.setItem('smyklot.panel.last-workspace', 'smykla-skalski');
 
     migrateLegacyPreferences(storage);
 
@@ -199,13 +199,13 @@ describe('legacy preference migration', () => {
     expect(doc.pending).toEqual({
       theme: 'dark',
       sidebar: 'collapsed',
-      last_installation: 'smykla-skalski',
+      last_workspace: 'smykla-skalski',
     });
     expect(doc.rev).toBe(0);
     expect(storage.getItem('smyklot.panel.theme')).toBeNull();
     expect(storage.getItem('smyklot.panel.sidebar.display')).toBeNull();
     expect(storage.getItem('smyklot.panel.history.time-display')).toBeNull();
-    expect(storage.getItem('smyklot.panel.last-installation')).toBeNull();
+    expect(storage.getItem('smyklot.panel.last-workspace')).toBeNull();
   });
 
   it('does nothing once a synced document exists', () => {

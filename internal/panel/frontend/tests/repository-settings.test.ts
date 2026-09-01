@@ -23,7 +23,7 @@ import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type {
   ConfigSources,
   ConfigValues,
-  InstallationRepositorySettingsState,
+  WorkspaceRepositorySettingsState,
   RepositoryDetail,
 } from '../src/lib/types';
 
@@ -263,7 +263,7 @@ describe('repository settings adapter [Unit]', () => {
     const input = repositorySettingsBatchInput('repo-1', 7, document);
     expect(input).toEqual({ repository_id: 'repo-1', ...document, expected_revision: 7 });
 
-    const state: InstallationRepositorySettingsState = {
+    const state: WorkspaceRepositorySettingsState = {
       ...input,
       revision: 12,
     };

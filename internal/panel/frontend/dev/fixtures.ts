@@ -37,7 +37,7 @@ import type {
   RootPanelUser,
   PendingCIRequest,
   QueueItem,
-  InstallationRole,
+  WorkspaceRole,
   TargetUserAccess,
   RepositoryDetail,
   RepositorySummary,
@@ -210,22 +210,22 @@ export interface MockState {
     updatedBy?: PanelAccount;
     startedAt: number;
   };
-  installationSettings: {
+  workspaceSettings: {
     checkpointCounter: number;
     checkpoints: Map<string, SettingsCheckpoint>;
   };
   prefs: { values: Record<string, unknown>; rev: number };
-  /** Label sync, per installation: what is configured and what is in flight. */
+  /** Label sync, per workspace: what is configured and what is in flight. */
   sync: Map<string, SyncConfig>;
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncPlans: Map<string, SyncPlan>;
-  /** The fleet: where every covered repository stands, per installation. */
+  /** The fleet: where every covered repository stands, per workspace. */
   syncStatus: Map<string, SyncStatus>;
 }
 
 /**
- * mockSyncConfig answers what an installation has configured, inventing an
+ * mockSyncConfig answers what a workspace has configured, inventing an
  * empty answer the first time. Never configured is not an error and not the
  * same as configured and switched off, which is what the server says too.
  */
@@ -245,7 +245,7 @@ export function seed(
   const iso = (offsetMs: number): string => new Date(now + offsetMs).toISOString();
   const organization = targetSeed({
     id: '2001',
-    installationId: '3001',
+    workspaceId: '3001',
     login: 'smykla-skalski',
     displayName: 'Smykla Skalski',
     type: 'Organization',
@@ -445,7 +445,7 @@ export function seed(
 
   const personal = targetSeed({
     id: '1001',
-    installationId: '3002',
+    workspaceId: '3002',
     login: 'bart',
     displayName: 'Bart Smykla',
     type: 'User',
@@ -505,13 +505,13 @@ export function seed(
     targets: [
       organization,
       personal,
-      /* 32 team orgs + the organization + the personal target = 34 installations,
+      /* 32 team orgs + the organization + the personal target = 34 workspaces,
          which is what the approved overview demo's ownership legend adds up to:
          24 fresh (team-11..32 plus those two) + 8 stale + 1 approval + 1 error. */
       ...Array.from({ length: 32 }, (_, index) =>
         targetSeed({
           id: `mock-organization-${index + 1}`,
-          installationId: String(3010 + index),
+          workspaceId: String(3010 + index),
           login: `team-${String(index + 1).padStart(2, '0')}`,
           displayName: `Engineering Team ${String(index + 1).padStart(2, '0')}`,
           type: 'Organization',
@@ -546,7 +546,7 @@ export function seed(
       audit: [],
       startedAt: now,
     },
-    installationSettings: {
+    workspaceSettings: {
       checkpointCounter: 1,
       checkpoints: new Map(),
     },
@@ -703,7 +703,7 @@ export function seed(
 }
 
 /**
- * The fleet, over the repositories this installation actually holds.
+ * The fleet, over the repositories this workspace actually holds.
  *
  * IT HAS TO BE THE SAME REPOSITORIES. The sync side of this mock named a
  * different set of twenty-five - `af`, `afi`, `harness` and so on - and only
@@ -1208,7 +1208,7 @@ export function invitationSeeds(
     },
   ];
   const statuses: InvitationStatus[] = ['pending', 'accepted', 'declined', 'revoked', 'expired'];
-  const roles: Array<Exclude<InstallationRole, 'none'>> = ['viewer', 'editor', 'admin'];
+  const roles: Array<Exclude<WorkspaceRole, 'none'>> = ['viewer', 'editor', 'admin'];
   for (let index = 0; index < 25; index += 1) {
     const status = cycled(statuses, index);
     invitations.push({
@@ -1241,13 +1241,13 @@ export function invitationSeeds(
    does not look like production. */
 export function securityNotificationSeeds(
   iso: (offsetMs: number) => string,
-  installation: PanelAccount,
+  workspace: PanelAccount,
   actor: PanelAccount,
 ): SecurityNotification[] {
   return [
     {
       id: 'security-3',
-      installation,
+      workspace,
       actor,
       elevation_id: 'R7mQ2xKfLp0Zc4Vn8sTdWb1yHgJ3aEuN6iOqXr5vBkM',
       audit_event_id: '203',
@@ -1257,7 +1257,7 @@ export function securityNotificationSeeds(
     },
     {
       id: 'security-2',
-      installation,
+      workspace,
       actor,
       elevation_id: 'R7mQ2xKfLp0Zc4Vn8sTdWb1yHgJ3aEuN6iOqXr5vBkM',
       audit_event_id: '202',
@@ -1267,7 +1267,7 @@ export function securityNotificationSeeds(
     },
     {
       id: 'security-1',
-      installation,
+      workspace,
       actor,
       elevation_id: 'hT4wYs9dRfB2nKmXpQ7vLc0jZgA5eU8iRoW1yNbD3xE',
       audit_event_id: '188',
@@ -1280,7 +1280,7 @@ export function securityNotificationSeeds(
 }
 
 /** What a role may do. The one answer, so a scoped user and a seeded one agree. */
-export function capabilitiesFor(role: InstallationRole) {
+export function capabilitiesFor(role: WorkspaceRole) {
   return {
     read: role !== 'none',
     write: role === 'owner' || role === 'admin' || role === 'editor',
@@ -1301,7 +1301,7 @@ export function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
     id: string,
     login: string,
     displayName: string,
-    role: InstallationRole,
+    role: WorkspaceRole,
     offsetMs: number,
   ): PanelUser => ({
     account: account(id, login, displayName),
@@ -1332,7 +1332,7 @@ export function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
     user('1004', 'margaret', 'Margaret Hamilton', 'viewer', -2 * 86_400_000),
     banned,
   ];
-  const roles: InstallationRole[] = ['viewer', 'editor', 'admin', 'none'];
+  const roles: WorkspaceRole[] = ['viewer', 'editor', 'admin', 'none'];
   for (let index = 0; index < 31; index += 1) {
     users.push(
       user(
@@ -1349,7 +1349,7 @@ export function userSeeds(iso: (offsetMs: number) => string): PanelUser[] {
 
 export function targetSeed(input: {
   id: string;
-  installationId: string;
+  workspaceId: string;
   login: string;
   displayName: string;
   type: 'Organization' | 'User';
@@ -1370,7 +1370,7 @@ export function targetSeed(input: {
   return {
     value: {
       id: input.id,
-      installation_id: input.installationId,
+      installation_id: input.workspaceId,
       type: input.type,
       account,
       repository_default_enabled: input.repositoryDefaultEnabled,
@@ -1928,7 +1928,7 @@ export function cycled<T>(items: readonly T[], index: number): T {
   return item;
 }
 
-/** What one account may do in one installation, and where that answer came from. */
+/** What one account may do in one workspace, and where that answer came from. */
 export function targetAccess(
   role: TargetUserAccess['role'],
   suspended: boolean,
@@ -1949,7 +1949,7 @@ export function targetAccess(
 }
 
 /**
- * What an installation has configured for one kind of sync, inventing an empty document
+ * What a workspace has configured for one kind of sync, inventing an empty document
  * the first time it is asked so a page has a shape to render before anything is set.
  *
  * `new Date()` and not the seeded `now`: this answers a request rather than seeding a
@@ -1980,7 +1980,7 @@ export function mockSyncConfig(state: MockState, key: string, kind: string): Syn
   return fresh;
 }
 
-/** The two installations the mock's Root actually owns. */
+/** The two workspaces the mock's Root actually owns. */
 export function mockRootOwns(target: MockTarget): boolean {
   return target.value.id === '2001' || target.value.id === '1001';
 }
@@ -2000,11 +2000,11 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
     ...(user.banned_at === undefined ? {} : { banned_at: user.banned_at }),
     ...(user.last_login_at === undefined ? {} : { last_login_at: user.last_login_at }),
     revision: user.revision,
-    owned_installations:
+    owned_workspaces:
       user.account.id === VIEWER.id
         ? state.targets.filter((target) => mockRootOwns(target)).length
         : 0,
-    assigned_installations: state.targets.filter((target) =>
+    assigned_workspaces: state.targets.filter((target) =>
       state.targetAccess.get(target.value.id)?.has(user.account.id),
     ).length,
     manageable: user.account.id !== VIEWER.id && user.system_role === 'none',
@@ -2014,7 +2014,7 @@ export function rootPanelUsers(state: MockState): RootPanelUser[] {
 
 /**
  * The path index the finder matches over: every path any repository in the
- * installation holds, deduped, with how many hold it.
+ * workspace holds, deduped, with how many hold it.
  */
 export const KNOWN_PATHS: Array<{ path: string; repositories: number }> = [
   { path: '.github/workflows/ci.yaml', repositories: 25 },
@@ -2051,7 +2051,7 @@ export const KNOWN_PATHS: Array<{ path: string; repositories: number }> = [
  * What the development deployment resolves for the durations that cascade.
  *
  * Named here rather than typed at each of the six places that need them: the
- * mock has to agree with itself across the runtime settings, an installation
+ * mock has to agree with itself across the runtime settings, a workspace
  * and a repository, or the panel prefills one number and saves against another.
  */
 export const DEV_PATH_INDEX_SECONDS = 3_600;

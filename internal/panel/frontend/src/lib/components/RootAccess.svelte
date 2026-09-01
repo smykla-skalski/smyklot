@@ -18,8 +18,8 @@
     RootPanelUser,
     RootPanelUserPageRequest,
     RootPanelUserSort,
-    RootInstallation,
-    InstallationRole,
+    RootWorkspace,
+    WorkspaceRole,
     SystemRole,
     UpdateRootUserInput,
   } from '../types';
@@ -51,7 +51,7 @@
 
   /** Name the dialogs in the address, and are the `id` each dialog carries. */
   const ACTION_DIALOG = 'root-user-action';
-  const ADD_DIALOG = 'root-add-installation-user';
+  const ADD_DIALOG = 'root-add-workspace-user';
 
   /* One word for what used to be three - "Root user", "Root invitation" and
      "system-level access" all meant somebody who may operate the service. */
@@ -84,10 +84,10 @@
     revokeInvitation,
     canManageInvitations,
     actorLogin,
-    fetchInstallations,
-    addInstallationUser,
+    fetchWorkspaces,
+    addWorkspaceUser,
     suggestUsers,
-    onOpenInstallationAccess,
+    onOpenWorkspaceAccess,
   }: {
     section: AccessSection;
     fetchUsers: (request: RootPanelUserPageRequest) => Promise<Page<RootPanelUser>>;
@@ -102,11 +102,11 @@
     canManageInvitations: boolean;
     /** The signed-in login, so naming yourself is answered before the press. */
     actorLogin: string;
-    fetchInstallations: () => Promise<RootInstallation[]>;
-    addInstallationUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
-    /** Completes a login against the chosen installation's organization. */
+    fetchWorkspaces: () => Promise<RootWorkspace[]>;
+    addWorkspaceUser: (targetId: string, input: AddTargetUserInput) => Promise<PanelUser>;
+    /** Completes a login against the chosen workspace's organization. */
     suggestUsers: (targetId: string, query: string) => Promise<PanelAccount[]>;
-    onOpenInstallationAccess: (account: string) => void;
+    onOpenWorkspaceAccess: (account: string) => void;
   } = $props();
 
   let search = $state('');
@@ -122,9 +122,9 @@
   let inviteTrigger = $state<HTMLButtonElement | null>(null);
   let invitations = $state<RootInvitations | null>(null);
   let addLogin = $state('');
-  let addRole = $state<Exclude<InstallationRole, 'none' | 'owner'>>('viewer');
-  let installationQuery = $state('');
-  let selectedInstallationID = $state('');
+  let addRole = $state<Exclude<WorkspaceRole, 'none' | 'owner'>>('viewer');
+  let workspaceQuery = $state('');
+  let selectedWorkspaceID = $state('');
   let addSaving = $state(false);
   let addProblem = $state<string | null>(null);
   let feedback = $state('');
@@ -179,36 +179,36 @@
         ? 'signal'
         : 'default',
   );
-  const installationsQuery = createQuery(() => ({
-    queryKey: ['root-installations'],
-    queryFn: fetchInstallations,
+  const workspacesQuery = createQuery(() => ({
+    queryKey: ['root-workspaces'],
+    queryFn: fetchWorkspaces,
     enabled: addOpen,
   }));
-  const installations = $derived<RootInstallation[]>(installationsQuery.data ?? []);
-  const installationsLoading = $derived(
-    addOpen && installationsQuery.isFetching && installationsQuery.data === undefined,
+  const workspaces = $derived<RootWorkspace[]>(workspacesQuery.data ?? []);
+  const workspacesLoading = $derived(
+    addOpen && workspacesQuery.isFetching && workspacesQuery.data === undefined,
   );
-  const installationsProblem = $derived(
-    addOpen && installationsQuery.error !== null ? errorMessage(installationsQuery.error) : null,
+  const workspacesProblem = $derived(
+    addOpen && workspacesQuery.error !== null ? errorMessage(workspacesQuery.error) : null,
   );
-  const defaultInstallationID = $derived(
-    installations.find((installation) => installation.available)?.id ?? '',
+  const defaultWorkspaceID = $derived(
+    workspaces.find((workspace) => workspace.available)?.id ?? '',
   );
-  const effectiveInstallationID = $derived(
-    selectedInstallationID === '' ? defaultInstallationID : selectedInstallationID,
+  const effectiveWorkspaceID = $derived(
+    selectedWorkspaceID === '' ? defaultWorkspaceID : selectedWorkspaceID,
   );
 
   function userAction(value: string | undefined): UserAction | null {
     return USER_ACTIONS.find((action) => action === value) ?? null;
   }
-  const selectedInstallation = $derived(
-    installations.find((installation) => installation.id === effectiveInstallationID) ?? null,
+  const selectedWorkspace = $derived(
+    workspaces.find((workspace) => workspace.id === effectiveWorkspaceID) ?? null,
   );
-  const filteredInstallations = $derived.by(() => {
-    const needle = installationQuery.trim().toLocaleLowerCase();
-    if (needle === '') return installations;
-    return installations.filter((installation) =>
-      [installation.account.display_name, installation.account.login].some((value) =>
+  const filteredWorkspaces = $derived.by(() => {
+    const needle = workspaceQuery.trim().toLocaleLowerCase();
+    if (needle === '') return workspaces;
+    return workspaces.filter((workspace) =>
+      [workspace.account.display_name, workspace.account.login].some((value) =>
         value.toLocaleLowerCase().includes(needle),
       ),
     );
@@ -299,8 +299,8 @@
     dialogRoute.open(ADD_DIALOG);
     addLogin = '';
     addRole = 'viewer';
-    installationQuery = '';
-    selectedInstallationID = '';
+    workspaceQuery = '';
+    selectedWorkspaceID = '';
     addProblem = null;
   }
 
@@ -311,11 +311,11 @@
   }
 
   async function submitAddUser(): Promise<void> {
-    const installation = selectedInstallation;
-    if (installation === null || !installation.available) return;
-    if (!installation.owned_by_viewer) {
+    const workspace = selectedWorkspace;
+    if (workspace === null || !workspace.available) return;
+    if (!workspace.owned_by_viewer) {
       if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
-      onOpenInstallationAccess(installation.account.login);
+      onOpenWorkspaceAccess(workspace.account.login);
       return;
     }
     const login = addLogin.trim();
@@ -323,8 +323,8 @@
     addSaving = true;
     addProblem = null;
     try {
-      await addInstallationUser(installation.id, { login, role: addRole });
-      feedback = `Added @${login} to ${installation.account.display_name}`;
+      await addWorkspaceUser(workspace.id, { login, role: addRole });
+      feedback = `Added @${login} to ${workspace.account.display_name}`;
       if (dialogRoute.isOpen(ADD_DIALOG)) dialogRoute.close();
       await loadPage(undefined, false);
     } catch (error) {
@@ -353,8 +353,8 @@
 
   /** What a person has in the product, said the way they would say it. */
   function membership(user: RootPanelUser): string {
-    const owned = user.owned_installations;
-    const assigned = user.assigned_installations;
+    const owned = user.owned_workspaces;
+    const assigned = user.assigned_workspaces;
     if (owned > 0) {
       const said = `owns ${owned} ${owned === 1 ? 'workspace' : 'workspaces'}`;
 
@@ -489,7 +489,7 @@
 <!--
 @component
 Who may use the panel at all, which is the Root console's own question rather than any
-installation's. Users and invitations are two sections of one page because the answer to
+workspace's. Users and invitations are two sections of one page because the answer to
 "why can this person not get in" is in whichever of the two they are not in.
 
 `canManageInvitations` draws the acts rather than disabling them. An operator who may
@@ -706,71 +706,71 @@ refuse.
   onClose={closeAddUser}
 >
   <form
-    id="root-add-installation-user-form"
+    id="root-add-workspace-user-form"
     class="add-user-form"
     onsubmit={(event) => {
       event.preventDefault();
       void submitAddUser();
     }}
   >
-    <!-- Completed against the chosen installation's organization, which is why
+    <!-- Completed against the chosen workspace's organization, which is why
          the field reads the selection rather than owning a roster of its own.
          Before one is chosen there is nothing to complete against, and the field
          is what it always was. -->
     <LoginField
-      id="root-add-installation-login"
+      id="root-add-workspace-login"
       label="GitHub login"
       bind:value={addLogin}
       focusOnOpen
       suggest={(query) =>
-        selectedInstallation === null
+        selectedWorkspace === null
           ? Promise.resolve([])
-          : suggestUsers(selectedInstallation.id, query)}
+          : suggestUsers(selectedWorkspace.id, query)}
     />
 
-    <fieldset class="installation-fieldset">
+    <fieldset class="workspace-fieldset">
       <legend>Workspace</legend>
       <SearchField
         label="Find a workspace"
         placeholder="Find a workspace"
-        value={installationQuery}
-        onInput={(value) => (installationQuery = value)}
+        value={workspaceQuery}
+        onInput={(value) => (workspaceQuery = value)}
       />
-      {#if installationsLoading}
-        <div class="installation-state" role="status">Reading the workspaces…</div>
-      {:else if installationsProblem !== null}
-        <div class="installation-state installation-problem" role="alert">
-          <span>{installationsProblem}</span>
-          <Button tone="quiet" onclick={() => void installationsQuery.refetch()}>Try again</Button>
+      {#if workspacesLoading}
+        <div class="workspace-state" role="status">Reading the workspaces…</div>
+      {:else if workspacesProblem !== null}
+        <div class="workspace-state workspace-problem" role="alert">
+          <span>{workspacesProblem}</span>
+          <Button tone="quiet" onclick={() => void workspacesQuery.refetch()}>Try again</Button>
         </div>
-      {:else if filteredInstallations.length === 0}
-        <div class="installation-state">No workspace matches this search</div>
+      {:else if filteredWorkspaces.length === 0}
+        <div class="workspace-state">No workspace matches this search</div>
       {:else}
-        <div class="installation-options" role="radiogroup" aria-label="Workspace">
-          {#each filteredInstallations as installation (installation.id)}
-            <label class:unavailable={!installation.available}>
+        <div class="workspace-options" role="radiogroup" aria-label="Workspace">
+          {#each filteredWorkspaces as workspace (workspace.id)}
+            <label class:unavailable={!workspace.available}>
               <input
                 type="radio"
-                name="root-installation"
-                value={installation.id}
-                disabled={!installation.available}
-                checked={effectiveInstallationID === installation.id}
-                onchange={() => (selectedInstallationID = installation.id)}
+                name="root-workspace"
+                value={workspace.id}
+                disabled={!workspace.available}
+                checked={effectiveWorkspaceID === workspace.id}
+                onchange={() => (selectedWorkspaceID = workspace.id)}
               />
-              <span class="installation-option-copy">
-                <strong>{installation.account.display_name}</strong>
-                <span class="mono">@{installation.account.login}</span>
+              <span class="workspace-option-copy">
+                <strong>{workspace.account.display_name}</strong>
+                <span class="mono">@{workspace.account.login}</span>
               </span>
               <Chip
-                tone={installation.owned_by_viewer
+                tone={workspace.owned_by_viewer
                   ? 'clear'
-                  : installation.available
+                  : workspace.available
                     ? 'warning'
                     : 'stop'}
               >
-                {installation.owned_by_viewer
+                {workspace.owned_by_viewer
                   ? 'Owned'
-                  : installation.available
+                  : workspace.available
                     ? 'Needs an operator visit'
                     : 'Unavailable'}
               </Chip>
@@ -792,11 +792,11 @@ refuse.
       />
     </label>
 
-    {#if selectedInstallation !== null && !selectedInstallation.owned_by_viewer}
+    {#if selectedWorkspace !== null && !selectedWorkspace.owned_by_viewer}
       <Callout tone="warning">
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
-          This installation is not yours. Continue to its Access view to acknowledge and start the
+          This workspace is not yours. Continue to its Access view to acknowledge and start the
           audited 15-minute elevation before adding the user.
         </span>
       </Callout>
@@ -809,15 +809,15 @@ refuse.
     <Button
       tone="signal"
       type="submit"
-      form="root-add-installation-user-form"
+      form="root-add-workspace-user-form"
       disabled={addSaving ||
-        selectedInstallation === null ||
-        !selectedInstallation.available ||
-        (selectedInstallation.owned_by_viewer && addLogin.trim() === '')}
+        selectedWorkspace === null ||
+        !selectedWorkspace.available ||
+        (selectedWorkspace.owned_by_viewer && addLogin.trim() === '')}
     >
       {addSaving
         ? 'Adding…'
-        : selectedInstallation?.owned_by_viewer === false
+        : selectedWorkspace?.owned_by_viewer === false
           ? 'Open audited access'
           : 'Add user'}
     </Button>
@@ -865,13 +865,13 @@ refuse.
   }
 
   .add-user-form > label > span,
-  .installation-fieldset legend {
+  .workspace-fieldset legend {
     color: var(--text-secondary);
     font-size: var(--font-size-compact);
     font-weight: 650;
   }
 
-  .installation-fieldset {
+  .workspace-fieldset {
     border: 0;
     display: grid;
     gap: var(--space-2);
@@ -880,11 +880,11 @@ refuse.
     padding: 0;
   }
 
-  .installation-fieldset legend {
+  .workspace-fieldset legend {
     margin-bottom: var(--space-2);
   }
 
-  .installation-options {
+  .workspace-options {
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-control);
     display: grid;
@@ -892,7 +892,7 @@ refuse.
     overflow-y: auto;
   }
 
-  .installation-options > label {
+  .workspace-options > label {
     align-items: center;
     border-bottom: 1px solid var(--border-subtle);
     cursor: pointer;
@@ -903,42 +903,42 @@ refuse.
     padding: var(--space-2) var(--space-3);
   }
 
-  .installation-options > label:last-child {
+  .workspace-options > label:last-child {
     border-bottom: 0;
   }
 
-  .installation-options > label:hover:not(.unavailable) {
+  .workspace-options > label:hover:not(.unavailable) {
     background: var(--interactive-hover);
   }
 
-  .installation-options > label:has(input:checked) {
+  .workspace-options > label:has(input:checked) {
     background: var(--brand-action-tint);
   }
 
-  .installation-options > label.unavailable {
+  .workspace-options > label.unavailable {
     cursor: not-allowed;
     opacity: 0.64;
   }
 
-  .installation-option-copy {
+  .workspace-option-copy {
     display: grid;
     min-width: 0;
   }
 
-  .installation-option-copy strong,
-  .installation-option-copy span {
+  .workspace-option-copy strong,
+  .workspace-option-copy span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .installation-option-copy span,
-  .installation-state {
+  .workspace-option-copy span,
+  .workspace-state {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
   }
 
-  .installation-state {
+  .workspace-state {
     border: 1px dashed var(--border-subtle);
     border-radius: var(--radius-control);
     padding: var(--space-4);

@@ -10,7 +10,7 @@ import (
 )
 
 func TestParseQueueFilterCoversOperationalDimensions(t *testing.T) {
-	request := httptest.NewRequest("GET", "/queue?installation=github%3Ainstallation%3A42"+
+	request := httptest.NewRequest("GET", "/queue?workspace=github%3Ainstallation%3A42"+
 		"&repository=repository%3A7&profile=weekday&state=ready,running"+
 		"&workload=sync_scan&priority=high&created_after=2026-08-24T10%3A00%3A00Z"+
 		"&created_before=2026-08-25T10%3A00%3A00Z&order=dispatch&summary=true"+
@@ -67,14 +67,14 @@ func TestParseQueueFilterRejectsInvertedTimeRange(t *testing.T) {
 	}
 }
 
-func TestInstallationQueueRedactsSensitiveFailureData(t *testing.T) {
+func TestWorkspaceQueueRedactsSensitiveFailureData(t *testing.T) {
 	actor := "account:17"
 	item := workqueue.Item{
 		Kind: workqueue.KindWebhookDelivery, State: workqueue.StateFailed,
 		RequestedBy: &actor, Reason: "manual retry", BlockedReason: "provider token expired",
 		Details: json.RawMessage(`{"payload":"secret"}`),
 	}
-	redactInstallationQueueItem(&item)
+	redactWorkspaceQueueItem(&item)
 	if item.Details != nil || item.BlockedReason == "provider token expired" {
 		t.Fatalf("sensitive item data was not redacted: %#v", item)
 	}
@@ -86,7 +86,7 @@ func TestInstallationQueueRedactsSensitiveFailureData(t *testing.T) {
 		Kind: workqueue.KindReactionScan, State: workqueue.StateRetrying,
 		BlockedReason: "GitHub 429 response: token scope read:org",
 	}
-	redactInstallationQueueItem(&retrying)
+	redactWorkspaceQueueItem(&retrying)
 	if retrying.BlockedReason == "GitHub 429 response: token scope read:org" {
 		t.Fatalf("sensitive retry data was not redacted: %#v", retrying)
 	}
@@ -96,7 +96,7 @@ func TestInstallationQueueRedactsSensitiveFailureData(t *testing.T) {
 		{State: workqueue.StateRetrying, Summary: "rate limit response body"},
 		{State: workqueue.StateSucceeded, Summary: "Webhook delivered"},
 	}
-	redactInstallationQueueEvents(events)
+	redactWorkspaceQueueEvents(events)
 	if events[0].Details != nil || events[0].Summary == "provider token expired" {
 		t.Fatalf("failed event was not redacted: %#v", events[0])
 	}

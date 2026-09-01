@@ -97,8 +97,8 @@
      * Whether this surface draws the File sync card.
      *
      * Handed in rather than worked out here, because it is a fact about where this is
-     * being drawn. The Root view of somebody else's installation has none: sync is
-     * configured on the installation's own page and has no Root address, so a card
+     * being drawn. The Root view of somebody else's workspace has none: sync is
+     * configured on the workspace's own page and has no Root address, so a card
      * offering to edit it there would be one whose every save is a 404.
      */
     offersSync?: boolean;

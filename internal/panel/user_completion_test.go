@@ -225,7 +225,7 @@ func TestUserSuggestionsSkipPeopleWhoAlreadyHaveAccess(t *testing.T) {
 	harness := newPanelHarness(t, "panel-owner")
 	session := harness.signIn(t)
 
-	/* The signed-in owner is on this installation already. Offering them as
+	/* The signed-in owner is on this workspace already. Offering them as
 	   somebody to add is an invitation to a conflict, and the panel refuses the
 	   change anyway. */
 	harness.server.candidates = &fakeCandidates{accounts: []storage.Account{

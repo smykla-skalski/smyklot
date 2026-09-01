@@ -348,7 +348,7 @@ where it arises.
   const COMPOSED_DRAFT_PREFIX = '// Smyklot composed file draft\n';
 
   /* The composed copy is the editable surface. Edits stage here, and the
-     shared application composer writes the complete installation batch. */
+     shared application composer writes the complete workspace batch. */
   let editedText = $state<string | null>(null);
   /** The list answers given so far - stored rules, then the ask cards. */
   let answers = $state<ArrayRule[]>([]);

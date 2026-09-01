@@ -47,7 +47,7 @@
 
   const waiting: ScheduleRequest = {
     id: 'request:17',
-    target_id: 'github:installation:42',
+    target_id: 'github:workspace:42',
     kind: 'sync_scan',
     state: 'pending',
     base_revision: 3,
@@ -83,7 +83,7 @@
     component: WorkspaceTiming,
     args: {
       api: schedules(alwaysOpen),
-      targetId: 'github:installation:42',
+      targetId: 'github:workspace:42',
       canRequest: true,
     },
   });

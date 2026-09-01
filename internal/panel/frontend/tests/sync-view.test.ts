@@ -59,7 +59,7 @@ const renderFile = async (_targetId: string, input: { draft_content: string }) =
  *
  * A kind switched on without the permission behind it plans nothing and fails at
  * nothing, so the plan list below reads exactly as it does while waiting for a
- * sweep. Settings sync is the first kind needing a permission no installation
+ * sweep. Settings sync is the first kind needing a permission no workspace
  * has granted, which makes that the ordinary first-use answer rather than a
  * corner of one.
  */
@@ -176,7 +176,7 @@ describe('SyncView [Component]', () => {
     expect(document.querySelector('.page-status')?.getAttribute('data-unsaved')).toBe('true');
     expect(document.querySelector('.label-card')?.getAttribute('data-unsaved')).toBe('true');
 
-    expect(drafts.discardScope({ type: 'installation', targetId: 'target-1' })).toBe(1);
+    expect(drafts.discardScope({ type: 'workspace', targetId: 'target-1' })).toBe(1);
     await waitFor(() =>
       expect(
         (screen.getByRole('checkbox', { name: 'Resume label syncing' }) as HTMLInputElement)

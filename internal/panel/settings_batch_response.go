@@ -10,15 +10,15 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
-type installationSettingsBatchResponse struct {
-	CheckpointID  *string                                 `json:"checkpoint_id,omitempty"`
-	Target        *installationTargetSettingsState        `json:"target,omitempty"`
-	Repositories  []installationRepositorySettingsState   `json:"repositories,omitempty"`
-	SyncConfigs   []installationSyncConfigSettingsState   `json:"sync_configs,omitempty"`
-	SyncOverrides []installationSyncOverrideSettingsState `json:"sync_overrides,omitempty"`
+type workspaceSettingsBatchResponse struct {
+	CheckpointID  *string                              `json:"checkpoint_id,omitempty"`
+	Target        *workspaceTargetSettingsState        `json:"target,omitempty"`
+	Repositories  []workspaceRepositorySettingsState   `json:"repositories,omitempty"`
+	SyncConfigs   []workspaceSyncConfigSettingsState   `json:"sync_configs,omitempty"`
+	SyncOverrides []workspaceSyncOverrideSettingsState `json:"sync_overrides,omitempty"`
 }
 
-type installationTargetSettingsState struct {
+type workspaceTargetSettingsState struct {
 	TargetID                            string                          `json:"target_id"`
 	RepositoryDefaultEnabled            bool                            `json:"repository_default_enabled"`
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
@@ -29,7 +29,7 @@ type installationTargetSettingsState struct {
 	Revision                            int64                           `json:"revision"`
 }
 
-type installationRepositorySettingsState struct {
+type workspaceRepositorySettingsState struct {
 	RepositoryID                        string                           `json:"repository_id"`
 	EnabledOverride                     *bool                            `json:"enabled_override"`
 	PendingCIModeOverride               *storage.PendingCIMode           `json:"pending_ci_mode_override"`
@@ -41,7 +41,7 @@ type installationRepositorySettingsState struct {
 	Revision                            int64                            `json:"revision"`
 }
 
-type installationSyncConfigSettingsState struct {
+type workspaceSyncConfigSettingsState struct {
 	TargetID string          `json:"target_id"`
 	Kind     orgsync.Kind    `json:"kind"`
 	Enabled  bool            `json:"enabled"`
@@ -49,7 +49,7 @@ type installationSyncConfigSettingsState struct {
 	Revision int64           `json:"revision"`
 }
 
-type installationSyncOverrideSettingsState struct {
+type workspaceSyncOverrideSettingsState struct {
 	TargetID     string          `json:"target_id"`
 	RepositoryID string          `json:"repository_id"`
 	Kind         orgsync.Kind    `json:"kind"`
@@ -58,40 +58,40 @@ type installationSyncOverrideSettingsState struct {
 	Revision     int64           `json:"revision"`
 }
 
-func installationSettingsBatchAnswer(
+func workspaceSettingsBatchAnswer(
 	request storage.SaveInstallationSettingsRequest,
 	result storage.SaveInstallationSettingsResult,
-) installationSettingsBatchResponse {
-	answer := installationSettingsBatchResponse{}
+) workspaceSettingsBatchResponse {
+	answer := workspaceSettingsBatchResponse{}
 	if result.CheckpointID != nil {
 		checkpointID := strconv.FormatInt(*result.CheckpointID, 10)
 		answer.CheckpointID = &checkpointID
 	}
 	if request.Target != nil && result.Target != nil {
-		state := installationTargetSettingsStateFrom(*result.Target)
+		state := workspaceTargetSettingsStateFrom(*result.Target)
 		answer.Target = &state
 	}
 	if len(request.Repositories) > 0 {
-		answer.Repositories = make([]installationRepositorySettingsState, 0, len(result.Repositories))
+		answer.Repositories = make([]workspaceRepositorySettingsState, 0, len(result.Repositories))
 		for _, repository := range result.Repositories {
 			answer.Repositories = append(
-				answer.Repositories, installationRepositorySettingsStateFrom(repository),
+				answer.Repositories, workspaceRepositorySettingsStateFrom(repository),
 			)
 		}
 		sort.Slice(answer.Repositories, func(left, right int) bool {
 			return answer.Repositories[left].RepositoryID < answer.Repositories[right].RepositoryID
 		})
 	}
-	answer.SyncConfigs = installationSyncConfigSettingsStates(request.TargetID, result.SyncConfigs)
-	answer.SyncOverrides = installationSyncOverrideSettingsStates(request.TargetID, result.SyncOverrides)
+	answer.SyncConfigs = workspaceSyncConfigSettingsStates(request.TargetID, result.SyncConfigs)
+	answer.SyncOverrides = workspaceSyncOverrideSettingsStates(request.TargetID, result.SyncOverrides)
 
 	return answer
 }
 
-func installationTargetSettingsStateFrom(
+func workspaceTargetSettingsStateFrom(
 	target storage.Target,
-) installationTargetSettingsState {
-	return installationTargetSettingsState{
+) workspaceTargetSettingsState {
+	return workspaceTargetSettingsState{
 		TargetID: target.ID, RepositoryDefaultEnabled: target.RepositoryDefaultEnabled,
 		PendingCIModeDefault:                target.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
@@ -101,10 +101,10 @@ func installationTargetSettingsStateFrom(
 	}
 }
 
-func installationRepositorySettingsStateFrom(
+func workspaceRepositorySettingsStateFrom(
 	repository storage.Repository,
-) installationRepositorySettingsState {
-	return installationRepositorySettingsState{
+) workspaceRepositorySettingsState {
+	return workspaceRepositorySettingsState{
 		RepositoryID: repository.ID, EnabledOverride: repository.EnabledOverride,
 		PendingCIModeOverride:               repository.PendingCIModeOverride,
 		PendingCIBranchPatternsOverride:     repository.PendingCIBranchPatternsOverride,
@@ -115,16 +115,16 @@ func installationRepositorySettingsStateFrom(
 	}
 }
 
-func installationSyncConfigSettingsStates(
+func workspaceSyncConfigSettingsStates(
 	targetID string,
 	configs []orgsync.Config,
-) []installationSyncConfigSettingsState {
+) []workspaceSyncConfigSettingsState {
 	if configs == nil {
 		return nil
 	}
-	states := make([]installationSyncConfigSettingsState, 0, len(configs))
+	states := make([]workspaceSyncConfigSettingsState, 0, len(configs))
 	for _, config := range configs {
-		states = append(states, installationSyncConfigSettingsState{
+		states = append(states, workspaceSyncConfigSettingsState{
 			TargetID: targetID, Kind: config.Kind, Enabled: config.Enabled,
 			Document: documentOrEmpty(config.Document), Revision: config.Revision,
 		})
@@ -134,16 +134,16 @@ func installationSyncConfigSettingsStates(
 	return states
 }
 
-func installationSyncOverrideSettingsStates(
+func workspaceSyncOverrideSettingsStates(
 	targetID string,
 	overrides []orgsync.RepositoryOverride,
-) []installationSyncOverrideSettingsState {
+) []workspaceSyncOverrideSettingsState {
 	if overrides == nil {
 		return nil
 	}
-	states := make([]installationSyncOverrideSettingsState, 0, len(overrides))
+	states := make([]workspaceSyncOverrideSettingsState, 0, len(overrides))
 	for _, override := range overrides {
-		states = append(states, installationSyncOverrideSettingsState{
+		states = append(states, workspaceSyncOverrideSettingsState{
 			TargetID: targetID, RepositoryID: override.RepositoryID, Kind: override.Kind,
 			Enabled: override.Enabled, Document: documentOrEmpty(override.Document),
 			Revision: override.Revision,

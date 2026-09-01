@@ -5,17 +5,17 @@
   import RootAccess from '#lib/components/RootAccess.svelte';
   import type { PanelInvitation, RootPanelUser } from '#lib/types.js';
   import Seeded from '../support/Seeded.svelte';
-  import { INSTALLATIONS, INVITATIONS, ROOT_USERS } from '../support/fixtures.js';
+  import { WORKSPACES, INVITATIONS, ROOT_USERS } from '../support/fixtures.js';
 
   /*
    * Three keys, because this view runs three queries at once - the accounts, the
-   * invitations behind its other tab, and the installation list its "add to
-   * installation" dialog searches. Each carries every input to its request, so all
+   * invitations behind its other tab, and the workspace list its "add to
+   * workspace" dialog searches. Each carries every input to its request, so all
    * three are written out with the component's own initial `$state` beside them.
    */
   const USERS_KEY = ['root-access', 'users', '', 'name_asc', [], [], 20] as const;
   const INVITATIONS_KEY = ['root-access', 'invitations', '', 'created_newest', [], 20] as const;
-  const INSTALLATIONS_KEY = ['root-installations'] as const;
+  const WORKSPACES_KEY = ['root-workspaces'] as const;
 
   const page = <T,>(items: T[]) => ({
     pages: [{ items, next_cursor: null, total: items.length }],
@@ -38,10 +38,10 @@
     revokeInvitation: fn(),
     canManageInvitations: true,
     actorLogin: 'bart',
-    fetchInstallations: () => Promise.resolve(INSTALLATIONS),
-    addInstallationUser: fn(),
+    fetchWorkspaces: () => Promise.resolve(WORKSPACES),
+    addWorkspaceUser: fn(),
     suggestUsers: () => Promise.resolve([]),
-    onOpenInstallationAccess: fn(),
+    onOpenWorkspaceAccess: fn(),
   };
 
   /* Typed rather than `as const`: `Seeded` wants a mutable pair per entry, and a
@@ -49,7 +49,7 @@
   const seeded: [readonly unknown[], unknown][] = [
     [USERS_KEY, page(ROOT_USERS)],
     [INVITATIONS_KEY, page(INVITATIONS)],
-    [INSTALLATIONS_KEY, INSTALLATIONS],
+    [WORKSPACES_KEY, WORKSPACES],
   ];
 
   const { Story } = defineMeta({
@@ -62,7 +62,7 @@
 <!--
   Every account the panel knows, and what each may do with it. The two counts on the
   right - owned and assigned - are the Root console's own question and are the reason
-  this is not the same table as an installation's user list.
+  this is not the same table as a workspace's user list.
 -->
 <Story name="Accounts">
   {#snippet template(args)}

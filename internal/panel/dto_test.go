@@ -86,7 +86,7 @@ func TestRuntimeServiceDTOExposesAVisiblePanelPath(t *testing.T) {
 // cascade as numbers rather than through `config.Resolve`.
 //
 // They used to be sent as "whatever the level above overrode, or null", so a
-// panel under an installation that set nothing had nothing to prefill with and
+// panel under an workspace that set nothing had nothing to prefill with and
 // stood in an hour - on every deployment, whatever it was running. The DTO now
 // answers what would actually happen.
 func TestDurationDTOsResolveWhatALevelInherits(t *testing.T) {
@@ -96,28 +96,28 @@ func TestDurationDTOsResolveWhatALevelInherits(t *testing.T) {
 	response := targetDTO(runtime, target, testOwnerAccess())
 	if response.PathIndexIntervalSecondsInherited != 17*60 {
 		t.Fatalf(
-			"installation inherits %d seconds, want the process's 1020",
+			"workspace inherits %d seconds, want the process's 1020",
 			response.PathIndexIntervalSecondsInherited,
 		)
 	}
 	if response.PendingCIQuietPeriodSecondsInherited != 45 {
 		t.Fatalf(
-			"installation inherits a %d second quiet period, want the process's 45",
+			"workspace inherits a %d second quiet period, want the process's 45",
 			response.PendingCIQuietPeriodSecondsInherited,
 		)
 	}
 
-	// And a repository reads through the installation where that set one.
-	installationInterval := 5 * time.Minute
-	target.PathIndexIntervalOverride = &installationInterval
+	// And a repository reads through the workspace where that set one.
+	workspaceInterval := 5 * time.Minute
+	target.PathIndexIntervalOverride = &workspaceInterval
 	detail := repositoryDetailDTO(runtime, target, storage.Repository{})
 	if detail.PathIndexIntervalSecondsInherited != 300 {
 		t.Fatalf(
-			"repository inherits %d seconds, want the installation's 300",
+			"repository inherits %d seconds, want the workspace's 300",
 			detail.PathIndexIntervalSecondsInherited,
 		)
 	}
-	// The quiet period is untouched on this installation, so it still reads
+	// The quiet period is untouched on this workspace, so it still reads
 	// through to the process rather than stopping at the nil above it.
 	if detail.PendingCIQuietPeriodSecondsInherited != 45 {
 		t.Fatalf(

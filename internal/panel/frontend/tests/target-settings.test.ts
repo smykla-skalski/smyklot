@@ -80,7 +80,7 @@ describe('TargetSettings shared drafts [Component]', () => {
 
     const quiet = screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement;
     await fireEvent.input(quiet, { target: { value: '1' } });
-    const attempt = drafts.beginSave({ type: 'installation', targetId: TARGET.id });
+    const attempt = drafts.beginSave({ type: 'workspace', targetId: TARGET.id });
     expect(attempt).not.toBeNull();
     expect(quiet.disabled).toBe(false);
 

@@ -107,7 +107,7 @@
   let priority = $state<QueuePriority | 'all'>('all');
   let stateFilter = $state('all');
   let profile = $state('all');
-  let installation = $state('all');
+  let workspace = $state('all');
   let repository = $state('all');
   let timeRange = $state<'all' | '24h' | '7d'>('all');
   let announcement = $state('');
@@ -242,7 +242,7 @@
 
   const workloads = $derived(facets.workloads);
   const profiles = $derived(facets.profiles);
-  const installations = $derived(facets.targets);
+  const workspaces = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
 
   /* The queue speaks in target ids - the rows carry one and the facets are a list of
@@ -250,8 +250,8 @@
      what turns one into a name, and the console has it cached already: the workspaces
      page and the overview both read this key. */
   const catalogQuery = createQuery(() => ({
-    queryKey: ['root-installations'],
-    queryFn: () => api.fetchRootInstallations(),
+    queryKey: ['root-workspaces'],
+    queryFn: () => api.fetchRootWorkspaces(),
     enabled: targetId === undefined,
   }));
   const catalog = $derived(
@@ -406,14 +406,14 @@
               {
                 options: [
                   { value: 'all', label: 'Every workspace' },
-                  ...installations.map((value) => ({ value, label: workspaceName(value) })),
+                  ...workspaces.map((value) => ({ value, label: workspaceName(value) })),
                 ],
               },
             ],
-            selected: [installation],
+            selected: [workspace],
             fallbackValue: 'all',
             onChange: (values: string[]) => {
-              installation = values[0] ?? 'all';
+              workspace = values[0] ?? 'all';
               revealed = { decision: 0, live: 0, done: 0 };
             },
           },
@@ -622,8 +622,8 @@
     if (workload !== 'all') query.set('workload', workload);
     if (priority !== 'all') query.set('priority', priority);
     if (profile !== 'all') query.set('profile', profile);
-    if (targetId === undefined && installation !== 'all') {
-      query.set('installation', installation);
+    if (targetId === undefined && workspace !== 'all') {
+      query.set('workspace', workspace);
     }
     if (repository !== 'all') query.set('repository', repository);
     if (appliedSearch !== '') query.set('search', appliedSearch);

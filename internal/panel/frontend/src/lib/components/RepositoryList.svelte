@@ -139,7 +139,7 @@
      * request per repository for a pane nobody opened is a request per row.
      *
      * Null where there is nowhere to ask, which is the Root view of somebody
-     * else's installation: sync is configured on the installation's own page
+     * else's workspace: sync is configured on the workspace's own page
      * and has no Root address, so a pane offering to edit it there would be a
      * pane whose every save is a 404.
      */
@@ -160,7 +160,7 @@
   const session = getPanelSession();
   const drafts = getSettingsDraftRegistry();
   const settingsScope = $derived({
-    type: 'installation',
+    type: 'workspace',
     targetId,
   } as const satisfies SettingsScope);
 
@@ -268,12 +268,12 @@
      the detail read accepts either, so a repository further down a paginated list
      still opens on a cold load without first finding it in the list. That
      response carries the summary the header needs. Names are unique within an
-     installation and every read is scoped to one, so two organizations owning a
+     workspace and every read is scoped to one, so two organizations owning a
      repository of the same name never meet. */
   const activeRepositoryKey = $derived(session.currentRepository?.name ?? null);
 
   /* Whether the page draws its File sync card, worked out once here and handed to it:
-     Root manages somebody else's installation and sync has no Root address, so there is
+     Root manages somebody else's workspace and sync has no Root address, so there is
      nowhere to ask - and the page reading `onLoadSyncOverride !== null` for itself would
      be the same question asked in two places. */
   const offersSync = $derived(onLoadSyncOverride !== null);
@@ -315,7 +315,7 @@
    * Only where there is somewhere to ask. The page is one scroll now, so the File sync
    * card is on screen with the rest and its read happens with them - what still gates
    * it is whether this surface offers sync at all: the Root view of somebody else's
-   * installation has no endpoint to ask.
+   * workspace has no endpoint to ask.
    */
   const syncOverrideKey = (repositoryId: string) => ['sync-override', targetId, repositoryId];
   const syncOverrideQuery = createQuery(() => ({

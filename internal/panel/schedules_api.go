@@ -214,7 +214,7 @@ func (s *Server) putRootJobPolicy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, policy)
 }
 
-func (s *Server) putRootInstallationJobPolicy(w http.ResponseWriter, r *http.Request) {
+func (s *Server) putRootWorkspaceJobPolicy(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -232,7 +232,7 @@ func (s *Server) putRootInstallationJobPolicy(w http.ResponseWriter, r *http.Req
 	if !decodeJSON(w, r, &input) {
 		return
 	}
-	if !kind.InstallationConfigurable() || !validQueuePolicyInput(kind, input) {
+	if !kind.WorkspaceConfigurable() || !validQueuePolicyInput(kind, input) {
 		s.writeError(w, http.StatusBadRequest, "invalid_policy", "the workspace schedule policy is invalid")
 		return
 	}
@@ -248,7 +248,7 @@ func (s *Server) putRootInstallationJobPolicy(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, policy)
 }
 
-func (s *Server) deleteRootInstallationJobPolicy(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteRootWorkspaceJobPolicy(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -332,7 +332,7 @@ func (s *Server) getTargetSchedules(w http.ResponseWriter, r *http.Request) {
 	visible := make([]workqueue.Profile, 0, len(profiles))
 	for _, profile := range profiles {
 		if profile.TargetID == nil || *profile.TargetID == target.ID {
-			visible = append(visible, installationScheduleProfile(profile))
+			visible = append(visible, workspaceScheduleProfile(profile))
 		}
 	}
 	statuses, err := s.store.ListQueuePolicyStatuses(r.Context(), &target.ID)
@@ -345,8 +345,8 @@ func (s *Server) getTargetSchedules(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func installationScheduleProfile(profile workqueue.Profile) workqueue.Profile {
-	profile.AffectedInstallations = 0
+func workspaceScheduleProfile(profile workqueue.Profile) workqueue.Profile {
+	profile.AffectedWorkspaces = 0
 	profile.AffectedItems = 0
 	profile.AffectedPolicies = 0
 
@@ -490,7 +490,7 @@ func (s *Server) postTargetScheduleRequest(w http.ResponseWriter, r *http.Reques
 }
 
 func validScheduleRequestInput(input scheduleRequestInput) bool {
-	return input.Kind.InstallationConfigurable() &&
+	return input.Kind.WorkspaceConfigurable() &&
 		input.CadenceSeconds >= 0 && (!input.Kind.Recurring() || input.CadenceSeconds > 0) &&
 		input.DefaultPriority.Valid() &&
 		strings.TrimSpace(input.Reason) != "" &&

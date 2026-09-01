@@ -19,10 +19,10 @@ import type {
   PanelTarget,
   PanelInvitation,
   InvitationPageRequest,
-  InstallationSettingsBatchInput,
-  InstallationSettingsBatchResponse,
+  WorkspaceSettingsBatchInput,
+  WorkspaceSettingsBatchResponse,
   SettingsCheckpoint,
-  InstallationSettingsConflict,
+  WorkspaceSettingsConflict,
   SettingsRestoreInput,
   PanelUser,
   PanelUserPageRequest,
@@ -49,7 +49,7 @@ import type {
   RepositorySummary,
   RootElevation,
   RootElevationInput,
-  RootInstallation,
+  RootWorkspace,
   RootOverview,
   RootPanelUser,
   RootPanelUserPageRequest,
@@ -77,7 +77,7 @@ export class PanelApiError extends Error {
     readonly code: string,
     message: string,
     readonly kind?: string,
-    readonly conflicts: InstallationSettingsConflict[] = [],
+    readonly conflicts: WorkspaceSettingsConflict[] = [],
   ) {
     super(message);
     this.name = 'PanelApiError';
@@ -87,8 +87,8 @@ export class PanelApiError extends Error {
 export interface PanelApi {
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
-  fetchRootInstallations(): Promise<RootInstallation[]>;
-  syncRootInstallations(): Promise<string[]>;
+  fetchRootWorkspaces(): Promise<RootWorkspace[]>;
+  syncRootWorkspaces(): Promise<string[]>;
   fetchRootOverview(): Promise<RootOverview>;
   fetchRootPendingCI(requestId: string): Promise<PendingCIDetail>;
   checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
@@ -114,12 +114,12 @@ export interface PanelApi {
   updateRootScheduleProfile(id: string, input: ScheduleProfileInput): Promise<ScheduleProfile>;
   archiveRootScheduleProfile(id: string, expectedRevision: number): Promise<ScheduleProfile>;
   updateRootJobPolicy(kind: string, input: QueuePolicyInput): Promise<QueuePolicy>;
-  updateRootInstallationJobPolicy(
+  updateRootWorkspaceJobPolicy(
     targetId: string,
     kind: string,
     input: QueuePolicyInput,
   ): Promise<QueuePolicy>;
-  deleteRootInstallationJobPolicy(
+  deleteRootWorkspaceJobPolicy(
     targetId: string,
     kind: string,
     expectedRevision: number,
@@ -169,20 +169,20 @@ export interface PanelApi {
   auditExportHref(targetId: string, request: AuditHistoryRequest): string;
   fetchRootFailures(request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   fetchRootTargetSettings(targetId: string): Promise<PanelTarget>;
-  saveRootInstallationSettings(
+  saveRootWorkspaceSettings(
     targetId: string,
-    input: InstallationSettingsBatchInput,
-  ): Promise<InstallationSettingsBatchResponse>;
-  fetchRootInstallationSettingsBaseline(targetId: string): Promise<SettingsCheckpoint>;
-  fetchRootInstallationSettingsCheckpoint(
+    input: WorkspaceSettingsBatchInput,
+  ): Promise<WorkspaceSettingsBatchResponse>;
+  fetchRootWorkspaceSettingsBaseline(targetId: string): Promise<SettingsCheckpoint>;
+  fetchRootWorkspaceSettingsCheckpoint(
     targetId: string,
     checkpointId: string,
   ): Promise<SettingsCheckpoint>;
-  restoreRootInstallationSettingsCheckpoint(
+  restoreRootWorkspaceSettingsCheckpoint(
     targetId: string,
     checkpointId: string,
     input: SettingsRestoreInput,
-  ): Promise<InstallationSettingsBatchResponse>;
+  ): Promise<WorkspaceSettingsBatchResponse>;
   fetchRootRepositories(
     targetId: string,
     request: RepositoryPageRequest,
@@ -248,20 +248,20 @@ export interface PanelApi {
   ): Promise<PanelInvitation>;
   revokeTargetInvitation(targetId: string, invitationId: string): Promise<PanelInvitation>;
   fetchUserDecisions(accountId: string, targetId: string): Promise<AccessDecision[]>;
-  saveInstallationSettings(
+  saveWorkspaceSettings(
     targetId: string,
-    input: InstallationSettingsBatchInput,
-  ): Promise<InstallationSettingsBatchResponse>;
-  fetchInstallationSettingsBaseline(targetId: string): Promise<SettingsCheckpoint>;
-  fetchInstallationSettingsCheckpoint(
+    input: WorkspaceSettingsBatchInput,
+  ): Promise<WorkspaceSettingsBatchResponse>;
+  fetchWorkspaceSettingsBaseline(targetId: string): Promise<SettingsCheckpoint>;
+  fetchWorkspaceSettingsCheckpoint(
     targetId: string,
     checkpointId: string,
   ): Promise<SettingsCheckpoint>;
-  restoreInstallationSettingsCheckpoint(
+  restoreWorkspaceSettingsCheckpoint(
     targetId: string,
     checkpointId: string,
     input: SettingsRestoreInput,
-  ): Promise<InstallationSettingsBatchResponse>;
+  ): Promise<WorkspaceSettingsBatchResponse>;
   fetchRepositories(
     targetId: string,
     request: RepositoryPageRequest,
@@ -475,12 +475,12 @@ export function createPanelApi(
       return body.targets;
     },
 
-    async fetchRootInstallations(): Promise<RootInstallation[]> {
-      const body = await jsonRequest<{ workspaces: RootInstallation[] }>('/api/v1/root/workspaces');
+    async fetchRootWorkspaces(): Promise<RootWorkspace[]> {
+      const body = await jsonRequest<{ workspaces: RootWorkspace[] }>('/api/v1/root/workspaces');
       return body.workspaces;
     },
 
-    async syncRootInstallations(): Promise<string[]> {
+    async syncRootWorkspaces(): Promise<string[]> {
       const body = await postJson<{ target_ids: string[] }>(
         '/api/v1/root/workspaces/sync',
         undefined,
@@ -604,7 +604,7 @@ export function createPanelApi(
       return putJson(`/api/v1/root/job-policies/${pathSegment(kind)}`, input);
     },
 
-    updateRootInstallationJobPolicy(
+    updateRootWorkspaceJobPolicy(
       targetId: string,
       kind: string,
       input: QueuePolicyInput,
@@ -615,7 +615,7 @@ export function createPanelApi(
       );
     },
 
-    deleteRootInstallationJobPolicy(
+    deleteRootWorkspaceJobPolicy(
       targetId: string,
       kind: string,
       expectedRevision: number,
@@ -754,7 +754,7 @@ export function createPanelApi(
 
     async fetchRootFailures(history: FailureHistoryRequest): Promise<Page<DeliveryFailure>> {
       const page = await jsonRequest<
-        Page<{ installation: DeliveryFailure['installation']; failure: DeliveryFailure }>
+        Page<{ workspace: DeliveryFailure['workspace']; failure: DeliveryFailure }>
       >(
         withHistoryQuery('/api/v1/root/history/failures', history, {
           kind: history.kind,
@@ -762,7 +762,7 @@ export function createPanelApi(
       );
       return {
         ...page,
-        items: page.items.map(({ installation, failure }) => ({ ...failure, installation })),
+        items: page.items.map(({ workspace, failure }) => ({ ...failure, workspace })),
       };
     },
 
@@ -770,20 +770,20 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/root/workspaces/${pathSegment(targetId)}/settings`);
     },
 
-    saveRootInstallationSettings(
+    saveRootWorkspaceSettings(
       targetId: string,
-      input: InstallationSettingsBatchInput,
-    ): Promise<InstallationSettingsBatchResponse> {
+      input: WorkspaceSettingsBatchInput,
+    ): Promise<WorkspaceSettingsBatchResponse> {
       return putDocument(`/api/v1/root/workspaces/${pathSegment(targetId)}/settings`, input);
     },
 
-    fetchRootInstallationSettingsBaseline(targetId: string): Promise<SettingsCheckpoint> {
+    fetchRootWorkspaceSettingsBaseline(targetId: string): Promise<SettingsCheckpoint> {
       return documentRequest(
         `/api/v1/root/workspaces/${pathSegment(targetId)}/settings/checkpoints/baseline`,
       );
     },
 
-    fetchRootInstallationSettingsCheckpoint(
+    fetchRootWorkspaceSettingsCheckpoint(
       targetId: string,
       checkpointId: string,
     ): Promise<SettingsCheckpoint> {
@@ -792,11 +792,11 @@ export function createPanelApi(
       );
     },
 
-    restoreRootInstallationSettingsCheckpoint(
+    restoreRootWorkspaceSettingsCheckpoint(
       targetId: string,
       checkpointId: string,
       input: SettingsRestoreInput,
-    ): Promise<InstallationSettingsBatchResponse> {
+    ): Promise<WorkspaceSettingsBatchResponse> {
       return postDocument(
         `/api/v1/root/workspaces/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
         input,
@@ -1018,20 +1018,20 @@ export function createPanelApi(
       return body.decisions;
     },
 
-    saveInstallationSettings(
+    saveWorkspaceSettings(
       targetId: string,
-      input: InstallationSettingsBatchInput,
-    ): Promise<InstallationSettingsBatchResponse> {
+      input: WorkspaceSettingsBatchInput,
+    ): Promise<WorkspaceSettingsBatchResponse> {
       return putDocument(`/api/v1/targets/${pathSegment(targetId)}/settings`, input);
     },
 
-    fetchInstallationSettingsBaseline(targetId: string): Promise<SettingsCheckpoint> {
+    fetchWorkspaceSettingsBaseline(targetId: string): Promise<SettingsCheckpoint> {
       return documentRequest(
         `/api/v1/targets/${pathSegment(targetId)}/settings/checkpoints/baseline`,
       );
     },
 
-    fetchInstallationSettingsCheckpoint(
+    fetchWorkspaceSettingsCheckpoint(
       targetId: string,
       checkpointId: string,
     ): Promise<SettingsCheckpoint> {
@@ -1040,11 +1040,11 @@ export function createPanelApi(
       );
     },
 
-    restoreInstallationSettingsCheckpoint(
+    restoreWorkspaceSettingsCheckpoint(
       targetId: string,
       checkpointId: string,
       input: SettingsRestoreInput,
-    ): Promise<InstallationSettingsBatchResponse> {
+    ): Promise<WorkspaceSettingsBatchResponse> {
       return postDocument(
         `/api/v1/targets/${pathSegment(targetId)}/settings/checkpoints/${pathSegment(checkpointId)}/restore`,
         input,
@@ -1095,9 +1095,9 @@ export function createPanelApi(
     },
 
     /**
-     * Every path this installation's repositories are known to hold.
+     * Every path this workspace's repositories are known to hold.
      *
-     * Fetched whole and matched in the browser: it is a list the installation
+     * Fetched whole and matched in the browser: it is a list the workspace
      * already has, it changes about once a day, and a request per keystroke to
      * filter it would be a request per keystroke.
      */
@@ -1360,7 +1360,7 @@ async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
   let message = describeStatus(response.status);
   let kind: string | undefined;
-  let conflicts: InstallationSettingsConflict[] = [];
+  let conflicts: WorkspaceSettingsConflict[] = [];
   try {
     const text = await response.text();
     const body = JSON.parse(text) as Partial<PanelErrorBody>;

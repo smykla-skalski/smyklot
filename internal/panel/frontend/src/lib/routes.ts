@@ -30,14 +30,14 @@ export const PANEL_VIEWS = [
   'history',
 ] as const;
 
-/** Views written directly after an installation account in the route tree. */
+/** Views written directly after a workspace account in the route tree. */
 export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'] as const;
 
 /**
  * The views that belong to the reader rather than to a workspace or the console.
  *
- * Everything else the panel shows is scoped to something in the address: an
- * installation under `/i/<account>`, the application under `/root`. The inbox is
+ * Everything else the panel shows is scoped to something in the address: a
+ * workspace under `/workspace/<account>`, the application under `/root`. The inbox is
  * scoped to whoever is signed in, which no path segment can name, so it sits at
  * the top: `/inbox`. One address, and the same page whichever part of the panel
  * it was reached from - a Root who opens it leaves the console rather than
@@ -47,17 +47,17 @@ export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'
 export const PERSONAL_VIEWS = ['inbox', 'search'] as const;
 
 /**
- * The views the Root console renders for one installation, which is not every
- * view an installation has.
+ * The views the Root console renders for one workspace, which is not every
+ * view a workspace has.
  *
  * Sync is the difference. Configuring what an organization's repositories
- * should carry is the installation's own business, reached by elevating into
+ * should carry is the workspace's own business, reached by elevating into
  * it, and the console reads through its own Root-scoped endpoints rather than
- * the ones an installation's members use. Accepting the address without
+ * the ones a workspace's members use. Accepting the address without
  * rendering anything is worse than refusing it: a bookmark that answers "this
  * view is unavailable" looks like a fault rather than a boundary.
  */
-export const ROOT_INSTALLATION_VIEWS = [
+export const ROOT_WORKSPACE_VIEWS = [
   'settings',
   'repositories',
   'users',
@@ -65,7 +65,7 @@ export const ROOT_INSTALLATION_VIEWS = [
   'history',
 ] as const;
 
-/** Root installation views written directly after the installation account. */
+/** Root workspace views written directly after the workspace account. */
 export const DIRECT_ROOT_WORKSPACE_VIEWS = ['settings', 'repositories', 'history'] as const;
 
 export const HISTORY_SECTIONS = ['audit', 'failures'] as const;
@@ -93,7 +93,7 @@ export const ROOT_RUNTIME_SECTIONS = ['service', 'settings'] as const;
  * The sections of the sync view, each a sidebar row and an address.
  *
  * `overview` is not written into the path: it is where the view opens, so the
- * bare `/i/acme/sync` already means it.
+ * bare `/workspace/acme/sync` already means it.
  */
 export const WRITTEN_SYNC_SECTIONS = ['labels', 'settings', 'rulesets', 'files', 'plan'] as const;
 export const SYNC_SECTIONS = ['overview', ...WRITTEN_SYNC_SECTIONS] as const;
@@ -126,16 +126,16 @@ export interface RepositoryPage {
 export type PanelView = (typeof PANEL_VIEWS)[number];
 
 /**
- * A view in an installation's own address, which is every view there is.
+ * A view in a workspace's own address, which is every view there is.
  *
  * The name is kept because it says which surface an address belongs to - the
- * console's subset is `RootInstallationView` - but it is the same list rather
+ * console's subset is `RootWorkspaceView` - but it is the same list rather
  * than a second copy of it. It used to be a copy, and a copy is what the
  * router's own list turned out to be too: sync was added to every list but
  * that one, and the row led to the not-found page.
  */
 export type ScopedPanelView = PanelView;
-export type RootInstallationView = (typeof ROOT_INSTALLATION_VIEWS)[number];
+export type RootWorkspaceView = (typeof ROOT_WORKSPACE_VIEWS)[number];
 export type PersonalView = (typeof PERSONAL_VIEWS)[number];
 /** History's two tables are addressable, so a reload lands where you left off. */
 export type HistorySection = (typeof HISTORY_SECTIONS)[number];
@@ -171,15 +171,15 @@ export type RootRoute =
   /** A request is a page rather than a dialog: the timeline is a record to link someone to. */
   | { rootView: 'queue-request'; request: string }
   | {
-      rootView: 'installation';
+      rootView: 'workspace';
       account: string;
-      view: RootInstallationView;
+      view: RootWorkspaceView;
       section?: HistorySection;
       repository?: RepositoryPage;
       dialog?: RouteDialog;
     };
 
-export type InstallationRoute = {
+export type WorkspaceRoute = {
   account: string;
   view: ScopedPanelView;
   section?: HistorySection;
@@ -208,7 +208,7 @@ export type InstallationRoute = {
 };
 /** A page of the reader's own, standing beside the workspaces and the console. */
 export type PersonalRoute = { personal: PersonalView };
-export type PanelRoute = InstallationRoute | RootRoute | PersonalRoute;
+export type PanelRoute = WorkspaceRoute | RootRoute | PersonalRoute;
 
 export interface ResolvedPanelRoute {
   account: string;
@@ -234,14 +234,14 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   /* A workspace with nothing after it IS its overview - the page it opens on
      takes the bare address rather than a written one, the way the console's
      own overview takes `/root`. */
-  if (parts.length === 2 && parts[0] === 'i' && (parts[1] ?? '') !== '') {
+  if (parts.length === 2 && parts[0] === 'workspace' && (parts[1] ?? '') !== '') {
     return { account: decodeURIComponent(parts[1] ?? ''), view: 'overview' };
   }
   if (parts.length < 3) return null;
 
   const [namespace, encodedAccount, rawSection] = parts;
   if (
-    namespace !== 'i' ||
+    namespace !== 'workspace' ||
     encodedAccount === undefined ||
     encodedAccount.length === 0 ||
     rawSection === undefined
@@ -297,7 +297,7 @@ export function parsePanelRoute(basePath: string, pathname: string): PanelRoute 
   }
 
   if (account.trim() === '') return null;
-  const route: InstallationRoute = { account, view: rawView };
+  const route: WorkspaceRoute = { account, view: rawView };
   if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
   if (sync !== undefined) return { ...route, ...sync };
@@ -423,7 +423,7 @@ export function routeSegmentLabel(segment: string): string {
 
 export function resolvePanelRoute(
   availableAccounts: readonly string[],
-  requested: InstallationRoute | null,
+  requested: WorkspaceRoute | null,
   preferredAccount: string | null,
 ): ResolvedPanelRoute | null {
   const requestedAccount = findAccount(availableAccounts, requested?.account ?? null);
@@ -449,7 +449,7 @@ function isQueueSectionView(view: RootRoute['rootView']): view is `queue-${Writt
 export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
-  if (route.rootView === 'installation') return 'workspaces';
+  if (route.rootView === 'workspace') return 'workspaces';
   if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
   if (isQueueSectionView(route.rootView)) return 'queue';
   if (route.rootView === 'runtime-settings' || route.rootView === 'runtime-service') {
@@ -469,14 +469,14 @@ export function isScopedPanelView(value: string | undefined): value is ScopedPan
   return PANEL_VIEWS.some((view) => view === value);
 }
 
-export function isRootInstallationView(value: string | undefined): value is RootInstallationView {
-  return ROOT_INSTALLATION_VIEWS.some((view) => view === value);
+export function isRootWorkspaceView(value: string | undefined): value is RootWorkspaceView {
+  return ROOT_WORKSPACE_VIEWS.some((view) => view === value);
 }
 
 /**
  * Console views the product does not call what the address calls them.
  *
- * `installations` used to be here, because the address said GitHub's word for a grant
+ * `workspaces` used to be here, because the address said GitHub's word for a grant
  * while the console, the tree and the page all said Workspaces. The address says
  * Workspaces now too: one word for one thing, everywhere a reader can see it, which is
  * worth more than the links an operator kept to the old one.
@@ -490,7 +490,7 @@ const ROOT_VIEW_WORDS: Partial<Record<RootRoute['rootView'], string>> = {
 
 function routeTitleSegments(route: PanelRoute): string[] {
   if ('personal' in route) return [route.personal];
-  if ('rootView' in route && route.rootView !== 'installation') {
+  if ('rootView' in route && route.rootView !== 'workspace') {
     const said = ROOT_VIEW_WORDS[route.rootView];
     if (said !== undefined) return [said];
 
@@ -541,7 +541,7 @@ function parseSection(
 function parseTrailingSync(
   view: string,
   segments: string[],
-): Pick<InstallationRoute, 'sync' | 'syncRuleset' | 'syncFile'> | undefined | 'invalid' {
+): Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile'> | undefined | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
 
   const [rawSection, ...encodedRest] = segments;
@@ -590,8 +590,8 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     return null;
   }
   if (parts.length >= 3 && parts[1] === 'access') {
-    /* The Root console's tables take the same dialog grammar as an
-       installation's, because they list the same things. */
+    /* The Root console's tables take the same dialog grammar as a
+       workspace's, because they list the same things. */
     const host = parts[2] === 'users' ? 'access-users' : 'access-invitations';
     if (parts[2] === 'users' || parts[2] === 'invitations') {
       if (parts.length === 3) return { rootView: host };
@@ -625,7 +625,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   }
   /* A bare section path is a legitimate address - somebody typed or bookmarked
      it - and resolves to that section's default table rather than falling
-     through to the installation default. */
+     through to the workspace default. */
   if (parts.length === 2 && parts[1] === 'history') return { rootView: 'history-audit' };
   if (parts.length === 2 && parts[1] === 'access') return { rootView: 'access-users' };
   if (parts.length < 4 || parts[1] !== 'workspaces') return null;
@@ -638,7 +638,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     return null;
   }
   const view = rawView === 'access' ? (accessView ?? 'users') : rawView;
-  if (!isRootInstallationView(view)) return null;
+  if (!isRootWorkspaceView(view)) return null;
   const trailing = parts.slice(rawView === 'access' ? 5 : 4);
   const repository = parseTrailingRepository(view, trailing);
   if (repository === 'invalid') return null;
@@ -657,7 +657,7 @@ function parseRootRoute(parts: string[]): RootRoute | null {
     return null;
   }
   if (account.trim() === '') return null;
-  const route: RootRoute = { rootView: 'installation', account, view };
+  const route: RootRoute = { rootView: 'workspace', account, view };
   if (repository !== undefined) return { ...route, repository };
   if (dialog !== undefined) return { ...route, dialog };
   return section === undefined ? route : { ...route, section };

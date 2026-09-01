@@ -76,10 +76,10 @@
   const ROOT_ENTRIES: SidebarEntry[] = [
     { id: 'overview', label: 'Overview', icon: 'gauge', href: '#/root', active: true },
     {
-      id: 'installations',
+      id: 'workspaces',
       label: 'Workspaces',
       icon: 'book',
-      href: '#/root/installations',
+      href: '#/root/workspaces',
       active: false,
     },
     { id: 'queue', label: 'Queue', icon: 'pending', href: '#/root/queue', active: false },

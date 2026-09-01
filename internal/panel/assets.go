@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	basePathSentinel           = "/__smyklot_panel_base__"
-	versionSentinel            = "__smyklot_panel_version__"
-	serviceSentinel            = "__smyklot_panel_service__"
-	panelHistoryAuditPath      = "audit"
-	panelHistoryFailuresPath   = "failures"
-	panelInvitationsPath       = "invitations"
-	panelWorkspacesResource    = "workspaces"
+	basePathSentinel         = "/__smyklot_panel_base__"
+	versionSentinel          = "__smyklot_panel_version__"
+	serviceSentinel          = "__smyklot_panel_service__"
+	panelHistoryAuditPath    = "audit"
+	panelHistoryFailuresPath = "failures"
+	panelInvitationsPath     = "invitations"
+	panelWorkspacesResource  = "workspaces"
 )
 
 // The documents the panel serves by name rather than as plain static files.

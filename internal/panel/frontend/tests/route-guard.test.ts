@@ -44,12 +44,12 @@ describe('panel dialog route guard', () => {
 
 describe('history section guard', () => {
   it('sends a bare history address to its first table', () => {
-    expect(() => guardHistorySection(undefined, '/i/acme/history')).toThrow();
+    expect(() => guardHistorySection(undefined, '/workspace/acme/history')).toThrow();
   });
 
   it('leaves a named section alone', () => {
-    expect(() => guardHistorySection('audit', '/i/acme/history/audit')).not.toThrow();
-    expect(() => guardHistorySection('failures', '/i/acme/history/failures')).not.toThrow();
+    expect(() => guardHistorySection('audit', '/workspace/acme/history/audit')).not.toThrow();
+    expect(() => guardHistorySection('failures', '/workspace/acme/history/failures')).not.toThrow();
   });
 });
 

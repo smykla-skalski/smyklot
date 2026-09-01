@@ -35,7 +35,7 @@ let selectedPressVisible = false;
 beforeAll(async () => {
   panel = await startPanel();
   page = await panel.browser.newPage({ viewport: VIEWPORT });
-  await visit(page, `${panel.origin}/i/${panel.account}/access/users`, {
+  await visit(page, `${panel.origin}/workspace/${panel.account}/access/users`, {
     ready: '#user-management-heading',
   });
   await page.locator('.user-management').evaluate((element) => {
@@ -57,14 +57,14 @@ beforeAll(async () => {
     invitationMs = await pressEdge(
       page,
       sidebarLink(page, 'Invitations'),
-      `/i/${panel.account}/access/invitations`,
+      `/workspace/${panel.account}/access/invitations`,
       'Invitations',
       'right',
     );
     usersMs = await pressEdge(
       page,
       sidebarLink(page, 'Users'),
-      `/i/${panel.account}/access/users`,
+      `/workspace/${panel.account}/access/users`,
       'Users',
       'left',
     );
@@ -76,23 +76,23 @@ beforeAll(async () => {
     (await page.locator('.user-management').getAttribute('data-navigation-probe')) === 'kept';
 
   await sidebarLink(page, 'Audit').click();
-  await page.waitForURL((url) => url.pathname === `/i/${panel.account}/history/audit`);
+  await page.waitForURL((url) => url.pathname === `/workspace/${panel.account}/history/audit`);
   historyDefaultsNavigated = true;
 
-  const rootInstallation = await panel.browser.newPage({ viewport: VIEWPORT });
+  const rootWorkspace = await panel.browser.newPage({ viewport: VIEWPORT });
   try {
-    await visit(rootInstallation, `${panel.origin}/root/workspaces/${panel.account}/settings`, {
+    await visit(rootWorkspace, `${panel.origin}/root/workspaces/${panel.account}/settings`, {
       ready: '#root-page-heading',
     });
-    /* By address, not by word: the console's own Audit row and this installation's
+    /* By address, not by word: the console's own Audit row and this workspace's
        carry the same label, one above the other, and only the address tells them
        apart. */
-    const installationAudit = `/root/workspaces/${panel.account}/history/audit`;
-    await rootInstallation.locator(`.tree a.tree-row[href="${installationAudit}"]`).click();
-    await rootInstallation.waitForURL((url) => url.pathname === installationAudit);
+    const workspaceAudit = `/root/workspaces/${panel.account}/history/audit`;
+    await rootWorkspace.locator(`.tree a.tree-row[href="${workspaceAudit}"]`).click();
+    await rootWorkspace.waitForURL((url) => url.pathname === workspaceAudit);
     rootAuditNavigated = true;
   } finally {
-    await rootInstallation.close();
+    await rootWorkspace.close();
   }
 }, 120_000);
 
@@ -230,6 +230,6 @@ describe('Access sidebar navigation [Integration]', () => {
 
   it('opens default History leaves from outside History', () => {
     expect(historyDefaultsNavigated, 'workspace History').toBe(true);
-    expect(rootAuditNavigated, 'Root installation Audit').toBe(true);
+    expect(rootAuditNavigated, 'Root workspace Audit').toBe(true);
   });
 });

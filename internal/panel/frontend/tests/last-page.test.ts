@@ -35,7 +35,7 @@ describe('the page each side was left on [Unit]', () => {
     const storage = memoryStorage();
     writeLastPage(
       'workspace',
-      '/i/[account]/repositories/[repository]',
+      '/workspace/[account]/repositories/[repository]',
       { account: 'acme', repository: 'api-gateway' },
       storage,
     );
@@ -59,7 +59,7 @@ describe('the page each side was left on [Unit]', () => {
     writeLastPage('console', '/root/workspaces', {}, storage);
     writeLastPage(
       'workspace',
-      '/i/[account]/[view=panelView]',
+      '/workspace/[account]/[view=panelView]',
       { account: 'acme', view: 'settings' },
       storage,
     );
@@ -72,7 +72,7 @@ describe('the page each side was left on [Unit]', () => {
     const storage = memoryStorage();
     writeLastPage(
       'workspace',
-      '/i/[account]/[view=panelView]',
+      '/workspace/[account]/[view=panelView]',
       { account: 'acme', view: 'defaults' },
       storage,
     );
@@ -101,7 +101,7 @@ describe('the page each side was left on [Unit]', () => {
     const storage = memoryStorage();
     writeLastPage(
       'console',
-      '/i/[account]/[view=panelView]',
+      '/workspace/[account]/[view=panelView]',
       { account: 'acme', view: 'settings' },
       storage,
     );
@@ -111,17 +111,23 @@ describe('the page each side was left on [Unit]', () => {
 
   it.each([
     ['nothing stored', memoryStorage()],
-    ['a value that is not JSON', storedWith('workspace', '/i/acme/settings')],
-    ['a value that is not an object', storedWith('workspace', '"/i/acme/settings"')],
+    ['a value that is not JSON', storedWith('workspace', '/workspace/acme/settings')],
+    ['a value that is not an object', storedWith('workspace', '"/workspace/acme/settings"')],
     [
       'a route id this build does not have',
-      storedWith('workspace', '{"id":"/i/[account]/billing","params":{"account":"acme"}}'),
+      storedWith('workspace', '{"id":"/workspace/[account]/billing","params":{"account":"acme"}}'),
     ],
     [
       'parameters that are not a record of strings',
-      storedWith('workspace', '{"id":"/i/[account]/[view=panelView]","params":{"account":7}}'),
+      storedWith(
+        'workspace',
+        '{"id":"/workspace/[account]/[view=panelView]","params":{"account":7}}',
+      ),
     ],
-    ['no parameters at all', storedWith('workspace', '{"id":"/i/[account]/[view=panelView]"}')],
+    [
+      'no parameters at all',
+      storedWith('workspace', '{"id":"/workspace/[account]/[view=panelView]"}'),
+    ],
   ])('reads %s as nothing remembered', (_case, storage) => {
     expect(readLastWorkspacePage(storage)).toBeNull();
   });

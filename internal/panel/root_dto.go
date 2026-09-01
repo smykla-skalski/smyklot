@@ -26,7 +26,7 @@ type ownershipResponse struct {
 	Stale      bool                    `json:"stale"`
 }
 
-type rootInstallationResponse struct {
+type rootWorkspaceResponse struct {
 	ID               string                   `json:"id"`
 	InstallationID   string                   `json:"installation_id"`
 	Type             storage.TargetKind       `json:"type"`
@@ -54,7 +54,7 @@ type elevationResponse struct {
 
 type securityNotificationResponse struct {
 	ID           string          `json:"id"`
-	Installation accountResponse `json:"installation"`
+	Workspace    accountResponse `json:"workspace"`
 	Actor        accountResponse `json:"actor"`
 	ElevationID  string          `json:"elevation_id"`
 	AuditEventID string          `json:"audit_event_id"`
@@ -158,8 +158,8 @@ type rootOwnershipSummaryResponse struct {
 }
 
 type rootFailureResponse struct {
-	Installation accountResponse `json:"installation"`
-	Failure      failureResponse `json:"failure"`
+	Workspace accountResponse `json:"workspace"`
+	Failure   failureResponse `json:"failure"`
 }
 
 type rootOverviewResponse struct {
@@ -221,7 +221,7 @@ type rootAuditResponse struct {
 	ID                   string                `json:"id"`
 	Category             storage.AuditCategory `json:"category"`
 	TargetID             *string               `json:"target_id,omitempty"`
-	Installation         *accountResponse      `json:"installation,omitempty"`
+	Workspace            *accountResponse      `json:"workspace,omitempty"`
 	Actor                accountResponse       `json:"actor"`
 	Subject              *accountResponse      `json:"subject,omitempty"`
 	ElevationID          *string               `json:"elevation_id,omitempty"`
@@ -232,26 +232,26 @@ type rootAuditResponse struct {
 }
 
 type rootPanelUserResponse struct {
-	Account               accountResponse         `json:"account"`
-	SystemRole            storage.SystemRole      `json:"system_role"`
-	Status                storage.PanelUserStatus `json:"status"`
-	BanReason             *string                 `json:"ban_reason,omitempty"`
-	BannedAt              *time.Time              `json:"banned_at,omitempty"`
-	RemovedAt             *time.Time              `json:"removed_at,omitempty"`
-	LastLoginAt           *time.Time              `json:"last_login_at,omitempty"`
-	Revision              int64                   `json:"revision"`
-	OwnedInstallations    int                     `json:"owned_installations"`
-	AssignedInstallations int                     `json:"assigned_installations"`
-	Manageable            bool                    `json:"manageable"`
-	CanManageSystemRole   bool                    `json:"can_manage_system_role"`
+	Account             accountResponse         `json:"account"`
+	SystemRole          storage.SystemRole      `json:"system_role"`
+	Status              storage.PanelUserStatus `json:"status"`
+	BanReason           *string                 `json:"ban_reason,omitempty"`
+	BannedAt            *time.Time              `json:"banned_at,omitempty"`
+	RemovedAt           *time.Time              `json:"removed_at,omitempty"`
+	LastLoginAt         *time.Time              `json:"last_login_at,omitempty"`
+	Revision            int64                   `json:"revision"`
+	OwnedWorkspaces     int                     `json:"owned_workspaces"`
+	AssignedWorkspaces  int                     `json:"assigned_workspaces"`
+	Manageable          bool                    `json:"manageable"`
+	CanManageSystemRole bool                    `json:"can_manage_system_role"`
 }
 
-func rootInstallationDTO(
+func rootWorkspaceDTO(
 	target storage.Target,
 	now time.Time,
 	ownedByViewer bool,
-) rootInstallationResponse {
-	return rootInstallationResponse{
+) rootWorkspaceResponse {
+	return rootWorkspaceResponse{
 		ID: target.ID, InstallationID: target.InstallationID, Type: target.Kind,
 		Account: accountDTO(target.Account), Available: target.Available,
 		OwnedByViewer:    ownedByViewer,
@@ -288,8 +288,8 @@ func notificationPageDTO(page storage.NotificationPage) notificationPageResponse
 
 func securityNotificationDTO(notification storage.SecurityNotification) securityNotificationResponse {
 	return securityNotificationResponse{
-		ID:           strconv.FormatInt(notification.ID, 10),
-		Installation: accountDTO(notification.Target), Actor: accountDTO(notification.Actor),
+		ID:        strconv.FormatInt(notification.ID, 10),
+		Workspace: accountDTO(notification.Target), Actor: accountDTO(notification.Actor),
 		ElevationID:  notification.ElevationID,
 		AuditEventID: strconv.FormatInt(notification.AuditEventID, 10),
 		Action:       notification.Action, Reason: notification.Reason,
@@ -307,8 +307,8 @@ func rootOverviewDTO(
 	failures := make([]rootFailureResponse, 0, len(overview.RecentFailures))
 	for _, item := range overview.RecentFailures {
 		failures = append(failures, rootFailureResponse{
-			Installation: accountDTO(item.Target),
-			Failure:      failureDTO(item.Failure),
+			Workspace: accountDTO(item.Target),
+			Failure:   failureDTO(item.Failure),
 		})
 	}
 	uptime := max(int64(now.Sub(startedAt).Seconds()), 0)
@@ -385,7 +385,7 @@ func rootAuditPageDTO(page storage.RootAuditPage) pageResponse[rootAuditResponse
 		}
 		if event.Target != nil {
 			target := accountDTO(*event.Target)
-			item.Installation = &target
+			item.Workspace = &target
 		}
 		if event.Subject != nil {
 			subject := accountDTO(*event.Subject)
@@ -403,7 +403,7 @@ func rootFailurePageDTO(page storage.RootFailurePage) pageResponse[rootFailureRe
 	items := make([]rootFailureResponse, 0, len(page.Items))
 	for _, item := range page.Items {
 		items = append(items, rootFailureResponse{
-			Installation: accountDTO(item.Target), Failure: failureDTO(item.Failure),
+			Workspace: accountDTO(item.Target), Failure: failureDTO(item.Failure),
 		})
 	}
 
@@ -425,9 +425,9 @@ func rootPanelUserPageDTO(
 			Account: accountDTO(user.Account), SystemRole: user.SystemRole, Status: user.Status,
 			BanReason: user.BanReason, BannedAt: user.BannedAt, RemovedAt: user.RemovedAt,
 			LastLoginAt: user.LastLoginAt, Revision: user.Revision,
-			OwnedInstallations:    item.OwnedInstallationCount,
-			AssignedInstallations: item.AssignedInstallationCount,
-			Manageable:            otherAccount && user.SystemRole == storage.SystemRoleNone,
+			OwnedWorkspaces:    item.OwnedInstallationCount,
+			AssignedWorkspaces: item.AssignedInstallationCount,
+			Manageable:         otherAccount && user.SystemRole == storage.SystemRoleNone,
 			CanManageSystemRole: otherAccount && actorRole == storage.SystemRoleSuperRoot &&
 				user.SystemRole != storage.SystemRoleSuperRoot && user.Status == storage.PanelUserActive,
 		})

@@ -174,7 +174,7 @@ export class SettingsDraftRegistry {
     const targets: string[] = [];
     for (const state of this.dirtyStates()) {
       const scope = settingsScopeOf(state.resource);
-      if (scope.type === 'installation' && !targets.includes(scope.targetId)) {
+      if (scope.type === 'workspace' && !targets.includes(scope.targetId)) {
         targets.push(scope.targetId);
       }
     }

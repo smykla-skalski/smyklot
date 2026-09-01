@@ -19,7 +19,7 @@
    * says what happened without offering a door that answers "not found".
    */
   function auditHref(notification: SecurityNotification): string | undefined {
-    const login = notification.installation.login;
+    const login = notification.workspace.login;
     const known = session.targets.some((target) => target.account.login === login);
 
     return known ? panelAddress({ account: login, view: 'history', section: 'audit' }) : undefined;

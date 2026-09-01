@@ -76,8 +76,8 @@ SELECT COUNT(*) FROM (
   SELECT target_id FROM queue_policies WHERE profile_id = ? AND target_id IS NOT NULL
   UNION
   SELECT target_id FROM queue_items WHERE profile_id = ? AND target_id IS NOT NULL
-) affected`, profile.ID, profile.ID).Scan(&profile.AffectedInstallations); err != nil {
-		return fmt.Errorf("count schedule profile installations: %w", err)
+) affected`, profile.ID, profile.ID).Scan(&profile.AffectedWorkspaces); err != nil {
+		return fmt.Errorf("count schedule profile workspaces: %w", err)
 	}
 
 	return nil

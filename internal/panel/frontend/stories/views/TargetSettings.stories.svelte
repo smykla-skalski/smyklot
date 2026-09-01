@@ -13,7 +13,7 @@
 </script>
 
 <!--
-  What an installation's settings look like before any repository has overridden
+  What a workspace's settings look like before any repository has overridden
   anything: every value resolves from the deployment, so the whole page is inherited.
 -->
 <Story name="All inherited" />

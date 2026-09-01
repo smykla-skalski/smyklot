@@ -16,18 +16,18 @@ import (
 )
 
 const (
-	maxInstallationSettingsBatchResources = 4096
-	installationSettingsBatchTooLargeCode = "request_too_large"
+	maxWorkspaceSettingsBatchResources = 4096
+	workspaceSettingsBatchTooLargeCode = "request_too_large"
 )
 
-type installationSettingsBatchRequest struct {
-	Target        *installationTargetBatchRequest        `json:"target"`
-	Repositories  []installationRepositoryBatchRequest   `json:"repositories"`
-	SyncConfigs   []installationSyncConfigBatchRequest   `json:"sync_configs"`
-	SyncOverrides []installationSyncOverrideBatchRequest `json:"sync_overrides"`
+type workspaceSettingsBatchRequest struct {
+	Target        *workspaceTargetBatchRequest        `json:"target"`
+	Repositories  []workspaceRepositoryBatchRequest   `json:"repositories"`
+	SyncConfigs   []workspaceSyncConfigBatchRequest   `json:"sync_configs"`
+	SyncOverrides []workspaceSyncOverrideBatchRequest `json:"sync_overrides"`
 }
 
-type installationTargetBatchRequest struct {
+type workspaceTargetBatchRequest struct {
 	RepositoryDefaultEnabled       *bool                            `json:"repository_default_enabled"`
 	PendingCIModeDefault           *storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
@@ -37,7 +37,7 @@ type installationTargetBatchRequest struct {
 	ExpectedRevision               *int64                           `json:"expected_revision"`
 }
 
-type installationRepositoryBatchRequest struct {
+type workspaceRepositoryBatchRequest struct {
 	RepositoryID                    string                                         `json:"repository_id"`
 	EnabledOverride                 nullableBool                                   `json:"enabled_override"`
 	PendingCIModeOverride           batchNullable[storage.PendingCIMode]           `json:"pending_ci_mode_override"`
@@ -49,7 +49,7 @@ type installationRepositoryBatchRequest struct {
 	ExpectedRevision                *int64                                         `json:"expected_revision"`
 }
 
-type installationSyncConfigBatchRequest struct {
+type workspaceSyncConfigBatchRequest struct {
 	Kind             string                         `json:"kind"`
 	Enabled          *bool                          `json:"enabled"`
 	Labels           batchRequired[[]orgsync.Label] `json:"labels"`
@@ -59,7 +59,7 @@ type installationSyncConfigBatchRequest struct {
 	ExpectedRevision *int64                         `json:"expected_revision"`
 }
 
-type installationSyncOverrideBatchRequest struct {
+type workspaceSyncOverrideBatchRequest struct {
 	RepositoryID     string        `json:"repository_id"`
 	Kind             string        `json:"kind"`
 	Enabled          nullableBool  `json:"enabled"`
@@ -132,26 +132,26 @@ func decodeStrictJSONValue(data []byte, target any) error {
 	return nil
 }
 
-type installationSettingsBatchInputError struct {
+type workspaceSettingsBatchInputError struct {
 	status  int
 	code    string
 	message string
 }
 
-func (err *installationSettingsBatchInputError) Error() string { return err.message }
+func (err *workspaceSettingsBatchInputError) Error() string { return err.message }
 
-func invalidInstallationSettingsBatch(code, message string) error {
-	return &installationSettingsBatchInputError{
+func invalidWorkspaceSettingsBatch(code, message string) error {
+	return &workspaceSettingsBatchInputError{
 		status: http.StatusBadRequest, code: code, message: message,
 	}
 }
 
-func (s *Server) writeInstallationSettingsBatchPreparationError(
+func (s *Server) writeWorkspaceSettingsBatchPreparationError(
 	w http.ResponseWriter,
 	err error,
 	writeStorageError func(http.ResponseWriter, error),
 ) {
-	var inputError *installationSettingsBatchInputError
+	var inputError *workspaceSettingsBatchInputError
 	if errors.As(err, &inputError) {
 		s.writeError(w, inputError.status, inputError.code, inputError.message)
 		return
@@ -159,13 +159,13 @@ func (s *Server) writeInstallationSettingsBatchPreparationError(
 	writeStorageError(w, err)
 }
 
-func (s *Server) prepareInstallationSettingsBatch(
+func (s *Server) prepareWorkspaceSettingsBatch(
 	r *http.Request,
 	target storage.Target,
-	actor installationSettingsBatchActor,
-	input installationSettingsBatchRequest,
+	actor workspaceSettingsBatchActor,
+	input workspaceSettingsBatchRequest,
 ) (storage.SaveInstallationSettingsRequest, error) {
-	if err := validateInstallationSettingsBatchShape(input); err != nil {
+	if err := validateWorkspaceSettingsBatchShape(input); err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
 	request := storage.SaveInstallationSettingsRequest{
@@ -174,26 +174,26 @@ func (s *Server) prepareInstallationSettingsBatch(
 		ChangedAt: s.now().UTC(),
 	}
 	if input.Target != nil {
-		change, err := s.installationTargetBatchChange(target, *input.Target)
+		change, err := s.workspaceTargetBatchChange(target, *input.Target)
 		if err != nil {
 			return storage.SaveInstallationSettingsRequest{}, err
 		}
 		request.Target = &change
 	}
-	configs, proposedFiles, err := installationSyncConfigBatchChanges(input.SyncConfigs)
+	configs, proposedFiles, err := workspaceSyncConfigBatchChanges(input.SyncConfigs)
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
 	request.SyncConfigs = configs
-	repositories, err := s.installationBatchRepositories(r, target.ID, input)
+	repositories, err := s.workspaceBatchRepositories(r, target.ID, input)
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
-	request.Repositories, err = s.installationRepositoryBatchChanges(input.Repositories, repositories)
+	request.Repositories, err = s.workspaceRepositoryBatchChanges(input.Repositories, repositories)
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
-	request.SyncOverrides, err = s.installationSyncOverrideBatchChanges(
+	request.SyncOverrides, err = s.workspaceSyncOverrideBatchChanges(
 		r, target.ID, input.SyncOverrides, repositories, proposedFiles,
 	)
 	if err != nil {
@@ -203,108 +203,108 @@ func (s *Server) prepareInstallationSettingsBatch(
 	return request, nil
 }
 
-func validateInstallationSettingsBatchShape(input installationSettingsBatchRequest) error {
+func validateWorkspaceSettingsBatchShape(input workspaceSettingsBatchRequest) error {
 	resources := len(input.Repositories) + len(input.SyncConfigs) + len(input.SyncOverrides)
 	if input.Target != nil {
 		resources++
 	}
 	if resources == 0 {
-		return invalidInstallationSettingsBatch("invalid_request", "a settings save needs at least one resource")
+		return invalidWorkspaceSettingsBatch("invalid_request", "a settings save needs at least one resource")
 	}
-	if resources > maxInstallationSettingsBatchResources {
-		return invalidInstallationSettingsBatch("invalid_request", "a settings save contains too many resources")
+	if resources > maxWorkspaceSettingsBatchResources {
+		return invalidWorkspaceSettingsBatch("invalid_request", "a settings save contains too many resources")
 	}
 	if input.Target != nil {
-		if err := validateInstallationTargetBatchRequest(*input.Target); err != nil {
+		if err := validateWorkspaceTargetBatchRequest(*input.Target); err != nil {
 			return err
 		}
 	}
 	seenRepositories := make(map[string]bool, len(input.Repositories))
 	for _, repository := range input.Repositories {
-		if err := validateInstallationRepositoryBatchRequest(repository); err != nil {
+		if err := validateWorkspaceRepositoryBatchRequest(repository); err != nil {
 			return err
 		}
 		if seenRepositories[repository.RepositoryID] {
-			return invalidInstallationSettingsBatch("invalid_request", "each repository settings resource must appear once")
+			return invalidWorkspaceSettingsBatch("invalid_request", "each repository settings resource must appear once")
 		}
 		seenRepositories[repository.RepositoryID] = true
 	}
-	if err := validateInstallationSyncConfigBatchRequests(input.SyncConfigs); err != nil {
+	if err := validateWorkspaceSyncConfigBatchRequests(input.SyncConfigs); err != nil {
 		return err
 	}
 
-	return validateInstallationSyncOverrideBatchRequests(input.SyncOverrides)
+	return validateWorkspaceSyncOverrideBatchRequests(input.SyncOverrides)
 }
 
-func validateInstallationTargetBatchRequest(input installationTargetBatchRequest) error {
+func validateWorkspaceTargetBatchRequest(input workspaceTargetBatchRequest) error {
 	if input.RepositoryDefaultEnabled == nil || input.PendingCIModeDefault == nil ||
 		input.PendingCIBranchPatternsDefault == nil || !input.PendingCIQuietPeriodSeconds.Present ||
 		!input.PathIndexIntervalSeconds.Present || input.ConfigPatch == nil ||
 		input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
-		return invalidInstallationSettingsBatch("invalid_request", "target settings are incomplete")
+		return invalidWorkspaceSettingsBatch("invalid_request", "target settings are incomplete")
 	}
 	if err := validatePatch(*input.ConfigPatch); err != nil {
-		return invalidInstallationSettingsBatch("invalid_config", err.Error())
+		return invalidWorkspaceSettingsBatch("invalid_config", err.Error())
 	}
 
 	return nil
 }
 
-func validateInstallationRepositoryBatchRequest(input installationRepositoryBatchRequest) error {
+func validateWorkspaceRepositoryBatchRequest(input workspaceRepositoryBatchRequest) error {
 	if input.RepositoryID == "" || !input.EnabledOverride.Present ||
 		!input.PendingCIModeOverride.Present || !input.PendingCIBranchPatternsOverride.Present ||
 		!input.PendingCIQuietPeriodSeconds.Present || !input.PathIndexIntervalSeconds.Present ||
 		input.ConfigPatch == nil || input.IgnoreRepositoryFile == nil ||
 		input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
-		return invalidInstallationSettingsBatch("invalid_request", "repository settings are incomplete")
+		return invalidWorkspaceSettingsBatch("invalid_request", "repository settings are incomplete")
 	}
 	if err := validatePatch(*input.ConfigPatch); err != nil {
-		return invalidInstallationSettingsBatch("invalid_config", err.Error())
+		return invalidWorkspaceSettingsBatch("invalid_config", err.Error())
 	}
 
 	return nil
 }
 
-func validateInstallationSyncConfigBatchRequests(
-	inputs []installationSyncConfigBatchRequest,
+func validateWorkspaceSyncConfigBatchRequests(
+	inputs []workspaceSyncConfigBatchRequest,
 ) error {
 	seen := make(map[orgsync.Kind]bool, len(inputs))
 	for _, input := range inputs {
 		kind := orgsync.Kind(input.Kind)
 		if !kind.Valid() || seen[kind] {
-			return invalidInstallationSettingsBatch("invalid_request", "each sync config kind must be known and appear once")
+			return invalidWorkspaceSettingsBatch("invalid_request", "each sync config kind must be known and appear once")
 		}
 		seen[kind] = true
 		if input.Enabled == nil || input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
-			return invalidInstallationSettingsBatch("invalid_request", "sync config settings are incomplete")
+			return invalidWorkspaceSettingsBatch("invalid_request", "sync config settings are incomplete")
 		}
 		if kind == orgsync.KindLabels {
 			if !input.Labels.Present || input.AllowRemoval == nil || !input.Excludes.Present || input.Document.Present {
-				return invalidInstallationSettingsBatch("invalid_request", "label sync settings need the complete typed document")
+				return invalidWorkspaceSettingsBatch("invalid_request", "label sync settings need the complete typed document")
 			}
 		} else if !input.Document.Present || input.Document.Null || input.Labels.Present ||
 			input.AllowRemoval != nil || input.Excludes.Present {
-			return invalidInstallationSettingsBatch("invalid_request", "sync config settings need one complete document")
+			return invalidWorkspaceSettingsBatch("invalid_request", "sync config settings need one complete document")
 		}
 	}
 
 	return nil
 }
 
-func validateInstallationSyncOverrideBatchRequests(
-	inputs []installationSyncOverrideBatchRequest,
+func validateWorkspaceSyncOverrideBatchRequests(
+	inputs []workspaceSyncOverrideBatchRequest,
 ) error {
 	seen := make(map[string]bool, len(inputs))
 	for _, input := range inputs {
 		kind := orgsync.Kind(input.Kind)
 		key := input.RepositoryID + "\x00" + input.Kind
 		if input.RepositoryID == "" || !kind.Valid() || seen[key] {
-			return invalidInstallationSettingsBatch("invalid_request", "each repository sync kind must be known and appear once")
+			return invalidWorkspaceSettingsBatch("invalid_request", "each repository sync kind must be known and appear once")
 		}
 		seen[key] = true
 		if !input.Enabled.Present || !input.Document.Present || input.Document.Null ||
 			input.ExpectedRevision == nil || *input.ExpectedRevision < 0 {
-			return invalidInstallationSettingsBatch("invalid_request", "repository sync settings are incomplete")
+			return invalidWorkspaceSettingsBatch("invalid_request", "repository sync settings are incomplete")
 		}
 	}
 
@@ -319,7 +319,7 @@ func sameDuration(left, right *time.Duration) bool {
 	return *left == *right
 }
 
-func sortedBatchRepositoryIDs(input installationSettingsBatchRequest) []string {
+func sortedBatchRepositoryIDs(input workspaceSettingsBatchRequest) []string {
 	seen := make(map[string]bool)
 	for _, repository := range input.Repositories {
 		seen[repository.RepositoryID] = true
@@ -336,16 +336,16 @@ func sortedBatchRepositoryIDs(input installationSettingsBatchRequest) []string {
 	return ids
 }
 
-func (s *Server) installationBatchRepositories(
+func (s *Server) workspaceBatchRepositories(
 	r *http.Request,
 	targetID string,
-	input installationSettingsBatchRequest,
+	input workspaceSettingsBatchRequest,
 ) (map[string]storage.Repository, error) {
 	repositories := make(map[string]storage.Repository)
 	for _, id := range sortedBatchRepositoryIDs(input) {
 		repository, err := s.store.GetRepository(r.Context(), targetID, id)
 		if errors.Is(err, storage.ErrNotFound) || (err == nil && !repository.Available) {
-			return nil, &installationSettingsBatchInputError{
+			return nil, &workspaceSettingsBatchInputError{
 				status: http.StatusNotFound, code: "not_found",
 				message: "a requested repository is unavailable in this workspace",
 			}
@@ -359,20 +359,20 @@ func (s *Server) installationBatchRepositories(
 	return repositories, nil
 }
 
-func (s *Server) installationTargetBatchChange(
+func (s *Server) workspaceTargetBatchChange(
 	target storage.Target,
-	input installationTargetBatchRequest,
+	input workspaceTargetBatchRequest,
 ) (storage.InstallationTargetSettingsChange, error) {
 	quiet := pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
 	if err := storage.ValidateTargetPendingCISettings(
 		*input.PendingCIModeDefault, *input.PendingCIBranchPatternsDefault, quiet,
 	); err != nil {
-		return storage.InstallationTargetSettingsChange{}, invalidInstallationSettingsBatch(
+		return storage.InstallationTargetSettingsChange{}, invalidWorkspaceSettingsBatch(
 			"invalid_pending_ci_settings", err.Error())
 	}
 	pathIndex, err := pathIndexOverride(target.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
 	if err != nil {
-		return storage.InstallationTargetSettingsChange{}, invalidInstallationSettingsBatch(
+		return storage.InstallationTargetSettingsChange{}, invalidWorkspaceSettingsBatch(
 			"invalid_path_index_interval", err.Error())
 	}
 
@@ -387,8 +387,8 @@ func (s *Server) installationTargetBatchChange(
 	}, nil
 }
 
-func (s *Server) installationRepositoryBatchChanges(
-	inputs []installationRepositoryBatchRequest,
+func (s *Server) workspaceRepositoryBatchChanges(
+	inputs []workspaceRepositoryBatchRequest,
 	repositories map[string]storage.Repository,
 ) ([]storage.InstallationRepositorySettingsChange, error) {
 	changes := make([]storage.InstallationRepositorySettingsChange, 0, len(inputs))
@@ -398,11 +398,11 @@ func (s *Server) installationRepositoryBatchChanges(
 		if err := storage.ValidateRepositoryPendingCISettings(
 			input.PendingCIModeOverride.Value, input.PendingCIBranchPatternsOverride.Value, quiet,
 		); err != nil {
-			return nil, invalidInstallationSettingsBatch("invalid_pending_ci_settings", err.Error())
+			return nil, invalidWorkspaceSettingsBatch("invalid_pending_ci_settings", err.Error())
 		}
 		pathIndex, err := pathIndexOverride(repository.PathIndexIntervalOverride, input.PathIndexIntervalSeconds)
 		if err != nil {
-			return nil, invalidInstallationSettingsBatch("invalid_path_index_interval", err.Error())
+			return nil, invalidWorkspaceSettingsBatch("invalid_path_index_interval", err.Error())
 		}
 		changes = append(changes, storage.InstallationRepositorySettingsChange{
 			RepositoryID: input.RepositoryID, EnabledOverride: input.EnabledOverride.Value,
@@ -419,16 +419,16 @@ func (s *Server) installationRepositoryBatchChanges(
 	return changes, nil
 }
 
-func installationSyncConfigBatchChanges(
-	inputs []installationSyncConfigBatchRequest,
+func workspaceSyncConfigBatchChanges(
+	inputs []workspaceSyncConfigBatchRequest,
 ) ([]storage.InstallationSyncConfigChange, *orgsync.FileConfig, error) {
 	changes := make([]storage.InstallationSyncConfigChange, 0, len(inputs))
 	var proposedFiles *orgsync.FileConfig
 	for _, input := range inputs {
 		kind := orgsync.Kind(input.Kind)
 		if input.Document.Present && int64(len(input.Document.Value)) > bodyBoundFor(kind) {
-			return nil, nil, &installationSettingsBatchInputError{
-				status: http.StatusRequestEntityTooLarge, code: installationSettingsBatchTooLargeCode,
+			return nil, nil, &workspaceSettingsBatchInputError{
+				status: http.StatusRequestEntityTooLarge, code: workspaceSettingsBatchTooLargeCode,
 				message: fmt.Sprintf("the %s sync configuration is too large", kind),
 			}
 		}
@@ -440,11 +440,11 @@ func installationSyncConfigBatchChanges(
 		}
 		document, err := syncDocumentFor(kind, request)
 		if err != nil {
-			return nil, nil, invalidInstallationSettingsBatch("invalid_sync_config", err.Error())
+			return nil, nil, invalidWorkspaceSettingsBatch("invalid_sync_config", err.Error())
 		}
 		if int64(len(document)) > bodyBoundFor(kind) {
-			return nil, nil, &installationSettingsBatchInputError{
-				status: http.StatusRequestEntityTooLarge, code: installationSettingsBatchTooLargeCode,
+			return nil, nil, &workspaceSettingsBatchInputError{
+				status: http.StatusRequestEntityTooLarge, code: workspaceSettingsBatchTooLargeCode,
 				message: fmt.Sprintf("the %s sync configuration is too large", kind),
 			}
 		}
@@ -464,10 +464,10 @@ func installationSyncConfigBatchChanges(
 	return changes, proposedFiles, nil
 }
 
-func (s *Server) installationSyncOverrideBatchChanges(
+func (s *Server) workspaceSyncOverrideBatchChanges(
 	r *http.Request,
 	targetID string,
-	inputs []installationSyncOverrideBatchRequest,
+	inputs []workspaceSyncOverrideBatchRequest,
 	repositories map[string]storage.Repository,
 	proposedFiles *orgsync.FileConfig,
 ) ([]storage.InstallationSyncOverrideChange, error) {
@@ -475,8 +475,8 @@ func (s *Server) installationSyncOverrideBatchChanges(
 	for _, input := range inputs {
 		kind := orgsync.Kind(input.Kind)
 		if int64(len(input.Document.Value)) > maxRequestBody {
-			return nil, &installationSettingsBatchInputError{
-				status: http.StatusRequestEntityTooLarge, code: installationSettingsBatchTooLargeCode,
+			return nil, &workspaceSettingsBatchInputError{
+				status: http.StatusRequestEntityTooLarge, code: workspaceSettingsBatchTooLargeCode,
 				message: fmt.Sprintf("the %s repository sync settings are too large", kind),
 			}
 		}
@@ -485,13 +485,13 @@ func (s *Server) installationSyncOverrideBatchChanges(
 		)
 		if err != nil {
 			if errors.Is(err, orgsync.ErrInvalidConfig) {
-				return nil, invalidInstallationSettingsBatch("invalid_sync_override", err.Error())
+				return nil, invalidWorkspaceSettingsBatch("invalid_sync_override", err.Error())
 			}
 			return nil, err
 		}
 		if int64(len(document)) > maxRequestBody {
-			return nil, &installationSettingsBatchInputError{
-				status: http.StatusRequestEntityTooLarge, code: installationSettingsBatchTooLargeCode,
+			return nil, &workspaceSettingsBatchInputError{
+				status: http.StatusRequestEntityTooLarge, code: workspaceSettingsBatchTooLargeCode,
 				message: fmt.Sprintf("the %s repository sync settings are too large", kind),
 			}
 		}

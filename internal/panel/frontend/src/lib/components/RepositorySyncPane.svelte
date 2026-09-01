@@ -192,7 +192,7 @@
    * path, so a row naming only a file is refused rather than ignored.
    *
    * What is left to the server is what the pane cannot know: whether the file
-   * is one the installation actually synchronizes.
+   * is one the workspace actually synchronizes.
    */
   const incomplete = $derived.by(() => {
     for (const [at, draft] of drafts.entries()) {
@@ -661,7 +661,7 @@ what this repository adjusts about it. A repository knows things the
 template cannot - one of them ignores a directory the others do not - and
 this is where that is written down.
 
-Against the repository rather than keyed by name in the installation's own
+Against the repository rather than keyed by name in the workspace's own
 document, so a rename cannot orphan an adjustment. A file sync that quietly
 stopped applying one would write the plain template over exactly the
 customization it described.
@@ -1116,7 +1116,7 @@ customization it described.
   }
 
   /* Narrower than the shared-files form's, because an adjustment names a path
-     the installation already lists rather than one somebody is typing out.
+     the workspace already lists rather than one somebody is typing out.
      The boxes beside it share the shape and not the name: `.sync-merge-path`
      is the file this row adjusts, and a selector reaching for that must not
      also find a list rule's path or a substitution. */

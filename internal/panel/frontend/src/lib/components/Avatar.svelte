@@ -15,7 +15,7 @@
      *
      * The distinction is GitHub's own - it draws organisations square and people
      * round - and the panel already keeps it, in the rounded square the Root
-     * console puts an installation's monogram in. It earns its place in the top
+     * console puts a workspace's monogram in. It earns its place in the top
      * bar on a phone, where the workspace switcher and the account menu lose
      * their labels and stand next to each other as two identical discs.
      */

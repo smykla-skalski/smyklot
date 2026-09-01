@@ -12,23 +12,23 @@ import (
 )
 
 const (
-	installationSettingsResourceTarget       = "target"
-	installationSettingsResourceRepository   = "repository"
-	installationSettingsResourceSyncConfig   = "sync_config"
-	installationSettingsResourceSyncOverride = "sync_override"
+	workspaceSettingsResourceTarget       = "target"
+	workspaceSettingsResourceRepository   = "repository"
+	workspaceSettingsResourceSyncConfig   = "sync_config"
+	workspaceSettingsResourceSyncOverride = "sync_override"
 )
 
-type installationSettingsBatchConflictResponse struct {
-	Error installationSettingsBatchConflictError `json:"error"`
+type workspaceSettingsBatchConflictResponse struct {
+	Error workspaceSettingsBatchConflictError `json:"error"`
 }
 
-type installationSettingsBatchConflictError struct {
-	Code      string                              `json:"code"`
-	Message   string                              `json:"message"`
-	Conflicts []installationSettingsBatchConflict `json:"conflicts"`
+type workspaceSettingsBatchConflictError struct {
+	Code      string                           `json:"code"`
+	Message   string                           `json:"message"`
+	Conflicts []workspaceSettingsBatchConflict `json:"conflicts"`
 }
 
-type installationSettingsBatchConflict struct {
+type workspaceSettingsBatchConflict struct {
 	Resource         string          `json:"resource"`
 	TargetID         string          `json:"target_id"`
 	RepositoryID     string          `json:"repository_id,omitempty"`
@@ -38,17 +38,17 @@ type installationSettingsBatchConflict struct {
 	Latest           json.RawMessage `json:"latest,omitempty"`
 }
 
-func (s *Server) writeInstallationSettingsBatchConflict(
+func (s *Server) writeWorkspaceSettingsBatchConflict(
 	w http.ResponseWriter,
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,
 ) bool {
-	conflicts, err := s.installationSettingsBatchConflicts(ctx, request)
+	conflicts, err := s.workspaceSettingsBatchConflicts(ctx, request)
 	if err != nil || len(conflicts) == 0 {
 		return false
 	}
-	writeJSON(w, http.StatusConflict, installationSettingsBatchConflictResponse{
-		Error: installationSettingsBatchConflictError{
+	writeJSON(w, http.StatusConflict, workspaceSettingsBatchConflictResponse{
+		Error: workspaceSettingsBatchConflictError{
 			Code:      "conflict",
 			Message:   "settings changed in another session; review the latest values",
 			Conflicts: conflicts,
@@ -58,11 +58,11 @@ func (s *Server) writeInstallationSettingsBatchConflict(
 	return true
 }
 
-func (s *Server) installationSettingsBatchConflicts(
+func (s *Server) workspaceSettingsBatchConflicts(
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,
-) ([]installationSettingsBatchConflict, error) {
-	conflicts := make([]installationSettingsBatchConflict, 0)
+) ([]workspaceSettingsBatchConflict, error) {
+	conflicts := make([]workspaceSettingsBatchConflict, 0)
 	if request.Target != nil {
 		conflict, stale, err := s.targetSettingsBatchConflict(ctx, request.TargetID, *request.Target)
 		if err != nil {
@@ -100,19 +100,19 @@ func (s *Server) installationSettingsBatchConflicts(
 		}
 	}
 	sort.Slice(conflicts, func(left, right int) bool {
-		return installationSettingsBatchConflictKey(conflicts[left]) <
-			installationSettingsBatchConflictKey(conflicts[right])
+		return workspaceSettingsBatchConflictKey(conflicts[left]) <
+			workspaceSettingsBatchConflictKey(conflicts[right])
 	})
 
 	return conflicts, nil
 }
 
-func installationSettingsBatchConflictKey(conflict installationSettingsBatchConflict) string {
+func workspaceSettingsBatchConflictKey(conflict workspaceSettingsBatchConflict) string {
 	order := map[string]string{
-		installationSettingsResourceTarget:       "0",
-		installationSettingsResourceRepository:   "1",
-		installationSettingsResourceSyncConfig:   "2",
-		installationSettingsResourceSyncOverride: "3",
+		workspaceSettingsResourceTarget:       "0",
+		workspaceSettingsResourceRepository:   "1",
+		workspaceSettingsResourceSyncConfig:   "2",
+		workspaceSettingsResourceSyncOverride: "3",
 	}
 
 	return order[conflict.Resource] + "\x00" + conflict.RepositoryID + "\x00" + string(conflict.Kind)
@@ -122,9 +122,9 @@ func (s *Server) targetSettingsBatchConflict(
 	ctx context.Context,
 	targetID string,
 	change storage.InstallationTargetSettingsChange,
-) (installationSettingsBatchConflict, bool, error) {
-	conflict := installationSettingsBatchConflict{
-		Resource: installationSettingsResourceTarget,
+) (workspaceSettingsBatchConflict, bool, error) {
+	conflict := workspaceSettingsBatchConflict{
+		Resource: workspaceSettingsResourceTarget,
 		TargetID: targetID, ExpectedRevision: change.ExpectedRevision,
 	}
 	target, err := s.store.GetTarget(ctx, targetID)
@@ -138,7 +138,7 @@ func (s *Server) targetSettingsBatchConflict(
 	if target.Revision == change.ExpectedRevision {
 		return conflict, false, nil
 	}
-	conflict.Latest, _ = json.Marshal(installationTargetSettingsStateFrom(target))
+	conflict.Latest, _ = json.Marshal(workspaceTargetSettingsStateFrom(target))
 
 	return conflict, true, nil
 }
@@ -147,9 +147,9 @@ func (s *Server) repositorySettingsBatchConflict(
 	ctx context.Context,
 	targetID string,
 	change storage.InstallationRepositorySettingsChange,
-) (installationSettingsBatchConflict, bool, error) {
-	conflict := installationSettingsBatchConflict{
-		Resource: installationSettingsResourceRepository,
+) (workspaceSettingsBatchConflict, bool, error) {
+	conflict := workspaceSettingsBatchConflict{
+		Resource: workspaceSettingsResourceRepository,
 		TargetID: targetID, RepositoryID: change.RepositoryID,
 		ExpectedRevision: change.ExpectedRevision,
 	}
@@ -164,7 +164,7 @@ func (s *Server) repositorySettingsBatchConflict(
 	if repository.Revision == change.ExpectedRevision {
 		return conflict, false, nil
 	}
-	conflict.Latest, _ = json.Marshal(installationRepositorySettingsStateFrom(repository))
+	conflict.Latest, _ = json.Marshal(workspaceRepositorySettingsStateFrom(repository))
 
 	return conflict, true, nil
 }
@@ -173,9 +173,9 @@ func (s *Server) syncConfigSettingsBatchConflict(
 	ctx context.Context,
 	targetID string,
 	change storage.InstallationSyncConfigChange,
-) (installationSettingsBatchConflict, bool, error) {
-	conflict := installationSettingsBatchConflict{
-		Resource: installationSettingsResourceSyncConfig,
+) (workspaceSettingsBatchConflict, bool, error) {
+	conflict := workspaceSettingsBatchConflict{
+		Resource: workspaceSettingsResourceSyncConfig,
 		TargetID: targetID, Kind: change.Kind,
 		ExpectedRevision: change.ExpectedRevision,
 	}
@@ -184,7 +184,7 @@ func (s *Server) syncConfigSettingsBatchConflict(
 		if change.ExpectedRevision == 0 {
 			return conflict, false, nil
 		}
-		conflict.Latest, _ = json.Marshal(installationSyncConfigSettingsState{
+		conflict.Latest, _ = json.Marshal(workspaceSyncConfigSettingsState{
 			TargetID: targetID, Kind: change.Kind, Document: emptyDocument,
 		})
 		return conflict, true, nil
@@ -197,7 +197,7 @@ func (s *Server) syncConfigSettingsBatchConflict(
 		return conflict, false, nil
 	}
 	if _, validationErr := validatedSyncDocument(config.Kind, config.Document); validationErr == nil {
-		conflict.Latest, _ = json.Marshal(installationSyncConfigSettingsState{
+		conflict.Latest, _ = json.Marshal(workspaceSyncConfigSettingsState{
 			TargetID: targetID, Kind: config.Kind, Enabled: config.Enabled,
 			Document: config.Document, Revision: config.Revision,
 		})
@@ -210,9 +210,9 @@ func (s *Server) syncOverrideSettingsBatchConflict(
 	ctx context.Context,
 	targetID string,
 	change storage.InstallationSyncOverrideChange,
-) (installationSettingsBatchConflict, bool, error) {
-	conflict := installationSettingsBatchConflict{
-		Resource: installationSettingsResourceSyncOverride,
+) (workspaceSettingsBatchConflict, bool, error) {
+	conflict := workspaceSettingsBatchConflict{
+		Resource: workspaceSettingsResourceSyncOverride,
 		TargetID: targetID, RepositoryID: change.RepositoryID,
 		Kind: change.Kind, ExpectedRevision: change.ExpectedRevision,
 	}
@@ -223,7 +223,7 @@ func (s *Server) syncOverrideSettingsBatchConflict(
 		if change.ExpectedRevision == 0 {
 			return conflict, false, nil
 		}
-		conflict.Latest, _ = json.Marshal(installationSyncOverrideSettingsState{
+		conflict.Latest, _ = json.Marshal(workspaceSyncOverrideSettingsState{
 			TargetID: targetID, RepositoryID: change.RepositoryID,
 			Kind: change.Kind, Document: emptyDocument,
 		})
@@ -237,7 +237,7 @@ func (s *Server) syncOverrideSettingsBatchConflict(
 		return conflict, false, nil
 	}
 	if document, ok := canonicalStoredSyncOverride(change.Kind, override.Document); ok {
-		conflict.Latest, _ = json.Marshal(installationSyncOverrideSettingsState{
+		conflict.Latest, _ = json.Marshal(workspaceSyncOverrideSettingsState{
 			TargetID: targetID, RepositoryID: override.RepositoryID, Kind: override.Kind,
 			Enabled: override.Enabled, Document: document, Revision: override.Revision,
 		})

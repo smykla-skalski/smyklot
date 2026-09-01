@@ -3,8 +3,8 @@
  *
  * A dialog stands on top of a view and is nearly always about one row of it, so
  * it reads as part of that view's path rather than as a parameter bolted onto
- * it: `/i/acme/access/users/octocat/history`, not
- * `/i/acme/access/users?dialog=decision-history&user=4005`. The first says what a
+ * it: `/workspace/acme/access/users/octocat/history`, not
+ * `/workspace/acme/access/users?dialog=decision-history&user=4005`. The first says what a
  * person would say out loud, survives being pasted into a message, and is the
  * same shape as every other address the panel writes.
  *
@@ -27,13 +27,13 @@
  */
 
 /* Segment spellings, like `ROOT_USER_ACTIONS` below, because that is what the parser
-   compares against. `remove-access` is the only action an installation's user table
+   compares against. `remove-access` is the only action a workspace's user table
    offers besides suspending and restoring, and the list used to say `remove` - so the
    address the panel wrote for it read back as nothing at all, and a reload or a pasted
    link answered 404 for a dialog that had opened perfectly well in the session. */
 export const USER_ACTIONS = ['history', 'suspend', 'restore', 'remove-access'] as const;
-/* No `history` here, unlike an installation's user table: decisions are made
-   inside an installation, so the Root table offers no history and nothing
+/* No `history` here, unlike a workspace's user table: decisions are made
+   inside a workspace, so the Root table offers no history and nothing
    renders one. The grammar used to accept the segment anyway, which made
    `/root/access/users/<login>/history` resolve to the table with nothing open
    instead of saying the address does not exist. */
@@ -52,7 +52,7 @@ export interface RouteDialog {
 }
 
 /**
- * The installation views a dialog can hang off.
+ * The workspace views a dialog can hang off.
  *
  * A list rather than a predicate because the routes are built from it: a view
  * that hosts no dialog has no route with anything after it, so an address that
@@ -62,8 +62,8 @@ export interface RouteDialog {
 export const DIALOG_HOST_VIEWS = ['users', 'invitations'] as const;
 
 /**
- * The Root console's own tables, which take the same grammar as an
- * installation's because they list the same things and a Root reading a link
+ * The Root console's own tables, which take the same grammar as a
+ * workspace's because they list the same things and a Root reading a link
  * should not have to learn a second shape.
  */
 export const ACCESS_DIALOG_HOSTS = ['access-users', 'access-invitations'] as const;
@@ -104,7 +104,7 @@ export function parseDialogSegments(host: DialogHost, decoded: string[]): RouteD
         decoded,
         'root-user-action',
         null,
-        'root-add-installation-user',
+        'root-add-workspace-user',
         ROOT_USER_ACTIONS,
       );
     case 'invitations':
@@ -126,7 +126,7 @@ export function dialogSegments(host: DialogHost, dialog: RouteDialog | null): st
       return subjectSegments(dialog.params.user, dialog.params.action);
     case 'add-user':
       return host === 'users' ? ['add'] : null;
-    case 'root-add-installation-user':
+    case 'root-add-workspace-user':
       return host === 'access-users' ? ['add'] : null;
     case 'invitation-action':
     case 'root-invitation-action':

@@ -84,7 +84,7 @@
   }}
 />
 
-<!-- Turned off for this repository alone, against an installation that syncs. -->
+<!-- Turned off for this repository alone, against a workspace that syncs. -->
 <Story name="Switched off here" args={{ stored: { ...STORED, enabled: false } }} />
 
 <!-- And turned on here, which is the other way an answer stops being inherited. -->

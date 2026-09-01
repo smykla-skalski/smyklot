@@ -81,7 +81,7 @@ const MATCHERS = {
   invitationToken: matching('^[A-Za-z0-9_-]{43}$'),
 
   /**
-   * The views an installation address may name, taken from the list itself.
+   * The views a workspace address may name, taken from the list itself.
    *
    * A second copy is a copy that drifts, and it did: the sync view was added to every
    * other list and this one still refused it, so the row in the navigation led to the
@@ -93,8 +93,8 @@ const MATCHERS = {
   queueSection: oneOf(WRITTEN_QUEUE_SECTIONS),
 
   /**
-   * The views the Root console renders for an installation, which are fewer than the
-   * installation itself has.
+   * The views the Root console renders for a workspace, which are fewer than the
+   * workspace itself has.
    *
    * A separate matcher from `panelView` because the difference is a boundary and not an
    * oversight: an address the console has no page for must answer with the not-found

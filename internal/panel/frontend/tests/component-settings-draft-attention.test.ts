@@ -10,7 +10,7 @@ describe('SettingsDraftAttention [Component]', () => {
     render(SettingsDraftAttention, {
       kind: 'inactive',
       count: 3,
-      reviewHref: '/i/smykla-skalski/repositories',
+      reviewHref: '/workspace/smykla-skalski/repositories',
       onDismiss,
     });
 
@@ -18,7 +18,7 @@ describe('SettingsDraftAttention [Component]', () => {
     expect(notice.textContent).toContain('Unsaved settings need attention');
     expect(notice.textContent).toContain('3 unsaved settings are still here and not saved');
     const review = screen.getByRole('link', { name: 'Review' });
-    expect(review.getAttribute('href')).toBe('/i/smykla-skalski/repositories');
+    expect(review.getAttribute('href')).toBe('/workspace/smykla-skalski/repositories');
     review.addEventListener('click', (event) => event.preventDefault());
     await fireEvent.click(review);
     expect(onDismiss).toHaveBeenCalledOnce();
@@ -32,7 +32,7 @@ describe('SettingsDraftAttention [Component]', () => {
     render(SettingsDraftAttention, {
       kind: 'inactive',
       count: 1,
-      reviewHref: '/i/smykla-skalski/sync/settings',
+      reviewHref: '/workspace/smykla-skalski/sync/settings',
       onDismiss: vi.fn(),
     });
 
@@ -41,7 +41,7 @@ describe('SettingsDraftAttention [Component]', () => {
     expect(notice.textContent).toContain('out of view for at least 30 minutes');
     expect(notice.textContent).toContain('1 unsaved setting is still here and not saved');
     expect(screen.getByRole('link', { name: 'Review' }).getAttribute('href')).toBe(
-      '/i/smykla-skalski/sync/settings',
+      '/workspace/smykla-skalski/sync/settings',
     );
   });
 
@@ -49,7 +49,7 @@ describe('SettingsDraftAttention [Component]', () => {
     render(SettingsDraftAttention, {
       kind: 'storage-problem',
       problem: 'Browser storage refused this update',
-      reviewHref: '/i/smykla-skalski/repositories',
+      reviewHref: '/workspace/smykla-skalski/repositories',
       onDismiss: vi.fn(),
     });
 

@@ -6,7 +6,7 @@
  * exactly the fields nothing on screen states plainly: `repositories` is the
  * denominator under "held by 4 of 6", and `observed_at` decides whether the
  * notice above the finder says the list is stale. The mock counted every
- * repository the installation has and stamped every answer with `now()`, so a
+ * repository the workspace has and stamped every answer with `now()`, so a
  * developer could not see that notice at all - the one state hardest to reach
  * in production was the one made unreachable in development.
  *
@@ -63,7 +63,7 @@ export function syncPathIndex(rows: readonly PathScanRow[]): PathIndexAnswer {
       return left.path < right.path ? -1 : left.path > right.path ? 1 : 0;
     });
 
-  /* `repositories` counts the rows this was built FROM, not the installation's
+  /* `repositories` counts the rows this was built FROM, not the workspace's
      repositories: counting ones nothing has ever looked at would put a ceiling
      under "held by 4 of 6" that no path can reach. */
   const answer: PathIndexAnswer = { paths, repositories: rows.length, partial };

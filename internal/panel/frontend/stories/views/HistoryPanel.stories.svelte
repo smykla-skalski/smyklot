@@ -40,7 +40,7 @@
 
 <!--
   The Root console's reading of the same history: the Target column names the
-  installation an entry belongs to, where an installation's own panel already knows.
+  workspace an entry belongs to, where a workspace's own panel already knows.
 -->
 <Story name="Root console">
   {#snippet template(args)}<HistoryPanel {...args} context="root" />{/snippet}

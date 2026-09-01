@@ -118,7 +118,7 @@
 
   const drafts = getSettingsDraftRegistry();
   const settingsScope = $derived({
-    type: 'installation',
+    type: 'workspace',
     targetId,
   } as const satisfies SettingsScope);
   let canonicalConfigs = $state.raw<Partial<Record<SyncKind, SyncConfig>>>({});
@@ -395,7 +395,7 @@
 
 <!--
 @component
-Org-wide label sync: what an installation expects its repositories to carry,
+Org-wide label sync: what a workspace expects its repositories to carry,
 and what the service would change to make that true.
 
 Two halves, in the order the questions arrive. What is configured, which is

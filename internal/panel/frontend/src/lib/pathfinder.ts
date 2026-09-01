@@ -1,7 +1,7 @@
 /**
  * The finder's scorer: fzf-style in-order subsequence matching with affine
  * gaps and boundary, camel and consecutive bonuses. The index it runs over
- * is one deduped path list per installation, shipped once - zero requests
+ * is one deduped path list per workspace, shipped once - zero requests
  * per keystroke.
  */
 

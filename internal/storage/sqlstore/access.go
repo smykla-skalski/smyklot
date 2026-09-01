@@ -174,13 +174,13 @@ func (s *Store) SetTargetAccess(
 		return storage.TargetAccessOverride{}, err
 	}
 	action := "target.access.updated"
-	summary := "updated installation access"
+	summary := "updated workspace access"
 	if change.Suspended {
 		action = "target.access.suspended"
-		summary = "suspended installation access" + accessReasonSuffix(change.SuspensionReason)
+		summary = "suspended workspace access" + accessReasonSuffix(change.SuspensionReason)
 	} else if previouslySuspended {
 		action = "target.access.restored"
-		summary = "restored installation access"
+		summary = "restored workspace access"
 	}
 	auditEventID, err := insertAccessAuditEvent(
 		ctx,

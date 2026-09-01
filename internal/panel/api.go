@@ -104,7 +104,7 @@ func (s *Server) getTargets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"targets": response})
 }
 
-func (s *Server) postRootInstallationSync(w http.ResponseWriter, r *http.Request) {
+func (s *Server) postRootWorkspaceSync(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
@@ -155,7 +155,7 @@ func (s *Server) getRepository(w http.ResponseWriter, r *http.Request) {
 // stored where the request does not mention it.
 //
 // Four handlers decode a settings request carrying this field - an
-// installation's and one repository's, each from the panel and from the Root
+// workspace's and one repository's, each from the panel and from the Root
 // console - and each spelled the same eight lines. The field lives on the
 // shared request struct and the check did not, so a fifth handler decoding
 // either struct would have accepted it with nothing looking at it.
@@ -303,10 +303,10 @@ func (s *Server) getAudit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.getInstallationAuditPage(w, r, target.ID)
+	s.getWorkspaceAuditPage(w, r, target.ID)
 }
 
-func (s *Server) getInstallationAuditPage(w http.ResponseWriter, r *http.Request, targetID string) {
+func (s *Server) getWorkspaceAuditPage(w http.ResponseWriter, r *http.Request, targetID string) {
 	page, err := parseHistoryPage(r.URL.Query(), auditHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())
@@ -365,10 +365,10 @@ func (s *Server) getFailures(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.getInstallationFailurePage(w, r, target.ID)
+	s.getWorkspaceFailurePage(w, r, target.ID)
 }
 
-func (s *Server) getInstallationFailurePage(w http.ResponseWriter, r *http.Request, targetID string) {
+func (s *Server) getWorkspaceFailurePage(w http.ResponseWriter, r *http.Request, targetID string) {
 	page, err := parseHistoryPage(r.URL.Query(), failureHistoryOrders...)
 	if err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_history_query", err.Error())

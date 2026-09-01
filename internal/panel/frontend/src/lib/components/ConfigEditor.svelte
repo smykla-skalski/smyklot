@@ -195,7 +195,7 @@ The settings a scope overrides, and what each would be if it did not. Every row 
 the inherited value beside the chosen one, so an override is always visibly a departure
 rather than just a value.
 
-`scope` decides what may be set at all - a repository can narrow what its installation
+`scope` decides what may be set at all - a repository can narrow what its workspace
 allows and never widen it - and `only` renders a subset for a pane that shows a few
 rows in another context.
 

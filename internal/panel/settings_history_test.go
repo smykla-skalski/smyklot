@@ -15,19 +15,19 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const installationSettingsCheckpointPath = "/panel/api/v1/targets/github:installation:10/settings/checkpoints/"
+const workspaceSettingsCheckpointPath = "/panel/api/v1/targets/github:installation:10/settings/checkpoints/"
 
 func TestSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	saved := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		bytes.NewReader(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		bytes.NewReader(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 1, repository: 1,
 		})), session,
 	)
 	requireResponse(t, saved, "seed settings checkpoint", http.StatusOK, `"checkpoint_id":`)
-	var savedAnswer installationSettingsBatchResponse
+	var savedAnswer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(saved.Body.Bytes(), &savedAnswer); err != nil ||
 		savedAnswer.CheckpointID == nil {
 		t.Fatalf("saved settings = %#v, %v", savedAnswer, err)
@@ -38,17 +38,17 @@ func TestSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 	changedTarget := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, false)), session,
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		bytes.NewReader(targetWorkspaceSettingsBatchBody(t, target, false)), session,
 	)
 	requireResponse(t, changedTarget, "change current target", http.StatusOK, `"revision":3`)
-	changedLabels := harness.request(t, http.MethodPut, installationSettingsBatchPath,
+	changedLabels := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
 		strings.NewReader(`{"sync_configs":[{"kind":"labels","enabled":true,
 			"labels":[{"name":"changed","color":"00ff00"}],
 			"allow_removal":false,"excludes":[],"expected_revision":1}]}`), session)
 	requireResponse(t, changedLabels, "change current labels", http.StatusOK, `"revision":2`)
 
-	path := installationSettingsCheckpointPath + *savedAnswer.CheckpointID
+	path := workspaceSettingsCheckpointPath + *savedAnswer.CheckpointID
 	inspectionResponse := harness.request(t, http.MethodGet, path, nil, session)
 	requireResponse(t, inspectionResponse, "inspect settings checkpoint", http.StatusOK,
 		`"action":"installation.settings.saved"`, `"login":"owner"`,
@@ -84,7 +84,7 @@ func TestSettingsCheckpointInspectionAndAtomicRestore(t *testing.T) {
 		t.Fatalf("restored labels = %#v, %v", restoredLabels, err)
 	}
 	assertSettingsRestoreAudit(t, harness, restoredTarget.ID, restored.Body.Bytes())
-	var restoreAnswer installationSettingsBatchResponse
+	var restoreAnswer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(restored.Body.Bytes(), &restoreAnswer); err != nil ||
 		restoreAnswer.CheckpointID == nil {
 		t.Fatalf("restore answer = %#v, %v", restoreAnswer, err)
@@ -123,7 +123,7 @@ func assertSettingsRestoreAudit(
 	responseBody []byte,
 ) {
 	t.Helper()
-	var answer installationSettingsBatchResponse
+	var answer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(responseBody, &answer); err != nil || answer.CheckpointID == nil {
 		t.Fatalf("restore answer = %#v, %v", answer, err)
 	}
@@ -152,7 +152,7 @@ func assertSettingsRestoreAudit(
 	}
 }
 
-func TestInstallationSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
+func TestWorkspaceSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
@@ -160,7 +160,7 @@ func TestInstallationSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
 		t.Fatal(err)
 	}
 	saved := saveTargetSettingsCheckpoint(t, harness, session, target, true)
-	path := installationSettingsCheckpointPath + *saved.CheckpointID + "/restore"
+	path := workspaceSettingsCheckpointPath + *saved.CheckpointID + "/restore"
 
 	noop := harness.request(t, http.MethodPost, path,
 		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), session)
@@ -171,8 +171,8 @@ func TestInstallationSettingsCheckpointRestoreConflictAndNoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	changed := harness.request(t, http.MethodPut, installationSettingsBatchPath,
-		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, false)), session)
+	changed := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
+		bytes.NewReader(targetWorkspaceSettingsBatchBody(t, target, false)), session)
 	requireResponse(t, changed, "change settings after checkpoint", http.StatusOK, `"revision":3`)
 	stale := harness.request(t, http.MethodPost, path,
 		strings.NewReader(`{"state":"after","selections":[{"kind":"target","expected_revision":2}]}`), session)
@@ -190,13 +190,13 @@ func saveTargetSettingsCheckpoint(
 	session *http.Cookie,
 	target storage.Target,
 	enabled bool,
-) installationSettingsBatchResponse {
+) workspaceSettingsBatchResponse {
 	t.Helper()
-	response := harness.request(t, http.MethodPut, installationSettingsBatchPath,
-		bytes.NewReader(targetInstallationSettingsBatchBody(t, target, enabled)), session)
+	response := harness.request(t, http.MethodPut, workspaceSettingsBatchPath,
+		bytes.NewReader(targetWorkspaceSettingsBatchBody(t, target, enabled)), session)
 	requireResponse(t, response, "save target settings checkpoint", http.StatusOK,
 		`"checkpoint_id":`)
-	var answer installationSettingsBatchResponse
+	var answer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil || answer.CheckpointID == nil {
 		t.Fatalf("target settings save = %#v, %v", answer, err)
 	}
@@ -204,7 +204,7 @@ func saveTargetSettingsCheckpoint(
 	return answer
 }
 
-func TestInstallationSettingsCheckpointAuthorizationAndSameOrigin(t *testing.T) {
+func TestWorkspaceSettingsCheckpointAuthorizationAndSameOrigin(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	ownerSession := harness.signIn(t)
 	target, err := harness.store.GetTarget(t.Context(), "github:installation:10")
@@ -212,7 +212,7 @@ func TestInstallationSettingsCheckpointAuthorizationAndSameOrigin(t *testing.T) 
 		t.Fatal(err)
 	}
 	saved := saveTargetSettingsCheckpoint(t, harness, ownerSession, target, true)
-	path := installationSettingsCheckpointPath + *saved.CheckpointID
+	path := workspaceSettingsCheckpointPath + *saved.CheckpointID
 	unauthenticated := harness.request(t, http.MethodGet, path, nil, nil)
 	requireResponse(t, unauthenticated, "unauthenticated inspection", http.StatusUnauthorized)
 
@@ -270,11 +270,11 @@ func (store settingsHistoryFailureStore) RestoreInstallationSettings(
 	return storage.SaveInstallationSettingsResult{}, store.restoreErr
 }
 
-func TestInstallationSettingsCheckpointMapsSafeErrors(t *testing.T) {
+func TestWorkspaceSettingsCheckpointMapsSafeErrors(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	realStore := harness.store
-	path := installationSettingsCheckpointPath + "1"
+	path := workspaceSettingsCheckpointPath + "1"
 	harness.server.store = settingsHistoryFailureStore{
 		Store: realStore, inspectErr: storage.ErrSettingsCheckpointCorrupt,
 	}
@@ -310,10 +310,10 @@ func TestInstallationSettingsCheckpointMapsSafeErrors(t *testing.T) {
 	}
 }
 
-func TestRootInstallationSettingsRestoreDelegatesRootErrors(t *testing.T) {
+func TestRootWorkspaceSettingsRestoreDelegatesRootErrors(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	session := harness.signIn(t)
-	_, snapshot := seedNonOwnedInstallation(t, harness)
+	_, snapshot := seedNonOwnedWorkspace(t, harness)
 	elevated := harness.request(t, http.MethodPost,
 		"/panel/api/v1/root/workspaces/"+snapshot.TargetID+"/elevation",
 		strings.NewReader(`{"acknowledged":true,"reason":"test restore failure mapping"}`),

@@ -15,10 +15,7 @@
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { applyDocumentTheme } from '#lib/preferences.js';
   import { prefText } from '#lib/preferences-sync.js';
-  import {
-    rebaseInstallationConflicts,
-    saveInstallationDrafts,
-  } from '#lib/installation-settings-save.js';
+  import { rebaseWorkspaceConflicts, saveWorkspaceDrafts } from '#lib/workspace-settings-save.js';
   import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
   import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import {
@@ -36,7 +33,7 @@
     panelViewSection,
     routeSegmentLabel,
     type PanelView,
-    type RootInstallationView,
+    type RootWorkspaceView,
     type RootRuntimeSection,
     type RootSection,
     type SyncSection,
@@ -125,7 +122,7 @@
   const rootProblemControl = $derived(rootDirtyControls[0]);
   const selectedSettingsScope = $derived.by((): SettingsScope | null => {
     const targetId = session.selectedTarget?.id;
-    return targetId === undefined ? null : { type: 'installation', targetId };
+    return targetId === undefined ? null : { type: 'workspace', targetId };
   });
   const selectedDirtyControls = $derived.by((): SettingsDirtyControl[] => {
     if (selectedSettingsScope === null) return [];
@@ -185,7 +182,7 @@
   function markEveryDirtySettingsScope(): boolean {
     let marked = false;
     for (const targetId of settingsDraftRegistry.dirtyTargetIds) {
-      marked = settingsDraftRegistry.markAttention({ type: 'installation', targetId }) || marked;
+      marked = settingsDraftRegistry.markAttention({ type: 'workspace', targetId }) || marked;
     }
     return settingsDraftRegistry.markAttention(ROOT_SETTINGS_SCOPE) || marked;
   }
@@ -311,7 +308,7 @@
     const account = page.params.account;
     if (account === undefined) {
       if (session.targets.length > 0 && session.selectedId === null) {
-        const last = session.prefs.get('last_installation');
+        const last = session.prefs.get('last_workspace');
         const login = prefText(last);
         const target =
           session.targets.find((t) => t.account.login.toLowerCase() === login.toLowerCase()) ??
@@ -331,11 +328,11 @@
     const target = session.targets.find((t) => t.account.login.toLowerCase() === folded);
     if (target !== undefined) {
       session.selectedId = target.id;
-      session.prefs.set('last_installation', target.account.login);
+      session.prefs.set('last_workspace', target.account.login);
       return;
     }
 
-    const remembered = prefText(session.prefs.get('last_installation')).toLowerCase();
+    const remembered = prefText(session.prefs.get('last_workspace')).toLowerCase();
     const fallback =
       session.targets.find((candidate) => candidate.account.login.toLowerCase() === remembered) ??
       session.targets[0];
@@ -440,10 +437,10 @@
     const targetId = session.selectedTarget?.id;
     if (targetId === undefined) return;
     selectedSaveProblemControl = null;
-    const result = await saveInstallationDrafts(
+    const result = await saveWorkspaceDrafts(
       settingsDraftRegistry,
       targetId,
-      api.saveInstallationSettings,
+      api.saveWorkspaceSettings,
     );
     if (!result.saved) {
       selectedSaveProblemControl = result.problemControl ?? null;
@@ -511,7 +508,7 @@
     selectedSaveProblemControl = null;
     resolvingSettingsConflict = true;
     await tick();
-    rebaseInstallationConflicts(settingsDraftRegistry, targetId);
+    rebaseWorkspaceConflicts(settingsDraftRegistry, targetId);
     settingsDraftRegistry.resolveExternalConflicts(scope);
     if (!settingsDraftRegistry.hasConflicts(scope)) {
       settingsDraftRegistry.dismissProblem(scope);
@@ -756,15 +753,15 @@
     return rows;
   });
 
-  /** One installation opened inside the console, as its own group of rows. */
-  const rootInstallationRows = $derived.by((): SidebarEntry[] => {
+  /** One workspace opened inside the console, as its own group of rows. */
+  const rootWorkspaceRows = $derived.by((): SidebarEntry[] => {
     const route = session.currentRootRoute;
-    if (route.rootView !== 'installation') return [];
+    if (route.rootView !== 'workspace') return [];
     const target = session.targets.find(
       (candidate) => candidate.account.login.toLowerCase() === route.account.toLowerCase(),
     );
     const scope: SettingsScope | null =
-      target === undefined ? null : { type: 'installation', targetId: target.id };
+      target === undefined ? null : { type: 'workspace', targetId: target.id };
     const leaves = [
       { id: 'settings', view: 'settings', label: 'Workspace settings', icon: 'gear' },
       { id: 'repositories', view: 'repositories', label: 'Repositories', icon: 'book' },
@@ -781,14 +778,14 @@
     ] as const;
 
     return [
-      { kind: 'group', id: 'group-installation', label: target?.account.login ?? route.account },
+      { kind: 'group', id: 'group-workspace', label: target?.account.login ?? route.account },
       ...leaves.map((leaf): SidebarRow => ({
-        id: `installation-${leaf.id}`,
+        id: `workspace-${leaf.id}`,
         label: leaf.label,
         icon: leaf.icon,
-        href: session.rootInstallationHref(
+        href: session.rootWorkspaceHref(
           route.account,
-          leaf.view as RootInstallationView,
+          leaf.view as RootWorkspaceView,
           'section' in leaf ? leaf.section : undefined,
         ),
         active:
@@ -817,7 +814,7 @@
       active: !session.isInbox && session.rootValue === 'overview',
     },
     {
-      id: 'installations',
+      id: 'workspaces',
       label: 'Workspaces',
       icon: 'book',
       href: session.rootHrefFor('workspaces'),
@@ -885,7 +882,7 @@
       active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-settings',
       dirty: settingsDraftRegistry.dirtyAt(ROOT_SETTINGS_SCOPE, { section: 'runtime' }),
     },
-    ...rootInstallationRows,
+    ...rootWorkspaceRows,
   ]);
 
   /**
@@ -916,18 +913,18 @@
     const [head, tail] = row.id.split('-') as [string, string | undefined];
 
     if (session.isRootMode) {
-      if (head === 'installation' && tail !== undefined) {
+      if (head === 'workspace' && tail !== undefined) {
         const route = session.currentRootRoute;
-        if (route.rootView !== 'installation') return;
-        if (tail === 'audit' || tail === 'failures') session.selectRootInstallationHistory(tail);
-        else session.selectRootInstallation(route.account, tail as RootInstallationView);
+        if (route.rootView !== 'workspace') return;
+        if (tail === 'audit' || tail === 'failures') session.selectRootWorkspaceHistory(tail);
+        else session.selectRootWorkspace(route.account, tail as RootWorkspaceView);
         return;
       }
       if (head === 'queue') session.selectRootQueueSection('active');
       else if (head === 'access') session.selectRootAccessSection(tail as 'users' | 'invitations');
       else if (head === 'history') session.selectRootHistorySection(tail as 'audit' | 'failures');
       else if (head === 'runtime') session.selectRootRuntimeSection(tail as RootRuntimeSection);
-      else if (row.id === 'installations') session.selectRootInstallations();
+      else if (row.id === 'workspaces') session.selectRootWorkspaces();
       else session.selectRootSection(row.id as RootSection);
       return;
     }
@@ -962,7 +959,7 @@
     'history-failures': 'work that stopped, and why',
     settings: 'what every repository here inherits',
     overview: 'what needs an operator',
-    installations: 'every workspace the service serves',
+    workspaces: 'every workspace the service serves',
     'runtime-service': 'the service, its credentials and the store it runs on',
     'runtime-settings': 'what the deployment sets, and what you set here',
   };
@@ -1082,7 +1079,7 @@
     <PanelBoot />
   {:else if session.signedOut}
     <SignInPage {api} {build} ended={session.sessionEnded} />
-  {:else if session.awaitingInstallation}
+  {:else if session.awaitingWorkspace}
     <NightPage title="No workspaces" documentTitle="No workspaces" {build} size="compact">
       <div class="install-prompt">
         <span class="install-mark" aria-hidden="true">+</span>
@@ -1250,7 +1247,7 @@
             onDismiss={dismissSelectedSettingsNotice}
             onOpenProblem={openSettingsProblem}
           />
-        {:else if session.isRootMode && session.currentRootRoute.rootView !== 'installation'}
+        {:else if session.isRootMode && session.currentRootRoute.rootView !== 'workspace'}
           <SettingsSaveComposer
             count={rootDirtyControls.length}
             saving={rootSettingsOperation.saving}

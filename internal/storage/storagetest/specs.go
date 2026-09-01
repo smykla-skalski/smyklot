@@ -941,7 +941,7 @@ func DeclareSpecs(harness Harness) {
 			HistoryPageRequest: storage.HistoryPageRequest{
 				Limit: 10,
 				Order: storage.HistoryOldest,
-				Query: "Saved 1 installation settings",
+				Query: "Saved 1 workspace settings",
 			},
 			Scope: storage.AuditAccount,
 		})
@@ -1471,7 +1471,7 @@ func DeclareSpecs(harness Harness) {
 		Expect(errors.Is(err, storage.ErrConflict)).To(BeTrue())
 	})
 
-	It("creates and accepts Root invitations separately from installation access", func() {
+	It("creates and accepts Root invitations separately from workspace access", func() {
 		root, _ := seedInstallation(ctx, store, now)
 		Expect(store.ReconcileSuperRoot(ctx, root.ID, now)).To(Succeed())
 		invitee := root

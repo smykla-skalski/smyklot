@@ -48,8 +48,8 @@
   /* Requests and overrides are asked for by a workspace, and the wire says which by
      id. The catalog is what turns one into a name, and the console has it cached. */
   const catalogQuery = createQuery(() => ({
-    queryKey: ['root-installations'],
-    queryFn: () => api.fetchRootInstallations(),
+    queryKey: ['root-workspaces'],
+    queryFn: () => api.fetchRootWorkspaces(),
   }));
   const catalog = $derived(
     new Map((catalogQuery.data ?? []).map((row) => [row.id, row.account.display_name])),
@@ -170,7 +170,7 @@
   /** An hours profile as one sentence: where it is, when it is open, who runs on it. */
   function hoursSentence(profile: ScheduleProfile): string {
     const said = [`${profile.timezone} · ${windowsSentence(profile)}`];
-    const on = profile.affected_installations;
+    const on = profile.affected_workspaces;
     if (on !== undefined) {
       said.push(`${on} ${on === 1 ? 'workspace runs' : 'workspaces run'} on it`);
     }
@@ -195,7 +195,7 @@
       const saved =
         editingPolicy.target_id === undefined
           ? await api.updateRootJobPolicy(editingPolicy.kind, input)
-          : await api.updateRootInstallationJobPolicy(
+          : await api.updateRootWorkspaceJobPolicy(
               editingPolicy.target_id,
               editingPolicy.kind,
               input,
@@ -215,7 +215,7 @@
     if (revertingPolicy?.target_id === undefined) return;
     dialogBusy = true;
     try {
-      await api.deleteRootInstallationJobPolicy(
+      await api.deleteRootWorkspaceJobPolicy(
         revertingPolicy.target_id,
         revertingPolicy.kind,
         revertingPolicy.revision,
@@ -560,7 +560,7 @@ in their own settings.
   />
 {/key}
 <ConfirmDialog
-  id="revert-installation-policy"
+  id="revert-workspace-policy"
   open={revertingPolicy !== null}
   title="Use the deployment schedule?"
   description={revertingPolicy === null

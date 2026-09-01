@@ -48,7 +48,7 @@ func TestRootSchedulePoliciesDistinguishDeploymentDefaults(t *testing.T) {
 	}
 }
 
-func TestInstallationSchedulesEncodeEmptyOverridesAsArray(t *testing.T) {
+func TestWorkspaceSchedulesEncodeEmptyOverridesAsArray(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	session := harness.signIn(t)
 	response := harness.request(
@@ -58,7 +58,7 @@ func TestInstallationSchedulesEncodeEmptyOverridesAsArray(t *testing.T) {
 		nil,
 		session,
 	)
-	requireResponse(t, response, "installation queue policies", http.StatusOK)
+	requireResponse(t, response, "workspace queue policies", http.StatusOK)
 	var result struct {
 		PolicySet schedulePolicySet `json:"policies"`
 	}
@@ -88,17 +88,17 @@ func queuePolicyFromSet(t *testing.T, policies []workqueue.Policy, kind workqueu
 	return workqueue.Policy{}
 }
 
-func TestInstallationScheduleProfileHidesGlobalImpact(t *testing.T) {
+func TestWorkspaceScheduleProfileHidesGlobalImpact(t *testing.T) {
 	t.Parallel()
 
-	profile := installationScheduleProfile(workqueue.Profile{
-		AffectedInstallations: 7,
-		AffectedItems:         11,
-		AffectedPolicies:      5,
+	profile := workspaceScheduleProfile(workqueue.Profile{
+		AffectedWorkspaces: 7,
+		AffectedItems:      11,
+		AffectedPolicies:   5,
 	})
-	if profile.AffectedInstallations != 0 || profile.AffectedItems != 0 ||
+	if profile.AffectedWorkspaces != 0 || profile.AffectedItems != 0 ||
 		profile.AffectedPolicies != 0 {
-		t.Fatalf("installation profile exposed global impact: %#v", profile)
+		t.Fatalf("workspace profile exposed global impact: %#v", profile)
 	}
 }
 
@@ -112,7 +112,7 @@ func TestValidScheduleRequestInputRequiresRecurringCadence(t *testing.T) {
 		ProfileID:       &profileID,
 		CadenceSeconds:  0,
 		DefaultPriority: workqueue.PriorityNormal,
-		Reason:          "Run during installation hours",
+		Reason:          "Run during workspace hours",
 	}
 	if validScheduleRequestInput(input) {
 		t.Fatal("recurring schedule request accepted a zero cadence")

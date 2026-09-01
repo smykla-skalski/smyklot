@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * placeholder is gated on the request alone, a reload tears down what the reader is looking at and
  * puts back something of a different height, then undoes it a moment later. On the invitation page
  * that moved the whole card 45px up and back on every press of "Try again"; in the Root
- * installation view it blanked the entire panel on each refresh.
+ * workspace view it blanked the entire panel on each refresh.
  *
  * So a loading branch has to name what is missing, not just that a request is in flight. The
  * in-place refresh is reported with `aria-busy` and a progress cursor instead, which is what the
@@ -51,7 +51,7 @@ describe('a loading placeholder', () => {
   it('leaves the reader something to look at while a retry runs', () => {
     // Both of these clear their failure only once they have a replacement for it, so pressing
     // "Try again" keeps the message on screen instead of flashing the placeholder back.
-    for (const file of ['InvitationPage.svelte', 'RootInstallationView.svelte']) {
+    for (const file of ['InvitationPage.svelte', 'RootWorkspaceView.svelte']) {
       const source = sources.find(([name]) => name === file)?.[1] ?? '';
       const load = source.slice(source.indexOf('loading = true'), source.indexOf('} finally {'));
 

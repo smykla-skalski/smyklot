@@ -633,7 +633,7 @@
 <!--
 @component
 The operator's queue: everything the service is holding until it can act, across every
-installation. Waiting and Recent are two sections of one page rather than two pages,
+workspace. Waiting and Recent are two sections of one page rather than two pages,
 because the question "did that go through?" is asked immediately after "is it waiting?"
 and a reader should not have to navigate between them.
 -->

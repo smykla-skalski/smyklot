@@ -1,12 +1,12 @@
 <script lang="ts">
   import { useQueryClient } from '@tanstack/svelte-query';
-  import { invalidateRootInstallationSettings } from '#lib/query-client.js';
+  import { invalidateRootWorkspaceSettings } from '#lib/query-client.js';
   import { getPanelSession } from '#lib/session.svelte.js';
   import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
   import type {
     DeliveryFailure,
-    InstallationSettingsBatchResponse,
+    WorkspaceSettingsBatchResponse,
     RootRuntimeSettings,
   } from '#lib/types.js';
   import HistoryPanel from '#lib/components/HistoryPanel.svelte';
@@ -25,12 +25,12 @@
     void queryClient.invalidateQueries({ queryKey: ['root-overview'] });
   }
 
-  function installationSettingsRestored(
-    _settings: InstallationSettingsBatchResponse,
+  function workspaceSettingsRestored(
+    _settings: WorkspaceSettingsBatchResponse,
     targetId: string,
   ): void {
     void Promise.all([
-      invalidateRootInstallationSettings(queryClient, targetId),
+      invalidateRootWorkspaceSettings(queryClient, targetId),
       queryClient.invalidateQueries({ queryKey: ['repository', targetId] }),
       queryClient.invalidateQueries({ queryKey: ['sync-override', targetId] }),
       queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId] }),
@@ -39,15 +39,15 @@
     ]);
   }
 
-  function hasUnsavedInstallationSettings(targetId: string): boolean {
-    return settingsDrafts.hasDirty({ type: 'installation', targetId });
+  function hasUnsavedWorkspaceSettings(targetId: string): boolean {
+    return settingsDrafts.hasDirty({ type: 'workspace', targetId });
   }
 
   /* The console can open the repository a failure was about, but only through the
      workspace that holds it - so a row whose workspace the catalog no longer names
      offers nothing rather than an address that resolves to somebody else's. */
   function repositoryPage(failure: DeliveryFailure): string | null {
-    const account = failure.installation?.login;
+    const account = failure.workspace?.login;
     if (account === undefined) return null;
 
     return session.rootRepositoryHref(
@@ -69,15 +69,15 @@
     fetchAudit={session.api.fetchRootAudit}
     exportAudit={session.api.rootAuditExportHref}
     fetchFailures={session.api.fetchRootFailures}
-    fetchSettingsCheckpoint={session.api.fetchRootInstallationSettingsCheckpoint}
-    restoreSettingsCheckpoint={session.api.restoreRootInstallationSettingsCheckpoint}
+    fetchSettingsCheckpoint={session.api.fetchRootWorkspaceSettingsCheckpoint}
+    restoreSettingsCheckpoint={session.api.restoreRootWorkspaceSettingsCheckpoint}
     fetchRootSettingsCheckpoint={session.api.fetchRootRuntimeSettingsCheckpoint}
     fetchRootSettingsBaseline={session.api.fetchRootRuntimeSettingsBaseline}
     restoreRootSettingsCheckpoint={session.api.restoreRootRuntimeSettingsCheckpoint}
     hasUnsavedRootSettingsDrafts={settingsDrafts.hasDirty(ROOT_SETTINGS_SCOPE)}
-    hasUnsavedSettingsDraftsForTarget={hasUnsavedInstallationSettings}
+    hasUnsavedSettingsDraftsForTarget={hasUnsavedWorkspaceSettings}
     readOnly={false}
-    onSettingsRestored={installationSettingsRestored}
+    onSettingsRestored={workspaceSettingsRestored}
     onRootSettingsRestored={runtimeSettingsRestored}
     repositoryHref={repositoryPage}
   />

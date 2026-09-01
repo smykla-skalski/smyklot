@@ -37,7 +37,7 @@ const (
 	prefKeyTheme                = "theme"
 	prefKeySidebar              = "sidebar"
 	prefKeyTimeDisplay          = "history.time_display"
-	prefKeyLastInstallation     = "last_installation"
+	prefKeyLastWorkspace        = "last_workspace"
 	prefKeyRepositoriesSort     = "table.repositories.sort"
 	prefKeyRepositoriesState    = "table.repositories.state"
 	prefKeyRepositoriesFiles    = "table.repositories.files"
@@ -63,10 +63,10 @@ const (
 // are rejected so the stored documents only ever hold values every shipped
 // panel build can interpret.
 var prefRegistry = map[string]prefValidator{
-	prefKeyTheme:            oneOf("system", "light", "dark"),
-	prefKeySidebar:          oneOf("expanded", "collapsed"),
-	prefKeyTimeDisplay:      oneOf("relative", "absolute"),
-	prefKeyLastInstallation: freeText(),
+	prefKeyTheme:         oneOf("system", "light", "dark"),
+	prefKeySidebar:       oneOf("expanded", "collapsed"),
+	prefKeyTimeDisplay:   oneOf("relative", "absolute"),
+	prefKeyLastWorkspace: freeText(),
 
 	prefKeyRepositoriesSort: oneOf(
 		string(storage.RepositoryNameAscending),

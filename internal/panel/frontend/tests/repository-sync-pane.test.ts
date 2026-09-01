@@ -154,9 +154,9 @@ describe('RepositorySyncPane [Component]', () => {
   });
 
   /**
-   * Three states rather than two. "Inherits, and the installation says no" and
+   * Three states rather than two. "Inherits, and the workspace says no" and
    * "this repository says no" are different answers that stop being the same
-   * the moment the installation changes its mind.
+   * the moment the workspace changes its mind.
    */
   it('sends nothing about enablement while the repository inherits', async () => {
     const { sent, onChange } = saved();

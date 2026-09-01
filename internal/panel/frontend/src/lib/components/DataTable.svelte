@@ -177,7 +177,7 @@
 The shell every table in the panel shares.
 
 Nine tables across seven files wrote this by hand, under six different wrapper
-class names - `table-scroll`, `user-table-wrap`, `installation-table-shell`,
+class names - `table-scroll`, `user-table-wrap`, `workspace-table-shell`,
 `repository-table-scroll`, `queue-card` - each carrying a copy of the same
 comment saying the surface comes from `.table-card`. Three separate bugs had been
 patched in three of those files.

@@ -11,7 +11,7 @@
       id: 'sync-plan:42',
       kind: 'sync_apply',
       lane: 'maintenance',
-      target_id: 'github:installation:42',
+      target_id: 'github:workspace:42',
       title: 'Apply organization sync plan',
       summary: '3 changes approved',
       state: 'scheduled',

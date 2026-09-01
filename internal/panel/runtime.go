@@ -23,7 +23,7 @@ type RuntimeValues struct {
 	SessionTTL           time.Duration
 
 	// PathIndexInterval is how often a repository's file list is checked for
-	// changes, before any installation or repository says otherwise.
+	// changes, before any workspace or repository says otherwise.
 	PathIndexInterval time.Duration
 }
 

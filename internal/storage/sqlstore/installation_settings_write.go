@@ -228,7 +228,7 @@ func (s *Store) recordInstallationSettings(
 		ActorAccountID: request.ActorAccountID, ElevationID: request.ElevationID,
 		SourceKind: &sourceKind, SourceID: &checkpointID,
 		Action:    actionInstallationSettingsSaved,
-		Summary:   fmt.Sprintf("Saved %d installation settings", len(work.items)),
+		Summary:   fmt.Sprintf("Saved %d workspace settings", len(work.items)),
 		CreatedAt: request.ChangedAt,
 	})
 	if err != nil {

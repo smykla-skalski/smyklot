@@ -69,7 +69,7 @@
 <!-- A reader without write: the policy still reads, the controls stand down. -->
 <Story name="Read only" args={{ readOnly: true }} />
 
-<!-- A permission the installation has not granted, surfaced while the kind
+<!-- A permission the workspace has not granted, surfaced while the kind
      is switched on and waiting on it. -->
 <Story
   name="Missing permission"

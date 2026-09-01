@@ -67,11 +67,14 @@ async function resetMigration(path: string, repository: string): Promise<void> {
 }
 
 describe('the TOML migration reset in the development panel', () => {
-  it('works in an installation and keeps the page presentation', async () => {
-    await resetMigration(`/i/${panel.account}/repositories/migration-demo`, 'migration-demo');
+  it('works in a workspace and keeps the page presentation', async () => {
+    await resetMigration(
+      `/workspace/${panel.account}/repositories/migration-demo`,
+      'migration-demo',
+    );
   });
 
-  it('works through the Root installation API', async () => {
+  it('works through the Root workspace API', async () => {
     await resetMigration(
       `/root/workspaces/${panel.account}/repositories/search-indexer`,
       'search-indexer',

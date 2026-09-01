@@ -60,7 +60,7 @@ interface Menu {
 const MENUS: Menu[] = [
   {
     name: "the account menu's theme switch",
-    path: (account: string) => `/i/${account}/settings`,
+    path: (account: string) => `/workspace/${account}/settings`,
     ready: '.rail button[aria-label^="Account menu for"]',
     layer: '.app-popover[data-state="open"]',
     /* The rail's, not the collapsed sidebar's: both open the same menu, and the
@@ -74,7 +74,7 @@ const MENUS: Menu[] = [
        hazard in a plainer form - the section is not in the document at all until its
        adjuster is opened, so the control's first layout happens long after load. */
     name: "a repository's formatting, once its adjuster is open",
-    path: (account: string) => `/i/${account}/sync/files/renovate.json`,
+    path: (account: string) => `/workspace/${account}/sync/files/renovate.json`,
     ready: '.format-status',
     layer: '.repository-formatting',
     open: (page) => page.getByRole('button', { name: /^smyklot changes/u }).click(),

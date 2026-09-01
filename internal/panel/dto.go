@@ -87,7 +87,7 @@ type targetResponse struct {
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
 	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
-	// What this installation would use if it set nothing: the value the running
+	// What this workspace would use if it set nothing: the value the running
 	// service resolved, never null. A panel that only knew "nothing is set here"
 	// had to invent a prefill, and invented the same one on every deployment.
 	PendingCIQuietPeriodSecondsInherited int64                        `json:"pending_ci_quiet_period_seconds_inherited"`
@@ -129,7 +129,7 @@ type pendingCIGateResponse struct {
 // nothing below the port needs any - so it marshalled under its Go field names, and
 // the panel, reading the lower-case names it uses everywhere else, got undefined for
 // each of them. Two undefined numbers added together are what put "of NaN enabled"
-// on the Root console's installations table. The development fixture spelled them
+// on the Root console's workspaces table. The development fixture spelled them
 // the way the panel reads them, so the page was only ever wrong against the service.
 type repositoryCountsResponse struct {
 	Total    int `json:"total"`
@@ -271,11 +271,11 @@ func capabilitiesDTO(capabilities storage.AccessCapabilities) capabilityResponse
 	}
 }
 
-// targetDTO renders one installation.
+// targetDTO renders one workspace.
 //
 // It takes the whole of the running service's settings rather than its bot
 // config alone, because two of the durations below cascade through this level:
-// what an installation inherits is what the process resolved, and a panel told
+// what an workspace inherits is what the process resolved, and a panel told
 // only "nothing is set here" has to invent a number to prefill - which is how
 // every page below Root came to show one hour whatever the deployment ran.
 func targetDTO(
@@ -334,16 +334,16 @@ func repositorySummaryDTO(
 	// declared: a source spelled here and a resource spelled there are one
 	// vocabulary, and the panel compares them.
 	enabled := target.RepositoryDefaultEnabled
-	source := installationSettingsResourceTarget
+	source := workspaceSettingsResourceTarget
 	if repository.EnabledOverride != nil {
 		enabled = *repository.EnabledOverride
-		source = installationSettingsResourceRepository
+		source = workspaceSettingsResourceRepository
 	}
 	mode := target.PendingCIModeDefault
-	modeSource := installationSettingsResourceTarget
+	modeSource := workspaceSettingsResourceTarget
 	if repository.PendingCIModeOverride != nil {
 		mode = *repository.PendingCIModeOverride
-		modeSource = installationSettingsResourceRepository
+		modeSource = workspaceSettingsResourceRepository
 	}
 
 	return repositorySummaryResponse{
@@ -368,7 +368,7 @@ func repositorySummaryDTO(
 //
 // Like `targetDTO`, it takes the whole of the running service's settings: a
 // duration this repository inherits is resolved through every level above it,
-// so a repository under an installation that sets nothing inherits what the
+// so a repository under an workspace that sets nothing inherits what the
 // process runs with rather than nothing at all.
 func repositoryDetailDTO(
 	runtime RuntimeValues,
@@ -434,7 +434,7 @@ func durationSecondsDTO(value *time.Duration) *int64 {
 // level above that did, or what the running service resolved.
 //
 // Never null, which is the whole point. The panel used to be told only whether
-// the level above had an override, so a repository under an installation that
+// the level above had an override, so a repository under an workspace that
 // set nothing had to invent its prefill - and invented the same hour whether
 // the deployment ran with fifteen minutes or a day.
 func inheritedSecondsDTO(above *time.Duration, process time.Duration) int64 {

@@ -1,7 +1,7 @@
 import { formatJson, parseJson, type JsonValue } from './merge';
 import type {
-  InstallationSyncConfigSettingsInput,
-  InstallationSyncConfigSettingsState,
+  WorkspaceSyncConfigSettingsInput,
+  WorkspaceSyncConfigSettingsState,
   SyncConfig,
   SyncKind,
   SyncLabel,
@@ -50,7 +50,7 @@ export interface SyncConfigControlDefinition {
 }
 
 export type SyncConfigSerializationResult =
-  { ok: true; input: InstallationSyncConfigSettingsInput } | { ok: false; problem: string };
+  { ok: true; input: WorkspaceSyncConfigSettingsInput } | { ok: false; problem: string };
 
 export function syncConfigResource(targetId: string, kind: SyncKind): SettingsResource {
   return { type: 'sync-config', targetId, kind };
@@ -252,7 +252,7 @@ export function syncConfigBatchInput(
 }
 
 export function syncConfigCommittedResource(
-  state: InstallationSyncConfigSettingsState,
+  state: WorkspaceSyncConfigSettingsState,
 ): SettingsCommittedResource {
   if (!isSyncKind(state.kind)) throw new TypeError('saved Sync configuration kind is unknown');
   if (!isJsonRecord(state.document)) {

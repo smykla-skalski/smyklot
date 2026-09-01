@@ -36,7 +36,7 @@
 </script>
 
 <!--
-  Who may act in this installation. A row with decision history opens it, and only
+  Who may act in this workspace. A row with decision history opens it, and only
   that row is pressable - the chevron is drawn always so its neighbours' menus land
   at the same x, and the arrow only appears where there is somewhere to go.
 -->

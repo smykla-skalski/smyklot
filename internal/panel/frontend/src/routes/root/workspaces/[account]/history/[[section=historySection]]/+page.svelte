@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getPanelSession } from '#lib/session.svelte.js';
-  import type { RootInstallationView } from '#lib/routes.js';
-  import RootInstallations from '#lib/components/RootInstallations.svelte';
+  import type { RootWorkspaceView } from '#lib/routes.js';
+  import RootWorkspaces from '#lib/components/RootWorkspaces.svelte';
 
   const session = getPanelSession();
 </script>
@@ -11,16 +11,15 @@
   class:root-table-view={session.tableScrollView}
   aria-labelledby="root-page-heading"
 >
-  <RootInstallations
+  <RootWorkspaces
     route={session.currentRootRoute}
     api={session.api}
     actorLogin={session.viewer?.account.login ?? ''}
-    listHref={session.rootInstallationsHref()}
-    hrefFor={(account: string, view: RootInstallationView) =>
-      session.rootInstallationHref(account, view)}
-    onList={() => session.selectRootInstallations()}
-    onNavigate={(account: string, view: RootInstallationView) =>
-      session.selectRootInstallation(account, view)}
+    listHref={session.rootWorkspacesHref()}
+    hrefFor={(account: string, view: RootWorkspaceView) => session.rootWorkspaceHref(account, view)}
+    onList={() => session.selectRootWorkspaces()}
+    onNavigate={(account: string, view: RootWorkspaceView) =>
+      session.selectRootWorkspace(account, view)}
     historySection={session.currentHistorySection}
   />
 </section>

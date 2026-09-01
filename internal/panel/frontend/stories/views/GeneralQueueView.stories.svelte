@@ -11,7 +11,7 @@
       id: 'sync-plan:42',
       kind: 'sync_apply',
       lane: 'maintenance',
-      target_id: 'github:installation:42',
+      target_id: 'github:workspace:42',
       repository_id: 'repository:7',
       title: 'Apply organization sync plan',
       summary: '3 changes approved',
@@ -64,7 +64,7 @@
       next_offset: 0,
       total: items.length,
       facets: {
-        targets: ['github:installation:42'],
+        targets: ['github:workspace:42'],
         repositories: ['repository:7'],
         profiles: ['europe-hours', 'immediate'],
         states: ['running', 'scheduled'],

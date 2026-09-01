@@ -263,13 +263,11 @@ describe('an address that resolves to nothing', () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
 
     try {
-      await visit(page, `${panel.origin}/root%2Finstallations`, { mount: 5_000 });
+      await visit(page, `${panel.origin}/root%2Fworkspaces`, { mount: 5_000 });
 
       // Without the fallback the console does not know it is the console, and the
-      // workspace resolver replaces this address with an installation.
-      expect(new URL(page.url()).pathname, 'the panel navigated away').toBe(
-        '/root%2Finstallations',
-      );
+      // workspace resolver replaces this address with a workspace.
+      expect(new URL(page.url()).pathname, 'the panel navigated away').toBe('/root%2Fworkspaces');
     } finally {
       await page.close();
     }

@@ -13,9 +13,9 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
 
-const installationSettingsBatchPath = "/panel/api/v1/targets/github:installation:10/settings"
+const workspaceSettingsBatchPath = "/panel/api/v1/targets/github:installation:10/settings"
 
-type installationBatchRevisions struct {
+type workspaceBatchRevisions struct {
 	target, repository, files, labels, override int64
 }
 
@@ -58,9 +58,9 @@ func (controller *recordingPendingCIController) ExclusiveCatalog(
 	return operation()
 }
 
-func mixedInstallationSettingsBatchBody(
+func mixedWorkspaceSettingsBatchBody(
 	t *testing.T,
-	revisions installationBatchRevisions,
+	revisions workspaceBatchRevisions,
 ) []byte {
 	t.Helper()
 	body := map[string]any{
@@ -114,9 +114,9 @@ func mixedInstallationSettingsBatchBody(
 	return encoded
 }
 
-func requireMixedInstallationSettingsBatchAnswer(
+func requireMixedWorkspaceSettingsBatchAnswer(
 	t *testing.T,
-	answer installationSettingsBatchResponse,
+	answer workspaceSettingsBatchResponse,
 ) int64 {
 	t.Helper()
 	if answer.CheckpointID == nil || answer.Target == nil || answer.Target.Revision != 2 ||
@@ -134,7 +134,7 @@ func requireMixedInstallationSettingsBatchAnswer(
 	return checkpointID
 }
 
-func requireInstallationSettingsCheckpoint(
+func requireWorkspaceSettingsCheckpoint(
 	t *testing.T,
 	harness *panelHarness,
 	checkpointID int64,
@@ -169,7 +169,7 @@ func requireInstallationSettingsCheckpoint(
 	}
 }
 
-func TestInstallationSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
+func TestWorkspaceSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	gates := &countingPendingCIGates{}
@@ -180,18 +180,18 @@ func TestInstallationSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
 	t.Cleanup(unsubscribe)
 
 	response := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		strings.NewReader(string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		strings.NewReader(string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 1, repository: 1,
 		}))), session,
 	)
 	requireResponse(t, response, "mixed settings batch", http.StatusOK, `"checkpoint_id":`)
-	var answer installationSettingsBatchResponse
+	var answer workspaceSettingsBatchResponse
 	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}
-	checkpointID := requireMixedInstallationSettingsBatchAnswer(t, answer)
-	requireInstallationSettingsCheckpoint(t, harness, checkpointID)
+	checkpointID := requireMixedWorkspaceSettingsBatchAnswer(t, answer)
+	requireWorkspaceSettingsCheckpoint(t, harness, checkpointID)
 	if harness.pendingCI.wakes != 1 || gates.wakes != 1 {
 		t.Fatalf("fan-out = Pending CI %d, gates %d", harness.pendingCI.wakes, gates.wakes)
 	}
@@ -203,13 +203,13 @@ func TestInstallationSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
 	requirePanelEvent(t, subscriber.events, "target.changed")
 
 	noOp := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		strings.NewReader(string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		strings.NewReader(string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 2, repository: 2, files: 1, labels: 1, override: 1,
 		}))), session,
 	)
 	requireResponse(t, noOp, "no-op settings batch", http.StatusOK)
-	var unchanged installationSettingsBatchResponse
+	var unchanged workspaceSettingsBatchResponse
 	if err := json.Unmarshal(noOp.Body.Bytes(), &unchanged); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestInstallationSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
 	}
 }
 
-func TestInstallationSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing.T) {
+func TestWorkspaceSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	gates := &countingPendingCIGates{}
@@ -239,7 +239,7 @@ func TestInstallationSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing
 	body := `{"sync_configs":[{"kind":"labels","enabled":true,"labels":[],
 		"allow_removal":false,"excludes":[],"expected_revision":0}]}`
 	response := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(body), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(body), session,
 	)
 	requireResponse(t, response, "Sync-only settings batch", http.StatusOK, `"checkpoint_id":`)
 	if serialization.catalogCalls != 0 || serialization.exclusiveCalls != 0 ||
@@ -251,11 +251,11 @@ func TestInstallationSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing
 	requirePanelEvent(t, subscriber.events, "target.changed")
 }
 
-func TestInstallationSettingsBatchMapsTransactionDocumentRace(t *testing.T) {
+func TestWorkspaceSettingsBatchMapsTransactionDocumentRace(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seed := harness.request(t, http.MethodPut,
-		installationSettingsBatchPath,
+		workspaceSettingsBatchPath,
 		strings.NewReader(`{"sync_configs":[{"kind":"files","enabled":true,
 			"document":{"files":[{"path":"renovate.json","content":"{}"}]},
 			"expected_revision":0}]}`), session)
@@ -285,7 +285,7 @@ func TestInstallationSettingsBatchMapsTransactionDocumentRace(t *testing.T) {
 		"overrides":{"timezone":"Europe/Warsaw"}}]},
 		"expected_revision":0}]}`
 	response := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(body), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(body), session,
 	)
 	requireResponse(t, response, "transaction document race", http.StatusBadRequest,
 		`"code":"invalid_sync_config"`, "not one of the files synchronized")
@@ -296,20 +296,20 @@ func TestInstallationSettingsBatchMapsTransactionDocumentRace(t *testing.T) {
 	}
 }
 
-func TestInstallationSettingsBatchValidatesOverrideAgainstProposedFiles(t *testing.T) {
+func TestWorkspaceSettingsBatchValidatesOverrideAgainstProposedFiles(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 
 	accepted := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		strings.NewReader(string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		strings.NewReader(string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 1, repository: 1,
 		}))), session,
 	)
 	requireResponse(t, accepted, "proposed files override", http.StatusOK)
 
 	other := strings.ReplaceAll(
-		string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 2, repository: 2, files: 1, labels: 1, override: 1,
 		})), "renovate.json", "other.json",
 	)
@@ -317,7 +317,7 @@ func TestInstallationSettingsBatchValidatesOverrideAgainstProposedFiles(t *testi
 	// adjust other.json.
 	other = strings.Replace(other, "other.json", "renovate.json", 1)
 	rejected := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath, strings.NewReader(other), session,
+		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(other), session,
 	)
 	requireResponse(t, rejected, "mismatched proposed files", http.StatusBadRequest,
 		`"code":"invalid_sync_override"`)
@@ -329,12 +329,12 @@ func TestInstallationSettingsBatchValidatesOverrideAgainstProposedFiles(t *testi
 	}
 }
 
-func TestInstallationSettingsBatchReportsAllStaleResources(t *testing.T) {
+func TestWorkspaceSettingsBatchReportsAllStaleResources(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seed := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		strings.NewReader(string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		strings.NewReader(string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 1, repository: 1,
 		}))), session,
 	)
@@ -347,7 +347,7 @@ func TestInstallationSettingsBatchReportsAllStaleResources(t *testing.T) {
 		"path_index_interval_seconds_override":null,
 		"config_patch":{"quiet_success":false},"expected_revision":2}}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		installationSettingsBatchPath,
+		workspaceSettingsBatchPath,
 		strings.NewReader(targetUpdate), session), "concurrent target", http.StatusOK)
 	repositoryUpdate := `{"repositories":[{"repository_id":"repository-20",
 		"enabled_override":true,"pending_ci_mode_override":null,
@@ -357,27 +357,27 @@ func TestInstallationSettingsBatchReportsAllStaleResources(t *testing.T) {
 		"config_patch":{"command_prefix":"!"},"ignore_repository_file":false,
 		"expected_revision":2}]}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		installationSettingsBatchPath,
+		workspaceSettingsBatchPath,
 		strings.NewReader(repositoryUpdate), session), "concurrent repository", http.StatusOK)
 	labelsUpdate := `{"sync_configs":[{"kind":"labels","enabled":true,
 		"labels":[{"name":"ci/skip","color":"00ff00"}],
 		"allow_removal":false,"excludes":[],"expected_revision":1}]}`
 	requireResponse(t, harness.request(t, http.MethodPut,
-		installationSettingsBatchPath,
+		workspaceSettingsBatchPath,
 		strings.NewReader(labelsUpdate), session), "concurrent labels", http.StatusOK)
 	subscriber, unsubscribe := harness.server.events.subscribe("", "settings-conflict")
 	t.Cleanup(unsubscribe)
 
 	conflicted := harness.request(
-		t, http.MethodPut, installationSettingsBatchPath,
-		strings.NewReader(string(mixedInstallationSettingsBatchBody(t, installationBatchRevisions{
+		t, http.MethodPut, workspaceSettingsBatchPath,
+		strings.NewReader(string(mixedWorkspaceSettingsBatchBody(t, workspaceBatchRevisions{
 			target: 2, repository: 2, files: 1, labels: 1, override: 1,
 		}))), session,
 	)
 	requireResponse(t, conflicted, "stale mixed batch", http.StatusConflict,
 		`"resource":"target"`, `"resource":"repository"`,
 		`"resource":"sync_config"`, `"actual_revision":3`, `"latest":`)
-	var answer installationSettingsBatchConflictResponse
+	var answer workspaceSettingsBatchConflictResponse
 	if err := json.Unmarshal(conflicted.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}

@@ -24,9 +24,9 @@
     revokeInvitation={session.api.revokeRootInvitation}
     canManageInvitations={session.viewer?.system_role === 'super_root'}
     actorLogin={session.viewer?.account.login ?? ''}
-    fetchInstallations={session.api.fetchRootInstallations}
-    addInstallationUser={session.api.addRootTargetUser}
+    fetchWorkspaces={session.api.fetchRootWorkspaces}
+    addWorkspaceUser={session.api.addRootTargetUser}
     suggestUsers={session.api.suggestRootTargetUsers}
-    onOpenInstallationAccess={(account: string) => session.selectRootInstallation(account, 'users')}
+    onOpenWorkspaceAccess={(account: string) => session.selectRootWorkspace(account, 'users')}
   />
 </section>

@@ -226,15 +226,15 @@ already hold - the index ships once, matching costs no requests.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This installation's files are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
+      This workspace's files are stored in a form this version of Smyklot cannot read, so they are
+      not shown and nothing here can be changed. Nothing has been lost.
     </p>
   {/if}
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      installation's page on GitHub.
+      {unavailable}. Nothing here will be planned or changed until an owner grants it on the App's
+      installation page on GitHub.
     </p>
   {/if}
 
@@ -272,7 +272,7 @@ already hold - the index ships once, matching costs no requests.
           />
         </div>
         <div class="finder-scope">
-          <span>Paths across this installation</span>
+          <span>Paths across this workspace</span>
           <span
             >{(context?.known_paths ?? []).length.toLocaleString('en-US')} known · {context?.repositories ??
               0} repositories</span

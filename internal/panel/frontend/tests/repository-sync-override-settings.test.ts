@@ -19,7 +19,7 @@ import {
 } from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type { SettingsDraftStorage, SettingsJson } from '../src/lib/settings-draft-storage';
-import type { InstallationSyncOverrideSettingsState, SyncOverride } from '../src/lib/types';
+import type { WorkspaceSyncOverrideSettingsState, SyncOverride } from '../src/lib/types';
 
 function override(over: Partial<SyncOverride> = {}): SyncOverride {
   return {
@@ -394,7 +394,7 @@ describe('repository sync override settings adapter [Unit]', () => {
   });
 
   it('commits the returned canonical state and refuses unreadable canonical input', () => {
-    const state: InstallationSyncOverrideSettingsState = {
+    const state: WorkspaceSyncOverrideSettingsState = {
       target_id: 'target-1',
       repository_id: 'repo-1',
       kind: 'files',

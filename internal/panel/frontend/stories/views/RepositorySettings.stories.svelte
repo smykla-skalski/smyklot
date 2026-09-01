@@ -127,7 +127,7 @@
 />
 
 <!--
-  Root manages somebody else's installation, and sync has no Root address - so the card
+  Root manages somebody else's workspace, and sync has no Root address - so the card
   is not drawn there at all. `offersSync` is what says so.
 -->
 <Story name="Sync not offered" args={{ offersSync: false }} />

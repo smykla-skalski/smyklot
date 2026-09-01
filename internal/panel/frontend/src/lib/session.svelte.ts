@@ -24,7 +24,7 @@ import { basePath } from './paths';
  *
  * Decoded first, because this only ever answers for an address the router matched no route
  * for - and the reason it matched none is that the server decided what to serve from the
- * decoded path while the router reads the raw one. `/root%2Finstallations` is the console
+ * decoded path while the router reads the raw one. `/root%2Fworkspaces` is the console
  * to the server and nothing to the router, so it has to be the console here too. Whole
  * segments, so `/rootbeer` is not.
  */
@@ -51,12 +51,12 @@ import {
   rootSectionRoute,
   WRITTEN_QUEUE_SECTIONS,
   type HistorySection,
-  type InstallationRoute,
+  type WorkspaceRoute,
   type PanelRoute,
   type PanelView,
   type QueueSection,
   type RepositoryPage,
-  type RootInstallationView,
+  type RootWorkspaceView,
   type RootRoute,
   type RootRuntimeSection,
   type RootSection,
@@ -103,11 +103,11 @@ export class PanelSession {
    * The whole page each side was last on, which is where crossing to it goes back to.
    *
    * The two fields above answer a different question - what a reader was looking at, so
-   * that another installation opens on the same view - and neither can answer this one.
+   * that another workspace opens on the same view - and neither can answer this one.
    * A repository page is the repositories view, so remembering only the view brought
    * somebody who left one back to the list they had opened it from.
    */
-  private lastWorkspacePage = $state.raw<InstallationRoute | null>(null);
+  private lastWorkspacePage = $state.raw<WorkspaceRoute | null>(null);
   private lastConsolePage = $state.raw<RootRoute | null>(null);
 
   readonly narrowRail = new MediaQuery('(min-width: 48.0625rem) and (max-width: 72rem)');
@@ -143,7 +143,7 @@ export class PanelSession {
     return !this.loading && this.viewer === null && this.failure === null;
   }
 
-  get awaitingInstallation(): boolean {
+  get awaitingWorkspace(): boolean {
     return (
       !this.loading &&
       this.viewer !== null &&
@@ -176,7 +176,7 @@ export class PanelSession {
    *
    * The address is still the answer when nothing matched. The server decides what to
    * serve from the decoded path and the router matches on the undecoded one, so the two
-   * disagree about an address holding `%2F`: the server answers `/root%2Finstallations`
+   * disagree about an address holding `%2F`: the server answers `/root%2Fworkspaces`
    * with the console, the router matches no route, and the panel would otherwise wear the
    * wrong chrome on a page the server had already named. All three ask the same way, and
    * `at` compares whole segments so `/rootbeer` is not the console.
@@ -215,7 +215,7 @@ export class PanelSession {
    * `src/routes` is laid out: a view hosting a dialog is routed with the segments after
    * it, one hosting none is routed without them, and history is routed by name with its
    * section. Reading `params.view` on its own tied these getters to that shape and broke
-   * the moment it changed - the installation's history came back as `settings`, and the
+   * the moment it changed - the workspace's history came back as `settings`, and the
    * console's came back as the Root console's own history page. The id says which shape
    * it is, so `panelRouteAt` can read every one of them correctly.
    *
@@ -265,7 +265,7 @@ export class PanelSession {
     const route = this.parsedRoute;
     if (route === null || 'personal' in route) return null;
     if ('rootView' in route) {
-      return route.rootView === 'installation' ? (route.repository ?? null) : null;
+      return route.rootView === 'workspace' ? (route.repository ?? null) : null;
     }
 
     return route.repository ?? null;
@@ -301,7 +301,7 @@ export class PanelSession {
   /**
    * Read from the path, for the reason `parsedRoute` gives: which parameters
    * exist depends on which route matched, and the console's addresses are now
-   * spread across three of them. Reading `params.section` sent an installation's
+   * spread across three of them. Reading `params.section` sent a workspace's
    * history to the Root console's own history page, because both routes call
    * that parameter `section`.
    */
@@ -327,7 +327,7 @@ export class PanelSession {
     if (this.isRootMode) return panelDocumentTitle(this.currentRootRoute);
 
     const view = this.currentView;
-    const route: InstallationRoute = { account: '', view };
+    const route: WorkspaceRoute = { account: '', view };
     if (view === 'history') route.section = this.currentHistorySection;
     if (view === 'queue') route.queue = this.currentQueueSection;
     if (view === 'repositories') route.repository = this.currentRepository ?? undefined;
@@ -343,7 +343,7 @@ export class PanelSession {
   get tableScrollView(): boolean {
     if (this.isRootMode) {
       const route = this.currentRootRoute;
-      if (route.rootView === 'installation') {
+      if (route.rootView === 'workspace') {
         return (
           ['repositories', 'users', 'invitations', 'history'].includes(route.view) &&
           (route.view !== 'repositories' || route.repository === undefined)
@@ -654,21 +654,21 @@ export class PanelSession {
     void this.navigate(route);
   }
 
-  selectRootInstallation(account: string, nextView: RootInstallationView): void {
-    const route = this.rootInstallationRoute(account, nextView);
+  selectRootWorkspace(account: string, nextView: RootWorkspaceView): void {
+    const route = this.rootWorkspaceRoute(account, nextView);
     void this.navigate(route);
     this.resetPageScroll();
   }
 
-  selectRootInstallationHistory(section: HistorySection): void {
+  selectRootWorkspaceHistory(section: HistorySection): void {
     const current = this.currentRootRoute;
-    if (current.rootView !== 'installation') return;
+    if (current.rootView !== 'workspace') return;
     if (current.view === 'history' && this.currentHistorySection === section) return;
-    const route = this.rootInstallationRoute(current.account, 'history', section);
+    const route = this.rootWorkspaceRoute(current.account, 'history', section);
     void this.navigate(route);
   }
 
-  selectRootInstallations(): void {
+  selectRootWorkspaces(): void {
     void this.navigate({ rootView: 'workspaces' });
     this.resetPageScroll();
   }
@@ -749,7 +749,7 @@ export class PanelSession {
     return panelAddress(this.consoleRoute());
   }
 
-  rootInstallationsHref(): string {
+  rootWorkspacesHref(): string {
     return panelAddress({ rootView: 'workspaces' });
   }
 
@@ -770,24 +770,24 @@ export class PanelSession {
   }
 
   /**
-   * Where one installation's view lives on the console.
+   * Where one workspace's view lives on the console.
    *
    * The history section is a parameter rather than always the current one:
    * history's own strip is two addresses, and a builder that always answered
    * with the section being looked at would give both tabs the same href.
    */
-  rootInstallationHref(
+  rootWorkspaceHref(
     account: string,
-    nextView: RootInstallationView,
+    nextView: RootWorkspaceView,
     section?: HistorySection,
   ): string {
-    return panelAddress(this.rootInstallationRoute(account, nextView, section));
+    return panelAddress(this.rootWorkspaceRoute(account, nextView, section));
   }
 
   /** One repository's page, read from the console rather than from its workspace. */
   rootRepositoryHref(account: string, repository: string): string {
     return panelAddress({
-      rootView: 'installation',
+      rootView: 'workspace',
       account,
       view: 'repositories',
       repository: { name: repository },
@@ -872,7 +872,7 @@ export class PanelSession {
     switch (event.type) {
       case 'target.changed':
         void this.queryClient.invalidateQueries({ queryKey: ['targets'] });
-        void this.queryClient.invalidateQueries({ queryKey: ['root-installations'] });
+        void this.queryClient.invalidateQueries({ queryKey: ['root-workspaces'] });
         void this.queryClient.invalidateQueries({ queryKey: ['root-overview'] });
         this.invalidateTargetData(targetId);
         return;
@@ -963,9 +963,9 @@ export class PanelSession {
    * Where Return goes: the page the reader left, while it is still theirs to open.
    *
    * A remembered page outlives the tab's reloads, and can outlive the reader too - the
-   * next person to sign in on this tab has their own installations. So it is offered only
+   * next person to sign in on this tab has their own workspaces. So it is offered only
    * while the account it names is one of them, and anything else falls back to what the
-   * panel answered before it remembered anything: the selected installation, on the view
+   * panel answered before it remembered anything: the selected workspace, on the view
    * that was last looked at.
    */
   private returnRoute(): PanelRoute | null {
@@ -980,7 +980,7 @@ export class PanelSession {
    * Where the console opens.
    *
    * No check against what exists, unlike the workspace side. Whoever may enter the
-   * console may read every installation in it, so a page here is only ever stale in the
+   * console may read every workspace in it, so a page here is only ever stale in the
    * way a bookmark is - and the one reader it could have belonged to instead, a Root
    * whose role has since been taken away, is turned back at the door by `enterRoot`.
    */
@@ -994,7 +994,7 @@ export class PanelSession {
     return this.targets.some((target) => target.account.login.toLowerCase() === folded);
   }
 
-  /** The same view on another installation, which is what its own link promises. */
+  /** The same view on another workspace, which is what its own link promises. */
   private targetRoute(target: PanelTarget): PanelRoute {
     if (this.lastScopedView === 'queue') {
       return this.queueRoute(target, this.lastScopedQueueSection);
@@ -1017,7 +1017,7 @@ export class PanelSession {
 
   private invalidateRepositoryAggregates(): void {
     void this.queryClient.invalidateQueries({ queryKey: ['targets'] });
-    void this.queryClient.invalidateQueries({ queryKey: ['root-installations'] });
+    void this.queryClient.invalidateQueries({ queryKey: ['root-workspaces'] });
     void this.queryClient.invalidateQueries({ queryKey: ['root-overview'] });
   }
 
@@ -1034,8 +1034,8 @@ export class PanelSession {
     return dialog === undefined ? route : { ...route, dialog };
   }
 
-  private queueRoute(target: PanelTarget, section: QueueSection): InstallationRoute {
-    const route: InstallationRoute = { account: target.account.login, view: 'queue' };
+  private queueRoute(target: PanelTarget, section: QueueSection): WorkspaceRoute {
+    const route: WorkspaceRoute = { account: target.account.login, view: 'queue' };
     return section === 'active' ? route : { ...route, queue: section };
   }
 
@@ -1053,9 +1053,9 @@ export class PanelSession {
    */
   private repositoryRoute(repository: RepositoryPage | null): PanelRoute {
     const root = this.currentRootRoute;
-    if (this.isRootMode && root.rootView === 'installation') {
+    if (this.isRootMode && root.rootView === 'workspace') {
       const route: RootRoute = {
-        rootView: 'installation',
+        rootView: 'workspace',
         account: root.account,
         view: 'repositories',
       };
@@ -1063,7 +1063,7 @@ export class PanelSession {
       return repository === null ? route : { ...route, repository };
     }
 
-    const route: InstallationRoute = {
+    const route: WorkspaceRoute = {
       account: this.selectedTarget?.account.login ?? '',
       view: 'repositories',
     };
@@ -1071,14 +1071,14 @@ export class PanelSession {
     return repository === null ? route : { ...route, repository };
   }
 
-  private rootInstallationRoute(
+  private rootWorkspaceRoute(
     account: string,
-    nextView: RootInstallationView,
+    nextView: RootWorkspaceView,
     section: HistorySection | undefined = this.currentHistorySection,
   ): RootRoute {
     return nextView === 'history'
-      ? { rootView: 'installation', account, view: nextView, section }
-      : { rootView: 'installation', account, view: nextView };
+      ? { rootView: 'workspace', account, view: nextView, section }
+      : { rootView: 'workspace', account, view: nextView };
   }
 
   private resetPageScroll(): void {

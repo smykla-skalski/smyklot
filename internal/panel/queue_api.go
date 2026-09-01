@@ -94,7 +94,7 @@ func (s *Server) writeQueuePage(
 func parseQueueFilter(r *http.Request) (workqueue.Filter, error) {
 	filter := workqueue.Filter{}
 	values := r.URL.Query()
-	if raw := strings.TrimSpace(values.Get("installation")); raw != "" {
+	if raw := strings.TrimSpace(values.Get("workspace")); raw != "" {
 		filter.TargetID = &raw
 	}
 	if raw := strings.TrimSpace(values.Get("repository")); raw != "" {
@@ -285,14 +285,14 @@ func (s *Server) writeQueueDetail(
 	}
 	prepareQueueItem(&item, canControl, root)
 	if !root {
-		redactInstallationQueueEvents(events)
+		redactWorkspaceQueueEvents(events)
 	}
 	writeJSON(w, http.StatusOK, queueDetailResponse{Item: item, Events: events})
 }
 
 func prepareQueueItem(item *workqueue.Item, canControl, root bool) {
 	if !root {
-		redactInstallationQueueItem(item)
+		redactWorkspaceQueueItem(item)
 	}
 	if !canControl || item.State.Terminal() {
 		item.Actions = nil
@@ -311,7 +311,7 @@ func prepareQueueItem(item *workqueue.Item, canControl, root bool) {
 	}
 }
 
-func redactInstallationQueueItem(item *workqueue.Item) {
+func redactWorkspaceQueueItem(item *workqueue.Item) {
 	if item.Kind == workqueue.KindWebhookDelivery {
 		item.Details = nil
 	}
@@ -323,7 +323,7 @@ func redactInstallationQueueItem(item *workqueue.Item) {
 	}
 }
 
-func redactInstallationQueueEvents(events []workqueue.Event) {
+func redactWorkspaceQueueEvents(events []workqueue.Event) {
 	for index := range events {
 		events[index].Details = nil
 		switch events[index].State {

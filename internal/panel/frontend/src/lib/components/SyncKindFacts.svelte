@@ -61,7 +61,7 @@ three roles rather than one sentence, so each takes its own ink weight.
   const words = $derived(KIND_WORDS[kind]);
 
   /* A repository that switched this kind off in its own settings is not one
-     the kind reaches, whatever the installation's switch says. */
+     the kind reaches, whatever the workspace's switch says. */
   const reach = $derived(
     status === null
       ? null

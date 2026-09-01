@@ -147,7 +147,7 @@ func (s *Server) rootRuntimeRestoreSelection(
 	r *http.Request,
 ) (rootRuntimeRestoreSelection, storage.SettingsCheckpointRestoreSide, bool) {
 	var input rootRuntimeRestoreRequest
-	if !decodeJSONWithin(w, r, &input, maxInstallationSettingsRestoreBody) {
+	if !decodeJSONWithin(w, r, &input, maxWorkspaceSettingsRestoreBody) {
 		return rootRuntimeRestoreSelection{}, "", false
 	}
 	side := storage.SettingsCheckpointRestoreSide(input.State)

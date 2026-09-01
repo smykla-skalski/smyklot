@@ -29,7 +29,7 @@ import type {
   PanelTarget,
   NotificationPage,
   PendingCIRequest,
-  RootInstallation,
+  RootWorkspace,
   RootOverview,
   RepositoryDetail,
   RepositorySummary,
@@ -136,13 +136,13 @@ const SOURCES = Object.fromEntries(
 /** The panel accounts the mock seeds, across every system role and status. */
 export const USERS = MOCK.users;
 
-/** Every repository the organisation installation reaches, as the mock seeds them. */
+/** Every repository the organisation workspace reaches, as the mock seeds them. */
 export const REPOSITORIES = MOCK.targets[0]!.repositories.map((entry) => entry.detail.repository);
 
-/** The configuration changes the organisation installation has recorded. */
+/** The configuration changes the organisation workspace has recorded. */
 export const AUDIT = MOCK.targets[0]!.audit;
 
-/** The delivery failures the organisation installation has recorded. */
+/** The delivery failures the organisation workspace has recorded. */
 export const FAILURES = MOCK.targets[0]!.failures;
 
 /** The same people as the Root console sees them, counts and all. */
@@ -151,10 +151,10 @@ export const ROOT_USERS = rootPanelUsers(MOCK);
 /** The Root invitations the mock seeds, in every state one can be in. */
 export const INVITATIONS = MOCK.invitations;
 
-/** The organisation installation the mock seeds, not a second description of it. */
+/** The organisation workspace the mock seeds, not a second description of it. */
 export const TARGET: PanelTarget = MOCK.targets[0]!.value;
 
-/** The same installation as a Root sees it before requesting temporary write access. */
+/** The same workspace as a Root sees it before requesting temporary write access. */
 export const ROOT_TARGET: PanelTarget = {
   ...TARGET,
   effective_role: 'none',
@@ -316,11 +316,11 @@ export const OVERVIEW: RootOverview = {
 const notification = (
   over: Partial<SecurityNotification> & { id: string },
 ): SecurityNotification => ({
-  installation: ACCOUNT,
+  workspace: ACCOUNT,
   actor: { ...ACCOUNT, id: '1001', login: 'bart', display_name: 'Bart Smykla' },
   elevation_id: 'elev-8f2c1d9e',
   audit_event_id: 'audit-4a7b',
-  action: 'installation.settings.saved',
+  action: 'workspace.settings.saved',
   reason: 'Investigating a stuck delivery',
   created_at: at(-2 * 60 * 60_000),
   ...over,
@@ -331,7 +331,7 @@ export const NOTIFICATIONS: NotificationPage = {
     notification({ id: 'n-1' }),
     notification({
       id: 'n-2',
-      action: 'installation.settings.restored',
+      action: 'workspace.settings.restored',
       created_at: at(-26 * 60 * 60_000),
       read_at: at(-25 * 60 * 60_000),
     }),
@@ -341,9 +341,7 @@ export const NOTIFICATIONS: NotificationPage = {
   unread: 1,
 };
 
-function installation(
-  over: Partial<RootInstallation> & { id: string; login: string },
-): RootInstallation {
+function workspace(over: Partial<RootWorkspace> & { id: string; login: string }): RootWorkspace {
   const { login, ...rest } = over;
   return {
     installation_id: `3${over.id}`,
@@ -361,12 +359,12 @@ function installation(
       stale: false,
     },
     ...rest,
-  } as RootInstallation;
+  } as RootWorkspace;
 }
 
-export const INSTALLATIONS: RootInstallation[] = [
-  installation({ id: '2001', login: 'smykla-skalski' }),
-  installation({
+export const WORKSPACES: RootWorkspace[] = [
+  workspace({ id: '2001', login: 'smykla-skalski' }),
+  workspace({
     id: '2002',
     login: 'platform-co',
     owned_by_viewer: false,
@@ -381,8 +379,8 @@ export const INSTALLATIONS: RootInstallation[] = [
   }),
 ];
 
-/** The mock's seeded organisation in the Root installation list. */
-const SEEDED_ROOT_INSTALLATION: RootInstallation = {
+/** The mock's seeded organisation in the Root workspace list. */
+const SEEDED_ROOT_WORKSPACE: RootWorkspace = {
   id: ROOT_TARGET.id,
   installation_id: ROOT_TARGET.installation_id,
   type: ROOT_TARGET.type,
@@ -401,8 +399,8 @@ const SEEDED_ROOT_INSTALLATION: RootInstallation = {
 };
 
 /** The same seeded organisation as a Root reads it before temporary elevation. */
-export const ROOT_INSTALLATION: RootInstallation = {
-  ...SEEDED_ROOT_INSTALLATION,
+export const ROOT_WORKSPACE: RootWorkspace = {
+  ...SEEDED_ROOT_WORKSPACE,
   owned_by_viewer: false,
 };
 

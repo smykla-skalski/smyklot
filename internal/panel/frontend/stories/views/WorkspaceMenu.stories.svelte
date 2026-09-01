@@ -27,7 +27,7 @@
     component: WorkspaceMenu,
     args: {
       targets: TARGETS,
-      targetHref: (target: PanelTarget) => `#/i/${target.account.login}`,
+      targetHref: (target: PanelTarget) => `#/workspace/${target.account.login}`,
       onSelectTarget: fn(),
       open: true,
       console: null,

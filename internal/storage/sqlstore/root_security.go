@@ -76,7 +76,7 @@ WHERE session_token_hash = ? AND ended_at IS NULL AND expires_at > ?`,
 	if err := s.insertElevation(ctx, tx, elevation); err != nil {
 		return storage.Elevation{}, err
 	}
-	if err := insertElevationAudit(ctx, tx, elevation, "elevation.started", "started elevated installation access", grant.StartedAt); err != nil {
+	if err := insertElevationAudit(ctx, tx, elevation, "elevation.started", "started elevated workspace access", grant.StartedAt); err != nil {
 		return storage.Elevation{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -371,14 +371,14 @@ WHERE id = ? AND ended_at IS NULL`,
 	elevation.EndedAt = &endedAt
 	elevation.EndReason = &reason
 	action := "elevation.ended"
-	summary := "ended elevated installation access"
+	summary := "ended elevated workspace access"
 	switch reason {
 	case storage.ElevationExpired:
 		action = "elevation.expired"
-		summary = "elevated installation access expired"
+		summary = "elevated workspace access expired"
 	case storage.ElevationRevoked:
 		action = "elevation.revoked"
-		summary = "revoked elevated installation access"
+		summary = "revoked elevated workspace access"
 	}
 
 	return insertElevationAudit(ctx, tx, *elevation, action, summary, endedAt)

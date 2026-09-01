@@ -27,7 +27,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { getPanelSession } from '../session.svelte';
   import type {
     QueueItem,
-    RootInstallation,
+    RootWorkspace,
     RootOverview,
     RootOverviewFailure,
     ScheduleRequest,
@@ -64,9 +64,9 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
 
   /* The overview counts workspaces whose owner list will not sync; this names
      them. A count an operator cannot act on is a count they learn to ignore. */
-  const installationsQuery = createQuery(() => ({
-    queryKey: ['root-installations'],
-    queryFn: () => api.fetchRootInstallations(),
+  const workspacesQuery = createQuery(() => ({
+    queryKey: ['root-workspaces'],
+    queryFn: () => api.fetchRootWorkspaces(),
   }));
 
   const requestsQuery = createQuery(() => ({
@@ -75,7 +75,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   }));
 
   const overview = $derived<RootOverview | null>(overviewQuery.data ?? null);
-  const installations = $derived<RootInstallation[]>(installationsQuery.data ?? []);
+  const workspaces = $derived<RootWorkspace[]>(workspacesQuery.data ?? []);
   const inFlight = $derived<QueueItem[]>(queueQuery.data?.items ?? []);
   const active = new LiveList(
     () => inFlight,
@@ -86,7 +86,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   const failures = $derived<RootOverviewFailure[]>((overview?.recent_failures ?? []).slice(0, 3));
 
   const blocked = $derived(
-    installations.filter((installation) => installation.ownership.status !== 'fresh'),
+    workspaces.filter((workspace) => workspace.ownership.status !== 'fresh'),
   );
   const waiting = $derived<ScheduleRequest[]>(
     (requestsQuery.data ?? []).filter((request) => request.state === 'pending'),
@@ -107,7 +107,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
         : `the database is ${overview.service.storage}`,
   );
 
-  const workspacesHref = session.rootInstallationsHref();
+  const workspacesHref = session.rootWorkspacesHref();
   const schedulesHref = session.rootHrefFor('schedules');
   const queueHref = session.queueHref();
   const failuresHref = session.rootFailuresHref();
@@ -116,8 +116,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   const serviceHref = session.rootRuntimeHref('service');
 
   function workspaceName(targetId: string): string {
-    const installation = installations.find((candidate) => candidate.id === targetId);
-    return installation?.account.display_name ?? targetId;
+    const workspace = workspaces.find((candidate) => candidate.id === targetId);
+    return workspace?.account.display_name ?? targetId;
   }
 
   /* Where a queue row is happening. The console reads every workspace's work at
@@ -180,16 +180,16 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       </div>
     {:else}
       <div class="object-list">
-        {#each blocked as installation (installation.id)}
+        {#each blocked as workspace (workspace.id)}
           <a class="object-row" href={workspacesHref}>
             <span class="object-main">
               <span class="object-name-row">
-                <span class="object-name">{installation.account.display_name}</span>
+                <span class="object-name">{workspace.account.display_name}</span>
                 <span class="mx-mark mx-refused"><span class="t">owner list blocked</span></span>
               </span>
               <span class="object-sum is-refused"
-                >{installation.ownership.detail ??
-                  (installation.ownership.status === 'permission_pending'
+                >{workspace.ownership.detail ??
+                  (workspace.ownership.status === 'permission_pending'
                     ? 'GitHub wants an organization owner to approve the Members permission before the owner list can sync'
                     : 'The last owner synchronisation failed, so approvals there are decided on an ageing list')}</span
               >
@@ -338,7 +338,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
                 </Pill>
               </span>
               <span class="object-sum"
-                >{item.installation.display_name} · {sentenceCase(item.failure.reason)}
+                >{item.workspace.display_name} · {sentenceCase(item.failure.reason)}
                 {item.failure.retryable ? '· Smyklot retries on its own ·' : '·'}
                 <RelativeTime value={item.failure.occurred_at} {nowMs} /></span
               >

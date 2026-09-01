@@ -1,7 +1,7 @@
 /**
  * Where each side of the panel was last left.
  *
- * There are two: a workspace under `/i/<account>`, and the Root console under `/root`.
+ * There are two: a workspace under `/workspace/<account>`, and the Root console under `/root`.
  * Crossing between them is a return rather than a jump - Root console opens the page the
  * console was left on, and Exit Root opens the page the console was entered from. Each
  * side remembers its own, so neither crossing overwrites the other's answer.
@@ -23,7 +23,7 @@ import type { RouteId } from '$app/types';
 
 import { panelRouteAt } from './addresses.ts';
 import { browserStorage } from './preferences.ts';
-import type { InstallationRoute, PanelRoute, RootRoute } from './routes.ts';
+import type { WorkspaceRoute, PanelRoute, RootRoute } from './routes.ts';
 
 /** The two sides of the panel, each of which remembers where it was left. */
 export type PanelSide = 'workspace' | 'console';
@@ -42,7 +42,7 @@ const KEYS: Readonly<Record<PanelSide, string>> = {
  */
 export function readLastWorkspacePage(
   storage: Storage | null = browserStorage('session'),
-): InstallationRoute | null {
+): WorkspaceRoute | null {
   const route = readLastPage('workspace', storage);
   if (route === null || 'rootView' in route || 'personal' in route) return null;
 

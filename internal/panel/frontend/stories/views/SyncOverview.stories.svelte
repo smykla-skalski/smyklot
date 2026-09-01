@@ -54,7 +54,7 @@
 
   const REFUSAL =
     '.github/workflows/ci.yaml needs the workflows permission - grant it on the ' +
-    "installation's page";
+    "workspace's page";
 
   const repositories: SyncRepositoryStatus[] = FLEET.map(([name, ...cells]) => ({
     repository: name,

@@ -113,8 +113,8 @@ const BY_STATUS_AND_CODE: Readonly<Record<string, ErrorContent>> = {
   '502:catalog_unavailable': {
     status: 502,
     title: 'GitHub unreachable',
-    lead: 'Your installations could not be loaded',
-    note: 'GitHub did not answer when Smyklot asked which installations you have, so the sign-in stopped short. Nothing is wrong with your account. Try again in a moment',
+    lead: 'Your workspaces could not be loaded',
+    note: 'GitHub did not answer when Smyklot asked which workspaces you have, so the sign-in stopped short. Nothing is wrong with your account. Try again in a moment',
     action: SIGN_IN_AGAIN,
   },
   '403:forbidden': {

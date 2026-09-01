@@ -11,7 +11,7 @@
       kind: 'inactive',
       count: 3,
       problem: null,
-      reviewHref: '/i/smykla-skalski/repositories',
+      reviewHref: '/workspace/smykla-skalski/repositories',
       onDismiss: fn(),
     },
   });

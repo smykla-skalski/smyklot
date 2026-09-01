@@ -5,7 +5,7 @@ import {
   DEFAULT_THEME_DISPLAY,
   DEFAULT_TIME_DISPLAY,
   browserStorage,
-  readLastInstallation,
+  readLastWorkspace,
   readSidebarDisplay,
   readThemeDisplay,
   readTimeDisplay,
@@ -37,18 +37,18 @@ describe('history display preference', () => {
   });
 });
 
-describe('last installation preference', () => {
+describe('last workspace preference', () => {
   it('restores a non-empty account slug', () => {
-    expect(readLastInstallation({ getItem: () => 'smykla-skalski' })).toBe('smykla-skalski');
+    expect(readLastWorkspace({ getItem: () => 'smykla-skalski' })).toBe('smykla-skalski');
   });
 
   it('ignores an empty stored value', () => {
-    expect(readLastInstallation({ getItem: () => '   ' })).toBeNull();
+    expect(readLastWorkspace({ getItem: () => '   ' })).toBeNull();
   });
 
   it('continues when browser storage is unavailable', () => {
     expect(
-      readLastInstallation({
+      readLastWorkspace({
         getItem: () => {
           throw new DOMException('Storage is unavailable', 'SecurityError');
         },
@@ -164,6 +164,6 @@ describe('storage the browser declines to provide', () => {
 
     expect(readTimeDisplay()).toBe(DEFAULT_TIME_DISPLAY);
     expect(readSidebarDisplay()).toBe(DEFAULT_SIDEBAR_DISPLAY);
-    expect(readLastInstallation()).toBeNull();
+    expect(readLastWorkspace()).toBeNull();
   });
 });

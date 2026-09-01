@@ -82,8 +82,8 @@ beforeAll(async () => {
   /* A page each, and several at once: ten routes read one after another is ten waits for a route
      to load, and a computed style is the same style whatever else the machine is doing. */
   const read = await inLanes(TABLES, async ({ route }) => {
-    const address = route.startsWith('i/')
-      ? `${panel.origin}/i/${panel.account}/${route.slice(2)}`
+    const address = route.startsWith('workspace/')
+      ? `${panel.origin}/workspace/${panel.account}/${route.slice('workspace/'.length)}`
       : `${panel.origin}/${route}`;
     const page = await panel.browser.newPage();
     try {

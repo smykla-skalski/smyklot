@@ -30,7 +30,7 @@
     /* `onLoadSyncOverride !== null` is what decides whether the opened repository is
        offered a Sync pane at all - the list asks that question rather than being told
        - so leaving these out is not "no data", it is a list whose fourth pane does not
-       exist. An installation's own page passes them; the Root view of somebody else's
+       exist. A workspace's own page passes them; the Root view of somebody else's
        does not, and `Without sync` below is that surface. */
     onLoadSyncOverride: () => Promise.resolve(SYNC_OVERRIDE),
   };
@@ -57,7 +57,7 @@
 </script>
 
 <!--
-  Every repository the installation reaches, and whether the bot acts on it. The name
+  Every repository the workspace reaches, and whether the bot acts on it. The name
   is the only flexible column and it has a floor: a bare `1fr` resolves to min-content,
   and a hundred-character repository took 812px of a 977px row and pushed the other
   four columns off the end of it.
@@ -85,8 +85,8 @@
 </Story>
 
 <!--
-  The Root view of somebody else's installation. Sync is configured on the
-  installation's own page and has no Root address, so the pane is not offered and the
+  The Root view of somebody else's workspace. Sync is configured on the
+  workspace's own page and has no Root address, so the pane is not offered and the
   switch inside an opened repository shows three rather than four - `RepositoryList`
   reads that off these two being absent rather than being told separately.
 -->

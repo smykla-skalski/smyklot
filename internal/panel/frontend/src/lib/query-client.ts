@@ -78,15 +78,15 @@ export function createPanelQueryClient(stream: StreamLiveness = { live: false })
   });
 }
 
-/** Refreshes every Root view whose counts can change with installation settings. */
-export async function invalidateRootInstallationSettings(
+/** Refreshes every Root view whose counts can change with workspace settings. */
+export async function invalidateRootWorkspaceSettings(
   queryClient: QueryClient,
-  installationId: string,
+  workspaceId: string,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ['root-installations'] }),
+    queryClient.invalidateQueries({ queryKey: ['root-workspaces'] }),
     queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
-    queryClient.invalidateQueries({ queryKey: ['repositories', installationId] }),
+    queryClient.invalidateQueries({ queryKey: ['repositories', workspaceId] }),
     queryClient.invalidateQueries({ queryKey: ['targets'] }),
   ]);
 }
