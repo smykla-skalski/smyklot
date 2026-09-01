@@ -96,24 +96,6 @@
   --focus-ring-offset: 2px;
   --focus-ring-inset: -2px;
   --focus-ring-flush: 0;
-  /* EDGES UNDER A CHANGED GROUND, as numbers. How much of an object's own
-     ink becomes its hairline when the ground beneath it moves: two steps,
-     one for a light ground change and one for a heavy one. The share is a
-     proportion of the object's ink rather than a colour, which is why the
-     law needs no restating per theme or per console - a dark ground moves
-     further under a hover and the hairline it produces is the darker tone's
-     own. --edge-share is the number in force at this point in the tree; at
-     rest it is nothing, and only a container in a state raises it.
-     --edge-ink stays the literal token `currentColor` rather than a var(),
-     so it resolves per element instead of baking the root's ink into every
-     descendant. The hairline is one device pixel drawn inside the object's
-     own box: not a border, so it moves no neighbour. */
-  --edge-on-state: 34%;
-  --edge-on-state-strong: 46%;
-  --edge-ink: currentcolor;
-  --edge-share: 0%;
-  --edge-hairline: 1px;
-  --edge-hairline-offset: -1px;
   --info: var(--primitive-info-light);
   --info-tint: var(--primitive-info-light-tint);
   --success: var(--primitive-success-light);
@@ -726,14 +708,6 @@
      Two state steps, for the same reason a fill has them - a rim that stays put
      while the ground under it answers reads as a control that did not. */
   --border-strong: color-mix(in srgb, var(--text-primary) 53%, var(--surface-base));
-  /* THE LINE A STATE BORROWS, which is not the line a control wears. These two are the
-     boundary ramp's own steps and their only reader is the borrowed hairline - an object
-     standing on a ground that just moved, keeping its silhouette against it. A control's
-     own rim answers the pointer far more lightly: see `--control-border-hover`, which
-     these were doing double duty as, so every button and field went to a 66% ink on
-     hover where the design asks for #99a7a1. */
-  --line-control-hover: color-mix(in srgb, var(--text-primary) 66%, var(--surface-base));
-  --line-control-pressed: color-mix(in srgb, var(--text-primary) 78%, var(--surface-base));
 }
 
 :root[data-theme='dark'],
@@ -897,8 +871,6 @@
      chalk. 40% clears 3.61 on a card, 3.07 on an inset track, 3.90 on the
      canvas. */
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 .app-shell.root-mode {
@@ -1078,8 +1050,6 @@
      the light block's ramp would carry onto this violet ground. The Root
      console is a dark ground in either theme, so it takes the dark shares. */
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
 }
 
 :root[data-theme='dark'] .app-shell.root-mode,
@@ -1147,8 +1117,6 @@
   --managed-bar: var(--brand-action);
   --match-ink: var(--brand-action-text);
   --border-strong: color-mix(in srgb, var(--text-primary) 40%, var(--surface-base));
-  --line-control-hover: color-mix(in srgb, var(--text-primary) 52%, var(--surface-base));
-  --line-control-pressed: color-mix(in srgb, var(--text-primary) 62%, var(--surface-base));
   --switch-track-off: var(--surface-inset);
   --switch-track-off-border: var(--border-strong);
   --switch-track-on: var(--brand-action);
