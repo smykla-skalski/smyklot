@@ -41,11 +41,12 @@ describe('settings draft destinations [Integration]', () => {
       const settingRow = page.locator('.policy-row').filter({ has: quietPeriod });
       expect(await settingRow.getAttribute('data-unsaved')).toBe('true');
 
+      /* The draft survives the reload, and what says so is the page it is on plus the
+         tree's mark on every scope holding one. Nothing announces it: a notice would
+         report a thing the reader had not just done, and cover the page saying it. */
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByText('Unsaved settings restored').waitFor({ state: 'visible' });
-      expect(await page.getByRole('link', { name: 'Review' }).getAttribute('href')).toBe(
-        `/i/${panel.account}/repositories`,
-      );
+      await page.getByText('1 changed setting').waitFor({ state: 'visible', timeout: 15_000 });
+      expect(await page.locator('.tree-row.has-dirty').count()).toBeGreaterThan(0);
 
       await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
       await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();

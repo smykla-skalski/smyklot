@@ -95,7 +95,7 @@
         session.selectedTarget?.account.login ??
         ''),
   }));
-  let attentionNotice = $state<'restored' | 'inactive' | null>(null);
+  let attentionNotice = $state<'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
   let selectedSaveProblemControl = $state<SettingsDirtyControl | null>(null);
@@ -264,10 +264,12 @@
       if (settingsDraftRegistry.accountId === accountId) return;
       attentionNotice = null;
       dismissedStorageProblem = null;
-      const restored = settingsDraftRegistry.hydrate(accountId);
-      if (restored.restoredResources > 0) {
+      /* A draft that came back from an earlier session says so where the draft is:
+         the tree marks every scope holding one, and the composer counts them on the
+         page that owns them. It used to raise a notice as well, which announced a
+         thing the reader had not done and covered the page saying it. */
+      if (settingsDraftRegistry.hydrate(accountId).restoredResources > 0) {
         markEveryDirtySettingsScope();
-        attentionNotice = 'restored';
       }
     });
   });

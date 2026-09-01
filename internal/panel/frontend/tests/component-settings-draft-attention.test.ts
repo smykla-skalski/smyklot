@@ -5,18 +5,18 @@ import { describe, expect, it, vi } from 'vitest';
 import SettingsDraftAttention from '../src/lib/components/SettingsDraftAttention.svelte';
 
 describe('SettingsDraftAttention [Component]', () => {
-  it('announces drafts restored from an earlier session and can be dismissed', async () => {
+  it('announces drafts a tab was left holding and can be dismissed', async () => {
     const onDismiss = vi.fn();
     render(SettingsDraftAttention, {
-      kind: 'restored',
+      kind: 'inactive',
       count: 3,
       reviewHref: '/i/smykla-skalski/repositories',
       onDismiss,
     });
 
     const notice = screen.getByRole('status');
-    expect(notice.textContent).toContain('Unsaved settings restored');
-    expect(notice.textContent).toContain('3 unsaved settings from an earlier session');
+    expect(notice.textContent).toContain('Unsaved settings need attention');
+    expect(notice.textContent).toContain('3 unsaved settings are still here and not saved');
     const review = screen.getByRole('link', { name: 'Review' });
     expect(review.getAttribute('href')).toBe('/i/smykla-skalski/repositories');
     review.addEventListener('click', (event) => event.preventDefault());

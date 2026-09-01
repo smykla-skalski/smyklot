@@ -166,8 +166,9 @@ describe('installation Sync drafts', () => {
       await flip(page, 'Delete unlisted labels');
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
+      /* A reload restores the draft and says so where the draft is, which is the
+         composer counting it - there is no notice announcing it any more. */
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByText('Unsaved settings restored').waitFor({ state: 'visible' });
       await page.getByText('1 changed setting').waitFor({ state: 'visible' });
 
       const workspaces = page.locator('nav[aria-label="Consoles"] a[href^="/i/"]');

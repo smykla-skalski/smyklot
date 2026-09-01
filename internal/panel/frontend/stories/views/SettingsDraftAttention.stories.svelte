@@ -8,7 +8,7 @@
     title: 'Views/SettingsDraftAttention',
     component: SettingsDraftAttention,
     args: {
-      kind: 'restored',
+      kind: 'inactive',
       count: 3,
       problem: null,
       reviewHref: '/i/smykla-skalski/repositories',
@@ -17,8 +17,8 @@
   });
 </script>
 
-<Story name="Restored session" />
-<Story name="Inactive tab" args={{ kind: 'inactive', count: 1 }} />
+<Story name="Inactive tab" />
+<Story name="One setting" args={{ count: 1 }} />
 <Story
   name="Storage unavailable"
   args={{

@@ -1,5 +1,5 @@
 <script module lang="ts">
-  export type SettingsDraftAttentionKind = 'restored' | 'inactive' | 'storage-problem';
+  export type SettingsDraftAttentionKind = 'inactive' | 'storage-problem';
 </script>
 
 <script lang="ts">
@@ -23,20 +23,11 @@
   } = $props();
 
   const heading = $derived(
-    kind === 'restored'
-      ? 'Unsaved settings restored'
-      : kind === 'inactive'
-        ? 'Unsaved settings need attention'
-        : 'Unsaved settings may not survive',
+    kind === 'inactive' ? 'Unsaved settings need attention' : 'Unsaved settings may not survive',
   );
-  const iconName = $derived<IconName>(
-    kind === 'restored' ? 'history' : kind === 'inactive' ? 'pending' : 'warning',
-  );
+  const iconName = $derived<IconName>(kind === 'inactive' ? 'pending' : 'warning');
   const detail = $derived.by(() => {
     const settings = `${count} unsaved ${count === 1 ? 'setting' : 'settings'}`;
-    if (kind === 'restored') {
-      return `${settings} from an earlier session ${count === 1 ? 'is' : 'are'} still waiting`;
-    }
     if (kind === 'inactive') {
       return `This tab was out of view for at least ${SETTINGS_DRAFT_INACTIVITY_MINUTES} minutes. ${settings} ${count === 1 ? 'is' : 'are'} still here and not saved`;
     }
