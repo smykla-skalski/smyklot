@@ -41,8 +41,8 @@
 
 <!--
   Who has been asked to hold Root, and how far each of them has got with it. Every
-  row is one of the four states an invitation can be in; the table is the same one
-  the access list draws, which is why both moved onto `DataTable` together.
+  row is one of the four states an invitation can be in, drawn as the same list the
+  access view draws.
 -->
 <Story name="Invitations">
   {#snippet template(args)}

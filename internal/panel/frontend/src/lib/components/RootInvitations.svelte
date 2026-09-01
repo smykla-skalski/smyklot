@@ -408,10 +408,10 @@ The plan this branch followed called these two "one feature written twice" and
 counted fourteen concerns matching one for one - ~450 lines of markup and ~250 of
 CSS. That was true when it was written. It is not true now, and the reason is that
 the merge already happened, from underneath: **twelve of the fourteen are the same
-component in both files.** `DataTable`, `IdentityRow`, `Chip`, `TableEmptyState`,
+component in both files.** `IdentityRow`, `Chip`, `TableEmptyState`,
 `InfiniteLoadSentinel`, `ConfirmDialog`, `Callout`, `Select`, `Button`,
-`CopyableLinkField`, `Skeleton` and `FormError` are imported by each. Extracting
-the primitives and the table shell did the work a wrapper component was going to.
+`CopyableLinkField`, `Skeleton`, `TableToolsMenu` and `FormError` are imported by
+each. Extracting the primitives did the work a wrapper component was going to.
 
 What is left is not duplication:
 

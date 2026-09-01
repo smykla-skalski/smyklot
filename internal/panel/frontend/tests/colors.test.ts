@@ -107,21 +107,6 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       expect(ratio).toBeLessThan(1.3);
     });
 
-    it('keeps table filler subtly distinct from rows and table chrome', () => {
-      const filler = color('table-filler-bg');
-      const rowRatio = contrast(filler, color('surface-base'));
-      const chromeRatio = contrast(filler, color('table-header-bg'));
-
-      expect(rowRatio).toBeGreaterThan(1.02);
-      expect(rowRatio).toBeLessThan(1.3);
-      expect(chromeRatio).toBeGreaterThan(1.02);
-      expect(chromeRatio).toBeLessThan(1.3);
-    });
-
-    it('keeps active header filters distinct from table chrome', () => {
-      expect(contrast(color('brand-action'), color('table-header-bg'))).toBeGreaterThanOrEqual(3);
-    });
-
     /* Hover lightens on a dark ground and darkens on a light one - the rule --brand-action-hover
        and --interactive-hover-layer are both written to. A filled tone that darkened on both sent
        hover and press in opposite directions on the dark palettes, since the press overlay follows

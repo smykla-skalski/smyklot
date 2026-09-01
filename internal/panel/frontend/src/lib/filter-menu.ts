@@ -5,7 +5,7 @@ import type { IconName } from './components/Icon.svelte';
  * The tones a filtered value can be drawn in.
  *
  * `default` used to be one of them, and it was the only member that did not name
- * a colour - it named the absence of one, and `FilterMenu` read it as "not really
+ * a colour - it named the absence of one, and the menu read it as "not really
  * a tone" and drew a bare word. So every value whose column is drawn in the
  * neutral chip - Running in the queue, Cancelled beside it, Removed and Declined
  * in the access tables - lost its chip in the menu while the four values around

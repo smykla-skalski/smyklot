@@ -89,8 +89,7 @@ async function measure(page: Page, route: string): Promise<Reading> {
         const rows = [...table.querySelectorAll('tbody tr')].filter(
           (row) =>
             !row.classList.contains('virtual-spacer') &&
-            // `DataTable` calls it `state-row`; the tables not yet moved onto it
-            // still say `empty-row`. Both mean "not a row of data".
+            // Two spellings, both meaning "not a row of data".
             !row.classList.contains('empty-row') &&
             !row.classList.contains('state-row') &&
             !row.classList.contains('visually-hidden') &&

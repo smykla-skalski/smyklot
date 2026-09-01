@@ -25,12 +25,16 @@ describe('the responsive shell [Unit]', () => {
   /* This used to assert that a stacked table row relaxed its stated height on a
      phone. There is no table here now: a person is a sentence in a list, and a row
      that grows around its own words needs no breakpoint to be told so. What is
-     worth holding is that it stays that way. */
+     worth holding is that it stays that way.
+
+     Named as `<table`, not as the component that used to draw one - that component
+     is gone, so naming it would be a rule that passes because its subject does not
+     exist. A markup element cannot be deleted out from under the assertion. */
   it('reads the console user list as rows rather than as a table', () => {
     const access = source('lib/components/RootAccess.svelte');
 
     expect(access).toContain('<ul class="object-list">');
-    expect(access).not.toContain('DataTable');
+    expect(access).not.toContain('<table');
   });
 
   it('gives the mobile NightPage switch a row of its own', () => {

@@ -59,20 +59,13 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       expect(moved).toBeLessThanOrEqual(ceiling);
     });
 
-    it('keeps a hovered row distinct from the filler behind it', () => {
-      // Both were --surface-raised, so the pointer and "no rows here" painted the same colour.
-      expect(deltaE(grounded('table-row-hover'), palette.color('table-filler-bg'))).toBeGreaterThan(
-        1,
-      );
-    });
-
     it('lifts on a dark ground and drops on a light one', () => {
       const hover = grounded('table-row-hover');
       const lighter = oklch(hover).L > oklch(surface).L;
       expect(lighter).toBe(oklch(surface).L <= 0.5);
     });
 
-    it.each(['table-header-bg', 'table-footer-bg', 'input-bg', 'control-bg', 'table-filler-bg'])(
+    it.each(['table-footer-bg', 'input-bg', 'control-bg'])(
       'keeps %s the same material as the surface it sits on',
       (token) => {
         // Visible as a change of surface, quiet enough not to read as a coloured slab, and inside
@@ -117,8 +110,6 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
     });
 
     it.each([
-      ['text-secondary', 'table-header-bg'],
-      ['text-muted', 'table-header-bg'],
       ['text-primary', 'table-row-hover'],
       ['text-primary', 'input-bg'],
       ['text-muted', 'input-bg'],

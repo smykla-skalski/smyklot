@@ -62,10 +62,9 @@ shape and not the same thing:
   fit beside a 32px avatar with a chevron after it.
 
 Folding them together would change how the sidebar looks, which is a design
-decision wearing a refactor's clothes - the same call as the cell font size in
-`DataTable`. It is worth asking whether the sidebar should adopt this row's
-typography; it is worth asking where it can be looked at, not in a diff that
-claims to move nothing.
+decision wearing a refactor's clothes. It is worth asking whether the sidebar
+should adopt this row's typography; it is worth asking where it can be looked
+at, not in a diff that claims to move nothing.
 -->
 
 <span class="identity-row">

@@ -45,11 +45,8 @@
 </Story>
 
 <!--
-  The invitations half. It is the same table with different columns, which is what
-  `DataTable` was built for - and these two are also the pair that must NOT take the
-  shared pinned or stacked layouts: their rows are a grid so the header and body share
-  one set of column tracks, and their filters live in the headings with no tools menu
-  behind them.
+  The invitations half. It is the same list saying different things about each row -
+  a person who has accepted, and a person who has been asked.
 -->
 <Story name="Invitations">
   {#snippet template(args)}<UserManagement {...args} section="invitations" />{/snippet}

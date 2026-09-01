@@ -71,8 +71,8 @@
 </Story>
 
 <!--
-  The invitations tab, which is the same table with different columns - one of the
-  two halves that motivated `DataTable`.
+  The invitations tab, which is the same list saying different things about each
+  row.
 -->
 <Story name="Invitations">
   {#snippet template(args)}
