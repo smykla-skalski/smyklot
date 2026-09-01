@@ -1847,24 +1847,17 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
-/* ---------- What a live card has not shown yet ----------
-   The set of rows on the two queue cards moves when the reader presses, never on its
-   own, so this is where the service's own changes wait. Quiet on purpose: it reports
-   that something is available, not that anything is wrong, and it sits above the rows
-   it would change so the reader can see what it is offering to disturb. */
-.list-changed {
-  align-items: center;
-  color: var(--text-secondary);
-  display: flex;
-  font-size: var(--font-size-meta);
-  gap: var(--space-3);
-  justify-content: space-between;
-  line-height: var(--leading-meta);
-  padding-block-end: var(--space-3);
-}
+/* A card that is behind the service says so in a Callout, above the rows the act would
+   change. It wants no family of its own; what it wants is the gap - and the gap is the
+   card's head-to-body rhythm counted to the first row's INK, not to its box.
 
-.list-changed span {
-  text-box: trim-both cap alphabetic;
+   The row carries its own padding, so a plain 16px here put 16 of white on top of the
+   row's 12 and stood the rows 11px further from the callout than the callout stands
+   from the card's heading. Same arithmetic as `--rhythm-card-foot-band`, which subtracts
+   nothing because it is measured from the last row's ink downwards; this one is measured
+   into the first row's, so the row's padding comes off. */
+.card > .callout + .object-list {
+  margin-block-start: calc(var(--rhythm-card-head-body) - var(--row-pad-default));
 }
 
 .state-panel.is-error {
@@ -2330,7 +2323,12 @@ thead th .icon-button:active:not(:disabled) {
   .display-trigger,
   .clear-button,
   .done-button,
-  .object-row,
+  /* Spelled exactly as narrowly as the rule that repaints it, which is the whole
+     point of this list: only a row that IS an action answers the pointer, and a
+     static log row deliberately stays still. Written bare, this handed a hairline to
+     every pill in Active work and Recent activity on a ground that had not moved a
+     pixel. */
+  :is(a, button).object-row,
   .legend-row,
   .attn-row,
   .action-row,
@@ -2357,9 +2355,12 @@ thead th .icon-button:active:not(:disabled) {
   --edge-style: solid;
 }
 
-/* The switch is the one container whose ground is repainted by a state on an
-   ANCESTOR rather than on itself, so it joins the list in its own spelling. */
-.switch:hover input:not(:disabled) + .switch-track {
+/* Two containers whose ground is repainted by a state on something OTHER than
+   themselves, so they join the list in their own spelling: the switch, whose track is
+   painted by a state on its ancestor, and the row whose hit target is a layer inside
+   it rather than the row itself. */
+.switch:hover input:not(:disabled) + .switch-track,
+.object-row:has(.row-hit:hover) {
   --edge-line: var(--control-border-hover);
   --edge-share: var(--edge-on-state);
   --edge-style: solid;
@@ -2393,7 +2394,8 @@ thead th .icon-button:active:not(:disabled) {
   .display-trigger,
   .clear-button,
   .done-button,
-  .object-row,
+  /* Narrow, for the reason list 1 states. */
+  :is(a, button).object-row,
   .legend-row,
   .attn-row,
   .action-row,
@@ -2424,7 +2426,8 @@ thead th .icon-button:active:not(:disabled) {
   --edge-share: var(--edge-on-state-strong);
   --edge-style: solid;
 }
-.switch:active input:not(:disabled) + .switch-track {
+.switch:active input:not(:disabled) + .switch-track,
+.object-row:has(.row-hit:active) {
   --edge-line: var(--control-border-pressed);
   --edge-share: var(--edge-on-state-strong);
   --edge-style: solid;
@@ -2494,7 +2497,9 @@ thead th .icon-button:active:not(:disabled) {
     .filter-option,
     .role-option,
     .tools-option,
-    .object-row,
+    /* Narrow, for the reason list 1 states. Inert today - no object row holds one of
+       these controls - and spelled right so it stays inert when one does. */
+    :is(a, button).object-row,
     .legend-row,
     .attn-row,
     .action-row,
@@ -2520,7 +2525,9 @@ thead th .icon-button:active:not(:disabled) {
     .filter-option,
     .role-option,
     .tools-option,
-    .object-row,
+    /* Narrow, for the reason list 1 states. Inert today - no object row holds one of
+       these controls - and spelled right so it stays inert when one does. */
+    :is(a, button).object-row,
     .legend-row,
     .attn-row,
     .action-row,

@@ -64,6 +64,7 @@ what would otherwise be four visits.
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
   import Button from './Button.svelte';
+  import Callout from './Callout.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -290,14 +291,27 @@ what would otherwise be four visits.
     {#if active.changed > 0}
       <!-- The set of rows moves when the reader says so, never on its own. `LiveList`
            carries why: an overview that reshuffles itself is a moving target, and the
-           rules about auto-updating content all point the same way. -->
-      <div class="list-changed">
+           rules about auto-updating content all point the same way.
+
+           A Callout, not a StatePanel: this states a standing fact about the list
+           beside it and carries one act, which is that family's whole job - a state
+           panel stands where the work would have been, and the work is right here.
+           One sentence with the number set in it, and the act at the end.
+
+           `role="status"` because a notice that appears without the reader doing
+           anything is a status message, and it has to reach a screen reader without
+           taking focus from whatever they were reading. -->
+      <Callout role="status">
         <span
-          >{active.changed}
-          {active.changed === 1 ? 'item has' : 'items have'} changed</span
+          >This list is <strong
+            >{active.changed}
+            {active.changed === 1 ? 'item' : 'items'}</strong
+          > behind - the queue has moved on since you last took it</span
         >
-        <Button tone="quiet" row onclick={() => active.refresh()}>Refresh</Button>
-      </div>
+        {#snippet act()}
+          <Button onclick={() => active.refresh()}>Refresh now</Button>
+        {/snippet}
+      </Callout>
     {/if}
     {#if active.rows.length === 0}
       <div class="state-panel"><span>Nothing is in flight</span></div>
