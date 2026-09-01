@@ -654,6 +654,42 @@ a[href]:active {
   transform: scale(var(--press-scale));
 }
 
+/* THE SHELL IS PRESSED THE SHELL'S WAY: the contents move, the surface does not.
+   ------------------------------------------------------------------------
+   Everywhere else a press sinks the whole control 1px. In the rail and the sidebar it
+   cannot, for two reasons and the first is not cosmetic: a control that moves its own
+   box during pointerdown moves its top edge out from under the cursor, and the mouseup
+   then lands somewhere else - the press painted and no click fired. The second is that
+   these surfaces are not alone on their ground: the nav thumb slides under the tree and
+   the selection fill sits under a rail tile, so a row that sank would take its own ink
+   1px away from a background that stayed put. The thumb, which is the thing actually
+   selected, takes its own press where it is drawn.
+
+   One rule for the whole family, and it has to be here rather than in either component:
+   a scoped rule carries its component's hash and outranks a shared one, so this was
+   written five times in two files, agreed in three of them, and the two rail tiles and
+   the search button went on sinking while every tree row stayed put. */
+:is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):is(
+  :hover,
+  :active
+) {
+  translate: none;
+}
+
+:is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):active
+  > * {
+  translate: 0 1px;
+}
+
+/* And they opt out of the veil and the scale above, which are for a control that owns
+   its whole box. Both were plainly visible here: the veil laid a second darkening over
+   the row's own pressed ground, and the scale shrank the ink inside a surface that had
+   not moved. */
+:is(.rail-tile, .rail-ws, .side-fold, .side-search, .side-ws-mini, .tree-row, .tree-kid):active {
+  background-image: none;
+  transform: none;
+}
+
 /* One column heading, for every table.
    ------------------------------------------------------------------------
    A heading is a cell, a row inside it, and either a word or a button holding

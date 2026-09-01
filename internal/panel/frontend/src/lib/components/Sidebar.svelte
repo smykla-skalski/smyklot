@@ -715,7 +715,6 @@ it has to answer to the same fact.
   .side-search:active {
     background: var(--sidebar-menu-pressed);
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   /* Both runs trimmed to their own cap band, because they are two different sizes
@@ -805,6 +804,8 @@ it has to answer to the same fact.
     font-variant-numeric: tabular-nums;
     justify-content: center;
     line-height: var(--leading-flat);
+    /* The unread badge is about the row's STATE rather than its name, so it takes the
+       end of the row - unlike `.tab-count`, which rides its label. */
     margin-inline-start: auto;
     min-inline-size: var(--tier-mark);
     padding-inline: var(--space-1);
@@ -913,20 +914,9 @@ it has to answer to the same fact.
     background: var(--sidebar-item-pressed);
   }
 
-  /* THE INK DIPS, THE BOX STAYS. A sidebar control that moves its own box
-     during pointerdown moves its top edge out from under the cursor, and the
-     mouseup then lands somewhere else - the press painted and no click fired.
-     The direct children land the pixel instead, which keeps the tactile
-     grammar without touching hit geometry. */
-  a.tree-row:active {
-    background-image: none;
-    transform: none;
-    translate: none;
-  }
-
-  a.tree-row:active > :global(*) {
-    translate: 0 1px;
-  }
+  /* THE INK DIPS, THE BOX STAYS - stated for the whole rail-and-sidebar family in
+     `app.css`, with the reason. It was written here for `a.tree-row` alone, so the
+     button rows, the folds and the rail's own tiles went on sinking. */
 
   .tree-row:focus-visible {
     /* THE SIDEBAR'S OWN FOCUS, not the page's. `--focus` answers the grounds the PAGE
@@ -1009,7 +999,11 @@ it has to answer to the same fact.
     font-size: var(--font-size-micro);
     font-variant-numeric: tabular-nums;
     line-height: var(--leading-flat);
-    margin-inline-start: auto;
+    /* A COUNT RIDES ITS LABEL. It is part of what the row is called - "Plan 14" is one
+       reading - and pushed to the far end it became a column of numbers down the tree's
+       right edge, belonging to the sidebar rather than to any row in it. The end of a
+       row belongs to the marks that are about its STATE: the unread badge and the
+       unsaved mark, which keep their auto margin. */
     padding: 0 var(--space-2);
   }
 

@@ -1,5 +1,10 @@
 <script lang="ts">
-  import haloUrl from '../../assets/smyklot-halo.svg';
+  /* The BRAND cut of the halo, which is the one the rail wears: a solid teal ring and
+     the interior painted. The other cut leaves the interior transparent and draws the
+     rainbow ring, and it is built for one page - the invitation's night sky reads
+     through the emblem, so the mark there is a window rather than a badge. At 34px on a
+     sidebar ground the window showed the sidebar, and the rainbow ring read as noise. */
+  import haloUrl from '../../assets/smyklot-halo-brand.svg';
 
   import type { PanelTarget, PanelViewer } from '../types';
   import type { ThemeDisplay } from '../preferences';
@@ -314,11 +319,15 @@ would be telling everybody else about a console they cannot open.
     box-sizing: border-box;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    /* The mock's two numbers, and they are a pair: 8px between tiles and 12px of pad
+       above the first one. At 10 and 14 the mark sat 2px lower than the mock's and every
+       tile below it drifted a further 2px, so by the account menu at the foot the rail
+       was a different rail. */
+    gap: var(--space-2);
     height: 100dvh;
     inline-size: 60px;
     overflow: visible;
-    padding-block: 14px;
+    padding-block: var(--space-3);
     position: sticky;
     top: 0;
     z-index: var(--layer-rail);
@@ -378,10 +387,12 @@ would be telling everybody else about a console they cannot open.
     color: var(--sidebar-text);
   }
 
+  /* The ground and the inset are this tile's own; the SINK is not. In the rail and the
+     sidebar a press moves the contents and leaves the surface where it is - the law and
+     its reason live beside it in `app.css`. */
   .rail-tile:active {
     background: var(--sidebar-item-pressed);
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   /* The solid selection pair, like the nav thumb: the old near-white fill under this
@@ -393,13 +404,8 @@ would be telling everybody else about a console they cannot open.
     color: var(--sidebar-item-active-text);
   }
 
-  .rail-tile.is-active:hover {
-    translate: 0 -1px;
-  }
-
   .rail-tile.is-active:active {
     box-shadow: var(--sidebar-thumb-shadow-pressed);
-    translate: 0 1px;
   }
 
   /* ---------- Workspace identity paint ----------
@@ -470,13 +476,11 @@ would be telling everybody else about a console they cannot open.
     background: var(--ws-ground);
     border-color: light-dark(oklch(42% 0.14 var(--ws-h)), oklch(64% 0.12 var(--ws-h)));
     color: #fff;
-    translate: none;
   }
 
   .rail-ws.is-active:active {
     --ws-ground: oklch(43% 0.14 var(--ws-h));
     box-shadow: var(--pressed-inset);
-    translate: 0 1px;
   }
 
   .rail-ws.is-active::before {
