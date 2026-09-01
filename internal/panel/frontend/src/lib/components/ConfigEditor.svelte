@@ -514,13 +514,6 @@ account again.
     text-box: trim-both cap alphabetic;
   }
 
-  .group-note {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: 0 0 var(--space-2);
-    max-width: 60ch;
-  }
-
   /* ---------- The command rows' own controls ---------- */
 
   .prefix-inline {

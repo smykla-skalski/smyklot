@@ -549,13 +549,6 @@ turns the unmanaged names into rows of their own.
     border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
   }
 
-  .group-note {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: 0 0 var(--space-2);
-    max-width: 60ch;
-  }
-
   .group-rest.is-unsaved {
     background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
     box-shadow: inset 2px 0 var(--brand-action);

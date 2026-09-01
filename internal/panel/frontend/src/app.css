@@ -2670,6 +2670,32 @@ thead th .icon-button:active:not(:disabled) {
   margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
 }
 
+/* A CARD'S NOTE IS ITS TITLE'S SECOND LINE, not the card's body.
+   ------------------------------------------------------------------------
+   It stood the head-to-BODY distance under the heading, where every other
+   title-and-description pair in the product sits one line of the description's own
+   leading apart - so a card's own description read as the first thing IN the card
+   rather than as part of what the card is called. The head gives up its margin when a
+   note follows it, and the note carries the copy gap above and the head-to-body
+   distance below, which is now the distance to the body it actually introduces.
+
+   One rule, because six components each carried their own and they disagreed: four at
+   8px below and one at 12, four measured to 60ch and one to 72, one with no measure at
+   all. The same sentence under two cards was two different sentences. */
+.card-head:has(+ .group-note) {
+  margin-block-end: 0;
+}
+
+.group-note {
+  color: var(--text-muted);
+  font-size: var(--font-size-compact);
+  line-height: var(--leading-compact);
+  margin-block: calc(var(--leading-compact) - 1cap) var(--rhythm-card-head-body);
+  max-inline-size: 60ch;
+  text-box: trim-both cap alphabetic;
+  text-wrap: pretty;
+}
+
 /* A standing said beside the title bleeds the same way a control does. Left to grow the
    head, one card's title-to-first-row distance depended on whether that card happened to
    carry a pill - 20px of head against every other card's 13. */

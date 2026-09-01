@@ -883,13 +883,6 @@ without the composer.
     text-box: trim-both cap alphabetic;
   }
 
-  .group-note {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    margin: 0 0 var(--space-2);
-    max-width: 60ch;
-  }
-
   .policy-row.is-invalid {
     background: color-mix(in srgb, var(--danger) 7%, var(--surface-base));
     box-shadow: inset 2px 0 var(--danger);

@@ -321,15 +321,11 @@ three things among thirty finds them again.
     margin: 0;
   }
 
-  .group-note,
+  /* `.group-note` is the sheet's - it is a card's note wherever it appears. */
   .group-tally,
   .effective-summary {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-  }
-
-  .group-note {
-    margin: 0 0 var(--space-3);
   }
 
   .group-tally {
