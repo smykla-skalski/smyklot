@@ -571,33 +571,31 @@ function spacingAudit(page: Page): Promise<Omit<Finding, 'route'>[]> {
 }
 
 /**
- * WHAT IS STILL OPEN, and it is a design decision rather than an oversight.
+ * NOTHING IS OPEN. Every criterion this sweep can settle, the panel settles.
  *
- * One target: a queue row's pull-request link, 203x10, with another target inside the
- * spacing exception. It was tried with a pseudo-element that grows the pressable area
- * without touching layout - the trick that works for a switch in a settings row - and
- * here the extended band is covered by something painted above it, so the press lands
- * elsewhere and the trick buys a real reader nothing. Making it 24px means making the
- * rows taller, which is a decision about the design rather than a fix to slip in.
+ * It held six for a long time, across three components, and none of them needed the
+ * design decision they were waiting on.
  *
- * The switch and the file-status mark are GONE from this list, and nothing about
- * either changed.
+ * Two were never really failing. A bare switch already grows its press area to 44px
+ * with a pseudo-element, and this sweep asks the page directly - it presses 12px out
+ * from the centre and sees who answers. What it cannot do is press at a coordinate
+ * outside the viewport, where `elementFromPoint` returns null. Four list views used to
+ * pin the pane to the viewport and scroll their rows inside it, which put row after row
+ * past the bottom edge with the probe unable to reach any of them, so every control on
+ * them measured at its bare box. Those pages scroll as documents now, the probe reaches
+ * the rows, and the findings went with them.
  *
- * They were never really failing: a bare switch already grows its press area to
- * 44px with a pseudo-element, and this sweep asks the page directly - it presses
- * 12px out from the centre and sees who answers. What it cannot do is press at a
- * coordinate outside the viewport, where `elementFromPoint` returns null. The
- * four list views used to pin the pane to the viewport and scroll their rows
- * inside it, which put row after row past the bottom edge with the probe unable
- * to reach any of them, so every one of their controls measured at its bare box.
+ * The third was real: a queue row's pull-request link, 203x10 of ink. The note that
+ * used to stand here said 24px meant taller rows and that this was a decision rather
+ * than a fix - and it was neither. The link's own box grew to 24 while its words did
+ * not move (`align-content` centres the one flex line it holds), and the row did not
+ * grow at all, because the reason beside it already ran to two lines and was taller
+ * than both.
  *
- * Letting those pages scroll as documents put the rows back on a page the probe
- * can press, and the findings went with them. What is left is the one that is
- * genuinely open.
+ * Keep this list empty. An entry here is a criterion the panel has decided not to
+ * meet, and there is no longer one of those.
  */
-const OPEN: ReadonlyArray<{ where: string; hits: number }> = [
-  { where: 'a.pr-name.band-trim-kids', hits: 3 },
-];
+const OPEN: ReadonlyArray<{ where: string; hits: number }> = [];
 
 describe('WCAG 2.2, on every route [Integration]', () => {
   it('finds nothing a machine can settle beyond what is knowingly open', () => {

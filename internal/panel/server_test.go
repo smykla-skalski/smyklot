@@ -2897,9 +2897,10 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 		"/panel/root/workspaces",
 		"/panel/root/access",
 		"/panel/root/history",
-		// The three the queue shipped with, and that a reload answered 404 for.
+		// The queue's addresses, which a reload answered 404 for. `recent` is not
+		// among them any more: it was a second surface for finished work that
+		// nothing on any page reached, so the address went with the page.
 		"/panel/root/queue",
-		"/panel/root/queue/recent",
 		"/panel/root/queue/request/pending-ci-1",
 		"/panel/root/workspaces/smykla-skalski/repositories",
 		"/panel/root/workspaces/smykla-skalski/history/audit",

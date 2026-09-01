@@ -420,6 +420,15 @@
   --rhythm-surface-pad-compact: var(--space-4);
   /* The row families' shared geometry - the values every family rule reads. */
   --row-pad-default: 12px;
+  /* THE HAIRLINE A ROW DRAWS BETWEEN ITSELF AND THE NEXT, and the row pays for it.
+     Drawn as a `::after` at `bottom: 0` it lands on the last pixel of the bottom
+     padding, so the ink stood 12px off the line above it and 11 off the line
+     below - every object row, person row, repository row and setting row in the
+     product, one pixel out in the same direction. Added to the bottom padding the
+     line sits in a band of its own and both distances are the 12 the padding
+     names. The queue's table never had it: its separator is a cell border, which
+     is outside the box already. */
+  --row-hairline: 1px;
   --row-pad-compact: 8px;
   /* THE COPY-RHYTHM LAW: inside a card row, the rendered gap from a title
      line's box to its description line's box is 8px - one number for every

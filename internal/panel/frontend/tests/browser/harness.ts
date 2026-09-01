@@ -61,7 +61,6 @@ export const PANEL_ROUTES = [
   'root/runtime/service',
   'root/runtime/settings',
   'root/queue',
-  'root/queue/recent',
   'root/queue/request/pending-ci-0',
   'root/schedules',
   'root/workspaces',

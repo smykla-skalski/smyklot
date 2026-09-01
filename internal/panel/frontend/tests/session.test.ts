@@ -260,9 +260,9 @@ describe('PanelSession [Unit]', () => {
     openConsoleQueue(session);
     openRepository(session);
 
-    expect(session.rootEntryHref()).toBe(`${basePath}/root/queue/recent`);
+    expect(session.rootEntryHref()).toBe(`${basePath}/root/queue/waiting`);
     session.enterRoot();
-    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root/queue/recent`, {
+    expect(navigation.goto).toHaveBeenLastCalledWith(`${basePath}/root/queue/waiting`, {
       replace: false,
     });
   });
@@ -297,7 +297,7 @@ describe('PanelSession [Unit]', () => {
     reloaded.viewer = { system_role: 'root' } as PanelViewer;
     reloaded.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
 
-    expect(reloaded.rootEntryHref()).toBe(`${basePath}/root/queue/recent`);
+    expect(reloaded.rootEntryHref()).toBe(`${basePath}/root/queue/waiting`);
     expect(reloaded.returnHref()).toBe(`${basePath}/workspace/acme/repositories/api-gateway`);
   });
 
@@ -431,9 +431,9 @@ function openRepository(session: PanelSession): PanelSession {
 
 /** And on a console page that is not its front one, which is what Root console has to name. */
 function openConsoleQueue(session: PanelSession): PanelSession {
-  routePage.url = at('/root/queue/recent');
-  routePage.params = {};
-  routePage.route = { id: '/root/queue/recent' };
+  routePage.url = at('/root/queue/waiting');
+  routePage.params = { section: 'waiting' };
+  routePage.route = { id: '/root/queue/[section=queueSection]' };
   session.syncRouteContext();
 
   return session;

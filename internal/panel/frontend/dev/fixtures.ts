@@ -1853,9 +1853,9 @@ export function pendingCISeeds(iso: (offsetMs: number) => string): PendingCIRequ
       cleanup_pending: false,
       revision: 1,
     },
-    /* Three that have finished, so `/root/queue/recent` has its own rows: one of
+    /* Three that have finished, so the queue's Done card has its own rows: one of
        each way a request can end, and one with cleanup still outstanding so the
-       column that reports it has something to report. */
+       line that reports it has something to report. */
     {
       id: 'pending-ci-3',
       repository_full_name: 'smykla-skalski/smyklot',

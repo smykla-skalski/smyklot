@@ -167,7 +167,13 @@ export type RootRoute =
    * carries cleanup retries. "Merge queue" is GitHub's name for batching pull
    * requests and testing them together, which is not this.
    */
-  | { rootView: 'queue' | 'queue-recent' }
+  /* No `queue-recent`. The console kept a second surface for finished work - a table
+     of its own at `/root/queue/recent` - and nothing on any page reached it: the
+     queue's segments name Active, Needs a decision, Waiting, Running and Done, and
+     Done is a card on the queue itself. An address a reader cannot arrive at is not a
+     page, and the table, its story and the two sweeps that held it to the shared
+     heading went with it. */
+  | { rootView: 'queue' }
   /** A request is a page rather than a dialog: the timeline is a record to link someone to. */
   | { rootView: 'queue-request'; request: string }
   | {
@@ -450,7 +456,7 @@ export function rootSection(route: RootRoute): RootSection {
   if (route.rootView === 'access-users' || route.rootView === 'access-invitations') return 'access';
   if (route.rootView === 'history-audit' || route.rootView === 'history-failures') return 'history';
   if (route.rootView === 'workspace') return 'workspaces';
-  if (route.rootView === 'queue-recent' || route.rootView === 'queue-request') return 'queue';
+  if (route.rootView === 'queue-request') return 'queue';
   if (isQueueSectionView(route.rootView)) return 'queue';
   if (route.rootView === 'runtime-settings' || route.rootView === 'runtime-service') {
     return 'runtime';
@@ -605,9 +611,6 @@ function parseRootRoute(parts: string[]): RootRoute | null {
   if (parts.length === 3 && parts[1] === 'queue') {
     const written = WRITTEN_QUEUE_SECTIONS.find((section) => section === parts[2]);
     if (written !== undefined) return { rootView: `queue-${written}` };
-  }
-  if (parts.length === 3 && parts[1] === 'queue' && parts[2] === 'recent') {
-    return { rootView: 'queue-recent' };
   }
   if (parts.length === 4 && parts[1] === 'queue' && parts[2] === 'request') {
     let request: string;

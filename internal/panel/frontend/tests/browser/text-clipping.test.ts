@@ -204,16 +204,22 @@ afterAll(async () => {
 describe('the text every route draws [Integration]', () => {
   it('found trimmed lines to measure', () => {
     /* A route that failed to load reports nothing clipped, which is what a route with nothing
-       wrong reports too. Counting what was looked at is what tells them apart.
+       wrong reports too. Counting what was looked at is what tells them apart. That is the
+       whole job of this number, so the floor is ONE: it asks whether the probe ran, not how
+       much of the product happens to clip.
 
-       The number is smaller than it was, and the reason is the point of the whole port: a
-       truncating line is a column's answer to running out of width, and the panel has one
-       table left. A row wraps instead - which is why the sweep that matters for those is
-       `table-columns`, filling every one of them with a value no row can hold. */
+       It used to ask for ten, and ten was the population rather than the rule. What this
+       sweep can examine is a trimmed line inside a box that clips, and the panel keeps
+       shedding those: the lists became rows that wrap instead of columns that truncate, the
+       last table went with the page that was its only way in, and the four views that used
+       to scroll inside a pinned pane now scroll as documents and clip nothing. Every one of
+       those is the fault this sweep exists to prevent, prevented by construction - so a
+       falling count is the port working, and a floor set to the old population would read it
+       as the port breaking. */
     const total = Object.values(examined).reduce((sum, count) => sum + count, 0);
 
     expect(total, `trimmed lines examined per route: ${JSON.stringify(examined)}`).toBeGreaterThan(
-      10,
+      0,
     );
   });
 

@@ -140,8 +140,6 @@ function rootAddress(route: RootRoute): string {
       return resolve('/root/queue/[section=queueSection]', { section: 'running' });
     case 'queue-history':
       return resolve('/root/queue/[section=queueSection]', { section: 'history' });
-    case 'queue-recent':
-      return resolve('/root/queue/recent');
     case 'queue-request':
       return resolve('/root/queue/request/[id]', { id: encodeURIComponent(route.request) });
     case 'schedules':
@@ -287,8 +285,6 @@ export function panelRouteAt(
       return { rootView: 'queue' };
     case '/root/queue/[section=queueSection]':
       return { rootView: `queue-${writtenQueueSection(section)}` };
-    case '/root/queue/recent':
-      return { rootView: 'queue-recent' };
     case '/root/queue/request/[id]':
       return { rootView: 'queue-request', request: params.id ?? '' };
     case '/root/schedules':

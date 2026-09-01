@@ -128,31 +128,11 @@ describe('the queue vocabulary [Unit]', () => {
     expect(invented, `seeded but never emitted:\n  ${invented.join('\n  ')}`).toEqual([]);
   });
 
-  /* A filter that cannot name a state the column draws is a row nobody can reach. The Checks menu
-     offered the five constants and the table showed six, because a request between the command and
-     its first reconciliation carries no state at all - so the one row that most wants finding, the
-     one nothing has looked at yet, was the one the filter could not select. The two lists are
-     written apart, so they are compared here. */
-  it('offers every state the Checks column can draw', () => {
-    const source = readFileSync(
-      new URL('../src/lib/components/QueueView.svelte', import.meta.url),
-      'utf8',
-    );
-    const block = source.slice(
-      source.indexOf('const STATE_FILTERS'),
-      source.indexOf('satisfies', source.indexOf('const STATE_FILTERS')),
-    );
-    const offered = [...block.matchAll(/label: '(?<label>[^']+)'/gu)].map(
-      (match) => match.groups?.label ?? '',
-    );
-    if (offered.length === 0) throw new Error('no options parsed out of STATE_FILTERS');
-
-    /* What the column can draw: one per declared state, plus whatever the default arm names for a
-       request that has none. Read from the code both times rather than listed here. */
-    const drawn = [...declared.map((state) => queueState(requestWith(state)).label), UNNAMED];
-
-    expect([...offered].sort()).toEqual([...new Set(drawn)].sort());
-  });
+  /* The Checks column's own filter list used to be compared against the states the column
+     can draw, and it lived in `QueueView` - the queue's table, which went with the page
+     that was its only way in. The vocabulary above is what survives it, and it is the
+     half that matters: every state the service can emit is named, named distinctly, and
+     seeded. There is no second list to disagree with any more. */
 
   /* And the reason the line above is allowed to say that. `Arm` names its columns and
      `last_observed_state` is not among them, so the row takes the migration's `DEFAULT ''`. The day

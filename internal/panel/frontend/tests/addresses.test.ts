@@ -132,7 +132,6 @@ const CASES: Array<{ route: PanelRoute; id: RouteId; params: Record<string, stri
     id: '/root/queue/[section=queueSection]',
     params: { section: 'history' },
   },
-  { route: { rootView: 'queue-recent' }, id: '/root/queue/recent', params: {} },
   {
     route: { rootView: 'queue-request', request: 'req-1' },
     id: '/root/queue/request/[id]',

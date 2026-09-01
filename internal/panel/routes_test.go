@@ -154,7 +154,6 @@ func TestPanelRoutesServeEveryPanelAddress(t *testing.T) {
 		"/root/runtime/database",
 		"/root/runtime/settings",
 		"/root/queue",
-		"/root/queue/recent",
 		"/root/queue/request/pending-ci-1",
 		"/root/history",
 		"/root/history/audit",

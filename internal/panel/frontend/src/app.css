@@ -2847,7 +2847,9 @@ time[data-exact]:focus-visible {
   gap: var(--space-4);
   grid-template-columns: 1fr auto;
   margin-inline: calc(var(--space-3) * -1);
-  padding: var(--row-pad-default) var(--space-3);
+  /* The bottom takes the hairline's pixel on top of the padding, so the ink stands
+     the same 12 off the line below it as off the line above - see `--row-hairline`. */
+  padding: var(--row-pad-default) var(--space-3) calc(var(--row-pad-default) + var(--row-hairline));
   position: relative;
   text-decoration: none;
 }
@@ -3304,9 +3306,11 @@ button.object-row {
   margin-inline: calc(var(--space-2) * -1);
   /* 12px block padding: with trimmed text the padding IS the ink-to-hairline distance, and
      8px put descenders against the separator. The floor is the touch target, which a
-     switch-only row lands on exactly (20 + 12 + 12); text rows clear it. */
+     switch-only row lands on exactly (20 + 12 + 12); text rows clear it. The bottom
+     takes the hairline's own pixel on top of that, or the padding is the distance on
+     one side and a pixel less on the other - see `--row-hairline`. */
   min-block-size: var(--touch-target);
-  padding: var(--row-pad-default) var(--space-2);
+  padding: var(--row-pad-default) var(--space-2) calc(var(--row-pad-default) + var(--row-hairline));
   position: relative;
   /* The distance a stacked row's controls stand off its sentence. Both sides are ink-
      trimmed, so this is the ink gap - without it the seg sat on the descenders of the
