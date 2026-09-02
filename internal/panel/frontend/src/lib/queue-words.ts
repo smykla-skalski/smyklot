@@ -9,6 +9,7 @@
  * The clock is passed in rather than read here, because a caller that redraws on a tick
  * owns the tick.
  */
+import { formatDateTime } from '#lib/format.js';
 import type { QueueItem } from '#lib/types.js';
 
 /** A row's sentence, in the three pieces a time has to be an element to sit between. */
@@ -26,18 +27,6 @@ export function words(value: string): string {
 /** One of a thing is one, not one of them: "1 hours ago" is nobody's sentence. */
 function count(value: number, unit: string): string {
   return `${value} ${unit}${value === 1 ? '' : 's'}`;
-}
-
-export function absolute(value: string, timeZone?: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-    ...(timeZone === undefined ? {} : { timeZone }),
-  }).format(new Date(value));
 }
 
 function countdown(value: string, now: number): string {
@@ -61,7 +50,12 @@ function ago(value: string, now: number): string {
 
 /** The exact instant a relative time is being relative about, said both ways. */
 function instant(value: string, item: QueueItem): { exact: string; iso: string } {
-  return { exact: absolute(value, item.profile_timezone), iso: value };
+  /* Named whether or not the item carries a zone: a queue is read by people in
+     several, and an unlabelled time is the one that gets misread. */
+  return {
+    exact: formatDateTime(value, { timeZone: item.profile_timezone, named: true }),
+    iso: value,
+  };
 }
 
 /**

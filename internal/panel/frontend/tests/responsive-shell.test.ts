@@ -39,6 +39,26 @@ describe('the responsive shell [Unit]', () => {
     expect(glued.map((one) => one[0].trim())).toEqual([]);
   });
 
+  /* The pages that stand OUTSIDE the panel centre themselves.
+     ------------------------------------------------------------------------
+     `NightPage` is a column with a `max-width` and it never said where the
+     leftover room goes, so the answer came from whatever it was dropped into.
+     Inside the shell an ancestor centred it and it looked right; on the five
+     pages that do not have that shell - sign-in, an invitation, the error pages,
+     privacy and terms - the parent is a bare block and the column sat flush
+     against the left edge of the window.
+
+     Auto margins rather than `justify-self`, because they are the one answer
+     that works from either side: a block parent centres the box and a flex
+     parent centres it too. */
+  it('centres the page that has no shell around it', () => {
+    const night = source('lib/components/NightPage.svelte');
+
+    expect(night).toMatch(/\.night-shell\s*\{[^}]*margin-inline:\s*auto/su);
+    // And never against the glass: nothing else holds it off the edge there.
+    expect(night).toMatch(/\.night-shell\s*\{[^}]*padding-inline:/su);
+  });
+
   it('keeps the rail below dialogs and above the mobile drawer', () => {
     const css = stylesheets;
     const rail = source('lib/components/Rail.svelte');

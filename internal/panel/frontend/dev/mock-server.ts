@@ -113,7 +113,7 @@ import {
   type MockState as Fixtures,
   type MockTarget,
 } from './fixtures.ts';
-import { parseInvitationToken, parsePanelRoute } from '../src/lib/routes.ts';
+import { isLegalPath, parseInvitationToken, parsePanelRoute } from '../src/lib/routes.ts';
 import { renderMockSyncFile } from './mock-file-render.ts';
 
 type DevHttpServer = HttpServer;
@@ -1252,7 +1252,9 @@ async function handle(
     const served = decodedPath(path);
     const navigable =
       served !== null &&
-      (parsePanelRoute('/', served) !== null || parseInvitationToken('/', served) !== null);
+      (parsePanelRoute('/', served) !== null ||
+        parseInvitationToken('/', served) !== null ||
+        isLegalPath('/', served));
     if (!navigable) {
       await respondError(state, req, res, 404, 'not_found', 'panel route not found');
       return;

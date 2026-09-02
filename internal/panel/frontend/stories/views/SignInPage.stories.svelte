@@ -23,3 +23,21 @@
 
 <!-- A session that ended says so, rather than looking like a fresh arrival. -->
 <Story name="Session ended" args={{ ended: { code: 'expired', reason: '' } }} />
+
+<!--
+  A sign-in that did not finish, answered where signing in happens. This used to be a
+  page of its own, which put the reason and the button that retries it on different
+  screens. The words come from the same table the error pages read, keyed by the status
+  and code the server redirected back with.
+-->
+<Story
+  name="Sign-in failed"
+  args={{ failed: { status: 401, code: 'sign_in_failed', message: '' } }}
+/>
+
+<!--
+  Arrived at a deep address. The card promises to put the reader back on it, which is a
+  promise the server keeps - and one it used to break, sending everybody to the front
+  page while this line said otherwise.
+-->
+<Story name="Returning to a page" args={{ returnTo: '/workspace/acme/sync/plan' }} />

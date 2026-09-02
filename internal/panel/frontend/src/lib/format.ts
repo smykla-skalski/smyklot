@@ -41,18 +41,53 @@ export function formatDate(value: string): string {
   });
 }
 
-/** Render a compact local date and time without machine-oriented seconds. */
-export function formatDateTime(value: string): string {
+/** How an instant is written out, where the four callers genuinely differ. */
+export interface InstantOptions {
+  /** Read the stamp in this zone rather than the reader's own, and name it. */
+  timeZone?: string;
+  /** Name the zone even when the stamp is being read in the reader's own. */
+  named?: boolean;
+  /** Seconds, where a reader is putting two events in order. */
+  seconds?: boolean;
+}
+
+/**
+ * An instant, written out for a reader: "26 Aug 2026, 17:41" - with seconds, or a
+ * named zone, or both.
+ *
+ * ONE FUNCTION, because there were four and one of them was wrong. A queue row, a
+ * queue dialog, a schedule preview and the sync plan each wrote their own
+ * `Intl.DateTimeFormat` for this, and the differences between them were an
+ * accident of who wrote which: the same instant came out three ways. What
+ * genuinely differs is above, and it is two booleans and a zone.
+ *
+ * SPELLED IN COMPONENTS, and it has to be. `dateStyle`/`timeStyle` say the same
+ * thing in two words, and ECMA-402 REFUSES to combine either with `timeZoneName`
+ * - a `TypeError` thrown before it formats anything, on every engine. The sync
+ * plan's own copy asked for that pair and took the whole page down with `Invalid
+ * option : option`, for every reader whose profile carried a zone and no other.
+ * `tests/date-options.test.ts` holds the rule now, over the source, so a fifth
+ * copy written inline in a component is caught the same way.
+ *
+ * The property ORDER here says nothing: the locale decides where the day goes.
+ */
+export function formatDateTime(value: string, options: InstantOptions = {}): string {
   const parsed = Date.parse(value);
   if (Number.isNaN(parsed)) {
     return value;
   }
+  const { timeZone, named, seconds } = options;
+  const zoned = timeZone !== undefined && timeZone !== '';
+
   return new Date(parsed).toLocaleString(undefined, {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
+    ...(seconds === true ? { second: '2-digit' as const } : {}),
+    ...(zoned ? { timeZone } : {}),
+    ...(zoned || named === true ? { timeZoneName: 'short' as const } : {}),
   });
 }
 

@@ -11,6 +11,7 @@
   import { basePath } from '#lib/paths.js';
   import { legacyInboxRoute } from '#lib/dialog-route.svelte.js';
   import { readPanelFailure } from '#lib/panel-error.js';
+  import { readSignInFailure, signedOutReturn } from '#lib/sign-in-return.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { applyDocumentTheme } from '#lib/preferences.js';
@@ -69,6 +70,15 @@
   const api = createPanelApi(basePath, (input, init) => fetch(input, init));
   const build = readPanelBuild(document);
   const pageFailure = readPanelFailure(document);
+
+  /* A sign-in that did not finish comes back to the front door carrying its
+     status and code, which is the pair the panel already keeps the words under.
+     Read once, from the address the server redirected to. */
+  const signInFailure = $derived(readSignInFailure(page.url.search));
+  /* Where a reader was going when they were asked who they are, and how to say
+     it. The address is the one they are standing on, so a pasted link survives
+     the round trip; the server decides whether it will honour it. */
+  const returnTo = $derived(signedOutReturn(page.url.pathname, page.url.search));
 
   /* One box, read by the query client and written by the stream below. It says
      whether changes are arriving as they happen, which is what decides how long
@@ -204,7 +214,7 @@
     () => ({
       queryKey: ['viewer'],
       queryFn: api.fetchViewer,
-      enabled: session.isInvitation === false,
+      enabled: session.isPublicPage === false,
     }),
     () => queryClient,
   );
@@ -213,7 +223,7 @@
       queryKey: ['targets', viewerQuery.data?.account.id],
       queryFn: api.fetchTargets,
       enabled:
-        session.isInvitation === false &&
+        session.isPublicPage === false &&
         viewerQuery.data !== undefined &&
         viewerQuery.data !== null,
     }),
@@ -224,7 +234,7 @@
       queryKey: ['notifications', 'unread', viewerQuery.data?.account.id],
       queryFn: () => api.fetchNotifications({ limit: 1 }),
       enabled:
-        session.isInvitation === false &&
+        session.isPublicPage === false &&
         viewerQuery.data !== undefined &&
         viewerQuery.data !== null &&
         session.isInbox === false,
@@ -304,7 +314,7 @@
   // --- Target resolution: watches the route's account param ---
   $effect(() => {
     if (session.viewer === null || session.loading) return;
-    if (session.isRootMode || session.isInvitation) return;
+    if (session.isRootMode || session.isPublicPage) return;
     const account = page.params.account;
     if (account === undefined) {
       if (session.targets.length > 0 && session.selectedId === null) {
@@ -348,7 +358,7 @@
    *
    * This is the whole dependency, as a value rather than as the reads that
    * produce it. The condition used to be written inside the effect, where
-   * `session.isInvitation` reads the pathname - so every navigation re-ran it,
+   * `session.isPublicPage` reads the pathname - so every navigation re-ran it,
    * closed the socket and opened another. A new socket answers with `ready`, and
    * `ready` is a full resync, so moving between two views refetched everything
    * on both of them: the panel was telling itself its data was stale because it
@@ -357,7 +367,7 @@
    * A derived only propagates when its value changes, and this one stays `true`
    * across every address the stream should be open on.
    */
-  const streamWanted = $derived(session.streamReady && !session.isInvitation);
+  const streamWanted = $derived(session.streamReady && !session.isPublicPage);
 
   $effect(() => {
     if (!streamWanted) return;
@@ -594,7 +604,7 @@
       queryKey: ['sync-plan', session.selectedTarget?.id],
       queryFn: () => api.fetchSyncPlan(session.selectedTarget?.id ?? ''),
       enabled:
-        session.isInvitation === false &&
+        session.isPublicPage === false &&
         session.viewer !== null &&
         !session.isRootMode &&
         session.selectedTarget !== null,
@@ -621,7 +631,7 @@
           : api.fetchFailures(session.selectedTarget?.id ?? '', ask);
       },
       enabled:
-        session.isInvitation === false &&
+        session.isPublicPage === false &&
         session.viewer !== null &&
         (session.isRootMode || session.selectedTarget !== null),
     }),
@@ -1071,14 +1081,14 @@
 <QueryClientProvider client={queryClient}>
   {#if pageFailure !== null}
     <ErrorPage {api} base={basePath} {build} failure={pageFailure} />
-  {:else if session.isInvitation}
+  {:else if session.isPublicPage}
     {@render children()}
   {:else if session.loading}
     <!-- Which layout this is has not been answered yet, so neither is drawn.
          See `PanelBoot` for what the shell did instead. -->
     <PanelBoot />
   {:else if session.signedOut}
-    <SignInPage {api} {build} ended={session.sessionEnded} />
+    <SignInPage {api} {build} ended={session.sessionEnded} failed={signInFailure} {returnTo} />
   {:else if session.awaitingWorkspace}
     <NightPage title="No workspaces" documentTitle="No workspaces" {build} size="compact">
       <div class="install-prompt">

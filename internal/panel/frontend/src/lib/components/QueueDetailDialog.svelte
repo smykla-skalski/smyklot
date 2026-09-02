@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { formatDateTime } from '#lib/format.js';
   import type { QueueDetail, QueueItem } from '#lib/types.js';
   import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
@@ -22,18 +23,9 @@
     return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
   }
 
-  function absolute(value: string, timeZone?: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      second: '2-digit',
-      timeZoneName: 'short',
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }).format(new Date(value));
-  }
+  /** Seconds, because this dialog is where two events are put in order. */
+  const absolute = (value: string, timeZone?: string): string =>
+    formatDateTime(value, { timeZone, named: true, seconds: true });
 
   function scope(item: QueueItem): string {
     if (item.repository_id) return `${item.target_id ?? 'Global'} / ${item.repository_id}`;

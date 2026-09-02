@@ -210,6 +210,24 @@ are written once.
     min-height: 100dvh;
     padding-block: var(--space-6);
     row-gap: var(--space-6);
+
+    /* CENTRED BY ITSELF, not by whatever it is dropped into.
+       ---------------------------------------------------------------
+       This is a column with a `max-width` and it never said where the leftover
+       room goes, so the answer came from the parent: inside the panel's shell a
+       centring ancestor made it look right, and on the pages that stand outside
+       that shell - the sign-in card, an invitation, the error pages, the privacy
+       notice and the terms - the parent is a bare block and the column sat flush
+       against the left edge of the window.
+
+       Auto margins, because they are the one answer that works from either side:
+       a block parent centres the box, and a flex parent centres it too, where
+       `justify-self` would only reach the grid case. */
+    margin-inline: auto;
+    /* And never against the glass. There is no ancestor holding this off the edge
+       on these pages, so at the widths where the column IS the window the words
+       would start at pixel zero. */
+    padding-inline: var(--space-4);
   }
 
   /* A card holding one sentence and one button. Narrow enough that the button is

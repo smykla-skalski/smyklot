@@ -47,6 +47,30 @@ export const DIRECT_PANEL_VIEWS = ['settings', 'repositories', 'sync', 'history'
 export const PERSONAL_VIEWS = ['inbox', 'search'] as const;
 
 /**
+ * The pages anybody may read without signing in.
+ *
+ * Not panel routes: they resolve no workspace, take no dialog and belong to no
+ * console, so `parsePanelRoute` cannot express them and should not try. They are
+ * named here because three places have to agree about them - the layout, which
+ * renders them outside the session gate; the mock dev server, which decides
+ * shell-or-404 in plain Node; and this list, which is the only definition of
+ * which addresses they are.
+ *
+ * The Go server needs no entry: it reads the route manifest generated from
+ * `src/routes`, so a page that exists is a page it serves.
+ */
+export const LEGAL_VIEWS = ['privacy', 'terms'] as const;
+
+/** Whether an address is one of the pages that needs no session. */
+export function isLegalPath(basePath: string, pathname: string): boolean {
+  const base = normalizeBasePath(basePath);
+  if (base !== '' && !pathname.startsWith(`${base}/`)) return false;
+  const relative = pathname.slice(base.length).replace(/^\/+|\/+$/gu, '');
+
+  return LEGAL_VIEWS.some((view) => view === relative);
+}
+
+/**
  * The views the Root console renders for one workspace, which is not every
  * view a workspace has.
  *
