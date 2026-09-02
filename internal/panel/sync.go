@@ -104,9 +104,154 @@ type syncActionDTO struct {
 	Subject    string `json:"subject"`
 	Before     string `json:"before,omitempty"`
 	After      string `json:"after,omitempty"`
-	State      string `json:"state"`
-	Error      string `json:"error,omitempty"`
-	Blocker    string `json:"blocker,omitempty"`
+	// Detail is what this action is about, typed, so a reader can format it
+	// rather than print a sentence somebody else formatted. See syncActionDetail.
+	Detail  *syncDetailDTO `json:"detail,omitempty"`
+	State   string         `json:"state"`
+	Error   string         `json:"error,omitempty"`
+	Blocker string         `json:"blocker,omitempty"`
+}
+
+// syncDetailDTO is one action's subject, in the shape its kind actually has.
+//
+// One field per kind rather than a tagged union, because the kind is already on
+// the action beside it and a reader that switches on `kind` and then reads the
+// field of that name needs no second discriminator to keep in step.
+type syncDetailDTO struct {
+	Label   *syncLabelDTO    `json:"label,omitempty"`
+	Ruleset *syncRulesetDTO  `json:"ruleset,omitempty"`
+	File    *syncFileDTO     `json:"file,omitempty"`
+	Setting []syncSettingDTO `json:"settings,omitempty"`
+
+	// Follows and Withheld belong to a settings change and to nothing else:
+	// what GitHub switches off alongside it, and what this repository will not
+	// be given, with the reason.
+	Follows  []string          `json:"follows,omitempty"`
+	Withheld []syncWithheldDTO `json:"withheld,omitempty"`
+}
+
+// syncLabelDTO is a label as a label, not as a description of one.
+type syncLabelDTO struct {
+	Name        string `json:"name"`
+	Color       string `json:"color"`
+	Description string `json:"description,omitempty"`
+}
+
+// syncSettingDTO is one setting and what it moves between. A settings action is
+// one request and stays one action; this is how it says the several things it
+// does.
+type syncSettingDTO struct {
+	Field string `json:"field"`
+	From  string `json:"from"`
+	To    string `json:"to"`
+}
+
+type syncWithheldDTO struct {
+	Field  string `json:"field"`
+	Reason string `json:"reason"`
+}
+
+type syncRulesetDTO struct {
+	Name        string   `json:"name"`
+	Target      string   `json:"target"`
+	Enforcement string   `json:"enforcement"`
+	Rules       []string `json:"rules,omitempty"`
+	Bypass      int      `json:"bypass"`
+}
+
+type syncFileDTO struct {
+	Path     string `json:"path"`
+	Proposal string `json:"proposal,omitempty"`
+	Bytes    int    `json:"bytes"`
+}
+
+// syncActionDetail reads what an action is about, in the shape its kind has.
+//
+// `Before` and `After` are sentences somebody already formatted - `describeLabel`
+// writes `name #color - description`, `describeChange` joins every changed
+// setting with commas - and a sentence is the wrong thing to hand a reader that
+// has to draw a swatch or a line per field. Worse, the plan page prints its
+// subject and then that sentence, so a label creation read `dependencies -
+// dependencies #0e8a16 - Dependency updates`, with the name twice.
+//
+// The payload has held the structure all along; this hands it over. Nil for a
+// payload that will not decode: what the panel cannot read it declines to draw,
+// and the sentence beside it still says what changes.
+func syncActionDetail(action orgsync.Action) *syncDetailDTO {
+	if len(action.Payload) == 0 {
+		return nil
+	}
+
+	switch action.Kind {
+	case orgsync.KindLabels:
+		label, err := orgsync.DecodeLabel(action.Payload)
+		if err != nil {
+			return nil
+		}
+
+		return &syncDetailDTO{Label: &syncLabelDTO{
+			Name: label.Name, Color: label.Color, Description: label.Description,
+		}}
+
+	case orgsync.KindSettings:
+		return syncSettingsDetail(action)
+
+	case orgsync.KindRulesets:
+		ruleset, err := orgsync.DecodeRulesetAction(action.Payload)
+		if err != nil {
+			return nil
+		}
+
+		return &syncDetailDTO{Ruleset: &syncRulesetDTO{
+			Name:        ruleset.Name,
+			Target:      ruleset.Target,
+			Enforcement: ruleset.Enforcement,
+			Rules:       ruleset.Rules.Named(),
+			Bypass:      len(ruleset.BypassActors),
+		}}
+
+	case orgsync.KindFiles:
+		file, err := orgsync.DecodeFile(action.Payload)
+		if err != nil {
+			return nil
+		}
+
+		return &syncDetailDTO{File: &syncFileDTO{
+			Path: file.Path, Proposal: file.Proposal, Bytes: len(file.Content),
+		}}
+
+	default:
+		return nil
+	}
+}
+
+// syncSettingsDetail reads a settings action, whose payload carries the request
+// AND what to say about it. Dependabot is a settings action too and its payload
+// is a different shape, so a plan that will not read as one is left to its
+// sentence rather than reported as a settings change of no fields.
+func syncSettingsDetail(action orgsync.Action) *syncDetailDTO {
+	if action.Subject == orgsync.DependabotSubject {
+		return nil
+	}
+
+	plan, err := orgsync.DecodeSettingsPlan(action.Payload)
+	if err != nil {
+		return nil
+	}
+
+	detail := &syncDetailDTO{Follows: plan.Follows}
+	for _, change := range plan.Changes {
+		detail.Setting = append(detail.Setting, syncSettingDTO{
+			Field: change.Field, From: change.From, To: change.To,
+		})
+	}
+	for _, withheld := range plan.Withheld {
+		detail.Withheld = append(detail.Withheld, syncWithheldDTO{
+			Field: withheld.Field, Reason: withheld.Reason,
+		})
+	}
+
+	return detail
 }
 
 type syncRunNowInput struct {
@@ -703,6 +848,7 @@ func syncPlanToDTO(
 			Subject:    action.Subject,
 			Before:     action.Before,
 			After:      action.After,
+			Detail:     syncActionDetail(action),
 			State:      string(action.State),
 			Error:      action.Error,
 			Blocker:    string(action.Blocker),

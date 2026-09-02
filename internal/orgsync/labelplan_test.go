@@ -90,16 +90,27 @@ var _ = Describe("Label planning [Unit]", func() {
 		Expect(actions[0].After).To(Equal("bug #000000 - written by somebody here"))
 	})
 
-	// The subject is the whole of the instruction, and a payload would be a
-	// second answer nothing reads
-	It("carries no payload on a deletion", func() {
+	// A deletion used to carry no payload, because the subject was the whole of
+	// the instruction and a payload would have been a second answer nothing
+	// read. Something reads it now: the panel draws the label a plan would
+	// remove, with its colour, and a removal was the one label action that could
+	// not say what colour it was losing.
+	//
+	// Apply is unaffected either way - it answers a deletion from the subject
+	// and returns before it looks at the payload - so this cannot become a
+	// second source of truth for what gets deleted.
+	It("carries the label it removes on a deletion", func() {
 		actions := plan(
 			orgsync.LabelConfig{AllowRemoval: true},
-			[]orgsync.CurrentLabel{{Name: "wontfix", Color: "ffffff"}},
+			[]orgsync.CurrentLabel{{Name: "wontfix", Color: "ffffff", Description: "not doing it"}},
 			orgsync.Excludes{},
 		)
 
-		Expect(actions[0].Payload).To(BeEmpty())
+		label, err := orgsync.DecodeLabel(actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(label.Name).To(Equal("wontfix"))
+		Expect(label.Color).To(Equal("ffffff"))
+		Expect(label.Description).To(Equal("not doing it"))
 	})
 
 	It("updates a label whose colour drifted", func() {

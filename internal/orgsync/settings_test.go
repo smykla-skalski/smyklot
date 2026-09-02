@@ -657,9 +657,42 @@ var _ = Describe("Settings planning [Unit]", func() {
 			orgsync.CurrentSettings{HasWiki: true},
 		)
 
-		var raw map[string]any
-		Expect(json.Unmarshal(actions[0].Payload, &raw)).To(Succeed())
-		Expect(raw).To(HaveKeyWithValue("has_wiki", false))
+		body, err := orgsync.DecodeSettings(actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(body).To(HaveKeyWithValue("has_wiki", false))
+	})
+
+	// The body is what to send; this is what to say about sending it. A reader
+	// had one sentence naming every field at once - `describeChange` joins them
+	// with commas - where there are as many facts as there are settings.
+	It("carries both sides of every setting it moves", func() {
+		actions := orgsync.PlanSettings(repo,
+			orgsync.SettingsConfig{HasWiki: disabled(), AllowSquashMerge: enabled()},
+			orgsync.CurrentSettings{HasWiki: true, AllowSquashMerge: false},
+		)
+
+		plan, err := orgsync.DecodeSettingsPlan(actions[0].Payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.Changes).To(ConsistOf(
+			orgsync.SettingsFieldChange{Field: "allow_squash_merge", From: "off", To: "on"},
+			orgsync.SettingsFieldChange{Field: "has_wiki", From: "on", To: "off"},
+		))
+	})
+
+	// A plan lives in the store for hours, so a deploy straddles one and the
+	// payload written before the body became a field still has to apply.
+	It("reads a payload written before the body was a field", func() {
+		payload, err := json.Marshal(map[string]any{"has_wiki": false})
+		Expect(err).NotTo(HaveOccurred())
+
+		body, err := orgsync.DecodeSettings(payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(body).To(HaveKeyWithValue("has_wiki", false))
+
+		plan, err := orgsync.DecodeSettingsPlan(payload)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.Body).To(HaveKeyWithValue("has_wiki", false))
+		Expect(plan.Changes).To(BeEmpty())
 	})
 })
 

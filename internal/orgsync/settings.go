@@ -533,6 +533,15 @@ type SettingsChange struct {
 	// Fields names what differs, sorted, for somebody reading the plan.
 	Fields []string
 
+	// Changes is the same set with both sides of each one, in the same order.
+	//
+	// Fields answers "what differs" and is what the digest and the apply path
+	// read; this answers "differs from what, to what", which only a reader
+	// needs. Held apart rather than folded together because a plan is compared
+	// by what it would DO, and a display string moving would otherwise read as
+	// the plan changing.
+	Changes []SettingsFieldChange
+
 	// Body is what to send, carrying only the settings configuration named.
 	//
 	// Only those: the endpoint replaces what it is given, so sending a value
@@ -570,6 +579,17 @@ type SettingsChange struct {
 type Withholding struct {
 	Field  string
 	Reason string
+}
+
+// SettingsFieldChange is one setting, and what it moves between.
+//
+// Both sides are rendered by the field's own table entry, so `on`/`off` here
+// means what it means everywhere else a setting is shown, and a field whose
+// value is a word rather than a switch says the word.
+type SettingsFieldChange struct {
+	Field string `json:"field"`
+	From  string `json:"from"`
+	To    string `json:"to"`
 }
 
 // The two reasons a setting is withheld. One is about this repository's plan or
@@ -621,6 +641,9 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 		}
 
 		change.Fields = append(change.Fields, field.name)
+		change.Changes = append(change.Changes, SettingsFieldChange{
+			Field: field.name, From: field.have(current), To: want,
+		})
 		field.put(change.Body, value)
 
 		if enabled, boolean := value.(bool); boolean && !enabled {
@@ -631,6 +654,9 @@ func DiffSettings(config SettingsConfig, current CurrentSettings) (SettingsChang
 	change.Follows = follows(fields, current, repository.absent, switchedOff)
 
 	sort.Strings(change.Fields)
+	sort.Slice(change.Changes, func(i, j int) bool {
+		return change.Changes[i].Field < change.Changes[j].Field
+	})
 	sort.Strings(change.Follows)
 	sort.Slice(change.Withheld, func(i, j int) bool {
 		return change.Withheld[i].Field < change.Withheld[j].Field
@@ -833,7 +859,12 @@ func planSettingsChange(
 		return Action{}, false
 	}
 
-	payload, err := json.Marshal(change.Body)
+	payload, err := json.Marshal(SettingsPlan{
+		Body:     change.Body,
+		Changes:  change.Changes,
+		Follows:  change.Follows,
+		Withheld: change.Withheld,
+	})
 	if err != nil {
 		// A map of bools and strings cannot fail to encode, and returning an
 		// error would make every caller handle one that cannot happen.
@@ -1019,10 +1050,58 @@ func noMergeMethod(
 
 // DecodeSettings reads what an action says to apply.
 func DecodeSettings(payload []byte) (map[string]any, error) {
-	var body map[string]any
-	if err := json.Unmarshal(payload, &body); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	plan, err := DecodeSettingsPlan(payload)
+	if err != nil {
+		return nil, err
 	}
 
-	return body, nil
+	return plan.Body, nil
+}
+
+// SettingsPlan is a settings action's payload: what to send, and what a reader
+// has to be told about what sending it does.
+//
+// The body used to be the whole payload. It is a field now, because the plan
+// page had nothing structured to draw and was rendering `describeChange`'s
+// sentence - one row reading `repository - squash merging, wiki, GitHub also
+// switches off ...` for what is five separate facts.
+type SettingsPlan struct {
+	// Body is what to send, and the only part apply reads.
+	Body map[string]any `json:"body"`
+
+	// Changes, Follows and Withheld are for a reader. See SettingsChange, whose
+	// fields these are.
+	Changes  []SettingsFieldChange `json:"changes,omitempty"`
+	Follows  []string              `json:"follows,omitempty"`
+	Withheld []Withholding         `json:"withheld,omitempty"`
+}
+
+// DecodeSettingsPlan reads a settings payload in either shape it can have.
+//
+// A plan lives in the store for hours, so a deploy straddles one: a payload
+// written before the body became a field is a bare body, and it still has to
+// apply. A wrapper always names `body`, and a bare body never has a key by that
+// name - `body` is not a repository setting - so the two are told apart by
+// asking, rather than by version.
+func DecodeSettingsPlan(payload []byte) (SettingsPlan, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return SettingsPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	if _, wrapped := raw["body"]; !wrapped {
+		var body map[string]any
+		if err := json.Unmarshal(payload, &body); err != nil {
+			return SettingsPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+		}
+
+		return SettingsPlan{Body: body}, nil
+	}
+
+	var plan SettingsPlan
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		return SettingsPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	return plan, nil
 }

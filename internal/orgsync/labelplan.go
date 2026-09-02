@@ -111,7 +111,12 @@ func PlanLabels(
 			Operation:    OperationDelete,
 			Subject:      label.Name,
 			Before:       describeLabel(ResolvedLabel(label)),
-			State:        ActionPending,
+			// A removal carries its label too. Apply does not read it - there is
+			// nothing to write - but every other label action has one, and a
+			// reader that has to render the label it is losing should not be the
+			// one action that cannot say what colour it was.
+			Payload: encodeLabel(ResolvedLabel(label)),
+			State:   ActionPending,
 		})
 	}
 

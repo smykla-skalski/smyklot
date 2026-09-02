@@ -473,41 +473,52 @@ func describeRemoved(ruleset CurrentRuleset) string {
 	return describeRuleset(*ruleset.Defined)
 }
 
+// describeRules joins what a ruleset enforces into one line.
 func describeRules(rules RulesetRules) string {
+	return strings.Join(rules.Named(), ", ")
+}
+
+// Named is what a ruleset enforces, one phrase per rule.
+//
+// The list rather than the joined line, because a reader that draws the
+// rules one at a time and one that writes them into a sentence are asking
+// the same question, and a second walk over this struct in the panel would
+// be a second place to update when a rule is added.
+func (r RulesetRules) Named() []string {
 	var described []string
 
 	for _, rule := range []struct {
 		on   bool
 		name string
 	}{
-		{rules.Creation, "no creation"},
-		{rules.Deletion, "no deletion"},
-		{rules.NonFastForward, "no force pushes"},
-		{rules.RequiredLinearHistory, "linear history"},
-		{rules.RequiredSignatures, "signed commits"},
+		{r.Creation, "no creation"},
+		{r.Deletion, "no deletion"},
+		{r.NonFastForward, "no force pushes"},
+		{r.RequiredLinearHistory, "linear history"},
+		{r.RequiredSignatures, "signed commits"},
 	} {
 		if rule.on {
 			described = append(described, rule.name)
 		}
 	}
 
-	if rules.Update != nil {
-		if rules.Update.AllowsFetchAndMerge {
+	if r.Update != nil {
+		if r.Update.AllowsFetchAndMerge {
 			described = append(described, "updates only by fetch and merge")
 		} else {
 			described = append(described, "no updates")
 		}
 	}
 
-	if pull := rules.PullRequest; pull != nil {
+	if pull := r.PullRequest; pull != nil {
 		described = append(described, describePullRequest(*pull))
 	}
 
-	if checks := rules.RequiredStatusChecks; checks != nil {
+	if checks := r.RequiredStatusChecks; checks != nil {
 		described = append(described, describeChecks(*checks))
 	}
 
-	if scanning := rules.CodeScanning; scanning != nil {
+	if scanning := r.CodeScanning; scanning != nil {
 		tools := make([]string, 0, len(scanning.Tools))
 		for _, tool := range scanning.Tools {
 			tools = append(tools, fmt.Sprintf("%s at %s, security %s",
@@ -517,7 +528,7 @@ func describeRules(rules RulesetRules) string {
 		described = append(described, within("code scanning", tools))
 	}
 
-	return strings.Join(described, ", ")
+	return described
 }
 
 // within puts a rule's own list inside brackets under its name.
