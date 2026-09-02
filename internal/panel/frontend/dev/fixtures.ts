@@ -1005,7 +1005,21 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
  * repositories, agreeing row for row with what the board's cells count.
  */
 export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
-  const dependencies = '#0e8a16, "Dependency updates, mostly Renovate\'s"';
+  /* THE SHAPES THE SERVICE SENDS, which is not what this used to hold.
+     A label arrived here pre-stripped of its name, and settings arrived one
+     tidy action per field - neither of which the planner can produce. So the
+     plan page looked right on a laptop and wrong in production, where a label
+     row printed its name twice and every changed setting in a repository was
+     one sentence. Every action below carries the `detail` the service now
+     sends, and a settings change is one action with a line per field.
+
+     The counts are the drawing's: eight additions, five changes, one removal,
+     split +3 ~2 -1, +3 ~2, +2 ~1 across the three repositories. */
+  const label = (name: string, color: string, description?: string) => ({
+    name,
+    color,
+    ...(description === undefined ? {} : { description }),
+  });
   /* Excerpt-sized on purpose: what a plan carries is the window worth
      reading, and the diff the page draws from this pair is the design's own
      five lines. */
@@ -1033,7 +1047,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'labels',
         operation: 'create',
         subject: 'dependencies',
-        after: dependencies,
+        detail: { label: label('dependencies', '0e8a16', "Dependency updates, mostly Renovate's") },
         state: 'pending',
       },
       {
@@ -1041,24 +1055,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'squash merging',
-        before: 'off',
-        after: 'on',
-        state: 'pending',
-      },
-      {
-        repository: 'platform-infra',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'wiki',
-        before: 'on',
-        after: 'off',
+        detail: { label: label('good first issue', '7057ff') },
         state: 'pending',
       },
       {
@@ -1068,6 +1065,28 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         subject: 'renovate.json',
         before: renovateBefore,
         after: renovateAfter,
+        detail: { file: { path: 'renovate.json', proposal: 'smyklot/sync', bytes: 412 } },
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'repository',
+        detail: {
+          settings: [
+            { field: 'allow_squash_merge', from: 'off', to: 'on' },
+            { field: 'has_wiki', from: 'on', to: 'off' },
+          ],
+        },
+        state: 'pending',
+      },
+      {
+        repository: 'platform-infra',
+        kind: 'labels',
+        operation: 'update',
+        subject: 'bug',
+        detail: { label: label('bug', 'd73a4a', 'Something is broken') },
         state: 'pending',
       },
       {
@@ -1075,40 +1094,25 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'files',
         operation: 'delete',
         subject: '.github/stale.yml',
+        detail: { file: { path: '.github/stale.yml', proposal: 'smyklot/sync', bytes: 0 } },
         state: 'pending',
       },
       {
         repository: 'api-gateway',
-        kind: 'settings',
+        kind: 'labels',
         operation: 'create',
-        subject: 'delete branch on merge',
-        after: 'on',
+        subject: 'enhancement',
+        detail: { label: label('enhancement', 'a2eeef', 'New behaviour somebody asked for') },
         state: 'pending',
       },
       {
         repository: 'api-gateway',
-        kind: 'settings',
+        kind: 'labels',
         operation: 'create',
-        subject: 'auto-merge',
-        after: 'on',
-        state: 'pending',
-      },
-      {
-        repository: 'api-gateway',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'squash merging',
-        before: 'off',
-        after: 'on',
-        state: 'pending',
-      },
-      {
-        repository: 'api-gateway',
-        kind: 'settings',
-        operation: 'update',
-        subject: 'wiki',
-        before: 'on',
-        after: 'off',
+        /* No description, which is a label the configuration allows and a shape
+           the row has to draw: the badge alone, with nothing after it. */
+        subject: 'chore',
+        detail: { label: label('chore', '6b7280') },
         state: 'pending',
       },
       {
@@ -1116,7 +1120,52 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'rulesets',
         operation: 'create',
         subject: 'main-protection',
-        after: '6 rules, active',
+        detail: {
+          ruleset: {
+            name: 'main-protection',
+            target: 'branch',
+            enforcement: 'active',
+            rules: ['no deletion', 'no force pushes', 'linear history'],
+            bypass: 1,
+          },
+        },
+        state: 'pending',
+      },
+      {
+        /* Three fields, one that GitHub switches off alongside them, and one
+           this repository will not be given. The whole reason a settings action
+           needs more than a sentence. */
+        repository: 'api-gateway',
+        kind: 'settings',
+        operation: 'update',
+        subject: 'repository',
+        detail: {
+          settings: [
+            { field: 'allow_auto_merge', from: 'off', to: 'on' },
+            { field: 'delete_branch_on_merge', from: 'off', to: 'on' },
+            { field: 'has_projects', from: 'on', to: 'off' },
+          ],
+          follows: ['allow_merge_commit'],
+          withheld: [
+            { field: 'advanced_security', reason: 'not available on this repository plan' },
+          ],
+        },
+        state: 'pending',
+      },
+      {
+        repository: 'api-gateway',
+        kind: 'rulesets',
+        operation: 'update',
+        subject: 'release-protection',
+        detail: {
+          ruleset: {
+            name: 'release-protection',
+            target: 'tag',
+            enforcement: 'evaluate',
+            rules: ['no deletion'],
+            bypass: 0,
+          },
+        },
         state: 'pending',
       },
       {
@@ -1124,7 +1173,7 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'labels',
         operation: 'create',
         subject: 'dependencies',
-        after: dependencies,
+        detail: { label: label('dependencies', '0e8a16', "Dependency updates, mostly Renovate's") },
         state: 'pending',
       },
       {
@@ -1132,15 +1181,15 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         kind: 'labels',
         operation: 'create',
         subject: 'good first issue',
+        detail: { label: label('good first issue', '7057ff') },
         state: 'pending',
       },
       {
         repository: 'auth-service',
         kind: 'settings',
         operation: 'update',
-        subject: 'projects',
-        before: 'on',
-        after: 'off',
+        subject: 'repository',
+        detail: { settings: [{ field: 'has_projects', from: 'on', to: 'off' }] },
         state: 'pending',
       },
     ],

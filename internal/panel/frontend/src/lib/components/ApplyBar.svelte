@@ -97,12 +97,26 @@ the named timeline, and the scope is what hands it back up.
      ::before is the DISSOLVE and nothing else: rows melt into their own
      surface before they pass under the glued edge, on a ramp tall enough
      (72px, solid for the last 16) to grade a row across two or three
-     positions instead of biting one in half beside a crisp one. */
+     positions instead of biting one in half beside a crisp one.
+
+     A RING, NOT A BAND. This used to be anchored `inset-block-end: 100%`, so it
+     existed only above the bar - but the bar docks 3.2rem up, and the content
+     in that strip scrolls under it just the same and arrived crisp. Two
+     gradients on one layer now, one fading up from the top edge and one fading
+     down from the bottom, spanning from 72px above to the dock line below.
+
+     `z-index: -1` puts it behind the bar's own ground, which is what lets one
+     element cover both sides: the middle would otherwise paint over the glass.
+     The bar is `position: sticky` with a `z-index`, so it makes a stacking
+     context and a negative index here stays inside it - behind the bar, above
+     the page. */
   .apply-bar::before {
-    background: linear-gradient(to top, var(--surface-base) 16px, transparent);
-    block-size: 72px;
+    background:
+      linear-gradient(to top, var(--surface-base) 16px, transparent) top / 100% 72px no-repeat,
+      linear-gradient(to bottom, var(--surface-base) 16px, transparent) bottom / 100% 3.2rem
+        no-repeat;
     content: '';
-    inset-block-end: calc(100% + 1px);
+    inset-block: -72px -3.2rem;
     /* Overhang the bar and melt the ends: a band cut exactly bar-wide dies
        in a vertical seam on each side, which no real shadow does. */
     inset-inline: -24px;
@@ -116,18 +130,23 @@ the named timeline, and the scope is what hands it back up.
     opacity: var(--melt, 0);
     pointer-events: none;
     position: absolute;
+    z-index: -1;
   }
 
   /* ::after is the LIGHT: one halo drawn around the whole rounded box, so
      it wraps the corners and flanks instead of stopping at the top band.
-     Upward-biased (the overlap is above), with one even layer so the sides
-     and bottom carry their share. */
+
+     BALANCED, because content passes under both edges. Three layers upward
+     against one thin one downward read as a bar lit from below and lying on
+     the page - which is the opposite of what a glued bar is doing. A spread
+     ring plus one soft layer each way, still biased up because the overlap
+     above is deeper. */
   .apply-bar::after {
     border-radius: inherit;
     box-shadow:
       0 -8px 24px -6px var(--shadow-color),
-      0 -16px 32px -12px var(--shadow-color),
-      0 2px 12px -3px var(--shadow-color);
+      0 8px 24px -6px var(--shadow-color),
+      0 0 32px -10px var(--shadow-color);
     content: '';
     inset: 0;
     opacity: var(--melt, 0);

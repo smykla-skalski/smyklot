@@ -2,7 +2,7 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
-  import { SYNC_KINDS, type SyncAction, type SyncPlan } from '../types';
+  import { SYNC_KINDS, type SyncAction, type SyncPlan, type SyncRulesetDetail } from '../types';
   import { SYNC_SECTION_LABELS } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
@@ -11,8 +11,10 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
   import Icon from './Icon.svelte';
+  import LabelBadge from './LabelBadge.svelte';
   import PageHeader from './PageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import { settingName } from './SyncSettingsPage.svelte';
 
   const {
     plan,
@@ -136,9 +138,15 @@
   }
 
   /**
-   * The detail beside the subject. A file's before and after are the file
-   * itself, so its rows say how the change arrives instead of quoting it -
-   * the diff below the row is the quote.
+   * THE FALLBACK, not the reading.
+   *
+   * The service sends `detail` - the same facts with their shape intact - and a
+   * row draws that. This is what is left for an action whose payload the service
+   * could not decode, and for a kind that has no typed detail yet: a sentence
+   * somebody else formatted, printed as one.
+   *
+   * A file's before and after are the file itself, so its rows say how the
+   * change arrives instead of quoting it - the diff below the row is the quote.
    */
   function fromTo(action: SyncAction): string {
     if (action.kind === 'files') {
@@ -154,6 +162,47 @@
       return action.after === undefined ? '' : `- now managed, ${action.after}`;
     }
     return action.after === undefined ? '' : `- ${action.after}`;
+  }
+
+  /**
+   * What a row draws, decided once so the markup asks a name rather than a
+   * chain of conditions.
+   *
+   * `settings` is the only one that is a LIST: a settings change is one action,
+   * because GitHub replaces a repository's settings in one request and they
+   * succeed or fail together, and it is several facts. One action, one row, a
+   * line per field - so the counts still say what would be applied while the
+   * page says what would happen.
+   */
+  type RowShape = 'label' | 'settings' | 'ruleset' | 'file' | 'sentence';
+
+  function rowShape(action: SyncAction): RowShape {
+    const detail = action.detail;
+    if (detail === undefined) return 'sentence';
+    if (detail.label !== undefined) return 'label';
+    if (detail.ruleset !== undefined) return 'ruleset';
+    if (detail.file !== undefined) return 'file';
+    if (detail.settings !== undefined && detail.settings.length > 0) return 'settings';
+    return 'sentence';
+  }
+
+  /** How a file change arrives. Files land as a pull request; nothing else does. */
+  const fileArrival = (action: SyncAction): string =>
+    action.operation === 'delete' ? 'marked for removal above' : 'as a pull request';
+
+  /** What a ruleset enforces, as one line. Empty is worth saying out loud. */
+  function rulesetSummary(detail: SyncRulesetDetail): string {
+    const parts = [detail.target, detail.enforcement];
+    parts.push(
+      detail.rules === undefined || detail.rules.length === 0
+        ? 'enforcing nothing'
+        : detail.rules.join(', '),
+    );
+    if (detail.bypass > 0) {
+      parts.push(`${detail.bypass} ${detail.bypass === 1 ? 'bypass' : 'bypasses'}`);
+    }
+
+    return parts.join(' · ');
   }
 
   /* ---------- The expanded file diff ---------- */
@@ -396,6 +445,7 @@ the button.
                   {@const firstOfRun = at === 0 || visible[at - 1]?.kind !== action.kind}
                   {@const opens = expandable(action)}
                   {@const showing = opens && expanded.has(keyOf(action))}
+                  {@const shape = rowShape(action)}
                   <!-- ONE ROW, whatever it can do. A row that opens a diff used to be
                    a second component - a 24px button beside a 40px div, holding
                    the same three spans - so a list of six rows kept two rhythms
@@ -421,11 +471,61 @@ the button.
                     >
                       <span class="action-op {opClass(action)}">{opWord(action)}</span>
                       <span class="action-kind">{firstOfRun ? action.kind : ''}</span>
-                      <span class="action-what"
-                        >{action.subject}
-                        {#if fromTo(action) !== ''}<span class="from-to">{fromTo(action)}</span
-                          >{/if}</span
-                      >
+                      {#if shape === 'label' && action.detail?.label !== undefined}
+                        {@const label = action.detail.label}
+                        <span class="action-what"
+                          ><LabelBadge {label} size="compact" />{#if label.description}<span
+                              class="from-to">{label.description}</span
+                            >{/if}</span
+                        >
+                      {:else if shape === 'settings' && action.detail?.settings !== undefined}
+                        <!-- ONE ACTION, a line per setting. GitHub replaces a
+                             repository's settings in one request, so they apply
+                             or fail together and stay one action - and they are
+                             still several facts, where one sentence naming every
+                             field at once was one. -->
+                        <span class="action-what action-settings">
+                          {#each action.detail.settings as setting (setting.field)}
+                            <span class="setting-line"
+                              >{settingName(setting.field)}<span class="from-to"
+                                >{setting.from} → {setting.to}</span
+                              ></span
+                            >
+                          {/each}
+                          {#each action.detail.follows ?? [] as follows (follows)}
+                            <span class="setting-line"
+                              >{settingName(follows)}<span class="from-to"
+                                >GitHub switches this off too</span
+                              ></span
+                            >
+                          {/each}
+                          {#each action.detail.withheld ?? [] as withheld (withheld.field)}
+                            <span class="setting-line"
+                              >{settingName(withheld.field)}<span class="from-to"
+                                >left alone: {withheld.reason}</span
+                              ></span
+                            >
+                          {/each}
+                        </span>
+                      {:else if shape === 'ruleset' && action.detail?.ruleset !== undefined}
+                        {@const ruleset = action.detail.ruleset}
+                        <span class="action-what"
+                          >{ruleset.name}<span class="from-to">{rulesetSummary(ruleset)}</span
+                          ></span
+                        >
+                      {:else if shape === 'file' && action.detail?.file !== undefined}
+                        <span class="action-what"
+                          >{action.detail.file.path}<span class="from-to"
+                            >{fileArrival(action)}</span
+                          ></span
+                        >
+                      {:else}
+                        <span class="action-what"
+                          >{action.subject}
+                          {#if fromTo(action) !== ''}<span class="from-to">{fromTo(action)}</span
+                            >{/if}</span
+                        >
+                      {/if}
                     </svelte:element>
                     {#if showing}
                       <div class="action-diff">
@@ -724,6 +824,35 @@ the button.
     rotate: 90deg;
   }
 
+  /* AN OPEN ROW IS ITS WELL'S HEADER, and the two are one object.
+     Closed, the row is transparent and hover paints `--row-hover` on the card -
+     which is right. Open, the well below it is already a raised block with a
+     rounded frame, and the row's hover laid a second rounded lozenge of
+     near-identical value directly on top of it: two greys and a seam where they
+     met. The row has nothing left to say by filling, because being open is
+     what it was saying.
+
+     The mark answers the pointer instead. This is the rule the opened ACTION
+     row below already follows, for the same reason and in the same words. */
+  .repo-row.is-open:hover,
+  .repo-row.is-open:active {
+    background: none;
+    box-shadow: none;
+    translate: none;
+  }
+
+  .repo-row.is-open:hover .repo-caret,
+  .repo-row.is-open:active .repo-caret {
+    color: var(--text-primary);
+  }
+
+  /* Square where they meet. The well is what the row opened, so it starts at
+     the row's own edge rather than as a separate rounded thing under it. */
+  .repo-row.is-open {
+    border-end-end-radius: 0;
+    border-end-start-radius: 0;
+  }
+
   /* THREE SLOTS, ALWAYS, and each operation keeps its own. Laid out as a flex
      run the group was right-aligned, so a repository with no removals put its
      `+3` where the repository above it put `~2`: scanning the rail, a green
@@ -866,6 +995,15 @@ the button.
     width: 100%;
   }
 
+  /* EVERY CELL IS ITS CAP BAND. Without this the verb and the kind are their
+     whole 18px line boxes while a stacked setting line is its 8.76px band, so
+     the row's ink sat half a pixel off the middle of its own surface - which is
+     the fault the vertical sweep exists to catch. `min-block-size` above is
+     what keeps a one-line row 42px once the cells no longer fill it. */
+  .action-row-line > * {
+    text-box: trim-both cap alphabetic;
+  }
+
   button.action-row-line {
     cursor: pointer;
   }
@@ -924,6 +1062,30 @@ the button.
 
   .action-what .from-to {
     color: var(--text-muted);
+    /* The detail follows the subject with one space of its own, so the two do
+       not run together when the subject is drawn rather than written - a badge
+       is an element, and an element has no trailing space. */
+    margin-inline-start: 0.5ch;
+  }
+
+  /* A settings action's several facts, stacked. The row's own line stays the
+     first of them, so a one-setting change is the same 42px as every other row
+     and only a change that really says more is taller. */
+  .action-settings {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+  }
+
+  .setting-line {
+    text-box: trim-both cap alphabetic;
+  }
+
+  /* The badge sets no line height: it is 9px of disc in a 12px line, and a row
+     whose subject is drawn must measure the same as a row whose subject is
+     written. */
+  .action-what :global(.label-badge) {
+    vertical-align: baseline;
   }
 
   /* The error belongs to ITS row: pulled to 4px under its own line, so the

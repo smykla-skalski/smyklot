@@ -1524,14 +1524,79 @@ export interface SyncFileRenderResponse {
   diagnostics: SyncFileRenderDiagnostic[];
 }
 
+/** A label as a label: what to draw, rather than a sentence describing one. */
+export interface SyncLabelDetail {
+  name: string;
+  /** Six hex digits, no leading `#` - GitHub's own spelling. */
+  color: string;
+  description?: string;
+}
+
+/** One setting and what it moves between, both sides already worded. */
+export interface SyncSettingDetail {
+  field: string;
+  from: string;
+  to: string;
+}
+
+/** A setting this repository will not be given, and why. */
+export interface SyncWithheldDetail {
+  field: string;
+  reason: string;
+}
+
+export interface SyncRulesetDetail {
+  name: string;
+  target: string;
+  enforcement: string;
+  /** What it enforces, one phrase per rule. */
+  rules?: string[];
+  bypass: number;
+}
+
+export interface SyncFileDetail {
+  path: string;
+  /** The branch the file work goes on, for a change that arrives as a PR. */
+  proposal?: string;
+  bytes: number;
+}
+
+/**
+ * What an action is about, in the shape its kind has.
+ *
+ * The kind on the action beside it says which field to read, so there is no
+ * second discriminator to keep in step. Absent where the service could not read
+ * its own payload, and then `before`/`after` still say what changes.
+ *
+ * `settings`, `follows` and `withheld` belong to a settings change: it is ONE
+ * action, because GitHub replaces a repository's settings in one request, and
+ * these are the several things that one request does.
+ */
+export interface SyncActionDetail {
+  label?: SyncLabelDetail;
+  ruleset?: SyncRulesetDetail;
+  file?: SyncFileDetail;
+  settings?: SyncSettingDetail[];
+  follows?: string[];
+  withheld?: SyncWithheldDetail[];
+}
+
 /** One change a plan would make. */
 export interface SyncAction {
   repository: string;
   kind: string;
   operation: 'create' | 'update' | 'delete';
   subject: string;
+  /**
+   * What the subject looks like on either side, rendered by the service.
+   *
+   * The fallback rather than the reading: `detail` is the same facts with their
+   * shape intact, and a row prefers it. These stay for an action whose payload
+   * the service could not decode, and for a kind that has no typed detail yet.
+   */
   before?: string;
   after?: string;
+  detail?: SyncActionDetail;
   state: 'pending' | 'applied' | 'failed' | 'skipped';
   error?: string;
   blocker?: string;

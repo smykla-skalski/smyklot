@@ -59,6 +59,8 @@ interface RowCell {
   height: number;
   /** Cap-band centres of the cells that carry words. */
   centres: number[];
+  /** How many lines the subject stacks into. One for every kind but settings. */
+  lines: number;
 }
 
 interface Reading {
@@ -79,18 +81,32 @@ async function read(page: Page): Promise<Reading> {
       }
     }
 
-    const rows: { tag: string; class: string; height: number; centres: number[] }[] = [];
+    const rows: {
+      tag: string;
+      class: string;
+      height: number;
+      centres: number[];
+      lines: number;
+    }[] = [];
     const lineClasses: string[] = [];
     for (const row of document.querySelectorAll('.action-row')) {
       const line = row.querySelector('.action-row-line');
       if (line === null) continue;
       lineClasses.push(line.className.replace(/svelte-\w+/gu, '').trim());
+      /* A settings action is one action and several facts - one line per field -
+         so it is legitimately taller. Every OTHER row is one line, and those are
+         the ones that have to agree. */
+      const stacked = line.querySelectorAll('.setting-line').length;
       const centres: number[] = [];
       for (const cell of line.children) {
         if (cell.classList.contains('action-more')) continue;
         const box = cell.getBoundingClientRect();
         // An unwritten kind cell has no band to place; it is not a fault.
         if (box.height === 0) continue;
+        /* The whole cell, stacked or not. A settings action's verb belongs to
+           the action rather than to any one of its lines, so it centres on the
+           block - which is what `align-items: center` gives it, and measuring
+           its first line instead would report the centring as a fault. */
         centres.push(box.y + box.height / 2);
       }
       rows.push({
@@ -98,6 +114,7 @@ async function read(page: Page): Promise<Reading> {
         class: row.className.replace(/svelte-\w+/gu, '').trim(),
         height: row.getBoundingClientRect().height,
         centres,
+        lines: stacked === 0 ? 1 : stacked,
       });
     }
 
@@ -142,9 +159,20 @@ describe('workspace sync plan rows', () => {
       expect(new Set(reading.lineClasses)).toEqual(new Set(['action-row-line']));
       expect(new Set(reading.rows.map((row) => row.tag))).toEqual(new Set(['div', 'button']));
 
-      const heights = reading.rows.map((row) => row.height);
-      expect(heights.length).toBeGreaterThan(3);
-      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(TOLERANCE);
+      /* One line, one height. A settings row carries a line per field and is
+         taller for a reason, so it is measured against the others of its own
+         depth rather than excused. */
+      const byDepth = new Map<number, number[]>();
+      for (const row of reading.rows) {
+        byDepth.set(row.lines, [...(byDepth.get(row.lines) ?? []), row.height]);
+      }
+      expect(byDepth.get(1)?.length ?? 0).toBeGreaterThan(3);
+      for (const [lines, heights] of byDepth) {
+        const spread = Math.max(...heights) - Math.min(...heights);
+        expect(
+          `${lines}-line rows spread ${spread <= TOLERANCE ? 'within' : spread.toFixed(2)}`,
+        ).toBe(`${lines}-line rows spread within`);
+      }
 
       /* Every cell of a row sits on one line, natively: the cells are trimmed to
          their own cap bands, so a sans kind beside two mono neighbours has no

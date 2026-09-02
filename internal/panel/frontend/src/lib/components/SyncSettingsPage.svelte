@@ -135,6 +135,26 @@
     group.fields.map((field) => field.key),
   );
   export const SETTINGS_FIELD_TOTAL = SETTINGS_FIELD_KEYS.length;
+
+  const SETTING_NAMES: ReadonlyMap<string, string> = new Map(
+    SETTING_GROUPS.flatMap((group) => group.fields.map((field) => [field.key, field.label])),
+  );
+
+  /**
+   * What to call a setting, in the words this panel already calls it.
+   *
+   * A plan names GitHub's keys - the comment at the top of this catalogue says
+   * so - and `allow_squash_merge` is not what the form above calls that switch.
+   * One vocabulary, so the row a plan draws and the switch somebody flips say
+   * the same thing.
+   *
+   * The key itself for a setting this version has no name for, spaced rather
+   * than left in snake case: a key the panel cannot name is still a key the
+   * reader can match against GitHub's own documentation.
+   */
+  export function settingName(key: string): string {
+    return SETTING_NAMES.get(key) ?? key.replaceAll('_', ' ');
+  }
 </script>
 
 <!--
