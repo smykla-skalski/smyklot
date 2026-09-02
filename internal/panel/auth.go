@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,14 @@ const (
 //   - anything outside the panel's own base path, which is not an escape but is
 //     not ours to send a reader to either.
 //
+// THE PATH IS CLEANED BEFORE IT IS COMPARED, and that ordering is the whole of
+// the fourth check. `http.Redirect` runs `path.Clean` on the target itself
+// before it writes the header, so a prefix test against the raw value is a test
+// against something the browser never sees: `/panel/../../evil.example` starts
+// with `/panel/` and arrives as `/evil.example`. Same origin, so not an open
+// redirect - but the panel is not necessarily the only thing mounted on it, and
+// a guarantee that reads as containment has to contain.
+//
 // The fragment is dropped rather than refused: it never reaches the server, so a
 // value carrying one is a browser's, not an attacker's, and the panel restores
 // its own address anyway.
@@ -70,18 +79,20 @@ func (s *Server) safeReturnPath(value string) (string, bool) {
 		parsed.User != nil {
 		return "", false
 	}
-	path := parsed.EscapedPath()
-	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+	cleaned := path.Clean(parsed.EscapedPath())
+	/* `Clean` drops a trailing slash, which the panel's own router treats as no
+	   part of the address anyway, and turns "" into ".". Neither is a path. */
+	if !strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "//") {
 		return "", false
 	}
-	if s.cfg.BasePath != "" && !strings.HasPrefix(path, s.cfg.BasePath+"/") {
+	if s.cfg.BasePath != "" && !strings.HasPrefix(cleaned, s.cfg.BasePath+"/") {
 		return "", false
 	}
 	if parsed.RawQuery != "" {
-		path += "?" + parsed.RawQuery
+		cleaned += "?" + parsed.RawQuery
 	}
 
-	return path, true
+	return cleaned, true
 }
 
 // signedReturnPath binds a return path to this browser, the way an invitation

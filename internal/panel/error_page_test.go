@@ -220,6 +220,13 @@ func TestPanelSignInReturnsToTheAddressAsked(t *testing.T) {
 		{name: "outside the base path", path: "/elsewhere/entirely"},
 		{name: "not a path at all", path: "evil.example"},
 		{name: "longer than any address", path: "/panel/" + strings.Repeat("a", maxReturnPath)},
+		/* Dot segments, which are the case that gets PAST a prefix check: these
+		   start with `/panel/` and `http.Redirect` cleans them to somewhere else
+		   before the header is written. The plain "outside the base path" entry
+		   above never reaches that code, because it is refused a step earlier. */
+		{name: "climbing out with dot segments", path: "/panel/../../evil.example"},
+		{name: "climbing out to a sibling mount", path: "/panel/./../root"},
+		{name: "climbing out mid-path", path: "/panel/workspace/../../elsewhere"},
 	} {
 		t.Run(escape.name, func(t *testing.T) {
 			if got := returnedTo(t, "?return_to="+url.QueryEscape(escape.path)); got != "/panel/" {

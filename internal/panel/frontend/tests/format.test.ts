@@ -65,9 +65,14 @@ describe('formatDateTime', () => {
   });
 
   it('adds seconds and names the reader own zone when asked', () => {
-    const stamp = '2026-07-26T14:01:01Z';
+    /* A second that is NOT the minute. `14:01:01` was the first version of this
+       and it asserted nothing: `minute: '2-digit'` renders `01` for that stamp,
+       so the match landed on the minute and the whole assertion passed with the
+       seconds spread deleted. */
+    const stamp = '2026-07-26T14:01:37Z';
 
-    expect(formatDateTime(stamp, { seconds: true })).toMatch(/01(?!\d)/u);
+    expect(formatDateTime(stamp, { seconds: true })).toMatch(/:37(?!\d)/u);
+    expect(formatDateTime(stamp)).not.toMatch(/:37/u);
     expect(formatDateTime(stamp, { named: true })).toMatch(/GMT|UTC/u);
     expect(formatDateTime(stamp)).not.toMatch(/GMT|UTC/u);
   });

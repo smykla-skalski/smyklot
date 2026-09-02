@@ -3040,21 +3040,34 @@ func TestPanelServesRewrittenAssetsAndSPAFallback(t *testing.T) {
 	}
 }
 
-// A stranger learns nothing about what this panel is made of.
+// A signed-out reader is shown the sign-in card wherever they are, and told what
+// went wrong only once there is somebody to tell.
 //
-// Every page address answered the same way for somebody with no session: a known
-// route shape returned the shell, an unknown one the not-found page, and the two
-// are a byte apart to anyone with curl. The route table was free to enumerate,
-// including the shapes a release had removed.
+// This is a rule about WHEN errors are shown, not a secrecy control: the route
+// table is in the client bundle, which is public because the sign-in page is
+// drawn by the same app, so no arrangement of the server hides it. What is
+// asserted here is what the rule actually promises - one answer to every page
+// address until you are signed in.
 //
-// Names were never the leak and are checked here so they stay that way: a
-// workspace that exists and one that does not have always answered identically,
-// because which workspaces exist is decided behind the API.
-func TestPanelHidesItsRouteTableFromStrangers(t *testing.T) {
+// Names were never the question and are checked so they stay safe: a workspace
+// that exists and one that does not answer identically, because which workspaces
+// exist is decided behind the API.
+func TestSignedOutReaderAlwaysSeesTheSignInPage(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 
+	page := func(t *testing.T, address string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, address, nil)
+		request.Header.Set("Sec-Fetch-Dest", "document")
+		request.Header.Set("Accept", "text/html")
+		response := httptest.NewRecorder()
+		harness.handler.ServeHTTP(response, request)
+
+		return response
+	}
+
 	answers := map[string]string{}
-	for _, path := range []string{
+	for _, address := range []string{
 		// A route that exists, one that does not, and a workspace that does not.
 		"/panel/workspace/smykla-skalski/sync/plan",
 		"/panel/workspace/does-not-exist/sync/plan",
@@ -3062,20 +3075,20 @@ func TestPanelHidesItsRouteTableFromStrangers(t *testing.T) {
 		"/panel/nothing/here/at/all",
 		"/panel/workspace/smykla-skalski/help",
 	} {
-		response := harness.request(t, http.MethodGet, path, nil, nil)
+		response := page(t, address)
 		if response.Code != http.StatusOK {
-			t.Fatalf("%s = %d, want 200 for a signed-out reader", path, response.Code)
+			t.Fatalf("%s = %d, want 200 for a signed-out reader", address, response.Code)
 		}
-		answers[path] = response.Body.String()
+		answers[address] = response.Body.String()
 	}
 	first := ""
-	for path, body := range answers {
+	for address, body := range answers {
 		if first == "" {
 			first = body
 			continue
 		}
 		if body != first {
-			t.Fatalf("%s answers a stranger differently from the others", path)
+			t.Fatalf("%s answers a stranger differently from the others", address)
 		}
 	}
 
@@ -3085,6 +3098,29 @@ func TestPanelHidesItsRouteTableFromStrangers(t *testing.T) {
 		t, http.MethodGet, "/panel/_app/missing.js", nil, nil,
 	); response.Code != http.StatusNotFound {
 		t.Fatalf("missing asset = %d, want 404", response.Code)
+	}
+
+	/* AND NEITHER IS A FETCH. The panel's own requests reach unregistered API
+	   paths - a retired route, a method the mux does not have - and a caller
+	   parsing JSON gets a `SyntaxError` from a page rather than a 404 it can
+	   read. This is the case the rule cost when it was written without the
+	   check: signed out it answered 200 text/html, signed in 404 JSON. */
+	for _, address := range []string{
+		"/panel/api/v1/removed-endpoint",
+		"/panel/api/v1/sign-out", // registered POST-only, so a GET falls through
+	} {
+		request := httptest.NewRequest(http.MethodGet, address, nil)
+		request.Header.Set("Accept", "application/json")
+		request.Header.Set("Sec-Fetch-Dest", "empty")
+		response := httptest.NewRecorder()
+		harness.handler.ServeHTTP(response, request)
+
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("signed-out %s = %d, want 404", address, response.Code)
+		}
+		if got := response.Header().Get("Content-Type"); !strings.HasPrefix(got, "application/json") {
+			t.Fatalf("signed-out %s content type = %q, want json", address, got)
+		}
 	}
 }
 
