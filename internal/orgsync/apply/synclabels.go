@@ -39,8 +39,10 @@ func (s *Engine) applyLabelAction(
 	action orgsync.Action,
 ) error {
 	if action.Operation == orgsync.OperationDelete {
-		// A deletion carries no payload: the subject is the whole of the
-		// instruction.
+		// The subject is the whole of the instruction, and it stays that way
+		// now that a deletion DOES carry a payload: the label it holds is there
+		// for a reader that draws what is going, and reading it here would put
+		// a second source of truth under what gets removed.
 		return client.DeleteRepositoryLabel(ctx, owner, name, action.Subject)
 	}
 
