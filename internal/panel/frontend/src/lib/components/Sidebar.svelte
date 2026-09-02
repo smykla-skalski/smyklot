@@ -1071,9 +1071,25 @@ it has to answer to the same fact.
   }
 
   /* A count on the selected row rides that row's own inverse pair. */
+  /* AN EDGE, NOT A FILL. Veiling the thumb with 16% of the ink about to be
+     written on it moved the ground toward the text by definition: white on the
+     petrol thumb reads 5.47:1, and white on white-at-16%-over-petrol reads
+     4.00, which is under the floor. A border delineates the count without
+     putting anything between the digits and the thumb they sit on. */
   .tree-row.is-active .tab-count {
-    background: color-mix(in srgb, var(--sidebar-item-active-text) 16%, transparent);
+    background: none;
+    border: 1px solid color-mix(in srgb, var(--sidebar-item-active-text) 40%, transparent);
     color: var(--sidebar-item-active-text);
+  }
+
+  /* A count that demands attention keeps the thumb's own inverse pair, as the
+     drawing has it - the signal tint is mixed for the sidebar's ground and has
+     no business being read against the thumb. */
+  .tree-row.is-active .tab-count.is-signal {
+    background: var(--sidebar-item-active-text);
+    border-color: var(--sidebar-item-active-text);
+    color: var(--sidebar-active-bg);
+    font-weight: 700;
   }
 
   /* ---------- Collapsed pages column ----------

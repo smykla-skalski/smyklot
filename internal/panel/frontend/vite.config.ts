@@ -92,8 +92,6 @@ export default defineConfig({
       '@codemirror/state',
       '@codemirror/view',
       '@lezer/highlight',
-      '@tanstack/svelte-table',
-      '@tanstack/svelte-virtual',
       'jsonc-parser',
     ],
   },

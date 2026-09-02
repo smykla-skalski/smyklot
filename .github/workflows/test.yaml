@@ -319,8 +319,14 @@ jobs:
           # Every cell of every row given a run longer than the service can
           # produce. Alone, at 71s: it found the same fault in five views at
           # once, which is what a sweep is for and what it costs.
+          # `plan-rows` rides with it: a sweep over every table asks whether a
+          # heading and its cells agree, and the plan's cards have no heading -
+          # what they have is three cards that must agree with EACH OTHER, which
+          # is the same rule one level up and belongs in the same job.
           - area: columns
-            files: tests/browser/column-widths.test.ts
+            files: >-
+              tests/browser/column-widths.test.ts
+              tests/browser/plan-rows.test.ts
           # The two sweeps that read a rule off the sheet and ask every route
           # whether it obeys - the universal laws, and WCAG 2.2. Together at
           # 32s, so they sit under the tail above rather than setting it.

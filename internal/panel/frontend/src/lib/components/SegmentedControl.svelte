@@ -810,7 +810,11 @@ positioning will replace once it is portable.
     background: color-mix(in srgb, var(--seg-text) 8%, transparent);
     border: 1px solid color-mix(in srgb, var(--seg-text) 12%, transparent);
     border-radius: 0.25rem;
-    color: var(--text-muted);
+    /* SECONDARY, not muted. The veil under it is the control's own ink, so the
+       badge is always a step darker than the track the muted ramp was picked
+       against: 9px at 4.26:1 on that ground, under the 4.5 floor for text this
+       size at any weight. */
+    color: var(--text-secondary);
     display: inline-grid;
     font: 700 0.5625rem / var(--leading-flat) var(--mono);
     font-variant-numeric: tabular-nums;

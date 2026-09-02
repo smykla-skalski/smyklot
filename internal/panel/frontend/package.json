@@ -59,7 +59,6 @@
     "@codemirror/view": "^6.43.9",
     "@lezer/highlight": "^1.2.3",
     "@tanstack/svelte-query": "^6.1.38",
-    "@tanstack/svelte-table": "9.2.4",
     "bits-ui": "^2.18.1",
     "jsonc-parser": "^3.3.1",
     "runed": "^0.37.1"
