@@ -1203,7 +1203,7 @@
         </div>
       {/if}
 
-      <div class="workspace" class:table-scroll-view={session.tableScrollView}>
+      <div class="workspace">
         <div id="panel-content" class="workspace-content" tabindex="-1">
           {#if session.failure !== null}
             <Plate label="Problem" tone="alarm">

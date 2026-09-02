@@ -2,7 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
 
-  import TableToolsMenu from '#lib/components/TableToolsMenu.svelte';
+  import ListToolsMenu from '#lib/components/ListToolsMenu.svelte';
   import type { FilterSection } from '#lib/filter-menu.js';
 
   const FILE_STATES: readonly FilterSection[] = [
@@ -17,8 +17,8 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Primitives/TableToolsMenu',
-    component: TableToolsMenu,
+    title: 'Primitives/ListToolsMenu',
+    component: ListToolsMenu,
     args: {
       sorts: [
         { label: 'Repository', direction: 'ascending' as const, onToggle: fn() },
@@ -49,14 +49,14 @@
 -->
 <Story name="Sorts and filters">
   {#snippet template(args)}
-    <div class="frame"><TableToolsMenu {...args} /></div>
+    <div class="frame"><ListToolsMenu {...args} /></div>
   {/snippet}
 </Story>
 
 <Story name="Something selected">
   {#snippet template(args)}
     <div class="frame">
-      <TableToolsMenu
+      <ListToolsMenu
         {...args}
         filters={[{ ...args.filters[0], selected: ['missing', 'invalid'] }]}
       />

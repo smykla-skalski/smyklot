@@ -210,56 +210,16 @@ body {
   flex-direction: column;
 }
 
-@media (min-width: 48.0625rem) {
-  .workspace.table-scroll-view {
-    height: 100dvh;
-    min-height: 0;
-    overflow: hidden;
-  }
-
-  /* As tall as it needs to be, and no taller.
-     ----------------------------------------
-     A table used to stretch to the bottom of the window whatever it held, so four
-     rows sat above a field of empty ground with the footer parked under it. Sized
-     by its content it stops where the content stops, and the footer takes the
-     space that is left rather than the table taking it.
-
-     `flex: 0 1 auto` is what makes both halves true: no growing, so a short table
-     stays short, and shrinking with `min-height: 0`, so a long one gives way at
-     the point it would reach the footer and hands the overflow to the scroller
-     inside it. The footer never moves either way. */
-  /* The leftover room is an auto margin under the content, not one over the
-     footer. Putting it on the footer replaces the margin the footer already
-     carries, and an auto margin resolves to zero once the space is used up - so a
-     full table ended flush against the rule, losing the gap a short one still
-     had. Under the content it adds to that margin instead of standing in for it,
-     and the gap above the rule is the same whether the table fills the window or
-     holds one row. */
-  /* AND IT SCROLLS RATHER THAN CLIPS, for the case the paragraph above assumes away.
-     All of this works because the table inside takes the overflow - so this box never
-     has any, and `auto` and `hidden` are the same box. Where there is no inner scroller,
-     or where the rows simply grow, they are not the same at all: `hidden` loses whatever
-     did not fit and offers no way to reach it. Applying the text-spacing a reader is
-     entitled to under 1.4.12 put 617px of the Users table past the bottom of this box
-     with nothing on the page able to scroll to it. */
-  .workspace.table-scroll-view .workspace-content {
-    flex: 0 1 auto;
-    margin-bottom: auto;
-    min-height: 0;
-    overflow: auto;
-  }
-}
-
 /* The wrapper every Root page is, and the one link the height chain was missing.
    ----------------------------------------------------------------------------
-   A table scrolls inside itself, which only works if every box between the window
-   and that scroller agrees to be no taller than the window. `.workspace-content`
-   says so, and each panel inside says so, but this element sat between them saying
-   nothing: an unstyled block is a flex item with `min-height: auto`, which means
-   "no smaller than my content", so it grew to the full height of the rows and
-   `.workspace-content` clipped whatever did not fit. On the audit history that was
-   the bottom third of the table, unreachable - the page could not scroll, because
-   nothing on it was overflowing anything that would offer a scrollbar.
+   Every box between the window and a scroller has to agree to be no taller than
+   the window. `.workspace-content` says so, and each panel inside says so, but
+   this element sat between them saying nothing: an unstyled block is a flex item
+   with `min-height: auto`, which means "no smaller than my content", so it grew
+   to the full height of the rows and `.workspace-content` clipped whatever did
+   not fit. On the audit history that was the bottom third of the list,
+   unreachable - the page could not scroll, because nothing on it was overflowing
+   anything that would offer a scrollbar.
 
    It is written here rather than in each page because it is one rule and there are
    eight pages wearing the class, which is how it came to be missing from all of
@@ -390,7 +350,7 @@ body {
    `.card` with no scroller of its own. There the `hidden` lost whatever outgrew
    the region - 538px of audit history under the text spacing a reader may set
    under 1.4.12 - and offered nothing to reach it with. */
-.table-region {
+.list-region {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -1945,7 +1905,7 @@ code {
 }
 
 .fold summary:hover {
-  background: var(--table-row-hover);
+  background: var(--row-hover);
 }
 
 .fold summary svg {
@@ -2185,11 +2145,11 @@ time[data-exact]:focus-visible {
    log row holding at most a child control stays still: lift and press on it promised
    an opening that never came. */
 :is(a, button).object-row:hover {
-  background: var(--table-row-hover);
+  background: var(--row-hover);
 }
 
 :is(a, button).object-row:active {
-  background: var(--table-row-pressed);
+  background: var(--row-pressed);
   box-shadow: var(--pressed-inset);
   translate: 0 1px;
 }
@@ -2198,11 +2158,11 @@ time[data-exact]:focus-visible {
    hit is a layer under the content rather than a wrapper around it, so the switch is
    pressable and everything else is the link. */
 .object-row:has(.row-hit:hover) {
-  background: var(--table-row-hover);
+  background: var(--row-hover);
 }
 
 .object-row:has(.row-hit:active) {
-  background: var(--table-row-pressed);
+  background: var(--row-pressed);
   box-shadow: var(--pressed-inset);
   translate: 0 1px;
 }
@@ -2833,7 +2793,7 @@ button.object-row {
 }
 
 .check-item:hover {
-  background: var(--table-row-hover);
+  background: var(--row-hover);
 }
 
 .check-item:has(input:disabled) {

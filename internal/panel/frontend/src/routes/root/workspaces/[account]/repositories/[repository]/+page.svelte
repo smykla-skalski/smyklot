@@ -9,11 +9,7 @@
 <!-- One repository's page inside the console, at the same shape of address it has
      in a workspace. The console draws its own chrome around it, so this is the
      workspace page it always was; the repository is read from the address. -->
-<section
-  class="root-workspace"
-  class:root-table-view={session.tableScrollView}
-  aria-labelledby="root-page-heading"
->
+<section class="root-workspace" aria-labelledby="root-page-heading">
   <RootWorkspaces
     route={session.currentRootRoute}
     api={session.api}

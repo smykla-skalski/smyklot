@@ -23,7 +23,7 @@
   } from '../repository-sync-override-settings';
   import { getPanelSession } from '../session.svelte';
   import { getSettingsDraftRegistry, type SettingsScope } from '../settings-drafts.svelte';
-  import { rowOpensOn } from '../table-row';
+  import { rowOpensOn } from '../row-open';
   import {
     decodeRepositorySettingFilter,
     encodeRepositorySettingFilter,
@@ -60,8 +60,8 @@
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
-  import TableToolsMenu from './TableToolsMenu.svelte';
-  import TableEmptyState from './TableEmptyState.svelte';
+  import ListToolsMenu from './ListToolsMenu.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   type RepositoryEnablement = 'inherit' | 'enabled' | 'disabled';
   type RepositoryFailure = { message: string; source: RepositoryFailureSource };
@@ -824,7 +824,7 @@ a workspace has is not a number worth blocking the first screenful on.
            the switch a reader came for; these are one press away rather than three
            column headings wide. -->
       <span class="push-end">
-        <TableToolsMenu
+        <ListToolsMenu
           sorts={[
             { label: 'Repository', direction: sortDirection('name'), onToggle: toggleNameSort },
             { label: 'File state', direction: sortDirection('file'), onToggle: toggleFileSort },
@@ -854,7 +854,7 @@ a workspace has is not a number worth blocking the first screenful on.
     </div>
 
     <div
-      class={['repository-results table-region', loading && 'loading']}
+      class={['repository-results list-region', loading && 'loading']}
       bind:this={repositoryResults}
       aria-busy={loading}
     >
@@ -884,7 +884,7 @@ a workspace has is not a number worth blocking the first screenful on.
         />
       {:else if repositories.length === 0}
         <Card>
-          <TableEmptyState
+          <EmptyState
             title={hasFilters ? 'No repositories match' : 'No repositories installed'}
             description={hasFilters
               ? 'Try another search or clear the active filters'

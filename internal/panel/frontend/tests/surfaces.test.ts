@@ -52,7 +52,7 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
     };
 
     it('moves a hovered row by one state change', () => {
-      const hover = grounded('table-row-hover');
+      const hover = grounded('row-hover');
       const moved = deltaE(surface, hover);
       const [floor, ceiling] = rowStep(surface);
       expect(moved).toBeGreaterThanOrEqual(floor);
@@ -60,12 +60,12 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
     });
 
     it('lifts on a dark ground and drops on a light one', () => {
-      const hover = grounded('table-row-hover');
+      const hover = grounded('row-hover');
       const lighter = oklch(hover).L > oklch(surface).L;
       expect(lighter).toBe(oklch(surface).L <= 0.5);
     });
 
-    it.each(['table-footer-bg', 'input-bg', 'control-bg'])(
+    it.each(['pagination-bg', 'input-bg', 'control-bg'])(
       'keeps %s the same material as the surface it sits on',
       (token) => {
         // Visible as a change of surface, quiet enough not to read as a coloured slab, and inside
@@ -110,7 +110,7 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
     });
 
     it.each([
-      ['text-primary', 'table-row-hover'],
+      ['text-primary', 'row-hover'],
       ['text-primary', 'input-bg'],
       ['text-muted', 'input-bg'],
     ])('keeps %s readable on %s', (ink, ground) => {

@@ -36,8 +36,8 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
-  import TableEmptyState from './TableEmptyState.svelte';
-  import TableToolsMenu, { type ToolsFilter, type ToolsSort } from './TableToolsMenu.svelte';
+  import EmptyState from './EmptyState.svelte';
+  import ListToolsMenu, { type ToolsFilter, type ToolsSort } from './ListToolsMenu.svelte';
   import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
 
   type HistoryType = 'audit' | 'failures';
@@ -886,13 +886,13 @@ where the record is.
     {/if}
 
     <span class="push-end">
-      <TableToolsMenu sorts={toolSorts} filters={toolFilters} display={toolDisplay} />
+      <ListToolsMenu sorts={toolSorts} filters={toolFilters} display={toolDisplay} />
     </span>
   </div>
 
   <div
     class:loading
-    class="history-results table-region"
+    class="history-results list-region"
     bind:this={historyResults}
     aria-busy={loading}
   >
@@ -925,7 +925,7 @@ where the record is.
     {:else if historyType === 'audit'}
       {#if auditRows.length === 0}
         <Card>
-          <TableEmptyState
+          <EmptyState
             title="Nothing yet"
             description={hasFilters
               ? 'Try another search or clear the active filters'
@@ -976,7 +976,7 @@ where the record is.
     {:else}
       {#if failureRows.length === 0}
         <Card>
-          <TableEmptyState
+          <EmptyState
             title={hasFilters ? 'Nothing matches' : 'No failures'}
             description={hasFilters
               ? 'Try another search, or show them all'

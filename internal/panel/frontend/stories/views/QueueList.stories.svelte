@@ -2,7 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
 
-  import QueueTable from '#lib/components/QueueTable.svelte';
+  import QueueList from '#lib/components/QueueList.svelte';
   import type { QueueItem } from '#lib/types.js';
 
   const now = '2026-08-24T12:00:00Z';
@@ -49,8 +49,8 @@
   ];
 
   const { Story } = defineMeta({
-    title: 'Views/QueueTable',
-    component: QueueTable,
+    title: 'Views/QueueList',
+    component: QueueList,
     args: { cards, clock: () => Date.parse(now), onOpen: fn(), onAction: fn() },
   });
 </script>

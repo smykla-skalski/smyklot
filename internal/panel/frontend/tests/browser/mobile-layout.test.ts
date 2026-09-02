@@ -250,7 +250,7 @@ async function measure(path: string, width: number): Promise<Measured> {
 
          So the rule is stated as a relation instead of a measurement: where a
          column heading's filter is on the page but hidden, something else on
-         the page has to filter. `TableToolsMenu` is what answers it. */
+         the page has to filter. `ListToolsMenu` is what answers it. */
       const hiddenFilters = [...document.querySelectorAll('.filter-trigger')].filter(
         (control) => !control.checkVisibility(),
       ).length;

@@ -596,7 +596,7 @@ page directly still leads somewhere.
   /* The time sits a long way from the event it belongs to, so the entry lights
      up as one band under the pointer. It is a reading aid, not a control. */
   .timeline li:hover {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   .timeline li:hover > :global(time) {

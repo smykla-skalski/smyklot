@@ -31,7 +31,7 @@
   import RelativeTime from './RelativeTime.svelte';
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
-  import TableToolsMenu, { type ToolsSort } from './TableToolsMenu.svelte';
+  import ListToolsMenu, { type ToolsSort } from './ListToolsMenu.svelte';
 
   type SortColumn = 'name' | 'created' | 'expiry';
   /** Name the dialogs in the address, and are the `id` each dialog carries. */
@@ -408,9 +408,9 @@ The plan this branch followed called these two "one feature written twice" and
 counted fourteen concerns matching one for one - ~450 lines of markup and ~250 of
 CSS. That was true when it was written. It is not true now, and the reason is that
 the merge already happened, from underneath: **twelve of the fourteen are the same
-component in both files.** `IdentityRow`, `Chip`, `TableEmptyState`,
+component in both files.** `IdentityRow`, `Chip`, `EmptyState`,
 `InfiniteLoadSentinel`, `ConfirmDialog`, `Callout`, `Select`, `Button`,
-`CopyableLinkField`, `Skeleton`, `TableToolsMenu` and `FormError` are imported by
+`CopyableLinkField`, `Skeleton`, `ListToolsMenu` and `FormError` are imported by
 each. Extracting the primitives did the work a wrapper component was going to.
 
 What is left is not duplication:
@@ -446,7 +446,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
         onInput={(value) => (search = value)}
       />
       <span class="push-end">
-        <TableToolsMenu
+        <ListToolsMenu
           label="Filter invitations"
           sorts={toolSorts}
           filters={[
@@ -464,8 +464,8 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     </div>
   {/if}
 
-  <div class:loading class="invitation-results table-region" aria-busy={loading}>
-    <!-- A refresh that failed over a loaded table has not made the table wrong. -->
+  <div class:loading class="invitation-results list-region" aria-busy={loading}>
+    <!-- A refresh that failed over a loaded list has not made the list wrong. -->
     {#if problem !== null && page !== null}
       <ResultProblem
         title="The invitations could not be read"

@@ -559,7 +559,7 @@ the caller applies, closes and whispers.
      the coloured fill (half on hover, full held), the dip and the well's
      inset land the press. */
   .color-cell::before {
-    background: var(--table-row-pressed);
+    background: var(--row-pressed);
     border-radius: inherit;
     content: '';
     inset: 0;

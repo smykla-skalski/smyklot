@@ -2,11 +2,11 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
 
-  import TableEmptyState from '#lib/components/TableEmptyState.svelte';
+  import EmptyState from '#lib/components/EmptyState.svelte';
 
   const { Story } = defineMeta({
-    title: 'Primitives/TableEmptyState',
-    component: TableEmptyState,
+    title: 'Primitives/EmptyState',
+    component: EmptyState,
     args: {
       title: 'No repositories match this search',
       description: 'Clear the search or widen the filters to see the rest',

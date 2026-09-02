@@ -616,11 +616,11 @@ already hold - the index ships once, matching costs no requests.
   }
 
   .object-row:hover {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   .object-row:active {
-    background: var(--table-row-pressed);
+    background: var(--row-pressed);
     box-shadow: var(--pressed-inset);
     translate: 0 1px;
   }

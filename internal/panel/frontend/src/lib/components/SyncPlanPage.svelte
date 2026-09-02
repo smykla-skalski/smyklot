@@ -671,7 +671,7 @@ the button.
   }
 
   .repo-group-head:hover {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   .summary-icon {
@@ -734,7 +734,7 @@ the button.
   }
 
   .action-row:hover {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   /* An expandable row's grid lives on its inner line - the outer box holds

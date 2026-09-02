@@ -2,7 +2,7 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import QueueTable, { type QueueCard } from '../src/lib/components/QueueTable.svelte';
+import QueueList, { type QueueCard } from '../src/lib/components/QueueList.svelte';
 import type { QueueItem } from '../src/lib/types.js';
 
 const NOW = Date.parse('2026-08-24T12:00:00Z');
@@ -60,7 +60,7 @@ describe('a queue card [Component]', () => {
   });
 
   it('says nothing about how much it holds when it holds all of it', () => {
-    render(QueueTable, {
+    render(QueueList, {
       cards: [card()],
       clock: () => NOW,
       onOpen: vi.fn(),
@@ -73,7 +73,7 @@ describe('a queue card [Component]', () => {
 
   it('counts its own rows and brings more of itself down', async () => {
     const onMore = vi.fn();
-    render(QueueTable, {
+    render(QueueList, {
       cards: [
         card({
           items: [work('one'), work('two')],

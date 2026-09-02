@@ -67,7 +67,7 @@ to hear where they landed and the rows themselves will not say it.
     --local-control-height: var(--control-height-compact);
 
     align-items: center;
-    background: var(--table-footer-bg);
+    background: var(--pagination-bg);
     border-top: 1px solid var(--border-subtle);
     display: grid;
     gap: var(--space-2);

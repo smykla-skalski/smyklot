@@ -29,7 +29,7 @@
 <!--
 @component
 A short consequence, set off from the words around it - beside the work rather than
-instead of it. That is the line between this and `TableEmptyState`: a callout says
+instead of it. That is the line between this and `EmptyState`: a callout says
 something about what the reader is looking at, and an empty state stands where the
 work would have been.
 

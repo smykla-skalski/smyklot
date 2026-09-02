@@ -493,7 +493,7 @@ plan is applied, which is why these are switches and not a form.
   }
 
   .tile::before {
-    background: var(--table-row-pressed);
+    background: var(--row-pressed);
     border-radius: inherit;
     content: '';
     inset: 0;
@@ -599,7 +599,7 @@ plan is applied, which is why these are switches and not a form.
   }
 
   .legend-row::before {
-    background: var(--table-row-pressed);
+    background: var(--row-pressed);
     border-radius: inherit;
     content: '';
     inset: 0;
@@ -610,11 +610,11 @@ plan is applied, which is why these are switches and not a form.
   }
 
   .legend-row:hover {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   .legend-row:active {
-    background: var(--table-row-pressed);
+    background: var(--row-pressed);
     box-shadow: var(--pressed-inset);
     translate: 0 1px;
   }

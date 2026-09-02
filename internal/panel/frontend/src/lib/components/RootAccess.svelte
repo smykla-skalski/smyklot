@@ -41,7 +41,7 @@
   import RootInvitations from './RootInvitations.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
-  import TableToolsMenu, { type ToolsSort } from './TableToolsMenu.svelte';
+  import ListToolsMenu, { type ToolsSort } from './ListToolsMenu.svelte';
 
   type AccessSection = 'users' | 'invitations';
   type SortColumn = 'name' | 'role' | 'last_login';
@@ -543,7 +543,7 @@ refuse.
       />
       <span class="push-end">
         <span class="stable-feedback" aria-live="polite">{feedback}</span>
-        <TableToolsMenu
+        <ListToolsMenu
           label="Filter users"
           sorts={toolSorts}
           filters={[

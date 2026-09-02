@@ -1369,7 +1369,7 @@ where it arises.
   }
 
   .object-row:hover:not(:disabled) {
-    background: var(--table-row-hover);
+    background: var(--row-hover);
   }
 
   .row-chev {

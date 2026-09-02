@@ -13,6 +13,32 @@ function token(css: string, name: string): number {
 }
 
 describe('the responsive shell [Unit]', () => {
+  /* NOTHING IS GLUED. A page scrolls as a page, on every route.
+     ------------------------------------------------------------------------
+     Four list views used to pin the pane to the viewport and scroll their rows
+     inside it, so a reader crossing from one of those to any other page met a
+     head that stayed put and then a head that did not.
+
+     This used to be guarded by asking a session getter, which by then answered
+     `false` unconditionally - a rule proved by reading its own constant. The
+     getter is gone and so is the class it drove, so the rule is asked of the
+     shell stylesheet: nothing there is FIXED to the viewport. The two things that
+     do glue - the plan's apply bar and the settings index - are `position: sticky`
+     inside a page that scrolls, and neither states a height.
+
+     A bare `height`, not `min-height`: the shell and the workspace are both at
+     least as tall as the viewport, which is what puts the footer at the bottom of
+     a short page. That is a floor and it is what a page does. What glued was the
+     pair - an exact `100dvh` with `overflow: hidden`, which caps the page at the
+     window and moves the scrolling inside it. A dialog may still be viewport-tall;
+     it is not the page. */
+  it('fixes no part of the shell to the viewport height', () => {
+    const shell = source('app.css');
+    const glued = [...shell.matchAll(/^\s*(?:block-size|height):\s*100dvh/gmu)];
+
+    expect(glued.map((one) => one[0].trim())).toEqual([]);
+  });
+
   it('keeps the rail below dialogs and above the mobile drawer', () => {
     const css = stylesheets;
     const rail = source('lib/components/Rail.svelte');

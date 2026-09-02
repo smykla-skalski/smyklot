@@ -24,7 +24,7 @@
 
 <!--
 @component
-A request that failed, and the retry. Distinct from `TableEmptyState`, which is a
+A request that failed, and the retry. Distinct from `EmptyState`, which is a
 collection that succeeded and holds nothing: an empty list is not an error and drawing
 it as one teaches a reader to distrust the page.
 

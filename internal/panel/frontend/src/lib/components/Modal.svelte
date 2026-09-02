@@ -54,7 +54,7 @@ scrim; what is written here is the shape and the three widths.
 
 A dialog is for a decision. Something the reader can carry on past belongs in a
 `Callout` beside the work, and something a page has to say about having nothing to show
-belongs in `TableEmptyState`.
+belongs in `EmptyState`.
 -->
 
 <Dialog.Root bind:open={openState} onOpenChange={handleOpenChange}>

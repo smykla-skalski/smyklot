@@ -26,11 +26,11 @@
   import Plate from './Plate.svelte';
   import QueueActionDialog from './QueueActionDialog.svelte';
   import QueueDetailDialog from './QueueDetailDialog.svelte';
-  import QueueTable from './QueueTable.svelte';
+  import QueueList from './QueueList.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
-  import TableToolsMenu, { type ToolsFilter } from './TableToolsMenu.svelte';
+  import ListToolsMenu, { type ToolsFilter } from './ListToolsMenu.svelte';
 
   const {
     api,
@@ -814,7 +814,7 @@ without the buttons, rather than buttons that refuse.
       />
     {/if}
     <span class="push-end">
-      <TableToolsMenu label="Filter queue" sorts={[]} filters={queueFilters} />
+      <ListToolsMenu label="Filter queue" sorts={[]} filters={queueFilters} />
     </span>
   </div>
 
@@ -839,7 +839,7 @@ without the buttons, rather than buttons that refuse.
         <Button onclick={() => void load()}>Try again</Button>
       </Plate>
     {/if}
-    <QueueTable
+    <QueueList
       {cards}
       workspace={rowWorkspace}
       clock={() => now}

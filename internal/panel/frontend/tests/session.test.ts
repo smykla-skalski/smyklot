@@ -175,53 +175,6 @@ describe('PanelSession [Unit]', () => {
     expect(session.returnHref()).toBe(`${basePath}/workspace/acme/repositories/api-gateway`);
   });
 
-  /**
-   * EVERY page scrolls with the document, not just the ones that used to.
-   *
-   * Four list views - repositories, users, invitations, history - were pinned to
-   * the viewport with their rows scrolling inside, so a reader crossing from one
-   * of those to any other page met a head that stayed put and then a head that
-   * did not. It answers false everywhere now, which is the whole rule: nothing
-   * is glued but the two things that glue themselves, the plan's apply bar and
-   * the settings index.
-   */
-  it('scrolls every page with the document, list views included', () => {
-    const session = createSession();
-    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
-    session.selectedId = 'target-1';
-
-    openRepository(session);
-    expect(session.tableScrollView).toBe(false);
-
-    routePage.url = at('/workspace/acme/repositories');
-    routePage.params = { account: 'acme', view: 'repositories' };
-    routePage.route = { id: '/workspace/[account]/[view=panelView]' };
-    session.syncRouteContext();
-    expect(session.tableScrollView, 'a repository list is a page like any other').toBe(false);
-
-    routePage.url = at('/workspace/acme/history/audit');
-    routePage.params = { account: 'acme', section: 'audit' };
-    routePage.route = { id: '/workspace/[account]/history/[[section=historySection]]' };
-    session.syncRouteContext();
-    expect(session.tableScrollView, 'and so is a history table').toBe(false);
-  });
-
-  it('scrolls the console with the document too', () => {
-    const session = createSession();
-    session.viewer = { system_role: 'root' } as PanelViewer;
-    routePage.url = at('/root/workspaces/acme/repositories/api-gateway');
-    routePage.params = { account: 'acme', repository: 'api-gateway' };
-    routePage.route = { id: '/root/workspaces/[account]/repositories/[repository]' };
-
-    expect(session.tableScrollView).toBe(false);
-
-    routePage.url = at('/root/access/users');
-    routePage.params = { section: 'users', rest: '' };
-    routePage.route = { id: '/root/access/[section=accessSection]/[...rest=dialogPath]' };
-    session.syncRouteContext();
-    expect(session.tableScrollView).toBe(false);
-  });
-
   it('still knows the page it left when the console is reloaded', () => {
     openRepository(createSession());
 

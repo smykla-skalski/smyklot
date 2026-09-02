@@ -17,7 +17,7 @@
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
   import Skeleton from './Skeleton.svelte';
-  import TableEmptyState from './TableEmptyState.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   const {
     route,
@@ -199,7 +199,7 @@ visits to this route never open one.
       />
     {/key}
   {:catch error}
-    <TableEmptyState
+    <EmptyState
       title="Workspace view could not be loaded"
       description={error instanceof Error ? error.message : String(error)}
       actionLabel="Reload panel"
@@ -207,7 +207,7 @@ visits to this route never open one.
     />
   {/await}
 {:else if route.rootView === 'workspace' && !loading}
-  <TableEmptyState
+  <EmptyState
     title="Workspace not found"
     description="This workspace is no longer present in the Root catalog"
     actionLabel="Sync now"

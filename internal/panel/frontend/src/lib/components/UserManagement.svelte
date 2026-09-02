@@ -52,8 +52,8 @@
   import ResultProblem from './ResultProblem.svelte';
   import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
-  import TableEmptyState from './TableEmptyState.svelte';
-  import TableToolsMenu from './TableToolsMenu.svelte';
+  import EmptyState from './EmptyState.svelte';
+  import ListToolsMenu from './ListToolsMenu.svelte';
 
   type ManagementSection = 'users' | 'invitations';
   type SortDirection = 'ascending' | 'descending';
@@ -1258,7 +1258,7 @@ offering it.
         onSelect={selectUserView}
       />
       <span class="push-end">
-        <TableToolsMenu
+        <ListToolsMenu
           sorts={[
             {
               label: 'Name',
@@ -1296,7 +1296,7 @@ offering it.
         onSelect={selectInvitationView}
       />
       <span class="push-end">
-        <TableToolsMenu
+        <ListToolsMenu
           sorts={[
             {
               label: 'Invitee',
@@ -1366,7 +1366,7 @@ offering it.
           {#if users.length === 0}
             {@const narrowed = userQuery !== '' || userView !== 'all'}
             <Card>
-              <TableEmptyState
+              <EmptyState
                 title={narrowed ? 'Nobody matches' : 'Just you'}
                 description={narrowed
                   ? 'Try another search, or show everyone'
@@ -1479,7 +1479,7 @@ offering it.
           {#if invitations.length === 0}
             {@const narrowed = invitationQuery !== '' || invitationView !== 'all'}
             <Card>
-              <TableEmptyState
+              <EmptyState
                 title={narrowed ? 'No invitations match' : 'No invitations are out'}
                 description={narrowed
                   ? 'Try another search, or show them all'
