@@ -32,15 +32,21 @@ const anchors = [...page.matchAll(/<(?:a|Button|Link)\b([^>]*)>/gsu)].map(
 
 describe('the invitation page', () => {
   it('renders outside the authenticated panel shell', () => {
-    expect(rootLayout).toMatch(/\{:else if session\.isInvitation\}\s*\{@render children\(\)\}/u);
-    expect(rootLayout.indexOf('{:else if session.isInvitation}')).toBeLessThan(
+    /* `isPublicPage`, which is the invitation and the two legal pages: all three are
+       read by somebody with no session, and behind the gate they would answer with
+       the very sign-in page the legal ones are linked from. Written as one concept
+       because the shell asks the question in eight places, and asking it as
+       "is this an invitation" is what let a legal page be navigated away from
+       itself by target resolution. */
+    expect(rootLayout).toMatch(/\{:else if session\.isPublicPage\}\s*\{@render children\(\)\}/u);
+    expect(rootLayout.indexOf('{:else if session.isPublicPage}')).toBeLessThan(
       rootLayout.indexOf('{:else if session.signedOut}'),
     );
     // The guard that keeps target resolution off this page. It no longer names the
     // inbox: every personal address is covered further down, and what has to hold here
-    // is that an invitation never resolves a workspace out of the path.
+    // is that a page outside the panel never resolves a workspace out of the path.
     expect(rootLayout).toMatch(
-      /if \(session\.isRootMode \|\| session\.isInvitation\) return;\s*const account = page\.params\.account/u,
+      /if \(session\.isRootMode \|\| session\.isPublicPage\) return;\s*const account = page\.params\.account/u,
     );
   });
 

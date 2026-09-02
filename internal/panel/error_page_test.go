@@ -3,6 +3,7 @@ package panel
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -11,8 +12,14 @@ import (
 // A reader who types an address or follows a stale link gets the panel's own
 // page. Everything else - which is to say every fetch the running panel makes -
 // keeps the JSON body it already parses.
+//
+// Signed in, because a not-found page is now something only a reader with a
+// session is shown: signed out, every page address answers with the sign-in
+// shell so that the route table cannot be read off the difference. See
+// TestPanelHidesItsRouteTableFromStrangers.
 func TestPanelErrorDocumentServedToBrowsersOnly(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
 
 	for _, testCase := range []struct {
 		name    string
@@ -63,6 +70,7 @@ func TestPanelErrorDocumentServedToBrowsersOnly(t *testing.T) {
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodGet, "/panel/nothing/here", nil)
+			request.AddCookie(session)
 			for name, value := range testCase.headers {
 				request.Header.Set(name, value)
 			}
@@ -112,6 +120,7 @@ func TestPanelErrorDocumentCarriesTheFailure(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 
 	request := httptest.NewRequest(http.MethodGet, "/panel/nothing/here", nil)
+	request.AddCookie(harness.signIn(t))
 	request.Header.Set("Sec-Fetch-Dest", "document")
 	response := httptest.NewRecorder()
 	harness.handler.ServeHTTP(response, request)
@@ -135,41 +144,156 @@ func TestPanelErrorDocumentCarriesTheFailure(t *testing.T) {
 	}
 }
 
-// Every page the sign-in round trip can land a reader on. These are the ones
-// that are not reachable any other way: a person clicks Sign in, something goes
-// wrong at GitHub, and this is the whole of what they see.
-func TestPanelSignInFailuresRenderPages(t *testing.T) {
+// Signing in takes a reader back to the address they asked for.
+//
+// A pasted link to a deep page is the ordinary way into one, and the sign-in
+// round trip used to drop it: everybody landed on the front page of everything,
+// including the reader who had just asked for one workspace's plan. The card
+// even said "you come back here afterwards", which was not true.
+//
+// The refusals are the part that matters. This value is a redirect target that
+// arrives from the browser, so anything able to leave the origin is an open
+// redirect - a link that genuinely starts `https://smyklot.example/` landing on
+// somebody else's sign-in form. Refusing is always safe, because the landing
+// page is where the reader went before any of this existed.
+func TestPanelSignInReturnsToTheAddressAsked(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+
+	returnedTo := func(t *testing.T, query string) string {
+		t.Helper()
+		start := httptest.NewRecorder()
+		harness.handler.ServeHTTP(
+			start, httptest.NewRequest(http.MethodGet, "/panel/auth/github/start"+query, nil),
+		)
+		if start.Code != http.StatusFound {
+			t.Fatalf("start = %d", start.Code)
+		}
+		authorize, err := url.Parse(start.Header().Get("Location"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		callback := httptest.NewRequest(
+			http.MethodGet,
+			"/panel/auth/github/callback?code=code&state="+
+				url.QueryEscape(authorize.Query().Get("state")),
+			nil,
+		)
+		callback.AddCookie(responseCookie(t, start, stateCookieName))
+		for _, cookie := range start.Result().Cookies() {
+			if cookie.Name == returnCookieName && cookie.MaxAge > 0 {
+				callback.AddCookie(cookie)
+			}
+		}
+		finished := httptest.NewRecorder()
+		harness.handler.ServeHTTP(finished, callback)
+		if finished.Code != http.StatusFound {
+			t.Fatalf("callback = %d %s", finished.Code, finished.Body.String())
+		}
+
+		return finished.Header().Get("Location")
+	}
+
+	for _, honoured := range []struct {
+		name string
+		path string
+	}{
+		{name: "the address that was asked for", path: "/panel/workspace/smykla-skalski/sync/plan"},
+		{name: "a query the address carried", path: "/panel/root/queue?section=waiting"},
+	} {
+		t.Run(honoured.name, func(t *testing.T) {
+			got := returnedTo(t, "?return_to="+url.QueryEscape(honoured.path))
+			if got != honoured.path {
+				t.Fatalf("landed on %q, want %q", got, honoured.path)
+			}
+		})
+	}
+
+	// Every one of these has to end on the landing page, whatever it asked for.
+	for _, escape := range []struct {
+		name string
+		path string
+	}{
+		{name: "an absolute URL", path: "https://evil.example/phish"},
+		{name: "protocol-relative", path: "//evil.example/phish"},
+		{name: "a backslash browsers normalise", path: "/\\evil.example/phish"},
+		{name: "a scheme with no host", path: "javascript:alert(1)"},
+		{name: "outside the base path", path: "/elsewhere/entirely"},
+		{name: "not a path at all", path: "evil.example"},
+		{name: "longer than any address", path: "/panel/" + strings.Repeat("a", maxReturnPath)},
+	} {
+		t.Run(escape.name, func(t *testing.T) {
+			if got := returnedTo(t, "?return_to="+url.QueryEscape(escape.path)); got != "/panel/" {
+				t.Fatalf("landed on %q, want the landing page", got)
+			}
+		})
+	}
+}
+
+// A return path is bound to the browser that asked for it, the way an invitation
+// intent is. Tampering buys nothing on its own, because the path is checked again
+// on the way out - but a value this server did not write has no business steering
+// where a sign-in lands.
+func TestPanelSignInIgnoresAnUnsignedReturn(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+
+	start := httptest.NewRecorder()
+	harness.handler.ServeHTTP(
+		start, httptest.NewRequest(http.MethodGet, "/panel/auth/github/start", nil),
+	)
+	authorize, err := url.Parse(start.Header().Get("Location"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	callback := httptest.NewRequest(
+		http.MethodGet,
+		"/panel/auth/github/callback?code=code&state="+
+			url.QueryEscape(authorize.Query().Get("state")),
+		nil,
+	)
+	callback.AddCookie(responseCookie(t, start, stateCookieName))
+	callback.AddCookie(&http.Cookie{
+		Name: returnCookieName, Value: "/panel/root/queue.not-a-signature",
+	})
+	finished := httptest.NewRecorder()
+	harness.handler.ServeHTTP(finished, callback)
+
+	if got := finished.Header().Get("Location"); got != "/panel/" {
+		t.Fatalf("landed on %q, want the landing page", got)
+	}
+}
+
+// A sign-in that did not work ends where signing in begins.
+//
+// These failures used to render a page of their own, which put the reason and
+// the button that answers it on different screens. They come back to the front
+// door instead, carrying the status and code the card looks the words up by - so
+// the reader reads what happened with the retry underneath it.
+//
+// An invitation link that is malformed is NOT one of these. Nothing was
+// attempted and there is nothing to retry: the address itself is wrong, and that
+// is a page.
+func TestPanelSignInFailuresReturnToTheCard(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 
 	for _, testCase := range []struct {
-		name   string
-		path   string
-		status int
-		code   string
+		name string
+		path string
+		want string
 	}{
 		{
-			name:   "cancelled at GitHub",
-			path:   "/panel/auth/github/callback?error=access_denied",
-			status: http.StatusUnauthorized,
-			code:   "sign_in_failed",
+			name: "cancelled at GitHub",
+			path: "/panel/auth/github/callback?error=access_denied",
+			want: "401:sign_in_failed",
 		},
 		{
-			name:   "the callback carried nothing",
-			path:   "/panel/auth/github/callback",
-			status: http.StatusBadRequest,
-			code:   "sign_in_failed",
+			name: "the callback carried nothing",
+			path: "/panel/auth/github/callback",
+			want: "400:sign_in_failed",
 		},
 		{
-			name:   "finished in another browser",
-			path:   "/panel/auth/github/callback?state=someone-else&code=abc",
-			status: http.StatusUnauthorized,
-			code:   "sign_in_failed",
-		},
-		{
-			name:   "an invitation link that lost half its address",
-			path:   "/panel/auth/github/start?invite=short&action=accept",
-			status: http.StatusBadRequest,
-			code:   "invalid_invitation",
+			name: "finished in another browser",
+			path: "/panel/auth/github/callback?state=someone-else&code=abc",
+			want: "401:sign_in_failed",
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -178,19 +302,37 @@ func TestPanelSignInFailuresRenderPages(t *testing.T) {
 			response := httptest.NewRecorder()
 			harness.handler.ServeHTTP(response, request)
 
-			if response.Code != testCase.status {
-				t.Fatalf("status = %d, want %d", response.Code, testCase.status)
+			if response.Code != http.StatusFound {
+				t.Fatalf("status = %d, want 302", response.Code)
 			}
-			if contentType := response.Header().Get("Content-Type"); !strings.HasPrefix(
-				contentType, "text/html",
-			) {
-				t.Fatalf("content type = %q, want html", contentType)
+			location, err := url.Parse(response.Header().Get("Location"))
+			if err != nil {
+				t.Fatal(err)
 			}
-			if !strings.Contains(response.Body.String(), `&#34;code&#34;:&#34;`+testCase.code) {
-				t.Fatalf("document does not name %s: %s", testCase.code, response.Body.String())
+			if location.Path != "/panel/" {
+				t.Fatalf("landed on %q, want the sign-in page", location.Path)
+			}
+			if got := location.Query().Get(signInFailedParam); got != testCase.want {
+				t.Fatalf("%s = %q, want %q", signInFailedParam, got, testCase.want)
 			}
 		})
 	}
+
+	t.Run("an invitation link that lost half its address", func(t *testing.T) {
+		request := httptest.NewRequest(
+			http.MethodGet, "/panel/auth/github/start?invite=short&action=accept", nil,
+		)
+		request.Header.Set("Sec-Fetch-Dest", "document")
+		response := httptest.NewRecorder()
+		harness.handler.ServeHTTP(response, request)
+
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", response.Code)
+		}
+		if !strings.Contains(response.Body.String(), `&#34;code&#34;:&#34;invalid_invitation`) {
+			t.Fatalf("document does not name the invitation: %s", response.Body.String())
+		}
+	})
 }
 
 // The page the panel serves when nothing is wrong must not look like an error to

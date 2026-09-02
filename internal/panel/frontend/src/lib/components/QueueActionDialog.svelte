@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { formatDateTime } from '#lib/format.js';
   import type {
     QueueActionInput,
     QueueActionType,
@@ -114,13 +115,12 @@
     }
   }
 
-  function previewTime(value: string, timeZone?: string): string {
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'long',
-      ...(timeZone === undefined ? {} : { timeZone }),
-    }).format(new Date(value));
-  }
+  /* Was `dateStyle: 'medium', timeStyle: 'long'`, which is this to the second and
+     the zone - said in the two words that cannot carry a `timeZoneName` beside
+     them. One spelling for an instant, so a preview and the row it previews read
+     the same. */
+  const previewTime = (value: string, timeZone?: string): string =>
+    formatDateTime(value, { timeZone, named: true, seconds: true });
 </script>
 
 <!--

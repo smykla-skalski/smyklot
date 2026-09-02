@@ -199,15 +199,8 @@
   const landed = $derived(actions.filter((action) => action.state === 'applied').length);
   const failed = $derived(actions.filter((action) => action.state === 'failed').length);
 
-  function profileTime(value: string, timezone?: string): string {
-    if (timezone === undefined || timezone === '') return formatDateTime(value);
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-      timeZone: timezone,
-      timeZoneName: 'short',
-    }).format(new Date(value));
-  }
+  const profileTime = (value: string, timezone?: string): string =>
+    formatDateTime(value, { timeZone: timezone });
 </script>
 
 <!--

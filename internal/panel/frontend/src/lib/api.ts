@@ -285,7 +285,7 @@ export interface PanelApi {
   fetchAudit(targetId: string, request: AuditHistoryRequest): Promise<Page<AuditEntry>>;
   fetchFailures(targetId: string, request: FailureHistoryRequest): Promise<Page<DeliveryFailure>>;
   signOut(): Promise<void>;
-  signInUrl(invitation?: InvitationSignIn): string;
+  signInUrl(invitation?: InvitationSignIn, returnTo?: string): string;
   openStream(handlers: PanelStreamHandlers, dialQuery?: () => string): PanelStreamHandle;
   /**
    * Told whenever the server refuses a request because there is no session
@@ -1184,14 +1184,20 @@ export function createPanelApi(
       await request('/api/v1/sign-out', { method: 'POST' });
     },
 
-    signInUrl(invitation?: InvitationSignIn): string {
+    signInUrl(invitation?: InvitationSignIn, returnTo?: string): string {
       const path = panelUrl(base, '/auth/github/start');
-      if (invitation === undefined) return path;
-      const query = new URLSearchParams({
-        invite: invitation.token,
-        action: invitation.action,
-      });
-      return `${path}?${query.toString()}`;
+      const query = new URLSearchParams();
+      if (invitation !== undefined) {
+        query.set('invite', invitation.token);
+        query.set('action', invitation.action);
+      }
+      /* Where to come back to. The server decides whether it will honour this -
+         a redirect target that arrives from the browser is an open redirect
+         until something checks it - so this only has to say what was asked. */
+      if (returnTo !== undefined && returnTo !== '') query.set('return_to', returnTo);
+      const search = query.toString();
+
+      return search === '' ? path : `${path}?${search}`;
     },
 
     openStream(handlers: PanelStreamHandlers, dialQuery?: () => string): PanelStreamHandle {

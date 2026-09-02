@@ -34,14 +34,25 @@
 
     <!-- The vector is the mark; the raster is the fallback, so it is declared
          first and only browsers that cannot read the SVG stop there. The home
-         screen icon has no choice: `apple-touch-icon` does not accept SVG. -->
+         screen icon has no choice: `apple-touch-icon` does not accept SVG.
+
+         THE BRAND VARIANT, not the one the panel draws. The halo SVG carries its
+         settings in a stylesheet at the top, and a tab icon wants the opposite of
+         what a page wants: the panel's copy leaves the ring's interior
+         transparent, so the mark reads as a window onto whatever it stands on -
+         which at 16px in a tab strip is whatever the browser's chrome happens to
+         be, and the robot loses its ground. The rainbow ring goes the same way,
+         resolving to a grey smear at that size. This one paints the interior and
+         takes the solid petrol ring, which is one shape and one colour and still
+         legible as a favicon. Both are generated from the same file; the toggles
+         are named in its own `smyklot-halo-settings` block. -->
     <link
       rel="icon"
       type="image/png"
       sizes="256x256"
       href="/__smyklot_panel_base__/smyklot-avatar.png?v=__smyklot_panel_version__"
     />
-    <link rel="icon" type="image/svg+xml" href="/__smyklot_panel_base__/smyklot-halo.svg" />
+    <link rel="icon" type="image/svg+xml" href="/__smyklot_panel_base__/smyklot-halo-brand.svg" />
     <link
       rel="apple-touch-icon"
       sizes="256x256"

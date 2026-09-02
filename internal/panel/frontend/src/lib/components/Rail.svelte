@@ -1,18 +1,23 @@
 <script lang="ts">
-  /* The BRAND cut of the halo, which is the one the rail wears: a solid teal ring and
-     the interior painted. The other cut leaves the interior transparent and draws the
-     rainbow ring, and it is built for one page - the invitation's night sky reads
-     through the emblem, so the mark there is a window rather than a badge. At 34px on a
-     sidebar ground the window showed the sidebar, and the rainbow ring read as noise. */
-  import haloUrl from '../../assets/smyklot-halo-brand.svg';
-
   import type { PanelTarget, PanelViewer } from '../types';
   import type { ThemeDisplay } from '../preferences';
+  import { basePath } from '#lib/paths.js';
   import { workspaceHue, workspaceInitials } from '../workspace-mark.js';
   import AccountMenu from './AccountMenu.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import WorkspaceMenu from './WorkspaceMenu.svelte';
+
+  /* The BRAND cut of the halo, which is the one the rail wears: a solid teal ring and
+     the interior painted. The other cut leaves the interior transparent and draws the
+     rainbow ring, and it is built for one page - the invitation's night sky reads
+     through the emblem, so the mark there is a window rather than a badge. At 34px on a
+     sidebar ground the window showed the sidebar, and the rainbow ring read as noise.
+
+     Addressed rather than imported, like `BrandMark`: both cuts are served from
+     `static/` because the favicon needs a name it can write down, and that makes it
+     the one place either artwork lives. */
+  const haloUrl = `${basePath}/smyklot-halo-brand.svg`;
 
   const {
     viewer,

@@ -46,6 +46,7 @@ import { DEFAULT_THEME_DISPLAY, isThemeDisplay, type ThemeDisplay } from './pref
 import { createPrefsSync, type PrefsSync } from './preferences-sync';
 import type { StreamLiveness } from './query-client';
 import {
+  LEGAL_VIEWS,
   panelDocumentTitle,
   rootSection,
   rootSectionRoute,
@@ -208,6 +209,40 @@ export class PanelSession {
   }
 
   /**
+   * The privacy notice and the terms, which anybody may read.
+   *
+   * Public like an invitation is public: these are linked from the sign-in card and
+   * nowhere else, so the reader who opens one has no session by definition. Behind
+   * the session gate they would answer with the sign-in page, which is the door
+   * they were trying to read the terms of.
+   */
+  get isLegal(): boolean {
+    return (
+      page.route.id === '/privacy' ||
+      page.route.id === '/terms' ||
+      /* The decoded-address fallback every one of these getters keeps, for the
+         percent-encoded separator the Go server serves and the client router
+         matches no route for. From the one list, so the mock dev server - which
+         answers the same question in plain Node, through `isLegalPath` - cannot
+         drift from this. */
+      (page.route.id === null && LEGAL_VIEWS.some((view) => at(`/${view}`)))
+    );
+  }
+
+  /**
+   * A page that is not the panel: no workspace behind it, nobody to sign in as.
+   *
+   * The invitation and the two legal pages are the same case wherever the shell
+   * asks the question - do not resolve a target, do not open a stream, do not run
+   * the panel's queries - and the shell asks it in eight places. It was written as
+   * `isInvitation` at all eight, so the legal pages arrived and target resolution
+   * picked a workspace and navigated them away from themselves.
+   */
+  get isPublicPage(): boolean {
+    return this.isInvitation || this.isLegal;
+  }
+
+  /**
    * What is being looked at, read from the route SvelteKit matched.
    *
    * The id and the parameters together, never the parameters alone. A parameter is only
@@ -277,7 +312,7 @@ export class PanelSession {
     // it, so Return would otherwise take them somewhere they had not been. `page.error`
     // covers every load failure rather than the one shape this used to test for.
     if (page.error !== null) return;
-    if (this.isPersonal || this.isInvitation) return;
+    if (this.isPersonal || this.isPublicPage) return;
     const route = this.parsedRoute;
     if (route === null || 'personal' in route) return;
     // Each side records only its own page, so entering one never overwrites where the

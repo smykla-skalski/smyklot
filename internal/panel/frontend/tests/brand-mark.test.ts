@@ -30,27 +30,43 @@ describe('the brand mark', () => {
     expect(holders).toEqual(['BrandMark.svelte']);
   });
 
-  it('is imported only where the mark itself is drawn, each site taking its own cut', () => {
-    // This asks who *imports* the halo rather than who mentions it in a comment. Two sites and
+  it('is drawn in two places only, each site taking its own cut', () => {
+    // This asks who *addresses* the halo rather than who mentions it in a comment. Two sites and
     // two cuts of the same artwork, and which one goes where is the point: the rail wears the
     // BRAND cut - solid teal ring, interior painted - because a 34px badge on the sidebar's own
     // ground has to be an object. `BrandMark` wears the other, whose interior is transparent and
     // whose ring is the rainbow, because the invitation's night sky reads THROUGH the emblem: the
     // mark there is a window rather than a badge. Swapped, the rail shows a hole and the night
     // sky loses its sky.
-    const importers = sources
-      .filter(([, source]) =>
-        /import\s+\w+\s+from\s+\x27[^\x27]*smyklot-halo[\w-]*\.svg\x27/.test(source),
-      )
+    //
+    // Addressed, not imported: both cuts are served from `static/`, because the favicon in
+    // `app.html` needs a name it can write down and a bundled asset's carries a content hash.
+    // That makes `static/` the one place either artwork lives - and importing out of it is the
+    // thing that does not work, because Vite's dev server refuses to serve it.
+    const drawn = sources
+      .filter(([, source]) => /\$\{basePath\}\/smyklot-halo[\w-]*\.svg/u.test(source))
       .map(([file, source]) => [
         file,
-        /smyklot-halo-brand\.svg/.test(source) ? 'brand' : 'night-sky',
+        /smyklot-halo-brand\.svg/u.test(source) ? 'brand' : 'night-sky',
       ]);
 
-    expect(importers).toEqual([
+    expect(drawn).toEqual([
       ['BrandMark.svelte', 'night-sky'],
       ['Rail.svelte', 'brand'],
     ]);
+  });
+
+  it('keeps both cuts where the favicon can reach them', () => {
+    // The rule the line above depends on: one home for the artwork, and it is the one the
+    // server publishes verbatim. A copy under `src/` would be a second artwork waiting to
+    // drift from this one.
+    const served = readdirSync(new URL('../static/', import.meta.url));
+
+    expect(served).toContain('smyklot-halo.svg');
+    expect(served).toContain('smyklot-halo-brand.svg');
+    expect(readFileSync(new URL('../src/app.html', import.meta.url), 'utf8')).toContain(
+      'smyklot-halo-brand.svg',
+    );
   });
 
   it('is what the pages outside the panel render', () => {

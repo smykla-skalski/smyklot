@@ -47,6 +47,38 @@ describe('formatDateTime', () => {
       }),
     );
   });
+
+  /* The sync plan went down with `TypeError: Invalid option : option` for every
+     reader whose profile carried a zone, and it never threw for one whose profile
+     did not - so a fixture without a timezone is a fixture that cannot find this.
+     The zone is the whole input worth passing. */
+  it('reads the stamp in a given zone, and names it', () => {
+    /* 14:01 UTC is the next day in Sydney, so the zone is provably applied rather
+       than merely accepted. Asserted on the day and the zone name, not the whole
+       string: the order of the parts is the runner's locale, not this rule. */
+    const stamp = '2026-07-26T14:01:01Z';
+
+    expect(formatDateTime(stamp, { timeZone: 'Australia/Sydney' })).toContain('27');
+    expect(formatDateTime(stamp, { timeZone: 'UTC' })).toContain('26');
+    expect(formatDateTime(stamp, { timeZone: 'Australia/Sydney' })).toMatch(/GMT\+10|AEST/u);
+    expect(formatDateTime(stamp, { timeZone: 'UTC' })).toMatch(/UTC|GMT/u);
+  });
+
+  it('adds seconds and names the reader own zone when asked', () => {
+    const stamp = '2026-07-26T14:01:01Z';
+
+    expect(formatDateTime(stamp, { seconds: true })).toMatch(/01(?!\d)/u);
+    expect(formatDateTime(stamp, { named: true })).toMatch(/GMT|UTC/u);
+    expect(formatDateTime(stamp)).not.toMatch(/GMT|UTC/u);
+  });
+
+  it('leaves the reader in their own zone when none is given', () => {
+    const stamp = '2026-07-26T14:01:01Z';
+
+    expect(formatDateTime(stamp, { timeZone: '' })).toBe(formatDateTime(stamp));
+    expect(formatDateTime(stamp, { timeZone: undefined })).toBe(formatDateTime(stamp));
+    expect(formatDateTime(stamp, {})).toBe(formatDateTime(stamp));
+  });
 });
 
 // The buckets are elapsed-time only, never calendar days, so the same input

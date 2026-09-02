@@ -271,7 +271,7 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	content, ok := s.assets.files[relative]
 	if !ok {
 		// The generated patterns are written against an absolute, base-relative path.
-		if s.assets.routes.matches("/" + relative) {
+		if s.assets.routes.matches("/"+relative) || s.hidesRouteTable(r, relative) {
 			s.writeIndex(w, r)
 		} else {
 			s.writePageError(w, r, http.StatusNotFound, "not_found", "panel route not found")
@@ -292,6 +292,40 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(content) //nolint:gosec // Content comes only from the generated embedded bundle.
+}
+
+// hidesRouteTable reports whether an address nothing here serves should be
+// answered with the shell anyway, because answering it truthfully would tell a
+// stranger what this panel is made of.
+//
+// A signed-out reader gets ONE answer for every page address: the sign-in card.
+// Before this, a known route shape returned the shell and an unknown one
+// returned the not-found page, and the difference is readable by anybody with
+// curl - so the panel's whole route table could be enumerated without an
+// account. What it gives up is not secret in itself, and that is not the test: a
+// list of what a product has, and what it used to have, is reconnaissance, and
+// it was free.
+//
+// Names are already safe and stay that way. `/workspace/does-not-exist/sync/plan`
+// and a real workspace's plan return the same bytes to a stranger, because the
+// route MATCHES either way and which workspaces exist is decided behind the API.
+// This closes the other half: which route shapes exist at all.
+//
+// A signed-in reader is told the truth. A wrong address is theirs to see, and
+// the not-found page is how they find out - so the error is not suppressed, it
+// waits until there is somebody to show it to.
+//
+// PAGE ADDRESSES ONLY. Anything carrying an extension is a file request, and a
+// missing script answered with HTML is a module error rather than a 404 - the
+// service worker and the bootstrap both need the plain answer, and neither is a
+// thing a stranger learns anything from.
+func (s *Server) hidesRouteTable(r *http.Request, relative string) bool {
+	if path.Ext(relative) != "" {
+		return false
+	}
+	_, _, err := s.viewerSession(r)
+
+	return err != nil
 }
 
 func (s *Server) writeIndex(w http.ResponseWriter, r *http.Request) {

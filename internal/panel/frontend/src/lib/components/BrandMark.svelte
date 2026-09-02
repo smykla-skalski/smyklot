@@ -1,5 +1,14 @@
 <script lang="ts">
-  import haloUrl from '../../assets/smyklot-halo.svg';
+  import { basePath } from '#lib/paths.js';
+
+  /* Addressed, not imported. Both cuts of the halo live in `static/` and only
+     there: the favicon in `app.html` needs a name it can write down, and a
+     bundled asset's carries a content hash nobody can predict - so the artwork
+     has to be served verbatim anyway, and a second copy under `src/` for the
+     importers to reach is one edit away from being a second artwork. Importing
+     out of `static/` is the other thing that does not work: Vite's dev server
+     refuses to serve it and the mark comes back broken. */
+  const haloUrl = `${basePath}/smyklot-halo.svg`;
 
   const {
     part,

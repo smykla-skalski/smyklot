@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
  */
 
 const read = (path: string): string => readFileSync(new URL(path, import.meta.url), 'utf8');
-const halo = read('../src/assets/smyklot-halo.svg');
+const halo = read('../static/smyklot-halo.svg');
 const mark = read('../src/lib/components/BrandMark.svelte');
 
 function number(source: string, pattern: RegExp): number {
