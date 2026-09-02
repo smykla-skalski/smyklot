@@ -350,13 +350,12 @@ the button.
          exception. The disclosure body is a sibling of the row inside the same
          `<li>`, which `display: contents` lets the list lay out as its own
          band. -->
+    <!-- No head. `Plan`, `14 changes wait for you` and `3 repositories` were
+         three headings in the page's first 250px, and the third one counted
+         what the rows under it show and the Apply button already scopes. A list
+         card without one is grammar this app already has - `RootWorkspaces`
+         opens the same way. -->
     <Card>
-      <div class="card-head">
-        <h2 class="card-title">
-          {groups.length}
-          {groups.length === 1 ? 'repository' : 'repositories'}
-        </h2>
-      </div>
       <ul class="object-list">
         {#each groups as group, index (group.repository)}
           {@const visible = visibleOf(group)}
@@ -800,7 +799,16 @@ the button.
     display: grid;
     gap: var(--space-3);
     font-size: var(--font-size-compact);
-    grid-template-columns: 4.2rem 5.2rem 1fr;
+    /* MEASURED, not estimated. The verb track holds `− remove` at 66.06px in
+       67.2 and is right. The kind track held 83.2 for a vocabulary of four
+       words - `labels`, `settings`, `rulesets`, `files` - whose widest is
+       `settings` at 46.48, so 36.7px of every row was a column that could
+       never be filled, sitting between the two halves of the sentence. 3rem
+       leaves the same 1.5px the verb track leaves, and hands the rest to the
+       subject. Declared rather than `max-content`: each row is its own grid,
+       and content sizing would let two rows disagree about where the sentence
+       starts - the same fault the counts had. */
+    grid-template-columns: 4.2rem 3rem 1fr;
     padding: var(--space-3) var(--space-2);
   }
 

@@ -37,7 +37,13 @@ the named timeline, and the scope is what hands it back up.
        unglues exactly there, and the next 16px of travel are the melt. */
     animation-range: entry calc(0% + 51px) entry calc(0% + 67px);
     background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
+    /* THE CONTROL EDGE, not the card one. Seated, this bar was a white box with
+       `--border-subtle` and a 10px radius standing 32px under a card that is a
+       white box with `--border-subtle` and a 10px radius, and the only thing
+       telling them apart was a 1px shadow at 10% - invisible at that distance.
+       It is not another card: it is the one strip on the page that reaches
+       GitHub, so it takes the edge this app gives a control. */
+    border: 1px solid var(--control-border);
     border-radius: var(--r-strip);
     bottom: 3.2rem;
     box-shadow: var(--shadow-plate);
