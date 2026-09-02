@@ -82,7 +82,24 @@ func (s *Server) safeReturnPath(value string) (string, bool) {
 	cleaned := path.Clean(parsed.EscapedPath())
 	/* `Clean` drops a trailing slash, which the panel's own router treats as no
 	   part of the address anyway, and turns "" into ".". Neither is a path. */
-	if !strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "//") {
+	if !strings.HasPrefix(cleaned, "/") {
+		return "", false
+	}
+	/* ONE SLASH, asked of the value that is actually redirected to.
+	   ------------------------------------------------------------------------
+	   Nothing reaches this today, and that is the point of writing it here. A
+	   protocol-relative target is refused twice over already - `url.Parse` reads
+	   `//evil.example` as a HOST, and `path.Clean` collapses `///evil.example`
+	   to one slash - and a backslash anywhere is rejected outright. But every one
+	   of those questions is asked of `value` or resolved by a transformation,
+	   while what reaches `http.Redirect` is `cleaned`, two steps later.
+
+	   CodeQL flags exactly that gap and is right to. A guard that holds because
+	   of what an earlier variable happened to look like is one refactor away from
+	   holding by luck: drop the `Clean`, or let a future caller pass a path
+	   straight in, and the second position is nobody's job again. Asked here, of
+	   these bytes, it cannot drift from what is sent. */
+	if len(cleaned) > 1 && (cleaned[1] == '/' || cleaned[1] == '\\') {
 		return "", false
 	}
 	if s.cfg.BasePath != "" && !strings.HasPrefix(cleaned, s.cfg.BasePath+"/") {
