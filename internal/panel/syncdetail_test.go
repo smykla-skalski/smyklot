@@ -47,6 +47,43 @@ func TestSyncActionDetailReadsALabel(t *testing.T) {
 	}
 }
 
+// A CHANGE HAS TWO SIDES. Shown only the label it would end up with, a reader
+// cannot see what moved - a colour drifting from red to orange is `bug` twice
+// with no difference between them.
+func TestSyncActionDetailReadsBothSidesOfALabelChange(t *testing.T) {
+	payload := encoded(t, orgsync.LabelPlan{
+		Label:    orgsync.ResolvedLabel{Name: "bug", Color: "d73a4a", Description: "Broken"},
+		Previous: &orgsync.ResolvedLabel{Name: "bug", Color: "ff8800", Description: "Broke"},
+	})
+
+	detail := syncActionDetail(orgsync.Action{
+		Kind: orgsync.KindLabels, Operation: orgsync.OperationUpdate, Payload: payload,
+	})
+	if detail == nil || detail.Label == nil || detail.PreviousLabel == nil {
+		t.Fatalf("a label change carried one side: %#v", detail)
+	}
+	if detail.Label.Color != "d73a4a" || detail.PreviousLabel.Color != "ff8800" {
+		t.Fatalf("colours = %q then %q", detail.PreviousLabel.Color, detail.Label.Color)
+	}
+}
+
+// A creation replaces nothing, so there is no previous side to draw.
+func TestSyncActionDetailLeavesACreationOneSided(t *testing.T) {
+	payload := encoded(t, orgsync.LabelPlan{
+		Label: orgsync.ResolvedLabel{Name: "chore", Color: "6b7280"},
+	})
+
+	detail := syncActionDetail(orgsync.Action{
+		Kind: orgsync.KindLabels, Operation: orgsync.OperationCreate, Payload: payload,
+	})
+	if detail == nil || detail.Label == nil {
+		t.Fatal("a creation carried no label")
+	}
+	if detail.PreviousLabel != nil {
+		t.Fatalf("a creation answered with a previous label: %#v", detail.PreviousLabel)
+	}
+}
+
 // A settings change is ONE action - GitHub replaces a repository's settings in
 // one request - and several facts. It used to be one sentence naming every
 // field at once.

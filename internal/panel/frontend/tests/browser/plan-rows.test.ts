@@ -97,17 +97,28 @@ async function read(page: Page): Promise<Reading> {
          so it is legitimately taller. Every OTHER row is one line, and those are
          the ones that have to agree. */
       const stacked = line.querySelectorAll('.setting-line').length;
+      const startAligned = getComputedStyle(line).alignItems === 'start';
       const centres: number[] = [];
       for (const cell of line.children) {
         if (cell.classList.contains('action-more')) continue;
         const box = cell.getBoundingClientRect();
         // An unwritten kind cell has no band to place; it is not a fault.
         if (box.height === 0) continue;
-        /* The whole cell, stacked or not. A settings action's verb belongs to
-           the action rather than to any one of its lines, so it centres on the
-           block - which is what `align-items: center` gives it, and measuring
-           its first line instead would report the centring as a fault. */
-        centres.push(box.y + box.height / 2);
+        /* A STACKED SUBJECT IS MEASURED BY ITS FIRST LINE. The verb leads a
+           settings row rather than floating against the middle of it - centred,
+           it sat beside the gap between two fields and labelled nothing - so
+           the line they all have to share is the first one. */
+        const band = cell.classList.contains('action-settings')
+          ? (cell.querySelector('.setting-line')?.getBoundingClientRect() ?? box)
+          : box;
+        /* MEASURE WHAT THE ROW DECLARES. A centred row promises its cells share
+           a middle; a start-aligned one promises they share a top, and the two
+           are not the same promise where the bands differ in height - the kind
+           is sans at a 8.94px cap against mono's 8.76, so aligning the tops puts
+           the centres 0.09 apart and aligning the centres does the reverse.
+           Reading centres on a start-aligned row reported the alignment
+           working as a fault. */
+        centres.push(startAligned ? band.y : band.y + band.height / 2);
       }
       rows.push({
         tag: line.tagName.toLowerCase(),

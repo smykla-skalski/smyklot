@@ -79,7 +79,7 @@ func PlanLabels(
 				Subject:      label.Name,
 				Before:       describeLabel(ResolvedLabel(existing)),
 				After:        describeLabel(wanted),
-				Payload:      encodeLabel(wanted),
+				Payload:      encodeLabelChange(wanted, ResolvedLabel(existing)),
 				State:        ActionPending,
 			})
 		}
@@ -134,12 +134,60 @@ type ResolvedLabel struct {
 
 // DecodeLabel reads what an action says to apply.
 func DecodeLabel(payload []byte) (ResolvedLabel, error) {
-	var label ResolvedLabel
-	if err := json.Unmarshal(payload, &label); err != nil {
-		return ResolvedLabel{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	plan, err := DecodeLabelPlan(payload)
+	if err != nil {
+		return ResolvedLabel{}, err
 	}
 
-	return label, nil
+	return plan.Label, nil
+}
+
+// LabelPlan is a label action's payload: the label to write, and the one it
+// replaces where there is one.
+//
+// The label used to be the whole payload. It is a field now because a CHANGE
+// has two sides and only one was carried: the plan page could draw the label a
+// repository would end up with, and had nothing to say about the one it has -
+// so a colour drifting from red to orange read as `bug` twice with no
+// difference between them.
+type LabelPlan struct {
+	// Label is what to write, and the only part apply reads.
+	Label ResolvedLabel `json:"label"`
+
+	// Previous is what the repository holds now, on an update. Nil on a
+	// creation, which replaces nothing, and on a deletion, where the label
+	// being removed is the one in Label.
+	Previous *ResolvedLabel `json:"previous,omitempty"`
+}
+
+// DecodeLabelPlan reads a label payload in either shape it can have.
+//
+// A plan lives in the store for hours, so a deploy straddles one: a payload
+// written before the label became a field is a bare label, and it still has to
+// apply. A wrapper always names `label`, and a bare label never has a key by
+// that name - a label has `name`, `color` and `description` - so the two are
+// told apart by asking rather than by version.
+func DecodeLabelPlan(payload []byte) (LabelPlan, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		return LabelPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	if _, wrapped := raw["label"]; !wrapped {
+		var label ResolvedLabel
+		if err := json.Unmarshal(payload, &label); err != nil {
+			return LabelPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+		}
+
+		return LabelPlan{Label: label}, nil
+	}
+
+	var plan LabelPlan
+	if err := json.Unmarshal(payload, &plan); err != nil {
+		return LabelPlan{}, fmt.Errorf("%w: %w", ErrInvalidPlan, err)
+	}
+
+	return plan, nil
 }
 
 // resolved answers every question about a label, taking the description a
@@ -174,10 +222,19 @@ func changed(want ResolvedLabel, have CurrentLabel) bool {
 }
 
 func encodeLabel(label ResolvedLabel) []byte {
-	// A struct of three strings cannot fail to encode, and a planner that
-	// returned an error here would make every caller handle one that cannot
-	// happen.
-	payload, _ := json.Marshal(label)
+	return encodeLabelPlan(LabelPlan{Label: label})
+}
+
+// encodeLabelChange carries both sides, for an update: what a repository holds
+// and what it would hold.
+func encodeLabelChange(label, previous ResolvedLabel) []byte {
+	return encodeLabelPlan(LabelPlan{Label: label, Previous: &previous})
+}
+
+func encodeLabelPlan(plan LabelPlan) []byte {
+	// Strings in structs cannot fail to encode, and a planner that returned an
+	// error here would make every caller handle one that cannot happen.
+	payload, _ := json.Marshal(plan)
 
 	return payload
 }

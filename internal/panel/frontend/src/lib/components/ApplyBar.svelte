@@ -37,13 +37,7 @@ the named timeline, and the scope is what hands it back up.
        unglues exactly there, and the next 16px of travel are the melt. */
     animation-range: entry calc(0% + 51px) entry calc(0% + 67px);
     background: var(--surface-base);
-    /* THE CONTROL EDGE, not the card one. Seated, this bar was a white box with
-       `--border-subtle` and a 10px radius standing 32px under a card that is a
-       white box with `--border-subtle` and a 10px radius, and the only thing
-       telling them apart was a 1px shadow at 10% - invisible at that distance.
-       It is not another card: it is the one strip on the page that reaches
-       GitHub, so it takes the edge this app gives a control. */
-    border: 1px solid var(--control-border);
+    border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     bottom: 3.2rem;
     box-shadow: var(--shadow-plate);
@@ -64,8 +58,8 @@ the named timeline, and the scope is what hands it back up.
   }
 
   /* Glued (the from-state the frozen timeline holds): glass over the rows
-     sliding under. Hairline only - the halo lives in ::after, which paints
-     OVER ::before and would erase a bar shadow under itself. */
+     sliding under, and a hairline at the top edge where they enter. The
+     elevation is `::after`'s, so that it can fade on the same melt. */
   @keyframes apply-bar-seat {
     from {
       --melt: 1;
@@ -93,60 +87,25 @@ the named timeline, and the scope is what hands it back up.
     initial-value: 0;
   }
 
-  /* The OUTSIDE of the effect, in two layers with one job each.
-     ::before is the DISSOLVE and nothing else: rows melt into their own
-     surface before they pass under the glued edge, on a ramp tall enough
-     (72px, solid for the last 16) to grade a row across two or three
-     positions instead of biting one in half beside a crisp one.
+  /* THE SHADOW IS THE WHOLE EFFECT NOW.
+     There used to be a white dissolve above and below - gradients of the page's
+     own surface, fading rows out before they passed under the glued edge. It
+     was a bespoke answer to a question this sheet already answers: a surface
+     floating over content casts a shadow, and every other raised thing in the
+     panel says so that way. The white also needed masking at its ends, sizing
+     against the dock and keeping clear of the ring, and each of those was a
+     number that could disagree with the others.
 
-     A RING, NOT A BAND. This used to be anchored `inset-block-end: 100%`, so it
-     existed only above the bar - but the bar docks 3.2rem up, and the content
-     in that strip scrolls under it just the same and arrived crisp. Two
-     gradients on one layer now, one fading up from the top edge and one fading
-     down from the bottom, spanning from 72px above to the dock line below.
-
-     `z-index: -1` puts it behind the bar's own ground, which is what lets one
-     element cover both sides: the middle would otherwise paint over the glass.
-     The bar is `position: sticky` with a `z-index`, so it makes a stacking
-     context and a negative index here stays inside it - behind the bar, above
-     the page. */
-  .apply-bar::before {
-    background:
-      linear-gradient(to top, var(--surface-base) 16px, transparent) top / 100% 72px no-repeat,
-      linear-gradient(to bottom, var(--surface-base) 16px, transparent) bottom / 100% 3.2rem
-        no-repeat;
-    content: '';
-    inset-block: -72px -3.2rem;
-    /* Overhang the bar and melt the ends: a band cut exactly bar-wide dies
-       in a vertical seam on each side, which no real shadow does. */
-    inset-inline: -24px;
-    mask-image: linear-gradient(
-      to right,
-      transparent,
-      #000 24px,
-      #000 calc(100% - 24px),
-      transparent
-    );
-    opacity: var(--melt, 0);
-    pointer-events: none;
-    position: absolute;
-    z-index: -1;
-  }
-
-  /* ::after is the LIGHT: one halo drawn around the whole rounded box, so
-     it wraps the corners and flanks instead of stopping at the top band.
-
-     BALANCED, because content passes under both edges. Three layers upward
-     against one thin one downward read as a bar lit from below and lying on
-     the page - which is the opposite of what a glued bar is doing. A spread
-     ring plus one soft layer each way, still biased up because the overlap
-     above is deeper. */
+     ::after is the ELEVATION, and it is the sheet's own.
+     A glued bar is a surface floating over the page, which is what
+     `--shadow-popover` is the shadow for - so it takes that rather than a
+     hand-rolled ring. Two centred glows read as a light source inside the bar,
+     which is not a thing that happens: light comes from above here, as it does
+     for every other raised surface in the panel, and the dissolve above the bar
+     is what answers the edge a downward shadow leaves quiet. */
   .apply-bar::after {
     border-radius: inherit;
-    box-shadow:
-      0 -8px 24px -6px var(--shadow-color),
-      0 8px 24px -6px var(--shadow-color),
-      0 0 32px -10px var(--shadow-color);
+    box-shadow: var(--shadow-popover);
     content: '';
     inset: 0;
     opacity: var(--melt, 0);

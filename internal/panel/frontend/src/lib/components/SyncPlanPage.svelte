@@ -405,7 +405,7 @@ the button.
          card without one is grammar this app already has - `RootWorkspaces`
          opens the same way. -->
     <Card>
-      <ul class="object-list">
+      <ul class="object-list plan-repositories">
         {#each groups as group, index (group.repository)}
           {@const visible = visibleOf(group)}
           {@const counts = groupCounts(group)}
@@ -473,9 +473,20 @@ the button.
                       <span class="action-kind">{firstOfRun ? action.kind : ''}</span>
                       {#if shape === 'label' && action.detail?.label !== undefined}
                         {@const label = action.detail.label}
+                        {@const was = action.detail.previous_label}
                         <span class="action-what"
-                          ><LabelBadge {label} size="compact" />{#if label.description}<span
-                              class="from-to">{label.description}</span
+                          >{#if was !== undefined}<!-- A CHANGE SHOWS WHAT MOVED.
+                              Both badges, the arrow between them, and only the
+                              description that differs - a colour drift read as
+                              the same label printed twice without this.
+                            --><LabelBadge
+                              label={was}
+                              size="compact"
+                            /><span class="from-to label-arrow">→</span>{/if}<LabelBadge
+                            {label}
+                            size="compact"
+                          />{#if label.description && label.description !== was?.description}<span
+                              class="from-to label-description">{label.description}</span
                             >{/if}</span
                         >
                       {:else if shape === 'settings' && action.detail?.settings !== undefined}
@@ -802,6 +813,16 @@ the button.
      100% pins it to the track instead, so the row came out 24px narrower than
      the well underneath it and the two disagreed down their whole length. A
      grid item stretches on its own. */
+  /* THE LIST SHEDS ITS PADDING AT BOTH ENDS. `.object-list` already hands back
+     the last row's, so the last ink closes on the card's own frame; with no card
+     head above it the first row needs the same, or the card opens with 20px of
+     its own padding and 12px of the row's stacked - 34.7px of nothing before the
+     first name. The row keeps its padding, which is its hit area; what goes is
+     the card's, which the row is already standing in. */
+  .plan-repositories {
+    margin-block-start: calc(var(--row-pad-default) * -1);
+  }
+
   .repo-row {
     cursor: pointer;
     font: inherit;
@@ -824,33 +845,35 @@ the button.
     rotate: 90deg;
   }
 
-  /* AN OPEN ROW IS ITS WELL'S HEADER, and the two are one object.
-     Closed, the row is transparent and hover paints `--row-hover` on the card -
-     which is right. Open, the well below it is already a raised block with a
-     rounded frame, and the row's hover laid a second rounded lozenge of
-     near-identical value directly on top of it: two greys and a seam where they
-     met. The row has nothing left to say by filling, because being open is
-     what it was saying.
+  /* An open row keeps `.object-row`'s hairline, hover and press - suppressing
+     them to stop it competing with the well left a header that answered nothing
+     at all. What it adds is REACH.
 
-     The mark answers the pointer instead. This is the rule the opened ACTION
-     row below already follows, for the same reason and in the same words. */
-  .repo-row.is-open:hover,
-  .repo-row.is-open:active {
-    background: none;
-    box-shadow: none;
-    translate: none;
-  }
-
-  .repo-row.is-open:hover .repo-caret,
-  .repo-row.is-open:active .repo-caret {
-    color: var(--text-primary);
-  }
-
-  /* Square where they meet. The well is what the row opened, so it starts at
-     the row's own edge rather than as a separate rounded thing under it. */
+     A hover paints the row's own rounded box, and the well below opens with
+     rounded top corners of its own, so the paint stopped at the row's bottom
+     curve and left two lit notches of card white in the corners between them.
+     The row squares the edge it shares with the well and carries the paint one
+     corner-radius further down, behind it - so the wash runs under the well's
+     curve and the corners come out solid. */
   .repo-row.is-open {
     border-end-end-radius: 0;
     border-end-start-radius: 0;
+  }
+
+  .repo-row.is-open::before {
+    block-size: var(--r-ctl);
+    content: '';
+    inset-block-start: 100%;
+    inset-inline: 0;
+    position: absolute;
+  }
+
+  :is(a, button).repo-row.is-open:hover::before {
+    background: var(--row-hover);
+  }
+
+  :is(a, button).repo-row.is-open:active::before {
+    background: var(--row-pressed);
   }
 
   /* THREE SLOTS, ALWAYS, and each operation keeps its own. Laid out as a flex
@@ -918,6 +941,11 @@ the button.
     margin-block: 0 var(--space-3);
     margin-inline: calc(var(--space-3) * -1);
     padding: var(--space-2);
+    /* POSITIONED, so it paints over the header's reach strip by DOM order.
+       A negative z-index on the strip put it behind the card's own ground and
+       it never showed at all; two positioned siblings settle it by which comes
+       second, and the well does. */
+    position: relative;
   }
 
   /* The row owns the tracks and the padding; the line inside is a subgrid, so
@@ -1004,6 +1032,18 @@ the button.
     text-box: trim-both cap alphabetic;
   }
 
+  /* A STACKED SUBJECT LEADS, it does not float. Centred against two or five
+     settings the verb sat in the middle of the block with nothing beside it,
+     reading as a label for the gap rather than for the first line. Start, so
+     `~ change` and `settings` sit on the first field's own band and the rest of
+     the fields hang under them.
+
+     Only where the subject stacks: a one-line row is centred in its declared
+     42px, and start-aligning that would push its band to the top of the line. */
+  .action-row-line:has(.action-settings) {
+    align-items: start;
+  }
+
   button.action-row-line {
     cursor: pointer;
   }
@@ -1068,6 +1108,20 @@ the button.
     margin-inline-start: 0.5ch;
   }
 
+  /* A LABEL'S DESCRIPTION IS PROSE, and it was set in the same mono as the
+     label's own name beside it - two greys of the same face running together,
+     with only a space saying where the name stopped. The reading face is what
+     separates them, and it is what the description is: a sentence about the
+     label, not a second identifier.
+
+     The face alone, at the row's own size: a description set larger also raises
+     the line's ink band above the box it sits in, and the row came out 0.47px
+     off its own middle. */
+  .action-what .label-description {
+    font-family: var(--sans);
+    margin-inline-start: 1ch;
+  }
+
   /* A settings action's several facts, stacked. The row's own line stays the
      first of them, so a one-setting change is the same 42px as every other row
      and only a change that really says more is taller. */
@@ -1086,6 +1140,17 @@ the button.
      written. */
   .action-what :global(.label-badge) {
     vertical-align: baseline;
+  }
+
+  /* Between two badges, so it needs the space on BOTH sides. `.from-to` leads
+     with half a character and nothing after it, which is right where a detail
+     follows a subject and wrong where an arrow stands between two things. */
+  /* Selected through `.action-what` so it OUTRANKS the rule above rather than
+     tying with it: `.action-what .from-to` sets the start margin, and a bare
+     `.label-arrow` lost that half of the pair on source order - the arrow came
+     out 0.5ch from the badge before it and 1ch from the one after. */
+  .action-what .label-arrow {
+    margin-inline: 1ch;
   }
 
   /* The error belongs to ITS row: pulled to 4px under its own line, so the

@@ -57,7 +57,7 @@ interface Control {
  * by guessing from its size, so a control that grows past a threshold is still measured.
  */
 const NOT_A_CONTROL =
-  '.tile, .kind-card, .legend-row, .attn-row, .data-row, .repo-group, .queue-row, ' +
+  '.tile, .kind-card, .legend-row, .attn-row, .data-row, .object-row, .queue-row, ' +
   '.finder-opt, .summary-card, .board-well *, [role="option"], [role="tab"], summary';
 
 async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {

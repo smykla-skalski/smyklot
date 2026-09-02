@@ -1085,8 +1085,13 @@ export function syncPlanSeed(iso: (offsetMs: number) => string): SyncPlan {
         repository: 'platform-infra',
         kind: 'labels',
         operation: 'update',
+        /* A change, so both sides: the colour has drifted and the description
+           has not, which is the row that has to show what moved. */
         subject: 'bug',
-        detail: { label: label('bug', 'd73a4a', 'Something is broken') },
+        detail: {
+          label: label('bug', 'd73a4a', 'Something is broken'),
+          previous_label: label('bug', 'ff8800', 'Something is broken'),
+        },
         state: 'pending',
       },
       {

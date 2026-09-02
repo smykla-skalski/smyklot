@@ -1574,6 +1574,12 @@ export interface SyncFileDetail {
  */
 export interface SyncActionDetail {
   label?: SyncLabelDetail;
+  /**
+   * What the repository holds now, on a label change. Absent on a creation,
+   * which replaces nothing. A change has two sides, and a reader shown only the
+   * new one cannot see what moved.
+   */
+  previous_label?: SyncLabelDetail;
   ruleset?: SyncRulesetDetail;
   file?: SyncFileDetail;
   settings?: SyncSettingDetail[];

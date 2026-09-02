@@ -118,10 +118,14 @@ type syncActionDTO struct {
 // the action beside it and a reader that switches on `kind` and then reads the
 // field of that name needs no second discriminator to keep in step.
 type syncDetailDTO struct {
-	Label   *syncLabelDTO    `json:"label,omitempty"`
-	Ruleset *syncRulesetDTO  `json:"ruleset,omitempty"`
-	File    *syncFileDTO     `json:"file,omitempty"`
-	Setting []syncSettingDTO `json:"settings,omitempty"`
+	Label *syncLabelDTO `json:"label,omitempty"`
+	// PreviousLabel is what the repository holds now, on a label change. A
+	// change has two sides and a reader shown only the new one cannot see what
+	// moved: a colour drifting from red to orange read as the same label twice.
+	PreviousLabel *syncLabelDTO    `json:"previous_label,omitempty"`
+	Ruleset       *syncRulesetDTO  `json:"ruleset,omitempty"`
+	File          *syncFileDTO     `json:"file,omitempty"`
+	Setting       []syncSettingDTO `json:"settings,omitempty"`
 
 	// Follows and Withheld belong to a settings change and to nothing else:
 	// what GitHub switches off alongside it, and what this repository will not
@@ -135,6 +139,12 @@ type syncLabelDTO struct {
 	Name        string `json:"name"`
 	Color       string `json:"color"`
 	Description string `json:"description,omitempty"`
+}
+
+func labelDTO(label orgsync.ResolvedLabel) *syncLabelDTO {
+	return &syncLabelDTO{
+		Name: label.Name, Color: label.Color, Description: label.Description,
+	}
 }
 
 // syncSettingDTO is one setting and what it moves between. A settings action is
@@ -184,14 +194,17 @@ func syncActionDetail(action orgsync.Action) *syncDetailDTO {
 
 	switch action.Kind {
 	case orgsync.KindLabels:
-		label, err := orgsync.DecodeLabel(action.Payload)
+		plan, err := orgsync.DecodeLabelPlan(action.Payload)
 		if err != nil {
 			return nil
 		}
 
-		return &syncDetailDTO{Label: &syncLabelDTO{
-			Name: label.Name, Color: label.Color, Description: label.Description,
-		}}
+		detail := &syncDetailDTO{Label: labelDTO(plan.Label)}
+		if plan.Previous != nil {
+			detail.PreviousLabel = labelDTO(*plan.Previous)
+		}
+
+		return detail
 
 	case orgsync.KindSettings:
 		return syncSettingsDetail(action)
