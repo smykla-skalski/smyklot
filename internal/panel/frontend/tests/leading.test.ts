@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
+import { BLOCK_COMMENT, HTML_COMMENT, stripAll } from './support/markup';
 import { stylesheets } from './theme';
 
 /**
@@ -23,7 +24,7 @@ import { stylesheets } from './theme';
  * crowds and then clips at 200%.
  */
 /** A stylesheet with its comments taken out - a comment is where a replaced rule is explained. */
-const uncommented = (text: string): string => text.replace(/\/\*[\s\S]*?\*\//gu, '');
+const uncommented = (text: string): string => stripAll(text, BLOCK_COMMENT);
 
 /**
  * A component's `<style>` block, and NOTHING else in the file.
@@ -37,7 +38,7 @@ function styleBlock(source: string): string {
   /* The markup comments go FIRST. `Button.svelte`'s contract says "No `<style>` block
      here, and there must never be one" - and searching the raw file finds that phrase,
      opens a block that does not exist, and reports the prose after it as CSS. */
-  const text = source.replace(/<!--[\s\S]*?-->/gu, '');
+  const text = stripAll(source, HTML_COMMENT);
   const opened = text.indexOf('<style>');
   if (opened === -1) return '';
 

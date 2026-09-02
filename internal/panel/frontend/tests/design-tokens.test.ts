@@ -2,6 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { BLOCK_COMMENT, HTML_COMMENT, stripAll } from './support/markup';
+
 /**
  * Every token a stylesheet reads is a token something declares.
  *
@@ -38,10 +40,13 @@ const PROVIDED = /^--bits-/u;
  * including the two that this check was written for, which would otherwise be
  * reported by the very sentences explaining them.
  */
-const COMMENTS = [/\/\*[\s\S]*?\*\//gu, /<!--[\s\S]*?-->/gu, /(?<!:)\/\/[^\n]*/gu];
+const COMMENTS = [BLOCK_COMMENT, HTML_COMMENT, /(?<!:)\/\/[^\n]*/gu];
 
 function code(source: string): string {
-  return COMMENTS.reduce((text, pattern) => text.replaceAll(pattern, ' '), source);
+  /* A SPACE, not nothing: joining the words either side of a removed comment invents an
+     identifier nobody wrote. Stripped to a fixpoint, because one pass over `<!--<!-- -->`
+     hands back the bare `<!--` it uncovered. */
+  return COMMENTS.reduce((text, pattern) => stripAll(text, pattern, ' '), source);
 }
 
 function sources(directory: URL): string[] {

@@ -32,22 +32,37 @@ export function componentSources(): (readonly [string, string])[] {
  * comment in `<!--<!-- -->` leaves a bare `<!--` behind, and a single pass would
  * hand that back as if it were markup. Repeating until nothing changes is what
  * makes the result actually free of them.
+ *
+ * Four suites arrived at this idea separately and two of them wrote the single
+ * pass, which is why it is exported rather than kept here: CodeQL reads a lone
+ * `replace(/<!--[\s\S]*?-->/g, '')` as an incomplete sanitizer and is right to -
+ * the shape is the same whether the text came off disk or off the wire, and a
+ * helper nobody can find is a helper everybody rewrites.
+ *
+ * The replacement is a parameter because a token sweep needs a SPACE: joining
+ * the words either side of a removed comment invents an identifier that was
+ * never written.
  */
-function stripAll(source: string, pattern: RegExp): string {
+export function stripAll(source: string, pattern: RegExp, replacement = ''): string {
   let current = source;
   let previous: string;
   do {
     previous = current;
-    current = current.replaceAll(pattern, '');
+    current = current.replaceAll(pattern, replacement);
   } while (current !== previous);
 
   return current;
 }
 
+/** The three ways this codebase writes a comment, in the order they nest. */
+export const HTML_COMMENT = /<!--[\s\S]*?-->/gu;
+export const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//gu;
+export const LINE_COMMENT = /^\s*\/\/.*$/gmu;
+
 /** Source with HTML comments, block comments and line comments removed. */
 export function markupOf(source: string): string {
-  const withoutHTML = stripAll(source, /<!--[\s\S]*?-->/gu);
-  const withoutBlocks = stripAll(withoutHTML, /\/\*[\s\S]*?\*\//gu);
+  const withoutHTML = stripAll(source, HTML_COMMENT);
+  const withoutBlocks = stripAll(withoutHTML, BLOCK_COMMENT);
 
-  return stripAll(withoutBlocks, /^\s*\/\/.*$/gmu);
+  return stripAll(withoutBlocks, LINE_COMMENT);
 }

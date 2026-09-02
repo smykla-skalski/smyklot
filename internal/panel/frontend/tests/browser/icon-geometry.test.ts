@@ -4,6 +4,8 @@ import type { Browser } from 'playwright-core';
 import { chromium } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { HTML_COMMENT, stripAll } from '../support/markup';
+
 /**
  * Every glyph's ink is centred in its own 24-unit box.
  *
@@ -46,17 +48,7 @@ function glyphs(): Map<string, string> {
   if (open === -1 || close === -1) throw new Error('Icon.svelte no longer has one <svg> block');
   const markup = source.slice(source.indexOf('>', source.indexOf('aria-hidden')) + 1, close);
 
-  /* Stripped to a fixpoint rather than in one pass: removing the inner match of `<!--<!-- -->`
-     leaves a bare `<!--` behind, so a single `replaceAll` is only mostly right. */
-  const clean = (text: string): string => {
-    let stripped = text;
-    for (let previous = ''; previous !== stripped;) {
-      previous = stripped;
-      stripped = stripped.replaceAll(/<!--[\s\S]*?-->/gu, '');
-    }
-
-    return stripped.trim();
-  };
+  const clean = (text: string): string => stripAll(text, HTML_COMMENT).trim();
   const naming = (condition: string): string[] =>
     [...condition.matchAll(/name === '(?<name>[a-z-]+)'/gu)].map(
       (match) => match.groups?.name ?? '',

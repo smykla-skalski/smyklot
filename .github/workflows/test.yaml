@@ -283,8 +283,8 @@ jobs:
   # Areas because of the tail rather than the total. Every file pays for a dev
   # server, a Chrome and a sign-in before it measures anything, which is about
   # nine seconds here, so the areas do not cost what they cost on a laptop:
-  # measured one file per runner they run from 74s for `table-columns` down to
-  # 10s for `icon-geometry`. `table-columns` has an area to itself because it is
+  # measured one file per runner they run from 71s for `column-widths` down to
+  # 10s for `icon-geometry`. `column-widths` has an area to itself because it is
   # the only file that would set the length of any area it joined.
   #
   # NOT EVERY FILE IS HERE, and which are missing is a decision rather than an
@@ -313,15 +313,21 @@ jobs:
           - area: type
             files: >-
               tests/browser/vertical-alignment.test.ts
-              tests/browser/table-headers.test.ts
               tests/browser/text-clipping.test.ts
               tests/browser/control-heights.test.ts
               tests/browser/dictionary.test.ts
-          # Every cell of every table given a run longer than the service can
-          # produce. Alone, at 74s: it found the same fault in five tables at
+          # Every cell of every row given a run longer than the service can
+          # produce. Alone, at 71s: it found the same fault in five views at
           # once, which is what a sweep is for and what it costs.
-          - area: tables
-            files: tests/browser/table-columns.test.ts
+          - area: columns
+            files: tests/browser/column-widths.test.ts
+          # The two sweeps that read a rule off the sheet and ask every route
+          # whether it obeys - the universal laws, and WCAG 2.2. Together at
+          # 32s, so they sit under the tail above rather than setting it.
+          - area: audits
+            files: >-
+              tests/browser/law-audit.test.ts
+              tests/browser/wcag-audit.test.ts
           # How much the panel asks for. `cached-navigation` is here rather than
           # with the queue it was written against: what it guards is an effect
           # ring reopening the stream on every navigation, which is the same

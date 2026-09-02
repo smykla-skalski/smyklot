@@ -428,9 +428,15 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 # release; `scripts/check-test-matrix.sh` fails if a file is in neither list or
 # in both.
 #
-#   empty-states      what six tables say when they have no rows
+# `mock-parity` is here for a different reason, and it is the one file CI could
+# not run however it was scheduled: it measures the app against the approved
+# mock, which lives outside the repository. Started at :8123, it answers; with
+# nothing there it says so and fails, which is what a developer who forgot wants
+# and what a runner cannot act on.
+#
+#   empty-states      what a list says when it has no rows
 #   file-formatting   backend render preview, mismatch actions, and exact repository output
-#   filter-vocabulary that a filter menu offers the states its column draws
+#   mock-parity       every page against the mock, which is not in this repository
 #   queue-list        the Queue against the approved design, to the pixel
 #   queue-live        the queue re-sorting under a reader, and holding still
 #   repository-page   a repository opened from its row, and its three panes
@@ -445,7 +451,7 @@ run = '''
 npm run test:browser -- \
   tests/browser/empty-states.test.ts \
   tests/browser/file-formatting.test.ts \
-  tests/browser/filter-vocabulary.test.ts \
+  tests/browser/mock-parity.test.ts \
   tests/browser/queue-list.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
