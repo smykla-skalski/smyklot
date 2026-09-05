@@ -44,6 +44,21 @@ describe('unifiedDiff', () => {
     '"packageRules": [',
   ].join('\n');
 
+  it('handles a large file without a quadratic diff table', () => {
+    const lines = Array.from({ length: 20_000 }, (_, index) => `line ${index}`);
+    const after = [...lines];
+    after[10_000] = 'changed';
+    const diff = unifiedDiff(lines.join('\n'), after.join('\n'));
+    expect(diff.filter((line) => line.op !== ' ').map((line) => line.text)).toEqual([
+      'line 10000',
+      'changed',
+    ]);
+    expect(diff.filter((line) => line.op !== '-').map((line) => line.text)).toEqual(after);
+    const replaced = unifiedDiff(lines.join('\n'), lines.map((line) => `new ${line}`).join('\n'));
+    expect(replaced.filter((line) => line.op === '+')).toHaveLength(lines.length);
+    expect(replaced.filter((line) => line.op === '-')).toHaveLength(lines.length);
+  });
+
   it("renders the plan page's window: context, del, adds, context", () => {
     expect(unifiedDiff(before, after).map((line) => line.op)).toEqual([' ', '-', '+', '+', ' ']);
   });

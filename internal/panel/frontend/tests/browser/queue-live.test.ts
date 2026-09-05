@@ -88,7 +88,7 @@ describe('the general Queue live stream [Integration]', () => {
     const summary = overview.locator('.card', {
       has: overview.getByRole('heading', { name: 'Queue', exact: true }),
     });
-    await summary.getByText('Apply organization sync plan', { exact: true }).waitFor();
+    await summary.getByText('Sync shared configuration', { exact: true }).waitFor();
     await summary.getByText('Scan for new commands', { exact: true }).waitFor();
     /* The queue's own sentence, said the same way here as on the queue page: a wait,
        then when the work runs. The console used to name the state instead. */
@@ -100,7 +100,8 @@ describe('the general Queue live stream [Integration]', () => {
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
     await showQueue(viewer, 'Needs a decision');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/approvals');
-    await viewer.getByText('Review organization sync plan').waitFor({ state: 'visible' });
+    await viewer.getByText('Nothing in this view.', { exact: true }).waitFor();
+    expect(await viewer.locator(ROW).count()).toBe(0);
     await viewer.waitForTimeout(200);
     expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
 
@@ -111,7 +112,7 @@ describe('the general Queue live stream [Integration]', () => {
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
     await showQueue(viewer, 'All');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue');
-    await viewer.getByText('Apply organization sync plan', { exact: true }).waitFor();
+    await viewer.getByText('Sync shared configuration', { exact: true }).waitFor();
     await viewer.waitForTimeout(200);
     expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
   });

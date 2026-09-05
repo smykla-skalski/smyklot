@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { syncPermissionsHref } from '../sync-health';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { plainClick } from '#lib/follow.js';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
@@ -148,6 +149,9 @@ history is routed with its section. That is what makes an address like
             discardPlan={session.api.discardSyncPlan}
             runSyncNow={session.api.runSyncNow}
             fetchStatus={session.api.fetchSyncStatus}
+            permissionsHref={syncPermissionsHref(session.selectedTarget)}
+            queueHref={session.queueSectionHref('active')}
+            repositoryHref={(name) => session.repositoryHref(name)}
             sectionHref={(s) => session.syncSectionHref(s)}
             onOpenSection={(s) => session.selectSyncSection(s)}
             rulesetHref={(name) => session.syncRulesetHref(name)}

@@ -75,6 +75,9 @@ describe('the popover primitive', () => {
       // The Timing card: a card of the page, shut because it is rarely wanted. It sits in
       // the flow, the page's own index links to it, and nothing about it floats.
       'TargetSettings.svelte',
+      // Optional sections expand in the document and hold complete cards.
+      'DisclosureSection.svelte',
+      'FormattingEditor.svelte', // Explains setting precedence inline, not a menu.
     ]);
 
     const offenders = others

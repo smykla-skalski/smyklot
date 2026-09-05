@@ -4,6 +4,11 @@ import type { PanelStreamHandle, PanelStreamHandlers, PanelWebSocketFactory } fr
 import { openPanelStream, panelStreamUrl } from './events';
 import type { RequestFlood } from './request-rate';
 import { createRequestRate, floodMessage } from './request-rate';
+import {
+  parseSyncFileRenderResponse,
+  type SyncFileRenderInput,
+  type SyncFileRenderResponse,
+} from './sync-file-render.generated';
 import type {
   AuditEntry,
   AuditHistoryRequest,
@@ -63,8 +68,6 @@ import type {
   SyncPlan,
   SyncRunNowResponse,
   SyncFilesContext,
-  SyncFileRenderInput,
-  SyncFileRenderResponse,
   SyncStatus,
   InvitationDays,
   InvitationSignIn,
@@ -1130,8 +1133,15 @@ export function createPanelApi(
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/files/context`);
     },
 
-    renderSyncFile(targetId: string, input: SyncFileRenderInput): Promise<SyncFileRenderResponse> {
-      return postJson(`/api/v1/targets/${pathSegment(targetId)}/sync/files/render`, input);
+    async renderSyncFile(
+      targetId: string,
+      input: SyncFileRenderInput,
+    ): Promise<SyncFileRenderResponse> {
+      const response = await postJson<unknown>(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/files/render`,
+        input,
+      );
+      return parseSyncFileRenderResponse(response);
     },
 
     // The digest goes back with the approval. It is what says the plan on the

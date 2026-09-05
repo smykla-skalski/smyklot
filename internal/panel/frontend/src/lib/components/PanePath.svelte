@@ -8,6 +8,7 @@
 </script>
 
 <script lang="ts">
+  import Icon from './Icon.svelte';
   const {
     segments,
   }: {
@@ -47,6 +48,7 @@ path pointing at the page it sits on is a self-link.
         <span class="path-sep" aria-hidden="true">/</span>
       {/if}
       <a class="crumb" href={segment.href} onclick={(event) => plainClick(event, segment)}>
+        {#if segments.length === 1}<Icon name="chevron-left" size="sm" />{/if}
         <span class="t">{segment.label}</span>
       </a>
     {/each}
@@ -54,54 +56,41 @@ path pointing at the page it sits on is a self-link.
 {/if}
 
 <style>
-  /* Every page below its console's root opens with its ancestors - each one
-     pressable. The way up is an eyebrow, not a sentence: small caps, like
-     every other wayfinding label. */
   .pane-path {
-    align-items: center;
     display: flex;
-    gap: 0.4rem;
-    /* A 24px hit area on each segment without moving a pixel of layout. */
-    margin-block: -6px calc(var(--space-3) - 6px);
-  }
-
-  .crumb {
     align-items: center;
-    color: var(--text-secondary);
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .crumb {
     display: inline-flex;
-    gap: 0.5rem;
-    font-size: var(--font-size-meta);
-    padding-block: 6px;
-    text-decoration: none;
-    transition:
-      color var(--duration-fast) var(--ease-standard),
-      translate var(--duration-press) var(--ease-standard);
-  }
-
-  .crumb:hover {
-    color: var(--text-primary);
-  }
-
-  .crumb:active {
-    translate: 0 1px;
-  }
-
-  /* Floored like every other trimmed line: the micro cap is 8.2, and the
-     floor keeps the path's declared height whole (6 + 9 + 6 = 21). */
-  .crumb .t {
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
     font-size: var(--font-size-micro);
     font-weight: 600;
     letter-spacing: 0.07em;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
     text-transform: uppercase;
+    padding: var(--space-2);
+    margin: calc(var(--space-2) * -1);
+    border-radius: var(--r-ctl);
+    text-decoration: none;
+    transition:
+      background var(--duration-fast) var(--ease-standard),
+      color var(--duration-fast) var(--ease-standard);
   }
-
+  .crumb:hover {
+    background: var(--row-hover);
+    color: var(--text-primary);
+  }
+  .crumb:active {
+    background: var(--row-pressed);
+  }
+  .crumb .t {
+    text-box: trim-both cap alphabetic;
+  }
   .path-sep {
     color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
+    font-size: var(--font-size-compact);
   }
 </style>

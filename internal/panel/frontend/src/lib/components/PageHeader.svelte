@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import PanePath, { type PanePathSegment } from './PanePath.svelte';
 
   import { panelSessionOrNull } from '../session.svelte';
 
@@ -9,6 +10,7 @@
     mono = false,
     description,
     section,
+    ancestors,
     eyebrow,
     kicker,
     actions,
@@ -27,6 +29,8 @@
     description?: string;
     /** The group this page sits in - Sync, Access, Activity. Not every page is in one. */
     section?: string;
+    /** The way up replaces the scope eyebrow on a detail page. */
+    ancestors?: readonly PanePathSegment[];
     /** The whole eyebrow, for a page whose scope is not the open workspace. */
     eyebrow?: string;
     /** Above the title - on the Root console, whose authority this page is under. */
@@ -87,7 +91,9 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
 
 <header class="page-head">
   <div class="page-head-say">
-    {#if kicker !== undefined}
+    {#if ancestors !== undefined}
+      <PanePath segments={ancestors} />
+    {:else if kicker !== undefined}
       <p class="page-eyebrow">{@render kicker()}</p>
     {:else if eyebrowText !== ''}
       <p class="page-eyebrow">{eyebrowText}</p>

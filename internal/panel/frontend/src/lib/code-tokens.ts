@@ -8,7 +8,7 @@
  * document says can become HTML.
  */
 
-export type CodeLang = 'json' | 'yaml' | 'markdown';
+export type CodeLang = 'json' | 'yaml' | 'toml' | 'markdown' | 'text';
 
 /** One stretch of a line wearing one token class. */
 export interface TokenRun {
@@ -86,9 +86,24 @@ function tokenizeMarkdown(line: string): TokenRun[] {
   return out;
 }
 
+function tokenizeToml(line: string): TokenRun[] {
+  if (/^\s*#/u.test(line)) return run(line, 'tok-com');
+  if (/^\s*\[\[?.+\]\]?\]\s*(?:#.*)?$/u.test(line)) return run(line, 'tok-head');
+  const entry = /^(\s*)([\w.-]+)(\s*=\s*)(.*)$/u.exec(line);
+  if (entry === null) return run(line);
+  return [
+    ...run(entry[1] ?? ''),
+    ...run(entry[2] ?? '', 'tok-key'),
+    ...run(entry[3] ?? '', 'tok-pun'),
+    ...run(entry[4] ?? '', 'tok-str'),
+  ];
+}
+
 export function tokenizeLine(lang: CodeLang, line: string): TokenRun[] {
   if (lang === 'yaml') return tokenizeYaml(line);
+  if (lang === 'toml') return tokenizeToml(line);
   if (lang === 'markdown') return tokenizeMarkdown(line);
+  if (lang === 'text') return run(line);
   return tokenizeJson(line);
 }
 
@@ -137,8 +152,37 @@ export interface DiffLine {
  * emphasised on both - the word inside the line that actually moved.
  */
 export function unifiedDiff(before: string, after: string): DiffLine[] {
-  const a = splitLines(before);
-  const b = splitLines(after);
+  return diffLines(splitLines(before), splitLines(after));
+}
+
+function diffLines(a: string[], b: string[]): DiffLine[] {
+  // Whole templates can be much larger than plan excerpts. Bound LCS memory;
+  // keep shared edges and show an honest replacement for an enormous middle.
+  if (a.length * b.length > 1_000_000) {
+    let prefix = 0;
+    while (prefix < a.length && prefix < b.length && a[prefix] === b[prefix]) prefix++;
+    let suffix = 0;
+    while (
+      suffix < a.length - prefix &&
+      suffix < b.length - prefix &&
+      a[a.length - suffix - 1] === b[b.length - suffix - 1]
+    )
+      suffix++;
+    const left = a.slice(prefix, a.length - suffix);
+    const right = b.slice(prefix, b.length - suffix);
+    const middle: DiffLine[] =
+      left.length * right.length <= 1_000_000
+        ? diffLines(left, right)
+        : [
+            ...left.map((text): DiffLine => ({ op: '-', text })),
+            ...right.map((text): DiffLine => ({ op: '+', text })),
+          ];
+    return [
+      ...a.slice(0, prefix).map((text): DiffLine => ({ op: ' ', text })),
+      ...middle,
+      ...a.slice(a.length - suffix).map((text): DiffLine => ({ op: ' ', text })),
+    ];
+  }
 
   /* LCS table - the texts here are excerpt-sized, so the quadratic table is
      smaller than the code any cleverer algorithm would take. */

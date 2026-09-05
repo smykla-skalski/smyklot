@@ -132,14 +132,18 @@ const REPOSITORY = {
 
 describe('file rendering', () => {
   it('posts the complete typed render request to the encoded workspace route', async () => {
-    const response = { valid: true, content: '{}\n', changed: true, diagnostics: [] };
+    const response = {
+      valid: true,
+      final_content: '{}\n',
+      matches_formatting: false,
+      diagnostics: [],
+    };
     const stub = stubFetch([jsonResponse(200, response)]);
     const api = createPanelApi('/panel', stub.fetch);
     const input = {
       path: 'renovate.json',
       draft_content: '{}',
-      base_policy: defaultFormattingPolicy(),
-      overlays: [{ common: { final_newline: 'insert' as const } }],
+      template_formatting: { common: { final_newline: 'insert' as const } },
     };
 
     await expect(api.renderSyncFile('target.1', input)).resolves.toEqual(response);

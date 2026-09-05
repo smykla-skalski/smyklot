@@ -18,6 +18,7 @@
 
   const {
     plan,
+    embedded = false,
     nowMs,
     readOnly,
     canControl,
@@ -29,6 +30,7 @@
     onRunNow,
   }: {
     plan: SyncPlan | null;
+    embedded?: boolean;
     /** The clock, passed in so a story renders the same minute every time. */
     nowMs: number;
     readOnly: boolean;
@@ -279,7 +281,7 @@ the button.
 -->
 
 <div class="view-frame">
-  <PageHeader id="sync-plan-heading" section="Sync" title="Plan" />
+  {#if !embedded}<PageHeader id="sync-plan-heading" section="Sync" title="Sync details" />{/if}
 
   {#if plan === null || total === 0}
     <!-- Having no plan is a state, not a verdict: the page-tier heading and the
@@ -289,8 +291,8 @@ the button.
     <Card>
       <div class="state-panel">
         <span
-          ><strong>No plan is open.</strong> Every repository matches the configuration - a reconcile
-          runs on a timer and writes a plan here the moment something drifts</span
+          ><strong>No sync is in progress.</strong> Smyklot checks saved configuration on its schedule
+          and syncs changes automatically</span
         >
         {#if canControl}
           <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
@@ -308,7 +310,7 @@ the button.
           >
           {total === 1 ? 'waits' : 'wait'} for you{:else if plan.state === 'approved'}<span
             class="is-drift">{total} {total === 1 ? 'change' : 'changes'}</span
-          > approved{:else if plan.state === 'applying'}Applying - {landed} of {total} landed{:else if plan.state === 'applied'}All
+          > queued{:else if plan.state === 'applying'}Applying - {landed} of {total} landed{:else if plan.state === 'applied'}All
           {total} landed{:else if plan.state === 'failed'}<span class="is-failed"
             >{failed} of {total} failed</span
           >{:else if plan.state === 'stale'}This plan is <span class="is-stale">stale</span
@@ -571,8 +573,8 @@ the button.
              the source does the same thing and is invisible to whoever edits
              the sentence next. -->
         <span class="apply-note"
-          >Nothing reaches GitHub until you apply the plan&nbsp;- files open pull requests and other
-          changes apply directly</span
+          >This earlier sync still needs a decision · files open pull requests and other changes
+          apply directly</span
         >
         <Button tone="quiet" disabled={discarding || approving} onclick={() => onDiscard(plan.id)}>
           {discarding ? 'Discarding' : 'Discard'}
@@ -590,11 +592,11 @@ the button.
     <ConfirmDialog
       id="apply-plan-dialog"
       open={confirming}
-      title="Apply this plan?"
+      title="Resume this sync?"
       description="Smyklot will change {groups.length} {groups.length === 1
         ? 'repository'
         : 'repositories'} now. Settings, labels and rulesets change directly; each file change opens a pull request"
-      confirmLabel="Apply the plan"
+      confirmLabel="Resume sync"
       busyLabel="Applying…"
       confirmTone="signal"
       busy={approving}
@@ -625,11 +627,11 @@ the button.
   <ConfirmDialog
     id="sync-run-now-dialog"
     open={runConfirming}
-    title={plan?.state === 'approved' ? 'Run approved plan now?' : 'Check organization drift now?'}
+    title={plan?.state === 'approved' ? 'Sync now?' : 'Check sync now?'}
     description={plan?.state === 'approved'
-      ? 'This bypasses the assigned window once and immediately dispatches the approved plan.'
-      : 'This queues an immediate drift scan. Any changes still require human approval.'}
-    confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Queue drift scan'}
+      ? 'This bypasses the assigned window once and runs the queued changes immediately.'
+      : 'This checks repositories now and queues changes from your saved configuration automatically.'}
+    confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Check now'}
     busyLabel="Queuing…"
     confirmTone="signal"
     busy={runNowBusy}

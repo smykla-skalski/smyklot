@@ -201,14 +201,10 @@ var _ = Describe("Org sync [Unit]", func() {
 		return plan, actions
 	}
 
-	approve := func(plan orgsync.Plan) {
+	assertScheduled := func(plan orgsync.Plan) {
 		GinkgoHelper()
-
-		_, err := service.store.ApproveSyncPlan(GinkgoT().Context(), orgsync.PlanApproval{
-			TargetID: plan.TargetID, PlanID: plan.ID, Digest: plan.Digest,
-			ActorID: plan.ActorAccountID, Now: time.Now().UTC(),
-		})
-		Expect(err).NotTo(HaveOccurred())
+		Expect(plan.State).To(Equal(orgsync.PlanApproved))
+		Expect(plan.ApprovedAt).NotTo(BeNil())
 	}
 
 	Describe("planning", func() {
@@ -483,7 +479,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -505,7 +501,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
@@ -526,7 +522,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
 			Expect(syncAuditActions(service, target)).
@@ -542,7 +538,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, _ := livePlan(target)
 			Expect(computed.Counts).To(Equal(orgsync.Counts{Delete: 1}))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -561,7 +557,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			stub.brokenRepo = "smyklot"
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
@@ -591,7 +587,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			// The installation withdraws the permission, which the next catalog
 			// reconcile records.
@@ -628,7 +624,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			computed, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Kind).To(Equal(orgsync.KindSettings))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -663,7 +659,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -697,7 +693,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			plan(target)
 			computed, actions := livePlan(target)
 			Expect(actions).To(HaveLen(2))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -726,7 +722,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			computed, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Subject).To(Equal(orgsync.SettingsSubject))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 			Expect(stub.dependabotWrites).To(BeEmpty())
@@ -764,7 +760,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Kind).To(Equal(orgsync.KindRulesets))
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationCreate))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -943,7 +939,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			computed, actions := livePlan(target)
 			Expect(actions).To(HaveLen(1))
 			Expect(actions[0].Operation).To(Equal(orgsync.OperationDelete))
-			approve(computed)
+			assertScheduled(computed)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 
@@ -970,13 +966,13 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(stub.rulesetWrites).To(BeEmpty())
 		})
 
-		It("does nothing for a plan nobody approved", func() {
+		It("applies saved configuration without a separate approval", func() {
 			target := seed()
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
-			Expect(stub.labelWrites).To(BeEmpty())
+			Expect(stub.labelWrites).To(HaveLen(1))
 		})
 
 		// A failure has to be recorded against the action rather than reported
@@ -987,7 +983,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configure(target, `{"labels":[{"name":"bug","color":"d73a4a"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			stub.brokenRepo = "smyklot"
 
@@ -1004,7 +1000,9 @@ var _ = Describe("Org sync [Unit]", func() {
 			// again rather than believing the work is done
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(BeEmpty())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).To(Equal(actions[0].Error))
 		})
 	})
 
@@ -1045,7 +1043,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 			Expect(service.sync.ApplyPlans(GinkgoT().Context())).To(Succeed())
 		}
 
@@ -1132,7 +1130,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			// The branch is there with an earlier tick's commit, whose tree has
 			// already taken the file out
@@ -1171,7 +1169,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1211,7 +1209,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			// The branch is already there, carrying somebody's commit
 			written, err := orgsync.DecodeFile(actions[0].Payload)
@@ -1288,7 +1286,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			// The branch is still there, pointing at what merged, and the
 			// default branch no longer holds the file - which is why the
@@ -1341,7 +1339,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1379,7 +1377,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1422,7 +1420,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1455,7 +1453,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1494,7 +1492,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1553,7 +1551,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			written, err := orgsync.DecodeFile(actions[0].Payload)
 			Expect(err).NotTo(HaveOccurred())
@@ -1587,7 +1585,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, actions := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			// One of them recorded failed, the other left where it was
 			Expect(service.store.RecordSyncActionOutcome(
@@ -1617,7 +1615,7 @@ var _ = Describe("Org sync [Unit]", func() {
 
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			stub.branchPRs = `[{"number":9,"state":"open"}]`
 
@@ -1691,7 +1689,7 @@ var _ = Describe("Org sync [Unit]", func() {
 			configureKind(target, orgsync.KindFiles, contributing)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			stub.refuseEmptyPR = true
 
@@ -1704,11 +1702,13 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(actions[0].State).To(Equal(orgsync.ActionFailed))
 			Expect(actions[0].Error).To(ContainSubstring("No commits between"))
 
-			// And nothing recorded, so the repository is asked again rather
-			// than left looking finished behind a proposal that was refused
+			// Keep the refusal visible and leave the digest empty so the next
+			// reconciliation retries the repository
 			state, err := service.store.ListSyncRepositoryState(GinkgoT().Context(), target.ID)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(state).To(BeEmpty())
+			Expect(state).To(HaveLen(1))
+			Expect(state[0].AppliedDigest).To(BeEmpty())
+			Expect(state[0].Problem).To(Equal(actions[0].Error))
 		})
 
 		// GitHub keeps workflow files behind a permission of their own and
@@ -1824,7 +1824,7 @@ var _ = Describe("Org sync [Unit]", func() {
 				{"path":".github/workflows/ci.yaml","content":"name: CI\n"}]}`)
 			plan(target)
 			computed, _ := livePlan(target)
-			approve(computed)
+			assertScheduled(computed)
 
 			stub.installations = `[{"id":411,"account":` +
 				`{"id":7,"login":"smykla-skalski","type":"Organization"},` +

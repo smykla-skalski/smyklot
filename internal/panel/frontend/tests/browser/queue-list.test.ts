@@ -55,13 +55,9 @@ describe('the general Queue list [Integration]', () => {
       /* What is done is part of what is happening: the view that shows everything
          carries the last day of it, under a heading that says so rather than claiming
          to be the whole record. */
-      expect(reading.groups).toEqual([
-        'Needs a decision',
-        'Running and waiting',
-        'Done in the last day',
-      ]);
+      expect(reading.groups).toEqual(['Running and waiting', 'Done in the last day']);
       expect(reading.overflow).toBeLessThanOrEqual(1);
-      expect(reading.sentences).toContain('Running · 4 of 12 changes written');
+      expect(reading.sentences.some((sentence) => sentence.includes('runs'))).toBe(true);
       expect(reading.sentences.every((sentence) => sentence !== '')).toBe(true);
     } finally {
       await page.close();
@@ -108,14 +104,14 @@ describe('the general Queue list [Integration]', () => {
     }
   });
 
-  it('moves approval and terminal work into their named views', async () => {
+  it('keeps automatic sync out of decisions and terminal work in Done', async () => {
     const page = await panel.browser.newPage();
     try {
       await visit(page, addressOf(panel, 'root/queue'), { ready: READY });
       await show(page, 'Needs a decision');
       await expect.poll(() => new URL(page.url()).pathname).toBe('/root/queue/approvals');
-      await expect.poll(() => page.locator(READY).count()).toBe(1);
-      await page.getByText('Review organization sync plan').waitFor({ state: 'visible' });
+      await page.getByText('Nothing in this view.', { exact: true }).waitFor();
+      expect(await page.locator(READY).count()).toBe(0);
 
       await show(page, 'Done');
       await expect.poll(() => new URL(page.url()).pathname).toBe('/root/queue/history');
@@ -130,14 +126,14 @@ describe('the general Queue list [Integration]', () => {
     try {
       await visit(page, addressOf(panel, 'root/queue'), { ready: READY });
       await page
-        .getByRole('button', { name: 'Open Apply organization sync plan', exact: true })
+        .getByRole('button', { name: 'Open Sync shared configuration', exact: true })
         .click();
-      const dialog = page.getByRole('dialog', { name: 'Apply organization sync plan' });
+      const dialog = page.getByRole('dialog', { name: 'Sync shared configuration' });
       await dialog.waitFor({ state: 'visible' });
       await dialog.getByRole('heading', { name: 'What this job is doing' }).waitFor();
       await dialog.getByText('Ready, in your timezone').waitFor();
       await dialog.getByText("Ready, in the job's timezone").waitFor();
-      await dialog.getByText('3 create · 7 update · 2 delete').waitFor();
+      await dialog.getByText('8 create · 5 update · 1 delete').waitFor();
       await dialog.getByRole('heading', { name: 'Timeline' }).waitFor();
     } finally {
       await page.close();

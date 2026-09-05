@@ -169,7 +169,7 @@ decisions every kind carries: removal, and the names left alone.
     id="sync-rulesets-heading"
     section="Sync"
     title="Rulesets"
-    description="Smyklot owns synced rulesets end to end; the next plan previews enforcement changes"
+    description="Saved rulesets are kept in step automatically across syncing repositories"
     statusUnsaved={dirtyEnabled}
   >
     {#snippet actions()}
@@ -267,9 +267,8 @@ decisions every kind carries: removal, and the names left alone.
                 <span class="mx-mark mx-pending"
                   ><span class="t"
                     >{pending}
-                    <span class="scope-word"
-                      >{pending === 1 ? 'repository' : 'repositories'}
-                    </span>{pending === 1 ? 'differs' : 'differ'}</span
+                    <span class="scope-word">{pending === 1 ? 'repository' : 'repositories'} </span>
+                    {pending === 1 ? 'differs' : 'differ'}</span
                   ></span
                 >
               {:else}
@@ -393,10 +392,6 @@ decisions every kind carries: removal, and the names left alone.
     padding: var(--row-pad-default) var(--space-3);
     position: relative;
     text-decoration: none;
-  }
-
-  .object-row:hover {
-    background: var(--row-hover);
   }
 
   .object-row:active {

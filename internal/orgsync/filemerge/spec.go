@@ -162,15 +162,61 @@ func Apply(
 	spec Spec,
 	policy config.FormattingPolicy,
 ) ([]byte, error) {
+	result, err := ApplyDetailed(filePath, template, spec, policy)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Final, nil
+}
+
+// ApplyResult keeps the semantic composition separate from presentation.
+// Callers that explain formatting compliance compare Composed with Final;
+// callers that only need the repository bytes continue to use Apply.
+type ApplyResult struct {
+	Composed []byte
+	Final    []byte
+}
+
+// ApplyStage identifies which half of ApplyDetailed refused a document.
+type ApplyStage string
+
+const (
+	ApplyStageMerge  ApplyStage = "merge"
+	ApplyStageFormat ApplyStage = "format"
+)
+
+// ApplyError preserves the original error text and identity while carrying
+// the stage a panel diagnostic should name.
+type ApplyError struct {
+	Stage ApplyStage
+	Err   error
+}
+
+func (e *ApplyError) Error() string { return e.Err.Error() }
+func (e *ApplyError) Unwrap() error { return e.Err }
+
+// ApplyDetailed builds the semantic copy and its final formatted bytes.
+func ApplyDetailed(
+	filePath string,
+	template []byte,
+	spec Spec,
+	policy config.FormattingPolicy,
+) (ApplyResult, error) {
 	if spec.Empty() && policy.AllPreserve() {
-		return template, nil
+		return ApplyResult{Composed: template, Final: template}, nil
 	}
 	if spec.Empty() {
-		return FormatDocument(filePath, template, policy)
+		formatted, err := FormatDocument(filePath, template, policy)
+		if err != nil {
+			return ApplyResult{}, &ApplyError{Stage: ApplyStageFormat, Err: err}
+		}
+
+		return ApplyResult{Composed: template, Final: formatted}, nil
 	}
 
 	if err := spec.Validate(filePath); err != nil {
-		return nil, err
+		return ApplyResult{}, &ApplyError{Stage: ApplyStageMerge, Err: err}
 	}
 
 	var (
@@ -185,10 +231,15 @@ func Apply(
 		merged, err = mergeStructured(format, template, spec)
 	}
 	if err != nil {
-		return nil, err
+		return ApplyResult{}, &ApplyError{Stage: ApplyStageMerge, Err: err}
 	}
 
-	return formatWithSource(filePath, merged, template, policy)
+	formatted, err := formatWithSource(filePath, merged, template, policy)
+	if err != nil {
+		return ApplyResult{}, &ApplyError{Stage: ApplyStageFormat, Err: err}
+	}
+
+	return ApplyResult{Composed: merged, Final: formatted}, nil
 }
 
 // FormatDocument applies only configured presentation dimensions. Unsupported file

@@ -53,13 +53,14 @@ what would otherwise be four visits.
 -->
 
 <script lang="ts">
+  import { syncIssues } from '../sync-health';
   import { createQuery } from '@tanstack/svelte-query';
   import { useInterval } from 'runed';
   import { fade } from 'svelte/transition';
 
   import { collapse, LiveList, rowMotion } from '#lib/live-list.svelte.js';
 
-  import { formatUntil, sentenceCase } from '../format';
+  import { sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
   import type { AuditEntry, PanelTarget, RepositorySummary } from '../types';
 
@@ -184,19 +185,12 @@ what would otherwise be four visits.
   const failures = $derived(failuresQuery.data?.total ?? 0);
   const counts = $derived(countsQuery.data ?? null);
 
-  const planChanges = $derived(plan?.actions.length ?? 0);
-  const planWaiting = $derived(plan !== null && plan.state === 'computed' && planChanges > 0);
-
-  /* What a person has to act on, which is not everything that is wrong: work
-     already moving needs nobody, and a repository out of step is what the plan
-     is FOR. Each item is a row below, so the count and the list cannot
-     disagree. */
-  const attention = $derived((planWaiting ? 1 : 0) + broken.length);
+  const syncProblems = $derived(syncIssues(fleet, plan));
+  const attention = $derived(syncProblems.length + broken.length);
 
   const checked = $derived(fleet?.checked_at ?? plan?.computed_at ?? null);
 
   const drifted = $derived(driftedRepositories(fleet));
-  const reach = $derived(planReach(plan));
 
   function auditLine(entry: AuditEntry): string {
     return sentenceCase(entry.summary.replace(/\s+for\s*$/i, ''));
@@ -206,7 +200,6 @@ what would otherwise be four visits.
   const queueHref = $derived(session.queueSectionHref('active'));
   const auditHref = $derived(session.historyHref('audit'));
   const failuresHref = $derived(session.historyHref('failures'));
-  const planHref = $derived(session.syncSectionHref('plan'));
   const syncHref = $derived(session.syncSectionHref('overview'));
 </script>
 
@@ -217,9 +210,9 @@ what would otherwise be four visits.
     <div class="card-head verdict-head">
       <h2 class="card-title">
         {#if attention === 0}
-          Nothing needs review
+          Nothing needs attention
         {:else}
-          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need review
+          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need attention
         {/if}
       </h2>
       {#if checked !== null}
@@ -233,34 +226,24 @@ what would otherwise be four visits.
     {#if attention === 0}
       <div class="state-panel">
         <span
-          ><strong>Quiet.</strong> No plan is waiting and no repository file is broken. Work lands here
-          as it arrives</span
+          ><strong>Quiet.</strong> Sync and commands are running automatically. Issues that need you appear
+          here</span
         >
       </div>
     {:else}
       <div class="object-list">
-        {#if planWaiting}
-          <a class="object-row" href={planHref}>
-            <span class="object-main">
-              <span class="object-name-row">
-                <span class="object-name">Review the sync plan</span>
-                <span class="mx-mark mx-pending"
-                  ><span class="t"
-                    >{planChanges}
-                    {planChanges === 1 ? 'change' : 'changes'}</span
-                  ></span
-                >
-              </span>
-              <span class="object-sum"
-                >A plan across {reach}
-                {reach === 1 ? 'repository' : 'repositories'} waits for your approval{#if plan !== null}
-                  - it expires
-                  <span class="nowrap-atom">{formatUntil(plan.expires_at, nowMs)}</span>{/if}</span
-              >
-            </span>
+        {#each syncProblems as issue (issue.id)}
+          <a class="object-row" href={syncHref}>
+            <span class="object-main"
+              ><span class="object-name-row"
+                ><span class="object-name">{issue.title}</span><span class="mx-mark mx-refused"
+                  ><span class="t">sync blocked</span></span
+                ></span
+              ><span class="object-sum">{issue.detail}</span></span
+            >
             <span class="object-side"><Icon name="chevron-right" size="xs" /></span>
           </a>
-        {/if}
+        {/each}
         {#each broken as repository (repository.id)}
           <a class="object-row" href={repositoriesHref}>
             <span class="object-main">

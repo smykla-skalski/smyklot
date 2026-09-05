@@ -11,6 +11,7 @@ export type {
   FormattingPolicy,
   FormattingSources,
 } from './formatting.generated.ts';
+export type { SyncFileRenderInput, SyncFileRenderResponse } from './sync-file-render.generated.ts';
 
 export const COMMANDS = [
   'approve',
@@ -1464,6 +1465,8 @@ export type SyncKind = (typeof SYNC_KINDS)[number];
  * switched off there.
  */
 export interface SyncCell {
+  /** Why this kind cannot continue, when blocked. */
+  reason?: string;
   state: 'in_step' | 'pending' | 'refused' | 'off';
   /** Pending only: how many of the plan's changes land here for this kind. */
   changes?: number;
@@ -1484,6 +1487,9 @@ export interface SyncRepositoryStatus {
  * overview's board, legend, out-of-step list and kind strips are drawn from.
  */
 export interface SyncStatus {
+  /** Installation-wide blockers, shown once rather than once per repository. */
+  unavailable?: Partial<Record<SyncKind, string>>;
+  invalid?: Partial<Record<SyncKind, string>>;
   checked_at: string;
   repositories: SyncRepositoryStatus[];
 }
@@ -1500,9 +1506,7 @@ export interface SyncFilesContext {
   covered: number;
   /** Every path any repository holds, deduped, with how many hold it. */
   known_paths: Array<{ path: string; repositories: number }>;
-  /** Runtime through workspace settings, before one template's overlay. */
-  base_formatting: FormattingPolicy;
-  /** Every repository's complete policy, sent once and joined to path overlays locally. */
+  /** Repository names and stable ids used to request one authoritative output. */
   repository_policies: SyncFileRepositoryPolicy[];
   merges: SyncFileMergeEntry[];
 }
@@ -1510,8 +1514,6 @@ export interface SyncFilesContext {
 export interface SyncFileRepositoryPolicy {
   repository: string;
   repository_id: string;
-  default_branch: string;
-  base_policy: FormattingPolicy;
 }
 
 /** One repository's adjustment of one template. */
@@ -1523,27 +1525,6 @@ export interface SyncFileMergeEntry {
   merge?: Record<string, unknown>;
   /** The exact-path formatting overlay, including format-only adjustments. */
   formatting?: FormattingPatch;
-}
-
-export interface SyncFileRenderInput {
-  path: string;
-  draft_content: string;
-  merge?: Omit<SyncFileMerge, 'path'>;
-  default_branch?: string;
-  base_policy: FormattingPolicy;
-  overlays?: FormattingPatch[];
-}
-
-export interface SyncFileRenderDiagnostic {
-  code: string;
-  message: string;
-}
-
-export interface SyncFileRenderResponse {
-  valid: boolean;
-  content: string;
-  changed: boolean;
-  diagnostics: SyncFileRenderDiagnostic[];
 }
 
 /** A label as a label: what to draw, rather than a sentence describing one. */

@@ -1,16 +1,3 @@
-<script module lang="ts">
-  import type { SyncFileMergeEntry } from '../types';
-
-  /** The pill's word for how a template lands where repositories adjust it. */
-  export function strategyWord(merges: readonly SyncFileMergeEntry[]): string {
-    if (merges.length === 0) return 'replaces';
-    const strategy = merges[0]?.merge?.strategy;
-    if (strategy === 'markdown') return 'merges · sections';
-    if (strategy === 'shallow-merge') return 'merges · shallow';
-    return 'merges · deep';
-  }
-</script>
-
 <!--
 @component
 The shared files list: what every repository should carry. Each template
@@ -25,7 +12,14 @@ already hold - the index ships once, matching costs no requests.
   import { formatRelative } from '../format';
   import { rankPaths, type PathMatch } from '../pathfinder';
   import { receipts } from '../receipts.svelte';
-  import type { SyncConfig, SyncFile, SyncFilesContext, SyncPlan, SyncStatus } from '../types';
+  import type {
+    SyncConfig,
+    SyncFile,
+    SyncFileMergeEntry,
+    SyncFilesContext,
+    SyncPlan,
+    SyncStatus,
+  } from '../types';
 
   import Card from './Card.svelte';
   import FormError from './FormError.svelte';
@@ -165,7 +159,7 @@ already hold - the index ships once, matching costs no requests.
     if (!files.some((file) => file.path === clean)) {
       stage({ files: [...files, { path: clean, content: '' }] });
       receipts.say(
-        `${clean} is shared now - the next plan opens a pull request in every syncing repository`,
+        `${clean} is shared now - the next sync opens a pull request in every syncing repository`,
       );
     }
     onOpenFile(clean);
@@ -331,42 +325,42 @@ already hold - the index ships once, matching costs no requests.
     </div>
 
     {#if files.length > 0}
-      <div class="object-list">
+      <ul class="object-list">
         {#each files as file (file.path)}
-          {@const merges = mergesOf(file.path)}
           {@const pending = differs(file.path)}
           {@const refused = refusals(file.path)}
-          <a
-            class="object-row"
-            class:is-unsaved={fileDirty(file)}
-            data-unsaved={fileDirty(file) || undefined}
-            href={fileHref(file.path)}
-            onclick={(event) => open(event, file.path)}
-          >
-            <span class="object-main">
-              <span class="object-name-row">
-                <span class="file-path">{file.path}</span>
-                <span class="pill pill-neutral"><span class="t">{strategyWord(merges)}</span></span>
+          <li>
+            <a
+              class="object-row"
+              class:is-unsaved={fileDirty(file)}
+              data-unsaved={fileDirty(file) || undefined}
+              href={fileHref(file.path)}
+              onclick={(event) => open(event, file.path)}
+            >
+              <span class="object-main">
+                <span class="object-name-row">
+                  <span class="file-path">{file.path}</span>
+                </span>
+                <span class="object-sum">{adjustersWord(file.path)}{updatedWord(file)}</span>
               </span>
-              <span class="object-sum">{adjustersWord(file.path)}{updatedWord(file)}</span>
-            </span>
-            <span class="object-side">
-              {#if refused > 0}
-                <span class="mx-mark mx-refused"
-                  ><Icon name="failure" size="xs" /><span class="t">{refused} refused</span></span
-                >
-              {:else if pending > 0}
-                <span class="mx-mark mx-pending"
-                  ><span class="t">{pending} {pending === 1 ? 'differs' : 'differ'}</span></span
-                >
-              {:else}
-                <span class="mx-mark mx-instep"><Icon name="check" size="sm" /></span>
-              {/if}
-              <Icon name="chevron-right" size="xs" />
-            </span>
-          </a>
+              <span class="object-side">
+                {#if refused > 0}
+                  <span class="mx-mark mx-refused"
+                    ><Icon name="failure" size="xs" /><span class="t">{refused} refused</span></span
+                  >
+                {:else if pending > 0}
+                  <span class="mx-mark mx-pending"
+                    ><span class="t">{pending} {pending === 1 ? 'differs' : 'differ'}</span></span
+                  >
+                {:else}
+                  <span class="mx-mark mx-instep"><Icon name="check" size="sm" /></span>
+                {/if}
+                <Icon name="chevron-right" size="xs" />
+              </span>
+            </a>
+          </li>
         {/each}
-      </div>
+      </ul>
     {:else if !unreadable}
       <div class="state-panel">
         <span
@@ -597,129 +591,8 @@ already hold - the index ships once, matching costs no requests.
 
   /* ---------- The list ---------- */
 
-  .object-list {
-    display: grid;
-    margin-block-end: -12px;
-  }
-
-  .object-row {
-    align-items: center;
-    border-radius: var(--r-ctl);
-    color: inherit;
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: 1fr auto;
-    margin-inline: calc(var(--space-3) * -1);
-    padding: var(--row-pad-default) var(--space-3);
-    position: relative;
-    text-decoration: none;
-  }
-
-  .object-row:hover {
-    background: var(--row-hover);
-  }
-
-  .object-row:active {
-    background: var(--row-pressed);
-    box-shadow: var(--pressed-inset);
-    translate: 0 1px;
-  }
-
-  .object-row:not(:last-child)::after {
-    background: var(--border-subtle);
-    block-size: 1px;
-    bottom: 0;
-    content: '';
-    inset-inline: var(--space-3);
-    position: absolute;
-  }
-
-  /* The hover pill has rounded corners; a hairline crossing its edge reads
-     as a crack in it. The hovered row hides its own separator and the one
-     its neighbour would draw over it. */
-  .object-row:hover::after,
-  .object-row:has(+ .object-row:hover)::after {
-    background: transparent;
-  }
-
-  .object-main {
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .object-name-row {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-block-size: var(--object-name-line);
-  }
-
   .file-path {
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .object-sum {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-  }
-
-  .object-side {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    gap: var(--space-3);
-  }
-
-  .pill {
-    align-items: center;
-    block-size: var(--tier-mark);
-    border-radius: var(--radius-chip);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 0.25rem;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .pill .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .pill-neutral {
-    background: var(--surface-inset);
-    color: var(--text-secondary);
-  }
-
-  @media (max-width: 36rem) {
-    .object-row {
-      gap: var(--space-2);
-      grid-template-columns: minmax(0, 1fr) auto;
-    }
-
-    .object-main,
-    .object-name-row,
-    .file-path,
-    .object-sum {
-      min-inline-size: 0;
-    }
-
-    .object-name-row {
-      align-items: start;
-      flex-direction: column;
-    }
-
-    .file-path,
-    .object-sum {
-      overflow-wrap: anywhere;
-    }
-
-    .object-side {
-      gap: var(--space-1);
-    }
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
   }
 </style>

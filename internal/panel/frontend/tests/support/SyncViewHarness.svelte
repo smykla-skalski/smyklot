@@ -1,6 +1,9 @@
 <script lang="ts">
   import { untrack, type ComponentProps } from 'svelte';
 
+  import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
   import SyncView from '../../src/lib/components/SyncView.svelte';
   import {
     setSettingsDraftRegistry,
@@ -15,4 +18,4 @@
   setSettingsDraftRegistry(untrack(() => drafts));
 </script>
 
-<SyncView {...viewProps} />
+<QueryClientProvider {client}><SyncView {...viewProps} /></QueryClientProvider>

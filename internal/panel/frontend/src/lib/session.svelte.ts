@@ -870,6 +870,7 @@ export class PanelSession {
         this.queryClient.invalidateQueries({ queryKey: ['queue-detail'] }),
         this.queryClient.invalidateQueries({ queryKey: ['schedules'] }),
         this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
         this.queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
       ]);
       return;

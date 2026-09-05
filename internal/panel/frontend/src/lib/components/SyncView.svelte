@@ -1,5 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { useInterval } from 'runed';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { formatJson, type JsonValue } from '#lib/merge.js';
   import {
@@ -22,17 +24,21 @@
   import type {
     SyncConfig,
     SyncFilesContext,
-    SyncFileRenderInput,
-    SyncFileRenderResponse,
     SyncKind,
     SyncOverride,
     SyncPlan,
     SyncRunNowResponse,
     SyncStatus,
   } from '#lib/types.js';
+  import type {
+    SyncFileRenderInput,
+    SyncFileRenderResponse,
+  } from '#lib/sync-file-render.generated.js';
   import type { SyncSection } from '#lib/routes.js';
 
   import FormError from './FormError.svelte';
+  import Modal from './Modal.svelte';
+  import Button from './Button.svelte';
   import PageHeader from './PageHeader.svelte';
   import SyncFilePage from './SyncFilePage.svelte';
   import SyncFilesPage from './SyncFilesPage.svelte';
@@ -67,8 +73,14 @@
     fetchFilesContext,
     renderFile,
     fetchOverride,
+    repositoryHref = null,
+    permissionsHref = null,
+    queueHref = null,
     clock = Date.now,
   }: {
+    permissionsHref?: string | null;
+    queueHref?: string | null;
+    repositoryHref?: ((repository: string) => string) | null;
     targetId: string;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
@@ -138,12 +150,33 @@
     files: editorStates.files?.config ?? null,
   });
   const dirtyControls = $derived(drafts.dirtyControls(settingsScope).map(({ id }) => id));
-  let plan = $state<SyncPlan | null>(null);
-  let syncStatus = $state<SyncStatus | null>(null);
+  const queryClient = useQueryClient();
+  const planQuery = createQuery(() => ({
+    queryKey: ['sync-plan', targetId],
+    // Details can finish before the status request mounts their first consumer.
+    notifyOnChangeProps: ['data', 'error'],
+    queryFn: () => fetchPlan(targetId),
+  }));
+  const statusQuery = createQuery(() => ({
+    queryKey: ['sync-status', targetId],
+    queryFn: () => fetchStatus(targetId),
+  }));
+  const plan = $derived(planQuery.data?.plan ?? null);
+  const syncStatus = $derived(statusQuery.data ?? null);
+  let detailsOpen = $state(false);
+  let detailsTrigger = $state<HTMLElement | null>(null);
+  function closeDetails(): void {
+    detailsOpen = false;
+    if (section === 'plan') onOpenSection('overview');
+  }
+  function openDetails(trigger: HTMLElement): void {
+    detailsTrigger = trigger;
+    detailsOpen = true;
+  }
   let filesContext = $state<SyncFilesContext | null>(null);
-  /* Read once per load rather than live: the overview's relative times move
-     with the data they describe, not with a ticking clock. */
-  let nowMs = $state(0);
+  /* The injected clock keeps catalogue examples deterministic while live views age. */
+  let nowMs = $state(untrack(() => clock()));
+  useInterval(30_000, { callback: () => (nowMs = clock()) });
   let approving = $state(false);
   let discarding = $state(false);
   let runningNow = $state(false);
@@ -185,30 +218,19 @@
   async function load(id: string): Promise<void> {
     error = null;
     try {
-      const [
-        loadedConfig,
-        loadedSettings,
-        loadedRulesets,
-        loadedFiles,
-        loadedPlan,
-        loadedStatus,
-        loadedContext,
-      ] = await Promise.all([
-        fetchConfig(id, LABELS),
-        fetchConfig(id, SETTINGS),
-        fetchConfig(id, RULESETS),
-        fetchConfig(id, FILES),
-        fetchPlan(id),
-        fetchStatus(id),
-        fetchFilesContext(id),
-      ]);
+      const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedContext] =
+        await Promise.all([
+          fetchConfig(id, LABELS),
+          fetchConfig(id, SETTINGS),
+          fetchConfig(id, RULESETS),
+          fetchConfig(id, FILES),
+          fetchFilesContext(id),
+        ]);
       const loaded = [loadedConfig, loadedSettings, loadedRulesets, loadedFiles];
       canonicalConfigs = Object.fromEntries(loaded.map((config) => [config.kind, config]));
       for (const config of loaded) {
         if (!config.unreadable) adoptSyncConfigSettings(drafts, id, config);
       }
-      plan = loadedPlan.plan;
-      syncStatus = loadedStatus;
       filesContext = loadedContext;
       nowMs = clock();
     } catch (cause) {
@@ -333,7 +355,11 @@
     approving = true;
     error = null;
     try {
-      plan = (await approvePlan(targetId, planId, digest)).plan;
+      queryClient.setQueryData(
+        ['sync-plan', targetId],
+        await approvePlan(targetId, planId, digest),
+      );
+      await statusQuery.refetch();
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -347,7 +373,7 @@
     error = null;
     try {
       await discardPlan(targetId, planId);
-      plan = (await fetchPlan(targetId)).plan;
+      await Promise.all([planQuery.refetch(), statusQuery.refetch()]);
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -364,14 +390,14 @@
         expected_revision: plan?.queue_item?.revision ?? 0,
         reason,
       });
-      if (response.plan !== undefined) plan = response.plan;
+      if (response.plan !== undefined)
+        queryClient.setQueryData(['sync-plan', targetId], { plan: response.plan });
       if (response.status === 'scan_queued')
-        runNotice = 'Drift scan queued for immediate dispatch.';
-      if (response.status === 'plan_dispatched')
-        runNotice = 'Approved plan queued for immediate dispatch.';
+        runNotice = 'Checking repositories · changes will sync automatically';
+      if (response.status === 'plan_dispatched') runNotice = 'Sync queued for immediate dispatch';
       if (response.status === 'approval_required')
-        runNotice = 'Review and approve the computed plan first.';
-      if (response.status === 'already_running') runNotice = 'This plan is already running.';
+        runNotice = 'An earlier sync needs a one-time decision · open Review changes';
+      if (response.status === 'already_running') runNotice = 'Sync is already running';
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -395,22 +421,25 @@
 
 <!--
 @component
-Org-wide label sync: what a workspace expects its repositories to carry,
-and what the service would change to make that true.
-
-Two halves, in the order the questions arrive. What is configured, which is
-the thing somebody edits. Then what that would do, which is the thing
-somebody approves - and those are deliberately not the same act. A sync that
-applied on save would give nobody the chance to read the deletions first.
+Automatic reconciliation and shared configuration editing. Drafts remain explicit:
+Save publishes the desired state, and the service reconciles it automatically.
+Live plan and status queries share the shell's event invalidation and polling fallback.
 -->
 
-{#if section === 'overview'}
+{#if section === 'overview' || section === 'plan'}
   {#if error !== null}
     <FormError message={error} />
   {/if}
+  {#if planQuery.error || statusQuery.error}<FormError
+      message={messageOf(planQuery.error ?? statusQuery.error)}
+    />{/if}
+  {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
   {#if syncStatus !== null}
     <SyncOverview
       status={syncStatus}
+      savedConfigs={canonicalConfigs}
+      {permissionsHref}
+      {queueHref}
       {plan}
       configs={{
         labels: config ?? undefined,
@@ -419,6 +448,11 @@ applied on save would give nobody the chance to read the deletions first.
         files: documents.files ?? undefined,
       }}
       {nowMs}
+      {repositoryHref}
+      {canControl}
+      busy={runningNow}
+      onCheck={() => void onRunNow('Check sync from the status view')}
+      onDetails={openDetails}
       repositories={filesContext?.repositories ?? null}
       {sectionHref}
       {onOpenSection}
@@ -426,24 +460,36 @@ applied on save would give nobody the chance to read the deletions first.
       {dirtyControls}
       {readOnly}
     />
+  {:else if !statusQuery.error}
+    <p role="status">Loading sync status…</p>
   {/if}
-{:else if section === 'plan'}
-  {#if error !== null}
-    <FormError message={error} />
-  {/if}
-  {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
-  <SyncPlanPage
-    {plan}
-    {nowMs}
-    {readOnly}
-    {canControl}
-    {approving}
-    {discarding}
-    runNowBusy={runningNow}
-    onApprove={(planId, digest) => void onApprove(planId, digest)}
-    onDiscard={(planId) => void onDiscard(planId)}
-    onRunNow={(reason) => void onRunNow(reason)}
-  />
+  <Modal
+    id="sync-details"
+    open={detailsOpen || section === 'plan'}
+    title="Sync details"
+    variant="inspector"
+    returnFocus={detailsTrigger}
+    onClose={closeDetails}
+  >
+    {#snippet headerExtra()}<Button
+        tone="quiet"
+        aria-label="Close sync details"
+        onclick={closeDetails}>Close</Button
+      >{/snippet}
+    <SyncPlanPage
+      embedded
+      {plan}
+      {nowMs}
+      {readOnly}
+      {canControl}
+      {approving}
+      {discarding}
+      runNowBusy={runningNow}
+      onApprove={(planId, digest) => void onApprove(planId, digest)}
+      onDiscard={(planId) => void onDiscard(planId)}
+      onRunNow={(reason) => void onRunNow(reason)}
+    />
+  </Modal>
 {:else if section === 'labels'}
   {#key config === null}
     <SyncLabelsPage

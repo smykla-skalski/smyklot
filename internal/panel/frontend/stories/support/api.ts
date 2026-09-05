@@ -125,8 +125,8 @@ export function fixtureApi(over: Partial<PanelApi> = {}): PanelApi {
     fetchSyncFilesContext: async () => SYNC_FILES_CONTEXT,
     renderSyncFile: async (_targetId, input) => ({
       valid: true,
-      content: input.draft_content,
-      changed: false,
+      final_content: input.draft_content,
+      matches_formatting: true,
       diagnostics: [],
     }),
     fetchSyncOverride: async (_targetId: string, repositoryId: string, kind: string) =>

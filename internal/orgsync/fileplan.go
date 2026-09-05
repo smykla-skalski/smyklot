@@ -281,7 +281,7 @@ func resolveFiles(
 		// Rendered before it is composed, so a template's placeholders are
 		// filled in whether or not a repository adjusts the file. What a
 		// repository writes in its own adjustments is taken literally.
-		content, err := filemerge.Apply(
+		applied, err := filemerge.ApplyTemplate(
 			file.Path,
 			[]byte(Render(file.Content, defaultBranch)),
 			spec,
@@ -290,6 +290,7 @@ func resolveFiles(
 		if err != nil {
 			return nil, fmt.Errorf("composing %s: %w", file.Path, err)
 		}
+		content := applied.Final
 
 		// What a repository adjusts is added to the template, so the bound the
 		// configuration was held to is not a bound on what comes out of the

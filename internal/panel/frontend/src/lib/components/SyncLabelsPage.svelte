@@ -385,7 +385,7 @@ unlisted labels are removed, and the patterns left alone either way.
     id="sync-labels-heading"
     section="Sync"
     title="Labels"
-    description="The labels every syncing repository should carry; changes enter the next plan"
+    description="Shared labels stay consistent across repositories after you save"
     statusUnsaved={dirtyControlSet.has('sync.labels.enabled')}
   >
     {#snippet actions()}

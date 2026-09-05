@@ -1092,7 +1092,6 @@ positioning will replace once it is portable.
   @media (max-width: 36rem) {
     fieldset {
       box-sizing: border-box;
-      inline-size: 100%;
       max-inline-size: 100%;
       overflow-x: auto;
       overflow-y: hidden;

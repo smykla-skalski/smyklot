@@ -178,11 +178,9 @@ describe('the repository file sync card in the development panel', () => {
     page.on('pageerror', (error) => crashes.push(error.message));
 
     try {
-      /* platform-infra, because this notice is the OVERRIDE's own problem - the
-         repository's stored answer carries why the planner stood down there -
-         and not the fleet's refusal, which is a different repository and a
-         different reason. */
-      const repository = await repositoryPage(page, 'platform-infra');
+      // The blocker shown on Sync status must survive the recovery link to the
+      // same repository, with the same reason beside its file configuration.
+      const repository = await repositoryPage(page, 'legacy-service');
 
       /* Scoped to the stand-down line: the merge card's saved receipt is a
          status too, quietly present so a save can announce itself. */

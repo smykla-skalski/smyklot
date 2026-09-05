@@ -125,9 +125,11 @@ type FileMerge struct {
 // synchronizes, and it is what keeps that multiplication a number somebody
 // could have predicted.
 const (
-	longestFilePath    = 255
-	largestFileContent = 1 << 20
-	largestFileTotal   = 1 << 20
+	longestFilePath = 255
+	// MaxFileContentBytes applies to stored templates and rendered repository files.
+	MaxFileContentBytes = 1 << 20
+	largestFileContent  = MaxFileContentBytes
+	largestFileTotal    = 1 << 20
 )
 
 // placeholder finds what a template asks to have filled in.

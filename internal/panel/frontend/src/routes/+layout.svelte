@@ -15,6 +15,7 @@
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
   import { createPanelQueryClient } from '#lib/query-client.js';
   import { applyDocumentTheme } from '#lib/preferences.js';
+  import { syncIssues } from '#lib/sync-health.js';
   import { prefText } from '#lib/preferences-sync.js';
   import { rebaseWorkspaceConflicts, saveWorkspaceDrafts } from '#lib/workspace-settings-save.js';
   import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
@@ -597,8 +598,7 @@
       : null;
   }
 
-  /* The waiting plan's scale, spoken quietly on the sidebar's Plan row. Only a
-     computed plan is waiting on anyone - an applied or expired one is history. */
+  /* Only actionable sync issues earn a navigation badge. */
   const syncPlanQuery = createQuery(
     () => ({
       queryKey: ['sync-plan', session.selectedTarget?.id],
@@ -611,11 +611,21 @@
     }),
     () => queryClient,
   );
-  const planCount = $derived.by((): number | undefined => {
-    const plan = syncPlanQuery.data?.plan;
-    if (plan === null || plan === undefined || plan.state !== 'computed') return undefined;
-    return plan.counts.create + plan.counts.update + plan.counts.delete;
-  });
+  const syncStatusQuery = createQuery(
+    () => ({
+      queryKey: ['sync-status', session.selectedTarget?.id],
+      queryFn: () => api.fetchSyncStatus(session.selectedTarget?.id ?? ''),
+      enabled:
+        !session.isPublicPage &&
+        session.viewer !== null &&
+        !session.isRootMode &&
+        session.selectedTarget !== null,
+    }),
+    () => queryClient,
+  );
+  const syncIssueCount = $derived(
+    syncIssues(syncStatusQuery.data ?? null, syncPlanQuery.data?.plan ?? null).length || undefined,
+  );
 
   /* How much has stopped, said on the row that opens it. One row of the page is
      asked for and only its total is read - the tree wants the number, not the list.
@@ -677,7 +687,7 @@
         active: !session.isInbox && session.currentView === 'queue',
       },
       { kind: 'group', id: 'group-sync', label: 'Sync' },
-      ...SYNC_SECTIONS.map((section): SidebarRow => {
+      ...SYNC_SECTIONS.filter((section) => section !== 'plan').map((section): SidebarRow => {
         const icons = {
           overview: 'refresh',
           labels: 'tag',
@@ -694,13 +704,12 @@
           active:
             !session.isInbox &&
             session.currentView === 'sync' &&
-            session.currentSyncSection === section,
-          count: section === 'plan' ? planCount : undefined,
-          signal: section === 'plan' && planCount !== undefined,
+            (session.currentSyncSection === section ||
+              (section === 'overview' && session.currentSyncSection === 'plan')),
+          count: section === 'overview' ? syncIssueCount : undefined,
+          signal: section === 'overview' && syncIssueCount !== undefined,
           dirty:
-            section !== 'overview' &&
-            section !== 'plan' &&
-            selectedSettingsDirtyAt({ section: 'sync', path: [section] }),
+            section !== 'overview' && selectedSettingsDirtyAt({ section: 'sync', path: [section] }),
         };
       }),
     ];

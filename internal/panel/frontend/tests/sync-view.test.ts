@@ -1,9 +1,8 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
-import { defaultFormattingPolicy } from '../src/lib/formatting';
 import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
 import type {
   SyncCell,
@@ -33,14 +32,11 @@ class MemoryStorage implements SettingsDraftStorage {
   }
 }
 
-const POLICY = defaultFormattingPolicy();
-
 function emptyFilesContext(): SyncFilesContext {
   return {
     repositories: 0,
     covered: 0,
     known_paths: [],
-    base_formatting: POLICY,
     repository_policies: [],
     merges: [],
   };
@@ -48,8 +44,8 @@ function emptyFilesContext(): SyncFilesContext {
 
 const renderFile = async (_targetId: string, input: { draft_content: string }) => ({
   valid: true,
-  content: input.draft_content,
-  changed: false,
+  final_content: input.draft_content,
+  matches_formatting: true,
   diagnostics: [],
 });
 
@@ -69,7 +65,10 @@ describe('SyncView [Component]', () => {
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
 
   function config(kind: string, over: Partial<SyncConfig> = {}): SyncConfig {
     return {
@@ -245,13 +244,10 @@ describe('SyncView [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
-          base_formatting: POLICY,
           repository_policies: [
             {
               repository: 'repo-a',
               repository_id: 'repo-1',
-              default_branch: 'main',
-              base_policy: POLICY,
             },
           ],
           merges: [
@@ -269,6 +265,7 @@ describe('SyncView [Component]', () => {
 
     await screen.findByRole('heading', { name: 'renovate.json' });
     await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustment' }));
     const remove = await screen.findByRole('button', { name: 'Stop changing timezone' });
     await waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false));
     await fireEvent.click(remove);
@@ -456,7 +453,10 @@ describe('SyncView [Component]', () => {
       status: fleet(['one', 'off'], ['two', 'off']),
     });
 
-    await screen.findByRole('heading', { name: 'All 2 are switched off here' });
+    await screen.findByRole('heading', { name: 'Sync is paused' });
+    expect(document.querySelector('[aria-label="Repository sync summary"]')?.textContent).toContain(
+      '2 paused',
+    );
   });
 
   it('separates active and switched-off repositories in a settled fleet', async () => {
@@ -464,7 +464,10 @@ describe('SyncView [Component]', () => {
       status: fleet(['active', 'in_step'], ['disabled', 'off']),
     });
 
-    await screen.findByRole('heading', { name: '1 active in step · 1 switched off' });
+    await screen.findByRole('heading', { name: 'Sync is paused' });
+    const summary = document.querySelector('[aria-label="Repository sync summary"]');
+    expect(summary?.textContent).toContain('1 up to date');
+    expect(summary?.textContent).toContain('1 paused');
   });
 
   /**
@@ -479,16 +482,13 @@ describe('SyncView [Component]', () => {
   it('names which silence an empty fleet is, and offers the way out', async () => {
     mount(config('labels'), config('settings'), config('rulesets'), config('files'), 'overview');
 
-    await screen.findByRole('heading', { name: 'Sync is off here' });
-    const panel = document.querySelector('.state-panel');
-    expect(panel?.textContent).toContain('Nothing is being kept in step');
-    // Not a dead end: the kind cards are gone with the board, so the one next
-    // step is named here rather than pointed at.
-    expect(screen.getByRole('link', { name: 'Open Labels' })).toBeTruthy();
-    expect(document.querySelector('.kind-grid'), 'kind cards over an empty board').toBeNull();
+    await screen.findByRole('heading', { name: 'Sync is paused' });
+    expect(screen.getByText('Enable a configuration below to start syncing')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open labels configuration' })).toBeTruthy();
+    expect(screen.getByRole('checkbox', { name: 'Labels sync' })).toBeTruthy();
   });
 
-  it('tells a syncing workspace that its repositories opted out', async () => {
+  it('does not claim missing inventory opted out', async () => {
     mount(
       config('labels', { enabled: true }),
       config('settings'),
@@ -497,10 +497,10 @@ describe('SyncView [Component]', () => {
       'overview',
     );
 
-    await screen.findByRole('heading', { name: 'No repository syncs yet' });
-    expect(document.querySelector('.state-panel')?.textContent).toContain(
-      'Every repository has turned this off for itself',
-    );
+    await screen.findByText('No repositories to sync yet.');
+    expect(
+      screen.getByText(/Repositories will appear here after the workspace inventory refreshes/u),
+    ).toBeTruthy();
   });
 
   it('renders relative plan times against an injected catalogue clock', async () => {
@@ -545,8 +545,10 @@ describe('SyncView [Component]', () => {
       status,
     });
 
-    await screen.findByRole('heading', { name: '1 of 1 syncing repositories are out of step' });
-    expect(screen.getByText('5 minutes ago')).toBeTruthy();
-    expect(screen.getByText(/Expires in 6 hours/u)).toBeTruthy();
+    await screen.findByRole('heading', { name: 'An earlier sync needs your decision' });
+    expect(screen.getByText(/Last checked 5 minutes ago/u)).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Review changes' }));
+    const inspector = await screen.findByRole('dialog', { name: 'Sync details' });
+    expect(inspector.textContent).toContain('Expires in 6 hours');
   });
 });

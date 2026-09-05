@@ -26,13 +26,8 @@
 
 <!--
 @component
-The consequence line under a kind's switch: how far the kind reaches, what
-pausing costs, and who last changed it.
-
-Never a bare toggle. Switching a kind off does not undo the open plan and does
-not stop it waiting - it stops the NEXT one being written, which is the fact a
-reader has no way to guess from a track. Status, consequence and history are
-three roles rather than one sentence, so each takes its own ink weight.
+Reach, delivery method and last saved change beside a sync switch. Saving a pause
+stops future reconciliation; work already sent to GitHub remains there.
 -->
 
 <script lang="ts">
@@ -58,8 +53,6 @@ three roles rather than one sentence, so each takes its own ink weight.
     nowMs: number;
   } = $props();
 
-  const words = $derived(KIND_WORDS[kind]);
-
   /* A repository that switched this kind off in its own settings is not one
      the kind reaches, whatever the workspace's switch says. */
   const reach = $derived(
@@ -73,13 +66,15 @@ three roles rather than one sentence, so each takes its own ink weight.
       ? reach === null
         ? 'On'
         : `On for ${reach} ${reach === 1 ? 'repository' : 'repositories'}`
-      : `Off - ${words.one} planning is paused`,
+      : `Paused · existing repository changes are kept`,
   );
 
   const why = $derived(
     enabled
-      ? `Turning this off pauses ${words.one} planning; the open plan remains pending`
-      : `The open plan remains pending; ${words.changes} are not applied`,
+      ? kind === 'files'
+        ? 'Pull requests open automatically'
+        : 'Changes apply automatically'
+      : 'Resume syncing to apply future changes',
   );
 
   const changed = $derived(updatedBy === '' || updatedAt === '' ? null : updatedAt);

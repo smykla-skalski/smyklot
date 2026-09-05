@@ -21,39 +21,110 @@ describe('configured file formatting in the development panel', () => {
 
     try {
       await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/renovate.json`, {
-        ready: '.format-status',
+        ready: '.file-editor',
       });
 
-      const template = page.locator('.card').first();
+      const template = page.locator('.file-editor');
+      const initial = await template.locator('.cm-content').innerText();
+      expect(initial.endsWith('\n')).toBe(false);
+      expect(await page.locator('.formatting-editor:visible').count()).toBe(0);
+      await template.getByRole('button', { name: 'Template options' }).click();
+      const options = page.getByRole('dialog', { name: 'Template options', exact: true });
+      expect(await options.getByRole('group', { name: 'Final Newline' }).count()).toBe(0);
+      await options
+        .getByRole('group', { name: 'Arrays', exact: true })
+        .getByRole('radio', { name: 'Expanded', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await options.getByRole('button', { name: 'Done', exact: true }).click();
       await template
-        .getByText('This template does not match configured formatting', { exact: true })
-        .waitFor({ state: 'visible', timeout: 30_000 });
-
-      await template.getByRole('button', { name: 'View diff' }).click();
-      await template.locator('.format-diff').waitFor({ state: 'visible' });
-
-      await template.getByRole('button', { name: 'Format template' }).click();
+        .getByRole('radio', { name: 'Preview', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await template.locator('.is-add').first().waitFor();
+      expect(await template.locator('.code:visible').count()).toBe(1);
+      expect(await template.locator('.code-editor:visible').count()).toBe(0);
+      await template.getByRole('button', { name: 'Template options' }).click();
+      await options.getByRole('button', { name: 'Apply formatting', exact: true }).click();
+      await template.locator('.cm-content').waitFor({ state: 'visible' });
+      expect(await template.locator('.cm-content').innerText()).not.toBe(initial);
+      await template.getByRole('button', { name: 'Undo', exact: true }).click();
+      expect(await template.locator('.cm-content').innerText()).toBe(initial);
+      await template.locator('.cm-content').focus();
+      await page.keyboard.press('Alt+Shift+f');
+      await expect.poll(() => template.locator('.cm-content').innerText()).not.toBe(initial);
       await template
-        .getByText('Matches configured formatting', { exact: true })
-        .waitFor({ state: 'visible', timeout: 30_000 });
-      await template.getByRole('button', { name: 'Undo' }).click();
+        .getByRole('radio', { name: 'Preview', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
       await template
-        .getByText('This template does not match configured formatting', { exact: true })
-        .waitFor({ state: 'visible', timeout: 30_000 });
+        .getByRole('radio', { name: 'Edit', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await template.getByRole('button', { name: 'Undo', exact: true }).click();
+      expect(await template.locator('.cm-content').innerText()).toBe(initial);
 
-      const repository = page
-        .locator('.adjuster')
-        .filter({ has: page.getByRole('button', { name: /^smyklot changes/u }) });
-      await repository.getByRole('button', { name: /^smyklot changes/u }).click();
+      await page.getByRole('button', { name: 'Open output for smyklot', exact: true }).click();
+      const repository = page.getByRole('dialog', { name: 'smyklot', exact: true });
+      expect(
+        await repository
+          .getByRole('radio', { name: 'Content adjustment', exact: true })
+          .isChecked(),
+      ).toBe(true);
+      expect(
+        await repository
+          .locator('[name="repository-output-view"]')
+          .evaluateAll((nodes) => nodes.map((n) => (n as HTMLInputElement).value)),
+      ).toEqual(['content', 'preview']);
+      await repository.locator('.cm-content').waitFor();
+      const adjustment = await repository.locator('.cm-content').innerText();
+      const changedAdjustment = adjustment.replace('"automerge": false', '"automerge": true');
+      expect(changedAdjustment).not.toBe(adjustment);
+      await repository.locator('.cm-content').fill(changedAdjustment);
+      await repository.getByRole('button', { name: 'Undo', exact: true }).waitFor();
       await repository
-        .getByText('Backend rendered', { exact: true })
-        .waitFor({ state: 'visible', timeout: 30_000 });
-
+        .getByRole('radio', { name: 'Final output', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      expect(await repository.locator('.code-editor:visible').count()).toBe(0);
+      await repository
+        .getByRole('radio', { name: 'Content adjustment', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await repository.getByRole('button', { name: 'Undo', exact: true }).click();
+      expect(await repository.locator('.cm-content').innerText()).toBe(adjustment);
+      await repository
+        .getByRole('radio', { name: 'Final output', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await repository.locator('.rendered-output').waitFor({ state: 'visible', timeout: 30_000 });
+      const exact = await repository.locator('.exact-output').innerText();
+      expect(exact).toContain('"schedule": ["* 4 * * 6"]');
+      expect(exact).toContain('"ignorePaths": ["crates/harness-codex-acp/**"]');
+      expect(exact).toContain('\r\n');
+      await repository
+        .getByRole('button', { name: 'Repository file options', exact: true })
+        .click();
       const formatting = repository.locator('.repository-formatting');
+      const inspectorGeometry = await formatting.evaluate((node) => {
+        const tabs = document.querySelector('.repository-view-tools')!;
+        const box = node.getBoundingClientRect();
+        return {
+          top: box.top,
+          tabsBottom: tabs.getBoundingClientRect().bottom,
+          height: box.height,
+          width: box.width,
+          childWidth: node.firstElementChild!.getBoundingClientRect().width,
+        };
+      });
+      expect(inspectorGeometry.top).toBeGreaterThanOrEqual(inspectorGeometry.tabsBottom + 15);
+      expect(inspectorGeometry.height).toBeGreaterThan(400);
+      expect(Math.abs(inspectorGeometry.width - inspectorGeometry.childWidth)).toBeLessThan(1);
+
       expect(
         await formatting
           .getByRole('group', { name: 'Line Ending' })
-          .getByRole('radio', { name: 'Crlf' })
+          .getByRole('radio', { name: 'CRLF' })
           .isChecked(),
       ).toBe(true);
       expect(
@@ -64,15 +135,13 @@ describe('configured file formatting in the development panel', () => {
           .isChecked(),
       ).toBe(true);
 
-      const exact = await repository.locator('.exact-output').innerText();
-      expect(exact).toContain('"schedule": ["* 4 * * 6"]');
-      expect(exact).toContain('"ignorePaths": ["crates/harness-codex-acp/**"]');
-      expect(exact).toContain('\r\n');
-
+      await repository.getByRole('button', { name: 'Done', exact: true }).click();
+      await template.getByRole('button', { name: 'Template options' }).click();
       const editor = page.locator('.formatting-editor').first();
-      const tomlQuoteStyle = editor.getByRole('group', { name: 'Quote Style' }).nth(1);
-      await tomlQuoteStyle
-        .getByRole('radio', { name: 'Prefer Basic' })
+      expect(await editor.getByRole('region', { name: 'TOML', exact: true }).count()).toBe(0);
+      await editor
+        .getByRole('group', { name: 'Arrays', exact: true })
+        .getByRole('radio', { name: 'Expanded', exact: true })
         .locator('xpath=ancestor::label[1]')
         .click();
       await page.waitForTimeout(300);
@@ -86,10 +155,8 @@ describe('configured file formatting in the development panel', () => {
             ?.getBoundingClientRect().width ?? 0;
         const quoteSegments = [
           ...controls
-            .filter(
-              (control) => control.querySelector('legend')?.textContent?.trim() === 'Quote Style',
-            )
-            .at(1)!
+            .filter((control) => control.querySelector('legend')?.textContent?.trim() === 'Arrays')
+            .at(0)!
             .querySelectorAll<HTMLElement>('label'),
         ].map((label) => label.getBoundingClientRect().width);
         const wrapped = controls.flatMap((control) =>
@@ -102,10 +169,8 @@ describe('configured file formatting in the development panel', () => {
             .map((label) => label.textContent?.trim() ?? ''),
         );
         const quoteStyle = controls
-          .filter(
-            (control) => control.querySelector('legend')?.textContent?.trim() === 'Quote Style',
-          )
-          .at(1)!;
+          .filter((control) => control.querySelector('legend')?.textContent?.trim() === 'Arrays')
+          .at(0)!;
         const thumb = quoteStyle.querySelector<HTMLElement>('.selection-indicator')!;
         const selected = quoteStyle
           .querySelector<HTMLInputElement>('input:checked')!
@@ -201,4 +266,228 @@ describe('configured file formatting in the development panel', () => {
       await page.close();
     }
   });
+
+  it('uses one shared pressed surface for sync rows in both themes', async () => {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1440, height: 1000 },
+        colorScheme,
+      });
+      try {
+        for (const route of ['sync', 'sync/files', 'sync/files/renovate.json', 'sync/rulesets']) {
+          await visit(page, `${panel.origin}/workspace/${panel.account}/${route}`, {
+            ready: '.object-row',
+          });
+          const row = page
+            .locator('.object-row')
+            .filter({ has: page.locator('.row-hit') })
+            .first();
+          const direct = page.locator('a.object-row, button.object-row').first();
+          const hit = (await row.count()) > 0 ? row.locator('.row-hit') : direct;
+          await hit.scrollIntoViewIfNeeded();
+          await hit.hover();
+          const read = () =>
+            hit.evaluate((node) => {
+              const row = node.closest('.object-row')!;
+              const style = getComputedStyle(row);
+              const target = getComputedStyle(node);
+              return {
+                background: style.backgroundColor,
+                image: style.backgroundImage,
+                shadow: style.boxShadow,
+                translate: style.translate,
+                child:
+                  row === node
+                    ? null
+                    : {
+                        background: target.backgroundColor,
+                        image: target.backgroundImage,
+                        shadow: target.boxShadow,
+                        translate: target.translate,
+                      },
+              };
+            });
+          await page.waitForTimeout(200);
+          const hover = await read();
+          await page.mouse.down();
+          await page.waitForTimeout(200);
+          const active = await read();
+          expect(active.background, route).not.toBe(hover.background);
+          expect(active.image, route).toBe('none');
+          expect(active.shadow, route).not.toBe('none');
+          expect(active.translate, route).toBe('0px 1px');
+          if (active.child !== null)
+            expect(active.child, route).toEqual({
+              background: 'rgba(0, 0, 0, 0)',
+              image: 'none',
+              shadow: 'none',
+              translate: 'none',
+            });
+          await page.screenshot({
+            path: `../../../.bart/sync-redesign/after/pressed-${route.replaceAll('/', '-')}-${colorScheme}.png`,
+          });
+          await page.mouse.move(0, 0);
+          await page.mouse.up();
+        }
+      } finally {
+        await page.close();
+      }
+    }
+  });
+
+  it('adds an unsaved template, renders it and saves the complete draft', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files`, { ready: 'h1' });
+      await page.getByRole('button', { name: 'Add a file', exact: true }).click();
+      await page
+        .getByPlaceholder('renovate.json, or a path no repository has yet')
+        .fill('new-preview.json');
+      await page.getByRole('option', { name: /Start new-preview.json/ }).click();
+      await page.getByRole('heading', { name: 'new-preview.json', exact: true }).waitFor();
+      await page.locator('.cm-content').fill('{"hello":"world"}');
+      await page
+        .getByRole('radio', { name: 'Preview', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      await page
+        .getByRole('region', { name: 'Read-only final output with highlighted changes' })
+        .waitFor();
+      const saved = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          response.url().endsWith('/api/v1/targets/2001/settings'),
+      );
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      const response = await saved;
+      expect(response.ok()).toBe(true);
+      const body = response.request().postDataJSON() as {
+        sync_configs: Array<{ document: { files: Array<{ path: string; content: string }> } }>;
+      };
+      expect(
+        body.sync_configs
+          .flatMap((c) => c.document.files)
+          .find((f) => f.path === 'new-preview.json')?.content,
+      ).toBe('{"hello":"world"}\n');
+      await page.getByText('Settings saved', { exact: true }).waitFor();
+      await page.reload();
+      await page.getByRole('heading', { name: 'new-preview.json', exact: true }).waitFor();
+      expect(await page.locator('.cm-content').innerText()).toContain('"hello":"world"');
+    } finally {
+      await page.close();
+    }
+  });
+
+  for (const width of [375, 768, 1024, 1440]) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      it(`keeps the file inspector usable at ${width}px in ${colorScheme}`, async () => {
+        const page = await panel.browser.newPage({ viewport: { width, height: 900 }, colorScheme });
+        try {
+          await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/renovate.json`, {
+            ready: 'h1',
+          });
+          expect(await page.locator('.page-eyebrow').count()).toBe(0);
+          const editor = page.locator('.file-editor');
+          const geometryOfEditor = () =>
+            editor.evaluate((node) => {
+              const controls = [...node.querySelectorAll('fieldset, .icon-button, .btn')].map((e) =>
+                e.getBoundingClientRect(),
+              );
+              const code =
+                node.querySelector('.file-preview .code') ?? node.querySelector('.code-editor');
+              return {
+                heights: controls.map((r) => r.height),
+                centers: controls.map((r) => r.top + r.height / 2),
+                codeTop: code!.getBoundingClientRect().top,
+              };
+            });
+          const editing = await geometryOfEditor();
+          expect(Math.max(...editing.heights) - Math.min(...editing.heights)).toBeLessThan(0.05);
+          expect(Math.max(...editing.centers) - Math.min(...editing.centers)).toBeLessThan(0.05);
+          await page.screenshot({
+            path: `../../../.bart/sync-redesign/after/editor-${width}-${colorScheme}.png`,
+          });
+          await editor
+            .getByRole('radio', { name: 'Preview', exact: true })
+            .locator('xpath=ancestor::label[1]')
+            .click();
+          await editor.locator('.file-preview .code').waitFor();
+          const preview = await geometryOfEditor();
+          expect(Math.abs(editing.codeTop - preview.codeTop)).toBeLessThan(0.05);
+          expect(await editor.locator('.code:visible').count()).toBe(1);
+          await page.screenshot({
+            path: `../../../.bart/sync-redesign/after/preview-${width}-${colorScheme}.png`,
+          });
+          await page.getByRole('button', { name: 'Open output for smyklot', exact: true }).click();
+          const dialog = page.getByRole('dialog', { name: 'smyklot', exact: true });
+          expect(
+            await dialog
+              .getByRole('radio', { name: 'Content adjustment', exact: true })
+              .isChecked(),
+          ).toBe(true);
+          await dialog.evaluate(async (node) => {
+            await Promise.all(
+              node.getAnimations().map((animation) => animation.finished.catch(() => {})),
+            );
+          });
+          await page.screenshot({
+            path: `../../../.bart/sync-redesign/after/adjustment-${width}-${colorScheme}.png`,
+          });
+          await dialog
+            .getByRole('radio', { name: 'Final output', exact: true })
+            .locator('xpath=ancestor::label[1]')
+            .click();
+          await dialog.locator('.rendered-output').waitFor();
+          const toolbar = await dialog.locator('.repository-view-tools').evaluate((node) => {
+            const controls = [...node.children].map((e) => e.getBoundingClientRect());
+            return {
+              width: node.getBoundingClientRect().width,
+              segment: controls[0].width,
+              heights: controls.map((r) => r.height),
+              centers: controls.map((r) => r.top + r.height / 2),
+            };
+          });
+          expect(toolbar.segment).toBeLessThan(toolbar.width - 30);
+          expect(Math.max(...toolbar.heights) - Math.min(...toolbar.heights)).toBeLessThan(0.05);
+          expect(Math.max(...toolbar.centers) - Math.min(...toolbar.centers)).toBeLessThan(0.05);
+
+          await dialog
+            .getByRole('button', { name: 'Repository file options', exact: true })
+            .click();
+          await dialog.getByRole('region', { name: 'Common', exact: true }).waitFor();
+          const geometry = await dialog.evaluate((node) => {
+            const box = node.getBoundingClientRect();
+            const body = node.querySelector('.modal-body')!;
+            const formatting = node.querySelector('.formatting-editor')!.getBoundingClientRect();
+            const tabs = node.querySelector('.repository-view-tools')!.getBoundingClientRect();
+            return {
+              left: box.left,
+              right: box.right,
+              width: innerWidth,
+              overflow: body.scrollWidth - body.clientWidth,
+              start: formatting.top - tabs.bottom,
+              contentHeight: formatting.height,
+            };
+          });
+          expect(geometry.left).toBeGreaterThanOrEqual(0);
+          expect(geometry.right).toBeLessThanOrEqual(geometry.width + 1);
+          expect(geometry.overflow).toBeLessThanOrEqual(1);
+          expect(geometry.start).toBeGreaterThanOrEqual(15);
+          expect(geometry.contentHeight).toBeGreaterThan(400);
+          await page.screenshot({
+            path: `../../../.bart/sync-redesign/after/inspector-${width}-${colorScheme}.png`,
+          });
+          await page.keyboard.press('Escape');
+          await dialog.waitFor({ state: 'hidden' });
+          expect(
+            await page
+              .getByRole('button', { name: 'Open output for smyklot', exact: true })
+              .evaluate((node) => document.activeElement === node),
+          ).toBe(true);
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  }
 });

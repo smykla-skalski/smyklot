@@ -122,7 +122,7 @@ var _ = Describe("Planning files [Unit]", func() {
 		Expect(answer.Actions).To(HaveLen(1))
 		written, err := orgsync.DecodeFile(answer.Actions[0].Payload)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(string(written.Content)).To(Equal("{\"labels\":[\n    \"one\",\n    \"two\"\n  ]}"))
+		Expect(string(written.Content)).To(Equal("{\"labels\":[\n    \"one\",\n    \"two\"\n  ]}\n"))
 	})
 
 	It("applies template formatting before the repository path overlay", func() {

@@ -3,7 +3,7 @@
 [tools]
 go = "1.27.1"
 node = "24.20.0"
-"npm:markdownlint-cli2" = "0.23.2"
+"npm:markdownlint-cli2" = { version = "0.23.2", trust_policy_excludes = ["fastq@1.20.2"] }
 "go:github.com/onsi/ginkgo/v2/ginkgo" = "2.32.1"
 actionlint = "1.7.12"
 golangci-lint = "2.13.2"
@@ -396,7 +396,7 @@ run = "npm run format"
 
 [tasks."panel:frontend:test"]
 description = "Run panel frontend unit tests"
-depends = ["panel:frontend:install"]
+depends = ["panel:frontend:install", "panel:dev:render-bridge"]
 dir = "internal/panel/frontend"
 run = "npm test"
 
@@ -410,7 +410,7 @@ run = "npm test"
 # file that has been renamed goes red rather than quietly running less.
 [tasks."panel:frontend:test:browser"]
 description = "Drive the panel in Chrome and fail on an address asked for too often"
-depends = ["panel:frontend:install"]
+depends = ["panel:frontend:install", "panel:dev:render-bridge"]
 dir = "internal/panel/frontend"
 run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 
@@ -445,7 +445,7 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 #   sync-label-layout long names stay inside their row at desktop and phone widths
 [tasks."panel:frontend:test:browser:local"]
 description = "Drive the browser suites CI leaves to a developer"
-depends = ["panel:frontend:install"]
+depends = ["panel:frontend:install", "panel:dev:render-bridge"]
 dir = "internal/panel/frontend"
 run = '''
 npm run test:browser -- \
@@ -476,9 +476,22 @@ run = "npm run dev"
 [tasks."panel:dev:mock"]
 # Raises no browser. `SMYKLOT_PANEL_DEV_OPEN=1` or `--open` asks for one.
 description = "Serve the panel frontend with deterministic mock data"
-depends = ["panel:frontend:install"]
+depends = ["panel:frontend:install", "panel:dev:render-bridge"]
 dir = "internal/panel/frontend"
 run = "npm run dev:mock"
+
+[tasks."panel:dev:render-bridge"]
+description = "Build the authoritative Go renderer used by the panel development mock"
+sources = [
+  "cmd/panel-render-bridge/**/*.go",
+  "internal/orgsync/**/*.go",
+  "internal/panelrenderbridge/**/*.go",
+  "pkg/config/**/*.go",
+  "go.mod",
+  "go.sum",
+]
+outputs = ["bin/panel-render-bridge"]
+run = "go build -o bin/panel-render-bridge ./cmd/panel-render-bridge"
 
 # Deliberately not in `[tasks.ci]`. Nothing builds or runs the catalogue on a pull
 # request: `pages.yaml` publishes it on a schedule, off `main`. What holds the

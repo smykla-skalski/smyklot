@@ -1,93 +1,105 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
-import { renderMockSyncFile } from '../dev/mock-file-render';
+import { GoFileRenderer } from '../dev/mock-file-render';
 import { defaultFormattingPolicy } from '../src/lib/formatting';
 
-describe('development file renderer [Unit]', () => {
-  it('applies placeholders, JSON merge edits, and ordered common formatting', () => {
-    const policy = defaultFormattingPolicy();
-    const rendered = renderMockSyncFile({
+const renderer = new GoFileRenderer();
+const base = defaultFormattingPolicy();
+
+afterAll(() => renderer.close());
+
+describe('development Go file renderer [Integration]', () => {
+  it('applies placeholders, semantic merge edits, and ordered formatting', async () => {
+    const rendered = await renderer.render({
       path: 'renovate.json',
       draft_content: '{\n  "branch": "{{DEFAULT_BRANCH}}",\n  "labels": ["base"]\n}',
       default_branch: 'trunk',
-      base_policy: policy,
-      merge: {
-        strategy: 'deep-merge',
-        overrides: { labels: ['repository'] },
-      },
-      overlays: [
-        { common: { line_ending: 'crlf', final_newline: 'insert' } },
-        { common: { line_ending: 'lf' } },
+      merge: { strategy: 'deep-merge', overrides: { labels: ['repository'] } },
+      base_formatting: base,
+      layers: [
+        {
+          source: 'template',
+          formatting: { common: { line_ending: 'crlf', final_newline: 'insert' } },
+        },
+        { source: 'repository_path', formatting: { common: { line_ending: 'lf' } } },
       ],
+      inherited_layers: 1,
     });
 
-    expect(rendered).toEqual({
+    expect(rendered).toMatchObject({
       valid: true,
-      content: '{\n  "branch": "trunk",\n  "labels": [\n    "repository"\n  ]\n}\n',
-      changed: true,
+      final_content: '{\n  "branch": "trunk",\n  "labels": ["repository"]\n}\n',
+      matches_formatting: true,
       diagnostics: [],
     });
+    expect(rendered.inherited_policy.common.line_ending).toBe('crlf');
+    expect(rendered.effective_policy.common.line_ending).toBe('lf');
   });
 
-  it('compacts safe JSON arrays without rewriting surrounding presentation', () => {
-    const policy = defaultFormattingPolicy();
-    const rendered = renderMockSyncFile({
+  it('compacts safe JSON arrays without rewriting surrounding presentation', async () => {
+    const rendered = await renderer.render({
       path: 'renovate.json',
       draft_content: '{\n  "labels": [\n    "one",\n    "two"\n  ],\n  "enabled": true\n}',
-      base_policy: policy,
-      overlays: [{ json: { arrays: 'compact' } }],
+      merge: {},
+      base_formatting: base,
+      layers: [{ source: 'template', formatting: { json: { arrays: 'compact' } } }],
+      inherited_layers: 0,
     });
 
-    expect(rendered).toEqual({
-      valid: true,
-      content: '{\n  "labels": ["one", "two"],\n  "enabled": true\n}',
-      changed: true,
-      diagnostics: [],
-    });
+    expect(rendered.final_content).toBe('{\n  "labels": ["one", "two"],\n  "enabled": true\n}\n');
   });
 
-  it('fails closed when compact JSON arrays contain comments', () => {
-    const rendered = renderMockSyncFile({
+  it('fails closed when compact JSONC arrays contain comments', async () => {
+    const rendered = await renderer.render({
       path: 'settings.jsonc',
       draft_content: '{"labels": ["one", /* keep */ "two"]}',
-      base_policy: defaultFormattingPolicy(),
-      overlays: [{ json: { arrays: 'compact' } }],
+      merge: {},
+      base_formatting: base,
+      layers: [{ source: 'template', formatting: { json: { arrays: 'compact' } } }],
+      inherited_layers: 0,
     });
 
     expect(rendered).toMatchObject({
       valid: false,
-      diagnostics: [
-        {
-          code: 'unsafe_formatting',
-          message: 'compact JSON arrays cannot contain comments or multiline values',
-        },
-      ],
+      diagnostics: [{ stage: 'format', code: 'invalid_document' }],
     });
   });
 
-  it('keeps unknown formats byte-identical and diagnoses invalid policy data', () => {
-    const policy = defaultFormattingPolicy();
-    expect(
-      renderMockSyncFile({ path: 'Makefile', draft_content: 'all:\n\ttrue', base_policy: policy }),
-    ).toMatchObject({ valid: true, content: 'all:\n\ttrue', changed: false });
-    expect(
-      renderMockSyncFile({
+  it('terminates unknown formats and diagnoses invalid policies', async () => {
+    await expect(
+      renderer.render({
+        path: 'Makefile',
+        draft_content: 'all:\n\ttrue',
+        merge: {},
+        base_formatting: base,
+        layers: [],
+        inherited_layers: 0,
+      }),
+    ).resolves.toMatchObject({
+      valid: true,
+      final_content: 'all:\n\ttrue\n',
+      matches_formatting: true,
+    });
+    await expect(
+      renderer.render({
         path: 'README.md',
         draft_content: '# Read me',
-        base_policy: { ...policy, common: { ...policy.common, line_width: 1 } },
+        merge: {},
+        base_formatting: { ...base, common: { ...base.common, line_width: 1 } },
+        layers: [],
+        inherited_layers: 0,
       }),
-    ).toMatchObject({
+    ).resolves.toMatchObject({
       valid: false,
-      diagnostics: [{ code: 'invalid_request', message: 'the render request is invalid' }],
+      diagnostics: [{ stage: 'policy', code: 'invalid_policy' }],
     });
   });
 
-  it('renders the Markdown section actions used by the development fixture', () => {
-    const rendered = renderMockSyncFile({
+  it('renders the Markdown section actions used by the fixture', async () => {
+    const rendered = await renderer.render({
       path: 'CONTRIBUTING.md',
       draft_content:
         '# Contributing\n\n## Commits\n\nUse `git commit`.\n\n### Making Changes\n\nRun `make check`.\n',
-      base_policy: defaultFormattingPolicy(),
       merge: {
         strategy: 'markdown',
         sections: [
@@ -99,10 +111,13 @@ describe('development file renderer [Unit]', () => {
           },
         ],
       },
+      base_formatting: base,
+      layers: [],
+      inherited_layers: 0,
     });
 
     expect(rendered.valid).toBe(true);
-    expect(rendered.content).toContain('- Squash on merge');
-    expect(rendered.content).toContain('mise run check');
+    expect(rendered.final_content).toContain('- Squash on merge');
+    expect(rendered.final_content).toContain('mise run check');
   });
 });

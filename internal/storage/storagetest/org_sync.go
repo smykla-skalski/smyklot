@@ -11,6 +11,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // declareOrgSyncSpecs covers what org sync needs from a database, on both
@@ -310,6 +311,44 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("schedules saved configuration atomically and waits for its execution window", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			profile, err := store.SaveScheduleProfile(ctx, workqueue.ProfileChange{
+				ID: "sync-nightly", Name: "Nightly", Timezone: "UTC",
+				Windows: []workqueue.Window{{Weekday: now.AddDate(0, 0, 1).Weekday(), Start: 60, End: 120}},
+				ActorID: account.ID, ChangedAt: now,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncApply, pointer(target))
+			Expect(err).NotTo(HaveOccurred())
+			policy.ProfileID = profile.ID
+			_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+			Expect(err).NotTo(HaveOccurred())
+
+			plan, err := store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+				ID: "automatic", TargetID: target, Trigger: orgsync.TriggerReconcile,
+				ActorID: account.ID, Digest: "saved-config", Automatic: true,
+				Actions: []orgsync.Action{action(repoA, orgsync.OperationCreate, "bug")},
+				Now:     now, ExpiresAt: now.Add(time.Hour),
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.State).To(Equal(orgsync.PlanApproved))
+			item, err := store.GetQueueItem(ctx, "sync-plan:"+plan.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateScheduled))
+			Expect(item.EligibleAt).To(BeTemporally(">", now.Add(time.Hour)))
+			Expect(plan.ExpiresAt).To(BeTemporally("==", item.EligibleAt.Add(time.Hour)))
+
+			lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Found).To(BeFalse())
+			lease, err = store.LeaseSyncPlan(ctx, item.EligibleAt, item.EligibleAt.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Found).To(BeTrue())
+			Expect(lease.Actions).To(HaveLen(1))
+			Expect(lease.Actions[0].Subject).To(Equal("bug"))
+		})
 		It("records a plan with its actions and counts", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)
@@ -767,6 +806,115 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Expect(err).NotTo(HaveOccurred())
 			Expect(again.Found).To(BeTrue())
 			Expect(again.Plan.Attempt).To(Equal(2))
+		})
+
+		It("keeps automatically scheduled sync blocked while its workload is disabled", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncApply, pointer(target))
+			Expect(err).NotTo(HaveOccurred())
+			policy.Enabled = false
+			_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+			Expect(err).NotTo(HaveOccurred())
+			plan, err := store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+				ID: "automatic-paused", TargetID: target, Trigger: orgsync.TriggerReconcile,
+				ActorID: account.ID, Digest: "saved-config", Automatic: true,
+				Actions: []orgsync.Action{action(repoA, orgsync.OperationCreate, "bug")},
+				Now:     now, ExpiresAt: now.Add(time.Hour),
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.State).To(Equal(orgsync.PlanApproved))
+			item, err := store.GetQueueItem(ctx, "sync-plan:"+plan.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(item.State).To(Equal(workqueue.StateBlocked))
+			Expect(item.BlockedReason).To(Equal("Workload disabled by policy"))
+			lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(lease.Found).To(BeFalse())
+		})
+
+		DescribeTable("retires blocked automatic work before the policy can revive it",
+			func(reason string) {
+				ctx, store, now := runtime()
+				account := seed(ctx, store, now)
+				policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncApply, pointer(target))
+				Expect(err).NotTo(HaveOccurred())
+				policy.Enabled = false
+				_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+				Expect(err).NotTo(HaveOccurred())
+				_, err = store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+					ID: "blocked-old", TargetID: target, Trigger: orgsync.TriggerReconcile,
+					ActorID: account.ID, Digest: "old", Automatic: true,
+					Actions: []orgsync.Action{action(repoA, orgsync.OperationCreate, "bug")},
+					Now:     now, ExpiresAt: now.Add(time.Hour),
+				})
+				Expect(err).NotTo(HaveOccurred())
+				now = now.Add(time.Minute)
+				if reason == "expiry" {
+					now = now.Add(2 * time.Hour)
+				}
+				switch reason {
+				case "configuration":
+					writeConfig(ctx, store, account.ID, now, `{"labels":[]}`, 0)
+				case "runtime formatting":
+					botConfig := config.Default()
+					botConfig.Formatting.Common.LineEnding = "crlf"
+					_, err = store.SaveRuntimeSettings(ctx, storage.RuntimeSettingsChange{
+						BotConfig: botConfig, EffectiveSessionTTL: time.Hour,
+						ActorAccountID: account.ID, ChangedAt: now,
+					})
+					Expect(err).NotTo(HaveOccurred())
+				case "expiry":
+					Expect(store.ExpireSyncPlans(ctx, now)).To(Succeed())
+				}
+				item, err := store.GetQueueItem(ctx, "sync-plan:blocked-old")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(item.State).To(Equal(workqueue.StateSuperseded))
+				policy, err = store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncApply, pointer(target))
+				Expect(err).NotTo(HaveOccurred())
+				policy.Enabled = true
+				_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+				Expect(err).NotTo(HaveOccurred())
+				_, err = store.CreateSyncPlan(ctx, orgsync.PlanCreate{
+					ID: "automatic-next", TargetID: target, Trigger: orgsync.TriggerReconcile,
+					ActorID: account.ID, Digest: "next", Automatic: true,
+					Actions: []orgsync.Action{action(repoA, orgsync.OperationCreate, "feature")},
+					Now:     now, ExpiresAt: now.Add(time.Hour),
+				})
+				Expect(err).NotTo(HaveOccurred())
+				lease, err := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))
+				Expect(err).NotTo(HaveOccurred())
+				Expect(lease.Found).To(BeTrue())
+				Expect(lease.Plan.ID).To(Equal("automatic-next"))
+			},
+			Entry("after a configuration change", "configuration"),
+			Entry("after a runtime formatting change", "runtime formatting"),
+			Entry("after expiry", "expiry"),
+		)
+
+		It("keeps stopped execution visible without exposing its infrastructure error", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindSyncApply, pointer(target))
+			Expect(err).NotTo(HaveOccurred())
+			policy.RetryDelay = 0
+			_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
+			Expect(err).NotTo(HaveOccurred())
+			leaseOne(ctx, store, account.ID, now, []orgsync.Action{
+				action(repoA, orgsync.OperationCreate, "bug"),
+			})
+			Expect(store.RetrySyncPlan(ctx, orgsync.PlanRetry{
+				PlanID: "plan-1", Failure: "private infrastructure detail", Now: now.Add(time.Second),
+			})).To(Succeed())
+			plan, _, err := store.GetSyncPlan(ctx, target, "plan-1")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(plan.State).To(Equal(orgsync.PlanFailed))
+			states, err := store.ListSyncRepositoryState(ctx, target)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(states).To(HaveLen(1))
+			Expect(states[0].Problem).NotTo(BeEmpty())
+			Expect(states[0].Problem).NotTo(ContainSubstring("private infrastructure"))
+			Expect(states[0].AppliedDigest).To(BeEmpty())
 		})
 
 		It("records what became of each action, and skips name the blocker", func() {

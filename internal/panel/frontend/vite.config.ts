@@ -88,6 +88,7 @@ export default defineConfig({
       '@codemirror/lang-json',
       '@codemirror/lang-markdown',
       '@codemirror/lang-yaml',
+      '@codemirror/legacy-modes/mode/toml',
       '@codemirror/language',
       '@codemirror/state',
       '@codemirror/view',

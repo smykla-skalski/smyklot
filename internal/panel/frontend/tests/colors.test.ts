@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { contrast, deltaE, mix, relativeLuminance as relativeLuminanceOf } from './color';
+import { contrast, deltaE, relativeLuminance as relativeLuminanceOf } from './color';
 import { palettes } from './theme';
 
 /**
@@ -90,11 +90,10 @@ describe.each(palettes.map((palette) => [palette.name, palette] as const))(
       );
     });
 
-    it('keeps drift counts readable on their tinted board tile', () => {
-      const drift = color('diff-chg-ink');
-      const tintedTile = mix(drift, color('tile-face'), 0.14);
-
-      expect(contrast(drift, tintedTile)).toBeGreaterThanOrEqual(4.5);
+    it('keeps sync status text readable on its card', () => {
+      for (const ink of ['text-muted', 'danger', 'info']) {
+        expect(contrast(color(ink), color('surface-base'))).toBeGreaterThanOrEqual(4.5);
+      }
     });
 
     it('keeps control fills from becoming focal surfaces', () => {

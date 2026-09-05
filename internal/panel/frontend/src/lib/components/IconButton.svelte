@@ -7,6 +7,7 @@
     onclick,
     disabled = false,
     busy = false,
+    toolbar = false,
   }: {
     icon: IconName;
     /** Says what the button does. It is the accessible name and the tooltip both. */
@@ -15,6 +16,8 @@
     disabled?: boolean;
     /** Turns the glyph while the work this button started is still in flight. */
     busy?: boolean;
+    /** Matches the shared Button and SegmentedControl height in a toolbar. */
+    toolbar?: boolean;
   } = $props();
 </script>
 
@@ -29,6 +32,9 @@ to make impossible.
 button reporting on itself - a row that is waiting on something else says so in the
 row, not here.
 
+In a toolbar, opt into `toolbar` so the shared control tier matches the neighbouring
+buttons and segmented controls. Call sites never supply their own dimensions.
+
 Reach for `Button` wherever there is room for a word. This is for a control that has
 to sit in a row's margin or a heading's end, where a labelled button would not fit.
 -->
@@ -39,6 +45,7 @@ to sit in a row's margin or a heading's end, where a labelled button would not f
 <button
   type="button"
   class="icon-button"
+  class:icon-button-toolbar={toolbar}
   class:busy
   aria-busy={busy}
   aria-label={label}

@@ -3,7 +3,7 @@
   import { fn } from 'storybook/test';
 
   import SyncFilePage from '#lib/components/SyncFilePage.svelte';
-  import { defaultFormattingPolicy } from '#lib/formatting.js';
+  import { defaultFormattingPolicy, formattingSources } from '#lib/formatting.js';
   import { buildSyncOverrideEditorEnvelope } from '#lib/repository-sync-override-settings.js';
   import type { SyncConfig, SyncFilesContext, SyncOverride } from '#lib/types.js';
 
@@ -72,12 +72,9 @@
     repositories: 25,
     covered: 23,
     known_paths: [],
-    base_formatting: POLICY,
     repository_policies: Array.from({ length: 25 }, (_, index) => ({
       repository: ADJUSTERS[index]?.name ?? `repository-${index + 1}`,
       repository_id: ADJUSTERS[index]?.id ?? `40${String(index + 5).padStart(2, '0')}`,
-      default_branch: 'main',
-      base_policy: POLICY,
     })),
     merges: [
       {
@@ -135,9 +132,25 @@
       }),
       renderFile: async (input) => ({
         valid: true,
-        content: input.draft_content,
-        changed: false,
+        final_content: input.draft_content,
+        matches_formatting: true,
         diagnostics: [],
+        formatting: {
+          current_layer: input.repository === undefined ? 'template' : 'repository_path',
+          inherited_policy: POLICY,
+          effective_policy: POLICY,
+          provenance: formattingSources(
+            input.repository === undefined ? 'template' : 'repository_path',
+          ),
+          layers: [
+            { source: 'process', state: 'baseline' },
+            { source: 'target', state: 'stored' },
+            { source: 'template', state: 'stored' },
+            ...(input.repository === undefined
+              ? []
+              : [{ source: 'repository_path' as const, state: 'stored' as const }]),
+          ],
+        },
       }),
       onFormattingValidity: fn(),
       onChangeOverride: fn(() => true),

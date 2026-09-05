@@ -37,7 +37,8 @@ const PAGES: ReadonlyArray<readonly [view: string, route: string]> = [
   ['settings', 'workspace/sync/settings'],
   ['rulesets', 'workspace/sync/rulesets'],
   ['files', 'workspace/sync/files'],
-  ['plan', 'workspace/sync/plan'],
+  // The separate plan page was replaced by automatic sync status and an inspector
+  // (2026-09-05). Its legacy route is covered by plan-rows and sync-drafts.
   ['users', 'workspace/access/users'],
   ['invitations', 'workspace/access/invitations'],
   ['audit', 'workspace/history/audit'],
@@ -170,7 +171,6 @@ const ABBREVIATED = new Map<string, string>([
   ['repositories', 'names its own repository count in the sentence'],
   ['labels', 'draws its own label count'],
   ['files', 'draws its own file count'],
-  ['plan', 'draws its own change counts'],
   ['root-failures', 'draws its own failure count'],
   ['failures', 'draws its own failure count'],
   ['audit', 'draws its own day headings'],
@@ -193,6 +193,7 @@ const DECIDED = new Map<string, string>([
     'three cards - needs a decision, running and waiting, done in the last day - rather ' +
       'than the mock’s one flat list (2026-09-01)',
   ],
+  ['queue', 'automatic sync leaves no manual approvals in the fixture (2026-09-05)'],
   ['settings', 'the sentence says what managed means in full rather than the mock’s shorter line'],
 ]);
 

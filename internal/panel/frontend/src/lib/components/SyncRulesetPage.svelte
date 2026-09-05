@@ -71,7 +71,6 @@ stacked left, Cancel and Done on a hairline foot.
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
-  import PanePath from './PanePath.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
@@ -155,7 +154,7 @@ stacked left, Cancel and Done on a hairline foot.
       ...stored,
       rulesets: rulesets.filter((held) => held.name !== name),
     });
-    receipts.say(`${name} will be removed from every syncing repository by the next plan`, {
+    receipts.say(`${name} will be removed from every syncing repository by the next sync`, {
       undo: restoreRuleset,
     });
   }
@@ -464,17 +463,15 @@ stacked left, Cancel and Done on a hairline foot.
 <div class="view-frame">
   <!-- One crumb, to the row this page sits under. Sync is where that row lives,
        not a second place to go back to. -->
-  <PanePath
-    segments={[
+
+  <PageHeader
+    ancestors={[
       {
         label: SYNC_SECTION_LABELS.rulesets,
         href: sectionHref('rulesets'),
         onSelect: () => onOpenSection('rulesets'),
       },
     ]}
-  />
-
-  <PageHeader
     id="sync-ruleset-heading"
     section="Ruleset"
     title={name}
@@ -1018,7 +1015,7 @@ stacked left, Cancel and Done on a hairline foot.
             <span class="setting-say">
               <span class="setting-name">Delete this ruleset</span>
               <span class="setting-why"
-                >Removes {name} from every syncing repository on the next plan</span
+                >Removes {name} from every syncing repository on the next sync</span
               >
             </span>
             <span class="setting-value">
@@ -1036,9 +1033,9 @@ stacked left, Cancel and Done on a hairline foot.
          then rather than on the list this used to leave for. -->
     <div class="state-panel is-warn">
       <span
-        ><strong>Pending removal.</strong> The configuration no longer carries {name}; the next
-        applied plan removes it from every syncing repository. On GitHub it stays enforced until
-        that plan runs</span
+        ><strong>Pending removal.</strong> The configuration no longer carries {name}; the next next
+        sync removes it from every syncing repository. On GitHub it stays enforced until that plan
+        runs</span
       >
       <Button disabled={frozen} onclick={restoreRuleset}>Undo - keep this ruleset</Button>
     </div>

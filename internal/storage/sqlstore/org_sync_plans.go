@@ -102,7 +102,7 @@ WHERE target_id = ? AND state IN `+livePlanStates, now, targetID); err != nil {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
 WHERE target_id = ? AND source_kind = 'sync_plan'
-  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'running', 'retrying')`,
+  AND state IN ('awaiting_approval', 'blocked', 'scheduled', 'ready', 'running', 'retrying')`,
 		now, now, targetID); err != nil {
 		return fmt.Errorf("invalidate sync plan queue items: %w", err)
 	}
@@ -119,7 +119,7 @@ WHERE state IN `+livePlanStates, now); err != nil {
 	if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
 WHERE source_kind = 'sync_plan'
-  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'running', 'retrying')`,
+  AND state IN ('awaiting_approval', 'blocked', 'scheduled', 'ready', 'running', 'retrying')`,
 		now, now); err != nil {
 		return fmt.Errorf("invalidate all sync plan queue items: %w", err)
 	}
@@ -215,6 +215,30 @@ INSERT INTO sync_plan_actions (
 		return orgsync.Plan{}, err
 	}
 
+	state := orgsync.PlanComputed
+	expiresAt := create.ExpiresAt
+	var approvedAt *time.Time
+	if create.Automatic {
+		if err := scheduleApprovedSyncPlan(ctx, tx, create.ID, create.Now, create.ActorID, true); err != nil {
+			return orgsync.Plan{}, err
+		}
+		item, err := getQueueItem(ctx, tx, "sync-plan:"+create.ID, "")
+		if err != nil {
+			return orgsync.Plan{}, err
+		}
+		// Keep the freshness budget after the first permitted window opens.
+		// A nightly sync must not expire while it is waiting for that night.
+		if item.EligibleAt.After(create.Now) {
+			expiresAt = expiresAt.Add(item.EligibleAt.Sub(create.Now))
+		}
+		if _, err := tx.ExecContext(ctx, `
+UPDATE sync_plans SET state = 'approved', approved_at = ?, expires_at = ? WHERE id = ?`,
+			create.Now, expiresAt, create.ID); err != nil {
+			return orgsync.Plan{}, fmt.Errorf("authorize automatic sync: %w", err)
+		}
+		state, approvedAt = orgsync.PlanApproved, &create.Now
+	}
+
 	if err := tx.Commit(); err != nil {
 		return orgsync.Plan{}, fmt.Errorf("commit sync plan create: %w", err)
 	}
@@ -225,10 +249,11 @@ INSERT INTO sync_plan_actions (
 		Trigger:        create.Trigger,
 		ActorAccountID: create.ActorID,
 		Digest:         create.Digest,
-		State:          orgsync.PlanComputed,
+		State:          state,
+		ApprovedAt:     approvedAt,
 		Counts:         counts,
 		ComputedAt:     create.Now,
-		ExpiresAt:      create.ExpiresAt,
+		ExpiresAt:      expiresAt,
 	}, nil
 }
 
@@ -376,7 +401,7 @@ UPDATE sync_plans SET state = 'approved', approved_at = ? WHERE id = ?`,
 		return orgsync.Plan{}, fmt.Errorf("approve sync plan: %w", err)
 	}
 	if err := scheduleApprovedSyncPlan(
-		ctx, tx, approval.PlanID, approval.Now, approval.ActorID,
+		ctx, tx, approval.PlanID, approval.Now, approval.ActorID, false,
 	); err != nil {
 		return orgsync.Plan{}, err
 	}
@@ -686,6 +711,9 @@ func failSyncPlanExecution(
 	itemID string,
 	retry orgsync.PlanRetry,
 ) error {
+	if err := recordSyncFailures(ctx, tx, retry.PlanID, retry.Now, true); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE sync_plans SET state = 'failed', lease_expires_at = NULL, finished_at = ?
 WHERE id = ?`, retry.Now, retry.PlanID); err != nil {
@@ -794,6 +822,9 @@ UPDATE sync_plans SET state = ?, finished_at = ?, lease_expires_at = NULL WHERE 
 		return err
 	}
 
+	if err := recordSyncFailures(ctx, tx, outcome.PlanID, outcome.Now, false); err != nil {
+		return err
+	}
 	for _, state := range outcome.Applied {
 		if err := upsertSyncRepositoryState(ctx, tx, state); err != nil {
 			return err
@@ -867,9 +898,9 @@ WHERE state IN ('computed', 'approved') AND expires_at <= ?`, now, now); err != 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = 'superseded', finished_at = ?, updated_at = ?, revision = revision + 1
 WHERE source_kind = 'sync_plan'
-  AND source_id IN (SELECT id FROM sync_plans WHERE state = 'expired' AND finished_at = ?)
-  AND state IN ('awaiting_approval', 'scheduled', 'ready', 'retrying')`,
-		now, now, now); err != nil {
+  AND source_id IN (SELECT id FROM sync_plans WHERE state IN ('expired', 'stale'))
+  AND state IN ('awaiting_approval', 'blocked', 'scheduled', 'ready', 'retrying')`,
+		now, now); err != nil {
 		return fmt.Errorf("expire sync plan queue items: %w", err)
 	}
 

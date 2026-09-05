@@ -10,6 +10,7 @@
     argTypes: {
       disabled: { control: 'boolean' },
       busy: { control: 'boolean' },
+      toolbar: { control: 'boolean' },
     },
     args: { icon: 'refresh', label: 'Refresh', disabled: false, busy: false, onclick: fn() },
   });
@@ -17,6 +18,7 @@
 
 <!-- The label is the accessible name and the tooltip both, so it is never optional. -->
 <Story name="Playground" />
+<Story name="Toolbar" args={{ icon: 'sliders', label: 'Template options', toolbar: true }} />
 
 <Story name="States">
   {#snippet template()}

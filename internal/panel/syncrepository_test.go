@@ -10,7 +10,6 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // TestSyncDocumentRefusesFilesGitHubOrGitWould keeps the answer beside the
@@ -123,7 +122,7 @@ func TestSyncFilesContextCountsRepositoryOptIn(t *testing.T) {
 	}
 }
 
-func TestSyncFilesContextNormalizesFormattingPoliciesAndPathAdjustments(t *testing.T) {
+func TestSyncFilesContextCarriesRepositoryIndexAndPathAdjustments(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 
@@ -156,20 +155,19 @@ func TestSyncFilesContextNormalizesFormattingPoliciesAndPathAdjustments(t *testi
 		t.Fatalf("reading files context = %d %s", response.Code, response.Body.String())
 	}
 	var answer struct {
-		BaseFormatting     config.FormattingPolicy `json:"base_formatting"`
 		RepositoryPolicies []syncFileRepositoryDTO `json:"repository_policies"`
 		Merges             []syncFileMergeEntryDTO `json:"merges"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &answer); err != nil {
 		t.Fatal(err)
 	}
-	if answer.BaseFormatting.JSON.Arrays != "expanded" {
-		t.Fatalf("template base arrays = %q, wanted target policy", answer.BaseFormatting.JSON.Arrays)
-	}
 	if len(answer.RepositoryPolicies) != 1 ||
-		answer.RepositoryPolicies[0].BasePolicy.JSON.Arrays != "compact" ||
 		answer.RepositoryPolicies[0].RepositoryID != "repository-20" {
 		t.Fatalf("repository policies = %#v", answer.RepositoryPolicies)
+	}
+	if strings.Contains(response.Body.String(), "base_formatting") ||
+		strings.Contains(response.Body.String(), "base_policy") {
+		t.Fatalf("files context still exposes browser-composed policy bases: %s", response.Body.String())
 	}
 	if len(answer.Merges) != 1 || answer.Merges[0].Formatting == nil ||
 		answer.Merges[0].Formatting.JSON == nil ||

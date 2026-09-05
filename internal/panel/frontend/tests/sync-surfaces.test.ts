@@ -116,28 +116,12 @@ const SURFACES: readonly {
   from?: { file: string; declares: string };
 }[] = [
   {
-    what: 'a board tile',
+    what: 'a repository status row',
     file: 'SyncOverview.svelte',
-    className: 'tile',
-    ground: 'tile-face',
-    paints: 'declared',
-  },
-  {
-    // Transparent by design: the legend sits inside the board's own plate, and a second ground
-    // under it would draw a band across a card that is meant to read as one surface.
-    what: 'a legend row',
-    file: 'SyncOverview.svelte',
-    className: 'legend-row',
+    className: 'sync-repo-summary',
     ground: 'surface-base',
     paints: 'inherited',
-    from: { file: 'SyncOverview.svelte', declares: 'background: var(--surface-base)' },
-  },
-  {
-    what: 'a kind card',
-    file: 'SyncOverview.svelte',
-    className: 'kind-card',
-    ground: 'surface-base',
-    paints: 'declared',
+    from: { file: 'app.css', declares: 'background: var(--surface-base)' },
   },
   {
     // A row inside the files card's own plate, which is what paints the ground under it - and the
@@ -152,16 +136,14 @@ const SURFACES: readonly {
 ];
 
 describe('sync surfaces [Unit]', () => {
-  it('keeps settled checkmarks distinguishable in every palette', () => {
+  it('keeps named status labels readable in every palette', () => {
     const source = sourceOf('SyncOverview.svelte');
-    const share = source.match(/\.tile\.is-settled\s*\{[^}]*var\(--text-muted\)\s+(?<share>\d+)%/s)
-      ?.groups?.share;
-    expect(share).toBeDefined();
-
+    expect(source).toMatch(/\.repo-status\s*\{[^}]*color: var\(--text-muted\)/s);
     for (const palette of palettes) {
-      const ground = palette.color('tile-face');
-      const ink = over(palette.color('text-muted'), ground, Number(share) / 100);
-      expect(contrast(ink, ground), palette.name).toBeGreaterThanOrEqual(3);
+      expect(
+        contrast(palette.color('text-muted'), palette.color('surface-base')),
+        palette.name,
+      ).toBeGreaterThanOrEqual(4.5);
     }
   });
 
@@ -241,10 +223,10 @@ describe('sync surfaces [Unit]', () => {
   it('declares a hover and a press wherever it draws a pressable surface', () => {
     const missing: string[] = [];
     for (const file of [...new Set(SURFACES.map((surface) => surface.file))]) {
-      const source = readFileSync(
-        new URL(`../src/lib/components/${file}`, import.meta.url),
-        'utf8',
-      );
+      // Overview rows use the shared row-hit anatomy, which owns both states.
+      const source = ['SyncOverview.svelte', 'SyncFilesPage.svelte'].includes(file)
+        ? hostSource('app.css')
+        : sourceOf(file);
       if (!source.includes(':hover')) missing.push(`${file}: no hover`);
       if (!source.includes(':active')) missing.push(`${file}: no press`);
       /* The panel's press voice: the inset shadow and the 1px seat, the same

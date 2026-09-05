@@ -3,8 +3,15 @@
   import { json } from '@codemirror/lang-json';
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
-  import { HighlightStyle, syntaxHighlighting } from '@codemirror/language';
-  import { Compartment, EditorState, RangeSetBuilder, type Extension } from '@codemirror/state';
+  import { toml } from '@codemirror/legacy-modes/mode/toml';
+  import { HighlightStyle, StreamLanguage, syntaxHighlighting } from '@codemirror/language';
+  import {
+    Annotation,
+    Compartment,
+    EditorState,
+    RangeSetBuilder,
+    type Extension,
+  } from '@codemirror/state';
   import {
     Decoration,
     EditorView,
@@ -20,6 +27,7 @@
   import { tags } from '@lezer/highlight';
   import { untrack } from 'svelte';
   import type { CodeLang } from '../code-tokens';
+  import { storeTemplateBody, templateBody, terminateTemplate } from '../template-content';
   import type { Attachment } from 'svelte/attachments';
 
   const {
@@ -29,6 +37,8 @@
     overridden = null,
     onChange,
     onHistory,
+    onFormat,
+    terminalNewline = false,
   }: {
     value: string;
     lang?: CodeLang;
@@ -38,6 +48,10 @@
     onChange: (text: string) => void;
     /** How many steps the editor's own history can take back. */
     onHistory?: (depth: number) => void;
+    /** Applies the current backend preview. Bound to Option/Alt+Shift+F. */
+    onFormat?: () => void;
+    /** Shared files store the required final newline outside the visible document. */
+    terminalNewline?: boolean;
   } = $props();
 
   /** The visible twin of Ctrl/Cmd+Z - a page button steps the same history. */
@@ -47,8 +61,13 @@
 
   /** Replace the document in one CodeMirror transaction so one Undo restores it. */
   export function replaceValue(text: string): void {
+    text = displayValue(text);
     if (view === null || text === view.state.doc.toString()) return;
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+  }
+
+  function displayValue(text: string): string {
+    return terminalNewline ? templateBody(terminateTemplate(text)) : text;
   }
 
   /* The same inks CodeBlock's tokenizer classes wear, on lezer's tags. */
@@ -170,12 +189,25 @@
      why the json surface also carries the comment ink above. */
   function language(): Extension {
     if (lang === 'yaml') return yaml();
+    if (lang === 'toml') return StreamLanguage.define(toml);
     if (lang === 'markdown') return markdown();
+    if (lang === 'text') return [];
     return [json(), commentPlugin];
   }
 
+  const formatKey = {
+    key: 'Shift-Alt-f',
+    preventDefault: true,
+    run: (): boolean => {
+      if (readOnly || onFormat === undefined) return false;
+      onFormat();
+      return true;
+    },
+  };
+
   const holds = new Compartment();
   const marks = new Compartment();
+  const externalValue = Annotation.define<boolean>();
 
   let view: EditorView | null = null;
 
@@ -184,17 +216,23 @@
        once in its lifetime. */
     const shadow = host.shadowRoot ?? (host as HTMLElement).attachShadow({ mode: 'open' });
     const state = EditorState.create({
-      doc: untrack(() => value),
+      doc: untrack(() => displayValue(value)),
       extensions: [
         lineNumbers(),
         history(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
+        keymap.of([formatKey, ...defaultKeymap, ...historyKeymap]),
         untrack(() => language()),
         syntaxHighlighting(inks),
         holds.of(frozen(untrack(() => readOnly))),
         marks.of([]),
         EditorView.updateListener.of((update) => {
-          if (update.docChanged) onChange(update.state.doc.toString());
+          if (
+            update.docChanged &&
+            !update.transactions.some((transaction) => transaction.annotation(externalValue))
+          ) {
+            const text = update.state.doc.toString();
+            onChange(terminalNewline ? storeTemplateBody(text) : text);
+          }
           onHistory?.(undoDepth(update.state));
         }),
         surface,
@@ -220,10 +258,13 @@
      state it mirrors gets its own effect that dispatches rather than
      recreating the editor. */
   $effect(() => {
-    const next = value;
+    const next = displayValue(value);
     const held = view;
     if (held !== null && next !== held.state.doc.toString()) {
-      held.dispatch({ changes: { from: 0, to: held.state.doc.length, insert: next } });
+      held.dispatch({
+        changes: { from: 0, to: held.state.doc.length, insert: next },
+        annotations: externalValue.of(true),
+      });
     }
   });
 

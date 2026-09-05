@@ -273,7 +273,6 @@ export const SYNC_FILES_CONTEXT: SyncFilesContext = {
   repositories: SYNC_STATUS.repositories.length,
   covered: SYNC_STATUS.repositories.filter((row) => row.cells.files.state !== 'off').length,
   known_paths: KNOWN_PATHS,
-  base_formatting: CONFIG.formatting,
   repository_policies: [...SYNC_STATUS.repositories].map((row) => {
     const found = MOCK.targets
       .flatMap((target) => target.repositories)
@@ -281,8 +280,6 @@ export const SYNC_FILES_CONTEXT: SyncFilesContext = {
     return {
       repository: row.repository,
       repository_id: found?.id ?? `mock:${row.repository}`,
-      default_branch: found?.default_branch ?? 'main',
-      base_policy: CONFIG.formatting,
     };
   }),
   merges: storyFileAdjustments(),

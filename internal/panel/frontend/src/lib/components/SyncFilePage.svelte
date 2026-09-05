@@ -3,12 +3,15 @@
   import { formattingOverrideCount } from '../formatting';
   import type { FormattingPatch as TemplateFormattingPatch } from '../formatting';
   import type { SyncFile as TemplateFile } from '../types';
+  import { terminateTemplate } from '../template-content';
 
   /** The language a path's extension says it is written in. */
   export function langOf(path: string): CodeLang {
-    if (/\.(json|json5)$/i.test(path)) return 'json';
+    if (/\.jsonc?$/i.test(path)) return 'json';
+    if (/\.toml$/i.test(path)) return 'toml';
+    if (/\.ya?ml$/i.test(path)) return 'yaml';
     if (/\.(md|markdown)$/i.test(path)) return 'markdown';
-    return 'yaml';
+    return 'text';
   }
 
   /** Replaces one template while keeping the strict service-owned file shape. */
@@ -22,7 +25,7 @@
       ...document,
       files: files.map((file) => ({
         ...file,
-        content: file.path === path ? content : file.content,
+        content: file.path === path ? terminateTemplate(content) : file.content,
       })),
     };
   }
@@ -65,12 +68,7 @@ where it arises.
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import { composeMergedText, deriveMerge } from '../jsontext';
   import { formatRelative } from '../format';
-  import {
-    FORMATTING_FIELDS,
-    applyFormattingPatch,
-    formattingPatchValue,
-    type FormattingPatch,
-  } from '../formatting';
+  import { FORMATTING_FIELDS, formattingPatchValue, type FormattingPatch } from '../formatting';
   import { formatJson, parseJson, type JsonValue } from '../merge';
   import type {
     SyncOverrideControlId,
@@ -85,12 +83,11 @@ where it arises.
     SyncFile,
     SyncFileMerge,
     SyncFileMergeEntry,
-    SyncFileRenderInput,
-    SyncFileRenderResponse,
     SyncFileRepositoryPolicy,
     SyncFilesContext,
     SyncOverride,
   } from '../types';
+  import type { SyncFileRenderInput, SyncFileRenderResponse } from '../sync-file-render.generated';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import Button from './Button.svelte';
@@ -99,10 +96,13 @@ where it arises.
   import Icon from './Icon.svelte';
   import FormError from './FormError.svelte';
   import CodeEditor from './CodeEditor.svelte';
-  import DiffBlock from './DiffBlock.svelte';
+  import Modal from './Modal.svelte';
+  import SearchField from './SearchField.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
+  import FileEditor from './FileEditor.svelte';
+  import IconButton from './IconButton.svelte';
   import PageHeader from './PageHeader.svelte';
-  import PanePath from './PanePath.svelte';
 
   const {
     config,
@@ -179,14 +179,6 @@ where it arises.
       : `In ${context?.covered ?? 0} of ${context?.repositories ?? 0} repositories${freshness}`,
   );
 
-  const strategyPill = $derived.by(() => {
-    if (merges.length === 0) return 'replaces';
-    const strategy = merges[0]?.merge?.strategy;
-    if (strategy === 'markdown') return 'merges · sections';
-    if (strategy === 'shallow-merge') return 'merges · shallow';
-    return 'merges · deep';
-  });
-
   /* ---------- The template, editable in place ---------- */
 
   /* Null while untouched, so a save elsewhere refreshing the config never
@@ -194,8 +186,8 @@ where it arises.
   let templateDraft = $state<string | null>(null);
   let templateSource = untrack(() => file?.content ?? '');
   let pendingTemplateText: string | null = null;
-  let templateUndoDepth = $state(0);
-  let templateEditor = $state<CodeEditor | null>(null);
+
+  let templateEditor = $state<FileEditor | null>(null);
   const templateText = $derived(templateDraft ?? file?.content ?? '');
   const templateFormatting = $derived(file?.formatting ?? {});
   const savedTemplateFormatting = $derived(savedFile?.formatting ?? {});
@@ -209,11 +201,12 @@ where it arises.
 
   let templateRender = $state<SyncFileRenderResponse | null>(null);
   let templateRendering = $state(false);
-  let templateDiffOpen = $state(false);
+  let templateOptionsOpen = $state(false);
+  let templateOptionsTrigger = $state<HTMLElement | null>(null);
   let renderGeneration = 0;
 
   const templateMismatch = $derived(
-    templateRender?.valid === true && templateRender.content !== templateText,
+    templateRender?.valid === true && !templateRender.matches_formatting,
   );
   const templateDiagnostic = $derived(
     templateRender?.diagnostics.map(({ message }) => message).join(' · ') ?? '',
@@ -227,22 +220,22 @@ where it arises.
     untrack(() => onFormattingValidity(control, valid, message));
   }
 
-  function renderInput(
-    basePolicy: SyncFileRenderInput['base_policy'],
-    merge?: SyncFileRenderInput['merge'],
-    defaultBranch?: string,
-    pathFormatting?: FormattingPatch,
-  ): SyncFileRenderInput {
-    const overlays = [templateFormatting, pathFormatting].filter(
-      (overlay): overlay is FormattingPatch => overlay !== undefined,
-    );
+  function templateRenderInput(): SyncFileRenderInput {
     return {
       path,
       draft_content: templateText,
-      base_policy: basePolicy,
-      ...(merge === undefined ? {} : { merge }),
-      ...(defaultBranch === undefined ? {} : { default_branch: defaultBranch }),
-      ...(overlays.length === 0 ? {} : { overlays }),
+      template_formatting: templateFormatting,
+    };
+  }
+
+  function repositoryRenderInput(entry: RepositoryRow): SyncFileRenderInput {
+    return {
+      ...templateRenderInput(),
+      repository: {
+        id: entry.repository_id,
+        path_formatting: entry.formatting ?? {},
+        ...(entry.merge === undefined ? {} : { merge: repositoryMergeInput(entry) }),
+      },
     };
   }
 
@@ -267,9 +260,9 @@ where it arises.
       const message = cause instanceof Error ? cause.message : String(cause);
       templateRender = {
         valid: false,
-        content: '',
-        changed: false,
-        diagnostics: [{ code: 'render_failed', message }],
+        final_content: '',
+        matches_formatting: false,
+        diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
       reportFormattingValidity(validationControl, false, message);
     } finally {
@@ -278,15 +271,14 @@ where it arises.
   }
 
   $effect(() => {
-    const basePolicy = context?.base_formatting;
     const heldFile = file;
     void templateText;
     void templateFormatting;
-    if (basePolicy === undefined || heldFile === null) return;
+    if (heldFile === null) return;
     const validationControl = renderValidationControl('template');
     const preserveValidation = templateDirty || dirtyTemplateFormatting.length > 0;
     const generation = (renderGeneration += 1);
-    const input = renderInput(basePolicy);
+    const input = templateRenderInput();
     reportFormattingValidity(
       validationControl,
       false,
@@ -315,8 +307,8 @@ where it arises.
   }
 
   function applyTemplateFormatting(): void {
-    if (templateRender?.valid !== true || !templateMismatch || frozen) return;
-    templateEditor?.replaceValue(templateRender.content);
+    if (templateRender?.valid !== true || !templateMismatch || frozen || templateRendering) return;
+    templateEditor?.replaceValue(templateRender.final_content);
   }
 
   $effect(() => {
@@ -330,14 +322,12 @@ where it arises.
     pendingTemplateText = null;
     untrack(() => {
       templateDraft = null;
-      templateUndoDepth = 0;
     });
   });
 
   /* ---------- One adjustment open at a time ---------- */
 
   let openRepo = $state<string | null>(null);
-  let sideBySide = $state(false);
   let showStored = $state(false);
   /** The open repository's whole override, fetched for its revision. */
   let held = $state<SyncOverride | null>(null);
@@ -387,6 +377,32 @@ where it arises.
       .length,
   );
 
+  let repositorySearch = $state('');
+  let showAllRepositories = $state(false);
+  let repositoryTab = $state('content');
+  let repositoryPreviousTab = $state('content');
+  let repositoryTrigger = $state<HTMLElement | null>(null);
+  const matchingRepositories = $derived(
+    repositoryRows
+      .filter((entry) =>
+        entry.repository.toLowerCase().includes(repositorySearch.trim().toLowerCase()),
+      )
+      .toSorted(
+        (a, b) =>
+          Number(b.merge !== undefined || b.formatting !== undefined) -
+            Number(a.merge !== undefined || a.formatting !== undefined) ||
+          a.repository.localeCompare(b.repository),
+      ),
+  );
+  const visibleRepositories = $derived(
+    repositorySearch.trim() !== '' || showAllRepositories
+      ? matchingRepositories
+      : matchingRepositories.slice(0, 8),
+  );
+  function closeRepository(): void {
+    if (openEntry !== null) void toggleRow(openEntry);
+  }
+
   const anyOverrideDirty = $derived(
     dirtyControls.some(
       (control) => control.startsWith('repositories.') && control.endsWith('.sync.files.document'),
@@ -418,7 +434,8 @@ where it arises.
     const generation = (overrideFetchGeneration += 1);
     const repositoryId = entry.repository_id;
     openRepo = repositoryId;
-    sideBySide = false;
+    repositoryTab = 'content';
+    repositoryPreviousTab = 'content';
     showStored = false;
     held = null;
     heldEnvelope = null;
@@ -498,11 +515,6 @@ where it arises.
   );
   const openMerge = $derived((openEntry?.merge ?? null) as FileMergeSpec | null);
   const openPathFormatting = $derived(openEntry?.formatting ?? {});
-  const openInheritedFormatting = $derived(
-    openEntry === null
-      ? context?.base_formatting
-      : applyFormattingPatch(openEntry.base_policy, templateFormatting),
-  );
   const savedOpenPathFormatting = $derived(
     merges.find((entry) => entry.repository_id === openRepo)?.formatting ?? {},
   );
@@ -517,8 +529,11 @@ where it arises.
   let repositoryRender = $state<SyncFileRenderResponse | null>(null);
   let repositoryRendering = $state(false);
   let repositoryRenderGeneration = 0;
+  const openInheritedFormatting = $derived(repositoryRender?.formatting?.inherited_policy);
 
-  function repositoryMergeInput(entry: RepositoryRow): SyncFileRenderInput['merge'] | undefined {
+  function repositoryMergeInput(
+    entry: RepositoryRow,
+  ): NonNullable<SyncFileRenderInput['repository']>['merge'] | undefined {
     if (entry.merge === undefined) return undefined;
     const merge = { ...(entry.merge as unknown as SyncFileMerge) };
     delete (merge as Partial<SyncFileMerge>).path;
@@ -546,9 +561,9 @@ where it arises.
       const message = cause instanceof Error ? cause.message : String(cause);
       repositoryRender = {
         valid: false,
-        content: '',
-        changed: false,
-        diagnostics: [{ code: 'render_failed', message }],
+        final_content: '',
+        matches_formatting: false,
+        diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
       reportFormattingValidity(validationControl, false, message);
     } finally {
@@ -569,12 +584,7 @@ where it arises.
     const validationControl = renderValidationControl('repository', entry.repository_id);
     const preserveValidation = overrideDirty(entry.repository_id);
     const generation = (repositoryRenderGeneration += 1);
-    const input = renderInput(
-      entry.base_policy,
-      repositoryMergeInput(entry),
-      entry.default_branch,
-      entry.formatting,
-    );
+    const input = repositoryRenderInput(entry);
     reportFormattingValidity(
       validationControl,
       false,
@@ -929,17 +939,21 @@ where it arises.
 <div class="view-frame">
   <!-- One crumb, to the row this page sits under. Sync is where that row lives,
        not a second place to go back to. -->
-  <PanePath
-    segments={[
+
+  <PageHeader
+    ancestors={[
       {
         label: SYNC_SECTION_LABELS.files,
         href: sectionHref('files'),
         onSelect: () => onOpenSection('files'),
       },
     ]}
+    id="sync-file-heading"
+    section="Shared file"
+    title={path}
+    mono
+    description={reach}
   />
-
-  <PageHeader id="sync-file-heading" section="Shared file" title={path} mono description={reach} />
 
   {#if problem !== null}
     <FormError message={problem} />
@@ -947,62 +961,138 @@ where it arises.
 
   {#if file !== null}
     <Card unsaved={templateDirty}>
-      <div class="card-head">
-        <h3 class="card-title">Template</h3>
-        <div class="head-tools">
-          {#if templateUndoDepth > 0}
-            <Button onclick={() => templateEditor?.undoEdit()}>
-              {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
-              Undo
-            </Button>
-          {/if}
-          {#if templateRender?.valid === true && templateMismatch}
-            <Button tone="quiet" onclick={() => (templateDiffOpen = !templateDiffOpen)}>
-              {templateDiffOpen ? 'Hide diff' : 'View diff'}
-            </Button>
-            <Button tone="signal" disabled={frozen} onclick={applyTemplateFormatting}
-              >Format template</Button
-            >
-          {/if}
-          <span class="pill pill-neutral"><span class="t">{strategyPill}</span></span>
-        </div>
-      </div>
-      <p
-        class:mismatch-warning={templateMismatch || templateRender?.valid === false}
-        class="format-status"
-        role="status"
-      >
-        {#if templateRendering}
-          Checking configured formatting…
-        {:else if templateRender?.valid === false}
-          Cannot render configured formatting{templateDiagnostic === ''
-            ? ''
-            : ` · ${templateDiagnostic}`}
-        {:else if templateMismatch}
-          This template does not match configured formatting
-        {:else}
-          Matches configured formatting
-        {/if}
-      </p>
-      <CodeEditor
+      <FileEditor
         bind:this={templateEditor}
         value={templateText}
+        output={templateRender?.valid === true ? templateRender.final_content : null}
+        busy={templateRendering}
+        problem={templateRender?.valid === false ? templateDiagnostic : ''}
         {lang}
         readOnly={frozen}
         onChange={stageTemplate}
-        onHistory={(depth) => (templateUndoDepth = depth)}
+        onFormat={templateRender?.valid === true && templateMismatch && !templateRendering
+          ? applyTemplateFormatting
+          : undefined}
+        onOptions={lang === 'text'
+          ? undefined
+          : (trigger) => {
+              templateOptionsTrigger = trigger;
+              templateOptionsOpen = true;
+            }}
       />
-      {#if templateDiffOpen && templateRender?.valid === true && templateMismatch}
-        <div class="format-diff">
-          <DiffBlock before={templateText} after={templateRender.content} {lang} />
+    </Card>
+
+    <Card unsaved={anyOverrideDirty} labelledby="file-repositories-heading">
+      <div class="card-head">
+        <h2 class="card-title" id="file-repositories-heading">Repository outputs</h2>
+        <span class="card-note band-trim"
+          >{visibleRepositories.length === matchingRepositories.length
+            ? matchingRepositories.length
+            : `${visibleRepositories.length} of ${matchingRepositories.length}`}</span
+        >
+        {#if matchingRepositories.length > 8 && repositorySearch.trim() === ''}
+          <Button
+            row
+            tone="quiet"
+            aria-expanded={showAllRepositories}
+            aria-controls="file-repository-list"
+            aria-label={showAllRepositories
+              ? 'Show fewer repositories'
+              : `Show all ${matchingRepositories.length} repositories`}
+            onclick={() => (showAllRepositories = !showAllRepositories)}
+          >
+            {#snippet trailing()}<Icon
+                name={showAllRepositories ? 'chevron-up' : 'chevron-down'}
+                size="xs"
+              />{/snippet}
+            {showAllRepositories ? 'Show fewer' : 'Show all'}
+          </Button>
+        {/if}
+      </div>
+      <p class="group-note">
+        {adjustedCount}
+        {adjustedCount === 1 ? 'repository adds' : 'repositories add'} content or formatting adjustments
+      </p>
+      <div class="repository-search">
+        <SearchField
+          label="Find a repository output"
+          placeholder="Find a repository"
+          value={repositorySearch}
+          onInput={(value) => (repositorySearch = value)}
+        />
+      </div>
+      <ul class="object-list" id="file-repository-list">
+        {#each visibleRepositories as entry (entry.repository_id)}
+          <li>
+            <div
+              class="object-row"
+              class:is-unsaved={overrideDirty(entry.repository_id)}
+              data-unsaved={overrideDirty(entry.repository_id) || undefined}
+            >
+              <Button
+                class="row-hit"
+                aria-label={`Open output for ${entry.repository}`}
+                onclick={(event) => {
+                  repositoryTrigger = event.currentTarget;
+                  void toggleRow(entry);
+                }}><span class="visually-hidden">Open output for {entry.repository}</span></Button
+              >
+              <span class="object-main"
+                ><span class="object-name-row"
+                  ><span class="object-name file-path">{entry.repository}</span></span
+                ><span class="object-sum">{summaryWord(entry)}</span></span
+              >
+              <span class="object-side"><Icon name="chevron-right" size="xs" /></span>
+            </div>
+          </li>
+        {/each}
+      </ul>
+      {#if matchingRepositories.length === 0}
+        <div class="state-panel">
+          <span
+            >{repositoryRows.length === 0
+              ? 'No repositories receive this file yet'
+              : 'No repositories match this search'}</span
+          >
         </div>
       {/if}
     </Card>
+  {/if}
+</div>
 
-    {#if context !== null}
+{#if templateOptionsOpen && templateRender?.formatting !== undefined}
+  <Modal
+    id="template-options"
+    open
+    title="Template options"
+    description={path}
+    variant="inspector"
+    returnFocus={templateOptionsTrigger}
+    onClose={() => (templateOptionsOpen = false)}
+  >
+    <div class="card-stack">
+      {#if templateMismatch}
+        <div class="format-action">
+          <span class="setting-say"
+            ><span class="setting-name">Format this template</span><span class="setting-why"
+              >These rules already apply to synced files; applying them here updates the source in
+              one undoable edit</span
+            ></span
+          >
+          <Button
+            disabled={frozen || templateRendering}
+            onclick={() => {
+              applyTemplateFormatting();
+              templateOptionsOpen = false;
+            }}>Apply formatting</Button
+          >
+        </div>
+      {/if}
       <FormattingEditor
         patch={templateFormatting}
-        inherited={context.base_formatting}
+        inherited={templateRender.formatting.inherited_policy}
+        resolution={templateRender.formatting}
+        {path}
         scope="template"
         idPrefix={path}
         disabled={frozen}
@@ -1015,246 +1105,231 @@ where it arises.
             'Formatting widths must be whole numbers within their documented bounds',
           )}
       />
-    {/if}
+    </div>
+    {#snippet footer()}<Button onclick={() => (templateOptionsOpen = false)}>Done</Button>{/snippet}
+  </Modal>
+{/if}
 
-    <Card unsaved={anyOverrideDirty}>
-      <div class="card-head">
-        <h3 class="card-title">Repository outputs</h3>
-        <span class="object-sum"
-          >{adjustedCount} of {context?.repositories ?? 0}
-          {adjustedCount === 1 ? 'repository adds' : 'repositories add'} a content or formatting adjustment</span
-        >
+{#if openEntry !== null && file !== null}
+  {@const entry = openEntry}
+  <Modal
+    id="repository-file-output"
+    open
+    title={entry.repository}
+    description={path}
+    variant="inspector"
+    returnFocus={repositoryTrigger}
+    onClose={closeRepository}
+  >
+    <div class="card-stack">
+      <div class="repository-view-tools">
+        {#if repositoryTab === 'formatting'}
+          <Button tone="quiet" onclick={() => (repositoryTab = repositoryPreviousTab)}>
+            {#snippet icon()}<Icon name="chevron-left" size="sm" />{/snippet}Back to file
+          </Button>
+        {:else}
+          <SegmentedControl
+            name="repository-output-view"
+            label="Repository output view"
+            value={repositoryTab}
+            options={[
+              { value: 'content', label: 'Content adjustment' },
+              { value: 'preview', label: 'Final output' },
+            ]}
+            onSelect={(value) => (repositoryTab = value)}
+          />
+          {#if lang !== 'text'}<IconButton
+              toolbar
+              icon="sliders"
+              label="Repository file options"
+              onclick={() => {
+                repositoryPreviousTab = repositoryTab;
+                repositoryTab = 'formatting';
+              }}
+            />{/if}
+        {/if}
       </div>
-
-      {#if repositoryRows.length === 0}
-        <div class="state-panel">
-          <span
-            ><strong>No repository takes this file yet.</strong> Every syncing repository would get it
-            exactly as written above, and any that adjusts it appears here</span
-          >
-        </div>
+      {#if holdProblem !== null}<FormError message={holdProblem} />{/if}
+      {#if repositoryRender?.valid === false}
+        <FormError
+          message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
+        />
       {/if}
-
-      {#each repositoryRows as entry (entry.repository_id)}
-        <div
-          class="adjuster"
-          class:is-unsaved={overrideDirty(entry.repository_id)}
-          data-unsaved={overrideDirty(entry.repository_id) || undefined}
-        >
-          <button
-            type="button"
-            class="object-row"
-            class:is-open={openRepo === entry.repository_id}
-            aria-expanded={openRepo === entry.repository_id}
-            onclick={() => void toggleRow(entry)}
-          >
-            <span class="object-main">
-              <span class="object-name-row"><span class="file-path">{entry.repository}</span></span>
-              <span class="object-sum">{summaryWord(entry)}</span>
-            </span>
-            <span class="object-side">
-              <span class="row-chev"><Icon name="chevron-right" size="xs" /></span>
-            </span>
-          </button>
-
-          {#if openRepo === entry.repository_id}
-            <div class="merge-result">
-              {#if holdProblem !== null}
-                <FormError message={holdProblem} />
-              {/if}
-              <div class="merge-pane-title">
-                <span class="t">Merge editing aid</span>
-                <span class="pane-tools">
-                  {#if editedText !== null && resultUndoDepth > 0}
-                    <Button onclick={() => resultEditor?.undoEdit()}>
-                      {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
-                      Undo
-                    </Button>
-                  {/if}
-                  {#if editedText !== null}
-                    <Button tone="quiet" onclick={() => (sideBySide = !sideBySide)}>
-                      {sideBySide ? 'Hide the template' : 'Show the template beside it'}
-                    </Button>
-                  {/if}
-                </span>
-              </div>
-              {#if openMerge === null}
-                <p class="sync-note">
-                  This repository takes the shared content unchanged before its formatting policy is
-                  applied
-                </p>
-              {:else if editedText === null}
-                <p class="sync-note">
-                  This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
-                  {lang} template - the stored override below is the whole of it
-                </p>
-                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-              {:else if sideBySide}
-                <div class="merge-two">
-                  <div>
-                    <div class="merge-pane-title"><span class="t">The template</span></div>
-                    <CodeBlock text={file.content} {lang} />
-                  </div>
-                  <div>
-                    <div class="merge-pane-title">
-                      <span class="t">{entry.repository}'s copy</span>
-                    </div>
-                    <CodeEditor
-                      bind:this={resultEditor}
-                      value={editedText}
-                      readOnly={mergeFrozen}
-                      overridden={overriddenLines}
-                      onChange={stageEditorText}
-                      onHistory={(depth) => (resultUndoDepth = depth)}
-                    />
-                  </div>
-                </div>
-              {:else}
-                <CodeEditor
-                  bind:this={resultEditor}
-                  value={editedText}
-                  readOnly={mergeFrozen}
-                  overridden={overriddenLines}
-                  onChange={stageEditorText}
-                  onHistory={(depth) => (resultUndoDepth = depth)}
-                />
-              {/if}
-              {#if editedText !== null && staged === null}
-                <p class="sync-note">
-                  Not JSON yet - the override picks the edit up when it parses again
-                </p>
-              {/if}
-
-              {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
-                <div class="patch-strip">
-                  <span class="patch-word">This repository changes</span>
-                  {#each openSummary.changed as key (key)}
-                    <span class="patch-key"
-                      ><span class="t">{key}</span>
-                      <button
-                        aria-label="Stop changing {key}"
-                        disabled={mergeFrozen}
-                        onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
-                      ></span
-                    >
-                  {/each}
-                  {#each openSummary.removed as key (key)}
-                    <span class="patch-key is-removal"
-                      ><span class="t">{key}</span>
-                      <button
-                        aria-label="Stop removing {key}"
-                        disabled={mergeFrozen}
-                        onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
-                      ></span
-                    >
-                  {/each}
-                  <span class="patch-word push-end">
-                    <Button tone="quiet" onclick={() => (showStored = !showStored)}>
-                      {showStored ? 'Hide the stored override' : 'Open the stored override'}
-                    </Button>
-                  </span>
-                </div>
-              {/if}
-
-              {#if showStored}
-                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-              {/if}
-
-              {#each staged?.questions ?? [] as question (question.path)}
-                <div class="list-ask">
-                  <span class="list-ask-word"
-                    ><strong>Both set <code>{question.path}</code>.</strong> A merge cannot know how two
-                    lists should combine, so this is the one question it asks:</span
-                  >
-                  <div class="choice-cards ask-cards">
-                    {#each RULE_CHOICES as option (option.value)}
-                      <label
-                        class="choice-card"
-                        class:is-chosen={question.chosen === option.value}
-                        class:is-unaskable={!askable(question, option.value)}
-                      >
-                        <input
-                          type="radio"
-                          name="listrule-{entry.repository_id}-{question.path}"
-                          checked={question.chosen === option.value}
-                          disabled={mergeFrozen || !askable(question, option.value)}
-                          onchange={() => setListRule(question.path, option.value)}
-                        />
-                        <span class="choice-dot"></span>
-                        <span class="choice-title">{option.title}</span>
-                        <span class="choice-why">{option.why}</span>
-                      </label>
-                    {/each}
-                  </div>
-                </div>
-              {/each}
-
-              {#if openInheritedFormatting !== undefined}
-                <div class="repository-formatting">
-                  <FormattingEditor
-                    patch={openPathFormatting}
-                    inherited={openInheritedFormatting}
-                    scope="path"
-                    idPrefix={`${entry.repository_id}-${path}`}
-                    disabled={mergeFrozen}
-                    dirtyKeys={dirtyOpenPathFormatting}
-                    onChange={stageRepositoryFormatting}
-                    onValidity={(valid) =>
-                      onFormattingValidity(
-                        'sync.files.repository-formatting',
-                        valid,
-                        'Formatting widths must be whole numbers within their documented bounds',
-                      )}
-                  />
-                </div>
-              {/if}
-
-              <div class="exact-output">
-                <div class="merge-pane-title">
-                  <span class="t">Exact final output</span>
-                  {#if repositoryRender?.valid === true}
-                    <span class="output-state">Backend rendered</span>
-                  {/if}
-                </div>
-                {#if repositoryRendering}
-                  <p class="sync-note">Rendering the repository's complete effective policy…</p>
-                {:else if repositoryRender?.valid === false}
-                  <FormError
-                    message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
-                  />
-                {:else if repositoryRender?.valid === true}
-                  <CodeBlock text={repositoryRender.content} {lang} />
+      {#if repositoryTab === 'preview'}
+        <section class="preview-pane exact-output" aria-label="Read-only repository output">
+          {#if repositoryRender?.valid === true}
+            <div class:is-rendering={repositoryRendering} class="rendered-output">
+              <CodeBlock text={repositoryRender.final_content} {lang} />
+            </div>
+            {#if repositoryRendering}
+              <p class="render-note" role="status">Refreshing final output…</p>
+            {/if}
+          {:else}
+            <p class="sync-note">Rendering the repository's complete effective policy…</p>
+          {/if}
+        </section>
+      {/if}
+      <div hidden={repositoryTab !== 'content'}>
+        <div class="card-stack">
+          <section class="preview-pane">
+            <div class="merge-pane-title">
+              <span class="t">Content adjustment</span>
+              <span class="pane-tools">
+                {#if editedText !== null && resultUndoDepth > 0}
+                  <Button onclick={() => resultEditor?.undoEdit()}>
+                    {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
+                    Undo
+                  </Button>
                 {/if}
-              </div>
+              </span>
+            </div>
+            {#if openMerge === null}
+              <p class="sync-note">
+                This repository takes the shared content unchanged before its formatting policy is
+                applied
+              </p>
+            {:else if editedText === null}
+              <p class="sync-note">
+                This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
+                {lang} template - the stored override below is the whole of it
+              </p>
+              <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+            {:else if showStored}
+              <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+            {:else}
+              <CodeEditor
+                bind:this={resultEditor}
+                value={editedText}
+                readOnly={mergeFrozen}
+                overridden={overriddenLines}
+                terminalNewline
+                onChange={stageEditorText}
+                onHistory={(depth) => (resultUndoDepth = depth)}
+              />
+            {/if}
+            {#if editedText !== null && staged === null}
+              <p class="sync-note">
+                Not JSON yet - the override picks the edit up when it parses again
+              </p>
+            {/if}
+          </section>
+          {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
+            <div class="patch-strip">
+              <span class="patch-word">This repository changes</span>
+              {#each openSummary.changed as key (key)}
+                <span class="patch-key"
+                  ><span class="t">{key}</span>
+                  <button
+                    aria-label="Stop changing {key}"
+                    disabled={mergeFrozen}
+                    onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
+                  ></span
+                >
+              {/each}
+              {#each openSummary.removed as key (key)}
+                <span class="patch-key is-removal"
+                  ><span class="t">{key}</span>
+                  <button
+                    aria-label="Stop removing {key}"
+                    disabled={mergeFrozen}
+                    onclick={() => dropKey(key)}><Icon name="close" size="nano" /></button
+                  ></span
+                >
+              {/each}
+              <span class="patch-word push-end">
+                <Button tone="quiet" onclick={() => (showStored = !showStored)}>
+                  {showStored ? 'Hide the stored override' : 'Open the stored override'}
+                </Button>
+              </span>
             </div>
           {/if}
+
+          {#each staged?.questions ?? [] as question (question.path)}
+            <div class="list-ask">
+              <span class="list-ask-word"
+                ><strong>Both set <code>{question.path}</code>.</strong> A merge cannot know how two lists
+                should combine, so this is the one question it asks:</span
+              >
+              <div class="choice-cards ask-cards">
+                {#each RULE_CHOICES as option (option.value)}
+                  <label
+                    class="choice-card"
+                    class:is-chosen={question.chosen === option.value}
+                    class:is-unaskable={!askable(question, option.value)}
+                  >
+                    <input
+                      type="radio"
+                      name="listrule-{entry.repository_id}-{question.path}"
+                      checked={question.chosen === option.value}
+                      disabled={mergeFrozen || !askable(question, option.value)}
+                      onchange={() => setListRule(question.path, option.value)}
+                    />
+                    <span class="choice-dot"></span>
+                    <span class="choice-title">{option.title}</span>
+                    <span class="choice-why">{option.why}</span>
+                  </label>
+                {/each}
+              </div>
+            </div>
+          {/each}
         </div>
-      {/each}
-    </Card>
-  {/if}
-</div>
+      </div>
+      {#if repositoryTab === 'formatting'}
+        {#if lang !== 'text' && openInheritedFormatting !== undefined}
+          <div class="repository-formatting">
+            <FormattingEditor
+              patch={openPathFormatting}
+              inherited={openInheritedFormatting}
+              resolution={repositoryRender?.formatting}
+              {path}
+              scope="path"
+              idPrefix={`${entry.repository_id}-${path}`}
+              disabled={mergeFrozen}
+              dirtyKeys={dirtyOpenPathFormatting}
+              onChange={stageRepositoryFormatting}
+              onValidity={(valid) =>
+                onFormattingValidity(
+                  'sync.files.repository-formatting',
+                  valid,
+                  'Formatting widths must be whole numbers within their documented bounds',
+                )}
+            />
+          </div>
+        {/if}
+      {/if}
+    </div>
+    {#snippet footer()}
+      {#if overrideDirty(entry.repository_id)}<span class="unsaved-note">Unsaved changes</span>{/if}
+      <Button onclick={closeRepository}>Done</Button>
+    {/snippet}
+  </Modal>
+{/if}
 
 <style>
+  .repository-view-tools,
+  .format-action {
+    align-items: center;
+    display: flex;
+    gap: var(--space-4);
+    justify-content: space-between;
+  }
+  .format-action {
+    flex-wrap: wrap;
+  }
+  .repository-view-tools {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+  .format-action > .setting-say {
+    flex: 1 1 16rem;
+  }
+
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, so the title-to-first-row ink never
      depends on which adornments the card happens to carry. A control in the
      head gives its own slack back rather than growing the line. */
-  .card-head {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--rhythm-card-head-body);
-    min-block-size: var(--card-head-line);
-  }
 
   .card-head :global(.btn) {
     margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
-  }
-
-  .head-tools {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
   }
 
   /* A line ABOUT a row, not a page with nothing in it - what one repository
@@ -1268,130 +1343,17 @@ where it arises.
     margin: 0 0 var(--space-2);
   }
 
-  .format-status {
-    color: var(--text-secondary);
-    font-size: var(--font-size-meta);
-    margin: calc(var(--space-2) * -1) 0 var(--space-3);
-  }
-
-  .format-status.mismatch-warning {
-    color: var(--warning);
-  }
-
-  .format-diff,
-  .repository-formatting,
-  .exact-output {
-    margin-top: var(--space-4);
-  }
-
-  .repository-formatting {
-    border-top: 1px solid var(--border-subtle);
-    padding-top: var(--space-4);
-  }
-
-  .exact-output {
-    background: var(--surface-inset);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    padding: var(--space-3);
-  }
-
-  .output-state {
-    color: var(--success);
-    letter-spacing: 0;
-    text-transform: none;
-  }
-
-  .pill {
-    align-items: center;
-    block-size: var(--tier-mark);
-    border-radius: var(--radius-chip);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 0.25rem;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .pill .t {
-    display: block;
-  }
-
-  .pill-neutral {
-    background: var(--surface-inset);
-    color: var(--text-secondary);
-  }
-
   /* ---------- The adjuster rows ---------- */
 
   /* One list, a hairline between neighbours - the rows read as one table
      rather than three floating cards. */
-  .adjuster:not(:last-child) {
-    border-bottom: 1px solid var(--border-subtle);
-  }
 
   /* The hover pill has rounded corners; a hairline crossing its edge reads
      as a crack in it. The hovered row hides the separator under it and the
      one its neighbour would draw over it. */
-  .adjuster:has(> .object-row:hover:not(:disabled)),
-  .adjuster:has(+ .adjuster > .object-row:hover:not(:disabled)) {
-    border-bottom-color: transparent;
-  }
-
-  .adjuster > .merge-result {
-    padding-block: var(--space-2) var(--space-4);
-  }
-
-  .adjuster.is-unsaved > .object-row {
-    background: color-mix(in srgb, var(--brand-action) 5%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
 
   /* The same row the Files list stands its templates on, as a button: the
      whole surface opens the adjustment, the chevron says which way. */
-  .object-row {
-    align-items: center;
-    background: none;
-    border: 0;
-    border-radius: var(--r-ctl);
-    color: inherit;
-    cursor: pointer;
-    display: grid;
-    font: inherit;
-    gap: var(--space-4);
-    grid-template-columns: 1fr auto;
-    margin-inline: calc(var(--space-3) * -1);
-    padding: var(--row-pad-default) var(--space-3);
-    position: relative;
-    text-align: start;
-    width: calc(100% + (var(--space-3) * 2));
-  }
-
-  .object-row:hover:not(:disabled) {
-    background: var(--row-hover);
-  }
-
-  .row-chev {
-    display: inline-flex;
-    transition: transform var(--duration-fast) var(--ease-out);
-  }
-
-  .object-row.is-open .row-chev {
-    transform: rotate(90deg);
-  }
-
-  .object-main {
-    display: grid;
-    gap: var(--space-1);
-  }
-
-  .object-name-row {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-block-size: var(--object-name-line);
-  }
 
   .file-path {
     font-family: var(--mono);
@@ -1399,24 +1361,7 @@ where it arises.
     font-weight: 500;
   }
 
-  .object-sum {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-  }
-
-  .object-side {
-    align-items: center;
-    color: var(--text-muted);
-    display: flex;
-    gap: var(--space-3);
-  }
-
   /* ---------- The adjustment, opened ---------- */
-
-  .merge-result {
-    display: grid;
-    gap: var(--space-2);
-  }
 
   .merge-pane-title {
     align-items: center;
@@ -1445,16 +1390,7 @@ where it arises.
     text-transform: none;
   }
 
-  .merge-two {
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: 1fr 1fr;
-  }
-
   @media (max-width: 64rem) {
-    .merge-two {
-      grid-template-columns: 1fr;
-    }
   }
 
   .patch-strip {
@@ -1574,48 +1510,28 @@ where it arises.
     background: transparent;
   }
 
-  @media (max-width: 36rem) {
-    .card-head {
-      align-items: start;
-      flex-wrap: wrap;
-    }
-
-    .card-head > .head-tools {
-      flex-basis: 100%;
-      flex-wrap: wrap;
-      min-width: 0;
-    }
-
-    .card-head > .object-sum {
-      flex-basis: 100%;
-      overflow-wrap: anywhere;
-    }
-
-    .object-main,
-    .object-sum {
-      min-inline-size: 0;
-    }
-
-    .object-sum,
-    .file-path {
-      overflow-wrap: anywhere;
-    }
-
-    .merge-pane-title {
-      align-items: start;
-      flex-direction: column;
-    }
-
-    .pane-tools {
-      flex-wrap: wrap;
-    }
-
-    .patch-strip {
-      align-items: start;
-    }
-
-    .push-end {
-      margin-inline-start: 0;
-    }
+  .preview-pane {
+    min-inline-size: 0;
+  }
+  .rendered-output {
+    transition: opacity var(--duration-fast) var(--ease-standard);
+  }
+  .rendered-output.is-rendering {
+    opacity: 0.5;
+  }
+  .render-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin-block: var(--space-3) 0;
+  }
+  .repository-search {
+    margin-block-end: var(--space-4);
+  }
+  @media (max-width: 64rem) {
+  }
+  .unsaved-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin-inline-end: auto;
   }
 </style>

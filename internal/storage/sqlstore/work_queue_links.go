@@ -142,6 +142,7 @@ func scheduleApprovedSyncPlan(
 	planID string,
 	at time.Time,
 	actorID string,
+	automatic bool,
 ) error {
 	item, err := getQueueItem(ctx, tx, "sync-plan:"+planID, "")
 	if err != nil {
@@ -158,17 +159,25 @@ func scheduleApprovedSyncPlan(
 			return err
 		}
 	}
+	state, blockedReason := workqueue.StateScheduled, ""
+	if item.State == workqueue.StateBlocked {
+		state, blockedReason = item.State, item.BlockedReason
+	}
 	if _, err := tx.ExecContext(ctx, `
-UPDATE queue_items SET state = 'scheduled', not_before = ?, eligible_at = ?,
-    blocked_reason = '', updated_at = ?, revision = revision + 1
-WHERE id = ?`, at, eligibleAt, at, item.ID); err != nil {
+UPDATE queue_items SET state = ?, not_before = ?, eligible_at = ?,
+    blocked_reason = ?, updated_at = ?, revision = revision + 1
+WHERE id = ?`, state, at, eligibleAt, blockedReason, at, item.ID); err != nil {
 		return fmt.Errorf("schedule approved sync plan: %w", err)
 	}
 
+	kind, summary := "approved", "Sync plan approved"
+	if automatic {
+		kind, summary = "scheduled", "Automatic sync scheduled from saved configuration"
+	}
 	return insertQueueEvent(ctx, tx, workqueue.Event{
 		ActorID: queueEventActor(actorID),
-		ItemID:  item.ID, Kind: "approved", State: workqueue.StateScheduled,
-		Summary: "Sync plan approved", CreatedAt: at,
+		ItemID:  item.ID, Kind: kind, State: state,
+		Summary: summary, CreatedAt: at,
 	})
 }
 

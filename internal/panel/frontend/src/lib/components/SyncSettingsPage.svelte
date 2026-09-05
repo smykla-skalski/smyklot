@@ -79,7 +79,7 @@
     {
       id: 'wording',
       title: 'Commit wording',
-      note: 'A wording is only sent where its merge strategy is on - anything else is withheld and the plan says so',
+      note: 'A wording is only sent where its merge strategy is on - anything else is withheld and sync reports why',
       fields: [
         choice('squash_merge_commit_title', 'Squash commit title', [
           { value: 'PR_TITLE', label: 'Pull request title' },
@@ -118,7 +118,7 @@
     {
       id: 'security',
       title: 'Security',
-      note: 'A repository that does not offer one of these is left alone rather than asked, and the plan names the ones it skipped',
+      note: 'A repository that does not offer one of these is left alone rather than asked, and sync reports what could not be applied',
       fields: [
         toggle('secret_scanning', 'Secret scanning'),
         toggle('secret_scanning_push_protection', 'Push protection'),

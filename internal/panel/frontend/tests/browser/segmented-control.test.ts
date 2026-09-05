@@ -75,9 +75,12 @@ const MENUS: Menu[] = [
        adjuster is opened, so the control's first layout happens long after load. */
     name: "a repository's formatting, once its adjuster is open",
     path: (account: string) => `/workspace/${account}/sync/files/renovate.json`,
-    ready: '.format-status',
+    ready: '.file-editor',
     layer: '.repository-formatting',
-    open: (page) => page.getByRole('button', { name: /^smyklot changes/u }).click(),
+    open: async (page) => {
+      await page.getByRole('button', { name: 'Open output for smyklot', exact: true }).click();
+      await page.getByRole('button', { name: 'Repository file options', exact: true }).click();
+    },
   },
 ];
 

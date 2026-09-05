@@ -199,7 +199,7 @@ func (s *Server) syncConfigSettingsBatchConflict(
 	if _, validationErr := validatedSyncDocument(config.Kind, config.Document); validationErr == nil {
 		conflict.Latest, _ = json.Marshal(workspaceSyncConfigSettingsState{
 			TargetID: targetID, Kind: config.Kind, Enabled: config.Enabled,
-			Document: config.Document, Revision: config.Revision,
+			Document: syncConfigDisplayDocument(config), Revision: config.Revision,
 		})
 	}
 

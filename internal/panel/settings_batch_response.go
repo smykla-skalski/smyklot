@@ -126,7 +126,7 @@ func workspaceSyncConfigSettingsStates(
 	for _, config := range configs {
 		states = append(states, workspaceSyncConfigSettingsState{
 			TargetID: targetID, Kind: config.Kind, Enabled: config.Enabled,
-			Document: documentOrEmpty(config.Document), Revision: config.Revision,
+			Document: syncConfigDisplayDocument(config), Revision: config.Revision,
 		})
 	}
 	sort.Slice(states, func(left, right int) bool { return states[left].Kind < states[right].Kind })

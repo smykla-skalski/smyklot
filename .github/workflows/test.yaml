@@ -56,7 +56,7 @@ jobs:
           - area: service
             dirs: ./cmd/smyklot
           - area: panel
-            dirs: ./internal/panel ./internal/panelassets
+            dirs: ./internal/panel ./internal/panelassets ./internal/panelcontract ./internal/panelrenderbridge
           - area: storage
             dirs: ./internal/storage
           - area: packages

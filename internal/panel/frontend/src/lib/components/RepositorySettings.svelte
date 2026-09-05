@@ -30,10 +30,10 @@
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
+  import DisclosureSection from './DisclosureSection.svelte';
   import Icon from './Icon.svelte';
   import Card from './Card.svelte';
   import PageHeader from './PageHeader.svelte';
-  import PanePath from './PanePath.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Popover from './Popover.svelte';
   import RepositorySyncPane from './RepositorySyncPane.svelte';
@@ -385,9 +385,8 @@ so a link points at the pane a colleague was asked to look at.
 
 <div class="view-frame">
   <section class="repository-page" aria-labelledby={titleId}>
-    <PanePath segments={[{ label: 'Repositories', href: backHref, onSelect: onBack }]} />
-
     <PageHeader
+      ancestors={[{ label: 'Repositories', href: backHref, onSelect: onBack }]}
       id={titleId}
       section="Repository"
       title={repository.name}
@@ -407,6 +406,7 @@ so a link points at the pane a colleague was asked to look at.
            below with the rest of the detail and rendered here, because both halves of
            that card need `detail` and this is where the page wants it read. -->
       {@render controlCard()}
+      {#if syncOverride?.problem || syncReadProblem}{@render syncCard()}{/if}
 
       <Card labelledby="repository-merge-ci">
         <div class="card-head">
@@ -800,7 +800,8 @@ so a link points at the pane a colleague was asked to look at.
               <span class="setting-say">
                 <span class="setting-name">Repository file</span>
                 <span class="setting-why"
-                  >Bypassed, the file's settings are ignored and the exception is recorded in Audit</span
+                  >When bypassed, the file's settings are ignored and the exception is recorded in
+                  Audit</span
                 >
               </span>
               <span class="policy-value">
@@ -832,37 +833,45 @@ so a link points at the pane a colleague was asked to look at.
         onChange={setConfig}
       />
 
-      <FormattingEditor
-        patch={detail.config_patch.formatting ?? {}}
-        inherited={detail.inherited_config.formatting}
-        scope="repository"
-        idPrefix={repository.id}
-        {disabled}
-        dirtyKeys={dirtyFormattingKeys}
-        onChange={setFormatting}
-        onValidity={onFormattingValidity}
-      />
-
-      {#if offersSync}
-        {#if syncOverride === undefined && syncReadProblem !== null}
-          <!-- A read that failed is not a read still going, and the two read
+      {#if !syncOverride?.problem && !syncReadProblem}{@render syncCard()}{/if}
+      {#snippet syncCard()}
+        {#if offersSync}
+          {#if syncOverride === undefined && syncReadProblem !== null}
+            <!-- A read that failed is not a read still going, and the two read
                  identically in a dim line saying "Reading…". -->
-          <p class="form-error" role="alert">{syncReadProblem}</p>
-        {:else if syncOverride === undefined}
-          <p class="detail-loading" role="status">Reading what this repository adjusts…</p>
-        {:else}
-          <RepositorySyncPane
-            stored={syncOverride}
-            repositoryId={repository.id}
-            envelope={syncEnvelope}
-            {readOnly}
-            {now}
-            dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}
-            dirtyDocument={controlDirty(`repositories.${repository.id}.sync.files.document`)}
-            onChange={onChangeSync}
-          />
+            <p class="form-error" role="alert">{syncReadProblem}</p>
+          {:else if syncOverride === undefined}
+            <p class="detail-loading" role="status">Reading what this repository adjusts…</p>
+          {:else}
+            <RepositorySyncPane
+              stored={syncOverride}
+              repositoryId={repository.id}
+              envelope={syncEnvelope}
+              {readOnly}
+              {now}
+              dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}
+              dirtyDocument={controlDirty(`repositories.${repository.id}.sync.files.document`)}
+              onChange={onChangeSync}
+            />
+          {/if}
         {/if}
-      {/if}
+      {/snippet}
+      <DisclosureSection
+        title="Formatting preferences"
+        description="Advanced · inherits workspace defaults"
+      >
+        <FormattingEditor
+          patch={detail.config_patch.formatting ?? {}}
+          inherited={detail.inherited_config.formatting}
+          sources={detail.formatting_sources}
+          scope="repository"
+          idPrefix={repository.id}
+          {disabled}
+          dirtyKeys={dirtyFormattingKeys}
+          onChange={setFormatting}
+          onValidity={onFormattingValidity}
+        />
+      </DisclosureSection>
     {/if}
   </section>
 </div>

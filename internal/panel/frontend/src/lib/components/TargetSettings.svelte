@@ -610,6 +610,7 @@ settings from them answers a different question than the one they asked.
       <FormattingEditor
         patch={target.config_patch.formatting ?? {}}
         inherited={target.inherited_config.formatting}
+        sources={target.formatting_sources}
         scope="target"
         idPrefix={target.id}
         anchor="ws-formatting"

@@ -516,6 +516,11 @@ a[href]:active {
   -webkit-tap-highlight-color: transparent;
 }
 
+.icon-button-toolbar {
+  height: var(--control-height-compact);
+  width: var(--control-height-compact);
+}
+
 /* An open menu keeps its trigger lit, so the reader can see what the layer
    belongs to. `data-state` is what Bits UI writes; `aria-expanded` is what a
    hand-rolled trigger writes. */
@@ -2191,12 +2196,29 @@ time[data-exact]:focus-visible {
    border and a ground with it - which read as a box around the row. */
 .row-hit {
   background: none;
+  /* Button's normal fit-content width and control height must not shrink an
+     invisible hit layer. Its four insets define the whole row's target. */
+  block-size: auto;
   border: 0;
   border-radius: inherit;
   inset: 0;
+  inline-size: auto;
+  min-block-size: 0;
   padding: 0;
   position: absolute;
   z-index: 1;
+}
+
+/* This target contributes no paint or movement. Its owning row alone carries
+   the hover, pressed ground and inset, including when Button supplies the hit. */
+.object-row .row-hit:is(:hover, :active, :focus-visible) {
+  background: none;
+  border-color: transparent;
+  box-shadow: none;
+  filter: none;
+  outline: none;
+  transform: none;
+  translate: none;
 }
 
 .object-row > :not(.row-hit) {
@@ -3363,7 +3385,8 @@ button.object-row {
 
   /* Nor does a chevron, once the whole row is the target: stacked, it points at
      nothing from under the sentence and costs a line to do it. */
-  a.object-row > .object-side {
+  a.object-row > .object-side,
+  .object-row:has(> .row-hit) > .object-side:has(> svg:only-child) {
     display: none;
   }
 

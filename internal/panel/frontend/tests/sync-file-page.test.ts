@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SyncFilePage, {
   templateDocumentWithContent,
 } from '../src/lib/components/SyncFilePage.svelte';
-import { defaultFormattingPolicy } from '../src/lib/formatting';
+import { defaultFormattingPolicy, formattingSources } from '../src/lib/formatting';
 import {
   buildSyncOverrideEditorEnvelope,
   type SyncOverrideControlId,
@@ -26,17 +26,33 @@ function repositoryPolicy(repository: string, repositoryId: string) {
   return {
     repository,
     repository_id: repositoryId,
-    default_branch: 'main',
-    base_policy: POLICY,
   };
 }
 
-const renderFile = async (input: { draft_content: string }) => ({
-  valid: true,
-  content: input.draft_content,
-  changed: false,
-  diagnostics: [],
-});
+function validRender(input: SyncFileRenderInput): SyncFileRenderResponse {
+  const repository = input.repository !== undefined;
+  const current = repository ? 'repository_path' : 'template';
+  return {
+    valid: true,
+    final_content: input.draft_content,
+    matches_formatting: true,
+    diagnostics: [],
+    formatting: {
+      current_layer: current,
+      inherited_policy: POLICY,
+      effective_policy: POLICY,
+      provenance: formattingSources(current),
+      layers: [
+        { source: 'process', state: 'baseline' },
+        { source: 'target', state: 'absent' },
+        { source: 'template', state: 'stored' },
+        ...(repository ? [{ source: 'repository_path' as const, state: 'absent' as const }] : []),
+      ],
+    },
+  };
+}
+
+const renderFile = async (input: SyncFileRenderInput) => validRender(input);
 
 function configWithTemplate(content = '{}'): SyncConfig {
   return {
@@ -64,7 +80,6 @@ function renderProps(over: Partial<SyncFilePageProps> = {}): SyncFilePageProps {
       repositories: 0,
       covered: 0,
       known_paths: [],
-      base_formatting: POLICY,
       repository_policies: [],
       merges: [],
     },
@@ -130,7 +145,7 @@ describe('SyncFilePage [Component]', () => {
       files: [
         {
           path: 'renovate.json',
-          content: '{ "timezone": "UTC" }',
+          content: '{ "timezone": "UTC" }\n',
           updated_at: 'not part of orgsync.File',
           updated_by: 'also not part of orgsync.File',
         },
@@ -157,16 +172,18 @@ describe('SyncFilePage [Component]', () => {
     );
     expect(renderFile).not.toHaveBeenCalled();
 
-    pending.resolve({ valid: true, content: '{}', changed: false, diagnostics: [] });
+    pending.resolve(
+      validRender({ path: 'renovate.json', draft_content: '{}', template_formatting: {} }),
+    );
   });
 
   it('keeps an invalid dirty template blocked after the page unmounts', async () => {
     const onFormattingValidity = vi.fn();
     const invalid: SyncFileRenderResponse = {
       valid: false,
-      content: '',
-      changed: false,
-      diagnostics: [{ code: 'unsafe_format', message: 'Formatting is unsafe' }],
+      final_content: '',
+      matches_formatting: false,
+      diagnostics: [{ stage: 'format', code: 'unsafe_format', message: 'Formatting is unsafe' }],
     };
     const rendered = render(SyncFilePage, {
       props: renderProps({
@@ -210,13 +227,19 @@ describe('SyncFilePage [Component]', () => {
       unreadable: false,
     };
     const renderFile = vi.fn(async (input: SyncFileRenderInput): Promise<SyncFileRenderResponse> =>
-      input.default_branch === undefined
-        ? { valid: true, content: input.draft_content, changed: false, diagnostics: [] }
+      input.repository === undefined
+        ? validRender(input)
         : {
             valid: false,
-            content: '',
-            changed: false,
-            diagnostics: [{ code: 'unsafe_format', message: 'Repository formatting is unsafe' }],
+            final_content: '',
+            matches_formatting: false,
+            diagnostics: [
+              {
+                stage: 'format',
+                code: 'unsafe_format',
+                message: 'Repository formatting is unsafe',
+              },
+            ],
           },
     );
     render(SyncFilePage, {
@@ -225,7 +248,6 @@ describe('SyncFilePage [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
-          base_formatting: POLICY,
           repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
           merges: [],
         },
@@ -287,7 +309,6 @@ describe('SyncFilePage [Component]', () => {
       repositories: 2,
       covered: 2,
       known_paths: [],
-      base_formatting: POLICY,
       repository_policies: [repositoryPolicy('repo-a', 'a'), repositoryPolicy('repo-b', 'b')],
       merges: [
         { repository: 'repo-a', repository_id: 'a', path: 'renovate.json', merge },
@@ -317,15 +338,14 @@ describe('SyncFilePage [Component]', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await fireEvent.click(screen.getByRole('button', { name: /repo-b/ }));
     first.reject(new Error('repo-a response crossed into repo-b'));
     await Promise.resolve();
     await Promise.resolve();
 
     expect(screen.queryByText('repo-a response crossed into repo-b')).toBeNull();
-    expect(screen.getByRole('button', { name: /repo-b/ }).getAttribute('aria-expanded')).toBe(
-      'true',
-    );
+    expect(screen.getByRole('dialog', { name: 'repo-b' })).toBeDefined();
 
     second.resolve({
       kind: 'files',
@@ -402,7 +422,6 @@ describe('SyncFilePage [Component]', () => {
           repositories: 1,
           covered: 1,
           known_paths: [],
-          base_formatting: POLICY,
           repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
           merges: [
             {
@@ -428,6 +447,7 @@ describe('SyncFilePage [Component]', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustment' }));
     const remove = await screen.findByRole('button', { name: 'Stop changing timezone' });
     await vi.waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false));
     await fireEvent.click(remove);

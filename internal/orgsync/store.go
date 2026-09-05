@@ -151,6 +151,10 @@ type PlanCreate struct {
 	Digest   string
 	Actions  []Action
 
+	// Automatic schedules reconciliation from saved configuration in the same
+	// transaction as its actions. False preserves explicit legacy approvals.
+	Automatic bool
+
 	Now       time.Time
 	ExpiresAt time.Time
 }

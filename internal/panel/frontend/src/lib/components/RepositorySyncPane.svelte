@@ -673,7 +673,7 @@ customization it described.
   </div>
   <p class="group-note">
     Whether the organization's files are kept in step here, and what this repository changes about
-    them. Nothing reaches GitHub until a plan is approved
+    them. Saved changes open pull requests automatically
   </p>
 
   <!-- What the planner made of this repository, which is the question somebody

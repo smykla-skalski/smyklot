@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
+	"github.com/smykla-skalski/smyklot/internal/orgsync/filemerge"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
@@ -398,6 +399,20 @@ func validatedDocument[T interface{ Validate() error }](
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
+	if files, ok := any(config).(orgsync.FileConfig); ok {
+		for index := range files.Files {
+			file := &files.Files[index]
+			content, err := filemerge.NormalizeTemplate(file.Path, []byte(file.Content))
+			if err != nil {
+				return nil, fmt.Errorf("%w: file %q: %w", orgsync.ErrInvalidConfig, file.Path, err)
+			}
+			file.Content = string(content)
+		}
+		if err := files.Validate(); err != nil {
+			return nil, err
+		}
+		return json.Marshal(files)
+	}
 
 	return json.Marshal(config)
 }
@@ -476,7 +491,7 @@ func syncConfigToDTO(config orgsync.Config, updatedBy string) syncConfigDTO {
 		UpdatedBy: updatedBy,
 		UpdatedAt: config.UpdatedAt,
 		Digest:    config.Digest,
-		Document:  documentOrEmpty(config.Document),
+		Document:  syncConfigDisplayDocument(config),
 	}
 
 	// The row is still there; nothing here pretends to have read it, and the

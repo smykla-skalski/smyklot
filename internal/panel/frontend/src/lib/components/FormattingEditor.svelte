@@ -7,31 +7,47 @@
     FORMATTING_PRESETS,
     applyFormattingPatch,
     cloneFormattingPatch,
-    formattingOverrideCount,
     formattingPatchValue,
     formattingPatchesEqual,
     formattingPolicyValue,
+    formattingSourceValue,
     setFormattingPatchValue,
     type FormattingField,
     type FormattingFieldKey,
     type FormattingPatch,
     type FormattingPolicy,
+    type FormattingSources,
   } from '../formatting';
+  import type { SyncFileFormattingResolution } from '../sync-file-render.generated';
   import AppTooltip from './AppTooltip.svelte';
-  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import InheritControl from './InheritControl.svelte';
+  import Card from './Card.svelte';
+  import SegmentedControl from './SegmentedControl.svelte';
 
-  /* The level a value comes from, named as a place rather than as a document: the
-     dictionary allows "from the workspace" and "from the service", and the four
-     phrases this used to carry - "the application defaults", "workspace defaults",
-     "the deployment configuration" - are the words it retires. */
   const SOURCE_BY_SCOPE = {
     target: 'the service',
     repository: 'the workspace',
     runtime: 'the deployment',
     template: 'the workspace',
-    path: 'the repository',
+    path: 'the template or repository',
+  } as const;
+
+  const SOURCE_LABEL: Record<string, string> = {
+    process: 'the service',
+    target: 'the workspace',
+    repository_file: 'the repository file',
+    repository_panel: 'repository settings',
+    template: 'the template',
+    repository_path: 'this file override',
+  };
+
+  const LAYERS_BY_SCOPE = {
+    runtime: ['Deployment', 'Service'],
+    target: ['Service', 'Workspace'],
+    repository: ['Service', 'Workspace', 'Repository file', 'Repository settings'],
+    template: [],
+    path: [],
   } as const;
 
   const {
@@ -39,7 +55,10 @@
     inherited,
     scope,
     idPrefix,
+    path,
     anchor,
+    sources,
+    resolution,
     disabled = false,
     dirtyKeys = [],
     onChange,
@@ -49,8 +68,13 @@
     inherited: FormattingPolicy;
     scope: keyof typeof SOURCE_BY_SCOPE;
     idPrefix: string;
-    /** Names the first card, so a page index can link to where the editor starts. */
+    /** Restricts file editing to common rules and this extension's own rules. */
+    path?: string;
     anchor?: string;
+    /** Effective leaf provenance available on ordinary settings pages. */
+    sources?: FormattingSources<string>;
+    /** Backend-authoritative layer chain for a template or repository output. */
+    resolution?: SyncFileFormattingResolution;
     disabled?: boolean;
     dirtyKeys?: readonly FormattingFieldKey[];
     onChange: (next: FormattingPatch, changedKey: FormattingFieldKey) => void;
@@ -63,7 +87,35 @@
   let numberDrafts = $state<Record<string, string>>({});
   let invalidNumbers = $state<Record<string, true>>({});
 
-  const source = $derived(SOURCE_BY_SCOPE[scope]);
+  type GroupKey = (typeof FORMATTING_GROUPS)[number]['key'];
+
+  const fileGroup = $derived(groupForPath(path));
+  const relevantGroups = $derived(
+    path === undefined
+      ? FORMATTING_GROUPS
+      : fileGroup === null
+        ? []
+        : FORMATTING_GROUPS.filter(
+            (group) =>
+              group.key === 'common' ||
+              group.key === fileGroup ||
+              (fileGroup === 'jsonc' && group.key === 'json'),
+          ),
+  );
+  let activeGroup = $state<GroupKey>('common');
+  const shownGroups = $derived(
+    path === undefined
+      ? relevantGroups.filter((group) => group.key === activeGroup)
+      : relevantGroups,
+  );
+  const relevantFields = $derived(
+    FORMATTING_FIELDS.filter(
+      (field) =>
+        field.key !== 'formatting.common.final_newline' &&
+        (field.key === 'formatting.preset' ||
+          relevantGroups.some((group) => group.key === field.path[0])),
+    ),
+  );
   const dirtyKeySet = $derived(new Set(dirtyKeys));
   const valid = $derived(Object.keys(invalidNumbers).length === 0);
   const baseline = $derived(
@@ -71,7 +123,9 @@
   );
   const effective = $derived(applyFormattingPatch(inherited, draft));
   const presetField = FORMATTING_FIELDS[0];
-  const overridden = $derived(formattingOverrideCount(draft));
+  const overridden = $derived(
+    relevantFields.filter((field) => formattingPatchValue(draft, field) !== undefined).length,
+  );
 
   $effect(() => {
     const incoming = cloneFormattingPatch(patch);
@@ -90,7 +144,30 @@
   onDestroy(() => onValidity(true));
 
   function fieldsIn(group: string): readonly FormattingField[] {
-    return FORMATTING_FIELDS.filter((field) => field.path[0] === group);
+    return relevantFields.filter((field) => field.path[0] === group);
+  }
+
+  function groupForPath(filePath: string | undefined): GroupKey | null {
+    if (filePath === undefined) return null;
+    if (/\.json$/iu.test(filePath)) return 'json';
+    if (/\.jsonc$/iu.test(filePath)) return 'jsonc';
+    if (/\.ya?ml$/iu.test(filePath)) return 'yaml';
+    if (/\.toml$/iu.test(filePath)) return 'toml';
+    if (/\.(?:md|markdown)$/iu.test(filePath)) return 'markdown';
+    return null;
+  }
+
+  function labelForSource(value: string): string {
+    return SOURCE_LABEL[value] ?? value;
+  }
+
+  function sourceFor(field: FormattingField): string {
+    if (field.key !== 'formatting.preset' && draft.preset !== undefined) return 'this preset';
+    if (formattingPatchValue(draft, field) !== undefined) return SOURCE_BY_SCOPE[scope];
+    const provenance = resolution?.provenance ?? sources;
+    return provenance === undefined
+      ? SOURCE_BY_SCOPE[scope]
+      : labelForSource(formattingSourceValue(provenance, field));
   }
 
   function report(field: FormattingField, value: string | number | undefined): void {
@@ -146,6 +223,7 @@
   }
 
   function optionLabel(value: string): string {
+    if (value === 'lf' || value === 'crlf') return value.toUpperCase();
     return value
       .split('_')
       .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
@@ -171,166 +249,215 @@ to say which field is wrong and why, next to the field.
 three things among thirty finds them again.
 -->
 
-<div class="formatting-editor card-stack" data-valid={valid}>
-  <Card id={anchor} labelledby="formatting-{scope}-{idPrefix}-policy">
-    <div class="card-head">
-      <h2 class="card-title" id="formatting-{scope}-{idPrefix}-policy">Formatting</h2>
-      <span class="card-meta">{overridden} of {FORMATTING_FIELDS.length} set here</span>
-    </div>
-    <p class="group-note">Presentation rules applied after semantic file merges</p>
-    <div
-      class={['policy-row', { 'is-unsaved': dirtyKeySet.has(presetField.key) }]}
-      data-unsaved={dirtyKeySet.has(presetField.key) || undefined}
-    >
-      <span class="setting-say">
-        <span class="setting-name">Preset</span>
-        <span class="setting-why">{presetField.description}</span>
-      </span>
-      <!-- `fluid` fits the segments to the column they are in, and the column is the row
+{#if relevantGroups.length > 0}
+  <div class="formatting-editor card-stack" data-valid={valid}>
+    <Card id={anchor} labelledby="formatting-{scope}-{idPrefix}-policy">
+      <div class="card-head">
+        <h2 class="card-title" id="formatting-{scope}-{idPrefix}-policy">Formatting</h2>
+        <span class="card-meta">{overridden} of {relevantFields.length} set here</span>
+      </div>
+      <p class="group-note">
+        Formatting changes how the file is written, after content adjustments
+      </p>
+      <div
+        class={['policy-row', { 'is-unsaved': dirtyKeySet.has(presetField.key) }]}
+        data-unsaved={dirtyKeySet.has(presetField.key) || undefined}
+      >
+        <span class="setting-say">
+          <span class="setting-name">Preset</span>
+          <span class="setting-why"
+            >Choose a starting style; individual settings below take precedence</span
+          >
+        </span>
+        <!-- `fluid` fits the segments to the column they are in, and the column is the row
            law's own half - so the control never sets the page's width. Without it a
            segment's longest word decided the document at 320px. -->
-      <span class="policy-value">
-        <InheritControl
-          label="Formatting preset"
-          {source}
-          inheritedValue={inherited.preset}
-          inheritedLabel={optionLabel(inherited.preset)}
-          value={draft.preset ?? null}
-          options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
-          {disabled}
-          fluid
-          onSelect={(value) => pick(presetField, value)}
-          onRestore={() => clear(presetField)}
-        />
-      </span>
-    </div>
-  </Card>
-
-  {#each FORMATTING_GROUPS as group (group.key)}
-    <Card labelledby="formatting-{scope}-{idPrefix}-{group.key}">
-      <div class="card-head">
-        <h2 class="card-title" id="formatting-{scope}-{idPrefix}-{group.key}">{group.label}</h2>
-        <span class="card-meta"
-          >{fieldsIn(group.key).filter((field) => formattingPatchValue(draft, field) !== undefined)
-            .length} of {fieldsIn(group.key).length} set here</span
-        >
+        <span class="policy-value">
+          <InheritControl
+            label="Formatting preset"
+            source={sourceFor(presetField)}
+            inheritedValue={inherited.preset}
+            inheritedLabel={optionLabel(inherited.preset)}
+            value={draft.preset ?? null}
+            options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
+            {disabled}
+            fluid
+            onSelect={(value) => pick(presetField, value)}
+            onRestore={() => clear(presetField)}
+          />
+        </span>
       </div>
-      <p class="group-note">{group.description}</p>
-      <div class="policy-rows">
-        {#each fieldsIn(group.key) as field (field.key)}
-          <div
-            class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
-            data-unsaved={dirtyKeySet.has(field.key) || undefined}
+      <details class="formatting-origin">
+        <summary
+          ><Icon name="chevron-right" size="xs" /><span class="band-trim"
+            >Where these values come from</span
+          ></summary
+        >
+        <p class="origin-note">Later settings override earlier ones</p>
+        <ol class="origin-layers" aria-label="Formatting precedence">
+          {#if resolution !== undefined}
+            {#each resolution.layers as layer (layer.source)}
+              <li>
+                <span>{optionLabel(labelForSource(layer.source).replace(/^the /u, ''))}</span>
+                <span class="origin-state"
+                  >{layer.source === resolution.current_layer
+                    ? 'Editing here'
+                    : {
+                        baseline: 'Defaults',
+                        stored: 'Saved',
+                        draft: 'Unsaved',
+                        absent: 'Not set',
+                        bypassed: 'Ignored',
+                      }[layer.state]}</span
+                >
+                {#if layer.config_path}<code>{layer.config_path}</code>{/if}
+              </li>
+            {/each}
+          {:else}
+            {#each LAYERS_BY_SCOPE[scope] as layer, index (layer)}
+              <li>
+                <span>{layer}</span><span class="origin-state"
+                  >{index === LAYERS_BY_SCOPE[scope].length - 1
+                    ? 'Editing here'
+                    : 'Inherited'}</span
+                >
+              </li>
+            {/each}
+          {/if}
+        </ol>
+      </details>
+    </Card>
+
+    {#if path === undefined}
+      <SegmentedControl
+        name="formatting-group-{scope}-{idPrefix}"
+        label="Formatting file type"
+        options={relevantGroups.map((group) => ({ value: group.key, label: group.label }))}
+        value={activeGroup}
+        fluid
+        onSelect={(value) => (activeGroup = value as GroupKey)}
+      />
+    {/if}
+
+    {#each shownGroups as group (group.key)}
+      <Card labelledby="formatting-{scope}-{idPrefix}-{group.key}">
+        <div class="card-head">
+          <h2 class="card-title" id="formatting-{scope}-{idPrefix}-{group.key}">{group.label}</h2>
+          <span class="card-meta"
+            >{fieldsIn(group.key).filter(
+              (field) => formattingPatchValue(draft, field) !== undefined,
+            ).length} of {fieldsIn(group.key).length} set here</span
           >
-            <span class="setting-say">
-              <label class="setting-name" for="formatting-{scope}-{idPrefix}-{field.key}"
-                >{fieldLabel(field)}</label
-              >
-              <span class="setting-why">{field.description}</span>
-            </span>
-            {#if field.kind === 'enum'}
-              <span class="policy-value">
-                <InheritControl
-                  label={fieldLabel(field)}
-                  {source}
-                  inheritedValue={String(formattingPolicyValue(baseline, field))}
-                  inheritedLabel={optionLabel(String(formattingPolicyValue(baseline, field)))}
-                  value={formattingPatchValue(draft, field)?.toString() ?? null}
-                  options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
-                  {disabled}
-                  fluid
-                  onSelect={(value) => pick(field, value)}
-                  onRestore={() => clear(field)}
-                />
+        </div>
+        <p class="group-note">{group.description}</p>
+        <div class="policy-rows">
+          {#each fieldsIn(group.key) as field (field.key)}
+            <div
+              class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+              data-unsaved={dirtyKeySet.has(field.key) || undefined}
+            >
+              <span class="setting-say">
+                <label class="setting-name" for="formatting-{scope}-{idPrefix}-{field.key}"
+                  >{fieldLabel(field)}</label
+                >
+                <span class="setting-why"
+                  >{field.description} · {formattingPatchValue(draft, field) !== undefined
+                    ? 'Set here'
+                    : `From ${sourceFor(field)}`}</span
+                >
               </span>
-            {:else}
-              <span class="policy-value number-control">
-                {#if formattingPatchValue(draft, field) !== undefined}
-                  <AppTooltip text="Stop overriding - take the value from {source}">
-                    {#snippet children(attributes)}
-                      <button
-                        {...attributes}
-                        type="button"
-                        class="link-toggle broken"
-                        aria-label="Stop overriding {fieldLabel(field)}"
-                        {disabled}
-                        onclick={() => clear(field)}
-                      >
-                        <Icon name="link-off" size="sm" strokeWidth={2} />
-                      </button>
-                    {/snippet}
-                  </AppTooltip>
-                {:else}
-                  <!-- NAMED, because it is focusable. A tooltip trigger takes the
+              {#if field.kind === 'enum'}
+                <span class="policy-value">
+                  <InheritControl
+                    label={fieldLabel(field)}
+                    source={sourceFor(field)}
+                    inheritedValue={String(formattingPolicyValue(baseline, field))}
+                    inheritedLabel={optionLabel(String(formattingPolicyValue(baseline, field)))}
+                    value={formattingPatchValue(draft, field)?.toString() ?? null}
+                    options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
+                    {disabled}
+                    fluid
+                    onSelect={(value) => pick(field, value)}
+                    onRestore={() => clear(field)}
+                  />
+                </span>
+              {:else}
+                <span class="policy-value number-control">
+                  {#if formattingPatchValue(draft, field) !== undefined}
+                    <AppTooltip text="Stop overriding - take the value from {sourceFor(field)}">
+                      {#snippet children(attributes)}
+                        <button
+                          {...attributes}
+                          type="button"
+                          class="link-toggle broken"
+                          aria-label="Stop overriding {fieldLabel(field)}"
+                          {disabled}
+                          onclick={() => clear(field)}
+                        >
+                          <Icon name="link-off" size="sm" strokeWidth={2} />
+                        </button>
+                      {/snippet}
+                    </AppTooltip>
+                  {:else}
+                    <!-- NAMED, because it is focusable. A tooltip trigger takes the
                        keyboard - that is how a tooltip is reached without a pointer - so
                        this mark is a stop on the tab ring, and an unnamed stop is a stop
                        that announces nothing when a reader arrives at it. The name is
                        what the tooltip says, because that is what the mark means. -->
-                  <AppTooltip text="From {source}: {formattingPolicyValue(baseline, field)}">
-                    {#snippet children(attributes)}
-                      <span
-                        {...attributes}
-                        class="link-toggle"
-                        role="note"
-                        aria-label="{fieldLabel(field)} comes from {source}"
-                      >
-                        <Icon name="link" size="sm" strokeWidth={2} />
-                      </span>
-                    {/snippet}
-                  </AppTooltip>
-                {/if}
-                <input
-                  id="formatting-{scope}-{idPrefix}-{field.key}"
-                  class="number-input"
-                  type="number"
-                  inputmode="numeric"
-                  min={field.minimum}
-                  max={field.maximum}
-                  step="1"
-                  value={shownNumber(field)}
-                  aria-invalid={invalidNumbers[field.key] || undefined}
-                  aria-describedby={invalidNumbers[field.key]
-                    ? `formatting-${scope}-${idPrefix}-${field.key}-error`
-                    : undefined}
-                  {disabled}
-                  oninput={(event) => typeNumber(field, event.currentTarget.value)}
-                  onblur={() => finishNumber(field)}
-                />
-                {#if invalidNumbers[field.key]}
-                  <span
-                    class="field-error"
-                    id="formatting-{scope}-{idPrefix}-{field.key}-error"
-                    role="alert">Use a whole number from {field.minimum} to {field.maximum}</span
-                  >
-                {/if}
-              </span>
-            {/if}
-          </div>
-        {/each}
-      </div>
-    </Card>
-  {/each}
+                    <AppTooltip
+                      text="From {sourceFor(field)}: {formattingPolicyValue(baseline, field)}"
+                    >
+                      {#snippet children(attributes)}
+                        <span
+                          {...attributes}
+                          class="link-toggle"
+                          role="note"
+                          aria-label="{fieldLabel(field)} comes from {sourceFor(field)}"
+                        >
+                          <Icon name="link" size="sm" strokeWidth={2} />
+                        </span>
+                      {/snippet}
+                    </AppTooltip>
+                  {/if}
+                  <input
+                    id="formatting-{scope}-{idPrefix}-{field.key}"
+                    class="number-input"
+                    type="number"
+                    inputmode="numeric"
+                    min={field.minimum}
+                    max={field.maximum}
+                    step="1"
+                    value={shownNumber(field)}
+                    aria-invalid={invalidNumbers[field.key] || undefined}
+                    aria-describedby={invalidNumbers[field.key]
+                      ? `formatting-${scope}-${idPrefix}-${field.key}-error`
+                      : undefined}
+                    {disabled}
+                    oninput={(event) => typeNumber(field, event.currentTarget.value)}
+                    onblur={() => finishNumber(field)}
+                  />
+                  {#if invalidNumbers[field.key]}
+                    <span
+                      class="field-error"
+                      id="formatting-{scope}-{idPrefix}-{field.key}-error"
+                      role="alert">Use a whole number from {field.minimum} to {field.maximum}</span
+                    >
+                  {/if}
+                </span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </Card>
+    {/each}
 
-  <span class="effective-summary" aria-live="polite">
-    Effective preset: {optionLabel(effective.preset)}
-  </span>
-</div>
+    <span class="effective-summary" aria-live="polite">
+      Effective preset: {optionLabel(effective.preset)}
+    </span>
+  </div>
+{/if}
 
 <style>
-  .group-head {
-    align-items: end;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .group-name {
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    margin: 0;
-  }
-
   /* `.group-note` is the sheet's - it is a card's note wherever it appears. */
   .group-tally,
   .effective-summary {
@@ -396,13 +523,55 @@ three things among thirty finds them again.
     justify-self: end;
   }
 
-  @media (max-width: 30rem) {
-    .card {
-      padding: var(--space-3);
-    }
-
-    .group-head {
-      flex-wrap: wrap;
-    }
+  .formatting-origin {
+    margin-block-start: var(--space-4);
+  }
+  .formatting-origin summary {
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: var(--font-size-compact);
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+    list-style: none;
+    padding: var(--space-3);
+    margin-inline: calc(var(--space-3) * -1);
+    border-radius: var(--r-ctl);
+  }
+  .formatting-origin summary::-webkit-details-marker {
+    display: none;
+  }
+  .formatting-origin summary:hover {
+    background: var(--row-hover);
+  }
+  .formatting-origin summary:active {
+    background: var(--row-pressed);
+  }
+  .formatting-origin[open] summary :global(svg) {
+    rotate: 90deg;
+  }
+  .origin-note {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    margin-block: var(--space-3);
+  }
+  .origin-layers {
+    display: grid;
+    gap: var(--space-3);
+    padding-inline-start: var(--space-5);
+    margin: 0;
+    font-size: var(--font-size-compact);
+  }
+  .origin-layers li {
+    padding-inline-start: var(--space-1);
+  }
+  .origin-state {
+    color: var(--text-muted);
+    margin-inline-start: var(--space-2);
+  }
+  .origin-layers code {
+    display: block;
+    overflow-wrap: anywhere;
+    margin-block-start: var(--space-2);
   }
 </style>

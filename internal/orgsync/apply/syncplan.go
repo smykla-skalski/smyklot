@@ -149,6 +149,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		Actions:   actions,
 		Now:       now,
 		ExpiresAt: now.Add(approvalTTL),
+		Automatic: true,
 	})
 	if err != nil {
 		// Another caller won the slot between the read above and this write.
@@ -176,7 +177,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		return "", err
 	}
 
-	return "Sync plan created and waiting for approval", nil
+	return "Repository changes queued for automatic sync", nil
 }
 
 func (s *Engine) livePlanSummary(ctx context.Context, targetID string) (string, bool, error) {

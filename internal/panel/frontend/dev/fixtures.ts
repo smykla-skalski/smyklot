@@ -491,7 +491,23 @@ export function seed(
     source: 'suspended',
     capabilities: capabilitiesFor('none'),
   });
-  const queue = queueSeeds(iso);
+  const queue = queueSeeds(iso).filter((item) => item.id !== 'queue-sync-scheduled');
+  const automaticSync = queue.find((item) => item.id === 'queue-sync-apply');
+  if (automaticSync !== undefined) {
+    delete automaticSync.repository_id;
+    delete automaticSync.repository_name;
+    delete automaticSync.started_at;
+    automaticSync.title = 'Sync shared configuration';
+    automaticSync.summary = '14 changes queued automatically';
+    automaticSync.state = 'scheduled';
+    automaticSync.progress_current = 0;
+    automaticSync.progress_total = 14;
+    automaticSync.attempt = 0;
+    automaticSync.details = syncPlanSeed(iso).actions.reduce(
+      (counts, action) => ({ ...counts, [action.operation]: counts[action.operation] + 1 }),
+      { create: 0, update: 0, delete: 0 },
+    );
+  }
   const sync = new Map([
     [`${organization.value.id}/labels`, syncLabelsSeed(iso)],
     [`${organization.value.id}/settings`, syncSettingsSeed(iso)],
@@ -531,7 +547,11 @@ export function seed(
     pendingCI: pendingCISeeds(iso),
     queue,
     queueLoop: new Set(),
-    queueRest: new Map(queue.map((item) => [item.id, item])),
+    // The sync fixture shares a stable pending plan. The generic queue animation
+    // must not finish its row while Sync status still reports those same changes queued.
+    queueRest: new Map(
+      queue.filter((item) => item.kind !== 'sync_apply').map((item) => [item.id, item]),
+    ),
     runtime: {
       backgroundWorkPaused: false,
       behaviorOverride: null,
@@ -682,7 +702,7 @@ export function seed(
          organization's files reads here exactly like one receiving all of them
          unless the notice that says so is on a screen somebody looks at. */
       [
-        '4002/files',
+        '4003/files',
         {
           kind: 'files',
           enabled: null,
@@ -696,7 +716,17 @@ export function seed(
         },
       ],
     ]),
-    syncPlans: new Map([[organization.value.id, syncPlanSeed(iso)]]),
+    syncPlans: new Map([
+      [
+        organization.value.id,
+        {
+          ...syncPlanSeed(iso),
+          state: 'approved',
+          execution_stage: 'Queued for automatic sync',
+          approved_at: iso(-12 * 60_000),
+        },
+      ],
+    ]),
     syncStatus: new Map([[organization.value.id, syncStatusSeed(iso)]]),
     // Replaced by install() with the running server's own page.
   };
@@ -768,8 +798,7 @@ export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
       ...(repository === 'legacy-service'
         ? {
             reason:
-              '.github/workflows/ci.yaml needs the workflows permission - grant it on the ' +
-              "workspace's App page",
+              'docs/guide.md cannot be written because docs is not a directory in this repository',
           }
         : {}),
     })),
@@ -943,7 +972,6 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '{',
             '  "$schema": "https://docs.renovatebot.com/renovate-schema.json",',
             '  "extends": ["config:recommended"],',
-            '  // Weekend runs keep review noise out of the working week',
             '  "schedule": ["* 4 * * 6"],',
             '  "timezone": "UTC",',
             '  "packageRules": [',
@@ -1727,12 +1755,12 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
     },
     {
       ...common,
-      id: 'queue-sync-approval',
+      id: 'queue-sync-scheduled',
       kind: 'sync_apply',
       lane: 'maintenance',
-      title: 'Review organization sync plan',
-      summary: 'Computed plan · 3 repository changes',
-      state: 'awaiting_approval',
+      title: 'Sync shared configuration',
+      summary: '14 changes queued automatically',
+      state: 'scheduled',
       priority: 'normal',
       not_before: iso(-12 * 60_000),
       eligible_at: iso(-12 * 60_000),

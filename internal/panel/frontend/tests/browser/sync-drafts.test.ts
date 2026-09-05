@@ -249,3 +249,97 @@ describe('workspace Sync drafts', () => {
     }
   });
 });
+
+describe('automatic sync status interactions', () => {
+  for (const width of [1280, 375]) {
+    it(`opens whole rows while keeping switch margins independent at ${width}px`, async () => {
+      const page = await panel.browser.newPage({ viewport: { width, height: 900 } });
+      try {
+        await visit(page, addressOf(panel, 'workspace/sync'), { ready: '.sync-repo-summary' });
+        const rows = page.locator('.sync-repo-summary');
+        expect(await rows.count()).toBe(8);
+        // A queued run stays on its schedule. Immediate dispatch is an explicit
+        // action inside the inspector, never a side effect of 'Check now'.
+        expect(await page.getByRole('button', { name: 'Check now', exact: true }).count()).toBe(0);
+        const changes = page.getByRole('button', { name: 'View changes', exact: true });
+        await changes.click();
+        const inspector = page.getByRole('dialog', { name: 'Sync details', exact: true });
+        await inspector.waitFor({ state: 'visible' });
+        expect(await inspector.getByRole('button', { name: /Approve/ }).count()).toBe(0);
+        await page.keyboard.press('Escape');
+        await inspector.waitFor({ state: 'detached' });
+        expect(await changes.evaluate((element) => element === document.activeElement)).toBe(true);
+        const first = rows.first();
+        const trigger = first.getByRole('button');
+        const geometry = await first.evaluate((row) => {
+          const ground = row.getBoundingClientRect();
+          const hit = row.querySelector('.row-hit')!.getBoundingClientRect();
+          return { width: ground.width - hit.width, height: ground.height - hit.height };
+        });
+        expect(Math.abs(geometry.width)).toBeLessThan(1);
+        expect(Math.abs(geometry.height)).toBeLessThan(1);
+
+        // Real pointer coordinates catch content intercepting an invisible row target.
+        const name = await first.locator('.object-name').boundingBox();
+        if (name === null) throw new Error('repository name has no bounds');
+        await page.mouse.move(name.x + 5, name.y + name.height / 2);
+        await expect
+          .poll(() => first.evaluate((row) => getComputedStyle(row).backgroundColor))
+          .not.toBe('rgba(0, 0, 0, 0)');
+        const hover = await first.evaluate((row) => getComputedStyle(row).backgroundColor);
+        await page.mouse.down();
+        await expect
+          .poll(() => first.evaluate((row) => getComputedStyle(row).backgroundColor))
+          .not.toBe(hover);
+        await page.mouse.up();
+        await expect.poll(() => trigger.getAttribute('aria-expanded')).toBe('true');
+        await trigger.press('Enter');
+        await expect.poll(() => trigger.getAttribute('aria-expanded')).toBe('false');
+
+        const expand = page.getByRole('button', { name: 'Show all 28 repositories' });
+        expect(await expand.evaluate((element) => element.closest('.card-head') !== null)).toBe(
+          true,
+        );
+        await expand.click();
+        await expect.poll(() => rows.count()).toBe(28);
+        const lastName = await rows.last().locator('.object-name').innerText();
+        await page.getByRole('button', { name: 'Show fewer repositories' }).click();
+        await expect.poll(() => rows.count()).toBe(8);
+        await page.getByRole('searchbox', { name: 'Find a syncing repository' }).fill(lastName);
+        await expect.poll(() => rows.count()).toBe(1);
+        expect(await rows.first().locator('.object-name').innerText()).toBe(lastName);
+        await page.getByRole('searchbox', { name: 'Find a syncing repository' }).fill('');
+
+        const configuration = page.getByRole('region', {
+          name: 'Shared configuration',
+          exact: true,
+        });
+        const input = configuration.getByRole('checkbox', { name: 'Labels sync', exact: true });
+        const label = configuration.locator('label.switch').filter({
+          has: page.getByRole('checkbox', { name: 'Labels sync', exact: true }),
+        });
+        const initial = await input.isChecked();
+        await label.scrollIntoViewIfNeeded();
+        const bounds = await label.boundingBox();
+        if (bounds === null) throw new Error('switch label has no bounds');
+        expect(bounds.width).toBeGreaterThanOrEqual(44);
+        expect(bounds.height).toBeGreaterThanOrEqual(44);
+        // Above and to the left of the track belongs to the switch, not navigation.
+        await page.mouse.click(bounds.x + 4, bounds.y + 4);
+        await expect.poll(() => input.isChecked()).toBe(!initial);
+        expect(new URL(page.url()).pathname).toBe(`/workspace/${panel.account}/sync`);
+        await label.click();
+        await expect.poll(() => input.isChecked()).toBe(initial);
+
+        const configRow = configuration.locator('.object-row').first();
+        const copy = await configRow.locator('.object-sum').boundingBox();
+        if (copy === null) throw new Error('configuration copy has no bounds');
+        await page.mouse.click(copy.x + 5, copy.y + copy.height / 2);
+        await page.waitForURL((url) => url.pathname.endsWith('/sync/labels'));
+        await page.getByRole('heading', { name: 'Labels', exact: true }).waitFor();
+      } finally {
+        await page.close();
+      }
+    });
+  }
+});

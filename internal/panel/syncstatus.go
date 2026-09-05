@@ -15,7 +15,10 @@ import (
 
 // repositoriesKey is the wire name three sync answers share for their
 // repository list or count.
-const repositoriesKey = "repositories"
+const (
+	repositoriesKey  = "repositories"
+	syncStateRefused = "refused"
+)
 
 // syncCellDTO is where one repository stands for one kind: settled, waiting on
 // a plan, refused with a reason a person can act on, or switched off there.
@@ -23,7 +26,8 @@ type syncCellDTO struct {
 	State string `json:"state"`
 
 	// Changes is pending only: how many of the plan's changes land here.
-	Changes int `json:"changes,omitempty"`
+	Changes int    `json:"changes,omitempty"`
+	Reason  string `json:"reason,omitempty"`
 }
 
 // syncRepositoryStatusDTO is one repository on the overview's board.
@@ -41,12 +45,14 @@ type syncRepositoryStatusDTO struct {
 // syncStatusFacts is everything getSyncStatus reads, keyed the way the row
 // builder asks: by repository, then by kind.
 type syncStatusFacts struct {
-	enabled  map[orgsync.Kind]bool
-	answered map[string]map[orgsync.Kind]*bool
-	problems map[string]map[orgsync.Kind]string
-	pending  map[string]map[orgsync.Kind]int
-	removals map[string]int
-	checked  time.Time
+	enabled     map[orgsync.Kind]bool
+	answered    map[string]map[orgsync.Kind]*bool
+	problems    map[string]map[orgsync.Kind]string
+	pending     map[string]map[orgsync.Kind]int
+	removals    map[string]int
+	checked     time.Time
+	unavailable map[orgsync.Kind]string
+	invalid     map[orgsync.Kind]string
 }
 
 // getSyncStatus answers the fleet: every repository sync covers and where each
@@ -71,7 +77,7 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	facts, err := s.syncStatusFacts(r, target.ID)
+	facts, err := s.syncStatusFacts(r, target)
 	if err != nil {
 		s.writeStorageError(w, err)
 
@@ -94,19 +100,24 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"checked_at":    facts.checked,
+		"unavailable":   facts.unavailable,
+		"invalid":       facts.invalid,
 		repositoriesKey: rows,
 	})
 }
 
 // syncStatusFacts gathers what the board says from the three places it lives:
 // the configuration, the per-repository state rows, and the live plan.
-func (s *Server) syncStatusFacts(r *http.Request, targetID string) (syncStatusFacts, error) {
+func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncStatusFacts, error) {
 	ctx := r.Context()
+	targetID := target.ID
 	facts := syncStatusFacts{
-		answered: map[string]map[orgsync.Kind]*bool{},
-		problems: map[string]map[orgsync.Kind]string{},
-		pending:  map[string]map[orgsync.Kind]int{},
-		removals: map[string]int{},
+		answered:    map[string]map[orgsync.Kind]*bool{},
+		problems:    map[string]map[orgsync.Kind]string{},
+		pending:     map[string]map[orgsync.Kind]int{},
+		removals:    map[string]int{},
+		unavailable: map[orgsync.Kind]string{},
+		invalid:     map[orgsync.Kind]string{},
 	}
 
 	configs, err := s.store.ListSyncConfigs(ctx, targetID)
@@ -116,6 +127,12 @@ func (s *Server) syncStatusFacts(r *http.Request, targetID string) (syncStatusFa
 	facts.enabled = make(map[orgsync.Kind]bool, len(configs))
 	for _, config := range configs {
 		facts.enabled[config.Kind] = config.Enabled
+		if config.Enabled && syncConfigToDTO(config, "").Unreadable {
+			facts.invalid[config.Kind] = "This configuration cannot be read; restore a valid saved configuration to continue"
+		}
+		if blocked, missing := orgsync.UnpermittedConfig(target, config); config.Enabled && missing {
+			facts.unavailable[config.Kind] = blocked.Reason()
+		}
 	}
 
 	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
@@ -166,6 +183,20 @@ func (s *Server) pendingSyncFacts(
 		facts.checked = plan.ComputedAt
 	}
 	for _, action := range actions {
+		if action.State == orgsync.ActionApplied {
+			continue
+		}
+		if action.State == orgsync.ActionFailed || action.State == orgsync.ActionSkipped {
+			if facts.problems[action.RepositoryID] == nil {
+				facts.problems[action.RepositoryID] = map[orgsync.Kind]string{}
+			}
+			problem := action.Error
+			if problem == "" {
+				problem = "This change could not be applied; check the repository and retry sync"
+			}
+			facts.problems[action.RepositoryID][action.Kind] = problem
+			continue
+		}
 		if facts.pending[action.RepositoryID] == nil {
 			facts.pending[action.RepositoryID] = map[orgsync.Kind]int{}
 		}
@@ -193,8 +224,18 @@ func syncStatusRow(repository storage.Repository, facts syncStatusFacts) syncRep
 		switch {
 		case !enabled:
 			row.Cells[string(kind)] = syncCellDTO{State: "off"}
+		case facts.unavailable[kind] != "":
+			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.unavailable[kind]}
+			if row.Reason == "" {
+				row.Reason = facts.unavailable[kind]
+			}
+		case facts.invalid[kind] != "":
+			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.invalid[kind]}
+			if row.Reason == "" {
+				row.Reason = facts.invalid[kind]
+			}
 		case facts.problems[repository.ID][kind] != "":
-			row.Cells[string(kind)] = syncCellDTO{State: "refused"}
+			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.problems[repository.ID][kind]}
 			if row.Reason == "" {
 				row.Reason = facts.problems[repository.ID][kind]
 			}
@@ -221,10 +262,21 @@ type syncFileMergeEntryDTO struct {
 }
 
 type syncFileRepositoryDTO struct {
-	Repository    string                     `json:"repository"`
-	RepositoryID  string                     `json:"repository_id"`
-	DefaultBranch string                     `json:"default_branch"`
-	BasePolicy    appconfig.FormattingPolicy `json:"base_policy"`
+	Repository   string `json:"repository"`
+	RepositoryID string `json:"repository_id"`
+}
+
+type syncKnownPathDTO struct {
+	Path         string `json:"path"`
+	Repositories int    `json:"repositories"`
+}
+
+type syncFilesContextDTO struct {
+	Repositories    int                     `json:"repositories"`
+	Covered         int                     `json:"covered"`
+	KnownPaths      []syncKnownPathDTO      `json:"known_paths"`
+	RepositoryIndex []syncFileRepositoryDTO `json:"repository_policies"`
+	Merges          []syncFileMergeEntryDTO `json:"merges"`
 }
 
 // getSyncFilesContext answers what the files pages need beyond the document:
@@ -249,16 +301,10 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 	for _, repository := range repositories {
 		repositoryByID[repository.ID] = repository
 	}
-	runtime := s.runtimeValues()
-	templateBase := appconfig.Resolve(runtime.BotConfig, appconfig.Layer{
-		Source: appconfig.SourceTarget, Patch: target.ConfigPatch,
-	}).Values.Formatting
 	repositoryPolicies := make([]syncFileRepositoryDTO, 0, len(repositories))
 	for _, repository := range repositories {
 		repositoryPolicies = append(repositoryPolicies, syncFileRepositoryDTO{
 			Repository: repository.Name, RepositoryID: repository.ID,
-			DefaultBranch: repository.DefaultBranch,
-			BasePolicy:    repositoryFormatting(runtime.BotConfig, target, repository),
 		})
 	}
 
@@ -301,13 +347,10 @@ func (s *Server) getSyncFilesContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
-		repositoriesKey:       len(repositories),
-		"covered":             covered,
-		"known_paths":         knownSyncPaths(rows),
-		"merges":              merges,
-		"base_formatting":     templateBase,
-		"repository_policies": repositoryPolicies,
+	writeJSON(w, http.StatusOK, syncFilesContextDTO{
+		Repositories: len(repositories), Covered: covered,
+		KnownPaths: knownSyncPaths(rows), RepositoryIndex: repositoryPolicies,
+		Merges: merges,
 	})
 }
 
@@ -381,29 +424,9 @@ func fileMergeEntries(
 	return entries
 }
 
-// repositoryFormatting resolves every configuration layer that belongs to a
-// repository before the template and exact-path overlays are applied.
-func repositoryFormatting(
-	process *appconfig.Config,
-	target storage.Target,
-	repository storage.Repository,
-) appconfig.FormattingPolicy {
-	layers := []appconfig.Layer{{Source: appconfig.SourceTarget, Patch: target.ConfigPatch}}
-	if !repository.IgnoreRepositoryFile {
-		layers = append(layers, appconfig.Layer{
-			Source: appconfig.SourceRepositoryFile, Patch: repository.ConfigFilePatch,
-		})
-	}
-	layers = append(layers, appconfig.Layer{
-		Source: appconfig.SourceRepositoryPanel, Patch: repository.ConfigPatch,
-	})
-
-	return appconfig.Resolve(process, layers...).Values.Formatting
-}
-
 // knownSyncPaths folds the per-repository path rows into the finder's index:
 // every path anything holds, and how many repositories hold it.
-func knownSyncPaths(rows []orgsync.RepositoryPaths) []map[string]any {
+func knownSyncPaths(rows []orgsync.RepositoryPaths) []syncKnownPathDTO {
 	counts := map[string]int{}
 	for _, row := range rows {
 		for _, path := range row.Paths {
@@ -416,11 +439,9 @@ func knownSyncPaths(rows []orgsync.RepositoryPaths) []map[string]any {
 	}
 	sort.Strings(paths)
 
-	known := make([]map[string]any, 0, len(paths))
+	known := make([]syncKnownPathDTO, 0, len(paths))
 	for _, path := range paths {
-		known = append(known, map[string]any{
-			"path": path, repositoriesKey: counts[path],
-		})
+		known = append(known, syncKnownPathDTO{Path: path, Repositories: counts[path]})
 	}
 
 	return known

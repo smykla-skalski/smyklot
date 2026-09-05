@@ -85,8 +85,10 @@ import {
   applyFormattingPatch,
   applyFormattingSources,
   formattingSources,
+  defaultFormattingPolicy,
   parseFormattingPatch,
   parseFormattingPolicy,
+  type FormattingPatch,
 } from '../src/lib/formatting.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
 /* The fixtures, which used to be nine hundred lines of this file and reachable by
@@ -116,7 +118,12 @@ import {
   type MockTarget,
 } from './fixtures.ts';
 import { isLegalPath, parseInvitationToken, parsePanelRoute } from '../src/lib/routes.ts';
-import { renderMockSyncFile } from './mock-file-render.ts';
+import type {
+  SyncFileFormattingLayer,
+  SyncFileRenderInput,
+  SyncFileRenderResponse,
+} from '../src/lib/sync-file-render.generated.ts';
+import { GoFileRenderer, type GoRenderLayer } from './mock-file-render.ts';
 
 type DevHttpServer = HttpServer;
 const BASE = '';
@@ -163,6 +170,7 @@ interface MockState extends Fixtures {
   schedulePolicies: QueuePolicy[];
   scheduleRequests: ScheduleRequest[];
   scheduleCounter: number;
+  fileRenderer: GoFileRenderer;
 }
 
 /** Marks the error renderer's own request for a shell, so `handle` stands aside. */
@@ -640,16 +648,19 @@ export function mockServer(): Plugin {
  */
 function install(httpServer: DevHttpServer | null | undefined, middlewares: Connect.Server): void {
   const fixtures = seed(loadIssuedInvitations(), Date.now(), loadPreferences());
+  const fileRenderer = new GoFileRenderer();
   const state: MockState = {
     ...fixtures,
     ...mockScheduleState(fixtures),
     streams: new Set(),
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
+    fileRenderer,
   };
   if (httpServer !== null && httpServer !== undefined) {
     const server = httpServer;
     state.shell = () => fetchShell(server);
     server.on('upgrade', (request, socket) => handleUpgrade(state, request, socket));
+    server.once('close', () => fileRenderer.close());
   }
   middlewares.use((req, res, next) => void handle(state, req, res, next));
   runReconciler(state);
@@ -1470,8 +1481,8 @@ async function handle(
       path.slice(route('').length),
     );
     if (syncFileRenderMatch && method === 'POST') {
-      findTarget(state, syncFileRenderMatch[1] ?? '');
-      respond(res, 200, renderMockSyncFile(await readBody<unknown>(req)));
+      const target = findTarget(state, syncFileRenderMatch[1] ?? '');
+      respond(res, 200, await renderMockSyncFile(state, target, await readBody<unknown>(req)));
       return;
     }
     if (syncFilesContextMatch && method === 'GET') {
@@ -1536,17 +1547,12 @@ async function handle(
         return {
           repository: repository?.detail.repository.name ?? row.repository,
           repository_id: repositoryId,
-          default_branch: repository?.detail.repository.default_branch ?? 'main',
-          base_policy:
-            repository?.detail.effective_config.formatting ??
-            target.value.effective_config.formatting,
         };
       });
       respond(res, 200, {
         repositories: rows.length,
         covered,
         known_paths: KNOWN_PATHS,
-        base_formatting: target.value.effective_config.formatting,
         repository_policies: repositoryPolicies,
         merges: [...adjustments.values()],
       });
@@ -2186,7 +2192,7 @@ async function handle(
       const target = findTarget(state, workspaceSettings.groups?.target ?? '');
       if (rootTargetSettings !== null) requireRootWrite(state, target);
       const input = await readBody<WorkspaceSettingsBatchInput>(req);
-      respond(res, 200, saveMockWorkspaceSettings(state, target, input));
+      respond(res, 200, await saveMockWorkspaceSettings(state, target, input));
       return;
     }
 
@@ -2795,6 +2801,242 @@ function findTarget(state: MockState, encodedId: string): MockTarget {
   return target;
 }
 
+async function renderMockSyncFile(
+  state: MockState,
+  target: MockTarget,
+  value: unknown,
+): Promise<SyncFileRenderResponse> {
+  const input = parseMockRenderInput(value);
+  if (input === null) return invalidMockRender('request', 'invalid_request', 'invalid request');
+  const filesConfig = mockSyncConfig(state, `${target.value.id}/files`, 'files');
+  const managed = managedMockFile(filesConfig, input.path) ?? { formatting: undefined };
+  if (
+    input.path.startsWith('/') ||
+    input.path.includes('\\') ||
+    input.path.split('/').some((part) => part === '..' || part === '.' || part === '')
+  ) {
+    return invalidMockRender('request', 'invalid_path', 'Use a path relative to the repository');
+  }
+
+  const baseFormatting = target.value.inherited_config.formatting;
+  const layers: GoRenderLayer[] = [];
+  const visible: SyncFileFormattingLayer[] = [
+    {
+      source: 'process',
+      state: 'baseline',
+      formatting: baseFormatting as FormattingPatch,
+    },
+  ];
+  pushMockLayer(layers, visible, 'target', target.value.config_patch.formatting);
+
+  let defaultBranch: string | undefined;
+  if (input.repository !== undefined) {
+    const repository = target.repositories.find(
+      (candidate) => candidate.detail.repository.id === input.repository?.id,
+    );
+    defaultBranch = repository?.detail.repository.default_branch ?? 'main';
+    if (repository?.detail.ignore_repository_file === true) {
+      visible.push({
+        source: 'repository_file',
+        state: 'bypassed',
+        ...(repository.detail.config_file_path === undefined
+          ? {}
+          : { config_path: repository.detail.config_file_path }),
+      });
+    } else {
+      pushMockLayer(
+        layers,
+        visible,
+        'repository_file',
+        repository?.detail.config_file_patch.formatting,
+        repository?.detail.config_file_path,
+      );
+    }
+    pushMockLayer(layers, visible, 'repository_panel', repository?.detail.config_patch.formatting);
+  }
+
+  pushMockLayer(
+    layers,
+    visible,
+    'template',
+    input.template_formatting,
+    undefined,
+    patchState(input.template_formatting, managed.formatting),
+  );
+  const inheritedLayers = input.repository === undefined ? layers.length - 1 : layers.length;
+  if (input.repository !== undefined) {
+    pushMockLayer(
+      layers,
+      visible,
+      'repository_path',
+      input.repository.path_formatting,
+      undefined,
+      patchState(
+        input.repository.path_formatting,
+        storedMockPathFormatting(state, input.repository.id, input.path),
+      ),
+    );
+  }
+
+  const rendered = await state.fileRenderer.render({
+    path: input.path,
+    draft_content: input.draft_content,
+    ...(defaultBranch === undefined ? {} : { default_branch: defaultBranch }),
+    merge: input.repository?.merge ?? {},
+    base_formatting: baseFormatting,
+    layers,
+    inherited_layers: inheritedLayers,
+  });
+  return {
+    valid: rendered.valid,
+    final_content: rendered.final_content,
+    matches_formatting: rendered.matches_formatting,
+    diagnostics: rendered.diagnostics,
+    formatting: {
+      current_layer: input.repository === undefined ? 'template' : 'repository_path',
+      inherited_policy: rendered.inherited_policy,
+      effective_policy: rendered.effective_policy,
+      provenance: rendered.provenance,
+      layers: visible,
+    },
+  };
+}
+
+function parseMockRenderInput(value: unknown): SyncFileRenderInput | null {
+  const record = strictMockRecord(value, [
+    'path',
+    'draft_content',
+    'template_formatting',
+    'repository',
+  ]);
+  const templateFormatting = parseFormattingPatch(record?.template_formatting);
+  if (
+    record === null ||
+    typeof record.path !== 'string' ||
+    record.path === '' ||
+    typeof record.draft_content !== 'string' ||
+    templateFormatting === null
+  ) {
+    return null;
+  }
+  if (record.repository === undefined) {
+    return {
+      path: record.path,
+      draft_content: record.draft_content,
+      template_formatting: templateFormatting,
+    };
+  }
+  const repository = strictMockRecord(record.repository, ['id', 'merge', 'path_formatting']);
+  const pathFormatting = parseFormattingPatch(repository?.path_formatting);
+  if (
+    repository === null ||
+    typeof repository.id !== 'string' ||
+    repository.id === '' ||
+    (repository.merge !== undefined &&
+      strictMockRecord(repository.merge, [
+        'strategy',
+        'overrides',
+        'arrays',
+        'deduplicate',
+        'sections',
+      ]) === null) ||
+    pathFormatting === null
+  ) {
+    return null;
+  }
+  return {
+    path: record.path,
+    draft_content: record.draft_content,
+    template_formatting: templateFormatting,
+    repository: {
+      id: repository.id,
+      path_formatting: pathFormatting,
+      ...(repository.merge === undefined
+        ? {}
+        : { merge: repository.merge as NonNullable<SyncFileRenderInput['repository']>['merge'] }),
+    },
+  };
+}
+
+function managedMockFile(
+  config: SyncConfig,
+  path: string,
+): { formatting?: FormattingPatch } | null {
+  if (!Array.isArray(config.document.files)) return null;
+  for (const candidate of config.document.files) {
+    const file = strictMockRecord(candidate, ['path', 'content', 'formatting']);
+    if (file === null || file.path !== path) continue;
+    if (file.formatting === undefined) return {};
+    const formatting = parseFormattingPatch(file.formatting);
+    if (formatting === null) return null;
+    return { formatting };
+  }
+  return null;
+}
+
+function storedMockPathFormatting(
+  state: MockState,
+  repositoryID: string,
+  path: string,
+): FormattingPatch | undefined {
+  const formats = state.syncOverrides.get(`${repositoryID}/files`)?.document.formats;
+  if (!Array.isArray(formats)) return undefined;
+  for (const candidate of formats) {
+    const format = strictMockRecord(candidate, ['path', 'formatting']);
+    if (format === null || format.path !== path) continue;
+    return parseFormattingPatch(format.formatting) ?? undefined;
+  }
+  return undefined;
+}
+
+function pushMockLayer(
+  layers: GoRenderLayer[],
+  visible: SyncFileFormattingLayer[],
+  source: GoRenderLayer['source'],
+  formatting: FormattingPatch | undefined,
+  configPath?: string,
+  state: SyncFileFormattingLayer['state'] = patchState(formatting, formatting),
+): void {
+  const patch = formatting ?? {};
+  layers.push({ source, formatting: patch });
+  visible.push({
+    source,
+    state,
+    ...(formatting === undefined || patchEmpty(formatting) ? {} : { formatting }),
+    ...(configPath === undefined ? {} : { config_path: configPath }),
+  });
+}
+
+function patchState(
+  draft: FormattingPatch | undefined,
+  stored: FormattingPatch | undefined,
+): SyncFileFormattingLayer['state'] {
+  if (canonicalStringify(draft ?? {}) !== canonicalStringify(stored ?? {})) return 'draft';
+  return patchEmpty(stored) ? 'absent' : 'stored';
+}
+
+function patchEmpty(patch: FormattingPatch | undefined): boolean {
+  return patch === undefined || canonicalStringify(patch) === '{}';
+}
+
+function invalidMockRender(stage: string, code: string, message: string): SyncFileRenderResponse {
+  return {
+    valid: false,
+    final_content: '',
+    matches_formatting: false,
+    diagnostics: [{ stage, code, message }],
+  };
+}
+
+function strictMockRecord(
+  value: unknown,
+  allowed: readonly string[],
+): Record<string, unknown> | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  return Object.keys(record).every((key) => allowed.includes(key)) ? record : null;
+}
+
 function changedMockSyncConfig(
   config: SyncConfig,
   input: WorkspaceSyncConfigSettingsInput,
@@ -2832,12 +3074,37 @@ interface MockPreparedChange<T> {
   next: T;
 }
 
-function saveMockWorkspaceSettings(
+async function saveMockWorkspaceSettings(
   state: MockState,
   target: MockTarget,
   input: WorkspaceSettingsBatchInput,
-): WorkspaceSettingsBatchResponse {
+): Promise<WorkspaceSettingsBatchResponse> {
   validateMockWorkspaceSettingsBatch(input);
+  input = structuredClone(input);
+  for (const change of input.sync_configs ?? []) {
+    if (change.kind !== 'files' || !Array.isArray(change.document.files)) continue;
+    let totalBytes = 0;
+    for (const file of change.document.files as Array<{ path: string; content: string }>) {
+      const normalized = await state.fileRenderer.render({
+        path: file.path,
+        draft_content: file.content,
+        merge: {},
+        base_formatting: defaultFormattingPolicy(),
+        layers: [],
+        inherited_layers: 0,
+      });
+      if (!normalized.valid)
+        throw new MockApiError(
+          400,
+          'invalid_config',
+          normalized.diagnostics.map((d) => d.message).join(' · '),
+        );
+      file.content = normalized.final_content;
+      totalBytes += Buffer.byteLength(file.content);
+    }
+    if (totalBytes > 1 << 20)
+      throw new MockApiError(400, 'invalid_config', 'shared files exceed the content limit');
+  }
   const plan = prepareMockWorkspaceSettings(state, target, input);
   const conflicts = [
     ...(plan.target?.conflict === null || plan.target?.conflict === undefined
