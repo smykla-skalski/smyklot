@@ -11,9 +11,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
-// PruneWorkQueue removes only terminal ledger rows whose effective workload
-// policy has a retention period. Domain rows keep their own retention rules;
-// this operation owns the queue ledger and its cascading event timeline.
 func (s *Store) PruneWorkQueue(ctx context.Context, now time.Time) (int64, error) {
 	scopes, err := s.queueRetentionScopes(ctx)
 	if err != nil {
@@ -21,19 +18,18 @@ func (s *Store) PruneWorkQueue(ctx context.Context, now time.Time) (int64, error
 	}
 	var removed int64
 	for _, scope := range scopes {
+		retention := workqueue.Retention(scope.kind)
 		policy, policyErr := s.GetEffectiveQueuePolicy(ctx, scope.kind, scope.targetID)
-		if policyErr != nil {
-			if scope.kind == workqueue.KindScheduleChange &&
-				errors.Is(policyErr, storage.ErrNotFound) {
-				continue
+		switch {
+		case policyErr == nil:
+			if policy.Retention != nil {
+				retention = *policy.Retention
 			}
+		case !errors.Is(policyErr, storage.ErrNotFound):
 			return removed, policyErr
 		}
-		if policy.Retention == nil {
-			continue
-		}
 		changed, deleteErr := s.pruneQueueRetentionScope(
-			ctx, scope, now.Add(-*policy.Retention),
+			ctx, scope, now.Add(-retention),
 		)
 		if deleteErr != nil {
 			return removed, deleteErr

@@ -55,6 +55,33 @@ func TestDeploymentPoliciesMapEverySweepWithoutZeroCadence(t *testing.T) {
 	}
 }
 
+func TestEveryKindIsBounded(t *testing.T) {
+	t.Parallel()
+
+	for _, kind := range Kinds() {
+		retention := Retention(kind)
+		if retention <= 0 || retention > EventRetention {
+			t.Fatalf("%s retention = %s", kind, retention)
+		}
+	}
+	if Retention(KindReactionScan) != RoutineRetention {
+		t.Fatal("a repository sweep is kept as long as work somebody asked for")
+	}
+	if Retention(KindWebhookDelivery) != EventRetention {
+		t.Fatal("a delivery is kept as briefly as a repository sweep")
+	}
+
+	policies := DeploymentPolicies(DeploymentDefaults{
+		PollInterval:         5 * time.Minute,
+		PendingCIQuietPeriod: 30 * time.Second,
+	})
+	for _, policy := range policies {
+		if policy.Retention == nil || *policy.Retention != Retention(policy.Kind) {
+			t.Fatalf("%s deployment retention = %v", policy.Kind, policy.Retention)
+		}
+	}
+}
+
 func policyFromSet(t *testing.T, policies []Policy, kind Kind) Policy {
 	t.Helper()
 	for _, policy := range policies {

@@ -12,6 +12,20 @@ const (
 	defaultCleanupCadence = 5 * time.Minute
 )
 
+const EventRetention = 30 * 24 * time.Hour
+
+const RoutineRetention = 48 * time.Hour
+
+func Retention(kind Kind) time.Duration {
+	switch kind {
+	case KindWebhookDelivery, KindPendingCI, KindSyncScan, KindSyncApply,
+		KindScheduleChange:
+		return EventRetention
+	default:
+		return RoutineRetention
+	}
+}
+
 // DeploymentDefaults are the process-level timings that existed before the
 // durable queue. They seed pristine queue policies without replacing later
 // Root edits.
@@ -30,7 +44,6 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 	if defaults.PathIndexInterval == 0 {
 		pathCadence = pollCadence
 	}
-	retention := 30 * 24 * time.Hour
 	approvalTTL := 2 * time.Hour
 	epoch := time.Unix(0, 0).UTC()
 	policy := func(
@@ -41,11 +54,14 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 		retry time.Duration,
 		configuration string,
 	) Policy {
+		retention := Retention(kind)
+
 		return Policy{
 			Kind: kind, Enabled: enabled, Cadence: cadence,
 			ProfileID: AlwaysOpenProfileID, DefaultPriority: priority,
-			RetryDelay: retry, Configuration: json.RawMessage(configuration),
-			Revision: 1, UpdatedAt: epoch,
+			RetryDelay: retry, Retention: &retention,
+			Configuration: json.RawMessage(configuration),
+			Revision:      1, UpdatedAt: epoch,
 		}
 	}
 
@@ -53,7 +69,6 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 		KindWebhookDelivery, true, 0, PriorityUrgent, 2*time.Second,
 		`{"max_delay_seconds":300,"max_attempts":8}`,
 	)
-	webhook.Retention = &retention
 	pendingCI := policy(
 		KindPendingCI, true, 5*time.Minute, PriorityNormal, 5*time.Second,
 		pendingCIConfiguration(defaults.PendingCIQuietPeriod),
@@ -62,10 +77,6 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 		KindSyncScan, true, defaultSyncCadence, PriorityNormal, 5*time.Minute, `{}`,
 	)
 	syncScan.ApprovalTTL = &approvalTTL
-	deliveryCleanup := policy(
-		KindDeliveryCleanup, true, defaultCleanupCadence, PriorityLow, 5*time.Minute, `{}`,
-	)
-	deliveryCleanup.Retention = &retention
 
 	return []Policy{
 		webhook,
@@ -77,7 +88,7 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 		syncScan,
 		policy(KindSyncApply, true, 0, PriorityNormal, 5*time.Minute, `{}`),
 		policy(KindPathRefresh, pathCadence > 0, pathCadence, PriorityLow, 5*time.Minute, `{}`),
-		deliveryCleanup,
+		policy(KindDeliveryCleanup, true, defaultCleanupCadence, PriorityLow, 5*time.Minute, `{}`),
 		policy(KindAuthCleanup, true, defaultCleanupCadence, PriorityLow, 5*time.Minute, `{}`),
 	}
 }
