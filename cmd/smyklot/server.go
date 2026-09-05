@@ -111,6 +111,10 @@ type server struct {
 	// measurement, which is what makes the stored series a level.
 	sampledWaits int64
 
+	// unstoredStats holds query counters a failed write could not store, to be
+	// folded into the next measurement rather than lost.
+	unstoredStats []storage.QueryStats
+
 	runtimeMu                   sync.RWMutex
 	runtimeBackgroundWorkPaused bool
 	runtimeBotConfig            *config.Config

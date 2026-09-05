@@ -29,15 +29,26 @@ class TestResizeObserver {
 
 const START = Date.UTC(2026, 8, 4, 8);
 
-function series(label: string, shape: (step: number) => number): PerformanceSeries {
+// The wire never carries a timing and a gauge on one point: the service writes
+// observations and durations for a statement, a value for a count, and both
+// only for a lane, whose oldest wait is a duration. A fixture that fills every
+// field passes whichever one the component reads.
+function series(
+  label: string,
+  shape: (step: number) => number,
+  kind: 'timing' | 'gauge' | 'lane',
+): PerformanceSeries {
   return {
     label,
-    points: Array.from({ length: 6 }, (_unused, step) => ({
-      at: new Date(START + step * 3_600_000).toISOString(),
-      observations: 10 + step,
-      mean_ms: shape(step),
-      value: shape(step),
-    })),
+    points: Array.from({ length: 6 }, (_unused, step) => {
+      const at = new Date(START + step * 3_600_000).toISOString();
+      if (kind === 'gauge') return { at, value: shape(step) };
+      if (kind === 'lane') {
+        return { at, observations: 1, mean_ms: 90_000, max_ms: 90_000, value: shape(step) };
+      }
+
+      return { at, observations: 10 + step, mean_ms: shape(step), max_ms: shape(step) * 2 };
+    }),
   };
 }
 
@@ -46,10 +57,13 @@ function measured(patch: Partial<Measurements['metrics']> = {}): Measurements {
     since: new Date(START).toISOString(),
     until: new Date(START + 6 * 3_600_000).toISOString(),
     metrics: {
-      query: [series('Store.ListWorkQueue', (step) => 4 + step)],
-      ledger: [series('reaction_scan', (step) => 4000 + step * 10)],
-      lane: [series('maintenance', (step) => step % 3)],
-      database: [series('size_bytes', () => 620_000_000), series('round_trip', (step) => 8 + step)],
+      query: [series('Store.ListWorkQueue', (step) => 4 + step, 'timing')],
+      ledger: [series('reaction_scan', (step) => 4000 + step * 10, 'gauge')],
+      lane: [series('maintenance', (step) => step % 3, 'lane')],
+      database: [
+        series('size_bytes', () => 620_000_000, 'gauge'),
+        series('round_trip', (step) => 8 + step, 'timing'),
+      ],
       ...patch,
     },
   };
@@ -96,6 +110,8 @@ describe('ServicePerformance [Component]', () => {
     expect(screen.getByText('75 calls in the window')).toBeTruthy();
     expect(screen.getByText('4,050 rows')).toBeTruthy();
     expect(screen.getByText('2 items waiting')).toBeTruthy();
+    expect(screen.getByText('longest wait 1m 30s')).toBeTruthy();
+    expect(screen.getByText('slowest 26.0 ms')).toBeTruthy();
   });
 
   it('says a section is empty rather than drawing an axis with nothing on it', async () => {

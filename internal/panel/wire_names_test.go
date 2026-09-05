@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -138,6 +139,20 @@ func seedPanelWireNameRows(t *testing.T, harness *panelHarness) {
 		Priority: workqueue.PriorityNormal, WindowMode: workqueue.WindowRespect,
 		ProfileID: &profileID, NotBefore: harness.now,
 		EligibleAt: harness.now, CreatedAt: harness.now, UpdatedAt: harness.now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := harness.store.RecordServiceSamples(t.Context(), []storage.ServiceSample{
+		{
+			Metric: storage.SampleQuery, Label: "Store.ListWorkQueue",
+			SampledAt: harness.now, Observations: 3, Failures: 1,
+			Total: 12 * time.Millisecond, Max: 8 * time.Millisecond,
+		},
+		{
+			Metric: storage.SampleDatabase, Label: "size_bytes",
+			SampledAt: harness.now, Value: 620_000_000,
+		},
 	}); err != nil {
 		t.Fatal(err)
 	}

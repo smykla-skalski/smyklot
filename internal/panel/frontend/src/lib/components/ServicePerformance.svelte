@@ -114,6 +114,13 @@
     caption: (points: PerformanceSeries['points'], label: string) => string;
   }
 
+  // Every kind of work is measured, including the ones holding nothing, so a
+  // count that reaches zero is drawn reaching zero rather than stopping. A kind
+  // that held nothing for the whole window has no line to draw.
+  function everHeldRows(one: PerformanceSeries): boolean {
+    return one.points.some((point) => (point.value ?? 0) > 0);
+  }
+
   function sections(
     queries: PerformanceSeries[],
     kept: PerformanceSeries[],
@@ -138,7 +145,7 @@
         heading: 'Rows kept after work finishes',
         note: 'Retention should take each of these down again. One that only ever climbs is work nothing is pruning',
         empty: 'Rows are counted as work finishes, and nothing has finished yet',
-        series: kept,
+        series: kept.filter(everHeldRows),
         name: sayWorkload,
         read: readValue,
         format: sayRows,

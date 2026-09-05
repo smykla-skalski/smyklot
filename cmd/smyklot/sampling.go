@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 const (
@@ -45,8 +46,11 @@ func (s *server) sampleServiceHealth(ctx context.Context, now time.Time) error {
 	}
 	samples := append(ledgerSamples(ledger, now), laneSamples(lanes, now)...)
 	samples = append(samples, s.databaseSamples(s.store.Status(ctx), now)...)
-	samples = append(samples, s.queryLatencySamples(now)...)
+	drained := s.drainQueryStats()
+	samples = append(samples, queryLatencySamples(drained, now)...)
 	if err := s.store.RecordServiceSamples(ctx, samples); err != nil {
+		s.keepQueryStats(drained)
+
 		return fmt.Errorf("record service samples: %w", err)
 	}
 	if _, err := s.store.PruneServiceSamples(ctx, now.Add(-sampleRetention)); err != nil {
@@ -56,8 +60,40 @@ func (s *server) sampleServiceHealth(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func (s *server) queryLatencySamples(now time.Time) []storage.ServiceSample {
-	stats := s.store.DrainQueryStats()
+// drainQueryStats takes the counters the store has been keeping, and whatever
+// a previous reading could not store. The store's counters reset when they are
+// read, so a failed write would otherwise take that window with it - and the
+// write fails when the database is struggling, which is when the timings are
+// worth the most.
+func (s *server) drainQueryStats() []storage.QueryStats {
+	drained := s.store.DrainQueryStats()
+	if len(s.unstoredStats) == 0 {
+		return drained
+	}
+	folded := make(map[string]storage.QueryStats, len(s.unstoredStats)+len(drained))
+	for _, stat := range append(s.unstoredStats, drained...) {
+		held := folded[stat.Name]
+		held.Name = stat.Name
+		held.Observations += stat.Observations
+		held.Failures += stat.Failures
+		held.Total += stat.Total
+		held.Max = max(held.Max, stat.Max)
+		folded[stat.Name] = held
+	}
+	s.unstoredStats = nil
+	held := make([]storage.QueryStats, 0, len(folded))
+	for _, stat := range folded {
+		held = append(held, stat)
+	}
+
+	return held
+}
+
+func (s *server) keepQueryStats(stats []storage.QueryStats) {
+	s.unstoredStats = stats
+}
+
+func queryLatencySamples(stats []storage.QueryStats, now time.Time) []storage.ServiceSample {
 	samples := make([]storage.ServiceSample, 0, len(stats))
 	for _, stat := range stats {
 		samples = append(samples, storage.ServiceSample{
@@ -70,23 +106,37 @@ func (s *server) queryLatencySamples(now time.Time) []storage.ServiceSample {
 	return samples
 }
 
+// ledgerSamples measures every kind of work the queue defines, and not only
+// the kinds holding rows: a count is grouped away when it reaches zero, and a
+// series that stops is drawn as one whose last reading still stands.
 func ledgerSamples(sizes []storage.LedgerSize, now time.Time) []storage.ServiceSample {
-	samples := make([]storage.ServiceSample, 0, len(sizes))
+	kept := make(map[string]int64, len(sizes))
 	for _, size := range sizes {
+		kept[size.Kind] = size.Finished
+	}
+	samples := make([]storage.ServiceSample, 0, len(workqueue.Kinds()))
+	for _, kind := range workqueue.Kinds() {
 		samples = append(samples, storage.ServiceSample{
-			Metric: storage.SampleLedger, Label: size.Kind,
-			SampledAt: now, Value: float64(size.Finished),
+			Metric: storage.SampleLedger, Label: string(kind),
+			SampledAt: now, Value: float64(kept[string(kind)]),
 		})
 	}
 
 	return samples
 }
 
+// laneSamples measures every lane, including the ones holding nothing, for the
+// reason ledgerSamples measures every kind.
 func laneSamples(lanes []storage.LaneBacklog, now time.Time) []storage.ServiceSample {
-	samples := make([]storage.ServiceSample, 0, len(lanes))
+	waiting := make(map[string]storage.LaneBacklog, len(lanes))
 	for _, backlog := range lanes {
+		waiting[backlog.Lane] = backlog
+	}
+	samples := make([]storage.ServiceSample, 0, len(workqueue.Lanes()))
+	for _, lane := range workqueue.Lanes() {
+		backlog := waiting[string(lane)]
 		samples = append(samples, storage.ServiceSample{
-			Metric: storage.SampleLane, Label: backlog.Lane, SampledAt: now,
+			Metric: storage.SampleLane, Label: string(lane), SampledAt: now,
 			Observations: 1, Total: backlog.Oldest, Max: backlog.Oldest,
 			Value: float64(backlog.Depth),
 		})

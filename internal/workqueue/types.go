@@ -43,6 +43,10 @@ func Kinds() []Kind {
 	}
 }
 
+func Lanes() []Lane {
+	return []Lane{LaneWebhook, LanePendingCI, LaneMaintenance}
+}
+
 func (kind Kind) Valid() bool {
 	for _, known := range Kinds() {
 		if kind == known {

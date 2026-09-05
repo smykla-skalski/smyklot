@@ -4748,6 +4748,8 @@ function mockPerformance(windowHours: number): ServicePerformance {
       ledger: [
         series('reaction_scan', (step) => 4200 + Math.sin(step / 7) * 300, 'gauge'),
         series('webhook_delivery', (step) => 61_000 + step * 12, 'gauge'),
+        series('sync_scan', (step) => Math.max(0, 40 - step), 'gauge'),
+        series('auth_cleanup', () => 0, 'gauge'),
       ],
       lane: [
         series(
@@ -4756,6 +4758,7 @@ function mockPerformance(windowHours: number): ServicePerformance {
           'backlog',
         ),
         series('webhook', (step) => (step % 11 === 0 ? 9 : 1), 'backlog'),
+        series('pending_ci', () => 0, 'backlog'),
       ],
       database: [
         series('size_bytes', (step) => 640_000_000 + step * 90_000, 'gauge'),

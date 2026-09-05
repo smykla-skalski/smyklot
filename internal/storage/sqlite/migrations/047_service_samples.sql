@@ -11,7 +11,7 @@ CREATE TABLE service_samples (
 );
 
 CREATE INDEX service_samples_window_idx
-ON service_samples (metric, sampled_at, label, max_nanos, value);
+ON service_samples (metric, sampled_at, label, total_nanos, max_nanos, value);
 
 CREATE INDEX service_samples_age_idx
 ON service_samples (sampled_at);
