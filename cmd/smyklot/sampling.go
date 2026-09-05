@@ -18,19 +18,26 @@ const (
 // cancelled. The query counters are read destructively, so what a stored point
 // covers is decided by how long ago the last read was, and that must not be an
 // editable schedule.
+//
+// It reads before it waits. Most of what it stores is a level - a size, a
+// depth, a count of rows - and a level is knowable the moment the service is
+// up, so waiting out the first interval left the page with four empty cards
+// saying nothing had been measured, which is indistinguishable from a page that
+// is broken.
 func (s *server) sampleLoop(ctx context.Context) {
 	ticker := time.NewTicker(sampleInterval)
 	defer ticker.Stop()
 
 	for {
+		if err := s.sampleServiceHealth(ctx, time.Now().UTC()); err != nil {
+			s.logger.Error("service measurement failed", "error", s.redactor.Error(err))
+		}
+
 		select {
 		case <-ctx.Done():
 			return
 
 		case <-ticker.C:
-			if err := s.sampleServiceHealth(ctx, time.Now().UTC()); err != nil {
-				s.logger.Error("service measurement failed", "error", s.redactor.Error(err))
-			}
 		}
 	}
 }
