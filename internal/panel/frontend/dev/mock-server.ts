@@ -4718,7 +4718,13 @@ function mockPerformance(windowHours: number): ServicePerformance {
       const at = new Date(since + ((until - since) * step) / steps).toISOString();
 
       if (kind === 'timing') {
-        return { at, observations: 40 + step, mean_ms: value, max_ms: value * 3 };
+        return {
+          at,
+          observations: 40 + step,
+          failures: step % 17 === 0 ? 1 : 0,
+          mean_ms: value,
+          max_ms: value * 3,
+        };
       }
       if (kind === 'backlog') {
         return { at, value, observations: 12, mean_ms: value * 20_000, max_ms: value * 45_000 };

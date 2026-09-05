@@ -31,10 +31,15 @@
     return formatCompact(Math.round(value), 'row');
   }
 
+  // A statement that has started failing is what this page exists to find, so
+  // the count says so where there is one rather than waiting for a chart of
+  // its own.
   function sayCalls(points: PerformanceSeries['points']): string {
     const calls = points.reduce((total, point) => total + (point.observations ?? 0), 0);
+    const failed = points.reduce((total, point) => total + (point.failures ?? 0), 0);
+    const said = `${formatCompact(calls, 'call')} in the window`;
 
-    return `${formatCompact(calls, 'call')} in the window`;
+    return failed === 0 ? said : `${said}, ${formatCompact(failed)} failed`;
   }
 
   function sayWaiting(value: number): string {

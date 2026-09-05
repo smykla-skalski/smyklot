@@ -47,7 +47,13 @@ function series(
         return { at, observations: 1, mean_ms: 90_000, max_ms: 90_000, value: shape(step) };
       }
 
-      return { at, observations: 10 + step, mean_ms: shape(step), max_ms: shape(step) * 2 };
+      return {
+        at,
+        observations: 10 + step,
+        failures: step === 5 ? 3 : 0,
+        mean_ms: shape(step),
+        max_ms: shape(step) * 2,
+      };
     }),
   };
 }
@@ -58,7 +64,10 @@ function measured(patch: Partial<Measurements['metrics']> = {}): Measurements {
     until: new Date(START + 6 * 3_600_000).toISOString(),
     metrics: {
       query: [series('Store.ListWorkQueue', (step) => 4 + step, 'timing')],
-      ledger: [series('reaction_scan', (step) => 4000 + step * 10, 'gauge')],
+      ledger: [
+        series('reaction_scan', (step) => 4000 + step * 10, 'gauge'),
+        series('auth_cleanup', () => 0, 'gauge'),
+      ],
       lane: [series('maintenance', (step) => step % 3, 'lane')],
       database: [
         series('size_bytes', () => 620_000_000, 'gauge'),
@@ -107,9 +116,10 @@ describe('ServicePerformance [Component]', () => {
     expect(screen.getAllByText('620 MB').length).toBeGreaterThan(0);
     expect(screen.getByText('13.0 ms')).toBeTruthy();
     expect(screen.getByText('9.00 ms')).toBeTruthy();
-    expect(screen.getByText('75 calls in the window')).toBeTruthy();
+    expect(screen.getByText('75 calls in the window, 3 failed')).toBeTruthy();
     expect(screen.getByText('4,050 rows')).toBeTruthy();
     expect(screen.getByText('2 items waiting')).toBeTruthy();
+    expect(screen.queryByText('Sign-in session cleanup')).toBeNull();
     expect(screen.getByText('longest wait 1m 30s')).toBeTruthy();
     expect(screen.getByText('slowest 26.0 ms')).toBeTruthy();
   });

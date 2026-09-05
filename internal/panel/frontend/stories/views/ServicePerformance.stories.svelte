@@ -8,18 +8,40 @@
     ServicePerformance as Measurements,
   } from '#lib/types.js';
 
-  function hours(count: number, shape: (step: number) => number): PerformancePoint[] {
+  // A statement is timed, a count is a gauge, and only a queue is both, its
+  // oldest wait being a duration. A point carrying every field would let the
+  // captions read a number the service never sends.
+  type Measure = 'timing' | 'gauge' | 'queue';
+
+  function hours(
+    count: number,
+    shape: (step: number) => number,
+    measure: Measure,
+  ): PerformancePoint[] {
     const start = Date.UTC(2026, 8, 4, 8);
-    return Array.from({ length: count }, (_unused, step) => ({
-      at: new Date(start + step * 3_600_000).toISOString(),
-      observations: 120 + step * 3,
-      mean_ms: shape(step),
-      value: shape(step),
-    }));
+    return Array.from({ length: count }, (_unused, step) => {
+      const at = new Date(start + step * 3_600_000).toISOString();
+      if (measure === 'gauge') return { at, value: shape(step) };
+      if (measure === 'queue') {
+        return {
+          at,
+          observations: 1,
+          mean_ms: shape(step) * 40_000,
+          max_ms: shape(step) * 90_000,
+          value: shape(step),
+        };
+      }
+
+      return { at, observations: 120 + step * 3, mean_ms: shape(step), max_ms: shape(step) * 2.6 };
+    });
   }
 
-  function series(label: string, shape: (step: number) => number): PerformanceSeries {
-    return { label, points: hours(24, shape) };
+  function series(
+    label: string,
+    shape: (step: number) => number,
+    measure: Measure,
+  ): PerformanceSeries {
+    return { label, points: hours(24, shape, measure) };
   }
 
   const MEASURED: Measurements = {
@@ -27,22 +49,26 @@
     until: new Date(Date.UTC(2026, 8, 5, 8)).toISOString(),
     metrics: {
       query: [
-        series('latestRecurringItem', (step) => 3 + step * step * 0.4),
-        series('Store.ListWorkQueue', (step) => 22 + Math.sin(step / 3) * 4),
-        series('activeRecurringItems', (step) => 8 + Math.cos(step / 4) * 2),
+        series('latestRecurringItem', (step) => 3 + step * step * 0.4, 'timing'),
+        series('Store.ListWorkQueue', (step) => 22 + Math.sin(step / 3) * 4, 'timing'),
+        series('activeRecurringItems', (step) => 8 + Math.cos(step / 4) * 2, 'timing'),
       ],
       ledger: [
-        series('reaction_scan', (step) => 4000 + step * 180),
-        series('config_migration', (step) => 3900 + step * 175),
-        series('webhook_delivery', (step) => 60000 + step * 90),
+        series('reaction_scan', (step) => 4000 + step * 180, 'gauge'),
+        series('config_migration', (step) => 3900 + step * 175, 'gauge'),
+        series('webhook_delivery', (step) => 60000 + step * 90, 'gauge'),
+        series('auth_cleanup', () => 0, 'gauge'),
       ],
       lane: [
-        series('maintenance', (step) => 4 + Math.round(Math.sin(step / 4) * 3 + 3)),
-        series('webhook', (step) => (step % 7 === 0 ? 12 : 1)),
+        series('maintenance', (step) => 4 + Math.round(Math.sin(step / 4) * 3 + 3), 'queue'),
+        series('webhook', (step) => (step % 7 === 0 ? 12 : 1), 'queue'),
+        series('pending_ci', () => 0, 'queue'),
       ],
       database: [
-        series('size_bytes', (step) => 620_000_000 + step * 1_400_000),
-        series('round_trip', (step) => 12 + Math.sin(step / 5) * 3),
+        series('size_bytes', (step) => 620_000_000 + step * 1_400_000, 'gauge'),
+        series('round_trip', (step) => 12 + Math.sin(step / 5) * 3, 'timing'),
+        series('pool_in_use', (step) => Math.round(Math.abs(Math.sin(step / 5)) * 4), 'gauge'),
+        series('pool_waits', () => 0, 'gauge'),
       ],
     },
   };

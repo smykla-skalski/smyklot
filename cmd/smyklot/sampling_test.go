@@ -11,18 +11,8 @@ import (
 )
 
 func TestDatabaseSamplesChartPoolWaitsAsALevel(t *testing.T) {
-	measured := &server{}
-	now := time.Now().UTC()
-	waits := func(status storage.DatabaseStatus) (float64, bool) {
-		t.Helper()
-		for _, sample := range measured.databaseSamples(status, now) {
-			if sample.Label == "pool_waits" {
-				return sample.Value, true
-			}
-		}
-
-		return 0, false
-	}
+	store := &samplingStore{}
+	measured := &server{store: store}
 	reachable := func(lifetime int64) storage.DatabaseStatus {
 		return storage.DatabaseStatus{
 			Reachable:   true,
@@ -33,6 +23,7 @@ func TestDatabaseSamplesChartPoolWaitsAsALevel(t *testing.T) {
 	for _, expected := range []struct {
 		name   string
 		status storage.DatabaseStatus
+		refuse bool
 		waits  float64
 		sample bool
 	}{
@@ -43,14 +34,33 @@ func TestDatabaseSamplesChartPoolWaitsAsALevel(t *testing.T) {
 			Connections: storage.ConnectionStats{WaitCount: 400},
 		}},
 		{name: "waited through the outage", status: reachable(30), waits: 21, sample: true},
+		{name: "a refused write", status: reachable(110), refuse: true},
+		{name: "the refused waits are still owed", status: reachable(112), waits: 82, sample: true},
 		{name: "pool replaced", status: reachable(1), waits: 1, sample: true},
 	} {
-		got, sampled := waits(expected.status)
+		store.status = expected.status
+		store.recorded = nil
+		store.refuse = nil
+		if expected.refuse {
+			store.refuse = errors.New("the database is restarting")
+		}
+
+		err := measured.sampleServiceHealth(context.Background(), time.Now().UTC())
+		if (err != nil) != expected.refuse {
+			t.Fatalf("%s: measurement error = %v", expected.name, err)
+		}
+
+		got, sampled := 0.0, false
+		for _, sample := range store.recorded {
+			if sample.Label == "pool_waits" {
+				got, sampled = sample.Value, true
+			}
+		}
 		if sampled != expected.sample {
-			t.Fatalf("%s: sampled = %v, want %v", expected.name, sampled, expected.sample)
+			t.Fatalf("%s: stored a wait count = %v, want %v", expected.name, sampled, expected.sample)
 		}
 		if got != expected.waits {
-			t.Fatalf("%s: waits since the last reading = %v, want %v",
+			t.Fatalf("%s: waits since the reading that was stored = %v, want %v",
 				expected.name, got, expected.waits)
 		}
 	}
@@ -142,6 +152,7 @@ func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 type samplingStore struct {
 	storage.Store
 	stats    []storage.QueryStats
+	status   storage.DatabaseStatus
 	refuse   error
 	recorded []storage.ServiceSample
 }
@@ -169,7 +180,7 @@ func (s *samplingStore) LaneBacklogs(
 }
 
 func (s *samplingStore) Status(context.Context) storage.DatabaseStatus {
-	return storage.DatabaseStatus{}
+	return s.status
 }
 
 func (s *samplingStore) DrainQueryStats() []storage.QueryStats {

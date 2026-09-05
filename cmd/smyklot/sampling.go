@@ -44,14 +44,18 @@ func (s *server) sampleServiceHealth(ctx context.Context, now time.Time) error {
 	if err != nil {
 		return fmt.Errorf("read lane backlogs: %w", err)
 	}
+	status := s.store.Status(ctx)
 	samples := append(ledgerSamples(ledger, now), laneSamples(lanes, now)...)
-	samples = append(samples, s.databaseSamples(s.store.Status(ctx), now)...)
+	samples = append(samples, databaseSamples(status, s.sampledWaits, now)...)
 	drained := s.drainQueryStats()
 	samples = append(samples, queryLatencySamples(drained, now)...)
 	if err := s.store.RecordServiceSamples(ctx, samples); err != nil {
 		s.keepQueryStats(drained)
 
 		return fmt.Errorf("record service samples: %w", err)
+	}
+	if status.Reachable {
+		s.sampledWaits = status.Connections.WaitCount
 	}
 	if _, err := s.store.PruneServiceSamples(ctx, now.Add(-sampleRetention)); err != nil {
 		return fmt.Errorf("prune service samples: %w", err)
@@ -146,21 +150,23 @@ func laneSamples(lanes []storage.LaneBacklog, now time.Time) []storage.ServiceSa
 }
 
 // databaseSamples reads the database's own numbers, turning the pool's
-// lifetime wait count into how many waits happened since the last reading:
-// every other series here is a level, and a counter drawn as one falls off a
-// cliff at each deploy and reads as an improvement.
-func (s *server) databaseSamples(
+// lifetime wait count into how many waits happened since the reading that was
+// stored: every other series here is a level, and a counter drawn as one falls
+// off a cliff at each deploy and reads as an improvement. The caller moves that
+// baseline once the write has succeeded, so a refused write leaves the waits it
+// could not store to the next one.
+func databaseSamples(
 	status storage.DatabaseStatus,
+	stored int64,
 	now time.Time,
 ) []storage.ServiceSample {
 	if !status.Reachable {
 		return nil
 	}
-	waits := status.Connections.WaitCount - s.sampledWaits
+	waits := status.Connections.WaitCount - stored
 	if waits < 0 {
 		waits = status.Connections.WaitCount
 	}
-	s.sampledWaits = status.Connections.WaitCount
 
 	return []storage.ServiceSample{
 		{
