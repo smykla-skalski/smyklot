@@ -72,6 +72,8 @@ function measured(patch: Partial<Measurements['metrics']> = {}): Measurements {
       database: [
         series('size_bytes', () => 620_000_000, 'gauge'),
         series('round_trip', (step) => 8 + step, 'timing'),
+        series('pool_waits', (step) => step, 'gauge'),
+        series('pool_in_use', () => 2, 'gauge'),
       ],
       ...patch,
     },
@@ -122,6 +124,24 @@ describe('ServicePerformance [Component]', () => {
     expect(screen.queryByText('Sign-in session cleanup')).toBeNull();
     expect(screen.getByText('longest wait 1m 30s')).toBeTruthy();
     expect(screen.getByText('slowest 26.0 ms')).toBeTruthy();
+
+    expect(screen.getByText('Waits for a connection')).toBeTruthy();
+    expect(screen.getByText('5 waits')).toBeTruthy();
+    expect(screen.getByText('busiest stretch waited 5 times')).toBeTruthy();
+    expect(screen.getByText('2 connections')).toBeTruthy();
+  });
+
+  it('says a pool that never waited waited never, rather than saying nothing', async () => {
+    mount(() =>
+      Promise.resolve(
+        measured({
+          database: [series('pool_waits', () => 0, 'gauge')],
+        }),
+      ),
+    );
+
+    expect(await screen.findByText('never waited for a connection')).toBeTruthy();
+    expect(screen.getByText('0 waits')).toBeTruthy();
   });
 
   it('says a section is empty rather than drawing an axis with nothing on it', async () => {

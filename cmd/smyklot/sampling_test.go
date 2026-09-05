@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/storage/open"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
@@ -66,6 +68,19 @@ func TestDatabaseSamplesChartPoolWaitsAsALevel(t *testing.T) {
 	}
 }
 
+func TestSampleLoopReadsBeforeItWaits(t *testing.T) {
+	store := &samplingStore{status: storage.DatabaseStatus{Reachable: true}}
+	measured := &server{store: store}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	measured.sampleLoop(ctx)
+
+	if len(store.recorded) == 0 {
+		t.Fatal("nothing was measured until the first interval had passed")
+	}
+}
+
 func TestDatabaseSamplesStoreTheSizeOnlyWhereItWasRead(t *testing.T) {
 	now := time.Now().UTC()
 	for _, expected := range []struct {
@@ -109,6 +124,65 @@ func TestDatabaseSamplesStoreTheSizeOnlyWhereItWasRead(t *testing.T) {
 			t.Fatalf("%s: measured the pool = %v, want %v",
 				expected.name, measured, expected.others)
 		}
+	}
+}
+
+// waitingStore is a real store that reports a pool the test decides, so what a
+// measurement asks the database to keep is proved against the database rather
+// than against a stub that folds nothing.
+type waitingStore struct {
+	storage.Store
+	waits int64
+}
+
+func (s *waitingStore) Status(context.Context) storage.DatabaseStatus {
+	return storage.DatabaseStatus{
+		Reachable:   true,
+		Connections: storage.ConnectionStats{WaitCount: s.waits},
+	}
+}
+
+func TestPoolWaitsAddUpWithinAnHour(t *testing.T) {
+	t.Parallel()
+	kept, err := open.Store(t.Context(), filepath.Join(t.TempDir(), "waits.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := kept.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	store := &waitingStore{Store: kept}
+	measured := &server{store: store}
+	hour := time.Date(2026, 9, 5, 16, 0, 0, 0, time.UTC)
+	for _, reading := range []struct {
+		at    time.Duration
+		waits int64
+	}{
+		{at: 5 * time.Minute, waits: 10},
+		{at: 10 * time.Minute, waits: 35},
+	} {
+		store.waits = reading.waits
+		if err := measured.sampleServiceHealth(t.Context(), hour.Add(reading.at)); err != nil {
+			t.Fatalf("measurement at %v: %v", reading.at, err)
+		}
+	}
+
+	samples, err := kept.ListServiceSamples(t.Context(), storage.ServiceSampleQuery{
+		Metric: storage.SampleDatabase,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := map[string]float64{}
+	for _, sample := range samples {
+		stored[sample.Label] = sample.Value
+	}
+	if stored["pool_waits"] != 35 {
+		t.Fatalf("the hour holds %v waits, want the 35 it waited (10 then 25 more)",
+			stored["pool_waits"])
 	}
 }
 
