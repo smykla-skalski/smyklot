@@ -71,6 +71,45 @@ func TestCopyToPostgres(t *testing.T) {
 	requireWritesContinue(t, ctx, destination)
 }
 
+// TestCopyBackToSQLite proves the rollback keeps the data too.
+//
+// It is the direction an operator reaches for when a cutover has to be undone,
+// and it is the harder one: PostgreSQL answers a timestamp with a time.Time,
+// SQLite stores one as text, and SQLite cannot say which of its columns is
+// which. Nothing here read a copy back in this direction, and a copy that wrote
+// every timestamp in the machine's local zone reported success and produced a
+// database whose every dated read failed to parse.
+func TestCopyBackToSQLite(t *testing.T) {
+	t.Parallel()
+
+	dsn := strings.TrimSpace(os.Getenv(dsnVariable))
+	if dsn == "" {
+		t.Skip(dsnVariable + " is not set, so there is no server to copy out of")
+	}
+
+	ctx := context.Background()
+
+	source := freshPostgres(t, ctx, dsn, "smyklot_rollback")
+	if err := storagetest.Seed(ctx, source, seededAt); err != nil {
+		t.Fatalf("seed postgres: %v", err)
+	}
+
+	destination, err := storagesqlite.Open(ctx, filepath.Join(t.TempDir(), "rollback.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = destination.Close() })
+
+	report, err := transfer.Copy(ctx, source, destination, transfer.Options{})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+
+	requireSeededTablesCarriedRows(t, report)
+	requireSameState(t, ctx, source, destination)
+	requireWritesContinue(t, ctx, destination)
+}
+
 // requireWritesContinue writes to the copy, which is the only way to see
 // whether the identity sequences moved.
 //
@@ -189,6 +228,10 @@ func requireSeededTablesCarriedRows(t *testing.T, report transfer.Report) {
 // requireSameState reads both databases through the port and compares what
 // they answer. Every read goes through the same interface the application uses,
 // so a difference here is a difference the application would see.
+var sampleMetrics = []storage.SampleMetric{
+	storage.SampleQuery, storage.SampleLedger, storage.SampleLane, storage.SampleDatabase,
+}
+
 func requireSameState(t *testing.T, ctx context.Context, source, destination storage.Store) {
 	t.Helper()
 
@@ -247,13 +290,30 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 				HistoryPageRequest: storage.HistoryPageRequest{Limit: 50},
 			})
 		}},
+		// What the service has measured of itself, which is the one table here
+		// whose rows are almost entirely numbers: a copy that carried every
+		// label and zeroed every counter passed on the count alone.
+		{"service samples", func(s storage.Store) (any, error) {
+			measured := make([]storage.ServiceSample, 0, len(sampleMetrics))
+			for _, metric := range sampleMetrics {
+				samples, err := s.ListServiceSamples(
+					ctx, storage.ServiceSampleQuery{Metric: metric},
+				)
+				if err != nil {
+					return nil, err
+				}
+				measured = append(measured, samples...)
+			}
+
+			return measured, nil
+		}},
 	}
 
 	for _, check := range checks {
 		want, wantErr := check.read(source)
 		got, gotErr := check.read(destination)
 		if fmt.Sprint(wantErr) != fmt.Sprint(gotErr) {
-			t.Errorf("%s: sqlite returned %v, postgres returned %v", check.what, wantErr, gotErr)
+			t.Errorf("%s: the source returned %v, the copy returned %v", check.what, wantErr, gotErr)
 
 			continue
 		}
@@ -263,7 +323,7 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 		// fields on these models are optional, and %v would compare the
 		// addresses two separate reads happened to allocate.
 		if render(want) != render(got) {
-			t.Errorf("%s differs after the copy:\n  sqlite:   %s\n  postgres: %s",
+			t.Errorf("%s differs after the copy:\n  source: %s\n  copy:   %s",
 				check.what, render(want), render(got))
 		}
 	}

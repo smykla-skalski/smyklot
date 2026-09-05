@@ -95,9 +95,10 @@ func (Dialect) UniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "constraint failed")
 }
 
-// ColumnKinds reports nothing. SQLite stores a timestamp as text and a boolean
-// as a number, and its driver accepts the time.Time and bool another engine
-// hands back, so a copy into it converts nothing.
+// ColumnKinds reports nothing, because SQLite cannot tell anyone which of its
+// columns holds a time: it stores one as text, indistinguishable from any other
+// text. What a copy into SQLite needs is decided by the value the source handed
+// back rather than by this - see scanRow in internal/storage/transfer.
 func (Dialect) ColumnKinds(
 	_ context.Context,
 	_ *sql.Conn,

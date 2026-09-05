@@ -363,7 +363,7 @@ func copyTable(
 	insert := insertStatement(dialect, table, columns)
 	copied := 0
 	for rows.Next() {
-		values, scanErr := scanRow(rows, columns, kinds)
+		values, scanErr := scanRow(rows, columns, kinds, dialect)
 		if scanErr != nil {
 			return 0, fmt.Errorf("read %q row: %w", table, scanErr)
 		}
@@ -393,7 +393,21 @@ func tableReadQuery(table string) string {
 
 // scanRow reads one row, converting the values the destination stores as
 // something other than what the source handed back.
-func scanRow(rows *sql.Rows, columns []string, kinds map[string]sqlstore.ColumnKind) ([]any, error) {
+//
+// A time is converted by the destination's own TimeArg, on the value rather
+// than on the column, because only one of the two engines can describe its
+// columns. PostgreSQL names its timestamps in information_schema; SQLite stores
+// one as text and cannot tell it from any other text, so a copy INTO SQLite
+// learns nothing from the schema and everything from what the source handed
+// back. Left alone, a time.Time reached the SQLite driver, which writes an
+// unconfigured one with time.Time.String() - the local zone, spaces for the
+// separators, and unreadable by the fixed-width layout every read expects.
+func scanRow(
+	rows *sql.Rows,
+	columns []string,
+	kinds map[string]sqlstore.ColumnKind,
+	dialect sqlstore.Dialect,
+) ([]any, error) {
 	targets := make([]any, len(columns))
 	times := make([]*sqlstore.StoredTime, len(columns))
 	booleans := make([]*sql.NullBool, len(columns))
@@ -420,15 +434,26 @@ func scanRow(rows *sql.Rows, columns []string, kinds map[string]sqlstore.ColumnK
 	for index := range columns {
 		switch {
 		case times[index] != nil:
-			values[index] = times[index].Pointer()
+			values[index] = dialect.NullTimeArg(times[index].Pointer())
 		case booleans[index] != nil:
 			values[index] = nullBool(*booleans[index])
 		default:
-			values[index] = raw[index]
+			values[index] = writable(dialect, raw[index])
 		}
 	}
 
 	return values, nil
+}
+
+// writable hands a value the destination's own spelling of it, for the columns
+// no schema marked. A source that answers with a time.Time is the case this
+// exists for.
+func writable(dialect sqlstore.Dialect, value any) any {
+	if at, ok := value.(time.Time); ok {
+		return dialect.TimeArg(at)
+	}
+
+	return value
 }
 
 func nullBool(value sql.NullBool) any {
