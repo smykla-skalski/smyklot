@@ -57,7 +57,7 @@ WHERE target_id = ? AND kind = ? AND revision = ?`,
 INSERT INTO sync_configs (
     target_id, kind, enabled, document, digest, revision, updated_by, updated_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			request.TargetID, change.Kind, change.Enabled, work.prepared.document,
+			request.TargetID, change.Kind, change.Enabled, string(work.prepared.document),
 			work.prepared.digest, work.afterRevision, request.ActorAccountID, request.ChangedAt,
 		)
 		if err != nil {
@@ -70,7 +70,7 @@ INSERT INTO sync_configs (
 UPDATE sync_configs SET
     enabled = ?, document = ?, digest = ?, revision = ?, updated_by = ?, updated_at = ?
 WHERE target_id = ? AND kind = ? AND revision = ?`,
-		change.Enabled, work.prepared.document, work.prepared.digest, work.afterRevision,
+		change.Enabled, string(work.prepared.document), work.prepared.digest, work.afterRevision,
 		request.ActorAccountID, request.ChangedAt, request.TargetID, change.Kind,
 		change.ExpectedRevision,
 	)

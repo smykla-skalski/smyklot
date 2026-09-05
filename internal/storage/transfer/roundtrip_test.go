@@ -58,6 +58,7 @@ func TestCopyToPostgres(t *testing.T) {
 	if err := storagetest.Seed(ctx, source, seededAt); err != nil {
 		t.Fatalf("seed sqlite: %v", err)
 	}
+	requireStoredAsDeclared(t, ctx, source)
 
 	destination := freshPostgres(t, ctx, dsn, "smyklot_copy")
 
@@ -111,13 +112,17 @@ func TestCopyBackToSQLite(t *testing.T) {
 	requireWritesContinue(t, ctx, destination)
 }
 
-// requireStoredAsDeclared fails a copy that arrived in the wrong storage class.
+// requireStoredAsDeclared fails a SQLite database holding a value in a class
+// its column did not declare, and sweeps every text column in the schema
+// rather than a list somebody has to remember to extend.
 //
 // SQLite keeps what it was handed rather than what the column declares, and a
 // read converts both, so a value in the wrong class reads back correctly and
-// compares wrongly: on a document that arrived as a blob, `doc = '{}'` is false
-// where every natively written row says true. PostgreSQL answers jsonb with
-// bytes and a timestamp with a time.Time, so both are the case this catches.
+// compares wrongly: on a document stored as a blob, `doc = '{}'` is false where
+// a row stored as text says true. Both a copy and a native write can get this
+// wrong - PostgreSQL answers jsonb with bytes, and a writer that binds its
+// document as []byte hands SQLite the same thing - so this runs against a
+// database this service wrote and against one the copy wrote.
 func requireStoredAsDeclared(t *testing.T, ctx context.Context, store storage.Store) {
 	t.Helper()
 
@@ -125,34 +130,59 @@ func requireStoredAsDeclared(t *testing.T, ctx context.Context, store storage.St
 	if !ok {
 		t.Fatalf("%T exposes no connection", store)
 	}
-	rows, err := engine.DB().QueryContext(ctx, `
-SELECT 'repositories.config_patch', typeof(config_patch) FROM repositories
-UNION ALL SELECT 'targets.config_patch', typeof(config_patch) FROM targets
-UNION ALL SELECT 'user_preferences.doc', typeof(doc) FROM user_preferences
-UNION ALL SELECT 'sessions.created_at', typeof(created_at) FROM sessions
-UNION ALL SELECT 'service_samples.sampled_at', typeof(sampled_at) FROM service_samples`)
+	columns, err := textColumns(ctx, engine.DB())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = rows.Close() }()
+	if len(columns) == 0 {
+		t.Fatal("the schema declares no text column, so nothing was inspected")
+	}
 
-	seen := 0
-	for rows.Next() {
-		var column, class string
-		if err := rows.Scan(&column, &class); err != nil {
+	filled := 0
+	for _, column := range columns {
+		var stored, wrong int
+		// #nosec G202 -- both names come from this database's own schema.
+		if err := engine.DB().QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT COUNT(%[1]s),
+			 COUNT(*) FILTER (WHERE typeof(%[1]s) NOT IN ('text', 'null')) FROM %[2]s`,
+			column.column, column.table,
+		)).Scan(&stored, &wrong); err != nil {
 			t.Fatal(err)
 		}
-		seen++
-		if class != "text" {
-			t.Errorf("%s arrived as %s, want text", column, class)
+		filled += stored
+		if wrong != 0 {
+			t.Errorf("%s.%s holds %d of %d values in a class other than text",
+				column.table, column.column, wrong, stored)
 		}
 	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
+	if filled == 0 {
+		t.Fatal("every text column was empty, so nothing was inspected")
 	}
-	if seen == 0 {
-		t.Fatal("no copied row was inspected")
+}
+
+type schemaColumn struct{ table, column string }
+
+func textColumns(ctx context.Context, db *sql.DB) ([]schemaColumn, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT m.name, p.name
+FROM sqlite_master m JOIN pragma_table_info(m.name) p
+WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND p.type = 'TEXT'
+ORDER BY m.name, p.name`)
+	if err != nil {
+		return nil, err
 	}
+	defer func() { _ = rows.Close() }()
+
+	columns := make([]schemaColumn, 0, 64)
+	for rows.Next() {
+		var found schemaColumn
+		if err := rows.Scan(&found.table, &found.column); err != nil {
+			return nil, err
+		}
+		columns = append(columns, found)
+	}
+
+	return columns, rows.Err()
 }
 
 // requireWritesContinue writes to the copy, which is the only way to see
