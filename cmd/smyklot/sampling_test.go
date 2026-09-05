@@ -115,12 +115,7 @@ func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 		t.Fatalf("second measurement: %v", err)
 	}
 
-	var written storage.ServiceSample
-	for _, sample := range store.recorded {
-		if sample.Metric == storage.SampleQuery {
-			written = sample
-		}
-	}
+	written := store.lastQuerySample(t)
 	if written.Observations != 5 {
 		t.Fatalf("stored %d observations, want the 4 the failed write held plus 1", written.Observations)
 	}
@@ -130,6 +125,18 @@ func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 	if written.Max != 5*time.Millisecond {
 		t.Fatalf("stored a worst call of %v, want 5ms", written.Max)
 	}
+
+	// What a write stored is not held a second time.
+	store.stats = []storage.QueryStats{
+		{Name: "Store.ListWorkQueue", Observations: 2, Total: 2 * time.Millisecond, Max: time.Millisecond},
+	}
+	if err := measured.sampleServiceHealth(context.Background(), time.Now().UTC()); err != nil {
+		t.Fatalf("third measurement: %v", err)
+	}
+	if again := store.lastQuerySample(t); again.Observations != 2 {
+		t.Fatalf("stored %d observations, want the 2 measured since the write that succeeded",
+			again.Observations)
+	}
 }
 
 type samplingStore struct {
@@ -137,6 +144,18 @@ type samplingStore struct {
 	stats    []storage.QueryStats
 	refuse   error
 	recorded []storage.ServiceSample
+}
+
+func (s *samplingStore) lastQuerySample(t *testing.T) storage.ServiceSample {
+	t.Helper()
+	for index := len(s.recorded) - 1; index >= 0; index-- {
+		if s.recorded[index].Metric == storage.SampleQuery {
+			return s.recorded[index]
+		}
+	}
+	t.Fatal("nothing was stored for the statements that ran")
+
+	return storage.ServiceSample{}
 }
 
 func (s *samplingStore) LedgerSizes(context.Context) ([]storage.LedgerSize, error) {
