@@ -610,12 +610,13 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		Expect(item.NotBefore).To(Equal(now.Add(20 * time.Minute)))
 	})
 
-	It("holds stable recurring blockers without scheduling a retry", func() {
+	It("holds a stable recurring blocker until the next cadence retries it", func() {
 		ctx, store, now := runtime()
-		item, claimed, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{
+		claim := workqueue.RecurringClaim{
 			Kind: workqueue.KindPendingCIGate, Title: "Hold pull requests until CI settles",
 			Now: now, LeaseDuration: time.Minute,
-		})
+		}
+		item, claimed, err := store.ClaimRecurringWork(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 
@@ -631,6 +632,30 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(next).To(BeNil())
+
+		claim.Now = now.Add(4 * time.Minute)
+		held, claimed, err := store.ClaimRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeFalse())
+		Expect(held.State).To(Equal(workqueue.StateBlocked))
+		Expect(held.BlockedReason).To(Equal("GitHub rulesets require GitHub Pro"))
+
+		claim.Now = now.Add(6 * time.Minute)
+		retried, claimed, err := store.ClaimRecurringWork(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(claimed).To(BeTrue())
+		Expect(retried.ID).NotTo(Equal(item.ID))
+		Expect(retried.State).To(Equal(workqueue.StateRunning))
+		Expect(retried.Attempt).To(Equal(1))
+		Expect(retried.BlockedReason).To(BeEmpty())
+
+		page, err := store.ListWorkQueue(ctx, workqueue.Filter{
+			States: []workqueue.State{workqueue.StateSuperseded},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(page.Items).To(HaveLen(1))
+		Expect(page.Items[0].ID).To(Equal(item.ID))
+		Expect(page.Items[0].FinishedAt).NotTo(BeNil())
 	})
 
 	It("leases the scheduler's next recurring occurrence in one claim", func() {
@@ -1028,6 +1053,40 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(removed).To(Equal(int64(1)))
 		_, err = store.GetQueueItem(ctx, "queue:metric-target-failed")
+		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
+	})
+
+	It("prunes a workload whose policy carries no retention of its own", func() {
+		ctx, store, now := runtime()
+		account, _ := seedInstallation(ctx, store, now)
+		finished := now.Add(-3 * workqueue.RoutineRetention)
+		_, err := store.CreateQueueItem(ctx, workqueue.Item{
+			ID: "queue:unbounded", Kind: workqueue.KindReactionScan,
+			Lane: workqueue.LaneMaintenance, Title: "Scan for new commands",
+			State: workqueue.StateSucceeded, Priority: workqueue.PriorityNormal,
+			WindowMode: workqueue.WindowRespect,
+			ProfileID:  pointer(workqueue.AlwaysOpenProfileID),
+			NotBefore:  finished, EligibleAt: finished, FinishedAt: &finished,
+			CreatedAt: finished, UpdatedAt: finished,
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		policy, err := store.GetEffectiveQueuePolicy(ctx, workqueue.KindReactionScan, nil)
+		Expect(err).NotTo(HaveOccurred())
+		policy, err = store.SaveQueuePolicy(ctx, workqueue.PolicyChange{
+			Kind: policy.Kind, Enabled: policy.Enabled, Cadence: policy.Cadence,
+			ProfileID: policy.ProfileID, DefaultPriority: policy.DefaultPriority,
+			RetryDelay: policy.RetryDelay, Retention: nil,
+			ApprovalTTL: policy.ApprovalTTL, Configuration: policy.Configuration,
+			ExpectedRevision: policy.Revision, ActorID: account.ID, ChangedAt: now,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(policy.Retention).To(BeNil())
+
+		removed, err := store.PruneWorkQueue(ctx, now)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(removed).To(Equal(int64(1)))
+		_, err = store.GetQueueItem(ctx, "queue:unbounded")
 		Expect(errors.Is(err, storage.ErrNotFound)).To(BeTrue())
 	})
 }

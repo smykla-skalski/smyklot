@@ -221,7 +221,15 @@ func (s *Store) ensureRecurringOccurrenceTx(
 	if !policy.Enabled {
 		return workqueue.Item{}, nil
 	}
-	if missing || item.State.Terminal() {
+	retired := false
+	if item.State == workqueue.StateBlocked &&
+		recurringCadenceElapsed(policy, recurringItemAnchor(item), claim.Now) {
+		retired, err = retireBlockedRecurringItem(ctx, tx, item, claim.Now)
+		if err != nil {
+			return workqueue.Item{}, err
+		}
+	}
+	if missing || retired || item.State.Terminal() {
 		item, err = s.createRecurringOccurrence(ctx, tx, claim, policy, item, sourceID)
 		if err != nil {
 			return workqueue.Item{}, err
@@ -231,6 +239,14 @@ func (s *Store) ensureRecurringOccurrenceTx(
 	}
 
 	return item, nil
+}
+
+func recurringItemAnchor(item workqueue.Item) time.Time {
+	if item.CadenceAnchorAt != nil {
+		return *item.CadenceAnchorAt
+	}
+
+	return item.NotBefore
 }
 
 // RequestRecurringWork pulls one recurring occurrence forward without losing
@@ -309,14 +325,10 @@ func (s *Store) coalesceRecurringOccurrence(
 	claim workqueue.RecurringClaim,
 	policy workqueue.Policy,
 ) error {
-	previousAnchor := item.NotBefore
-	if item.CadenceAnchorAt != nil {
-		previousAnchor = *item.CadenceAnchorAt
-	}
+	previousAnchor := recurringItemAnchor(*item)
 	if item.Immediate || item.Attempt > 0 ||
 		(item.State != workqueue.StateScheduled && item.State != workqueue.StateReady) ||
-		policy.Cadence <= 0 ||
-		previousAnchor.Add(policy.Cadence).After(claim.Now) {
+		!recurringCadenceElapsed(policy, previousAnchor, claim.Now) {
 		return nil
 	}
 	anchor := recurringAnchor(previousAnchor, policy.Cadence, claim.Now)
@@ -345,6 +357,41 @@ UPDATE queue_items SET state = ?, not_before = ?, cadence_anchor_at = ?, eligibl
 	return insertQueueEvent(ctx, tx, workqueue.Event{
 		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "coalesced", State: state,
 		Summary: "Coalesced missed occurrences", CreatedAt: claim.Now,
+	})
+}
+
+func recurringCadenceElapsed(
+	policy workqueue.Policy,
+	anchor, now time.Time,
+) bool {
+	return policy.Cadence > 0 && !anchor.Add(policy.Cadence).After(now)
+}
+
+func retireBlockedRecurringItem(
+	ctx context.Context,
+	tx *transaction,
+	item workqueue.Item,
+	now time.Time,
+) (bool, error) {
+	result, err := tx.ExecContext(ctx, `
+UPDATE queue_items SET state = 'superseded', immediate_dispatch = FALSE,
+    lease_expires_at = NULL, finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE id = ? AND state = 'blocked'`, now, now, item.ID)
+	if err != nil {
+		return false, fmt.Errorf("retire blocked recurring item: %w", err)
+	}
+	changed, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("read retired recurring item: %w", err)
+	}
+	if changed == 0 {
+		return false, nil
+	}
+
+	return true, insertQueueEvent(ctx, tx, workqueue.Event{
+		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "retried",
+		State: workqueue.StateSuperseded, Summary: "Retried after " + item.BlockedReason,
+		CreatedAt: now,
 	})
 }
 
@@ -398,11 +445,7 @@ func (s *Store) createRecurringOccurrence(
 	previous workqueue.Item,
 	sourceID string,
 ) (workqueue.Item, error) {
-	previousAnchor := previous.NotBefore
-	if previous.CadenceAnchorAt != nil {
-		previousAnchor = *previous.CadenceAnchorAt
-	}
-	anchor := recurringAnchor(previousAnchor, policy.Cadence, claim.Now)
+	anchor := recurringAnchor(recurringItemAnchor(previous), policy.Cadence, claim.Now)
 	profile, err := getScheduleProfile(ctx, tx, policy.ProfileID)
 	if err != nil {
 		return workqueue.Item{}, noRows(err)
