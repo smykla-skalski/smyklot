@@ -816,27 +816,7 @@ func (s *Store) RecordSyncRepositoryState(
 	ctx context.Context,
 	states []orgsync.RepositoryState,
 ) error {
-	if len(states) == 0 {
-		return nil
-	}
-
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin sync repository state: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	for _, state := range states {
-		if err := upsertSyncRepositoryState(ctx, tx, state); err != nil {
-			return err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit sync repository state: %w", err)
-	}
-
-	return nil
+	return writeEach(ctx, s.db, "sync repository state", states, upsertSyncRepositoryState)
 }
 
 // upsertSyncRepositoryState records what a repository has had applied.

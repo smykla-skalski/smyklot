@@ -53,6 +53,9 @@ func DeclareSpecs(harness Harness) {
 	declareWorkQueueSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareServiceSampleSpecs(func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 	declareRuntimeSettingsHistorySpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})

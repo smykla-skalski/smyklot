@@ -236,6 +236,39 @@ func scanTimeRange(scanner rowScanner, fields ...any) (storedTimeRange, error) {
 	return storedTimeRange{createdAt: createdAt.Time(), expiresAt: expiresAt.Time()}, nil
 }
 
+// writeEach applies one write per item inside a single transaction, so a batch
+// a caller handed over as one thing is persisted as one thing.
+//
+// what names the work for the two errors only this helper can raise - opening
+// the transaction and committing it. Each write raises its own, which already
+// says which row it was on.
+func writeEach[T any](
+	ctx context.Context,
+	db handle,
+	what string,
+	items []T,
+	write func(context.Context, *transaction, T) error,
+) error {
+	if len(items) == 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin %s: %w", what, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, item := range items {
+		if err := write(ctx, tx, item); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit %s: %w", what, err)
+	}
+
+	return nil
+}
+
 func collectRows[T any](
 	rows *sql.Rows,
 	scan func(rowScanner) (T, error),

@@ -19,6 +19,7 @@ import (
 type Store struct {
 	db      handle
 	dialect Dialect
+	stats   *queryStats
 }
 
 var _ storage.Store = (*Store)(nil)
@@ -26,7 +27,9 @@ var _ storage.Store = (*Store)(nil)
 // New wraps an open pool. The caller owns opening the pool and applying
 // migrations, because both are engine-specific.
 func New(pool *sql.DB, dialect Dialect) *Store {
-	return &Store{db: newHandle(pool, dialect), dialect: dialect}
+	stats := newQueryStats()
+
+	return &Store{db: newHandle(pool, dialect, stats), dialect: dialect, stats: stats}
 }
 
 // DB returns the underlying pool.

@@ -22,14 +22,25 @@ type runner interface {
 type binder struct {
 	raw     runner
 	dialect Dialect
+	stats   *queryStats
 }
+
+// queryCallerSkip drops runtime.Callers and queryCaller from the captured
+// stack. The binder method and any promoted-method wrapper stay in it, because
+// queryCaller searches for the first frame that is not plumbing rather than
+// counting a fixed number of them.
+const queryCallerSkip = 2
 
 func (b binder) ExecContext(
 	ctx context.Context,
 	query string,
 	arguments ...any,
 ) (sql.Result, error) {
-	return b.raw.ExecContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	started := time.Now()
+	result, err := b.raw.ExecContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), err != nil)
+
+	return result, err
 }
 
 func (b binder) QueryContext(
@@ -37,15 +48,25 @@ func (b binder) QueryContext(
 	query string,
 	arguments ...any,
 ) (*sql.Rows, error) {
-	return b.raw.QueryContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	started := time.Now()
+	rows, err := b.raw.QueryContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), err != nil)
+
+	return rows, err
 }
 
+// QueryRowContext counts the round trip but never a failure: database/sql
+// carries a single-row error to Scan, which happens in the caller.
 func (b binder) QueryRowContext(
 	ctx context.Context,
 	query string,
 	arguments ...any,
 ) *sql.Row {
-	return b.raw.QueryRowContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	started := time.Now()
+	row := b.raw.QueryRowContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
+	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), false)
+
+	return row
 }
 
 // bind hands each argument to the engine in the shape that engine stores.
@@ -77,8 +98,8 @@ type handle struct {
 	pool *sql.DB
 }
 
-func newHandle(pool *sql.DB, dialect Dialect) handle {
-	return handle{binder: binder{raw: pool, dialect: dialect}, pool: pool}
+func newHandle(pool *sql.DB, dialect Dialect, stats *queryStats) handle {
+	return handle{binder: binder{raw: pool, dialect: dialect, stats: stats}, pool: pool}
 }
 
 // BeginTx opens a transaction whose statements are bound the same way. The
@@ -90,7 +111,9 @@ func (h handle) BeginTx(ctx context.Context, options *sql.TxOptions) (*transacti
 		return nil, err
 	}
 
-	return &transaction{binder: binder{raw: tx, dialect: h.dialect}, tx: tx}, nil
+	return &transaction{
+		binder: binder{raw: tx, dialect: h.dialect, stats: h.stats}, tx: tx,
+	}, nil
 }
 
 // transaction is one open transaction. Callers commit it or let the deferred

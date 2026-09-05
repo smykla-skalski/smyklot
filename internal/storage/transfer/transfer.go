@@ -80,6 +80,7 @@ var tables = []string{
 	"queue_items",
 	"queue_events",
 	"schedule_requests",
+	"service_samples",
 }
 
 // Engine is what a copy needs from a store: a connection to read or write on,

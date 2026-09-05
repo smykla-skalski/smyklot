@@ -165,6 +165,7 @@ type Store interface {
 	AuditReader
 	SecurityStore
 	PreferenceStore
+	SampleStore
 	pendingci.Store
 	pendingci.CheckStore
 	orgsync.Store
