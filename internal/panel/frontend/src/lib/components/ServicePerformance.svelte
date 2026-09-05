@@ -58,7 +58,9 @@
   }
 
   function tickLatency(value: number): string {
-    return value >= 10 ? String(Math.round(value)) : String(Number(value.toFixed(1)));
+    if (value >= 10) return String(Math.round(value));
+
+    return String(Number(value.toFixed(value >= 1 ? 1 : 2)));
   }
 
   function tickRows(value: number): string {
@@ -185,7 +187,9 @@
     if (label === 'pool_waits') {
       const waits = points.reduce((most, point) => Math.max(most, point.value ?? 0), 0);
 
-      if (waits <= 0) return 'never waited for a connection';
+      return waits <= 0
+        ? 'never waited for a connection'
+        : `busiest stretch waited ${formatCount(waits, 'time')}`;
     }
 
     return sayChange(points, (value) => sayDatabaseValue(value, label));

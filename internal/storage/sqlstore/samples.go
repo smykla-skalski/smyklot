@@ -82,7 +82,7 @@ func (s *Store) ListServiceSamples(
     SELECT label FROM service_samples
     WHERE ` + where + `
     GROUP BY label
-    ORDER BY MAX(max_nanos) DESC, label
+    ORDER BY SUM(total_nanos) DESC, label
     LIMIT ?
   )`
 		arguments = append(slices.Concat(arguments, arguments), query.Limit)

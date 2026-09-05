@@ -107,6 +107,10 @@ type server struct {
 	logLevel *slog.LevelVar
 	redactor *logging.Redactor
 
+	// sampledWaits is the pool's lifetime wait count as of the last
+	// measurement, which is what makes the stored series a level.
+	sampledWaits int64
+
 	runtimeMu                   sync.RWMutex
 	runtimeBackgroundWorkPaused bool
 	runtimeBotConfig            *config.Config
@@ -411,17 +415,23 @@ func (s *server) serveUntilDone(ctx context.Context, endpoints ...httpEndpoint) 
 	return shutdownErr
 }
 
-// startBackground runs the sweep and the readiness probe until ctx is
-// cancelled, and reports when both have stopped.
+// startBackground runs the sweep, the readiness probe and the measurement loop
+// until ctx is cancelled, and reports when they have all stopped.
 func (s *server) startBackground(ctx context.Context) <-chan struct{} {
 	var running sync.WaitGroup
 
-	running.Add(3)
+	running.Add(4)
 
 	go func() {
 		defer running.Done()
 
 		s.pollLoop(ctx)
+	}()
+
+	go func() {
+		defer running.Done()
+
+		s.sampleLoop(ctx)
 	}()
 
 	go func() {

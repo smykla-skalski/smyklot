@@ -140,18 +140,23 @@ func declareMeasurementSpecs(runtime queueRuntime) {
 	It("reads only the loudest series when it is given a limit", func() {
 		ctx, store, now := runtime()
 		hour := now.UTC().Truncate(time.Hour)
-		samples := make([]storage.ServiceSample, 0, 12)
+		samples := make([]storage.ServiceSample, 0, 13)
 		for series := range 4 {
 			for age := range 3 {
 				samples = append(samples, storage.ServiceSample{
 					Metric: storage.SampleQuery, Label: "statement-" + string(rune('a'+series)),
 					SampledAt:    hour.Add(-time.Duration(age) * time.Hour),
-					Observations: 1,
-					Total:        time.Duration(series+1) * time.Millisecond,
+					Observations: 200,
+					Total:        time.Duration(series+1) * 100 * time.Millisecond,
 					Max:          time.Duration(series+1) * time.Millisecond,
 				})
 			}
 		}
+		samples = append(samples, storage.ServiceSample{
+			Metric: storage.SampleQuery, Label: "statement-spike",
+			SampledAt: hour, Observations: 1,
+			Total: 200 * time.Millisecond, Max: 200 * time.Millisecond,
+		})
 		Expect(store.RecordServiceSamples(ctx, samples)).To(Succeed())
 
 		loudest, err := store.ListServiceSamples(ctx, storage.ServiceSampleQuery{
@@ -166,6 +171,7 @@ func declareMeasurementSpecs(runtime queueRuntime) {
 		Expect(labels).To(HaveLen(2))
 		Expect(labels).To(HaveKey("statement-d"))
 		Expect(labels).To(HaveKey("statement-c"))
+		Expect(labels).NotTo(HaveKey("statement-spike"))
 
 		windowed, err := store.ListServiceSamples(ctx, storage.ServiceSampleQuery{
 			Metric: storage.SampleQuery,
@@ -184,7 +190,7 @@ func declareMeasurementSpecs(runtime queueRuntime) {
 			Metric: storage.SampleQuery, Limit: 99,
 		})
 		Expect(err).NotTo(HaveOccurred())
-		Expect(beyond).To(HaveLen(12))
+		Expect(beyond).To(HaveLen(13))
 	})
 
 	It("counts what each lane has waiting and how long the oldest has waited", func() {
