@@ -89,9 +89,9 @@
   }
 
   const LANE_TITLES: Record<string, string> = {
-    webhook: 'Webhook lane',
-    pending_ci: 'Merge-after-CI lane',
-    maintenance: 'Background lane',
+    webhook: 'Webhook queue',
+    pending_ci: 'CI re-check queue',
+    maintenance: 'Background queue',
   };
 
   const DATABASE_TITLES: Record<string, string> = {
@@ -155,8 +155,8 @@
       {
         id: 'performance-lanes',
         heading: 'Work waiting to run',
-        note: 'A lane that climbs and stays up is work arriving faster than it leaves',
-        empty: 'Every lane has been empty',
+        note: 'A queue that climbs and stays up is work arriving faster than it leaves',
+        empty: 'Every queue has been empty',
         series: lanes,
         name: sayLane,
         read: readValue,

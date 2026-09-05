@@ -10,7 +10,7 @@
       at: new Date(start + step * 3_600_000).toISOString(),
       observations: 40 + step,
       mean_ms: shape(step),
-      value: shape(step),
+      max_ms: shape(step) * 3,
     }));
   }
 
@@ -25,7 +25,8 @@
       points: STEADY,
       read: (point: PerformancePoint) => point.mean_ms ?? 0,
       format: (value: number) => `${value.toFixed(2)} ms`,
-      caption: '968 calls',
+      tick: (value: number) => String(Number(value.toFixed(1))),
+      caption: '968 calls in the window',
     },
   });
 </script>

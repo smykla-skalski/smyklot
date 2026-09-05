@@ -101,7 +101,7 @@ describe('ServicePerformance [Component]', () => {
 
     expect(screen.getByText('List work queue')).toBeTruthy();
     expect(screen.getByText('Reaction discovery')).toBeTruthy();
-    expect(screen.getByText('Background lane')).toBeTruthy();
+    expect(screen.getByText('Background queue')).toBeTruthy();
     expect(screen.getByText('Size on disk')).toBeTruthy();
 
     expect(screen.getAllByText('620 MB').length).toBeGreaterThan(0);
