@@ -252,4 +252,26 @@ func declareMeasurementSpecs(runtime queueRuntime) {
 
 		Expect(store.DrainQueryStats()).To(BeEmpty())
 	})
+
+	declareStatementNamingSpecs(runtime)
+}
+
+func declareStatementNamingSpecs(runtime queueRuntime) {
+	It("names a generic statement after the query rather than after its type shape", func() {
+		ctx, store, now := runtime()
+		store.DrainQueryStats()
+
+		Expect(store.RecordServiceSamples(ctx, []storage.ServiceSample{{
+			Metric: storage.SampleLedger, Label: "reaction_scan",
+			SampledAt: now, Value: 1,
+		}})).To(Succeed())
+
+		stats := store.DrainQueryStats()
+		Expect(stats).NotTo(BeEmpty())
+		for _, stat := range stats {
+			Expect(stat.Name).NotTo(ContainSubstring("["))
+			Expect(stat.Name).NotTo(ContainSubstring("go.shape"))
+			Expect(stat.Name).NotTo(ContainSubstring(" "))
+		}
+	})
 }

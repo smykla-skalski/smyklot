@@ -42,7 +42,7 @@ func (s *Store) LaneBacklogs(
 	rows, err := s.db.QueryContext(ctx, `
 SELECT lane, COUNT(*), MIN(created_at)
 FROM queue_items
-WHERE state IN ('scheduled', 'ready', 'retrying')
+WHERE state IN ('scheduled', 'ready', 'retrying', 'blocked')
 GROUP BY lane
 ORDER BY lane`)
 	if err != nil {

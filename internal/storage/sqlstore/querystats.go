@@ -145,6 +145,7 @@ func shortQueryName(function string) string {
 	if function == "" {
 		return unknownQuery
 	}
+	function = withoutTypeArguments(function)
 	if index := strings.LastIndex(function, "/"); index >= 0 {
 		function = function[index+1:]
 	}
@@ -153,4 +154,14 @@ func shortQueryName(function string) string {
 	}
 
 	return strings.NewReplacer("(", "", ")", "", "*", "").Replace(function)
+}
+
+func withoutTypeArguments(function string) string {
+	opened := strings.Index(function, "[")
+	closed := strings.LastIndex(function, "]")
+	if opened < 0 || closed < opened {
+		return function
+	}
+
+	return function[:opened] + function[closed+1:]
 }

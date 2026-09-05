@@ -74,7 +74,6 @@ type performanceSeriesResponse struct {
 type performancePointResponse struct {
 	At           time.Time `json:"at"`
 	Observations int64     `json:"observations,omitempty"`
-	Failures     int64     `json:"failures,omitempty"`
 	MeanMillis   float64   `json:"mean_ms,omitempty"`
 	MaxMillis    float64   `json:"max_ms,omitempty"`
 	Value        float64   `json:"value,omitempty"`
@@ -91,7 +90,6 @@ func performanceSeries(samples []storage.ServiceSample) []performanceSeriesRespo
 		point := performancePointResponse{
 			At:           sample.SampledAt,
 			Observations: sample.Observations,
-			Failures:     sample.Failures,
 			MeanMillis:   millisecondsDTO(sample.Mean()),
 			MaxMillis:    millisecondsDTO(sample.Max),
 			Value:        sample.Value,

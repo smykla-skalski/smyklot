@@ -661,7 +661,6 @@ export type PerformanceMetric = 'query' | 'ledger' | 'lane' | 'database';
 export interface PerformancePoint {
   at: string;
   observations?: number;
-  failures?: number;
   mean_ms?: number;
   max_ms?: number;
   value?: number;
