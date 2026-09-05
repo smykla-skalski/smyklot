@@ -23,6 +23,14 @@ type ServiceSample struct {
 	Total        time.Duration
 	Max          time.Duration
 	Value        float64
+
+	// Cumulative says Value counts what happened since the last reading
+	// rather than describing the service now, so the readings that share a
+	// point are added rather than folded to their highest. A reading is the
+	// default because most of these are one: a size, a depth, a count of
+	// rows. A count of events measured every few minutes and folded to its
+	// highest would report the busiest few minutes as the whole point.
+	Cumulative bool
 }
 
 func (s ServiceSample) Mean() time.Duration {

@@ -43,10 +43,7 @@ ON CONFLICT (metric, label, sampled_at) DO UPDATE SET
         WHEN excluded.max_nanos > service_samples.max_nanos THEN excluded.max_nanos
         ELSE service_samples.max_nanos
       END,
-    value = CASE
-        WHEN excluded.value > service_samples.value THEN excluded.value
-        ELSE service_samples.value
-      END`,
+    `+valueFold(sample),
 		sample.Metric, sample.Label, sample.SampledAt.UTC().Truncate(sampleGrain),
 		sample.Observations, sample.Failures,
 		sample.Total, sample.Max, sample.Value,
@@ -56,6 +53,23 @@ ON CONFLICT (metric, label, sampled_at) DO UPDATE SET
 	}
 
 	return nil
+}
+
+// valueFold decides what the readings sharing a point do to each other. A
+// reading describes the service at the moment it was taken, so a point covering
+// several keeps the highest; a count of what happened since the last reading
+// covers only the stretch behind it, so a point covering several holds all of
+// them. Composed rather than bound, because which one applies is known before
+// the statement is built and neither engine spells either of them differently.
+func valueFold(sample storage.ServiceSample) string {
+	if sample.Cumulative {
+		return "value = service_samples.value + excluded.value"
+	}
+
+	return `value = CASE
+        WHEN excluded.value > service_samples.value THEN excluded.value
+        ELSE service_samples.value
+      END`
 }
 
 func (s *Store) ListServiceSamples(

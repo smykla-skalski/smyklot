@@ -65,6 +65,30 @@ func declareServiceSampleSpecs(runtime queueRuntime) {
 		Expect(samples[0].Value).To(Equal(5000.0))
 	})
 
+	It("adds up a count of what happened rather than keeping its highest", func() {
+		ctx, store, now := runtime()
+		hour := now.UTC().Truncate(time.Hour)
+		counted := func(value float64) []storage.ServiceSample {
+			return []storage.ServiceSample{{
+				Metric: storage.SampleDatabase, Label: "pool_waits",
+				SampledAt: hour.Add(time.Duration(value) * time.Minute),
+				Value:     value, Cumulative: true,
+			}}
+		}
+
+		Expect(store.RecordServiceSamples(ctx, counted(10))).To(Succeed())
+		Expect(store.RecordServiceSamples(ctx, counted(20))).To(Succeed())
+		Expect(store.RecordServiceSamples(ctx, counted(5))).To(Succeed())
+
+		samples, err := store.ListServiceSamples(ctx, storage.ServiceSampleQuery{
+			Metric: storage.SampleDatabase,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(samples).To(HaveLen(1))
+		Expect(samples[0].SampledAt).To(BeTemporally("==", hour))
+		Expect(samples[0].Value).To(Equal(35.0))
+	})
+
 	It("reads one metric's window, oldest first, and prunes behind it", func() {
 		ctx, store, now := runtime()
 		hour := now.UTC().Truncate(time.Hour)

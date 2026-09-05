@@ -154,7 +154,9 @@ func laneSamples(lanes []storage.LaneBacklog, now time.Time) []storage.ServiceSa
 // stored: every other series here is a level, and a counter drawn as one falls
 // off a cliff at each deploy and reads as an improvement. The caller moves that
 // baseline once the write has succeeded, so a refused write leaves the waits it
-// could not store to the next one.
+// could not store to the next one, and the waits are stored as a count of what
+// happened so that the readings sharing a point add up rather than folding to
+// the busiest few minutes among them.
 //
 // A database that answers a ping and then refuses to describe itself is
 // reachable with an error and a size of zero, so the size is stored only where
@@ -188,7 +190,7 @@ func databaseSamples(
 		},
 		storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "pool_waits",
-			SampledAt: now, Value: float64(waits),
+			SampledAt: now, Value: float64(waits), Cumulative: true,
 		},
 		storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "pool_in_use",
