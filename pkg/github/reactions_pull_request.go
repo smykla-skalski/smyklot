@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 const reactionScanAttempts = 3

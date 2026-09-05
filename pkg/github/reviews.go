@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // dismissalMessage is what GitHub records against a dismissed review.
@@ -16,7 +16,7 @@ func (c *Client) ApprovePR(ctx context.Context, owner, repo string, prNumber int
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews", owner, repo, prNumber)
 
 	_, _, err := c.gh.PullRequests.CreateReview(ctx, owner, repo, prNumber, &gogithub.PullRequestReviewRequest{
-		Event: gogithub.Ptr("APPROVE"),
+		Event: new("APPROVE"),
 	})
 
 	return wrapError(ErrAPIRequest, http.MethodPost, path, err)

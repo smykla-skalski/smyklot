@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strings"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // TreeEntry is one path a repository's tree records.
@@ -400,8 +400,8 @@ func (c *Client) EditPullRequest(
 	path := fmt.Sprintf("/repos/%s/%s/pulls/%d", owner, repo, number)
 
 	_, _, err := c.gh.PullRequests.Edit(ctx, owner, repo, number, &gogithub.PullRequest{
-		Title: gogithub.Ptr(title),
-		Body:  gogithub.Ptr(body),
+		Title: new(title),
+		Body:  new(body),
 	})
 
 	return wrapError(ErrAPIRequest, http.MethodPatch, path, err)

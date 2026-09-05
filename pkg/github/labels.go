@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // AddLabel adds a label to a pull request

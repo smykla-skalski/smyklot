@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // newGoGitHub builds the typed client this package speaks GitHub through.

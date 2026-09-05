@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // FileMode is the mode a tree entry carries. GitHub accepts a small closed set
@@ -123,7 +123,7 @@ func (c *Client) UpdateRef(ctx context.Context, owner, repo, ref, sha string, fo
 
 	_, _, err := c.gh.Git.UpdateRef(ctx, owner, repo, "refs/"+ref, gogithub.UpdateRef{
 		SHA:   sha,
-		Force: gogithub.Ptr(force),
+		Force: new(force),
 	})
 
 	return wrapError(ErrAPIRequest, http.MethodPatch, path, err)
@@ -137,8 +137,8 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 	// byte-order mark or a stray latin-1 character would otherwise be refused
 	// or silently rewritten, and Smyklot reads files that have both.
 	blob, _, err := c.gh.Git.CreateBlob(ctx, owner, repo, gogithub.Blob{
-		Content:  gogithub.Ptr(base64.StdEncoding.EncodeToString(content)),
-		Encoding: gogithub.Ptr("base64"),
+		Content:  new(base64.StdEncoding.EncodeToString(content)),
+		Encoding: new("base64"),
 	})
 	if err != nil {
 		return "", wrapError(ErrAPIRequest, http.MethodPost, path, err)
@@ -163,9 +163,9 @@ func (c *Client) CreateTree(
 
 	for _, change := range changes {
 		entry := &gogithub.TreeEntry{
-			Path: gogithub.Ptr(change.Path),
-			Mode: gogithub.Ptr(FileMode),
-			Type: gogithub.Ptr(treeType),
+			Path: new(change.Path),
+			Mode: new(FileMode),
+			Type: new(treeType),
 		}
 
 		// A nil SHA is how the API spells a deletion, and go-github renders
@@ -173,7 +173,7 @@ func (c *Client) CreateTree(
 		// Setting it to the empty string instead would ask GitHub for an object
 		// named "", which is a 422.
 		if change.Blob != "" {
-			entry.SHA = gogithub.Ptr(change.Blob)
+			entry.SHA = new(change.Blob)
 		}
 
 		entries = append(entries, entry)
@@ -201,12 +201,12 @@ func (c *Client) CreateCommit(
 
 	carried := make([]*gogithub.Commit, 0, len(parents))
 	for _, parent := range parents {
-		carried = append(carried, &gogithub.Commit{SHA: gogithub.Ptr(parent)})
+		carried = append(carried, &gogithub.Commit{SHA: new(parent)})
 	}
 
 	commit, _, err := c.gh.Git.CreateCommit(ctx, owner, repo, gogithub.Commit{
-		Message: gogithub.Ptr(message),
-		Tree:    &gogithub.Tree{SHA: gogithub.Ptr(tree)},
+		Message: new(message),
+		Tree:    &gogithub.Tree{SHA: new(tree)},
 		Parents: carried,
 	}, nil)
 	if err != nil {
@@ -225,8 +225,8 @@ func (c *Client) CreatePullRequest(
 	path := fmt.Sprintf("/repos/%s/%s/pulls", owner, repo)
 
 	pull, _, err := c.gh.PullRequests.Create(ctx, owner, repo, gogithub.CreatePullRequest{
-		Title: gogithub.Ptr(request.Title),
-		Body:  gogithub.Ptr(request.Body),
+		Title: new(request.Title),
+		Body:  new(request.Body),
 		Head:  request.Head,
 		Base:  request.Base,
 	})

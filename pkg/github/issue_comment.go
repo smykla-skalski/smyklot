@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // IssueCommentState is the live mutable state used to reject stale webhook

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 const (
@@ -139,8 +139,8 @@ func (c *Client) PostComment(ctx context.Context, owner, repo string, prNumber i
 
 	path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments", owner, repo, prNumber)
 
-	_, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, &gogithub.IssueComment{
-		Body: gogithub.Ptr(body),
+	_, _, err := c.gh.Issues.CreateComment(ctx, owner, repo, prNumber, gogithub.IssueCommentRequest{
+		Body: body,
 	})
 
 	return wrapError(ErrAPIRequest, http.MethodPost, path, err)

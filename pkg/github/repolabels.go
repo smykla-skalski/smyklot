@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 // RepositoryLabel is a label as the repository has it.
@@ -65,7 +65,7 @@ func (c *Client) CreateRepositoryLabel(
 
 	_, _, err := c.gh.Issues.CreateLabel(ctx, owner, repo, gogithub.CreateIssueLabelRequest{
 		Name:  label.Name,
-		Color: gogithub.Ptr(label.Color),
+		Color: new(label.Color),
 
 		// A pointer to an empty string, never a nil one. The field carries
 		// omitempty, which drops a nil pointer and keeps a pointer to "" - and
@@ -73,7 +73,7 @@ func (c *Client) CreateRepositoryLabel(
 		// before this is called: a configuration that declines to say leaves
 		// the existing description in the value handed over, so an empty one
 		// arriving here is somebody asking for it to be empty.
-		Description: gogithub.Ptr(label.Description),
+		Description: new(label.Description),
 	})
 
 	return wrapError(ErrAPIRequest, http.MethodPost, path, err)
@@ -102,9 +102,9 @@ func (c *Client) UpdateRepositoryLabel(
 			// Always sent, even when the name is not changing. GitHub reads
 			// new_name as "call it this", and sending the name it already has
 			// is a no-op rather than a second request to decide about.
-			NewName:     gogithub.Ptr(label.Name),
-			Color:       gogithub.Ptr(label.Color),
-			Description: gogithub.Ptr(label.Description),
+			NewName:     new(label.Name),
+			Color:       new(label.Color),
+			Description: new(label.Description),
 		})
 
 	return wrapError(ErrAPIRequest, http.MethodPatch, path, err)

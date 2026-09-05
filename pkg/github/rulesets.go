@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	gogithub "github.com/google/go-github/v90/github"
+	gogithub "github.com/google/go-github/v91/github"
 )
 
 const rulesetWorkflows = "workflows"
@@ -194,7 +194,7 @@ func (c *Client) ListRepositoryRulesets(
 		) {
 			return c.gh.Repositories.GetAllRulesets(ctx, owner, repo,
 				&gogithub.RepositoryListRulesetsOptions{
-					IncludesParents: gogithub.Ptr(true),
+					IncludesParents: new(true),
 					ListOptions:     *opts,
 				})
 		})
@@ -558,7 +558,7 @@ func asGitHubRuleset(ruleset RepositoryRuleset) gogithub.RepositoryRuleset {
 		mode := gogithub.BypassMode(actor.Mode)
 
 		raw.BypassActors = append(raw.BypassActors, &gogithub.BypassActor{
-			ActorID:    gogithub.Ptr(actor.ActorID),
+			ActorID:    new(actor.ActorID),
 			ActorType:  &actorType,
 			BypassMode: &mode,
 		})
@@ -612,7 +612,7 @@ func asGitHubRules(rules RulesetRules) *gogithub.RepositoryRulesetRules {
 	if checks := rules.RequiredStatusChecks; checks != nil {
 		rule := &gogithub.RequiredStatusChecksRuleParameters{
 			StrictRequiredStatusChecksPolicy: checks.Strict,
-			DoNotEnforceOnCreate:             gogithub.Ptr(checks.DoNotEnforceOnCreate),
+			DoNotEnforceOnCreate:             new(checks.DoNotEnforceOnCreate),
 			RequiredStatusChecks: make(
 				[]*gogithub.RuleStatusCheck, 0, len(checks.Checks)),
 		}
@@ -620,7 +620,7 @@ func asGitHubRules(rules RulesetRules) *gogithub.RepositoryRulesetRules {
 		for _, check := range checks.Checks {
 			status := &gogithub.RuleStatusCheck{Context: check.Context}
 			if check.IntegrationID != 0 {
-				status.IntegrationID = gogithub.Ptr(check.IntegrationID)
+				status.IntegrationID = new(check.IntegrationID)
 			}
 
 			rule.RequiredStatusChecks = append(rule.RequiredStatusChecks, status)
