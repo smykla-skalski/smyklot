@@ -66,6 +66,52 @@ func TestDatabaseSamplesChartPoolWaitsAsALevel(t *testing.T) {
 	}
 }
 
+func TestDatabaseSamplesStoreTheSizeOnlyWhereItWasRead(t *testing.T) {
+	now := time.Now().UTC()
+	for _, expected := range []struct {
+		name   string
+		status storage.DatabaseStatus
+		size   float64
+		stored bool
+		others bool
+	}{
+		{
+			name:   "described itself",
+			status: storage.DatabaseStatus{Reachable: true, SizeBytes: 640_000_000},
+			size:   640_000_000, stored: true, others: true,
+		},
+		{
+			name: "answered a ping and nothing else",
+			status: storage.DatabaseStatus{
+				Reachable: true, Error: "canceling statement due to statement timeout",
+			},
+			others: true,
+		},
+		{name: "unreachable", status: storage.DatabaseStatus{Error: "connection refused"}},
+	} {
+		by := map[string]float64{}
+		for _, sample := range databaseSamples(expected.status, 0, now) {
+			by[sample.Label] = sample.Value
+		}
+
+		size, stored := by["size_bytes"]
+		if stored != expected.stored {
+			t.Fatalf("%s: stored a size = %v, want %v", expected.name, stored, expected.stored)
+		}
+		if size != expected.size {
+			t.Fatalf("%s: stored a size of %v, want %v", expected.name, size, expected.size)
+		}
+		if _, measured := by["round_trip"]; measured != expected.others {
+			t.Fatalf("%s: measured the round trip = %v, want %v",
+				expected.name, measured, expected.others)
+		}
+		if _, measured := by["pool_in_use"]; measured != expected.others {
+			t.Fatalf("%s: measured the pool = %v, want %v",
+				expected.name, measured, expected.others)
+		}
+	}
+}
+
 func TestLedgerAndLaneSamplesMeasureWhatIsEmpty(t *testing.T) {
 	now := time.Now().UTC()
 	labels := func(samples []storage.ServiceSample) map[string]float64 {
@@ -108,7 +154,10 @@ func TestLedgerAndLaneSamplesMeasureWhatIsEmpty(t *testing.T) {
 
 func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 	store := &samplingStore{stats: []storage.QueryStats{
-		{Name: "Store.ListWorkQueue", Observations: 4, Total: 8 * time.Millisecond, Max: 3 * time.Millisecond},
+		{
+			Name: "Store.ListWorkQueue", Observations: 4, Failures: 2,
+			Total: 8 * time.Millisecond, Max: 5 * time.Millisecond,
+		},
 	}}
 	measured := &server{store: store}
 	store.refuse = errors.New("the database is restarting")
@@ -119,7 +168,10 @@ func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 
 	store.refuse = nil
 	store.stats = []storage.QueryStats{
-		{Name: "Store.ListWorkQueue", Observations: 1, Total: time.Millisecond, Max: 5 * time.Millisecond},
+		{
+			Name: "Store.ListWorkQueue", Observations: 1, Failures: 1,
+			Total: time.Millisecond, Max: time.Millisecond,
+		},
 	}
 	if err := measured.sampleServiceHealth(context.Background(), time.Now().UTC()); err != nil {
 		t.Fatalf("second measurement: %v", err)
@@ -128,6 +180,9 @@ func TestQueryStatsSurviveAWriteThatFailed(t *testing.T) {
 	written := store.lastQuerySample(t)
 	if written.Observations != 5 {
 		t.Fatalf("stored %d observations, want the 4 the failed write held plus 1", written.Observations)
+	}
+	if written.Failures != 3 {
+		t.Fatalf("stored %d failures, want the 2 the failed write held plus 1", written.Failures)
 	}
 	if written.Total != 9*time.Millisecond {
 		t.Fatalf("stored %v, want 9ms", written.Total)

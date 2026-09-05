@@ -155,6 +155,11 @@ func laneSamples(lanes []storage.LaneBacklog, now time.Time) []storage.ServiceSa
 // off a cliff at each deploy and reads as an improvement. The caller moves that
 // baseline once the write has succeeded, so a refused write leaves the waits it
 // could not store to the next one.
+//
+// A database that answers a ping and then refuses to describe itself is
+// reachable with an error and a size of zero, so the size is stored only where
+// it was read. The rest of these are measured before that can happen: the round
+// trip is the ping, and the pool is sampled from the connection that served it.
 func databaseSamples(
 	status storage.DatabaseStatus,
 	stored int64,
@@ -167,24 +172,27 @@ func databaseSamples(
 	if waits < 0 {
 		waits = status.Connections.WaitCount
 	}
-
-	return []storage.ServiceSample{
-		{
+	samples := make([]storage.ServiceSample, 0, 4)
+	if status.Error == "" {
+		samples = append(samples, storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "size_bytes",
 			SampledAt: now, Value: float64(status.SizeBytes),
-		},
-		{
+		})
+	}
+
+	return append(samples,
+		storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "round_trip",
 			SampledAt: now, Observations: 1,
 			Total: status.Latency, Max: status.Latency,
 		},
-		{
+		storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "pool_waits",
 			SampledAt: now, Value: float64(waits),
 		},
-		{
+		storage.ServiceSample{
 			Metric: storage.SampleDatabase, Label: "pool_in_use",
 			SampledAt: now, Value: float64(status.Connections.InUse),
 		},
-	}
+	)
 }
