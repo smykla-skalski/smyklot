@@ -56,6 +56,7 @@ import type {
   RootRuntimeSettings,
   RootRuntimeSettingsInput,
   SecurityNotification,
+  ServicePerformance,
   SyncConfig,
   SyncOverride,
   SyncPathIndex,
@@ -90,6 +91,7 @@ export interface PanelApi {
   fetchRootWorkspaces(): Promise<RootWorkspace[]>;
   syncRootWorkspaces(): Promise<string[]>;
   fetchRootOverview(): Promise<RootOverview>;
+  fetchRootPerformance(windowHours: number): Promise<ServicePerformance>;
   fetchRootPendingCI(requestId: string): Promise<PendingCIDetail>;
   checkRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
   cancelRootPendingCI(requestId: string, expectedRevision: number): Promise<PendingCIRequest>;
@@ -490,6 +492,10 @@ export function createPanelApi(
 
     fetchRootOverview(): Promise<RootOverview> {
       return jsonRequest('/api/v1/root/overview');
+    },
+
+    fetchRootPerformance(windowHours: number): Promise<ServicePerformance> {
+      return jsonRequest(`/api/v1/root/performance?window=${windowHours}`);
     },
 
     fetchRootPendingCI(requestId: string): Promise<PendingCIDetail> {

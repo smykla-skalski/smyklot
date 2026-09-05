@@ -65,21 +65,11 @@ func (s *Store) InitializeQueuePolicies(
 	defaults workqueue.DeploymentDefaults,
 	now time.Time,
 ) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin queue policy initialization: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, desired := range workqueue.DeploymentPolicies(defaults) {
-		if err := s.initializeQueuePolicy(ctx, tx, desired, now); err != nil {
-			return err
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit queue policy initialization: %w", err)
-	}
-
-	return nil
+	return writeEach(ctx, s.db, "queue policy initialization",
+		workqueue.DeploymentPolicies(defaults),
+		func(ctx context.Context, tx *transaction, desired workqueue.Policy) error {
+			return s.initializeQueuePolicy(ctx, tx, desired, now)
+		})
 }
 
 func (s *Store) initializeQueuePolicy(

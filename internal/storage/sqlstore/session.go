@@ -25,12 +25,6 @@ type binder struct {
 	stats   *queryStats
 }
 
-// queryCallerSkip drops runtime.Callers and queryCaller from the captured
-// stack. The binder method and any promoted-method wrapper stay in it, because
-// queryCaller searches for the first frame that is not plumbing rather than
-// counting a fixed number of them.
-const queryCallerSkip = 2
-
 func (b binder) ExecContext(
 	ctx context.Context,
 	query string,
@@ -38,7 +32,7 @@ func (b binder) ExecContext(
 ) (sql.Result, error) {
 	started := time.Now()
 	result, err := b.raw.ExecContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
-	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), err != nil)
+	b.stats.observe(queryCaller(), time.Since(started), err != nil)
 
 	return result, err
 }
@@ -50,13 +44,11 @@ func (b binder) QueryContext(
 ) (*sql.Rows, error) {
 	started := time.Now()
 	rows, err := b.raw.QueryContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
-	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), err != nil)
+	b.stats.observe(queryCaller(), time.Since(started), err != nil)
 
 	return rows, err
 }
 
-// QueryRowContext counts the round trip but never a failure: database/sql
-// carries a single-row error to Scan, which happens in the caller.
 func (b binder) QueryRowContext(
 	ctx context.Context,
 	query string,
@@ -64,7 +56,7 @@ func (b binder) QueryRowContext(
 ) *sql.Row {
 	started := time.Now()
 	row := b.raw.QueryRowContext(ctx, b.dialect.Rebind(query), b.bind(arguments)...)
-	b.stats.observe(queryCaller(queryCallerSkip), time.Since(started), false)
+	b.stats.observe(queryCaller(), time.Since(started), row.Err() != nil)
 
 	return row
 }

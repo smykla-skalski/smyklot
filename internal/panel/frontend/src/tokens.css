@@ -302,6 +302,10 @@
     'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Cascadia Code', menlo, consolas, monospace;
   --sans: 'Plus Jakarta Sans', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
 
+  --chart-ink: var(--brand-action);
+  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
+  --chart-grid: var(--border-subtle);
+
   /* One compact dashboard rhythm shared by every view. */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -682,6 +686,7 @@
   --surface-inset: var(--primitive-dark-inset);
   --surface-control: var(--primitive-dark-control);
   --border-subtle: var(--primitive-dark-rule);
+  --chart-grid: var(--border-subtle);
   --border-control: var(--primitive-dark-control-border);
   --control-border-hover: var(--primitive-dark-control-border-hover);
   --avatar-ring: rgb(255 255 255 / 22%);
@@ -689,6 +694,8 @@
   --text-secondary: var(--primitive-dark-secondary);
   --text-muted: var(--primitive-dark-muted);
   --brand-action: var(--primitive-petrol-400);
+  --chart-ink: var(--brand-action);
+  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #5eead4;
   /* One direction. A filled accent on a dark ground brightens on hover, so a press that went back
      down the ramp reversed it: hovering then pressing moved the fill lighter, then darker than it
@@ -835,6 +842,7 @@
   --surface-inset: #eeebf4;
   --surface-control: #f8f6fb;
   --border-subtle: #ded8e8;
+  --chart-grid: var(--border-subtle);
   --border-control: #c9c0d8;
   --border-firm: #a99bc0;
   --avatar-ring: rgb(35 24 47 / 22%);
@@ -844,6 +852,8 @@
   /* Actions follow the shell: teal controls inside the violet Root context
      read as another product. */
   --brand-action: #6d54bd;
+  --chart-ink: var(--brand-action);
+  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #5c46a8;
   --brand-action-pressed: #4f3c91;
   --brand-action-tint: #ede9fa;
@@ -976,6 +986,7 @@
   --surface-inset: #231e2d;
   --surface-control: #1b1724;
   --border-subtle: #342d40;
+  --chart-grid: var(--border-subtle);
   --border-control: #4a405a;
   --border-firm: #6c5f80;
   --avatar-ring: rgb(255 255 255 / 22%);
@@ -986,6 +997,8 @@
   --interactive-pressed-bg: #2b2436;
   --focus: #b9a4ff;
   --brand-action: #a78bfa;
+  --chart-ink: var(--brand-action);
+  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #b9a4ff;
   /* Continues up the ramp, as in the dark panel. */
   --brand-action-pressed: #cdbdff;

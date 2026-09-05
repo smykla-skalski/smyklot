@@ -61,6 +61,7 @@
     "@tanstack/svelte-query": "^6.1.38",
     "bits-ui": "^2.18.1",
     "jsonc-parser": "^3.3.1",
+    "layerchart": "^2.4.0",
     "runed": "^0.37.1"
   },
   "overrides": {

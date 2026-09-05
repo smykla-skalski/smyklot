@@ -592,10 +592,6 @@ func (s *seeder) seedFinishedSyncPlan(digest string) error {
 	}})
 }
 
-// seedServiceSamples fills service_samples with one of each shape a chart
-// reads: a timing, whose observations and durations accumulate, and a gauge,
-// whose value replaces. Every column carries a value nothing else would
-// produce, so a copy that dropped one is visible row by row.
 func (s *seeder) seedServiceSamples() error {
 	hour := s.now.UTC().Truncate(time.Hour)
 
@@ -608,6 +604,10 @@ func (s *seeder) seedServiceSamples() error {
 		{
 			Metric: storage.SampleLedger, Label: "reaction_scan",
 			SampledAt: hour.Add(-time.Hour), Value: 4282,
+		},
+		{
+			Metric: storage.SampleLane, Label: "maintenance", SampledAt: hour,
+			Observations: 1, Total: 90 * time.Second, Max: 90 * time.Second, Value: 7,
 		},
 	})
 }

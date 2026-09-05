@@ -656,6 +656,28 @@ export interface DatabaseStatus {
 
 export type DependencyState = 'healthy' | 'degraded' | 'unavailable';
 
+export type PerformanceMetric = 'query' | 'ledger' | 'lane' | 'database';
+
+export interface PerformancePoint {
+  at: string;
+  observations?: number;
+  failures?: number;
+  mean_ms?: number;
+  max_ms?: number;
+  value?: number;
+}
+
+export interface PerformanceSeries {
+  label: string;
+  points: PerformancePoint[];
+}
+
+export interface ServicePerformance {
+  since: string;
+  until: string;
+  metrics: Partial<Record<PerformanceMetric, PerformanceSeries[]>>;
+}
+
 export interface RootOverview {
   service: {
     status: 'healthy';

@@ -333,23 +333,11 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	s.registerRootQueueScheduleRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces", s.getRootWorkspaces)
 	mux.HandleFunc("GET "+base+"/api/v1/root/overview", s.getRootOverview)
+	mux.HandleFunc("GET "+base+"/api/v1/root/performance", s.getRootPerformance)
 	mux.HandleFunc("GET "+base+"/api/v1/root/pending-ci/{request}", s.getRootPendingCI)
 	mux.HandleFunc("POST "+base+"/api/v1/root/pending-ci/{request}/check", s.postRootPendingCICheck)
 	mux.HandleFunc("DELETE "+base+"/api/v1/root/pending-ci/{request}", s.deleteRootPendingCI)
-	mux.HandleFunc("GET "+base+"/api/v1/root/runtime/settings", s.getRootRuntimeSettings)
-	mux.HandleFunc("PUT "+base+"/api/v1/root/runtime/settings", s.putRootRuntimeSettings)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/baseline",
-		s.getRootSettingsBaseline,
-	)
-	mux.HandleFunc(
-		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}",
-		s.getRootSettingsCheckpoint,
-	)
-	mux.HandleFunc(
-		"POST "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}/restore",
-		s.postRootSettingsRestore,
-	)
+	s.registerRootRuntimeRoutes(mux, base)
 	s.registerExports(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/root/history/{history}", s.getRootHistory)
 	mux.HandleFunc("GET "+base+"/api/v1/root/access/{access}", s.getRootAccess)
@@ -429,6 +417,23 @@ func (s *Server) registerRootRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc(
 		"GET "+base+"/api/v1/root/workspaces/{target}/failures",
 		s.getRootTargetFailures,
+	)
+}
+
+func (s *Server) registerRootRuntimeRoutes(mux *http.ServeMux, base string) {
+	mux.HandleFunc("GET "+base+"/api/v1/root/runtime/settings", s.getRootRuntimeSettings)
+	mux.HandleFunc("PUT "+base+"/api/v1/root/runtime/settings", s.putRootRuntimeSettings)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/baseline",
+		s.getRootSettingsBaseline,
+	)
+	mux.HandleFunc(
+		"GET "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}",
+		s.getRootSettingsCheckpoint,
+	)
+	mux.HandleFunc(
+		"POST "+base+"/api/v1/root/runtime/settings/checkpoints/{checkpoint}/restore",
+		s.postRootSettingsRestore,
 	)
 }
 

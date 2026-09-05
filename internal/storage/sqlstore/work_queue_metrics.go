@@ -6,8 +6,64 @@ import (
 	"sort"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
+
+func (s *Store) LedgerSizes(ctx context.Context) ([]storage.LedgerSize, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT kind, COUNT(*)
+FROM queue_items
+WHERE finished_at IS NOT NULL
+GROUP BY kind
+ORDER BY kind`)
+	if err != nil {
+		return nil, fmt.Errorf("count ledger sizes: %w", err)
+	}
+	sizes, err := collectRows(rows, func(scanner rowScanner) (storage.LedgerSize, error) {
+		var size storage.LedgerSize
+		if err := scanner.Scan(&size.Kind, &size.Finished); err != nil {
+			return storage.LedgerSize{}, err
+		}
+
+		return size, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read ledger sizes: %w", err)
+	}
+
+	return sizes, nil
+}
+
+func (s *Store) LaneBacklogs(
+	ctx context.Context,
+	now time.Time,
+) ([]storage.LaneBacklog, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT lane, COUNT(*), MIN(created_at)
+FROM queue_items
+WHERE state IN ('scheduled', 'ready', 'retrying')
+GROUP BY lane
+ORDER BY lane`)
+	if err != nil {
+		return nil, fmt.Errorf("count lane backlogs: %w", err)
+	}
+	backlogs, err := collectRows(rows, func(scanner rowScanner) (storage.LaneBacklog, error) {
+		var backlog storage.LaneBacklog
+		var oldest StoredTime
+		if err := scanner.Scan(&backlog.Lane, &backlog.Depth, &oldest); err != nil {
+			return storage.LaneBacklog{}, err
+		}
+		backlog.Oldest = max(now.Sub(oldest.Time()), 0)
+
+		return backlog, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read lane backlogs: %w", err)
+	}
+
+	return backlogs, nil
+}
 
 type queueMetricRow struct {
 	lane      workqueue.Lane

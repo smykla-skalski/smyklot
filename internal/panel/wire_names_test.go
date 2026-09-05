@@ -181,6 +181,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/schedules",
 		"/panel/api/v1/targets/" + target + "/schedule-requests",
 		"/panel/api/v1/root/overview",
+		"/panel/api/v1/root/performance",
 		"/panel/api/v1/root/pending-ci/7",
 		"/panel/api/v1/root/workspaces",
 		"/panel/api/v1/root/access/users",

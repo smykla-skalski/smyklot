@@ -50,9 +50,11 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 					return err
 				}
 			}
-			_, err = s.store.PruneWorkQueue(ctx, now)
+			if _, err := s.store.PruneWorkQueue(ctx, now); err != nil {
+				return err
+			}
 
-			return err
+			return s.sampleServiceHealth(ctx, now)
 		},
 		failureMessage: "delivery cleanup failed",
 	}}

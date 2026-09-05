@@ -236,12 +236,6 @@ func scanTimeRange(scanner rowScanner, fields ...any) (storedTimeRange, error) {
 	return storedTimeRange{createdAt: createdAt.Time(), expiresAt: expiresAt.Time()}, nil
 }
 
-// writeEach applies one write per item inside a single transaction, so a batch
-// a caller handed over as one thing is persisted as one thing.
-//
-// what names the work for the two errors only this helper can raise - opening
-// the transaction and committing it. Each write raises its own, which already
-// says which row it was on.
 func writeEach[T any](
 	ctx context.Context,
 	db handle,
