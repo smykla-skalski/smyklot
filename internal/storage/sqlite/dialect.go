@@ -95,15 +95,42 @@ func (Dialect) UniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "constraint failed")
 }
 
-// ColumnKinds reports nothing. SQLite stores a timestamp as text and a boolean
-// as a number, and its driver accepts the time.Time and bool another engine
-// hands back, so a copy into it converts nothing.
+// ColumnKinds reports which columns were declared as text, and nothing else.
+//
+// SQLite cannot say which of them holds a time, because it stores one as text
+// and it is indistinguishable from any other text; that is decided by the value
+// the source handed back, in scanRow. What it can say is text from blob, and it
+// has to: PostgreSQL answers a jsonb column with bytes, and text affinity does
+// not convert a blob, so without this a copied document is stored as a blob
+// where every native write stores text. Both are read back the same, and
+// equality against a string stops matching.
 func (Dialect) ColumnKinds(
-	_ context.Context,
-	_ *sql.Conn,
-	_ string,
+	ctx context.Context,
+	conn *sql.Conn,
+	table string,
 ) (map[string]sqlstore.ColumnKind, error) {
-	return nil, nil
+	// #nosec G202 -- the table name comes from the copier's own list.
+	rows, err := conn.QueryContext(ctx, `SELECT name, type FROM pragma_table_info(?)`, table)
+	if err != nil {
+		return nil, fmt.Errorf("read sqlite column types for %q: %w", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	kinds := map[string]sqlstore.ColumnKind{}
+	for rows.Next() {
+		var column, declared string
+		if err := rows.Scan(&column, &declared); err != nil {
+			return nil, fmt.Errorf("scan sqlite column type: %w", err)
+		}
+		if strings.EqualFold(declared, "TEXT") {
+			kinds[column] = sqlstore.ColumnText
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read sqlite column types for %q: %w", table, err)
+	}
+
+	return kinds, nil
 }
 
 // InsertOverride is empty. SQLite lets a row carry its own key.

@@ -58,6 +58,7 @@ func TestCopyToPostgres(t *testing.T) {
 	if err := storagetest.Seed(ctx, source, seededAt); err != nil {
 		t.Fatalf("seed sqlite: %v", err)
 	}
+	requireStoredAsDeclared(t, ctx, source)
 
 	destination := freshPostgres(t, ctx, dsn, "smyklot_copy")
 
@@ -69,6 +70,119 @@ func TestCopyToPostgres(t *testing.T) {
 	requireSeededTablesCarriedRows(t, report)
 	requireSameState(t, ctx, source, destination)
 	requireWritesContinue(t, ctx, destination)
+}
+
+// TestCopyBackToSQLite proves the rollback keeps the data too.
+//
+// It is the direction an operator reaches for when a cutover has to be undone,
+// and it is the harder one: PostgreSQL answers a timestamp with a time.Time,
+// SQLite stores one as text, and SQLite cannot say which of its columns is
+// which. Nothing here read a copy back in this direction, and a copy that wrote
+// every timestamp in the machine's local zone reported success and produced a
+// database whose every dated read failed to parse.
+func TestCopyBackToSQLite(t *testing.T) {
+	t.Parallel()
+
+	dsn := strings.TrimSpace(os.Getenv(dsnVariable))
+	if dsn == "" {
+		t.Skip(dsnVariable + " is not set, so there is no server to copy out of")
+	}
+
+	ctx := context.Background()
+
+	source := freshPostgres(t, ctx, dsn, "smyklot_rollback")
+	if err := storagetest.Seed(ctx, source, seededAt); err != nil {
+		t.Fatalf("seed postgres: %v", err)
+	}
+
+	destination, err := storagesqlite.Open(ctx, filepath.Join(t.TempDir(), "rollback.db"))
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { _ = destination.Close() })
+
+	report, err := transfer.Copy(ctx, source, destination, transfer.Options{})
+	if err != nil {
+		t.Fatalf("copy: %v", err)
+	}
+
+	requireSeededTablesCarriedRows(t, report)
+	requireSameState(t, ctx, source, destination)
+	requireStoredAsDeclared(t, ctx, destination)
+	requireWritesContinue(t, ctx, destination)
+}
+
+// requireStoredAsDeclared fails a SQLite database holding a value in a class
+// its column did not declare, and sweeps every text column in the schema
+// rather than a list somebody has to remember to extend.
+//
+// SQLite keeps what it was handed rather than what the column declares, and a
+// read converts both, so a value in the wrong class reads back correctly and
+// compares wrongly: on a document stored as a blob, `doc = '{}'` is false where
+// a row stored as text says true. Both a copy and a native write can get this
+// wrong - PostgreSQL answers jsonb with bytes, and a writer that binds its
+// document as []byte hands SQLite the same thing - so this runs against a
+// database this service wrote and against one the copy wrote.
+func requireStoredAsDeclared(t *testing.T, ctx context.Context, store storage.Store) {
+	t.Helper()
+
+	engine, ok := store.(transfer.Engine)
+	if !ok {
+		t.Fatalf("%T exposes no connection", store)
+	}
+	columns, err := textColumns(ctx, engine.DB())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) == 0 {
+		t.Fatal("the schema declares no text column, so nothing was inspected")
+	}
+
+	filled := 0
+	for _, column := range columns {
+		var stored, wrong int
+		// #nosec G202 -- both names come from this database's own schema.
+		if err := engine.DB().QueryRowContext(ctx, fmt.Sprintf(
+			`SELECT COUNT(%[1]s),
+			 COUNT(*) FILTER (WHERE typeof(%[1]s) NOT IN ('text', 'null')) FROM %[2]s`,
+			column.column, column.table,
+		)).Scan(&stored, &wrong); err != nil {
+			t.Fatal(err)
+		}
+		filled += stored
+		if wrong != 0 {
+			t.Errorf("%s.%s holds %d of %d values in a class other than text",
+				column.table, column.column, wrong, stored)
+		}
+	}
+	if filled == 0 {
+		t.Fatal("every text column was empty, so nothing was inspected")
+	}
+}
+
+type schemaColumn struct{ table, column string }
+
+func textColumns(ctx context.Context, db *sql.DB) ([]schemaColumn, error) {
+	rows, err := db.QueryContext(ctx, `
+SELECT m.name, p.name
+FROM sqlite_master m JOIN pragma_table_info(m.name) p
+WHERE m.type = 'table' AND m.name NOT LIKE 'sqlite_%' AND p.type = 'TEXT'
+ORDER BY m.name, p.name`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	columns := make([]schemaColumn, 0, 64)
+	for rows.Next() {
+		var found schemaColumn
+		if err := rows.Scan(&found.table, &found.column); err != nil {
+			return nil, err
+		}
+		columns = append(columns, found)
+	}
+
+	return columns, rows.Err()
 }
 
 // requireWritesContinue writes to the copy, which is the only way to see
@@ -189,6 +303,10 @@ func requireSeededTablesCarriedRows(t *testing.T, report transfer.Report) {
 // requireSameState reads both databases through the port and compares what
 // they answer. Every read goes through the same interface the application uses,
 // so a difference here is a difference the application would see.
+var sampleMetrics = []storage.SampleMetric{
+	storage.SampleQuery, storage.SampleLedger, storage.SampleLane, storage.SampleDatabase,
+}
+
 func requireSameState(t *testing.T, ctx context.Context, source, destination storage.Store) {
 	t.Helper()
 
@@ -247,13 +365,30 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 				HistoryPageRequest: storage.HistoryPageRequest{Limit: 50},
 			})
 		}},
+		// What the service has measured of itself, which is the one table here
+		// whose rows are almost entirely numbers: a copy that carried every
+		// label and zeroed every counter passed on the count alone.
+		{"service samples", func(s storage.Store) (any, error) {
+			measured := make([]storage.ServiceSample, 0, len(sampleMetrics))
+			for _, metric := range sampleMetrics {
+				samples, err := s.ListServiceSamples(
+					ctx, storage.ServiceSampleQuery{Metric: metric},
+				)
+				if err != nil {
+					return nil, err
+				}
+				measured = append(measured, samples...)
+			}
+
+			return measured, nil
+		}},
 	}
 
 	for _, check := range checks {
 		want, wantErr := check.read(source)
 		got, gotErr := check.read(destination)
 		if fmt.Sprint(wantErr) != fmt.Sprint(gotErr) {
-			t.Errorf("%s: sqlite returned %v, postgres returned %v", check.what, wantErr, gotErr)
+			t.Errorf("%s: the source returned %v, the copy returned %v", check.what, wantErr, gotErr)
 
 			continue
 		}
@@ -263,7 +398,7 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 		// fields on these models are optional, and %v would compare the
 		// addresses two separate reads happened to allocate.
 		if render(want) != render(got) {
-			t.Errorf("%s differs after the copy:\n  sqlite:   %s\n  postgres: %s",
+			t.Errorf("%s differs after the copy:\n  source: %s\n  copy:   %s",
 				check.what, render(want), render(got))
 		}
 	}

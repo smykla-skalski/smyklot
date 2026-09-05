@@ -1,12 +1,79 @@
 package panel
 
 import (
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
+
+func TestRootPerformanceReadsTheWindowAndCapsTheStatements(t *testing.T) {
+	harness := newPanelHarness(t, "owner")
+	session := harness.signIn(t)
+	measured := make([]storage.ServiceSample, 0, 30)
+	for series := range 14 {
+		measured = append(measured,
+			storage.ServiceSample{
+				Metric: storage.SampleQuery, Label: fmt.Sprintf("Store.Read%02d", series),
+				SampledAt: harness.now, Observations: 1,
+				Total: time.Duration(series+1) * time.Millisecond,
+				Max:   time.Duration(series+1) * time.Millisecond,
+			},
+			storage.ServiceSample{
+				Metric: storage.SampleLedger, Label: fmt.Sprintf("kind_%02d", series),
+				SampledAt: harness.now, Value: float64(series + 1),
+			},
+		)
+	}
+	measured = append(measured, storage.ServiceSample{
+		Metric: storage.SampleLedger, Label: "long_ago",
+		SampledAt: harness.now.Add(-5 * time.Hour), Value: 4000,
+	})
+	if err := harness.store.RecordServiceSamples(t.Context(), measured); err != nil {
+		t.Fatal(err)
+	}
+
+	read := func(query string) performanceResponse {
+		t.Helper()
+		response := harness.request(
+			t, http.MethodGet, "/panel/api/v1/root/performance"+query, nil, session,
+		)
+		if response.Code != http.StatusOK {
+			t.Fatalf("%q answered %d: %s", query, response.Code, response.Body.String())
+		}
+		var body performanceResponse
+		if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+			t.Fatal(err)
+		}
+
+		return body
+	}
+
+	day := read("")
+	if got := len(day.Metrics["query"]); got != performanceSeriesLimit {
+		t.Errorf("14 statements came back as %d series, want %d", got, performanceSeriesLimit)
+	}
+	if got := len(day.Metrics["ledger"]); got != 15 {
+		t.Errorf("the ledger came back as %d series, want all 15", got)
+	}
+	if !day.Since.Equal(day.Until.Add(-24 * time.Hour)) {
+		t.Errorf("the default window ran %v to %v, want a day", day.Since, day.Until)
+	}
+
+	hour := read("?window=1")
+	if got := len(hour.Metrics["ledger"]); got != 14 {
+		t.Errorf("an hour came back as %d ledger series, want the 14 inside it", got)
+	}
+	for _, one := range hour.Metrics["ledger"] {
+		if one.Label == "long_ago" {
+			t.Error("a reading from five hours ago came back inside a one-hour window")
+		}
+	}
+}
 
 func TestPerformanceWindowDefaultsToADayAndStopsAtNinety(t *testing.T) {
 	for _, expected := range []struct {

@@ -436,9 +436,16 @@ func (s *seeder) seedOrgSync() error {
 	original, err := s.store.SaveInstallationSettings(
 		s.ctx, storage.SaveInstallationSettingsRequest{
 			TargetID: s.target.TargetID, ActorAccountID: s.owner.ID, ChangedAt: s.now,
-			SyncConfigs: []storage.InstallationSyncConfigChange{{
-				Kind: orgsync.KindLabels, Enabled: true, Document: document,
-			}},
+			SyncConfigs: []storage.InstallationSyncConfigChange{
+				{Kind: orgsync.KindLabels, Enabled: true, Document: document},
+				// Written once and never revised, where the labels config below
+				// is updated twice. An insert and an update are separate
+				// statements and have disagreed about how they bind a document.
+				{
+					Kind: orgsync.KindSettings, Enabled: true,
+					Document: []byte(`{"delete_branch_on_merge":true}`),
+				},
+			},
 		},
 	)
 	if err != nil {

@@ -186,6 +186,51 @@ func TestPoolWaitsAddUpWithinAnHour(t *testing.T) {
 	}
 }
 
+func TestMeasuringDropsWhatIsPastRetention(t *testing.T) {
+	t.Parallel()
+	kept, err := open.Store(t.Context(), filepath.Join(t.TempDir(), "retention.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := kept.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	now := time.Date(2026, 9, 5, 16, 0, 0, 0, time.UTC)
+	stale := now.Add(-sampleRetention).Add(-time.Hour)
+	fresh := now.Add(-sampleRetention).Add(time.Hour)
+	if err := kept.RecordServiceSamples(t.Context(), []storage.ServiceSample{
+		{Metric: storage.SampleLedger, Label: "stale", SampledAt: stale, Value: 1},
+		{Metric: storage.SampleLedger, Label: "fresh", SampledAt: fresh, Value: 2},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	measured := &server{store: &waitingStore{Store: kept}}
+	if err := measured.sampleServiceHealth(t.Context(), now); err != nil {
+		t.Fatal(err)
+	}
+
+	samples, err := kept.ListServiceSamples(t.Context(), storage.ServiceSampleQuery{
+		Metric: storage.SampleLedger, Since: stale.Add(-time.Hour), Until: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := map[string]bool{}
+	for _, sample := range samples {
+		held[sample.Label] = true
+	}
+	if held["stale"] {
+		t.Errorf("a reading from before the %v retention was kept", sampleRetention)
+	}
+	if !held["fresh"] {
+		t.Errorf("a reading from inside the %v retention was dropped", sampleRetention)
+	}
+}
+
 func TestLedgerAndLaneSamplesMeasureWhatIsEmpty(t *testing.T) {
 	now := time.Now().UTC()
 	labels := func(samples []storage.ServiceSample) map[string]float64 {

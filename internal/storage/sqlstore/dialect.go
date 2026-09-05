@@ -18,6 +18,13 @@ const (
 
 	// ColumnBool is a real boolean, where another engine may hand over 0 or 1.
 	ColumnBool
+
+	// ColumnText is text, where another engine may hand over bytes. A document
+	// column is the case: PostgreSQL answers jsonb with bytes, and SQLite's
+	// text affinity does not convert them, so the copy would hold a blob where
+	// every native write holds text and equality against a string stops
+	// matching.
+	ColumnText
 )
 
 // Dialect describes the few places where SQL engines genuinely disagree.
