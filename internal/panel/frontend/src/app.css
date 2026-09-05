@@ -2449,7 +2449,7 @@ button.object-row {
   margin-block-end: var(--rhythm-toolbar-surface);
 }
 
-/* WHERE THE FRAME IS THE PARENT ITS GAP ALREADY SAID THIS, and the two added up:
+/* WHERE A GAPPED CONTAINER IS THE PARENT ITS GAP ALREADY SAID THIS, and the two added up:
    32px under every search bar that is a child of the frame, where the drawing has
    16. Said as a stand-down rather than by deleting the margin, because a toolbar
    inside a plate has no frame gap under it at all - dropped outright, the
@@ -2460,7 +2460,8 @@ button.object-row {
    the frame's own children and simply carry no margin: a scoped rule TIES with
    this one on specificity and wins on source order, so a stand-down written for
    them would not have reached them. */
-.view-frame > .filter-bar {
+.view-frame > .filter-bar,
+.card-stack > .filter-bar {
   margin-block-end: 0;
 }
 

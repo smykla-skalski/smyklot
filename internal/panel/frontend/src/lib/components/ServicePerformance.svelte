@@ -1,5 +1,11 @@
 <script module lang="ts">
-  import { formatBytes, formatCount, formatElapsed, formatLatency } from '#lib/format.js';
+  import {
+    formatBytes,
+    formatCompact,
+    formatCount,
+    formatElapsed,
+    formatLatency,
+  } from '#lib/format.js';
   import type { PerformancePoint, PerformanceSeries, QueueWorkload } from '#lib/types.ts';
   import { WORKLOAD_COPY, workloadTitle } from '#lib/workloads.js';
 
@@ -8,9 +14,9 @@
   const SAMPLE_INTERVAL = 5 * 60 * 1000;
 
   const WINDOWS = [
-    { value: '24', label: 'Day' },
-    { value: '168', label: 'Week' },
-    { value: '720', label: 'Month' },
+    { value: '24', label: '24 hours' },
+    { value: '168', label: '7 days' },
+    { value: '720', label: '30 days' },
   ];
 
   function readMean(point: PerformancePoint): number {
@@ -22,13 +28,13 @@
   }
 
   function sayRows(value: number): string {
-    return formatCount(Math.round(value), 'row');
+    return formatCompact(Math.round(value), 'row');
   }
 
   function sayCalls(points: PerformanceSeries['points']): string {
     const calls = points.reduce((total, point) => total + (point.observations ?? 0), 0);
 
-    return formatCount(calls, 'call');
+    return `${formatCompact(calls, 'call')} in the window`;
   }
 
   function sayWaiting(value: number): string {
@@ -38,11 +44,38 @@
   function sayOldest(points: PerformanceSeries['points']): string {
     const oldest = points.at(-1)?.max_ms ?? 0;
 
-    return oldest <= 0 ? 'nothing has waited' : `oldest ${formatElapsed(oldest)}`;
+    return oldest <= 0 ? 'nothing waiting right now' : `longest wait ${formatElapsed(oldest)}`;
+  }
+
+  function sayChange(points: PerformanceSeries['points'], say: (value: number) => string): string {
+    const first = points[0]?.value ?? 0;
+    const last = points.at(-1)?.value ?? 0;
+    const change = last - first;
+
+    if (change === 0) return 'unchanged over this window';
+
+    return `${change > 0 ? 'up' : 'down'} ${say(Math.abs(change))} over this window`;
+  }
+
+  function tickLatency(value: number): string {
+    return value >= 10 ? String(Math.round(value)) : String(Number(value.toFixed(1)));
+  }
+
+  function tickRows(value: number): string {
+    return formatCompact(Math.round(value));
   }
 
   function sayWorkload(label: string): string {
     return label in WORKLOAD_COPY ? workloadTitle(label as QueueWorkload) : label;
+  }
+
+  function sayStatement(label: string): string {
+    return label
+      .split('.')
+      .map((part) => part.replace(/([a-z\d])([A-Z])/gu, '$1 $2').toLocaleLowerCase())
+      .filter((part) => part !== 'store')
+      .join(' · ')
+      .replace(/^./u, (first) => first.toLocaleUpperCase());
   }
 
   function sayLane(label: string): string {
@@ -54,9 +87,9 @@
   }
 
   const LANE_TITLES: Record<string, string> = {
-    webhook: 'Webhook intake',
-    pending_ci: 'Merge after CI',
-    maintenance: 'Background work',
+    webhook: 'Webhook lane',
+    pending_ci: 'Merge-after-CI lane',
+    maintenance: 'Background lane',
   };
 
   const DATABASE_TITLES: Record<string, string> = {
@@ -75,7 +108,8 @@
     name: (label: string) => string;
     read: (point: PerformancePoint) => number;
     format: (value: number, label: string) => string;
-    caption?: (points: PerformanceSeries['points']) => string;
+    tick: (value: number, label: string) => string;
+    caption: (points: PerformanceSeries['points'], label: string) => string;
   }
 
   function sections(
@@ -87,47 +121,74 @@
     return [
       {
         id: 'performance-queries',
-        heading: 'Statements, average',
-        note: 'What one call of each of the busiest statements took. A line that climbs while nothing else changed is an index the ledger has outgrown.',
-        empty: 'The service records this every five minutes once it has run a statement',
+        heading: 'How long a database read takes',
+        note: 'One call of each of the busiest reads. A line that climbs while nothing else changed is a query that has outgrown its index',
+        empty: 'Reads are recorded as they run, and none has run yet',
         series: queries,
-        name: (label) => label,
+        name: sayStatement,
         read: readMean,
         format: formatLatency,
+        tick: tickLatency,
         caption: sayCalls,
       },
       {
         id: 'performance-ledger',
-        heading: 'Finished work kept',
-        note: 'How many finished rows each workload still holds. Retention should take these down again; one that only ever climbs is a workload nothing is pruning.',
-        empty: 'The service records this every five minutes',
+        heading: 'Rows kept after work finishes',
+        note: 'Retention should take each of these down again. One that only ever climbs is work nothing is pruning',
+        empty: 'Rows are counted as work finishes, and nothing has finished yet',
         series: kept,
         name: sayWorkload,
         read: readValue,
         format: sayRows,
+        tick: tickRows,
+        caption: (points) => sayChange(points, sayRows),
       },
       {
         id: 'performance-lanes',
-        heading: 'Work waiting',
-        note: "How deep each lane's backlog is, and beside it how long the oldest thing in it had been waiting. A lane that climbs and stays up is work arriving faster than it leaves.",
-        empty: 'Nothing has been waiting in any lane',
+        heading: 'Work waiting to run',
+        note: 'A lane that climbs and stays up is work arriving faster than it leaves',
+        empty: 'Every lane has been empty',
         series: lanes,
         name: sayLane,
         read: readValue,
         format: sayWaiting,
+        tick: tickRows,
         caption: sayOldest,
       },
       {
         id: 'performance-database',
-        heading: 'The database itself',
-        note: 'What the database reports about its own size, responsiveness and pool.',
-        empty: 'The service records this every five minutes',
+        heading: 'What the database says about itself',
+        note: 'Its size on disk, how quickly it answers, and how hard its connection pool is working',
+        empty: 'The database has not been sampled yet',
         series: database,
         name: sayDatabase,
         read: (point) => point.value ?? point.mean_ms ?? 0,
         format: sayDatabaseValue,
+        tick: (value, label) =>
+          label === 'size_bytes' ? formatBytes(value) : tickLatencyOrCount(value, label),
+        caption: sayDatabaseCaption,
       },
     ];
+  }
+
+  function tickLatencyOrCount(value: number, label: string): string {
+    return label === 'round_trip' ? tickLatency(value) : tickRows(value);
+  }
+
+  function sayDatabaseCaption(points: PerformanceSeries['points'], label: string): string {
+    if (label === 'round_trip') {
+      const worst = points.reduce((slowest, point) => Math.max(slowest, point.max_ms ?? 0), 0);
+
+      return `slowest ${formatLatency(worst)}`;
+    }
+
+    if (label === 'pool_waits') {
+      const waits = points.reduce((most, point) => Math.max(most, point.value ?? 0), 0);
+
+      if (waits <= 0) return 'never waited for a connection';
+    }
+
+    return sayChange(points, (value) => sayDatabaseValue(value, label));
   }
 
   function sayDatabaseValue(value: number, label: string): string {
@@ -171,108 +232,105 @@
   const groups = $derived(sections(queries, kept, lanes, database));
 </script>
 
-<Card labelledby="service-performance">
-  <div class="performance-head">
-    <h2 class="group-name" id="service-performance">What the service has cost</h2>
-    <SegmentedControl
-      name="performance-window"
-      label="How far back"
-      compact
-      options={WINDOWS}
-      value={String(windowHours)}
-      onSelect={(chosen) => (windowHours = Number(chosen))}
-    />
-  </div>
+<div class="filter-bar">
+  <SegmentedControl
+    name="performance-window"
+    label="How far back"
+    options={WINDOWS}
+    value={String(windowHours)}
+    onSelect={(chosen) => (windowHours = Number(chosen))}
+  />
+</div>
 
-  {#if measurements.isPending && measured === undefined}
+{#if measurements.isPending && measured === undefined}
+  <Card>
     <p class="performance-state" role="status">Reading what has been measured</p>
-  {:else if measured === undefined}
+  </Card>
+{:else if measured === undefined}
+  <Card>
     <ResultProblem
       title="These numbers could not be read"
       problem={measurements.error?.message ?? 'the database did not answer'}
       busy={measurements.isFetching}
       onRetry={() => void measurements.refetch()}
     />
-  {:else}
-    {#each groups as group (group.id)}
-      <section class="performance-group" aria-labelledby={group.id}>
-        <h3 class="performance-heading" id={group.id}>{group.heading}</h3>
-        <p class="performance-note">{group.note}</p>
-        {#if group.series.length === 0}
-          <EmptyState title="Nothing measured in this window" description={group.empty} />
-        {:else}
-          <div class="performance-grid">
-            {#each group.series as one (one.label)}
-              <PerformanceChart
-                label={group.name(one.label)}
-                points={one.points}
-                read={group.read}
-                format={(value: number) => group.format(value, one.label)}
-                caption={group.caption?.(one.points) ?? ''}
-              />
-            {/each}
-          </div>
-        {/if}
-      </section>
-    {/each}
-  {/if}
-</Card>
+  </Card>
+{:else}
+  {#each groups as group (group.id)}
+    <Card labelledby={group.id}>
+      <div class="card-head"><h2 class="card-title" id={group.id}>{group.heading}</h2></div>
+      <p class="group-note">{group.note}</p>
+      {#if group.series.length === 0}
+        <EmptyState title="Nothing measured in this window" description={group.empty} />
+      {:else}
+        <div class="performance-grid">
+          {#each group.series as one (one.label)}
+            <PerformanceChart
+              label={group.name(one.label)}
+              points={one.points}
+              read={group.read}
+              format={(value: number) => group.format(value, one.label)}
+              tick={(value: number) => group.tick(value, one.label)}
+              caption={group.caption(one.points, one.label)}
+            />
+          {/each}
+        </div>
+      {/if}
+    </Card>
+  {/each}
+{/if}
 
 <!--
 @component
-What the service has cost itself, as a grid of small named charts.
+How the service has been running, as one card per family of measurements.
 
 It sits under Runtime's service health, where the live numbers are: those say what the
 database is now, and these say how it got there. A ledger that grew for eleven days and
 a statement that had quietly become a sequential scan were both invisible until someone
 ran EXPLAIN by hand, and this is the page that would have shown them.
 
+A CARD PER FAMILY, and not one card of four sections. The four are read separately -
+nobody asks about query latency and connection waits in the same breath - and a section
+heading inside a card is a level the page does not have: the cards above this one are
+`h2` under the page's `h1`, so a fifth card holding four `h3` sections read as one thing
+with parts rather than as four peers. Every card is the panel's own card head and note,
+which is what carries the distances; this component states none of them.
+
+The window belongs to all four, so it is a toolbar over the stack rather than a control
+in one card's head. A segmented control rather than an address: which slice of time is
+being read is a question a reader asks and answers in a second, and a reload landing
+back on the day is the right default rather than a loss.
+
 Every chart carries its own scale and its own name, so nothing is identified by colour
 and no legend is needed. Two charts side by side are NOT comparable by height - the
 current value is printed beside each name for that. The alternative, a dozen series
 sharing one axis, needs a categorical palette, and one that survives colour-blind
 separation runs out at about four hues.
-
-The window is a segmented control rather than an address: which slice of time is being
-read is a question a reader asks and answers in a second, and a reload landing back on
-the day is the right default rather than a loss.
 -->
 
 <style>
-  .performance-head {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    justify-content: space-between;
-  }
-
-  .performance-group {
-    display: grid;
-    gap: var(--space-2);
-    margin-block-start: var(--space-6);
-  }
-
-  .performance-heading {
-    color: var(--text-primary);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-    margin: 0;
-  }
-
-  .performance-note,
   .performance-state {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
     line-height: var(--leading-meta);
     margin: 0;
-    max-inline-size: var(--measure-note);
   }
 
   .performance-grid {
     display: grid;
-    gap: var(--space-5);
-    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
-    margin-block-start: var(--space-2);
+    gap: var(--space-6);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  @media (max-width: 75rem) {
+    .performance-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 48rem) {
+    .performance-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>

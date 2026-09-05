@@ -80,21 +80,28 @@ describe('ServicePerformance [Component]', () => {
   it('draws every section it was given, each named rather than coloured', async () => {
     mount(() => Promise.resolve(measured()));
 
-    expect(await screen.findByText('Statements, average')).toBeTruthy();
-    expect(screen.getByText('Finished work kept')).toBeTruthy();
-    expect(screen.getByText('Work waiting')).toBeTruthy();
-    expect(screen.getByText('The database itself')).toBeTruthy();
+    expect(await screen.findByText('How long a database read takes')).toBeTruthy();
+    expect(screen.getByText('Rows kept after work finishes')).toBeTruthy();
+    expect(screen.getByText('Work waiting to run')).toBeTruthy();
+    expect(screen.getByText('What the database says about itself')).toBeTruthy();
 
-    expect(screen.getByText('Store.ListWorkQueue')).toBeTruthy();
+    expect(screen.getByText('List work queue')).toBeTruthy();
     expect(screen.getByText('Reaction discovery')).toBeTruthy();
-    expect(screen.getByText('Background work')).toBeTruthy();
+    expect(screen.getByText('Background lane')).toBeTruthy();
     expect(screen.getByText('Size on disk')).toBeTruthy();
+
+    expect(screen.getAllByText('620 MB').length).toBeGreaterThan(0);
+    expect(screen.getByText('13.0 ms')).toBeTruthy();
+    expect(screen.getByText('9.00 ms')).toBeTruthy();
+    expect(screen.getByText('75 calls in the window')).toBeTruthy();
+    expect(screen.getByText('4,050 rows')).toBeTruthy();
+    expect(screen.getByText('2 items waiting')).toBeTruthy();
   });
 
   it('says a section is empty rather than drawing an axis with nothing on it', async () => {
     mount(() => Promise.resolve(measured({ query: [] })));
 
-    expect(await screen.findByText('Statements, average')).toBeTruthy();
+    expect(await screen.findByText('How long a database read takes')).toBeTruthy();
     expect(screen.getAllByText('Nothing measured in this window.').length).toBeGreaterThan(0);
   });
 

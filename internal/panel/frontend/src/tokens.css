@@ -303,7 +303,6 @@
   --sans: 'Plus Jakarta Sans', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
 
   --chart-ink: var(--brand-action);
-  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --chart-grid: var(--border-subtle);
 
   /* One compact dashboard rhythm shared by every view. */
@@ -695,7 +694,6 @@
   --text-muted: var(--primitive-dark-muted);
   --brand-action: var(--primitive-petrol-400);
   --chart-ink: var(--brand-action);
-  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #5eead4;
   /* One direction. A filled accent on a dark ground brightens on hover, so a press that went back
      down the ramp reversed it: hovering then pressing moved the fill lighter, then darker than it
@@ -853,7 +851,6 @@
      read as another product. */
   --brand-action: #6d54bd;
   --chart-ink: var(--brand-action);
-  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #5c46a8;
   --brand-action-pressed: #4f3c91;
   --brand-action-tint: #ede9fa;
@@ -998,7 +995,6 @@
   --focus: #b9a4ff;
   --brand-action: #a78bfa;
   --chart-ink: var(--brand-action);
-  --chart-fill: color-mix(in oklab, var(--brand-action) 14%, transparent);
   --brand-action-hover: #b9a4ff;
   /* Continues up the ramp, as in the dark panel. */
   --brand-action-pressed: #cdbdff;

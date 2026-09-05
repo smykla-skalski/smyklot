@@ -4709,19 +4709,31 @@ function mockPerformance(windowHours: number): ServicePerformance {
   const since = until - hours * 3_600_000;
   const steps = Math.min(hours, 240);
 
-  function points(shape: (step: number) => number, timing: boolean): PerformancePoint[] {
+  function points(
+    shape: (step: number) => number,
+    kind: 'timing' | 'gauge' | 'backlog',
+  ): PerformancePoint[] {
     return Array.from({ length: steps }, (unused, step) => {
       const value = shape(step);
       const at = new Date(since + ((until - since) * step) / steps).toISOString();
 
-      return timing
-        ? { at, observations: 40 + step, mean_ms: value, max_ms: value * 3 }
-        : { at, value };
+      if (kind === 'timing') {
+        return { at, observations: 40 + step, mean_ms: value, max_ms: value * 3 };
+      }
+      if (kind === 'backlog') {
+        return { at, value, observations: 12, mean_ms: value * 20_000, max_ms: value * 45_000 };
+      }
+
+      return { at, value };
     });
   }
 
-  function series(label: string, shape: (step: number) => number, timing: boolean) {
-    return { label, points: points(shape, timing) };
+  function series(
+    label: string,
+    shape: (step: number) => number,
+    kind: 'timing' | 'gauge' | 'backlog',
+  ) {
+    return { label, points: points(shape, kind) };
   }
 
   return {
@@ -4729,23 +4741,27 @@ function mockPerformance(windowHours: number): ServicePerformance {
     until: new Date(until).toISOString(),
     metrics: {
       query: [
-        series('Store.ListWorkQueue', (step) => 18 + Math.sin(step / 5) * 6, true),
-        series('latestRecurringItem', (step) => 3 + step * 0.08, true),
-        series('Store.ListAudit.countHistory', (step) => 7 + Math.cos(step / 4) * 2, true),
+        series('Store.ListWorkQueue', (step) => 18 + Math.sin(step / 5) * 6, 'timing'),
+        series('latestRecurringItem', (step) => 3 + step * 0.08, 'timing'),
+        series('Store.ListAudit.countHistory', (step) => 7 + Math.cos(step / 4) * 2, 'timing'),
       ],
       ledger: [
-        series('reaction_scan', (step) => 4200 + Math.sin(step / 7) * 300, false),
-        series('webhook_delivery', (step) => 61_000 + step * 12, false),
+        series('reaction_scan', (step) => 4200 + Math.sin(step / 7) * 300, 'gauge'),
+        series('webhook_delivery', (step) => 61_000 + step * 12, 'gauge'),
       ],
       lane: [
-        series('maintenance', (step) => Math.max(0, Math.round(Math.sin(step / 3) * 4 + 3)), false),
-        series('webhook', (step) => (step % 11 === 0 ? 9 : 1), false),
+        series(
+          'maintenance',
+          (step) => Math.max(0, Math.round(Math.sin(step / 3) * 4 + 3)),
+          'backlog',
+        ),
+        series('webhook', (step) => (step % 11 === 0 ? 9 : 1), 'backlog'),
       ],
       database: [
-        series('size_bytes', (step) => 640_000_000 + step * 90_000, false),
-        series('round_trip', (step) => 11 + Math.sin(step / 6) * 3, true),
-        series('pool_in_use', (step) => Math.round(Math.abs(Math.sin(step / 5)) * 4), false),
-        series('pool_waits', () => 0, false),
+        series('size_bytes', (step) => 640_000_000 + step * 90_000, 'gauge'),
+        series('round_trip', (step) => 11 + Math.sin(step / 6) * 3, 'timing'),
+        series('pool_in_use', (step) => Math.round(Math.abs(Math.sin(step / 5)) * 4), 'gauge'),
+        series('pool_waits', () => 0, 'gauge'),
       ],
     },
   };

@@ -7,6 +7,8 @@
 </script>
 
 <section class="root-workspace" aria-labelledby="root-page-heading">
-  <RootSettings section="service" fetchSettings={session.api.fetchRootRuntimeSettings} />
-  <ServicePerformance fetchPerformance={session.api.fetchRootPerformance} />
+  <div class="card-stack">
+    <RootSettings section="service" fetchSettings={session.api.fetchRootRuntimeSettings} />
+    <ServicePerformance fetchPerformance={session.api.fetchRootPerformance} />
+  </div>
 </section>
