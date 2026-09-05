@@ -421,7 +421,7 @@ func scanRow(
 		case sqlstore.ColumnBool:
 			booleans[index] = &sql.NullBool{}
 			targets[index] = booleans[index]
-		case sqlstore.ColumnOther:
+		default:
 			targets[index] = &raw[index]
 		}
 	}
@@ -431,26 +431,32 @@ func scanRow(
 	}
 
 	values := make([]any, len(columns))
-	for index := range columns {
+	for index, column := range columns {
 		switch {
 		case times[index] != nil:
 			values[index] = dialect.NullTimeArg(times[index].Pointer())
 		case booleans[index] != nil:
 			values[index] = nullBool(*booleans[index])
 		default:
-			values[index] = writable(dialect, raw[index])
+			values[index] = writable(dialect, raw[index], kinds[column])
 		}
 	}
 
 	return values, nil
 }
 
-// writable hands a value the destination's own spelling of it, for the columns
-// no schema marked. A source that answers with a time.Time is the case this
-// exists for.
-func writable(dialect sqlstore.Dialect, value any) any {
-	if at, ok := value.(time.Time); ok {
-		return dialect.TimeArg(at)
+// writable hands a value the destination's own spelling of it. A source that
+// answers a timestamp with a time.Time and a document with bytes is what this
+// exists for: both are stored as text by the engine that declares the column
+// text, and neither arrives as text.
+func writable(dialect sqlstore.Dialect, value any, kind sqlstore.ColumnKind) any {
+	switch typed := value.(type) {
+	case time.Time:
+		return dialect.TimeArg(typed)
+	case []byte:
+		if kind == sqlstore.ColumnText {
+			return string(typed)
+		}
 	}
 
 	return value

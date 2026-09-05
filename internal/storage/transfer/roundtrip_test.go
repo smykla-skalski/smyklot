@@ -107,7 +107,52 @@ func TestCopyBackToSQLite(t *testing.T) {
 
 	requireSeededTablesCarriedRows(t, report)
 	requireSameState(t, ctx, source, destination)
+	requireStoredAsDeclared(t, ctx, destination)
 	requireWritesContinue(t, ctx, destination)
+}
+
+// requireStoredAsDeclared fails a copy that arrived in the wrong storage class.
+//
+// SQLite keeps what it was handed rather than what the column declares, and a
+// read converts both, so a value in the wrong class reads back correctly and
+// compares wrongly: on a document that arrived as a blob, `doc = '{}'` is false
+// where every natively written row says true. PostgreSQL answers jsonb with
+// bytes and a timestamp with a time.Time, so both are the case this catches.
+func requireStoredAsDeclared(t *testing.T, ctx context.Context, store storage.Store) {
+	t.Helper()
+
+	engine, ok := store.(transfer.Engine)
+	if !ok {
+		t.Fatalf("%T exposes no connection", store)
+	}
+	rows, err := engine.DB().QueryContext(ctx, `
+SELECT 'repositories.config_patch', typeof(config_patch) FROM repositories
+UNION ALL SELECT 'targets.config_patch', typeof(config_patch) FROM targets
+UNION ALL SELECT 'user_preferences.doc', typeof(doc) FROM user_preferences
+UNION ALL SELECT 'sessions.created_at', typeof(created_at) FROM sessions
+UNION ALL SELECT 'service_samples.sampled_at', typeof(sampled_at) FROM service_samples`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	seen := 0
+	for rows.Next() {
+		var column, class string
+		if err := rows.Scan(&column, &class); err != nil {
+			t.Fatal(err)
+		}
+		seen++
+		if class != "text" {
+			t.Errorf("%s arrived as %s, want text", column, class)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if seen == 0 {
+		t.Fatal("no copied row was inspected")
+	}
 }
 
 // requireWritesContinue writes to the copy, which is the only way to see
