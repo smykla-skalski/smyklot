@@ -146,6 +146,20 @@ func (engine Engine) runOnce(ctx context.Context, client *github.Client, targetI
 	if err != nil {
 		return engine.block(ctx, snapshot, stored, connection, invalidSettings(err))
 	}
+	if decision.Problem == ProblemStaleResolution && input.File.Exists {
+		// A stale choice has no authority over new edits. If the conflict itself
+		// disappeared, ordinary reconciliation can proceed without that choice.
+		// Missing files still require an explicit review before recreation.
+		fresh := input
+		fresh.Resolution = nil
+		merged, err := Reconcile(fresh)
+		if err != nil {
+			return engine.block(ctx, snapshot, stored, connection, invalidSettings(err))
+		}
+		if merged.Problem == "" {
+			input, decision, connection.Resolution = fresh, merged, nil
+		}
+	}
 	connection.Head, connection.Path, connection.Comparison = file.Head, file.Path, decision.Comparison
 	connection.Problem, connection.Message, connection.ConflictCount, connection.ConflictPaths = "", "", 0, nil
 	if decision.Problem != "" {

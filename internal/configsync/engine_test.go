@@ -127,7 +127,7 @@ func TestEngineSurfacesConflictsWithoutImportOrPublication(t *testing.T) {
 }
 
 func TestEngineRejectsAResolutionAfterRemoteSettingsChange(t *testing.T) {
-	engine := Engine{Store: engineStore(t)}
+	engine := conflictPreviewEngine(t)
 	snapshot, err := engine.Snapshot(context.Background(), "workspace", "repo")
 	if err != nil {
 		t.Fatal(err)
