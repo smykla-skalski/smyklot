@@ -419,7 +419,7 @@ run = "npm run lint"
 description = "Format the panel frontend"
 depends = ["panel:frontend:install"]
 dir = "internal/panel/frontend"
-run = "npm run format"
+run = 'npx prettier --write {{arg(name="files", var=true, default=".")}}'
 
 [tasks."panel:frontend:test"]
 description = "Run panel frontend unit tests"
