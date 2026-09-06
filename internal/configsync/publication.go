@@ -142,12 +142,8 @@ func PublishProposal(ctx context.Context, client *github.Client, location Remote
 		!validObjectID(proposal.DefaultHead) || (proposal.PreviousHead != "" && !validObjectID(proposal.PreviousHead)) {
 		return proposal, errors.New("configuration publication does not match its connection")
 	}
-	head, err := client.GetRef(ctx, location.Owner, location.Repository, "heads/"+location.DefaultBranch)
-	if err != nil {
+	if err := requirePublicationSource(ctx, client, location, proposal.DefaultHead); err != nil {
 		return proposal, err
-	}
-	if head != proposal.DefaultHead {
-		return proposal, &BlockedError{Code: "source_changed", Message: "The default branch changed while the configuration was being prepared"}
 	}
 	tip, err := client.GetRef(ctx, location.Owner, location.Repository, "heads/"+proposal.Branch)
 	if err != nil {
@@ -184,4 +180,24 @@ func PublishProposal(ctx context.Context, client *github.Client, location Remote
 	}
 	proposal.Number, proposal.URL = pull.Number, pull.URL
 	return proposal, nil
+}
+
+const sourceChanged = "source_changed"
+
+func requirePublicationSource(ctx context.Context, client *github.Client, location RemoteLocation, expectedHead string) error {
+	live, err := client.GetRepositoryByID(ctx, location.RepositoryID)
+	if err != nil {
+		return err
+	}
+	if live.Owner != location.Owner || live.Name != location.Repository || live.DefaultBranch != location.DefaultBranch {
+		return &BlockedError{Code: sourceChanged, Message: "The repository or its default branch changed while the configuration was being prepared"}
+	}
+	head, err := client.GetRef(ctx, location.Owner, location.Repository, "heads/"+location.DefaultBranch)
+	if err != nil {
+		return err
+	}
+	if head != expectedHead {
+		return &BlockedError{Code: sourceChanged, Message: "The default branch changed while the configuration was being prepared"}
+	}
+	return nil
 }

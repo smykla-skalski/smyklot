@@ -110,7 +110,7 @@ func (engine Engine) publish(
 	published, err := PublishProposal(ctx, client, file.Location, *proposal)
 	if err != nil {
 		var blocked *BlockedError
-		if errors.As(err, &blocked) && blocked.Code == "source_changed" {
+		if errors.As(err, &blocked) && blocked.Code == sourceChanged {
 			// A moving default branch is ordinary concurrent work. Start over from
 			// its new immutable head instead of requesting a user decision.
 			return connection, true, nil

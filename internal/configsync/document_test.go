@@ -111,17 +111,17 @@ func completeSnapshot(scope config.PanelFileScope) PanelSnapshot {
 		return snapshot
 	}
 	snapshot.Repository = &storage.Repository{
-		ID: "repo", TargetID: "workspace", Revision: 12, ConfigFileSyncEnabled: true,
+		ID: "github:repository:11", TargetID: "workspace", Revision: 12, ConfigFileSyncEnabled: true,
 		EnabledOverride: new(false), ConfigPatch: patch, PendingCIModeOverride: new(storage.PendingCIModeChecks),
 		PendingCIBranchPatternsOverride: &refs, PendingCIBypassPolicyOverride: policy,
 		PendingCIQuietPeriodOverride: new(time.Duration(0)), PathIndexIntervalOverride: new(time.Hour),
 	}
 	snapshot.SyncOverrides = []orgsync.RepositoryOverride{
 		{
-			RepositoryID: "repo", Kind: orgsync.KindSettings, Enabled: new(false), Revision: 4, Document: []byte(`{}`),
+			RepositoryID: "github:repository:11", Kind: orgsync.KindSettings, Enabled: new(false), Revision: 4, Document: []byte(`{}`),
 		},
 		{
-			RepositoryID: "repo", Kind: orgsync.KindFiles, Revision: 7,
+			RepositoryID: "github:repository:11", Kind: orgsync.KindFiles, Revision: 7,
 			Document: []byte("{\n  \"merges\": [{\"path\":\"renovate.json\",\"overrides\":{\"value\":null,\"exact\":9007199254740993}}]\n}"),
 		},
 	}

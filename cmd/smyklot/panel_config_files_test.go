@@ -23,12 +23,12 @@ import (
 
 func TestConfigFilePanelResolutionUsesFreshGitHubReadAndAtomicStore(t *testing.T) {
 	service, remote := configFilePanelHarness(t)
-	preview, err := service.PreviewConfigurationFile(t.Context(), "workspace", "repo")
+	preview, err := service.PreviewConfigurationFile(t.Context(), "workspace", "github:repository:11")
 	if err != nil || preview.ReviewToken == "" || len(preview.Choices) != 2 {
 		t.Fatalf("fresh preview = %+v (%v)", preview, err)
 	}
 	request := adminpanel.ConfigFileResolutionRequest{
-		TargetID: "workspace", RepositoryID: "repo", ReviewToken: preview.ReviewToken,
+		TargetID: "workspace", RepositoryID: "github:repository:11", ReviewToken: preview.ReviewToken,
 		Side: "file", ActorAccountID: "owner",
 	}
 	remote.mu.Lock()
@@ -37,11 +37,11 @@ func TestConfigFilePanelResolutionUsesFreshGitHubReadAndAtomicStore(t *testing.T
 	if err := service.ResolveConfigurationFile(t.Context(), request); !errors.Is(err, storage.ErrConflict) {
 		t.Fatalf("changed GitHub commit must reject old choice: %v", err)
 	}
-	state, err := service.store.GetConfigFileState(t.Context(), "workspace", "repo")
+	state, err := service.store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
 	if err != nil || state.Revision != 0 {
 		t.Fatalf("stale choice was persisted: %+v (%v)", state, err)
 	}
-	preview, err = service.PreviewConfigurationFile(t.Context(), "workspace", "repo")
+	preview, err = service.PreviewConfigurationFile(t.Context(), "workspace", "github:repository:11")
 	if err != nil || preview.ReviewToken == request.ReviewToken {
 		t.Fatalf("new commit did not produce a new review: %+v (%v)", preview, err)
 	}
@@ -49,7 +49,7 @@ func TestConfigFilePanelResolutionUsesFreshGitHubReadAndAtomicStore(t *testing.T
 	if err := service.ResolveConfigurationFile(t.Context(), request); err != nil {
 		t.Fatal(err)
 	}
-	state, err = service.store.GetConfigFileState(t.Context(), "workspace", "repo")
+	state, err = service.store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
 	if err != nil || state.Revision != 1 {
 		t.Fatalf("fresh choice was not persisted: %+v (%v)", state, err)
 	}
@@ -57,7 +57,7 @@ func TestConfigFilePanelResolutionUsesFreshGitHubReadAndAtomicStore(t *testing.T
 	if err != nil || connection.Resolution == nil || connection.Resolution.Side != "file" || connection.Status != configsync.StatusPending {
 		t.Fatalf("pending connection = %+v (%v)", connection, err)
 	}
-	repository, err := service.store.GetRepository(t.Context(), "workspace", "repo")
+	repository, err := service.store.GetRepository(t.Context(), "workspace", "github:repository:11")
 	if err != nil || repository.Revision != 2 || repository.ConfigPatch.CommandPrefix == nil || *repository.ConfigPatch.CommandPrefix != "/panel " {
 		t.Fatalf("HTTP choice applied settings before the worker: %+v (%v)", repository, err)
 	}
@@ -86,13 +86,13 @@ func assertConfigFileResolutionAudit(t *testing.T, service *server) {
 
 func TestConfigFilePanelReviewRespectsExclusionBeforeReadingGitHub(t *testing.T) {
 	service, remote := configFilePanelHarness(t)
-	coordinator := &configurationScopeCoordinator{stop: "repo"}
+	coordinator := &configurationScopeCoordinator{stop: "github:repository:11"}
 	service.pendingCICoordinator = coordinator
-	if _, err := service.PreviewConfigurationFile(t.Context(), "workspace", "repo"); !errors.Is(err, context.Canceled) {
+	if _, err := service.PreviewConfigurationFile(t.Context(), "workspace", "github:repository:11"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("preview bypassed exclusion: %v", err)
 	}
 	if err := service.ResolveConfigurationFile(t.Context(), adminpanel.ConfigFileResolutionRequest{
-		TargetID: "workspace", RepositoryID: "repo", Side: "file", ReviewToken: strings.Repeat("a", 64), ActorAccountID: "owner",
+		TargetID: "workspace", RepositoryID: "github:repository:11", Side: "file", ReviewToken: strings.Repeat("a", 64), ActorAccountID: "owner",
 	}); !errors.Is(err, context.Canceled) {
 		t.Fatalf("resolution bypassed exclusion: %v", err)
 	}
@@ -107,12 +107,12 @@ func TestConfigFilePanelReviewDoesNotContactGitHubForDisabledOrForeignScopes(t *
 	service, remote := configFilePanelHarness(t)
 	_, err := service.store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
-		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "repo", ExpectedRevision: 2}},
+		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "github:repository:11", ExpectedRevision: 2}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, repo := range []string{"", "repo"} {
+	for _, repo := range []string{"", "github:repository:11"} {
 		preview, err := service.PreviewConfigurationFile(t.Context(), "workspace", repo)
 		if err != nil || preview.Status != configsync.StatusOff {
 			t.Fatalf("disabled scope %q = %+v (%v)", repo, preview, err)
@@ -156,7 +156,7 @@ func TestConfigFilePanelReviewDoesNotContactGitHubForUnavailableScopes(t *testin
 			if err := service.store.ReconcileCatalog(t.Context(), snapshots); err != nil {
 				t.Fatal(err)
 			}
-			repositories := []string{"repo"}
+			repositories := []string{"github:repository:11"}
 			if scope == "workspace" {
 				repositories = append(repositories, "")
 			}
@@ -203,6 +203,8 @@ func (remote *configFilePanelRemote) handler(t *testing.T) http.Handler {
 		blob := orgsync.BlobID([]byte(content))
 		var body any
 		switch r.Method + " " + r.URL.Path {
+		case "GET /repositories/11":
+			body = map[string]any{"id": 11, "name": "web", "full_name": "acme/web", "owner": map[string]string{"login": "acme"}, "default_branch": "main"}
 		case "POST /app/installations/100/access_tokens":
 			body = map[string]any{"token": "installation-token", "expires_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339)}
 		case "GET /repos/acme/web/git/ref/heads/main":
@@ -246,7 +248,7 @@ func configFilePanelHarness(t *testing.T) (*server, *configFilePanelRemote) {
 	err = service.store.ReconcileInstallation(t.Context(), storage.InstallationSnapshot{
 		TargetID: "workspace", InstallationID: "100", Kind: storage.TargetOrganization, Account: owner, SyncedAt: now,
 		Ownership:    storage.OwnershipSnapshot{Source: storage.OwnershipSourceOrganizationAdmin, Status: storage.OwnershipStatusFresh, Owners: []storage.Account{owner}, SyncedAt: now},
-		Repositories: []storage.RepositorySnapshot{{ID: "repo", Name: "web", FullName: "acme/web", DefaultBranch: "main"}},
+		Repositories: []storage.RepositorySnapshot{{ID: "github:repository:11", Name: "web", FullName: "acme/web", DefaultBranch: "main"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -254,7 +256,7 @@ func configFilePanelHarness(t *testing.T) (*server, *configFilePanelRemote) {
 	_, err = service.store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: now,
 		Repositories: []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: "repo", ConfigFileSyncEnabled: true, ExpectedRevision: 1,
+			RepositoryID: "github:repository:11", ConfigFileSyncEnabled: true, ExpectedRevision: 1,
 			ConfigPatch: config.Patch{CommandPrefix: new("/panel "), QuietSuccess: new(false)},
 		}},
 	})

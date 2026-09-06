@@ -30,8 +30,8 @@ func engineStore(t *testing.T) storage.Store {
 			Owners: []storage.Account{account}, SyncedAt: now,
 		},
 		Repositories: []storage.RepositorySnapshot{
-			{ID: "repo", Name: "web", FullName: "acme/web", DefaultBranch: "main"},
-			{ID: "config-repo", Name: ".github", FullName: "acme/.github", DefaultBranch: "main"},
+			{ID: "github:repository:11", Name: "web", FullName: "acme/web", DefaultBranch: "main"},
+			{ID: "github:repository:12", Name: ".github", FullName: "acme/.github", DefaultBranch: "main"},
 		},
 	})
 	if err != nil {
@@ -40,7 +40,7 @@ func engineStore(t *testing.T) storage.Store {
 	_, err = store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: account.ID, ChangedAt: now,
 		Target:       &storage.InstallationTargetSettingsChange{ConfigFileSyncEnabled: true, ExpectedRevision: 1},
-		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "repo", ConfigFileSyncEnabled: true, ExpectedRevision: 1}},
+		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "github:repository:11", ConfigFileSyncEnabled: true, ExpectedRevision: 1}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,9 +48,27 @@ func engineStore(t *testing.T) storage.Store {
 	return store
 }
 
+func repositoryIdentityCall() remoteCall {
+	return remoteCall{method: "GET", path: "/repositories/11", answer: `{"id":11,"name":"web","full_name":"acme/web","owner":{"login":"acme"},"default_branch":"main"}`}
+}
+
+func workspaceIdentityCall(call remoteCall) remoteCall {
+	if call.path == "/repositories/11" {
+		call.path = "/repositories/12"
+		call.answer = `{"id":12,"name":".github","full_name":"acme/.github","owner":{"login":"acme"},"default_branch":"main"}`
+	}
+	return call
+}
+
+func engineReadCalls(entries string) []remoteCall {
+	calls := append([]remoteCall{repositoryIdentityCall()}, remoteReadCalls(entries)...)
+	return append(calls, repositoryIdentityCall())
+}
+
 func engineFileCalls(path, content string) []remoteCall {
 	entries, _ := json.Marshal([]any{remoteEntry(path, content)})
-	return append(remoteReadCalls(string(entries)), contentCall(path, content))
+	calls := append([]remoteCall{repositoryIdentityCall()}, remoteReadCalls(string(entries))...)
+	return append(calls, contentCall(path, content), repositoryIdentityCall())
 }
 
 func storeConnection(t *testing.T, engine Engine, repositoryID string, connection Connection) {
@@ -75,11 +93,11 @@ func TestEngineImportsAFileThenRereadsBeforeAdvancingBaseline(t *testing.T) {
 	engine := Engine{Store: store}
 	content := "command_prefix='/file '\n[panel]\nversion=1\nscope='repository'\n[panel.settings]\nenabled=false\n"
 	calls := append(engineFileCalls(".smyklot.toml", content), engineFileCalls(".smyklot.toml", content)...)
-	connection, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "repo")
+	connection, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "github:repository:11")
 	if err != nil || connection.Status != "ready" || !connection.Base.Exists {
 		t.Fatalf("file import = %+v (%v)", connection, err)
 	}
-	repository, err := store.GetRepository(context.Background(), "workspace", "repo")
+	repository, err := store.GetRepository(context.Background(), "workspace", "github:repository:11")
 	if err != nil || repository.Revision != 3 || repository.ConfigPatch.CommandPrefix == nil ||
 		*repository.ConfigPatch.CommandPrefix != "/file " || repository.EnabledOverride == nil || *repository.EnabledOverride {
 		t.Fatalf("imported repository = %+v (%v)", repository, err)
@@ -105,7 +123,7 @@ func TestEngineSurfacesConflictsWithoutImportOrPublication(t *testing.T) {
 	_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
 		Repositories: []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: "repo", ExpectedRevision: 2, ConfigFileSyncEnabled: true,
+			RepositoryID: "github:repository:11", ExpectedRevision: 2, ConfigFileSyncEnabled: true,
 			ConfigPatch: config.Patch{CommandPrefix: new("/panel ")},
 		}},
 	})
@@ -113,14 +131,14 @@ func TestEngineSurfacesConflictsWithoutImportOrPublication(t *testing.T) {
 		t.Fatal(err)
 	}
 	calls := engineFileCalls(".smyklot.toml", "command_prefix='/file '\n")
-	connection, err := engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "repo")
+	connection, err := engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "github:repository:11")
 	if err != nil || connection.Problem != "conflicting_edits" || connection.ConflictCount != 1 || connection.Base.Exists {
 		t.Fatalf("conflict = %+v (%v)", connection, err)
 	}
 	connection.Resolution = &ResolutionChoice{Side: "file", Comparison: connection.Comparison}
-	storeConnection(t, engine, "repo", connection)
+	storeConnection(t, engine, "github:repository:11", connection)
 	calls = append(engineFileCalls(".smyklot.toml", "command_prefix='/file '\n"), engineFileCalls(".smyklot.toml", "command_prefix='/file '\n")...)
-	connection, err = engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "repo")
+	connection, err = engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "github:repository:11")
 	if err != nil || connection.Status != "ready" || connection.Resolution != nil {
 		t.Fatalf("resolved import did not converge = %+v (%v)", connection, err)
 	}
@@ -128,7 +146,7 @@ func TestEngineSurfacesConflictsWithoutImportOrPublication(t *testing.T) {
 
 func TestEngineRejectsAResolutionAfterRemoteSettingsChange(t *testing.T) {
 	engine := conflictPreviewEngine(t)
-	snapshot, err := engine.Snapshot(context.Background(), "workspace", "repo")
+	snapshot, err := engine.Snapshot(context.Background(), "workspace", "github:repository:11")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,8 +157,8 @@ func TestEngineRejectsAResolutionAfterRemoteSettingsChange(t *testing.T) {
 	}
 	comparison, _ := comparisonKey(ReconcileInput{Panel: panel, File: file.Snapshot})
 	connection := Connection{Version: 1, Resolution: &ResolutionChoice{Side: "file", Comparison: comparison}}
-	storeConnection(t, engine, "repo", connection)
-	connection, err = engine.Run(context.Background(), scriptedRemote(t, engineFileCalls(".smyklot.toml", "command_prefix='/new '\n")...), "workspace", "repo")
+	storeConnection(t, engine, "github:repository:11", connection)
+	connection, err = engine.Run(context.Background(), scriptedRemote(t, engineFileCalls(".smyklot.toml", "command_prefix='/new '\n")...), "workspace", "github:repository:11")
 	if err != nil || connection.Problem != "stale_resolution" || connection.Base.Exists {
 		t.Fatalf("stale choice = %+v (%v)", connection, err)
 	}
@@ -148,10 +166,10 @@ func TestEngineRejectsAResolutionAfterRemoteSettingsChange(t *testing.T) {
 
 func TestEngineDoesNotTreatFileDeletionAsEmptySettings(t *testing.T) {
 	engine := Engine{Store: engineStore(t)}
-	snapshot, _ := engine.Snapshot(context.Background(), "workspace", "repo")
+	snapshot, _ := engine.Snapshot(context.Background(), "workspace", "github:repository:11")
 	panel, _ := snapshot.JSON()
-	storeConnection(t, engine, "repo", Connection{Version: 1, Base: Snapshot{Exists: true, Document: panel}})
-	connection, err := engine.Run(context.Background(), scriptedRemote(t, remoteReadCalls(`[]`)...), "workspace", "repo")
+	storeConnection(t, engine, "github:repository:11", Connection{Version: 1, Base: Snapshot{Exists: true, Document: panel}})
+	connection, err := engine.Run(context.Background(), scriptedRemote(t, engineReadCalls(`[]`)...), "workspace", "github:repository:11")
 	if err != nil || connection.Problem != "file_removed" || !connection.Base.Exists {
 		t.Fatalf("removed file = %+v (%v)", connection, err)
 	}
@@ -160,8 +178,8 @@ func TestEngineDoesNotTreatFileDeletionAsEmptySettings(t *testing.T) {
 func TestEngineCannotPublishAfterConcurrentOptOut(t *testing.T) {
 	store := engineStore(t)
 	engine := Engine{Store: &optOutConnectionStore{ConnectionStore: store}}
-	calls := append(remoteReadCalls(`[]`), prepareEngineCalls()...)
-	_, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "repo")
+	calls := append(engineReadCalls(`[]`), prepareEngineCalls()...)
+	_, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "github:repository:11")
 	if !errors.Is(err, storage.ErrConflict) {
 		t.Fatalf("publication continued after its durable intent was rejected: %v", err)
 	}
@@ -172,7 +190,7 @@ type optOutConnectionStore struct{ ConnectionStore }
 func (store *optOutConnectionStore) SaveConfigFileState(ctx context.Context, change storage.ConfigFileStateChange) (storage.ConfigFileState, error) {
 	_, err := store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
-		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "repo", ExpectedRevision: change.OwnerRevision}},
+		Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "github:repository:11", ExpectedRevision: change.OwnerRevision}},
 	})
 	if err != nil {
 		return storage.ConfigFileState{}, err

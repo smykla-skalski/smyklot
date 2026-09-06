@@ -18,7 +18,7 @@ func conflictPreviewEngine(t *testing.T) Engine {
 	_, err := engine.Store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
 		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
 		Repositories: []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: "repo", ExpectedRevision: 2, ConfigFileSyncEnabled: true,
+			RepositoryID: "github:repository:11", ExpectedRevision: 2, ConfigFileSyncEnabled: true,
 			ConfigPatch: config.Patch{CommandPrefix: new("/panel "), QuietSuccess: new(false)},
 		}},
 	})
@@ -30,10 +30,18 @@ func conflictPreviewEngine(t *testing.T) Engine {
 
 const previewFile = "command_prefix='/file '\nallow_self_approval=true\n"
 
+func previewFileCalls(path, content string) []remoteCall {
+	return engineFileCalls(path, content)
+}
+
+func previewReadCalls(entries string) []remoteCall {
+	return engineReadCalls(entries)
+}
+
 func TestConflictPreviewOffersOnlyValidatedMergedChoicesWithoutWrites(t *testing.T) {
 	engine := conflictPreviewEngine(t)
-	before, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "repo")
-	preview, err := engine.Preview(t.Context(), scriptedRemote(t, engineFileCalls(".smyklot.toml", previewFile)...), "workspace", "repo")
+	before, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
+	preview, err := engine.Preview(t.Context(), scriptedRemote(t, previewFileCalls(".smyklot.toml", previewFile)...), "workspace", "github:repository:11")
 	if err != nil || preview.Status != StatusBlocked || preview.Problem != "conflicting_edits" ||
 		preview.ReviewToken == "" || preview.Head != remoteHead || preview.Path != ".smyklot.toml" ||
 		preview.CheckedAt.IsZero() || preview.ConflictCount != 1 || len(preview.Choices) != 2 {
@@ -59,8 +67,8 @@ func TestConflictPreviewOffersOnlyValidatedMergedChoicesWithoutWrites(t *testing
 			t.Fatalf("preview exposed private connection state: %s", encoded)
 		}
 	}
-	after, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "repo")
-	repository, _ := engine.Store.GetRepository(t.Context(), "workspace", "repo")
+	after, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
+	repository, _ := engine.Store.GetRepository(t.Context(), "workspace", "github:repository:11")
 	if after.Revision != before.Revision || repository.Revision != 3 || repository.ConfigPatch.AllowSelfApproval != nil {
 		t.Fatal("preview changed settings or connection state")
 	}
@@ -75,16 +83,16 @@ func TestResolutionPreparationRereadsAndRejectsChangedInputs(t *testing.T) {
 func checkResolutionPreparation(t *testing.T, change string) {
 	t.Helper()
 	engine := conflictPreviewEngine(t)
-	preview, err := engine.Preview(t.Context(), scriptedRemote(t, engineFileCalls(".smyklot.toml", previewFile)...), "workspace", "repo")
+	preview, err := engine.Preview(t.Context(), scriptedRemote(t, previewFileCalls(".smyklot.toml", previewFile)...), "workspace", "github:repository:11")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if change == "panel" || change == "sync" {
-		snapshot, _ := engine.Snapshot(t.Context(), "workspace", "repo")
+		snapshot, _ := engine.Snapshot(t.Context(), "workspace", "github:repository:11")
 		saveStatusSettingsChange(t, engine, snapshot, change == "sync")
 	}
 	prepared, err := engine.PrepareResolution(t.Context(), scriptedRemote(t, changedPreviewCalls(change)...),
-		"workspace", "repo", preview.ReviewToken, ResolutionFile)
+		"workspace", "github:repository:11", preview.ReviewToken, ResolutionFile)
 	if change != "unchanged" {
 		if !errors.Is(err, storage.ErrConflict) {
 			t.Fatalf("stale %s accepted: %+v (%v)", change, prepared, err)
@@ -98,7 +106,7 @@ func checkResolutionPreparation(t *testing.T, change string) {
 	if err != nil || connection.Resolution == nil || connection.Resolution.Side != ResolutionFile || connection.Status != StatusPending {
 		t.Fatalf("prepared resolution = %+v (%v)", connection, err)
 	}
-	stored, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "repo")
+	stored, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
 	if stored.Revision != 0 {
 		t.Fatal("preparing resolution persisted unaudited state")
 	}
@@ -109,7 +117,7 @@ func changedPreviewCalls(change string) []remoteCall {
 	if change == "file" {
 		content += "quiet_success=true\n"
 	}
-	calls := engineFileCalls(".smyklot.toml", content)
+	calls := previewFileCalls(".smyklot.toml", content)
 	if change == "commit" {
 		for index := range calls {
 			calls[index].answer = strings.ReplaceAll(calls[index].answer, remoteHead, strings.Repeat("b", 40))
@@ -122,10 +130,12 @@ func changedPreviewCalls(change string) []remoteCall {
 
 func TestPreviewDetectsChangesDuringRemoteRead(t *testing.T) {
 	engine := conflictPreviewEngine(t)
-	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "repo")
+	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "github:repository:11")
+	// A changed panel revision rejects the review before the second remote read.
 	calls := engineFileCalls(".smyklot.toml", previewFile)
+	calls = calls[:len(calls)-1]
 	calls[0].check = func(t *testing.T, _ *http.Request) { saveStatusSettingsChange(t, engine, snapshot, true) }
-	_, err := engine.Preview(t.Context(), scriptedRemote(t, calls...), "workspace", "repo")
+	_, err := engine.Preview(t.Context(), scriptedRemote(t, calls...), "workspace", "github:repository:11")
 	if !errors.Is(err, storage.ErrConflict) {
 		t.Fatalf("mixed observation accepted: %v", err)
 	}
@@ -133,15 +143,15 @@ func TestPreviewDetectsChangesDuringRemoteRead(t *testing.T) {
 
 func TestRemovedFilePreviewCannotReplaceSettingsWithAnEmptyDocument(t *testing.T) {
 	engine := conflictPreviewEngine(t)
-	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "repo")
+	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "github:repository:11")
 	panel, _ := snapshot.JSON()
-	storeConnection(t, engine, "repo", Connection{Version: 1, Base: present(string(panel))})
-	preview, err := engine.Preview(t.Context(), scriptedRemote(t, remoteReadCalls(`[]`)...), "workspace", "repo")
+	storeConnection(t, engine, "github:repository:11", Connection{Version: 1, Base: present(string(panel))})
+	preview, err := engine.Preview(t.Context(), scriptedRemote(t, previewReadCalls(`[]`)...), "workspace", "github:repository:11")
 	if err != nil || preview.Problem != "file_removed" || len(preview.Choices) != 1 ||
 		preview.Choices[0].Side != ResolutionPanel || preview.Choices[0].ImportPanel || !preview.Choices[0].PublishFile {
 		t.Fatalf("removed file choice = %+v (%v)", preview, err)
 	}
-	_, err = engine.PrepareResolution(t.Context(), scriptedRemote(t, remoteReadCalls(`[]`)...), "workspace", "repo", preview.ReviewToken, ResolutionFile)
+	_, err = engine.PrepareResolution(t.Context(), scriptedRemote(t, previewReadCalls(`[]`)...), "workspace", "github:repository:11", preview.ReviewToken, ResolutionFile)
 	var blocked *BlockedError
 	if !errors.As(err, &blocked) {
 		t.Fatalf("deleted file accepted as settings: %v", err)
@@ -150,19 +160,19 @@ func TestRemovedFilePreviewCannotReplaceSettingsWithAnEmptyDocument(t *testing.T
 
 func TestPreviewOffersRecoveryWhenFileIsDeletedBeforeTheFirstBaseline(t *testing.T) {
 	engine := conflictPreviewEngine(t)
-	preview, err := engine.Preview(t.Context(), scriptedRemote(t, engineFileCalls(".smyklot.toml", previewFile)...), "workspace", "repo")
+	preview, err := engine.Preview(t.Context(), scriptedRemote(t, previewFileCalls(".smyklot.toml", previewFile)...), "workspace", "github:repository:11")
 	if err != nil {
 		t.Fatal(err)
 	}
-	change, err := engine.PrepareResolution(t.Context(), scriptedRemote(t, engineFileCalls(".smyklot.toml", previewFile)...),
-		"workspace", "repo", preview.ReviewToken, ResolutionFile)
+	change, err := engine.PrepareResolution(t.Context(), scriptedRemote(t, previewFileCalls(".smyklot.toml", previewFile)...),
+		"workspace", "github:repository:11", preview.ReviewToken, ResolutionFile)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := engine.Store.SaveConfigFileState(t.Context(), change); err != nil {
 		t.Fatal(err)
 	}
-	preview, err = engine.Preview(t.Context(), scriptedRemote(t, remoteReadCalls(`[]`)...), "workspace", "repo")
+	preview, err = engine.Preview(t.Context(), scriptedRemote(t, previewReadCalls(`[]`)...), "workspace", "github:repository:11")
 	if err != nil || preview.Problem != "file_removed" || preview.ReviewToken == "" || len(preview.Choices) != 1 || preview.Choices[0].Side != ResolutionPanel {
 		t.Fatalf("initial deletion has no recovery: %+v (%v)", preview, err)
 	}

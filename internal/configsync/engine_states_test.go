@@ -31,6 +31,7 @@ func TestEngineWorkspaceImportsUseTheSeparateOrganizationFile(t *testing.T) {
 	read := engineFileCalls(WorkspaceFilePath, string(content))
 	for index := range read {
 		read[index].path = strings.Replace(read[index].path, "/repos/acme/web/", "/repos/acme/.github/", 1)
+		read[index] = workspaceIdentityCall(read[index])
 	}
 	calls := slices.Concat(read, read)
 	connection, err := engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "")
@@ -38,7 +39,7 @@ func TestEngineWorkspaceImportsUseTheSeparateOrganizationFile(t *testing.T) {
 		t.Fatalf("workspace import = %+v (%v)", connection, err)
 	}
 	target, _ := store.GetTarget(ctx, "workspace")
-	repository, _ := store.GetRepository(ctx, "workspace", "repo")
+	repository, _ := store.GetRepository(ctx, "workspace", "github:repository:11")
 	if target.ConfigPatch.CommandPrefix == nil || *target.ConfigPatch.CommandPrefix != "/organization " || repository.ConfigPatch.CommandPrefix != nil {
 		t.Fatal("workspace import did not remain in its own settings scope")
 	}
@@ -50,12 +51,12 @@ func TestEngineCanImportWithReadAccessButCannotPublishWithoutWriteAccess(t *test
 			engine := Engine{Store: readOnlyInstallationStore{engineStore(t)}}
 			var calls []remoteCall
 			if missingFile {
-				calls = remoteReadCalls(`[]`)
+				calls = engineReadCalls(`[]`)
 			} else {
 				read := engineFileCalls(".smyklot.toml", "command_prefix='/file '\n")
 				calls = slices.Concat(read, read)
 			}
-			connection, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "repo")
+			connection, err := engine.Run(context.Background(), scriptedRemote(t, calls...), "workspace", "github:repository:11")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -84,13 +85,13 @@ func TestEngineOffAndBypassedStatesDoNotReadGitHub(t *testing.T) {
 			_, err := store.SaveInstallationSettings(context.Background(), storage.SaveInstallationSettingsRequest{
 				TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
 				Repositories: []storage.InstallationRepositorySettingsChange{{
-					RepositoryID: "repo", ExpectedRevision: 2, ConfigFileSyncEnabled: bypassed, IgnoreRepositoryFile: bypassed,
+					RepositoryID: "github:repository:11", ExpectedRevision: 2, ConfigFileSyncEnabled: bypassed, IgnoreRepositoryFile: bypassed,
 				}},
 			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			connection, err := (Engine{Store: store}).Run(context.Background(), scriptedRemote(t), "workspace", "repo")
+			connection, err := (Engine{Store: store}).Run(context.Background(), scriptedRemote(t), "workspace", "github:repository:11")
 			if err != nil || (bypassed && connection.Problem != "file_disabled") || (!bypassed && connection.Status != StatusOff) {
 				t.Fatalf("off/bypassed = %+v (%v)", connection, err)
 			}
@@ -100,15 +101,15 @@ func TestEngineOffAndBypassedStatesDoNotReadGitHub(t *testing.T) {
 
 func TestEngineInvalidatesFileChoiceWhenTheFileIsRemoved(t *testing.T) {
 	engine, ctx := Engine{Store: engineStore(t)}, context.Background()
-	snapshot, _ := engine.Snapshot(ctx, "workspace", "repo")
+	snapshot, _ := engine.Snapshot(ctx, "workspace", "github:repository:11")
 	panel, _ := snapshot.JSON()
 	file, err := ReadFileSource(config.FormatTOML, []byte("command_prefix='/before '\n"), config.PanelFileRepository)
 	if err != nil {
 		t.Fatal(err)
 	}
 	comparison, _ := comparisonKey(ReconcileInput{Panel: panel, File: file.Snapshot})
-	storeConnection(t, engine, "repo", Connection{Version: 1, Resolution: &ResolutionChoice{Comparison: comparison, Side: "file"}})
-	connection, err := engine.Run(ctx, scriptedRemote(t, remoteReadCalls(`[]`)...), "workspace", "repo")
+	storeConnection(t, engine, "github:repository:11", Connection{Version: 1, Resolution: &ResolutionChoice{Comparison: comparison, Side: "file"}})
+	connection, err := engine.Run(ctx, scriptedRemote(t, engineReadCalls(`[]`)...), "workspace", "github:repository:11")
 	if err != nil || connection.Problem != "stale_resolution" {
 		t.Fatalf("deleted file left its old choice as a retrying failure: %+v (%v)", connection, err)
 	}
@@ -126,19 +127,23 @@ func TestEngineInvalidDomainValuesReplaceReadyWithAnActionableProblem(t *testing
 		t.Run(example.content, func(t *testing.T) {
 			store := engineStore(t)
 			engine, ctx := Engine{Store: store}, context.Background()
-			snapshot, _ := engine.Snapshot(ctx, "workspace", "repo")
+			snapshot, _ := engine.Snapshot(ctx, "workspace", "github:repository:11")
 			baseline, _ := snapshot.JSON()
-			storeConnection(t, engine, "repo", Connection{Version: 1, Status: StatusReady, Base: Snapshot{Exists: true, Document: baseline}})
-			connection, err := engine.Run(ctx, scriptedRemote(t, engineFileCalls(".smyklot.toml", example.content)...), "workspace", "repo")
+			storeConnection(t, engine, "github:repository:11", Connection{Version: 1, Status: StatusReady, Base: Snapshot{Exists: true, Document: baseline}})
+			calls := engineFileCalls(".smyklot.toml", example.content)
+			if example.problem == "invalid_file" {
+				calls = calls[:len(calls)-1]
+			}
+			connection, err := engine.Run(ctx, scriptedRemote(t, calls...), "workspace", "github:repository:11")
 			if err != nil || connection.Status != StatusBlocked || connection.Problem != example.problem || connection.Message == "" {
 				t.Fatalf("invalid settings left a misleading state: %+v (%v)", connection, err)
 			}
-			after, _ := engine.Snapshot(ctx, "workspace", "repo")
+			after, _ := engine.Snapshot(ctx, "workspace", "github:repository:11")
 			actual, _ := after.JSON()
 			if !bytes.Equal(baseline, actual) || !bytes.Equal(connection.Base.Document, baseline) {
 				t.Fatal("invalid import changed settings or advanced its baseline")
 			}
-			stored, _ := store.GetConfigFileState(ctx, "workspace", "repo")
+			stored, _ := store.GetConfigFileState(ctx, "workspace", "github:repository:11")
 			restored, err := DecodeConnection(stored, config.PanelFileRepository)
 			if err != nil || restored.Status != StatusBlocked {
 				t.Fatalf("failure was not persisted: %+v (%v)", restored, err)

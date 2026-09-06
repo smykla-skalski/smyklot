@@ -15,7 +15,7 @@ func TestConnectionStatusInvalidatesEverySavedSettingsSource(t *testing.T) {
 	for _, test := range []struct {
 		repositoryID string
 		syncOnly     bool
-	}{{"", false}, {"", true}, {"repo", false}, {"repo", true}} {
+	}{{"", false}, {"", true}, {"github:repository:11", false}, {"github:repository:11", true}} {
 		repositoryID, syncOnly := test.repositoryID, test.syncOnly
 		t.Run(repositoryID+"/"+map[bool]string{false: "settings", true: "sync"}[syncOnly], func(t *testing.T) {
 			engine := Engine{Store: engineStore(t)}
@@ -49,7 +49,7 @@ func saveStatusSettingsChange(t *testing.T, engine Engine, snapshot PanelSnapsho
 		if snapshot.Repository == nil {
 			request.SyncConfigs = []storage.InstallationSyncConfigChange{{Kind: orgsync.KindLabels, Enabled: true, Document: []byte(`{"labels":[]}`)}}
 		} else {
-			request.SyncOverrides = []storage.InstallationSyncOverrideChange{{RepositoryID: "repo", Kind: orgsync.KindLabels, Enabled: new(false), Document: []byte(`{}`)}}
+			request.SyncOverrides = []storage.InstallationSyncOverrideChange{{RepositoryID: "github:repository:11", Kind: orgsync.KindLabels, Enabled: new(false), Document: []byte(`{}`)}}
 		}
 	} else if snapshot.Repository == nil {
 		request.Target = &storage.InstallationTargetSettingsChange{
@@ -57,7 +57,7 @@ func saveStatusSettingsChange(t *testing.T, engine Engine, snapshot PanelSnapsho
 		}
 	} else {
 		request.Repositories = []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: "repo", ConfigFileSyncEnabled: true, ExpectedRevision: snapshot.OwnerRevision(), ConfigPatch: config.Patch{CommandPrefix: new("/new ")},
+			RepositoryID: "github:repository:11", ConfigFileSyncEnabled: true, ExpectedRevision: snapshot.OwnerRevision(), ConfigPatch: config.Patch{CommandPrefix: new("/new ")},
 		}}
 	}
 	if _, err := engine.Store.SaveInstallationSettings(t.Context(), request); err != nil {
@@ -67,14 +67,14 @@ func saveStatusSettingsChange(t *testing.T, engine Engine, snapshot PanelSnapsho
 
 func TestConnectionStatusKeepsBlockedObservationButHidesPrivateState(t *testing.T) {
 	engine := Engine{Store: engineStore(t)}
-	storeConnection(t, engine, "repo", Connection{
+	storeConnection(t, engine, "github:repository:11", Connection{
 		Version: 1, Status: StatusBlocked, Problem: "conflicting_edits", Comparison: "private-comparison",
 		ConflictCount: 1, ConflictPaths: [][]string{{"command_prefix"}},
 		Resolution: &ResolutionChoice{Side: ResolutionPanel, Comparison: "private-comparison"},
 		Proposal:   &Proposal{Number: 42, URL: "https://github.com/acme/web/pull/42", Commit: "private-commit", Digest: "private-digest"},
 	})
-	before, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "repo")
-	answer, err := engine.ReadStatus(t.Context(), "workspace", "repo")
+	before, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
+	answer, err := engine.ReadStatus(t.Context(), "workspace", "github:repository:11")
 	if err != nil || answer.Status != StatusBlocked || answer.LastCheck == nil || answer.LastCheck.ConflictCount != 1 ||
 		answer.LastCheck.Problem != "conflicting_edits" || answer.LastCheck.Proposal != nil {
 		t.Fatalf("blocked status = %+v (%v)", answer, err)
@@ -85,7 +85,7 @@ func TestConnectionStatusKeepsBlockedObservationButHidesPrivateState(t *testing.
 			t.Fatalf("status exposed private state: %s", encoded)
 		}
 	}
-	after, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "repo")
+	after, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
 	if before.Revision != after.Revision || string(before.Document) != string(after.Document) {
 		t.Fatal("reading status mutated the connection")
 	}
@@ -93,30 +93,30 @@ func TestConnectionStatusKeepsBlockedObservationButHidesPrivateState(t *testing.
 
 func TestConnectionStatusRequiresFreshCheckForLegacyOrReactivatedState(t *testing.T) {
 	engine := Engine{Store: engineStore(t)}
-	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "repo")
+	snapshot, _ := engine.Snapshot(t.Context(), "workspace", "github:repository:11")
 	panel, _ := snapshot.JSON()
 	legacy, _ := json.Marshal(Connection{Version: 1, Status: StatusReady, Base: present(string(panel))})
 	_, err := engine.Store.SaveConfigFileState(t.Context(), storage.ConfigFileStateChange{
-		TargetID: "workspace", RepositoryID: "repo", OwnerRevision: snapshot.OwnerRevision(), SyncRevisions: snapshot.SyncRevisions(),
+		TargetID: "workspace", RepositoryID: "github:repository:11", OwnerRevision: snapshot.OwnerRevision(), SyncRevisions: snapshot.SyncRevisions(),
 		Document: legacy, ChangedAt: time.Now().UTC(), Initialized: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := engine.ReadStatus(t.Context(), "workspace", "repo")
+	answer, err := engine.ReadStatus(t.Context(), "workspace", "github:repository:11")
 	if err != nil || answer.Status != StatusPending || answer.LastCheck == nil || answer.LastCheck.SettingsCurrent {
 		t.Fatalf("legacy observation claimed current = %+v (%v)", answer, err)
 	}
 	for _, enabled := range []bool{false, true} {
-		snapshot, _ = engine.Snapshot(t.Context(), "workspace", "repo")
+		snapshot, _ = engine.Snapshot(t.Context(), "workspace", "github:repository:11")
 		_, err = engine.Store.SaveInstallationSettings(t.Context(), storage.SaveInstallationSettingsRequest{
 			TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
-			Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "repo", ConfigFileSyncEnabled: enabled, ExpectedRevision: snapshot.OwnerRevision()}},
+			Repositories: []storage.InstallationRepositorySettingsChange{{RepositoryID: "github:repository:11", ConfigFileSyncEnabled: enabled, ExpectedRevision: snapshot.OwnerRevision()}},
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		answer, err = engine.ReadStatus(t.Context(), "workspace", "repo")
+		answer, err = engine.ReadStatus(t.Context(), "workspace", "github:repository:11")
 		want := StatusOff
 		if enabled {
 			want = StatusPending

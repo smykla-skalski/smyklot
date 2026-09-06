@@ -124,7 +124,7 @@ func (engine Engine) observeReview(ctx context.Context, client *github.Client, t
 	if err != nil {
 		return observation, err
 	}
-	location, err := engine.location(ctx, snapshot)
+	location, err := engine.location(ctx, client, snapshot)
 	if err != nil {
 		return observation, err
 	}
@@ -133,7 +133,7 @@ func (engine Engine) observeReview(ctx context.Context, client *github.Client, t
 	if err != nil {
 		return observation, err
 	}
-	if err := engine.verifyReview(ctx, observation); err != nil {
+	if err := engine.verifyReview(ctx, client, observation); err != nil {
 		return observation, err
 	}
 	panel, err := snapshot.JSON()
@@ -162,7 +162,7 @@ func (engine Engine) observeReview(ctx context.Context, client *github.Client, t
 	return observation, err
 }
 
-func (engine Engine) verifyReview(ctx context.Context, observation reviewObservation) error {
+func (engine Engine) verifyReview(ctx context.Context, client *github.Client, observation reviewObservation) error {
 	before := observation.snapshot
 	after, err := engine.Snapshot(ctx, before.Target.ID, before.RepositoryID())
 	if err != nil {
@@ -174,7 +174,7 @@ func (engine Engine) verifyReview(ctx context.Context, observation reviewObserva
 		!maps.Equal(before.SyncRevisions(), after.SyncRevisions()) {
 		return storage.ErrConflict
 	}
-	location, err := engine.location(ctx, after)
+	location, err := engine.location(ctx, client, after)
 	if err != nil {
 		return err
 	}

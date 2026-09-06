@@ -150,7 +150,7 @@ func checkSourcePolicyConverges(t *testing.T, scope config.PanelFileScope, actor
 	panel := PanelSnapshot{Target: storage.Target{ID: "workspace", Kind: storage.TargetOrganization}}
 	if scope == config.PanelFileRepository {
 		panel.Repository = &storage.Repository{
-			ID: "repo", TargetID: "workspace",
+			ID: "github:repository:11", TargetID: "workspace",
 			PendingCIBranchPatternsOverride: refs, PendingCIBypassPolicyOverride: policy,
 		}
 	} else {

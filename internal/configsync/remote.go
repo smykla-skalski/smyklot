@@ -17,6 +17,7 @@ import (
 const WorkspaceFilePath = ".smyklot/workspace.toml"
 
 type RemoteLocation struct {
+	RepositoryID  int64
 	Owner         string
 	Repository    string
 	DefaultBranch string

@@ -76,7 +76,7 @@ func TestPrepareProposalPreservesCommentsAndRunnerWithoutMovingRefs(t *testing.T
 }
 
 func remoteLocation() RemoteLocation {
-	return RemoteLocation{Owner: "acme", Repository: "web", DefaultBranch: "main", Scope: config.PanelFileRepository}
+	return RemoteLocation{RepositoryID: 11, Owner: "acme", Repository: "web", DefaultBranch: "main", Scope: config.PanelFileRepository}
 }
 
 func proposalRefPath() string {
@@ -113,7 +113,7 @@ func TestPublicationCreatesOnePRAndRecoversUncertainResponses(t *testing.T) {
 					remoteCall{method: "POST", path: "/repos/acme/web/git/refs", answer: `{}`},
 					remoteCall{method: "POST", path: "/repos/acme/web/pulls", answer: pull})
 			}
-			next, err := PublishProposal(context.Background(), scriptedRemote(t, calls...), remoteLocation(), proposal)
+			next, err := PublishProposal(context.Background(), scriptedRemote(t, append([]remoteCall{repositoryIdentityCall()}, calls...)...), remoteLocation(), proposal)
 			if err != nil || next.Number != 42 || next.URL != "https://github.com/acme/web/pull/42" {
 				t.Fatalf("publication = %+v (%v)", next, err)
 			}
@@ -135,7 +135,7 @@ func TestPublicationStopsBeforeWritingChangedOrClosedBranches(t *testing.T) {
 					remoteCall{method: "GET", path: proposalRefPath(), status: 404, answer: `{}`},
 					remoteCall{method: "GET", path: "/repos/acme/web/pulls", answer: `[{"state":"closed","number":42}]`})
 			}
-			_, err := PublishProposal(context.Background(), scriptedRemote(t, calls...), remoteLocation(), readyProposal())
+			_, err := PublishProposal(context.Background(), scriptedRemote(t, append([]remoteCall{repositoryIdentityCall()}, calls...)...), remoteLocation(), readyProposal())
 			var blocked *BlockedError
 			if !errors.As(err, &blocked) || blocked.Code != problem {
 				t.Fatalf("failure = %v, want %s", err, problem)
@@ -148,6 +148,7 @@ func TestPublicationAdvancesOnlyKnownBranchWithoutForce(t *testing.T) {
 	proposal := readyProposal()
 	proposal.PreviousHead = strings.Repeat("c", 40)
 	client := scriptedRemote(t,
+		repositoryIdentityCall(),
 		remoteCall{method: "GET", path: "/repos/acme/web/git/ref/heads/main", answer: `{"object":{"sha":"` + remoteHead + `"}}`},
 		remoteCall{method: "GET", path: proposalRefPath(), answer: `{"object":{"sha":"` + proposal.PreviousHead + `"}}`},
 		remoteCall{method: "GET", path: "/repos/acme/web/pulls", answer: `[{"number":42,"state":"open"}]`},

@@ -69,7 +69,7 @@ func (engine Engine) Snapshot(ctx context.Context, targetID, repositoryID string
 	return snapshot, nil
 }
 
-func (engine Engine) location(ctx context.Context, snapshot PanelSnapshot) (RemoteLocation, error) {
+func (engine Engine) location(ctx context.Context, client *github.Client, snapshot PanelSnapshot) (RemoteLocation, error) {
 	repository := snapshot.Repository
 	if repository == nil {
 		repositories, err := engine.Store.ListRepositories(ctx, snapshot.Target.ID)
@@ -86,11 +86,24 @@ func (engine Engine) location(ctx context.Context, snapshot PanelSnapshot) (Remo
 			return RemoteLocation{}, &BlockedError{Code: "workspace_repository_missing", Message: "Give Smyklot access to the .github repository to sync workspace settings"}
 		}
 	}
-	owner, name, valid := strings.Cut(repository.FullName, "/")
-	if !valid || owner == "" || name == "" || strings.Contains(name, "/") {
-		return RemoteLocation{}, errors.New("configuration repository has an invalid catalog name")
+	id, err := storage.ParseRepositoryID(repository.ID)
+	if err != nil {
+		return RemoteLocation{}, err
 	}
-	return RemoteLocation{Owner: owner, Repository: name, DefaultBranch: repository.DefaultBranch, Scope: snapshot.Scope()}, nil
+	live, err := client.GetRepositoryByID(ctx, id)
+	if err != nil {
+		return RemoteLocation{}, err
+	}
+	if live.Owner == "" || live.Name == "" || strings.ContainsAny(live.Owner+live.Name, "/\\") || live.FullName != live.Owner+"/"+live.Name {
+		return RemoteLocation{}, errors.New("GitHub returned an invalid repository name")
+	}
+	if snapshot.Repository == nil && live.Name != ".github" {
+		return RemoteLocation{}, &BlockedError{Code: "workspace_repository_renamed", Message: "Refresh repository access to find the current .github repository before syncing workspace settings"}
+	}
+	if live.DefaultBranch == "" {
+		return RemoteLocation{}, &BlockedError{Code: "missing_branch", Message: "The default branch is unavailable"}
+	}
+	return RemoteLocation{RepositoryID: id, Owner: live.Owner, Repository: live.Name, DefaultBranch: live.DefaultBranch, Scope: snapshot.Scope()}, nil
 }
 
 func connectionEnabled(snapshot PanelSnapshot) bool {
@@ -123,11 +136,10 @@ func (engine Engine) runOnce(ctx context.Context, client *github.Client, targetI
 		return engine.block(ctx, snapshot, stored, connection,
 			&BlockedError{Code: "file_disabled", Message: "Turn on file settings before syncing changes in both directions"})
 	}
-	location, err := engine.location(ctx, snapshot)
-	if err != nil {
-		return engine.block(ctx, snapshot, stored, connection, err)
+	file, err := engine.readForReconciliation(ctx, client, snapshot)
+	if errors.Is(err, storage.ErrConflict) {
+		return connection, true, nil
 	}
-	file, err := ReadRemoteFile(ctx, client, location)
 	if validObjectID(file.Head) {
 		connection.Head, connection.Path = file.Head, file.Path
 	}
@@ -169,6 +181,27 @@ func (engine Engine) runOnce(ctx context.Context, client *github.Client, targetI
 		return engine.save(ctx, snapshot, stored, connection)
 	}
 	return engine.apply(ctx, client, snapshot, stored, connection, file, input, decision)
+}
+
+func (engine Engine) readForReconciliation(ctx context.Context, client *github.Client, snapshot PanelSnapshot) (RemoteFile, error) {
+	location, err := engine.location(ctx, client, snapshot)
+	if err != nil {
+		return RemoteFile{}, err
+	}
+	file, err := ReadRemoteFile(ctx, client, location)
+	if err != nil {
+		return file, err
+	}
+	current, err := engine.location(ctx, client, snapshot)
+	if err != nil {
+		return file, err
+	}
+	// Names can be reused by another repository during the immutable file read.
+	// Discard that observation before importing settings or advancing state.
+	if current != location {
+		return file, storage.ErrConflict
+	}
+	return file, nil
 }
 
 func (engine Engine) save(ctx context.Context, snapshot PanelSnapshot, stored storage.ConfigFileState, connection Connection) (Connection, bool, error) {
