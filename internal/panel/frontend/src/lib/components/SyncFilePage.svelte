@@ -226,14 +226,6 @@ where it arises.
     templateRender?.diagnostics.map(({ message }) => message).join(' · ') ?? '',
   );
 
-  function renderValidationControl(kind: 'template' | 'repository', repositoryId = ''): string {
-    return `sync.files.${kind}-render:${encodeURIComponent(repositoryId)}:${encodeURIComponent(path)}`;
-  }
-
-  function reportFormattingValidity(control: string, valid: boolean, message: string): void {
-    untrack(() => onFormattingValidity(control, valid, message));
-  }
-
   function templateRenderInput(): SyncFileRenderInput {
     return {
       path,
@@ -256,7 +248,6 @@ where it arises.
   async function refreshTemplateRender(
     input: SyncFileRenderInput,
     generation: number,
-    validationControl: string,
   ): Promise<void> {
     if (generation !== renderGeneration) return;
     templateRendering = true;
@@ -264,12 +255,6 @@ where it arises.
       const rendered = await renderFile(input);
       if (generation !== renderGeneration) return;
       templateRender = rendered;
-      const message = rendered.diagnostics.map(({ message }) => message).join(' · ');
-      reportFormattingValidity(
-        validationControl,
-        rendered.valid,
-        message === '' ? 'The template cannot be rendered safely' : message,
-      );
     } catch (cause) {
       if (generation !== renderGeneration) return;
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -279,7 +264,6 @@ where it arises.
         matches_formatting: false,
         diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
-      reportFormattingValidity(validationControl, false, message);
     } finally {
       if (generation === renderGeneration) templateRendering = false;
     }
@@ -290,22 +274,11 @@ where it arises.
     void templateText;
     void templateFormatting;
     if (heldFile === null) return;
-    const validationControl = renderValidationControl('template');
-    const preserveValidation = templateDirty || dirtyTemplateFormatting.length > 0;
     const generation = (renderGeneration += 1);
     const input = templateRenderInput();
-    reportFormattingValidity(
-      validationControl,
-      false,
-      'The template formatting check has not finished',
-    );
-    const timer = setTimeout(
-      () => void refreshTemplateRender(input, generation, validationControl),
-      120,
-    );
+    const timer = setTimeout(() => void refreshTemplateRender(input, generation), 120);
     return () => {
       clearTimeout(timer);
-      if (!preserveValidation) reportFormattingValidity(validationControl, true, '');
     };
   });
 
@@ -445,23 +418,12 @@ where it arises.
     const repositoryGeneration = ++repositoryRenderGeneration;
     handoffBusy = true;
     try {
-      // Leaving before the debounce fires used to cancel the only validation of
-      // a dirty template and leave Save permanently waiting on that check.
-      // Finish the exact visible snapshot before giving the editor to the route.
+      // Finish the visible preview before handing the file to another editor.
+      // Save validation has application lifetime and continues independently.
       await Promise.all([
-        refreshTemplateRender(
-          templateRenderInput(),
-          templateGeneration,
-          renderValidationControl('template'),
-        ),
+        refreshTemplateRender(templateRenderInput(), templateGeneration),
         ...(heldEnvelope !== null && repositoryDraftProblem === null
-          ? [
-              refreshRepositoryRender(
-                repositoryRenderInput(openEntry),
-                repositoryGeneration,
-                renderValidationControl('repository', repositoryId),
-              ),
-            ]
+          ? [refreshRepositoryRender(repositoryRenderInput(openEntry), repositoryGeneration)]
           : []),
       ]);
       if (
@@ -645,7 +607,6 @@ where it arises.
   async function refreshRepositoryRender(
     input: SyncFileRenderInput,
     generation: number,
-    validationControl: string,
   ): Promise<void> {
     if (generation !== repositoryRenderGeneration) return;
     repositoryRendering = true;
@@ -653,12 +614,6 @@ where it arises.
       const rendered = await renderFile(input);
       if (generation !== repositoryRenderGeneration) return;
       repositoryRender = rendered;
-      const message = rendered.diagnostics.map(({ message }) => message).join(' · ');
-      reportFormattingValidity(
-        validationControl,
-        rendered.valid,
-        message === '' ? 'The repository output cannot be rendered safely' : message,
-      );
     } catch (cause) {
       if (generation !== repositoryRenderGeneration) return;
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -668,7 +623,6 @@ where it arises.
         matches_formatting: false,
         diagnostics: [{ stage: 'request', code: 'render_failed', message }],
       };
-      reportFormattingValidity(validationControl, false, message);
     } finally {
       if (generation === repositoryRenderGeneration) repositoryRendering = false;
     }
@@ -684,35 +638,17 @@ where it arises.
       repositoryRendering = false;
       return;
     }
-    const validationControl = renderValidationControl('repository', entry.repository_id);
-    const preserveValidation = overrideDirty(entry.repository_id);
     const generation = (repositoryRenderGeneration += 1);
     if (heldEnvelope === null || repositoryDraftProblem !== null) {
       repositoryRender = null;
       repositoryRendering = false;
-      // Invalid text is retained and blocked by the override serializer. A second
-      // renderer-owned error would outlive this inspector and block a correction
-      // made in the repository editor, which does not run this renderer.
-      reportFormattingValidity(
-        validationControl,
-        repositoryDraftProblem !== null,
-        heldEnvelope === null ? 'The repository adjustment has not loaded' : '',
-      );
-      return () => reportFormattingValidity(validationControl, true, '');
+      // The persistent serializer owns invalid raw drafts; do not render stale content.
+      return;
     }
     const input = repositoryRenderInput(entry);
-    reportFormattingValidity(
-      validationControl,
-      false,
-      'The repository output formatting check has not finished',
-    );
-    const timer = setTimeout(
-      () => void refreshRepositoryRender(input, generation, validationControl),
-      120,
-    );
+    const timer = setTimeout(() => void refreshRepositoryRender(input, generation), 120);
     return () => {
       clearTimeout(timer);
-      if (!preserveValidation) reportFormattingValidity(validationControl, true, '');
     };
   });
 

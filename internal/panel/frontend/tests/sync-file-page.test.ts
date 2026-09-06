@@ -304,11 +304,9 @@ describe('SyncFilePage [Component]', () => {
             expect.stringContaining('/workspace/org/repositories/repo-a#file-sync=renovate.json'),
           ),
         );
-        expect(onFormattingValidity).toHaveBeenCalledWith(
-          'sync.files.template-render::renovate.json',
-          outcome !== 'invalid',
-          outcome === 'invalid' ? 'Formatting is unsafe' : expect.any(String),
-        );
+        expect(
+          onFormattingValidity.mock.calls.some(([control]) => control.includes('-render:')),
+        ).toBe(false);
       } else expect(navigation.goto).not.toHaveBeenCalled();
     },
   );
@@ -444,30 +442,21 @@ describe('SyncFilePage [Component]', () => {
     });
   });
 
-  it('blocks saving while the template render check is still pending', async () => {
+  it('debounces preview without owning the application save check', async () => {
     const pending = deferred<SyncFileRenderResponse>();
     const onFormattingValidity = vi.fn();
     const renderFile = vi.fn(() => pending.promise);
-
-    render(SyncFilePage, {
-      props: renderProps({ renderFile, onFormattingValidity }),
-    });
-
-    await vi.waitFor(() =>
-      expect(onFormattingValidity).toHaveBeenCalledWith(
-        'sync.files.template-render::renovate.json',
-        false,
-        'The template formatting check has not finished',
-      ),
+    render(SyncFilePage, { props: renderProps({ renderFile, onFormattingValidity }) });
+    await vi.waitFor(() => expect(renderFile).toHaveBeenCalledTimes(1));
+    expect(onFormattingValidity.mock.calls.some(([control]) => control.includes('-render:'))).toBe(
+      false,
     );
-    expect(renderFile).not.toHaveBeenCalled();
-
     pending.resolve(
       validRender({ path: 'renovate.json', draft_content: '{}', template_formatting: {} }),
     );
   });
 
-  it('keeps an invalid dirty template blocked after the page unmounts', async () => {
+  it('shows invalid template diagnostics without retaining editor-owned save validation', async () => {
     const onFormattingValidity = vi.fn();
     const invalid: SyncFileRenderResponse = {
       valid: false,
@@ -485,13 +474,7 @@ describe('SyncFilePage [Component]', () => {
       }),
     });
 
-    await vi.waitFor(() =>
-      expect(onFormattingValidity).toHaveBeenCalledWith(
-        'sync.files.template-render::renovate.json',
-        false,
-        'Formatting is unsafe',
-      ),
-    );
+    await vi.waitFor(() => expect(screen.getByText('Formatting is unsafe')).toBeTruthy());
     const callsBeforeUnmount = onFormattingValidity.mock.calls.length;
     rendered.unmount();
 
@@ -505,7 +488,7 @@ describe('SyncFilePage [Component]', () => {
     ).toBe(false);
   });
 
-  it('keeps an invalid dirty repository output blocked after its row collapses', async () => {
+  it('shows repository diagnostics without retaining editor-owned save validation', async () => {
     const onFormattingValidity = vi.fn();
     const stored: SyncOverride = {
       kind: 'files',
@@ -553,13 +536,7 @@ describe('SyncFilePage [Component]', () => {
 
     const row = screen.getByRole('button', { name: /repo-a/ });
     await fireEvent.click(row);
-    await vi.waitFor(() =>
-      expect(onFormattingValidity).toHaveBeenCalledWith(
-        'sync.files.repository-render:repo-1:renovate.json',
-        false,
-        'Repository formatting is unsafe',
-      ),
-    );
+    await screen.findByText('Repository formatting is unsafe');
     const callsBeforeCollapse = onFormattingValidity.mock.calls.length;
     await fireEvent.click(row);
 

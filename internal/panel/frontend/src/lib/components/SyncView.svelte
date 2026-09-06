@@ -12,6 +12,7 @@
     type SyncOverrideEditorEnvelope,
   } from '#lib/repository-sync-override-settings.js';
   import { getSettingsDraftRegistry, type SettingsScope } from '#lib/settings-drafts.svelte.js';
+  import { getFileDraftValidation } from '#lib/file-draft-validation.js';
   import {
     adoptSyncConfigSettings,
     stageSyncConfigControl,
@@ -134,6 +135,7 @@
   type EditorState = { config: SyncConfig | null; problem: string | null };
 
   const drafts = getSettingsDraftRegistry();
+  const fileValidation = getFileDraftValidation();
   const settingsScope = $derived({
     type: 'workspace',
     targetId,
@@ -556,7 +558,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       dirtyDocument={dirtyControls.includes('sync.files.document')}
       {dirtyControls}
       fetchOverride={loadFilesOverride}
-      renderFile={(input) => renderFile(targetId, input)}
+      renderFile={(input) => fileValidation?.render(targetId, input) ?? renderFile(targetId, input)}
       onFormattingValidity={(control, valid, message) =>
         drafts.setValidationProblem(settingsScope, control, valid ? null : message)}
       onChangeOverride={stageFilesOverride}

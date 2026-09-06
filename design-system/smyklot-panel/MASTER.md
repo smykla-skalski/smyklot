@@ -501,8 +501,15 @@ code. Read-only users receive an inspection action instead. The handoff identifi
 and reveals the requested file, preserves unsaved drafts, and focuses it once
 without stealing focus on later edits or renames
 
-Navigation must settle pending validation without letting an old editor update a
-new editor's draft. Leaving invalidates every outstanding render generation.
+The shared draft lifetime owns file validation, including restored drafts whose
+editor has not opened. Leaving before a debounce or during a request must not
+leave Save pending forever or let invalid content save. Editors invalidate their
+own preview generations on leave; validation continues for the current draft.
+Discard, replacement, and account changes reject late results. A successful retry
+for the same current input clears a transient request error. Typed formatting
+metadata must not suppress checks for that file or any other file, and file
+content retains exact numeric values through validation
+
 Returning to the same settings preserves raw invalid text, selection, and Undo;
 object key order alone is not a settings change. Breadcrumbs and sidebar links
 must leave a file detail for the shared-file list within the same session
@@ -607,6 +614,7 @@ states without depending on a caller's scoped CSS
 | Duration styles and units, explanation alignment, gold state geometry | `duration-controls` browser suite and `duration-input`, `unsaved-colors` unit suites |
 | Editor inspector layout stability, focus return, draft preservation, regular card groups | `repository-file-sync` browser suite and `repository-sync-pane` unit suite |
 | Native editor handoff, delayed validation, same-session return, format variants | `native-file-handoff` browser suite and `file-adjustment-link`, `session`, `sync-file-page` unit suites |
+| File validation through navigation, restored drafts, retries, and discard | `file-validation-lifetime` browser suite and `file-draft-validation` unit suite |
 | File observation states, search priority, row alignment, inspector focus return | `config-migration` browser suite and `repository-control` unit suite |
 | Alias interactions and shared compact pickers | `pair-entry`, `segmented-control`, `dictionary` browser suites |
 | File editor modes, exact output, hidden newline, independent row controls | `file-formatting`, `repository-file-sync` browser suites and `code-editor` unit suite |

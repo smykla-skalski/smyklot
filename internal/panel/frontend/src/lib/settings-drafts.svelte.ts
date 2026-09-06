@@ -148,6 +148,7 @@ export class SettingsDraftRegistry {
   private editCounter = 0;
   private logicalTime = 0;
   private listening = false;
+  private readonly saveValidators: Array<() => void> = [];
   private readonly storage: SettingsDraftStorage | null;
   private readonly now: () => number;
   private readonly writerId: string;
@@ -218,6 +219,7 @@ export class SettingsDraftRegistry {
   }
 
   dispose(): void {
+    this.saveValidators.length = 0;
     if (!this.listening || typeof window === 'undefined') return;
     window.removeEventListener('storage', this.onStorage);
     this.listening = false;
@@ -360,10 +362,9 @@ export class SettingsDraftRegistry {
   }
 
   /**
-   * Register an editor-only problem that cannot be represented in the typed
-   * draft yet, such as a partially entered bounded integer. These problems are
-   * deliberately not persisted: the invalid text belongs to the mounted input,
-   * while every stored draft remains valid and round-trippable.
+   * Register a transient validation result owned by an input or an application
+   * coordinator. Callers clear their results when the relevant draft disappears.
+   * Results are not persisted; application checks rerun against restored drafts.
    */
   setValidationProblem(scope: SettingsScope, controlId: string, problem: string | null): void {
     const scopeKey = settingsScopeKey(scope);
@@ -473,8 +474,18 @@ export class SettingsDraftRegistry {
     return selected.length;
   }
 
+  /** Refresh synchronous validation after importing storage, before snapshotting a save. */
+  onBeforeSave(validate: () => void): () => void {
+    this.saveValidators.push(validate);
+    return () => {
+      const index = this.saveValidators.indexOf(validate);
+      if (index !== -1) this.saveValidators.splice(index, 1);
+    };
+  }
+
   beginSave(scope: SettingsScope): SettingsSaveAttempt | null {
     this.syncFromStorage();
+    for (const validate of this.saveValidators) validate();
     const accountId = this.accountId;
     const states = Object.entries(this.resources).filter(
       ([, state]) => isDirty(state) && sameSettingsScope(settingsScopeOf(state.resource), scope),

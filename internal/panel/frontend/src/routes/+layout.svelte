@@ -32,6 +32,11 @@
     type SettingsScope,
   } from '#lib/settings-drafts.svelte.js';
   import { SettingsDraftAttentionController } from '#lib/settings-draft-attention.js';
+  import {
+    FileDraftValidation,
+    fileDraftValidationSnapshot,
+    setFileDraftValidation,
+  } from '#lib/file-draft-validation.js';
   import type { PanelTarget } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
@@ -95,6 +100,12 @@
   setPanelSession(session);
   const settingsDraftRegistry = new SettingsDraftRegistry();
   setSettingsDraftRegistry(settingsDraftRegistry);
+  const fileDraftValidation = new FileDraftValidation(settingsDraftRegistry, api);
+  setFileDraftValidation(fileDraftValidation);
+  $effect(() => {
+    const snapshot = fileDraftValidationSnapshot(settingsDraftRegistry);
+    untrack(() => fileDraftValidation.update(snapshot));
+  });
   /* A getter and not the value: what the finder can reach changes with the console and
      the workspace, and a context holding one snapshot would hand the search page the
      answer that was true when the shell mounted. */
@@ -326,6 +337,7 @@
 
   $effect(() => () => {
     settingsDraftAttentionController.dispose();
+    fileDraftValidation.dispose();
     settingsDraftRegistry.dispose();
   });
 
