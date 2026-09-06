@@ -5,6 +5,15 @@ import { palettes } from './theme';
 
 describe('unsaved settings colors [Unit]', () => {
   for (const palette of palettes) {
+    it(`keeps decision notices readable on their opaque surface in ${palette.name}`, () => {
+      for (const text of ['text-primary', 'text-secondary', 'decision-accent']) {
+        expect(
+          contrast(palette.color(text), palette.color('popover-bg')),
+          text,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
     it(`keeps changed rows distinct and readable in ${palette.name}`, () => {
       const surface = palette.color('unsaved-surface');
       expect(deltaE(surface, palette.color('surface-base'))).toBeGreaterThan(5);

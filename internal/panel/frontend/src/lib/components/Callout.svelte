@@ -12,6 +12,7 @@
 
   const {
     tone = 'quiet',
+    decision = false,
     icon,
     actions,
     class: extra = '',
@@ -19,6 +20,8 @@
     ...rest
   }: {
     tone?: CalloutTone;
+    /** The existing gold exception for an unsaved decision and its resolving action. */
+    decision?: boolean;
     /** The mark beside the words, when the words alone do not carry the weight. */
     icon?: Snippet;
     /** Adjacent controls, centered beside the message without changing its text rhythm. */
@@ -52,9 +55,13 @@ Rest props pass through, so a caller can still hand the box an id, a role or a
 Wrap message text in a paragraph or span. A heading and body use `.callout-copy`;
 the shared stack owns their spacing. Pass adjacent controls through `actions`, so
 the message stays vertically balanced independently of the icon and button size.
+
+`decision` applies the same opaque surface and gold border as the settings composer.
+It does not change the message's tone or accessibility semantics. Resolving actions
+use the shared Button's `signal` tone; the Callout supplies the decision palette.
 -->
 
-<div class="callout callout-{tone} {extra}" {...rest}>
+<div class={['callout', `callout-${tone}`, extra, { 'callout-decision': decision }]} {...rest}>
   <div class="callout-message">
     {#if icon !== undefined}
       <span class="callout-icon">{@render icon()}</span>
@@ -139,6 +146,21 @@ the message stays vertically balanced independently of the icon and button size.
     border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--warning-tint));
     font-size: var(--font-size-compact);
     gap: var(--space-2);
+  }
+
+  .callout-decision {
+    --brand-action: var(--decision-accent);
+    --brand-action-hover: var(--decision-accent-hover);
+    --brand-action-pressed: var(--decision-accent-pressed);
+    --on-brand-action: var(--on-decision-accent);
+    background: var(--popover-bg);
+    border-color: var(--decision-accent);
+    border-width: var(--decision-border-width);
+    box-shadow: var(--shadow-plate);
+  }
+
+  .callout-decision .callout-icon {
+    color: var(--decision-accent);
   }
 
   @container callout (max-width: 24rem) {

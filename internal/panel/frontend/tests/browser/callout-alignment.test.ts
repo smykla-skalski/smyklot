@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import type { Locator, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { calloutGeometry } from './callout-geometry';
@@ -13,6 +14,70 @@ beforeAll(async () => {
 afterAll(async () => {
   await panel?.close();
 });
+
+async function expectDecisionPaint(notice: Locator, page: Page) {
+  const paint = await notice.evaluate((node) => {
+    const surface = node.querySelector('.callout')!;
+    const style = getComputedStyle(surface);
+    const probe = document.createElement('span');
+    probe.style.cssText = 'position:absolute;visibility:hidden;transition:none;animation:none';
+    surface.append(probe);
+    const color = (token: string) => {
+      probe.style.color = `var(${token})`;
+      return getComputedStyle(probe).color;
+    };
+    const expected = {
+      background: color('--popover-bg'),
+      border: color('--decision-accent'),
+      hover: color('--decision-accent-hover'),
+      pressed: color('--decision-accent-pressed'),
+      ink: color('--on-decision-accent'),
+    };
+    probe.remove();
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext('2d')!;
+    context.fillStyle = style.backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return {
+      expected,
+      background: style.backgroundColor,
+      border: style.borderTopColor,
+      width: style.borderTopWidth,
+      backdrop: style.backdropFilter,
+      shadow: style.boxShadow,
+      alpha: context.getImageData(0, 0, 1, 1).data[3],
+    };
+  });
+  expect(paint.background).toBe(paint.expected.background);
+  expect(paint.border).toBe(paint.expected.border);
+  expect(paint.width).toBe('2px');
+  expect(paint.alpha).toBe(255);
+  expect(paint.backdrop).toBe('none');
+  expect(paint.shadow).not.toContain('inset');
+
+  const review = notice.getByRole('link', { name: 'Review' });
+  if ((await review.count()) === 0) return;
+  expect(await review.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(
+    paint.expected.border,
+  );
+  expect(await review.evaluate((node) => getComputedStyle(node).color)).toBe(paint.expected.ink);
+  await review.hover();
+  await expect
+    .poll(() => review.evaluate((node) => getComputedStyle(node).backgroundColor))
+    .toBe(paint.expected.hover);
+  await page.mouse.down();
+  await expect
+    .poll(() => review.evaluate((node) => getComputedStyle(node).backgroundColor))
+    .toBe(paint.expected.pressed);
+  expect(await review.evaluate((node) => getComputedStyle(node).boxShadow)).not.toBe('none');
+  expect(await review.evaluate((node) => getComputedStyle(node).translate)).toBe('0px 1px');
+  await review.evaluate((node) =>
+    node.addEventListener('click', (event) => event.preventDefault(), { once: true }),
+  );
+  await page.mouse.up();
+  await page.mouse.move(0, 0);
+}
 
 describe('shared Callout first-line alignment [Browser]', () => {
   it.each([
@@ -49,6 +114,12 @@ describe('shared Callout first-line alignment [Browser]', () => {
             path: join(directory, `callout-${colorScheme}-${width}.png`),
             animations: 'disabled',
           });
+          for (const kind of ['inactive', 'storage-problem']) {
+            await page.locator(`.settings-draft-attention[data-kind="${kind}"]`).screenshot({
+              path: join(directory, `draft-${kind}-${colorScheme}-${width}.png`),
+              animations: 'disabled',
+            });
+          }
         }
         expect(samples).toHaveLength(12);
         for (const sample of samples) {
@@ -79,6 +150,9 @@ describe('shared Callout first-line alignment [Browser]', () => {
         expect(draftLayout.direction).toBe(width === 375 ? 'column' : 'row');
         expect(draftLayout.contentWidth).toBeGreaterThanOrEqual(180);
         expect(draftLayout.actionsLeft).toBeGreaterThan(draftLayout.contentRight);
+        for (const notice of await page.locator('.settings-draft-attention').all()) {
+          await expectDecisionPaint(notice, page);
+        }
       } finally {
         await page.close();
       }

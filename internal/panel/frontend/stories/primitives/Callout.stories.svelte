@@ -97,6 +97,19 @@
   {/snippet}
 </Story>
 
+<Story name="Pending decision">
+  {#snippet template()}
+    <Callout decision>
+      {#snippet icon()}<Icon name="pending" size="base" />{/snippet}
+      <div class="callout-copy">
+        <strong>Unsaved settings need attention</strong>
+        <p>Your changes are still here and ready to review</p>
+      </div>
+      {#snippet actions()}<Button tone="signal">Review</Button>{/snippet}
+    </Callout>
+  {/snippet}
+</Story>
+
 <style>
   .stack {
     display: grid;

@@ -27,3 +27,12 @@
     problem: 'Browser storage is unavailable. Unsaved changes will not survive',
   }}
 />
+<Story
+  name="Long storage warning"
+  args={{
+    kind: 'storage-problem',
+    count: 2,
+    problem:
+      'Browser storage is full. Unsaved workspace and repository settings will not survive closing this tab',
+  }}
+/>
