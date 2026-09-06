@@ -37,9 +37,7 @@ func (engine Engine) apply(
 		return engine.importPanel(ctx, snapshot, stored, connection, input, decision, request)
 	}
 	if decision.AdvanceBase && !file.Migrate {
-		connection.Base = Snapshot{Exists: true, Document: decision.Document}
-		connection.Status, connection.Resolution = StatusReady, nil
-		return engine.save(ctx, snapshot, stored, connection)
+		return engine.settle(ctx, client, snapshot, stored, connection, file, decision.Document)
 	}
 	return engine.publish(ctx, client, snapshot, stored, connection, file, decision.Document)
 }

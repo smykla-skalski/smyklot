@@ -17,16 +17,17 @@ import (
 // result of resolving overlapping edits, with independent edits preserved. The
 // private baseline and publication intent are never part of this response.
 type ConnectionPreview struct {
-	Status        Status          `json:"status"`
-	CheckedAt     time.Time       `json:"checked_at"`
-	Path          string          `json:"path,omitempty"`
-	Head          string          `json:"head,omitempty"`
-	Problem       string          `json:"problem,omitempty"`
-	Message       string          `json:"message,omitempty"`
-	ConflictCount int             `json:"conflict_count,omitempty"`
-	ConflictPaths [][]string      `json:"conflict_paths,omitempty"`
-	ReviewToken   string          `json:"review_token,omitempty"`
-	Choices       []PreviewChoice `json:"choices,omitempty"`
+	Status        Status           `json:"status"`
+	CheckedAt     time.Time        `json:"checked_at"`
+	Path          string           `json:"path,omitempty"`
+	Head          string           `json:"head,omitempty"`
+	Problem       string           `json:"problem,omitempty"`
+	Message       string           `json:"message,omitempty"`
+	ConflictCount int              `json:"conflict_count,omitempty"`
+	ConflictPaths [][]string       `json:"conflict_paths,omitempty"`
+	ReviewToken   string           `json:"review_token,omitempty"`
+	Choices       []PreviewChoice  `json:"choices,omitempty"`
+	Proposal      *CheckedProposal `json:"proposal,omitempty"`
 }
 
 type PreviewChoice struct {
@@ -66,7 +67,11 @@ func (engine Engine) Preview(ctx context.Context, client *github.Client, targetI
 		}
 		return ConnectionPreview{}, err
 	}
-	return engine.review(observation)
+	preview, err := engine.review(observation)
+	if err != nil {
+		return preview, err
+	}
+	return engine.previewStatus(ctx, client, observation, preview)
 }
 
 // PrepareResolution only prepares a CAS-protected state change. The caller must

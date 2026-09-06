@@ -71,7 +71,7 @@ func (engine Engine) ReadStatus(ctx context.Context, targetID, repositoryID stri
 		Head: connection.Head, Path: connection.Path, Problem: connection.Problem, Message: connection.Message,
 		ConflictCount: connection.ConflictCount, ConflictPaths: connection.ConflictPaths,
 	}
-	if proposal := connection.Proposal; proposal != nil && proposal.Number > 0 && connection.Status == StatusProposed {
+	if proposal := connection.Proposal; proposal != nil && proposal.Number > 0 && connection.Status != StatusReady && connection.Status != StatusOff {
 		check.Proposal = &CheckedProposal{Number: proposal.Number, URL: proposal.URL}
 	}
 	answer.LastCheck = check

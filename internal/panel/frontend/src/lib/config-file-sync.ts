@@ -43,6 +43,7 @@ export interface ConfigFilePreview {
   conflict_paths?: string[][];
   review_token?: string;
   choices?: ConfigFilePreviewChoice[];
+  proposal?: { number: number; url: string };
 }
 
 /** Only a fresh comparison token and a choice cross the write boundary. */

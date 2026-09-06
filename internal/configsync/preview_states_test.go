@@ -170,7 +170,8 @@ func TestPreviewAndWorkerDiscardAChoiceAfterItsConflictDisappears(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err = engine.Run(t.Context(), scriptedRemote(t, engineFileCalls(".smyklot.toml", string(merged))...), "workspace", "github:repository:11")
+	mergedCalls := append(engineFileCalls(".smyklot.toml", string(merged)), mergedProposalCalls()...)
+	connection, err = engine.Run(t.Context(), scriptedRemote(t, mergedCalls...), "workspace", "github:repository:11")
 	if err != nil || connection.Status != StatusReady || !connection.Base.Exists {
 		t.Fatalf("automatically merged settings did not converge: %+v (%v)", connection, err)
 	}

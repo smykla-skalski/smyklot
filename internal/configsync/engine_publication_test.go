@@ -47,7 +47,8 @@ func TestEngineResumesDurableProposalAfterFinalStateWriteFails(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err = engine.Run(ctx, scriptedRemote(t, engineFileCalls(".smyklot.toml", string(content))...), "workspace", "github:repository:11")
+	mergedCalls := append(engineFileCalls(".smyklot.toml", string(content)), mergedProposalCalls()...)
+	connection, err = engine.Run(ctx, scriptedRemote(t, mergedCalls...), "workspace", "github:repository:11")
 	if err != nil || connection.Status != "ready" || !connection.Base.Exists {
 		t.Fatalf("merged proposal did not converge: %+v (%v)", connection, err)
 	}
@@ -135,7 +136,8 @@ func TestEngineSettlesAPanelChoiceAfterItsProposalMerges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	connection, err = engine.Run(ctx, scriptedRemote(t, engineFileCalls(".smyklot.toml", string(content))...), "workspace", "github:repository:11")
+	mergedCalls := append(engineFileCalls(".smyklot.toml", string(content)), mergedProposalCalls()...)
+	connection, err = engine.Run(ctx, scriptedRemote(t, mergedCalls...), "workspace", "github:repository:11")
 	if err != nil || connection.Status != StatusReady || !connection.Base.Exists || connection.Resolution != nil {
 		t.Fatalf("merged choice was incorrectly reopened as a conflict: %+v (%v)", connection, err)
 	}

@@ -76,7 +76,7 @@ func TestConnectionStatusKeepsBlockedObservationButHidesPrivateState(t *testing.
 	before, _ := engine.Store.GetConfigFileState(t.Context(), "workspace", "github:repository:11")
 	answer, err := engine.ReadStatus(t.Context(), "workspace", "github:repository:11")
 	if err != nil || answer.Status != StatusBlocked || answer.LastCheck == nil || answer.LastCheck.ConflictCount != 1 ||
-		answer.LastCheck.Problem != "conflicting_edits" || answer.LastCheck.Proposal != nil {
+		answer.LastCheck.Problem != "conflicting_edits" || answer.LastCheck.Proposal == nil || answer.LastCheck.Proposal.Number != 42 {
 		t.Fatalf("blocked status = %+v (%v)", answer, err)
 	}
 	encoded, _ := json.Marshal(answer)
