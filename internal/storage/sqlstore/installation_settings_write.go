@@ -116,7 +116,13 @@ WHERE id = ? AND revision = ?`,
 		return fmt.Errorf("update target settings: %w", err)
 	}
 
-	return checkTargetUpdate(ctx, tx, result, change.TargetID)
+	if err := checkTargetUpdate(ctx, tx, result, change.TargetID); err != nil {
+		return err
+	}
+	if change.ConfigFileSyncEnabled && !work.current.ConfigFileSyncEnabled {
+		return requireConfigFileInitialization(ctx, tx, change.TargetID, "")
+	}
+	return nil
 }
 
 func writeRepositorySettings(
@@ -157,7 +163,13 @@ WHERE target_id = ? AND id = ? AND revision = ?`,
 		return fmt.Errorf("update repository settings: %w", err)
 	}
 
-	return checkRepositoryUpdate(ctx, tx, result, change.TargetID, change.RepositoryID)
+	if err := checkRepositoryUpdate(ctx, tx, result, change.TargetID, change.RepositoryID); err != nil {
+		return err
+	}
+	if change.ConfigFileSyncEnabled && !work.current.ConfigFileSyncEnabled {
+		return requireConfigFileInitialization(ctx, tx, change.TargetID, change.RepositoryID)
+	}
+	return nil
 }
 
 func (s *Store) retuneInstallationSettings(

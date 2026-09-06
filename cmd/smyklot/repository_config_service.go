@@ -264,12 +264,23 @@ func (s *server) serviceConfigWithControls(
 	if file.err != nil && !repository.IgnoreRepositoryFile {
 		return nil, file.err
 	}
+	if repository.ConfigFileSyncEnabled && !repository.IgnoreRepositoryFile {
+		if err := s.requireConfigurationFileBaseline(ctx, targetID, repositoryID); err != nil {
+			return nil, err
+		}
+	}
 
 	layers := []config.Layer{{Source: config.SourceTarget, Patch: target.ConfigPatch}}
 	if !repository.IgnoreRepositoryFile {
+		filePatch := file.patch
+		if repository.ConfigFileSyncEnabled {
+			// File edits become active only after reconciliation imports them.
+			// Runner is deliberately file-owned and cannot be set by the panel.
+			filePatch = config.Patch{Runner: file.patch.Runner}
+		}
 		layers = append(layers, config.Layer{
 			Source: config.SourceRepositoryFile,
-			Patch:  file.patch,
+			Patch:  filePatch,
 		})
 	}
 	layers = append(layers, config.Layer{

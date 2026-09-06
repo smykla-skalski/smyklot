@@ -257,6 +257,9 @@ func (s *Store) DecideScheduleRequest(
 	if request.State != workqueue.RequestPending || request.Revision != decision.ExpectedRevision {
 		return workqueue.ScheduleRequest{}, storage.ErrConflict
 	}
+	if err := s.lockRecurringPolicy(ctx, tx, request.Kind); err != nil {
+		return workqueue.ScheduleRequest{}, err
+	}
 	current, err := getEffectiveQueuePolicy(ctx, tx, request.Kind, &request.TargetID)
 	if err != nil {
 		return workqueue.ScheduleRequest{}, err
@@ -328,7 +331,7 @@ func (s *Store) approveScheduleRequest(
 		Configuration: request.Configuration, ExpectedRevision: expected,
 		ActorID: decision.ReviewerID, ChangedAt: decision.ReviewedAt,
 	}
-	if err := saveQueuePolicy(ctx, tx, change); err != nil {
+	if err := s.saveQueuePolicy(ctx, tx, change); err != nil {
 		return workqueue.ScheduleRequest{}, err
 	}
 	policy, err := getEffectiveQueuePolicy(ctx, tx, request.Kind, &request.TargetID)

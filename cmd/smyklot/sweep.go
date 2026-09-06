@@ -658,10 +658,10 @@ func (s *server) migrateRepositoryConfig(
 	repo github.Repository,
 ) error {
 	if s.panel != nil {
-		_, _, enabled, err := s.automaticRepositoryControls(
+		_, stored, enabled, err := s.automaticRepositoryControls(
 			ctx, targetID, storage.RepositoryID(repo.ID),
 		)
-		if err != nil || !enabled {
+		if err != nil || !enabled || stored.ConfigFileSyncEnabled {
 			return err
 		}
 	}

@@ -556,6 +556,9 @@ func (s *Store) FinishRecurringWork(
 		return workqueue.Item{}, fmt.Errorf("begin recurring finish: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
+		return workqueue.Item{}, err
+	}
 	item, err := getQueueItem(ctx, tx, id, s.dialect.RowLock())
 	if err != nil {
 		return workqueue.Item{}, noRows(err)
@@ -563,13 +566,13 @@ func (s *Store) FinishRecurringWork(
 	if item.SourceKind != queueSourceRecurring || item.State != workqueue.StateRunning {
 		return workqueue.Item{}, storage.ErrConflict
 	}
-	state, eligible, summary, finished := s.recurringOutcome(
-		ctx, tx, item, completion, at,
+	state, eligible, blockedReason, summary, finished := s.recurringOutcome(
+		ctx, tx, &item, completion, at,
 	)
 	if _, err := tx.ExecContext(ctx, `
 UPDATE queue_items SET state = ?, eligible_at = ?, blocked_reason = ?,
-    lease_expires_at = NULL, finished_at = ?, updated_at = ?, revision = revision + 1
-WHERE id = ?`, state, eligible, completion.Failure, finished, at, id); err != nil {
+    profile_id = ?, lease_expires_at = NULL, finished_at = ?, updated_at = ?, revision = revision + 1
+WHERE id = ?`, state, eligible, blockedReason, item.ProfileID, finished, at, id); err != nil {
 		return workqueue.Item{}, fmt.Errorf("finish recurring queue item: %w", err)
 	}
 	if err := insertQueueEvent(ctx, tx, workqueue.Event{
@@ -586,45 +589,52 @@ WHERE id = ?`, state, eligible, completion.Failure, finished, at, id); err != ni
 	if err := tx.Commit(); err != nil {
 		return workqueue.Item{}, fmt.Errorf("commit recurring finish: %w", err)
 	}
-	item.State, item.EligibleAt, item.BlockedReason = state, eligible, completion.Failure
+	item.State, item.EligibleAt, item.BlockedReason = state, eligible, blockedReason
 	item.LeaseExpiresAt, item.FinishedAt, item.UpdatedAt = nil, finished, at
 	item.Revision++
 
 	return item, nil
 }
 
+// A retry follows the current policy, including a profile changed while this
+// attempt was running. Keep an explicit Run now window bypass for this occurrence.
 func (s *Store) recurringOutcome(
 	ctx context.Context,
 	tx *transaction,
-	item workqueue.Item,
+	item *workqueue.Item,
 	completion workqueue.RecurringCompletion,
 	at time.Time,
-) (workqueue.State, time.Time, string, *time.Time) {
+) (workqueue.State, time.Time, string, string, *time.Time) {
 	if completion.Failure == "" {
 		if completion.SuccessSummary == "" {
 			completion.SuccessSummary = item.Title + " completed"
 		}
 
-		return workqueue.StateSucceeded, item.EligibleAt, completion.SuccessSummary, &at
+		return workqueue.StateSucceeded, item.EligibleAt, "", completion.SuccessSummary, &at
 	}
 	if completion.Blocked {
-		return workqueue.StateBlocked, item.EligibleAt, item.Title + " is blocked", nil
+		return workqueue.StateBlocked, item.EligibleAt, completion.Failure, item.Title + " is blocked", nil
 	}
 	if !completion.Retryable {
-		return workqueue.StateFailed, item.EligibleAt, item.Title + " failed", &at
+		return workqueue.StateFailed, item.EligibleAt, completion.Failure, item.Title + " failed", &at
 	}
 	policy, err := getEffectiveQueuePolicy(ctx, tx, item.Kind, item.TargetID)
 	if err != nil || policy.RetryDelay <= 0 {
-		return workqueue.StateFailed, item.EligibleAt, item.Title + " failed", &at
+		return workqueue.StateFailed, item.EligibleAt, completion.Failure, item.Title + " failed", &at
 	}
+	if !policy.Enabled {
+		return workqueue.StateBlocked, item.EligibleAt, queueBlockedDisabled,
+			item.Title + " will retry when enabled: " + completion.Failure, nil
+	}
+	item.ProfileID = &policy.ProfileID
 	eligible := at.Add(policy.RetryDelay)
-	if item.ProfileID != nil {
-		if profile, profileErr := getScheduleProfile(ctx, tx, *item.ProfileID); profileErr == nil {
+	if item.WindowMode != workqueue.WindowBypass {
+		if profile, profileErr := getScheduleProfile(ctx, tx, policy.ProfileID); profileErr == nil {
 			if next, nextErr := workqueue.NextEligible(profile, eligible); nextErr == nil {
 				eligible = next
 			}
 		}
 	}
 
-	return workqueue.StateRetrying, eligible, item.Title + " will retry", nil
+	return workqueue.StateRetrying, eligible, completion.Failure, item.Title + " will retry", nil
 }

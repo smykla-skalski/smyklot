@@ -19,6 +19,9 @@ type ConfigFileState struct {
 	Revision     int64
 	Document     []byte
 	UpdatedAt    time.Time
+	// Every activation needs a fresh reconciliation before file restrictions
+	// can be replaced by panel settings. The old merge baseline stays intact.
+	InitializationRequired bool
 }
 
 // ConfigFileStateChange compares both the settings owner and prior observation.
@@ -31,6 +34,7 @@ type ConfigFileStateChange struct {
 	SyncRevisions    map[orgsync.Kind]int64
 	Document         []byte
 	ChangedAt        time.Time
+	Initialized      bool
 }
 
 const MaxConfigFileStateBytes = 32 << 20

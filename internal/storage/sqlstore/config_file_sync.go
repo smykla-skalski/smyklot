@@ -25,13 +25,13 @@ func (s *Store) GetConfigFileState(ctx context.Context, targetID, repositoryID s
 }
 
 func readConfigFileState(ctx context.Context, queryer rowQuerier, targetID, repositoryID string) (storage.ConfigFileState, error) {
-	state := storage.ConfigFileState{TargetID: targetID, RepositoryID: repositoryID}
+	state := storage.ConfigFileState{TargetID: targetID, RepositoryID: repositoryID, InitializationRequired: true}
 	var document string
 	var updatedAt StoredTime
 	err := queryer.QueryRowContext(ctx, `
-SELECT revision, document, updated_at FROM config_file_connections
+SELECT revision, document, updated_at, initialization_required FROM config_file_connections
 WHERE target_id = ? AND scope_key = ?`, targetID, configFileScopeKey(repositoryID)).Scan(
-		&state.Revision, &document, &updatedAt,
+		&state.Revision, &document, &updatedAt, &state.InitializationRequired,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return state, nil
@@ -62,14 +62,14 @@ func (s *Store) SaveConfigFileState(ctx context.Context, change storage.ConfigFi
 	if err := writeConfigFileState(ctx, tx, change); err != nil {
 		return storage.ConfigFileState{}, err
 	}
+	state, err := readConfigFileState(ctx, tx, change.TargetID, change.RepositoryID)
+	if err != nil {
+		return storage.ConfigFileState{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return storage.ConfigFileState{}, err
 	}
-	return storage.ConfigFileState{
-		TargetID: change.TargetID, RepositoryID: change.RepositoryID,
-		Revision: change.ExpectedRevision + 1, Document: append([]byte(nil), change.Document...),
-		UpdatedAt: change.ChangedAt,
-	}, nil
+	return state, nil
 }
 
 func configFileOwner(ctx context.Context, queryer rowQuerier, targetID, repositoryID string) (bool, int64, error) {
@@ -137,19 +137,27 @@ func writeConfigFileState(ctx context.Context, tx *transaction, change storage.C
 			repositoryID = change.RepositoryID
 		}
 		_, err := tx.ExecContext(ctx, `
-INSERT INTO config_file_connections (target_id, scope_key, repository_id, revision, document, updated_at)
-VALUES (?, ?, ?, 1, ?, ?)`, change.TargetID, configFileScopeKey(change.RepositoryID), repositoryID,
-			string(change.Document), change.ChangedAt,
+INSERT INTO config_file_connections (target_id, scope_key, repository_id, revision, document, updated_at, initialization_required)
+VALUES (?, ?, ?, 1, ?, ?, ?)`, change.TargetID, configFileScopeKey(change.RepositoryID), repositoryID,
+			string(change.Document), change.ChangedAt, !change.Initialized,
 		)
 		return err
 	}
 	result, err := tx.ExecContext(ctx, `
-UPDATE config_file_connections SET revision = revision + 1, document = ?, updated_at = ?
-WHERE target_id = ? AND scope_key = ? AND revision = ?`, string(change.Document), change.ChangedAt,
+UPDATE config_file_connections SET revision = revision + 1, document = ?, updated_at = ?,
+initialization_required = CASE WHEN ? THEN FALSE ELSE initialization_required END
+WHERE target_id = ? AND scope_key = ? AND revision = ?`, string(change.Document), change.ChangedAt, change.Initialized,
 		change.TargetID, configFileScopeKey(change.RepositoryID), change.ExpectedRevision,
 	)
 	if err != nil {
 		return err
 	}
 	return checkInstallationSyncUpdate(result, "configuration file state")
+}
+
+func requireConfigFileInitialization(ctx context.Context, tx *transaction, targetID, repositoryID string) error {
+	_, err := tx.ExecContext(ctx, `
+UPDATE config_file_connections SET initialization_required = TRUE, revision = revision + 1
+WHERE target_id = ? AND scope_key = ?`, targetID, configFileScopeKey(repositoryID))
+	return err
 }

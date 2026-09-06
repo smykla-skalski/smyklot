@@ -128,7 +128,7 @@ func (s *Store) replaceRuntimeAliasPolicy(
 		ExpectedRevision: policy.Revision, ActorID: change.ActorAccountID,
 		ChangedAt: change.ChangedAt,
 	}
-	if err := saveQueuePolicy(ctx, tx, policyChange); err != nil {
+	if err := s.saveQueuePolicy(ctx, tx, policyChange); err != nil {
 		return fmt.Errorf("update runtime queue alias %s: %w", policy.Kind, err)
 	}
 	updated, err := getEffectiveQueuePolicy(ctx, tx, policy.Kind, nil)

@@ -85,6 +85,7 @@ func DeploymentPolicies(defaults DeploymentDefaults) []Policy {
 		policy(KindCatalogRefresh, true, defaultCatalogCadence, PriorityNormal, 30*time.Second, `{}`),
 		policy(KindReactionScan, pollCadence > 0, pollCadence, PriorityNormal, 30*time.Second, `{}`),
 		policy(KindConfigMigration, pollCadence > 0, pollCadence, PriorityNormal, 30*time.Second, `{}`),
+		policy(KindConfigFileSync, true, 15*time.Minute, PriorityNormal, 30*time.Second, `{}`),
 		syncScan,
 		policy(KindSyncApply, true, 0, PriorityNormal, 5*time.Minute, `{}`),
 		policy(KindPathRefresh, pathCadence > 0, pathCadence, PriorityLow, 5*time.Minute, `{}`),

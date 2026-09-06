@@ -24,6 +24,7 @@ func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareQueueListingSpecs(runtime)
 	declareQueueScheduleSpecs(runtime)
 	declareQueueLeaseSpecs(runtime)
+	declareConfigFileWorkloadSpecs(runtime)
 }
 
 func declareQueuePolicySpecs(runtime queueRuntime) {
@@ -165,6 +166,7 @@ func declareQueueListingSpecs(runtime queueRuntime) {
 			{Kind: workqueue.KindDeliveryCleanup, Title: "Tidy finished background work"},
 			{Kind: workqueue.KindAuthCleanup, Title: "Tidy expired sign-ins"},
 			{Kind: workqueue.KindSyncScan, TargetID: &targetID, Title: "Check which repositories are in step"},
+			{Kind: workqueue.KindConfigFileSync, TargetID: &targetID, Title: "Sync workspace configuration"},
 			{Kind: workqueue.KindPathRefresh, TargetID: &targetID, Title: "Refresh which paths are watched"},
 			{
 				Kind: workqueue.KindPendingCIGate, TargetID: &targetID,

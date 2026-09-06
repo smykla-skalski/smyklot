@@ -21,6 +21,7 @@ func declareInstallationSettingsSpecs(
 	declareBypassPolicySpecs(runtime)
 	declareRepositoryFileObservationSpecs(runtime)
 	declareConfigFileSyncSpecs(runtime)
+	declareConfigFileActivationSpecs(runtime)
 	declareAtomicInstallationSettingsSpec(runtime)
 	declareInstallationSettingsRollbackSpec(runtime)
 	declareInstallationSettingsFailureSpec(harness, runtime)

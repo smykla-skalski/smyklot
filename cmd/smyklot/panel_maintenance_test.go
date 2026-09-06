@@ -75,6 +75,7 @@ func TestMaintenanceQueueCoversEveryRecurringWorkload(t *testing.T) {
 		github.Repository{ID: 1, Owner: "smykla-skalski", Name: "smyklot"},
 		true, nil,
 	)...)
+	jobs = append(jobs, server.configurationFileMaintenanceJob(context.Background(), targetID, "", 1))
 
 	queued := make(map[workqueue.Kind]int, len(jobs))
 	for _, job := range jobs {
@@ -88,8 +89,8 @@ func TestMaintenanceQueueCoversEveryRecurringWorkload(t *testing.T) {
 			t.Errorf("recurring workload %q has %d maintenance queue producers", kind, queued[kind])
 		}
 	}
-	if len(queued) != 8 {
-		t.Errorf("maintenance queue has %d workload producers, want 8", len(queued))
+	if len(queued) != 9 {
+		t.Errorf("maintenance queue has %d workload producers, want 9", len(queued))
 	}
 }
 

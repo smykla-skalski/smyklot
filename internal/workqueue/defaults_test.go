@@ -82,6 +82,16 @@ func TestEveryKindIsBounded(t *testing.T) {
 	}
 }
 
+func TestConfigurationConnectionsKeepTheirOwnFallback(t *testing.T) {
+	policy := policyFromSet(t, DeploymentPolicies(DeploymentDefaults{}), KindConfigFileSync)
+	if !policy.Enabled || policy.Cadence != 15*time.Minute || policy.RetryDelay != 30*time.Second {
+		t.Fatalf("connection polling must work independently of legacy sweeps: %+v", policy)
+	}
+	if !policy.Kind.Recurring() || !policy.Kind.WorkspaceConfigurable() || policy.Kind.Lane() != LaneMaintenance {
+		t.Fatal("connections must use the configurable durable maintenance workload")
+	}
+}
+
 func policyFromSet(t *testing.T, policies []Policy, kind Kind) Policy {
 	t.Helper()
 	for _, policy := range policies {

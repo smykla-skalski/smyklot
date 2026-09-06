@@ -70,14 +70,14 @@ run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 [tasks."test:config-files"]
 description = "Check configuration file round trips and bidirectional reconciliation"
 env = { CGO_ENABLED = "1" }
-run = "go test -race ./pkg/config ./internal/configsync ./internal/configgen"
+run = "go test -race ./pkg/config ./internal/configsync ./internal/configgen ./internal/workqueue"
 
 [tasks."test:config-readers"]
-description = "Check bounded GitHub file reads and scoped repository configuration"
+description = "Check bounded file reads and coordinated configuration runtime"
 env = { CGO_ENABLED = "1" }
 run = '''
 go test -race ./pkg/config ./pkg/github
-go test -race ./cmd/smyklot -run '^TestRepositoryObservation'
+go test -race ./cmd/smyklot -run '^Test(RepositoryObservation|ConfigFile|ConnectedFile|MaintenanceQueueCovers)'
 '''
 
 [tasks."test:config-file-storage"]

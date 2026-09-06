@@ -78,6 +78,7 @@ func (connection Connection) change(snapshot PanelSnapshot, stored storage.Confi
 		TargetID: snapshot.Target.ID, RepositoryID: snapshot.RepositoryID(),
 		OwnerRevision: snapshot.OwnerRevision(), SyncRevisions: snapshot.SyncRevisions(),
 		ExpectedRevision: stored.Revision, Document: document, ChangedAt: now,
+		Initialized: connection.Status == StatusReady && connection.Base.Exists,
 	}
 	return change, change.Validate()
 }

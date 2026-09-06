@@ -81,6 +81,9 @@ func (s *Store) initializeQueuePolicy(
 	if err := validateQueuePolicyChange(policyChangeFromPolicy(desired)); err != nil {
 		return fmt.Errorf("validate deployment queue policy %s: %w", desired.Kind, err)
 	}
+	if err := s.lockRecurringPolicy(ctx, tx, desired.Kind); err != nil {
+		return err
+	}
 	current, err := getEffectiveQueuePolicy(ctx, tx, desired.Kind, nil)
 	if err != nil {
 		return fmt.Errorf("read deployment queue policy %s: %w", desired.Kind, err)
@@ -230,7 +233,7 @@ func (s *Store) SaveQueuePolicy(
 	if err := validateProfileScope(profile, change.TargetID); err != nil {
 		return workqueue.Policy{}, err
 	}
-	if err := saveQueuePolicy(ctx, tx, change); err != nil {
+	if err := s.saveQueuePolicy(ctx, tx, change); err != nil {
 		return workqueue.Policy{}, err
 	}
 	policy, err := getEffectiveQueuePolicy(ctx, tx, change.Kind, change.TargetID)
@@ -265,6 +268,9 @@ func (s *Store) DeleteQueuePolicyOverride(
 		return workqueue.Policy{}, fmt.Errorf("begin queue policy override delete: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := s.lockRecurringPolicy(ctx, tx, kind); err != nil {
+		return workqueue.Policy{}, err
+	}
 	result, err := tx.ExecContext(ctx,
 		"DELETE FROM queue_policies WHERE kind = ? AND target_id = ? AND revision = ?",
 		kind, targetID, expectedRevision,
@@ -319,11 +325,14 @@ func validateQueuePolicyChange(change workqueue.PolicyChange) error {
 	return workqueue.ValidatePolicyConfiguration(change.Kind, change.Configuration)
 }
 
-func saveQueuePolicy(
+func (s *Store) saveQueuePolicy(
 	ctx context.Context,
 	tx *transaction,
 	change workqueue.PolicyChange,
 ) error {
+	if err := s.lockRecurringPolicy(ctx, tx, change.Kind); err != nil {
+		return err
+	}
 	scopeID := "root"
 	if change.TargetID != nil {
 		scopeID = *change.TargetID
@@ -372,6 +381,17 @@ WHERE kind = ? AND scope_id = ? AND revision = ?`,
 	}
 
 	return nil
+}
+
+// Policy edits and recurring completion use the same dispatch lock. Otherwise
+// a policy can skip a running item just as its completion queues another retry.
+func (s *Store) lockRecurringPolicy(ctx context.Context, tx *transaction, kind workqueue.Kind) error {
+	if !kind.Recurring() {
+		return nil
+	}
+	_, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance)
+
+	return err
 }
 
 func (s *Store) reschedulePolicyItems(

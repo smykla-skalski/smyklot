@@ -146,6 +146,9 @@ func (s *server) durableTargetMaintenanceJobs(
 	}
 	targetID := target.ID
 	jobs := s.targetMaintenanceJobs(ctx, targetID, installationID)
+	if target.ConfigFileSyncEnabled {
+		jobs = append(jobs, s.configurationFileMaintenanceJob(ctx, targetID, "", installationID))
+	}
 	pendingCIGates, err := s.store.ListTargetPendingCIRepositoryGates(ctx, targetID)
 	if err != nil {
 		return nil, fmt.Errorf("list pending CI gates for maintenance: %w", err)
@@ -164,10 +167,19 @@ func (s *server) durableTargetMaintenanceJobs(
 			return nil, err
 		}
 		pendingCIGate, found := pendingCIGatesByRepository[stored.ID]
-		jobs = append(jobs, s.repositoryMaintenanceJobs(
+		repositoryJobs := s.repositoryMaintenanceJobs(
 			ctx, targetID, installationID, repository,
 			repositoryEnabled(target, stored), pendingCIGatePointer(pendingCIGate, found),
-		)...)
+		)
+		for _, job := range repositoryJobs {
+			if stored.ConfigFileSyncEnabled && job.work.kind == workqueue.KindConfigMigration {
+				continue
+			}
+			jobs = append(jobs, job)
+		}
+		if stored.Available && stored.ConfigFileSyncEnabled {
+			jobs = append(jobs, s.configurationFileMaintenanceJob(ctx, targetID, stored.ID, installationID))
+		}
 	}
 
 	return jobs, nil
@@ -257,10 +269,10 @@ func (s *server) repositoryMaintenanceJobs(
 				repositoryID: &repositoryID, title: "Check the repository's configuration file",
 			},
 			run: func() error {
-				_, _, enabled, err := s.automaticRepositoryControls(
+				_, stored, enabled, err := s.automaticRepositoryControls(
 					ctx, targetID, repositoryID,
 				)
-				if err != nil || !enabled {
+				if err != nil || !enabled || stored.ConfigFileSyncEnabled {
 					return err
 				}
 				client, err := s.queuedInstallationClient(installationID)

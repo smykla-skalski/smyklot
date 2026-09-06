@@ -78,7 +78,7 @@ func (s *server) proposeConfigMigration(
 	// turned off is not one to open a pull request at, and this no longer sits
 	// behind the sweep's own enablement check - it runs before the stand-down
 	// that check follows.
-	if !repositoryEnabled(target, repository) {
+	if !repositoryEnabled(target, repository) || repository.ConfigFileSyncEnabled {
 		return nil
 	}
 

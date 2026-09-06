@@ -18,6 +18,7 @@ const (
 	KindCatalogRefresh  Kind = "catalog_refresh"
 	KindReactionScan    Kind = "reaction_scan"
 	KindConfigMigration Kind = "config_migration"
+	KindConfigFileSync  Kind = "config_file_sync"
 	KindSyncScan        Kind = "sync_scan"
 	KindSyncApply       Kind = "sync_apply"
 	KindPathRefresh     Kind = "path_refresh"
@@ -34,6 +35,7 @@ func Kinds() []Kind {
 		KindCatalogRefresh,
 		KindReactionScan,
 		KindConfigMigration,
+		KindConfigFileSync,
 		KindSyncScan,
 		KindSyncApply,
 		KindPathRefresh,
@@ -65,7 +67,7 @@ func (kind Kind) Windowed() bool { return kind != KindWebhookDelivery }
 func (kind Kind) Recurring() bool {
 	switch kind {
 	case KindPendingCIGate, KindCatalogRefresh, KindReactionScan,
-		KindConfigMigration, KindSyncScan, KindPathRefresh,
+		KindConfigMigration, KindConfigFileSync, KindSyncScan, KindPathRefresh,
 		KindDeliveryCleanup, KindAuthCleanup:
 		return true
 	default:
@@ -76,7 +78,7 @@ func (kind Kind) Recurring() bool {
 func (kind Kind) WorkspaceConfigurable() bool {
 	switch kind {
 	case KindPendingCI, KindPendingCIGate, KindReactionScan,
-		KindConfigMigration, KindSyncScan, KindPathRefresh:
+		KindConfigMigration, KindConfigFileSync, KindSyncScan, KindPathRefresh:
 		return true
 	default:
 		return false
