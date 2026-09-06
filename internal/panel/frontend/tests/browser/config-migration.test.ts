@@ -136,6 +136,15 @@ describe('configuration file observations and search priority', () => {
                 sharedPathColumn: pathBoxes.every(
                   (box) => Math.abs(box.left - pathBoxes[0]!.left) < 1,
                 ),
+                numberGaps: rows.map((row) => {
+                  const number = row.querySelector('.search-priority')!;
+                  const text = document.createRange();
+                  text.selectNodeContents(number);
+                  return (
+                    row.querySelector('.search-path')!.getBoundingClientRect().left -
+                    text.getBoundingClientRect().right
+                  );
+                }),
                 numberInset: rows.map((row) => {
                   const number = row.querySelector('.search-priority')!;
                   const heading = row.closest('.card')!.querySelector('h3')!;
@@ -158,6 +167,7 @@ describe('configuration file observations and search priority', () => {
             });
             expect(measured.overlap).toBe(false);
             expect(measured.sharedPathColumn).toBe(true);
+            for (const gap of measured.numberGaps) expect(gap).toBeCloseTo(8, 0);
             expect(measured.numberInset.every((inset) => Math.abs(inset) < 1)).toBe(true);
             expect(measured.bareStatuses).toBe(0);
             expect(measured.overflow).toBeLessThanOrEqual(1);

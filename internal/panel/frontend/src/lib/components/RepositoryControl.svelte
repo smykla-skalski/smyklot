@@ -372,6 +372,9 @@ paths and parsed values; it never claims to fetch or edit the original file.
 
 <style>
   .search-order {
+    column-gap: var(--space-2);
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr) auto;
     list-style: none;
     margin-block-start: 0;
     padding-inline-start: 0;
@@ -380,9 +383,11 @@ paths and parsed values; it never claims to fetch or edit the original file.
   /* This is an ordered read-only list, so a status stays beside its path instead
      of borrowing an editable setting's minimum-width sentence and control columns. */
   .search-path-row {
-    column-gap: var(--space-2);
+    column-gap: inherit;
+    container-type: normal;
     display: grid;
-    grid-template-columns: 2ch minmax(0, 1fr) auto;
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
   }
 
   .search-priority {

@@ -418,10 +418,11 @@ Bypassing a file never changes its reported validity. A file that has not been
 checked says **Not checked**, and a valid empty file remains **Valid**. Inspecting
 it opens the shared inspector without moving the repository settings
 
-File priority is a semantic ordered list with a quiet number gutter starting at
-the row's left text edge, a shared path column, and an observed status centered
-beside that path. Use regular row
-spacing and separators, without tinted inset panels. Only confirmed files get
+File priority is a semantic ordered list with a quiet, intrinsic number column
+starting at the row's left text edge. One 8px gap separates the numbers and paths;
+never reserve extra empty character widths. Keep a shared path column and an
+observed status centered beside that path. Use regular row spacing and separators,
+without tinted inset panels. Only confirmed files get
 **Selected** or **Ignored** labels, using shared filled info and neutral pills
 respectively. An unlabelled candidate makes no claim about
 whether that path exists. Never apply `display: contents` to these list rows
