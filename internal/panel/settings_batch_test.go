@@ -227,7 +227,7 @@ func TestWorkspaceSettingsBatchSavesMixedResourcesOnce(t *testing.T) {
 	}
 }
 
-func TestWorkspaceSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing.T) {
+func TestWorkspaceSettingsBatchSyncOnlySharesConfigurationExclusion(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	gates := &countingPendingCIGates{}
@@ -242,7 +242,8 @@ func TestWorkspaceSettingsBatchSyncOnlySkipsPendingCISerialization(t *testing.T)
 		t, http.MethodPut, workspaceSettingsBatchPath, strings.NewReader(body), session,
 	)
 	requireResponse(t, response, "Sync-only settings batch", http.StatusOK, `"checkpoint_id":`)
-	if serialization.catalogCalls != 0 || serialization.exclusiveCalls != 0 ||
+	if serialization.catalogCalls != 1 || serialization.exclusiveCalls != 1 ||
+		len(serialization.repositoryIDs) != 1 || serialization.repositoryIDs[0] != "repository-20" ||
 		harness.pendingCI.wakes != 0 || gates.wakes != 0 {
 		t.Fatalf("Sync-only coordination = catalog %d, exclusive %d, wakes %d/%d",
 			serialization.catalogCalls, serialization.exclusiveCalls,

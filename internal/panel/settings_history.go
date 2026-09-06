@@ -274,7 +274,7 @@ func (s *Server) restoreWorkspaceSettings(
 	operation := func() (storage.SaveInstallationSettingsResult, error) {
 		return s.store.RestoreInstallationSettings(ctx, request)
 	}
-	if settingsRestoreIncludesTarget(request.Selections) {
+	if settingsRestoreIncludesWorkspace(request.Selections) {
 		return s.saveWorkspaceTargetSettingsBatch(ctx, request.TargetID, operation)
 	}
 	repositoryIDs := settingsRestoreRepositoryIDs(request.Selections)
@@ -285,11 +285,12 @@ func (s *Server) restoreWorkspaceSettings(
 	return saveWorkspaceSettingsExclusive(s, ctx, repositoryIDs, operation)
 }
 
-func settingsRestoreIncludesTarget(
+func settingsRestoreIncludesWorkspace(
 	selections []storage.SettingsCheckpointRestoreSelection,
 ) bool {
 	for _, selection := range selections {
-		if selection.Identity.Kind == storage.SettingsCheckpointItemTarget {
+		if selection.Identity.Kind == storage.SettingsCheckpointItemTarget ||
+			selection.Identity.Kind == storage.SettingsCheckpointItemSyncConfig {
 			return true
 		}
 	}

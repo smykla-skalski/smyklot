@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"slices"
 	"sort"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -82,8 +83,8 @@ func (s *Server) putAuthorizedWorkspaceSettingsBatch(
 	writeJSON(w, http.StatusOK, answer)
 }
 
-// saveWorkspaceSettingsBatch holds the Pending CI exclusion while calling
-// the storage transaction exactly once.
+// Every writer of a configuration connection's inputs shares its exclusion,
+// including Sync-only saves. The storage transaction still runs exactly once.
 func (s *Server) saveWorkspaceSettingsBatch(
 	ctx context.Context,
 	request storage.SaveInstallationSettingsRequest,
@@ -91,19 +92,22 @@ func (s *Server) saveWorkspaceSettingsBatch(
 	operation := func() (storage.SaveInstallationSettingsResult, error) {
 		return s.store.SaveInstallationSettings(ctx, request)
 	}
-	if request.Target != nil {
+	if request.Target != nil || len(request.SyncConfigs) > 0 {
 		return s.saveWorkspaceTargetSettingsBatch(ctx, request.TargetID, operation)
 	}
-	if len(request.Repositories) == 0 {
+	if len(request.Repositories) == 0 && len(request.SyncOverrides) == 0 {
 		return operation()
 	}
-	repositoryIDs := make([]string, 0, len(request.Repositories))
+	repositoryIDs := make([]string, 0, len(request.Repositories)+len(request.SyncOverrides))
 	for _, repository := range request.Repositories {
 		repositoryIDs = append(repositoryIDs, repository.RepositoryID)
 	}
+	for _, override := range request.SyncOverrides {
+		repositoryIDs = append(repositoryIDs, override.RepositoryID)
+	}
 	sort.Strings(repositoryIDs)
 
-	return saveWorkspaceSettingsExclusive(s, ctx, repositoryIDs, operation)
+	return saveWorkspaceSettingsExclusive(s, ctx, slices.Compact(repositoryIDs), operation)
 }
 
 func (s *Server) saveWorkspaceTargetSettingsBatch(
