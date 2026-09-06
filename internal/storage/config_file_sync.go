@@ -68,3 +68,28 @@ type ConfigFileImport struct {
 	Path    string
 	HeadSHA string
 }
+
+// ConfigFileResolution records a freshly reviewed choice, not a client-supplied
+// settings document. The reconciler prepares State after re-reading both sides.
+// Storage commits the choice, actor audit and next-check notification together.
+type ConfigFileResolution struct {
+	State            ConfigFileStateChange
+	Side             string
+	ActorAccountID   string
+	ElevationID      *string
+	SessionTokenHash string
+}
+
+func (resolution ConfigFileResolution) Validate() error {
+	if err := resolution.State.Validate(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(resolution.ActorAccountID) == "" ||
+		(resolution.Side != "panel" && resolution.Side != "file") {
+		return errors.New("configuration file resolution needs an actor and a panel or file choice")
+	}
+	if resolution.State.Initialized {
+		return errors.New("a configuration file choice cannot mark reconciliation complete")
+	}
+	return nil
+}

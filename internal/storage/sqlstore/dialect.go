@@ -74,6 +74,10 @@ type Dialect interface {
 	// nothing to add and returns an empty string.
 	RowLock() string
 
+	// NonKeyRowLock excludes other writers while permitting foreign-key
+	// references. Use only when the transaction never changes the row's key.
+	NonKeyRowLock() string
+
 	// TimeArg renders a time for the engine's own timestamp column: a native
 	// value where the engine has one, text where it does not.
 	TimeArg(value time.Time) any

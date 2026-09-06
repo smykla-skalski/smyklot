@@ -117,6 +117,8 @@ func (Dialect) JSONHasKey(column string) string {
 // view without the other, and both would keep everything.
 func (Dialect) RowLock() string { return " FOR UPDATE" }
 
+func (Dialect) NonKeyRowLock() string { return " FOR NO KEY UPDATE" }
+
 // TimeArg passes a time through, because this engine has a timestamp type.
 func (Dialect) TimeArg(value time.Time) any { return value.UTC() }
 

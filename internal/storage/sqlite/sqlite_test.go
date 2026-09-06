@@ -44,6 +44,10 @@ END`)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(raw.Close()).To(Succeed())
 		},
+		EndElevationBeforeWrite: func(_ context.Context, end, write func() error) (error, error) {
+			// SQLite's one connection serializes transactions in this order.
+			return end(), write()
+		},
 		RejectSettingsCheckpoints: func(ctx context.Context) {
 			raw, err := sql.Open("sqlite", path)
 			Expect(err).NotTo(HaveOccurred())

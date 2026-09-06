@@ -23,6 +23,11 @@ type Harness struct {
 	// a write differently, so each supplies its own way.
 	RejectSecurityNotifications func(ctx context.Context)
 
+	// EndElevationBeforeWrite overlaps grant termination and a protected write
+	// where the engine supports concurrent transactions. Termination holds its
+	// grant row first; neither transaction may deadlock or erase revocation.
+	EndElevationBeforeWrite func(ctx context.Context, end, write func() error) (endErr, writeErr error)
+
 	// RejectSettingsCheckpoints makes the next settings checkpoint insert fail.
 	// Runtime settings use this after updating every mutable aggregate, so the
 	// shared spec can prove those earlier writes remain transactional.

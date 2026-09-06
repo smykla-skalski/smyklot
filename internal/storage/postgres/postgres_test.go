@@ -90,6 +90,9 @@ BEFORE INSERT ON %[1]s.settings_checkpoints
 FOR EACH ROW EXECUTE FUNCTION %[1]s.reject_settings_checkpoint();`, schema))
 			Expect(err).NotTo(HaveOccurred())
 		},
+		EndElevationBeforeWrite: func(ctx context.Context, end, write func() error) (error, error) {
+			return overlapElevationEnd(ctx, schema, end, write)
+		},
 		CountSettingsCheckpoints: func(ctx context.Context) int64 {
 			raw := connect(ctx)
 			defer func() { Expect(raw.Close()).To(Succeed()) }()

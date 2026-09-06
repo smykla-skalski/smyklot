@@ -322,8 +322,12 @@ func (s *Store) lockInstallationSettingsTarget(
 	targetID string,
 ) error {
 	var held string
+	// Settings never change the target identity. Allow audit foreign-key reads
+	// while excluding other settings writers: an elevation revocation holds its
+	// grant before inserting that audit, while this writer reads the grant next.
+	// FOR UPDATE would turn those two valid operations into a deadlock cycle.
 	err := tx.QueryRowContext(ctx,
-		"SELECT id FROM targets WHERE id = ?"+s.dialect.RowLock(), targetID,
+		"SELECT id FROM targets WHERE id = ?"+s.dialect.NonKeyRowLock(), targetID,
 	).Scan(&held)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound

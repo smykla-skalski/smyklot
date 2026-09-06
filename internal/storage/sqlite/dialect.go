@@ -61,6 +61,8 @@ func (Dialect) JSONHasKey(column string) string {
 // same read-modify-write at once.
 func (Dialect) RowLock() string { return "" }
 
+func (Dialect) NonKeyRowLock() string { return "" }
+
 // timeLayout is how a timestamp is written to a TEXT column.
 //
 // SQLite has no timestamp type, so every comparison and every ORDER BY on a
