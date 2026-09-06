@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -105,6 +106,16 @@ func TestEngineRecordsIntentBeforeCreatingProposalReference(t *testing.T) {
 
 func TestEngineSettlesAPanelChoiceAfterItsProposalMerges(t *testing.T) {
 	engine, ctx := Engine{Store: engineStore(t)}, context.Background()
+	_, err := engine.Store.SaveInstallationSettings(ctx, storage.SaveInstallationSettingsRequest{
+		TargetID: "workspace", ActorAccountID: "owner", ChangedAt: time.Now().UTC(),
+		Repositories: []storage.InstallationRepositorySettingsChange{{
+			RepositoryID: "repo", ExpectedRevision: 2, ConfigFileSyncEnabled: true,
+			ConfigPatch: config.Patch{CommandPrefix: new("/panel ")},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	snapshot, _ := engine.Snapshot(ctx, "workspace", "repo")
 	panel, _ := snapshot.JSON()
 	file, err := ReadFileSource(config.FormatTOML, []byte("command_prefix='/file '\n"), config.PanelFileRepository)

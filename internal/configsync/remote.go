@@ -155,3 +155,7 @@ func readRemotePaths(
 	}
 	return found, nil
 }
+
+func invalidSettings(err error) *BlockedError {
+	return &BlockedError{Code: "invalid_settings", Message: err.Error()}
+}

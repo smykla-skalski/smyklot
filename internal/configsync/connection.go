@@ -9,6 +9,11 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
+const (
+	ResolutionPanel = "panel"
+	ResolutionFile  = "file"
+)
+
 type ResolutionChoice struct {
 	Comparison string `json:"comparison"`
 	Side       string `json:"side"`
@@ -58,7 +63,7 @@ func DecodeConnection(stored storage.ConfigFileState, scope config.PanelFileScop
 			return Connection{}, err
 		}
 	}
-	if connection.Resolution != nil && connection.Resolution.Side != "panel" && connection.Resolution.Side != "file" {
+	if connection.Resolution != nil && connection.Resolution.Side != ResolutionPanel && connection.Resolution.Side != ResolutionFile {
 		return Connection{}, errors.New("unknown configuration conflict resolution")
 	}
 	return connection, nil
@@ -79,33 +84,57 @@ func (connection Connection) change(snapshot PanelSnapshot, stored storage.Confi
 
 func (connection Connection) input(panel []byte, file FileSource) (ReconcileInput, error) {
 	input := ReconcileInput{Base: connection.Base, Panel: panel, File: file.Snapshot}
-	if choice := connection.Resolution; choice != nil {
-		if file.Snapshot.Exists {
-			same, err := Equivalent(panel, file.Snapshot.Document)
-			if err != nil || same {
-				// Agreement needs no choice. In particular, merging our proposal
-				// changes the remote comparison without reopening its conflict.
-				return input, err
-			}
+	choice := connection.Resolution
+	if choice == nil {
+		return input, nil
+	}
+	if file.Snapshot.Exists {
+		same, err := Equivalent(panel, file.Snapshot.Document)
+		if err != nil || same {
+			// Agreement needs no choice. Merging our proposal changes the
+			// comparison without reopening its conflict.
+			return input, err
 		}
-		document := panel
-		if choice.Side == "file" {
-			if !file.Snapshot.Exists {
-				current, err := comparisonKey(input)
-				if err != nil {
-					return input, err
-				}
-				if choice.Comparison == current {
-					return input, &BlockedError{Code: "file_removed", Message: "The file was deleted and cannot replace panel settings"}
-				}
-				// Keep the old binding so Reconcile surfaces stale_resolution
-				// before attempting to use this now-absent document.
-			}
-			document = file.Snapshot.Document
+		document, err := resolvedContent(input, choice.Side)
+		if err != nil {
+			return input, err
 		}
 		input.Resolution = &Resolution{Comparison: choice.Comparison, Document: document}
+		return input, nil
 	}
+	document := panel
+	if choice.Side == ResolutionFile {
+		current, err := comparisonKey(input)
+		if err != nil {
+			return input, err
+		}
+		if choice.Comparison == current {
+			return input, &BlockedError{Code: "file_removed", Message: "The file was deleted and cannot replace panel settings"}
+		}
+		// Preserve the old binding so Reconcile reports stale_resolution
+		// before trying to use the now-absent file.
+		document = nil
+	}
+	input.Resolution = &Resolution{Comparison: choice.Comparison, Document: document}
 	return input, nil
+}
+
+// A choice decides only overlapping changes. Independent changes from both
+// sides survive, so accepting one conflict never silently discards another edit.
+func resolvedContent(input ReconcileInput, side string) ([]byte, error) {
+	base := input.Base.Document
+	if !input.Base.Exists {
+		base = []byte("{}")
+	}
+	preferred, other := input.Panel, input.File.Document
+	if side == ResolutionFile {
+		preferred, other = other, preferred
+	}
+	merged, err := Merge(base, preferred, other)
+	if err != nil {
+		return nil, invalidSettings(err)
+	}
+	return merged.Document, nil
 }
 
 // A repeated long parent key must not turn a bounded file into an oversized

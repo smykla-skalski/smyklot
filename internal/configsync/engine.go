@@ -144,7 +144,7 @@ func (engine Engine) runOnce(ctx context.Context, client *github.Client, targetI
 	}
 	decision, err := Reconcile(input)
 	if err != nil {
-		return connection, false, err
+		return engine.block(ctx, snapshot, stored, connection, invalidSettings(err))
 	}
 	connection.Head, connection.Path, connection.Comparison = file.Head, file.Path, decision.Comparison
 	connection.Problem, connection.Message, connection.ConflictCount, connection.ConflictPaths = "", "", 0, nil

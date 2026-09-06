@@ -31,7 +31,7 @@ func (engine Engine) apply(
 	}, engine.QuietPeriod)
 	if err != nil {
 		return engine.block(ctx, snapshot, stored, connection,
-			&BlockedError{Code: "invalid_settings", Message: err.Error()})
+			invalidSettings(err))
 	}
 	if decision.ImportPanel {
 		return engine.importPanel(ctx, snapshot, stored, connection, input, decision, request)
@@ -67,7 +67,7 @@ func (engine Engine) importPanel(
 	request.ConfigFileImport.State = change
 	_, err = engine.Store.SaveInstallationSettings(ctx, request)
 	if errors.Is(err, orgsync.ErrInvalidConfig) {
-		return engine.block(ctx, snapshot, stored, connection, &BlockedError{Code: "invalid_settings", Message: err.Error()})
+		return engine.block(ctx, snapshot, stored, connection, invalidSettings(err))
 	}
 	return connection, err == nil, err
 }
