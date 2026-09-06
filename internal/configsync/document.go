@@ -130,6 +130,10 @@ func DecodeDocument(content []byte, scope config.PanelFileScope) (config.FileDoc
 	if err := config.DecodeExactJSON(content, &document); err != nil {
 		return config.FileDocument{}, err
 	}
+	return validateDocument(document, scope)
+}
+
+func validateDocument(document config.FileDocument, scope config.PanelFileScope) (config.FileDocument, error) {
 	if document.Panel == nil || document.Panel.Scope != scope {
 		return config.FileDocument{}, errors.New("configuration document scope does not match its connection")
 	}
@@ -139,11 +143,48 @@ func DecodeDocument(content []byte, scope config.PanelFileScope) (config.FileDoc
 	if err := validateFileSyncShapes(document.Panel); err != nil {
 		return config.FileDocument{}, err
 	}
+	// Work on a copy of the section: callers may retain the original TOML
+	// presentation. Equivalent duration spellings must compare as one value.
+	section := *document.Panel
+	document.Panel = &section
+	section.Settings = normalizeFileSettings(section.Settings)
+	for _, value := range []**string{&section.Settings.QuietPeriod, &section.Settings.FileIndexInterval} {
+		if *value != nil {
+			duration, err := durationValue(*value)
+			if err != nil {
+				return config.FileDocument{}, err
+			}
+			*value = new(duration.String())
+		}
+	}
 	// Exercise Patch normalization and the final renderer before importing.
 	if _, err := config.RenderFileDocument(document); err != nil {
 		return config.FileDocument{}, err
 	}
 	return document, nil
+}
+
+// Optional nested lists and actor IDs have one storage representation. Keep the
+// containing pointer sparse: an absent policy still means inheritance.
+func normalizeFileSettings(settings config.PanelFileSettings) config.PanelFileSettings {
+	if settings.ProtectedRefs != nil {
+		refs := *settings.ProtectedRefs
+		refs.Include = append([]string{}, refs.Include...)
+		refs.Exclude = append([]string{}, refs.Exclude...)
+		settings.ProtectedRefs = &refs
+	}
+	if settings.MergeExceptions != nil {
+		policy := *settings.MergeExceptions
+		policy.Actors = append([]config.PanelFileActor{}, policy.Actors...)
+		for index := range policy.Actors {
+			actor := &policy.Actors[index]
+			if actor.ID != nil && *actor.ID == 0 && (actor.Type == "OrganizationAdmin" || actor.Type == "DeployKey") {
+				actor.ID = nil
+			}
+		}
+		settings.MergeExceptions = &policy
+	}
+	return settings
 }
 
 func fileRefs(value *storage.PendingCIBranchPatterns) *config.PanelFileRefs {
