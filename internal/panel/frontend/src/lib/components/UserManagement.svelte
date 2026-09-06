@@ -1631,12 +1631,12 @@ offering it.
   <form id="add-user-form" class="add-user-form" onsubmit={submitAdd}>
     {#if addStage === 'confirm'}
       <Callout>
-        {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
-        <div>
+        {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
+        <div class="callout-copy">
           <strong>Declining was an answer</strong>
           <p>
             A new link reaches the same GitHub identity, and asking twice is visible to them and in
-            the audit record.
+            the audit record
           </p>
         </div>
       </Callout>
@@ -1840,7 +1840,7 @@ offering it.
   busy={invitationBusy !== null}
 >
   <Callout>
-    {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
+    {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
     <p>The user can only join if you create and share a new invitation</p>
   </Callout>
 </ConfirmDialog>
@@ -2137,15 +2137,13 @@ offering it.
     font-size: 0.8125rem;
   }
 
-  .invitation-created p,
-  :global(.callout) p {
+  .invitation-created p {
     color: var(--text-muted);
     font-size: 0.75rem;
     margin: 0.15rem 0 0;
   }
 
-  .success-mark,
-  .warning-mark {
+  .success-mark {
     align-items: center;
     border-radius: 50%;
     display: inline-flex;
@@ -2156,22 +2154,14 @@ offering it.
     width: 1.75rem;
   }
 
-  /* Both tints sit near 1:1 against the card they are on - measured 1.00 to 1.24 across the four
-     palettes - so neither disc had an edge. The ring is keyed to the mark's own colour, as the
-     avatar monogram's is. */
-  .success-mark,
-  .warning-mark {
+  /* The success mark shares the avatar's color-keyed ring to keep its edge visible. */
+  .success-mark {
     box-shadow: inset 0 0 0 1px color-mix(in srgb, currentcolor 28%, transparent);
   }
 
   .success-mark {
     background: var(--success-tint);
     color: var(--success);
-  }
-
-  .warning-mark {
-    background: var(--danger-tint);
-    color: var(--danger);
   }
 
   /* The row's own stacking is `app.css`'s - every object list does it the same way. */

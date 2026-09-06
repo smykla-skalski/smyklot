@@ -3,6 +3,7 @@
 
   import Callout, { type CalloutTone } from '#lib/components/Callout.svelte';
   import Icon from '#lib/components/Icon.svelte';
+  import Button from '#lib/components/Button.svelte';
 
   const TONES: CalloutTone[] = ['quiet', 'warning'];
 
@@ -41,31 +42,26 @@
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
           This workspace is not yours. Continue to its Access view to acknowledge and start the
-          audited 15-minute elevation before adding the user.
+          audited 15-minute elevation before adding the user
         </span>
       </Callout>
     </div>
   {/snippet}
 </Story>
 
-<!--
-  The two align differently, on purpose. A one-line consequence beside a mark is a
-  row, so it centres; a warning runs to several lines, and a mark centred against a
-  paragraph floats in the middle of it rather than marking where it starts.
--->
-<Story name="Why the marks align differently">
+<!-- Every tone uses the first text line, including when a message wraps. -->
+<Story name="First line alignment">
   {#snippet template()}
     <div class="stack">
       <Callout>
         {#snippet icon()}<Icon name="info" size="md" />{/snippet}
-        <span>One line, so the mark sits on its centre</span>
+        <span>One line, with its symbol centered on the text</span>
       </Callout>
       <Callout tone="warning">
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
-          Several lines, so the mark sits at the top and marks where the warning begins rather than
-          floating somewhere in the middle of it. This is the same reason a bullet is not centred
-          against its paragraph.
+          A wrapped message keeps its symbol centered on the first line, so the same alignment works
+          at every width
         </span>
       </Callout>
     </div>
@@ -76,14 +72,27 @@
 <Story name="With a heading">
   {#snippet template()}
     <Callout>
-      {#snippet icon()}<span class="warning-mark" aria-hidden="true">!</span>{/snippet}
-      <div>
+      {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
+      <div class="callout-copy">
         <strong>Declining was an answer</strong>
         <p>
           A new link reaches the same GitHub identity, and asking twice is visible to them and in
-          the audit record.
+          the audit record
         </p>
       </div>
+    </Callout>
+  {/snippet}
+</Story>
+
+<Story name="With an action">
+  {#snippet template()}
+    <Callout tone="warning">
+      {#snippet icon()}<Icon name="warning" size="base" />{/snippet}
+      <div class="callout-copy">
+        <strong>Changes need attention</strong>
+        <p>Review the workspace before applying your saved draft</p>
+      </div>
+      {#snippet actions()}<Button tone="quiet">Review</Button>{/snippet}
     </Callout>
   {/snippet}
 </Story>
@@ -93,16 +102,5 @@
     display: grid;
     gap: var(--space-4);
     max-width: 34rem;
-  }
-  .warning-mark {
-    align-items: center;
-    background: var(--warning-tint);
-    border-radius: 50%;
-    color: var(--warning);
-    display: inline-flex;
-    font: 700 0.8rem / 1 var(--sans);
-    height: 1.25rem;
-    justify-content: center;
-    width: 1.25rem;
   }
 </style>

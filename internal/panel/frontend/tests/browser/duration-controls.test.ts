@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { ScheduleRequest } from '../../src/lib/types';
 
+import { calloutGeometry } from './callout-geometry';
+
 import { addressOf, startPanel, visit, type Panel } from './harness';
 
 let panel: Panel;
@@ -169,6 +171,15 @@ async function inspectModal(dialog: Locator, page: Page, name: string): Promise<
   expect(result.nativeChecks).toBe(0);
   expect(result.nativeSelects).toBe(0);
   for (const center of result.rows) expect(Math.abs(center)).toBeLessThanOrEqual(1);
+  for (const callout of await calloutGeometry(dialog.locator('.callout:has(svg)'))) {
+    expect(Math.abs(callout.difference), JSON.stringify(callout)).toBeLessThanOrEqual(0.25);
+    for (const gap of callout.lineGaps)
+      expect(Math.abs(gap - 8), JSON.stringify(callout)).toBeLessThanOrEqual(0.25);
+    expect(
+      Math.abs(callout.topSpace - callout.bottomSpace),
+      JSON.stringify(callout),
+    ).toBeLessThanOrEqual(0.25);
+  }
   const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
   if (directory) {
     await mkdir(directory, { recursive: true });

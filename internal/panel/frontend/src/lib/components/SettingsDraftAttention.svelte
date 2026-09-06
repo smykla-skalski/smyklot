@@ -58,18 +58,18 @@ recover by going back.
     aria-atomic="true"
   >
     {#snippet icon()}
-      <span class="attention-mark"><Icon name={iconName} size="base" strokeWidth={2} /></span>
+      <Icon name={iconName} size="base" strokeWidth={2} />
     {/snippet}
-    <div class="attention-copy">
+    <div class="callout-copy">
       <strong>{heading}</strong>
       <span>{detail}</span>
     </div>
-    <span class="attention-actions">
+    {#snippet actions()}
       {#if reviewHref !== undefined && kind !== 'storage-problem'}
         <Button tone="brand" row href={reviewHref} onclick={onDismiss}>Review</Button>
       {/if}
       <Button tone="quiet" row onclick={onDismiss}>Dismiss</Button>
-    </span>
+    {/snippet}
   </Callout>
 </div>
 
@@ -98,40 +98,10 @@ recover by going back.
     border-color: color-mix(in srgb, var(--warning) 34%, transparent);
   }
 
-  .attention-mark {
-    color: var(--text-secondary);
-    display: inline-flex;
-    flex: 0 0 auto;
-  }
-
-  .attention-copy {
-    display: grid;
-    flex: 1;
-    gap: var(--space-1);
-    min-width: 0;
-  }
-
-  .attention-copy strong {
-    color: var(--text-primary);
-  }
-
-  .attention-actions {
-    align-self: center;
-    display: flex;
-    flex: 0 0 auto;
-    gap: var(--space-1);
-  }
-
   @keyframes attention-arrive {
     from {
       opacity: 0;
       transform: translateY(-0.5rem);
-    }
-  }
-
-  @media (max-width: 36rem) {
-    .attention-actions {
-      align-self: start;
     }
   }
 

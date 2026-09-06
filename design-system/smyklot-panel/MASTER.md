@@ -152,6 +152,20 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Repository settings use an addressable page with one vertical scroll. Secondary
   file controls use the shared inspector, with content adjustments before final output
 
+Callout symbols align with the cap-to-baseline center of the first text line,
+for either tone and regardless of wrapping. Subsequent lines and adjacent
+actions must not move the symbol. Use shared icon metrics and Callout alignment,
+never caller-specific offsets. Visual checks compare the visible symbol with
+the first line of text, not the center of the complete paragraph
+
+Callout copy follows the row copy rhythm in both tones: use `--row-copy-leading`
+for wrapped lines and `--row-copy-gap` between a heading and its description.
+Verify every rendered line gap, not only the gap between separate text elements
+
+Balance Callout space above and below the text, from its first cap edge to its
+last baseline. The icon aligns with the first line but does not determine the
+card's vertical padding or add height to the text block
+
 ### Lists and toolbars
 
 - Lists use semantic `ul`/`li` and the shared `.object-row` anatomy. Do not render
@@ -513,6 +527,7 @@ states without depending on a caller's scoped CSS
 | Contract | Automated enforcement |
 | --- | --- |
 | Route coverage, copy rhythm, separators, shared link paint, no left strips | `tests/browser/law-audit.test.ts` and shared `PANEL_ROUTES` |
+| Callout first-line icons, wrapped copy rhythm, text-only vertical balance | `tests/browser/callout-alignment.test.ts` and operator dialogs in `duration-controls` |
 | Optical centering, descenders, heights, mobile containment | `vertical-alignment`, `text-clipping`, `control-heights`, `mobile-layout` browser suites |
 | Duration styles and units, explanation alignment, gold state geometry | `duration-controls` browser suite and `duration-input`, `unsaved-colors` unit suites |
 | Editor inspector layout stability, focus return, draft preservation, regular card groups | `repository-file-sync` browser suite and `repository-sync-pane` unit suite |

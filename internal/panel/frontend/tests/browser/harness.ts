@@ -14,7 +14,12 @@ import { join } from 'node:path';
 
 import type { Browser, Page } from 'playwright-core';
 import { chromium } from 'playwright-core';
-import { createServer, defaultClientConditions, type ViteDevServer } from 'vite';
+import {
+  createServer,
+  defaultClientConditions,
+  searchForWorkspaceRoot,
+  type ViteDevServer,
+} from 'vite';
 
 /** Long enough for a route to load its data. */
 export const SETTLE_MS = 1500;
@@ -120,7 +125,12 @@ export async function startPanel(): Promise<Panel> {
     // client conditions there, which would otherwise resolve Svelte's default
     // (server) entry in the real browser and fail before the panel mounts.
     resolve: { conditions: [...defaultClientConditions] },
-    server: { host: '127.0.0.1', port: 0 },
+    server: {
+      host: '127.0.0.1',
+      port: 0,
+      // Compile browser fixtures against the actual shared components in this isolated lane.
+      fs: { allow: [searchForWorkspaceRoot(process.cwd())] },
+    },
   });
   let browser: Browser | undefined;
 
