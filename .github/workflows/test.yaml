@@ -115,19 +115,16 @@ jobs:
           POSTGRES_USER: smyklot
           POSTGRES_PASSWORD: smyklot
           POSTGRES_DB: smyklot
-          # The cluster lives in RAM and is built without waiting for a disk it
-          # does not have. Every spec above the port creates a schema and replays
-          # the migration series into it, which is almost all write, and a test
-          # database has nothing to survive a crash for - the next run builds it
-          # again from nothing either way.
-          PGDATA: /dev/shm/pgdata
+          # Keep data and WAL on the runner's disk. Schema-heavy storage tests
+          # outgrew the 1GB shared-memory mount and crashed PostgreSQL mid-suite.
+          # Each job still gets a fresh, disposable database.
           POSTGRES_INITDB_ARGS: --no-sync
         ports:
           - 5432:5432
         # A one second interval, not five: the container is ready long before the
         # first check under a five second one, and every job here waits for it
-        # before its first step runs. The shared memory is sized for the cluster
-        # above, which the 64MB default is far too small for.
+        # before its first step runs. Shared memory is reserved for PostgreSQL
+        # query workers, not the database or its write-ahead log.
         options: >-
           --shm-size=1g
           --health-cmd "pg_isready -U smyklot"
