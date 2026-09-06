@@ -33,22 +33,17 @@ Belongs to a collection that has been counted. A table that loads on a cursor ha
 total and no pages, so it has no size to choose either.
 -->
 
-<Select class="page-size" {value} aria-label={label} onchange={select}>
-  {#each PAGE_SIZES as size (size)}
-    <option value={size}>{size}</option>
-  {/each}
-</Select>
+<span class="page-size">
+  <Select {value} aria-label={label} onchange={select}>
+    {#each PAGE_SIZES as size (size)}
+      <option value={size}>{size}</option>
+    {/each}
+  </Select>
+</span>
 
 <style>
-  /* The wrapper carries the width now that it, not the select, is the layout
-     box its row sees. `:global` because both elements are `Select`'s. */
-  :global(.select-wrap) {
-    width: 4rem;
-  }
-
-  :global(.page-size) {
-    font-size: var(--font-size-meta);
-    height: var(--local-control-height, var(--control-height));
-    min-width: 4rem;
+  .page-size {
+    display: inline-block;
+    inline-size: 4rem;
   }
 </style>

@@ -13,7 +13,7 @@
   /* One name per job, wherever it is read. A workspace used to keep a second table
      of its own, so the row a member asked about and the row an operator answered
      named the same job two ways. */
-  import { workloadTitle } from '#lib/workloads.js';
+  import { workloadCadenceDescription, workloadTitle } from '#lib/workloads.js';
 
   import Button from './Button.svelte';
   import DurationInput from './DurationInput.svelte';
@@ -39,6 +39,7 @@
     'pending_ci_gate',
     'reaction_scan',
     'config_migration',
+    'config_file_sync',
     'sync_scan',
     'path_refresh',
   ]);
@@ -126,6 +127,7 @@
   let reason = $state('');
 
   const chosen = $derived(policies.find((policy) => policy.kind === kind));
+  const cadenceDescription = $derived(workloadCadenceDescription(kind));
   const cadenceShown = $derived(
     cadence !== undefined ? cadence : Math.round((chosen?.cadence ?? 0) / 1_000_000_000),
   );
@@ -279,10 +281,11 @@ answered a question a workspace never asks and hid the one it does.
   returnFocus={opener}
   onClose={() => (open = false)}
 >
-  <div class="request-form">
-    <label>
-      <span>Job</span>
+  <div class="form-stack request-form">
+    <label class="form-field">
+      <span class="form-label">Job</span>
       <Select
+        aria-label="Job"
         value={kind}
         onchange={(event) =>
           pickKind((event.currentTarget as HTMLSelectElement).value as QueueWorkload)}
@@ -293,8 +296,8 @@ answered a question a workspace never asks and hid the one it does.
       </Select>
     </label>
 
-    <label>
-      <span>Hours</span>
+    <label class="form-field">
+      <span class="form-label">Hours</span>
       <Select bind:value={windowMode}>
         <option value="existing">A named set of hours</option>
         <option value="custom">Hours of your own</option>
@@ -302,8 +305,8 @@ answered a question a workspace never asks and hid the one it does.
     </label>
 
     {#if windowMode === 'existing'}
-      <label>
-        <span>Which hours</span>
+      <label class="form-field">
+        <span class="form-label">Which hours</span>
         <Select
           aria-label="Which hours"
           value={profileShown}
@@ -315,12 +318,12 @@ answered a question a workspace never asks and hid the one it does.
         </Select>
       </label>
     {:else}
-      <label>
-        <span>Name</span>
+      <label class="form-field">
+        <span class="form-label">Name</span>
         <input class="text-input" bind:value={customName} />
       </label>
-      <label>
-        <span>Timezone</span>
+      <label class="form-field">
+        <span class="form-label">Timezone</span>
         <input class="text-input" bind:value={timezone} placeholder="Europe/Warsaw" />
       </label>
       <div class="request-windows">
@@ -330,22 +333,27 @@ answered a question a workspace never asks and hid the one it does.
           onChange={(next) => (windows = next)}
         />
       </div>
-      <label>
-        <span>Date exceptions</span>
+      <label class="form-field">
+        <span class="form-label">Date exceptions</span>
         <textarea
-          class="text-input"
+          class="text-input mono"
           rows="4"
           bind:value={exceptions}
           placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea>
       </label>
-      <p class="request-helper">
+      <p class="form-help">
         One local date per line: <code>YYYY-MM-DD closed</code> or
         <code>YYYY-MM-DD HH:MM-HH:MM</code>
       </p>
     {/if}
 
-    <div class="duration-request">
-      <label for="request-cadence">How often</label>
+    <div
+      class="form-field"
+      role="group"
+      aria-labelledby="request-cadence-label"
+      aria-describedby={cadenceDescription === undefined ? undefined : 'request-cadence-help'}
+    >
+      <label class="form-label" id="request-cadence-label" for="request-cadence">How often</label>
       <DurationInput
         id="request-cadence"
         label="How often"
@@ -356,10 +364,13 @@ answered a question a workspace never asks and hid the one it does.
         onChange={(seconds) => (cadence = seconds)}
         onValidityChange={(problem) => (cadenceProblem = problem)}
       />
+      {#if cadenceDescription !== undefined}
+        <p id="request-cadence-help" class="form-help">{cadenceDescription}</p>
+      {/if}
     </div>
 
-    <label>
-      <span>Priority</span>
+    <label class="form-field">
+      <span class="form-label">Priority</span>
       <Select
         value={priorityShown}
         onchange={(event) =>
@@ -372,8 +383,8 @@ answered a question a workspace never asks and hid the one it does.
       </Select>
     </label>
 
-    <label class="request-reason">
-      <span>Reason</span>
+    <label class="form-field request-reason">
+      <span class="form-label">Reason</span>
       <textarea
         class="text-input"
         rows="3"
@@ -393,48 +404,12 @@ answered a question a workspace never asks and hid the one it does.
 </Modal>
 
 <style>
-  .duration-request {
-    display: grid;
-    gap: var(--space-2);
-    justify-items: start;
-  }
-
-  .request-form {
-    display: grid;
-    gap: var(--space-4);
-  }
-
-  .request-form label {
-    display: grid;
-    gap: var(--space-2);
-    font-size: var(--font-size-meta);
-  }
-
-  .request-form label > span {
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .request-helper {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-    margin: 0;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .request-helper code {
+  .form-help code {
     font-family: var(--mono);
   }
 
   .text-input {
     width: 100%;
-  }
-
-  textarea.text-input {
-    height: auto;
-    padding-block: var(--space-2);
   }
 
   /* A refusal stands under the rows on the card's own text edge, not inside one. What

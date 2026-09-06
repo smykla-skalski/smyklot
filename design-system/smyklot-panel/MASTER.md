@@ -324,6 +324,24 @@ layout on a local wrapper, or anchor a child layout selector to that wrapper.
 Shared form errors have no margins of their own; the caller supplies the 8px
 code-to-error gap. Loading another route must not change that spacing
 
+Modal forms use the shared `form-stack`, `form-field`, `form-label`, and
+`form-help` anatomy. Separate fields by 16px and a field's label, control, and
+help by 8px. Labels use the shared control type size and 600 weight. Duration
+groups stay intrinsic and start-aligned inside a field; the containing row owns
+their placement. A modal's `form-row` centers its label and switch without adding
+settings-list dividers or row padding
+
+Plain-language textareas, including reasons and notes, use the shared prose
+font and control type size. Monospace is reserved for code, identifiers, and
+explicit technical grammars. A textarea's native browser font must not determine
+its appearance. Browser checks compare the rendered font as well as its border,
+height, and focus treatment
+
+Boolean settings use `Switch`. Consent and multi-selection use the shared
+checklist anatomy with a visible check box and associated label. Native checkbox
+paint, local select paint, and page-wide overrides of shared control classes are
+forbidden. Verify modal controls in both themes as well as controls in page rows
+
 Standalone row inputs, selects, popover pickers, segmented controls and buttons use
 `--control-height-compact` (34px), including fields inside expanded inspectors.
 Popover pickers use the shared `PickerTrigger`, with the shared stroked chevron.

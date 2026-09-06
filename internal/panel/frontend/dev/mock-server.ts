@@ -201,6 +201,7 @@ const MOCK_SCHEDULE_KINDS: QueueWorkload[] = [
   'catalog_refresh',
   'reaction_scan',
   'config_migration',
+  'config_file_sync',
   'sync_scan',
   'sync_apply',
   'path_refresh',
@@ -258,6 +259,7 @@ function mockScheduleState(
     catalog_refresh: 5 * 60,
     reaction_scan: 5 * 60,
     config_migration: 5 * 60,
+    config_file_sync: 15 * 60,
     sync_scan: 6 * 60 * 60,
     sync_apply: 0,
     path_refresh: 60 * 60,
@@ -271,7 +273,10 @@ function mockScheduleState(
     cadence: cadenceSeconds[kind] * NANOSECONDS_PER_SECOND,
     profile_id: 'always-open',
     default_priority: kind === 'webhook_delivery' ? 'high' : 'normal',
-    retry_delay: (kind === 'webhook_delivery' ? 30 : 5 * 60) * NANOSECONDS_PER_SECOND,
+    retry_delay:
+      (kind === 'webhook_delivery' || kind === 'config_file_sync' ? 30 : 5 * 60) *
+      NANOSECONDS_PER_SECOND,
+    ...(kind === 'config_file_sync' ? { retention: 48 * 60 * 60 * NANOSECONDS_PER_SECOND } : {}),
     ...(kind === 'sync_scan' ? { approval_ttl: 2 * 60 * 60 * NANOSECONDS_PER_SECOND } : {}),
     ...(kind === 'pending_ci'
       ? {

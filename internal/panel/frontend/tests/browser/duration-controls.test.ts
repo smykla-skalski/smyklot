@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import type { Locator, Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import type { ScheduleRequest } from '../../src/lib/types';
+
 import { addressOf, startPanel, visit, type Panel } from './harness';
 
 let panel: Panel;
@@ -106,7 +108,225 @@ async function settledDisclosurePaint(summary: Locator, active: boolean) {
   return read();
 }
 
+async function inspectModal(dialog: Locator, page: Page, name: string): Promise<void> {
+  await page.mouse.move(0, 0);
+  await dialog.evaluate((node) => {
+    if (node.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
+  });
+  await expect
+    .poll(() =>
+      dialog.evaluate((node) => {
+        const fields = Array.from(
+          node.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+            'input:not([type="checkbox"]),select',
+          ),
+        );
+        return fields.every((field) => {
+          const probe = document.createElement('input');
+          probe.className = 'text-input';
+          field.parentElement!.append(probe);
+          const actual = getComputedStyle(field);
+          const expected = getComputedStyle(probe);
+          const matches = [
+            'borderTopWidth',
+            'borderRadius',
+            'backgroundColor',
+            'fontSize',
+            'height',
+          ].every(
+            (key) =>
+              actual[key as keyof CSSStyleDeclaration] ===
+              expected[key as keyof CSSStyleDeclaration],
+          );
+          probe.remove();
+          return matches && field.getBoundingClientRect().height === 34;
+        });
+      }),
+    )
+    .toBe(true);
+  const result = await dialog.evaluate((node) => ({
+    proseFonts: Array.from(node.querySelectorAll('textarea.text-input:not(.mono)')).map(
+      (field) => ({
+        actual: getComputedStyle(field).fontFamily,
+        expected: getComputedStyle(node).fontFamily,
+      }),
+    ),
+    overflow: node.scrollWidth - node.clientWidth,
+    nativeChecks: Array.from(node.querySelectorAll('input[type="checkbox"]')).filter(
+      (input) => !input.closest('.switch,.check-item'),
+    ).length,
+    nativeSelects: Array.from(node.querySelectorAll('select')).filter(
+      (select) => !select.closest('.select-wrap'),
+    ).length,
+    rows: Array.from(node.querySelectorAll('.form-row')).map((row) => {
+      const label = row.querySelector('.form-label,.setting-say')!.getBoundingClientRect();
+      const track = row.querySelector('.switch-track')!.getBoundingClientRect();
+      return label.y + label.height / 2 - track.y - track.height / 2;
+    }),
+  }));
+  for (const font of result.proseFonts) expect(font.actual).toBe(font.expected);
+  expect(result.overflow).toBeLessThanOrEqual(1);
+  expect(result.nativeChecks).toBe(0);
+  expect(result.nativeSelects).toBe(0);
+  for (const center of result.rows) expect(Math.abs(center)).toBeLessThanOrEqual(1);
+  const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+  if (directory) {
+    await mkdir(directory, { recursive: true });
+    await dialog.screenshot({ path: join(directory, `${name}.png`), animations: 'disabled' });
+  }
+}
+
 describe('shared duration field style contract [Browser]', () => {
+  it.each([
+    { colorScheme: 'light', width: 1440 },
+    { colorScheme: 'dark', width: 1440 },
+    { colorScheme: 'light', width: 375 },
+    { colorScheme: 'dark', width: 375 },
+  ] as const)(
+    'keeps action, consent and invitation controls coherent at $colorScheme $width',
+    async ({ colorScheme, width }) => {
+      const page = await panel.browser.newPage({ colorScheme, viewport: { width, height: 1000 } });
+      page.setDefaultTimeout(8_000);
+      try {
+        await visit(page, `${panel.origin}/root/queue`, { ready: '[data-queue-item]' });
+        for (const action of ['Schedule exact time', 'Change priority']) {
+          await page
+            .getByRole('button', { name: 'Actions for Scan for new commands', exact: true })
+            .click();
+          await page.getByRole('menuitem').filter({ hasText: action }).click();
+          const dialog = page.getByRole('dialog', { name: action, exact: true });
+          await dialog.waitFor();
+          if (action === 'Schedule exact time') {
+            await dialog
+              .getByRole('checkbox', { name: "Allow this run outside the job's hours" })
+              .locator('xpath=ancestor::label[1]')
+              .click();
+            await dialog
+              .getByRole('textbox', { name: 'Reason', exact: true })
+              .fill('Release window exception');
+          }
+          await inspectModal(
+            dialog,
+            page,
+            `queue-${action === 'Schedule exact time' ? 'schedule' : 'priority'}-${colorScheme}-${width}`,
+          );
+          await page.keyboard.press('Escape');
+        }
+        await visit(page, `${panel.origin}/root/access/invitations`);
+        await page.getByRole('button', { name: 'Invite an operator', exact: true }).first().click();
+        const invitation = page.getByRole('dialog', { name: 'Invite an operator', exact: true });
+        await invitation.waitFor();
+        await inspectModal(invitation, page, `invitation-${colorScheme}-${width}`);
+        await page.keyboard.press('Escape');
+
+        await page.route('**/api/v1/root/workspaces/2001/settings', async (route) => {
+          const response = await route.fetch();
+          const data = await response.json();
+          await route.fulfill({ response, json: { ...data, access_source: 'operator' } });
+        });
+        await visit(page, `${panel.origin}/root/workspaces/${panel.account}/settings`);
+        await page.getByRole('button', { name: 'Visit as an operator', exact: true }).click();
+        const consent = page.getByRole('dialog', { name: /Visit .* as an operator/ });
+        const consentGap = await consent.evaluate((node) => {
+          const body = node.querySelector('.modal-body')!;
+          const warning = body.querySelector('.callout')!.getBoundingClientRect();
+          const fields = body.querySelector('.form-stack')!.getBoundingClientRect();
+          return {
+            actual: fields.top - warning.bottom,
+            expected: parseFloat(getComputedStyle(body).rowGap),
+          };
+        });
+        expect(consentGap.actual).toBe(consentGap.expected);
+        const start = consent.getByRole('button', { name: 'Start a 15-minute visit' });
+        expect(await start.isDisabled()).toBe(true);
+        const checkbox = consent.getByRole('checkbox');
+        await checkbox.check();
+        expect(await start.isEnabled()).toBe(true);
+        expect(await checkbox.evaluate((input) => getComputedStyle(input).opacity)).toBe('0');
+        const checkItem = consent.locator('.check-item');
+        await checkItem.hover();
+        await expect
+          .poll(() => checkItem.evaluate((item) => getComputedStyle(item).backgroundColor))
+          .not.toBe('rgba(0, 0, 0, 0)');
+        await page.mouse.down();
+        await expect
+          .poll(() =>
+            checkItem.evaluate((item) => ({
+              background: getComputedStyle(item).backgroundColor,
+              inset: getComputedStyle(item).boxShadow !== 'none',
+              translate: getComputedStyle(item).translate,
+            })),
+          )
+          .toEqual({ background: 'rgba(0, 0, 0, 0)', inset: true, translate: '0px 1px' });
+        await page.mouse.up();
+        await checkbox.focus();
+        await page.keyboard.press('Tab');
+        await page.keyboard.press('Shift+Tab');
+        expect(
+          await consent.locator('.check-box').evaluate((box) => getComputedStyle(box).outlineStyle),
+        ).toBe('solid');
+        await checkbox.check();
+        await inspectModal(consent, page, `consent-${colorScheme}-${width}`);
+        await page.keyboard.press('Escape');
+
+        await page.route('**/api/v1/root/schedule-requests', async (route) => {
+          const response = await route.fetch();
+          const data: { requests: ScheduleRequest[] } = await response.json();
+          const requests = data.requests.map((request, index) => {
+            if (index !== 0) return request;
+            const custom: ScheduleRequest = {
+              ...request,
+              custom_profile: {
+                id: '',
+                name: 'Release hours',
+                timezone: 'UTC',
+                system: false,
+                revision: 0,
+                windows: [{ weekday: 1, start_minute: 540, end_minute: 1020 }],
+                exceptions: [],
+              },
+            };
+            delete custom.profile_id;
+            return custom;
+          });
+          await route.fulfill({ response, json: { requests } });
+        });
+        await visit(page, `${panel.origin}/root/schedules`);
+        await page.getByRole('button', { name: /Show all \d+ jobs/ }).click();
+        for (const title of ['Webhook intake', 'CI re-checks', 'Workspace sync scan']) {
+          await page.getByRole('button', { name: `Edit schedule - ${title}`, exact: true }).click();
+          const dialog = page.getByRole('dialog', { name: 'Configure job', exact: true });
+          await dialog.waitFor();
+          await inspectModal(
+            dialog,
+            page,
+            `policy-${title.toLowerCase().replaceAll(' ', '-')}-${colorScheme}-${width}`,
+          );
+          await page.keyboard.press('Escape');
+        }
+        await page.getByRole('button', { name: 'Approve', exact: true }).click();
+        const approval = page.getByRole('dialog', {
+          name: 'Approve schedule request',
+          exact: true,
+        });
+        await approval
+          .getByRole('textbox', { name: 'Decision reason' })
+          .fill('Useful for release preparation');
+        const reuse = approval.getByRole('checkbox', { name: 'Reuse these hours' });
+        expect(await reuse.isChecked()).toBe(false);
+        await reuse.locator('xpath=ancestor::label[1]').click();
+        expect(await reuse.isChecked()).toBe(true);
+        expect(
+          await approval.getByRole('button', { name: 'Approve', exact: true }).isEnabled(),
+        ).toBe(true);
+        await inspectModal(approval, page, `schedule-request-${colorScheme}-${width}`);
+        await page.keyboard.press('Escape');
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   it.each(['light', 'dark'] as const)(
     'aligns the formatting disclosure with its card text and frame in %s',
     async (colorScheme) => {

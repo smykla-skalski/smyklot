@@ -23,6 +23,7 @@
     RootWorkspace,
   } from '../types';
   import FormError from './FormError.svelte';
+  import Callout from './Callout.svelte';
   import StatusPill from './StatusPill.svelte';
   import Button from './Button.svelte';
   import BackLink from './BackLink.svelte';
@@ -505,28 +506,34 @@ inside it.
   returnFocus={elevationTrigger}
   onClose={closeElevation}
 >
-  <div class="elevation-warning">
-    <span><Icon name="warning" size={22} /></span>
-    <p>
+  <Callout tone="warning">
+    {#snippet icon()}<Icon name="warning" size="base" />{/snippet}
+    <span class="form-help">
       You do not own this workspace. Every change is permanently audited and every identified Owner
       receives an in-app security notification
-    </p>
+    </span>
+  </Callout>
+
+  <div class="form-stack">
+    <label class="check-item">
+      <input type="checkbox" disabled={elevationPending} bind:checked={elevationAcknowledged} />
+      <span class="check-box" aria-hidden="true"><Icon name="check" size="micro" /></span>
+      <span class="check-label"
+        >I understand the consequences and want to visit this workspace as an operator</span
+      >
+    </label>
+    <label class="form-field">
+      <span class="form-label">Reason</span>
+      <textarea
+        class="text-input"
+        rows="3"
+        maxlength="500"
+        disabled={elevationPending}
+        placeholder="For example: investigating a repository whose sync keeps failing"
+        bind:value={elevationReason}></textarea>
+      <span class="form-help">Optional, included in the audit trail and Owner notifications</span>
+    </label>
   </div>
-
-  <label class="acknowledgment">
-    <input type="checkbox" bind:checked={elevationAcknowledged} />
-    <span> I understand the consequences and want to visit this workspace as an operator </span>
-  </label>
-
-  <label class="reason-field">
-    <span>Reason <small>Optional, included in the audit trail and Owner notifications</small></span>
-    <textarea
-      class="text-input"
-      rows="3"
-      maxlength="500"
-      placeholder="For example: investigating a repository whose sync keeps failing"
-      bind:value={elevationReason}></textarea>
-  </label>
 
   {#if elevationFailure !== null}
     <FormError message={elevationFailure} />
@@ -683,68 +690,6 @@ inside it.
 
   .root-loading :global(.btn) {
     margin-top: var(--space-4);
-  }
-
-  .elevation-warning {
-    align-items: start;
-    background: color-mix(in srgb, var(--brand-action) 8%, var(--surface-inset));
-    border: 1px solid color-mix(in srgb, var(--brand-action) 28%, var(--border-subtle));
-    border-radius: var(--radius-control);
-    display: grid;
-    gap: var(--space-3);
-    grid-template-columns: auto minmax(0, 1fr);
-    padding: var(--space-4);
-  }
-
-  .elevation-warning > span {
-    color: var(--brand-action-text);
-  }
-
-  .elevation-warning p {
-    line-height: var(--leading-body);
-  }
-
-  .acknowledgment,
-  .reason-field {
-    display: grid;
-    margin-top: var(--space-4);
-  }
-
-  .acknowledgment {
-    align-items: start;
-    cursor: pointer;
-    gap: var(--space-3);
-    grid-template-columns: auto minmax(0, 1fr);
-    line-height: var(--leading-body);
-  }
-
-  .acknowledgment input {
-    height: 1.1rem;
-    margin: 0.2rem 0 0;
-    width: 1.1rem;
-  }
-
-  .reason-field {
-    gap: var(--space-2);
-  }
-
-  .reason-field > span {
-    font-size: var(--font-size-control);
-    font-weight: 650;
-  }
-
-  .reason-field small {
-    color: var(--text-secondary);
-    display: block;
-    font-weight: 450;
-    margin-top: var(--space-1);
-  }
-
-  .reason-field textarea {
-    height: auto;
-    line-height: var(--leading-body);
-    padding-block: var(--space-2);
-    resize: vertical;
   }
 
   @media (max-width: 46rem) {

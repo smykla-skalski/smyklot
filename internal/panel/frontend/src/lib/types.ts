@@ -375,6 +375,7 @@ export type QueueWorkload =
   | 'catalog_refresh'
   | 'reaction_scan'
   | 'config_migration'
+  | 'config_file_sync'
   | 'sync_scan'
   | 'sync_apply'
   | 'path_refresh'

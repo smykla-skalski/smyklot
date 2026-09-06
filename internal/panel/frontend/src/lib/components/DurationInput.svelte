@@ -190,7 +190,8 @@ the owning draft. A caller with persisted raw drafts can pass editor and onEdit.
   .duration-field {
     display: grid;
     gap: var(--space-2);
-    justify-items: end;
+    inline-size: fit-content;
+    justify-items: start;
     max-inline-size: 100%;
   }
 
@@ -215,6 +216,6 @@ the owning draft. A caller with persisted raw drafts can pass editor and onEdit.
     font-size: var(--font-size-compact);
     max-inline-size: 32ch;
     overflow-wrap: anywhere;
-    text-align: end;
+    text-align: start;
   }
 </style>

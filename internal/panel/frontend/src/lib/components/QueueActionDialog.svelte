@@ -10,6 +10,9 @@
   } from '#lib/types.js';
   import Button from './Button.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import Select from './Select.svelte';
+  import Switch from './Switch.svelte';
+  import FormError from './FormError.svelte';
 
   const {
     item,
@@ -148,7 +151,7 @@ to ask it four different ways.
   {onClose}
   onConfirm={submit}
 >
-  <div class="queue-action-form">
+  <div class="form-stack queue-action-form">
     {#if action === 'run_now'}
       <p>
         Run this job once now, outside its normal schedule · Work already running is not interrupted
@@ -156,19 +159,32 @@ to ask it four different ways.
     {:else if action === 'next_window'}
       <p>Clear the delay and use the next available time within the job's hours</p>
     {:else if action === 'schedule_at'}
-      <label for="queue-action-time">Not before</label>
-      <input id="queue-action-time" type="datetime-local" bind:value={at} />
-      <label class="check-line">
+      <div class="form-field">
+        <label class="form-label" for="queue-action-time">Not before</label>
         <input
-          type="checkbox"
-          bind:checked={outsideWindow}
-          onchange={() => {
-            preview = null;
-            previewKey = '';
-          }}
+          class="text-input"
+          disabled={busy}
+          id="queue-action-time"
+          type="datetime-local"
+          bind:value={at}
         />
-        <span>Allow this run outside the job's hours</span>
-      </label>
+      </div>
+      <div class="form-row">
+        <span class="form-label">Allow this run outside the job's hours</span>
+        <span class="policy-value">
+          <Switch
+            bare
+            label="Allow this run outside the job's hours"
+            checked={outsideWindow}
+            disabled={busy}
+            onToggle={(next) => {
+              outsideWindow = next;
+              preview = null;
+              previewKey = '';
+            }}
+          />
+        </span>
+      </div>
       <Button row disabled={at === '' || previewBusy} onclick={() => void refreshPreview()}
         >{previewBusy ? 'Calculating…' : 'Preview when it runs'}</Button
       >
@@ -186,80 +202,55 @@ to ask it four different ways.
           {/if}
         </div>
       {:else if previewError !== ''}
-        <p class="form-error" role="alert">{previewError}</p>
+        <FormError message={previewError} />
       {/if}
     {:else if action === 'set_priority'}
-      <label for="queue-action-priority">Priority</label>
-      <select id="queue-action-priority" bind:value={priority}>
-        <option value="low">Low</option>
-        <option value="normal">Normal</option>
-        <option value="high">High</option>
-        <option value="urgent">Urgent</option>
-      </select>
+      <div class="form-field">
+        <label class="form-label" for="queue-action-priority">Priority</label>
+        <Select id="queue-action-priority" disabled={busy} bind:value={priority}>
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </Select>
+      </div>
     {:else if action === 'cancel'}
       <p>The cancellation and who requested it remain in Queue history</p>
     {/if}
 
     {#if needsReason}
-      <label for="queue-action-reason">Reason</label>
-      <textarea
-        id="queue-action-reason"
-        rows="3"
-        bind:value={reason}
-        placeholder="Why is this exception needed?"></textarea>
+      <div class="form-field">
+        <label class="form-label" for="queue-action-reason">Reason</label>
+        <textarea
+          id="queue-action-reason"
+          class="text-input"
+          disabled={busy}
+          rows="3"
+          bind:value={reason}
+          placeholder="Why is this exception needed?"></textarea>
+      </div>
     {/if}
     {#if error !== ''}
-      <p class="form-error" role="alert">{error}</p>
+      <FormError message={error} />
     {/if}
   </div>
 </ConfirmDialog>
 
 <style>
-  .queue-action-form {
-    display: grid;
-    gap: var(--space-3);
-  }
-  .queue-action-form p {
-    color: var(--text-muted);
+  .queue-action-form > p {
+    color: var(--text-secondary);
+    line-height: var(--row-copy-leading);
     margin: 0;
-  }
-  label:not(.check-line) {
-    font-size: 0.78rem;
-    font-weight: 700;
-    margin-bottom: calc(var(--space-2) * -1);
-  }
-  input[type='datetime-local'],
-  select,
-  textarea {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: 2.75rem;
-    padding: var(--space-2) var(--space-3);
-  }
-  textarea {
-    line-height: var(--leading-body);
-    resize: vertical;
-  }
-  .check-line {
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    min-height: 2.75rem;
-  }
-  .form-error {
-    color: var(--danger);
+    text-box: trim-both cap alphabetic;
   }
   .schedule-preview {
-    background: var(--surface-raised);
     display: grid;
-    font-size: 0.76rem;
-    gap: var(--space-1);
-    padding: var(--space-3);
+    font-size: var(--font-size-compact);
+    gap: var(--row-copy-gap);
+    line-height: var(--row-copy-leading);
+    text-box: trim-both cap alphabetic;
   }
   .schedule-preview span {
-    color: var(--text-muted);
+    color: var(--text-secondary);
   }
 </style>

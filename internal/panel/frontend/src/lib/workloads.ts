@@ -12,7 +12,10 @@ import type { QueueWorkload } from './types';
  * as the subject - "Accepts what GitHub sends", never "Accept and deliver GitHub
  * events", which reads as an instruction to the reader.
  */
-export const WORKLOAD_COPY: Record<QueueWorkload, { title: string; description: string }> = {
+export const WORKLOAD_COPY: Record<
+  QueueWorkload,
+  { title: string; description: string; cadenceDescription?: string }
+> = {
   webhook_delivery: {
     title: 'Webhook intake',
     description: 'Accepts what GitHub sends',
@@ -36,6 +39,11 @@ export const WORKLOAD_COPY: Record<QueueWorkload, { title: string; description: 
   config_migration: {
     title: 'Configuration migration',
     description: 'Moves repositories to the current configuration',
+  },
+  config_file_sync: {
+    title: 'Configuration file sync',
+    description: 'Keeps opted-in configuration files and panel settings aligned',
+    cadenceDescription: 'Checks connected configuration files for changes',
   },
   sync_scan: {
     title: 'Workspace sync scan',
@@ -69,6 +77,10 @@ export function workloadTitle(kind: QueueWorkload): string {
 
 export function workloadDescription(kind: QueueWorkload): string {
   return WORKLOAD_COPY[kind].description;
+}
+
+export function workloadCadenceDescription(kind: QueueWorkload): string | undefined {
+  return WORKLOAD_COPY[kind].cadenceDescription;
 }
 
 const CADENCE_UNITS: ReadonlyArray<{ seconds: number; one: string; many: string }> = [

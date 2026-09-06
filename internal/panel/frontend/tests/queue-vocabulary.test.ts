@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { queueState, shortAge, sinceLabel } from '../src/lib/queue';
 import type { PendingCIRequest } from '../src/lib/types';
+import { WORKLOAD_COPY } from '../src/lib/workloads';
 
 /**
  * The queue spells CI states the way the service spells them.
@@ -20,6 +21,19 @@ import type { PendingCIRequest } from '../src/lib/types';
  */
 
 const GO_SOURCE = new URL('../../../pendingci/types.go', import.meta.url);
+
+describe('background job names [Unit]', () => {
+  it('names every backend workload without conflating configuration sync and migration', () => {
+    const source = readFileSync(new URL('../../../workqueue/types.go', import.meta.url), 'utf8');
+    const kinds = [...source.matchAll(/Kind\w+\s+Kind = "(?<kind>[a-z_]+)"/gu)].map(
+      (match) => match.groups?.kind,
+    );
+    expect(kinds.length).toBeGreaterThan(10);
+    expect(Object.keys(WORKLOAD_COPY).sort()).toEqual(kinds.sort());
+    expect(WORKLOAD_COPY.config_file_sync.title).toBe('Configuration file sync');
+    expect(WORKLOAD_COPY.config_file_sync.title).not.toBe(WORKLOAD_COPY.config_migration.title);
+  });
+});
 
 /** The `ObservedState` constants, read from the const block that declares them. */
 function declaredStates(): string[] {

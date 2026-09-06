@@ -126,6 +126,7 @@ body {
   .fold summary:active,
   .object-row:has(.row-hit:active),
   .choice-card:has(input:not(:disabled)):active,
+  .check-item:has(input:not(:disabled)):active,
   .console-menu .menu-item:active,
   .tree:has(.tree-row.is-active:active) .nav-thumb {
     translate: none;
@@ -1362,6 +1363,59 @@ code {
    `--font-size-meta` is the 0.8125rem one of them spelled out. What is genuinely
    per-form - where the message sits in a grid, how far it stands off the field
    above it - the caller still says, and only that. */
+/* Forms share the same label, field and helper rhythm in every modal. The
+   field owns placement; extracted controls own their paint and intrinsic size. */
+.form-stack,
+.form-section {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.form-row {
+  align-items: center;
+  display: flex;
+  gap: var(--space-4);
+  justify-content: space-between;
+  min-block-size: var(--control-height-compact);
+}
+
+.form-row > .form-label {
+  min-inline-size: 0;
+}
+
+.form-field {
+  display: grid;
+  gap: var(--row-copy-gap);
+  min-inline-size: 0;
+}
+
+.form-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-control);
+  font-weight: 600;
+  line-height: var(--row-copy-leading);
+  text-box: trim-both cap alphabetic;
+}
+
+.form-help {
+  color: var(--text-secondary);
+  font-size: var(--font-size-compact);
+  line-height: var(--row-copy-leading);
+  margin: 0;
+  text-box: trim-both cap alphabetic;
+}
+
+.form-field > textarea.text-input:not(.mono) {
+  font-family: var(--sans);
+}
+
+.form-field > textarea.text-input {
+  height: auto;
+  min-block-size: var(--control-height-compact);
+  padding-block: var(--space-2);
+  resize: vertical;
+}
+
 .form-error {
   color: var(--danger);
   font-size: var(--font-size-meta);
@@ -2903,6 +2957,10 @@ button.object-row {
 }
 
 .check-item {
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-press) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard);
   align-items: center;
   border-radius: var(--r-ctl);
   cursor: pointer;
@@ -2913,8 +2971,18 @@ button.object-row {
   position: relative;
 }
 
-.check-item:hover {
+.check-item:hover:not(:active) {
   background: var(--row-hover);
+}
+
+.check-item:has(input:not(:disabled)):active {
+  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+
+.check-item:has(.check-label) {
+  min-block-size: var(--touch-target);
 }
 
 .check-item:has(input:disabled) {
@@ -2964,6 +3032,12 @@ button.object-row {
   font-family: var(--mono);
   font-size: var(--font-size-compact);
   min-block-size: 9px;
+  text-box: trim-both cap alphabetic;
+}
+
+.check-label {
+  font-size: var(--font-size-control);
+  line-height: var(--row-copy-leading);
   text-box: trim-both cap alphabetic;
 }
 

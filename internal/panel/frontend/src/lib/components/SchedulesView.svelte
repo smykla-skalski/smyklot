@@ -17,6 +17,7 @@
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import Switch from './Switch.svelte';
   import Icon from './Icon.svelte';
   import Pill from './Pill.svelte';
   import Plate from './Plate.svelte';
@@ -590,15 +591,30 @@ in their own settings.
   }}
   onConfirm={() => void submitDecision()}
 >
-  <label class="decision-reason"
-    >Decision reason<textarea rows="3" bind:value={decisionReason}></textarea></label
-  >
-  {#if deciding?.custom_profile !== undefined && decision === 'approve'}
-    <label class="promote-profile"
-      ><input type="checkbox" bind:checked={promoteProfile} />Promote these custom hours to a
-      reusable global profile</label
-    >
-  {/if}
+  <div class="form-stack">
+    <label class="form-field">
+      <span class="form-label">Decision reason</span>
+      <textarea class="text-input" rows="3" disabled={dialogBusy} bind:value={decisionReason}
+      ></textarea>
+    </label>
+    {#if deciding?.custom_profile !== undefined && decision === 'approve'}
+      <div class="form-row">
+        <span class="setting-say">
+          <span class="setting-name">Reuse these hours</span>
+          <span class="setting-why">Make this schedule available to other jobs</span>
+        </span>
+        <span class="policy-value"
+          ><Switch
+            bare
+            checked={promoteProfile}
+            label="Reuse these hours"
+            disabled={dialogBusy}
+            onToggle={(next) => (promoteProfile = next)}
+          /></span
+        >
+      </div>
+    {/if}
+  </div>
   {#if dialogError !== ''}<p class="form-error" role="alert">{dialogError}</p>{/if}
 </ConfirmDialog>
 <ConfirmDialog
@@ -607,7 +623,7 @@ in their own settings.
   title="Archive hours profile"
   description={archivingProfile === null
     ? undefined
-    : `${archivingProfile.name} can only be archived after every job is reassigned.`}
+    : `${archivingProfile.name} can only be archived after every job is reassigned`}
   busy={dialogBusy}
   confirmLabel="Archive profile"
   confirmTone="stop"
@@ -620,31 +636,6 @@ in their own settings.
 </ConfirmDialog>
 
 <style>
-  .decision-reason,
-  .promote-profile {
-    color: var(--text-secondary);
-    display: grid;
-    font-size: var(--font-size-compact);
-    gap: var(--space-2);
-  }
-
-  .promote-profile {
-    align-items: center;
-    grid-auto-flow: column;
-    justify-content: start;
-  }
-
-  .decision-reason textarea {
-    background: var(--surface-base);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font: inherit;
-    padding: var(--space-2);
-    resize: vertical;
-    width: 100%;
-  }
-
   .form-error {
     color: var(--danger);
     font-size: var(--font-size-compact);

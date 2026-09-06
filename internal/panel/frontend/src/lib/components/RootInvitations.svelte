@@ -603,15 +603,21 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     <FormError message={createProblem} />
   {:else if createStage === 'form'}
     <form id="root-invitation-form" class="invitation-form" onsubmit={submitCreate}>
-      <label>
-        <span>GitHub login</span>
-        <input autocomplete="off" placeholder="octocat" bind:value={login} required />
+      <label class="form-field">
+        <span class="form-label">GitHub login</span>
+        <input
+          class="text-input"
+          autocomplete="off"
+          placeholder="octocat"
+          bind:value={login}
+          required
+        />
         {#if namingSelf}
           <small class="field-refusal">You cannot invite yourself</small>
         {/if}
       </label>
-      <label>
-        <span>Expires after</span>
+      <label class="form-field">
+        <span class="form-label">Expires after</span>
         <Select
           bind:value={expiresInDays}
           aria-label="Invitation expiry"
@@ -718,40 +724,14 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     grid-template-columns: minmax(0, 1fr) 9rem;
   }
 
-  .invitation-form label {
-    display: grid;
-    gap: var(--space-2);
-  }
-
-  .invitation-form label > span {
-    font-weight: 650;
-  }
-
   /* Sits under the field that caused it rather than beside the disabled button, so the reason and
      the thing to change are in the same place. */
   .field-refusal {
     color: var(--danger);
     font-size: var(--font-size-compact);
     font-weight: 500;
-    /* The label's own grid gap already spaces it; this closes it back up to a helper's distance. */
-    margin-top: calc(var(--space-2) * -1 + 0.25rem);
-  }
-
-  /* The generated link is no longer in this list. It goes through
-     `CopyableLinkField`, which dresses it as `.text-input` like every other input in
-     the panel - this form's own taller treatment was the one place that disagreed,
-     and matching it here would have meant teaching a shared component about one
-     dialog. */
-  .invitation-form input,
-  .invitation-form :global(select) {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: var(--control-height);
-    padding: 0 var(--space-3);
-    width: 100%;
+    line-height: var(--row-copy-leading);
+    text-box: trim-both cap alphabetic;
   }
 
   /* The box itself is `Callout` now; what is left is where it sits in this form's
