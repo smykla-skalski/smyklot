@@ -7,10 +7,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import RepositorySyncPane from '../src/lib/components/RepositorySyncPane.svelte';
 import {
+  adoptSyncOverrideSettings,
   cloneSyncOverrideEditorEnvelope,
+  stageSyncOverrideControl,
+  syncOverrideBatchInput,
+  syncOverrideDraftEnvelope,
   type SyncOverrideControlId,
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
+import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type { SyncOverride } from '../src/lib/types';
 
 function codeView(label: string, index = 0): EditorView | null {
@@ -103,6 +108,91 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.input(input, { target: { value } });
     await fireEvent.keyDown(input, { key: 'Enter' });
   }
+
+  it.each(['1e400', '-1e400', '1e-400', '-0'])(
+    'stages and reopens exact file content containing %s',
+    async (literal) => {
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        },
+      };
+      const stored = override({
+        document: {
+          merges: [
+            { path: 'renovate.json', overrides: { id: JSON.rawJSON(literal), flag: false } },
+          ],
+        },
+      });
+      const first = new SettingsDraftRegistry({ storage, writerId: 'first' });
+      first.hydrate('viewer');
+      adoptSyncOverrideSettings(first, 'target', 'repo-1', stored);
+      const component = render(RepositorySyncPane, {
+        ...base,
+        stored,
+        onChange: (next, control) => {
+          expect(stageSyncOverrideControl(first, 'target', 'repo-1', stored, next, control)).toBe(
+            true,
+          );
+        },
+      });
+      await writeCode('Content adjustments', `{"id":${literal},"flag":true}`);
+      expect(first.dirtyControlCount).toBe(1);
+      component.unmount();
+      const second = new SettingsDraftRegistry({ storage, writerId: 'second' });
+      second.hydrate('viewer');
+      const envelope = syncOverrideDraftEnvelope(second, 'target', 'repo-1', stored);
+      render(RepositorySyncPane, { ...base, stored, envelope });
+      expect(codeView('Content adjustments')?.state.doc.toString()).toBe(
+        `{"id":${literal},"flag":true}`,
+      );
+      const batch = syncOverrideBatchInput('repo-1', stored.revision, envelope);
+      expect(batch.ok).toBe(true);
+      if (batch.ok) expect(JSON.stringify(batch.input.document)).toContain(`"id":${literal}`);
+    },
+  );
+
+  it.each(['{"id":1,"id":2}', '{"nested":{"id":1,"id":2}}', '{"id":1,"\\u0069d":2}'])(
+    'preserves duplicate-key draft text and blocks its save: %s',
+    async (text) => {
+      const stored = override({
+        document: { merges: [{ path: 'renovate.json', overrides: { id: 0 } }] },
+      });
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        },
+      };
+      const first = new SettingsDraftRegistry({ storage, writerId: 'first' });
+      first.hydrate('viewer');
+      adoptSyncOverrideSettings(first, 'target', 'repo-1', stored);
+      const component = render(RepositorySyncPane, {
+        ...base,
+        stored,
+        onChange: (next, control) => {
+          expect(stageSyncOverrideControl(first, 'target', 'repo-1', stored, next, control)).toBe(
+            true,
+          );
+        },
+      });
+      await writeCode('Content adjustments', text);
+      expect(first.dirtyControlCount).toBe(1);
+      component.unmount();
+      const second = new SettingsDraftRegistry({ storage, writerId: 'second' });
+      second.hydrate('viewer');
+      const envelope = syncOverrideDraftEnvelope(second, 'target', 'repo-1', stored);
+      expect(envelope.override_texts).toEqual([text]);
+      expect(syncOverrideBatchInput('repo-1', stored.revision, envelope).ok).toBe(false);
+      render(RepositorySyncPane, { ...base, stored, envelope });
+      expect(codeView('Content adjustments')?.state.doc.toString()).toBe(text);
+      await writeCode('Content adjustments', '{"id":2}');
+      expect(codeView('Content adjustments')?.state.doc.toString()).toBe('{"id":2}');
+    },
+  );
 
   it('shows when a repository has no content adjustments', () => {
     render(RepositorySyncPane, { ...base, stored: override() });
@@ -304,18 +394,21 @@ describe('RepositorySyncPane [Component]', () => {
     });
     const remaining = codeView('Content adjustments', 1);
     await writeCode('Content adjustments', '{"b":3}', 1);
-    await rendered.rerender({ envelope: structuredClone(sent[0]) });
+    await rendered.rerender({ envelope: cloneSyncOverrideEditorEnvelope(sent[0]) });
     expect(codeView('Content adjustments', 1)).toBe(remaining);
     await fireEvent.click(screen.getByRole('button', { name: 'Remove adjustment for a.json' }));
-    await rendered.rerender({ envelope: structuredClone(sent[0]) });
+    await rendered.rerender({ envelope: cloneSyncOverrideEditorEnvelope(sent[0]) });
     expect(codeView('Content adjustments')).toBe(remaining);
     await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await tick();
-    expect(sent[0].document.merges).toEqual([{ path: 'b.json', overrides: { b: 2 } }]);
+    expect(JSON.stringify(sent[0].document.merges)).toBe('[{"path":"b.json","overrides":{"b":2}}]');
 
     // Cached navigation can reuse this pane for a different repository with
     // exactly the same document. Its history still belongs to that repository.
-    await rendered.rerender({ repositoryId: 'repo-2', envelope: structuredClone(sent[0]) });
+    await rendered.rerender({
+      repositoryId: 'repo-2',
+      envelope: cloneSyncOverrideEditorEnvelope(sent[0]),
+    });
     expect(codeView('Content adjustments')).not.toBe(remaining);
     expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
 

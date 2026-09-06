@@ -3,6 +3,7 @@
   import { fileFormat } from '#lib/file-format.js';
   import { patchedAt, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
+  import { parseJson } from '#lib/merge.js';
   import {
     buildSyncOverrideEditorEnvelope,
     type SyncOverrideControlId,
@@ -461,16 +462,13 @@
 
   function parsed(text: string): Record<string, unknown> | undefined {
     if (text.trim() === '') return {};
-
-    try {
-      const value: unknown = JSON.parse(text);
-
-      return value !== null && typeof value === 'object' && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : undefined;
-    } catch {
-      return undefined;
-    }
+    const value = parseJson(text);
+    return value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      !(typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value))
+      ? (value as Record<string, unknown>)
+      : undefined;
   }
 
   function editorDrafts(from: SyncOverrideEditorEnvelope): Draft[] {

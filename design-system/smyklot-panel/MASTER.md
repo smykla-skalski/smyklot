@@ -330,6 +330,11 @@ which combines the shared text input and Select at the same control height. Unit
 changes preserve the stored duration. Browser checks compare rendered control
 styles in both themes, including focus and disabled states, and run in CI
 
+Route styles must not globally override shared component classes. Put contextual
+layout on a local wrapper, or anchor a child layout selector to that wrapper.
+Shared form errors have no margins of their own; the caller supplies the 8px
+code-to-error gap. Loading another route must not change that spacing
+
 Standalone row inputs, selects, popover pickers, segmented controls and buttons use
 `--control-height-compact` (34px), including fields inside expanded inspectors.
 Popover pickers use the shared `PickerTrigger`, with the shared stroked chevron.
@@ -347,6 +352,21 @@ unordered exception actors, and branch patterns by their meaning while retaining
 the saved representation when it is restored. Invalid input remains visible and
 blocks saving; it must not silently become zero or disappear
 
+The saved baseline survives closing an editor and reloading the page. Keep it
+separate from the draft present when the editor opens. Restoring saved content
+also restores its explicit overrides, including a value equal to the shared
+template. Deliberately removing an override restores inheritance and must remain
+removed when the editor reopens
+
+Editing one value preserves every untouched authored override, even when it equals
+the shared template. Explicit removals and list choices are part of the editor's
+Undo and Redo history. Returning a list choice to its saved value restores its
+original rule order and options. Compare numeric literals without floating-point
+rounding, and never replace a visible edit with an older rounded value when saving
+
+Load the complete saved and draft settings before starting editable history. A
+loading preview must not become an undoable user edit
+
 Durations offer seconds, minutes, and hours through `DurationInput`. Changing only
 the displayed unit never stages a settings change or rounds the stored duration
 
@@ -359,6 +379,11 @@ output, and diff blocks. The mode picker and adjacent action buttons have equal
 heights; read-only status must not create another toolbar row. Center header actions
 on the heading and use the shared 16px heading-to-editor gap. Associated help text
 belongs to the editor with an 8px gap, not the 16px gap between independent fields
+
+A read-only presentation of the current adjustment keeps a visible action back to
+content, even when Undo removes every highlighted change. Label that presentation
+as adjustment settings, not saved settings: it may contain an unsaved draft. Keep
+the editor mounted across presentation changes so selection and Undo survive
 
 Formatting is secondary to editing content. Keep it in the inspector or a closed
 disclosure until requested. Every template and rendered file has its terminal

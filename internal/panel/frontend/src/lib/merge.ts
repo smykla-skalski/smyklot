@@ -22,6 +22,8 @@
  * refusing rather than by storing a patch that means the other thing.
  */
 
+import { parseTree, type Node } from 'jsonc-parser';
+
 /**
  * A number kept as the digits somebody typed.
  *
@@ -728,6 +730,23 @@ export function composable(path: string): boolean {
   return path.toLowerCase().endsWith('.json');
 }
 
+/** JSON.parse reviver: keep ordinary numbers primitive, preserving any token they cannot retain. */
+export function preserveNumberToken(
+  _key: string,
+  value: unknown,
+  context?: { source?: string },
+): unknown {
+  if (
+    typeof value === 'number' &&
+    context?.source !== undefined &&
+    JSON.stringify(value) !== context.source &&
+    typeof JSON.rawJSON === 'function'
+  ) {
+    return JSON.rawJSON(context.source);
+  }
+  return value;
+}
+
 /**
  * The document, or nothing where it is not the JSON this composes.
  *
@@ -738,6 +757,8 @@ export function composable(path: string): boolean {
  */
 export function parseJson(text: string): JsonValue | undefined {
   try {
+    const root = parseTree(text);
+    if (root === undefined || hasDuplicateKeys(root)) return undefined;
     return JSON.parse(text, function (_key: string, value: unknown, context?: { source?: string }) {
       if (
         typeof value === 'number' &&
@@ -752,6 +773,19 @@ export function parseJson(text: string): JsonValue | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Check decoded names before JSON.parse can discard the earlier property. */
+function hasDuplicateKeys(node: Node): boolean {
+  if (node.type === 'object') {
+    const names = new Set<string>();
+    for (const property of node.children ?? []) {
+      const key = property.children?.[0]?.value as string;
+      if (names.has(key)) return true;
+      names.add(key);
+    }
+  }
+  return (node.children ?? []).some(hasDuplicateKeys);
 }
 
 /**

@@ -17,6 +17,8 @@
     Annotation,
     Compartment,
     EditorState,
+    StateEffect,
+    StateField,
     Text,
     RangeSetBuilder,
     type Extension,
@@ -60,7 +62,7 @@
     readOnly?: boolean;
     /** 1-indexed lines to mark as overridden - the blue gutter bar. */
     overridden?: ReadonlySet<number> | null;
-    onChange: (text: string) => void;
+    onChange: (text: string, context?: unknown) => void;
     /** How many steps the editor's own history can take back. */
     onHistory?: (depth: number) => void;
     /** Applies the current backend preview. Bound to Option/Alt+Shift+F. */
@@ -75,15 +77,26 @@
     if (view !== null) undo(view);
   }
 
-  /** Replace the document in one CodeMirror transaction so one Undo restores it. */
-  export function replaceValue(text: string): void {
+  /** Optional immutable caller context travels with the document through Undo/Redo. */
+  export function replaceValue(
+    text: string,
+    context: unknown = view?.state.field(editContext),
+  ): void {
     const ending = templateLineEnding(text);
     text = displayValue(text);
-    if (view === null || (text === view.state.sliceDoc() && ending === view.state.lineBreak))
-      return;
+    if (view === null) return;
+    const textChanged = text !== view.state.sliceDoc();
+    const endingChanged = ending !== view.state.lineBreak;
+    const contextChanged = !Object.is(context, view.state.field(editContext));
+    if (!textChanged && !endingChanged && !contextChanged) return;
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: editorText(text) },
-      effects: lineEnding.reconfigure(EditorState.lineSeparator.of(ending)),
+      ...(textChanged
+        ? { changes: { from: 0, to: view.state.doc.length, insert: editorText(text) } }
+        : {}),
+      effects: [
+        ...(endingChanged ? [lineEnding.reconfigure(EditorState.lineSeparator.of(ending))] : []),
+        ...(contextChanged ? [setEditContext.of(context)] : []),
+      ],
       annotations: isolateHistory.of('full'),
     });
   }
@@ -234,6 +247,16 @@
   const lineEnding = new Compartment();
   const marks = new Compartment();
   const externalValue = Annotation.define<boolean>();
+  const setEditContext = StateEffect.define<unknown>();
+  const editContext = StateField.define<unknown>({
+    create: () => undefined,
+    update(context, transaction) {
+      for (const effect of transaction.effects) {
+        if (effect.is(setEditContext)) context = effect.value;
+      }
+      return context;
+    },
+  });
 
   let view: EditorView | null = null;
 
@@ -246,15 +269,22 @@
       extensions: [
         lineNumbers(),
         history(),
-        invertedEffects.of((transaction) =>
-          transaction.startState.lineBreak === transaction.state.lineBreak
+        editContext,
+        invertedEffects.of((transaction) => [
+          ...(transaction.startState.lineBreak === transaction.state.lineBreak
             ? []
             : [
                 lineEnding.reconfigure(
                   EditorState.lineSeparator.of(transaction.startState.lineBreak),
                 ),
-              ],
-        ),
+              ]),
+          ...(Object.is(
+            transaction.startState.field(editContext),
+            transaction.state.field(editContext),
+          )
+            ? []
+            : [setEditContext.of(transaction.startState.field(editContext))]),
+        ]),
         keymap.of([formatKey, ...defaultKeymap, ...historyKeymap]),
         untrack(() => language()),
         syntaxHighlighting(inks),
@@ -264,15 +294,17 @@
         marks.of([]),
         EditorView.updateListener.of((update) => {
           if (
-            (update.docChanged || update.startState.lineBreak !== update.state.lineBreak) &&
+            (update.docChanged ||
+              update.startState.lineBreak !== update.state.lineBreak ||
+              !Object.is(update.startState.field(editContext), update.state.field(editContext))) &&
             !update.transactions.some((transaction) => transaction.annotation(externalValue))
           ) {
-            const text = update.state.sliceDoc();
-            onChange(
-              terminalNewline
-                ? storeTemplateBody(text, update.state.lineBreak as '\n' | '\r\n')
-                : text,
-            );
+            const text = terminalNewline
+              ? storeTemplateBody(update.state.sliceDoc(), update.state.lineBreak as '\n' | '\r\n')
+              : update.state.sliceDoc();
+            const context = update.state.field(editContext);
+            if (context === undefined) onChange(text);
+            else onChange(text, context);
           }
           onHistory?.(undoDepth(update.state));
         }),

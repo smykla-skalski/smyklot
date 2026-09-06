@@ -1,6 +1,7 @@
 import { observedRepositoryFileStatus } from './repository-files.js';
 import { mockBypassActorSuggestions } from './bypass-actors.ts';
 import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
+import { preserveNumberToken } from '../src/lib/merge.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -3069,7 +3070,7 @@ function changedMockSyncConfig(
     labels: labels ? structuredClone(input.labels) : config.labels,
     allow_removal: labels ? input.allow_removal : config.allow_removal,
     excludes: labels ? structuredClone(input.excludes) : config.excludes,
-    document: labels ? config.document : structuredClone(input.document),
+    document: labels ? config.document : cloneMockDocument(input.document),
     revision: nextRevision,
     updated_by: VIEWER.login,
     updated_at: now,
@@ -3099,7 +3100,7 @@ async function saveMockWorkspaceSettings(
   input: WorkspaceSettingsBatchInput,
 ): Promise<WorkspaceSettingsBatchResponse> {
   validateMockWorkspaceSettingsBatch(input);
-  input = structuredClone(input);
+  input = cloneMockDocument(input);
   for (const change of input.sync_configs ?? []) {
     if (change.kind !== 'files' || !Array.isArray(change.document.files)) continue;
     let totalBytes = 0;
@@ -3374,7 +3375,7 @@ function prepareMockSyncConfigSettings(
 ): MockPreparedChange<SyncConfig> & { key: string } {
   const key = `${targetId}/${input.kind}`;
   const stored = state.sync.get(key);
-  const current = structuredClone(stored ?? emptyMockSyncConfig(input.kind));
+  const current = cloneMockDocument(stored ?? emptyMockSyncConfig(input.kind));
   const proposed =
     input.kind === 'labels'
       ? {
@@ -3382,12 +3383,12 @@ function prepareMockSyncConfigSettings(
           allow_removal: input.allow_removal,
           excludes: structuredClone(input.excludes),
         }
-      : structuredClone(input.document);
+      : cloneMockDocument(input.document);
   const changed =
     current.enabled !== input.enabled ||
     !sameMockDocument(mockSyncConfigDocument(current), proposed);
   return {
-    before: stored === undefined ? null : structuredClone(stored),
+    before: stored === undefined ? null : cloneMockDocument(stored),
     changed,
     key,
     next: changed ? changedMockSyncConfig(current, input) : current,
@@ -3413,21 +3414,21 @@ function prepareMockSyncOverrideSettings(
   const repository = findRepository(target, input.repository_id);
   const key = `${input.repository_id}/${input.kind}`;
   const stored = state.syncOverrides.get(key);
-  const current = structuredClone(stored ?? emptyMockSyncOverride(input.kind));
+  const current = cloneMockDocument(stored ?? emptyMockSyncOverride(input.kind));
   const changed =
     current.enabled !== input.enabled || !sameMockDocument(current.document, input.document);
   const next: SyncOverride = changed
     ? {
         ...current,
         enabled: input.enabled,
-        document: structuredClone(input.document),
+        document: cloneMockDocument(input.document),
         revision: current.revision + 1,
         updated_by: VIEWER.login,
         updated_at: new Date().toISOString(),
       }
     : current;
   return {
-    before: stored === undefined ? null : structuredClone(stored),
+    before: stored === undefined ? null : cloneMockDocument(stored),
     changed,
     key,
     repository,
@@ -4344,7 +4345,7 @@ function mockCheckpointNestedDocument(value: unknown): Record<string, unknown> {
     blockedMockWorkspaceRestore('the selected checkpoint contains an invalid Sync document');
   }
   try {
-    const parsed: unknown = JSON.parse(value);
+    const parsed: unknown = JSON.parse(value, preserveNumberToken);
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
       blockedMockWorkspaceRestore('the selected checkpoint contains an invalid Sync document');
     }
@@ -4396,7 +4397,7 @@ function mockSyncConfigDocument(config: SyncConfig): Record<string, unknown> {
         allow_removal: config.allow_removal,
         excludes: structuredClone(config.excludes),
       }
-    : structuredClone(config.document);
+    : cloneMockDocument(config.document);
 }
 
 function mockWorkspaceTargetState(target: PanelTarget): WorkspaceTargetSettingsState {
@@ -4440,7 +4441,7 @@ function mockWorkspaceSyncOverrideState(
     repository_id: repositoryId,
     kind: override.kind as SyncKind,
     enabled: override.enabled,
-    document: structuredClone(override.document),
+    document: cloneMockDocument(override.document),
     revision: override.revision,
   };
 }
@@ -4468,6 +4469,18 @@ function emptyMockSyncOverride(kind: SyncKind): SyncOverride {
 
 function sameMockDocument(left: unknown, right: unknown): boolean {
   return canonicalStringify(left) === canonicalStringify(right);
+}
+
+/** Sync documents may contain native raw JSON numbers, which structuredClone refuses. */
+function cloneMockDocument<T>(value: T): T {
+  if (typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value)) return value;
+  if (Array.isArray(value)) return value.map(cloneMockDocument) as T;
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, cloneMockDocument(entry)]),
+    ) as T;
+  }
+  return value;
 }
 
 function mockBatchArray<T>(value: T[] | undefined, name: string): T[] {
@@ -6388,7 +6401,7 @@ async function readBody<T>(req: IncomingMessage): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8')) as T;
+    return JSON.parse(Buffer.concat(chunks).toString('utf8'), preserveNumberToken) as T;
   } catch {
     throw new MockApiError(400, 'invalid_request', 'request body must be valid JSON');
   }

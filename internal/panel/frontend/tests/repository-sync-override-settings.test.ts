@@ -18,6 +18,7 @@ import {
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
+import { parseJson } from '../src/lib/merge';
 import type { SettingsDraftStorage, SettingsJson } from '../src/lib/settings-draft-storage';
 import type { WorkspaceSyncOverrideSettingsState, SyncOverride } from '../src/lib/types';
 
@@ -45,6 +46,122 @@ class MemoryStorage implements SettingsDraftStorage {
 }
 
 describe('repository sync override settings adapter [Unit]', () => {
+  it('normalizes signed zero only in typed Markdown metadata through draft reload and save', () => {
+    const stored = override({
+      document: parseJson(
+        '{"merges":[{"path":"README.md","strategy":"markdown","sections":[{"action":"delete","heading":"# Old","occurrence":-0}]},{"path":"renovate.json","overrides":{"id":-0}}]}',
+      ) as Record<string, unknown>,
+    });
+    const storage = new MemoryStorage();
+    const first = new SettingsDraftRegistry({ storage, writerId: 'first' });
+    first.hydrate('viewer');
+    adoptSyncOverrideSettings(first, 'target', 'repo', stored);
+    const envelope = buildSyncOverrideEditorEnvelope(stored);
+    expect(
+      stageSyncOverrideControl(
+        first,
+        'target',
+        'repo',
+        stored,
+        { ...envelope, enabled: false },
+        'repositories.repo.sync.files.enabled',
+      ),
+    ).toBe(true);
+    const second = new SettingsDraftRegistry({ storage, writerId: 'second' });
+    second.hydrate('viewer');
+    const reopened = syncOverrideDraftEnvelope(second, 'target', 'repo', stored);
+    const batch = syncOverrideBatchInput('repo', stored.revision, reopened);
+    expect(batch.ok).toBe(true);
+    if (batch.ok) {
+      expect(JSON.stringify(batch.input.document)).toContain('"occurrence":0');
+      expect(JSON.stringify(batch.input.document)).toContain('"id":-0');
+    }
+  });
+
+  it('keeps typed formatting and Markdown metadata primitive beside lossless file content', () => {
+    const source = {
+      formats: [
+        { path: 'renovate.json', formatting: { common: { indent_width: 4, line_width: 80 } } },
+      ],
+      merges: [
+        {
+          path: 'renovate.json',
+          overrides: { id: JSON.rawJSON('1e400'), data: { rawJSON: '1e400' } },
+        },
+        {
+          path: 'README.md',
+          strategy: 'markdown',
+          sections: [{ action: 'delete', heading: '# Old', occurrence: 1 }],
+        },
+      ],
+    };
+    const document = parseJson(JSON.stringify(source)) as Record<string, unknown>;
+    const envelope = buildSyncOverrideEditorEnvelope(override({ document }));
+    expect(syncOverrideFormattingEntries(envelope)).toEqual(source.formats);
+    expect((envelope.document.merges as Array<Record<string, unknown>>)[1].sections).toEqual(
+      source.merges[1].sections,
+    );
+    const batch = syncOverrideBatchInput('repo', 3, envelope);
+    expect(batch.ok).toBe(true);
+    if (batch.ok) expect(JSON.stringify(batch.input.document)).toContain('"id":1e400');
+  });
+
+  it.each(['1e400', '-1e400', '1e-400', '-0', '1.50', '9007199254740993', '42'])(
+    'loads, persists, reopens and saves the exact numeric literal %s',
+    (literal) => {
+      const document = {
+        merges: [
+          {
+            path: 'renovate.json',
+            overrides: { id: JSON.rawJSON(literal), data: { rawJSON: literal } },
+          },
+        ],
+      };
+      const stored = override({ document, revision: 3 });
+      const storage = new MemoryStorage();
+      const first = new SettingsDraftRegistry({ storage, now: () => 10, writerId: 'first' });
+      first.hydrate('viewer');
+      expect(adoptSyncOverrideSettings(first, 'target', 'repo', stored)).toBe(true);
+      const saved = buildSyncOverrideEditorEnvelope(stored);
+      expect(JSON.stringify(saved.document)).toBe(JSON.stringify(document));
+      expect(
+        stageSyncOverrideControl(
+          first,
+          'target',
+          'repo',
+          stored,
+          {
+            ...saved,
+            enabled: false,
+          },
+          'repositories.repo.sync.files.enabled',
+        ),
+      ).toBe(true);
+      const second = new SettingsDraftRegistry({ storage, now: () => 20, writerId: 'second' });
+      second.hydrate('viewer');
+      const reopened = syncOverrideDraftEnvelope(second, 'target', 'repo', stored);
+      expect(reopened.enabled).toBe(false);
+      expect(second.resource(syncOverrideResource('target', 'repo'))?.expectedRevision).toBe(3);
+      expect(JSON.stringify(reopened.document)).toBe(JSON.stringify(document));
+      const batch = syncOverrideBatchInput('repo', 3, reopened);
+      expect(batch.ok).toBe(true);
+      if (!batch.ok) return;
+      expect(JSON.stringify(batch.input.document)).toContain(`"id":${literal}`);
+      expect(JSON.stringify(batch.input.document)).toContain(`"data":{"rawJSON":"${literal}"}`);
+      expect(
+        stageSyncOverrideControl(
+          second,
+          'target',
+          'repo',
+          stored,
+          saved,
+          'repositories.repo.sync.files.enabled',
+        ),
+      ).toBe(true);
+      expect(second.dirty).toBe(false);
+    },
+  );
+
   it('clears a strategy override when the picker returns to the saved default', () => {
     const stored = override({
       document: { merges: [{ path: 'renovate.json', overrides: { enabled: true } }] },

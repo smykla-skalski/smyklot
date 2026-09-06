@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cloneSettingsJson, sameSettingsJson } from '../src/lib/settings-draft-storage';
 
 import {
   SettingsDraftRegistry,
@@ -144,6 +145,40 @@ describe('SettingsDraftRegistry scopes and locations [Unit]', () => {
 });
 
 describe('SettingsDraftRegistry durability [Unit]', () => {
+  it('distinguishes native numeric tokens from lookalike objects and refuses non-JSON floats', () => {
+    expect(sameSettingsJson(JSON.rawJSON('1e400'), { rawJSON: '1e400' })).toBe(false);
+    expect(sameSettingsJson(JSON.rawJSON('42'), 42)).toBe(true);
+    expect(() => cloneSettingsJson({ id: Infinity })).toThrow(/valid JSON/);
+    expect(() => cloneSettingsJson({ id: NaN })).toThrow(/valid JSON/);
+  });
+  it.each(['1e400', '-1e400', '1e-400', '-0', '1.50', '9007199254740993', '42'])(
+    'preserves numeric token %s without interpreting lookalike user objects',
+    (literal) => {
+      const storage = new MemoryStorage();
+      const first = registry(storage);
+      first.hydrate('viewer');
+      const saved = { value: 0, ordinary: 42, enabled: true, data: { rawJSON: literal } };
+      const next = { ...saved, value: JSON.rawJSON(literal) };
+      const change = {
+        id: 'sync.files.document',
+        location: { section: 'sync' as const },
+        saved,
+        value: next,
+      };
+      expect(first.adoptBase(syncOverride, 3, saved)).toBe(true);
+      expect(first.stage(syncOverride, next, change)).toBe(true);
+      expect(JSON.stringify(first.value(syncOverride))).toBe(JSON.stringify(next));
+      const reopened = registry(storage, { value: 2000 }, 'second');
+      reopened.hydrate('viewer');
+      expect(JSON.stringify(reopened.value(syncOverride))).toBe(JSON.stringify(next));
+      expect(reopened.value(syncOverride)).toMatchObject({ ordinary: 42, enabled: true });
+      expect(reopened.dirtyControlCount).toBe(1);
+      expect(reopened.resource(syncOverride)?.expectedRevision).toBe(3);
+      expect(reopened.stage(syncOverride, saved, { ...change, value: saved })).toBe(true);
+      expect(reopened.dirty).toBe(false);
+    },
+  );
+
   it('persists a versioned full base and draft for only the owning account', () => {
     const storage = new MemoryStorage();
     const clock = { value: 1_000 };

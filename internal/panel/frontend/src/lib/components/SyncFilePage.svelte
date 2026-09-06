@@ -66,15 +66,23 @@ where it arises.
 
   import { unifiedDiff } from '../code-tokens';
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
-  import { composeMergedText, deriveMerge } from '../jsontext';
+  import {
+    composeMergedText,
+    deriveMerge,
+    composedEditProblem,
+    sameComposedContent,
+    type MergeIntent,
+  } from '../jsontext';
   import { formatRelative } from '../format';
   import { FORMATTING_FIELDS, formattingPatchValue, type FormattingPatch } from '../formatting';
   import { formatJson, parseJson, type JsonValue } from '../merge';
+  import { cloneSettingsJson, type SettingsJson } from '../settings-draft-storage';
   import type {
     SyncOverrideControlId,
     SyncOverrideEditorEnvelope,
   } from '../repository-sync-override-settings';
   import {
+    buildSyncOverrideEditorEnvelope,
     syncOverrideFormattingEntries,
     withSyncOverrideFormatting,
   } from '../repository-sync-override-settings';
@@ -349,6 +357,15 @@ where it arises.
   let draftMerges = $state<Record<string, FileMergeSpec | null>>({});
   let draftFormats = $state<Record<string, FormattingPatch | null>>({});
   let overrideFetchGeneration = 0;
+  // Restoring the opening text must also restore authored leaves that happen to
+  // equal the template, and their literal spellings, so Undo leaves no dirty draft.
+  type AdjustmentSnapshot = { text: string; merge: FileMergeSpec; overrideText: string };
+  type ResultEditContext = { snapshot?: AdjustmentSnapshot | null; answers: ArrayRule[] };
+  let initialAdjustment: AdjustmentSnapshot | null = null;
+  let savedAdjustment: AdjustmentSnapshot | null = null;
+  let openingMerge: FileMergeSpec | null = null;
+  let openingAnswers: ArrayRule[] = [];
+  let resultEditContext = $state.raw<ResultEditContext | undefined>(undefined);
 
   type RepositoryRow = SyncFileRepositoryPolicy & {
     path: string;
@@ -423,9 +440,26 @@ where it arises.
     answers = merge.arrays ?? [];
   }
 
+  function adjustmentSnapshot(envelope: SyncOverrideEditorEnvelope): AdjustmentSnapshot | null {
+    if (file === null) return null;
+    const rows = envelopeMerges(envelope);
+    const index = rows.findIndex((merge) => merge.path === path);
+    const merge = rows[index];
+    if (merge === undefined) return null;
+    const text = composeMergedText(file.content, merge);
+    return text === null
+      ? null
+      : { text, merge, overrideText: envelope.override_texts[index] ?? '' };
+  }
+
   async function toggleRow(entry: RepositoryRow): Promise<void> {
     if (openRepo === entry.repository_id) {
       overrideFetchGeneration += 1;
+      initialAdjustment = null;
+      savedAdjustment = null;
+      openingMerge = null;
+      openingAnswers = [];
+      resultEditContext = undefined;
       openRepo = null;
       held = null;
       heldEnvelope = null;
@@ -442,6 +476,11 @@ where it arises.
     heldEnvelope = null;
     holdProblem = null;
     rawOverrideOnly = false;
+    initialAdjustment = null;
+    savedAdjustment = null;
+    openingMerge = null;
+    openingAnswers = [];
+    resultEditContext = undefined;
     if (entry.merge === undefined) editedText = null;
     else seedEdits(entry.merge as FileMergeSpec);
     try {
@@ -455,9 +494,12 @@ where it arises.
           : 'This repository file override is unavailable';
         return;
       }
+      savedAdjustment = adjustmentSnapshot(buildSyncOverrideEditorEnvelope(loaded.stored));
       const rows = envelopeMerges(loaded.envelope);
       const index = rows.findIndex((merge) => merge.path === path);
       const merge = index < 0 ? null : rows[index];
+      openingMerge = merge;
+      openingAnswers = (merge?.arrays ?? []).map((rule) => ({ ...rule }));
       const format =
         syncOverrideFormattingEntries(loaded.envelope).find((row) => row.path === path) ?? null;
       draftMerges = { ...draftMerges, [repositoryId]: merge };
@@ -478,6 +520,8 @@ where it arises.
         holdProblem = "Finish this adjustment in the repository's File sync settings";
       } else {
         seedEdits(merge);
+        if (editedText !== null)
+          initialAdjustment = { text: editedText, merge, overrideText: text };
       }
     } catch (cause) {
       if (generation !== overrideFetchGeneration || openRepo !== repositoryId) return;
@@ -585,6 +629,19 @@ where it arises.
     const validationControl = renderValidationControl('repository', entry.repository_id);
     const preserveValidation = overrideDirty(entry.repository_id);
     const generation = (repositoryRenderGeneration += 1);
+    if (heldEnvelope === null || repositoryDraftProblem !== null) {
+      repositoryRender = null;
+      repositoryRendering = false;
+      // Invalid text is retained and blocked by the override serializer. A second
+      // renderer-owned error would outlive this inspector and block a correction
+      // made in the repository editor, which does not run this renderer.
+      reportFormattingValidity(
+        validationControl,
+        repositoryDraftProblem !== null,
+        heldEnvelope === null ? 'The repository adjustment has not loaded' : '',
+      );
+      return () => reportFormattingValidity(validationControl, true, '');
+    }
     const input = repositoryRenderInput(entry);
     reportFormattingValidity(
       validationControl,
@@ -604,15 +661,56 @@ where it arises.
   /** The override the edited copy amounts to, live as the text changes. */
   const staged = $derived.by(() => {
     if (file === null || editedText === null || openMerge === null) return null;
-    return deriveMerge(file.content, editedText, openMerge.strategy ?? 'deep-merge', answers);
+    return deriveMerge(
+      file.content,
+      editedText,
+      openMerge.strategy ?? 'deep-merge',
+      answers,
+      mergeIntent(resultEditContext),
+    );
   });
 
-  function specOf(overrides: Record<string, unknown>, arrays: ArrayRule[]): FileMergeSpec {
+  const repositoryDraftProblem = $derived(
+    rawOverrideOnly
+      ? "Finish this adjustment in the repository's File sync settings"
+      : file !== null && editedText !== null && staged === null
+        ? composedEditProblem(file.content, editedText, openMerge?.strategy ?? 'deep-merge')
+        : null,
+  );
+  const rawOverrideText = $derived.by(() => {
+    if (heldEnvelope === null) return '';
+    const index = envelopeMerges(heldEnvelope).findIndex((merge) => merge.path === path);
+    return heldEnvelope.override_texts[index] ?? '';
+  });
+
+  function mergeIntent(context?: ResultEditContext): MergeIntent {
+    const text =
+      initialAdjustment?.text ??
+      (openingMerge === null || file === null
+        ? null
+        : composeMergedText(file.content, openingMerge));
     return {
-      ...openMerge,
-      overrides,
-      ...(arrays.length > 0 ? { arrays } : { arrays: undefined }),
+      current:
+        context?.snapshot !== undefined
+          ? context.snapshot
+          : text === null || openingMerge === null
+            ? null
+            : { text, merge: openingMerge },
+      saved: savedAdjustment,
+      deduplicate: openingMerge?.deduplicate === true,
     };
+  }
+
+  function specOf(overrides: Record<string, unknown>, arrays: ArrayRule[]): FileMergeSpec {
+    // Temporary list projections can omit deduplication, but cannot change the
+    // opening non-text options that must return when list rules are re-enabled.
+    const next: FileMergeSpec = { ...(openingMerge ?? openMerge), overrides };
+    if (arrays.length > 0) next.arrays = arrays;
+    else {
+      delete next.arrays;
+      delete next.deduplicate;
+    }
+    return next;
   }
 
   const openSummary = $derived(
@@ -648,9 +746,13 @@ where it arises.
   /* ---------- Staging the open override ---------- */
 
   function envelopeMerges(envelope: SyncOverrideEditorEnvelope): FileMergeSpec[] {
-    return Array.isArray(envelope.document.merges)
+    const merges = Array.isArray(envelope.document.merges)
       ? (envelope.document.merges as FileMergeSpec[])
       : [];
+    return merges.map((merge, index) => {
+      const overrides = parseJson(envelope.override_texts[index] ?? '');
+      return isJsonRecord(overrides) ? { ...merge, overrides } : merge;
+    });
   }
 
   function stageRepositoryFormatting(formatting: FormattingPatch): void {
@@ -681,13 +783,7 @@ where it arises.
   }
 
   function validOverrideText(text: string): boolean {
-    if (text.trim() === '') return true;
-    try {
-      const value: unknown = JSON.parse(text);
-      return typeof value === 'object' && value !== null && !Array.isArray(value);
-    } catch {
-      return false;
-    }
+    return text.trim() === '' || isJsonRecord(parseJson(text));
   }
 
   function isJsonRecord(value: JsonValue | undefined): value is Record<string, JsonValue> {
@@ -702,9 +798,17 @@ where it arises.
   function sameJson(left: unknown, right: unknown): boolean {
     if (Object.is(left, right)) return true;
     if (typeof JSON.isRawJSON === 'function' && (JSON.isRawJSON(left) || JSON.isRawJSON(right))) {
-      const leftNumber = JSON.isRawJSON(left) ? Number(left.rawJSON) : left;
-      const rightNumber = JSON.isRawJSON(right) ? Number(right.rawJSON) : right;
-      return Object.is(leftNumber, rightNumber);
+      const leftNumber = JSON.isRawJSON(left)
+        ? left.rawJSON
+        : typeof left === 'number'
+          ? JSON.stringify(left)
+          : null;
+      const rightNumber = JSON.isRawJSON(right)
+        ? right.rawJSON
+        : typeof right === 'number'
+          ? JSON.stringify(right)
+          : null;
+      return leftNumber !== null && leftNumber === rightNumber;
     }
     if (Array.isArray(left) && Array.isArray(right)) {
       return (
@@ -723,76 +827,6 @@ where it arises.
       );
     }
     return false;
-  }
-
-  /** Keep literal numbers from the prior override or the edited copy. */
-  function rawOverrideValue(
-    derived: unknown,
-    composed: JsonValue | undefined,
-    previous: JsonValue | undefined,
-    at: string[],
-    strategy: string,
-    rules: readonly ArrayRule[],
-  ): JsonValue {
-    if (previous !== undefined && sameJson(derived, previous)) return previous;
-    if (derived === null) return null;
-    if (Array.isArray(derived) && Array.isArray(composed)) {
-      const rule = rules.find((candidate) => candidate.path === arrayRulePath(at));
-      if (rule?.strategy === 'append') {
-        return derived.length === 0 ? [] : composed.slice(-derived.length);
-      }
-      if (rule?.strategy === 'prepend') return composed.slice(0, derived.length);
-      return composed;
-    }
-    if (
-      typeof derived === 'object' &&
-      derived !== null &&
-      !Array.isArray(derived) &&
-      isJsonRecord(composed)
-    ) {
-      if (strategy === 'shallow-merge' && at.length > 0) return composed;
-      const previousRecord = isJsonRecord(previous) ? previous : {};
-      return Object.fromEntries(
-        Object.entries(derived as Record<string, unknown>).map(([key, value]) => [
-          key,
-          rawOverrideValue(
-            value,
-            composed[key],
-            previousRecord[key],
-            [...at, key],
-            strategy,
-            rules,
-          ),
-        ]),
-      );
-    }
-    return (composed ?? derived) as JsonValue;
-  }
-
-  function overrideText(
-    derived: { overrides: Record<string, unknown>; arrays: ArrayRule[] },
-    text: string,
-    envelope: SyncOverrideEditorEnvelope,
-    merge: FileMergeSpec,
-  ): string {
-    const index = envelopeMerges(envelope).findIndex((row) => row.path === path);
-    const previousText = index < 0 ? '' : (envelope.override_texts[index] ?? '');
-    const composed = parseJson(text);
-    const previous = parseJson(previousText);
-    if (isJsonRecord(composed)) {
-      return formatJson(
-        rawOverrideValue(
-          derived.overrides,
-          composed,
-          previous,
-          [],
-          merge.strategy ?? 'deep-merge',
-          derived.arrays,
-        ) as Record<string, JsonValue>,
-      ).trimEnd();
-    }
-    if (isJsonRecord(previous) && sameJson(derived.overrides, previous)) return previousText;
-    return formatJson(derived.overrides as JsonValue).trimEnd();
   }
 
   /**
@@ -823,12 +857,16 @@ where it arises.
     const document = { ...envelope.document };
     if (merges.length === 0) delete document.merges;
     else {
-      document.merges = merges as unknown as SyncOverrideEditorEnvelope['document'][string];
+      document.merges = cloneSettingsJson(merges as SettingsJson);
     }
     return { ...envelope, document, override_texts: texts };
   }
 
-  function stageMergeText(text: string, nextAnswers: ArrayRule[] = answers): boolean {
+  function stageMergeText(
+    text: string,
+    nextAnswers: ArrayRule[],
+    context?: ResultEditContext,
+  ): boolean {
     const entry = openEntry;
     const current = held;
     const envelope = heldEnvelope;
@@ -845,19 +883,45 @@ where it arises.
       file === null
     )
       return false;
-    const derived = deriveMerge(file.content, text, merge.strategy ?? 'deep-merge', nextAnswers);
+    const derived = deriveMerge(
+      file.content,
+      text,
+      merge.strategy ?? 'deep-merge',
+      nextAnswers,
+      mergeIntent(context),
+    );
     const empty = derived !== null && Object.keys(derived.overrides).length === 0;
+    // A deliberate removal supplies a new restoration snapshot in the editor's
+    // history. Undo restores the prior context as well as its visible text.
+    const snapshots =
+      context?.snapshot === undefined ? [initialAdjustment, savedAdjustment] : [context.snapshot];
+    const restored =
+      snapshots.find(
+        (snapshot) =>
+          snapshot !== null &&
+          sameComposedContent(text, snapshot.text) &&
+          derived !== null &&
+          sameJson(specOf(derived.overrides, derived.arrays), snapshot.merge),
+      ) ?? null;
     const next =
-      derived === null ? merge : empty ? null : specOf(derived.overrides, derived.arrays);
+      restored !== null
+        ? restored.merge
+        : derived === null
+          ? merge
+          : empty
+            ? null
+            : specOf(derived.overrides, derived.arrays);
     /* An unfinished composed document is intentionally invalid override text.
        The registry can persist it, and the shared serializer then blocks Save
        until the editor becomes valid again. */
     const rawText =
-      derived === null
-        ? `${COMPOSED_DRAFT_PREFIX}${text}`
-        : next === null
-          ? ''
-          : overrideText(derived, text, envelope, merge);
+      restored !== null
+        ? restored.overrideText
+        : derived === null
+          ? `${COMPOSED_DRAFT_PREFIX}${text}`
+          : next === null
+            ? ''
+            : formatJson(derived.overrides as JsonValue).trimEnd();
     const nextEnvelope = envelopeWithMerge(envelope, next, rawText);
     holdProblem = null;
     if (
@@ -886,18 +950,29 @@ where it arises.
 
   let resultUndoDepth = $state(0);
   let resultEditor = $state<CodeEditor | null>(null);
-  let pendingResultText: string | null = null;
 
-  function stageProgrammaticText(text: string, nextAnswers: ArrayRule[]): void {
-    if (stageMergeText(text, nextAnswers)) pendingResultText = text;
+  function stageEditorText(text: string, opaqueContext?: unknown): void {
+    // Only this component supplies context to its editor, which stores it opaquely.
+    const context = opaqueContext as ResultEditContext | undefined;
+    resultEditContext = context;
+    stageMergeText(text, context?.answers ?? openingAnswers, context);
   }
 
-  function stageEditorText(text: string): void {
-    if (text === pendingResultText) {
-      pendingResultText = null;
-      return;
-    }
-    stageMergeText(text);
+  function replaceResult(text: string, next: FileMergeSpec, nextAnswers: ArrayRule[]): void {
+    if (openMerge === null || heldEnvelope === null) return;
+    const derived = { overrides: next.overrides ?? {}, arrays: next.arrays ?? [] };
+    const snapshot =
+      Object.keys(derived.overrides).length === 0
+        ? null
+        : {
+            text,
+            merge: next,
+            overrideText: formatJson(derived.overrides as JsonValue).trimEnd(),
+          };
+    resultEditor?.replaceValue(text, {
+      snapshot,
+      answers: nextAnswers.map((rule) => ({ ...rule })),
+    } satisfies ResultEditContext);
   }
 
   /** The x on a patch chip: the edited copy takes those lines back. */
@@ -909,15 +984,22 @@ where it arises.
     const keeps = (rule: ArrayRule): boolean =>
       rule.path !== path && !rule.path.startsWith(`${path}.`);
     const arrays = staged.arrays.filter(keeps);
-    answers = answers.filter(keeps);
-    const next = composeMergedText(file.content, specOf(overrides, arrays));
-    if (next !== null) stageProgrammaticText(next, answers);
+    const merge = specOf(overrides, arrays);
+    const next = composeMergedText(file.content, merge);
+    if (next !== null) replaceResult(next, merge, answers.filter(keeps));
   }
 
   function setListRule(key: string, strategy: string): void {
-    const kept = answers.filter((rule) => rule.path !== key);
-    const next = strategy === 'replace' ? kept : [...kept, { path: key, strategy }];
-    if (editedText !== null) stageMergeText(editedText, next);
+    // A temporary Replace choice keeps its authored slot in history. The
+    // derived wire omits inactive rules without reordering the remaining ones.
+    const next = answers.some((rule) => rule.path === key)
+      ? answers.map((rule) => (rule.path === key ? { ...rule, strategy } : rule))
+      : [...answers, { path: key, strategy }];
+    if (editedText !== null)
+      resultEditor?.replaceValue(editedText, {
+        ...resultEditContext,
+        answers: next.map((rule) => ({ ...rule })),
+      } satisfies ResultEditContext);
   }
 
   const RULE_CHOICES = [
@@ -1147,6 +1229,7 @@ where it arises.
               toolbar
               icon="sliders"
               label="Repository file options"
+              disabled={repositoryDraftProblem !== null || heldEnvelope === null}
               onclick={() => {
                 repositoryPreviousTab = repositoryTab;
                 repositoryTab = 'formatting';
@@ -1154,22 +1237,24 @@ where it arises.
             />{/if}
         {/if}
       </div>
-      {#if holdProblem !== null}<FormError message={holdProblem} />{/if}
-      {#if repositoryRender?.valid === false}
+      {#if holdProblem !== null && !rawOverrideOnly}<FormError message={holdProblem} />{/if}
+      {#if repositoryDraftProblem === null && repositoryRender?.valid === false}
         <FormError
           message={repositoryRender.diagnostics.map(({ message }) => message).join(' · ')}
         />
       {/if}
       {#if repositoryTab === 'preview'}
         <section class="preview-pane exact-output" aria-label="Read-only repository output">
-          {#if repositoryRender?.valid === true}
+          {#if repositoryDraftProblem !== null}
+            <FormError message={repositoryDraftProblem} />
+          {:else if repositoryRender?.valid === true}
             <div class:is-rendering={repositoryRendering} class="rendered-output">
               <CodeBlock text={repositoryRender.final_content} {lang} />
             </div>
             {#if repositoryRendering}
               <p class="render-note" role="status">Refreshing final output…</p>
             {/if}
-          {:else}
+          {:else if repositoryRender?.valid !== false}
             <p class="sync-note">Preparing final output…</p>
           {/if}
         </section>
@@ -1178,8 +1263,15 @@ where it arises.
         <div class="card-stack">
           <section class="preview-pane">
             <div class="merge-pane-title">
-              <span class="t">Content adjustment</span>
+              <span class="t"
+                >{!rawOverrideOnly && (showStored || editedText === null)
+                  ? 'Adjustment settings'
+                  : 'Content adjustment'}</span
+              >
               <span class="pane-tools">
+                {#if showStored || editedText === null || mergeFrozen}<span
+                    class="setting-unmanaged">Read only</span
+                  >{/if}
                 {#if editedText !== null && resultUndoDepth > 0}
                   <Button onclick={() => resultEditor?.undoEdit()}>
                     {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
@@ -1190,32 +1282,48 @@ where it arises.
             </div>
             {#if openMerge === null}
               <p class="sync-note">No content adjustments for this repository</p>
+            {:else if rawOverrideOnly}
+              <CodeBlock text={rawOverrideText} lang="json" />
             {:else if editedText === null}
               <p class="sync-note">
-                This adjustment cannot be edited here · Saved settings are shown below
+                This adjustment cannot be edited here · Current settings are shown below
               </p>
               <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
-            {:else if showStored}
-              <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+            {:else if held === null || heldEnvelope === null}
+              <CodeBlock text={editedText} lang="json" />
             {:else}
-              <CodeEditor
-                bind:this={resultEditor}
-                value={editedText}
-                readOnly={mergeFrozen}
-                overridden={overriddenLines}
-                terminalNewline
-                onChange={stageEditorText}
-                onHistory={(depth) => (resultUndoDepth = depth)}
-              />
+              {#if showStored}
+                <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
+              {/if}
+              <div hidden={showStored}>
+                <CodeEditor
+                  bind:this={resultEditor}
+                  value={editedText}
+                  readOnly={mergeFrozen}
+                  overridden={overriddenLines}
+                  terminalNewline
+                  onChange={stageEditorText}
+                  onHistory={(depth) => (resultUndoDepth = depth)}
+                />
+              </div>
             {/if}
-            {#if editedText !== null && staged === null}
-              <p class="sync-note">Enter valid JSON to update this adjustment</p>
+            {#if repositoryDraftProblem !== null}
+              <div class="editor-problem band-trim-kids">
+                <FormError message={repositoryDraftProblem} />
+              </div>
             {/if}
           </section>
-          {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
+          {#if showStored || (openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0))}
             <div class="patch-strip">
-              <span class="patch-word">This repository changes</span>
-              {#each openSummary.changed as key (key)}
+              <span class="patch-word"
+                >{openSummary !== null &&
+                (openSummary.changed.length > 0 ||
+                  openSummary.removed.length > 0 ||
+                  openSummary.listed.length > 0)
+                  ? 'This repository changes'
+                  : 'No changes to the template'}</span
+              >
+              {#each openSummary?.changed ?? [] as key (key)}
                 <span class="patch-key"
                   ><span class="t">{key}</span>
                   <button
@@ -1225,7 +1333,7 @@ where it arises.
                   ></span
                 >
               {/each}
-              {#each openSummary.removed as key (key)}
+              {#each openSummary?.removed ?? [] as key (key)}
                 <span class="patch-key is-removal"
                   ><span class="t">{key}</span>
                   <button
@@ -1237,7 +1345,7 @@ where it arises.
               {/each}
               <span class="patch-word push-end">
                 <Button tone="quiet" onclick={() => (showStored = !showStored)}>
-                  {showStored ? 'Hide the stored override' : 'Open the stored override'}
+                  {showStored ? 'Back to content' : 'View adjustment settings'}
                 </Button>
               </span>
             </div>
@@ -1381,6 +1489,7 @@ where it arises.
   }
 
   .pane-tools {
+    align-items: center;
     display: flex;
     gap: var(--space-2);
     letter-spacing: 0;
@@ -1509,6 +1618,11 @@ where it arises.
 
   .preview-pane {
     min-inline-size: 0;
+  }
+  .editor-problem {
+    display: grid;
+    margin-block-start: var(--row-copy-gap);
+    line-height: var(--row-copy-leading);
   }
   .rendered-output {
     transition: opacity var(--duration-fast) var(--ease-standard);

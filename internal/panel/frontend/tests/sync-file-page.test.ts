@@ -1,17 +1,26 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/svelte';
-import type { ComponentProps } from 'svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
+import { isolateHistory, redo } from '@codemirror/commands';
+import { EditorView } from '@codemirror/view';
+import { tick, type ComponentProps } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncFilePage, {
   templateDocumentWithContent,
 } from '../src/lib/components/SyncFilePage.svelte';
+import RepositorySyncPane from '../src/lib/components/RepositorySyncPane.svelte';
 import { defaultFormattingPolicy, formattingSources } from '../src/lib/formatting';
 import {
   buildSyncOverrideEditorEnvelope,
+  adoptSyncOverrideSettings,
+  parseSyncOverrideEditorEnvelope,
+  stageSyncOverrideControl,
+  syncOverrideDraftEnvelope,
+  syncOverrideBatchInput,
   type SyncOverrideControlId,
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
+import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type {
   SyncConfig,
   SyncFileRenderInput,
@@ -123,6 +132,107 @@ describe('SyncFilePage [Component]', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each(['{"id":2,"id":3}', '{"nested":{"id":2,"id":3}}', '{"id":2,"\\u0069d":3}'])(
+    'keeps an invalid raw draft blocked when handed from repository to shared editor: %s',
+    async (text) => {
+      const merge = { path: 'renovate.json', strategy: 'deep-merge', overrides: { id: 1 } };
+      const stored: SyncOverride = {
+        kind: 'files',
+        enabled: null,
+        document: { merges: [merge] },
+        revision: 1,
+        unreadable: false,
+      };
+      const values = new Map<string, string>();
+      const storage = {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => {
+          values.set(key, value);
+        },
+      };
+      const registry = new SettingsDraftRegistry({ storage, writerId: 'first' });
+      registry.hydrate('viewer');
+      adoptSyncOverrideSettings(registry, 'target', 'repo-1', stored);
+      const repositoryProps = {
+        repositoryId: 'repo-1',
+        readOnly: false,
+        now: 0,
+        stored,
+        onChange: (envelope: SyncOverrideEditorEnvelope, control: SyncOverrideControlId) => {
+          expect(
+            stageSyncOverrideControl(registry, 'target', 'repo-1', stored, envelope, control),
+          ).toBe(true);
+        },
+      };
+      const rawEditor = render(RepositorySyncPane, repositoryProps);
+      const rawHost = document.querySelector('.code-editor')!;
+      const rawView = EditorView.findFromDOM(rawHost.shadowRoot!.querySelector('.cm-content')!)!;
+      rawView.dispatch({ changes: { from: 0, to: rawView.state.doc.length, insert: text } });
+      await tick();
+      rawEditor.unmount();
+      const restarted = new SettingsDraftRegistry({ storage, writerId: 'second' });
+      restarted.hydrate('viewer');
+      const envelope = syncOverrideDraftEnvelope(restarted, 'target', 'repo-1', stored);
+      expect(envelope.override_texts).toEqual([text]);
+      const scope = { type: 'workspace' as const, targetId: 'target' };
+      const onChangeOverride = vi.fn(() => true);
+      const renderer = vi.fn(renderFile);
+      const shared = render(SyncFilePage, {
+        props: renderProps({
+          config: configWithTemplate('{"id":0,"flag":false}'),
+          context: {
+            repositories: 1,
+            covered: 1,
+            known_paths: [],
+            repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+            merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+          },
+          fetchOverride: async () => ({ stored, envelope }),
+          onChangeOverride,
+          dirtyControls: ['repositories.repo-1.sync.files.document'],
+          onFormattingValidity: (control, valid, message) =>
+            restarted.setValidationProblem(scope, control, valid ? null : message),
+          renderFile: renderer,
+        }),
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+      await screen.findByText("Finish this adjustment in the repository's File sync settings");
+      await new Promise((resolve) => setTimeout(resolve, 180));
+      expect(renderer.mock.calls.filter(([input]) => input.repository !== undefined)).toEqual([]);
+      expect(screen.getByRole('dialog').querySelector('.code-editor')).toBeNull();
+      expect(onChangeOverride).not.toHaveBeenCalled();
+      expect(syncOverrideBatchInput('repo-1', 1, envelope).ok).toBe(false);
+      shared.unmount();
+      render(RepositorySyncPane, {
+        ...repositoryProps,
+        envelope,
+        onChange: (next, control) => {
+          expect(
+            stageSyncOverrideControl(restarted, 'target', 'repo-1', stored, next, control),
+          ).toBe(true);
+        },
+      });
+      const restoredHost = document.querySelector('.code-editor')!;
+      const restored = EditorView.findFromDOM(
+        restoredHost.shadowRoot!.querySelector('.cm-content')!,
+      )!;
+      expect(restored.state.sliceDoc()).toBe(text);
+      restored.dispatch({
+        changes: { from: 0, to: restored.state.doc.length, insert: '{"id":3}' },
+      });
+      await tick();
+      expect(
+        syncOverrideBatchInput(
+          'repo-1',
+          1,
+          syncOverrideDraftEnvelope(restarted, 'target', 'repo-1', stored),
+        ).ok,
+      ).toBe(true);
+      expect(restarted.hasDirty(scope)).toBe(true);
+      expect(restarted.validationProblem(scope)).toBeNull();
+    },
+  );
 
   it('changes content without discarding formatting or future file fields', () => {
     expect(
@@ -391,6 +501,7 @@ describe('SyncFilePage [Component]', () => {
       next: SyncOverrideEditorEnvelope,
       controlId: SyncOverrideControlId,
     ): boolean => {
+      expect(parseSyncOverrideEditorEnvelope(next)).not.toBeNull();
       staged.push({ next, controlId });
       return true;
     };
@@ -456,4 +567,365 @@ describe('SyncFilePage [Component]', () => {
     expect(staged[0]?.controlId).toBe('repositories.repo-1.sync.files.document');
     expect(staged[0]?.next.override_texts).toEqual(['{\n  "amount": 1.50\n}']);
   });
+
+  it('keeps an opening draft unpin when another field returns to its saved value', async () => {
+    const merge = {
+      path: 'renovate.json',
+      strategy: 'deep-merge',
+      overrides: { automerge: false, timezone: 'Europe/Warsaw' },
+    };
+    const stored: SyncOverride = {
+      kind: 'files',
+      enabled: null,
+      document: { merges: [merge] },
+      revision: 1,
+      updated_by: 'bart',
+      updated_at: new Date(0).toISOString(),
+      unreadable: false,
+    };
+    const draft = buildSyncOverrideEditorEnvelope({
+      ...stored,
+      document: { merges: [{ ...merge, overrides: { timezone: 'Europe/Paris' } }] },
+    });
+    const staged: SyncOverrideEditorEnvelope[] = [];
+    render(SyncFilePage, {
+      props: renderProps({
+        config: configWithTemplate('{"automerge":false,"timezone":"UTC"}'),
+        context: {
+          repositories: 1,
+          covered: 1,
+          known_paths: [],
+          repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+          merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+        },
+        fetchOverride: async () => ({ stored, envelope: draft }),
+        onChangeOverride: (_id, _stored, next) => {
+          staged.push(next);
+          return true;
+        },
+      }),
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    await screen.findByRole('button', { name: 'Stop changing timezone' });
+    await vi.waitFor(() =>
+      expect(
+        screen
+          .getByRole('dialog')
+          .querySelector('.code-editor')
+          ?.shadowRoot?.querySelector('.cm-content'),
+      ).toBeInstanceOf(HTMLElement),
+    );
+    const host = screen.getByRole('dialog').querySelector('.code-editor')!;
+    const view = EditorView.findFromDOM(host.shadowRoot!.querySelector('.cm-content')!)!;
+    await vi.waitFor(() => expect(view.state.sliceDoc()).toContain('Europe/Paris'));
+    view.dispatch({
+      changes: {
+        from: 0,
+        to: view.state.doc.length,
+        insert: view.state.sliceDoc().replace('Europe/Paris', 'Europe/Warsaw'),
+      },
+    });
+    await tick();
+    expect(staged.at(-1)?.document.merges).toEqual([
+      { ...merge, overrides: { timezone: 'Europe/Warsaw' } },
+    ]);
+    await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(staged.at(-1)).toEqual(draft);
+  });
+
+  it('keeps an unrepresentable null edit visible and unsavable after reopening, then allows correction and Undo', async () => {
+    const renderer = vi.fn(renderFile);
+    const merge = { path: 'renovate.json', strategy: 'deep-merge', overrides: { id: 1 } };
+    const stored: SyncOverride = {
+      kind: 'files',
+      enabled: null,
+      document: { merges: [merge] },
+      revision: 1,
+      unreadable: false,
+    };
+    let envelope = buildSyncOverrideEditorEnvelope(stored);
+    const props = renderProps({
+      renderFile: renderer,
+      config: configWithTemplate('{"id":0,"flag":false}'),
+      context: {
+        repositories: 1,
+        covered: 1,
+        known_paths: [],
+        repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+        merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+      },
+      fetchOverride: async () => ({ stored, envelope }),
+      onChangeOverride: (_id, _stored, next) => {
+        envelope = next;
+        return true;
+      },
+    });
+    let component = render(SyncFilePage, { props });
+    const open = async () => {
+      await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+      await vi.waitFor(() =>
+        expect(
+          screen
+            .getByRole('dialog')
+            .querySelector('.code-editor')
+            ?.shadowRoot?.querySelector('.cm-content'),
+        ).toBeInstanceOf(HTMLElement),
+      );
+      const host = screen.getByRole('dialog').querySelector('.code-editor')!;
+      return EditorView.findFromDOM(host.shadowRoot!.querySelector('.cm-content')!)!;
+    };
+    let view = await open();
+    await vi.waitFor(() =>
+      expect(renderer.mock.calls.filter(([input]) => input.repository !== undefined)).toHaveLength(
+        1,
+      ),
+    );
+    renderer.mockClear();
+    const invalid = '{"id":null,"flag":false}';
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: invalid } });
+    await tick();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(renderer.mock.calls.filter(([input]) => input.repository !== undefined)).toEqual([]);
+    expect(syncOverrideBatchInput('repo-1', 1, envelope).ok).toBe(false);
+    expect(screen.getByText('These merge rules cannot store a new null field')).toBeTruthy();
+    expect(view.state.sliceDoc()).toBe(invalid);
+    component.unmount();
+    component = render(SyncFilePage, { props });
+    view = await open();
+    await new Promise((resolve) => setTimeout(resolve, 180));
+    expect(renderer.mock.calls.filter(([input]) => input.repository !== undefined)).toEqual([]);
+    expect(view.state.sliceDoc()).toBe(invalid);
+    expect(screen.getByText('These merge rules cannot store a new null field')).toBeTruthy();
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: '{"id":2,"flag":false}' },
+      annotations: isolateHistory.of('full'),
+    });
+    await tick();
+    const corrected = syncOverrideBatchInput('repo-1', 1, envelope);
+    expect(corrected.ok).toBe(true);
+    if (corrected.ok) expect(JSON.stringify(corrected.input.document)).toContain('"id":2');
+    await vi.waitFor(() =>
+      expect(renderer.mock.calls.filter(([input]) => input.repository !== undefined)).toHaveLength(
+        1,
+      ),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(view.state.sliceDoc()).toBe(invalid);
+    expect(syncOverrideBatchInput('repo-1', 1, envelope).ok).toBe(false);
+    component.unmount();
+  });
+
+  it.each([
+    { saved: '9007199254740992', wanted: '9007199254740993', template: '0' },
+    { saved: '-9007199254740992', wanted: '-9007199254740993', template: '0' },
+    { saved: '9.007199254740992e15', wanted: '9.007199254740993e15', template: '0' },
+    { saved: '-9.007199254740992e15', wanted: '-9.007199254740993e15', template: '0' },
+    { saved: '1.50', wanted: '1.5000', template: '0' },
+    { saved: '0', wanted: '9007199254740993', template: '9007199254740992' },
+    { saved: '1', wanted: '1e400', template: '0' },
+    { saved: '1', wanted: '-1e400', template: '0' },
+    { saved: '1e400', wanted: '2e400', template: '0' },
+    { saved: '-1e400', wanted: '-2e400', template: '0' },
+    { saved: '0', wanted: '1e-400', template: '0' },
+    { saved: '1e-400', wanted: '0', template: '1' },
+    { saved: '0', wanted: '-0', template: '1' },
+  ])(
+    'stages the exact numeric wire literal $saved → $wanted',
+    async ({ saved, wanted, template }) => {
+      const renderer = vi.fn(renderFile);
+      const merge = {
+        path: 'renovate.json',
+        strategy: 'deep-merge',
+        overrides: { id: JSON.rawJSON(saved), flag: false },
+      };
+      const stored: SyncOverride = {
+        kind: 'files',
+        enabled: null,
+        document: { merges: [merge] },
+        revision: 1,
+        updated_by: 'bart',
+        updated_at: new Date(0).toISOString(),
+        unreadable: false,
+      };
+      const staged: SyncOverrideEditorEnvelope[] = [];
+      render(SyncFilePage, {
+        props: renderProps({
+          renderFile: renderer,
+          config: configWithTemplate(`{"id":${template},"flag":false}`),
+          context: {
+            repositories: 1,
+            covered: 1,
+            known_paths: [],
+            repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+            merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+          },
+          fetchOverride: async () => ({
+            stored,
+            envelope: buildSyncOverrideEditorEnvelope(stored),
+          }),
+          onChangeOverride: (_id, _stored, next) => {
+            expect(parseSyncOverrideEditorEnvelope(next)).not.toBeNull();
+            staged.push(next);
+            return true;
+          },
+        }),
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+      await vi.waitFor(() =>
+        expect(
+          screen
+            .getByRole('dialog')
+            .querySelector('.code-editor')
+            ?.shadowRoot?.querySelector('.cm-content'),
+        ).toBeInstanceOf(HTMLElement),
+      );
+      const host = screen.getByRole('dialog').querySelector('.code-editor')!;
+      const view = EditorView.findFromDOM(host.shadowRoot!.querySelector('.cm-content')!)!;
+      expect(view.state.sliceDoc()).toMatch(
+        new RegExp(`"id":\\s*${saved.replace(/[.+-]/gu, '\\$&')}`),
+      );
+      const edit = async (text: string) => {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: text },
+          annotations: isolateHistory.of('full'),
+        });
+        await tick();
+      };
+      const wire = () => {
+        const next = staged.at(-1)!;
+        const batch = syncOverrideBatchInput('repo-1', stored.revision, next);
+        expect(batch.ok).toBe(true);
+        return batch.ok ? JSON.stringify(batch.input.document) : '';
+      };
+      await edit(view.state.sliceDoc().replace(/"id":\s*[-+\d.eE]+/u, `"id":${wanted}`));
+      expect(wire()).toContain(`"id":${wanted}`);
+      await vi.waitFor(() => {
+        const preview = renderer.mock.calls
+          .filter(([input]) => input.repository !== undefined)
+          .at(-1)?.[0];
+        expect(JSON.stringify(preview?.repository?.merge)).toContain(`"id":${wanted}`);
+      });
+      await edit(view.state.sliceDoc().replace(/"flag":\s*false/u, '"flag":true'));
+      expect(wire()).toContain(`"id":${wanted}`);
+      await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(wire()).toContain(`"id":${wanted}`);
+      await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(wire()).toContain(`"id":${saved}`);
+      redo(view);
+      await tick();
+      expect(wire()).toContain(`"id":${wanted}`);
+    },
+  );
+
+  it.each([
+    { deduplicate: true, twoLists: false },
+    { deduplicate: false, twoLists: false },
+    { deduplicate: true, twoLists: true },
+    { deduplicate: false, twoLists: true },
+  ])(
+    'retains pins, deduplicate=$deduplicate and rule order with twoLists=$twoLists',
+    async ({ deduplicate, twoLists }) => {
+      const otherOverrides = twoLists ? { reviewers: ['reviewer'] } : {};
+      const merge = {
+        path: 'renovate.json',
+        strategy: 'deep-merge',
+        overrides: { automerge: false, labels: ['repo'], ...otherOverrides },
+        arrays: [
+          { path: '$.labels', strategy: 'append' },
+          ...(twoLists ? [{ path: '$.reviewers', strategy: 'append' }] : []),
+        ],
+        deduplicate,
+      };
+      const stored: SyncOverride = {
+        kind: 'files',
+        enabled: null,
+        document: { merges: [merge] },
+        revision: 1,
+        updated_by: 'bart',
+        updated_at: new Date(0).toISOString(),
+        unreadable: false,
+      };
+      const saved = buildSyncOverrideEditorEnvelope(stored);
+      const staged: SyncOverrideEditorEnvelope[] = [];
+      render(SyncFilePage, {
+        props: renderProps({
+          config: configWithTemplate(
+            twoLists
+              ? '{"automerge":false,"reviewers":["base"],"labels":["base"]}'
+              : '{"automerge":false,"labels":["base"]}',
+          ),
+          context: {
+            repositories: 1,
+            covered: 1,
+            known_paths: [],
+            repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+            merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+          },
+          fetchOverride: async () => ({ stored, envelope: saved }),
+          onChangeOverride: (_id, _canonical, next) => {
+            expect(parseSyncOverrideEditorEnvelope(next)).not.toBeNull();
+            staged.push(next);
+            return true;
+          },
+        }),
+      });
+
+      await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+      const choices = within(
+        (await screen.findByText('$.labels')).closest('.list-ask') as HTMLElement,
+      );
+      await vi.waitFor(() =>
+        expect(
+          (choices.getByRole('radio', { name: /^Replace/ }) as HTMLInputElement).disabled,
+        ).toBe(false),
+      );
+      await fireEvent.click(choices.getByRole('radio', { name: /^Replace/ }));
+      expect(staged).toHaveLength(1);
+      expect(staged[0]?.document.merges).toMatchObject([
+        {
+          path: merge.path,
+          strategy: merge.strategy,
+          overrides: { automerge: false, labels: ['base', 'repo'], ...otherOverrides },
+        },
+      ]);
+      const replaced = (staged[0]?.document.merges as Array<Record<string, unknown>>)[0];
+      expect(replaced?.deduplicate).toBe(twoLists ? deduplicate : undefined);
+      expect(replaced?.arrays).toEqual(twoLists ? [merge.arrays[1]] : undefined);
+      await fireEvent.click(choices.getByRole('radio', { name: /^Append/ }));
+      expect(staged).toHaveLength(2);
+      expect(staged[1]).toEqual(saved);
+      await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(staged.at(-1)).toEqual(staged[0]);
+      await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+      expect(staged.at(-1)).toEqual(saved);
+
+      const host = screen.getByRole('dialog').querySelector('.code-editor')!;
+      const view = EditorView.findFromDOM(host.shadowRoot!.querySelector('.cm-content')!)!;
+      redo(view);
+      await tick();
+      expect(staged.at(-1)).toEqual(staged[0]);
+      redo(view);
+      await tick();
+      expect(staged.at(-1)).toEqual(saved);
+
+      view.dispatch({
+        changes: {
+          from: 0,
+          to: view.state.doc.length,
+          insert: view.state.sliceDoc().replace(/"automerge":\s*false/u, '"automerge": true'),
+        },
+      });
+      await fireEvent.click(await screen.findByRole('button', { name: 'Stop changing automerge' }));
+      const deliberatelyUnpinned = staged.at(-1);
+      expect(deliberatelyUnpinned?.document.merges).toEqual([
+        { ...merge, overrides: { labels: ['repo'], ...otherOverrides } },
+      ]);
+      await fireEvent.click(choices.getByRole('radio', { name: /^Replace/ }));
+      await fireEvent.click(choices.getByRole('radio', { name: /^Append/ }));
+      expect(staged.at(-1)).toEqual(deliberatelyUnpinned);
+      view.dispatch({ changes: { from: 1, insert: ' ' } });
+      await tick();
+      expect(staged.at(-1)).toEqual(deliberatelyUnpinned);
+    },
+  );
 });

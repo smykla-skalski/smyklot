@@ -185,6 +185,7 @@ export function samePrefValue(
 // keys sorted, compact separators, JSON.stringify string escaping. Must stay
 // byte-identical with canonicalPrefs in internal/panel/preferences.go.
 export function canonicalStringify(value: unknown): string {
+  if (typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value)) return JSON.stringify(value);
   if (Array.isArray(value)) {
     return '[' + value.map((element) => canonicalStringify(element)).join(',') + ']';
   }

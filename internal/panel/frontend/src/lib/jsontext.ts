@@ -20,7 +20,7 @@ import {
 } from 'jsonc-parser';
 
 import { arrayRulePath, type ArrayRule, type FileMergeSpec } from './filemerge';
-import type { MergeSpec } from './merge';
+import { composeFile, type JsonValue, type MergeSpec } from './merge';
 
 type Segments = Array<string | number>;
 type ObjectPath = string[];
@@ -31,7 +31,12 @@ function emptyRecord(): Record<string, unknown> {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value))
+  );
 }
 
 function ownValue(record: unknown, key: string): unknown {
@@ -62,16 +67,46 @@ function parseLoose(text: string): unknown {
   const errors: ParseError[] = [];
   const root = parseTree(text, errors, { allowTrailingComma: true });
   if (errors.length > 0 || root === undefined) return undefined;
-  const value = nodeValue(root);
+  const value = nodeValue(root, text);
 
   return value === invalidJSON ? undefined : value;
 }
 
-function nodeValue(node: Node): unknown | typeof invalidJSON {
+/** Compare JSON/JSONC across layout changes while keeping number literals exact. */
+export function sameComposedContent(left: string, right: string): boolean {
+  const signature = (text: string): string | undefined => {
+    const errors: ParseError[] = [];
+    const root = parseTree(text, errors, { allowTrailingComma: true });
+    if (errors.length > 0 || root === undefined || nodeValue(root) === invalidJSON)
+      return undefined;
+    return nodeSignature(root, text);
+  };
+  const held = signature(left);
+  return held !== undefined && held === signature(right);
+}
+
+function nodeSignature(node: Node, text: string): string {
+  if (node.type === 'number') return `#${text.slice(node.offset, node.offset + node.length)}`;
+  if (node.type === 'array')
+    return `[${(node.children ?? []).map((child) => nodeSignature(child, text)).join(',')}]`;
+  if (node.type === 'object')
+    return `{${(node.children ?? [])
+      .map((property) => {
+        const [key, value] = property.children!;
+        return `${JSON.stringify(key!.value)}:${nodeSignature(value!, text)}`;
+      })
+      .sort()
+      .join(',')}}`;
+  return JSON.stringify(node.value);
+}
+
+function nodeValue(node: Node, source?: string): unknown | typeof invalidJSON {
+  if (node.type === 'number' && source !== undefined && typeof JSON.rawJSON === 'function')
+    return JSON.rawJSON(source.slice(node.offset, node.offset + node.length));
   if (node.type === 'array') {
     const value: unknown[] = [];
     for (const child of node.children ?? []) {
-      const held = nodeValue(child);
+      const held = nodeValue(child, source);
       if (held === invalidJSON) return invalidJSON;
       value.push(held);
     }
@@ -86,7 +121,7 @@ function nodeValue(node: Node): unknown | typeof invalidJSON {
     if (typeof name !== 'string' || held === undefined || Object.hasOwn(value, name)) {
       return invalidJSON;
     }
-    const decoded = nodeValue(held);
+    const decoded = nodeValue(held, source);
     if (decoded === invalidJSON) return invalidJSON;
     value[name] = decoded;
   }
@@ -149,7 +184,7 @@ function deduplicatedListOps(
   const combined = rule.strategy === 'append' ? [...base, ...override] : [...override, ...base];
   const kept: ListEntry[] = [];
   for (const candidate of combined) {
-    if (!kept.some((entry) => deepEqual(entry.value, candidate.value))) kept.push(candidate);
+    if (!kept.some((entry) => deepEqual(entry.value, candidate.value, true))) kept.push(candidate);
   }
   const keptBase = new Set(
     kept.filter((entry) => entry.source === 'base').map((entry) => entry.index),
@@ -172,7 +207,7 @@ function deduplicatedListOps(
 function uniqueValues(values: unknown[]): unknown[] {
   const kept: unknown[] = [];
   for (const value of values) {
-    if (!kept.some((entry) => deepEqual(entry, value))) kept.push(value);
+    if (!kept.some((entry) => deepEqual(entry, value, true))) kept.push(value);
   }
 
   return kept;
@@ -278,14 +313,157 @@ export interface DerivedMerge {
   questions: ListQuestion[];
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+export interface AuthoredMerge {
+  text: string;
+  merge: FileMergeSpec;
+}
+
+export interface MergeIntent {
+  current: AuthoredMerge | null;
+  saved?: AuthoredMerge | null;
+  deduplicate?: boolean;
+}
+
+function treeFor(text: string): Node | undefined {
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, { allowTrailingComma: true });
+  return errors.length > 0 || root === undefined || nodeValue(root) === invalidJSON
+    ? undefined
+    : root;
+}
+
+function childNode(node: Node | undefined, key: string): Node | undefined {
+  return node?.type === 'object'
+    ? node.children?.find((property) => property.children?.[0]?.value === key)?.children?.[1]
+    : undefined;
+}
+
+/** Retain authored leaves only when the content and its applicable list rule are unchanged. */
+function retainAuthoredLeaves(
+  out: DerivedMerge,
+  editedText: string,
+  strategy: string,
+  answers: readonly ArrayRule[],
+  intent: MergeIntent,
+): void {
+  const active = intent.current;
+  if (active === null || !isRecord(active.merge.overrides)) return;
+  const edited = treeFor(editedText);
+  const before = treeFor(active.text);
+  if (edited === undefined || before === undefined) return;
+  const saved = intent.saved == null ? undefined : treeFor(intent.saved.text);
+  const sameNode = (left: Node | undefined, text: string, right: Node | undefined): boolean =>
+    left === undefined || right === undefined
+      ? left === right
+      : nodeSignature(left, text) === nodeSignature(right, editedText);
+
+  function retain(
+    value: unknown,
+    previous: unknown,
+    oldNode: Node | undefined,
+    savedNode: Node | undefined,
+    nextNode: Node | undefined,
+    path: string[],
+  ): void {
+    if (
+      strategy === 'deep-merge' &&
+      isRecord(value) &&
+      Object.keys(value).length > 0 &&
+      oldNode?.type === 'object' &&
+      nextNode?.type === 'object'
+    ) {
+      for (const [key, nested] of Object.entries(value))
+        retain(
+          nested,
+          ownValue(previous, key),
+          childNode(oldNode, key),
+          childNode(savedNode, key),
+          childNode(nextNode, key),
+          [...path, key],
+        );
+      return;
+    }
+    const compatible = (candidate: AuthoredMerge, held: unknown): boolean =>
+      !Array.isArray(held) ||
+      ((ruleFor(candidate.merge.arrays ?? [], path)?.strategy ?? 'replace') ===
+        (ruleFor(answers, path)?.strategy ?? 'replace') &&
+        (candidate.merge.deduplicate === true) ===
+          (intent.deduplicate ?? active!.merge.deduplicate === true));
+    let candidate: AuthoredMerge | undefined;
+    let retained: unknown;
+    if (sameNode(oldNode, active!.text, nextNode) && compatible(active!, value)) {
+      candidate = active!;
+      retained = value;
+    } else if (
+      previous !== undefined &&
+      intent.saved != null &&
+      sameNode(savedNode, intent.saved.text, nextNode) &&
+      compatible(intent.saved, previous)
+    ) {
+      candidate = intent.saved;
+      retained = previous;
+    }
+    if (candidate === undefined) return;
+    setAt(out.overrides, path, retained);
+    if (Array.isArray(retained)) {
+      const rule = ruleFor(candidate.merge.arrays ?? [], path);
+      if (rule !== undefined && !out.arrays.some((current) => current.path === rule.path))
+        out.arrays.push({ ...rule });
+    }
+  }
+
+  for (const [key, value] of Object.entries(active.merge.overrides))
+    retain(
+      value,
+      ownValue(intent.saved?.merge.overrides, key),
+      childNode(before, key),
+      childNode(saved, key),
+      childNode(edited, key),
+      [key],
+    );
+}
+
+function authoredRuleOrder(rules: ArrayRule[], answers: readonly ArrayRule[]): ArrayRule[] {
+  const ordered = answers.flatMap((answer) => rules.filter((rule) => rule.path === answer.path));
+  return [
+    ...ordered,
+    ...rules.filter((rule) => !answers.some((answer) => answer.path === rule.path)),
+  ];
+}
+
+/** Match backend numeric deduplication without expanding exponents or rounding to a float. */
+function numericValueKey(literal: string): string {
+  const parts = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/u.exec(literal);
+  if (parts === null) return literal;
+  const fraction = parts[3] ?? '';
+  const digits = `${parts[2]}${fraction}`.replace(/^0+/u, '');
+  if (digits === '') return '0';
+  const significant = digits.replace(/0+$/u, '');
+  const exponent =
+    BigInt(parts[4] ?? '0') - BigInt(fraction.length) + BigInt(digits.length - significant.length);
+  return `${parts[1]}${significant}e${exponent}`;
+}
+
+function deepEqual(a: unknown, b: unknown, numericValues = false): boolean {
   if (Object.is(a, b)) return true;
+  if (typeof JSON.isRawJSON === 'function' && (JSON.isRawJSON(a) || JSON.isRawJSON(b))) {
+    const left = JSON.isRawJSON(a) ? a.rawJSON : typeof a === 'number' ? JSON.stringify(a) : null;
+    const right = JSON.isRawJSON(b) ? b.rawJSON : typeof b === 'number' ? JSON.stringify(b) : null;
+    return (
+      left !== null &&
+      right !== null &&
+      (numericValues ? numericValueKey(left) === numericValueKey(right) : left === right)
+    );
+  }
   if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((held, i) => deepEqual(held, b[i]));
+    return a.length === b.length && a.every((held, i) => deepEqual(held, b[i], numericValues));
   }
   if (isRecord(a) && isRecord(b)) {
     const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every((k) => deepEqual(a[k], b[k]));
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((k) => deepEqual(a[k], b[k], numericValues))
+    );
   }
   return false;
 }
@@ -343,6 +521,22 @@ function setAt(overrides: Record<string, unknown>, parts: string[], value: unkno
   if (key !== undefined) held[key] = value;
 }
 
+/** Keep authored list behavior when this template does not contain the list yet. */
+function retainNewListRules(
+  value: unknown,
+  path: string[],
+  prior: readonly ArrayRule[],
+  out: DerivedMerge,
+): void {
+  if (Array.isArray(value)) {
+    const rule = ruleFor(prior, path);
+    if (rule?.strategy === 'append' || rule?.strategy === 'prepend') out.arrays.push({ ...rule });
+  } else if (isRecord(value)) {
+    for (const [key, nested] of Object.entries(value))
+      retainNewListRules(nested, [...path, key], prior, out);
+  }
+}
+
 function diffDeep(
   base: Record<string, unknown>,
   next: Record<string, unknown>,
@@ -359,7 +553,10 @@ function diffDeep(
     if (deepEqual(held, value)) continue;
     if (isRecord(held) && isRecord(value)) diffDeep(held, value, path, prior, out);
     else if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, path, prior, out);
-    else setAt(out.overrides, path, value);
+    else {
+      setAt(out.overrides, path, value);
+      retainNewListRules(value, path, prior, out);
+    }
   }
 }
 
@@ -376,7 +573,10 @@ function diffShallow(
     const held = base[key];
     if (deepEqual(held, value)) continue;
     if (Array.isArray(held) && Array.isArray(value)) diffList(held, value, [key], prior, out);
-    else out.overrides[key] = value;
+    else {
+      out.overrides[key] = value;
+      retainNewListRules(value, [key], prior, out);
+    }
   }
 }
 
@@ -392,6 +592,7 @@ export function deriveMerge(
   editedText: string,
   strategy: string,
   prior: readonly ArrayRule[],
+  intent?: MergeIntent,
 ): DerivedMerge | null {
   if (strategy !== 'deep-merge' && strategy !== 'shallow-merge') return null;
   const base = parseLoose(templateText);
@@ -400,5 +601,35 @@ export function deriveMerge(
   const out: DerivedMerge = { overrides: emptyRecord(), arrays: [], questions: [] };
   if (strategy === 'deep-merge') diffDeep(base, next, [], prior, out);
   else diffShallow(base, next, prior, out);
+  if (intent !== undefined) retainAuthoredLeaves(out, editedText, strategy, prior, intent);
+  out.arrays = authoredRuleOrder(out.arrays, prior);
+  // Derivation is only safe if the actual merge grammar reproduces the edit.
+  // In particular an object null removes a field rather than storing its value.
+  if (Object.keys(out.overrides).length === 0 && out.arrays.length === 0)
+    return deepEqual(base, next) ? out : null;
+  const spec = {
+    strategy,
+    overrides: out.overrides as JsonValue,
+    arrays: out.arrays,
+    deduplicate: out.arrays.length > 0 && intent?.deduplicate === true,
+  };
+  const composed = composeFile('editor.json', base as JsonValue, spec);
+  if (!composed.ok || !deepEqual(composed.value, next)) return null;
   return out;
+}
+
+/** Why an invalid composed draft must remain editable instead of being saved. */
+export function composedEditProblem(template: string, edited: string, strategy: string): string {
+  const base = parseLoose(template);
+  const next = parseLoose(edited);
+  if (!isRecord(base) || !isRecord(next)) return 'Enter valid JSON to update this adjustment';
+  const addsNull = (held: unknown, wanted: Record<string, unknown>): boolean =>
+    Object.entries(wanted).some(([key, value]) =>
+      value === null
+        ? ownValue(held, key) !== null
+        : strategy === 'deep-merge' && isRecord(value) && addsNull(ownValue(held, key), value),
+    );
+  return addsNull(base, next)
+    ? 'These merge rules cannot store a new null field'
+    : 'These merge rules cannot produce the edited content';
 }

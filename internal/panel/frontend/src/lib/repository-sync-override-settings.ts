@@ -102,7 +102,7 @@ export function syncOverrideResource(targetId: string, repositoryId: string): Se
 export function buildSyncOverrideEditorEnvelope(stored: SyncOverride): SyncOverrideEditorEnvelope {
   assertReadableFilesOverride(stored);
   const document = plainSettingsRecord(stored.document);
-  if (document === null) throw new TypeError('sync override document is not finite JSON');
+  if (document === null) throw new TypeError('sync override document is not valid JSON');
 
   return {
     enabled: stored.enabled,
@@ -118,8 +118,8 @@ export function parseSyncOverrideEditorEnvelope(value: unknown): SyncOverrideEdi
   if (!isRecord(value.document) || !isStringArray(value.override_texts)) return null;
 
   try {
-    const document = cloneSettingsJson(value.document as SettingsJson);
-    if (!isRecord(document)) return null;
+    const document = plainSettingsRecord(value.document);
+    if (document === null) return null;
     return {
       enabled: value.enabled,
       document: document as SyncOverrideSettingsDocument,
@@ -580,36 +580,40 @@ function overrideTexts(document: Record<string, unknown>): string[] {
 }
 
 function plainSettingsRecord(value: unknown): SyncOverrideSettingsDocument | null {
-  if (!isRecord(value) || !validJsonWithRawNumbers(value)) return null;
+  if (!isRecord(value)) return null;
   try {
-    const serialized = JSON.stringify(value);
-    if (serialized === undefined) return null;
-    const parsed: unknown = JSON.parse(serialized);
-    if (!isRecord(parsed)) return null;
-    return cloneSettingsJson(parsed as SettingsJson) as SyncOverrideSettingsDocument;
+    const document = cloneSettingsJson(value as SettingsJson) as SyncOverrideSettingsDocument;
+    // The API preserves every document number. Formatting widths and Markdown
+    // occurrences are typed metadata; file overrides remain lossless content.
+    if (document.formats !== undefined) document.formats = metadataIntegers(document.formats);
+    if (Array.isArray(document.merges)) {
+      document.merges = document.merges.map((row) =>
+        isRecord(row) && row.sections !== undefined
+          ? ({ ...row, sections: metadataIntegers(row.sections as SettingsJson) } as SettingsJson)
+          : row,
+      );
+    }
+    return document;
   } catch {
     return null;
   }
 }
 
-function validJsonWithRawNumbers(value: unknown, ancestors = new WeakSet<object>()): boolean {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (typeof value !== 'object' || ancestors.has(value)) return false;
-  if (isRawJson(value)) return true;
-  if (Array.isArray(value)) {
-    ancestors.add(value);
-    const valid = value.every((entry) => validJsonWithRawNumbers(entry, ancestors));
-    ancestors.delete(value);
-    return valid;
+function metadataIntegers(value: SettingsJson): SettingsJson {
+  if (isRawJson(value)) {
+    const token = JSON.stringify(value);
+    const number = Number(token);
+    // Go's integer decoder accepts a sign on zero, but no fraction or exponent.
+    // Only typed metadata uses this normalization; override literals stay raw.
+    return Number.isSafeInteger(number) && /^-?(?:0|[1-9]\d*)$/u.test(token) ? number : value;
   }
-  if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
-    return false;
+  if (Array.isArray(value)) return value.map(metadataIntegers);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, metadataIntegers(entry as SettingsJson)]),
+    );
   }
-  ancestors.add(value);
-  const valid = Object.values(value).every((entry) => validJsonWithRawNumbers(entry, ancestors));
-  ancestors.delete(value);
-  return valid;
+  return value;
 }
 
 function cloneUnknownRecord(value: Record<string, unknown>): Record<string, unknown> {

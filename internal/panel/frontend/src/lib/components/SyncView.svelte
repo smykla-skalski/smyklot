@@ -608,10 +608,6 @@ Live plan and status queries share the shell's event invalidation and polling fa
     background: var(--surface-base);
   }
 
-  :global(.form-error) {
-    margin: var(--space-3) 0 0;
-  }
-
   .sync-run-notice {
     color: var(--text-secondary);
     margin: var(--space-3) 0;

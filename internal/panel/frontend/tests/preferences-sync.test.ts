@@ -73,6 +73,13 @@ const checksumVectors: { name: string; values: PrefValues; canonical: string; ch
   ];
 
 describe('preference checksum', () => {
+  it('serializes native numeric literals without confusing lookalike user objects', () => {
+    expect(canonicalStringify({ number: JSON.rawJSON('1e400'), data: { rawJSON: '1e400' } })).toBe(
+      '{"data":{"rawJSON":"1e400"},"number":1e400}',
+    );
+    expect(canonicalStringify(JSON.rawJSON('1e-400'))).not.toBe(canonicalStringify(0));
+    expect(canonicalStringify(JSON.rawJSON('-0'))).not.toBe(canonicalStringify(0));
+  });
   it.each(checksumVectors)('digests the $name golden vector', async (vector) => {
     expect(canonicalStringify(vector.values)).toBe(vector.canonical);
     await expect(prefsChecksum(vector.values)).resolves.toBe(vector.checksum);

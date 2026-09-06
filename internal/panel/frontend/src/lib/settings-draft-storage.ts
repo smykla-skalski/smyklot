@@ -1,10 +1,21 @@
 import { SYNC_KINDS, type SyncKind } from './types';
+import { preserveNumberToken, type JsonNumber } from './merge';
 
 export const SETTINGS_DRAFT_SCHEMA = 1;
 const SETTINGS_DRAFT_KEY_PREFIX = `smyklot.panel.settings-drafts.v${SETTINGS_DRAFT_SCHEMA}`;
 
 export type SettingsJson =
-  null | boolean | number | string | SettingsJson[] | { [key: string]: SettingsJson };
+  null | boolean | number | JsonNumber | string | SettingsJson[] | { [key: string]: SettingsJson };
+
+// Their immutable native brand distinguishes numbers from user objects that
+// happen to contain a rawJSON key; never replace that brand with a plain object.
+function isRawNumber(value: unknown): value is JsonNumber {
+  return (
+    typeof JSON.isRawJSON === 'function' &&
+    JSON.isRawJSON(value) &&
+    /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/u.test(value.rawJSON)
+  );
+}
 
 export type SettingsResource =
   | { type: 'target-defaults'; targetId: string }
@@ -155,7 +166,7 @@ export function settingsLocationStartsWith(
 }
 
 export function cloneSettingsJson<T extends SettingsJson>(value: T): T {
-  if (!isSettingsJson(value)) throw new TypeError('settings values must be finite JSON values');
+  if (!isSettingsJson(value)) throw new TypeError('settings values must be valid JSON values');
   return cloneJson(value) as T;
 }
 
@@ -170,7 +181,7 @@ export function parseSettingsDraftDocument(
   if (serialized === null) return { status: 'empty' };
 
   try {
-    const parsed: unknown = JSON.parse(serialized);
+    const parsed: unknown = JSON.parse(serialized, preserveNumberToken);
     if (!isRecord(parsed)) return { status: 'corrupt' };
     if (parsed.schema !== SETTINGS_DRAFT_SCHEMA || parsed.accountId !== accountId) {
       return { status: 'corrupt' };
@@ -374,6 +385,7 @@ function isSettingsJson(value: unknown, ancestors = new WeakSet<object>()): valu
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
   if (typeof value === 'number') return Number.isFinite(value);
   if (typeof value !== 'object' || ancestors.has(value)) return false;
+  if (typeof JSON.isRawJSON === 'function' && JSON.isRawJSON(value)) return isRawNumber(value);
   ancestors.add(value);
   const valid = Array.isArray(value)
     ? value.every((entry) => isSettingsJson(entry, ancestors))
@@ -385,6 +397,7 @@ function isSettingsJson(value: unknown, ancestors = new WeakSet<object>()): valu
 }
 
 function cloneJson(value: SettingsJson): SettingsJson {
+  if (isRawNumber(value)) return value;
   if (Array.isArray(value)) return value.map(cloneJson);
   if (value !== null && typeof value === 'object') {
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, cloneJson(entry)]));
@@ -393,6 +406,7 @@ function cloneJson(value: SettingsJson): SettingsJson {
 }
 
 function canonicalSettingsJson(value: SettingsJson): string {
+  if (isRawNumber(value)) return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonicalSettingsJson).join(',')}]`;
   if (value !== null && typeof value === 'object') {
     return `{${Object.keys(value)

@@ -757,12 +757,12 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
   /* The box itself is `Callout` now; what is left is where it sits in this form's
      grid, which is this component's business and not the callout's. `:global`
      because the element is the child component's. */
-  :global(.root-warning) {
+  .invitation-form :global(.root-warning) {
     grid-column: 1 / -1;
   }
 
   /* The form is a grid; the message spans it. */
-  :global(.form-error) {
+  .invitation-form :global(.form-error) {
     grid-column: 1 / -1;
   }
 
