@@ -90,6 +90,12 @@ const (
 
 	// SchemaURL is the published address, and what an editor is pointed at.
 	SchemaURL = {{ quote .SchemaID }}
+
+	// RepositoryPanelSchemaURL describes repository files with panel settings.
+	RepositoryPanelSchemaURL = {{ quote .RepositoryPanelSchemaURL }}
+
+	// WorkspacePanelSchemaURL describes workspace files with panel settings.
+	WorkspacePanelSchemaURL = {{ quote .WorkspacePanelSchemaURL }}
 )
 
 // The key every setting is addressed by, in a file, an environment variable,
@@ -271,18 +277,22 @@ func RenderGo(model Model) ([]byte, error) {
 	std, thirdParty := imports(model)
 
 	data := struct {
-		Header     string
-		Std        []string
-		ThirdParty []string
-		Fields     []Field
-		Leaves     []Field
-		SchemaName string
-		SchemaPath string
-		SchemaID   string
+		Header                   string
+		Std                      []string
+		ThirdParty               []string
+		Fields                   []Field
+		Leaves                   []Field
+		SchemaName               string
+		SchemaPath               string
+		SchemaID                 string
+		RepositoryPanelSchemaURL string
+		WorkspacePanelSchemaURL  string
 	}{
 		Header: goHeader, Std: std, ThirdParty: thirdParty,
 		Fields: model.Fields, Leaves: model.Leaves,
 		SchemaName: SchemaName, SchemaPath: SchemaPath, SchemaID: SchemaID,
+		RepositoryPanelSchemaURL: RepositoryPanelSchemaURL,
+		WorkspacePanelSchemaURL:  WorkspacePanelSchemaURL,
 	}
 
 	if err := goTemplate.Execute(&buffer, data); err != nil {

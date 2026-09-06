@@ -94,6 +94,12 @@ const (
 
 	// SchemaURL is the published address, and what an editor is pointed at.
 	SchemaURL = "https://smyklot.com/schema/repository-v1.json"
+
+	// RepositoryPanelSchemaURL describes repository files with panel settings.
+	RepositoryPanelSchemaURL = "https://smyklot.com/schema/repository-panel-v1.json"
+
+	// WorkspacePanelSchemaURL describes workspace files with panel settings.
+	WorkspacePanelSchemaURL = "https://smyklot.com/schema/workspace-panel-v1.json"
 )
 
 // The key every setting is addressed by, in a file, an environment variable,

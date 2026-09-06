@@ -75,6 +75,31 @@ func TestFileDocumentKeepsLegacySparseSettings(t *testing.T) {
 	}
 }
 
+func TestFileDocumentPointsEditorsAtItsScope(t *testing.T) {
+	for _, scope := range []config.PanelFileScope{config.PanelFileRepository, config.PanelFileWorkspace} {
+		section := &config.PanelFileSection{Version: 1, Scope: scope}
+		url := config.RepositoryPanelSchemaURL
+		if scope == config.PanelFileWorkspace {
+			url = config.WorkspacePanelSchemaURL
+			section.Settings = config.PanelFileSettings{
+				RepositoryDefaultEnabled: new(false), MergeMode: new("checks"),
+				ProtectedRefs: &config.PanelFileRefs{Include: []string{"~DEFAULT_BRANCH"}},
+			}
+		}
+		content, err := config.RenderFileDocument(config.FileDocument{Panel: section})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.HasPrefix(content, []byte("#:schema "+url+"\n\n")) {
+			t.Fatalf("%s file points editors at the wrong schema: %s", scope, content)
+		}
+		parsed, err := config.ParseFileDocument(config.FormatTOML, content)
+		if err != nil || parsed.Panel == nil || parsed.Panel.Scope != scope {
+			t.Fatalf("schema directive broke %s parsing: %v", scope, err)
+		}
+	}
+}
+
 func TestFileDocumentRejectsWrongScopeAndUnknownSettings(t *testing.T) {
 	const repository = "[panel]\nversion=1\nscope='repository'\n"
 	const workspace = "[panel]\nversion=1\nscope='workspace'\n"
@@ -88,14 +113,16 @@ func TestFileDocumentRejectsWrongScopeAndUnknownSettings(t *testing.T) {
 		"repository changes workspace":     repository + "[panel.settings]\nrepository_default_enabled=true\n",
 		"workspace uses repo enabled":      workspace + "[panel.settings]\nenabled=true\n",
 		"workspace misses required policy": workspace,
-		"invalid merge mode":               repository + "[panel.settings]\nmerge_mode='off'\n",
-		"negative duration":                repository + "[panel.settings]\nquiet_period='-1s'\n",
-		"fractional stored second":         repository + "[panel.settings]\nquiet_period='1500ms'\n",
-		"overflow duration":                repository + "[panel.settings]\nquiet_period='999999999999999h'\n",
-		"unknown sync":                     repository + "[panel.sync.access]\ndocument='{}'\n",
-		"sync missing values":              repository + "[panel.sync.files]\nenabled=false\n",
-		"sync typo":                        repository + "[panel.sync.files]\nenabled=false\ndocumnt='{}'\n",
-		"duplicate key":                    repository + "[panel.settings]\nenabled=true\nenabled=false\n",
+		"workspace sets repository runner": "runner='action'\n" + workspace +
+			"[panel.settings]\nrepository_default_enabled=true\nmerge_mode='checks'\nprotected_refs={include=['~DEFAULT_BRANCH']}\n",
+		"invalid merge mode":       repository + "[panel.settings]\nmerge_mode='off'\n",
+		"negative duration":        repository + "[panel.settings]\nquiet_period='-1s'\n",
+		"fractional stored second": repository + "[panel.settings]\nquiet_period='1500ms'\n",
+		"overflow duration":        repository + "[panel.settings]\nquiet_period='999999999999999h'\n",
+		"unknown sync":             repository + "[panel.sync.access]\ndocument='{}'\n",
+		"sync missing values":      repository + "[panel.sync.files]\nenabled=false\n",
+		"sync typo":                repository + "[panel.sync.files]\nenabled=false\ndocumnt='{}'\n",
+		"duplicate key":            repository + "[panel.settings]\nenabled=true\nenabled=false\n",
 	}
 	for name, source := range cases {
 		t.Run(name, func(t *testing.T) {

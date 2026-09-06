@@ -44,6 +44,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	panelSchemas, err := configgen.RenderPanelSchemas(model)
+	if err != nil {
+		return err
+	}
 
 	frontend, err := configgen.RenderFrontendFormatting(model)
 	if err != nil {
@@ -55,12 +59,16 @@ func run() error {
 		return err
 	}
 
-	for path, content := range map[string][]byte{
+	files := map[string][]byte{
 		configgen.GoFile:                 source,
 		configgen.FormattingGoFile:       formattingPresets,
 		configgen.SchemaFile:             schema,
 		configgen.FrontendFormattingFile: frontend,
-	} {
+	}
+	for path, content := range panelSchemas {
+		files[path] = content
+	}
+	for path, content := range files {
 		//nolint:gosec // Generated files are checked in and read by every build.
 		if err := os.WriteFile(filepath.Join(root, path), content, 0o644); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)

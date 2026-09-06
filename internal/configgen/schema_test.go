@@ -20,6 +20,7 @@ type schemaDocument struct {
 	Type                 string                    `json:"type"`
 	AdditionalProperties bool                      `json:"additionalProperties"`
 	Properties           map[string]schemaProperty `json:"properties"`
+	Required             []string                  `json:"required"`
 }
 
 type schemaProperty struct {
@@ -31,6 +32,10 @@ type schemaProperty struct {
 	Maximum              *int                      `json:"maximum"`
 	AdditionalProperties json.RawMessage           `json:"additionalProperties"`
 	Properties           map[string]schemaProperty `json:"properties"`
+	Required             []string                  `json:"required"`
+	Items                *schemaProperty           `json:"items"`
+	ContentMediaType     string                    `json:"contentMediaType"`
+	OneOf                []schemaProperty          `json:"oneOf"`
 }
 
 func readSchema(t *testing.T) schemaDocument {

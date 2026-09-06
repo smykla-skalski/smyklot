@@ -98,6 +98,7 @@ type schemaDocument struct {
 	Type                 string                    `json:"type"`
 	AdditionalProperties bool                      `json:"additionalProperties"`
 	Properties           map[string]schemaProperty `json:"properties"`
+	Required             []string                  `json:"required,omitempty"`
 }
 
 type schemaProperty struct {
@@ -110,6 +111,11 @@ type schemaProperty struct {
 	Maximum              *int                      `json:"maximum,omitempty"`
 	Properties           map[string]schemaProperty `json:"properties,omitempty"`
 	Default              *any                      `json:"default,omitempty"`
+	Required             []string                  `json:"required,omitempty"`
+	MinItems             *int                      `json:"minItems,omitempty"`
+	Pattern              string                    `json:"pattern,omitempty"`
+	ContentMediaType     string                    `json:"contentMediaType,omitempty"`
+	OneOf                []schemaProperty          `json:"oneOf,omitempty"`
 }
 
 func schemaPropertyFor(field Field) (schemaProperty, error) {

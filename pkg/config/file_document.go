@@ -100,7 +100,7 @@ func ParseFileDocument(format Format, content []byte) (FileDocument, error) {
 	if err := document.normalize(); err != nil {
 		return FileDocument{}, err
 	}
-	if err := document.Panel.Validate(); err != nil {
+	if err := document.validate(); err != nil {
 		return FileDocument{}, err
 	}
 	return document, nil
@@ -125,7 +125,7 @@ func RenderFileDocument(document FileDocument) ([]byte, error) {
 	if err := document.normalize(); err != nil {
 		return nil, err
 	}
-	if err := document.Panel.Validate(); err != nil {
+	if err := document.validate(); err != nil {
 		return nil, err
 	}
 	content, err := toml.Marshal(fileDocumentTOML(document))
@@ -133,10 +133,24 @@ func RenderFileDocument(document FileDocument) ([]byte, error) {
 		return nil, fmt.Errorf("render configuration file: %w", err)
 	}
 	content = append(bytes.TrimRight(content, "\n"), '\n')
+	if document.Panel != nil {
+		schemaURL := RepositoryPanelSchemaURL
+		if document.Panel.Scope == PanelFileWorkspace {
+			schemaURL = WorkspacePanelSchemaURL
+		}
+		content = append([]byte("#:schema "+schemaURL+"\n\n"), content...)
+	}
 	if len(content) > MaxFileDocumentBytes {
 		return nil, errors.New("rendered configuration file exceeds its size limit")
 	}
 	return content, nil
+}
+
+func (document FileDocument) validate() error {
+	if document.Panel != nil && document.Panel.Scope == PanelFileWorkspace && document.Runner != nil {
+		return errors.New("runner belongs in a repository's own file, not workspace settings")
+	}
+	return document.Panel.Validate()
 }
 
 func (section *PanelFileSection) Validate() error {
