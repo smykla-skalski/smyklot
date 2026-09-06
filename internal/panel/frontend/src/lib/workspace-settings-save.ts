@@ -59,7 +59,7 @@ type SerializedBatch =
   | { ok: true; input: WorkspaceSettingsBatchInput }
   | { ok: false; problem: string; control?: SettingsDirtyControl };
 
-const savedNotice = 'Reconciliation creates a plan only when repositories need changes';
+const savedNotice = 'Your changes are recorded in History';
 const noOpNotice = 'Your draft already matches the saved settings';
 
 /** Send every dirty resource for one workspace through exactly one atomic request. */

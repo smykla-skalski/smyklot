@@ -153,7 +153,7 @@ describe('workspace settings save coordinator [Unit]', () => {
     expect(save).toHaveBeenCalledOnce();
     expect(drafts.hasDirty({ type: 'workspace', targetId })).toBe(false);
     expect(drafts.operation({ type: 'workspace', targetId }).notice).toBe(
-      'Reconciliation creates a plan only when repositories need changes',
+      'Your changes are recorded in History',
     );
   });
 
