@@ -387,6 +387,8 @@ smyklot serve
 
 Point the GitHub App's webhook at `https://your-host/webhook` and set the same secret the process reads. Subscribe the App to **Issue comment**, **Check run**, **Check suite**, **Status**, and **Pull request** events. The App needs **Checks** write, **Commit statuses** read, **Administration** write, and **Merge queues** read in addition to its existing command permissions. Checks write lets Smyklot publish the merge authorization; Administration write lets it own the required-status-check ruleset; Merge queues read lets it fail closed on repositories whose queue commits Smyklot does not support. Existing installations must approve the new permissions before check mode can become ready.
 
+For connected configuration files, also subscribe to **Push** events. A push to the default branch schedules a fresh check for that repository, and a push to the workspace's `.github` repository also checks workspace settings. Checks read the current file from GitHub and respect configured working hours and manual delays. The recurring check remains a fallback for missed deliveries. GitHub requires **Contents** read to deliver [Push events](https://docs.github.com/en/webhooks/webhook-events-and-payloads#push); publishing panel changes needs **Contents** and **Pull requests** write.
+
 ### Service configuration
 
 | Variable                          | Flag                        | Default                          | Description                                                                  |

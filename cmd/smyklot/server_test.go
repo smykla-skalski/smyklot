@@ -22,6 +22,7 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/pendingci"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/storage/storagetest"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/webhook"
 )
@@ -804,10 +805,71 @@ var _ = Describe("Webhook service [Unit]", func() {
 		})
 
 		It("should ignore an event it does not handle", func() {
-			resp := post("push", deliveryOne, []byte(`{}`), nil)
+			resp := post("discussion", deliveryOne, []byte(`{}`), nil)
 
 			Expect(resp.StatusCode).To(Equal(http.StatusNoContent))
 			Consistently(stub.total, 200*time.Millisecond).Should(BeZero())
+		})
+	})
+
+	Describe("configuration file push notifications", func() {
+		BeforeEach(func() { start(config.Default()) })
+
+		It("accepts signed pushes once and notifies both configuration scopes", func() {
+			now := time.Now().UTC()
+			snapshot := catalogTransferSnapshot(storage.InstallationID(987), "987", "smykla-skalski", now)
+			snapshot.Repositories[0] = storage.RepositorySnapshot{
+				ID: storage.RepositoryID(123456), Name: ".github", FullName: "smykla-skalski/.github", DefaultBranch: "main",
+			}
+			Expect(srv.store.ReconcileCatalog(GinkgoT().Context(), []storage.InstallationSnapshot{snapshot})).To(Succeed())
+			target, err := srv.store.GetTarget(GinkgoT().Context(), snapshot.TargetID)
+			Expect(err).NotTo(HaveOccurred())
+			repository, err := srv.store.GetRepository(GinkgoT().Context(), snapshot.TargetID, snapshot.Repositories[0].ID)
+			Expect(err).NotTo(HaveOccurred())
+			_, err = srv.store.SaveInstallationSettings(GinkgoT().Context(), storage.SaveInstallationSettingsRequest{
+				TargetID: target.ID, ActorAccountID: snapshot.Account.ID, ChangedAt: now,
+				Target: &storage.InstallationTargetSettingsChange{ConfigFileSyncEnabled: true, ExpectedRevision: target.Revision},
+				Repositories: []storage.InstallationRepositorySettingsChange{{
+					RepositoryID: repository.ID, ConfigFileSyncEnabled: true, ExpectedRevision: repository.Revision,
+				}},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			count, err := srv.store.DispatchConfigFileNotifications(GinkgoT().Context(), now)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(count).To(Equal(2))
+			payload := configFilePushPayload("refs/heads/main", "main", false)
+			invalidSignature := "sha256=invalid"
+			Expect(post(webhook.EventPush, deliveryOne, payload, &invalidSignature).StatusCode).To(Equal(http.StatusUnauthorized))
+			count, err = srv.store.DispatchConfigFileNotifications(GinkgoT().Context(), time.Now().UTC())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(count).To(BeZero())
+			deliverAccepted(service, stub, webhook.EventPush, deliveryOne, payload)
+			Eventually(func() int {
+				page, listErr := srv.store.ListWorkQueue(GinkgoT().Context(), workqueue.Filter{
+					Kinds: []workqueue.Kind{workqueue.KindWebhookDelivery}, States: []workqueue.State{workqueue.StateSucceeded},
+				})
+				Expect(listErr).NotTo(HaveOccurred())
+				return len(page.Items)
+			}, eventuallyWindow).Should(Equal(1))
+			count, err = srv.store.DispatchConfigFileNotifications(GinkgoT().Context(), time.Now().UTC())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(count).To(Equal(2))
+			Expect(post(webhook.EventPush, deliveryOne, payload, nil).StatusCode).To(Equal(http.StatusOK))
+			count, err = srv.store.DispatchConfigFileNotifications(GinkgoT().Context(), time.Now().UTC())
+			Expect(err).NotTo(HaveOccurred())
+			Expect(count).To(BeZero(), "retained redelivery must not enqueue another check")
+			Expect(stub.total()).To(BeZero(), "push payloads never directly read or write GitHub files")
+		})
+
+		It("ignores non-default branches and rejects malformed push payloads", func() {
+			for _, ref := range []string{"refs/heads/feature", "refs/tags/v1.0"} {
+				Expect(post(webhook.EventPush, deliveryOne, configFilePushPayload(ref, "main", false), nil).StatusCode).
+					To(Equal(http.StatusNoContent))
+			}
+			Expect(post(webhook.EventPush, deliveryOne, configFilePushPayload("refs/heads/main", "main", true), nil).StatusCode).
+				To(Equal(http.StatusNoContent))
+			Expect(post(webhook.EventPush, deliveryOne, []byte(`{}`), nil).StatusCode).To(Equal(http.StatusBadRequest))
+			Expect(stub.total()).To(BeZero())
 		})
 	})
 

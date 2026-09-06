@@ -160,6 +160,10 @@ func (i deliveryInbox) reason(text string) string {
 }
 
 func (s *server) screenDelivery(delivery webhook.Delivery) (bool, error) {
+	if delivery.Event == webhook.EventPush {
+		push, err := parseConfigFilePush(delivery.Payload)
+		return push.relevant(), err
+	}
 	if delivery.Event != webhook.EventIssueComment {
 		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 		if err != nil {
@@ -189,6 +193,9 @@ func (s *server) executeDelivery(ctx context.Context, delivery webhook.Delivery)
 	s.metrics.DeliveriesInFlight.Inc()
 	defer s.metrics.DeliveriesInFlight.Dec()
 
+	if delivery.Event == webhook.EventPush {
+		return s.notifyPushedConfigurationFile(ctx, delivery)
+	}
 	if delivery.Event != webhook.EventIssueComment {
 		notification, err := pendingci.ParseNotification(delivery.Event, delivery.Source, delivery.Payload)
 		if err != nil {
@@ -336,6 +343,7 @@ func serviceEvents() []string {
 		webhook.EventCheckSuite,
 		webhook.EventStatus,
 		webhook.EventPullRequest,
+		webhook.EventPush,
 	}
 }
 

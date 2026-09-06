@@ -27,6 +27,7 @@ const (
 	EventCheckSuite   = "check_suite"
 	EventStatus       = "status"
 	EventPullRequest  = "pull_request"
+	EventPush         = "push"
 
 	// EventPing is what GitHub sends when a webhook is first configured
 	EventPing = "ping"
