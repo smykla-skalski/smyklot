@@ -21,6 +21,9 @@ func (snapshot PanelSnapshot) PrepareImport(
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
+	if err := storage.ValidatePanelPatch(document.Patch); err != nil {
+		return storage.SaveInstallationSettingsRequest{}, err
+	}
 	if source.State.TargetID != snapshot.Target.ID || source.State.RepositoryID != snapshot.RepositoryID() ||
 		source.State.OwnerRevision != snapshot.OwnerRevision() {
 		return storage.SaveInstallationSettingsRequest{}, errors.New("configuration import snapshot does not match its connection")
@@ -34,7 +37,7 @@ func (snapshot PanelSnapshot) PrepareImport(
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
 	}
-	if interval != nil && (*interval < 0 || *interval > storage.MaxPathIndexInterval) {
+	if interval != nil && (*interval < 0 || *interval > storage.MaxPathIndexInterval || *interval%time.Second != 0) {
 		return storage.SaveInstallationSettingsRequest{}, errors.New("file index interval is outside the supported range")
 	}
 	bypass, err := storageExceptions(settings.MergeExceptions, snapshot.Target.Kind)

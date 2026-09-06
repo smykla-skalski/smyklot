@@ -16,7 +16,11 @@ const MaxFileDocumentBytes = 16 << 20
 // Configuration files are editable outside the panel, so last-key-wins decoding
 // must not erase an earlier setting before domain validation can inspect it.
 func DecodeJSONObject(document []byte) (map[string]any, error) {
-	if len(document) > MaxFileDocumentBytes || !utf8.Valid(document) {
+	return decodeJSONObjectWithin(document, MaxFileDocumentBytes)
+}
+
+func decodeJSONObjectWithin(document []byte, maxBytes int) (map[string]any, error) {
+	if maxBytes <= 0 || len(document) > maxBytes || !utf8.Valid(document) {
 		return nil, errors.New("configuration JSON exceeds its size limit or contains invalid UTF-8")
 	}
 	reader := jsonObjectReader{source: document, decoder: json.NewDecoder(bytes.NewReader(document))}
@@ -32,7 +36,7 @@ func DecodeJSONObject(document []byte) (map[string]any, error) {
 	if !ok {
 		return nil, errors.New("configuration JSON must be an object")
 	}
-	if _, err := EncodeJSONDocument(object); err != nil {
+	if _, err := encodeJSONDocumentWithin(object, maxBytes); err != nil {
 		return nil, err
 	}
 	return object, nil
@@ -43,6 +47,10 @@ func DecodeJSONObject(document []byte) (map[string]any, error) {
 // accept documents that cannot be read back after a merge. These bytes are data,
 // never embedded in an HTML script, and need no HTML escaping.
 func EncodeJSONDocument(value any) ([]byte, error) {
+	return encodeJSONDocumentWithin(value, MaxFileDocumentBytes)
+}
+
+func encodeJSONDocumentWithin(value any, maxBytes int) ([]byte, error) {
 	var output bytes.Buffer
 	encoder := json.NewEncoder(&output)
 	encoder.SetEscapeHTML(false)
@@ -50,7 +58,7 @@ func EncodeJSONDocument(value any) ([]byte, error) {
 		return nil, err
 	}
 	encoded := bytes.TrimSuffix(output.Bytes(), []byte("\n"))
-	if len(encoded) > MaxFileDocumentBytes {
+	if len(encoded) > maxBytes {
 		return nil, errors.New("encoded configuration JSON exceeds its size limit")
 	}
 	return encoded, nil

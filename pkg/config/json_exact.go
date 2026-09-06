@@ -14,11 +14,18 @@ import (
 // of "files" and "Files" takes effect. Arbitrary map keys remain case-sensitive.
 // It also applies the duplicate-key, Unicode and size checks of DecodeJSONObject.
 func DecodeExactJSON(document []byte, destination any) error {
+	return DecodeExactJSONWithin(document, destination, MaxFileDocumentBytes)
+}
+
+// DecodeExactJSONWithin applies the same strict decoding to a separately
+// bounded envelope. Persisted envelopes may contain a base64 file document and
+// therefore need more space than the file itself. File callers keep the default.
+func DecodeExactJSONWithin(document []byte, destination any, maxBytes int) error {
 	value := reflect.ValueOf(destination)
 	if value.Kind() != reflect.Pointer || value.IsNil() {
 		return errors.New("configuration JSON destination must be a non-nil pointer")
 	}
-	object, err := DecodeJSONObject(document)
+	object, err := decodeJSONObjectWithin(document, maxBytes)
 	if err != nil {
 		return err
 	}
