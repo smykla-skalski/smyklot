@@ -101,7 +101,58 @@ func prepareConfigFileImport(ctx context.Context, tx *transaction, request stora
 		}
 	}
 	return upsertCatalogAccount(ctx, tx, storage.Account{
-		ID: systemAuditAccountID, Provider: "smyklot", SubjectID: queueActorSystem,
-		Login: "smyklot", DisplayName: "Smyklot", UpdatedAt: request.ChangedAt,
+		ID: systemAuditAccountID, Provider: systemAuditProvider, SubjectID: queueActorSystem,
+		Login: systemAuditProvider, DisplayName: "Smyklot", UpdatedAt: request.ChangedAt,
 	})
+}
+
+// Ordinary no-op saves roll back their read transaction. Imports still advance
+// the comparison state, even when the settings already have the desired values.
+func commitUnchangedConfigFileImport(
+	ctx context.Context,
+	tx *transaction,
+	request storage.SaveInstallationSettingsRequest,
+) error {
+	if request.ConfigFileImport == nil {
+		return nil
+	}
+	if err := writeConfigFileState(ctx, tx, request.ConfigFileImport.State); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func validateImportedSettingsWork(
+	request storage.SaveInstallationSettingsRequest,
+	work installationSettingsWork,
+) error {
+	if request.ConfigFileImport == nil {
+		return nil
+	}
+	for _, item := range work.items {
+		if item.After == nil {
+			continue
+		}
+		if err := validateInstallationSettingsDocument(item.Kind, item.SyncKind, item.After.Document); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateSyncResourceRemovals(request storage.SaveInstallationSettingsRequest) error {
+	if request.ConfigFileImport != nil {
+		return nil
+	}
+	for _, item := range request.SyncConfigs {
+		if item.Remove {
+			return errors.New("removing sync resources requires a configuration file import")
+		}
+	}
+	for _, item := range request.SyncOverrides {
+		if item.Remove {
+			return errors.New("removing sync resources requires a configuration file import")
+		}
+	}
+	return nil
 }

@@ -47,6 +47,7 @@ var tables = []string{
 	"target_owners",
 	"target_roles",
 	"repositories",
+	"config_file_connections",
 	tableScheduleProfiles,
 	tableScheduleWindows,
 	"schedule_exceptions",

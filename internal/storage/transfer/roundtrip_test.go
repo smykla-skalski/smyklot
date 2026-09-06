@@ -329,6 +329,12 @@ func requireSameState(t *testing.T, ctx context.Context, source, destination sto
 		{"repositories", func(s storage.Store) (any, error) {
 			return s.ListRepositories(ctx, "github:installation:100")
 		}},
+		{"workspace configuration file connection", func(s storage.Store) (any, error) {
+			return s.GetConfigFileState(ctx, "github:installation:100", "")
+		}},
+		{"repository configuration file connection", func(s storage.Store) (any, error) {
+			return s.GetConfigFileState(ctx, "github:installation:100", "repo-1")
+		}},
 		// What is known about each repository for each kind of sync, which is
 		// the one table here holding a column that is empty in most rows: the
 		// seed leaves one repository refused, and without reading the rows back

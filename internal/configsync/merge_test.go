@@ -5,11 +5,13 @@ import (
 	"testing"
 )
 
+type mergeTestCase struct {
+	name, base, panel, file, want string
+	paths                         [][]string
+}
+
 func TestMergeIndependentSettings(t *testing.T) {
-	cases := []struct {
-		name, base, panel, file, want string
-		paths                         [][]string
-	}{
+	cases := []mergeTestCase{
 		{"unchanged", `{"a":1}`, `{"a":1.0}`, `{"a":1e0}`, `{"a":1}`, nil},
 		{"unbounded exponent", `{"a":1e999999999999}`, `{"a":10e999999999998}`, `{"a":1.0e999999999999}`, `{"a":1e999999999999}`, nil},
 		{"independent fields", `{"a":1,"b":1}`, `{"a":2,"b":1}`, `{"a":1,"b":2}`, `{"a":2,"b":2}`, nil},
@@ -24,36 +26,41 @@ func TestMergeIndependentSettings(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			result, err := Merge([]byte(test.base), []byte(test.panel), []byte(test.file))
-			if err != nil {
-				t.Fatal(err)
-			}
-			same, err := Equivalent(result.Document, []byte(test.want))
-			if err != nil || !same {
-				t.Fatalf("got %s, want %s: %v", result.Document, test.want, err)
-			}
-			var paths [][]string
-			for _, conflict := range result.Conflicts {
-				paths = append(paths, conflict.Path)
-			}
-			if !reflect.DeepEqual(paths, test.paths) {
-				t.Fatalf("conflicts %v, want %v", paths, test.paths)
-			}
-			// The set of conflicts and conflict-free answer are direction-independent.
-			reverse, err := Merge([]byte(test.base), []byte(test.file), []byte(test.panel))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(reverse.Conflicts, result.Conflicts) {
-				t.Fatal("direction changed conflicts")
-			}
-			if len(paths) == 0 {
-				same, _ := Equivalent(reverse.Document, result.Document)
-				if !same {
-					t.Fatal("direction changed merged settings")
-				}
-			}
+			checkMergeCase(t, test)
 		})
+	}
+}
+
+func checkMergeCase(t *testing.T, test mergeTestCase) {
+	t.Helper()
+	result, err := Merge([]byte(test.base), []byte(test.panel), []byte(test.file))
+	if err != nil {
+		t.Fatal(err)
+	}
+	same, err := Equivalent(result.Document, []byte(test.want))
+	if err != nil || !same {
+		t.Fatalf("got %s, want %s: %v", result.Document, test.want, err)
+	}
+	var paths [][]string
+	for _, conflict := range result.Conflicts {
+		paths = append(paths, conflict.Path)
+	}
+	if !reflect.DeepEqual(paths, test.paths) {
+		t.Fatalf("conflicts %v, want %v", paths, test.paths)
+	}
+	// The set of conflicts and conflict-free answer are direction-independent.
+	reverse, err := Merge([]byte(test.base), []byte(test.file), []byte(test.panel))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(reverse.Conflicts, result.Conflicts) {
+		t.Fatal("direction changed conflicts")
+	}
+	if len(paths) == 0 {
+		same, _ := Equivalent(reverse.Document, result.Document)
+		if !same {
+			t.Fatal("direction changed merged settings")
+		}
 	}
 }
 

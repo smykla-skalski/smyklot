@@ -79,7 +79,7 @@ func TestFileDocumentRejectsWrongScopeAndUnknownSettings(t *testing.T) {
 	const repository = "[panel]\nversion=1\nscope='repository'\n"
 	const workspace = "[panel]\nversion=1\nscope='workspace'\n"
 	cases := map[string]string{
-		"unknown root":                     "quiet_sucess=true\n",
+		"unknown root":                     "unknown_setting=true\n",
 		"unknown metadata":                 repository + "automatic=true\n",
 		"unknown setting":                  repository + "[panel.settings]\nquiet_peirod='1m'\n",
 		"unsupported version":              strings.Replace(repository, "version=1", "version=2", 1),

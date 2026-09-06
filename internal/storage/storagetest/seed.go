@@ -46,6 +46,7 @@ func SeededTables() []string {
 		"target_owners",
 		"target_roles",
 		"repositories",
+		"config_file_connections",
 		"pending_ci_repository_gates",
 		"pending_ci_check_slots",
 		"root_elevations",
@@ -100,6 +101,7 @@ func (s *seeder) run() error {
 		{"elevation", s.seedElevation},
 		{"target access", s.seedTargetAccess},
 		{"settings", s.seedSettings},
+		{"configuration file connections", s.seedConfigFileConnections},
 		{"invitation", s.seedInvitation},
 		{"runtime settings", s.seedRuntimeSettings},
 		{"preferences", s.seedPreferences},
@@ -242,6 +244,7 @@ func (s *seeder) seedSettings() error {
 		ElevationID: &s.elevation.ID, SessionTokenHash: s.session.TokenHash,
 		ChangedAt: s.now.Add(2 * time.Minute),
 		Target: &storage.InstallationTargetSettingsChange{
+			ConfigFileSyncEnabled:    true,
 			RepositoryDefaultEnabled: true,
 			ConfigPatch:              config.Patch{QuietSuccess: &quiet},
 			ExpectedRevision:         1,
@@ -257,7 +260,8 @@ func (s *seeder) seedSettings() error {
 		ElevationID: &s.elevation.ID, SessionTokenHash: s.session.TokenHash,
 		ChangedAt: s.now.Add(3 * time.Minute),
 		Repositories: []storage.InstallationRepositorySettingsChange{{
-			RepositoryID: "repo-1", EnabledOverride: &enabled,
+			ConfigFileSyncEnabled: true,
+			RepositoryID:          "repo-1", EnabledOverride: &enabled,
 			ConfigPatch: config.Patch{CommandPrefix: &prefix}, ExpectedRevision: 1,
 		}},
 	})

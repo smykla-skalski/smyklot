@@ -106,25 +106,25 @@ func (s *Store) SaveInstallationSettings(
 		return storage.SaveInstallationSettingsResult{}, err
 	}
 	if len(work.items) == 0 {
-		if request.ConfigFileImport != nil {
-			if err := writeConfigFileState(ctx, tx, request.ConfigFileImport.State); err != nil {
-				return storage.SaveInstallationSettingsResult{}, err
-			}
-			if err := tx.Commit(); err != nil {
-				return storage.SaveInstallationSettingsResult{}, err
-			}
+		if err := commitUnchangedConfigFileImport(ctx, tx, request); err != nil {
+			return storage.SaveInstallationSettingsResult{}, err
 		}
 		return installationSettingsResult(work), nil
 	}
-	if request.ConfigFileImport != nil {
-		for _, item := range work.items {
-			if item.After != nil {
-				if err := validateInstallationSettingsDocument(item.Kind, item.SyncKind, item.After.Document); err != nil {
-					return storage.SaveInstallationSettingsResult{}, err
-				}
-			}
-		}
+	if err := validateImportedSettingsWork(request, work); err != nil {
+		return storage.SaveInstallationSettingsResult{}, err
 	}
+	return s.finishInstallationSettingsSave(ctx, tx, prepared, work)
+}
+
+func (s *Store) finishInstallationSettingsSave(
+	ctx context.Context,
+	tx *transaction,
+	prepared preparedInstallationSettings,
+	work installationSettingsWork,
+) (storage.SaveInstallationSettingsResult, error) {
+	request := prepared.request
+	var err error
 	work.snapshotBefore, err = captureInstallationSettingsSnapshot(
 		ctx, tx, request.TargetID,
 	)
@@ -180,17 +180,8 @@ func (s *Store) SaveInstallationSettings(
 func prepareInstallationSettings(
 	request storage.SaveInstallationSettingsRequest,
 ) (preparedInstallationSettings, error) {
-	if request.ConfigFileImport == nil {
-		for _, item := range request.SyncConfigs {
-			if item.Remove {
-				return preparedInstallationSettings{}, errors.New("removing sync resources requires a configuration file import")
-			}
-		}
-		for _, item := range request.SyncOverrides {
-			if item.Remove {
-				return preparedInstallationSettings{}, errors.New("removing sync resources requires a configuration file import")
-			}
-		}
+	if err := validateSyncResourceRemovals(request); err != nil {
+		return preparedInstallationSettings{}, err
 	}
 	if strings.TrimSpace(request.TargetID) == "" ||
 		strings.TrimSpace(request.ActorAccountID) == "" || request.ChangedAt.IsZero() {

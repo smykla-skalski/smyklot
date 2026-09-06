@@ -14,7 +14,10 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
-const systemAuditAccountID = "smyklot:system"
+const (
+	systemAuditAccountID = "smyklot:system"
+	systemAuditProvider  = "smyklot"
+)
 
 type ownershipState struct {
 	exists   bool
@@ -339,8 +342,8 @@ func recordOwnershipAudit(
 	ownership storage.OwnershipSnapshot,
 ) error {
 	system := storage.Account{
-		ID: systemAuditAccountID, Provider: "smyklot", SubjectID: queueActorSystem,
-		Login: "smyklot", DisplayName: "Smyklot", UpdatedAt: ownership.SyncedAt,
+		ID: systemAuditAccountID, Provider: systemAuditProvider, SubjectID: queueActorSystem,
+		Login: systemAuditProvider, DisplayName: "Smyklot", UpdatedAt: ownership.SyncedAt,
 	}
 	if err := upsertCatalogAccount(ctx, tx, system); err != nil {
 		return fmt.Errorf("reconcile ownership audit identity: %w", err)

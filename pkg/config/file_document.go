@@ -65,7 +65,7 @@ type PanelFileActor struct {
 	Mode string `toml:"mode" json:"mode"`
 }
 
-// Document is the existing Sync JSON document. TOML cannot express JSON null,
+// PanelFileSync carries the existing Sync JSON document. TOML cannot express JSON null,
 // which file adjustments use to delete keys. The TOML wire representation uses
 // a multiline JSON string, while reconciliation sees a JSON object and can merge
 // independent edits within it. Domain validation still happens before import.
@@ -97,7 +97,7 @@ func ParseFileDocument(format Format, content []byte) (FileDocument, error) {
 		return FileDocument{}, fmt.Errorf("decode configuration file: %w", err)
 	}
 	document := wire.document()
-	if err := document.Patch.normalize(); err != nil {
+	if err := document.normalize(); err != nil {
 		return FileDocument{}, err
 	}
 	if err := document.Panel.Validate(); err != nil {
@@ -108,7 +108,7 @@ func ParseFileDocument(format Format, content []byte) (FileDocument, error) {
 
 // RenderFileDocument writes a single complete file with a terminal newline.
 func RenderFileDocument(document FileDocument) ([]byte, error) {
-	if err := document.Patch.normalize(); err != nil {
+	if err := document.normalize(); err != nil {
 		return nil, err
 	}
 	if err := document.Panel.Validate(); err != nil {

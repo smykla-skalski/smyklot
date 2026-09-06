@@ -6,15 +6,17 @@ func present(document string) Snapshot {
 	return Snapshot{Exists: true, Document: []byte(document)}
 }
 
+type reconcileTestCase struct {
+	name                 string
+	base, panel, file    string
+	want                 string
+	importPanel, publish bool
+	advance              bool
+	problem              Problem
+}
+
 func TestReconcileBidirectionalChanges(t *testing.T) {
-	cases := []struct {
-		name                 string
-		base, panel, file    string
-		want                 string
-		importPanel, publish bool
-		advance              bool
-		problem              Problem
-	}{
+	cases := []reconcileTestCase{
 		{"first missing file", "", `{"a":1}`, "", `{"a":1}`, false, true, false, ""},
 		{"first empty file", "", `{"a":1}`, `{}`, `{"a":1}`, false, true, false, ""},
 		{"first unrelated settings", "", `{"a":1}`, `{"b":2}`, `{"a":1,"b":2}`, true, true, false, ""},
@@ -30,32 +32,37 @@ func TestReconcileBidirectionalChanges(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			input := ReconcileInput{Panel: []byte(tc.panel)}
-			if tc.base != "" {
-				input.Base = present(tc.base)
-			}
-			if tc.file != "" {
-				input.File = present(tc.file)
-			}
-			decision, err := Reconcile(input)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if decision.Problem != tc.problem || decision.ImportPanel != tc.importPanel ||
-				decision.PublishFile != tc.publish || decision.AdvanceBase != tc.advance {
-				t.Fatalf("unexpected effects: %+v", decision)
-			}
-			if tc.problem != "" {
-				if len(decision.Document) != 0 {
-					t.Fatal("a blocked comparison must not supply publishable content")
-				}
-				return
-			}
-			equal, err := Equivalent(decision.Document, []byte(tc.want))
-			if err != nil || !equal {
-				t.Fatalf("document = %s, want %s (%v)", decision.Document, tc.want, err)
-			}
+			checkReconcileCase(t, tc)
 		})
+	}
+}
+
+func checkReconcileCase(t *testing.T, tc reconcileTestCase) {
+	t.Helper()
+	input := ReconcileInput{Panel: []byte(tc.panel)}
+	if tc.base != "" {
+		input.Base = present(tc.base)
+	}
+	if tc.file != "" {
+		input.File = present(tc.file)
+	}
+	decision, err := Reconcile(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Problem != tc.problem || decision.ImportPanel != tc.importPanel ||
+		decision.PublishFile != tc.publish || decision.AdvanceBase != tc.advance {
+		t.Fatalf("unexpected effects: %+v", decision)
+	}
+	if tc.problem != "" {
+		if len(decision.Document) != 0 {
+			t.Fatal("a blocked comparison must not supply publishable content")
+		}
+		return
+	}
+	equal, err := Equivalent(decision.Document, []byte(tc.want))
+	if err != nil || !equal {
+		t.Fatalf("document = %s, want %s (%v)", decision.Document, tc.want, err)
 	}
 }
 

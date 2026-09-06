@@ -123,30 +123,38 @@ func equal(a, b any) bool {
 		return canonicalNumber(a) == canonicalNumber(right)
 	case map[string]any:
 		right, ok := b.(map[string]any)
-		if !ok || len(a) != len(right) {
-			return false
-		}
-		for key, value := range a {
-			other, present := right[key]
-			if !present || !equal(value, other) {
-				return false
-			}
-		}
-		return true
+		return ok && equalObjects(a, right)
 	case []any:
 		right, ok := b.([]any)
-		if !ok || len(a) != len(right) {
-			return false
-		}
-		for index, value := range a {
-			if !equal(value, right[index]) {
-				return false
-			}
-		}
-		return true
+		return ok && equalLists(a, right)
 	default:
 		return reflect.DeepEqual(a, b)
 	}
+}
+
+func equalObjects(left, right map[string]any) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range left {
+		other, present := right[key]
+		if !present || !equal(value, other) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalLists(left, right []any) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index, value := range left {
+		if !equal(value, right[index]) {
+			return false
+		}
+	}
+	return true
 }
 
 // Normalize coefficient and exponent without constructing enormous powers of ten.
