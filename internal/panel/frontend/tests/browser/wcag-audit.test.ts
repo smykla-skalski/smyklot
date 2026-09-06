@@ -138,6 +138,32 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
       return 'rgb(255, 255, 255)';
     };
 
+    const fieldLabels = (element: Element): Element[] => {
+      if (
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLSelectElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLButtonElement
+      ) {
+        const labels = [...(element.labels ?? [])];
+        if (labels.length > 0) return labels;
+      }
+      return (element.getAttribute('aria-labelledby') ?? '').split(/\s+/u).flatMap((id) => {
+        const label = document.getElementById(id);
+        return label ? [label] : [];
+      });
+    };
+
+    const fieldLabelText = (element: Element): string => {
+      const copy = element.cloneNode(true) as HTMLElement;
+      for (const control of copy.querySelectorAll(
+        'input, select, textarea, button, [role="combobox"]',
+      )) {
+        control.remove();
+      }
+      return (copy.textContent ?? '').trim();
+    };
+
     /* An accessible name, computed the way a browser computes one, minus the parts a
        page cannot reach from script: content, aria-label, aria-labelledby, title, and -
        for an input - its label. */
@@ -155,14 +181,11 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
       if (label !== undefined && label !== '') return label;
       /* A textarea takes a label exactly as an input does, and leaving it out of this
          list reported a labelled field as nameless. */
-      if (
-        element instanceof HTMLInputElement ||
-        element instanceof HTMLSelectElement ||
-        element instanceof HTMLTextAreaElement
-      ) {
-        const own = element.labels?.[0]?.textContent?.trim();
-        if (own !== undefined && own !== '') return own;
-      }
+      const own = fieldLabels(element).map(fieldLabelText).join(' ').trim();
+      if (own !== '') return own;
+      // A combobox has an author-provided name; its text content is its value.
+      if (element.getAttribute('role') === 'combobox')
+        return element.getAttribute('title')?.trim() ?? '';
       const text = (element.textContent ?? '').trim();
       if (text !== '') return text;
       const title = element.getAttribute('title')?.trim();
@@ -171,7 +194,7 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
 
     const interactive = [
       ...document.querySelectorAll<HTMLElement>(
-        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]:not([tabindex="-1"]), [role="button"], [role="link"], [role="tab"], [role="switch"], [role="checkbox"]',
+        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [tabindex]:not([tabindex="-1"]), [role="button"], [role="link"], [role="tab"], [role="switch"], [role="checkbox"], [role="combobox"]',
       ),
     ].filter((element) => shown(element));
 
@@ -197,14 +220,22 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
     for (const control of interactive) {
       const label = control.getAttribute('aria-label');
       if (label === null) continue;
-      // A select's options are possible values, not its visible label. Like
-      // input values, their text must not replace the adjacent field label.
-      if (control instanceof HTMLSelectElement) continue;
+      // Native and ARIA comboboxes have a name distinct from the selected value.
+      // Check their visible external labels, never the option text on the trigger.
+      // https://www.w3.org/WAI/ARIA/apg/patterns/combobox/
+      const valueControl =
+        control instanceof HTMLSelectElement || control.getAttribute('role') === 'combobox';
       const copy = control.cloneNode(true) as HTMLElement;
       for (const spare of copy.querySelectorAll('kbd, .visually-hidden, .avatar, .ws-mini')) {
         spare.remove();
       }
-      const visible = (copy.textContent ?? '').replaceAll(/\s+/gu, ' ').trim();
+      const visible = (
+        valueControl
+          ? fieldLabels(control).filter(shown).map(fieldLabelText).join(' ')
+          : (copy.textContent ?? '')
+      )
+        .replaceAll(/\s+/gu, ' ')
+        .trim();
       if (visible === '' || visible.length > 60) continue;
       /* A monogram: two or three capitals standing in for a name the label spells out. */
       if (/^[A-Z]{1,3}$/u.test(visible)) continue;
@@ -601,6 +632,32 @@ function spacingAudit(page: Page): Promise<Omit<Finding, 'route'>[]> {
 const OPEN: ReadonlyArray<{ where: string; hits: number }> = [];
 
 describe('WCAG 2.2, on every route [Integration]', () => {
+  it('distinguishes combobox values from labels while rejecting missing or overridden names', async () => {
+    const page = await panel.browser.newPage();
+    try {
+      await page.setContent(`
+        <label for="native">Duration unit</label>
+        <select id="native" aria-label="Duration unit"><option>seconds</option></select>
+        <label for="themed">Duration unit</label>
+        <button id="themed" role="combobox" aria-label="Duration unit">seconds</button>
+        <label for="wrong">Duration unit</label>
+        <button id="wrong" class="wrong-label" role="combobox" aria-label="Speed">seconds</button>
+        <button class="missing-label" role="combobox">seconds</button>
+        <button class="wrong-button" aria-label="Archive">Delete</button>
+      `);
+      const results = (await audit(page)).filter((finding) =>
+        ['2.5.3 Label in Name', '4.1.2 Name, Role, Value'].includes(finding.rule),
+      );
+      expect(results.map(({ where, rule }) => ({ where, rule }))).toEqual([
+        { where: 'button.missing-label', rule: '4.1.2 Name, Role, Value' },
+        { where: 'button.wrong-label', rule: '2.5.3 Label in Name' },
+        { where: 'button.wrong-button', rule: '2.5.3 Label in Name' },
+      ]);
+    } finally {
+      await page.close();
+    }
+  });
+
   it('finds nothing a machine can settle beyond what is knowingly open', () => {
     /* The knowingly-open six are held to their exact count: one more of them, or one on a
        component not listed, is a new fault and fails here. */
