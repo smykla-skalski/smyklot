@@ -81,8 +81,8 @@ is neutral, On is muted teal, and Off is muted rose.
 | Section title | `20px / 28px` | 700 |
 | Component title | `16px / 24px` | 600 |
 | Body | `15px / 22px` | 400 |
-| Table primary | `14px / 20px` | 600 |
-| Table secondary | `13px / 18px` | 400 |
+| List primary | `14px / 20px` | 600 |
+| List secondary | `13px / 18px` | 400 |
 | Control label | `13px / 18px` | 600 |
 | Technical data | `13px / 18px` | 400-500 |
 
@@ -91,20 +91,20 @@ long prose. Technical values use tabular figures.
 
 ## Spacing, shape, and elevation
 
-- Spacing scale: `4, 8, 12, 16, 24, 32px`
+- Spacing scale: `4, 8, 12, 16, 20, 24, 32px`
 - Surface radius: `10px`
 - Control radius: `8px`
 - Chips and status badges may use a full pill radius
 - Standalone controls: `34px` visual height, with an explicit `40px` tier
 - Touch controls: at least `44px` hit area
-- Table header: `40px`
-- Desktop virtualized table rows: `65px`; mobile rows grow with their content
-- Table cell padding: `16px` horizontal
+- Object and setting rows grow around their content at every viewport width
+- Cards use the shared 20px surface inset, reduced by the shared compact token on phones
 - Sidebar: `240px` expanded, `72px` collapsed
 - Shadows appear only on raised menus, inspectors, and dialogs
 
-Cards are used only when content forms a real unit. Settings use sections and
-dividers instead of nested cards.
+Cards group related settings. Rows within a group use shared dividers. Advanced
+settings open in the shared inspector with their own regular cards, as specified
+in the disclosure laws; do not nest decorative cards inside the originating card.
 
 ## Components
 
@@ -152,51 +152,40 @@ dividers instead of nested cards.
 - Repository settings use an addressable page with one vertical scroll. Secondary
   file controls use the shared inspector, with content adjustments before final output
 
-### Tables
+### Lists and toolbars
 
-- Toolbar contains search, relevant scope, and one primary action; column filters
-  live beside their column labels
-- Active column filters keep a visible selected treatment on their header affordance
-- Sorting lives in column-header buttons with `aria-sort`
-- Large datasets use cursor-backed infinite loading with TanStack Table state and
-  TanStack Virtual rendering; there is no page-size or numbered-page control
-- Filter and sort requests keep current rows mounted, mark the table busy, and
-  replace rows in place when the latest request completes
-- Infinite tables have no footer; incremental-load failures use a temporary inline
-  recovery prompt without reducing the body viewport
-- Desktop tables keep the header outside the native vertical body scroller, with no
-  custom scrollbar skin or permanently reserved scrollbar gutter
-- Use neutral dividers instead of zebra striping
-- Desktop virtualized table rows share a 65px track and every data cell draws the
-  same bottom divider, so content cannot overlap or hide row boundaries
-- Hover is neutral; selected rows use the petrol selected surface
-- Status uses semantic icon-plus-label badges
-- Roles use neutral outline icons and text, not multiple semantic colors
-- More-actions controls use a heavy DotsThree glyph in a borderless ghost target
-  with at least a 40px desktop hit area
-- User and invitation tables become structured list rows below 768px
-- History becomes a compact activity list on narrow screens
-- Audit history orders columns as Actor, Target, Change, When; actor identity uses
-  the same name and handle typography as Access
-- Empty results use the shared `EmptyState` anatomy in a visible table-body area:
-  a plain title, an explanation, and a recovery action when available. Do not add
-  a decorative icon or leave only column headings when there are no rows
-- The sidebar is the only organization picker. User access scope chooses only
-  Global or the currently selected installation
-- Users/Invitations and Add user share one tab row above the standalone search
-  and filter toolbar; the Add dialog inherits and summarizes the page scope
-- Table role changes use a custom top-layer listbox so menus are never clipped
-  by the table or rendered with browser-native styling
-- Search and filters never share the table's border
-- Repository names use a descender-safe line box and optical vertical alignment;
-  the first and last row controls keep equal 16px visual outer insets
-- Repository detail navigation uses plain semantic count text, not count pills
-- Installation and account menus are content-sized, keep search visible while
-  options scroll, and omit type labels already stated by their group heading
-- Light and dark share identical geometry. The compact account menu owns the
-  explicit theme selector, and the choice persists as a browser-local preference
-- Right-edge filter menus align their right edge to the trigger so their content
-  opens toward available space instead of being clipped by the viewport
+- Lists use semantic `ul`/`li` and the shared `.object-row` anatomy. Do not render
+  tables, column headers, or fixed-height row tracks
+- Keep the whole page scrolling. Rows grow when names, descriptions, or controls
+  wrap; do not clip them to preserve a uniform height
+- The toolbar contains search, filters, sorting through `TableToolsMenu`, and one
+  primary action. Search and filters remain outside the list card
+- Large lists use cursor-backed infinite loading. Do not add page-size pickers,
+  numbered pagination, or a detached “Show all” footer
+- Refreshing a filter or sort preserves current rows and marks the region busy
+  until the latest response arrives. A failed refresh does not erase loaded data
+- Incremental-load failures use a temporary recovery action at the list boundary
+- Use neutral dividers without zebra striping. Navigable rows use the shared hover,
+  press, and focus states; independent switches and menus retain their own hit areas
+- Status uses semantic icon-plus-label badges. Roles use neutral outline icons and
+  text. State must remain understandable without color
+- More-actions controls use the shared borderless ghost button and stroked icon
+- History uses activity rows. Actor identities follow the same name and handle
+  treatment as Access
+- Empty results use the shared empty-state anatomy: a plain title, a brief
+  explanation, and a relevant recovery action. Do not add a decorative icon
+- The sidebar is the only organization picker. Access scope chooses Global or the
+  current workspace, and Add dialogs inherit that scope
+- Repository names keep descender-safe line boxes and optical vertical alignment;
+  first and last rows retain the shared outer inset
+- Repository detail navigation uses plain semantic counts rather than count pills
+- Menus are content-sized, retain search while options scroll, and omit type labels
+  already stated by group headings. Right-edge menus open toward available space
+- Light and dark themes share geometry. The account menu owns the persistent theme
+  selector
+
+The responsive-shell, object-row, and browser geometry checks enforce this
+anatomy. New routes must use those same primitives and participate in the sweep
 
 ## Class or component
 
@@ -208,16 +197,16 @@ They appear on 58 elements across 17 files, and what they do is trim one box to 
 cap and baseline. A component cannot do that: the box that needs trimming is usually
 a caller's own `<span>` inside a flex row, and wrapping each one in a component would
 add an element per trimmed word — which is a box the trim then has to be applied to
-anyway. `.button-label` and `.table-heading-label` exist because those two boxes are
-drawn by a component that already owns them, not as exceptions to this.
+anyway. `.button-label` is owned by the shared Button component, which already
+renders that box.
 
 **A surface is a class; an anatomy is a component.** `.plate` in `app.css` is a
 ground, a keyline, a corner and a lift — nothing else. `Plate.svelte` is that surface
 *plus* a mandatory header and body. Six call sites wear `class="plate"` by hand and
 that is correct rather than a bypass: they want the surface under their own contents
-and have no header to give it. The same split holds for `.table-card` and
-`DataTable`, and it is the test to apply to the next one — if a caller needs the look
-and not the parts, the look is a class.
+and have no header to give it. The same distinction applies to the shared `.card`
+surface and components with a prescribed header and body. A caller that needs
+only the surface uses the class.
 
 ## Icon vocabulary
 
