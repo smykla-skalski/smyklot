@@ -87,6 +87,25 @@ async function expectSharedDurationStyles(page: Page): Promise<void> {
   }
 }
 
+async function settledDisclosurePaint(summary: Locator, active: boolean) {
+  const read = () =>
+    summary.evaluate((node) => {
+      const style = getComputedStyle(node);
+      return {
+        background: style.backgroundColor,
+        inset: style.boxShadow,
+        hovered: node.matches(':hover'),
+        active: node.matches(':active'),
+        settled: node.getAnimations().every((animation) => animation.playState === 'finished'),
+      };
+    });
+
+  // Pointer events arrive before the next rendered frame. Wait for the actual
+  // shared transition, otherwise both reads can still be the idle/hover color.
+  await expect.poll(read).toMatchObject({ hovered: true, active, settled: true });
+  return read();
+}
+
 describe('shared duration field style contract [Browser]', () => {
   it.each(['light', 'dark'] as const)(
     'aligns the formatting disclosure with its card text and frame in %s',
@@ -163,9 +182,7 @@ describe('shared duration field style contract [Browser]', () => {
             );
             const summary = origin.locator('summary');
             await summary.hover();
-            const hovered = await summary.evaluate(
-              (node) => getComputedStyle(node).backgroundColor,
-            );
+            const hovered = await settledDisclosurePaint(summary, false);
             if (auditDirectory !== undefined) {
               await card.screenshot({
                 path: join(
@@ -175,11 +192,8 @@ describe('shared duration field style contract [Browser]', () => {
               });
             }
             await page.mouse.down();
-            const pressed = await summary.evaluate((node) => ({
-              background: getComputedStyle(node).backgroundColor,
-              inset: getComputedStyle(node).boxShadow,
-            }));
-            expect(pressed.background).not.toBe(hovered);
+            const pressed = await settledDisclosurePaint(summary, true);
+            expect(pressed.background).not.toBe(hovered.background);
             expect(pressed.inset).toContain('inset');
             if (auditDirectory !== undefined) {
               await card.screenshot({
@@ -190,6 +204,9 @@ describe('shared duration field style contract [Browser]', () => {
               });
             }
             await page.mouse.up();
+            const released = await settledDisclosurePaint(summary, false);
+            expect(released.background).toBe(hovered.background);
+            expect(released.inset).not.toContain('inset');
           }
         }
         for (const sample of samples) {
