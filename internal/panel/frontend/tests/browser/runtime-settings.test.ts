@@ -105,7 +105,8 @@ describe('Root runtime settings drafts', () => {
 
       const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
       await amount.waitFor({ state: 'visible' });
-      await page.getByRole('combobox', { name: 'Session lifetime unit' }).selectOption('hours');
+      await page.getByRole('combobox', { name: 'Session lifetime unit' }).click();
+      await page.getByRole('option', { name: 'hours', exact: true }).click();
       await amount.fill('2');
       expect(writes).toHaveLength(0);
 

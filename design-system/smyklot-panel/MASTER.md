@@ -294,6 +294,46 @@ last row, the row list uses `rows-continue` to retain its shared separator. The
 following content must not paint an independent top border. Local row styles use
 the shared token. Panel outlines remain intact
 
+Adjacent changed rows leave exactly 1px of the card surface between their fills.
+Use the existing separator space as a transparent border and clip the fill to
+the padding box. Do not add a colored divider or shift the rows when they change
+Reduced-motion styles disable transitions rather than assigning a short universal
+duration, which would introduce transitions on otherwise static elements
+
+Mark only the setting that differs from its saved value. Compare structured
+settings semantically, ignoring object key order and order in set-valued lists.
+Included and excluded branches are separate settings, as is each bypass actor.
+Restoring a saved value removes its marker even when other settings remain dirty
+
+The save composer stays inside the content pane's available width, clear of the
+navigation rail and sidebar in both expanded and collapsed states. Its actions
+wrap when that pane is narrow, even if the viewport itself is wide
+Navigation and pane overlays share the same animated sidebar width, so this
+boundary holds throughout a fold or breakpoint change, not just after it settles
+
+Collection Add actions belong at the top right of the section header. A bypass
+list uses one shared Add an actor button there, including when the list is empty.
+That button toggles its editor and exposes its expanded state. In an expanded
+card, the inset below its final action matches the inset above the header action.
+Use the shared `card-action-foot` cap-height track and button margins to match
+`card-head`, keeping the heading aligned with neighboring cards
+
+Continuing lists retain their row padding instead of subtracting it from the
+following form, and suggestion rows use the same left and right frame as its fields
+An icon-only Remove action uses the shared square icon button at the control's
+height. Never give it a text button's horizontal padding
+
+Suggestions offer only actors that can be added. Filter configured actors by
+their type and ID, including actors added during the current edit. Removing an
+actor makes it available again. When every search match is already configured,
+explain that state instead of displaying disabled duplicates or claiming no match
+
+Inline editor toggles preserve their header's viewport position. Focus moves
+without an automatic browser scroll; reveal an offscreen field only as far as
+needed, accounting for floating actions. Closing returns focus to the trigger
+without jumping the page. Respect reduced motion and cancel obsolete reveal work
+when the user closes or reopens the editor
+
 ### Row copy rhythm
 
 The gap from a row title to its description and between wrapped description lines
@@ -539,6 +579,8 @@ states without depending on a caller's scoped CSS
 | Empty, signed-out, and label states | `empty-states`, `signed-out-layout`, `sync-label-layout` browser suites |
 | Navigation context and accurate day grouping | `sidebar-selection`, `text-clipping` browser suites |
 | Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
+| Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
+| Independent ruleset and actor markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
 
 Paths above are relative to `internal/panel/frontend` except the backend suites.
 CI runs these browser and unit contracts. `mise run lint:matrix` rejects a browser

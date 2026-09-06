@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncRulesetPage from '../src/lib/components/SyncRulesetPage.svelte';
 import SyncRulesetsPage from '../src/lib/components/SyncRulesetsPage.svelte';
-import { parseJson } from '../src/lib/merge';
-import type { SyncConfig } from '../src/lib/types';
+import { formatJson, parseJson, type JsonValue } from '../src/lib/merge';
+import type { SyncConfig, SyncRuleset } from '../src/lib/types';
 
 class TestResizeObserver {
   observe(): void {}
@@ -65,6 +65,132 @@ describe('the ruleset pages [Component]', () => {
     onOpenRuleset: () => {},
     onToggleEnabled: () => {},
   };
+
+  function savedProtection(): SyncRuleset {
+    return {
+      name: 'main-protection',
+      target: 'branch',
+      enforcement: 'active',
+      conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+      bypass_actors: [
+        { actor_id: 0, actor_type: 'OrganizationAdmin', bypass_mode: 'always' },
+        { actor_id: 9, actor_type: 'Integration', bypass_mode: 'pull_request' },
+      ],
+      rules: {
+        pull_request: {
+          required_approving_review_count: 1,
+          allowed_merge_methods: ['squash', 'merge'],
+        },
+        deletion: true,
+      },
+    };
+  }
+
+  it('marks only the changed actor after the draft normalizes object key order', async () => {
+    const saved = savedProtection();
+    const edited = structuredClone(saved);
+    edited.bypass_actors![1]!.bypass_mode = 'always';
+    const normalized = parseJson(
+      formatJson({ rulesets: [edited] } as unknown as JsonValue),
+    ) as Record<string, unknown>;
+    const { rerender } = render(SyncRulesetPage, {
+      ...shared,
+      name: saved.name,
+      config: config(normalized),
+      savedDocument: parseJson(formatJson({ rulesets: [saved] } as unknown as JsonValue)) as Record<
+        string,
+        unknown
+      >,
+      dirtyDocument: true,
+    });
+
+    expect(document.querySelectorAll('.card.is-unsaved')).toHaveLength(1);
+    expect(document.querySelector('.card.is-unsaved .card-title')?.textContent).toBe('Bypass list');
+    expect(
+      document.querySelectorAll('.policy-row.is-unsaved, .setting-row.is-unsaved'),
+    ).toHaveLength(0);
+    expect(document.querySelectorAll('.actor-row.is-unsaved')).toHaveLength(1);
+    expect(document.querySelector('.actor-row.is-unsaved')?.textContent).toContain(
+      'Unavailable app',
+    );
+
+    await rerender({ config: config({ rulesets: [saved] }) });
+    expect(document.querySelectorAll('.is-unsaved')).toHaveLength(0);
+  });
+
+  it('tracks included and excluded branches separately and clears restored sets', async () => {
+    const saved = savedProtection();
+    const edited = structuredClone(saved);
+    edited.conditions.include = ['release/*', '~DEFAULT_BRANCH'];
+    const { rerender } = render(SyncRulesetPage, {
+      ...shared,
+      name: saved.name,
+      config: config({ rulesets: [edited] }),
+      savedDocument: { rulesets: [saved] },
+      dirtyDocument: true,
+    });
+    expect(
+      screen.getByText('Included branches').closest('.policy-row')?.getAttribute('data-unsaved'),
+    ).toBe('true');
+    expect(
+      screen.getByText('Excluded branches').closest('.policy-row')?.getAttribute('data-unsaved'),
+    ).toBeNull();
+
+    edited.conditions.exclude = ['archive/*'];
+    await rerender({ config: config({ rulesets: [structuredClone(edited)] }) });
+    expect(
+      screen.getByText('Excluded branches').closest('.policy-row')?.getAttribute('data-unsaved'),
+    ).toBe('true');
+
+    edited.conditions.include = saved.conditions.include;
+    edited.rules.pull_request!.allowed_merge_methods.reverse();
+    await rerender({ config: config({ rulesets: [structuredClone(edited)] }) });
+    expect(
+      screen.getByText('Included branches').closest('.policy-row')?.getAttribute('data-unsaved'),
+    ).toBeNull();
+    expect(
+      screen
+        .getByText('Require a pull request')
+        .closest('.policy-row')
+        ?.getAttribute('data-unsaved'),
+    ).toBeNull();
+    expect(document.querySelectorAll('.card.is-unsaved')).toHaveLength(1);
+  });
+
+  it('keeps unchanged rulesets neutral in the list when another ruleset changes', () => {
+    const saved = savedProtection();
+    const edited = { ...savedProtection(), name: 'other', enforcement: 'disabled' };
+    render(SyncRulesetsPage, {
+      ...listShared,
+      config: config(
+        parseJson(formatJson({ rulesets: [saved, edited] } as unknown as JsonValue)) as Record<
+          string,
+          unknown
+        >,
+      ),
+      savedDocument: { rulesets: [saved, { ...savedProtection(), name: 'other' }] },
+      dirtyDocument: true,
+    });
+    expect(document.querySelectorAll('.object-row.is-unsaved')).toHaveLength(1);
+    expect(document.querySelector('.object-row.is-unsaved')?.textContent).toContain('other');
+  });
+
+  it('opens the actor editor from the shared Add action in the card header', async () => {
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+    });
+    const trigger = screen.getByRole('button', { name: 'Add an actor' });
+    expect(trigger.closest('.card-head')).not.toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Add an actor' })).toHaveLength(1);
+    await fireEvent.click(trigger);
+    expect(await screen.findByRole('combobox', { name: 'Who' })).toBeTruthy();
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    await fireEvent.click(trigger);
+    expect(screen.queryByRole('combobox', { name: 'Who' })).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+  });
 
   it('reads the list into rows: coverage, rule count, bypass, enforcement', () => {
     render(SyncRulesetsPage, {

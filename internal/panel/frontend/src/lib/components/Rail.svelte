@@ -330,7 +330,7 @@ would be telling everybody else about a console they cannot open.
        was a different rail. */
     gap: var(--space-2);
     height: 100dvh;
-    inline-size: 60px;
+    inline-size: var(--rail-width);
     overflow: visible;
     padding-block: var(--space-3);
     position: sticky;

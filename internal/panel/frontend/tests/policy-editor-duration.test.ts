@@ -94,9 +94,9 @@ describe('job policy duration constraints [Component]', () => {
     expect(screen.getByText(/Checks connected configuration files for changes/)).toBeTruthy();
     const cadence = screen.getByRole('textbox', { name: 'How often' }) as HTMLInputElement;
     expect(cadence.value).toBe('15');
-    expect(
-      (screen.getByRole('combobox', { name: 'How often unit' }) as HTMLSelectElement).value,
-    ).toBe('minutes');
+    expect(screen.getByRole('combobox', { name: 'How often unit' }).textContent).toContain(
+      'minutes',
+    );
     await fireEvent.input(cadence, { target: { value: '20' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Save job' }));
     expect(onSubmit).toHaveBeenCalledExactlyOnceWith(

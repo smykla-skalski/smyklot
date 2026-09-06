@@ -20,7 +20,7 @@ afterAll(async () => {
 async function sharedFieldStyle(field: Locator) {
   return field.evaluate((node) => {
     const input = node.querySelector<HTMLInputElement>('input')!;
-    const select = node.querySelector<HTMLSelectElement>('select')!;
+    const select = node.querySelector<HTMLButtonElement>('[role=combobox]')!;
     // A real shared field in the same inherited theme gives us the style contract,
     // including future token changes. This caught extraction losing page-scoped CSS.
     const reference = document.createElement('input');
@@ -80,7 +80,7 @@ async function expectSharedDurationStyles(page: Page): Promise<void> {
     await input.blur();
     await field.evaluate((node) => {
       node.querySelector<HTMLInputElement>('input')!.disabled = true;
-      node.querySelector<HTMLSelectElement>('select')!.disabled = true;
+      node.querySelector<HTMLButtonElement>('[role=combobox]')!.disabled = true;
     });
     await expect
       .poll(async () => {
@@ -157,9 +157,7 @@ async function inspectModal(dialog: Locator, page: Page, name: string): Promise<
     nativeChecks: Array.from(node.querySelectorAll('input[type="checkbox"]')).filter(
       (input) => !input.closest('.switch,.check-item'),
     ).length,
-    nativeSelects: Array.from(node.querySelectorAll('select')).filter(
-      (select) => !select.closest('.select-wrap'),
-    ).length,
+    nativeSelects: node.querySelectorAll('select').length,
     rows: Array.from(node.querySelectorAll('.form-row')).map((row) => {
       const label = row.querySelector('.form-label,.setting-say')!.getBoundingClientRect();
       const track = row.querySelector('.switch-track')!.getBoundingClientRect();

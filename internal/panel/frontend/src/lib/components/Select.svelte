@@ -1,51 +1,198 @@
-<script lang="ts">
-  import type { Snippet } from 'svelte';
-  import type { HTMLSelectAttributes } from 'svelte/elements';
+<script module lang="ts">
+  export type SelectValue = string | number | null | undefined;
+  export type SelectOption<Value extends SelectValue = SelectValue> = {
+    value: Value;
+    label: string;
+    disabled?: boolean;
+  };
+</script>
+
+<script lang="ts" generics="Value extends SelectValue">
+  import { Select as Listbox } from 'bits-ui';
+  import { untrack } from 'svelte';
+  import type { HTMLButtonAttributes } from 'svelte/elements';
 
   import Icon from './Icon.svelte';
+  import PickerTrigger from './PickerTrigger.svelte';
 
   let {
     value = $bindable(),
     options,
+    onValueChange,
+    placeholder = 'Choose an option',
+    disabled = false,
+    required = false,
+    name,
+    form,
+    id,
     class: extra = '',
-    children,
     ...rest
   }: {
-    value?: string | number;
-    /** The straightforward case: a fixed list of values and their words. */
-    options?: ReadonlyArray<{ value: string | number; label: string }>;
-    /** The select's own class - `mono` for a command, say. Never the wrapper's layout. */
+    value: Value;
+    options: readonly SelectOption<Value>[];
+    onValueChange?: (value: Value) => void;
+    placeholder?: string;
+    disabled?: boolean;
+    required?: boolean;
+    name?: string;
+    form?: string;
+    id?: string;
     class?: string;
-    /** `<option>` elements, when they are built rather than listed. */
-    children?: Snippet;
-  } & HTMLSelectAttributes = $props();
+  } & Omit<
+    HTMLButtonAttributes,
+    'value' | 'onchange' | 'oninput' | 'name' | 'form' | 'type' | 'class' | 'children'
+  > = $props();
+
+  const originalValue = untrack(() => value);
+  const menuId = $props.id();
+  let open = $state(false);
+  let invalid = $state(false);
+  let trigger = $state<HTMLButtonElement | null>(null);
+
+  // Bits UI uses string keys. Keep that implementation detail out of the public
+  // value and native form value, including distinct null, empty and numeric values.
+  function keyFor(candidate: SelectValue): string {
+    if (candidate === undefined) return '';
+    if (Object.is(candidate, -0)) return 'number:-0';
+    return JSON.stringify([typeof candidate, candidate]);
+  }
+
+  const entries = $derived(options.map((option) => ({ ...option, key: keyFor(option.value) })));
+  const selected = $derived(entries.find((option) => Object.is(option.value, value)));
+  const label = $derived(selected?.label ?? (value == null ? placeholder : String(value)));
+  const formValue = $derived(value == null ? '' : String(value));
+
+  function choose(key: string): void {
+    const option = entries.find((entry) => entry.key === key);
+    if (!option || option.disabled) return;
+    invalid = false;
+    value = option.value as Value;
+    onValueChange?.(value);
+  }
+
+  function connectForm(element: HTMLSpanElement): (() => void) | undefined {
+    const owner = form ? document.getElementById(form) : element.closest('form');
+    if (!(owner instanceof HTMLFormElement)) return;
+    function reset(event: Event): void {
+      // A later form listener may cancel the reset. Match the native control's
+      // default-value behavior without resetting the owner's other fields.
+      queueMicrotask(() => {
+        if (event.defaultPrevented) return;
+        value = originalValue;
+        invalid = false;
+        open = false;
+        onValueChange?.(value);
+      });
+    }
+    owner.addEventListener('reset', reset);
+    return () => owner.removeEventListener('reset', reset);
+  }
 </script>
 
 <!--
 @component
-A select, and the chevron that says it is one. A native `<select>` cannot be given an
-indicator of its own, so this wraps it and draws one alongside - which is why the
-wrapper, and not the select, is the layout box. Nine call sites wrote that wrapper,
-that chevron and its exact size and stroke by hand before this existed.
-
-Options come either as data or as markup: most call sites have a list, three build
-their `<option>`s in a loop or want them keyed, and forcing either into the other
-shape would be worse than accepting both.
-
-For a choice among two to five options that a reader should see all of at once, reach
-for `SegmentedControl` instead; a select is for the longer list, and for the one whose
-options are not worth the width.
+An intrinsic shared picker with a fully themed option menu. Values retain their
+original types through bindings and callbacks; internal menu keys never enter form
+data. Bits UI owns selection, keyboard navigation, typeahead and focus behavior.
+A form-backed field preserves submission, required validation and reset behavior.
 -->
 
-<span class="select-wrap">
-  <select bind:value class="select-input {extra}" {...rest}>
-    {#if options !== undefined}
-      {#each options as option (option.value)}
-        <option value={option.value}>{option.label}</option>
-      {/each}
-    {:else if children !== undefined}
-      {@render children()}
-    {/if}
-  </select>
-  <Icon name="chevron-down" size="sm" strokeWidth={2} />
+<span class="select-wrap" {@attach connectForm}>
+  <Listbox.Root
+    type="single"
+    value={keyFor(value)}
+    items={entries.map((option) => ({
+      value: option.key,
+      label: option.label,
+      disabled: option.disabled,
+    }))}
+    {disabled}
+    {required}
+    bind:open
+    onValueChange={choose}
+  >
+    <Listbox.Trigger
+      {...rest}
+      {id}
+      bind:ref={trigger}
+      role="combobox"
+      aria-controls={open ? menuId : undefined}
+      aria-required={required || undefined}
+      aria-invalid={invalid || rest['aria-invalid']}
+    >
+      {#snippet child({ props })}
+        <PickerTrigger {...props}><span class={extra}>{label}</span></PickerTrigger>
+      {/snippet}
+    </Listbox.Trigger>
+    <Listbox.Portal
+      to={typeof document === 'undefined'
+        ? undefined
+        : (document.querySelector('.app-shell') ?? undefined)}
+    >
+      <Listbox.Content
+        id={menuId}
+        class={['select-menu', trigger?.closest('[role="dialog"]') && 'select-menu-in-dialog']}
+        strategy="fixed"
+        sideOffset={4}
+        align="start"
+        collisionPadding={8}
+        aria-label={rest['aria-label']}
+        aria-labelledby={!rest['aria-label'] ? trigger?.id : undefined}
+      >
+        <Listbox.Viewport class="menu-list select-options">
+          {#each entries as option (option.key)}
+            <Listbox.Item
+              class="menu-option"
+              value={option.key}
+              label={option.label}
+              disabled={option.disabled}
+            >
+              <span class="menu-option-check" aria-hidden="true">
+                {#if Object.is(option.value, value)}<Icon name="check" size="base" />{/if}
+              </span>
+              <span class={['mi-label', extra]}>{option.label}</span>
+            </Listbox.Item>
+          {/each}
+        </Listbox.Viewport>
+      </Listbox.Content>
+    </Listbox.Portal>
+  </Listbox.Root>
+  {#if name || required}
+    <input
+      class="visually-hidden"
+      tabindex="-1"
+      aria-hidden="true"
+      {name}
+      {form}
+      {disabled}
+      {required}
+      value={formValue}
+      oninvalid={(event) => {
+        event.preventDefault();
+        invalid = true;
+        trigger?.focus();
+      }}
+    />
+  {/if}
 </span>
+
+<style>
+  :global(.select-menu) {
+    background: var(--popover-bg);
+    border: 1px solid var(--popover-border);
+    border-radius: var(--radius-popover);
+    box-shadow: var(--shadow-popover);
+    color: var(--text-primary);
+    max-block-size: min(20rem, var(--bits-floating-available-height));
+    max-inline-size: var(--bits-floating-available-width);
+    min-inline-size: var(--bits-floating-anchor-width);
+    overflow: auto;
+    z-index: var(--layer-popover);
+  }
+  :global(.select-menu-in-dialog) {
+    z-index: var(--layer-dialog-popover);
+  }
+  :global(.select-options) {
+    min-inline-size: 0;
+  }
+</style>

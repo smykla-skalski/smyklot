@@ -510,6 +510,7 @@
   --icon-base: 16px;
   --icon-md: 18px;
   /* 228px, the approved shell's pages column beside the 60px rail. */
+  --rail-width: 60px;
   --sidebar-width: 228px;
   --sidebar-width-collapsed: 4.5rem;
   /* 1120px, the column the design draws inside its pane. Capped rather than proportional: at

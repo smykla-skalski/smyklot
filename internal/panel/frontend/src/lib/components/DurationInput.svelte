@@ -178,7 +178,7 @@ the owning draft. A caller with persisted raw drafts can pass editor and onEdit.
       aria-label={`${label} unit`}
       disabled={disabled ||
         (amount.trim() !== '' && exactDurationSeconds({ amount, unit }) === null)}
-      onchange={(event) => pickUnit(event.currentTarget.value as DurationUnit)}
+      onValueChange={(value) => pickUnit(value as DurationUnit)}
     />
   </span>
   {#if problem !== null}

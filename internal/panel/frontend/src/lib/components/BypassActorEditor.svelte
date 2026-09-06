@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { useDebounce } from 'runed';
   import {
     BYPASS_ACTOR_TYPES,
@@ -14,16 +14,23 @@
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
+  import IconButton from './IconButton.svelte';
   import Select from './Select.svelte';
 
-  const {
+  let {
     actors,
+    savedActors,
+    showAddButton = true,
+    adding = $bindable(false),
     lookup,
     readOnly = false,
     organizationActors = true,
     onChange,
   }: {
     actors: SyncRulesetBypassActor[];
+    savedActors?: readonly SyncRulesetBypassActor[];
+    showAddButton?: boolean;
+    adding?: boolean;
     lookup?: BypassActorLookup;
     readOnly?: boolean;
     organizationActors?: boolean;
@@ -35,7 +42,67 @@
   let warning = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let loading = $state(false);
-  let adding = $state(false);
+  let returnFocus: HTMLElement | undefined;
+  let focusGeneration = 0;
+  let formElement = $state<HTMLFormElement | null>(null);
+
+  export function openAdd(trigger?: HTMLElement): void {
+    if (readOnly) return;
+    returnFocus = trigger;
+    adding = true;
+    const request = ++focusGeneration;
+    void tick().then(() => {
+      if (request !== focusGeneration || !adding || !formElement?.isConnected) return;
+      const field = formElement?.querySelector<HTMLElement>('[role="combobox"]');
+      field?.focus({ preventScroll: true });
+      if (field) revealControl(field);
+    });
+  }
+
+  export function toggleAdd(trigger?: HTMLElement): void {
+    if (adding) closeAdd();
+    else openAdd(trigger);
+  }
+
+  function closeAdd(): void {
+    adding = false;
+    const request = ++focusGeneration;
+    generation++;
+    loading = false;
+    returnFocus?.focus({ preventScroll: true });
+    void tick().then(() => {
+      if (request === focusGeneration && !adding && returnFocus?.isConnected)
+        revealControl(returnFocus);
+    });
+  }
+
+  function revealControl(control: HTMLElement): void {
+    const bounds = control.getBoundingClientRect();
+    if (bounds.width === 0 || bounds.height === 0) return;
+    const composer = document.querySelector('.settings-composer')?.getBoundingClientRect();
+    const lowerEdge =
+      Math.min(
+        window.innerHeight,
+        composer && composer.top > 0 && composer.top < window.innerHeight && composer.height > 0
+          ? composer.top
+          : window.innerHeight,
+      ) - 8;
+    const upperEdge =
+      Math.max(0, document.querySelector('.top-bar')?.getBoundingClientRect().bottom ?? 0) + 8;
+    const delta =
+      bounds.bottom > lowerEdge
+        ? bounds.bottom - lowerEdge
+        : bounds.top < upperEdge
+          ? bounds.top - upperEdge
+          : 0;
+    if (delta) window.scrollBy({ top: delta, behavior: 'instant' });
+  }
+
+  function actorChanged(actor: SyncRulesetBypassActor): boolean {
+    if (!savedActors) return false;
+    const saved = savedActors.find((item) => bypassActorKey(item) === bypassActorKey(actor));
+    return !saved || saved.bypass_mode !== actor.bypass_mode;
+  }
   let actorType = $state('Integration');
   let query = $state('');
   let searched = $state(false);
@@ -63,7 +130,7 @@
     BYPASS_MODES.filter((item) => actorType !== 'DeployKey' || item.value !== 'pull_request'),
   );
 
-  const suggestions = $derived.by(() => {
+  const candidates = $derived.by(() => {
     const needle = query.trim().toLocaleLowerCase();
     const local = identities.filter(
       (identity) =>
@@ -77,6 +144,12 @@
       ...results,
     ];
   });
+  const suggestions = $derived(
+    candidates.filter(
+      (candidate) => !actors.some((actor) => bypassActorKey(actor) === bypassActorKey(candidate)),
+    ),
+  );
+  const allMatchesAdded = $derived(candidates.length > 0 && suggestions.length === 0);
   const debouncedSearch = useDebounce(
     (request: number, type: string, value: string) => void search(request, type, value),
     250,
@@ -164,9 +237,7 @@
     };
     if (actors.some((held) => bypassActorKey(held) === bypassActorKey(actor))) return;
     onChange([...actors, actor]);
-    generation++;
-    loading = false;
-    adding = false;
+    closeAdd();
     results = [];
     query = '';
     searched = false;
@@ -190,11 +261,13 @@
       ? 'GitHub lookup is unavailable'
       : !named && duplicateRole
         ? 'This actor is already listed'
-        : loading
-          ? 'Looking for actors'
-          : searched && suggestions.length === 0
-            ? 'No matches, try an exact username or slug'
-            : null,
+        : named && allMatchesAdded
+          ? 'Matching actors are already added'
+          : loading
+            ? 'Looking for actors'
+            : searched && suggestions.length === 0
+              ? 'No matches, try an exact username or slug'
+              : null,
   );
 
   function updateMode(actor: SyncRulesetBypassActor, value: string): void {
@@ -216,13 +289,29 @@ The add form stages an actor only after a named result is chosen. Read-only mode
 also supports inherited lists without turning them into local overrides.
 -->
 
+{#if !readOnly && showAddButton}
+  <div class="actor-header">
+    <Button tone="quiet" aria-expanded={adding} onclick={(event) => toggleAdd(event.currentTarget)}>
+      {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add an actor
+    </Button>
+  </div>
+{/if}
+
 {#if actors.length > 0}
-  <ul class="object-list actor-list" aria-label="Bypass exceptions">
+  <ul
+    class="object-list actor-list"
+    class:actor-list-continues={adding || Boolean(warning)}
+    aria-label="Bypass exceptions"
+  >
     {#each actors as actor (bypassActorKey(actor))}
       {@const identity = identities.find((item) => bypassActorKey(item) === bypassActorKey(actor))}
       {@const name = bypassActorName(actor, identities)}
       <li>
-        <div class="object-row actor-row">
+        <div
+          class="object-row actor-row"
+          class:is-unsaved={actorChanged(actor)}
+          data-unsaved={actorChanged(actor) || undefined}
+        >
           <div class="actor-identity">
             {#if ['Integration', 'Team', 'User'].includes(actor.actor_type)}
               <Avatar
@@ -283,19 +372,17 @@ also supports inherited lists without turning them into local overrides.
                   (item) => actor.actor_type !== 'DeployKey' || item.value !== 'pull_request',
                 )}
                 disabled={readOnly}
-                onchange={(event) => updateMode(actor, event.currentTarget.value)}
+                onValueChange={(value) => updateMode(actor, value)}
               />
             {/if}
             {#if !readOnly}
-              <Button
-                tone="quiet"
-                aria-label="Remove {name}"
+              <IconButton
+                icon="close"
+                label="Remove {name}"
+                toolbar
                 onclick={() =>
                   onChange(actors.filter((held) => bypassActorKey(held) !== bypassActorKey(actor)))}
-              >
-                {#snippet icon()}<Icon name="close" size="sm" />{/snippet}
-                <span class="visually-hidden">Remove {name}</span>
-              </Button>
+              />
             {/if}
           </div>
         </div>
@@ -318,6 +405,7 @@ also supports inherited lists without turning them into local overrides.
   {#if adding}
     <form
       class="actor-form"
+      bind:this={formElement}
       onsubmit={(event) => {
         event.preventDefault();
         if (!named) add();
@@ -326,9 +414,10 @@ also supports inherited lists without turning them into local overrides.
       <div class="actor-fields">
         <label class="actor-field"
           ><span class="setting-name">Who</span><Select
+            aria-label="Who"
             value={actorType}
             options={actorTypes}
-            onchange={(event) => changeType(event.currentTarget.value)}
+            onValueChange={changeType}
           /></label
         >
         {#if named}
@@ -355,9 +444,10 @@ also supports inherited lists without turning them into local overrides.
         {:else if actorType === 'RepositoryRole'}
           <label class="actor-field"
             ><span class="setting-name">Role</span><Select
+              aria-label="Role"
               value={role}
               options={roleOptions}
-              onchange={(event) => (role = event.currentTarget.value)}
+              onValueChange={(value) => (role = value)}
             /></label
           >
         {/if}
@@ -373,6 +463,7 @@ also supports inherited lists without turning them into local overrides.
         {/if}
         <label class="actor-field"
           ><span class="setting-name">Permission</span><Select
+            aria-label="Permission"
             bind:value={mode}
             options={choices}
           /></label
@@ -380,17 +471,13 @@ also supports inherited lists without turning them into local overrides.
       </div>
       {#if named}
         {#if suggestions.length > 0}
-          <ul class="object-list" aria-label="Matching actors">
+          <ul class="object-list actor-list-continues" aria-label="Matching actors">
             {#each suggestions as identity (bypassActorKey(identity))}
-              {@const selected = actors.some(
-                (actor) => bypassActorKey(actor) === bypassActorKey(identity),
-              )}
               <li>
                 <button
                   class="object-row result-row"
-                  aria-label={selected ? `${identity.name} already added` : `Add ${identity.name}`}
+                  aria-label={`Add ${identity.name}`}
                   type="button"
-                  disabled={selected}
                   onclick={() => add(identity)}
                   ><Avatar
                     account={{
@@ -415,7 +502,7 @@ also supports inherited lists without turning them into local overrides.
                           >{bypassInstallationLabel(identity)}</span
                         >{/if}</span
                     ></span
-                  ><span class="result-action">{selected ? 'Added' : 'Add'}</span></button
+                  ><span class="result-action">Add</span></button
                 >
               </li>
             {/each}
@@ -427,15 +514,8 @@ also supports inherited lists without turning them into local overrides.
           {#if searchStatus}<span class="setting-why" role="status">{searchStatus}</span>{/if}
           <FormError message={failure} />
         </div>
-        <div class="actor-form-actions">
-          <Button
-            tone="quiet"
-            onclick={() => {
-              adding = false;
-              generation++;
-              loading = false;
-            }}>Cancel</Button
-          >
+        <div class="actor-form-actions card-action-foot">
+          <Button tone="quiet" onclick={closeAdd}>Cancel</Button>
           {#if !named}
             <Button
               type="submit"
@@ -447,13 +527,8 @@ also supports inherited lists without turning them into local overrides.
         </div>
       </div>
     </form>
-  {:else}
-    <div class="actor-footer">
-      {#if actors.length === 0}<span class="setting-why">No actors selected</span>{/if}
-      <Button tone="quiet" onclick={() => (adding = true)}
-        >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add an actor</Button
-      >
-    </div>
+  {:else if actors.length === 0}
+    <p class="empty-actors">No actors selected</p>
   {/if}
 {/if}
 
@@ -489,7 +564,7 @@ also supports inherited lists without turning them into local overrides.
   .actor-actions {
     flex-wrap: wrap;
   }
-  .actor-footer,
+  .actor-header,
   .directory-warning {
     align-items: center;
     display: flex;
@@ -498,8 +573,9 @@ also supports inherited lists without turning them into local overrides.
     justify-content: flex-end;
     padding-block-start: var(--space-3);
   }
-  .actor-footer > .setting-why {
-    margin-inline-end: auto;
+  .actor-header {
+    padding-block-start: 0;
+    padding-block-end: var(--space-3);
   }
   .directory-warning {
     justify-content: space-between;
@@ -512,10 +588,13 @@ also supports inherited lists without turning them into local overrides.
     margin: 0;
     padding-block: var(--space-3);
   }
+  .actor-list-continues {
+    --object-list-end: 0px;
+  }
   .actor-form {
     display: grid;
-    gap: var(--space-3);
-    padding-block-start: var(--space-3);
+    gap: var(--space-4);
+    padding-block-start: var(--space-4);
   }
   .actor-fields {
     align-items: end;
@@ -542,6 +621,8 @@ also supports inherited lists without turning them into local overrides.
     justify-content: space-between;
   }
   .actor-form-status {
+    display: grid;
+    gap: var(--row-copy-gap);
     flex: 1 1 12rem;
     min-inline-size: 0;
   }
@@ -560,7 +641,6 @@ also supports inherited lists without turning them into local overrides.
     align-items: center;
     display: flex;
     gap: var(--space-3);
-    inline-size: 100%;
     text-align: start;
   }
   .result-action {

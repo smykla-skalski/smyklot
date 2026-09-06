@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { chooseOption } from './support/select';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -105,9 +106,9 @@ describe('TargetSettings shared drafts [Component]', () => {
     render(TargetSettingsHarness, { props: { drafts, target } });
     await waitFor(() => expect(drafts.resource(targetDefaultsResource(target.id))).not.toBeNull());
     const quiet = screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement;
-    await fireEvent.change(
+    await chooseOption(
       screen.getByRole('combobox', { name: 'Quiet period after checks pass unit' }),
-      { target: { value: 'minutes' } },
+      'minutes',
     );
     expect(quiet.value).toBe('1.5');
     expect(drafts.dirtyControls()).toEqual([]);

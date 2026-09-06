@@ -114,7 +114,9 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
-    transition-duration: 0.01ms !important;
+    /* A nonzero universal duration enables the default `all` transition even
+       on static rows. Disable transitions instead of animating their geometry. */
+    transition: none !important;
   }
 
   /* THE SINK IS THE MOTION, so the sink is what goes. This cancelled `transform`
@@ -133,14 +135,24 @@ body {
   }
 }
 
+/* Animate one inherited length so navigation and pane overlays share each frame. */
+@property --sidebar-layout-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 228px;
+}
+
 /* Three columns, one job each: the rail is the account's consoles, the
    sidebar is the active console's map, the pane opens with content. The two
    chrome columns size themselves (the sidebar animates its own inline-size),
    so the tracks are auto rather than tokens the grid would have to ease. */
 .app-shell {
+  --sidebar-layout-width: var(--sidebar-width);
+  --pane-chrome-width: calc(var(--rail-width) + var(--sidebar-layout-width));
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
   min-height: 100dvh;
+  transition: --sidebar-layout-width var(--duration-normal) var(--ease-standard);
 }
 
 /* COLLAPSED IS ONE COLUMN, not two narrow ones. Folding the pages away used to
@@ -149,6 +161,8 @@ body {
    switch is the mark in its head, and the inbox and the account are its foot. */
 @media (min-width: 64.0625rem) {
   .app-shell.sidebar-collapsed {
+    --sidebar-layout-width: var(--sidebar-width-collapsed);
+    --pane-chrome-width: var(--sidebar-layout-width);
     grid-template-columns: auto minmax(0, 1fr);
   }
 
@@ -166,6 +180,7 @@ body {
    own max-content and the layout moves with the content. */
 @media (max-width: 47.9375rem) {
   .app-shell {
+    --pane-chrome-width: 0px;
     grid-template-columns: minmax(0, 1fr);
     /* The bar above it is 56px of the viewport, so the shell is the rest of it. */
     min-height: calc(100dvh - 56px);
@@ -1216,8 +1231,7 @@ select:disabled {
   justify-content: center;
 }
 
-.text-input,
-.select-input {
+.text-input {
   background-color: var(--control-bg);
   border: 1px solid var(--control-border);
   border-radius: var(--r-ctl);
@@ -1237,8 +1251,7 @@ select:disabled {
     border-color var(--duration-fast) var(--ease-out);
 }
 
-.text-input:focus,
-.select-input:focus {
+.text-input:focus {
   background-color: var(--input-bg);
 }
 
@@ -1247,50 +1260,56 @@ select:disabled {
    takes the focus colour and the ring sits flush on it, which is the third of the law's
    three offsets. It was a `box-shadow`, and three fields inside clipping cards were
    losing it entirely. */
-.text-input:focus-visible,
-.select-input:focus-visible,
-select:focus-visible {
+.text-input:focus-visible {
   border-color: var(--focus);
   outline: var(--focus-ring-width) solid var(--focus);
   outline-offset: var(--focus-ring-flush);
 }
 
-.select-input {
-  appearance: none;
-  padding-right: 1.8rem;
-}
-
-/* One chevron for every select, picker, and disclosure. The glyph used to be
-   two rotated gradients painted into the select's own background, which drew a
-   solid triangle where the rest of the app draws a stroked chevron - and a
-   background image cannot pick up the theme's colour. So it is a real icon in a
-   positioned wrapper, the same recipe the mock uses. */
+/* The shared picker owns its painted button and menu; this is only its layout box. */
 .select-wrap {
-  display: block;
-  position: relative;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-inline-size: 0;
 }
 
-.select-wrap > select {
-  width: 100%;
-}
-
-.select-wrap > svg {
-  color: var(--text-muted);
-  pointer-events: none;
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  translate: 0 -50%;
-}
-
-.text-input:hover:not(:disabled),
-.select-input:hover:not(:disabled) {
+.text-input:hover:not(:disabled) {
   border-color: var(--control-border-hover);
 }
 
-.select-input:hover:not(:disabled) {
-  background-color: var(--interactive-hover);
-  border-color: var(--control-border-hover);
+.menu-option {
+  align-items: center;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-2);
+  min-block-size: var(--control-height-compact);
+  padding-inline: var(--space-3);
+  color: var(--text-primary);
+  font: 500 var(--font-size-control) / var(--leading-meta) var(--sans);
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    translate var(--duration-fast) var(--ease-out);
+}
+.menu-option[data-highlighted]:not([data-disabled]):not(:active) {
+  background: var(--interactive-hover-layer);
+}
+.menu-option:active:not([data-disabled]) {
+  background: var(--control-bg-pressed);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
+}
+.menu-option[data-disabled] {
+  cursor: default;
+  opacity: 0.5;
+}
+.menu-option-check {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 var(--space-4);
+  inline-size: var(--space-4);
+  justify-content: center;
 }
 
 .text-input::placeholder {
@@ -1940,8 +1959,18 @@ code {
    a pixel it cannot fill - which, since a block box fills from the top, puts the words
    half a pixel above their own centre. The default is the card head's, so a heading that
    uses the card's type says nothing. */
-:is(.card-head, .group-head, .emergency-heading) > .btn {
+:is(.card-head, .group-head, .emergency-heading, .card-action-foot) > .btn {
   margin-block: calc((var(--head-line, var(--card-head-line)) - var(--control-height-compact)) / 2);
+}
+
+/* An inline editor closes on the same action frame as its heading. Both tracks
+   measure the heading's cap height, so the identical buttons spend the same
+   amount of the card's padding above the first action and below the last. */
+.card-action-foot {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  min-block-size: var(--head-line, var(--card-head-line));
 }
 
 :is(.card-head, .group-head, .emergency-heading) > .status-pill {
@@ -2153,7 +2182,7 @@ code {
    that is there. */
 .object-list:has(> li:not([hidden]) > .object-row:not([hidden])),
 .object-list:has(> .object-row:not([hidden])) {
-  margin-block-end: calc(var(--row-pad-default) * -1);
+  margin-block-end: var(--object-list-end, calc(var(--row-pad-default) * -1));
 }
 
 /* The list is a real list: ul + li, the li transparent to layout so the grid still
@@ -2257,6 +2286,8 @@ time[data-exact]:focus-visible {
 
 .object-row {
   align-items: center;
+  /* Keep the reserved gap clear even while normal-motion row colors ease. */
+  border-block-end-color: transparent;
   border-radius: var(--r-ctl);
   /* A row that opens something is an anchor, and an anchor without this wears
      the browser's own link blue - the row is the affordance here, not the
@@ -2812,6 +2843,18 @@ button.object-row {
 :is(.setting-row, .policy-row, .object-row):has(+ .is-unsaved),
 .object-list > li:has(+ li > .object-row.is-unsaved) > .object-row {
   --hairline: transparent;
+}
+
+/* Adjacent edited rows keep one pixel of the card between their gold surfaces.
+   Reuse the reserved hairline pixel instead of moving any content or painting a
+   separator. Clipping the fill to the padding leaves the border transparent. */
+:is(.setting-row, .policy-row, .object-row).is-unsaved:has(+ .is-unsaved),
+.object-list > li:has(+ li > .object-row.is-unsaved) > .object-row.is-unsaved {
+  background-clip: padding-box;
+  border-block-end-color: transparent;
+  border-block-end-style: solid;
+  border-block-end-width: var(--row-hairline);
+  padding-block-end: var(--row-pad-default);
 }
 
 /* The sentence takes what is left and never less than it can be read at.

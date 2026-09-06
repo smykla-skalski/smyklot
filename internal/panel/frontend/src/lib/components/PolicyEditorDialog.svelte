@@ -209,20 +209,29 @@ window that no longer exists by the time it opens.
     </div>
     <div class="form-field">
       <label class="form-label" for="policy-window">Hours</label>
-      <Select disabled={busy} id="policy-window" bind:value={profileId}>
-        {#each profiles as profile (profile.id)}
-          <option value={profile.id}>{profile.name} · {profile.timezone}</option>
-        {/each}
-      </Select>
+      <Select
+        disabled={busy}
+        id="policy-window"
+        bind:value={profileId}
+        options={profiles.map((profile) => ({
+          value: profile.id,
+          label: `${profile.name} · ${profile.timezone}`,
+        }))}
+      />
     </div>
     <div class="form-field">
       <label class="form-label" for="policy-priority">Default priority</label>
-      <Select disabled={busy} id="policy-priority" bind:value={priority}>
-        <option value="low">Low</option>
-        <option value="normal">Normal</option>
-        <option value="high">High</option>
-        <option value="urgent">Urgent</option>
-      </Select>
+      <Select
+        disabled={busy}
+        id="policy-priority"
+        bind:value={priority}
+        options={[
+          { value: 'low', label: 'Low' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'high', label: 'High' },
+          { value: 'urgent', label: 'Urgent' },
+        ]}
+      />
     </div>
     <div class="form-field">
       <label class="form-label" for="policy-retry">Wait before retrying</label>

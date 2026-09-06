@@ -63,6 +63,7 @@ stacked left, Cancel and Done on a hairline foot.
   import { globRuns } from '../glob-runs';
   import { numericValue } from '../merge';
   import { receipts } from '../receipts.svelte';
+  import { sameRulesetFields } from '../ruleset-equality';
   import type { SyncConfig, SyncRuleset, BypassActorLookup, SyncRulesetRules } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
@@ -115,17 +116,42 @@ stacked left, Cancel and Done on a hairline foot.
   );
   const savedRuleset = $derived(savedRulesets.find((held) => held.name === name) ?? null);
 
-  function same(left: unknown, right: unknown): boolean {
-    try {
-      return JSON.stringify(left) === JSON.stringify(right);
-    } catch {
-      return false;
-    }
+  function partDirty(part: 'enforcement' | 'conditions' | 'rules' | 'bypass_actors'): boolean {
+    const current = ruleset?.[part];
+    const saved = savedRuleset?.[part];
+    return (
+      dirtyDocument &&
+      !sameRulesetFields(
+        current === undefined ? {} : { [part]: current },
+        saved === undefined ? {} : { [part]: saved },
+      )
+    );
   }
 
-  function partDirty(part: 'enforcement' | 'conditions' | 'rules' | 'bypass_actors'): boolean {
-    return dirtyDocument && !same(ruleset?.[part], savedRuleset?.[part]);
+  function conditionDirty(side: 'include' | 'exclude'): boolean {
+    return (
+      dirtyDocument &&
+      !sameRulesetFields(
+        { conditions: { [side]: ruleset?.conditions[side] ?? [] } },
+        { conditions: { [side]: savedRuleset?.conditions[side] ?? [] } },
+      )
+    );
   }
+
+  function ruleDirty(key: keyof SyncRulesetRules): boolean {
+    const current = ruleset?.rules?.[key];
+    const saved = savedRuleset?.rules?.[key];
+    return (
+      dirtyDocument &&
+      !sameRulesetFields(
+        { rules: current === undefined ? {} : { [key]: current } },
+        { rules: saved === undefined ? {} : { [key]: saved } },
+      )
+    );
+  }
+
+  let actorEditor: { toggleAdd: (trigger?: HTMLElement) => void } | undefined = $state();
+  let addingActor = $state(false);
 
   /** Writes one changed ruleset back into the whole document. */
   function patch(change: Partial<SyncRuleset>): void {
@@ -484,8 +510,8 @@ stacked left, Cancel and Done on a hairline foot.
       <div class="policy-rows">
         <div
           class="policy-row"
-          class:is-unsaved={partDirty('conditions')}
-          data-unsaved={partDirty('conditions') || undefined}
+          class:is-unsaved={conditionDirty('include')}
+          data-unsaved={conditionDirty('include') || undefined}
         >
           <span class="setting-say"
             ><span class="setting-name">Included branches</span>
@@ -532,7 +558,10 @@ stacked left, Cancel and Done on a hairline foot.
                     spellcheck="false"
                     bind:value={addValue}
                     onkeydown={(event) => {
-                      if (event.key === 'Enter') addPattern('include');
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addPattern('include');
+                      }
                     }}
                   />
                 </div>
@@ -543,8 +572,8 @@ stacked left, Cancel and Done on a hairline foot.
         </div>
         <div
           class="policy-row"
-          class:is-unsaved={partDirty('conditions')}
-          data-unsaved={partDirty('conditions') || undefined}
+          class:is-unsaved={conditionDirty('exclude')}
+          data-unsaved={conditionDirty('exclude') || undefined}
         >
           <span class="setting-say"><span class="setting-name">Excluded branches</span></span>
           <span class="policy-value">
@@ -589,7 +618,10 @@ stacked left, Cancel and Done on a hairline foot.
                     spellcheck="false"
                     bind:value={addValue}
                     onkeydown={(event) => {
-                      if (event.key === 'Enter') addPattern('exclude');
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        addPattern('exclude');
+                      }
                     }}
                   />
                 </div>
@@ -610,11 +642,8 @@ stacked left, Cancel and Done on a hairline foot.
         {#each onRules as rule (rule.key)}
           <div
             class="policy-row"
-            class:is-unsaved={dirtyDocument &&
-              !same(ruleset?.rules?.[rule.key], savedRuleset?.rules?.[rule.key])}
-            data-unsaved={(dirtyDocument &&
-              !same(ruleset?.rules?.[rule.key], savedRuleset?.rules?.[rule.key])) ||
-              undefined}
+            class:is-unsaved={ruleDirty(rule.key)}
+            data-unsaved={ruleDirty(rule.key) || undefined}
           >
             <span class="setting-say">
               <span class="setting-name">{rule.label}</span>
@@ -749,7 +778,10 @@ stacked left, Cancel and Done on a hairline foot.
                               spellcheck="false"
                               bind:value={addValue}
                               onkeydown={(event) => {
-                                if (event.key === 'Enter') addListValue('checks');
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  addListValue('checks');
+                                }
                               }}
                             />
                           </div>
@@ -822,7 +854,10 @@ stacked left, Cancel and Done on a hairline foot.
                               spellcheck="false"
                               bind:value={addValue}
                               onkeydown={(event) => {
-                                if (event.key === 'Enter') addListValue('tools');
+                                if (event.key === 'Enter') {
+                                  event.preventDefault();
+                                  addListValue('tools');
+                                }
                               }}
                             />
                           </div>
@@ -876,9 +911,21 @@ stacked left, Cancel and Done on a hairline foot.
     <Card unsaved={partDirty('bypass_actors')}>
       <div class="card-head">
         <h2 class="card-title">Bypass list</h2>
-        <span class="card-meta">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
+        <Button
+          tone="quiet"
+          disabled={frozen}
+          aria-expanded={addingActor}
+          onclick={(event) => actorEditor?.toggleAdd(event.currentTarget)}
+        >
+          {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
+          Add an actor
+        </Button>
       </div>
       <BypassActorEditor
+        bind:this={actorEditor}
+        bind:adding={addingActor}
+        showAddButton={false}
+        savedActors={dirtyDocument ? (savedRuleset?.bypass_actors ?? []) : actors}
         {organizationActors}
         {actors}
         lookup={lookupBypassActors}

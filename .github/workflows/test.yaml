@@ -314,6 +314,7 @@ jobs:
               tests/browser/control-heights.test.ts
               tests/browser/duration-controls.test.ts
               tests/browser/callout-alignment.test.ts
+              tests/browser/select-menus.test.ts
               tests/browser/pair-entry.test.ts
               tests/browser/dictionary.test.ts
           # Every cell of every row given a run longer than the service can

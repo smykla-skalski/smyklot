@@ -780,6 +780,7 @@ refuse.
     <label>
       <span>Role in that workspace</span>
       <Select
+        aria-label="Role in that workspace"
         bind:value={addRole}
         options={[
           { value: 'viewer', label: 'Viewer' },

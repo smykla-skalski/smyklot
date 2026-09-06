@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import Select from './Select.svelte';
 
   export interface EditableWindow {
     id: string;
@@ -51,27 +52,26 @@ equivalent to is a change they did not make.
   </div>
   {#each windows as window, index (window.id)}
     <div class="window-row">
-      <label for={`${idPrefix}-day-${index}`}
-        >Day<select
+      <label class="form-field" for={`${idPrefix}-day-${index}`}
+        ><span class="form-label">Day</span><Select
           id={`${idPrefix}-day-${index}`}
           value={window.weekday}
-          onchange={(event) => update(index, { weekday: Number(event.currentTarget.value) })}
-        >
-          {#each days as day, dayIndex (day)}
-            <option value={dayIndex}>{day}</option>
-          {/each}
-        </select></label
+          onValueChange={(value) => update(index, { weekday: value })}
+          options={days.map((day, weekday) => ({ value: weekday, label: day }))}
+        /></label
       >
-      <label for={`${idPrefix}-start-${index}`}
-        >Opens<input
+      <label class="form-field" for={`${idPrefix}-start-${index}`}
+        ><span class="form-label">Opens</span><input
+          class="text-input"
           id={`${idPrefix}-start-${index}`}
           type="time"
           value={window.start}
           oninput={(event) => update(index, { start: event.currentTarget.value })}
         /></label
       >
-      <label for={`${idPrefix}-end-${index}`}
-        >Closes<input
+      <label class="form-field" for={`${idPrefix}-end-${index}`}
+        ><span class="form-label">Closes</span><input
+          class="text-input"
           id={`${idPrefix}-end-${index}`}
           type="time"
           value={window.end}
@@ -106,27 +106,12 @@ equivalent to is a change they did not make.
     align-items: center;
     grid-template-columns: 1fr auto;
   }
-  .windows-heading > span,
-  label {
+  .windows-heading > span {
     font-size: 0.75rem;
     font-weight: 720;
   }
   .window-row {
     grid-template-columns: minmax(8rem, 1.4fr) 1fr 1fr auto;
-  }
-  label {
-    display: grid;
-    gap: var(--space-1);
-  }
-  input,
-  select {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: 2.5rem;
-    padding: 0 var(--space-3);
   }
   @media (max-width: 34rem) {
     .window-row {

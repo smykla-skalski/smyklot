@@ -17,40 +17,29 @@
   });
 </script>
 
-<!--
-  A native select cannot be given an indicator of its own, so the panel wraps it and
-  draws the chevron alongside - which is why the wrapper, and not the select, is the
-  layout box. Nine call sites wrote that wrapper and that chevron, at that exact size
-  and stroke, by hand.
--->
 <Story name="Playground">
-  {#snippet template({ children, ...args })}
-    <Select {...args} options={UNITS} value="minutes" aria-label="Unit" />
+  {#snippet template(args)}
+    <Select disabled={args.disabled} options={UNITS} value="minutes" aria-label="Unit" />
   {/snippet}
 </Story>
 
 <Story name="Disabled" args={{ disabled: true }}>
-  {#snippet template({ children, ...args })}
-    <Select {...args} options={UNITS} value="minutes" aria-label="Unit" />
+  {#snippet template(args)}
+    <Select disabled={args.disabled} options={UNITS} value="minutes" aria-label="Unit" />
   {/snippet}
 </Story>
 
-<!--
-  Options come as data or as markup. Most call sites have a fixed list; three build
-  their `<option>`s in a loop, and forcing either shape into the other would be worse
-  than accepting both.
--->
-<Story name="Options as markup">
+<Story name="Command values">
   {#snippet template()}
-    <Select class="mono" value="approve" aria-label="Command">
-      {#each ['approve', 'merge', 'squash', 'cleanup'] as command (command)}
-        <option value={command}>{command}</option>
-      {/each}
-    </Select>
+    <Select
+      class="mono"
+      value="approve"
+      aria-label="Command"
+      options={['approve', 'merge', 'squash', 'cleanup'].map((value) => ({ value, label: value }))}
+    />
   {/snippet}
 </Story>
 
-<!-- The page-size control is the one select that sets its own width. -->
 <Story name="Narrow">
   {#snippet template()}
     <div class="narrow">

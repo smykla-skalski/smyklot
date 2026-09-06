@@ -546,7 +546,7 @@ it has to answer to the same fact.
     flex-direction: column;
     gap: var(--space-4);
     block-size: 100dvh;
-    inline-size: var(--sidebar-width);
+    inline-size: var(--sidebar-layout-width);
     /* The column itself never scrolls: the TREE is the scroll region, so the
        head and the fold stay pinned at any viewport height. Tooltips and
        flyouts position fixed, so this clip cannot cut them. */
@@ -557,8 +557,7 @@ it has to answer to the same fact.
     /* Lifts the tree's scroll timeline to the column, so the search field - the
        tree's sibling - can cast its shadow from it. */
     timeline-scope: --side-tree;
-    /* Structure moves at --duration-normal, like the app shell's own columns. */
-    transition: inline-size var(--duration-normal) var(--ease-standard);
+    /* The shell animates this inherited width once for the sidebar and overlays. */
     top: 0;
   }
 
@@ -1100,7 +1099,6 @@ it has to answer to the same fact.
      below 64rem the drawer owns the narrow behaviour. */
   @media (min-width: 64.0625rem) {
     :global(.app-shell.sidebar-collapsed) .side {
-      inline-size: var(--sidebar-width-collapsed);
       /* 12+11+1px border = rows an even 48, so a 16px glyph centres on a
          whole pixel. */
       padding-inline: 12px 11px;

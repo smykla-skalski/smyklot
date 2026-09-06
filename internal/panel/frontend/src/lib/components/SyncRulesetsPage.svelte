@@ -25,6 +25,7 @@ decisions every kind carries: removal, and the names left alone.
 
 <script lang="ts">
   import { receipts } from '../receipts.svelte';
+  import { sameRulesetFields } from '../ruleset-equality';
   import type { SyncConfig, SyncPlan, SyncStatus } from '../types';
 
   import Card from './Card.svelte';
@@ -98,9 +99,9 @@ decisions every kind carries: removal, and the names left alone.
   function rulesetDirty(ruleset: SyncRuleset): boolean {
     return (
       dirtyDocument &&
-      !same(
+      !sameRulesetFields(
         ruleset,
-        savedRulesets.find((saved) => saved.name === ruleset.name),
+        savedRulesets.find((saved) => saved.name === ruleset.name) ?? null,
       )
     );
   }

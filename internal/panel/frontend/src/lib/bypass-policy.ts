@@ -1,3 +1,4 @@
+import { numericValue } from './merge.js';
 import type { SettingsJson } from './settings-draft-storage.js';
 import type { BypassActorIdentity, SyncRulesetBypassActor } from './types.js';
 
@@ -30,7 +31,7 @@ export const BYPASS_ROLES = [
 export function bypassActorKey(
   actor: Pick<SyncRulesetBypassActor, 'actor_type' | 'actor_id'>,
 ): string {
-  return `${actor.actor_type}:${actor.actor_id}`;
+  return `${actor.actor_type}:${numericValue(actor.actor_id) ?? 'unknown'}`;
 }
 
 export function bypassActorName(

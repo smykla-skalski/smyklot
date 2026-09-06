@@ -207,12 +207,17 @@ to ask it four different ways.
     {:else if action === 'set_priority'}
       <div class="form-field">
         <label class="form-label" for="queue-action-priority">Priority</label>
-        <Select id="queue-action-priority" disabled={busy} bind:value={priority}>
-          <option value="low">Low</option>
-          <option value="normal">Normal</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
-        </Select>
+        <Select
+          id="queue-action-priority"
+          disabled={busy}
+          bind:value={priority}
+          options={[
+            { value: 'low', label: 'Low' },
+            { value: 'normal', label: 'Normal' },
+            { value: 'high', label: 'High' },
+            { value: 'urgent', label: 'Urgent' },
+          ]}
+        />
       </div>
     {:else if action === 'cancel'}
       <p>The cancellation and who requested it remain in Queue history</p>

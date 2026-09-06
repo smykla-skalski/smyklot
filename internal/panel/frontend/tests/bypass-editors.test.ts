@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
+import { parseJson } from '../src/lib/merge';
+import type { SyncRulesetBypassActor } from '../src/lib/types';
+import { chooseOption, optionLabels } from './support/select';
 import BypassActorEditor from '../src/lib/components/BypassActorEditor.svelte';
 import BypassPolicyEditor from '../src/lib/components/BypassPolicyEditor.svelte';
 import type { BypassActorDirectory } from '../src/lib/types';
@@ -25,10 +28,40 @@ describe('shared bypass editors [Component]', () => {
     const mode = await screen.findByLabelText('Bypass mode for Smyklot');
     expect(document.querySelector('img')?.getAttribute('src')).toBe(IDENTITY.avatar_url);
     expect(document.body.textContent).not.toContain('App 1197525');
-    await fireEvent.change(mode, { target: { value: 'pull_request' } });
+    await chooseOption(mode, 'Pull requests only');
     expect(onChange).toHaveBeenLastCalledWith([{ ...APP, bypass_mode: 'pull_request' }]);
     await fireEvent.click(screen.getByRole('button', { name: 'Remove Smyklot' }));
     expect(onChange).toHaveBeenLastCalledWith([]);
+  });
+
+  it('compares row markers with losslessly parsed saved actor identities', async () => {
+    const savedActors = parseJson(
+      '[{"actor_type":"Integration","actor_id":1197525,"bypass_mode":"always"},{"actor_type":"OrganizationAdmin","actor_id":0,"bypass_mode":"always"}]',
+    ) as unknown as SyncRulesetBypassActor[];
+    const props = {
+      actors: [
+        { ...APP, bypass_mode: 'pull_request' },
+        { actor_type: 'OrganizationAdmin', actor_id: 0, bypass_mode: 'always' },
+      ],
+      savedActors,
+      onChange: vi.fn(),
+    };
+    const view = render(BypassActorEditor, props);
+    expect(document.querySelectorAll('.actor-row.is-unsaved')).toHaveLength(1);
+    await view.rerender({ ...props, actors: [APP, props.actors[1]] });
+    expect(document.querySelectorAll('.actor-row.is-unsaved')).toHaveLength(0);
+  });
+
+  it('removes existing actors from suggestions and restores them when removed from the live list', async () => {
+    const props = { actors: [], lookup: async () => ({ items: [IDENTITY] }), onChange: vi.fn() };
+    const view = render(BypassActorEditor, props);
+    await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
+    await screen.findByRole('button', { name: 'Add Smyklot' });
+    await view.rerender({ ...props, actors: [APP] });
+    expect(screen.queryByRole('button', { name: 'Add Smyklot' })).toBeNull();
+    expect(screen.getByText('Matching actors are already added')).toBeTruthy();
+    await view.rerender(props);
+    expect(screen.getByRole('button', { name: 'Add Smyklot' })).toBeTruthy();
   });
 
   it('looks up a named app and saves only its stable identity', async () => {
@@ -93,7 +126,7 @@ describe('shared bypass editors [Component]', () => {
       target: { value: 'smyklot' },
     });
     await waitFor(() => expect(lookup).toHaveBeenLastCalledWith('Integration', 'smyklot'));
-    await fireEvent.change(screen.getByLabelText('Who'), { target: { value: 'Team' } });
+    await chooseOption(screen.getByLabelText('Who'), 'Team');
     finish({ items: [IDENTITY] });
     await waitFor(() => expect(screen.queryByText('Smyklot')).toBeNull());
     expect(screen.getByLabelText('Team name or slug')).toBeTruthy();
@@ -110,20 +143,19 @@ describe('shared bypass editors [Component]', () => {
     expect(await screen.findByRole('button', { name: 'Retry names' })).toBeTruthy();
     expect(screen.getByText('Unavailable app')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
-    await fireEvent.change(screen.getByLabelText('Who'), { target: { value: 'DeployKey' } });
-    expect(
-      [...screen.getByLabelText<HTMLSelectElement>('Permission').options].map(
-        (option) => option.value,
-      ),
-    ).toEqual(['always', 'exempt']);
+    await chooseOption(screen.getByLabelText('Who'), 'Deploy keys');
+    expect(await optionLabels(screen.getByLabelText('Permission'))).toEqual([
+      'Always allow',
+      'Exempt from rules',
+    ]);
   });
 
   it('adds a custom repository role only with a valid ID', async () => {
     const onChange = vi.fn();
     render(BypassActorEditor, { actors: [], onChange });
     await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
-    await fireEvent.change(screen.getByLabelText('Who'), { target: { value: 'RepositoryRole' } });
-    await fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'custom' } });
+    await chooseOption(screen.getByLabelText('Who'), 'Repository role');
+    await chooseOption(screen.getByLabelText('Role'), 'Custom repository role');
     const field = screen.getByLabelText('Custom repository role ID');
     await fireEvent.input(field, { target: { value: '4.2' } });
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Add actor' }).disabled).toBe(
@@ -144,12 +176,10 @@ describe('shared bypass editors [Component]', () => {
     });
     expect(screen.getByRole('button', { name: 'Remove Organization admin' })).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
-    const choices = [...screen.getByLabelText<HTMLSelectElement>('Who').options].map(
-      (option) => option.value,
-    );
-    expect(choices).not.toContain('OrganizationAdmin');
+    const choices = await optionLabels(screen.getByLabelText('Who'));
+    expect(choices).not.toContain('Organization admin');
     expect(choices).not.toContain('Team');
-    expect(choices).toContain('Integration');
+    expect(choices).toContain('App');
   });
 
   it('keeps verified app rows compact with spaced metadata and no generic warnings', async () => {
@@ -168,9 +198,7 @@ describe('shared bypass editors [Component]', () => {
   it('retains actors when exceptions are disabled', async () => {
     const onChange = vi.fn();
     render(BypassPolicyEditor, { value: { allow: true, actors: [APP] }, onChange });
-    await fireEvent.change(screen.getByLabelText('Bypass exception policy'), {
-      target: { value: 'deny' },
-    });
+    await chooseOption(screen.getByLabelText('Bypass exception policy'), 'No exceptions');
     expect(onChange).toHaveBeenCalledWith({ allow: false, actors: [APP] });
   });
 
@@ -187,9 +215,7 @@ describe('shared bypass editors [Component]', () => {
     );
     expect(screen.queryByRole('combobox', { name: 'Bypass mode for Smyklot' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add an actor' })).toBeNull();
-    await fireEvent.change(screen.getByLabelText('Bypass exception policy'), {
-      target: { value: 'allow' },
-    });
+    await chooseOption(screen.getByLabelText('Bypass exception policy'), 'Allow selected actors');
     expect(onChange).toHaveBeenCalledWith({ allow: true, actors: [APP] });
   });
 });

@@ -1694,12 +1694,9 @@ offering it.
           <Select
             value={addRole}
             aria-label="Role"
-            onchange={(event) => (addRole = event.currentTarget.value as WorkspaceRole)}
-          >
-            {#each addRoleOptions as option (option.value)}
-              <option value={option.value}>{option.label}</option>
-            {/each}
-          </Select>
+            onValueChange={(value) => (addRole = value as WorkspaceRole)}
+            options={addRoleOptions}
+          />
         </label>
         {#if accessMethod === 'invite'}
           <label class="form-field">

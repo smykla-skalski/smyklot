@@ -2,23 +2,24 @@
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 
+import { chooseOption } from './support/select';
 import DurationInput from '../src/lib/components/DurationInput.svelte';
 import { exactDurationSeconds, UNIT_SECONDS, type DurationUnit } from '../src/lib/duration';
 
 const input = () =>
   screen.getByRole('textbox', { name: 'Quiet period amount' }) as HTMLInputElement;
 const picker = () =>
-  screen.getByRole('combobox', { name: 'Quiet period unit' }) as HTMLSelectElement;
+  screen.getByRole('combobox', { name: 'Quiet period unit' }) as HTMLButtonElement;
 
 describe('DurationInput [Component]', () => {
   it('uses shared input and select controls and changes units without staging a duration', async () => {
     const onChange = vi.fn();
     render(DurationInput, { value: 90, label: 'Quiet period', onChange });
     expect(input().classList.contains('text-input')).toBe(true);
-    expect(picker().classList.contains('select-input')).toBe(true);
-    await fireEvent.change(picker(), { target: { value: 'minutes' } });
+    expect(picker().classList.contains('value-select')).toBe(true);
+    await chooseOption(picker(), 'minutes');
     expect(input().value).toBe('1.5');
-    await fireEvent.change(picker(), { target: { value: 'hours' } });
+    await chooseOption(picker(), 'hours');
     expect(exactDurationSeconds({ amount: input().value, unit: 'hours' })).toBe(90);
     expect(onChange).not.toHaveBeenCalled();
     await fireEvent.input(input(), { target: { value: '0.5' } });
@@ -31,7 +32,7 @@ describe('DurationInput [Component]', () => {
       const onChange = vi.fn();
       render(DurationInput, { value: seconds, label: 'Quiet period', onChange });
       for (const unit of ['hours', 'minutes', 'seconds'] as DurationUnit[]) {
-        await fireEvent.change(picker(), { target: { value: unit } });
+        await chooseOption(picker(), unit);
         expect(exactDurationSeconds({ amount: input().value, unit })).toBe(seconds);
       }
       expect(onChange).not.toHaveBeenCalled();
@@ -49,7 +50,7 @@ describe('DurationInput [Component]', () => {
     });
     expect(input().value).toBe('');
     expect(input().placeholder).toBe('90');
-    await fireEvent.change(picker(), { target: { value: 'minutes' } });
+    await chooseOption(picker(), 'minutes');
     expect(input().value).toBe('');
     expect(input().placeholder).toBe('1.5');
     expect(onChange).not.toHaveBeenCalled();
@@ -86,11 +87,11 @@ describe('DurationInput [Component]', () => {
     await fireEvent.input(input(), { target: { value: '120' } });
     await view.rerender({ ...props, value: 120 });
     expect(input().value).toBe('120');
-    expect(picker().value).toBe('seconds');
+    expect(picker().textContent).toContain('seconds');
     await view.rerender(props);
     expect(input().value).toBe('30');
     onChange.mockClear();
-    await fireEvent.change(picker(), { target: { value: 'minutes' } });
+    await chooseOption(picker(), 'minutes');
     expect(input().value).toBe('0.5');
     expect(onChange).not.toHaveBeenCalled();
   });
@@ -162,7 +163,8 @@ describe('DurationInput [Component]', () => {
     });
     await fireEvent.input(input(), { target: { value: '0.5' } });
     expect(picker().disabled).toBe(true);
-    await fireEvent.change(picker(), { target: { value: 'minutes' } });
+    await fireEvent.click(picker());
+    expect(screen.queryByRole('listbox')).toBeNull();
     expect(input().value).toBe('0.5');
     expect(input().getAttribute('aria-invalid')).toBe('true');
     expect(onChange).not.toHaveBeenCalled();
@@ -180,7 +182,7 @@ describe('DurationInput [Component]', () => {
       onValidityChange,
     });
     await fireEvent.input(input(), { target: { value: '90000' } });
-    await fireEvent.change(picker(), { target: { value: 'hours' } });
+    await chooseOption(picker(), 'hours');
     expect(input().value).toBe('25');
     expect(input().getAttribute('aria-invalid')).toBe('true');
     expect(onChange).not.toHaveBeenCalled();

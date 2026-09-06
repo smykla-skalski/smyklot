@@ -287,21 +287,24 @@ answered a question a workspace never asks and hid the one it does.
       <Select
         aria-label="Job"
         value={kind}
-        onchange={(event) =>
-          pickKind((event.currentTarget as HTMLSelectElement).value as QueueWorkload)}
-      >
-        {#each policies as policy (policy.kind)}
-          <option value={policy.kind}>{workloadTitle(policy.kind)}</option>
-        {/each}
-      </Select>
+        onValueChange={(value) => pickKind(value as QueueWorkload)}
+        options={policies.map((policy) => ({
+          value: policy.kind,
+          label: workloadTitle(policy.kind),
+        }))}
+      />
     </label>
 
     <label class="form-field">
       <span class="form-label">Hours</span>
-      <Select bind:value={windowMode}>
-        <option value="existing">A named set of hours</option>
-        <option value="custom">Hours of your own</option>
-      </Select>
+      <Select
+        aria-label="Hours"
+        bind:value={windowMode}
+        options={[
+          { value: 'existing', label: 'A named set of hours' },
+          { value: 'custom', label: 'Hours of your own' },
+        ]}
+      />
     </label>
 
     {#if windowMode === 'existing'}
@@ -310,12 +313,9 @@ answered a question a workspace never asks and hid the one it does.
         <Select
           aria-label="Which hours"
           value={profileShown}
-          onchange={(event) => (chosenProfile = (event.currentTarget as HTMLSelectElement).value)}
-        >
-          {#each profiles as profile (profile.id)}
-            <option value={profile.id}>{profile.name}</option>
-          {/each}
-        </Select>
+          onValueChange={(value) => (chosenProfile = value)}
+          options={profiles.map((profile) => ({ value: profile.id, label: profile.name }))}
+        />
       </label>
     {:else}
       <label class="form-field">
@@ -373,14 +373,15 @@ answered a question a workspace never asks and hid the one it does.
       <span class="form-label">Priority</span>
       <Select
         value={priorityShown}
-        onchange={(event) =>
-          (priority = (event.currentTarget as HTMLSelectElement).value as QueuePriority)}
-      >
-        <option value="low">Low</option>
-        <option value="normal">Normal</option>
-        <option value="high">High</option>
-        <option value="urgent">Urgent</option>
-      </Select>
+        aria-label="Priority"
+        onValueChange={(value) => (priority = value as QueuePriority)}
+        options={[
+          { value: 'low', label: 'Low' },
+          { value: 'normal', label: 'Normal' },
+          { value: 'high', label: 'High' },
+          { value: 'urgent', label: 'Urgent' },
+        ]}
+      />
     </label>
 
     <label class="form-field request-reason">

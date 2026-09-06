@@ -16,7 +16,7 @@ async function expectSharedModalControls(dialog: Locator): Promise<void> {
       const label = parent.querySelector('.form-label')!;
       const labelBox = label.getBoundingClientRect();
       const input = field.querySelector('input')!;
-      const select = field.querySelector('select')!;
+      const select = field.querySelector('[role=combobox]')!;
       const reference = document.createElement('input');
       reference.className = 'text-input';
       parent.append(reference);
@@ -53,9 +53,7 @@ async function expectSharedModalControls(dialog: Locator): Promise<void> {
       nativeChecks: Array.from(node.querySelectorAll('input[type="checkbox"]')).filter(
         (input) => !input.closest('.switch,.check-item'),
       ).length,
-      nativeSelects: Array.from(node.querySelectorAll('select')).filter(
-        (select) => !select.closest('.select-wrap'),
-      ).length,
+      nativeSelects: node.querySelectorAll('select').length,
       overflow: node.scrollWidth - node.clientWidth,
     };
   });
@@ -139,7 +137,8 @@ describe('background work schedules [Integration]', () => {
         await timing.locator('summary').click();
         await timing.getByRole('button', { name: 'Request a change' }).click();
         const request = page.getByRole('dialog', { name: 'Request a change to when Smyklot acts' });
-        await request.getByLabel('Job', { exact: true }).selectOption('config_file_sync');
+        await request.getByLabel('Job', { exact: true }).click();
+        await page.getByRole('option', { name: 'Configuration file sync', exact: true }).click();
         await request.getByText(/Checks connected configuration files for changes/).waitFor();
         expect(
           await request.getByRole('textbox', { name: 'How often', exact: true }).inputValue(),

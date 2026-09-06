@@ -101,9 +101,7 @@ async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {
       // rather than the control's own size.
       if (rect.height > 60) continue;
 
-      const sharedField = control.matches(
-        '.text-input, .select-input, .value-select, .seg, .btn:not(.btn-row)',
-      );
+      const sharedField = control.matches('.text-input, .value-select, .seg, .btn:not(.btn-row)');
       const fieldHeight = sharedField
         ? Number.parseFloat(
             style.getPropertyValue('--local-control-height').trim() ||

@@ -13,8 +13,7 @@
     onSelect: (value: number) => void;
   } = $props();
 
-  function select(event: Event): void {
-    const nextValue = Number((event.currentTarget as HTMLSelectElement).value);
+  function select(nextValue: number): void {
     if (PAGE_SIZES.some((size) => size === nextValue)) onSelect(nextValue);
   }
 </script>
@@ -26,19 +25,19 @@ closed on purpose: a size a reader can type is a number nobody has checked again
 column widths, and three steps is enough to say "a screenful", "a few screens" or "as
 much as will load".
 
-It guards its own answer rather than trusting the event - a `<select>` can be given a
-value no option carried, so a size outside the three is dropped rather than passed on.
+Its numeric answer is checked against the supported page sizes before it leaves the component.
 
 Belongs to a collection that has been counted. A table that loads on a cursor has no
 total and no pages, so it has no size to choose either.
 -->
 
 <span class="page-size">
-  <Select {value} aria-label={label} onchange={select}>
-    {#each PAGE_SIZES as size (size)}
-      <option value={size}>{size}</option>
-    {/each}
-  </Select>
+  <Select
+    {value}
+    aria-label={label}
+    onValueChange={select}
+    options={PAGE_SIZES.map((size) => ({ value: size, label: String(size) }))}
+  />
 </span>
 
 <style>

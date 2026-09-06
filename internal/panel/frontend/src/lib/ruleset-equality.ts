@@ -1,4 +1,5 @@
 import { formatJson, numericValue, parseJson, type JsonValue } from './merge';
+import type { SyncRuleset } from './types';
 
 const SET_PATHS = [
   ['conditions', 'include'],
@@ -13,6 +14,19 @@ const SET_PATHS = [
 export function sameRulesetDocument(left: string, right: string): boolean {
   const first = canonical(left);
   return first !== null && first === canonical(right);
+}
+
+/** Compare a ruleset or selected fields using the same semantics as the saved document. */
+export function sameRulesetFields(
+  left: Partial<SyncRuleset> | null,
+  right: Partial<SyncRuleset> | null,
+): boolean {
+  // These API records contain JSON values; their interfaces intentionally do not
+  // expose a string index signature. Keep the lossless number serializer here.
+  return sameRulesetDocument(
+    formatJson({ rulesets: [left ?? {}] } as unknown as JsonValue),
+    formatJson({ rulesets: [right ?? {}] } as unknown as JsonValue),
+  );
 }
 
 function canonical(text: string): string | null {

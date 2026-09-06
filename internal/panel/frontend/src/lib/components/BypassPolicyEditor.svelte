@@ -71,7 +71,7 @@ Inherited actors stay read only until the repository chooses its own policy.
         value={selection}
         {options}
         disabled={readOnly}
-        onchange={(event) => changePolicy(event.currentTarget.value)}
+        onValueChange={changePolicy}
       /></span
     >
   </div>

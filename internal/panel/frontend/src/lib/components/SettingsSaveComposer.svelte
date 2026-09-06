@@ -165,14 +165,16 @@ changed something.
     bottom: max(var(--space-4), env(safe-area-inset-bottom));
     box-shadow: var(--shadow-plate);
     display: flex;
-    gap: var(--space-5);
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-5);
     justify-content: space-between;
-    left: 50%;
+    /* The navigation keeps its own space. Both insets and auto margins center
+       the composer in the remaining pane, including the collapsed sidebar. */
+    inset-inline: calc(var(--pane-chrome-width, 0px) + var(--space-4)) var(--space-4);
+    margin-inline: auto;
     max-width: 50rem;
     padding: var(--space-3) var(--space-4);
     position: fixed;
-    transform: translateX(-50%);
-    width: calc(100vw - 2 * var(--space-4));
     z-index: var(--layer-sticky);
   }
 
@@ -187,6 +189,7 @@ changed something.
 
   .composer-copy {
     display: grid;
+    flex: 1 1 18rem;
     gap: var(--row-copy-gap);
     min-width: 0;
   }
@@ -213,13 +216,12 @@ changed something.
     display: flex;
     flex: 0 0 auto;
     gap: var(--space-2);
+    margin-inline-start: auto;
   }
 
   @media (max-width: 42rem) {
     .settings-composer {
       align-items: stretch;
-      flex-direction: column;
-      gap: var(--space-3);
     }
 
     .composer-actions {
