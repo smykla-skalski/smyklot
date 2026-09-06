@@ -581,7 +581,7 @@ function recomputeTarget(target: MockTarget): void {
 }
 
 function recomputeRepository(target: MockTarget, repository: MockRepository): void {
-  repository.detail.pending_ci_bypass_policy_inherited = structuredClone(
+  repository.detail.pending_ci_bypass_policy_inherited = cloneMockDocument(
     target.value.pending_ci_bypass_policy_default ?? null,
   );
   const detail = repository.detail;
@@ -3296,11 +3296,11 @@ function prepareMockTargetSettings(
     path_index_interval_seconds_override: input.path_index_interval_seconds_override,
     config_patch: structuredClone(input.config_patch),
   };
-  const next = structuredClone(target.value);
+  const next = cloneMockDocument(target.value);
   const changed = !sameMockDocument(current, proposed);
   if (changed) Object.assign(next, proposed, { revision: next.revision + 1 });
   return {
-    before: structuredClone(target.value),
+    before: cloneMockDocument(target.value),
     changed,
     next,
     conflict:
@@ -3338,7 +3338,7 @@ function prepareMockRepositorySettings(
     ),
     ignore_repository_file: input.ignore_repository_file,
   };
-  const next = structuredClone(stored.detail);
+  const next = cloneMockDocument(stored.detail);
   const changed = !sameMockDocument(mockWorkspaceRepositoryDocument(stored.detail), proposed);
   if (changed) {
     next.repository.enabled_override = proposed.enabled_override;
@@ -3355,7 +3355,7 @@ function prepareMockRepositorySettings(
     next.repository.updated_at = new Date().toISOString();
   }
   return {
-    before: structuredClone(stored.detail),
+    before: cloneMockDocument(stored.detail),
     changed,
     stored,
     next,
@@ -3649,7 +3649,7 @@ function createMockWorkspaceSettingsCheckpoint(
   };
   state.workspaceSettings.checkpoints.set(
     mockWorkspaceCheckpointKey(target.value.id, id),
-    structuredClone(checkpoint),
+    cloneMockDocument(checkpoint),
   );
   return checkpoint;
 }
@@ -3671,7 +3671,7 @@ function mockWorkspaceCheckpointItem(
     current: SettingsCheckpointState | null,
   ) => ({
     available,
-    state: structuredClone(value),
+    state: cloneMockDocument(value),
     differs: available && !sameMockCheckpointState(value, current),
     restorable: available && (value !== null || optional),
   });
@@ -3680,7 +3680,7 @@ function mockWorkspaceCheckpointItem(
     document_version: 1,
     before: side(beforeAvailable, before, after),
     after: side(afterAvailable, after, after),
-    current: structuredClone(after),
+    current: cloneMockDocument(after),
     changed: beforeAvailable && afterAvailable && !sameMockCheckpointState(before, after),
   };
 }
@@ -3693,7 +3693,7 @@ function mockWorkspaceTargetDocument(target: PanelTarget) {
   return {
     config_file_sync_enabled: target.config_file_sync_enabled ?? false,
     repository_default_enabled: target.repository_default_enabled,
-    pending_ci_bypass_policy_default: structuredClone(
+    pending_ci_bypass_policy_default: cloneMockDocument(
       target.pending_ci_bypass_policy_default ?? null,
     ),
     pending_ci_mode_default: target.pending_ci_mode_default,
@@ -3707,7 +3707,7 @@ function mockWorkspaceTargetDocument(target: PanelTarget) {
 function mockWorkspaceRepositoryDocument(detail: RepositoryDetail) {
   return {
     enabled_override: detail.repository.enabled_override,
-    pending_ci_bypass_policy_override: structuredClone(
+    pending_ci_bypass_policy_override: cloneMockDocument(
       detail.pending_ci_bypass_policy_override ?? null,
     ),
     pending_ci_mode_override: detail.pending_ci_mode_override,
@@ -3724,7 +3724,7 @@ function mockWorkspaceTargetCheckpointDocument(target: PanelTarget): Record<stri
   return {
     ...(target.config_file_sync_enabled === true ? { config_file_sync_enabled: true } : {}),
     repository_default_enabled: target.repository_default_enabled,
-    pending_ci_bypass_policy_default: structuredClone(
+    pending_ci_bypass_policy_default: cloneMockDocument(
       target.pending_ci_bypass_policy_default ?? null,
     ),
     pending_ci_mode_default: target.pending_ci_mode_default,
@@ -3744,7 +3744,7 @@ function mockWorkspaceRepositoryCheckpointDocument(
 ): Record<string, unknown> {
   return {
     enabled_override: detail.repository.enabled_override,
-    pending_ci_bypass_policy_override: structuredClone(
+    pending_ci_bypass_policy_override: cloneMockDocument(
       detail.pending_ci_bypass_policy_override ?? null,
     ),
     pending_ci_mode_override: detail.pending_ci_mode_override,
@@ -3787,7 +3787,7 @@ function mockWorkspaceCheckpointState(
   document: Record<string, unknown>,
   revision: number,
 ): SettingsCheckpointState {
-  const copy = structuredClone(document);
+  const copy = cloneMockDocument(document);
   return {
     document: copy,
     digest: `sha256:${createHash('sha256').update(canonicalStringify(copy)).digest('hex')}`,
@@ -3847,7 +3847,7 @@ function inspectMockWorkspaceSettingsCheckpoint(
   target: MockTarget,
   checkpoint: SettingsCheckpoint,
 ): SettingsCheckpoint {
-  const inspection = structuredClone(checkpoint);
+  const inspection = cloneMockDocument(checkpoint);
   const seen = new Set(inspection.items.map(mockWorkspaceCheckpointIdentity));
   for (const entry of mockWorkspaceSettingsSnapshot(state, target).values()) {
     if (entry.kind !== 'sync_config' && entry.kind !== 'sync_override') continue;
@@ -3866,7 +3866,7 @@ function inspectMockWorkspaceSettingsCheckpoint(
     const { current, incompatibility } = mockWorkspaceCheckpointCurrent(state, target, item);
     return {
       ...item,
-      current: structuredClone(current),
+      current: cloneMockDocument(current),
       before: inspectMockWorkspaceCheckpointSide(item, item.before, current, incompatibility),
       after: inspectMockWorkspaceCheckpointSide(item, item.after, current, incompatibility),
     };
@@ -3887,7 +3887,7 @@ function inspectMockWorkspaceCheckpointSide(
     side.state !== null || item.kind === 'sync_config' || item.kind === 'sync_override';
   return {
     ...side,
-    state: structuredClone(side.state),
+    state: cloneMockDocument(side.state),
     differs: side.available && !sameMockCheckpointState(side.state, current),
     restorable: side.available && incompatibility === undefined && historicalRestorable,
     ...(incompatibility === undefined ? {} : { incompatibility }),
@@ -4408,7 +4408,7 @@ function mockSyncConfigDocument(config: SyncConfig): Record<string, unknown> {
 function mockWorkspaceTargetState(target: PanelTarget): WorkspaceTargetSettingsState {
   return {
     target_id: target.id,
-    ...structuredClone(mockWorkspaceTargetDocument(target)),
+    ...cloneMockDocument(mockWorkspaceTargetDocument(target)),
     revision: target.revision,
   };
 }
@@ -4416,7 +4416,7 @@ function mockWorkspaceTargetState(target: PanelTarget): WorkspaceTargetSettingsS
 function mockWorkspaceRepositoryState(detail: RepositoryDetail): WorkspaceRepositorySettingsState {
   return {
     repository_id: detail.repository.id,
-    ...structuredClone(mockWorkspaceRepositoryDocument(detail)),
+    ...cloneMockDocument(mockWorkspaceRepositoryDocument(detail)),
     revision: detail.revision,
   };
 }
@@ -5723,10 +5723,10 @@ function activeMockElevation(state: MockState, targetId: string): RootElevation 
 }
 
 function rootTargetValue(state: MockState, target: MockTarget): PanelTarget {
-  if (mockRootOwns(target)) return structuredClone(target.value);
+  if (mockRootOwns(target)) return cloneMockDocument(target.value);
   const elevated = activeMockElevation(state, target.value.id) !== undefined;
   return {
-    ...structuredClone(target.value),
+    ...cloneMockDocument(target.value),
     effective_role: 'none',
     access_source: elevated ? 'elevation' : 'root',
     capabilities: { ...ROOT_READ_CAPABILITIES, write: elevated },

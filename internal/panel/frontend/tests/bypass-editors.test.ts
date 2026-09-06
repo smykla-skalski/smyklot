@@ -2,7 +2,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import { parseJson } from '../src/lib/merge';
-import type { SyncRulesetBypassActor } from '../src/lib/types';
+import type { BypassActorIdentity, SyncRulesetBypassActor } from '../src/lib/types';
 import { chooseOption, optionLabels } from './support/select';
 import BypassActorEditor from '../src/lib/components/BypassActorEditor.svelte';
 import BypassPolicyEditor from '../src/lib/components/BypassPolicyEditor.svelte';
@@ -18,6 +18,94 @@ const IDENTITY = {
 };
 
 describe('shared bypass editors [Component]', () => {
+  it('keeps unresolved actors distinct and recovers names without changing permissions', async () => {
+    const actors = [APP, { ...APP, actor_id: 2740 }];
+    const onChange = vi.fn();
+    const lookup = vi.fn(async (): Promise<BypassActorDirectory> => ({ items: [] }));
+    render(BypassActorEditor, { actors, lookup, onChange });
+    await screen.findByRole('button', { name: 'Retry names' });
+    expect(screen.getAllByText('Unavailable app')).toHaveLength(2);
+    expect(screen.getByText(/App ID 1197525/)).toBeTruthy();
+    const unresolved = screen.getByRole('combobox', {
+      name: 'Bypass mode for Unavailable app, App ID 2740',
+    });
+    await chooseOption(unresolved, 'Pull requests only');
+    expect(onChange).toHaveBeenLastCalledWith([APP, { ...actors[1], bypass_mode: 'pull_request' }]);
+    lookup.mockResolvedValue({ items: [IDENTITY] });
+    await fireEvent.click(screen.getByRole('button', { name: 'Retry names' }));
+    await screen.findByRole('button', { name: 'Remove Smyklot' });
+    expect(document.querySelector('img')?.getAttribute('src')).toBe(IDENTITY.avatar_url);
+    expect(screen.queryByText(/App ID 1197525/)).toBeNull();
+    await fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Unavailable app, App ID 2740' }),
+    );
+    expect(onChange).toHaveBeenLastCalledWith([APP]);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders lossless active actor IDs and prevents duplicate role additions', async () => {
+    const actors = parseJson(
+      '[{"actor_type":"Integration","actor_id":1197525,"bypass_mode":"always"},{"actor_type":"RepositoryRole","actor_id":5,"bypass_mode":"always"},{"actor_type":"RepositoryRole","actor_id":901,"bypass_mode":"always"},{"actor_type":"OrganizationAdmin","actor_id":0,"bypass_mode":"always"}]',
+    ) as unknown as SyncRulesetBypassActor[];
+    const onChange = vi.fn();
+    render(BypassActorEditor, { actors, onChange });
+    expect(screen.getByRole('button', { name: 'Remove Repository admin' })).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
+    await chooseOption(screen.getByLabelText('Who'), 'Repository role');
+    const add = screen.getByRole<HTMLButtonElement>('button', { name: 'Add actor' });
+    expect(add.disabled).toBe(true);
+    await chooseOption(screen.getByLabelText('Role'), 'Custom repository role');
+    await fireEvent.input(screen.getByLabelText('Custom repository role ID'), {
+      target: { value: '901' },
+    });
+    expect(add.disabled).toBe(true);
+    await fireEvent.input(screen.getByLabelText('Custom repository role ID'), {
+      target: { value: '902' },
+    });
+    expect(add.disabled).toBe(false);
+    await chooseOption(screen.getByLabelText('Who'), 'Organization admin');
+    expect(add.disabled).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('edits and removes one large actor ID without affecting its neighboring integer', async () => {
+    const actors = parseJson(
+      '[{"actor_type":"Integration","actor_id":9007199254740992,"bypass_mode":"always"},{"actor_type":"Integration","actor_id":9007199254740993,"bypass_mode":"always"}]',
+    ) as unknown as SyncRulesetBypassActor[];
+    const onChange = vi.fn();
+    render(BypassActorEditor, { actors, onChange });
+    await chooseOption(
+      screen.getByLabelText('Bypass mode for Unavailable app, App ID 9007199254740993'),
+      'Pull requests only',
+    );
+    expect(JSON.stringify(onChange.mock.lastCall?.[0])).toBe(
+      '[{"actor_type":"Integration","actor_id":9007199254740992,"bypass_mode":"always"},{"actor_type":"Integration","actor_id":9007199254740993,"bypass_mode":"pull_request"}]',
+    );
+    await fireEvent.click(
+      screen.getByRole('button', { name: 'Remove Unavailable app, App ID 9007199254740992' }),
+    );
+    expect(JSON.stringify(onChange.mock.lastCall?.[0])).toBe(
+      '[{"actor_type":"Integration","actor_id":9007199254740993,"bypass_mode":"always"}]',
+    );
+  });
+
+  it('adds a lossless directory identity by name without rounding its ID', async () => {
+    const identity = parseJson(
+      '{"actor_type":"Integration","actor_id":9007199254740993,"name":"Release app","slug":"release-app","avatar_url":null}',
+    ) as unknown as BypassActorIdentity;
+    const onChange = vi.fn();
+    render(BypassActorEditor, {
+      actors: [],
+      lookup: async () => ({ items: [identity] }),
+      onChange,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
+    await fireEvent.click(await screen.findByRole('button', { name: 'Add Release app' }));
+    expect(JSON.stringify(onChange.mock.lastCall?.[0])).toBe(
+      '[{"actor_type":"Integration","actor_id":9007199254740993,"bypass_mode":"always"}]',
+    );
+  });
+
   it('resolves a saved app name and avatar and edits its mode without replacing identity', async () => {
     const onChange = vi.fn();
     render(BypassActorEditor, {
@@ -166,6 +254,26 @@ describe('shared bypass editors [Component]', () => {
     expect(onChange).toHaveBeenCalledWith([
       { actor_id: 42, actor_type: 'RepositoryRole', bypass_mode: 'always' },
     ]);
+  });
+
+  it('authors a custom role up to the int64 limit without a float conversion', async () => {
+    const onChange = vi.fn();
+    render(BypassActorEditor, { actors: [], onChange });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add an actor' }));
+    await chooseOption(screen.getByLabelText('Who'), 'Repository role');
+    await chooseOption(screen.getByLabelText('Role'), 'Custom repository role');
+    const field = screen.getByLabelText('Custom repository role ID');
+    const add = screen.getByRole<HTMLButtonElement>('button', { name: 'Add actor' });
+    for (const value of ['0', '-1', '1.5', '1e3', '9223372036854775808']) {
+      await fireEvent.input(field, { target: { value } });
+      expect(add.disabled).toBe(true);
+    }
+    await fireEvent.input(field, { target: { value: '9223372036854775807' } });
+    expect(add.disabled).toBe(false);
+    await fireEvent.click(add);
+    expect(JSON.stringify(onChange.mock.lastCall?.[0])).toBe(
+      '[{"actor_type":"RepositoryRole","actor_id":9223372036854775807,"bypass_mode":"always"}]',
+    );
   });
 
   it('does not offer organization actors in a personal workspace but keeps old rows removable', async () => {

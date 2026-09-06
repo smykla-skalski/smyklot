@@ -438,12 +438,7 @@ stacked left, Cancel and Done on a hairline foot.
 
   /* ---------- The bypass list ---------- */
 
-  const actors = $derived(
-    (ruleset?.bypass_actors ?? []).map((actor) => ({
-      ...actor,
-      actor_id: numericValue(actor.actor_id) ?? 0,
-    })),
-  );
+  const actors = $derived(ruleset?.bypass_actors ?? []);
 </script>
 
 <div class="view-frame">

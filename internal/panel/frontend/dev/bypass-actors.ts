@@ -1,4 +1,17 @@
-import type { BypassActorIdentity } from '../src/lib/types.js';
+import type { BypassActorIdentity, SyncRulesetBypassActor } from '../src/lib/types.js';
+
+// Stored exceptions whose directory entries are withheld in recovery scenarios
+// The second team/person and both custom roles are synthetic fixture identities
+export const MOCK_UNRESOLVED_BYPASS_ACTORS: SyncRulesetBypassActor[] = [
+  { actor_type: 'Integration', actor_id: 2740, bypass_mode: 'always' },
+  { actor_type: 'Integration', actor_id: 254, bypass_mode: 'pull_request' },
+  { actor_type: 'Team', actor_id: 64120, bypass_mode: 'always' },
+  { actor_type: 'Team', actor_id: 64121, bypass_mode: 'pull_request' },
+  { actor_type: 'User', actor_id: 583231, bypass_mode: 'always' },
+  { actor_type: 'User', actor_id: 583232, bypass_mode: 'pull_request' },
+  { actor_type: 'RepositoryRole', actor_id: 901, bypass_mode: 'always' },
+  { actor_type: 'RepositoryRole', actor_id: 902, bypass_mode: 'pull_request' },
+];
 
 // App IDs, names, and logos come from GitHub's public app metadata
 // Installation states are simulated to exercise every permission state in the mock

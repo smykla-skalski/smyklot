@@ -5,8 +5,11 @@
     BYPASS_ACTOR_TYPES,
     BYPASS_MODES,
     BYPASS_ROLES,
+    bypassActorId,
+    bypassActorIdFromText,
     bypassActorKey,
     bypassActorName,
+    bypassActorReference,
     bypassInstallationLabel,
   } from '../bypass-policy';
   import type { BypassActorIdentity, BypassActorLookup, SyncRulesetBypassActor } from '../types';
@@ -42,6 +45,14 @@
   let warning = $state<string | null>(null);
   let failure = $state<string | null>(null);
   let loading = $state(false);
+  let loadingNames = $state(false);
+  let namesLoaded = $state(false);
+  const namesMessage = $derived(
+    warning ??
+      (namesLoaded && actors.some((actor) => bypassActorReference(actor, identities))
+        ? 'Some actor names are unavailable'
+        : null),
+  );
   let returnFocus: HTMLElement | undefined;
   let focusGeneration = 0;
   let formElement = $state<HTMLFormElement | null>(null);
@@ -108,13 +119,14 @@
   let searched = $state(false);
   let role = $state<string | number>(5);
   let customRoleId = $state('');
-  const roleId = $derived(role === 'custom' ? Number(customRoleId) : Number(role));
-  const validRole = $derived(Number.isSafeInteger(roleId) && roleId > 0);
+  const roleId = $derived(bypassActorIdFromText(role === 'custom' ? customRoleId : String(role)));
+  const validRole = $derived(roleId !== undefined && roleId !== 0);
   const duplicateRole = $derived(
     actors.some(
       (actor) =>
         actor.actor_type === actorType &&
-        actor.actor_id === (actorType === 'RepositoryRole' ? roleId : 0),
+        bypassActorId(actor) ===
+          bypassActorId({ actor_id: actorType === 'RepositoryRole' ? (roleId ?? -1) : 0 }),
     ),
   );
   const roleOptions = [...BYPASS_ROLES, { value: 'custom', label: 'Custom repository role' }];
@@ -182,13 +194,17 @@
   }
 
   async function loadIdentities(): Promise<void> {
-    if (!lookup) return;
+    if (!lookup || loadingNames) return;
+    loadingNames = true;
     try {
       const response = await lookup();
       remember(response.items);
       warning = response.warning?.replace(/\.+$/u, '') ?? null;
     } catch {
       warning = 'Names unavailable, saved exceptions are still editable';
+    } finally {
+      loadingNames = false;
+      namesLoaded = true;
     }
   }
 
@@ -232,7 +248,7 @@
     if (readOnly || (!identity && actorType === 'RepositoryRole' && !validRole)) return;
     const actor = {
       actor_type: identity?.actor_type ?? actorType,
-      actor_id: identity?.actor_id ?? (actorType === 'RepositoryRole' ? roleId : 0),
+      actor_id: identity?.actor_id ?? (actorType === 'RepositoryRole' ? (roleId ?? 0) : 0),
       bypass_mode: mode,
     };
     if (actors.some((held) => bypassActorKey(held) === bypassActorKey(actor))) return;
@@ -300,12 +316,14 @@ also supports inherited lists without turning them into local overrides.
 {#if actors.length > 0}
   <ul
     class="object-list actor-list"
-    class:actor-list-continues={adding || Boolean(warning)}
+    class:actor-list-continues={adding || Boolean(namesMessage)}
     aria-label="Bypass exceptions"
   >
     {#each actors as actor (bypassActorKey(actor))}
       {@const identity = identities.find((item) => bypassActorKey(item) === bypassActorKey(actor))}
       {@const name = bypassActorName(actor, identities)}
+      {@const reference = bypassActorReference(actor, identities)}
+      {@const controlName = reference ? `${name}, ${reference}` : name}
       <li>
         <div
           class="object-row actor-row"
@@ -316,9 +334,9 @@ also supports inherited lists without turning them into local overrides.
             {#if ['Integration', 'Team', 'User'].includes(actor.actor_type)}
               <Avatar
                 account={{
-                  id: String(actor.actor_id),
+                  id: bypassActorId(actor),
                   provider: 'github',
-                  subject_id: String(actor.actor_id),
+                  subject_id: bypassActorId(actor),
                   login: identity?.slug ?? name,
                   display_name: name,
                   avatar_url: identity?.avatar_url ?? null,
@@ -341,8 +359,9 @@ also supports inherited lists without turning them into local overrides.
             <span class="setting-say">
               <span class="setting-name">{name}</span>
               <span class="setting-why"
-                >{BYPASS_ACTOR_TYPES.find((item) => item.value === actor.actor_type)
-                  ?.label}{#if identity?.slug && identity.slug !== name}
+                >{reference ??
+                  BYPASS_ACTOR_TYPES.find((item) => item.value === actor.actor_type)
+                    ?.label}{#if identity?.slug && identity.slug !== name}
                   &nbsp;·&nbsp;{identity.slug}{/if}{#if actor.actor_type === 'Integration'}
                   &nbsp;·&nbsp;<span
                     class:availability-warning={[
@@ -360,13 +379,13 @@ also supports inherited lists without turning them into local overrides.
           </div>
           <div class="actor-actions">
             {#if readOnly}
-              <span class="setting-unmanaged" aria-label="Bypass mode for {name}"
+              <span class="setting-unmanaged" aria-label="Bypass mode for {controlName}"
                 >{BYPASS_MODES.find((mode) => mode.value === actor.bypass_mode)?.label ??
                   actor.bypass_mode}</span
               >
             {:else}
               <Select
-                aria-label="Bypass mode for {name}"
+                aria-label="Bypass mode for {controlName}"
                 value={actor.bypass_mode}
                 options={BYPASS_MODES.filter(
                   (item) => actor.actor_type !== 'DeployKey' || item.value !== 'pull_request',
@@ -378,7 +397,7 @@ also supports inherited lists without turning them into local overrides.
             {#if !readOnly}
               <IconButton
                 icon="close"
-                label="Remove {name}"
+                label="Remove {controlName}"
                 toolbar
                 onclick={() =>
                   onChange(actors.filter((held) => bypassActorKey(held) !== bypassActorKey(actor)))}
@@ -393,11 +412,14 @@ also supports inherited lists without turning them into local overrides.
   <p class="empty-actors">No actors selected</p>
 {/if}
 
-{#if warning}
+{#if namesMessage}
   <div class="directory-warning" role="status">
-    <span>{warning}</span><Button tone="quiet" onclick={() => void loadIdentities()}
-      >Retry names</Button
-    >
+    <span class="setting-why">{namesMessage}</span>
+    {#if lookup}
+      <Button tone="quiet" disabled={loadingNames} onclick={() => void loadIdentities()}
+        >Retry names</Button
+      >
+    {/if}
   </div>
 {/if}
 
@@ -481,9 +503,9 @@ also supports inherited lists without turning them into local overrides.
                   onclick={() => add(identity)}
                   ><Avatar
                     account={{
-                      id: String(identity.actor_id),
+                      id: bypassActorId(identity),
                       provider: 'github',
-                      subject_id: String(identity.actor_id),
+                      subject_id: bypassActorId(identity),
                       login: identity.slug,
                       display_name: identity.name,
                       avatar_url: identity.avatar_url,
@@ -533,6 +555,9 @@ also supports inherited lists without turning them into local overrides.
 {/if}
 
 <style>
+  .actor-list {
+    container: bypass-actors / inline-size;
+  }
   .actor-symbol {
     align-items: center;
     color: var(--text-secondary);
@@ -563,6 +588,14 @@ also supports inherited lists without turning them into local overrides.
   }
   .actor-actions {
     flex-wrap: wrap;
+  }
+  /* Reserve the identity and the longest mode together; selecting another mode
+     must not move that row's controls onto a different line from its neighbors. */
+  @container bypass-actors (max-width: 30rem) {
+    .actor-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   .actor-header,
   .directory-warning {

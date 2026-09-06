@@ -1,4 +1,4 @@
-import type { ArrayStrategy } from '#lib/merge.js';
+import type { ArrayStrategy, JsonNumber } from '#lib/merge.js';
 import type {
   FormattingPatch,
   FormattingPolicy,
@@ -1265,7 +1265,7 @@ export interface PendingCIBypassPolicy {
 export interface BypassActorIdentity {
   installation_status?:
     'all_repositories' | 'selected_repositories' | 'not_installed' | 'suspended' | 'unknown';
-  actor_id: number;
+  actor_id: number | JsonNumber;
   actor_type: string;
   name: string;
   slug: string;
@@ -1281,7 +1281,7 @@ export type BypassActorLookup = (type?: string, query?: string) => Promise<Bypas
 
 /** Somebody who may step around a ruleset. */
 export interface SyncRulesetBypassActor {
-  actor_id: number;
+  actor_id: number | JsonNumber;
   /** Integration, OrganizationAdmin, RepositoryRole, Team, User or DeployKey. */
   actor_type: string;
   /** always, pull_request or exempt. */

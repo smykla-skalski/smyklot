@@ -547,6 +547,23 @@ An unavailable app must not be silently removed from policy. Distinguish missing
 suspended, and unknown installation state. Explain the resulting restriction in
 context and keep the configured choice available to fix
 
+When a GitHub actor name cannot be resolved, keep a plain unavailable-name primary
+label and show its type and exact GitHub ID as secondary recovery context. Include
+this context in mode and Remove control names so unresolved actors remain distinct
+to assistive technology. IDs never replace resolved names or avatars. Offer a
+shared quiet name-lookup retry without changing configured permissions
+
+Actor IDs are identities, not quantities. Preserve every digit of valid signed
+64-bit IDs through lookup, row matching, draft persistence, saves, history, and
+reload. Large IDs remain numeric JSON literals; never round them through a
+JavaScript Number or turn them into JSON strings. Builtin role recognition and
+duplicate checks use the same canonical identity comparison
+
+Actor rows choose their layout from the card's available width. In narrow cards,
+place every permission and Remove group below its identity with the shared row
+gap. A permission's wording must not decide which rows wrap. Keep controls at
+their intrinsic width and leave enough room to read exact identity references
+
 ### Empty states and time labels
 
 The shared empty/error surface puts its title above its explanation with the same
@@ -579,6 +596,7 @@ states without depending on a caller's scoped CSS
 | Empty, signed-out, and label states | `empty-states`, `signed-out-layout`, `sync-label-layout` browser suites |
 | Navigation context and accurate day grouping | `sidebar-selection`, `text-clipping` browser suites |
 | Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
+| Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
 | Independent ruleset and actor markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
 

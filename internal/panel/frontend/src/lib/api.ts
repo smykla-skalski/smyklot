@@ -1,5 +1,5 @@
 import { panelUrl } from './base';
-import { parseJson, type JsonValue } from './merge';
+import { parseJson, preserveNumberToken, type JsonValue } from './merge';
 import type { PanelStreamHandle, PanelStreamHandlers, PanelWebSocketFactory } from './events';
 import { openPanelStream, panelStreamUrl } from './events';
 import type { RequestFlood } from './request-rate';
@@ -382,7 +382,12 @@ export function createPanelApi(
 
   const jsonRequest = async <T>(path: string, init?: RequestInit): Promise<T> => {
     const response = await request(path, init);
-    return (await response.json()) as T;
+    // Actor IDs are identities. Other typed metadata keeps its ordinary number shape.
+    return JSON.parse(
+      await response.text(),
+      (key, value: unknown, context?: { source?: string }) =>
+        key === 'actor_id' ? preserveNumberToken(key, value, context) : value,
+    ) as T;
   };
 
   /**
@@ -1390,7 +1395,8 @@ function graftDocuments(payload: unknown, literal: JsonValue): unknown {
   for (const key of Object.keys(grafted)) {
     const beside = (literal as Record<string, JsonValue>)[key];
     if (beside === undefined) continue;
-    grafted[key] = key === 'document' ? beside : graftDocuments(grafted[key], beside);
+    grafted[key] =
+      key === 'document' || key === 'actor_id' ? beside : graftDocuments(grafted[key], beside);
   }
 
   return grafted;

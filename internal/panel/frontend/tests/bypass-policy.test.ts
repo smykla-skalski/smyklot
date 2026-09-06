@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mockBypassActorSuggestions } from '../dev/bypass-actors';
-import { parseBypassPolicy } from '../src/lib/bypass-policy';
+import { bypassActorKey, bypassActorName, parseBypassPolicy } from '../src/lib/bypass-policy';
+import { parseJson } from '../src/lib/merge';
+import type { SyncRulesetBypassActor } from '../src/lib/types';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import {
   adoptTargetDefaults,
@@ -20,6 +22,46 @@ import { TARGET, REPOSITORY_DETAIL } from '../stories/support/fixtures';
 const APP = { actor_id: 1197525, actor_type: 'Integration', bypass_mode: 'always' };
 
 describe('bypass policy documents [Unit]', () => {
+  it('preserves full int64 IDs in policy parsing and rejects out-of-range metadata', () => {
+    const source =
+      '{"allow":true,"actors":[{"actor_type":"Integration","actor_id":9007199254740993,"bypass_mode":"always"},{"actor_type":"RepositoryRole","actor_id":9223372036854775807,"bypass_mode":"always"}]}';
+    const parsed = parseBypassPolicy(parseJson(source));
+    expect(parsed).toEqual(parseJson(source));
+    expect(JSON.stringify(parsed?.actors.map((actor) => actor.actor_id))).toBe(
+      '[9007199254740993,9223372036854775807]',
+    );
+    for (const literal of ['9223372036854775808', '-1', '1.5', '1e3']) {
+      expect(
+        parseBypassPolicy(
+          parseJson(
+            `{"allow":true,"actors":[{"actor_type":"Integration","actor_id":${literal},"bypass_mode":"always"}]}`,
+          ),
+        ),
+      ).toBeUndefined();
+    }
+  });
+  it('keeps distinct int64 actor IDs lossless while matching ordinary numeric IDs', () => {
+    const actors = parseJson(
+      '[{"actor_type":"Integration","actor_id":9007199254740992},{"actor_type":"Integration","actor_id":9007199254740993},{"actor_type":"Integration","actor_id":1197525}]',
+    ) as unknown as SyncRulesetBypassActor[];
+    expect(actors.map(bypassActorKey)).toEqual([
+      'Integration:9007199254740992',
+      'Integration:9007199254740993',
+      bypassActorKey(APP),
+    ]);
+  });
+  it.each([
+    [5, 'Repository admin'],
+    [4, 'Maintainers'],
+    [2, 'Writers'],
+    [901, 'Custom repository role'],
+  ])('names repository role %s from a lossless canonical document', (id, name) => {
+    const actor = parseJson(
+      JSON.stringify({ actor_type: 'RepositoryRole', actor_id: id, bypass_mode: 'always' }),
+    ) as unknown as SyncRulesetBypassActor;
+    expect(bypassActorName(actor, [])).toBe(name);
+  });
+
   it('clears the draft when a removed actor is restored in a different list position', () => {
     const team = { actor_type: 'Team', actor_id: 42, bypass_mode: 'pull_request' };
     const target = {
@@ -67,7 +109,7 @@ describe('bypass policy documents [Unit]', () => {
     { allow: true, actors: [], extra: true },
     { allow: true, actors: [APP, APP] },
     { allow: true, actors: [{ ...APP, actor_id: 0 }] },
-    { allow: true, actors: [{ ...APP, actor_id: Number.MAX_SAFE_INTEGER + 1 }] },
+    { allow: true, actors: [{ ...APP, actor_id: Number.MAX_VALUE }] },
     { allow: true, actors: [{ ...APP, bypass_mode: 'sometimes' }] },
     { allow: true, actors: [{ ...APP, actor_type: 'User', actor_id: -1 }] },
     { allow: true, actors: [{ ...APP, actor_type: 'DeployKey', bypass_mode: 'pull_request' }] },
