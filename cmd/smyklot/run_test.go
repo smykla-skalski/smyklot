@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
+	"github.com/smykla-skalski/smyklot/internal/githubtest"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/spf13/cobra"
 )
@@ -100,10 +100,7 @@ func (r *commentRecorder) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		payload, _ := json.Marshal(map[string]string{
-			"content": base64.StdEncoding.EncodeToString([]byte(r.repoConfig)),
-		})
-		_, _ = w.Write(payload)
+		_, _ = w.Write([]byte(githubtest.ContentsResponse(r.repoConfig)))
 
 		return
 	}

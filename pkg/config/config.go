@@ -36,10 +36,12 @@ func LoadRepoConfig(base *Config, format Format, content []byte) (*Config, error
 		return base, nil
 	}
 
-	patch, err := ParsePatch(format, content)
+	document, err := ParseRepositoryFile(format, content)
 	if err != nil {
 		return nil, err
 	}
 
-	return ApplyPatch(base, patch), nil
+	// The connected service imports panel settings separately. Reading them
+	// here cannot grant a standalone Action permission to change panel state.
+	return ApplyPatch(base, document.Patch), nil
 }

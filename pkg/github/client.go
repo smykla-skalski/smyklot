@@ -6,7 +6,6 @@ package github
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -202,61 +201,6 @@ func (c *Client) GetCodeowners(ctx context.Context, owner, repo string) (string,
 	}
 
 	return string(decoded), nil
-}
-
-// GetFileContent reads a file through the contents API, at ref when one is
-// given and from the default branch otherwise. Returns nil content (not an
-// error) when the file does not exist, so callers can treat "no such file" as
-// "nothing configured".
-func (c *Client) GetFileContent(
-	ctx context.Context,
-	owner, repo, filePath, ref string,
-	maxSize int,
-) ([]byte, error) {
-	path := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, filePath)
-	if ref != "" {
-		path += "?" + url.Values{"ref": []string{ref}}.Encode()
-	}
-
-	response, err := doJSON[map[string]interface{}](ctx, c, http.MethodGet, path, nil)
-	if err != nil {
-		var apiErr *APIError
-		if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	content, ok := response["content"].(string)
-	if !ok {
-		return nil, NewAPIError(
-			ErrResponseParse,
-			0,
-			"GET",
-			path,
-			fmt.Errorf("no content field in response"),
-		)
-	}
-
-	// GitHub API returns base64-encoded content, decode it
-	decoded, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(content, "\n", ""))
-	if err != nil {
-		return nil, NewAPIError(ErrResponseParse, 0, "GET", path, err)
-	}
-
-	// Validate decoded content size to prevent memory exhaustion
-	if len(decoded) > maxSize {
-		return nil, NewAPIError(
-			ErrResponseParse,
-			0,
-			"GET",
-			path,
-			fmt.Errorf("%s too large: %d bytes (max: %d)", filePath, len(decoded), maxSize),
-		)
-	}
-
-	return decoded, nil
 }
 
 // DirectoryEntry is one entry the contents API lists for a directory.

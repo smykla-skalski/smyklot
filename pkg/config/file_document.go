@@ -106,6 +106,20 @@ func ParseFileDocument(format Format, content []byte) (FileDocument, error) {
 	return document, nil
 }
 
+// ParseRepositoryFile accepts command settings and an optional repository panel
+// section. Workspace documents are not repository configuration, even when
+// their command settings happen to be valid at both scopes.
+func ParseRepositoryFile(format Format, content []byte) (FileDocument, error) {
+	document, err := ParseFileDocument(format, content)
+	if err != nil {
+		return FileDocument{}, err
+	}
+	if document.Panel != nil && document.Panel.Scope != PanelFileRepository {
+		return FileDocument{}, errors.New("repository configuration cannot contain workspace settings")
+	}
+	return document, nil
+}
+
 // RenderFileDocument writes a single complete file with a terminal newline.
 func RenderFileDocument(document FileDocument) ([]byte, error) {
 	if err := document.normalize(); err != nil {

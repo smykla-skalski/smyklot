@@ -12,7 +12,7 @@ import (
 	"github.com/smykla-skalski/smyklot/pkg/github"
 )
 
-const maxRepoConfigSize = 64 * 1024
+const maxRepoConfigSize = config.MaxFileDocumentBytes
 
 // foundRepoConfig is a repository's own configuration file, as found.
 //
