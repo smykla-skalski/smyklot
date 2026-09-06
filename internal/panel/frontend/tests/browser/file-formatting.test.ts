@@ -524,11 +524,12 @@ describe('configured file formatting in the development panel', () => {
           await inspector.getByRole('button', { name: 'Undo', exact: true }).click();
           await expect.poll(() => persistedMerge(page, repositoryId)).toBeNull();
           await editor.focus();
-          await page.keyboard.press('ControlOrMeta+Shift+z');
+          // Send the physical key so Shift produces uppercase Z on Linux too.
+          await page.keyboard.press('ControlOrMeta+Shift+KeyZ');
           await expect
             .poll(() => persistedMerge(page, repositoryId))
             .toMatchObject({ overrides: { automerge: true } });
-          await page.keyboard.press('ControlOrMeta+Shift+z');
+          await page.keyboard.press('ControlOrMeta+Shift+KeyZ');
           await expect
             .poll(
               async () =>
