@@ -32,6 +32,7 @@ func TestPanelResponsesUseWireNames(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seedPanelWireNameRows(t, harness)
+	harness.server.configFiles = &configFileControllerProbe{}
 
 	paths := panelWireNameProbePaths()
 	read := 0
@@ -181,6 +182,8 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/repositories/" + repository,
 		"/panel/api/v1/targets/" + target + "/config-file",
 		"/panel/api/v1/targets/" + target + "/repositories/" + repository + "/config-file",
+		"/panel/api/v1/targets/" + target + "/config-file/preview",
+		"/panel/api/v1/targets/" + target + "/repositories/" + repository + "/config-file/preview",
 		"/panel/api/v1/targets/" + target + "/repositories/" + repository + "/sync/labels",
 		"/panel/api/v1/targets/" + target + "/users",
 		"/panel/api/v1/targets/" + target + "/users/" + account + "/decisions",
@@ -222,6 +225,8 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/root/workspaces/" + target + "/repositories/" + repository,
 		"/panel/api/v1/root/workspaces/" + target + "/config-file",
 		"/panel/api/v1/root/workspaces/" + target + "/repositories/" + repository + "/config-file",
+		"/panel/api/v1/root/workspaces/" + target + "/config-file/preview",
+		"/panel/api/v1/root/workspaces/" + target + "/repositories/" + repository + "/config-file/preview",
 		"/panel/api/v1/root/workspaces/" + target + "/users",
 		"/panel/api/v1/root/workspaces/" + target + "/users/" + account + "/decisions",
 		"/panel/api/v1/root/workspaces/" + target + "/user-suggestions",

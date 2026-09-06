@@ -105,6 +105,7 @@ type Dependencies struct {
 	// before there was any.
 	Candidates   candidateDirectory
 	BypassActors bypassActorDirectory
+	ConfigFiles  ConfigFileController
 }
 
 // Server owns the panel routes and their authenticated runtime state.
@@ -115,6 +116,7 @@ type Server struct {
 	users        userResolver
 	candidates   candidateDirectory
 	bypassActors bypassActorDirectory
+	configFiles  ConfigFileController
 	signIn       signInProvider
 	random       io.Reader
 	now          func() time.Time
@@ -196,6 +198,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		users:        deps.Users,
 		candidates:   deps.Candidates,
 		bypassActors: deps.BypassActors,
+		configFiles:  deps.ConfigFiles,
 		signIn:       deps.SignIn,
 		random:       deps.Random,
 		now:          deps.Now,

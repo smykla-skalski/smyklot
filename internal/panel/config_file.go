@@ -11,6 +11,14 @@ func (s *Server) registerConfigFileRoutes(mux *http.ServeMux, base string) {
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}/config-file", s.getConfigFileStatus)
 	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces/{target}/config-file", s.getRootConfigFileStatus)
 	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces/{target}/repositories/{repository}/config-file", s.getRootConfigFileStatus)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/config-file/preview", s.getConfigFilePreview)
+	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/repositories/{repository}/config-file/preview", s.getConfigFilePreview)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/config-file/resolution", s.postConfigFileResolution)
+	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/repositories/{repository}/config-file/resolution", s.postConfigFileResolution)
+	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces/{target}/config-file/preview", s.getRootConfigFilePreview)
+	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces/{target}/repositories/{repository}/config-file/preview", s.getRootConfigFilePreview)
+	mux.HandleFunc("POST "+base+"/api/v1/root/workspaces/{target}/config-file/resolution", s.postRootConfigFileResolution)
+	mux.HandleFunc("POST "+base+"/api/v1/root/workspaces/{target}/repositories/{repository}/config-file/resolution", s.postRootConfigFileResolution)
 }
 
 func (s *Server) getConfigFileStatus(w http.ResponseWriter, r *http.Request) {

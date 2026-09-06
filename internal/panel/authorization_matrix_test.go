@@ -73,6 +73,10 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20"},
 		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/config-file"},
 		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20/config-file"},
+		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/config-file/preview"},
+		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20/config-file/preview"},
+		{http.MethodPost, "/panel/api/v1/root/workspaces/" + target + "/config-file/resolution"},
+		{http.MethodPost, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20/config-file/resolution"},
 		{
 			http.MethodPost,
 			"/panel/api/v1/root/workspaces/" + target +
@@ -259,6 +263,10 @@ func regularRouteProbes(target string) []authorizationProbe {
 		{http.MethodGet, target + "/repositories/repository-30"},
 		{http.MethodGet, target + "/config-file"},
 		{http.MethodGet, target + "/repositories/repository-30/config-file"},
+		{http.MethodGet, target + "/config-file/preview"},
+		{http.MethodGet, target + "/repositories/repository-30/config-file/preview"},
+		{http.MethodPost, target + "/config-file/resolution"},
+		{http.MethodPost, target + "/repositories/repository-30/config-file/resolution"},
 		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
 		{http.MethodGet, target + "/repositories/repository-30/sync/labels"},
 		{http.MethodGet, target + "/sync/paths"},
