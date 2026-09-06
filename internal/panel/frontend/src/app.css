@@ -123,6 +123,7 @@ body {
      The ground and the crease stay: neither moves anything. */
   :is(.btn, button, a[href], .rail-tile, .rail-ws, .side-fold, .side-search, .tree-row):active,
   .object-row:active,
+  .fold summary:active,
   .object-row:has(.row-hit:active),
   .choice-card:has(input:not(:disabled)):active,
   .console-menu .menu-item:active,
@@ -591,9 +592,34 @@ input[type='radio']:not(:disabled) {
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
     transform var(--duration-press) var(--ease-out),
+    translate var(--duration-press) var(--ease-out),
     box-shadow var(--duration-press) var(--ease-out);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Popover-backed choices share button geometry and tactile states. */
+.value-select {
+  background-color: var(--control-bg);
+  max-inline-size: 100%;
+}
+
+.value-select > .button-label {
+  overflow: hidden;
+  /* Ellipsis clips its box, so give cap-trimmed descenders room without
+     changing the button's alignment or its shared control height. */
+  padding-block: 0.25em;
+  margin-block: -0.25em;
+  text-overflow: ellipsis;
+}
+
+.value-select > svg {
+  color: var(--text-muted);
+  flex: none;
+}
+
+.value-select[data-state='open'] {
+  background-color: var(--control-bg-pressed);
 }
 
 /* The hover and the press come from the overlays every other button uses, so the step is the same
@@ -601,8 +627,16 @@ input[type='radio']:not(:disabled) {
    --surface-raised, which is this button's own resting ground, and the default button had no hover
    state at all there - 0.00 dE00. The press replaces the hover layer rather than stacking on it,
    so one press is one value everywhere. */
-.btn:hover:not(:disabled) {
+.btn:hover:not(:active):not(:disabled) {
   border-color: var(--control-border-hover);
+}
+
+/* Tones with an explicit hover fill keep that palette. Neutral, quiet and
+   tinted buttons need the shared veil, including inside floating composers. */
+.btn:not(:where(.btn-signal, .btn-ghost, .btn-stop, .btn-stop-quiet)):hover:not(:active):not(
+    :disabled
+  ) {
+  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
 }
 
 .btn:active:not(:disabled) {
@@ -624,7 +658,7 @@ select:disabled {
   color: var(--on-brand-action);
 }
 
-.btn-signal:hover:not(:disabled) {
+.btn-signal:hover:not(:active):not(:disabled) {
   background: var(--brand-action-hover);
   border-color: var(--brand-action-hover);
 }
@@ -641,7 +675,7 @@ select:disabled {
   border-color: transparent;
 }
 
-.btn-ghost:hover:not(:disabled) {
+.btn-ghost:hover:not(:active):not(:disabled) {
   background: var(--surface-inset);
   border-color: transparent;
 }
@@ -656,7 +690,7 @@ select:disabled {
   color: var(--on-danger);
 }
 
-.btn-stop:hover:not(:disabled) {
+.btn-stop:hover:not(:active):not(:disabled) {
   background: var(--danger-hover);
   border-color: var(--danger-hover);
 }
@@ -686,7 +720,7 @@ select:disabled {
   color: var(--danger);
 }
 
-.btn-stop-quiet:hover:not(:disabled) {
+.btn-stop-quiet:hover:not(:active):not(:disabled) {
   background: var(--danger-tint);
   border-color: var(--danger);
 }
@@ -702,7 +736,7 @@ select:disabled {
 
 /* No flat fill: --strip-lift is 0.5 dE00 from the surface this sits on, so the hover was not
    visible at all. The overlay carries it, on whatever ground the button happens to be on. */
-.btn-quiet:hover:not(:disabled) {
+.btn-quiet:hover:not(:active):not(:disabled) {
   color: var(--text-primary);
   filter: none;
 }
@@ -1283,6 +1317,17 @@ select:focus-visible {
   color: var(--text-primary);
 }
 
+.state-panel > span {
+  line-height: var(--row-copy-leading);
+  text-box: trim-both cap alphabetic;
+}
+
+.state-panel > span > strong:first-child {
+  display: block;
+  margin-block-end: var(--row-copy-gap);
+  text-box: trim-both cap alphabetic;
+}
+
 .state-panel.is-error {
   border-color: color-mix(in srgb, var(--danger) 35%, transparent);
 }
@@ -1806,6 +1851,10 @@ code {
   row-gap: var(--space-2);
 }
 
+.card-head:last-child {
+  margin-block-end: 0;
+}
+
 /* The title takes the room, and `min-inline-size: 0` lets it give the room back rather
    than hold the line open at its longest word. Every companion keeps flex's own default,
    which shrinks it to its min-content and no further: a button's is its label, because a
@@ -1904,14 +1953,24 @@ code {
   /* Declared whole, not derived from padding. */
   min-block-size: 36px;
   padding: 0 var(--space-3);
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    box-shadow var(--duration-press) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard);
 }
 
 .fold summary::-webkit-details-marker {
   display: none;
 }
 
-.fold summary:hover {
+.fold summary:hover:not(:active) {
   background: var(--row-hover);
+}
+
+.fold summary:active {
+  background: var(--row-pressed);
+  box-shadow: var(--pressed-inset);
+  translate: 0 1px;
 }
 
 .fold summary svg {
@@ -1932,6 +1991,34 @@ code {
   font-size: var(--font-size-compact);
   min-block-size: 9px;
   text-box: trim-both cap alphabetic;
+}
+
+/* Inline help uses the settings text column and halo, including in file editors. */
+.fold-inline {
+  border-radius: 0;
+  margin-block-start: var(--space-2);
+}
+
+.fold-inline > summary {
+  color: var(--text-secondary);
+  font-size: var(--font-size-compact);
+  margin-inline: calc(var(--space-2) * -1);
+  padding-inline: var(--space-2);
+  min-block-size: var(--control-height-compact);
+}
+
+.fold-inline > summary > .fold-scent {
+  margin-inline-start: auto;
+}
+
+.fold-chevron {
+  display: flex;
+  flex: none;
+  margin-inline-start: auto;
+}
+
+.fold-scent + .fold-chevron {
+  margin-inline-start: 0;
 }
 
 /* A whole card that folds: the head bleeds into the card's own frame, so a shut card is a
@@ -2238,7 +2325,7 @@ time[data-exact]:focus-visible {
 
 .object-row:not(:last-child)::after,
 .object-list > li:not(:last-child) > .object-row::after {
-  background: var(--border-subtle);
+  background: var(--hairline, var(--border-subtle));
   block-size: 1px;
   bottom: 0;
   content: '';
@@ -2381,7 +2468,7 @@ button.object-row {
 .object-sum {
   color: var(--text-muted);
   font-size: var(--font-size-meta);
-  line-height: var(--leading-meta);
+  line-height: var(--row-copy-leading);
   /* Breaks like the name above it. Without this a sentence carrying one long
      unbreakable run - a repository path, a reason from GitHub - kept going past the
      row, and the time at its end, which never breaks by law, went with it. */
@@ -2621,29 +2708,30 @@ button.object-row {
   margin-block: calc((20px - var(--touch-target)) / 2);
 }
 
-/* SET HERE, NOT INHERITED. The mark lives inside the row: the bar stands on the card's own
-   content edge, so the row keeps the regular card whitespace to its left, and the text
-   steps right of it on the row's own breathing rhythm. Hung outside the row it floated on
-   an edge nothing else drew. */
-:is(.setting-row, .policy-row).is-managed {
-  padding-inline-start: calc(var(--space-2) + 3px + var(--space-3));
-}
-
-:is(.setting-row, .policy-row).is-managed::before {
-  background: var(--managed-bar);
-  border-radius: 2px;
-  content: '';
-  inline-size: 3px;
-  inset-block: var(--row-pad-default);
-  inset-inline-start: var(--space-2);
-  position: absolute;
-}
-
 /* A CHANGE NOT YET SAVED IS A STATE OF THE ROW IT WAS MADE IN, so a reader looking for
-   what they touched finds it without reading the values back. Ten pages wrote this. */
-:is(.setting-row, .policy-row, .object-row).is-unsaved {
-  background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-  box-shadow: inset 2px 0 var(--brand-action);
+   what they touched finds it without reading the values back. Use a surface tint,
+   never a colored edge strip or an extra indent beside configured values. */
+:is(.setting-row, .policy-row, .object-row, .page-status, .group-rest).is-unsaved {
+  --hairline: transparent;
+  --text-primary: var(--unsaved-ink);
+  --text-secondary: var(--unsaved-secondary);
+  --text-muted: var(--unsaved-secondary);
+  --control-bg: var(--unsaved-control);
+  --input-bg: var(--unsaved-control);
+  --control-border: var(--unsaved-control-border);
+  --brand-action: var(--decision-accent);
+  --segment-thumb: var(--decision-accent);
+  --brand-action-hover: var(--decision-accent-hover);
+  --brand-action-pressed: var(--decision-accent-pressed);
+  --on-brand-action: var(--on-decision-accent);
+  --brand-action-text: var(--unsaved-ink);
+  --brand-action-tint: var(--unsaved-control);
+  background: var(--unsaved-surface);
+  color: var(--unsaved-ink);
+}
+
+:is(.card, .label-card).is-unsaved {
+  border-color: var(--unsaved-border);
 }
 
 /* A drawn hairline, not a border: a border on a radiused row curves at its tips, and it
@@ -2659,9 +2747,17 @@ button.object-row {
 }
 
 .setting-row:not([hidden]):has(~ .setting-row:not([hidden]))::after,
-.policy-row:not([hidden]):has(~ .policy-row:not([hidden]))::after {
+.policy-row:not([hidden]):has(~ .policy-row:not([hidden]))::after,
+.policy-rows.rows-continue > .policy-row:last-child::after {
   content: '';
   inset-inline: var(--space-2);
+}
+
+/* A changed surface supplies its boundary. Keep the separator's geometry but
+   clear both adjoining hairlines, including object rows wrapped in list items. */
+:is(.setting-row, .policy-row, .object-row):has(+ .is-unsaved),
+.object-list > li:has(+ li > .object-row.is-unsaved) > .object-row {
+  --hairline: transparent;
 }
 
 /* The sentence takes what is left and never less than it can be read at.
@@ -2699,6 +2795,7 @@ button.object-row {
    carrying a key set in mono, drew across the control it belongs to. */
 .setting-name,
 .setting-why {
+  line-height: var(--row-copy-leading);
   overflow-wrap: anywhere;
 }
 

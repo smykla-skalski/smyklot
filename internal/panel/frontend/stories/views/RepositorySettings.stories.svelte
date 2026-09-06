@@ -3,7 +3,8 @@
   import { fn } from 'storybook/test';
 
   import RepositorySettings from '#lib/components/RepositorySettings.svelte';
-  import type { SyncOverride } from '#lib/types.js';
+  import type { RepositoryDetail, SyncOverride } from '#lib/types.js';
+  import { REPOSITORY_FILE_SEARCH_PATHS } from '../../dev/repository-files.js';
   import { REPOSITORY, REPOSITORY_DETAIL } from '../support/fixtures.js';
 
   /* Fixed, and every timestamp an offset from it: the sync card prints how long ago
@@ -11,6 +12,15 @@
      differently on every render. The same instant `RepositorySyncPane`'s own stories
      use. */
   const NOW = Date.parse('2026-08-18T09:00:00Z');
+  const FILE_OBSERVATION = {
+    status: 'valid',
+    observed_at: new Date(NOW - 5 * 60_000).toISOString(),
+    search_paths: REPOSITORY_FILE_SEARCH_PATHS,
+  } satisfies NonNullable<RepositoryDetail['config_file_observation']>;
+  const OBSERVED_DETAIL: RepositoryDetail = {
+    ...REPOSITORY_DETAIL,
+    config_file_observation: FILE_OBSERVATION,
+  };
 
   const SYNC_OVERRIDE: SyncOverride = {
     kind: 'files',
@@ -32,7 +42,7 @@
 
   const base = {
     repository: REPOSITORY,
-    detail: REPOSITORY_DETAIL,
+    detail: OBSERVED_DETAIL,
     backHref: '#/repositories',
     onBack: fn(),
     onChange: fn(),
@@ -61,14 +71,18 @@
 -->
 <Story name="Default" />
 
-<!-- A file the service could not read. Nothing in it is applied, and it says so. -->
+<!-- An invalid file blocks commands until corrected or file settings are turned off. -->
 <Story
   name="File is invalid"
   args={{
     repository: { ...REPOSITORY, config_file_status: 'invalid' },
     detail: {
-      ...REPOSITORY_DETAIL,
+      ...OBSERVED_DETAIL,
+      config_file_observation: { ...FILE_OBSERVATION, status: 'invalid' },
+      config_file_path: '.github/smyklot.yaml',
+      config_file_patch: {},
       config_file_error: 'line 4: unknown key "aproved_commands"',
+      config_file_superseded: undefined,
       repository: { ...REPOSITORY, config_file_status: 'invalid' },
     },
   }}
@@ -80,8 +94,12 @@
   args={{
     repository: { ...REPOSITORY, config_file_status: 'missing', config_override_count: 0 },
     detail: {
-      ...REPOSITORY_DETAIL,
+      ...OBSERVED_DETAIL,
+      config_file_observation: { ...FILE_OBSERVATION, status: 'missing' },
+      config_file_path: undefined,
       config_file_patch: {},
+      config_file_error: undefined,
+      config_file_superseded: undefined,
       config_patch: {},
       repository: { ...REPOSITORY, config_file_status: 'missing', config_override_count: 0 },
     },
@@ -90,7 +108,17 @@
 
 <Story name="Read only" args={{ readOnly: true }} />
 
-<Story name="Resetting migration" args={{ busy: true }} />
+<Story
+  name="Resetting migration"
+  args={{
+    busy: true,
+    detail: {
+      ...OBSERVED_DETAIL,
+      config_file_path: '.github/smyklot.yaml',
+      config_migration: 'declined',
+    },
+  }}
+/>
 
 <!-- The detail has not arrived yet; the page stands in for it. -->
 <Story name="Loading" args={{ detail: undefined }} />

@@ -16,6 +16,7 @@
   import { workloadTitle } from '#lib/workloads.js';
 
   import Button from './Button.svelte';
+  import DurationInput from './DurationInput.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
   import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
@@ -119,6 +120,7 @@
     { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
   let exceptions = $state('');
+  let cadenceProblem = $state<string | null>(null);
   let cadence = $state<number | null | undefined>(undefined);
   let priority = $state<QueuePriority | null>(null);
   let reason = $state('');
@@ -130,7 +132,8 @@
   const priorityShown = $derived(priority ?? chosen?.default_priority ?? 'normal');
   const profileShown = $derived(chosenProfile ?? chosen?.profile_id ?? profiles[0]?.id ?? '');
   const cadenceInvalid = $derived(
-    cadenceShown === null ||
+    cadenceProblem !== null ||
+      cadenceShown === null ||
       !Number.isFinite(cadenceShown) ||
       cadenceShown < 0 ||
       (kind !== 'pending_ci' && cadenceShown <= 0),
@@ -264,7 +267,7 @@ answered a question a workspace never asks and hid the one it does.
 
 {#if problem !== ''}
   <div class="state-panel is-error" role="alert">
-    <span><strong>The request did not go through.</strong> {problem}</span>
+    <span><strong>Request failed</strong> · {problem}</span>
   </div>
 {/if}
 
@@ -272,7 +275,7 @@ answered a question a workspace never asks and hid the one it does.
   id="workspace-timing-request"
   {open}
   title="Request a change to when Smyklot acts"
-  description="The operators decide. Say what you need and why."
+  description="Describe the schedule change for an operator to review"
   returnFocus={opener}
   onClose={() => (open = false)}
 >
@@ -337,24 +340,23 @@ answered a question a workspace never asks and hid the one it does.
       </label>
       <p class="request-helper">
         One local date per line: <code>YYYY-MM-DD closed</code> or
-        <code>YYYY-MM-DD HH:MM-HH:MM</code>.
+        <code>YYYY-MM-DD HH:MM-HH:MM</code>
       </p>
     {/if}
 
-    <label>
-      <span>How often, in seconds</span>
-      <input
-        class="text-input"
-        type="number"
-        min={kind === 'pending_ci' ? 0 : 1}
-        step="60"
-        value={cadenceShown ?? ''}
-        oninput={(event) => {
-          const typed = (event.currentTarget as HTMLInputElement).valueAsNumber;
-          cadence = Number.isFinite(typed) ? typed : null;
-        }}
+    <div class="duration-request">
+      <label for="request-cadence">How often</label>
+      <DurationInput
+        id="request-cadence"
+        label="How often"
+        amountLabel="How often"
+        value={cadenceShown}
+        minimum={kind === 'pending_ci' ? 0 : 1}
+        disabled={busy}
+        onChange={(seconds) => (cadence = seconds)}
+        onValidityChange={(problem) => (cadenceProblem = problem)}
       />
-    </label>
+    </div>
 
     <label>
       <span>Priority</span>
@@ -391,6 +393,12 @@ answered a question a workspace never asks and hid the one it does.
 </Modal>
 
 <style>
+  .duration-request {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+  }
+
   .request-form {
     display: grid;
     gap: var(--space-4);
@@ -421,19 +429,12 @@ answered a question a workspace never asks and hid the one it does.
   }
 
   .text-input {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font: inherit;
-    min-block-size: var(--tier-quiet);
-    padding: var(--space-2);
     width: 100%;
   }
 
-  .text-input:focus-visible {
-    border-color: var(--brand-action);
-    outline: 2px solid var(--focus);
+  textarea.text-input {
+    height: auto;
+    padding-block: var(--space-2);
   }
 
   /* A refusal stands under the rows on the card's own text edge, not inside one. What

@@ -16,6 +16,9 @@
     busy = false,
     problem = '',
     label = 'Template',
+    description,
+    headingLevel = 2,
+    terminalNewline = true,
     comparison,
     overridden,
     onChange,
@@ -23,12 +26,15 @@
     onOptions,
   }: {
     value: string;
-    output: string | null;
+    output?: string | null;
     lang: CodeLang;
     readOnly?: boolean;
     busy?: boolean;
     problem?: string;
     label?: string;
+    description?: string;
+    headingLevel?: 2 | 3;
+    terminalNewline?: boolean;
     comparison?: string;
     overridden?: ReadonlySet<number> | null;
     onChange: (value: string) => void;
@@ -40,7 +46,7 @@
   let historyDepth = $state(0);
   let editor = $state<CodeEditor | null>(null);
   const before = $derived(terminateTemplate(comparison ?? value));
-  const after = $derived(output === null ? null : terminateTemplate(output));
+  const after = $derived(output == null ? null : terminateTemplate(output));
   const differs = $derived(after !== null && templateBody(before) !== templateBody(after));
 
   export function replaceValue(next: string): void {
@@ -53,9 +59,11 @@
 @component
 One visible code surface. Keep the editor mounted behind preview so selection,
      scroll position and undo history survive a look at the resulting file. -->
-<div class="file-editor">
+<div class="file-editor" class:is-nested={headingLevel === 3}>
   <div class="card-head">
-    <h2 class="card-title">{label}</h2>
+    <svelte:element this={headingLevel === 3 ? 'h3' : 'h2'} class="card-title"
+      >{label}</svelte:element
+    >
     <div class="editor-actions">
       {#if historyDepth > 0}
         <IconButton
@@ -68,16 +76,16 @@ One visible code surface. Keep the editor mounted behind preview so selection,
           }}
         />
       {/if}
-      <SegmentedControl
-        name="file-editor-view-{label}"
-        label="{label} view"
-        value={mode}
-        options={[
-          { value: 'edit', label: readOnly ? 'Source' : 'Edit' },
-          { value: 'preview', label: 'Preview' },
-        ]}
-        onSelect={(value) => (mode = value)}
-      />
+      {#if output !== undefined}<SegmentedControl
+          name="file-editor-view-{label}"
+          label="{label} view"
+          value={mode}
+          options={[
+            { value: 'edit', label: readOnly ? 'Source' : 'Edit' },
+            { value: 'preview', label: 'Preview' },
+          ]}
+          onSelect={(value) => (mode = value)}
+        />{/if}
       {#if onOptions}
         <IconButton
           toolbar
@@ -119,15 +127,21 @@ One visible code surface. Keep the editor mounted behind preview so selection,
       {overridden}
       {onChange}
       {onFormat}
-      terminalNewline
+      {label}
+      {terminalNewline}
       onHistory={(depth) => (historyDepth = depth)}
     />
+    {#if description !== undefined}<p class="editor-description">{description}</p>{/if}
   </div>
 </div>
 
 <style>
   .file-editor {
     min-inline-size: 0;
+  }
+  .file-editor.is-nested .card-title {
+    font-size: var(--font-size-meta);
+    min-block-size: 0;
   }
   .editor-actions {
     align-items: center;
@@ -145,6 +159,13 @@ One visible code surface. Keep the editor mounted behind preview so selection,
   }
   .refreshing {
     opacity: 0.6;
+  }
+  .editor-description {
+    color: var(--text-muted);
+    font-size: var(--font-size-compact);
+    line-height: var(--row-copy-leading);
+    margin: var(--row-copy-gap) 0 0;
+    text-box: trim-both cap alphabetic;
   }
   @media (max-width: 47.9375rem) {
     .card-head {

@@ -18,7 +18,6 @@ import type {
   SettingsCommittedResource,
   SettingsDirtyControl,
   SettingsDraftRegistry,
-  SettingsSaveAttempt,
   SettingsSaveConflict,
   SettingsSaveEntry,
 } from './settings-drafts.svelte';
@@ -60,7 +59,7 @@ type SerializedBatch =
   | { ok: true; input: WorkspaceSettingsBatchInput }
   | { ok: false; problem: string; control?: SettingsDirtyControl };
 
-const savedNotice = 'Saved. Reconciliation creates a plan only when repositories need changes';
+const savedNotice = 'Reconciliation creates a plan only when repositories need changes';
 const noOpNotice = 'Your draft already matches the saved settings';
 
 /** Send every dirty resource for one workspace through exactly one atomic request. */
@@ -73,7 +72,7 @@ export async function saveWorkspaceDrafts(
   const attempt = registry.beginSave(scope);
   if (attempt === null) return { saved: false };
 
-  const serialized = serializeWorkspaceAttempt(attempt, targetId);
+  const serialized = serializeWorkspaceEntries(attempt.entries, targetId);
   if (!serialized.ok) {
     registry.failSave(attempt, serialized.problem);
     return {
@@ -196,12 +195,16 @@ function mergeTargetDefaults(
   if (latest === null || draft === null) return null;
 
   for (const id of ids) {
-    if (id === 'defaults.repository_default_enabled') {
+    if (id === 'defaults.config_file_sync_enabled') {
+      latest.config_file_sync_enabled = draft.config_file_sync_enabled;
+    } else if (id === 'defaults.repository_default_enabled') {
       latest.repository_default_enabled = draft.repository_default_enabled;
     } else if (id === 'defaults.path_index_interval_seconds_override') {
       latest.path_index_interval_seconds_override = draft.path_index_interval_seconds_override;
     } else if (id === 'defaults.pending_ci_mode_default') {
       latest.pending_ci_mode_default = draft.pending_ci_mode_default;
+    } else if (id === 'defaults.pending_ci_bypass_policy_default') {
+      latest.pending_ci_bypass_policy_default = draft.pending_ci_bypass_policy_default;
     } else if (id === 'defaults.pending_ci_quiet_period_seconds_override') {
       latest.pending_ci_quiet_period_seconds_override =
         draft.pending_ci_quiet_period_seconds_override;
@@ -240,11 +243,15 @@ function mergeRepositorySettings(
     if (key === 'enabled_override') latest.enabled_override = draft.enabled_override;
     else if (key === 'pending_ci_mode_override') {
       latest.pending_ci_mode_override = draft.pending_ci_mode_override;
+    } else if (key === 'pending_ci_bypass_policy_override') {
+      latest.pending_ci_bypass_policy_override = draft.pending_ci_bypass_policy_override;
     } else if (key === 'pending_ci_quiet_period_seconds_override') {
       latest.pending_ci_quiet_period_seconds_override =
         draft.pending_ci_quiet_period_seconds_override;
     } else if (key === 'path_index_interval_seconds_override') {
       latest.path_index_interval_seconds_override = draft.path_index_interval_seconds_override;
+    } else if (key === 'config_file_sync_enabled') {
+      latest.config_file_sync_enabled = draft.config_file_sync_enabled;
     } else if (key === 'ignore_repository_file') {
       latest.ignore_repository_file = draft.ignore_repository_file;
     } else if (key === 'pending_ci_branch_patterns_override.include') {
@@ -326,8 +333,20 @@ function copyConfigControl(destination: ConfigPatch, source: ConfigPatch, key: s
   return true;
 }
 
-function serializeWorkspaceAttempt(
-  attempt: SettingsSaveAttempt,
+type WorkspaceEntry = Omit<SettingsSaveEntry, 'editToken'>;
+
+/** Validate persisted drafts without starting a save or depending on mounted editors. */
+export function workspaceDraftValidation(
+  registry: SettingsDraftRegistry,
+  targetId: string,
+): { problem: string; control?: SettingsDirtyControl } | null {
+  const entries = registry.dirtyResources({ type: 'workspace', targetId });
+  const result = serializeWorkspaceEntries(entries, targetId);
+  return result.ok ? null : result;
+}
+
+function serializeWorkspaceEntries(
+  entries: readonly WorkspaceEntry[],
   targetId: string,
 ): SerializedBatch {
   const input: WorkspaceSettingsBatchInput = {};
@@ -335,7 +354,7 @@ function serializeWorkspaceAttempt(
   const syncConfigs: NonNullable<WorkspaceSettingsBatchInput['sync_configs']> = [];
   const syncOverrides: NonNullable<WorkspaceSettingsBatchInput['sync_overrides']> = [];
 
-  for (const entry of [...attempt.entries].sort((left, right) =>
+  for (const entry of [...entries].sort((left, right) =>
     left.resourceKey.localeCompare(right.resourceKey),
   )) {
     const resource = entry.resource;
@@ -391,7 +410,7 @@ function serializeWorkspaceAttempt(
 }
 
 function invalidEntry(
-  entry: SettingsSaveEntry,
+  entry: WorkspaceEntry,
   problem: string,
 ): Extract<SerializedBatch, { ok: false }> {
   const control = entry.controls.toSorted((left, right) => left.changedAt - right.changedAt)[0];

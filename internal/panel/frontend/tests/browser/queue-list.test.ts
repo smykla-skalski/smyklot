@@ -110,7 +110,7 @@ describe('the general Queue list [Integration]', () => {
       await visit(page, addressOf(panel, 'root/queue'), { ready: READY });
       await show(page, 'Needs a decision');
       await expect.poll(() => new URL(page.url()).pathname).toBe('/root/queue/approvals');
-      await page.getByText('Nothing in this view.', { exact: true }).waitFor();
+      await page.getByText('No jobs in this view', { exact: true }).waitFor();
       expect(await page.locator(READY).count()).toBe(0);
 
       await show(page, 'Done');

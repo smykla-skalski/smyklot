@@ -62,7 +62,7 @@ jobs:
           - area: packages
             dirs: >-
               ./pkg ./internal/pendingci ./internal/orgsync ./internal/configgen
-              ./internal/bot ./internal/workqueue
+              ./internal/bot ./internal/workqueue ./internal/configsync
 
     steps:
       - name: Checkout code
@@ -315,6 +315,8 @@ jobs:
               tests/browser/vertical-alignment.test.ts
               tests/browser/text-clipping.test.ts
               tests/browser/control-heights.test.ts
+              tests/browser/duration-controls.test.ts
+              tests/browser/pair-entry.test.ts
               tests/browser/dictionary.test.ts
           # Every cell of every row given a run longer than the service can
           # produce. Alone, at 71s: it found the same fault in five views at
@@ -334,6 +336,8 @@ jobs:
             files: >-
               tests/browser/law-audit.test.ts
               tests/browser/wcag-audit.test.ts
+              tests/browser/empty-states.test.ts
+              tests/browser/signed-out-layout.test.ts
           # How much the panel asks for. `cached-navigation` is here rather than
           # with the queue it was written against: what it guards is an effect
           # ring reopening the stream on every navigation, which is the same
@@ -355,6 +359,8 @@ jobs:
               tests/browser/repository-file-sync.test.ts
               tests/browser/sidebar-selection.test.ts
               tests/browser/icon-geometry.test.ts
+              tests/browser/file-formatting.test.ts
+              tests/browser/sync-label-layout.test.ts
 
     steps:
       - name: Checkout code

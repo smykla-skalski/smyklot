@@ -220,15 +220,14 @@ already hold - the index ships once, matching costs no requests.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This workspace's files are stored in a form this version of Smyklot cannot read, so they are
-      not shown and nothing here can be changed. Nothing has been lost.
+      This version of Smyklot cannot read the saved shared-file settings · Editing is unavailable
     </p>
   {/if}
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the App's
-      installation page on GitHub.
+      {unavailable} · A workspace owner must grant the required permissions in Smyklot's GitHub installation
+      settings before shared files can sync
     </p>
   {/if}
 
@@ -364,8 +363,8 @@ already hold - the index ships once, matching costs no requests.
     {:else if !unreadable}
       <div class="state-panel">
         <span
-          ><strong>No shared files yet.</strong> A template added here is copied into every syncing repository
-          as a pull request it can merge or close</span
+          ><strong>No shared files yet</strong> Add a template to propose shared-file updates through
+          pull requests</span
         >
       </div>
     {/if}
@@ -381,8 +380,7 @@ already hold - the index ships once, matching costs no requests.
         <span class="setting-say">
           <span class="setting-name">Paths to remove</span>
           <span class="setting-why"
-            >Deleted from every syncing repository that still has them, except ignored matches - the
-            only thing here that deletes anything</span
+            >Files at these paths are deleted through sync pull requests, except ignored matches</span
           >
         </span>
         <span class="setting-value">
@@ -402,8 +400,7 @@ already hold - the index ships once, matching costs no requests.
         <span class="setting-say">
           <span class="setting-name">Ignored paths</span>
           <span class="setting-why"
-            >Patterns. Neither written nor removed - ignoring wins over both lists above, removal
-            included</span
+            >Matching paths are never changed or removed, even when listed above</span
           >
         </span>
         <span class="setting-value">
@@ -419,15 +416,6 @@ already hold - the index ships once, matching costs no requests.
 </div>
 
 <style>
-  .object-row.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
   .card-head {
     align-items: center;
     display: flex;

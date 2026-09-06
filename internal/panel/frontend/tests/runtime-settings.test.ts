@@ -134,6 +134,54 @@ describe('Root runtime settings drafts [Unit]', () => {
     expect(storage.value(settingsDraftStorageKey('viewer'))).toContain('1e');
   });
 
+  it('clears a restored duration even when typed in a different unit', async () => {
+    const storage = memoryStorage();
+    const drafts = registry(storage);
+    const current = runtime({
+      merge_after_ci_quiet_period: {
+        ...RUNTIME.merge_after_ci_quiet_period,
+        override_seconds: 60,
+        effective_seconds: 60,
+      },
+    });
+    adoptRuntimeSettings(drafts, current);
+    for (const amount of ['2', '1e', '1.0']) {
+      const document = runtimeSettingsDraftDocument(drafts, current);
+      expect(
+        stageRuntimeSettingsControl(
+          drafts,
+          current,
+          {
+            ...document,
+            merge_after_ci_quiet_period_seconds: {
+              override_seconds: 60,
+              editor: { amount, unit: 'minutes' },
+            },
+          },
+          'runtime.merge_after_ci_quiet_period_seconds',
+        ),
+      ).toBe(true);
+      expect(
+        drafts.isControlDirty(ROOT_SETTINGS_SCOPE, 'runtime.merge_after_ci_quiet_period_seconds'),
+      ).toBe(amount !== '1.0');
+    }
+    expect(runtimeSettingsDraftDocument(drafts, current)).toEqual(
+      buildRuntimeSettingsDraftDocument(current),
+    );
+    expect(drafts.beginSave(ROOT_SETTINGS_SCOPE)).toBeNull();
+    expect(
+      registry(storage).isControlDirty(
+        ROOT_SETTINGS_SCOPE,
+        'runtime.merge_after_ci_quiet_period_seconds',
+      ),
+    ).toBe(false);
+    const save = vi.fn();
+    expect(await saveRootSettingsDraft(drafts, async () => current, save)).toEqual({
+      saved: false,
+    });
+    expect(save).not.toHaveBeenCalled();
+  });
+
   it('sends one complete settings request and commits the checkpoint response', async () => {
     const drafts = registry();
     const current = runtime();

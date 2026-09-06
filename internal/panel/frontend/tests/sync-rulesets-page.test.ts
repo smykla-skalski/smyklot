@@ -224,6 +224,41 @@ describe('the ruleset pages [Component]', () => {
     expect(saved?.rules).toEqual({ non_fast_forward: true });
   });
 
+  it('keeps zero approvals when reopening a rule with no approval count', async () => {
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({
+        rulesets: [
+          {
+            name: 'guard',
+            target: 'branch',
+            enforcement: 'active',
+            conditions: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+            rules: { pull_request: { allowed_merge_methods: ['squash'] } },
+          },
+        ],
+      }),
+      onChangeDocument: sent,
+    });
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Approvals required' }) as HTMLInputElement).value,
+    ).toBe('0');
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(sent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rulesets: [
+          expect.objectContaining({
+            rules: { pull_request: { allowed_merge_methods: ['squash'] } },
+          }),
+        ],
+      }),
+    );
+  });
+
   it('reads a document whose numbers are raw-JSON boxes', () => {
     // The wire read grafts a digit-preserving parse over `document`, so every
     // number in a REAL config is a null-prototype box that String() and

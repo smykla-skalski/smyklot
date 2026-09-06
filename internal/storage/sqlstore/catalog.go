@@ -30,9 +30,11 @@ SELECT
     t.installation_id,
     t.kind,
     t.available,
+    t.config_file_sync_enabled,
     t.repository_default_enabled,
 	 t.pending_ci_mode_default,
 	 t.pending_ci_branch_patterns_default,
+	 t.pending_ci_bypass_policy_default,
 	 t.pending_ci_quiet_period_seconds_override,
 	 t.path_index_interval_seconds_override,
     t.config_patch,
@@ -754,6 +756,7 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 	var lastFailureAt, targetUpdatedAt, accountUpdatedAt, ownershipSyncedAt StoredTime
 	var targetPatch, targetPermissions string
 	var branchPatterns string
+	var bypassPolicy sql.NullString
 	var quietPeriod, pathIndexInterval sql.NullInt64
 	var enabled int
 
@@ -762,9 +765,11 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		&target.InstallationID,
 		&target.Kind,
 		&target.Available,
+		&target.ConfigFileSyncEnabled,
 		&target.RepositoryDefaultEnabled,
 		&target.PendingCIModeDefault,
 		&branchPatterns,
+		&bypassPolicy,
 		&quietPeriod,
 		&pathIndexInterval,
 		&targetPatch,
@@ -806,6 +811,11 @@ func scanTarget(scanner rowScanner) (storage.Target, error) {
 		return storage.Target{}, err
 	}
 
+	target.PendingCIBypassPolicyDefault, err = unmarshalBypassPolicy(bypassPolicy)
+	if err != nil {
+		return storage.Target{}, err
+	}
+
 	return finishTarget(target, targetPatch, targetUpdatedAt, accountUpdatedAt)
 }
 
@@ -838,11 +848,14 @@ SELECT
     r.enabled_override,
 	 r.pending_ci_mode_override,
 	 r.pending_ci_branch_patterns_override,
+	 r.pending_ci_bypass_policy_override,
 	 r.pending_ci_quiet_period_seconds_override,
 	 r.path_index_interval_seconds_override,
     r.config_patch,
+    r.config_file_sync_enabled,
     r.ignore_repository_file,
     r.config_file_status,
+    r.file_observed_at,
     r.config_file_patch,
     r.config_file_error,
     r.config_file_path,
@@ -885,12 +898,12 @@ LIMIT 1`, targetID, repository, repository, repository))
 func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	var repository storage.Repository
 	var enabledOverride sql.NullBool
-	var modeOverride, branchPatternsOverride sql.NullString
+	var modeOverride, branchPatternsOverride, bypassPolicy sql.NullString
 	var quietPeriodOverride, pathIndexOverride sql.NullInt64
 	var fileError sql.NullString
 	var panelPatch, filePatch, superseded string
 	var migrationPR sql.NullInt64
-	var updatedAt StoredTime
+	var updatedAt, fileObservedAt StoredTime
 
 	err := scanner.Scan(
 		&repository.ID,
@@ -903,11 +916,14 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 		&enabledOverride,
 		&modeOverride,
 		&branchPatternsOverride,
+		&bypassPolicy,
 		&quietPeriodOverride,
 		&pathIndexOverride,
 		&panelPatch,
+		&repository.ConfigFileSyncEnabled,
 		&repository.IgnoreRepositoryFile,
 		&repository.ConfigFileStatus,
+		&fileObservedAt,
 		&filePatch,
 		&fileError,
 		&repository.ConfigFilePath,
@@ -937,8 +953,15 @@ func scanRepository(scanner rowScanner) (storage.Repository, error) {
 	repository.PathIndexIntervalOverride = durationPointer(pathIndexOverride)
 	repository.ConfigFileError = stringPointer(fileError)
 	repository.ConfigMigrationPR = intPointer(migrationPR)
+	repository.ConfigFileObservedStatus = repository.ConfigFileStatus
+	repository.ConfigFileObservedAt = fileObservedAt.Pointer()
 	if repository.IgnoreRepositoryFile {
 		repository.ConfigFileStatus = storage.RepositoryFileBypassed
+	}
+
+	repository.PendingCIBypassPolicyOverride, err = unmarshalBypassPolicy(bypassPolicy)
+	if err != nil {
+		return storage.Repository{}, err
 	}
 
 	return finishRepository(repository, panelPatch, filePatch, superseded, updatedAt)

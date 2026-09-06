@@ -80,10 +80,17 @@ describe('settings draft destinations [Integration]', () => {
       await page.getByRole('button', { name: 'Discard', exact: true }).click();
       await markedRepository.waitFor({ state: 'visible' });
       expect(await markedRepository.getAttribute('data-unsaved')).toBeNull();
-      expect(await page.locator('.settings-composer').count()).toBe(0);
+      // Discard clears the draft immediately; the composer then finishes its exit animation.
+      await expect
+        .poll(() => page.locator('.settings-composer').count(), { timeout: 2_000 })
+        .toBe(0);
 
       await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      await page.getByText('1 changed setting').waitFor({ state: 'visible' });
       await page.getByRole('button', { name: 'Discard', exact: true }).click();
+      await expect
+        .poll(() => page.locator('.settings-composer').count(), { timeout: 2_000 })
+        .toBe(0);
     } finally {
       await page.close();
     }

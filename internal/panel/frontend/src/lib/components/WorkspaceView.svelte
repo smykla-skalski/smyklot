@@ -93,6 +93,8 @@ history is routed with its section. That is what makes an address like
       {:then { default: TargetSettings }}
         {#key session.selectedTarget.id}
           <TargetSettings
+            lookupBypassActors={(type, query) =>
+              session.api.fetchBypassActors(session.selectedTarget!.id, type, query)}
             target={session.selectedTarget}
             readOnly={!session.selectedTarget.capabilities.write}
             timing={{
@@ -114,6 +116,7 @@ history is routed with its section. That is what makes an address like
       {:then { default: RepositoryList }}
         {#key session.selectedTarget.id}
           <RepositoryList
+            organizationActors={session.selectedTarget.type === 'Organization'}
             targetId={session.selectedTarget.id}
             defaultEnabled={session.selectedTarget.repository_default_enabled}
             fetchPage={fetchRepositories}
@@ -138,11 +141,14 @@ history is routed with its section. That is what makes an address like
       {:then { default: SyncView }}
         {#key session.selectedTarget.id}
           <SyncView
+            organizationActors={session.selectedTarget.type === 'Organization'}
             targetId={session.selectedTarget.id}
             section={session.currentSyncSection}
             rulesetName={session.currentSyncRuleset}
             readOnly={!session.selectedTarget.capabilities.write}
             canControl={['admin', 'owner'].includes(session.selectedTarget.effective_role)}
+            lookupBypassActors={(type, query) =>
+              session.api.fetchBypassActors(session.selectedTarget!.id, type, query)}
             fetchConfig={session.api.fetchSyncConfig}
             fetchPlan={session.api.fetchSyncPlan}
             approvePlan={session.api.approveSyncPlan}

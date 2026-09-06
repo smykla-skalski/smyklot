@@ -103,7 +103,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     overview === null
       ? 'reading the service'
       : overview.service.storage === 'healthy'
-        ? 'all systems normal'
+        ? 'storage healthy'
         : `the database is ${overview.service.storage}`,
   );
 
@@ -171,14 +171,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       {/if}
     </div>
 
-    {#if attention === 0}
-      <div class="state-panel">
-        <span
-          ><strong>Quiet.</strong> No workspace is blocked and nothing is waiting on a decision. Work
-          lands here as it arrives</span
-        >
-      </div>
-    {:else}
+    {#if attention > 0}
       <div class="object-list">
         {#each blocked as workspace (workspace.id)}
           <a class="object-row" href={workspacesHref}>
@@ -273,10 +266,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     </div>
     {#if active.rows.length === 0}
       <div class="state-panel">
-        <span
-          ><strong>Nothing is in flight.</strong> Work the service has accepted appears here while it
-          runs</span
-        >
+        <span><strong>No active work</strong> Accepted jobs appear here while they run</span>
       </div>
     {:else}
       <div class="object-list">
@@ -329,8 +319,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     {#if failures.length === 0}
       <div class="state-panel">
         <span
-          ><strong>Nothing has failed lately.</strong> A failure in any workspace lands here with its
-          cause</span
+          ><strong>No recent failures</strong> Failures across workspaces appear here with their cause</span
         >
       </div>
     {:else}
@@ -366,8 +355,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     <div class="fact-row">
       <span class="fact-bit">
         <span class="fact-dot"></span>
-        <span
-          >{#if overview === null}Reading the service{:else}Service healthy · {overview.service
+        <span class="band-trim"
+          >{#if overview === null}Reading the service{:else}Service running · {overview.service
               .version || 'development'} ·
             <span class="nowrap-atom">{uptime(overview.service.uptime_seconds)}</span>{/if}</span
         >
@@ -378,13 +367,15 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
           class:is-warn={database?.state === 'degraded'}
           class:is-bad={database?.state === 'unavailable'}
         ></span>
-        <span
+        <span class="band-trim"
           >{#if database === null}Reading the database{:else}{database.engine}
             {database.state === 'healthy' ? 'healthy' : database.state} · answers in
             <span class="nowrap-atom">{formatLatency(database.latency_ms)}</span>{/if}</span
         >
       </span>
-      <span class="fact-bit"><a href={serviceHref}>Service health</a></span>
+      <span class="fact-bit"
+        ><a href={serviceHref}><span class="band-trim">Service health</span></a></span
+      >
     </div>
   </Card>
 </div>

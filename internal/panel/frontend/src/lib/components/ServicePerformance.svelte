@@ -136,7 +136,7 @@
       {
         id: 'performance-queries',
         heading: 'How long a database read takes',
-        note: 'One call of each of the busiest reads. A line that climbs while nothing else changed is a query that has outgrown its index',
+        note: 'Average duration and failures for the busiest database reads',
         empty: 'Reads are recorded as they run, and none has run yet',
         series: queries,
         name: sayStatement,
@@ -148,7 +148,7 @@
       {
         id: 'performance-ledger',
         heading: 'Rows kept after work finishes',
-        note: 'Retention should take each of these down again. One that only ever climbs is work nothing is pruning',
+        note: 'Stored job records over time, including records waiting for automatic cleanup',
         empty: 'Rows are counted as work finishes, and nothing has finished yet',
         series: kept.filter(everHeldRows),
         name: sayWorkload,
@@ -160,7 +160,7 @@
       {
         id: 'performance-lanes',
         heading: 'Work waiting to run',
-        note: 'A queue that climbs and stays up is work arriving faster than it leaves',
+        note: 'Queue size and the age of the oldest waiting job',
         empty: 'Every queue has been empty',
         series: lanes,
         name: sayLane,
@@ -171,8 +171,8 @@
       },
       {
         id: 'performance-database',
-        heading: 'What the database says about itself',
-        note: 'Its size on disk, how quickly it answers, and how hard its connection pool is working',
+        heading: 'Database capacity and response time',
+        note: 'Disk usage, response time, and connection pool usage',
         empty: 'The database has not been sampled yet',
         series: database,
         name: sayDatabase,

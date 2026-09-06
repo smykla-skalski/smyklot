@@ -13,9 +13,13 @@
     'default' | 'signal' | 'ghost' | 'stop' | 'stop-quiet' | 'brand' | 'quiet';
 </script>
 
-<script lang="ts">
+<script lang="ts" generics="Href extends string | undefined = undefined">
   import type { Snippet } from 'svelte';
-  import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
+  import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
+
+  type NativeElement = Href extends string ? HTMLAnchorElement : HTMLButtonElement;
+  type NativeAttributes = HTMLAttributes<NativeElement> &
+    Omit<HTMLAnchorAttributes & HTMLButtonAttributes, keyof HTMLAttributes<HTMLElement> | 'href'>;
 
   // `let` rather than `const` because `element` is bindable, as in the three other
   // components here that hand an element back to a caller.
@@ -31,10 +35,10 @@
     ...rest
   }: {
     tone?: ButtonTone;
+    /** Supplying a destination selects anchor attributes and event targets. */
+    href?: Href;
     /** Inside a table row, where the control is shorter and tighter than in a header. */
     row?: boolean;
-    /** Draws an anchor instead. Sign-in and the invitation's accept and decline are links. */
-    href?: string;
     /** Drawn before the label. Its optical bearing is handled by `app.css`, keyed on position. */
     icon?: Snippet;
     /** Drawn after the label - a chevron, or a count. */
@@ -44,8 +48,7 @@
     /** The one-off class a call site adds for its own layout, never for the button's own paint. */
     class?: string;
     children: Snippet;
-  } & HTMLButtonAttributes &
-    HTMLAnchorAttributes = $props();
+  } & NativeAttributes = $props();
 
   const classes = $derived(
     ['btn', tone === 'default' ? '' : `btn-${tone}`, row ? 'btn-row' : '', extra]
@@ -102,9 +105,17 @@ this component has no `<style>` block.
   `type` is written before the spread so a caller can still say `submit`; every other
   attribute a call site passes - `disabled`, `form`, `onclick`, `aria-label` -
   arrives through `rest`.
+
+  The href generic chooses the element and its event target type, defaulting to a
+  button when omitted. One contextual event signature keeps inline callbacks typed;
+  a union of anchor and button signatures would give their parameter an implicit any.
+  Destructuring separates rest from href, so each branch restores its corresponding
+  native attribute type; a button handler need not also accept an anchor event.
 -->
 {#if href !== undefined}
-  <a {href} {...rest} class={classes}>{@render body()}</a>
+  <a {href} {...rest as HTMLAnchorAttributes} class={classes}>{@render body()}</a>
 {:else}
-  <button bind:this={element} type="button" {...rest} class={classes}>{@render body()}</button>
+  <button bind:this={element} type="button" {...rest as HTMLButtonAttributes} class={classes}
+    >{@render body()}</button
+  >
 {/if}

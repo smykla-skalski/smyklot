@@ -17,7 +17,11 @@
   import { applyDocumentTheme } from '#lib/preferences.js';
   import { syncIssues } from '#lib/sync-health.js';
   import { prefText } from '#lib/preferences-sync.js';
-  import { rebaseWorkspaceConflicts, saveWorkspaceDrafts } from '#lib/workspace-settings-save.js';
+  import {
+    rebaseWorkspaceConflicts,
+    saveWorkspaceDrafts,
+    workspaceDraftValidation,
+  } from '#lib/workspace-settings-save.js';
   import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
   import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import {
@@ -32,6 +36,7 @@
   import {
     SYNC_SECTIONS,
     SYNC_SECTION_LABELS,
+    panelDocumentTitle,
     panelViewSection,
     routeSegmentLabel,
     type PanelView,
@@ -146,16 +151,23 @@
       ? { saving: false, problem: null, notice: null }
       : settingsDraftRegistry.operation(selectedSettingsScope),
   );
+  const selectedWorkspaceValidation = $derived(
+    selectedSettingsScope?.type !== 'workspace'
+      ? null
+      : workspaceDraftValidation(settingsDraftRegistry, selectedSettingsScope.targetId),
+  );
   const selectedValidationProblem = $derived(
     selectedSettingsScope === null
       ? null
-      : settingsDraftRegistry.validationProblem(selectedSettingsScope),
+      : (settingsDraftRegistry.validationProblem(selectedSettingsScope) ??
+          selectedWorkspaceValidation?.problem ??
+          null),
   );
   const selectedSettingsConflict = $derived(
     selectedSettingsScope !== null && settingsDraftRegistry.hasConflicts(selectedSettingsScope),
   );
   const selectedProblemControl = $derived.by(() => {
-    const failed = selectedSaveProblemControl;
+    const failed = selectedWorkspaceValidation?.control ?? selectedSaveProblemControl;
     if (
       failed !== null &&
       selectedDirtyControls.some(
@@ -169,8 +181,13 @@
   const selectedProblemHref = $derived(settingsProblemHref(selectedProblemControl));
   const selectedProblemLabel = $derived(settingsProblemLabel(selectedProblemControl));
   const hasSettingsAttention = $derived(settingsDraftRegistry.timestamps().attentionAt !== null);
+  const currentDocumentTitle = $derived(
+    session.isPersonal
+      ? panelDocumentTitle({ personal: session.isInbox ? 'inbox' : 'search' })
+      : session.documentTitle,
+  );
   const shellDocumentTitle = $derived(
-    hasSettingsAttention ? `Unsaved · ${session.documentTitle}` : session.documentTitle,
+    hasSettingsAttention ? `Unsaved · ${currentDocumentTitle}` : currentDocumentTitle,
   );
   const visibleStorageProblem = $derived(
     settingsDraftRegistry.storageProblem !== null &&
@@ -669,14 +686,14 @@
         label: 'Overview',
         icon: 'gauge',
         href: session.viewHref('overview'),
-        active: !session.isInbox && session.currentView === 'overview',
+        active: !session.isPersonal && session.currentView === 'overview',
       },
       {
         id: 'repositories',
         label: 'Repositories',
         icon: 'book',
         href: session.viewHref('repositories'),
-        active: !session.isInbox && panelViewSection(session.currentView) === 'repositories',
+        active: !session.isPersonal && panelViewSection(session.currentView) === 'repositories',
         dirty: selectedSettingsDirtyAt({ section: 'repositories' }),
       },
       {
@@ -684,7 +701,7 @@
         label: 'Queue',
         icon: 'pending',
         href: session.queueSectionHref('active'),
-        active: !session.isInbox && session.currentView === 'queue',
+        active: !session.isPersonal && session.currentView === 'queue',
       },
       { kind: 'group', id: 'group-sync', label: 'Sync' },
       ...SYNC_SECTIONS.filter((section) => section !== 'plan').map((section): SidebarRow => {
@@ -702,7 +719,7 @@
           icon: icons[section],
           href: session.syncSectionHref(section),
           active:
-            !session.isInbox &&
+            !session.isPersonal &&
             session.currentView === 'sync' &&
             (session.currentSyncSection === section ||
               (section === 'overview' && session.currentSyncSection === 'plan')),
@@ -722,14 +739,14 @@
           label: 'Users',
           icon: 'users',
           href: session.accessHref('users'),
-          active: !session.isInbox && session.currentView === 'users',
+          active: !session.isPersonal && session.currentView === 'users',
         },
         {
           id: 'access-invitations',
           label: 'Invitations',
           icon: 'mail',
           href: session.accessHref('invitations'),
-          active: !session.isInbox && session.currentView === 'invitations',
+          active: !session.isPersonal && session.currentView === 'invitations',
         },
       );
     }
@@ -742,7 +759,7 @@
         icon: 'history',
         href: session.historyHref('audit'),
         active:
-          !session.isInbox &&
+          !session.isPersonal &&
           session.currentView === 'history' &&
           session.currentHistorySection === 'audit',
       },
@@ -752,7 +769,7 @@
         icon: 'failure',
         href: session.historyHref('failures'),
         active:
-          !session.isInbox &&
+          !session.isPersonal &&
           session.currentView === 'history' &&
           session.currentHistorySection === 'failures',
         count: failureCount,
@@ -763,7 +780,7 @@
         label: 'Workspace settings',
         icon: 'gear',
         href: session.viewHref('settings'),
-        active: !session.isInbox && panelViewSection(session.currentView) === 'settings',
+        active: !session.isPersonal && panelViewSection(session.currentView) === 'settings',
         dirty: selectedSettingsDirtyAt({ section: 'defaults' }),
         foot: true,
       },
@@ -808,6 +825,7 @@
           'section' in leaf ? leaf.section : undefined,
         ),
         active:
+          !session.isPersonal &&
           route.view === leaf.view &&
           (leaf.view !== 'history' ||
             ('section' in leaf && session.currentHistorySection === leaf.section)),
@@ -830,14 +848,14 @@
       label: 'Overview',
       icon: 'gauge',
       href: session.rootHrefFor('overview'),
-      active: !session.isInbox && session.rootValue === 'overview',
+      active: !session.isPersonal && session.rootValue === 'overview',
     },
     {
       id: 'workspaces',
       label: 'Workspaces',
       icon: 'book',
       href: session.rootHrefFor('workspaces'),
-      active: !session.isInbox && session.rootValue === 'workspaces',
+      active: !session.isPersonal && session.rootValue === 'workspaces',
       dirty: dirtyTargetIds.size > 0,
     },
     {
@@ -845,28 +863,28 @@
       label: 'Queue',
       icon: 'pending',
       href: session.rootQueueSectionHref('active'),
-      active: !session.isInbox && session.rootValue === 'queue',
+      active: !session.isPersonal && session.rootValue === 'queue',
     },
     {
       id: 'schedules',
       label: 'Schedules',
       icon: 'calendar',
       href: session.rootHrefFor('schedules'),
-      active: !session.isInbox && session.rootValue === 'schedules',
+      active: !session.isPersonal && session.rootValue === 'schedules',
     },
     {
       id: 'history-audit',
       label: 'Audit',
       icon: 'history',
       href: session.rootAuditHref(),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'history-audit',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'history-audit',
     },
     {
       id: 'history-failures',
       label: 'Failures',
       icon: 'failure',
       href: session.rootFailuresHref(),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'history-failures',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'history-failures',
       count: failureCount,
       signal: failureCount !== undefined,
     },
@@ -876,14 +894,14 @@
       label: 'Users',
       icon: 'users',
       href: session.rootAccessHref('users'),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'access-users',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'access-users',
     },
     {
       id: 'access-invitations',
       label: 'Invitations',
       icon: 'mail',
       href: session.rootAccessHref('invitations'),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'access-invitations',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'access-invitations',
     },
     { kind: 'group', id: 'group-system', label: 'System' },
     {
@@ -891,14 +909,14 @@
       label: 'Service health',
       icon: 'server',
       href: session.rootRuntimeHref('service'),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-service',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'runtime-service',
     },
     {
       id: 'runtime-settings',
       label: 'Service settings',
       icon: 'gear',
       href: session.rootRuntimeHref('settings'),
-      active: !session.isInbox && session.currentRootRoute.rootView === 'runtime-settings',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'runtime-settings',
       dirty: settingsDraftRegistry.dirtyAt(ROOT_SETTINGS_SCOPE, { section: 'runtime' }),
     },
     ...rootWorkspaceRows,
@@ -913,7 +931,7 @@
    * page the tree does not carry falls back to the console it is in.
    */
   const topBarTitle = $derived.by(() => {
-    if (session.isInbox) return 'Inbox';
+    if (session.isPersonal) return session.isInbox ? 'Inbox' : 'Search';
     const rows = (session.isRootMode ? rootEntries : workspaceEntries).filter(
       (entry): entry is SidebarRow => !isGroup(entry),
     );
@@ -929,6 +947,12 @@
   /** Where a row leads, by its id. The tree is flat, so this is one switch. */
   function openSidebarRow(row: SidebarRow): void {
     drawerOpen = false;
+    // Personal pages retain the last workspace view for context, not selection
+    // or the scoped navigation methods' already-there checks.
+    if (session.isPersonal) {
+      void goto(row.href);
+      return;
+    }
     const [head, tail] = row.id.split('-') as [string, string | undefined];
 
     if (session.isRootMode) {

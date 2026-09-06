@@ -1,3 +1,5 @@
+import { parseBypassPolicy, sameBypassPolicy, type BypassPolicyDocument } from './bypass-policy';
+import { restoreSelectionOrder } from './settings-equality';
 import { CONFIG_KEYS } from './config';
 import { FORMATTING_FIELDS, formattingPatchValue, parseFormattingPatch } from './formatting';
 import type {
@@ -16,10 +18,12 @@ import type { SettingsJson, SettingsLocation, SettingsResource } from './setting
 const DOCUMENT_KEYS = [
   'enabled_override',
   'pending_ci_mode_override',
+  'pending_ci_bypass_policy_override',
   'pending_ci_branch_patterns_override',
   'pending_ci_quiet_period_seconds_override',
   'path_index_interval_seconds_override',
   'config_patch',
+  'config_file_sync_enabled',
   'ignore_repository_file',
 ] as const;
 
@@ -33,8 +37,11 @@ export type RepositorySettingsBranchPatterns = Record<string, SettingsJson> &
   PendingCIBranchPatterns;
 
 export type RepositorySettingsDocument = Record<string, SettingsJson> & {
+  /** Absent only in drafts created before file synchronization was supported. */
+  config_file_sync_enabled?: boolean;
   enabled_override: boolean | null;
   pending_ci_mode_override: PendingCIMode | null;
+  pending_ci_bypass_policy_override: BypassPolicyDocument | null;
   pending_ci_branch_patterns_override: RepositorySettingsBranchPatterns | null;
   pending_ci_quiet_period_seconds_override: number | null;
   path_index_interval_seconds_override: number | null;
@@ -43,8 +50,10 @@ export type RepositorySettingsDocument = Record<string, SettingsJson> & {
 };
 
 export type RepositorySettingsControlId =
+  | `repositories.${string}.config_file_sync_enabled`
   | `repositories.${string}.enabled_override`
   | `repositories.${string}.pending_ci_mode_override`
+  | `repositories.${string}.pending_ci_bypass_policy_override`
   | `repositories.${string}.pending_ci_branch_patterns_override.include`
   | `repositories.${string}.pending_ci_branch_patterns_override.exclude`
   | `repositories.${string}.pending_ci_quiet_period_seconds_override`
@@ -68,6 +77,14 @@ export function repositorySettingsControls(
   });
 
   return [
+    {
+      id: `${prefix}.config_file_sync_enabled`,
+      location: at('file', 'config_file_sync_enabled'),
+    },
+    {
+      id: `${prefix}.pending_ci_bypass_policy_override`,
+      location: at('merge', 'pending_ci_bypass_policy_override'),
+    },
     { id: `${prefix}.enabled_override`, location: at('enablement', 'enabled_override') },
     {
       id: `${prefix}.pending_ci_mode_override`,
@@ -145,10 +162,19 @@ export function stageRepositorySettingsControl(
   nextValue: RepositorySettingsDocument,
   controlId: RepositorySettingsControlId,
 ): boolean {
-  const definition = repositorySettingsControls(detail.repository.id).find(
-    ({ id }) => id === controlId,
-  );
-  if (definition === undefined) return false;
+  return stageRepositorySettingsControls(registry, targetId, detail, nextValue, [controlId]);
+}
+
+/** Keep grouped overrides and their dirty markers in one atomic transition. */
+export function stageRepositorySettingsControls(
+  registry: SettingsDraftRegistry,
+  targetId: string,
+  detail: RepositoryDetail,
+  nextValue: RepositorySettingsDocument,
+  controlIds: readonly RepositorySettingsControlId[],
+): boolean {
+  const definitions = repositorySettingsControls(detail.repository.id);
+  if (controlIds.some((controlId) => !definitions.some(({ id }) => id === controlId))) return false;
 
   const next = parseRepositorySettingsDocument(nextValue);
   if (next === null) return false;
@@ -158,15 +184,35 @@ export function stageRepositorySettingsControl(
     snapshot?.base ?? buildRepositorySettingsDocument(detail),
   );
   if (base === null) return false;
+  if (
+    next.pending_ci_branch_patterns_override !== null &&
+    base.pending_ci_branch_patterns_override !== null
+  ) {
+    for (const key of ['include', 'exclude'] as const) {
+      next.pending_ci_branch_patterns_override[key] = restoreSelectionOrder(
+        next.pending_ci_branch_patterns_override[key],
+        base.pending_ci_branch_patterns_override[key],
+      );
+    }
+  }
+  if (
+    sameBypassPolicy(next.pending_ci_bypass_policy_override, base.pending_ci_bypass_policy_override)
+  ) {
+    next.pending_ci_bypass_policy_override = base.pending_ci_bypass_policy_override;
+  }
   const saved = repositorySettingsSavedControls(detail.repository.id, base);
   const current = repositorySettingsSavedControls(detail.repository.id, next);
 
-  return registry.stage(resource, next, {
-    id: controlId,
-    location: definition.location,
-    saved: saved[controlId]!,
-    value: current[controlId]!,
-  });
+  return registry.stageMany(
+    resource,
+    next,
+    controlIds.map((controlId) => ({
+      id: controlId,
+      location: definitions.find(({ id }) => id === controlId)!.location,
+      saved: saved[controlId]!,
+      value: current[controlId]!,
+    })),
+  );
 }
 
 /** Build only the complete editable state. Revision and inherited values stay metadata. */
@@ -175,11 +221,13 @@ export function buildRepositorySettingsDocument(
 ): RepositorySettingsDocument {
   const document = parseRepositorySettingsDocument({
     enabled_override: detail.repository.enabled_override,
+    pending_ci_bypass_policy_override: detail.pending_ci_bypass_policy_override ?? null,
     pending_ci_mode_override: detail.pending_ci_mode_override,
     pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
     pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
     path_index_interval_seconds_override: detail.path_index_interval_seconds_override,
     config_patch: detail.config_patch,
+    config_file_sync_enabled: detail.config_file_sync_enabled ?? false,
     ignore_repository_file: detail.ignore_repository_file,
   });
   if (document === null) throw new TypeError('repository contains an invalid settings value');
@@ -188,9 +236,23 @@ export function buildRepositorySettingsDocument(
 
 /** Reject partial, extended, out-of-range, or non-finite persisted documents. */
 export function parseRepositorySettingsDocument(value: unknown): RepositorySettingsDocument | null {
-  if (!isObject(value) || !hasExactKeys(value, DOCUMENT_KEYS)) return null;
+  if (
+    !isObject(value) ||
+    !hasExactKeys(
+      { config_file_sync_enabled: false, pending_ci_bypass_policy_override: null, ...value },
+      DOCUMENT_KEYS,
+    )
+  )
+    return null;
+  if (
+    value.config_file_sync_enabled !== undefined &&
+    typeof value.config_file_sync_enabled !== 'boolean'
+  )
+    return null;
   if (!isOptionalBoolean(value.enabled_override)) return null;
   if (!isOptionalPendingCIMode(value.pending_ci_mode_override)) return null;
+  const bypass = parseBypassPolicy(value.pending_ci_bypass_policy_override ?? null);
+  if (bypass === undefined) return null;
   const patterns = parseOptionalBranchPatterns(value.pending_ci_branch_patterns_override);
   if (patterns === undefined) return null;
   const quiet = parseOptionalSeconds(
@@ -207,7 +269,11 @@ export function parseRepositorySettingsDocument(value: unknown): RepositorySetti
   if (patch === null || typeof value.ignore_repository_file !== 'boolean') return null;
 
   return {
+    ...(value.config_file_sync_enabled === undefined
+      ? {}
+      : { config_file_sync_enabled: value.config_file_sync_enabled }),
     enabled_override: value.enabled_override,
+    pending_ci_bypass_policy_override: bypass,
     pending_ci_mode_override: value.pending_ci_mode_override,
     pending_ci_branch_patterns_override: patterns,
     pending_ci_quiet_period_seconds_override: quiet,
@@ -227,7 +293,10 @@ export function overlayRepositorySettingsDocument(
 
   return {
     ...detail,
+    config_file_sync_enabled:
+      parsed.config_file_sync_enabled ?? detail.config_file_sync_enabled ?? false,
     repository: { ...detail.repository, enabled_override: parsed.enabled_override },
+    pending_ci_bypass_policy_override: parsed.pending_ci_bypass_policy_override,
     pending_ci_mode_override: parsed.pending_ci_mode_override,
     pending_ci_branch_patterns_override: parsed.pending_ci_branch_patterns_override,
     pending_ci_quiet_period_seconds_override: parsed.pending_ci_quiet_period_seconds_override,
@@ -245,7 +314,9 @@ export function repositorySettingsSavedControls(
   const prefix = `repositories.${repositoryId}`;
   const patterns = document.pending_ci_branch_patterns_override;
   const controls: Record<string, SettingsJson> = {
+    [`${prefix}.config_file_sync_enabled`]: document.config_file_sync_enabled ?? false,
     [`${prefix}.enabled_override`]: document.enabled_override,
+    [`${prefix}.pending_ci_bypass_policy_override`]: document.pending_ci_bypass_policy_override,
     [`${prefix}.pending_ci_mode_override`]: document.pending_ci_mode_override,
     [`${prefix}.pending_ci_branch_patterns_override.include`]:
       patterns === null ? null : [...patterns.include],
@@ -299,11 +370,15 @@ export function repositorySettingsCommittedResource(
 ): SettingsCommittedResource {
   const value = parseRepositorySettingsDocument({
     enabled_override: state.enabled_override,
+    pending_ci_bypass_policy_override: state.pending_ci_bypass_policy_override ?? null,
     pending_ci_mode_override: state.pending_ci_mode_override,
     pending_ci_branch_patterns_override: state.pending_ci_branch_patterns_override,
     pending_ci_quiet_period_seconds_override: state.pending_ci_quiet_period_seconds_override,
     path_index_interval_seconds_override: state.path_index_interval_seconds_override,
     config_patch: state.config_patch,
+    ...(state.config_file_sync_enabled === undefined
+      ? {}
+      : { config_file_sync_enabled: state.config_file_sync_enabled }),
     ignore_repository_file: state.ignore_repository_file,
   });
   if (value === null) throw new TypeError('saved repository settings are invalid');

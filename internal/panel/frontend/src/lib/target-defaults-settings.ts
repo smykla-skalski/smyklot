@@ -1,4 +1,6 @@
+import { parseBypassPolicy, sameBypassPolicy, type BypassPolicyDocument } from './bypass-policy';
 import { CONFIG_KEYS } from './config';
+import { restoreSelectionOrder } from './settings-equality';
 import { FORMATTING_FIELDS, formattingPatchValue, parseFormattingPatch } from './formatting';
 import type {
   ConfigKey,
@@ -13,8 +15,10 @@ import type { SettingsCommittedResource, SettingsDraftRegistry } from './setting
 import type { SettingsJson, SettingsLocation, SettingsResource } from './settings-draft-storage';
 
 const TARGET_DEFAULTS_KEYS = [
+  'config_file_sync_enabled',
   'repository_default_enabled',
   'pending_ci_mode_default',
+  'pending_ci_bypass_policy_default',
   'pending_ci_branch_patterns_default',
   'pending_ci_quiet_period_seconds_override',
   'path_index_interval_seconds_override',
@@ -34,8 +38,11 @@ export type TargetDefaultsBranchPatterns = Record<string, SettingsJson> & {
 export type TargetDefaultsConfigPatch = Record<string, SettingsJson> & ConfigPatch;
 
 export type TargetDefaultsDocument = Record<string, SettingsJson> & {
+  /** Absent only in drafts created before file synchronization was supported. */
+  config_file_sync_enabled?: boolean;
   repository_default_enabled: boolean;
   pending_ci_mode_default: PendingCIMode;
+  pending_ci_bypass_policy_default: BypassPolicyDocument | null;
   pending_ci_branch_patterns_default: TargetDefaultsBranchPatterns;
   pending_ci_quiet_period_seconds_override: number | null;
   path_index_interval_seconds_override: number | null;
@@ -43,9 +50,11 @@ export type TargetDefaultsDocument = Record<string, SettingsJson> & {
 };
 
 export type TargetDefaultsControlId =
+  | 'defaults.config_file_sync_enabled'
   | 'defaults.repository_default_enabled'
   | 'defaults.path_index_interval_seconds_override'
   | 'defaults.pending_ci_mode_default'
+  | 'defaults.pending_ci_bypass_policy_default'
   | 'defaults.pending_ci_branch_patterns_default.include'
   | 'defaults.pending_ci_branch_patterns_default.exclude'
   | 'defaults.pending_ci_quiet_period_seconds_override'
@@ -57,6 +66,14 @@ export interface TargetDefaultsControlDefinition {
 }
 
 const fixedControls: readonly TargetDefaultsControlDefinition[] = [
+  {
+    id: 'defaults.config_file_sync_enabled',
+    location: { section: 'defaults', path: ['file', 'config_file_sync_enabled'] },
+  },
+  {
+    id: 'defaults.pending_ci_bypass_policy_default',
+    location: { section: 'defaults', path: ['merge', 'pending_ci_bypass_policy_default'] },
+  },
   {
     id: 'defaults.repository_default_enabled',
     location: { section: 'defaults', path: ['repositories', 'repository_default_enabled'] },
@@ -146,6 +163,17 @@ export function stageTargetDefaultsControl(
   const snapshot = registry.resource(resource);
   const base = parseTargetDefaultsDocument(snapshot?.base ?? buildTargetDefaultsDocument(target));
   if (base === null) return false;
+  for (const key of PENDING_CI_BRANCH_PATTERN_KEYS) {
+    next.pending_ci_branch_patterns_default[key] = restoreSelectionOrder(
+      next.pending_ci_branch_patterns_default[key],
+      base.pending_ci_branch_patterns_default[key],
+    );
+  }
+  if (
+    sameBypassPolicy(next.pending_ci_bypass_policy_default, base.pending_ci_bypass_policy_default)
+  ) {
+    next.pending_ci_bypass_policy_default = base.pending_ci_bypass_policy_default;
+  }
   const savedControls = targetDefaultsSavedControls(base);
   const nextControls = targetDefaultsSavedControls(next);
 
@@ -160,7 +188,9 @@ export function stageTargetDefaultsControl(
 /** Build the complete stored document. Revision remains resource metadata, not editable state. */
 export function buildTargetDefaultsDocument(target: PanelTarget): TargetDefaultsDocument {
   const document = parseTargetDefaultsDocument({
+    config_file_sync_enabled: target.config_file_sync_enabled ?? false,
     repository_default_enabled: target.repository_default_enabled,
+    pending_ci_bypass_policy_default: target.pending_ci_bypass_policy_default ?? null,
     pending_ci_mode_default: target.pending_ci_mode_default,
     pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
     pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
@@ -173,10 +203,24 @@ export function buildTargetDefaultsDocument(target: PanelTarget): TargetDefaults
 
 /** Parse an untrusted persisted value and reject partial, extended, or non-finite documents. */
 export function parseTargetDefaultsDocument(value: unknown): TargetDefaultsDocument | null {
-  if (!isObject(value) || !hasExactKeys(value, TARGET_DEFAULTS_KEYS)) return null;
+  if (
+    !isObject(value) ||
+    !hasExactKeys(
+      { config_file_sync_enabled: false, pending_ci_bypass_policy_default: null, ...value },
+      TARGET_DEFAULTS_KEYS,
+    )
+  )
+    return null;
+  if (
+    value.config_file_sync_enabled !== undefined &&
+    typeof value.config_file_sync_enabled !== 'boolean'
+  )
+    return null;
   if (typeof value.repository_default_enabled !== 'boolean') return null;
   if (!isPendingCIMode(value.pending_ci_mode_default)) return null;
 
+  const bypass = parseBypassPolicy(value.pending_ci_bypass_policy_default ?? null);
+  if (bypass === undefined) return null;
   const patterns = parseBranchPatterns(value.pending_ci_branch_patterns_default);
   if (patterns === null) return null;
   const quietPeriod = parseOptionalSeconds(
@@ -193,7 +237,11 @@ export function parseTargetDefaultsDocument(value: unknown): TargetDefaultsDocum
   if (configPatch === null) return null;
 
   return {
+    ...(value.config_file_sync_enabled === undefined
+      ? {}
+      : { config_file_sync_enabled: value.config_file_sync_enabled }),
     repository_default_enabled: value.repository_default_enabled,
+    pending_ci_bypass_policy_default: bypass,
     pending_ci_mode_default: value.pending_ci_mode_default,
     pending_ci_branch_patterns_default: patterns,
     pending_ci_quiet_period_seconds_override: quietPeriod,
@@ -209,7 +257,11 @@ export function overlayTargetDefaultsDocument(
 ): PanelTarget {
   return {
     ...target,
+    config_file_sync_enabled:
+      document.config_file_sync_enabled ?? target.config_file_sync_enabled ?? false,
     repository_default_enabled: document.repository_default_enabled,
+    pending_ci_bypass_policy_default:
+      parseBypassPolicy(document.pending_ci_bypass_policy_default) ?? null,
     pending_ci_mode_default: document.pending_ci_mode_default,
     pending_ci_branch_patterns_default: cloneBranchPatterns(
       document.pending_ci_branch_patterns_default,
@@ -225,6 +277,8 @@ export function targetDefaultsSavedControls(
   document: TargetDefaultsDocument,
 ): Readonly<Record<string, SettingsJson>> {
   const controls: Record<string, SettingsJson> = {
+    'defaults.config_file_sync_enabled': document.config_file_sync_enabled ?? false,
+    'defaults.pending_ci_bypass_policy_default': document.pending_ci_bypass_policy_default,
     'defaults.repository_default_enabled': document.repository_default_enabled,
     'defaults.path_index_interval_seconds_override': document.path_index_interval_seconds_override,
     'defaults.pending_ci_mode_default': document.pending_ci_mode_default,
@@ -272,7 +326,11 @@ export function targetDefaultsCommittedState(
   state: WorkspaceTargetSettingsState,
 ): SettingsCommittedResource {
   const value = parseTargetDefaultsDocument({
+    ...(state.config_file_sync_enabled === undefined
+      ? {}
+      : { config_file_sync_enabled: state.config_file_sync_enabled }),
     repository_default_enabled: state.repository_default_enabled,
+    pending_ci_bypass_policy_default: state.pending_ci_bypass_policy_default ?? null,
     pending_ci_mode_default: state.pending_ci_mode_default,
     pending_ci_branch_patterns_default: state.pending_ci_branch_patterns_default,
     pending_ci_quiet_period_seconds_override: state.pending_ci_quiet_period_seconds_override,

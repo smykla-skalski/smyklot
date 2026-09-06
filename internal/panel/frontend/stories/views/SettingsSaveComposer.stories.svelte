@@ -20,16 +20,16 @@
 </script>
 
 <Story name="Changed settings" />
-<Story name="Conflict" args={{ conflict: true, problem: 'Settings changed in another session.' }} />
+<Story name="Conflict" args={{ conflict: true, problem: 'Settings changed in another session' }} />
 <Story
   name="Validation failure"
   args={{
-    problem: 'A label name is required.',
+    problem: 'A label name is required',
     problemHref: '#/sync/labels',
     problemLabel: 'Labels',
   }}
 />
 <Story
   name="Saved"
-  args={{ count: 0, notice: 'Reconciliation creates a plan only when repositories need changes.' }}
+  args={{ count: 0, notice: 'Reconciliation creates a plan only when repositories need changes' }}
 />

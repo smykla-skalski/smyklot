@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { startPanel, type Panel } from './harness';
+import { captureVisualAudit } from './visual-audit';
 
 /**
  * A reader who is not signed in never sees the panel.
@@ -65,6 +66,7 @@ beforeAll(async () => {
 
     // Collapsed to the sequence of distinct states, which is what a reader sees.
     drawn = seen.filter((state, index) => state !== seen[index - 1]);
+    await captureVisualAudit(page, 'signed-out');
   } finally {
     await page.close();
   }

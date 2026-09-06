@@ -202,7 +202,7 @@ from the wall clock cannot be photographed.
     <Card>
       <div class="state-panel">
         <span
-          ><strong>Nothing in this view.</strong> Queued work appears here as soon as the service accepts
+          ><strong>No jobs in this view</strong> Queued work appears here as soon as the service accepts
           it</span
         >
       </div>

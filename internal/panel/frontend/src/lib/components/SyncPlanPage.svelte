@@ -291,8 +291,8 @@ the button.
     <Card>
       <div class="state-panel">
         <span
-          ><strong>No sync is in progress.</strong> Smyklot checks saved configuration on its schedule
-          and syncs changes automatically</span
+          ><strong>No sync is in progress</strong> Smyklot checks saved configuration and syncs changes
+          automatically</span
         >
         {#if canControl}
           <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
@@ -308,17 +308,17 @@ the button.
             >{total}
             {total === 1 ? 'change' : 'changes'}</span
           >
-          {total === 1 ? 'waits' : 'wait'} for you{:else if plan.state === 'approved'}<span
+          {total === 1 ? 'needs' : 'need'} attention{:else if plan.state === 'approved'}<span
             class="is-drift">{total} {total === 1 ? 'change' : 'changes'}</span
-          > queued{:else if plan.state === 'applying'}Applying - {landed} of {total} landed{:else if plan.state === 'applied'}All
-          {total} landed{:else if plan.state === 'failed'}<span class="is-failed"
-            >{failed} of {total} failed</span
-          >{:else if plan.state === 'stale'}This plan is <span class="is-stale">stale</span
-          >{:else}This plan
+          > queued{:else if plan.state === 'applying'}Syncing · {landed} of {total} changes applied{:else if plan.state === 'applied'}{total}
+          {total === 1 ? 'change' : 'changes'} applied{:else if plan.state === 'failed'}<span
+            class="is-failed">{failed} of {total} failed</span
+          >{:else if plan.state === 'stale'}This check is <span class="is-stale">out of date</span
+          >{:else}This check
           <span class="is-expired">expired</span>{/if}
       </h2>
       <span class="hero-meta hero-meta-lines">
-        <span>Computed <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
+        <span>Checked <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
         {#if plan.state === 'computed' && expiresWording !== null}
           <span>{expiresWording.lead}<strong>{expiresWording.strong}</strong></span>
         {/if}
@@ -629,8 +629,8 @@ the button.
     open={runConfirming}
     title={plan?.state === 'approved' ? 'Sync now?' : 'Check sync now?'}
     description={plan?.state === 'approved'
-      ? 'This bypasses the assigned window once and runs the queued changes immediately.'
-      : 'This checks repositories now and queues changes from your saved configuration automatically.'}
+      ? 'Run the queued changes now, outside the assigned schedule'
+      : 'Check repositories now and queue changes from your saved configuration'}
     confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Check now'}
     busyLabel="Queuing…"
     confirmTone="signal"

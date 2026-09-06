@@ -176,6 +176,8 @@ turns the unmanaged names into rows of their own.
   import PageHeader from './PageHeader.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import Popover from './Popover.svelte';
+  import PickerTrigger from './PickerTrigger.svelte';
+  import SearchField from './SearchField.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
   import SyncKindFacts, { syncSwitchLabel, syncSwitchWord } from './SyncKindFacts.svelte';
@@ -320,25 +322,23 @@ turns the unmanaged names into rows of their own.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This workspace's settings are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
+      This version of Smyklot cannot read the saved repository options · Editing is unavailable
     </p>
   {/if}
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the App's
-      installation page on GitHub.
+      {unavailable} · A workspace owner must grant the required permissions in Smyklot's GitHub installation
+      settings before these options can sync
     </p>
   {/if}
 
   <div class="matrix-tools">
-    <input
-      class="matrix-search"
-      type="search"
+    <SearchField
+      label="Search options"
       placeholder="Search options"
-      aria-label="Search options"
-      bind:value={query}
+      value={query}
+      onInput={(value) => (query = value)}
     />
     <SegmentedControl
       name="settings-show"
@@ -358,10 +358,7 @@ turns the unmanaged names into rows of their own.
          `.state-panel` like every other nothing-to-show, and it carries the way
          back - it used to be a muted line offering none. -->
     <div class="state-panel">
-      <span
-        ><strong>Nothing matches</strong> "{query.trim()}" here. Check the spelling, or clear the
-        search to see every setting again</span
-      >
+      <span><strong>No matching options</strong> · Try another name or clear the search</span>
       <Button onclick={() => (query = '')}>Clear the search</Button>
     </div>
   {:else if managedCount === 0 && show === 'managed'}
@@ -371,8 +368,8 @@ turns the unmanaged names into rows of their own.
          the way out of this state - the panel names it and points at them. -->
     <div class="state-panel">
       <span
-        ><strong>No options are managed here.</strong> Every repository keeps its own GitHub settings
-        until one is managed below, and then every syncing repository is held to it</span
+        ><strong>No managed settings yet</strong> · Choose which GitHub settings Smyklot should manage
+        across syncing repositories</span
       >
       <Button onclick={() => (show = 'everything')}>Show every option</Button>
     </div>
@@ -448,15 +445,14 @@ turns the unmanaged names into rows of their own.
                       itemSelector=".menu-item"
                     >
                       {#snippet trigger(attributes)}
-                        <button
+                        <PickerTrigger
                           {...attributes}
-                          class="value-select"
                           type="button"
                           aria-label={`${choiceWord(field)} - ${field.label}`}
                           disabled={frozen}
                         >
-                          <span class="t">{choiceWord(field)}</span>
-                        </button>
+                          {choiceWord(field)}
+                        </PickerTrigger>
                       {/snippet}
                       <div class="menu-list">
                         {#each field.choices as option (option.value)}
@@ -553,25 +549,12 @@ turns the unmanaged names into rows of their own.
      work from here, because a scoped rule TIES with the shared one and wins on
      source order. */
   .matrix-tools {
+    --search-field-width: 16rem;
+    --search-field-flex: 0 1 16rem;
     align-items: center;
     display: flex;
     gap: var(--space-3);
     justify-content: space-between;
-  }
-
-  .matrix-search {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-size: var(--font-size-control);
-    min-block-size: var(--control-height-compact);
-    padding-inline: var(--space-3);
-    width: 16rem;
-  }
-
-  .matrix-search::placeholder {
-    color: var(--text-muted);
   }
 
   /* ---------- Policy groups: the page is the policy ---------- */
@@ -585,56 +568,12 @@ turns the unmanaged names into rows of their own.
   /* The head, the title and the tally beside it are the sheet's now - `card-head`,
      `card-title`, `card-meta` - so what is left here is the one thing only this page
      has: a card holding a change nobody has saved. */
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
-  .group-rest.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
 
   /* The unmanaged remainder is a summary line and not a row, so the list still seams into
      it - that line IS the remainder's separator. */
   .policy-rows:has(+ .group-rest) > .policy-row:last-child::after {
     content: '';
     inset-inline: var(--space-2);
-  }
-
-  /* Value select: a compact control for the 3+-choice settings. The arrow
-     is drawn, not a glyph - two gradient strokes meeting at the chevron. */
-  .value-select {
-    align-items: center;
-    appearance: none;
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0 1.5rem 0 var(--space-2);
-  }
-
-  .value-select .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* Open, the trigger wears the pressed ground for as long as its menu
-     stands - the same read as every other open trigger. */
-  .value-select[data-state='open'] {
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg-pressed);
   }
 
   /* ---------- The menu the select opens ---------- */
@@ -752,22 +691,9 @@ turns the unmanaged names into rows of their own.
 
   @media (max-width: 36rem) {
     .matrix-tools {
+      --search-field-width: 100%;
       align-items: stretch;
       display: grid;
-    }
-
-    .matrix-search {
-      width: 100%;
-    }
-
-    .value-select {
-      max-inline-size: 100%;
-    }
-
-    .value-select .t {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
     }
 
     .group-rest {

@@ -407,7 +407,7 @@ in their own settings.
               <span class="object-sum"
                 >{nextAt === undefined
                   ? jobSentence(policy)
-                  : `${jobSentence(policy)} · next `}{#if nextAt !== undefined}<RelativeTime
+                  : `${jobSentence(policy)} · next run `}{#if nextAt !== undefined}<RelativeTime
                     value={nextAt}
                     {nowMs}
                     future

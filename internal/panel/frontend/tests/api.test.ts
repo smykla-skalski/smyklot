@@ -210,6 +210,33 @@ describe('session', () => {
   });
 });
 
+describe('bypass actor directories', () => {
+  it('scopes and encodes actor lookups on workspace and root routes', async () => {
+    const result = {
+      items: [
+        {
+          actor_id: 1197525,
+          actor_type: 'Integration',
+          name: 'smyklot',
+          slug: 'smyklot',
+          avatar_url: null,
+        },
+      ],
+    };
+    const stub = stubFetch([jsonResponse(200, result), jsonResponse(200, result)]);
+    const api = createPanelApi('/panel', stub.fetch);
+    await expect(api.fetchBypassActors('target.1', 'Integration', 'release bot')).resolves.toEqual(
+      result,
+    );
+    await expect(api.fetchRootBypassActors('target.1')).resolves.toEqual(result);
+    expect(stub.calls.map((call) => call.url)).toEqual([
+      '/panel/api/v1/targets/target%2E1/bypass-actors?type=Integration&q=release+bot',
+      '/panel/api/v1/root/workspaces/target%2E1/bypass-actors?type=&q=',
+    ]);
+    expect(stub.calls.every((call) => call.init?.credentials === 'same-origin')).toBe(true);
+  });
+});
+
 describe('targets and repositories', () => {
   it('unwraps target and repository collections', async () => {
     const stub = stubFetch([

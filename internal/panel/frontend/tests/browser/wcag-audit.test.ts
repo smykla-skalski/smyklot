@@ -197,6 +197,9 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
     for (const control of interactive) {
       const label = control.getAttribute('aria-label');
       if (label === null) continue;
+      // A select's options are possible values, not its visible label. Like
+      // input values, their text must not replace the adjacent field label.
+      if (control instanceof HTMLSelectElement) continue;
       const copy = control.cloneNode(true) as HTMLElement;
       for (const spare of copy.querySelectorAll('kbd, .visually-hidden, .avatar, .ws-mini')) {
         spare.remove();

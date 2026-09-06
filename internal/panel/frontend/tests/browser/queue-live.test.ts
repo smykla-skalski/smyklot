@@ -100,7 +100,7 @@ describe('the general Queue live stream [Integration]', () => {
     await viewer.evaluate(() => document.documentElement.setAttribute('data-queue-motion', '[]'));
     await showQueue(viewer, 'Needs a decision');
     await expect.poll(() => new URL(viewer.url()).pathname).toBe('/root/queue/approvals');
-    await viewer.getByText('Nothing in this view.', { exact: true }).waitFor();
+    await viewer.getByText('No jobs in this view', { exact: true }).waitFor();
     expect(await viewer.locator(ROW).count()).toBe(0);
     await viewer.waitForTimeout(200);
     expect((await recordedMotion(viewer)).some((animation) => animation.duration > 0)).toBe(false);
@@ -181,10 +181,15 @@ describe('the general Queue live stream [Integration]', () => {
        overview says it in the same words, because both read one sentence. The row that
        was retrying after a rate limit stops saying so in both places at once. */
     await Promise.all([
-      viewerRow.getByText(/ · runs /).waitFor({ timeout: 5_000 }),
-      overviewRow.getByText(/ · runs /).waitFor({ timeout: 5_000 }),
+      viewerRow.getByText(/\bruns (?:now|in \d)/u).waitFor({ timeout: 5_000 }),
+      overviewRow.getByText(/\bruns (?:now|in \d)/u).waitFor({ timeout: 5_000 }),
     ]);
-    expect(await overviewRow.getByText(/GitHub rate limit/).count()).toBe(0);
+    // The entering state can be readable while the previous keyed line is still
+    // finishing its exit transition. Prove the old reason leaves both views.
+    await Promise.all([
+      viewerRow.getByText(/GitHub rate limit/).waitFor({ state: 'detached', timeout: 5_000 }),
+      overviewRow.getByText(/GitHub rate limit/).waitFor({ state: 'detached', timeout: 5_000 }),
+    ]);
 
     /* Motion is the queue's, and only the queue's. The overview is a summary somebody
        glances at on their way somewhere, and rows that slide and fade there animate

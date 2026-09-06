@@ -42,16 +42,34 @@
     repository_path: 'this file override',
   };
 
+  const ORIGIN_LABEL: Record<string, string> = {
+    deployment: 'Deployment defaults',
+    process: 'Service defaults',
+    target: 'Workspace defaults',
+    repository_file: 'Repository config',
+    repository_panel: 'Repository settings',
+    template: 'Shared file',
+    repository_path: 'This repository file',
+  };
+
   const LAYERS_BY_SCOPE = {
-    runtime: ['Deployment', 'Service'],
-    target: ['Service', 'Workspace'],
-    repository: ['Service', 'Workspace', 'Repository file', 'Repository settings'],
-    template: [],
-    path: [],
+    runtime: ['deployment', 'process'],
+    target: ['process', 'target'],
+    repository: ['process', 'target', 'repository_file', 'repository_panel'],
+    template: ['process', 'target', 'template'],
+    path: [
+      'process',
+      'target',
+      'repository_file',
+      'repository_panel',
+      'template',
+      'repository_path',
+    ],
   } as const;
 
   const {
     patch,
+    savedPatch,
     inherited,
     scope,
     idPrefix,
@@ -65,6 +83,8 @@
     onValidity = () => {},
   }: {
     patch: FormattingPatch;
+    /** Canonical saved leaves, before the staged draft is overlaid */
+    savedPatch?: FormattingPatch;
     inherited: FormattingPolicy;
     scope: keyof typeof SOURCE_BY_SCOPE;
     idPrefix: string;
@@ -117,11 +137,30 @@
     ),
   );
   const dirtyKeySet = $derived(new Set(dirtyKeys));
+  const originLayers = $derived(
+    resolution === undefined
+      ? LAYERS_BY_SCOPE[scope].map((source, index, layers) => ({
+          source,
+          current: index === layers.length - 1,
+          state: index === layers.length - 1 && dirtyKeys.length > 0 ? 'draft' : undefined,
+          configPath: undefined,
+        }))
+      : resolution.layers
+          .filter((layer) => layer.state !== 'absent' || layer.source === resolution.current_layer)
+          .map((layer) => ({
+            source: layer.source,
+            current: layer.source === resolution.current_layer,
+            state: layer.state,
+            configPath: layer.source === 'repository_file' ? layer.config_path : undefined,
+          })),
+  );
   const valid = $derived(Object.keys(invalidNumbers).length === 0);
   const baseline = $derived(
     draft.preset === undefined ? inherited : FORMATTING_PRESETS[draft.preset],
   );
   const effective = $derived(applyFormattingPatch(inherited, draft));
+  const saved = $derived(savedPatch ?? initialPatch);
+  const savedEffective = $derived(applyFormattingPatch(inherited, saved));
   const presetField = FORMATTING_FIELDS[0];
   const overridden = $derived(
     relevantFields.filter((field) => formattingPatchValue(draft, field) !== undefined).length,
@@ -205,7 +244,11 @@
     }
     delete nextInvalid[field.key];
     invalidNumbers = nextInvalid;
-    report(field, value);
+    const savedValue = formattingPatchValue(saved, field);
+    const restoresSaved =
+      value === formattingPolicyValue(savedEffective, field) &&
+      (savedValue !== undefined || value === formattingPolicyValue(baseline, field));
+    report(field, restoresSaved ? savedValue : value);
   }
 
   function finishNumber(field: FormattingField & { kind: 'int' }): void {
@@ -259,84 +302,73 @@ three things among thirty finds them again.
       <p class="group-note">
         Formatting changes how the file is written, after content adjustments
       </p>
-      <div
-        class={['policy-row', { 'is-unsaved': dirtyKeySet.has(presetField.key) }]}
-        data-unsaved={dirtyKeySet.has(presetField.key) || undefined}
-      >
-        <span class="setting-say">
-          <span class="setting-name">Preset</span>
-          <span class="setting-why"
-            >Choose a starting style; individual settings below take precedence</span
-          >
-        </span>
-        <!-- `fluid` fits the segments to the column they are in, and the column is the row
-           law's own half - so the control never sets the page's width. Without it a
-           segment's longest word decided the document at 320px. -->
-        <span class="policy-value">
-          <InheritControl
-            label="Formatting preset"
-            source={sourceFor(presetField)}
-            inheritedValue={inherited.preset}
-            inheritedLabel={optionLabel(inherited.preset)}
-            value={draft.preset ?? null}
-            options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
-            {disabled}
-            fluid
-            onSelect={(value) => pick(presetField, value)}
-            onRestore={() => clear(presetField)}
-          />
-        </span>
-      </div>
-      <details class="formatting-origin">
-        <summary
-          ><Icon name="chevron-right" size="xs" /><span class="band-trim"
-            >Where these values come from</span
-          ></summary
+      <div class="policy-rows rows-continue">
+        <div
+          class={['policy-row', { 'is-unsaved': dirtyKeySet.has(presetField.key) }]}
+          data-unsaved={dirtyKeySet.has(presetField.key) || undefined}
         >
-        <p class="origin-note">Later settings override earlier ones</p>
-        <ol class="origin-layers" aria-label="Formatting precedence">
-          {#if resolution !== undefined}
-            {#each resolution.layers as layer (layer.source)}
-              <li>
-                <span>{optionLabel(labelForSource(layer.source).replace(/^the /u, ''))}</span>
-                <span class="origin-state"
-                  >{layer.source === resolution.current_layer
-                    ? 'Editing here'
-                    : {
-                        baseline: 'Defaults',
-                        stored: 'Saved',
-                        draft: 'Unsaved',
-                        absent: 'Not set',
-                        bypassed: 'Ignored',
-                      }[layer.state]}</span
-                >
-                {#if layer.config_path}<code>{layer.config_path}</code>{/if}
+          <span class="setting-say">
+            <span class="setting-name">Preset</span>
+            <span class="setting-why"
+              >Choose a starting style; individual settings below take precedence</span
+            >
+          </span>
+          <span class="policy-value">
+            <InheritControl
+              label="Formatting preset"
+              source={sourceFor(presetField)}
+              inheritedValue={inherited.preset}
+              inheritedLabel={optionLabel(inherited.preset)}
+              value={draft.preset ?? null}
+              options={presetField.options.map((value) => ({ value, label: optionLabel(value) }))}
+              {disabled}
+              onSelect={(value) => pick(presetField, value)}
+              onRestore={() => clear(presetField)}
+            />
+          </span>
+        </div>
+      </div>
+      <details class="formatting-origin fold fold-inline">
+        <summary>
+          <span class="band-trim">How formatting is chosen</span>
+          <span class="origin-chevron fold-chevron"><Icon name="chevron-right" size="xs" /></span>
+        </summary>
+        <div class="origin-body">
+          <p class="origin-note">Each level can replace settings from the levels above</p>
+          <ol class="origin-layers" aria-label="Formatting sources, lowest priority first">
+            {#each originLayers as layer (layer.source)}
+              <li class:origin-current={layer.current}>
+                <span class="origin-source">
+                  <span class="origin-label">{ORIGIN_LABEL[layer.source] ?? layer.source}</span>
+                  {#if layer.configPath}<code>{layer.configPath}</code>{/if}
+                </span>
+                <span class="origin-context">
+                  {#if layer.current}<span>Editing here</span>{/if}
+                  {#if layer.state === 'draft'}
+                    <span class="origin-unsaved">Unsaved changes</span>
+                  {:else if layer.state === 'bypassed'}
+                    <span>Not used</span>
+                  {:else if layer.current && layer.state === 'absent'}
+                    <span>No overrides</span>
+                  {/if}
+                </span>
               </li>
             {/each}
-          {:else}
-            {#each LAYERS_BY_SCOPE[scope] as layer, index (layer)}
-              <li>
-                <span>{layer}</span><span class="origin-state"
-                  >{index === LAYERS_BY_SCOPE[scope].length - 1
-                    ? 'Editing here'
-                    : 'Inherited'}</span
-                >
-              </li>
-            {/each}
-          {/if}
-        </ol>
+          </ol>
+        </div>
       </details>
     </Card>
 
     {#if path === undefined}
-      <SegmentedControl
-        name="formatting-group-{scope}-{idPrefix}"
-        label="Formatting file type"
-        options={relevantGroups.map((group) => ({ value: group.key, label: group.label }))}
-        value={activeGroup}
-        fluid
-        onSelect={(value) => (activeGroup = value as GroupKey)}
-      />
+      <div role="toolbar" aria-label="Formatting views">
+        <SegmentedControl
+          name="formatting-group-{scope}-{idPrefix}"
+          label="Formatting file type"
+          options={relevantGroups.map((group) => ({ value: group.key, label: group.label }))}
+          value={activeGroup}
+          onSelect={(value) => (activeGroup = value as GroupKey)}
+        />
+      </div>
     {/if}
 
     {#each shownGroups as group (group.key)}
@@ -376,7 +408,6 @@ three things among thirty finds them again.
                     value={formattingPatchValue(draft, field)?.toString() ?? null}
                     options={field.options.map((value) => ({ value, label: optionLabel(value) }))}
                     {disabled}
-                    fluid
                     onSelect={(value) => pick(field, value)}
                     onRestore={() => clear(field)}
                   />
@@ -421,7 +452,7 @@ three things among thirty finds them again.
                   {/if}
                   <input
                     id="formatting-{scope}-{idPrefix}-{field.key}"
-                    class="number-input"
+                    class="text-input mono number-input"
                     type="number"
                     inputmode="numeric"
                     min={field.minimum}
@@ -477,13 +508,6 @@ three things among thirty finds them again.
   }
 
   .number-input {
-    background: var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font: inherit;
-    min-block-size: 30px;
-    padding-inline: var(--space-2);
     width: 6rem;
   }
 
@@ -523,55 +547,68 @@ three things among thirty finds them again.
     justify-self: end;
   }
 
-  .formatting-origin {
-    margin-block-start: var(--space-4);
+  .formatting-origin:not([open]) {
+    margin-block-end: calc(var(--row-pad-default) * -1);
   }
-  .formatting-origin summary {
-    color: var(--text-secondary);
-    cursor: pointer;
-    font-size: var(--font-size-compact);
-    align-items: center;
-    display: flex;
-    gap: var(--space-2);
-    list-style: none;
-    padding: var(--space-3);
-    margin-inline: calc(var(--space-3) * -1);
-    border-radius: var(--r-ctl);
-  }
-  .formatting-origin summary::-webkit-details-marker {
-    display: none;
-  }
-  .formatting-origin summary:hover {
-    background: var(--row-hover);
-  }
-  .formatting-origin summary:active {
-    background: var(--row-pressed);
-  }
-  .formatting-origin[open] summary :global(svg) {
-    rotate: 90deg;
+  .origin-body {
+    display: grid;
+    gap: var(--space-4);
+    padding-block-start: var(--space-2);
   }
   .origin-note {
     color: var(--text-muted);
     font-size: var(--font-size-compact);
-    margin-block: var(--space-3);
+    line-height: var(--row-copy-leading);
+    margin: 0;
+    text-box: trim-both cap alphabetic;
   }
   .origin-layers {
     display: grid;
     gap: var(--space-3);
-    padding-inline-start: var(--space-5);
+    padding: 0;
     margin: 0;
+    list-style: none;
     font-size: var(--font-size-compact);
+    line-height: var(--row-copy-leading);
   }
   .origin-layers li {
-    padding-inline-start: var(--space-1);
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    column-gap: var(--space-4);
+    row-gap: var(--row-copy-gap);
+    color: var(--text-secondary);
   }
-  .origin-state {
+  .origin-source {
+    display: grid;
+    gap: var(--row-copy-gap);
+    min-inline-size: 0;
+  }
+  .origin-label {
+    text-box: trim-both cap alphabetic;
+  }
+  .origin-current .origin-label {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  .origin-context {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--row-copy-gap) var(--space-3);
     color: var(--text-muted);
-    margin-inline-start: var(--space-2);
+    font-size: var(--font-size-meta);
+  }
+  .origin-context > span {
+    text-box: trim-both cap alphabetic;
+  }
+  .origin-unsaved {
+    color: var(--warning);
   }
   .origin-layers code {
-    display: block;
     overflow-wrap: anywhere;
-    margin-block-start: var(--space-2);
+    color: var(--text-muted);
+    font-size: var(--font-size-meta);
+    text-box: trim-both cap alphabetic;
   }
 </style>

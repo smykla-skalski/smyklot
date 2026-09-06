@@ -266,21 +266,40 @@ export class SettingsDraftRegistry {
     nextValue: SettingsJson,
     change: SettingsControlChange,
   ): boolean {
+    return this.stageMany(resource, nextValue, [change]);
+  }
+
+  /** A single UI action may change several controls in the complete document. */
+  stageMany(
+    resource: SettingsResource,
+    nextValue: SettingsJson,
+    changes: readonly SettingsControlChange[],
+  ): boolean {
     this.syncFromStorage();
     const key = settingsResourceKey(resource);
     const current = this.resources[key];
-    if (current === undefined || change.id.length === 0) return false;
+    if (
+      current === undefined ||
+      changes.length === 0 ||
+      changes.some((change) => change.id.length === 0) ||
+      changes.some((change, index) =>
+        changes.slice(0, index).some((earlier) => earlier.id === change.id),
+      )
+    )
+      return false;
 
     const at = this.timestamp();
     const controls = { ...current.controls };
-    const previous = controls[change.id];
-    controls[change.id] = {
-      id: change.id,
-      location: normalizeSettingsLocation(change.location),
-      saved: cloneSettingsJson(previous?.saved ?? change.saved),
-      value: cloneSettingsJson(change.value),
-      changedAt: at,
-    };
+    for (const change of changes) {
+      const previous = controls[change.id];
+      controls[change.id] = {
+        id: change.id,
+        location: normalizeSettingsLocation(change.location),
+        saved: cloneSettingsJson(previous?.saved ?? change.saved),
+        value: cloneSettingsJson(change.value),
+        changedAt: at,
+      };
+    }
     const candidate: ResourceState = {
       ...current,
       draft: cloneSettingsJson(nextValue),

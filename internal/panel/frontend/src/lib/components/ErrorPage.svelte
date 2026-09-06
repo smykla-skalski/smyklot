@@ -58,7 +58,7 @@ lib/panel-error.ts.
     <PageHeader id="panel-error-heading" title={content.title} />
     <Card>
       <div class="state-panel">
-        <span><strong>{content.lead}.</strong> {content.note}</span>
+        <span><strong>{content.lead}</strong> {content.note}</span>
       </div>
       {#if destinations.length > 0}
         <p class="error-elsewhere">

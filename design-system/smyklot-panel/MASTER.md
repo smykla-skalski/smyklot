@@ -16,11 +16,13 @@ explicitly documented.
 - UI typography: Plus Jakarta Sans
 - Technical data: JetBrains Mono
 
-Gold, gradients, glows, glass surfaces, decorative motion, left-edge content
+Decorative gold, gradients, glows, glass surfaces, decorative motion, left-edge content
 accents, and mixed icon families are not part of the panel system. The official
 Smyklot avatar and the three-pixel closing rule above the app footer may retain the
 brand rainbow. The closing rule moves its seamless, full-hue repeated spectrum
 slowly to the right, with reduced-motion preferences disabling the movement.
+Gold has one functional exception: unsaved state and the action that resolves it,
+specified under Settings interaction laws
 
 ## Color tokens
 
@@ -93,10 +95,10 @@ long prose. Technical values use tabular figures.
 - Surface radius: `10px`
 - Control radius: `8px`
 - Chips and status badges may use a full pill radius
-- Desktop controls: `40px` visual height
+- Standalone controls: `34px` visual height, with an explicit `40px` tier
 - Touch controls: at least `44px` hit area
 - Table header: `40px`
-- Table rows: `52-56px`
+- Desktop virtualized table rows: `65px`; mobile rows grow with their content
 - Table cell padding: `16px` horizontal
 - Sidebar: `240px` expanded, `72px` collapsed
 - Shadows appear only on raised menus, inspectors, and dialogs
@@ -109,21 +111,26 @@ dividers instead of nested cards.
 ### Navigation
 
 - Sidebar uses a light neutral surface in light mode and midnight in dark mode
-- Selected navigation uses a petrol-tinted fill, stronger text, and icon
+- Selected navigation uses the shell's paired selection background and foreground
 - Do not add a second rail, edge strip, or decorative marker
 - The bottom account area stays visually quiet and does not add a custom role strip
 - The collapse control sits beside the brand when expanded and straddles the
   sidebar edge when collapsed; it appears only on sidebar hover or focus-within
-- Mobile uses a top bar and labelled navigation with no more than five items
+- Mobile uses a top bar and a navigation drawer preserving desktop page order
+- Selection and `aria-current` identify the displayed page, never a remembered
+  workspace page while Search or Inbox is open. Personal pages retain workspace
+  context and every remembered page remains reachable
 
 ### Buttons and controls
 
-- Primary actions are solid petrol with a theme-appropriate foreground
+- Primary actions use the shell accent with a theme-appropriate foreground;
+  pending decisions use the explicit gold exception
 - Secondary actions use neutral surfaces and borders
 - Ghost actions use transparent backgrounds with visible hover states
 - Danger is reserved for destructive workflows
 - Focus replaces the normal control boundary with one two-pixel indicator
-- Press feedback uses stable color/elevation and at most `scale(.98)`
+- Press feedback uses the shared color, inset shadow, and sink motion. Hover and
+  pressed surfaces are exclusive, including rows with a separate hit layer
 
 ### Tabs and view switches
 
@@ -140,9 +147,10 @@ dividers instead of nested cards.
 - Scrim uses 50-55% black plus restrained background blur
 - Use clear header, scrollable body, and sticky action footer
 - Preserve Escape, outside click, focus trap, and focus restoration
-- Confirm before dismissing unsaved work
-- Repository settings and user access history use centered wide modals with a
-  blurred scrim; repository sections use one horizontal tab row at every width
+- Confirm only when dismissal would discard unsaved work. Closing an inspector
+  whose draft remains staged needs no confirmation
+- Repository settings use an addressable page with one vertical scroll. Secondary
+  file controls use the shared inspector, with content adjustments before final output
 
 ### Tables
 
@@ -170,8 +178,9 @@ dividers instead of nested cards.
 - History becomes a compact activity list on narrow screens
 - Audit history orders columns as Actor, Target, Change, When; actor identity uses
   the same name and handle typography as Access
-- Filtered empty results use a centered icon, explanation, and recovery action in
-  the full table-body viewport
+- Empty results use the shared `EmptyState` anatomy in a visible table-body area:
+  a plain title, an explanation, and a recovery action when available. Do not add
+  a decorative icon or leave only column headings when there are no rows
 - The sidebar is the only organization picker. User access scope chooses only
   Global or the currently selected installation
 - Users/Invitations and Add user share one tab row above the standalone search
@@ -247,6 +256,255 @@ larger than the visual glyph.
 - Animate transform and opacity only
 - Never animate more than two elements for one interaction
 - Every effect has a `prefers-reduced-motion` fallback
+
+## Settings interaction laws
+
+### Floating action composer exception
+
+A floating composer that requires a decision uses a 2px border in
+`--decision-accent`, an alias of the existing gold `--warning` color used by unsaved
+star badges. Its Save or resolve action uses the same accent
+through the shared button. This is an explicit exception to neutral panel borders
+and the shell's teal or violet action color. Reserve it for pending decisions,
+including invalid drafts and save conflicts. Keep informational success toasts
+neutral, dismiss them after five seconds, and animate their exit with reduced-motion
+support. Never auto-dismiss unsaved changes or failures
+
+This exception permits the composer's full border and action fill, not colored
+left-edge strips on settings, status messages, or rows. Configured values keep the
+same text alignment as inherited values. Pending edits use `--unsaved-surface`
+with paired `--unsaved-ink` and `--unsaved-secondary` text, plus
+`--unsaved-control` and `--unsaved-control-border` for inputs. The dark palette
+uses a deep warm neutral with pale gold text; the light palette uses a pale gold
+surface with dark ochre text. Never obtain the entire treatment by washing the
+accent over a neutral surface. Keep normal text contrast at least 4.5:1
+
+This pairing follows [Atlassian's accent guidance](https://atlassian.design/foundations/color/accents):
+match foreground and background by color family and emphasis, and account for
+yellow turning brown when darkened. Changed panel borders use `--unsaved-border`.
+Never use the shell action color to signal unsaved work
+
+A changed row clears its own bottom separator and the separator immediately
+above it. Preserve their geometry to avoid layout shifts, but set their shared
+`--hairline` color to transparent. When a disclosure or other content follows the
+last row, the row list uses `rows-continue` to retain its shared separator. The
+following content must not paint an independent top border. Local row styles use
+the shared token. Panel outlines remain intact
+
+### Row copy rhythm
+
+The gap from a row title to its description and between wrapped description lines
+must match. Use `--row-copy-gap` for the trimmed title-to-description gap and
+`--row-copy-leading` for wrapped copy. Do not inherit body leading inside a compact
+row. Check rendered multiline text at narrow widths as well as single-line rows
+
+The floating composer follows the same 8px ink gap. Trim the title and subtitle
+to their cap and baseline edges, and use the shared copy leading when they wrap.
+Do not add body line-box space on top of the gap
+
+### UI copy and compact choices
+
+UI labels, descriptions, hints, and toast messages have no trailing period. A toast
+description does not repeat its title. Segmented formatting pickers occupy their
+content width without stretching across the containing panel. When there is less
+room than their contents need, the shared track scrolls horizontally within its
+container at every viewport width. Never clip an option or widen the page
+
+Optional explanations open in place through a quiet native disclosure. Its text
+shares the card heading's left edge, its trailing chevron stays inside the hit
+area, and its row shares the adjacent settings rows' width. Keep an 8px gap from
+the preceding row and use the shared hover, press, and focus states. Expanded
+content stays on the card surface without another frame or a colored edge
+
+Formatting sources appear in priority order, with the current editor identified
+independently of saved or unsaved state. Do not claim a source is active or
+inherited without data confirming that. Omit earlier empty sources when the
+backend confirms they are empty, but retain unsaved removals and the current scope
+
+### Shared form controls survive extraction
+
+Form controls own their appearance through shared primitives or global control
+classes. A parent component's scoped CSS must never supply a child's border,
+background, typography, focus state, or height. Duration fields use `DurationInput`,
+which combines the shared text input and Select at the same control height. Unit
+changes preserve the stored duration. Browser checks compare rendered control
+styles in both themes, including focus and disabled states, and run in CI
+
+Standalone row inputs, selects, popover pickers, segmented controls and buttons use
+`--control-height-compact` (34px), including fields inside expanded inspectors.
+Popover pickers use the shared `PickerTrigger`, with the shared stroked chevron.
+A surface may opt into the 40px tier through `--local-control-height`; local paint
+or content padding must not invent an intermediate height. Embedded chip removal
+controls and inheritance markers retain their explicit smaller anatomy
+
+### Settings mean differences, not interaction history
+
+Compare each draft with its saved baseline. Changing a value and returning it to
+the same value restores the original state, removes its changed marker, and clears
+the composer when nothing else differs. Preserve intentional inheritance choices:
+an explicit override is distinct from following a default. Compare structured JSON,
+unordered exception actors, and branch patterns by their meaning while retaining
+the saved representation when it is restored. Invalid input remains visible and
+blocks saving; it must not silently become zero or disappear
+
+Durations offer seconds, minutes, and hours through `DurationInput`. Changing only
+the displayed unit never stages a settings change or rounds the stored duration
+
+### File editing and rare options
+
+Use the shared code editor for templates and repository adjustments. There is one
+code surface: content adjustments are the default, final output follows them, and
+change highlighting appears in that surface. Do not introduce parallel source,
+output, and diff blocks. The mode picker and adjacent action buttons have equal
+heights; read-only status must not create another toolbar row. Center header actions
+on the heading and use the shared 16px heading-to-editor gap. Associated help text
+belongs to the editor with an 8px gap, not the 16px gap between independent fields
+
+Formatting is secondary to editing content. Keep it in the inspector or a closed
+disclosure until requested. Every template and rendered file has its terminal
+newline, including preserved-format output. The editor hides that terminal blank
+line, excludes it from change counts, and never offers it as a formatting choice
+
+### Rows, pairs, and compact actions
+
+Section headings outrank their contents. A file editor nested in a settings card
+uses the shared field-heading tier, not another card-title-sized heading. Field
+labels, nested editor labels, and the controls below the editor follow one hierarchy
+
+At widths that fit both sides, setting labels and explanations occupy the left and
+their values or actions occupy the right. Do not force Add onto a separate row with
+`flex-basis: 100%`. A collection-wide Add action belongs beside its collection heading;
+nested list actions use shared settings rows. Wrap only when content needs the room
+
+Inline disclosures use shared `fold-inline` geometry, with a trailing chevron,
+aligned text, and the same width as neighboring rows. Use them for brief optional
+explanations, not an expanding settings form beneath an active code editor
+
+The card owns its 20px outer inset. A final nested editor sheds inter-editor padding
+and the terminal row's internal half-band so neither stacks onto that inset. This
+applies to collapsed disclosures, expanded controls, and Markdown section actions
+
+A file path field fits its content within a readable bound; it does not stretch to
+fill a wide editor. Keep file actions together at the trailing edge, centered with
+the input. Let the field and action group wrap when they cannot fit. Undo belongs
+to the code editor, separately from file-level actions
+
+Rare controls that change how code is applied open through a named action in the
+file header. Use the shared inspector, not an accordion that pushes the editor
+or the following page content. Opening and closing it must preserve page geometry,
+scroll position, selection, and Undo. Keep the code editor mounted while inspecting
+rules. The trigger stays in the same place and receives focus when the inspector
+closes. At narrow widths the inspector fills the viewport and scrolls independently
+
+The inspector identifies the file and groups editable settings in regular cards,
+using shared policy rows, controls, surface colors, and spacing. No nested settings
+disclosures, detached headers, or tinted inset panels. Closing returns to editing;
+it never saves, discards, or clears an invalid draft. Only the workspace save action
+commits changes. Read-only readers may inspect the same rules with disabled inputs
+
+Content and application rules remain separate. Do not introduce hidden keys inside
+an override object or make users escape file content inside a configuration envelope.
+A code-only alternative must have an explicit schema and preserve invalid raw drafts
+before it can replace the form. Offer only formats the backend can apply, through the
+shared file-capability mapping
+
+Optional settings outside an active editor may use a whole-card disclosure whose
+summary is its header. Explanations and toolbars that only choose a view do not
+require another card. Editable controls must never appear in a frameless inline
+explanation row
+
+Repository configuration separates editable policy from observed file state.
+Bypassing a file never changes its reported validity. A file that has not been
+checked says **Not checked**, and a valid empty file remains **Valid**. Inspecting
+it opens the shared inspector without moving the repository settings
+
+File priority is a semantic ordered list with a quiet number gutter starting at
+the row's left text edge, a shared path column, and an observed status centered
+beside that path. Use regular row
+spacing and separators, without tinted inset panels. Only confirmed files get
+**Selected** or **Ignored** labels, using shared filled info and neutral pills
+respectively. An unlabelled candidate makes no claim about
+whether that path exists. Never apply `display: contents` to these list rows
+
+Single-line facts beside setting labels, including **Last checked**, use the
+shared `setting-fact` typography and cap trim. Center both visible text boxes on
+the same row axis, rather than centering a trimmed label against an untrimmed
+body line or introducing local pixel offsets
+
+Navigable repository and shared-configuration rows expose a full-row link with
+shared hover, pressed, and keyboard-focus states. A switch and its surrounding hit
+area form a separate control; toggling it must not navigate. List expansion belongs
+with the list heading and count, not a detached oversized footer action
+
+Alias pairs use the shared pair editor. Clicking or typing in an existing command
+field opens its suggestions. Suggestions use the compact control tier, with arrow
+keys, Enter, and Escape supported. Reset stays vertically centered beside the whole
+value area, including when pairs wrap. Removal and picker affordances remain distinct
+
+### Sync, exceptions, and truthful status
+
+Ordinary sync proceeds automatically after saved configuration changes. Surface
+blockers in context with a reason and recovery action; a separate plan approval is
+not the normal workflow. Do not describe queued work as completed or stale data as
+current. Monitoring copy describes measured facts without claiming a cause that
+the data does not establish
+
+A healthy status badge does not need a second panel repeating that it is ready.
+Show explanatory status text when it tells the reader about a restriction, work in
+progress, or a recovery step. Development-fixture wording never appears in product
+copy; demo data uses the same vocabulary as real service responses
+
+Merge exceptions inherit workspace defaults and allow repository overrides. Show
+GitHub actor names and available avatars, with suggestions and installation status.
+An unavailable app must not be silently removed from policy. Distinguish missing,
+suspended, and unknown installation state. Explain the resulting restriction in
+context and keep the configured choice available to fix
+
+### Empty states and time labels
+
+The shared empty/error surface puts its title above its explanation with the same
+8px visible copy gap as settings rows. No trailing period or joining separator is
+needed after the title. Use plain wording, retain useful content during recoverable
+errors, and offer a relevant next step rather than an unsupported reassurance
+
+Day headings and the entries grouped beneath them use the same local calendar.
+Never split one local day into repeated Today or Yesterday sections because its
+entries cross midnight in UTC
+
+## Enforcement
+
+These laws apply to every route and every expanded, empty, loading, error, edited,
+disabled, and read-only state. A component extraction must preserve its shared
+states without depending on a caller's scoped CSS
+
+| Contract | Automated enforcement |
+| --- | --- |
+| Route coverage, copy rhythm, separators, shared link paint, no left strips | `tests/browser/law-audit.test.ts` and shared `PANEL_ROUTES` |
+| Optical centering, descenders, heights, mobile containment | `vertical-alignment`, `text-clipping`, `control-heights`, `mobile-layout` browser suites |
+| Duration styles and units, explanation alignment, gold state geometry | `duration-controls` browser suite and `duration-input`, `unsaved-colors` unit suites |
+| Editor inspector layout stability, focus return, draft preservation, regular card groups | `repository-file-sync` browser suite and `repository-sync-pane` unit suite |
+| File observation states, search priority, row alignment, inspector focus return | `config-migration` browser suite and `repository-control` unit suite |
+| Alias interactions and shared compact pickers | `pair-entry`, `segmented-control`, `dictionary` browser suites |
+| File editor modes, exact output, hidden newline, independent row controls | `file-formatting`, `repository-file-sync` browser suites and `code-editor` unit suite |
+| Canonical drafts, save/discard, persistence, invalid input | Settings and editor unit suites, `sync-drafts`, `settings-draft-markers`, `runtime-settings` browser suites |
+| Toast lifetime and decision composer | `mutation-receipt`, `settings-save-composer` unit suites and `duration-controls` browser suite |
+| Empty, signed-out, and label states | `empty-states`, `signed-out-layout`, `sync-label-layout` browser suites |
+| Navigation context and accurate day grouping | `sidebar-selection`, `text-clipping` browser suites |
+| Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
+
+Paths above are relative to `internal/panel/frontend` except the backend suites.
+CI runs these browser and unit contracts. `mise run lint:matrix` rejects a browser
+suite omitted from both CI and the documented local workflow
+
+Tests verify measurable contracts, not visual quality or all wording. Every visual
+change also requires screenshot critique in both themes at 375, 768, 1024, and
+1440px, including relevant interaction states. Use `SMYKLOT_VISUAL_AUDIT_DIR` with
+the browser suite to retain route and empty-state screenshots and rendered copy.
+Review narrow and expanded views directly; an automated pass is not design approval
+
+The browser-test lane keeps generated SvelteKit files and Vite dependency caches
+separate from the running preview. Tests must not restart the user's preview or
+erase the state being reviewed
 
 ## Delivery checks
 

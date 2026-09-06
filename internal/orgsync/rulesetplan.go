@@ -337,20 +337,9 @@ func canonicalRuleset(ruleset Ruleset) Ruleset {
 	return ruleset
 }
 
-// canonicalActor is one bypass actor in the one spelling used for comparison.
-//
-// An organization admin is a role rather than somebody, so GitHub answers with
-// no id for it however it was written - configuration has to carry one, because
-// the create is refused without it, and reading the ruleset back always gives
-// null. Comparing that id is how a repository already enforcing exactly the
-// configured ruleset is rewritten on every tick for ever: the write succeeds,
-// the read says null again, and the next sweep proposes the same change.
-//
-// Only this type. The other four name somebody GitHub can hand back - an app,
-// a team, a role, a deploy key - and dropping their ids would make two actors
-// that differ compare the same.
+// canonicalActor ignores IDs on roles that GitHub returns without an identity.
 func canonicalActor(actor RulesetBypassActor) RulesetBypassActor {
-	if actor.ActorType == bypassActorOrganizationAdmin {
+	if actor.ActorType == bypassActorOrganizationAdmin || actor.ActorType == bypassActorDeployKey {
 		actor.ActorID = 0
 	}
 

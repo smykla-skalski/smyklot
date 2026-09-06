@@ -217,20 +217,13 @@ what would otherwise be four visits.
       </h2>
       {#if checked !== null}
         <span class="card-note"
-          >{attention === 0 ? 'Everything' : 'Everything else'} is running on its own · checked
+          >Checked
           <strong><RelativeTime value={checked} {nowMs} /></strong></span
         >
       {/if}
     </div>
 
-    {#if attention === 0}
-      <div class="state-panel">
-        <span
-          ><strong>Quiet.</strong> Sync and commands are running automatically. Issues that need you appear
-          here</span
-        >
-      </div>
-    {:else}
+    {#if attention > 0}
       <div class="object-list">
         {#each syncProblems as issue (issue.id)}
           <a class="object-row" href={syncHref}>
@@ -291,9 +284,7 @@ what would otherwise be four visits.
     </div>
     {#if active.rows.length === 0}
       <div class="state-panel">
-        <span
-          ><strong>Nothing is in flight.</strong> A command lands here the moment Smyklot accepts it</span
-        >
+        <span><strong>No active work</strong> Commands appear here when Smyklot accepts them</span>
       </div>
     {:else}
       <div class="object-list">
@@ -345,8 +336,7 @@ what would otherwise be four visits.
     {#if lately.length === 0}
       <div class="state-panel">
         <span
-          ><strong>Nothing has happened yet.</strong> Every change made through Smyklot here lands on
-          this list</span
+          ><strong>No activity yet</strong> Changes made through Smyklot appear in this list</span
         >
       </div>
     {:else}
@@ -383,7 +373,7 @@ what would otherwise be four visits.
            already this sentence, so the other two carry the strip's links. -->
       <span class="fact-bit">
         <span class="fact-dot"></span>
-        <span
+        <span class="band-trim"
           >{#if counts === null}Reading repositories{:else}Commands on in {counts.enabled} of {counts.all}
             {counts.all === 1 ? 'repository' : 'repositories'}{/if}</span
         >
@@ -391,15 +381,19 @@ what would otherwise be four visits.
       <span class="fact-bit">
         <span class="fact-dot" class:is-warn={drifted > 0}></span>
         <a href={syncHref}
-          >{#if drifted === 0}Every repository in step with sync{:else}{drifted}
-            {drifted === 1 ? 'repository' : 'repositories'} out of step with sync{/if}</a
+          ><span class="band-trim"
+            >{#if drifted === 0}No sync differences reported{:else}{drifted}
+              {drifted === 1 ? 'repository' : 'repositories'} out of sync{/if}</span
+          ></a
         >
       </span>
       <span class="fact-bit">
         <span class="fact-dot" class:is-bad={failures > 0}></span>
         <a href={failuresHref}
-          >{failures === 0 ? 'No' : failures}
-          {failures === 1 ? 'failure' : 'failures'} in the last day</a
+          ><span class="band-trim"
+            >{failures === 0 ? 'No' : failures}
+            {failures === 1 ? 'failure' : 'failures'} in the last day</span
+          ></a
         >
       </span>
     </div>

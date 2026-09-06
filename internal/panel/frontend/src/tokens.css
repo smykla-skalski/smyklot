@@ -83,6 +83,19 @@
   --brand-action-tint: var(--primitive-petrol-50);
   --brand-action-text: #0f625b;
   --on-brand-action: #ffffff;
+
+  /* Pending decisions share the gold ink of the unsaved star indicators. */
+  --decision-accent: var(--warning);
+  --unsaved-surface: #fff4d8;
+  --unsaved-ink: #6b4916;
+  --unsaved-secondary: #75613b;
+  --unsaved-control: #fffcf3;
+  --unsaved-control-border: #b5a079;
+  --unsaved-border: color-mix(in srgb, var(--decision-accent) 55%, var(--border-subtle));
+  --decision-accent-hover: color-mix(in srgb, var(--warning) 90%, black);
+  --decision-accent-pressed: color-mix(in srgb, var(--warning) 80%, black);
+  --on-decision-accent: #ffffff;
+  --decision-border-width: 2px;
   --focus: var(--primitive-petrol-700);
   /* THE FOCUS-RING LAW, as numbers. The ring is drawn with `outline` and
      never with `box-shadow` - a shadow is clipped by any ancestor that hides
@@ -366,6 +379,9 @@
      Measured rendered, not declared: re-measure after any change to a
      family's type or track sizing. */
   --row-copy-gap: 8px;
+  /* Wrapped lines use the same ink gap as the title-to-description pair.
+     A regular body line-height adds extra leading inside the description. */
+  --row-copy-leading: calc(1cap + var(--row-copy-gap));
   /* THE HEAD'S LINE IS ITS TITLE'S CAP, not a round number above it. At 20
      against a 13px cap the head reserved 3.5px of nothing over the title, so
      a card opened its ink 3.5 inside its frame and closed it wherever the
@@ -384,11 +400,6 @@
      two. It is the one number the law needs, and the only thing that decides
      whether a row stands as two columns or as two lines. */
   --setting-say-min: 13rem;
-  /* The width a NAMED FIELD reads at, and the floor that breaks a dialog
-     line when two of them will not fit. 12rem is about 24 characters of the
-     control size. The setting row's sentence needs one more because it is
-     prose and wraps; a field is one line and does not. */
-  --entry-say-min: 12rem;
   /* The room an inheritance marker takes before the control it belongs to. The
      offset that indented a column heading past one went with the repositories
      table: a list of rows has no heading over the control, and the fact the
@@ -687,6 +698,16 @@
   --brand-action-tint: var(--primitive-petrol-950);
   --brand-action-text: var(--primitive-petrol-200);
   --on-brand-action: #062c2a;
+  --decision-accent: var(--warning);
+  --unsaved-surface: #2b271d;
+  --unsaved-ink: #f1d393;
+  --unsaved-secondary: #c4b695;
+  --unsaved-control: #211f19;
+  --unsaved-control-border: #716047;
+  --unsaved-border: color-mix(in srgb, var(--decision-accent) 55%, var(--border-subtle));
+  --decision-accent-hover: color-mix(in srgb, var(--warning) 90%, white);
+  --decision-accent-pressed: color-mix(in srgb, var(--warning) 80%, white);
+  --on-decision-accent: #251c0a;
   --focus: var(--primitive-petrol-400);
   --info: var(--primitive-info-dark);
   --info-tint: var(--primitive-info-dark-tint);

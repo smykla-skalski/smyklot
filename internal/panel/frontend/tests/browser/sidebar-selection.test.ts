@@ -161,4 +161,42 @@ describe("the Root console sidebar's selection", () => {
   it('draws one Queue selection instead of a selected parent and legacy child', () => {
     expect(queueSelectionCount).toBe(1);
   });
+
+  it('keeps workspace context without selecting its remembered page on Search', async () => {
+    await visit(page, `${panel.origin}/workspace/smykla-skalski/settings`);
+    const settings = page.locator('.tree-row', { hasText: 'Workspace settings' });
+    expect(await settings.getAttribute('aria-current')).toBe('page');
+
+    await visit(page, `${panel.origin}/search?q=merge`);
+    await expect.poll(() => page.locator('.tree [aria-current="page"]').count()).toBe(0);
+    expect(await page.locator('.tree-row.is-active').count()).toBe(0);
+    expect(await settings.getAttribute('href')).toBe('/workspace/smykla-skalski/settings');
+    expect(await page.title()).toBe('Search | SMYKLOT');
+    expect(await page.getByRole('searchbox', { name: 'Search', exact: true }).inputValue()).toBe(
+      'merge',
+    );
+    // Page names are indexed; individual settings are not. Use a known page
+    // match to check result highlighting independently from the original query.
+    await page.getByRole('searchbox', { name: 'Search', exact: true }).fill('workspace');
+    await expect
+      .poll(async () =>
+        (await page.locator('.object-list mark').allTextContents()).map((text) =>
+          text.toLowerCase(),
+        ),
+      )
+      .toContain('workspace');
+    await expect
+      .poll(() =>
+        page.locator('.nav-thumb').evaluate((thumb) => thumb.getBoundingClientRect().height),
+      )
+      .toBe(0);
+
+    // The remembered page must remain reachable, even though scoped navigation
+    // still remembers it as current for workspace-switching purposes.
+    await settings.click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe('/workspace/smykla-skalski/settings');
+    await expect.poll(() => settings.getAttribute('aria-current')).toBe('page');
+  });
 });

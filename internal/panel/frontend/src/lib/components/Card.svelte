@@ -56,7 +56,4 @@ invented class carried on a fourth page where it styled nothing.
      be. What this component owns is the CONTRACT: the class is always there,
      the staged marker is a boolean rather than a class anybody spells, and
      there is nowhere left to invent a second gap. */
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
 </style>

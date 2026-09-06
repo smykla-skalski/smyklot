@@ -140,12 +140,12 @@ export const FORMATTING_PRESETS = {
 } as const satisfies Record<FormattingPreset, FormattingPolicy>;
 
 export const FORMATTING_GROUPS = [
-  { key: 'common', label: 'Common', description: 'Carries presentation choices shared by every supported format' },
-  { key: 'json', label: 'JSON', description: 'Carries strict JSON presentation choices' },
-  { key: 'jsonc', label: 'JSONC', description: 'Carries comment-aware JSON presentation choices' },
-  { key: 'yaml', label: 'YAML', description: 'Carries YAML presentation choices' },
-  { key: 'toml', label: 'TOML', description: 'Carries TOML presentation choices' },
-  { key: 'markdown', label: 'Markdown', description: 'Carries Markdown presentation choices' },
+  { key: 'common', label: 'Common', description: 'Applies to all supported file formats' },
+  { key: 'json', label: 'JSON', description: 'Controls how JSON files are written' },
+  { key: 'jsonc', label: 'JSONC', description: 'Controls formatting for JSON files with comments' },
+  { key: 'yaml', label: 'YAML', description: 'Controls how YAML files are written' },
+  { key: 'toml', label: 'TOML', description: 'Controls how TOML files are written' },
+  { key: 'markdown', label: 'Markdown', description: 'Controls how Markdown files are written' },
 ] as const;
 
 export type FormattingGroup = (typeof FORMATTING_GROUPS)[number];
@@ -157,7 +157,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'conventional'],
-    description: 'Resets every formatting leaf before sibling overrides are applied',
+    description: 'Sets a starting style before individual settings are applied',
   },
   {
     key: 'formatting.common.indent_style',
@@ -174,7 +174,7 @@ export const FORMATTING_FIELDS = [
     defaultValue: 2,
     minimum: 1,
     maximum: 16,
-    description: 'Is the number of spaces represented by one indentation level',
+    description: 'Sets the number of spaces per indentation level',
   },
   {
     key: 'formatting.common.line_width',
@@ -183,7 +183,7 @@ export const FORMATTING_FIELDS = [
     defaultValue: 100,
     minimum: 40,
     maximum: 320,
-    description: 'Is the target width used by automatic collection and prose layout',
+    description: 'Sets the target line length for automatic wrapping',
   },
   {
     key: 'formatting.common.line_ending',
@@ -255,7 +255,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'prefer_plain', 'prefer_single', 'prefer_double'],
-    description: 'Controls safe scalar quote preference',
+    description: 'Chooses a quote style where the value can stay unchanged',
   },
   {
     key: 'formatting.yaml.sequence_indent',
@@ -295,7 +295,7 @@ export const FORMATTING_FIELDS = [
     kind: 'enum',
     defaultValue: 'preserve',
     options: ['preserve', 'prefer_basic', 'prefer_literal'],
-    description: 'Controls safe TOML string quote preference',
+    description: 'Chooses a quote style where the string can stay unchanged',
   },
   {
     key: 'formatting.toml.align_entries',

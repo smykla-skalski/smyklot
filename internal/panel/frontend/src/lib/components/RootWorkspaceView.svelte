@@ -425,9 +425,15 @@ inside it.
       </Button>
     </div>
   {:else if target !== null && view === 'settings'}
-    <TargetSettings {target} readOnly={!canWrite} />
+    <TargetSettings
+      {target}
+      readOnly={!canWrite}
+      lookupBypassActors={(type, query) => api.fetchRootBypassActors(workspace.id, type, query)}
+    />
   {:else if target !== null && view === 'repositories'}
     <RepositoryList
+      organizationActors={target.type === 'Organization'}
+      lookupBypassActors={(type, query) => api.fetchRootBypassActors(workspace.id, type, query)}
       targetId={workspace.id}
       defaultEnabled={target.repository_default_enabled}
       fetchPage={fetchRepositories}
@@ -644,7 +650,6 @@ inside it.
   .elevation-banner {
     background: color-mix(in srgb, var(--brand-action) 8%, var(--surface-base));
     border: 1px solid color-mix(in srgb, var(--brand-action) 38%, var(--border-subtle));
-    border-inline-start: 0.3rem solid var(--brand-action);
     border-radius: var(--radius-control);
     gap: var(--space-3);
     padding: var(--space-3);

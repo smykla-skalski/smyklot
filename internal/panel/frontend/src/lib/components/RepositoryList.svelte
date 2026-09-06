@@ -10,7 +10,7 @@
     adoptRepositorySettings,
     overlayRepositorySettingsDocument,
     repositorySettingsDraftDocument,
-    stageRepositorySettingsControl,
+    stageRepositorySettingsControls,
     type RepositorySettingsControlId,
     type RepositorySettingsDocument,
   } from '../repository-settings';
@@ -35,6 +35,7 @@
   } from '../preferences-sync';
   import type { RepositoryFailureSource } from '../repository';
   import type {
+    BypassActorLookup,
     ConfigKey,
     Page,
     RepositoryDetail,
@@ -116,6 +117,7 @@
   ] as const satisfies readonly FilterSection[];
   const {
     targetId,
+    lookupBypassActors,
     defaultEnabled,
     fetchPage,
     onLoad,
@@ -124,9 +126,11 @@
     onLoadSyncOverride = null,
     onLoadSyncStatus = null,
     readOnly = false,
+    organizationActors = true,
     prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
+    lookupBypassActors?: BypassActorLookup;
     defaultEnabled: boolean;
     fetchPage: (request: RepositoryPageRequest) => Promise<Page<RepositorySummary>>;
     onLoad: (repositoryId: string) => Promise<RepositoryDetail>;
@@ -150,6 +154,7 @@
      */
     onLoadSyncStatus?: (() => Promise<SyncStatus>) | null;
     readOnly?: boolean;
+    organizationActors?: boolean;
     prefs?: PrefsAccessor;
   } = $props();
 
@@ -646,11 +651,9 @@
   ): void {
     const canonical = details[repositoryId];
     if (canonical === undefined) return;
-    for (const control of controls) {
-      if (!stageRepositorySettingsControl(drafts, targetId, canonical, next, control)) {
-        setFailure(repositoryId, new Error('This repository setting is not valid'), 'write');
-        return;
-      }
+    if (!stageRepositorySettingsControls(drafts, targetId, canonical, next, controls)) {
+      setFailure(repositoryId, new Error('This repository setting is not valid'), 'write');
+      return;
     }
     clearFailure(repositoryId);
   }
@@ -761,8 +764,12 @@ a workspace has is not a number worth blocking the first screenful on.
 {#if activeRepository !== null}
   {@const repository = activeRepository}
   <RepositorySettings
+    {organizationActors}
+    lookupBypassActors={lookupBypassActors ??
+      ((type, query) => session.api.fetchBypassActors(targetId, type, query))}
     {repository}
     detail={activeRepositoryDetail}
+    savedFormatting={details[repository.id]?.config_patch.formatting ?? {}}
     failure={failures[repository.id]?.message ?? null}
     {readOnly}
     busy={working.has(repository.id)}
@@ -779,6 +786,8 @@ a workspace has is not a number worth blocking the first screenful on.
     {syncReadProblem}
     {now}
     onChangeSync={(next, control) => stageSyncEnvelope(repository.id, next, control)}
+    onDurationValidity={(control, problem) =>
+      drafts.setValidationProblem(settingsScope, control, problem)}
     onFormattingValidity={(valid) =>
       drafts.setValidationProblem(
         settingsScope,
@@ -1029,12 +1038,6 @@ a workspace has is not a number worth blocking the first screenful on.
   .repository-row:has(.row-hit:hover) .row-chevron,
   .repository-row:has(:focus-visible) .row-chevron {
     color: var(--text-primary);
-  }
-
-  /* A visible destination marker, not only the row's inset: a reader who left a
-     draft somewhere finds their way back to it. */
-  .repository-row.is-unsaved {
-    box-shadow: inset 2px 0 var(--brand-action);
   }
 
   /* The name is a repository's, so it keeps the mono voice the rest of the product

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { PanelApiError } from '../src/lib/api';
-import { rebaseWorkspaceConflicts, saveWorkspaceDrafts } from '../src/lib/workspace-settings-save';
+import {
+  rebaseWorkspaceConflicts,
+  saveWorkspaceDrafts,
+  workspaceDraftValidation,
+} from '../src/lib/workspace-settings-save';
 import {
   adoptRepositorySettings,
   repositorySettingsDraftDocument,
@@ -148,7 +152,7 @@ describe('workspace settings save coordinator [Unit]', () => {
     });
     expect(save).toHaveBeenCalledOnce();
     expect(drafts.hasDirty({ type: 'workspace', targetId })).toBe(false);
-    expect(drafts.operation({ type: 'workspace', targetId }).notice).toContain(
+    expect(drafts.operation({ type: 'workspace', targetId }).notice).toBe(
       'Reconciliation creates a plan only when repositories need changes',
     );
   });
@@ -181,6 +185,14 @@ describe('workspace settings save coordinator [Unit]', () => {
       `repositories.${repositoryId}.sync.files.document`,
     );
     const save = vi.fn();
+
+    const beforeValidation = drafts.dirtyResources({ type: 'workspace', targetId });
+    expect(workspaceDraftValidation(drafts, targetId)).toMatchObject({
+      control: { id: `repositories.${repositoryId}.sync.files.document` },
+    });
+    expect(drafts.dirtyResources({ type: 'workspace', targetId })).toEqual(beforeValidation);
+    expect(drafts.operation({ type: 'workspace', targetId }).problem).toBeNull();
+    expect(workspaceDraftValidation(drafts, 'another-workspace')).toBeNull();
 
     const result = await saveWorkspaceDrafts(drafts, targetId, save);
     expect(result).toMatchObject({
@@ -265,6 +277,44 @@ describe('workspace settings save coordinator [Unit]', () => {
     expect(targetDefaultsDraftDocument(drafts, TARGET).config_patch.formatting).toEqual({
       common: { line_width: 120 },
       json: { arrays: 'expanded' },
+    });
+  });
+
+  it('rebases a bypass policy as one control and preserves another saved change', async () => {
+    const drafts = registry();
+    const targetId = TARGET.id;
+    const policy = {
+      allow: true,
+      actors: [{ actor_id: 1197525, actor_type: 'Integration', bypass_mode: 'always' }],
+    };
+    adoptTargetDefaults(drafts, TARGET);
+    stageTargetDefaultsControl(
+      drafts,
+      TARGET,
+      { ...buildTargetDefaultsDocument(TARGET), pending_ci_bypass_policy_default: policy },
+      'defaults.pending_ci_bypass_policy_default',
+    );
+    const latest = {
+      target_id: targetId,
+      ...buildTargetDefaultsDocument(TARGET),
+      pending_ci_quiet_period_seconds_override: 75,
+      revision: TARGET.revision + 1,
+    };
+    await saveWorkspaceDrafts(drafts, targetId, async () => {
+      throw new PanelApiError(409, 'settings_conflict', 'Changed elsewhere', undefined, [
+        {
+          resource: 'target',
+          target_id: targetId,
+          expected_revision: TARGET.revision,
+          actual_revision: latest.revision,
+          latest,
+        },
+      ]);
+    });
+    expect(rebaseWorkspaceConflicts(drafts, targetId)).toBe(1);
+    expect(targetDefaultsDraftDocument(drafts, TARGET)).toMatchObject({
+      pending_ci_bypass_policy_default: policy,
+      pending_ci_quiet_period_seconds_override: 75,
     });
   });
 

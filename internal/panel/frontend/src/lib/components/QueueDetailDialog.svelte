@@ -124,7 +124,7 @@ not.
               .delivery_id ?? 'unknown'}
           </p>
         {:else}
-          <p>Webhook payload and delivery failure detail are protected.</p>
+          <p>Webhook contents and delivery failure details are restricted</p>
         {/if}
       {:else if detail.item.kind === 'pending_ci'}
         <p>
@@ -143,7 +143,7 @@ not.
             : workloadTitle(detail.item.details.policy_kind)}
         </p>
       {:else}
-        <p>{detail.item.summary ?? 'Nothing further was recorded about this job.'}</p>
+        <p>{detail.item.summary ?? 'No additional details were recorded for this job'}</p>
       {/if}
       {#if detail.item.blocked_reason}
         <p class="blocking"><strong>Blocked:</strong> {detail.item.blocked_reason}</p>
@@ -156,7 +156,7 @@ not.
     <section class="timeline" aria-labelledby="queue-timeline">
       <h3 id="queue-timeline">Timeline</h3>
       {#if detail.events.length === 0}
-        <p class="detail-message">No transitions recorded.</p>
+        <p class="detail-message">No events recorded</p>
       {:else}
         <ol>
           {#each detail.events as event (event.id)}

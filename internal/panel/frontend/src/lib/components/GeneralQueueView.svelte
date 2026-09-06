@@ -826,7 +826,7 @@ without the buttons, rather than buttons that refuse.
     {behind > 0 ? `${behind} ${behind === 1 ? 'item' : 'items'} behind` : ''}
   </p>
   {#if loading && !answered}
-    <Plate label="Loading…"><p class="dim" role="status">Reading the durable queue…</p></Plate>
+    <Plate label="Loading…"><p class="dim" role="status">Reading queued work…</p></Plate>
   {:else if error !== '' && !answered}
     <Plate label="Queue unavailable" tone="alarm">
       <p>{error}</p>

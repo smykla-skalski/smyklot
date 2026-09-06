@@ -65,9 +65,10 @@ func (s *Store) UpdateRepositoryFileState(
 
 	var currentStatus, currentPatch, currentPath, currentSuperseded string
 	var currentError sql.NullString
+	var currentObservedAt StoredTime
 	if err := tx.QueryRowContext(ctx, `
 SELECT config_file_status, config_file_patch, config_file_error,
-       config_file_path, config_file_superseded
+       config_file_path, config_file_superseded, file_observed_at
 FROM repositories
 WHERE target_id = ? AND id = ?`, state.TargetID, state.RepositoryID).Scan(
 		&currentStatus,
@@ -75,6 +76,7 @@ WHERE target_id = ? AND id = ?`, state.TargetID, state.RepositoryID).Scan(
 		&currentError,
 		&currentPath,
 		&currentSuperseded,
+		&currentObservedAt,
 	); err != nil {
 		return false, fmt.Errorf("read repository file state: %w", noRows(err))
 	}
@@ -120,7 +122,9 @@ WHERE target_id = ? AND id = ?`,
 		return false, fmt.Errorf("commit repository file state update: %w", err)
 	}
 
-	return changed, nil
+	// The first confirmed absence is new UI information even when the file's
+	// content matches the initial empty row. Later clock-only refreshes are quiet.
+	return changed || !currentObservedAt.Valid(), nil
 }
 
 // SetRepositoryConfigMigration records how far the move to TOML has got.

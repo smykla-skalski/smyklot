@@ -176,7 +176,8 @@ var (
 		bypassActorOrganizationAdmin: true,
 		"RepositoryRole":             true,
 		"Team":                       true,
-		"DeployKey":                  true,
+		"User":                       true,
+		bypassActorDeployKey:         true,
 	}
 
 	bypassModes = map[string]bool{
@@ -273,10 +274,8 @@ func (r Ruleset) validate(index int) error {
 		return err
 	}
 
-	for _, actor := range r.BypassActors {
-		if err := actor.validate(r.Name); err != nil {
-			return err
-		}
+	if err := ValidateRulesetBypassActors(r.BypassActors); err != nil {
+		return err
 	}
 
 	return r.Rules.validate(r.Name)
@@ -354,7 +353,7 @@ func validateRefPattern(name, target, prefix, what, pattern string) error {
 
 func (a RulesetBypassActor) validate(name string) error {
 	switch {
-	case a.ActorID <= 0:
+	case a.ActorID < 0 || (a.ActorID == 0 && a.ActorType != bypassActorOrganizationAdmin && a.ActorType != bypassActorDeployKey):
 		return invalid("ruleset %q has a bypass actor with no id", name)
 
 	case !bypassActorTypes[a.ActorType]:
@@ -368,7 +367,7 @@ func (a RulesetBypassActor) validate(name string) error {
 	// GitHub says a deploy key cannot bypass on pull requests, because a deploy
 	// key does not open one. The request is refused whole, so this is the whole
 	// ruleset failing over an actor somebody added as an afterthought.
-	case a.ActorType == "DeployKey" && a.Mode == "pull_request":
+	case a.ActorType == bypassActorDeployKey && a.Mode == "pull_request":
 		return invalid("ruleset %q lets a deploy key bypass on pull requests, "+
 			"which GitHub does not allow: a deploy key does not open one", name)
 	}

@@ -68,12 +68,12 @@ func prepareInstallationSyncConfigs(
 		if change.ExpectedRevision < 0 {
 			return nil, errors.New("sync config revision cannot be negative")
 		}
-		if !json.Valid(change.Document) {
+		if !change.Remove && !json.Valid(change.Document) {
 			return nil, fmt.Errorf("%s sync config document must be valid JSON", change.Kind)
 		}
 		document := append([]byte(nil), change.Document...)
 		prepared = append(prepared, preparedSyncConfigSettings{
-			change: change, document: document,
+			change: change, document: document, remove: change.Remove,
 			digest: orgsync.DigestConfig(change.Enabled, document),
 		})
 	}
@@ -109,7 +109,7 @@ func prepareInstallationSyncOverrides(
 		}
 		change.Enabled = cloneOptionalBool(change.Enabled)
 		prepared = append(prepared, preparedSyncOverrideSettings{
-			change: change, document: append([]byte(nil), document...),
+			change: change, document: append([]byte(nil), document...), remove: change.Remove,
 		})
 	}
 	sort.Slice(prepared, func(left, right int) bool {

@@ -3,7 +3,7 @@
   import { untrack } from 'svelte';
 
   import { CONFIG_KEYS } from '../config';
-  import { durationParts, type DurationUnit } from '../duration';
+  import { durationParts, type DurationEditorValue, type DurationUnit } from '../duration';
   import { formatBytes, formatElapsed, formatLatency } from '../format';
   import {
     FORMATTING_FIELDS,
@@ -20,7 +20,6 @@
     ROOT_SETTINGS_SCOPE,
     RUNTIME_DURATION_SPECS,
     runtimeConfigPatch,
-    runtimeDurationEditor,
     runtimeDurationSeconds,
     runtimeSettingsDraftDocument,
     stageRuntimeSettingsControl,
@@ -36,6 +35,7 @@
     RootRuntimeSettingsInput,
   } from '../types';
   import Button from './Button.svelte';
+  import DurationInput from './DurationInput.svelte';
   import Card from './Card.svelte';
   import ClippedLabel from './ClippedLabel.svelte';
   import ConfigEditor from './ConfigEditor.svelte';
@@ -43,7 +43,9 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
+  import Link from './Link.svelte';
   import Popover from './Popover.svelte';
+  import PickerTrigger from './PickerTrigger.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import StatusPill from './StatusPill.svelte';
 
@@ -217,10 +219,7 @@
   function updateFormatting(formatting: FormattingPatch, changedKey: FormattingFieldKey): void {
     const current = canonicalSettings;
     if (current === null || document === null) return;
-    const patch = runtimeConfigPatch(
-      current.behavior_defaults.deployment,
-      current.behavior_defaults.override,
-    );
+    const patch = runtimeConfigPatch(current.behavior_defaults.deployment, document.bot_config);
     if (formattingOverrideCount(formatting) === 0) delete patch.formatting;
     else patch.formatting = formatting;
     stage(
@@ -272,24 +271,9 @@
       : null;
   }
 
-  function typeAmount(spec: RuntimeDurationSpec, value: string): void {
+  function editDuration(spec: RuntimeDurationSpec, editor: DurationEditorValue): void {
     if (document === null) return;
-    const held = document[spec.key];
-    const editor = runtimeDurationEditor(held, spec, durationFallback(spec.key));
-    stage(
-      { ...document, [spec.key]: { ...held, editor: { amount: value, unit: editor.unit } } },
-      `runtime.${spec.key}`,
-    );
-  }
-
-  function pickUnit(spec: RuntimeDurationSpec, unit: DurationUnit): void {
-    if (document === null) return;
-    const held = document[spec.key];
-    const editor = runtimeDurationEditor(held, spec, durationFallback(spec.key));
-    stage(
-      { ...document, [spec.key]: { ...held, editor: { amount: editor.amount, unit } } },
-      `runtime.${spec.key}`,
-    );
+    stage({ ...document, [spec.key]: { ...document[spec.key], editor } }, `runtime.${spec.key}`);
   }
 
   function setDuration(spec: RuntimeDurationSpec, seconds: number | null): void {
@@ -360,49 +344,20 @@ without the composer.
 -->
 
 {#snippet durationValue(spec: RuntimeDurationSpec, label: string)}
-  {@const value = document?.[spec.key]}
-  {@const editor =
-    value === undefined
-      ? { amount: '', unit: spec.units[0] }
-      : runtimeDurationEditor(value, spec, durationFallback(spec.key))}
-  <input
-    class="num-inline"
-    inputmode="numeric"
-    maxlength="32"
-    aria-label="{label} amount"
-    aria-invalid={durationProblem(spec) !== null}
-    value={editor.amount}
+  {@const held = document?.[spec.key]}
+  <DurationInput
+    {label}
+    value={held === undefined
+      ? null
+      : (runtimeDurationSeconds(held, spec, durationMaximum(spec)) ?? held.override_seconds)}
+    inherited={durationFallback(spec.key)}
+    editor={held?.editor ?? null}
+    units={spec.units}
+    minimum={spec.allowZero ? 0 : spec.minimumSeconds}
+    maximum={durationMaximum(spec)}
     disabled={saving}
-    oninput={(event) => typeAmount(spec, event.currentTarget.value)}
+    onEdit={(editor) => editDuration(spec, editor)}
   />
-  <Popover role="listbox" label="{label} unit" align="end" itemSelector=".menu-item">
-    {#snippet trigger(attributes)}
-      <button
-        {...attributes}
-        class="value-select"
-        type="button"
-        aria-label="{label} unit"
-        disabled={saving}
-      >
-        <span class="t">{UNIT_WORDS[editor.unit]}</span>
-      </button>
-    {/snippet}
-    <div class="menu-list">
-      {#each spec.units as unit (unit)}
-        <button
-          class="menu-item"
-          role="option"
-          aria-selected={editor.unit === unit}
-          onclick={() => pickUnit(spec, unit)}
-        >
-          <span class="menu-check">
-            {#if editor.unit === unit}<Icon name="check" size="base" />{/if}
-          </span>
-          <ClippedLabel class="mi-label" text={UNIT_WORDS[unit]} />
-        </button>
-      {/each}
-    </div>
-  </Popover>
 {/snippet}
 
 <section class="root-settings" aria-label={SECTION_COPY[section].ariaLabel}>
@@ -443,8 +398,8 @@ without the composer.
             </div>
             <p class="group-note emergency-note">
               {#if current.background_work_paused}
-                Queue items remain durable, but webhook delivery, pending CI, sync, and maintenance
-                will not start new work
+                Queued work is kept, but webhook delivery, pending CI, sync, and maintenance will
+                not start new work
               {:else}
                 Every job starts the work that is due. Use this control to stop automatic dispatch
                 without taking the panel or webhook intake offline
@@ -481,7 +436,7 @@ without the composer.
         </div>
         <p class="group-note">
           Applied to the running process without a restart. Background-work cadence and timing are
-          managed in <a href="/root/schedules">Schedules</a>
+          managed in&nbsp;<Link href="/root/schedules">Schedules</Link>
         </p>
         <div class="policy-rows">
           <div
@@ -515,19 +470,14 @@ without the composer.
                   itemSelector=".menu-item"
                 >
                   {#snippet trigger(attributes)}
-                    <button
+                    <PickerTrigger
                       {...attributes}
-                      class="value-select"
                       type="button"
                       aria-label="Runtime log level"
                       disabled={saving}
                     >
-                      <span class="t"
-                        >{capitalize(
-                          current.log_level.override ?? current.log_level.deployment,
-                        )}</span
-                      >
-                    </button>
+                      {capitalize(current.log_level.override ?? current.log_level.deployment)}
+                    </PickerTrigger>
                   {/snippet}
                   <div class="menu-list">
                     {#each LOG_LEVELS as option (option.value)}
@@ -575,9 +525,6 @@ without the composer.
               <span class="setting-why"
                 >Shorter limits end active sessions sooner; longer limits affect new sessions</span
               >
-              {#if durationProblem(SESSION_SPEC) !== null}
-                <span class="setting-problem">{durationProblem(SESSION_SPEC)}</span>
-              {/if}
             </span>
             {#if current.session_lifetime.override_seconds === null}
               <span class="policy-value">
@@ -625,6 +572,12 @@ without the composer.
         disabled={saving}
         dirtyKeys={dirtyConfigKeys}
         onChange={updateBehavior}
+        onValidity={(problem) =>
+          drafts.setValidationProblem(
+            ROOT_SETTINGS_SCOPE,
+            'runtime.bot_config.command_aliases',
+            problem,
+          )}
       />
 
       <FormattingEditor
@@ -632,6 +585,12 @@ without the composer.
           current.behavior_defaults.deployment,
           current.behavior_defaults.override,
         ).formatting ?? {}}
+        savedPatch={canonicalSettings === null
+          ? {}
+          : (runtimeConfigPatch(
+              canonicalSettings.behavior_defaults.deployment,
+              canonicalSettings.behavior_defaults.override,
+            ).formatting ?? {})}
         inherited={current.behavior_defaults.deployment.formatting}
         scope="runtime"
         idPrefix="root"
@@ -795,7 +754,7 @@ without the composer.
   id="pause-background-work"
   open={pauseDialogOpen}
   title="Pause automatic background work?"
-  description="This is an immediate service-wide safety control."
+  description="Pauses automatic background work across the service immediately"
   onClose={() => (pauseDialogOpen = false)}
   onConfirm={() => void setBackgroundWorkPaused(true)}
   confirmLabel="Pause background work"
@@ -805,7 +764,7 @@ without the composer.
 >
   <p class="confirm-copy">
     No job will take on new work. Work already running may finish, and incoming webhooks remain
-    stored for later delivery. An operator can resume dispatch from this page.
+    stored for later delivery. An operator can resume dispatch from this page
   </p>
 </ConfirmDialog>
 
@@ -831,8 +790,18 @@ without the composer.
      matched nothing, the row never became a row, and the button sat under the sentence
      with no space between them. */
 
+  .root-settings :global(.emergency-card) {
+    flex-wrap: wrap;
+    gap: var(--space-4);
+  }
+
+  .root-settings :global(.emergency-card > .btn) {
+    flex: none;
+  }
+
   .emergency-copy {
     display: grid;
+    flex: 1 1 26rem;
     gap: var(--space-3);
     min-width: 0;
   }
@@ -840,6 +809,7 @@ without the composer.
   .emergency-heading {
     align-items: center;
     display: flex;
+    flex-wrap: wrap;
     gap: var(--space-3);
     /* The line this heading's companions are held to - its own title's cap. */
     --head-line: 12px;
@@ -868,18 +838,6 @@ without the composer.
     text-box: trim-both cap alphabetic;
   }
 
-  @media (max-width: 720px) {
-    .emergency-card {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .emergency-card :global(.btn) {
-      justify-content: center;
-      width: 100%;
-    }
-  }
-
   .group-tally {
     color: var(--text-muted);
     font-family: var(--mono);
@@ -891,50 +849,10 @@ without the composer.
 
   .policy-row.is-invalid {
     background: color-mix(in srgb, var(--danger) 7%, var(--surface-base));
-    box-shadow: inset 2px 0 var(--danger);
   }
 
   /* A third line in the say stack, on the same rhythm the sentence above it takes from
      the shared law - `1cap` read in this line's own voice, not the row's. */
-  .setting-problem {
-    color: var(--danger);
-    font-size: var(--font-size-compact);
-    margin-block-start: calc(var(--leading-compact) - 1cap);
-  }
-
-  .value-select {
-    align-items: center;
-    appearance: none;
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0 1.5rem 0 var(--space-2);
-  }
-
-  /* Ink-true, so the chosen word shares the row's centre with the say
-     beside it rather than riding its line box's leading. */
-  .value-select .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .value-select[data-state='open'] {
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg-pressed);
-  }
 
   .menu-item {
     align-items: center;
@@ -977,55 +895,6 @@ without the composer.
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .num-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-family: var(--mono);
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0 var(--space-2);
-    text-align: end;
-    width: 5rem;
-  }
-
-  .num-inline:focus-visible {
-    border-color: var(--brand-action);
-    outline: 2px solid var(--focus);
-  }
-
-  .num-inline[aria-invalid='true'] {
-    border-color: var(--danger);
-  }
-
-  .pill {
-    align-items: center;
-    block-size: var(--tier-mark);
-    border-radius: var(--radius-chip);
-    display: inline-flex;
-    font-size: var(--font-size-micro);
-    font-weight: 600;
-    gap: 0.25rem;
-    line-height: var(--leading-flat);
-    padding: 0 0.5rem;
-  }
-
-  .pill .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .pill-success {
-    background: var(--success-tint);
-    color: var(--success);
-  }
-
-  .pill-muted {
-    background: var(--surface-inset);
-    color: var(--text-muted);
   }
 
   .updated-note {

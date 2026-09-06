@@ -224,15 +224,14 @@ decisions every kind carries: removal, and the names left alone.
 
   {#if unreadable}
     <p class="sync-notice" role="alert">
-      This workspace's rulesets are stored in a form this version of Smyklot cannot read, so they
-      are not shown and nothing here can be changed. Nothing has been lost.
+      This version of Smyklot cannot read the saved rulesets · Editing is unavailable
     </p>
   {/if}
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      workspace's App page on GitHub.
+      {unavailable} · A workspace owner must grant the required permissions in Smyklot's GitHub installation
+      settings before rulesets can sync
     </p>
   {/if}
 
@@ -282,8 +281,7 @@ decisions every kind carries: removal, and the names left alone.
     {:else if !unreadable}
       <div class="state-panel">
         <span
-          ><strong>No rulesets are synced here.</strong> Every repository keeps whatever protections it
-          sets itself - add one and the next plan previews it everywhere</span
+          ><strong>No shared rulesets yet</strong> Add a ruleset to manage branch protection across repositories</span
         >
       </div>
     {/if}
@@ -300,8 +298,8 @@ decisions every kind carries: removal, and the names left alone.
         <span class="setting-say">
           <span class="setting-name">Delete unlisted rulesets</span>
           <span class="setting-why"
-            >Off, a repository may keep rulesets of its own. On, unnamed rulesets are deleted from
-            every syncing repository, except ignored matches</span
+            >When enabled, sync deletes repository rulesets that are not listed here, except ignored
+            matches</span
           >
         </span>
         <Switch
@@ -320,8 +318,7 @@ decisions every kind carries: removal, and the names left alone.
         <span class="setting-say">
           <span class="setting-name">Ignored rulesets</span>
           <span class="setting-why"
-            >Names or globs Smyklot never creates, updates, or deletes. Ignoring overrides every
-            list above</span
+            >Matching ruleset names are never created, changed, or deleted, even when listed above</span
           >
         </span>
         <span class="setting-value">
@@ -337,15 +334,6 @@ decisions every kind carries: removal, and the names left alone.
 </div>
 
 <style>
-  .object-row.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-  }
-
   .card + .card {
     /* THE DISTANCE BETWEEN TWO CARDS ON A PAGE, and there is only one. */
     margin-block-start: var(--rhythm-card-gap);
@@ -401,7 +389,7 @@ decisions every kind carries: removal, and the names left alone.
   }
 
   .object-row:not(:last-child)::after {
-    background: var(--border-subtle);
+    background: var(--hairline, var(--border-subtle));
     block-size: 1px;
     bottom: 0;
     content: '';

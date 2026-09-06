@@ -69,7 +69,7 @@
       "properties": {
         "common": {
           "type": "object",
-          "description": "Carries presentation choices shared by every supported format",
+          "description": "Applies to all supported file formats",
           "additionalProperties": false,
           "properties": {
             "final_newline": {
@@ -94,7 +94,7 @@
             },
             "indent_width": {
               "type": "integer",
-              "description": "Is the number of spaces represented by one indentation level",
+              "description": "Sets the number of spaces per indentation level",
               "minimum": 1,
               "maximum": 16,
               "default": 2
@@ -111,7 +111,7 @@
             },
             "line_width": {
               "type": "integer",
-              "description": "Is the target width used by automatic collection and prose layout",
+              "description": "Sets the target line length for automatic wrapping",
               "minimum": 40,
               "maximum": 320,
               "default": 100
@@ -127,7 +127,7 @@
         },
         "json": {
           "type": "object",
-          "description": "Carries strict JSON presentation choices",
+          "description": "Controls how JSON files are written",
           "additionalProperties": false,
           "properties": {
             "arrays": {
@@ -170,7 +170,7 @@
         },
         "jsonc": {
           "type": "object",
-          "description": "Carries comment-aware JSON presentation choices",
+          "description": "Controls formatting for JSON files with comments",
           "additionalProperties": false,
           "properties": {
             "trailing_commas": {
@@ -190,7 +190,7 @@
         },
         "markdown": {
           "type": "object",
-          "description": "Carries Markdown presentation choices",
+          "description": "Controls how Markdown files are written",
           "additionalProperties": false,
           "properties": {
             "list_spacing": {
@@ -232,7 +232,7 @@
         },
         "preset": {
           "type": "string",
-          "description": "Resets every formatting leaf before sibling overrides are applied",
+          "description": "Sets a starting style before individual settings are applied",
           "enum": [
             "preserve",
             "conventional"
@@ -241,7 +241,7 @@
         },
         "toml": {
           "type": "object",
-          "description": "Carries TOML presentation choices",
+          "description": "Controls how TOML files are written",
           "additionalProperties": false,
           "properties": {
             "align_comments": {
@@ -286,7 +286,7 @@
             },
             "quote_style": {
               "type": "string",
-              "description": "Controls safe TOML string quote preference",
+              "description": "Chooses a quote style where the string can stay unchanged",
               "enum": [
                 "preserve",
                 "prefer_basic",
@@ -316,7 +316,7 @@
         },
         "yaml": {
           "type": "object",
-          "description": "Carries YAML presentation choices",
+          "description": "Controls how YAML files are written",
           "additionalProperties": false,
           "properties": {
             "document_start": {
@@ -342,7 +342,7 @@
             },
             "quote_style": {
               "type": "string",
-              "description": "Controls safe scalar quote preference",
+              "description": "Chooses a quote style where the value can stay unchanged",
               "enum": [
                 "preserve",
                 "prefer_plain",

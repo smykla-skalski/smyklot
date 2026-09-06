@@ -4,6 +4,7 @@ node_modules
 # the type checker reads lives inside it - so it has to exist locally and must
 # never be committed.
 .svelte-kit/
+.svelte-kit-browser/
 .smyklot-panel-install.lock/
 .smyklot-panel-install.lock.stale-*
 

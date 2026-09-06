@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { ARRAY_STRATEGIES } from '#lib/merge.js';
+import { fileFormat, isStructuredFile } from '#lib/file-format.js';
 
 /**
  * The repository's Sync pane spells a merge the way the engine spells one.
@@ -22,6 +23,7 @@ import { ARRAY_STRATEGIES } from '#lib/merge.js';
 
 const SPEC_SOURCE = new URL('../../../orgsync/filemerge/spec.go', import.meta.url);
 const PANE_SOURCE = new URL('../src/lib/components/RepositorySyncPane.svelte', import.meta.url);
+const RULES_SOURCE = new URL('../src/lib/components/StructuredMergeRules.svelte', import.meta.url);
 
 /**
  * The values of one `const` block in `spec.go`, by the type they are typed as.
@@ -79,7 +81,10 @@ describe('merge vocabulary [Unit]', () => {
    * every strategy the engine has.
    */
   it('offers every strategy the engine has', () => {
-    const both = [...offered('STRATEGIES', 2), ...offered('MARKDOWN_STRATEGIES', 1)];
+    const both = [
+      ...valuesOf(RULES_SOURCE, 'OBJECT_CHOICES', 2),
+      ...offered('MARKDOWN_STRATEGIES', 1),
+    ];
 
     expect(both.toSorted()).toEqual(declared('Strategy', 3).toSorted());
   });
@@ -96,7 +101,7 @@ describe('merge vocabulary [Unit]', () => {
   });
 
   it.each([
-    ['ARRAY_STRATEGIES', PANE_SOURCE],
+    ['LIST_CHOICES', RULES_SOURCE],
     ['RULE_CHOICES', new URL('../src/lib/components/SyncFilePage.svelte', import.meta.url)],
   ])('offers every list strategy in %s', (list, source) => {
     expect(valuesOf(source, list, 3).toSorted()).toEqual([...ARRAY_STRATEGIES].toSorted());
@@ -108,25 +113,33 @@ describe('merge vocabulary [Unit]', () => {
     );
   });
 
-  /*
-   * The pane decides by regex which half of the form a row gets, and the engine
-   * decides by a switch on the extension. A third extension added to one and
-   * not the other silently sends a row to the wrong editor.
-   */
-  it('reads the same extensions as the engine', () => {
+  it('shares all backend file capabilities with validation and the editor', () => {
     const source = readFileSync(SPEC_SOURCE, 'utf8');
-    const markdown = source.slice(source.indexOf('func isMarkdown'));
-    const extensions = [...markdown.slice(0, markdown.indexOf('\n}')).matchAll(/"\.(?<ext>\w+)"/gu)]
+    const extensionsOf = (functionName: string) => {
+      const body = source.slice(source.indexOf(`func ${functionName}`));
+      return [...body.slice(0, body.indexOf('\n}')).matchAll(/"\.(?<ext>\w+)"/gu)]
+        .map((match) => match.groups?.ext ?? '')
+        .toSorted();
+    };
+    const structured = extensionsOf('formatOf');
+    const markdown = extensionsOf('isMarkdown');
+    expect(structured.length).toBeGreaterThanOrEqual(5);
+    expect(markdown.length).toBeGreaterThanOrEqual(2);
+    for (const extension of structured) {
+      expect(isStructuredFile(`config.${extension}`), extension).toBe(true);
+      expect(isStructuredFile(`config.${extension.toUpperCase()}`), extension).toBe(true);
+    }
+    for (const extension of markdown) {
+      expect(fileFormat(`guide.${extension}`)).toBe('markdown');
+      expect(isStructuredFile(`guide.${extension}`)).toBe(false);
+    }
+    const mapping = readFileSync(new URL('../src/lib/file-format.ts', import.meta.url), 'utf8');
+    const mapped = [...mapping.matchAll(/^ {2}(?<ext>\w+): '/gmu)]
       .map((match) => match.groups?.ext ?? '')
       .toSorted();
-
-    expect(extensions.length).toBeGreaterThanOrEqual(2);
-
-    const pane = readFileSync(PANE_SOURCE, 'utf8');
-    const pattern = /const MARKDOWN_PATH = \/\\\.\(\?:(?<alternates>[a-z|]+)\)\$\/i;/u.exec(pane);
-
-    if (pattern === null) throw new Error('MARKDOWN_PATH is no longer a literal alternation');
-
-    expect((pattern.groups?.alternates ?? '').split('|').toSorted()).toEqual(extensions);
+    expect(mapped).toEqual([...structured, ...markdown].toSorted());
+    for (const path of ['LICENSE', 'config.ini', 'config.constructor', 'file.json/nested']) {
+      expect(fileFormat(path)).toBeNull();
+    }
   });
 });

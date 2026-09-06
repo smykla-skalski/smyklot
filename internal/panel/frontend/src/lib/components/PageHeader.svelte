@@ -189,14 +189,7 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     min-block-size: 32px;
   }
 
-  /* The panel's one unsaved marker, on the band that holds the staged switch
-     rather than on the whole head - the title is not what changed. */
-  .page-status.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, transparent);
-    box-shadow: inset 2px 0 var(--brand-action);
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2);
-  }
+  /* The staged switch keeps a quiet surface tint without changing its inset. */
 
   .page-head-say {
     display: grid;

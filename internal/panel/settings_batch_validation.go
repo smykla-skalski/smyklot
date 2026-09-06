@@ -28,16 +28,20 @@ type workspaceSettingsBatchRequest struct {
 }
 
 type workspaceTargetBatchRequest struct {
-	RepositoryDefaultEnabled       *bool                            `json:"repository_default_enabled"`
-	PendingCIModeDefault           *storage.PendingCIMode           `json:"pending_ci_mode_default"`
-	PendingCIBranchPatternsDefault *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
-	PendingCIQuietPeriodSeconds    nullableValue[int64]             `json:"pending_ci_quiet_period_seconds_override"`
-	PathIndexIntervalSeconds       nullableValue[int64]             `json:"path_index_interval_seconds_override"`
-	ConfigPatch                    *config.Patch                    `json:"config_patch"`
-	ExpectedRevision               *int64                           `json:"expected_revision"`
+	ConfigFileSyncEnabled          *bool                                        `json:"config_file_sync_enabled"`
+	PendingCIBypassPolicyDefault   batchNullable[storage.PendingCIBypassPolicy] `json:"pending_ci_bypass_policy_default"`
+	RepositoryDefaultEnabled       *bool                                        `json:"repository_default_enabled"`
+	PendingCIModeDefault           *storage.PendingCIMode                       `json:"pending_ci_mode_default"`
+	PendingCIBranchPatternsDefault *storage.PendingCIBranchPatterns             `json:"pending_ci_branch_patterns_default"`
+	PendingCIQuietPeriodSeconds    nullableValue[int64]                         `json:"pending_ci_quiet_period_seconds_override"`
+	PathIndexIntervalSeconds       nullableValue[int64]                         `json:"path_index_interval_seconds_override"`
+	ConfigPatch                    *config.Patch                                `json:"config_patch"`
+	ExpectedRevision               *int64                                       `json:"expected_revision"`
 }
 
 type workspaceRepositoryBatchRequest struct {
+	ConfigFileSyncEnabled           *bool                                          `json:"config_file_sync_enabled"`
+	PendingCIBypassPolicyOverride   batchNullable[storage.PendingCIBypassPolicy]   `json:"pending_ci_bypass_policy_override"`
 	RepositoryID                    string                                         `json:"repository_id"`
 	EnabledOverride                 nullableBool                                   `json:"enabled_override"`
 	PendingCIModeOverride           batchNullable[storage.PendingCIMode]           `json:"pending_ci_mode_override"`
@@ -192,6 +196,16 @@ func (s *Server) prepareWorkspaceSettingsBatch(
 	request.Repositories, err = s.workspaceRepositoryBatchChanges(input.Repositories, repositories)
 	if err != nil {
 		return storage.SaveInstallationSettingsRequest{}, err
+	}
+	if request.Target != nil {
+		if err := request.Target.PendingCIBypassPolicyDefault.ValidateForTarget(target.Kind); err != nil {
+			return storage.SaveInstallationSettingsRequest{}, invalidWorkspaceSettingsBatch("invalid_bypass_policy", err.Error())
+		}
+	}
+	for _, repository := range request.Repositories {
+		if err := repository.PendingCIBypassPolicyOverride.ValidateForTarget(target.Kind); err != nil {
+			return storage.SaveInstallationSettingsRequest{}, invalidWorkspaceSettingsBatch("invalid_bypass_policy", err.Error())
+		}
 	}
 	request.SyncOverrides, err = s.workspaceSyncOverrideBatchChanges(
 		r, target.ID, input.SyncOverrides, repositories, proposedFiles,
@@ -363,6 +377,10 @@ func (s *Server) workspaceTargetBatchChange(
 	target storage.Target,
 	input workspaceTargetBatchRequest,
 ) (storage.InstallationTargetSettingsChange, error) {
+	bypass, err := bypassPolicyChange(target.PendingCIBypassPolicyDefault, input.PendingCIBypassPolicyDefault)
+	if err != nil {
+		return storage.InstallationTargetSettingsChange{}, err
+	}
 	quiet := pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
 	if err := storage.ValidateTargetPendingCISettings(
 		*input.PendingCIModeDefault, *input.PendingCIBranchPatternsDefault, quiet,
@@ -378,8 +396,10 @@ func (s *Server) workspaceTargetBatchChange(
 
 	return storage.InstallationTargetSettingsChange{
 		RepositoryDefaultEnabled:       *input.RepositoryDefaultEnabled,
+		ConfigFileSyncEnabled:          configurationSyncOptIn(target.ConfigFileSyncEnabled, input.ConfigFileSyncEnabled),
 		PendingCIModeDefault:           *input.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault: *input.PendingCIBranchPatternsDefault,
+		PendingCIBypassPolicyDefault:   bypass,
 		PendingCIQuietPeriodOverride:   quiet, PathIndexIntervalOverride: pathIndex,
 		ConfigPatch: *input.ConfigPatch, ExpectedRevision: *input.ExpectedRevision,
 		RetunePendingCIQuietPeriod:     !sameDuration(target.PendingCIQuietPeriodOverride, quiet),
@@ -394,6 +414,10 @@ func (s *Server) workspaceRepositoryBatchChanges(
 	changes := make([]storage.InstallationRepositorySettingsChange, 0, len(inputs))
 	for _, input := range inputs {
 		repository := repositories[input.RepositoryID]
+		bypass, err := bypassPolicyChange(repository.PendingCIBypassPolicyOverride, input.PendingCIBypassPolicyOverride)
+		if err != nil {
+			return nil, err
+		}
 		quiet := pendingCIQuietDuration(input.PendingCIQuietPeriodSeconds.Value)
 		if err := storage.ValidateRepositoryPendingCISettings(
 			input.PendingCIModeOverride.Value, input.PendingCIBranchPatternsOverride.Value, quiet,
@@ -408,8 +432,10 @@ func (s *Server) workspaceRepositoryBatchChanges(
 			RepositoryID: input.RepositoryID, EnabledOverride: input.EnabledOverride.Value,
 			PendingCIModeOverride:           input.PendingCIModeOverride.Value,
 			PendingCIBranchPatternsOverride: input.PendingCIBranchPatternsOverride.Value,
+			PendingCIBypassPolicyOverride:   bypass,
 			PendingCIQuietPeriodOverride:    quiet, PathIndexIntervalOverride: pathIndex,
 			ConfigPatch: *input.ConfigPatch, IgnoreRepositoryFile: *input.IgnoreRepositoryFile,
+			ConfigFileSyncEnabled:          configurationSyncOptIn(repository.ConfigFileSyncEnabled, input.ConfigFileSyncEnabled),
 			ExpectedRevision:               *input.ExpectedRevision,
 			RetunePendingCIQuietPeriod:     !sameDuration(repository.PendingCIQuietPeriodOverride, quiet),
 			DeploymentPendingCIQuietPeriod: s.cfg.PendingCIQuietPeriod,
@@ -502,4 +528,22 @@ func (s *Server) workspaceSyncOverrideBatchChanges(
 	}
 
 	return changes, nil
+}
+
+func bypassPolicyChange(current *storage.PendingCIBypassPolicy, input batchNullable[storage.PendingCIBypassPolicy]) (*storage.PendingCIBypassPolicy, error) {
+	if !input.Present {
+		return current, nil
+	}
+	if err := input.Value.Validate(); err != nil {
+		return nil, invalidWorkspaceSettingsBatch("invalid_bypass_policy", err.Error())
+	}
+	return input.Value, nil
+}
+
+// Older panel clients do not know this opt-in. A save from one must preserve it.
+func configurationSyncOptIn(current bool, input *bool) bool {
+	if input == nil {
+		return current
+	}
+	return *input
 }

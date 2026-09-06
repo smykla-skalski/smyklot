@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
 
   import {
     BOOLEAN_FIELDS,
@@ -19,7 +19,7 @@
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
-  import Popover from './Popover.svelte';
+  import PairEntry from './PairEntry.svelte';
   import Switch from './Switch.svelte';
 
   /* The linked-value rows name their inheritance source per scope. */
@@ -40,6 +40,7 @@
     only,
     dirtyKeys = [],
     onChange,
+    onValidity = () => {},
   }: {
     patch: ConfigPatch;
     inherited: ConfigValues;
@@ -56,6 +57,7 @@
     dirtyKeys?: readonly ConfigKey[];
     /** Changes are staged synchronously and never saved by the editor. */
     onChange: (next: ConfigPatch, changedKey: ConfigKey) => void;
+    onValidity?: (problem: string | null) => void;
   } = $props();
 
   const source = $derived(SOURCE_BY_SCOPE[scope]);
@@ -70,8 +72,17 @@
   let draft = $state<ConfigPatch>(initialPatch);
   let receivedPatch = $state<ConfigPatch>(clonePatch(initialPatch));
   let picking = $state(false);
-  let aliasOpen = $state(false);
-  let aliasName = $state('');
+  let addingAlias = $state(false);
+  let aliasProblems = $state<Record<string, string | null>>({});
+  const commandOptions = [
+    { value: 'approve', label: 'approve', description: 'Approves the pull request' },
+    { value: 'merge', label: 'merge', description: 'Merges when checks pass' },
+    { value: 'squash', label: 'squash', description: 'Squashes and merges' },
+    { value: 'rebase', label: 'rebase', description: 'Rebases and merges' },
+    { value: 'unapprove', label: 'unapprove', description: 'Withdraws the approval' },
+    { value: 'cleanup', label: 'cleanup', description: 'Deletes the merged branch' },
+    { value: 'help', label: 'help', description: 'Lists available commands' },
+  ];
 
   const editorDisabled = $derived(disabled);
   const overriddenFields = $derived(shownFields.filter((field) => Object.hasOwn(draft, field.key)));
@@ -89,11 +100,10 @@
   const commandsOverridden = $derived(
     commandKeys.filter((key) => Object.hasOwn(draft, key)).length,
   );
-  const cleanAlias = $derived(aliasName.trim());
-  const aliasTaken = $derived(
-    cleanAlias !== '' &&
-      Object.hasOwn(effectiveValue(draft, inherited, 'command_aliases'), cleanAlias),
+  $effect(() =>
+    onValidity(Object.values(aliasProblems).find((problem) => problem !== null) ?? null),
   );
+  onDestroy(() => onValidity(null));
 
   $effect(() => {
     const incoming = clonePatch(patch);
@@ -119,6 +129,10 @@
     const next = { ...draft };
     delete next[key];
     draft = next;
+    if (key === 'command_aliases') {
+      addingAlias = false;
+      aliasProblems = {};
+    }
     report(key);
   }
 
@@ -143,30 +157,34 @@
     report('allowed_commands');
   }
 
-  function addAlias(): void {
-    if (cleanAlias === '' || aliasTaken) return;
-    const current = effectiveValue(draft, inherited, 'command_aliases');
-    draft = updatePatchValue(draft, inherited, 'command_aliases', {
-      ...current,
-      [cleanAlias]: 'approve',
-    });
-    aliasName = '';
-    aliasOpen = false;
-    report('command_aliases');
+  function aliasProblem(name: string, previousName?: string): string | null {
+    if (!/^[A-Za-z0-9_]{1,64}$/u.test(name)) {
+      return 'Use 1 to 64 letters, numbers or underscores';
+    }
+    if (
+      name !== previousName &&
+      Object.hasOwn(effectiveValue(draft, inherited, 'command_aliases'), name)
+    ) {
+      return 'That alias already exists';
+    }
+    return null;
   }
 
-  function retargetAlias(name: string, command: string): void {
-    const current = effectiveValue(draft, inherited, 'command_aliases');
-    draft = updatePatchValue(draft, inherited, 'command_aliases', {
-      ...current,
-      [name]: command,
-    });
+  function saveAlias(previousName: string | null, name: string, command: string): void {
+    if (aliasProblem(name, previousName ?? undefined) !== null) return;
+    const next = { ...effectiveValue(draft, inherited, 'command_aliases') };
+    if (previousName !== null) delete next[previousName];
+    next[name] = command;
+    delete aliasProblems[previousName ?? ''];
+    draft = updatePatchValue(draft, inherited, 'command_aliases', next);
+    addingAlias = false;
     report('command_aliases');
   }
 
   function removeAlias(name: string): void {
     const next = { ...effectiveValue(draft, inherited, 'command_aliases') };
     delete next[name];
+    delete aliasProblems[name];
     draft = updatePatchValue(draft, inherited, 'command_aliases', next);
     report('command_aliases');
   }
@@ -345,7 +363,7 @@ account again.
           <span class="policy-value">
             <input
               id="config-{scope}-{idPrefix}-prefix"
-              class="prefix-inline"
+              class="text-input mono prefix-inline"
               value={effectiveValue(draft, inherited, 'command_prefix')}
               {disabled}
               oninput={(event) => typePrefix(event.currentTarget.value)}
@@ -368,9 +386,14 @@ account again.
           data-unsaved={dirtyKeySet.has('allowed_commands') || undefined}
         >
           <span class="setting-say">
-            <span class="setting-name" id="config-{scope}-{idPrefix}-allowed"
-              >Commands it answers</span
-            >
+            <span class="command-heading">
+              <span class="setting-name" id="config-{scope}-{idPrefix}-allowed"
+                >Commands it answers</span
+              >
+              {#if Object.hasOwn(draft, 'allowed_commands')}
+                <span class="command-reset">{@render resetButton('allowed_commands')}</span>
+              {/if}
+            </span>
             <span class="setting-why"
               >A command turned off here is refused, with a comment saying so. At least one must
               remain on</span
@@ -396,9 +419,6 @@ account again.
                 </label>
               {/each}
             </span>
-            {#if Object.hasOwn(draft, 'allowed_commands')}
-              {@render resetButton('allowed_commands')}
-            {/if}
           </span>
         </div>
 
@@ -414,85 +434,55 @@ account again.
             <span class="setting-name" id="config-{scope}-{idPrefix}-aliases">Aliases</span>
             <span class="setting-why">Extra words mapped to the commands they run</span>
           </span>
-          <span class="policy-value setting-value-wrap">
+          <span class="policy-value alias-controls">
             <span
-              class="chip-line"
+              class="alias-pairs"
               role="group"
               aria-labelledby="config-{scope}-{idPrefix}-aliases"
             >
               {#each aliasEntries as [name, command] (name)}
-                <span class="alias-chip">
-                  <span class="t">{name}</span>
-                  <span class="alias-arrow" aria-hidden="true">→</span>
-                  <Popover
-                    role="listbox"
-                    label="Command {name} invokes"
-                    align="start"
-                    itemSelector=".menu-item"
-                  >
-                    {#snippet trigger(attributes)}
-                      <button
-                        {...attributes}
-                        class="alias-target"
-                        type="button"
-                        disabled={editorDisabled}
-                        aria-label="{command} - the command {name} invokes"
-                      >
-                        <span class="t">{command}</span>
-                      </button>
-                    {/snippet}
-                    <div class="menu-list">
-                      {#each COMMANDS as candidate (candidate)}
-                        <button
-                          class="menu-item"
-                          role="option"
-                          aria-selected={candidate === command}
-                          onclick={() => retargetAlias(name, candidate)}
-                        >
-                          <span class="menu-check">
-                            {#if candidate === command}<Icon name="check" size="base" />{/if}
-                          </span>
-                          <span class="mi-label">{candidate}</span>
-                        </button>
-                      {/each}
-                    </div>
-                  </Popover>
-                  <button
-                    aria-label="Remove alias {name}"
-                    disabled={editorDisabled}
-                    onclick={() => removeAlias(name)}
-                  >
-                    <Icon name="close" size="nano" />
-                  </button>
-                </span>
+                <PairEntry
+                  keyValue={name}
+                  value={command}
+                  keyLabel="Alias {name}"
+                  valueLabel="Command for alias {name}"
+                  removeLabel="Remove alias {name}"
+                  options={commandOptions}
+                  disabled={editorDisabled}
+                  validateKey={(next) => aliasProblem(next, name)}
+                  onCommit={(next, target) => saveAlias(name, next, target)}
+                  onRemove={() => removeAlias(name)}
+                  onProblem={(problem) => (aliasProblems[name] = problem)}
+                />
               {/each}
-              <Popover role="dialog" label="Name the alias" align="start" bind:open={aliasOpen}>
-                {#snippet trigger(attributes)}
-                  <button {...attributes} class="add-chip" disabled={editorDisabled}>
-                    <Icon name="plus" size="xs" />
-                    <span class="t">Add an alias</span>
-                  </button>
-                {/snippet}
-                <div class="name-menu">
-                  <div class="menu-search">
-                    <Icon name="search" size="xs" />
-                    <input
-                      placeholder="ship"
-                      aria-label="Name for the new alias"
-                      spellcheck="false"
-                      bind:value={aliasName}
-                      onkeydown={(event) => {
-                        if (event.key === 'Enter') addAlias();
-                      }}
-                    />
-                  </div>
-                  <div class="menu-hint">
-                    {aliasTaken
-                      ? 'That word is taken'
-                      : 'Enter adds it as approve · retarget after'}
-                  </div>
-                </div>
-              </Popover>
+              {#if addingAlias}
+                <PairEntry
+                  keyValue=""
+                  value=""
+                  keyLabel="Name for the new alias"
+                  valueLabel="Command for the new alias"
+                  removeLabel="Discard this alias"
+                  options={commandOptions}
+                  disabled={editorDisabled}
+                  draft
+                  focusOnMount
+                  validateKey={(next) => aliasProblem(next)}
+                  onCommit={(name, command) => saveAlias(null, name, command)}
+                  onRemove={() => {
+                    addingAlias = false;
+                    delete aliasProblems[''];
+                  }}
+                  onProblem={(problem) => (aliasProblems[''] = problem)}
+                />
+              {/if}
+              <Button
+                tone="quiet"
+                disabled={editorDisabled || addingAlias}
+                onclick={() => (addingAlias = true)}
+              >
+                {#snippet icon()}<Icon name="plus" size="xs" />{/snippet}
+                Add an alias
+              </Button>
             </span>
             {#if Object.hasOwn(draft, 'command_aliases')}
               {@render resetButton('command_aliases')}
@@ -505,319 +495,44 @@ account again.
 </div>
 
 <style>
-  .group-tally {
-    color: var(--text-muted);
-    font-family: var(--mono);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    min-block-size: 8px;
-    text-box: trim-both cap alphabetic;
-  }
-
   /* ---------- The command rows' own controls ---------- */
 
   .prefix-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-family: var(--mono);
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0;
     text-align: center;
     width: 4.5rem;
   }
 
-  .prefix-inline:focus-visible {
-    border-color: var(--brand-action);
-    outline: 2px solid var(--focus);
-  }
-
-  /* A block row keeps its sentence and its count on the first line and lays the chips on
-     a full-width second one. `flex-basis: 100%` is what takes that line under the row
-     law - the old `grid-column: 1 / -1` addressed a grid the row no longer is. */
-  .chip-line {
+  .command-heading {
     align-items: center;
     display: flex;
-    flex-basis: 100%;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-    margin-block: var(--space-1) 0;
-  }
-
-  .cmd-chip {
-    align-items: center;
-    background: var(--control-bg);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-chip);
-    color: var(--text-muted);
-    cursor: pointer;
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    gap: 0.35rem;
-    min-block-size: 30px;
-    padding-block: 0;
-    padding-inline: 0.7rem;
-  }
-
-  .cmd-chip:hover:not(:disabled) {
-    background: var(--control-bg-hover);
-    color: var(--text-primary);
-  }
-
-  .cmd-chip:active:not(:disabled) {
-    background: var(--control-bg-pressed);
-  }
-
-  .cmd-chip.is-on {
-    border-style: solid;
-    color: var(--text-primary);
-  }
-
-  .cmd-chip:disabled {
-    cursor: default;
-    opacity: 0.6;
-  }
-
-  .cmd-chip .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .alias-chip {
-    align-items: center;
-    background: var(--surface-inset);
-    block-size: 30px;
-    border-radius: var(--radius-chip);
-    color: var(--text-secondary);
-    display: inline-flex;
-    font-family: var(--mono);
-    font-size: var(--font-size-compact);
-    gap: 0.35rem;
-    line-height: var(--leading-flat);
-    padding: 0 var(--space-2) 0 0.7rem;
-  }
-
-  .alias-chip .t {
-    display: block;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .alias-arrow {
-    color: var(--text-muted);
-    /* Ink-true like its neighbours, so the chip's three parts share one
-       centre instead of the arrow riding its line box's leading. */
-    line-height: var(--leading-flat);
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* The command half is the pressable half: it opens the retarget menu. */
-  .alias-target {
-    background: none;
-    border: 0;
-    border-radius: var(--radius-chip);
-    color: var(--text-primary);
-    cursor: pointer;
-    font: inherit;
-    margin: -0.25rem;
-    padding: 0.25rem;
-  }
-
-  .alias-target:hover:not(:disabled) {
-    background: var(--interactive-hover-layer);
-  }
-
-  .alias-target[data-state='open'] {
-    background: var(--interactive-pressed);
-  }
-
-  /* A 20px disc folded around an 8px glyph, the patch-chip x. */
-  .alias-chip > button:last-child {
-    align-items: center;
-    background: none;
-    border: 0;
-    border-radius: 50%;
-    color: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    margin: -0.375rem 0;
-    opacity: 0.65;
-    padding: 0.375rem;
-  }
-
-  .alias-chip > button:last-child:hover {
-    background: var(--interactive-hover-layer);
-    opacity: 1;
-  }
-
-  .alias-chip > button:last-child:active {
-    background: var(--interactive-pressed);
-  }
-
-  .add-chip {
-    align-items: center;
-    background: var(--control-bg);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-chip);
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-    gap: 0.35rem;
-    min-block-size: 30px;
-    padding-block: 0;
-    padding-inline: 0.7rem;
-  }
-
-  .add-chip:hover {
-    background: var(--control-bg-hover);
-    border-style: solid;
-    color: var(--text-primary);
-  }
-
-  .add-chip:active {
-    background: var(--control-bg-pressed);
-  }
-
-  .add-chip .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* ---------- The menus ---------- */
-
-  .menu-item {
-    align-items: center;
-    background: none;
-    border: 0;
-    border-radius: 6px;
-    block-size: 32px;
-    color: var(--text-primary);
-    cursor: pointer;
-    display: flex;
-    font-size: var(--font-size-control);
-    gap: var(--space-2);
-    inline-size: 100%;
-    padding-inline: var(--space-3);
-    text-align: start;
-  }
-
-  .menu-item:hover {
-    background: var(--interactive-hover-layer);
-  }
-
-  .menu-item:focus-visible {
-    background: var(--interactive-hover-layer);
-    outline: none;
-  }
-
-  .menu-item:active {
-    background: var(--interactive-pressed);
-  }
-
-  .menu-check {
-    display: inline-flex;
-    flex: none;
-    inline-size: 16px;
-    justify-content: center;
-  }
-
-  .mi-label {
-    font-family: var(--mono);
-    min-inline-size: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* The menu's 4px mat - `.menu-search` bleeds to the edges with negative
-     margins that assume exactly this pad. */
-  .name-menu {
-    display: grid;
-    inline-size: 16rem;
-    padding: var(--space-1);
-  }
-
-  .menu-search {
-    align-items: center;
-    block-size: 36px;
-    box-shadow: 0 1px 0 var(--border-subtle);
-    color: var(--text-muted);
-    display: flex;
-    gap: var(--space-2);
-    margin: calc(var(--space-1) * -1) calc(var(--space-1) * -1) var(--space-1);
-    padding: 0 var(--space-3);
-  }
-
-  .menu-search input {
-    background: none;
-    block-size: 100%;
-    border: 0;
-    color: var(--text-primary);
-    flex: 1;
-    font-size: var(--font-size-control);
-    outline: none;
-    padding: 0;
-  }
-
-  .menu-search input::placeholder {
-    color: var(--text-muted);
-  }
-
-  .menu-hint {
-    color: var(--text-muted);
-    font-size: var(--font-size-micro);
-    font-variant-numeric: tabular-nums;
-    line-height: var(--leading-tight);
-    padding: var(--space-1) var(--space-3) var(--space-2);
-  }
-
-  /* ---------- The un-overridden remainder ---------- */
-
-  .group-rest {
-    align-items: center;
-    display: flex;
-    gap: var(--space-3);
     justify-content: space-between;
-    /* Bleeds like the rows above it. Its separator is the last row's own
-       bottom hairline, so the gaps around that line stay the row rhythm -
-       and a card with nothing overridden shows no line under its title. */
-    margin-inline: calc(var(--space-2) * -1);
-    padding: var(--space-2) var(--space-2) 0;
-    position: relative;
+    gap: var(--space-2);
   }
-
-  .rest-say {
-    color: var(--text-muted);
-    font-size: var(--font-size-compact);
-    /* Ink-true, like the rows above it, so the air across the hairline
-       between the last row and this line reads equal. */
-    text-box: trim-both cap alphabetic;
+  .command-heading + .setting-why {
+    margin-block-start: var(--row-copy-gap);
   }
-
-  .rest-count {
-    color: var(--text-secondary);
-    font-weight: 600;
+  .command-heading .command-reset {
+    margin-block: calc((10px - var(--control-height-compact)) / 2);
   }
-
-  .rest-picks {
+  .alias-controls {
+    align-items: flex-start;
+    flex-wrap: nowrap;
+  }
+  .alias-pairs {
     align-items: center;
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: var(--space-2);
     justify-content: flex-end;
+    min-inline-size: 0;
   }
-
-  /* On a phone the head's three parts cannot share one line - the tally or
-     pill drops under the title instead of holding the card wide. */
-  @media (max-width: 30rem) {
-    .group-head {
-      flex-wrap: wrap;
-    }
-
-    .group-rest {
-      flex-wrap: wrap;
+  .command-reset {
+    flex: none;
+  }
+  @container (max-width: 25rem) {
+    .alias-pairs {
+      justify-content: flex-start;
     }
   }
 </style>

@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { addressOf, inLanes, PANEL_ROUTES, startPanel, visit, type Panel } from './harness';
+import { captureVisualAudit } from './visual-audit';
 
 /**
  * The sheet's universal laws, asked of every route rather than of the page they were
@@ -32,7 +33,9 @@ beforeAll(async () => {
     const page = await panel.browser.newPage();
     try {
       await visit(page, addressOf(panel, route));
-      return (await audit(page)).map((one) => ({ ...one, route }));
+      const result = (await audit(page)).map((one) => ({ ...one, route }));
+      await captureVisualAudit(page, route);
+      return result;
     } finally {
       await page.close();
     }
@@ -62,6 +65,169 @@ function audit(page: Page): Promise<Omit<Finding, 'route'>[]> {
 
     const shown = (element: Element): boolean =>
       element.checkVisibility() && element.getBoundingClientRect().height > 0;
+
+    // A disclosure can hide its defect from the ordinary route screenshot.
+    // Open every level together, then restore the user's original reading state.
+    const disclosures = [...document.querySelectorAll('details')];
+    const initialOpen = disclosures.map((disclosure) => disclosure.open);
+    for (const disclosure of disclosures) disclosure.open = true;
+    for (const disclosure of disclosures) {
+      const summary = disclosure.querySelector(':scope > summary');
+      const controls = disclosure.querySelectorAll(
+        'input:not([type="hidden"]), select, textarea, button, [role="textbox"]',
+      );
+      const unframed = [...controls].find((control) => {
+        if (summary?.contains(control) || control.closest('[role="toolbar"]') || !shown(control))
+          return false;
+        const boundary = control.closest('.card');
+        return (
+          boundary === null ||
+          !disclosure.contains(boundary) ||
+          disclosure.classList.contains('fold-inline')
+        );
+      });
+      if (unframed !== undefined) {
+        found.push({
+          law: 'revealed settings have their own card boundary',
+          where: name(disclosure),
+          detail: `${summary?.textContent?.trim()}: ${name(unframed)} has no card within its disclosure`,
+        });
+      }
+    }
+    disclosures.forEach((disclosure, index) => (disclosure.open = initialOpen[index]!));
+
+    for (const link of document.querySelectorAll('a[href]')) {
+      if (!shown(link)) continue;
+      // Row hit layers carry only an accessible name. Their visible text lives
+      // in the row beside them, so the anchor's own color paints nothing.
+      if (link.classList.contains('row-hit') || link.textContent?.trim() === '') continue;
+      if (['rgb(0, 0, 238)', 'rgb(85, 26, 139)'].includes(getComputedStyle(link).color)) {
+        found.push({
+          law: 'links use a shared treatment',
+          where: name(link),
+          detail: `browser-default link color on ${link.textContent?.trim()}`,
+        });
+      }
+    }
+
+    for (const copy of document.querySelectorAll(
+      '.state-panel strong:first-child, .form-note, .group-note, .setting-why, .label-hint',
+    )) {
+      if (!shown(copy)) continue;
+      if (/\.$/u.test(copy.textContent?.trim() ?? '')) {
+        found.push({
+          law: 'short UI copy has no trailing period',
+          where: name(copy),
+          detail: copy.textContent?.trim() ?? '',
+        });
+      }
+    }
+
+    /* Settings state is carried by the surface, words and dirty star, never a
+       colored line down one edge. Probe the state classes too: a clean fixture
+       must still catch a decorative strip that appears only after editing. */
+    const stateSurfaces = document.querySelectorAll<HTMLElement>(
+      '.policy-row, .setting-row, .object-row, .label-card, .group-rest, .page-status, ' +
+        '.sync-run-notice, .schedule-preview, .impact, .elevation-banner',
+    );
+    for (const surface of stateSurfaces) {
+      if (!shown(surface) || surface.closest('nav, .sidebar, .rail, pre, .code-editor, .code'))
+        continue;
+      const originalClass = surface.className;
+      for (const state of ['', 'is-unsaved', 'is-managed', 'is-invalid']) {
+        surface.className = `${originalClass} ${state}`;
+        const style = getComputedStyle(surface);
+        const edgeBorder =
+          Number.parseFloat(style.borderInlineStartWidth) >
+          Number.parseFloat(style.borderInlineEndWidth);
+        const edgeShadow = style.boxShadow.split(/,(?![^(]*\))/u).some((shadow) => {
+          if (!shadow.includes('inset')) return false;
+          const pixels = [...shadow.matchAll(/(-?\d+(?:\.\d+)?)px/gu)].map((match) =>
+            Number(match[1]),
+          );
+          return (
+            pixels[0] > 0 && pixels[1] === 0 && (pixels[2] ?? 0) === 0 && (pixels[3] ?? 0) === 0
+          );
+        });
+        const edgePseudo = ['::before', '::after'].some((pseudo) => {
+          const mark = getComputedStyle(surface, pseudo);
+          const width = Number.parseFloat(mark.width);
+          return (
+            mark.content !== 'none' &&
+            mark.content !== 'normal' &&
+            mark.position === 'absolute' &&
+            Number.parseFloat(mark.insetInlineStart) === 0 &&
+            width > 0 &&
+            width <= 3 &&
+            Number.parseFloat(mark.height) > 8 &&
+            !['transparent', 'rgba(0, 0, 0, 0)'].includes(mark.backgroundColor)
+          );
+        });
+        if (edgeBorder || edgeShadow || edgePseudo) {
+          found.push({
+            law: 'settings states have no decorative edge strip',
+            where: `${name(surface)} ${state || 'clean'}`,
+            detail: edgeBorder
+              ? 'unequal inline borders'
+              : edgeShadow
+                ? 'one-sided inset shadow'
+                : 'narrow edge marker',
+          });
+        }
+        if (state === 'is-unsaved' && surface.matches('.policy-row, .setting-row, .object-row')) {
+          const following =
+            surface.nextElementSibling ??
+            (surface.parentElement?.matches('.policy-rows, .setting-rows, .object-list')
+              ? surface.parentElement.nextElementSibling
+              : null);
+          for (const [element, side] of [
+            [surface, 'Bottom'],
+            [following, 'Top'],
+          ] as const) {
+            if (element === null || !shown(element)) continue;
+            const edge = getComputedStyle(element);
+            // A complete panel outline is not a separator between rows.
+            if (side === 'Top' && Number.parseFloat(edge.borderInlineStartWidth) > 0) continue;
+            if (
+              Number.parseFloat(side === 'Bottom' ? edge.borderBottomWidth : edge.borderTopWidth) >
+                0 &&
+              !['transparent', 'rgba(0, 0, 0, 0)'].includes(
+                side === 'Bottom' ? edge.borderBottomColor : edge.borderTopColor,
+              )
+            ) {
+              found.push({
+                law: 'changed rows clear adjoining separators',
+                where: name(element),
+                detail: `${name(surface)} adjoins an independently painted ${side.toLowerCase()} border`,
+              });
+            }
+          }
+          const neighbors: HTMLElement[] = [surface];
+          const previous = surface.previousElementSibling;
+          if (
+            previous instanceof HTMLElement &&
+            shown(previous) &&
+            previous.matches('.policy-row, .setting-row, .object-row')
+          )
+            neighbors.push(previous);
+          for (const row of neighbors) {
+            const separator = getComputedStyle(row, '::after');
+            if (
+              separator.content !== 'none' &&
+              separator.content !== 'normal' &&
+              !['transparent', 'rgba(0, 0, 0, 0)'].includes(separator.backgroundColor)
+            ) {
+              found.push({
+                law: 'changed rows clear adjoining separators',
+                where: name(row),
+                detail: `${name(surface)} still has a visible adjoining hairline`,
+              });
+            }
+          }
+        }
+      }
+      surface.className = originalClass;
+    }
 
     /* A CARD IS NEVER WHAT DECIDES ITS COLUMN'S WIDTH. The sheet says so of the card
        itself now; before that it said it of two containers, and a third laid its cards

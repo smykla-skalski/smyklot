@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import SettingsSaveComposer from '../src/lib/components/SettingsSaveComposer.svelte';
 
@@ -13,6 +13,7 @@ const base = {
 };
 
 describe('SettingsSaveComposer [Component]', () => {
+  afterEach(() => vi.useRealTimers());
   it('describes one workspace-wide draft and exposes one Save and Discard pair', async () => {
     const onSave = vi.fn();
     const onDiscard = vi.fn();
@@ -92,6 +93,22 @@ describe('SettingsSaveComposer [Component]', () => {
     );
   });
 
+  it('keeps validation-only feedback visible without an ineffective dismissal', async () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(SettingsSaveComposer, {
+      ...base,
+      count: 0,
+      invalidProblem: 'Enter a duration in whole seconds',
+      onDismiss,
+    });
+
+    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(screen.getByText('Enter a duration in whole seconds')).toBeTruthy();
+    expect(onDismiss).not.toHaveBeenCalled();
+  });
+
   it('shows a saved receipt until it is dismissed', async () => {
     const onDismiss = vi.fn();
     render(SettingsSaveComposer, {
@@ -103,6 +120,80 @@ describe('SettingsSaveComposer [Component]', () => {
 
     expect(screen.getByText('Settings saved')).toBeTruthy();
     await fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+  it('expires a successful receipt after five seconds', async () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(SettingsSaveComposer, {
+      ...base,
+      count: 0,
+      notice: 'Reconciliation complete',
+      onDismiss,
+    });
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(onDismiss).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('gives a fresh receipt a new timer and pauses while it is being read', async () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const props = { ...base, count: 0, notice: 'First save', onDismiss };
+    const view = render(SettingsSaveComposer, props);
+    await vi.advanceTimersByTimeAsync(4_000);
+    await view.rerender({ ...props, notice: 'Second save' });
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+    const receipt = screen.getByRole('complementary', { name: 'Settings receipt' });
+    await fireEvent.pointerEnter(receipt);
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+    await fireEvent.pointerLeave(receipt);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { count: 1 },
+    { problem: 'GitHub refused the change' },
+    { invalidProblem: 'Duration is invalid' },
+    { conflict: true },
+    { saving: true },
+    { resolving: true },
+  ])('never expires work that replaces a receipt: %j', async (change) => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    const props = { ...base, count: 0, notice: 'Reconciliation complete', onDismiss };
+    const view = render(SettingsSaveComposer, props);
+    await vi.advanceTimersByTimeAsync(4_500);
+    await view.rerender({ ...props, ...change });
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+    expect(screen.queryByText('Settings saved')).toBeNull();
+    expect(
+      screen
+        .getByRole('complementary', { name: 'Settings draft' })
+        .classList.contains('action-required'),
+    ).toBe(true);
+  });
+
+  it('pauses expiry while a keyboard user has focus inside the receipt', async () => {
+    vi.useFakeTimers();
+    const onDismiss = vi.fn();
+    render(SettingsSaveComposer, {
+      ...base,
+      count: 0,
+      notice: 'Reconciliation complete',
+      onDismiss,
+    });
+    const receipt = screen.getByRole('complementary', { name: 'Settings receipt' });
+    await fireEvent.focusIn(receipt);
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(onDismiss).not.toHaveBeenCalled();
+    await fireEvent.focusOut(receipt, { relatedTarget: null });
+    await vi.advanceTimersByTimeAsync(5_000);
     expect(onDismiss).toHaveBeenCalledOnce();
   });
 });

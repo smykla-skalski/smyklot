@@ -557,8 +557,12 @@ func asGitHubRuleset(ruleset RepositoryRuleset) gogithub.RepositoryRuleset {
 		actorType := gogithub.BypassActorType(actor.ActorType)
 		mode := gogithub.BypassMode(actor.Mode)
 
+		id := new(actor.ActorID)
+		if actor.ActorType == "DeployKey" {
+			id = nil
+		}
 		raw.BypassActors = append(raw.BypassActors, &gogithub.BypassActor{
-			ActorID:    new(actor.ActorID),
+			ActorID:    id,
 			ActorType:  &actorType,
 			BypassMode: &mode,
 		})

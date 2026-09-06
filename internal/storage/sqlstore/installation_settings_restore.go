@@ -217,8 +217,10 @@ func appendInstallationRestoreSelection(
 		}
 		batch.Target = &storage.InstallationTargetSettingsChange{
 			RepositoryDefaultEnabled:       value.RepositoryDefaultEnabled,
+			ConfigFileSyncEnabled:          value.ConfigFileSyncEnabled,
 			PendingCIModeDefault:           value.PendingCIModeDefault,
 			PendingCIBranchPatternsDefault: value.PendingCIBranchPatternsDefault,
+			PendingCIBypassPolicyDefault:   value.PendingCIBypassPolicyDefault,
 			PendingCIQuietPeriodOverride:   value.PendingCIQuietPeriodOverride,
 			PathIndexIntervalOverride:      value.PathIndexIntervalOverride,
 			ConfigPatch:                    value.ConfigPatch, ExpectedRevision: selection.ExpectedRevision,
@@ -239,9 +241,11 @@ func appendInstallationRestoreSelection(
 				EnabledOverride:                 value.EnabledOverride,
 				PendingCIModeOverride:           value.PendingCIModeOverride,
 				PendingCIBranchPatternsOverride: value.PendingCIBranchPatternsOverride,
+				PendingCIBypassPolicyOverride:   value.PendingCIBypassPolicyOverride,
 				PendingCIQuietPeriodOverride:    value.PendingCIQuietPeriodOverride,
 				PathIndexIntervalOverride:       value.PathIndexIntervalOverride,
 				ConfigPatch:                     value.ConfigPatch, IgnoreRepositoryFile: value.IgnoreRepositoryFile,
+				ConfigFileSyncEnabled:          value.ConfigFileSyncEnabled,
 				ExpectedRevision:               selection.ExpectedRevision,
 				RetunePendingCIQuietPeriod:     true,
 				DeploymentPendingCIQuietPeriod: deploymentQuietPeriod,

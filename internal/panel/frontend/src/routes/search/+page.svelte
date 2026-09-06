@@ -131,19 +131,18 @@ rather than as two that happen to share a field.
       <div class="state-panel">
         {#if asked.trim() === ''}
           <span
-            ><strong>Enter a search term.</strong> Find pages, repositories, settings, queue work and
-            people</span
+            ><strong>Enter a search term</strong> Find pages, repositories, settings, queue work and people</span
           >
         {:else}
           <span
-            ><strong>Keep typing.</strong> A search starts at {SEARCH_MINIMUM} letters - one matches most
+            ><strong>Keep typing</strong> A search starts at {SEARCH_MINIMUM} letters - one matches most
             of the panel</span
           >
         {/if}
       </div>
     {:else if hits.length === 0 && !looking}
       <div class="state-panel">
-        <span><strong>Nothing matches “{asked}”.</strong> Check the spelling, or start again</span>
+        <span><strong>No results for “{asked}”</strong> Try another name or clear the search</span>
         <Button onclick={clear}>Clear the search</Button>
       </div>
     {:else}

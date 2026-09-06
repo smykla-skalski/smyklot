@@ -497,9 +497,9 @@ describe('SyncView [Component]', () => {
       'overview',
     );
 
-    await screen.findByText('No repositories to sync yet.');
+    await screen.findByText('No repositories to sync yet');
     expect(
-      screen.getByText(/Repositories will appear here after the workspace inventory refreshes/u),
+      screen.getByText(/Repositories appear after Smyklot refreshes this workspace/u),
     ).toBeTruthy();
   });
 

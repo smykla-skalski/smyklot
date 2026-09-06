@@ -594,14 +594,11 @@ refuse.
           {#if users.length === 0}
             <div class="state-panel">
               {#if hasFilters}
-                <span
-                  ><strong>Nothing matches.</strong> No account here answers to what is being asked</span
-                >
+                <span><strong>No matching accounts</strong> Try another name or filter</span>
                 <Button onclick={clearFilters}>Clear the filters</Button>
               {:else}
                 <span
-                  ><strong>Nobody yet.</strong> An account appears here the first time somebody signs
-                  in</span
+                  ><strong>No accounts yet</strong> Accounts appear here when someone first signs in</span
                 >
               {/if}
             </div>
@@ -796,8 +793,8 @@ refuse.
       <Callout tone="warning">
         {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
         <span>
-          This workspace is not yours. Continue to its Access view to acknowledge and start the
-          audited 15-minute elevation before adding the user.
+          Open this workspace's Access page to start a recorded 15-minute operator session before
+          adding the user
         </span>
       </Callout>
     {/if}

@@ -7,7 +7,7 @@
     actionLabel,
     onAction,
   }: {
-    /** The state, named. Written without its full stop - this adds it. */
+    /** The state, named without trailing punctuation. */
     title: string;
     description: string;
     actionLabel?: string;
@@ -37,13 +37,12 @@ The glass was the tell - a search icon over a list that was never searched says 
 came up dry when nothing was ever asked, and the design the panel is drawn from refuses
 it by name.
 
-The full stop after the title is added here rather than written by the caller. Every
-panel in the drawing ends its opener with one, and a rule nine call sites have to
-remember separately is a rule that ends up spelled eight ways.
+The title and description have separate lines with the shared copy rhythm, so the
+state and its next step stay distinct without punctuation joining them.
 -->
 
 <div class="state-panel">
-  <span><strong>{title}.</strong> {description}</span>
+  <span><strong>{title}</strong> {description}</span>
   {#if actionLabel !== undefined && onAction !== undefined}
     <!-- `Button` wraps the label so `app.css` can trim it: a button centres its
          label BOX, and the box carries the leading above the capitals and the room

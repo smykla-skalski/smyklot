@@ -45,6 +45,94 @@ class MemoryStorage implements SettingsDraftStorage {
 }
 
 describe('repository sync override settings adapter [Unit]', () => {
+  it('clears a strategy override when the picker returns to the saved default', () => {
+    const stored = override({
+      document: { merges: [{ path: 'renovate.json', overrides: { enabled: true } }] },
+    });
+    const drafts = new SettingsDraftRegistry({ storage: null, writerId: 'test' });
+    drafts.hydrate('viewer');
+    adoptSyncOverrideSettings(drafts, 'target', 'repo', stored);
+    const saved = buildSyncOverrideEditorEnvelope(stored);
+    for (const strategy of ['deep-merge', '']) {
+      const next = cloneSyncOverrideEditorEnvelope(saved);
+      next.document.merges = [{ path: 'renovate.json', overrides: { enabled: true }, strategy }];
+      expect(
+        stageSyncOverrideControl(
+          drafts,
+          'target',
+          'repo',
+          stored,
+          next,
+          'repositories.repo.sync.files.document',
+        ),
+      ).toBe(true);
+      expect(drafts.dirtyControls()).toHaveLength(strategy === '' ? 0 : 1);
+    }
+    expect(syncOverrideDraftEnvelope(drafts, 'target', 'repo', stored)).toEqual(saved);
+    expect(drafts.beginSave({ type: 'workspace', targetId: 'target' })).toBeNull();
+  });
+
+  it.each(['config.json', 'config.JSONC', 'config.yaml', 'config.yml', 'config.TOML'])(
+    'preserves content and list rules when saving a supported structured file: %s',
+    (path) => {
+      const merge = {
+        path,
+        strategy: 'deep-merge',
+        overrides: { tools: ['local'] },
+        arrays: [{ path: '$.tools', strategy: 'append' }],
+        deduplicate: true,
+      };
+      const envelope = buildSyncOverrideEditorEnvelope(override({ document: { merges: [merge] } }));
+      const result = syncOverrideBatchInput('repo', 3, envelope);
+      expect(result).toEqual({
+        ok: true,
+        input: {
+          repository_id: 'repo',
+          kind: 'files',
+          enabled: null,
+          document: { merges: [merge] },
+          expected_revision: 3,
+        },
+      });
+      envelope.override_texts = ['{"tools":'];
+      expect(syncOverrideBatchInput('repo', 3, envelope).ok).toBe(false);
+    },
+  );
+
+  it('clears restored JSON content independently of editor whitespace and key order', () => {
+    const stored = override({
+      document: {
+        merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC', enabled: true } }],
+      },
+    });
+    const drafts = new SettingsDraftRegistry({ storage: null, writerId: 'test' });
+    drafts.hydrate('viewer');
+    adoptSyncOverrideSettings(drafts, 'target', 'repo', stored);
+    const saved = buildSyncOverrideEditorEnvelope(stored);
+    for (const text of [
+      '{"timezone":"CET"}',
+      '{"timezone":',
+      '{"timezone":"UTC","enabled":true}',
+    ]) {
+      expect(
+        stageSyncOverrideControl(
+          drafts,
+          'target',
+          'repo',
+          stored,
+          {
+            ...saved,
+            override_texts: [text],
+          },
+          'repositories.repo.sync.files.document',
+        ),
+      ).toBe(true);
+      expect(drafts.dirtyControls()).toHaveLength(text.includes('UTC') ? 0 : 1);
+    }
+    expect(syncOverrideDraftEnvelope(drafts, 'target', 'repo', stored)).toEqual(saved);
+    expect(drafts.beginSave({ type: 'workspace', targetId: 'target' })).toBeNull();
+  });
+
   it('defines stable file-sync control IDs and repository locations', () => {
     expect(syncOverrideControls('repo-1')).toEqual([
       {

@@ -31,8 +31,8 @@ func readSettingsBaselineTarget(
 	targetID string,
 ) (settingsBaselineTargetDocument, error) {
 	return scanSettingsBaselineTarget(queryer.QueryRowContext(ctx, `
-SELECT repository_default_enabled, pending_ci_mode_default,
-       pending_ci_branch_patterns_default,
+SELECT config_file_sync_enabled, repository_default_enabled, pending_ci_mode_default,
+       pending_ci_branch_patterns_default, pending_ci_bypass_policy_default,
        pending_ci_quiet_period_seconds_override,
        path_index_interval_seconds_override, config_patch, revision
 FROM targets
@@ -42,11 +42,14 @@ WHERE id = ?`, targetID))
 func scanSettingsBaselineTarget(scanner rowScanner) (settingsBaselineTargetDocument, error) {
 	var row settingsBaselineTargetDocument
 	var branchPatterns, patch string
+	var bypassPolicy sql.NullString
 	var quietPeriod, pathIndexInterval sql.NullInt64
 	if err := scanner.Scan(
+		&row.document.ConfigFileSyncEnabled,
 		&row.document.RepositoryDefaultEnabled,
 		&row.document.PendingCIModeDefault,
 		&branchPatterns,
+		&bypassPolicy,
 		&quietPeriod,
 		&pathIndexInterval,
 		&patch,
@@ -66,6 +69,10 @@ func scanSettingsBaselineTarget(scanner rowScanner) (settingsBaselineTargetDocum
 	row.document.PendingCIQuietPeriodOverride = durationPointer(quietPeriod)
 	row.document.PathIndexIntervalOverride = durationPointer(pathIndexInterval)
 	row.document.ConfigPatch = configPatch
+	row.document.PendingCIBypassPolicyDefault, err = unmarshalBypassPolicy(bypassPolicy)
+	if err != nil {
+		return settingsBaselineTargetDocument{}, err
+	}
 
 	return row, nil
 }
@@ -77,10 +84,10 @@ func listSettingsBaselineRepositories(
 ) ([]settingsBaselineRepository, error) {
 	rows, err := queryer.QueryContext(ctx, `
 SELECT id, full_name, enabled_override, pending_ci_mode_override,
-       pending_ci_branch_patterns_override,
+       pending_ci_branch_patterns_override, pending_ci_bypass_policy_override,
        pending_ci_quiet_period_seconds_override,
        path_index_interval_seconds_override, config_patch,
-       ignore_repository_file, revision
+       config_file_sync_enabled, ignore_repository_file, revision
 FROM repositories
 WHERE target_id = ?
 ORDER BY id`, targetID)
@@ -98,13 +105,13 @@ ORDER BY id`, targetID)
 func scanSettingsBaselineRepository(scanner rowScanner) (settingsBaselineRepository, error) {
 	var row settingsBaselineRepository
 	var enabled sql.NullBool
-	var mode, branchPatterns sql.NullString
+	var mode, branchPatterns, bypassPolicy sql.NullString
 	var quietPeriod, pathIndexInterval sql.NullInt64
 	var patch string
 	if err := scanner.Scan(
-		&row.id, &row.fullName, &enabled, &mode, &branchPatterns,
+		&row.id, &row.fullName, &enabled, &mode, &branchPatterns, &bypassPolicy,
 		&quietPeriod, &pathIndexInterval, &patch,
-		&row.document.IgnoreRepositoryFile, &row.revision,
+		&row.document.ConfigFileSyncEnabled, &row.document.IgnoreRepositoryFile, &row.revision,
 	); err != nil {
 		return settingsBaselineRepository{}, err
 	}
@@ -127,6 +134,10 @@ func scanSettingsBaselineRepository(scanner rowScanner) (settingsBaselineReposit
 	row.document.PendingCIQuietPeriodOverride = durationPointer(quietPeriod)
 	row.document.PathIndexIntervalOverride = durationPointer(pathIndexInterval)
 	row.document.ConfigPatch = configPatch
+	row.document.PendingCIBypassPolicyOverride, err = unmarshalBypassPolicy(bypassPolicy)
+	if err != nil {
+		return settingsBaselineRepository{}, err
+	}
 
 	return row, nil
 }

@@ -20,9 +20,11 @@ type workspaceSettingsBatchResponse struct {
 
 type workspaceTargetSettingsState struct {
 	TargetID                            string                          `json:"target_id"`
+	ConfigFileSyncEnabled               bool                            `json:"config_file_sync_enabled"`
 	RepositoryDefaultEnabled            bool                            `json:"repository_default_enabled"`
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
+	PendingCIBypassPolicyDefault        *storage.PendingCIBypassPolicy  `json:"pending_ci_bypass_policy_default"`
 	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
 	PathIndexIntervalSecondsOverride    *int64                          `json:"path_index_interval_seconds_override"`
 	ConfigPatch                         config.Patch                    `json:"config_patch"`
@@ -34,9 +36,11 @@ type workspaceRepositorySettingsState struct {
 	EnabledOverride                     *bool                            `json:"enabled_override"`
 	PendingCIModeOverride               *storage.PendingCIMode           `json:"pending_ci_mode_override"`
 	PendingCIBranchPatternsOverride     *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_override"`
+	PendingCIBypassPolicyOverride       *storage.PendingCIBypassPolicy   `json:"pending_ci_bypass_policy_override"`
 	PendingCIQuietPeriodSecondsOverride *int64                           `json:"pending_ci_quiet_period_seconds_override"`
 	PathIndexIntervalSecondsOverride    *int64                           `json:"path_index_interval_seconds_override"`
 	ConfigPatch                         config.Patch                     `json:"config_patch"`
+	ConfigFileSyncEnabled               bool                             `json:"config_file_sync_enabled"`
 	IgnoreRepositoryFile                bool                             `json:"ignore_repository_file"`
 	Revision                            int64                            `json:"revision"`
 }
@@ -93,8 +97,10 @@ func workspaceTargetSettingsStateFrom(
 ) workspaceTargetSettingsState {
 	return workspaceTargetSettingsState{
 		TargetID: target.ID, RepositoryDefaultEnabled: target.RepositoryDefaultEnabled,
+		ConfigFileSyncEnabled:               target.ConfigFileSyncEnabled,
 		PendingCIModeDefault:                target.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
+		PendingCIBypassPolicyDefault:        target.PendingCIBypassPolicyDefault,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
 		PathIndexIntervalSecondsOverride:    durationSecondsDTO(target.PathIndexIntervalOverride),
 		ConfigPatch:                         target.ConfigPatch, Revision: target.Revision,
@@ -108,9 +114,11 @@ func workspaceRepositorySettingsStateFrom(
 		RepositoryID: repository.ID, EnabledOverride: repository.EnabledOverride,
 		PendingCIModeOverride:               repository.PendingCIModeOverride,
 		PendingCIBranchPatternsOverride:     repository.PendingCIBranchPatternsOverride,
+		PendingCIBypassPolicyOverride:       repository.PendingCIBypassPolicyOverride,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
 		PathIndexIntervalSecondsOverride:    durationSecondsDTO(repository.PathIndexIntervalOverride),
 		ConfigPatch:                         repository.ConfigPatch,
+		ConfigFileSyncEnabled:               repository.ConfigFileSyncEnabled,
 		IgnoreRepositoryFile:                repository.IgnoreRepositoryFile, Revision: repository.Revision,
 	}
 }

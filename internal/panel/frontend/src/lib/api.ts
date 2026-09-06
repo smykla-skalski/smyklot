@@ -10,6 +10,7 @@ import {
   type SyncFileRenderResponse,
 } from './sync-file-render.generated';
 import type {
+  BypassActorDirectory,
   AuditEntry,
   AuditHistoryRequest,
   AddTargetInvitationInput,
@@ -89,6 +90,12 @@ export class PanelApiError extends Error {
 }
 
 export interface PanelApi {
+  fetchBypassActors(targetId: string, type?: string, query?: string): Promise<BypassActorDirectory>;
+  fetchRootBypassActors(
+    targetId: string,
+    type?: string,
+    query?: string,
+  ): Promise<BypassActorDirectory>;
   fetchViewer(): Promise<PanelViewer | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootWorkspaces(): Promise<RootWorkspace[]>;
@@ -773,6 +780,17 @@ export function createPanelApi(
         ...page,
         items: page.items.map(({ workspace, failure }) => ({ ...failure, workspace })),
       };
+    },
+
+    fetchBypassActors(targetId: string, type = '', query = ''): Promise<BypassActorDirectory> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/bypass-actors?${new URLSearchParams({ type, q: query })}`,
+      );
+    },
+    fetchRootBypassActors(targetId: string, type = '', query = ''): Promise<BypassActorDirectory> {
+      return jsonRequest(
+        `/api/v1/root/workspaces/${pathSegment(targetId)}/bypass-actors?${new URLSearchParams({ type, q: query })}`,
+      );
     },
 
     fetchRootTargetSettings(targetId: string): Promise<PanelTarget> {

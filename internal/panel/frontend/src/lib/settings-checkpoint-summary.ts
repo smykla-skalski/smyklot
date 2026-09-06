@@ -71,7 +71,7 @@ function targetSummary(document: Record<string, unknown>): string {
   const pendingCI =
     document.pending_ci_mode_default === 'labels' ? 'Pending CI labels' : 'Pending CI checks';
   const patches = countKeys(document.config_patch);
-  return `${repositoryDefault} · ${pendingCI} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}`;
+  return `${repositoryDefault} · ${pendingCI} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}${bypassSummary(document.pending_ci_bypass_policy_default)}${fileSyncSummary(document)}`;
 }
 
 function repositorySummary(document: Record<string, unknown>): string {
@@ -84,7 +84,19 @@ function repositorySummary(document: Record<string, unknown>): string {
   const repositoryFile =
     document.ignore_repository_file === true ? 'Repository file ignored' : 'Repository file read';
   const patches = countKeys(document.config_patch);
-  return `${enabled} · ${repositoryFile} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}`;
+  return `${enabled} · ${repositoryFile} · ${patches} ${patches === 1 ? 'policy override' : 'policy overrides'}${bypassSummary(document.pending_ci_bypass_policy_override)}${fileSyncSummary(document)}`;
+}
+
+function fileSyncSummary(document: Record<string, unknown>): string {
+  if (typeof document.config_file_sync_enabled !== 'boolean') return '';
+  return ` · Configuration file sync ${document.config_file_sync_enabled ? 'on' : 'off'}`;
+}
+
+function bypassSummary(value: unknown): string {
+  if (!isRecord(value)) return '';
+  if (value.allow === false) return ' · No merge exceptions';
+  if (value.allow !== true || !Array.isArray(value.actors)) return '';
+  return ` · ${value.actors.length} merge ${value.actors.length === 1 ? 'exception' : 'exceptions'}`;
 }
 
 function syncSummary(kind: SyncKind, enabled: boolean, document: Record<string, unknown>): string {

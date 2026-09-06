@@ -255,9 +255,12 @@ export interface PanelTarget {
   installation_id: string;
   type: 'Organization' | 'User';
   account: PanelAccount;
+  /** Opt-in synchronization between panel settings and the configuration file. */
+  config_file_sync_enabled?: boolean;
   repository_default_enabled: boolean;
   pending_ci_mode_default: PendingCIMode;
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
+  pending_ci_bypass_policy_default?: PendingCIBypassPolicy | null;
   pending_ci_quiet_period_seconds_override: number | null;
   /**
    * What this workspace would use if it set nothing: what the running
@@ -870,16 +873,26 @@ export interface RepositoryDetail {
   config_sources: ConfigSources;
   formatting_sources: FormattingSources<ConfigSource>;
   config_file_patch: ConfigPatch;
+  /** A file observation is independent of whether its settings are bypassed. */
+  config_file_observation?: {
+    status: 'unknown' | 'missing' | 'valid' | 'invalid';
+    observed_at?: string;
+    search_paths: string[];
+  };
   config_file_error?: string;
   config_file_path?: string;
   config_file_superseded?: string[];
   config_migration: ConfigMigrationState;
   config_migration_pr?: number;
+  /** Opt-in synchronization between panel settings and the configuration file. */
+  config_file_sync_enabled?: boolean;
   ignore_repository_file: boolean;
   pending_ci_mode_override: PendingCIMode | null;
   pending_ci_mode_inherited: PendingCIMode;
   pending_ci_branch_patterns_override: PendingCIBranchPatterns | null;
+  pending_ci_bypass_policy_override?: PendingCIBypassPolicy | null;
   pending_ci_branch_patterns_inherited: PendingCIBranchPatterns;
+  pending_ci_bypass_policy_inherited?: PendingCIBypassPolicy | null;
   pending_ci_quiet_period_seconds_override: number | null;
   /**
    * What this repository would use if it set nothing, resolved through every
@@ -919,9 +932,12 @@ export interface RepositoryPageRequest {
 
 /** A complete workspace-defaults document in one atomic settings save. */
 export interface WorkspaceTargetSettingsInput {
+  /** Opt-in synchronization between panel settings and the configuration file. */
+  config_file_sync_enabled?: boolean;
   repository_default_enabled: boolean;
   pending_ci_mode_default: PendingCIMode;
   pending_ci_branch_patterns_default: PendingCIBranchPatterns;
+  pending_ci_bypass_policy_default?: PendingCIBypassPolicy | null;
   pending_ci_quiet_period_seconds_override: number | null;
   path_index_interval_seconds_override: number | null;
   config_patch: ConfigPatch;
@@ -934,9 +950,12 @@ export interface WorkspaceRepositorySettingsInput {
   enabled_override: boolean | null;
   pending_ci_mode_override: PendingCIMode | null;
   pending_ci_branch_patterns_override: PendingCIBranchPatterns | null;
+  pending_ci_bypass_policy_override?: PendingCIBypassPolicy | null;
   pending_ci_quiet_period_seconds_override: number | null;
   path_index_interval_seconds_override: number | null;
   config_patch: ConfigPatch;
+  /** Opt-in synchronization between panel settings and the configuration file. */
+  config_file_sync_enabled?: boolean;
   ignore_repository_file: boolean;
   expected_revision: number;
 }
@@ -1236,10 +1255,33 @@ export interface SyncRulesetConditions {
   exclude?: string[];
 }
 
+/** Null policy leaves existing GitHub exceptions unchanged during rollout. */
+export interface PendingCIBypassPolicy {
+  allow: boolean;
+  actors: SyncRulesetBypassActor[];
+}
+
+export interface BypassActorIdentity {
+  installation_status?:
+    'all_repositories' | 'selected_repositories' | 'not_installed' | 'suspended' | 'unknown';
+  actor_id: number;
+  actor_type: string;
+  name: string;
+  slug: string;
+  avatar_url: string | null;
+}
+
+export interface BypassActorDirectory {
+  items: BypassActorIdentity[];
+  warning?: string;
+}
+
+export type BypassActorLookup = (type?: string, query?: string) => Promise<BypassActorDirectory>;
+
 /** Somebody who may step around a ruleset. */
 export interface SyncRulesetBypassActor {
   actor_id: number;
-  /** Integration, OrganizationAdmin, RepositoryRole, Team or DeployKey. */
+  /** Integration, OrganizationAdmin, RepositoryRole, Team, User or DeployKey. */
   actor_type: string;
   /** always, pull_request or exempt. */
   bypass_mode: string;

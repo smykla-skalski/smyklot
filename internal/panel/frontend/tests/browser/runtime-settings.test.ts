@@ -22,6 +22,64 @@ function runtimeUpdate(page: Page): Promise<Request> {
 }
 
 describe('Root runtime settings drafts', () => {
+  it('places the automatic-work action below its copy when the card is narrow', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 375, height: 900 } });
+    try {
+      await visit(page, `${panel.origin}/root/runtime/settings`);
+      const geometry = await page.locator('.emergency-card').evaluate((card) => {
+        const copy = card.querySelector('.emergency-copy')!.getBoundingClientRect();
+        const action = card.querySelector('button')!.getBoundingClientRect();
+        const heading = card.querySelector('.group-name')!.getBoundingClientRect();
+        const status = card.querySelector('.status-pill')!.getBoundingClientRect();
+        const cardBox = card.getBoundingClientRect();
+        return {
+          actionTop: action.top,
+          copyBottom: copy.bottom,
+          actionHeight: action.height,
+          actionRight: action.right,
+          headingRight: heading.right,
+          statusRight: status.right,
+          cardRight: cardBox.right,
+          scrollWidth: card.scrollWidth,
+          clientWidth: card.clientWidth,
+        };
+      });
+      expect(geometry.actionTop - geometry.copyBottom).toBeGreaterThanOrEqual(15);
+      expect(geometry.actionHeight).toBe(34);
+      expect(geometry.actionRight).toBeLessThan(geometry.cardRight);
+      expect(geometry.headingRight).toBeLessThan(geometry.cardRight);
+      expect(geometry.statusRight).toBeLessThan(geometry.cardRight);
+      expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it('keeps behavior and formatting edits together and clears both when restored', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    try {
+      await visit(page, `${panel.origin}/root/runtime/settings`);
+      const prefix = page.getByLabel('Prefix', { exact: true });
+      const originalPrefix = await prefix.inputValue();
+      const width = page.getByLabel('Indent Width', { exact: true });
+      const originalWidth = await width.inputValue();
+      await prefix.fill('/bot');
+      await width.fill(originalWidth === '4' ? '2' : '4');
+      expect(await prefix.inputValue()).toBe('/bot');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect.poll(() => prefix.inputValue()).toBe('/bot');
+      expect(await width.inputValue()).not.toBe(originalWidth);
+      await prefix.fill(originalPrefix);
+      await width.fill(originalWidth);
+      await expect.poll(() => page.locator('[data-unsaved="true"]').count()).toBe(0);
+      await expect
+        .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
+        .toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
+
   it('persists raw input across routes and reloads, then saves the full document once', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
     const crashes: string[] = [];
@@ -47,9 +105,8 @@ describe('Root runtime settings drafts', () => {
 
       const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
       await amount.waitFor({ state: 'visible' });
+      await page.getByRole('combobox', { name: 'Session lifetime unit' }).selectOption('hours');
       await amount.fill('2');
-      await page.getByRole('button', { name: 'Session lifetime unit' }).click();
-      await page.getByRole('option', { name: 'hours' }).click();
       expect(writes).toHaveLength(0);
 
       await page.getByRole('link', { name: 'Service health' }).click();
@@ -124,9 +181,7 @@ describe('Root runtime settings drafts', () => {
       const pausedBody = (await paused).postDataJSON();
       expect(pausedBody).toMatchObject({ background_work_paused: true });
       await page.getByText('Paused', { exact: true }).waitFor({ state: 'visible' });
-      await page
-        .getByText('Queue items remain durable', { exact: false })
-        .waitFor({ state: 'visible' });
+      await page.getByText('Queued work is kept', { exact: false }).waitFor({ state: 'visible' });
 
       const resumed = runtimeUpdate(page);
       await page.getByRole('button', { name: 'Resume automatic work', exact: true }).click();

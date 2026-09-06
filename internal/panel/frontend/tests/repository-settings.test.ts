@@ -18,6 +18,7 @@ import {
   repositorySettingsResource,
   repositorySettingsSavedControls,
   stageRepositorySettingsControl,
+  stageRepositorySettingsControls,
 } from '../src/lib/repository-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type {
@@ -92,6 +93,17 @@ describe('repository settings adapter [Unit]', () => {
   it('defines every stable repository control and semantic navigation location', () => {
     const controls = repositorySettingsControls('repo-1');
     expect(controls).toEqual([
+      {
+        id: 'repositories.repo-1.config_file_sync_enabled',
+        location: { section: 'repositories', path: ['repo-1', 'file', 'config_file_sync_enabled'] },
+      },
+      {
+        id: 'repositories.repo-1.pending_ci_bypass_policy_override',
+        location: {
+          section: 'repositories',
+          path: ['repo-1', 'merge', 'pending_ci_bypass_policy_override'],
+        },
+      },
       {
         id: 'repositories.repo-1.enabled_override',
         location: { section: 'repositories', path: ['repo-1', 'enablement', 'enabled_override'] },
@@ -307,5 +319,34 @@ describe('repository settings adapter [Unit]', () => {
     expect(repositorySettingsDraftDocument(drafts, 'target-1', source)).toEqual(
       buildRepositorySettingsDocument(source),
     );
+  });
+
+  it('restores all branch-pattern controls atomically to the inherited state', () => {
+    const source = { ...repository(), pending_ci_branch_patterns_override: null };
+    const drafts = new SettingsDraftRegistry({ storage: null, now: () => 1, writerId: 'test' });
+    drafts.hydrate('viewer-1');
+    adoptRepositorySettings(drafts, 'target-1', source);
+    const saved = buildRepositorySettingsDocument(source);
+    const controls = [
+      'repositories.repo-1.pending_ci_branch_patterns_override.include',
+      'repositories.repo-1.pending_ci_branch_patterns_override.exclude',
+    ] as const;
+    expect(
+      stageRepositorySettingsControls(
+        drafts,
+        'target-1',
+        source,
+        {
+          ...saved,
+          pending_ci_branch_patterns_override: { include: ['~DEFAULT_BRANCH'], exclude: [] },
+        },
+        controls,
+      ),
+    ).toBe(true);
+    expect(drafts.dirtyControls()).toHaveLength(2);
+    expect(stageRepositorySettingsControls(drafts, 'target-1', source, saved, controls)).toBe(true);
+    expect(drafts.dirtyControls()).toEqual([]);
+    expect(repositorySettingsDraftDocument(drafts, 'target-1', source)).toEqual(saved);
+    expect(drafts.beginSave({ type: 'workspace', targetId: 'target-1' })).toBeNull();
   });
 });

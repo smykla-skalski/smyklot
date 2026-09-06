@@ -322,7 +322,7 @@ the caller applies, closes and whispers.
     <div class="color-custom-row">
       <span class="label-swatch" style:--swatch={current}></span>
       <input
-        class="text-inline is-color"
+        class="text-input text-inline is-color"
         class:is-invalid={hexInvalid}
         bind:this={hexInput}
         bind:value={hexField}
@@ -627,16 +627,6 @@ the caller applies, closes and whispers.
     inline-size: 12px;
   }
 
-  .text-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-size: var(--font-size-control);
-    min-block-size: 30px;
-    padding-inline: 0.55rem;
-  }
-
   .text-inline.is-color {
     flex: 1;
     font-family: var(--mono);
@@ -647,11 +637,6 @@ the caller applies, closes and whispers.
   /* One ring, fused to the field: the border takes the focus colour and the
      outline overlaps it - under the global offset-2 ring an input read as
      ringed twice. */
-  .text-inline:focus {
-    border-color: var(--focus);
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-inset);
-  }
 
   .text-inline.is-invalid {
     background: color-mix(in srgb, var(--danger) 4%, var(--input-bg));

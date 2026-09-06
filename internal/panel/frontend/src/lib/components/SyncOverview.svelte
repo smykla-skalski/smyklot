@@ -316,10 +316,10 @@ beside the affected repository. Change details open over this view, preserving c
       <div class="state-panel sync-empty">
         <span
           ><strong
-            >{rows.length === 0 ? 'No repositories to sync yet.' : 'No repositories match.'}</strong
+            >{rows.length === 0 ? 'No repositories to sync yet' : 'No repositories match'}</strong
           >
           {rows.length === 0
-            ? 'Repositories will appear here after the workspace inventory refreshes'
+            ? 'Repositories appear after Smyklot refreshes this workspace'
             : 'Try another name or sync state'}</span
         >
         {#if search || filter !== 'all'}<Button

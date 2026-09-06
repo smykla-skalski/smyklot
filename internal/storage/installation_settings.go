@@ -10,6 +10,7 @@ import (
 // SaveInstallationSettingsRequest is one atomic installation-scoped settings
 // save. Every resource shares the same actor, authorization proof, and clock.
 type SaveInstallationSettingsRequest struct {
+	ConfigFileImport *ConfigFileImport
 	TargetID         string
 	ActorAccountID   string
 	ElevationID      *string
@@ -24,6 +25,7 @@ type SaveInstallationSettingsRequest struct {
 // InstallationSyncConfigChange replaces one installation Sync kind. Document
 // is exact JSON text because its bytes participate in the Sync digest.
 type InstallationSyncConfigChange struct {
+	Remove           bool
 	Kind             orgsync.Kind
 	Enabled          bool
 	Document         []byte
@@ -33,6 +35,7 @@ type InstallationSyncConfigChange struct {
 // InstallationSyncOverrideChange replaces one repository's answer for one
 // Sync kind. An empty Document is stored canonically as an empty JSON object.
 type InstallationSyncOverrideChange struct {
+	Remove           bool
 	RepositoryID     string
 	Kind             orgsync.Kind
 	Enabled          *bool
@@ -42,9 +45,11 @@ type InstallationSyncOverrideChange struct {
 
 // InstallationTargetSettingsChange replaces every panel-owned target setting.
 type InstallationTargetSettingsChange struct {
+	ConfigFileSyncEnabled          bool
 	RepositoryDefaultEnabled       bool
 	PendingCIModeDefault           PendingCIMode
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns
+	PendingCIBypassPolicyDefault   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride   *time.Duration
 	PathIndexIntervalOverride      *time.Duration
 	ConfigPatch                    config.Patch
@@ -57,10 +62,12 @@ type InstallationTargetSettingsChange struct {
 // one repository. A batch may contain several repositories, each at its own
 // optimistic revision.
 type InstallationRepositorySettingsChange struct {
+	ConfigFileSyncEnabled           bool
 	RepositoryID                    string
 	EnabledOverride                 *bool
 	PendingCIModeOverride           *PendingCIMode
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns
+	PendingCIBypassPolicyOverride   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride    *time.Duration
 	PathIndexIntervalOverride       *time.Duration
 	ConfigPatch                     config.Patch
@@ -87,9 +94,11 @@ type SaveInstallationSettingsResult struct {
 // TargetSettingsDocument is the complete restorable target-settings payload
 // stored on either side of a checkpoint item.
 type TargetSettingsDocument struct {
+	ConfigFileSyncEnabled          bool                    `json:"config_file_sync_enabled,omitempty"`
 	RepositoryDefaultEnabled       bool                    `json:"repository_default_enabled"`
 	PendingCIModeDefault           PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
+	PendingCIBypassPolicyDefault   *PendingCIBypassPolicy  `json:"pending_ci_bypass_policy_default,omitempty"`
 	PendingCIQuietPeriodOverride   *time.Duration          `json:"pending_ci_quiet_period_override"`
 	PathIndexIntervalOverride      *time.Duration          `json:"path_index_interval_override"`
 	ConfigPatch                    config.Patch            `json:"config_patch"`
@@ -98,9 +107,11 @@ type TargetSettingsDocument struct {
 // RepositorySettingsDocument is the complete restorable repository-settings
 // payload stored on either side of a checkpoint item.
 type RepositorySettingsDocument struct {
+	ConfigFileSyncEnabled           bool                     `json:"config_file_sync_enabled,omitempty"`
 	EnabledOverride                 *bool                    `json:"enabled_override"`
 	PendingCIModeOverride           *PendingCIMode           `json:"pending_ci_mode_override"`
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns `json:"pending_ci_branch_patterns_override"`
+	PendingCIBypassPolicyOverride   *PendingCIBypassPolicy   `json:"pending_ci_bypass_policy_override,omitempty"`
 	PendingCIQuietPeriodOverride    *time.Duration           `json:"pending_ci_quiet_period_override"`
 	PathIndexIntervalOverride       *time.Duration           `json:"path_index_interval_override"`
 	ConfigPatch                     config.Patch             `json:"config_patch"`

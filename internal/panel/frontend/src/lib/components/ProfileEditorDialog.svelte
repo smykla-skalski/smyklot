@@ -121,7 +121,7 @@ changing a window here changes when every policy that names it runs.
   id="profile-editor"
   {open}
   title={profile === null ? 'New window profile' : 'Edit window profile'}
-  description="Times are interpreted in the profile timezone. Existing scheduled work is recomputed."
+  description="Uses this profile's timezone and updates the timing of scheduled work"
   {busy}
   busyLabel="Saving…"
   confirmLabel="Save profile"
@@ -136,14 +136,14 @@ changing a window here changes when every policy that names it runs.
         Saving recomputes {profile.affected_items ?? 0} future queue
         {profile.affected_items === 1 ? ' item' : ' items'} across
         {profile.affected_workspaces ?? 0}
-        {profile.affected_workspaces === 1 ? ' workspace' : ' workspaces'}.
+        {profile.affected_workspaces === 1 ? ' workspace' : ' workspaces'} ·
         {profile.affected_policies ?? 0}
-        {profile.affected_policies === 1 ? ' policy uses' : ' policies use'} this profile.
+        {profile.affected_policies === 1 ? ' policy uses' : ' policies use'} this profile
       </p>
     {/if}
     <label for="profile-name">Profile name</label>
     <input id="profile-name" bind:value={name} placeholder="Europe business hours" />
-    <label for="profile-timezone">IANA timezone</label>
+    <label for="profile-timezone">Timezone</label>
     <input id="profile-timezone" bind:value={timezone} placeholder="Europe/Warsaw" />
     <ScheduleWindowsEditor
       idPrefix="profile-window"
@@ -158,7 +158,7 @@ changing a window here changes when every policy that names it runs.
       placeholder={exceptionExample}></textarea>
     <p class="helper">
       One local date per line: <code>YYYY-MM-DD closed</code> or
-      <code>YYYY-MM-DD HH:MM-HH:MM</code>.
+      <code>YYYY-MM-DD HH:MM-HH:MM</code>
     </p>
     {#if error !== ''}<p class="form-error" role="alert">{error}</p>{/if}
   </div>
@@ -193,7 +193,6 @@ changing a window here changes when every policy that names it runs.
   }
   .impact {
     background: var(--surface-raised);
-    border-inline-start: 2px solid var(--info);
     color: var(--text-secondary);
     font-size: 0.75rem;
     line-height: var(--leading-compact);

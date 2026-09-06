@@ -79,7 +79,11 @@ describe('the leading scale [Unit]', () => {
   });
 
   it('names a tier rather than a number', () => {
-    const literal = declarations.filter(({ value }) => !value.includes('var(--leading-'));
+    // Trimmed settings copy uses the shared cap-height plus ink-gap rhythm,
+    // rather than a body line box. It is still one named, centralized tier.
+    const literal = declarations.filter(
+      ({ value }) => !value.includes('var(--leading-') && value !== 'var(--row-copy-leading)',
+    );
     expect(
       literal.map(({ file, value }) => `${file}: line-height: ${value}`),
       'a leading is a decision the scale has already taken',

@@ -1,22 +1,31 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
+  import { fly } from 'svelte/transition';
   import { receipts } from '#lib/receipts.svelte.js';
   import Button from './Button.svelte';
   import Icon from './Icon.svelte';
 
   /** How long a timed receipt keeps the floor, and what a hover holds. */
-  const LINGER_MS = 6_000;
+  const LINGER_MS = 5_000;
+  const reducedMotion =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? new MediaQuery('prefers-reduced-motion: reduce')
+      : null;
 
   const current = $derived(receipts.current);
   let lift = $state(0);
-  let held = $state(false);
+  let hovered = $state(false);
+  let focused = $state(false);
 
   /* A receipt reads as one line, so a new one replaces the old rather than sliding a
      second box in beside it - and the timer restarts with the words. */
   $effect(() => {
     const receipt = current;
     if (receipt === undefined || receipt === null || receipt.sticky === true) return;
-    if (held) return;
-    const timer = window.setTimeout(() => receipts.dismiss(), LINGER_MS);
+    if (hovered || focused) return;
+    const timer = window.setTimeout(() => {
+      if (current === receipt && !hovered && !focused) receipts.dismiss();
+    }, LINGER_MS);
 
     return () => window.clearTimeout(timer);
   });
@@ -73,16 +82,10 @@
     receipts.dismiss();
   }
 
-  function hold(): void {
-    held = true;
-  }
-
-  function release(event: FocusEvent | PointerEvent): void {
-    const next = (event as FocusEvent).relatedTarget;
-    if (next instanceof Node && event.currentTarget instanceof Node) {
-      if (event.currentTarget.contains(next)) return;
-    }
-    held = false;
+  function releaseFocus(event: FocusEvent): void {
+    focused =
+      event.relatedTarget instanceof Node &&
+      (event.currentTarget as HTMLElement).contains(event.relatedTarget);
   }
 </script>
 
@@ -101,10 +104,12 @@ dialog has closed and a receipt owned by the page underneath would go with it.
     class="toast"
     role="status"
     style:--toast-lift="{lift}px"
-    onpointerenter={hold}
-    onpointerleave={release}
-    onfocusin={hold}
-    onfocusout={release}
+    onpointerenter={() => (hovered = true)}
+    onpointerleave={() => (hovered = false)}
+    onfocusin={() => (focused = true)}
+    onfocusout={releaseFocus}
+    in:fly={{ y: 8, duration: reducedMotion?.current !== false ? 0 : 180 }}
+    out:fly={{ y: 8, duration: reducedMotion?.current !== false ? 0 : 140 }}
   >
     <span class="toast-say">{current.say}</span>
     {#if current.undo !== undefined}

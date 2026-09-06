@@ -161,8 +161,9 @@ type server struct {
 	// candidates holds each installation's organization roster, which the panel
 	// completes logins against. Keyed by target id; see ListTargetCandidates for
 	// why it is cached rather than read per keystroke.
-	candidatesMu sync.Mutex
-	candidates   map[string]candidateRoster
+	bypassDirectories sync.Map
+	candidatesMu      sync.Mutex
+	candidates        map[string]candidateRoster
 }
 
 func newServer(cfg *serveConfig) (*server, error) {

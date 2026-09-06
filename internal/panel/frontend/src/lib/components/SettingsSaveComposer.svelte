@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { MediaQuery } from 'svelte/reactivity';
+  import { fly } from 'svelte/transition';
+
   import Button from './Button.svelte';
 
   const {
@@ -36,6 +39,37 @@
   } = $props();
 
   const noun = $derived(count === 1 ? 'setting' : 'settings');
+  const needsAction = $derived(
+    count > 0 || problem !== null || invalidProblem !== null || conflict,
+  );
+  const isReceipt = $derived(!needsAction && !saving && !resolving && notice !== null);
+  const visible = $derived(needsAction || saving || resolving || isReceipt);
+  const canDismiss = $derived(
+    !saving && !resolving && invalidProblem === null && (isReceipt || problem !== null),
+  );
+  const reducedMotion =
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? new MediaQuery('prefers-reduced-motion: reduce')
+      : null;
+  let hovered = $state(false);
+  let focused = $state(false);
+
+  // Only a settled receipt expires. Any new draft, problem, save or notice cancels
+  // its timer, so an old receipt can never dismiss work that arrived after it.
+  $effect(() => {
+    const receipt = notice;
+    if (!isReceipt || hovered || focused) return;
+    const timer = setTimeout(() => {
+      if (isReceipt && notice === receipt && !hovered && !focused) onDismiss();
+    }, 5_000);
+    return () => clearTimeout(timer);
+  });
+
+  function leaveFocus(event: FocusEvent): void {
+    focused =
+      event.relatedTarget instanceof Node &&
+      (event.currentTarget as HTMLElement).contains(event.relatedTarget);
+  }
 
   function openProblem(event: MouseEvent): void {
     if (onOpenProblem === undefined) return;
@@ -60,8 +94,18 @@ and its actions closed - a reader who cannot save still needs to see that they h
 changed something.
 -->
 
-{#if count > 0 || saving || resolving || problem !== null || notice !== null}
-  <aside class="settings-composer" aria-label="Settings draft">
+{#if visible}
+  <aside
+    class="settings-composer"
+    class:action-required={needsAction || saving || resolving}
+    aria-label={isReceipt ? 'Settings receipt' : 'Settings draft'}
+    onpointerenter={() => (hovered = true)}
+    onpointerleave={() => (hovered = false)}
+    onfocusin={() => (focused = true)}
+    onfocusout={leaveFocus}
+    in:fly={{ y: 8, duration: reducedMotion?.current !== false ? 0 : 180 }}
+    out:fly={{ y: 8, duration: reducedMotion?.current !== false ? 0 : 140 }}
+  >
     <div class="composer-copy" aria-live="polite">
       {#if resolving}
         <strong>Updating your draft…</strong>
@@ -78,7 +122,7 @@ changed something.
         {#if problemHref !== undefined && problemLabel !== undefined}
           <a href={problemHref} onclick={openProblem}>Open {problemLabel}</a>
         {/if}
-      {:else if notice !== null}
+      {:else if isReceipt}
         <strong>Settings saved</strong>
         <span>{notice}</span>
       {:else}
@@ -87,35 +131,35 @@ changed something.
       {/if}
     </div>
 
-    <div class="composer-actions">
-      {#if count > 0}
-        <Button disabled={saving || resolving} onclick={onDiscard}>Discard</Button>
-        {#if conflict}
-          <Button tone="signal" disabled={resolving} onclick={onResolveConflict}>
-            {resolving ? 'Updating…' : 'Update draft'}
-          </Button>
+    {#if count > 0 || canDismiss}
+      <div class="composer-actions">
+        {#if count > 0}
+          <Button disabled={saving || resolving} onclick={onDiscard}>Discard</Button>
+          {#if conflict}
+            <Button tone="signal" disabled={resolving} onclick={onResolveConflict}>
+              {resolving ? 'Updating…' : 'Update draft'}
+            </Button>
+          {:else}
+            <Button
+              tone="signal"
+              disabled={saving || resolving || readOnly || invalidProblem !== null}
+              onclick={onSave}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+          {/if}
         {:else}
-          <Button
-            tone="signal"
-            disabled={saving || resolving || readOnly || invalidProblem !== null}
-            onclick={onSave}
-          >
-            {saving ? 'Saving…' : 'Save'}
-          </Button>
+          <Button onclick={onDismiss}>Dismiss</Button>
         {/if}
-      {:else}
-        <Button onclick={onDismiss}>Dismiss</Button>
-      {/if}
-    </div>
+      </div>
+    {/if}
   </aside>
 {/if}
 
 <style>
   .settings-composer {
     align-items: center;
-    animation: composer-arrive var(--duration-fast) var(--ease-standard) both;
-    backdrop-filter: blur(14px);
-    background: color-mix(in srgb, var(--surface-base) 92%, transparent);
+    background: var(--popover-bg);
     border: 1px solid var(--border-subtle);
     border-radius: var(--r-strip);
     bottom: max(var(--space-4), env(safe-area-inset-bottom));
@@ -132,15 +176,26 @@ changed something.
     z-index: var(--layer-sticky);
   }
 
+  .action-required {
+    --brand-action: var(--decision-accent);
+    --brand-action-hover: var(--decision-accent-hover);
+    --brand-action-pressed: var(--decision-accent-pressed);
+    --on-brand-action: var(--on-decision-accent);
+    border-color: var(--decision-accent);
+    border-width: var(--decision-border-width);
+  }
+
   .composer-copy {
     display: grid;
-    gap: var(--space-1);
+    gap: var(--row-copy-gap);
     min-width: 0;
   }
 
   .composer-copy strong,
   .composer-copy span {
+    line-height: var(--row-copy-leading);
     overflow-wrap: anywhere;
+    text-box: trim-both cap alphabetic;
   }
 
   .composer-copy span {
@@ -160,13 +215,6 @@ changed something.
     gap: var(--space-2);
   }
 
-  @keyframes composer-arrive {
-    from {
-      opacity: 0;
-      transform: translate(-50%, 0.5rem);
-    }
-  }
-
   @media (max-width: 42rem) {
     .settings-composer {
       align-items: stretch;
@@ -176,12 +224,6 @@ changed something.
 
     .composer-actions {
       justify-content: flex-end;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .settings-composer {
-      animation: none;
     }
   }
 </style>

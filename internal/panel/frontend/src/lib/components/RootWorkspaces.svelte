@@ -258,14 +258,14 @@ visits to this route never open one.
         {#if visible.length === 0}
           <div class="state-panel">
             {#if failure !== null}
-              <span role="alert"><strong>The catalog could not be read.</strong> {failure}</span>
+              <span role="alert"><strong>Could not load workspaces</strong> {failure}</span>
             {:else if query.trim() === ''}
               <span
-                ><strong>No workspaces yet.</strong> A workspace appears here once somebody installs Smyklot
+                ><strong>No workspaces yet</strong> Workspaces appear here after someone installs Smyklot
                 on their organization or account</span
               >
             {:else}
-              <span><strong>Nothing matches.</strong> No workspace is called “{query.trim()}”</span>
+              <span><strong>No matching workspaces</strong> Try another name or filter</span>
             {/if}
           </div>
         {:else}

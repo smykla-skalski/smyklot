@@ -108,7 +108,7 @@ describe('ServicePerformance [Component]', () => {
     expect(await screen.findByText('How long a database read takes')).toBeTruthy();
     expect(screen.getByText('Rows kept after work finishes')).toBeTruthy();
     expect(screen.getByText('Work waiting to run')).toBeTruthy();
-    expect(screen.getByText('What the database says about itself')).toBeTruthy();
+    expect(screen.getByText('Database capacity and response time')).toBeTruthy();
 
     expect(screen.getByText('List work queue')).toBeTruthy();
     expect(screen.getByText('Reaction discovery')).toBeTruthy();
@@ -148,13 +148,13 @@ describe('ServicePerformance [Component]', () => {
     mount(() => Promise.resolve(measured({ query: [] })));
 
     expect(await screen.findByText('How long a database read takes')).toBeTruthy();
-    expect(screen.getAllByText('Nothing measured in this window.').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Nothing measured in this window').length).toBeGreaterThan(0);
   });
 
   it('says why the numbers could not be read, and offers a way back', async () => {
     mount(() => Promise.reject(new Error('the database did not answer')));
 
-    expect(await screen.findByText('These numbers could not be read.')).toBeTruthy();
+    expect(await screen.findByText('These numbers could not be read')).toBeTruthy();
     expect((await screen.findByRole('alert')).textContent).toContain('the database did not answer');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });

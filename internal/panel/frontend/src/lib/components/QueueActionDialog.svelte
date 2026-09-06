@@ -151,11 +151,10 @@ to ask it four different ways.
   <div class="queue-action-form">
     {#if action === 'run_now'}
       <p>
-        Smyklot runs this once now, ignoring how often the job runs and the hours it keeps. Work
-        already running is never interrupted.
+        Run this job once now, outside its normal schedule · Work already running is not interrupted
       </p>
     {:else if action === 'next_window'}
-      <p>The delay is cleared, but the job's hours still apply.</p>
+      <p>Clear the delay and use the next available time within the job's hours</p>
     {:else if action === 'schedule_at'}
       <label for="queue-action-time">Not before</label>
       <input id="queue-action-time" type="datetime-local" bind:value={at} />
@@ -198,7 +197,7 @@ to ask it four different ways.
         <option value="urgent">Urgent</option>
       </select>
     {:else if action === 'cancel'}
-      <p>The item remains in Queue history with the action and actor recorded.</p>
+      <p>The cancellation and who requested it remain in Queue history</p>
     {/if}
 
     {#if needsReason}
@@ -255,7 +254,6 @@ to ask it four different ways.
   }
   .schedule-preview {
     background: var(--surface-raised);
-    border-inline-start: 2px solid var(--info);
     display: grid;
     font-size: 0.76rem;
     gap: var(--space-1);

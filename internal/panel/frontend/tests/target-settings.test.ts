@@ -99,6 +99,32 @@ describe('TargetSettings shared drafts [Component]', () => {
     expect(quiet.value).toBe('120');
   });
 
+  it('keeps a duration unit change out of the draft and blocks invalid amounts', async () => {
+    const drafts = registry();
+    const target = { ...TARGET, pending_ci_quiet_period_seconds_override: 90 };
+    render(TargetSettingsHarness, { props: { drafts, target } });
+    await waitFor(() => expect(drafts.resource(targetDefaultsResource(target.id))).not.toBeNull());
+    const quiet = screen.getByLabelText('Quiet period after checks pass') as HTMLInputElement;
+    await fireEvent.change(
+      screen.getByRole('combobox', { name: 'Quiet period after checks pass unit' }),
+      { target: { value: 'minutes' } },
+    );
+    expect(quiet.value).toBe('1.5');
+    expect(drafts.dirtyControls()).toEqual([]);
+    await fireEvent.input(quiet, { target: { value: '2' } });
+    expect(
+      targetDefaultsDraftDocument(drafts, target).pending_ci_quiet_period_seconds_override,
+    ).toBe(120);
+    await fireEvent.input(quiet, { target: { value: '2000' } });
+    expect(drafts.validationProblem({ type: 'workspace', targetId: target.id })).not.toBeNull();
+    expect(
+      targetDefaultsDraftDocument(drafts, target).pending_ci_quiet_period_seconds_override,
+    ).toBe(120);
+    drafts.discardResource(targetDefaultsResource(target.id));
+    await waitFor(() => expect(quiet.value).toBe('90'));
+    expect(drafts.validationProblem({ type: 'workspace', targetId: target.id })).toBeNull();
+  });
+
   it('contains no immediate target save callback, debounce, or receipt path', () => {
     const component = readFileSync(
       resolve(process.cwd(), 'src/lib/components/TargetSettings.svelte'),

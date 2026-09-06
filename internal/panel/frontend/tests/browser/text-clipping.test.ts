@@ -202,6 +202,26 @@ afterAll(async () => {
 });
 
 describe('the text every route draws [Integration]', () => {
+  it('groups audit entries by the same local day used in their headings', async () => {
+    const page = await panel.browser.newPage({ timezoneId: 'Europe/Warsaw' });
+    try {
+      await page.clock.setFixedTime(new Date('2026-09-06T08:00:00Z'));
+      await page.route('**/api/v1/targets/*/audit?*', async (route) => {
+        const response = await route.fetch();
+        const body = await response.json();
+        // Different UTC dates, both on September 6 in Warsaw.
+        body.items = body.items.slice(0, 2).map((item: Record<string, unknown>, index: number) => ({
+          ...item,
+          created_at: index === 0 ? '2026-09-06T00:30:00Z' : '2026-09-05T23:30:00Z',
+        }));
+        await route.fulfill({ response, json: body });
+      });
+      await visit(page, addressOf(panel, 'workspace/history'));
+      expect(await page.locator('.day-head').allTextContents()).toEqual(['Today']);
+    } finally {
+      await page.close();
+    }
+  });
   it('found trimmed lines to measure', () => {
     /* A route that failed to load reports nothing clipped, which is what a route with nothing
        wrong reports too. Counting what was looked at is what tells them apart. That is the

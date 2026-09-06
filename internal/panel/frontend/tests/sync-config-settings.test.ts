@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseJson, type JsonValue } from '../src/lib/merge';
+import { formatJson, parseJson, type JsonValue } from '../src/lib/merge';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 import type { SettingsDraftStorage } from '../src/lib/settings-draft-storage';
 import {
@@ -50,6 +50,118 @@ function isJsonRecord(value: JsonValue | undefined): value is { [key: string]: J
 }
 
 describe('Sync configuration settings adapter [Unit]', () => {
+  it('restores a ruleset after actor and merge-method reorder without migrating persisted drafts', () => {
+    const config = documentConfig(
+      'rulesets',
+      JSON.stringify({
+        rulesets: [
+          {
+            name: 'main',
+            enforcement: 'active',
+            bypass_actors: [
+              { actor_id: 9, actor_type: 'Integration', bypass_mode: 'always' },
+              { actor_id: 2, actor_type: 'Team', bypass_mode: 'pull_request' },
+            ],
+            rules: { pull_request: { allowed_merge_methods: ['merge', 'squash', 'rebase'] } },
+          },
+        ],
+      }),
+    );
+    const storage = new MemoryStorage();
+    let drafts = new SettingsDraftRegistry({ storage, writerId: 'first' });
+    drafts.hydrate('viewer');
+    adoptSyncConfigSettings(drafts, 'target', config);
+    const base = buildSyncConfigEditorEnvelope(config) as SyncDocumentEditorEnvelope;
+    const source = JSON.parse(base.document_text);
+    const changed = structuredClone(source);
+    changed.rulesets[0].bypass_actors.shift();
+    expect(
+      stageSyncConfigControl(
+        drafts,
+        'target',
+        config,
+        {
+          ...base,
+          document_text: JSON.stringify(changed),
+        },
+        'sync.rulesets.document',
+      ),
+    ).toBe(true);
+    drafts = new SettingsDraftRegistry({ storage, writerId: 'second' });
+    drafts.hydrate('viewer');
+    expect(adoptSyncConfigSettings(drafts, 'target', config)).toBe(true);
+    source.rulesets[0].bypass_actors.reverse();
+    source.rulesets[0].rules.pull_request.allowed_merge_methods.reverse();
+    source.rulesets[0].rules.pull_request.required_approving_review_count = 0;
+    expect(
+      stageSyncConfigControl(
+        drafts,
+        'target',
+        config,
+        {
+          ...base,
+          document_text: JSON.stringify(source),
+        },
+        'sync.rulesets.document',
+      ),
+    ).toBe(true);
+    expect(drafts.dirtyControls()).toEqual([]);
+    expect(syncConfigDraftEnvelope(drafts, 'target', config)).toEqual(base);
+  });
+
+  it('does not treat mandatory template termination as an edit', () => {
+    const config = documentConfig('files', '{"files":[{"path":"README.md","content":"hello"}]}');
+    const drafts = new SettingsDraftRegistry({ storage: null, writerId: 'test' });
+    drafts.hydrate('viewer');
+    adoptSyncConfigSettings(drafts, 'target', config);
+    const base = buildSyncConfigEditorEnvelope(config) as SyncDocumentEditorEnvelope;
+    for (const content of ['hello!\n', 'hello\n']) {
+      expect(
+        stageSyncConfigControl(
+          drafts,
+          'target',
+          config,
+          {
+            ...base,
+            document_text: formatJson({ files: [{ path: 'README.md', content }] }),
+          },
+          'sync.files.document',
+        ),
+      ).toBe(true);
+      expect(drafts.dirtyControls()).toHaveLength(content.includes('!') ? 1 : 0);
+    }
+    expect(drafts.beginSave({ type: 'workspace', targetId: 'target' })).toBeNull();
+  });
+
+  it('restores label enablement despite case-only color spelling changes', () => {
+    const config = {
+      ...emptySyncConfig('labels'),
+      enabled: true,
+      labels: [{ name: 'bug', color: 'AABBCC' }],
+    };
+    const drafts = new SettingsDraftRegistry({ storage: null, writerId: 'test' });
+    drafts.hydrate('viewer');
+    adoptSyncConfigSettings(drafts, 'target', config);
+    const base = buildSyncConfigEditorEnvelope(config);
+    if (base.kind !== 'labels') throw new Error('expected labels');
+    for (const enabled of [false, true]) {
+      expect(
+        stageSyncConfigControl(
+          drafts,
+          'target',
+          config,
+          {
+            ...base,
+            enabled,
+            labels: [{ name: 'bug', color: 'aabbcc' }],
+          },
+          'sync.labels.enabled',
+        ),
+      ).toBe(true);
+    }
+    expect(drafts.dirtyControls()).toEqual([]);
+  });
+
   it('defines stable controls and stages each labels decision independently', () => {
     const config: SyncConfig = {
       ...emptySyncConfig('labels'),

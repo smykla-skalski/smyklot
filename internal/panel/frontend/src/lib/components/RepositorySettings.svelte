@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { BypassActorLookup } from '../types';
+  import BypassPolicyEditor from './BypassPolicyEditor.svelte';
   import { CONFIG_KEYS } from '../config';
   import { durationParts, formatDuration, type DurationUnit } from '../duration';
   import {
@@ -21,7 +23,6 @@
     ConfigPatch,
     PendingCIMode,
     RepositoryDetail,
-    RepositoryFileStatus,
     RepositorySummary,
     SyncOverride,
     SyncStatus,
@@ -32,19 +33,15 @@
   import FormattingEditor from './FormattingEditor.svelte';
   import DisclosureSection from './DisclosureSection.svelte';
   import Icon from './Icon.svelte';
+  import DurationInput from './DurationInput.svelte';
   import Card from './Card.svelte';
   import PageHeader from './PageHeader.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import Popover from './Popover.svelte';
+  import PickerTrigger from './PickerTrigger.svelte';
+  import RepositoryControl from './RepositoryControl.svelte';
   import RepositorySyncPane from './RepositorySyncPane.svelte';
-  import SegmentedControl from './SegmentedControl.svelte';
 
-  const FILE_STATUS_PILLS = {
-    valid: 'pill-success',
-    missing: 'pill-muted',
-    invalid: 'pill-danger',
-    bypassed: 'pill-warning',
-  } as const satisfies Record<RepositoryFileStatus, string>;
   const GATE_PILLS = {
     ready: 'pill-success',
     provisioning: 'pill-muted',
@@ -59,8 +56,10 @@
   const {
     repository,
     detail,
+    savedFormatting,
     failure = null,
     readOnly = false,
+    organizationActors = true,
     busy = false,
     backHref,
     onBack,
@@ -76,12 +75,17 @@
     now = 0,
     onChangeSync = () => {},
     onFormattingValidity = () => {},
+    onDurationValidity = () => {},
     dirtyControls = [],
+    lookupBypassActors,
   }: {
     repository: RepositorySummary;
+    lookupBypassActors?: BypassActorLookup;
     detail: RepositoryDetail | undefined;
+    savedFormatting?: FormattingPatch;
     failure?: string | null;
     readOnly?: boolean;
+    organizationActors?: boolean;
     busy?: boolean;
     backHref: string;
     onBack: () => void;
@@ -115,6 +119,7 @@
     now?: number;
     onChangeSync?: (next: SyncOverrideEditorEnvelope, control: SyncOverrideControlId) => void;
     onFormattingValidity?: (valid: boolean) => void;
+    onDurationValidity?: (control: RepositorySettingsControlId, problem: string | null) => void;
     dirtyControls?: readonly string[];
   } = $props();
 
@@ -237,90 +242,15 @@
     stage({ ...document, pending_ci_mode_override: mode }, controlId('pending_ci_mode_override'));
   }
 
-  /* ---------- The quiet-period seconds, staged while typing ---------- */
+  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['seconds', 'minutes', 'hours', 'days'];
 
-  let quietDraft = $state<string | null>(null);
-  const quietShown = $derived(
-    quietDraft ?? detail?.pending_ci_quiet_period_seconds_override?.toString() ?? '',
-  );
-
-  function typeQuiet(value: string): void {
-    quietDraft = value;
+  function setQuiet(seconds: number | null): void {
     const document = currentDocument();
     if (document === null) return;
-    const trimmed = value.trim();
-    const quiet = trimmed === '' ? null : Number(trimmed);
-    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
     stage(
-      { ...document, pending_ci_quiet_period_seconds_override: quiet },
+      { ...document, pending_ci_quiet_period_seconds_override: seconds },
       controlId('pending_ci_quiet_period_seconds_override'),
     );
-  }
-
-  function finishQuiet(): void {
-    if (quietDraft === null) return;
-    const trimmed = quietDraft.trim();
-    const quiet = trimmed === '' ? null : Number(trimmed);
-    if (quiet !== null && (!Number.isInteger(quiet) || quiet < 0 || quiet > 86_400)) return;
-    quietDraft = null;
-  }
-
-  /* ---------- The path-index interval, an amount beside a unit ---------- */
-
-  const PATH_INDEX_UNITS: readonly DurationUnit[] = ['minutes', 'hours', 'days'];
-  const UNIT_SECONDS: Record<DurationUnit, number> = {
-    seconds: 1,
-    minutes: 60,
-    hours: 3_600,
-    days: 86_400,
-  };
-  let indexAmountDraft = $state<string | null>(null);
-  let indexUnitDraft = $state<DurationUnit | null>(null);
-
-  function indexParts(): { amount: number; unit: DurationUnit } {
-    const seconds =
-      detail?.path_index_interval_seconds_override ??
-      detail?.path_index_interval_seconds_inherited ??
-      3_600;
-    return durationParts(seconds, PATH_INDEX_UNITS);
-  }
-
-  const indexAmountShown = $derived(indexAmountDraft ?? indexParts().amount.toString());
-  const indexUnitShown = $derived(indexUnitDraft ?? indexParts().unit);
-
-  function typeIndexAmount(value: string): void {
-    indexAmountDraft = value;
-    indexUnitDraft = indexUnitShown;
-    stageIndexDraft(value, indexUnitShown);
-  }
-
-  function pickIndexUnit(unit: DurationUnit): void {
-    indexAmountDraft = indexAmountShown;
-    indexUnitDraft = unit;
-    if (stageIndexDraft(indexAmountShown, unit)) {
-      indexAmountDraft = null;
-      indexUnitDraft = null;
-    }
-  }
-
-  function stageIndexDraft(amount: string, unit: DurationUnit): boolean {
-    const document = currentDocument();
-    if (document === null) return false;
-    const seconds = Math.round(Number(amount) * UNIT_SECONDS[unit]);
-    if (!Number.isFinite(seconds) || seconds < 60 || seconds > 604_800) return false;
-    stage(
-      { ...document, path_index_interval_seconds_override: seconds },
-      controlId('path_index_interval_seconds_override'),
-    );
-    return true;
-  }
-
-  function finishIndexDraft(): void {
-    if (indexAmountDraft === null || indexUnitDraft === null) return;
-    if (stageIndexDraft(indexAmountDraft, indexUnitDraft)) {
-      indexAmountDraft = null;
-      indexUnitDraft = null;
-    }
   }
 
   function setPathIndex(seconds: number | null): void {
@@ -351,20 +281,6 @@
     if (formattingOverrideCount(formatting) === 0) delete configPatch.formatting;
     else configPatch.formatting = formatting;
     stage({ ...document, config_patch: configPatch }, controlId(`config_patch.${key}`));
-  }
-
-  /* The file card used to repeat whatever this repository overrides, because Behavior was
-     behind a tab and a reader on the file pane could not see it. Both are on the page
-     now, so the repeat was the same rows twice on one screen. */
-
-  /** What the switch's answer means here, said rather than left to the words on it. */
-  function enablementWhy(value: 'inherit' | 'enabled' | 'disabled'): string {
-    if (value === 'enabled') return 'On - commands and merges run in this repository';
-    if (value === 'disabled') return 'Off - Smyklot stands down here, whatever the workspace says';
-
-    return repository.effective_enabled
-      ? 'The workspace has it on, so it runs here'
-      : 'The workspace has it off, so it stands down here';
   }
 
   function capitalize(value: string): string {
@@ -401,11 +317,19 @@ so a link points at the pane a colleague was asked to look at.
     {#if detail === undefined}
       <p class="detail-loading" role="status">Reading repository settings…</p>
     {:else}
-      <!-- CONTROL FIRST: whether Smyklot answers here at all, and whether it reads the
-           repository's own file, come before anything either of them decides. Written
-           below with the rest of the detail and rendered here, because both halves of
-           that card need `detail` and this is where the page wants it read. -->
-      {@render controlCard()}
+      <RepositoryControl
+        {repository}
+        {detail}
+        {enablement}
+        {readOnly}
+        {busy}
+        {now}
+        dirtyEnabled={controlDirty(controlId('enabled_override'))}
+        dirtyUseFile={controlDirty(controlId('ignore_repository_file'))}
+        {onEnablement}
+        onUseFile={(use) => setBypass(!use)}
+        {onResetMigration}
+      />
       {#if syncOverride?.problem || syncReadProblem}{@render syncCard()}{/if}
 
       <Card labelledby="repository-merge-ci">
@@ -455,19 +379,16 @@ so a link points at the pane a colleague was asked to look at.
                   itemSelector=".menu-item"
                 >
                   {#snippet trigger(attributes)}
-                    <button
+                    <PickerTrigger
                       {...attributes}
-                      class="value-select"
                       type="button"
                       aria-label="{detail.pending_ci_mode_override === 'checks'
                         ? 'Checks'
                         : 'Labels'} - repository protection"
                       {disabled}
                     >
-                      <span class="t"
-                        >{detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}</span
-                      >
-                    </button>
+                      {detail.pending_ci_mode_override === 'checks' ? 'Checks' : 'Labels'}
+                    </PickerTrigger>
                   {/snippet}
                   <div class="menu-list">
                     {#each PENDING_CI_CHOICES as option (option.value)}
@@ -599,20 +520,23 @@ so a link points at the pane a colleague was asked to look at.
                 >Checks must pass and stay green this long before Smyklot merges. Blank inherits</span
               >
             </span>
-            <!-- The unit beside the number, as the workspace page says it. -->
-            <span class="policy-value entry-suffix">
-              <input
+            <span class="policy-value">
+              <DurationInput
                 id="repository-quiet-{repository.id}"
-                class="num-inline"
-                inputmode="numeric"
-                placeholder={detail.pending_ci_quiet_period_seconds_inherited?.toString() ??
-                  'Global default'}
-                value={quietShown}
+                label="Quiet period after checks pass"
+                amountLabel="Quiet period after checks pass"
+                value={detail.pending_ci_quiet_period_seconds_override}
+                inherited={detail.pending_ci_quiet_period_seconds_inherited ?? undefined}
+                maximum={86_400}
+                allowEmpty
                 disabled={readOnly}
-                oninput={(event) => typeQuiet(event.currentTarget.value)}
-                onblur={finishQuiet}
+                onChange={setQuiet}
+                onValidityChange={(problem) =>
+                  onDurationValidity(
+                    controlId('pending_ci_quiet_period_seconds_override'),
+                    problem,
+                  )}
               />
-              <span class="entry-unit">seconds</span>
             </span>
           </div>
           <div
@@ -645,48 +569,17 @@ so a link points at the pane a colleague was asked to look at.
               </button>
             {:else}
               <span class="policy-value">
-                <input
-                  class="num-inline num-short"
-                  inputmode="numeric"
-                  aria-label="File index interval amount"
-                  value={indexAmountShown}
+                <DurationInput
+                  label="File index interval"
+                  value={detail.path_index_interval_seconds_override}
+                  units={PATH_INDEX_UNITS}
+                  minimum={60}
+                  maximum={604_800}
                   disabled={readOnly}
-                  oninput={(event) => typeIndexAmount(event.currentTarget.value)}
-                  onblur={finishIndexDraft}
+                  onChange={setPathIndex}
+                  onValidityChange={(problem) =>
+                    onDurationValidity(controlId('path_index_interval_seconds_override'), problem)}
                 />
-                <Popover
-                  role="listbox"
-                  label="File index interval unit"
-                  align="end"
-                  itemSelector=".menu-item"
-                >
-                  {#snippet trigger(attributes)}
-                    <button
-                      {...attributes}
-                      class="value-select"
-                      type="button"
-                      aria-label="{indexUnitShown} - file index interval unit"
-                      {disabled}
-                    >
-                      <span class="t">{indexUnitShown}</span>
-                    </button>
-                  {/snippet}
-                  <div class="menu-list">
-                    {#each PATH_INDEX_UNITS as unit (unit)}
-                      <button
-                        class="menu-item"
-                        role="option"
-                        aria-selected={indexUnitShown === unit}
-                        onclick={() => pickIndexUnit(unit)}
-                      >
-                        <span class="menu-check">
-                          {#if indexUnitShown === unit}<Icon name="check" size="base" />{/if}
-                        </span>
-                        <ClippedLabel class="mi-label" text={unit} />
-                      </button>
-                    {/each}
-                  </div>
-                </Popover>
               </span>
               <button
                 class="setting-clear"
@@ -699,129 +592,37 @@ so a link points at the pane a colleague was asked to look at.
             {/if}
           </div>
         </div>
-        {#if detail.pending_ci_gate !== undefined}
-          <p class="gate-note" class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'}>
+        {#if detail.pending_ci_gate !== undefined && detail.pending_ci_gate.readiness !== 'ready' && detail.pending_ci_gate.reason.trim() !== ''}
+          <p
+            class="gate-note"
+            class:gate-problem={detail.pending_ci_gate.readiness === 'blocked'}
+            role={detail.pending_ci_gate.readiness === 'blocked' ? 'alert' : 'status'}
+          >
             {detail.pending_ci_gate.reason}
           </p>
         {/if}
       </Card>
-
-      <!-- ONE SCROLL, NOT FIVE PANES. The switch over File / Behavior / Commands /
-           Formatting / Sync made a reader press four times to see what one repository
-           is set to, and hid from them that most of those panes were empty. The cards
-           are the same cards; they are all here at once - and the wrapper that used to
-           hold the open pane is gone with the panes, because it declared the page's own
-           grid and gap a second time. -->
-      {#snippet controlCard()}
-        <Card labelledby="repository-file-head">
-          <div class="card-head">
-            <h2 class="card-title" id="repository-file-head">Repository control</h2>
-            <span class="pill {FILE_STATUS_PILLS[detail.repository.config_file_status]}"
-              ><span class="t">{capitalize(detail.repository.config_file_status)}</span></span
-            >
-          </div>
-          <div class={['file-card', detail.config_file_error !== undefined && 'file-problem']}>
-            <!-- 14px glyph in an 18px slot, the same pairing every other icon
-                 slot in the product uses. -->
-            <span class="file-card-icon status-{detail.repository.config_file_status}">
-              <Icon name="file" size="sm" />
-            </span>
-            <div class="f-copy">
-              <strong>Configuration path</strong>
-              <!-- The file is looked for in four places plus a chosen one, so
-                   this names the one that won rather than the one that used to
-                   be the only candidate. -->
-              <div><code class="mono">{detail.config_file_path || '—'}</code></div>
-              {#if detail.config_file_superseded !== undefined}
-                <p class="f-note">
-                  Also present and not read: {detail.config_file_superseded.join(', ')}
-                </p>
-              {/if}
-              {#if detail.config_file_error !== undefined}
-                <p>{detail.config_file_error}</p>
-              {/if}
-              {#if detail.config_migration === 'proposed'}
-                <p class="f-note">
-                  Smyklot proposed moving this to TOML{#if detail.config_migration_pr !== undefined}&nbsp;in
-                    #{detail.config_migration_pr}{/if}
-                </p>
-              {:else if detail.config_migration !== 'none'}
-                <p class="f-note">
-                  {detail.config_migration === 'declined'
-                    ? 'The TOML migration was closed, so Smyklot will not ask again'
-                    : 'GitHub refused the TOML migration, so Smyklot will not ask again'}
-                  <button
-                    type="button"
-                    class="f-again"
-                    disabled={readOnly || busy}
-                    onclick={onResetMigration}
-                  >
-                    Let it ask
-                  </button>
-                </p>
-              {/if}
-            </div>
-          </div>
-          <div class="policy-rows">
-            <div
-              class={['policy-row', { 'is-unsaved': controlDirty(controlId('enabled_override')) }]}
-              data-unsaved={controlDirty(controlId('enabled_override')) || undefined}
-            >
-              <span class="setting-say">
-                <span class="setting-name">Smyklot</span>
-                <span class="setting-why">{enablementWhy(enablement)}</span>
-              </span>
-              <span class="policy-value">
-                <!-- Three, not two. A repository can FOLLOW the workspace, and that is a
-                     different answer from being switched on here to the same value: the
-                     workspace changing carries the first and leaves the second alone. -->
-                <SegmentedControl
-                  name="repository-enabled-{repository.id}"
-                  label="Smyklot in {repository.name}"
-                  options={[
-                    { value: 'inherit', label: 'From the workspace' },
-                    { value: 'enabled', label: 'On' },
-                    { value: 'disabled', label: 'Off' },
-                  ]}
-                  value={enablement}
-                  {disabled}
-                  compact
-                  onSelect={(next) => onEnablement(next)}
-                />
-              </span>
-            </div>
-            <div
-              class={[
-                'policy-row',
-                { 'is-unsaved': controlDirty(controlId('ignore_repository_file')) },
-              ]}
-              data-unsaved={controlDirty(controlId('ignore_repository_file')) || undefined}
-            >
-              <span class="setting-say">
-                <span class="setting-name">Repository file</span>
-                <span class="setting-why"
-                  >When bypassed, the file's settings are ignored and the exception is recorded in
-                  Audit</span
-                >
-              </span>
-              <span class="policy-value">
-                <SegmentedControl
-                  name="repository-bypass-{repository.id}"
-                  label="Repository file handling"
-                  options={[
-                    { value: 'observe', label: 'Followed' },
-                    { value: 'bypass', label: 'Bypassed' },
-                  ]}
-                  value={detail.ignore_repository_file ? 'bypass' : 'observe'}
-                  {disabled}
-                  compact
-                  onSelect={(value) => setBypass(value === 'bypass')}
-                />
-              </span>
-            </div>
-          </div>
-        </Card>
-      {/snippet}
+      <Card unsaved={controlDirty(controlId('pending_ci_bypass_policy_override'))}>
+        <div class="card-head"><h2 class="card-title">Merge exceptions</h2></div>
+        <BypassPolicyEditor
+          {organizationActors}
+          value={detail.pending_ci_bypass_policy_override ?? null}
+          inherited={detail.pending_ci_bypass_policy_inherited ?? null}
+          lookup={lookupBypassActors}
+          readOnly={disabled}
+          onChange={(value) => {
+            const document = currentDocument();
+            if (document)
+              stage(
+                {
+                  ...document,
+                  pending_ci_bypass_policy_override: value,
+                } as RepositorySettingsDocument,
+                controlId('pending_ci_bypass_policy_override'),
+              );
+          }}
+        />
+      </Card>
 
       <ConfigEditor
         patch={detail.config_patch}
@@ -831,6 +632,8 @@ so a link points at the pane a colleague was asked to look at.
         {disabled}
         dirtyKeys={dirtyConfigKeys}
         onChange={setConfig}
+        onValidity={(problem) =>
+          onDurationValidity(controlId('config_patch.command_aliases'), problem)}
       />
 
       {#if !syncOverride?.problem && !syncReadProblem}{@render syncCard()}{/if}
@@ -862,6 +665,7 @@ so a link points at the pane a colleague was asked to look at.
       >
         <FormattingEditor
           patch={detail.config_patch.formatting ?? {}}
+          savedPatch={savedFormatting}
           inherited={detail.inherited_config.formatting}
           sources={detail.formatting_sources}
           scope="repository"
@@ -955,40 +759,6 @@ so a link points at the pane a colleague was asked to look at.
     color: var(--text-muted);
   }
 
-  .value-select {
-    align-items: center;
-    appearance: none;
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0 1.5rem 0 var(--space-2);
-  }
-
-  /* Ink-true, so the chosen word shares the row's centre with the say
-     beside it rather than riding its line box's leading. */
-  .value-select .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .value-select[data-state='open'] {
-    background:
-      linear-gradient(45deg, transparent 49%, var(--text-secondary) 51%) calc(100% - 14px) 55% / 5px
-        5px no-repeat,
-      linear-gradient(135deg, var(--text-secondary) 49%, transparent 51%) calc(100% - 9px) 55% / 5px
-        5px no-repeat,
-      var(--control-bg-pressed);
-  }
-
   .menu-item {
     align-items: center;
     background: none;
@@ -1040,32 +810,6 @@ so a link points at the pane a colleague was asked to look at.
     margin-block: var(--space-1) 0;
   }
 
-  .num-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-family: var(--mono);
-    font-size: var(--font-size-control);
-    min-block-size: var(--tier-quiet);
-    padding: 0 var(--space-2);
-    text-align: end;
-    width: 8.5rem;
-  }
-
-  .num-inline.num-short {
-    width: 5rem;
-  }
-
-  .num-inline::placeholder {
-    color: var(--text-muted);
-  }
-
-  .num-inline:focus-visible {
-    border-color: var(--brand-action);
-    outline: 2px solid var(--focus);
-  }
-
   .gate-note {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);
@@ -1082,125 +826,6 @@ so a link points at the pane a colleague was asked to look at.
     color: var(--danger);
   }
 
-  /* The card keeps its 71px stature whatever its copy measures: trimming the two
-     lines to their ink took 14px out of the content, and the card's height is a
-     shape decision, not a consequence of the leading. */
-  .file-card {
-    align-items: center;
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-surface);
-    display: flex;
-    gap: var(--space-3);
-    margin-bottom: var(--space-2);
-    min-height: 4.4375rem;
-    padding: var(--space-3) var(--space-4);
-  }
-
-  /* In a rounded plate of its own, like every other symbol that stands beside a
-     title inside a card. The plate is keyed to the glyph's own colour, so it
-     carries the file's state rather than a fixed brand tint. */
-  .file-card-icon {
-    align-items: center;
-    background: color-mix(in srgb, currentcolor 10%, transparent);
-    border: 1px solid color-mix(in srgb, currentcolor 24%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--text-muted);
-    display: inline-flex;
-    flex: none;
-    height: 2.25rem;
-    justify-content: center;
-    width: 2.25rem;
-  }
-
-  .file-card-icon.status-valid {
-    color: var(--success);
-  }
-
-  .file-card-icon.status-invalid {
-    color: var(--danger);
-  }
-
-  .file-card-icon.status-bypassed {
-    color: var(--warning);
-  }
-
-  .f-copy {
-    flex: 1;
-    min-width: 0;
-  }
-
-  /* Both lines are trimmed to cap..baseline and spaced by an explicit step, so
-     the copy block's BOX equals its ink and the card's flex centring centres what
-     the eye reads. Untrimmed, the first line's leading and the last line's
-     descender are not symmetric and the text sat 3.36px below the card's middle.
-     0.8rem keeps the baseline-to-baseline distance the two lines already had. */
-  .f-copy strong {
-    display: block;
-    font-size: var(--font-size-meta);
-    line-height: var(--leading-flat);
-    text-box: trim-both cap alphabetic;
-  }
-
-  .f-copy code {
-    color: var(--text-muted);
-    display: block;
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-flat);
-    margin-top: 0.8rem;
-    overflow-wrap: anywhere;
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* Trimmed like the two lines above it, and for the same reason: the card
-     centres its copy block as a BOX, so the block's box has to equal its ink or
-     the centring is of something the reader cannot see. */
-  .f-copy p {
-    color: var(--danger);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-flat);
-    margin: 0.5rem 0 0;
-    text-box: trim-both cap alphabetic;
-  }
-
-  /* A file the repository still carries and Smyklot is not reading is worth
-     saying, and is not a failure - so it wears the dim tone the path above it
-     wears rather than the danger tone the parse error does. */
-  .f-copy p.f-note {
-    color: var(--text-muted);
-  }
-
-  /* An inline continuation of the sentence above it, not a control in its own
-     right: it sits on the same line, at the same size, and is underlined the way
-     a link in prose is. Giving it a button's chrome would make refusing a
-     migration look like it had a button to undo it, which is the opposite of
-     what a durable refusal means. */
-  .f-again {
-    background: none;
-    border: 0;
-    color: var(--text-primary);
-    cursor: pointer;
-    font: inherit;
-    margin-left: 0.35rem;
-    padding: 0;
-    text-decoration: underline;
-    text-underline-offset: 0.15em;
-  }
-
-  .f-again:disabled {
-    color: var(--text-muted);
-    cursor: default;
-    text-decoration: none;
-  }
-
-  /* The overridden behavior rows continue the card's own row list under the
-     bypass row, separated by the same drawn hairline the rows use - so the
-     rows on either side of that line keep the full separator rhythm. */
-  .file-overrides {
-    border-top: 1px solid var(--border-subtle);
-  }
-
-  .file-problem strong,
   .form-error {
     color: var(--danger);
   }

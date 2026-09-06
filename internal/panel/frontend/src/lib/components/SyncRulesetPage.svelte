@@ -63,11 +63,12 @@ stacked left, Cancel and Done on a hairline foot.
   import { globRuns } from '../glob-runs';
   import { numericValue } from '../merge';
   import { receipts } from '../receipts.svelte';
-  import type { SyncConfig, SyncRuleset, SyncRulesetBypassActor, SyncRulesetRules } from '../types';
+  import type { SyncConfig, SyncRuleset, BypassActorLookup, SyncRulesetRules } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import Button from './Button.svelte';
   import Card from './Card.svelte';
+  import BypassActorEditor from './BypassActorEditor.svelte';
   import FormError from './FormError.svelte';
   import Icon from './Icon.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -80,22 +81,26 @@ stacked left, Cancel and Done on a hairline foot.
     savedDocument = {},
     name,
     readOnly,
+    organizationActors = true,
     problem = null,
     sectionHref,
     onOpenSection,
     onChangeDocument,
     dirtyDocument = false,
+    lookupBypassActors,
   }: {
     config: SyncConfig | null;
     savedDocument?: Record<string, unknown>;
     /** Which ruleset the address names. */
     name: string;
     readOnly: boolean;
+    organizationActors?: boolean;
     problem?: string | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onChangeDocument: (document: Record<string, unknown>) => void;
     dirtyDocument?: boolean;
+    lookupBypassActors?: BypassActorLookup;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
@@ -182,8 +187,8 @@ stacked left, Cancel and Done on a hairline foot.
         : include.length === 0
           ? 'Covering no branches yet - add a pattern below'
           : include.length === 1 && include[0] === '~DEFAULT_BRANCH'
-            ? 'Enforced on the default branch of every syncing repository'
-            : `Enforced on ${include.join(', ')} in every syncing repository`,
+            ? 'Targets the default branch of every syncing repository'
+            : `Targets ${include.join(', ')} in every syncing repository`,
   );
 
   let includeOpen = $state(false);
@@ -312,7 +317,8 @@ stacked left, Cancel and Done on a hairline foot.
     const rules = ruleset?.rules;
     if (key === 'pull_request') {
       const rule = rules?.pull_request;
-      prApprovals = numericValue(rule?.required_approving_review_count) ?? 1;
+      prApprovals =
+        numericValue(rule?.required_approving_review_count) ?? (rule === undefined ? 1 : 0);
       prStale = rule?.dismiss_stale_reviews_on_push === true;
       prOwners = rule?.require_code_owner_review === true;
       prLastPush = rule?.require_last_push_approval === true;
@@ -342,7 +348,9 @@ stacked left, Cancel and Done on a hairline foot.
     if (key === 'pull_request') {
       patchRules({
         pull_request: {
-          required_approving_review_count: Math.max(0, Math.min(10, prApprovals)),
+          ...(prApprovals > 0
+            ? { required_approving_review_count: Math.min(10, prApprovals) }
+            : {}),
           ...(prStale ? { dismiss_stale_reviews_on_push: true } : {}),
           ...(prOwners ? { require_code_owner_review: true } : {}),
           ...(prLastPush ? { require_last_push_approval: true } : {}),
@@ -404,60 +412,12 @@ stacked left, Cancel and Done on a hairline foot.
 
   /* ---------- The bypass list ---------- */
 
-  const actors = $derived(ruleset?.bypass_actors ?? []);
-
-  function actorName(actor: SyncRulesetBypassActor): string {
-    if (actor.actor_type === 'OrganizationAdmin') return 'Organization admin';
-    const id = numericValue(actor.actor_id) ?? 0;
-    if (actor.actor_type === 'RepositoryRole') {
-      const roles: Record<number, string> = {
-        5: 'Repository admin',
-        4: 'Maintainers',
-        2: 'Writers',
-      };
-      return roles[id] ?? `Repository role ${id}`;
-    }
-    if (actor.actor_type === 'Integration') return `App ${id}`;
-    if (actor.actor_type === 'Team') return `Team ${id}`;
-    return `Deploy keys`;
-  }
-
-  function actorWhy(actor: SyncRulesetBypassActor): string {
-    if (actor.bypass_mode === 'pull_request') return 'Pull requests only';
-    return 'Always - pushes and pull requests both';
-  }
-
-  function removeActor(at: number): void {
-    patch({ bypass_actors: actors.filter((_, index) => index !== at) });
-  }
-
-  let addingActor = $state(false);
-  let actorType = $state('RepositoryRole');
-  let actorId = $state('5');
-  let actorMode = $state('always');
-
-  function addActor(): void {
-    addingActor = false;
-    const parsed = Number.parseInt(actorId, 10);
-    patch({
-      bypass_actors: [
-        ...actors,
-        {
-          actor_type: actorType,
-          actor_id: actorType === 'OrganizationAdmin' ? 0 : Number.isNaN(parsed) ? 0 : parsed,
-          bypass_mode: actorMode,
-        },
-      ],
-    });
-  }
-
-  const ACTOR_TYPES = [
-    { value: 'RepositoryRole', label: 'Repository role' },
-    { value: 'OrganizationAdmin', label: 'Organization admin' },
-    { value: 'Integration', label: 'App' },
-    { value: 'Team', label: 'Team' },
-    { value: 'DeployKey', label: 'Deploy keys' },
-  ];
+  const actors = $derived(
+    (ruleset?.bypass_actors ?? []).map((actor) => ({
+      ...actor,
+      actor_id: numericValue(actor.actor_id) ?? 0,
+    })),
+  );
 </script>
 
 <div class="view-frame">
@@ -690,7 +650,7 @@ stacked left, Cancel and Done on a hairline foot.
                   <div class="entry-field">
                     <span class="entry-label">Approvals required</span>
                     <input
-                      class="text-inline num-input"
+                      class="text-input text-inline num-input"
                       type="number"
                       min="0"
                       max="10"
@@ -918,91 +878,13 @@ stacked left, Cancel and Done on a hairline foot.
         <h2 class="card-title">Bypass list</h2>
         <span class="card-meta">{actors.length} {actors.length === 1 ? 'actor' : 'actors'}</span>
       </div>
-      {#if actors.length > 0}
-        <div class="policy-rows">
-          {#each actors as actor, at (at)}
-            <div
-              class="policy-row"
-              class:is-unsaved={partDirty('bypass_actors')}
-              data-unsaved={partDirty('bypass_actors') || undefined}
-            >
-              <span class="setting-say">
-                <span class="setting-name">{actorName(actor)}</span>
-                <span class="setting-why">{actorWhy(actor)}</span>
-              </span>
-              <span class="policy-value"></span>
-              <button
-                class="setting-clear"
-                title="Remove this actor"
-                disabled={frozen}
-                onclick={() => removeActor(at)}
-              >
-                <Icon name="close" size="micro" />
-              </button>
-            </div>
-          {/each}
-        </div>
-      {/if}
-      <div class="group-rest" class:is-open={addingActor}>
-        {#if addingActor}
-          <div class="rule-edit actor-edit">
-            <div class="entry-field">
-              <span class="entry-label">Who</span>
-              <span class="chip-line">
-                {#each ACTOR_TYPES as kind (kind.value)}
-                  <button
-                    class="add-chip"
-                    class:is-held={actorType === kind.value}
-                    onclick={() => (actorType = kind.value)}
-                  >
-                    {#if actorType === kind.value}<Icon name="check" size="xs" />{:else}<Icon
-                        name="plus"
-                        size="xs"
-                      />{/if}
-                    <span class="t">{kind.label}</span>
-                  </button>
-                {/each}
-              </span>
-            </div>
-            {#if actorType !== 'OrganizationAdmin'}
-              <div class="entry-field">
-                <span class="entry-label"
-                  >{actorType === 'RepositoryRole'
-                    ? 'Role id - 5 admin, 4 maintain, 2 write'
-                    : 'Its id on GitHub'}</span
-                >
-                <input
-                  class="text-inline num-input"
-                  bind:value={actorId}
-                  aria-label="Actor id"
-                  spellcheck="false"
-                />
-              </div>
-            {/if}
-            <div class="rule-flag">
-              <span>Only through pull requests</span>
-              <Switch
-                checked={actorMode === 'pull_request'}
-                bare
-                label="Only through pull requests"
-                onToggle={(next) => (actorMode = next ? 'pull_request' : 'always')}
-              />
-            </div>
-            <div class="rule-edit-foot">
-              <Button tone="quiet" onclick={() => (addingActor = false)}>Cancel</Button>
-              <Button tone="signal" onclick={addActor}>Add</Button>
-            </div>
-          </div>
-        {:else}
-          <span class="rest-say"
-            >Anyone here may push past every rule above, wherever this ruleset applies</span
-          >
-          <Button tone="quiet" disabled={frozen} onclick={() => (addingActor = true)}>
-            {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-            Add an actor
-          </Button>
-        {/if}
-      </div>
+      <BypassActorEditor
+        {organizationActors}
+        {actors}
+        lookup={lookupBypassActors}
+        readOnly={frozen}
+        onChange={(next) => patch({ bypass_actors: next })}
+      />
     </Card>
 
     <!-- The one destructive act on the page, in the row grammar every other setting
@@ -1033,9 +915,8 @@ stacked left, Cancel and Done on a hairline foot.
          then rather than on the list this used to leave for. -->
     <div class="state-panel is-warn">
       <span
-        ><strong>Pending removal.</strong> The configuration no longer carries {name}; the next next
-        sync removes it from every syncing repository. On GitHub it stays enforced until that plan
-        runs</span
+        ><strong>Pending removal</strong> The next sync removes {name} after this change is saved · Existing
+        GitHub protection stays in place until then</span
       >
       <Button disabled={frozen} onclick={restoreRuleset}>Undo - keep this ruleset</Button>
     </div>
@@ -1047,10 +928,6 @@ stacked left, Cancel and Done on a hairline foot.
      measured by the slot after it. */
   .view-frame {
     timeline-scope: --bar-slot;
-  }
-
-  .card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
   }
 
   /* The remainder is a summary line and not a row, so the list still seams into it. */
@@ -1079,6 +956,7 @@ stacked left, Cancel and Done on a hairline foot.
 
   .cond-chip .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   /* A 20px disc folded around an 8px glyph - exactly the chip's height, so
@@ -1120,11 +998,13 @@ stacked left, Cancel and Done on a hairline foot.
 
   .param-chip .t {
     display: block;
+    text-box: trim-both cap alphabetic;
   }
 
   .param-chip strong {
     color: var(--text-primary);
     font-variant-numeric: tabular-nums;
+    text-box: trim-both cap alphabetic;
   }
 
   .add-chip {
@@ -1217,22 +1097,6 @@ stacked left, Cancel and Done on a hairline foot.
     gap: var(--space-2);
     justify-content: flex-end;
     padding-top: var(--space-3);
-  }
-
-  .text-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-size: var(--font-size-control);
-    min-block-size: 30px;
-    padding-inline: 0.55rem;
-  }
-
-  .text-inline:focus {
-    border-color: var(--focus);
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-inset);
   }
 
   .num-input {

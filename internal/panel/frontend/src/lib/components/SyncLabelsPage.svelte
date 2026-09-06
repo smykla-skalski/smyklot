@@ -97,7 +97,7 @@ unlisted labels are removed, and the patterns left alone either way.
     (source?.labels ?? []).map((label) => ({
       name: label.name,
       desc: label.description ?? '',
-      color: `#${label.color.toLowerCase()}`,
+      color: `#${label.color}`,
       hadDesc: label.description !== undefined,
     }));
 
@@ -426,8 +426,7 @@ unlisted labels are removed, and the patterns left alone either way.
 
   {#if unavailable !== '' && enabled}
     <p class="sync-notice" role="status">
-      {unavailable}. Nothing here will be planned or changed until an owner grants it on the
-      workspace's page on GitHub.
+      {unavailable} · An owner must grant access in GitHub before labels can sync
     </p>
   {/if}
 
@@ -440,15 +439,11 @@ unlisted labels are removed, and the patterns left alone either way.
            card said "0 labels" over a sentence about editing and then stopped. -->
       <div class="state-panel">
         <span
-          ><strong>No labels are synced here yet.</strong> Every repository keeps its own until one is
-          added - then every syncing repository is held to the list</span
+          ><strong>No shared labels yet</strong> Add a label to keep it consistent across syncing repositories</span
         >
       </div>
     {:else}
-      <p class="label-hint">
-        Edit any name, description or colour. Each edit enters the draft as it commits; press Escape
-        to take one back.
-      </p>
+      <p class="label-hint">Edit names, descriptions, or colors, then save your changes</p>
     {/if}
     <ul class="label-rows">
       {#each rows as row, index (index)}
@@ -479,7 +474,7 @@ unlisted labels are removed, and the patterns left alone either way.
             <span class="lbl-field is-inplace lbl-field-{piece}">
               <span class="limit-box">
                 <input
-                  class="text-inline"
+                  class="text-input text-inline"
                   class:is-invalid={fieldError !== null}
                   bind:this={editInput}
                   bind:value={editValue}
@@ -550,8 +545,7 @@ unlisted labels are removed, and the patterns left alone either way.
         <span class="setting-say">
           <span class="setting-name">Delete unlisted labels</span>
           <span class="setting-why"
-            >On deletes labels missing above from every syncing repository, except ignored matches.
-            Off keeps repository-only labels</span
+            >Delete repository labels that are not in this list, except ignored labels</span
           >
         </span>
         <Switch
@@ -569,8 +563,7 @@ unlisted labels are removed, and the patterns left alone either way.
         <span class="setting-say">
           <span class="setting-name">Ignored labels</span>
           <span class="setting-why"
-            >Patterns, where <code>*</code> stands for any run of characters. Neither written nor removed
-            - ignoring wins over every list above, deletion included</span
+            >Matching labels are never changed or deleted. Use <code>*</code> to match any characters</span
           >
         </span>
         <span class="setting-value">
@@ -589,11 +582,6 @@ unlisted labels are removed, and the patterns left alone either way.
 </div>
 
 <style>
-  .label-card.is-unsaved {
-    border-color: color-mix(in srgb, var(--brand-action) 55%, var(--border-subtle));
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
   .card-head {
     align-items: center;
     display: flex;
@@ -668,7 +656,8 @@ unlisted labels are removed, and the patterns left alone either way.
   .label-name {
     font-size: var(--font-size-meta);
     font-weight: 600;
-    line-height: var(--leading-meta);
+    line-height: var(--row-copy-leading);
+    text-box: trim-both cap alphabetic;
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
@@ -676,7 +665,8 @@ unlisted labels are removed, and the patterns left alone either way.
   .label-desc {
     color: var(--text-muted);
     font-size: var(--font-size-meta);
-    line-height: var(--leading-meta);
+    line-height: var(--row-copy-leading);
+    text-box: trim-both cap alphabetic;
     min-inline-size: 0;
     overflow-wrap: anywhere;
   }
@@ -834,26 +824,15 @@ unlisted labels are removed, and the patterns left alone either way.
     color: var(--text-muted);
     font-size: var(--font-size-compact);
     margin: calc(var(--space-2) * -1) 0 var(--space-3);
+    line-height: var(--row-copy-leading);
+    text-box: trim-both cap alphabetic;
   }
 
   /* One ring, fused to the field: the border takes the focus colour and the
      outline overlaps it - under the global offset-2 ring an input read as
      ringed twice. */
   .text-inline {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font-size: var(--font-size-control);
-    min-block-size: 30px;
-    padding-inline: 0.55rem;
     width: 11rem;
-  }
-
-  .text-inline:focus {
-    border-color: var(--focus);
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-inset);
   }
 
   /* Wrong input: the field wears danger quietly at rest - hairline and a 4%
@@ -924,6 +903,7 @@ unlisted labels are removed, and the patterns left alone either way.
   @container labels (max-width: 30rem) {
     .label-row {
       grid-template-columns: auto minmax(0, 1fr) auto;
+      row-gap: var(--row-copy-gap);
     }
 
     .label-row .label-name,
@@ -979,11 +959,11 @@ unlisted labels are removed, and the patterns left alone either way.
 
     .label-row .label-tail {
       grid-column: 3;
-      grid-row: 1;
+      grid-row: 1 / span 2;
     }
 
     .label-row .label-desc {
-      grid-column: 2 / -1;
+      grid-column: 2;
       grid-row: 2;
     }
 

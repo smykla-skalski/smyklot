@@ -22,6 +22,7 @@
     type SyncLabelsEditorEnvelope,
   } from '#lib/sync-config-settings.js';
   import type {
+    BypassActorLookup,
     SyncConfig,
     SyncFilesContext,
     SyncKind,
@@ -55,6 +56,7 @@
     rulesetName = null,
     fileName = null,
     readOnly,
+    organizationActors = true,
     canControl = false,
     fetchConfig,
     fetchPlan,
@@ -77,11 +79,13 @@
     permissionsHref = null,
     queueHref = null,
     clock = Date.now,
+    lookupBypassActors,
   }: {
     permissionsHref?: string | null;
     queueHref?: string | null;
     repositoryHref?: ((repository: string) => string) | null;
     targetId: string;
+    lookupBypassActors?: BypassActorLookup;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
     /** One ruleset's own page, when the address names one. */
@@ -89,6 +93,7 @@
     /** One template's own page, when the address names one. */
     fileName?: string | null;
     readOnly: boolean;
+    organizationActors?: boolean;
     canControl?: boolean;
     rulesetHref: (name: string) => string;
     onOpenRuleset: (name: string) => void;
@@ -505,6 +510,8 @@ Live plan and status queries share the shell's event invalidation and polling fa
 {:else if section === 'rulesets'}
   {#if rulesetName !== null}
     <SyncRulesetPage
+      {organizationActors}
+      {lookupBypassActors}
       config={documents.rulesets}
       savedDocument={canonicalConfigs.rulesets?.document}
       name={rulesetName}
@@ -606,9 +613,8 @@ Live plan and status queries share the shell's event invalidation and polling fa
   }
 
   .sync-run-notice {
-    border-inline-start: 2px solid var(--info);
     color: var(--text-secondary);
     margin: var(--space-3) 0;
-    padding: var(--space-2) var(--space-3);
+    padding-block: var(--space-2);
   }
 </style>

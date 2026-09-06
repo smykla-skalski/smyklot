@@ -1,4 +1,7 @@
 import { formatJson, parseJson, type JsonValue } from './merge';
+import { sameRulesetDocument } from './ruleset-equality';
+import { restoreSelectionOrder } from './settings-equality';
+import { terminateTemplate } from './template-content';
 import type {
   WorkspaceSyncConfigSettingsInput,
   WorkspaceSyncConfigSettingsState,
@@ -167,6 +170,27 @@ export function stageSyncConfigControl(
     kind,
   );
   if (base === null) return false;
+  if (next.kind === 'labels' && base.kind === 'labels') {
+    for (const label of next.labels) {
+      const saved = base.labels.find((item) => item.name === label.name);
+      if (saved?.color.toLowerCase() === label.color.toLowerCase()) label.color = saved.color;
+    }
+    next.excludes = restoreSelectionOrder(next.excludes, base.excludes);
+  }
+  if (
+    next.kind === 'rulesets' &&
+    base.kind === 'rulesets' &&
+    sameRulesetDocument(next.document_text, base.document_text)
+  ) {
+    next.document_text = base.document_text;
+  }
+  if (
+    next.kind === 'files' &&
+    base.kind === 'files' &&
+    terminatedTemplates(next.document_text) === terminatedTemplates(base.document_text)
+  ) {
+    next.document_text = base.document_text;
+  }
   const saved = syncConfigSavedControls(base);
   const current = syncConfigSavedControls(next);
   return registry.stage(resource, next, {
@@ -175,6 +199,20 @@ export function stageSyncConfigControl(
     saved: saved[controlId]!,
     value: current[controlId]!,
   });
+}
+
+/** The required terminal newline is supplied by the backend, not a user edit. */
+function terminatedTemplates(text: string): string {
+  const document = parseJson(text);
+  if (!isJsonRecord(document)) return text;
+  if (Array.isArray(document.files)) {
+    for (const file of document.files) {
+      if (isJsonRecord(file) && typeof file.content === 'string') {
+        file.content = terminateTemplate(file.content);
+      }
+    }
+  }
+  return formatJson(document);
 }
 
 export function syncConfigSavedControls(

@@ -14,6 +14,11 @@ import { mockServer } from './dev/mock-server.ts';
 // the production base. The build keeps the sentinel so the Go server can
 // resolve it at startup.
 const isMockDev = mockEnabled();
+// Unit and browser suites run serially in one validation lane, separate from the
+// live preview. Vitest sets VITEST before loading this config; the explicit flag
+// also covers a browser harness started outside Vitest.
+const isValidationLane =
+  process.env.VITEST === 'true' || process.env.SMYKLOT_PANEL_BROWSER_LANE === '1';
 
 // The deployment version, which the Go server resolves from the sentinel in every
 // text asset it serves. The mock answers for itself - see `MOCK_VERSION`.
@@ -22,8 +27,10 @@ const panelVersion = isMockDev ? MOCK_VERSION : '__smyklot_panel_version__';
 // The mock no-ops unless `SMYKLOT_PANEL_DEV_MOCK=1`, so the build and the
 // default dev server are unaffected by it being listed here.
 export default defineConfig({
+  ...(isValidationLane ? { cacheDir: 'node_modules/.vite-browser' } : {}),
   plugins: [
     sveltekit({
+      ...(isValidationLane ? { outDir: '.svelte-kit-browser' } : {}),
       preprocess: vitePreprocess(),
       // The manifest ships beside the bundle so the Go server answers the same
       // addresses this router does. See `build/route-manifest.ts`.
@@ -75,6 +82,10 @@ export default defineConfig({
   server: {
     port: 5175,
     strictPort: true,
+    watch: {
+      // Neither lane should treat the other's generated modules as source edits.
+      ignored: [isValidationLane ? '**/.svelte-kit/**' : '**/.svelte-kit-browser/**'],
+    },
   },
   optimizeDeps: {
     // The dependencies only the dynamically imported views reach. Vite's

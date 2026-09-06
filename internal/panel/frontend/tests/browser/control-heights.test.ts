@@ -34,7 +34,7 @@ const HEIGHTS = new Set([
   20, // --control-height-chip-small
   24, // --control-height-chip
   26, // the setting-clear disc beside a policy row
-  28, // the sidebar's own collapse trigger, and the value selects
+  28, // the sidebar's own collapse trigger
   30, // the shell grammar's chips: add-chip, cmd-chip, pattern entries
   34, // --control-height-compact
   38, // a rail tile
@@ -47,6 +47,7 @@ interface Control {
   route: string;
   where: string;
   height: number;
+  fieldHeight?: number;
 }
 
 /**
@@ -62,7 +63,7 @@ const NOT_A_CONTROL =
 
 async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {
   return page.evaluate((skip) => {
-    const found: { where: string; height: number }[] = [];
+    const found: { where: string; height: number; fieldHeight?: number }[] = [];
     const label = (element: Element): string => {
       const classes = [...element.classList]
         .filter((one) => !one.startsWith('svelte-'))
@@ -73,7 +74,7 @@ async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {
     };
 
     for (const control of document.querySelectorAll<HTMLElement>(
-      'button, input, select, a.btn, .chip, .add-chip, .state-mark',
+      'button, input, select, a.btn, .chip, .add-chip, .state-mark, .seg',
     )) {
       if (control.closest(skip) !== null) continue;
       const style = getComputedStyle(control);
@@ -100,7 +101,16 @@ async function controlsOn(page: Page): Promise<Omit<Control, 'route'>[]> {
       // rather than the control's own size.
       if (rect.height > 60) continue;
 
-      found.push({ where: label(control), height: rect.height });
+      const sharedField = control.matches(
+        '.text-input, .select-input, .value-select, .seg, .btn:not(.btn-row)',
+      );
+      const fieldHeight = sharedField
+        ? Number.parseFloat(
+            style.getPropertyValue('--local-control-height').trim() ||
+              style.getPropertyValue('--control-height-compact'),
+          )
+        : undefined;
+      found.push({ where: label(control), height: rect.height, fieldHeight });
     }
 
     return found;
@@ -162,5 +172,13 @@ describe('control heights [Integration]', () => {
       [...new Set(strange.map((one) => `${one.where} ${one.height}px`))],
       `heights the panel does not declare: ${[...HEIGHTS].join(', ')}`,
     ).toEqual([]);
+  });
+
+  it('keeps standalone fields and their neighboring actions on the shared tier', () => {
+    const mismatched = controls.filter(
+      (control) =>
+        control.fieldHeight !== undefined && Math.abs(control.height - control.fieldHeight) > 0.5,
+    );
+    expect(mismatched).toEqual([]);
   });
 });

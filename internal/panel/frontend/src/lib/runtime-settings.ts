@@ -1,5 +1,5 @@
 import { CONFIG_KEYS } from './config';
-import { durationParts, durationSeconds, type DurationUnit } from './duration';
+import { durationParts, exactDurationSeconds, type DurationUnit } from './duration';
 import {
   FORMATTING_FIELDS,
   applyFormattingPatch,
@@ -11,6 +11,7 @@ import {
 } from './formatting';
 import type { SettingsCommittedResource, SettingsDraftRegistry } from './settings-drafts.svelte';
 import type { SettingsJson, SettingsLocation, SettingsResource } from './settings-draft-storage';
+import { sameSettingsJson } from './settings-draft-storage';
 import type {
   ConfigKey,
   ConfigPatch,
@@ -109,7 +110,7 @@ export const RUNTIME_DURATION_SPECS: Readonly<Record<RuntimeDurationKey, Runtime
   },
   path_index_interval_seconds: {
     key: 'path_index_interval_seconds',
-    units: ['minutes', 'hours', 'days'],
+    units: ['seconds', 'minutes', 'hours', 'days'],
     minimumSeconds: 60,
     maximumSeconds: 7 * 24 * 60 * 60,
     allowZero: false,
@@ -117,7 +118,7 @@ export const RUNTIME_DURATION_SPECS: Readonly<Record<RuntimeDurationKey, Runtime
   },
   session_ttl_seconds: {
     key: 'session_ttl_seconds',
-    units: ['minutes', 'hours', 'days'],
+    units: ['seconds', 'minutes', 'hours', 'days'],
     minimumSeconds: 60,
     maximumSeconds: 30 * 24 * 60 * 60,
     allowZero: false,
@@ -231,15 +232,37 @@ export function stageRuntimeSettingsControl(
     snapshot?.base ?? buildRuntimeSettingsDraftDocument(settings),
   );
   if (base === null) return false;
+  // The editor remembers how a duration was typed, but that is not a setting.
+  // Restore the saved representation when the user types its exact value again.
+  // Keep invalid text and explicit overrides of inherited values as real drafts.
+  for (const key of DURATION_KEYS) {
+    if (controlId !== `runtime.${key}` || next[key].editor === null) continue;
+    const spec = RUNTIME_DURATION_SPECS[key];
+    const maximum =
+      key === 'path_index_interval_seconds' ? next.path_index_max_seconds : spec.maximumSeconds;
+    const seconds = runtimeDurationSeconds(next[key], spec, maximum);
+    if (seconds !== undefined && seconds === base[key].override_seconds) {
+      next[key] = cloneJson(base[key]);
+    }
+  }
   const saved = runtimeSettingsSavedControls(base, settings.behavior_defaults.deployment);
   const current = runtimeSettingsSavedControls(next, settings.behavior_defaults.deployment);
+  const previousDocument = parseRuntimeSettingsDraftDocument(snapshot?.value ?? base);
+  if (previousDocument === null) return false;
+  const previous = runtimeSettingsSavedControls(
+    previousDocument,
+    settings.behavior_defaults.deployment,
+  );
 
-  return registry.stage(RUNTIME_RESOURCE, next, {
-    id: controlId,
-    location: definition.location,
-    saved: saved[controlId]!,
-    value: current[controlId]!,
-  });
+  // Presets may remove redundant leaf overrides. Their markers must transition
+  // with the document instead of retaining stale values from an earlier edit.
+  return registry.stageMany(
+    RUNTIME_RESOURCE,
+    next,
+    runtimeSettingsControls()
+      .filter(({ id }) => id === controlId || !sameSettingsJson(previous[id]!, current[id]!))
+      .map(({ id, location }) => ({ id, location, saved: saved[id]!, value: current[id]! })),
+  );
 }
 
 export function runtimeSettingsSavedControls(
@@ -312,8 +335,7 @@ export function runtimeDurationSeconds(
 ): number | null | undefined {
   if (value.editor === null) return value.override_seconds;
   if (value.editor.amount.trim() === '') return undefined;
-  const amount = Number(value.editor.amount);
-  const seconds = durationSeconds({ amount, unit: value.editor.unit });
+  const seconds = exactDurationSeconds(value.editor);
   if (seconds === null) return undefined;
   if (seconds === 0 && spec.allowZero) return 0;
   if (seconds < spec.minimumSeconds || seconds > maximumSeconds) return undefined;

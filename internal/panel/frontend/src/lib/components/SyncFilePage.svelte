@@ -98,6 +98,7 @@ where it arises.
   import CodeEditor from './CodeEditor.svelte';
   import Modal from './Modal.svelte';
   import SearchField from './SearchField.svelte';
+  import EmptyState from './EmptyState.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import FormattingEditor from './FormattingEditor.svelte';
   import FileEditor from './FileEditor.svelte';
@@ -474,7 +475,7 @@ where it arises.
         editedText = null;
         answers = merge.arrays ?? [];
         rawOverrideOnly = true;
-        holdProblem = 'Finish this incomplete raw override from the repository Sync page';
+        holdProblem = "Finish this adjustment in the repository's File sync settings";
       } else {
         seedEdits(merge);
       }
@@ -1048,13 +1049,16 @@ where it arises.
         {/each}
       </ul>
       {#if matchingRepositories.length === 0}
-        <div class="state-panel">
-          <span
-            >{repositoryRows.length === 0
-              ? 'No repositories receive this file yet'
-              : 'No repositories match this search'}</span
-          >
-        </div>
+        <EmptyState
+          title={repositoryRows.length === 0
+            ? 'No repositories receive this file yet'
+            : 'No repositories match this search'}
+          description={repositoryRows.length === 0
+            ? 'Enable file sync for a repository to include it here'
+            : 'Try another repository name or clear the search'}
+          actionLabel={repositorySearch.trim() === '' ? undefined : 'Clear the search'}
+          onAction={() => (repositorySearch = '')}
+        />
       {/if}
     </Card>
   {/if}
@@ -1090,6 +1094,7 @@ where it arises.
       {/if}
       <FormattingEditor
         patch={templateFormatting}
+        savedPatch={savedTemplateFormatting}
         inherited={templateRender.formatting.inherited_policy}
         resolution={templateRender.formatting}
         {path}
@@ -1165,7 +1170,7 @@ where it arises.
               <p class="render-note" role="status">Refreshing final output…</p>
             {/if}
           {:else}
-            <p class="sync-note">Rendering the repository's complete effective policy…</p>
+            <p class="sync-note">Preparing final output…</p>
           {/if}
         </section>
       {/if}
@@ -1184,14 +1189,10 @@ where it arises.
               </span>
             </div>
             {#if openMerge === null}
-              <p class="sync-note">
-                This repository takes the shared content unchanged before its formatting policy is
-                applied
-              </p>
+              <p class="sync-note">No content adjustments for this repository</p>
             {:else if editedText === null}
               <p class="sync-note">
-                This copy cannot compose a {openMerge.strategy ?? 'deep-merge'} adjustment of a
-                {lang} template - the stored override below is the whole of it
+                This adjustment cannot be edited here · Saved settings are shown below
               </p>
               <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
             {:else if showStored}
@@ -1208,9 +1209,7 @@ where it arises.
               />
             {/if}
             {#if editedText !== null && staged === null}
-              <p class="sync-note">
-                Not JSON yet - the override picks the edit up when it parses again
-              </p>
+              <p class="sync-note">Enter valid JSON to update this adjustment</p>
             {/if}
           </section>
           {#if openSummary !== null && (openSummary.changed.length > 0 || openSummary.removed.length > 0 || openSummary.listed.length > 0)}
@@ -1246,10 +1245,7 @@ where it arises.
 
           {#each staged?.questions ?? [] as question (question.path)}
             <div class="list-ask">
-              <span class="list-ask-word"
-                ><strong>Both set <code>{question.path}</code>.</strong> A merge cannot know how two lists
-                should combine, so this is the one question it asks:</span
-              >
+              <span class="list-ask-word">Choose how to combine <code>{question.path}</code></span>
               <div class="choice-cards ask-cards">
                 {#each RULE_CHOICES as option (option.value)}
                   <label
@@ -1279,6 +1275,7 @@ where it arises.
           <div class="repository-formatting">
             <FormattingEditor
               patch={openPathFormatting}
+              savedPatch={savedOpenPathFormatting}
               inherited={openInheritedFormatting}
               resolution={repositoryRender?.formatting}
               {path}

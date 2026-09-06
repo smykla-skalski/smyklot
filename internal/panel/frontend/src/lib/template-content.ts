@@ -6,14 +6,16 @@ export function templateBody(content: string): string {
 /** Preserve intentional blank lines and the document's line-ending convention. */
 export function terminateTemplate(content: string): string {
   if (content.endsWith('\n')) return content;
+  return content + (content.endsWith('\r') ? '\n' : templateLineEnding(content));
+}
+
+export function templateLineEnding(content: string): '\r\n' | '\n' {
   const crlf = content.match(/\r\n/gu)?.length ?? 0;
   const lf = (content.match(/\n/gu)?.length ?? 0) - crlf;
-  return content + (crlf > lf && !content.endsWith('\r') ? '\r\n' : '\n');
+  return crlf > lf ? '\r\n' : '\n';
 }
 
 /** Editor documents exclude exactly one required terminator. */
-export function storeTemplateBody(body: string): string {
-  const crlf = body.match(/\r\n/gu)?.length ?? 0;
-  const lf = (body.match(/\n/gu)?.length ?? 0) - crlf;
-  return body + (crlf > lf ? '\r\n' : '\n');
+export function storeTemplateBody(body: string, ending = templateLineEnding(body)): string {
+  return body + ending;
 }

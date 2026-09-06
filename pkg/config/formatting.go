@@ -4,28 +4,28 @@ package config
 // the layer below it; an explicit "preserve" is a value and therefore cancels
 // a lower formatting choice.
 type FormattingPatch struct {
-	// Preset resets every formatting leaf before sibling overrides are applied.
+	// Preset sets a starting style before individual settings are applied.
 	Preset *string `json:"preset,omitempty" yaml:"preset,omitempty" toml:"preset,omitempty" default:"preserve" enum:"preserve,conventional" presets:"conventional=conventional"`
-	// Common carries presentation choices shared by every supported format.
+	// Common applies to all supported file formats.
 	Common *FormattingCommonPatch `json:"common,omitempty" yaml:"common,omitempty" toml:"common,omitempty"`
-	// JSON carries strict JSON presentation choices.
+	// JSON controls how JSON files are written.
 	JSON *FormattingJSONPatch `json:"json,omitempty" yaml:"json,omitempty" toml:"json,omitempty"`
-	// JSONC carries comment-aware JSON presentation choices.
+	// JSONC controls formatting for JSON files with comments.
 	JSONC *FormattingJSONCPatch `json:"jsonc,omitempty" yaml:"jsonc,omitempty" toml:"jsonc,omitempty"`
-	// YAML carries YAML presentation choices.
+	// YAML controls how YAML files are written.
 	YAML *FormattingYAMLPatch `json:"yaml,omitempty" yaml:"yaml,omitempty" toml:"yaml,omitempty"`
-	// TOML carries TOML presentation choices.
+	// TOML controls how TOML files are written.
 	TOML *FormattingTOMLPatch `json:"toml,omitempty" yaml:"toml,omitempty" toml:"toml,omitempty"`
-	// Markdown carries Markdown presentation choices.
+	// Markdown controls how Markdown files are written.
 	Markdown *FormattingMarkdownPatch `json:"markdown,omitempty" yaml:"markdown,omitempty" toml:"markdown,omitempty"`
 }
 
 type FormattingCommonPatch struct {
 	// IndentStyle chooses spaces, tabs, or the document's existing indentation.
 	IndentStyle *string `json:"indent_style,omitempty" yaml:"indent_style,omitempty" toml:"indent_style,omitempty" default:"preserve" enum:"preserve,spaces,tabs" presets:"conventional=spaces"`
-	// IndentWidth is the number of spaces represented by one indentation level.
+	// IndentWidth sets the number of spaces per indentation level.
 	IndentWidth *int `json:"indent_width,omitempty" yaml:"indent_width,omitempty" toml:"indent_width,omitempty" default:"2" min:"1" max:"16"`
-	// LineWidth is the target width used by automatic collection and prose layout.
+	// LineWidth sets the target line length for automatic wrapping.
 	LineWidth *int `json:"line_width,omitempty" yaml:"line_width,omitempty" toml:"line_width,omitempty" default:"100" min:"40" max:"320"`
 	// LineEnding chooses LF, CRLF, or the document's existing endings.
 	LineEnding *string `json:"line_ending,omitempty" yaml:"line_ending,omitempty" toml:"line_ending,omitempty" default:"preserve" enum:"preserve,lf,crlf" presets:"conventional=lf"`
@@ -52,7 +52,7 @@ type FormattingYAMLPatch struct {
 	Sequences *string `json:"sequences,omitempty" yaml:"sequences,omitempty" toml:"sequences,omitempty" default:"preserve" enum:"preserve,auto,flow,block" presets:"conventional=auto"`
 	// Mappings controls YAML mapping layout.
 	Mappings *string `json:"mappings,omitempty" yaml:"mappings,omitempty" toml:"mappings,omitempty" default:"preserve" enum:"preserve,auto,flow,block" presets:"conventional=block"`
-	// QuoteStyle controls safe scalar quote preference.
+	// QuoteStyle chooses a quote style where the value can stay unchanged.
 	QuoteStyle *string `json:"quote_style,omitempty" yaml:"quote_style,omitempty" toml:"quote_style,omitempty" default:"preserve" enum:"preserve,prefer_plain,prefer_single,prefer_double"`
 	// SequenceIndent controls indentation of block sequence markers.
 	SequenceIndent *string `json:"sequence_indent,omitempty" yaml:"sequence_indent,omitempty" toml:"sequence_indent,omitempty" default:"preserve" enum:"preserve,indented,indentless"`
@@ -65,7 +65,7 @@ type FormattingTOMLPatch struct {
 	Arrays *string `json:"arrays,omitempty" yaml:"arrays,omitempty" toml:"arrays,omitempty" default:"preserve" enum:"preserve,auto,compact,expanded" presets:"conventional=auto"`
 	// TrailingCommas controls commas in multiline TOML arrays.
 	TrailingCommas *string `json:"trailing_commas,omitempty" yaml:"trailing_commas,omitempty" toml:"trailing_commas,omitempty" default:"preserve" enum:"preserve,multiline,remove"`
-	// QuoteStyle controls safe TOML string quote preference.
+	// QuoteStyle chooses a quote style where the string can stay unchanged.
 	QuoteStyle *string `json:"quote_style,omitempty" yaml:"quote_style,omitempty" toml:"quote_style,omitempty" default:"preserve" enum:"preserve,prefer_basic,prefer_literal"`
 	// AlignEntries aligns or compacts neighbouring TOML assignments.
 	AlignEntries *string `json:"align_entries,omitempty" yaml:"align_entries,omitempty" toml:"align_entries,omitempty" default:"preserve" enum:"preserve,align,compact"`

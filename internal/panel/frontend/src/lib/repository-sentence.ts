@@ -37,9 +37,9 @@ export function repositorySentence(
     parts.push('switched on here');
   }
 
-  if (repository.config_file_status === 'valid') parts.push('repository file followed');
-  if (repository.config_file_status === 'invalid') parts.push('its file does not parse');
-  if (repository.config_file_status === 'bypassed') parts.push('its file is bypassed');
+  if (repository.config_file_status === 'valid') parts.push('uses repository config');
+  if (repository.config_file_status === 'invalid') parts.push('repository config is invalid');
+  if (repository.config_file_status === 'bypassed') parts.push('repository config is bypassed');
 
   const sync = syncWord(repository.name, fleet);
   if (sync !== null) parts.push(sync);
@@ -63,7 +63,7 @@ function syncWord(name: string, fleet: SyncStatus | null): string | null {
   if (cells.some((cell) => cell.state === 'refused')) return 'sync refused here';
 
   const changes = cells.reduce((total, cell) => total + (cell.changes ?? 0), 0);
-  if (changes === 0) return 'syncing · in step';
+  if (changes === 0) return 'up to date';
 
-  return `syncing · ${changes} change${changes === 1 ? '' : 's'} in the open plan`;
+  return `${changes} change${changes === 1 ? '' : 's'} pending sync`;
 }

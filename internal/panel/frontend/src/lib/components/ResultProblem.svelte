@@ -56,7 +56,7 @@ first is still in flight.
        answers the same question. `is-error` is the whole difference: a thing that
        went wrong rather than a thing that is not there. -->
   <div class="state-panel is-error" role="alert">
-    <span><strong>{title}.</strong> {problem}</span>
+    <span><strong>{title}</strong> {problem}</span>
     {@render retry()}
   </div>
 {/if}

@@ -143,6 +143,9 @@ func decodeSettingsDocument[T any](document []byte) (T, error) {
 }
 
 func validateRestorableTargetDocument(value storage.TargetSettingsDocument) error {
+	if err := value.PendingCIBypassPolicyDefault.Validate(); err != nil {
+		return err
+	}
 	if err := storage.ValidateTargetPendingCISettings(
 		value.PendingCIModeDefault, value.PendingCIBranchPatternsDefault,
 		value.PendingCIQuietPeriodOverride,
@@ -157,6 +160,9 @@ func validateRestorableTargetDocument(value storage.TargetSettingsDocument) erro
 }
 
 func validateRestorableRepositoryDocument(value storage.RepositorySettingsDocument) error {
+	if err := value.PendingCIBypassPolicyOverride.Validate(); err != nil {
+		return err
+	}
 	if err := storage.ValidateRepositoryPendingCISettings(
 		value.PendingCIModeOverride, value.PendingCIBranchPatternsOverride,
 		value.PendingCIQuietPeriodOverride,

@@ -67,6 +67,25 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:config-files"]
+description = "Check configuration file round trips and bidirectional reconciliation"
+env = { CGO_ENABLED = "1" }
+run = "go test -race ./pkg/config ./internal/configsync"
+
+[tasks."test:config-file-storage"]
+description = "Check configuration file transactions on SQLite and PostgreSQL"
+env = { CGO_ENABLED = "1" }
+run = '''
+set -eu
+: "${SMYKLOT_TEST_POSTGRES_DSN:?Run mise run db:dev and set its DSN first}"
+mkdir -p tmp/storage
+ginkgo --race --fail-on-empty --focus='configuration file (connections|imports)' \
+  --json-report=config-files.json --output-dir=tmp/storage \
+  ./internal/storage/sqlite ./internal/storage/postgres
+jq -e 'length == 2 and all(.[]; [.SpecReports[]? | select(.State == "passed")] | length > 0)' \
+  tmp/storage/config-files.json > /dev/null
+'''
+
 [tasks."test:storage:postgres"]
 description = "Run the storage suite against PostgreSQL, failing if it skipped"
 depends = ["panel:assets:generate"]
@@ -434,30 +453,22 @@ run = 'npm run test:browser -- {{arg(name="files", var=true, default="")}}'
 # nothing there it says so and fails, which is what a developer who forgot wants
 # and what a runner cannot act on.
 #
-#   empty-states      what a list says when it has no rows
-#   file-formatting   backend render preview, mismatch actions, and exact repository output
 #   mock-parity       every page against the mock, which is not in this repository
 #   queue-list        the Queue against the approved design, to the pixel
 #   queue-live        the queue re-sorting under a reader, and holding still
 #   repository-page   a repository opened from its row, and its three panes
 #   schedules         Root and installation schedule policy, requests and phone layout
-#   signed-out-layout the sign-in page, and what is not drawn behind it
-#   sync-label-layout long names stay inside their row at desktop and phone widths
 [tasks."panel:frontend:test:browser:local"]
 description = "Drive the browser suites CI leaves to a developer"
 depends = ["panel:frontend:install", "panel:dev:render-bridge"]
 dir = "internal/panel/frontend"
 run = '''
 npm run test:browser -- \
-  tests/browser/empty-states.test.ts \
-  tests/browser/file-formatting.test.ts \
   tests/browser/mock-parity.test.ts \
   tests/browser/queue-list.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
-  tests/browser/schedules.test.ts \
-  tests/browser/signed-out-layout.test.ts \
-  tests/browser/sync-label-layout.test.ts
+  tests/browser/schedules.test.ts
 '''
 
 [tasks."panel:assets:generate"]

@@ -1,24 +1,25 @@
 <script lang="ts">
-  import { patchedAt, rowKeys, storedList, withoutAt } from '#lib/form-lists.js';
+  import { untrack } from 'svelte';
+  import { fileFormat } from '#lib/file-format.js';
+  import { patchedAt, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
-  import { asArrayStrategy } from '#lib/merge.js';
   import {
     buildSyncOverrideEditorEnvelope,
     type SyncOverrideControlId,
     type SyncOverrideEditorEnvelope,
   } from '#lib/repository-sync-override-settings.js';
-  import type {
-    SyncArrayRule,
-    SyncFileMerge,
-    SyncOverride,
-    SyncPatch,
-    SyncSection,
-  } from '#lib/types.js';
+  import type { SyncFileMerge, SyncOverride, SyncPatch, SyncSection } from '#lib/types.js';
 
   import Button from './Button.svelte';
+  import Card from './Card.svelte';
   import Icon from './Icon.svelte';
+  import FileEditor from './FileEditor.svelte';
+  import FormError from './FormError.svelte';
+  import IconButton from './IconButton.svelte';
+  import Modal from './Modal.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import StructuredMergeRules from './StructuredMergeRules.svelte';
   import Switch from './Switch.svelte';
 
   const {
@@ -46,16 +47,9 @@
     onChange?: (next: SyncOverrideEditorEnvelope, control: SyncOverrideControlId) => void;
   } = $props();
 
-  /** What a merge does to a structured template. Markdown has its own. */
-  const STRATEGIES = [
-    { value: '', label: 'By extension' },
-    { value: 'deep-merge', label: 'Deep' },
-    { value: 'shallow-merge', label: 'Shallow' },
-  ] as const;
-
   /*
-   * Offered only for a Markdown path, and the three above only for a structured
-   * one. The engine refuses either crossed over, and the engine this replaces
+   * Offered only for a Markdown path. The structured choices live in the
+   * merge-rules inspector. The engine refuses either crossed over, and the engine this replaces
    * did not: it let a Markdown strategy be configured for a JSON file,
    * discovered it at apply time, and wrote the raw template over the
    * repository's copy. A choice that cannot be made is a refusal nobody has to
@@ -64,12 +58,6 @@
   const MARKDOWN_STRATEGIES = [
     { value: '', label: 'By extension' },
     { value: 'markdown', label: 'Markdown' },
-  ] as const;
-
-  const ARRAY_STRATEGIES = [
-    { value: 'append', label: 'Append' },
-    { value: 'prepend', label: 'Prepend' },
-    { value: 'replace', label: 'Replace' },
   ] as const;
 
   /** What one section does. Which fields it needs follows from it. */
@@ -109,17 +97,6 @@
   const MARKDOWN_KEYS = ['sections'] as const;
   const STRUCTURED_KEYS = ['overrides', 'arrays', 'deduplicate'] as const;
 
-  /** The extensions the engine edits by heading, spelled the same way. */
-  const MARKDOWN_PATH = /\.(?:md|markdown)$/i;
-
-  /* And the ones it can merge at all. Everything else is ErrUnsupportedFormat,
-     which the pane would otherwise offer a complete editor for. */
-  const MERGEABLE_PATH = /\.(?:json|ya?ml|md|markdown)$/i;
-
-  /* Two lines rather than one, because what goes in the box is a fragment of a
-     document and the heading it opens with is the part people get wrong. */
-  const SECTION_CONTENT_PLACEHOLDER = '### Prerequisites\n\nRun `mise install`';
-
   /**
    * One adjustment as it is being edited.
    *
@@ -130,7 +107,8 @@
    * every add, remove and edit has to keep in step, and the first one to forget
    * puts one repository's overrides on another repository's file.
    */
-  type Draft = { merge: SyncFileMerge; text: string };
+  type Draft = { id: number; sectionIds: number[]; merge: SyncFileMerge; text: string };
+  let nextIdentity = 0;
 
   const controlledEnvelope = $derived(
     stored.unreadable
@@ -141,14 +119,54 @@
         } satisfies SyncOverrideEditorEnvelope)
       : (envelope ?? buildSyncOverrideEditorEnvelope(stored)),
   );
-  /* Writable derived state keeps direct component stories useful. In the app,
-     every write immediately publishes a complete envelope to the registry and
-     the controlled prop becomes the same value. */
-  let drafts = $derived<Draft[]>(editorDrafts(controlledEnvelope));
+  let drafts = $state<Draft[]>(untrack(() => editorDrafts(controlledEnvelope)));
+  let lastDraftSignature = untrack(() => draftSignature(controlledEnvelope));
+  // Registry echoes preserve the editors and their local undo history. An external
+  // restore starts fresh editors, so a discarded document cannot return through Undo.
+  $effect(() => {
+    const source = controlledEnvelope;
+    const signature = draftSignature(source);
+    untrack(() => {
+      if (signature === lastDraftSignature) return;
+      lastDraftSignature = signature;
+      drafts = editorDrafts(source);
+    });
+  });
   let excludes = $derived<string[]>(storedList<string>(controlledEnvelope.document, 'excludes'));
   let wanted = $derived<boolean | null>(controlledEnvelope.enabled);
 
   const disabled = $derived(readOnly || stored.unreadable);
+  let rulesDraftId = $state<number | null>(null);
+  let rulesTrigger = $state<HTMLElement | null>(null);
+  const rulesIndex = $derived(
+    drafts.findIndex((draft) => draft.id === rulesDraftId && !editsMarkdown(draft.merge)),
+  );
+  const rulesDraft = $derived(rulesIndex < 0 ? null : drafts[rulesIndex]);
+
+  // A restored or removed file has a different identity. Never let an open
+  // inspector start editing whichever file now occupies its former index.
+  $effect(() => {
+    if (rulesDraftId !== null && rulesDraft === null) untrack(closeRules);
+  });
+
+  function openRules(id: number, trigger: HTMLElement): void {
+    rulesTrigger = trigger;
+    rulesDraftId = id;
+  }
+
+  function closeRules(): void {
+    const trigger = rulesTrigger;
+    rulesDraftId = null;
+    rulesTrigger = null;
+    queueMicrotask(() => {
+      if (trigger?.isConnected) trigger.focus({ preventScroll: true });
+    });
+  }
+
+  function changeRules(id: number, change: Partial<SyncFileMerge>): void {
+    const index = drafts.findIndex((draft) => draft.id === id);
+    if (index >= 0 && !disabled && !editsMarkdown(drafts[index].merge)) patch(index, change);
+  }
 
   /**
    * Why the planner is not syncing this repository at all, and how long ago it
@@ -247,7 +265,7 @@
     if (merge.strategy === 'markdown') return true;
     if (merge.strategy === 'deep-merge' || merge.strategy === 'shallow-merge') return false;
 
-    return MARKDOWN_PATH.test(merge.path);
+    return fileFormat(merge.path) === 'markdown';
   }
 
   /**
@@ -303,8 +321,8 @@
 
     if (path === '') return 'One adjustment names no file';
 
-    if (!MERGEABLE_PATH.test(path)) {
-      return `${path} has no extension this can merge; JSON, YAML and Markdown can`;
+    if (fileFormat(path) === null) {
+      return `${path} has no extension this can merge; JSON, JSONC, YAML, TOML and Markdown can`;
     }
 
     if (drafts.filter((other) => other.merge.path === path).length > 1) {
@@ -457,11 +475,17 @@
 
   function editorDrafts(from: SyncOverrideEditorEnvelope): Draft[] {
     return storedList<SyncFileMerge>(from.document, 'merges').map((merge, index) => ({
+      id: ++nextIdentity,
+      sectionIds: (merge.sections ?? []).map(() => ++nextIdentity),
       merge,
       text:
         from.override_texts[index] ??
         (merge.overrides === undefined ? '' : JSON.stringify(merge.overrides, null, 2)),
     }));
+  }
+
+  function draftSignature(from: SyncOverrideEditorEnvelope): string {
+    return JSON.stringify([repositoryId, from.document.merges ?? [], from.override_texts]);
   }
 
   function controlId(which: 'enabled' | 'document'): SyncOverrideControlId {
@@ -477,7 +501,13 @@
   }
 
   function stageDocument(): void {
-    onChange(currentEnvelope(), controlId('document'));
+    publish('document');
+  }
+
+  function publish(control: 'enabled' | 'document'): void {
+    const next = currentEnvelope();
+    lastDraftSignature = draftSignature(next);
+    onChange(next, controlId(control));
   }
 
   function patch(index: number, change: Partial<SyncFileMerge>): void {
@@ -493,7 +523,7 @@
   }
 
   function add(): void {
-    drafts = [...drafts, { merge: { path: '' }, text: '' }];
+    drafts = [...drafts, { id: ++nextIdentity, sectionIds: [], merge: { path: '' }, text: '' }];
     stageDocument();
   }
 
@@ -505,37 +535,8 @@
   /* The rows inside a row. Each list is edited through the merge it belongs to,
      so every one of these ends at `patch`, and a new list rather than an edit
      in place is what makes the draft compare unequal to what is stored. */
-  function rulesOf(index: number): SyncArrayRule[] {
-    return drafts[index].merge.arrays ?? [];
-  }
-
   function sectionsOf(index: number): SyncSection[] {
     return drafts[index].merge.sections ?? [];
-  }
-
-  function patchRule(index: number, at: number, change: Partial<SyncArrayRule>): void {
-    patch(index, { arrays: patchedAt(rulesOf(index), at, change) });
-  }
-
-  /* A control hands back a string; a rule holds one of three words. An
-     unrecognised one leaves the rule alone rather than storing something the
-     engine refuses - it cannot arrive from ARRAY_STRATEGIES, and that is the
-     point: nothing here has to stay true for the model to. */
-  function strategyChange(selection: string): Partial<SyncArrayRule> {
-    const strategy = asArrayStrategy(selection);
-
-    return strategy === undefined ? {} : { strategy };
-  }
-
-  function addRule(index: number): void {
-    // Append, because appending is what every list rule in the organization
-    // this was written for does, and a rule added with no strategy is one the
-    // engine refuses.
-    patch(index, { arrays: [...rulesOf(index), { path: '', strategy: 'append' }] });
-  }
-
-  function removeRule(index: number, at: number): void {
-    patch(index, { arrays: withoutAt(rulesOf(index), at) });
   }
 
   /**
@@ -558,7 +559,7 @@
     if (
       merge.strategy !== undefined &&
       merge.strategy !== '' &&
-      (merge.strategy === 'markdown') !== MARKDOWN_PATH.test(path)
+      (merge.strategy === 'markdown') !== (fileFormat(path) === 'markdown')
     ) {
       delete merge.strategy;
     }
@@ -578,10 +579,14 @@
   }
 
   function addSection(index: number): void {
+    drafts = patchedAt(drafts, index, {
+      sectionIds: [...drafts[index].sectionIds, ++nextIdentity],
+    });
     patch(index, { sections: [...sectionsOf(index), { action: 'after', heading: '' }] });
   }
 
   function removeSection(index: number, at: number): void {
+    drafts = patchedAt(drafts, index, { sectionIds: withoutAt(drafts[index].sectionIds, at) });
     patch(index, { sections: withoutAt(sectionsOf(index), at) });
   }
 
@@ -644,11 +649,9 @@
     patchSection(index, at, { patches: withoutAt(patchesOf(index, at), which) });
   }
 
-  const rowKey = rowKeys('merge');
-
   function setWanted(next: boolean | null): void {
     wanted = next;
-    onChange(currentEnvelope(), controlId('enabled'));
+    publish('enabled');
   }
 </script>
 
@@ -667,44 +670,43 @@ stopped applying one would write the plain template over exactly the
 customization it described.
 -->
 
-<section class="sync-pane card group-card">
-  <div class="group-head">
-    <h3 class="group-name">File sync</h3>
+<Card class="sync-pane group-card" label="File sync" unsaved={dirtyEnabled || dirtyDocument}>
+  <div class="card-head">
+    <h2 class="card-title">File sync</h2>
+    {#if !readOnly}
+      <Button tone="quiet" {disabled} onclick={add}
+        >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Adjust a file</Button
+      >
+    {/if}
   </div>
-  <p class="group-note">
-    Whether the organization's files are kept in step here, and what this repository changes about
-    them. Saved changes open pull requests automatically
-  </p>
 
   <!-- What the planner made of this repository, which is the question somebody
        opening this pane came to ask. A refusal is fail-closed and correct, and
        before this the only account of it was a line in the service log. -->
   {#if notSyncing !== null}
     <p class="form-notice sync-pane-standdown" role="status">
-      <strong>The organization's files are not being synced here</strong>
+      <strong>Shared files are not being synced here</strong>
       <span>{notSyncing.reason}</span>
       {#if notSyncing.when !== null}
-        <span class="sync-pane-standdown-when">Last looked at {notSyncing.when}</span>
+        <span class="sync-pane-standdown-when">Last checked {notSyncing.when}</span>
       {/if}
     </p>
   {/if}
 
   {#if stored.unreadable}
     <p class="form-notice" role="alert">
-      What this repository adjusts is stored in a form this version of Smyklot cannot read, so it is
-      not shown and nothing here can be changed. Nothing has been lost
+      This version of Smyklot cannot read these saved file adjustments · Editing is unavailable
     </p>
   {/if}
 
-  <div class="policy-rows">
+  <div class="policy-rows" class:rows-continue={drafts.length > 0}>
     <div
       class={['policy-row', { 'is-unsaved': dirtyEnabled }]}
       data-unsaved={dirtyEnabled || undefined}
     >
       <span class="setting-say">
         <span class="setting-name">File sync</span>
-        <span class="setting-why"
-          >Whether the workspace's shared files are written in this repository at all</span
+        <span class="setting-why">Keep shared files up to date through automatic pull requests</span
         >
       </span>
       {#if wanted === null}
@@ -713,7 +715,7 @@ customization it described.
         </span>
         <button
           class="setting-clear"
-          title="Answer for this repository"
+          title="Set file sync for this repository"
           {disabled}
           onclick={() => setWanted(true)}
         >
@@ -726,7 +728,7 @@ customization it described.
         </span>
         <button
           class="setting-clear"
-          title="Stop answering - take the value from the workspace"
+          title="Restore the workspace default"
           {disabled}
           onclick={() => setWanted(null)}
         >
@@ -741,11 +743,10 @@ customization it described.
       <span class="setting-say">
         <span class="setting-name">Ignored in this repository</span>
         <span class="setting-why"
-          >Patterns, where * stands for any run of characters. A file named here is never written or
-          removed in this repository</span
+          >Matching files stay untouched · Use * to match any characters</span
         >
       </span>
-      <div class="pattern-line">
+      <div class="policy-value">
         <PatternEntries
           patterns={excludes}
           readOnly={disabled}
@@ -759,17 +760,17 @@ customization it described.
   </div>
 
   {#if drafts.length === 0}
-    <p class="form-note">This repository takes every file as the organization writes it</p>
+    <p class="form-note">No content adjustments for this repository</p>
   {/if}
 
-  {#each drafts as draft, index (rowKey(index))}
+  {#each drafts as draft, index (draft.id)}
     <article
-      class={['entry-card sync-merge', { 'is-unsaved': dirtyDocument }]}
+      class={['sync-merge', { 'is-unsaved': dirtyDocument }]}
       data-unsaved={dirtyDocument || undefined}
     >
-      <div class="sync-pane-row">
+      <div class="sync-pane-row file-heading">
         <label class="sync-merge-path">
-          <span class="entry-field-label">File</span>
+          <span class="setting-name">File</span>
           <input
             class="text-input"
             type="text"
@@ -780,26 +781,49 @@ customization it described.
           />
         </label>
 
-        <SegmentedControl
-          name="repository-sync-strategy-{index}"
-          label="How {draft.merge.path || 'this file'} is composed"
-          compact
-          options={editsMarkdown(draft.merge) ? MARKDOWN_STRATEGIES : STRATEGIES}
-          value={draft.merge.strategy ?? ''}
-          {disabled}
-          onSelect={(selection) => patch(index, { strategy: selection })}
-        />
-
-        {#if !readOnly}
-          <Button tone="quiet" {disabled} onclick={() => remove(index)}>Remove</Button>
+        {#if !editsMarkdown(draft.merge) || !readOnly}
+          <div class="file-actions">
+            {#if !editsMarkdown(draft.merge)}
+              <Button
+                tone="quiet"
+                aria-haspopup="dialog"
+                aria-expanded={rulesDraftId === draft.id}
+                aria-controls={`repository-merge-rules-${repositoryId}`}
+                onclick={(event) => openRules(draft.id, event.currentTarget)}
+              >
+                {#snippet icon()}<Icon name="sliders" size="sm" />{/snippet}Merge rules
+              </Button>
+            {/if}
+            {#if !readOnly}
+              <IconButton
+                toolbar
+                icon="trash"
+                label="Remove adjustment for {draft.merge.path || 'this file'}"
+                {disabled}
+                onclick={() => remove(index)}
+              />
+            {/if}
+          </div>
         {/if}
       </div>
 
       {#if editsMarkdown(draft.merge)}
+        <div class="sync-pane-row composition-row">
+          <span class="setting-name">Combine content</span>
+          <SegmentedControl
+            name="repository-sync-strategy-{index}"
+            label="How {draft.merge.path || 'this file'} is composed"
+            compact
+            options={MARKDOWN_STRATEGIES}
+            value={draft.merge.strategy ?? ''}
+            {disabled}
+            onSelect={(selection) => patch(index, { strategy: selection })}
+          />
+        </div>
         <!-- Markdown is edited by its headings, so the keys-and-lists controls
              are not shown rather than shown and refused. Which one a row gets
              follows the engine's own reading of the strategy and the extension. -->
-        {#each draft.merge.sections ?? [] as section, at (`${rowKey(index)}-section-${at}`)}
+        {#each draft.merge.sections ?? [] as section, at (draft.sectionIds[at])}
           <div class="sync-merge-section">
             <div class="sync-pane-row">
               <SegmentedControl
@@ -822,7 +846,7 @@ customization it described.
             {#if shapeOf(section.action).heading}
               <div class="sync-pane-row">
                 <label class="sync-merge-heading">
-                  <span class="entry-field-label">Heading</span>
+                  <span class="setting-name">Heading</span>
                   <input
                     class="text-input"
                     type="text"
@@ -835,7 +859,7 @@ customization it described.
                 </label>
 
                 <label class="entry-field sync-merge-occurrence">
-                  <span class="entry-field-label">Which one</span>
+                  <span class="setting-name">Heading number</span>
                   <input
                     class="text-input"
                     type="number"
@@ -849,24 +873,22 @@ customization it described.
             {/if}
 
             {#if shapeOf(section.action).content}
-              <label class="entry-field">
-                <span class="entry-field-label">What this repository writes</span>
-                <textarea
-                  class="entry-code"
-                  rows="5"
-                  {disabled}
-                  value={section.content ?? ''}
-                  placeholder={SECTION_CONTENT_PLACEHOLDER}
-                  oninput={(event) =>
-                    patchSection(index, at, { content: event.currentTarget.value })}></textarea>
-              </label>
+              <FileEditor
+                label="What this repository writes"
+                headingLevel={3}
+                value={section.content ?? ''}
+                lang="markdown"
+                readOnly={disabled}
+                terminalNewline={false}
+                onChange={(content) => patchSection(index, at, { content })}
+              />
             {/if}
 
             {#if shapeOf(section.action).patches}
-              {#each section.patches ?? [] as substitution, which (`${rowKey(index)}-patch-${at}-${which}`)}
+              {#each section.patches ?? [] as substitution, which (`${draft.sectionIds[at]}-patch-${which}`)}
                 <div class="sync-pane-row">
                   <label class="sync-merge-find">
-                    <span class="entry-field-label">Find</span>
+                    <span class="setting-name">Find</span>
                     <input
                       class="text-input"
                       type="text"
@@ -879,7 +901,7 @@ customization it described.
                   </label>
 
                   <label class="sync-merge-find">
-                    <span class="entry-field-label">Replace with</span>
+                    <span class="setting-name">Replace with</span>
                     <input
                       class="text-input"
                       type="text"
@@ -902,313 +924,179 @@ customization it described.
               {/each}
 
               {#if !readOnly}
-                <Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
-                  >Add a substitution</Button
-                >
+                <div class="policy-row">
+                  <span class="setting-say"><span class="setting-name">Replacements</span></span>
+                  <span class="policy-value"
+                    ><Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
+                      >Add a replacement</Button
+                    ></span
+                  >
+                </div>
               {/if}
             {/if}
           </div>
         {/each}
 
         {#if !readOnly}
-          <Button tone="quiet" {disabled} onclick={() => addSection(index)}>Edit a section</Button>
+          <div class="policy-row">
+            <span class="setting-say"><span class="setting-name">Sections</span></span>
+            <span class="policy-value"
+              ><Button tone="quiet" {disabled} onclick={() => addSection(index)}
+                >Edit a section</Button
+              ></span
+            >
+          </div>
         {/if}
       {:else}
-        <label class="entry-field">
-          <span class="entry-field-label">What this repository sets</span>
-          <textarea
-            class="entry-code sync-merge-overrides"
-            rows="6"
-            {disabled}
-            aria-describedby="repository-sync-overrides-note"
-            value={draft.text}
-            placeholder={'{\n  "timezone": "Europe/Warsaw"\n}'}
-            oninput={(event) => setText(index, event.currentTarget.value)}></textarea>
-        </label>
-
-        {#each draft.merge.arrays ?? [] as rule, at (`${rowKey(index)}-rule-${at}`)}
-          <div class="sync-pane-row">
-            <label class="sync-merge-list">
-              <span class="entry-field-label">List</span>
-              <input
-                class="text-input"
-                type="text"
-                value={rule.path}
-                {disabled}
-                placeholder="$.packageRules"
-                oninput={(event) => patchRule(index, at, { path: event.currentTarget.value })}
-              />
-            </label>
-
-            <SegmentedControl
-              name="repository-sync-array-{index}-{at}"
-              label="What happens to {rule.path || 'this list'}"
-              compact
-              options={ARRAY_STRATEGIES}
-              value={rule.strategy}
-              {disabled}
-              onSelect={(selection) => patchRule(index, at, strategyChange(selection))}
-            />
-
-            {#if !readOnly}
-              <Button tone="quiet" {disabled} onclick={() => removeRule(index, at)}>Remove</Button>
-            {/if}
-          </div>
-        {/each}
-
-        <!-- Offered only beside a list rule, because a list with no rule is
-             replaced whole and there is nothing left to deduplicate: the engine
-             refuses that pair rather than ignoring the flag. -->
-        {#if draft.merge.arrays?.length}
-          <div class="sync-pane-row">
-            <span class="sync-form-label">Drop repeated entries</span>
-            <span class="sync-pane-spacer"></span>
-            <Switch
-              checked={draft.merge.deduplicate === true}
-              bare
-              label="Drop repeated entries from {draft.merge.path || 'this file'}"
-              {disabled}
-              onToggle={(next) => patch(index, { deduplicate: next ? true : undefined })}
-            />
-          </div>
-        {/if}
-
-        {#if !readOnly}
-          <Button tone="quiet" {disabled} onclick={() => addRule(index)}>Add a list rule</Button>
-        {/if}
+        <FileEditor
+          label="Content adjustments"
+          description="Keys override the shared template · null removes a key"
+          headingLevel={3}
+          value={draft.text}
+          lang="json"
+          readOnly={disabled}
+          terminalNewline={false}
+          onChange={(text) => setText(index, text)}
+        />
       {/if}
     </article>
   {/each}
 
-  <p class="form-note" id="repository-sync-overrides-note">
-    A JSON object, merged onto the organization's template. <code>null</code> removes a key.
-  </p>
-
-  {#if malformed >= 0}
+  {#if rulesDraft === null && malformed >= 0}
     <p class="form-error" role="alert">
-      What this repository sets for {drafts[malformed]?.merge.path || 'a file'} is not a JSON object.
+      Enter a valid JSON object for {drafts[malformed]?.merge.path || 'this file'}
     </p>
-  {:else if incomplete !== null}
+  {:else if rulesDraft === null && incomplete !== null}
     <p class="form-error" role="alert">{incomplete}</p>
   {/if}
+</Card>
 
-  {#if !readOnly}
-    <button class="add-chip add-entry" type="button" {disabled} onclick={add}>
-      <Icon name="plus" size="xs" />
-      <span class="t">Adjust a file</span>
-    </button>
-  {/if}
-</section>
+{#if rulesDraft !== null}
+  {@const selectedDraft = rulesDraft}
+  {@const rulesProblem =
+    values[rulesIndex] === undefined
+      ? `Enter a valid JSON object for ${rulesDraft.merge.path || 'this file'}`
+      : refusalIn(rulesDraft, values[rulesIndex])}
+  <Modal
+    id={`repository-merge-rules-${repositoryId}`}
+    open
+    title="Merge rules"
+    description={rulesDraft.merge.path || 'New file adjustment'}
+    variant="inspector"
+    returnFocus={rulesTrigger}
+    onClose={closeRules}
+  >
+    {#snippet headerExtra()}
+      <IconButton toolbar icon="close" label="Close merge rules" onclick={closeRules} />
+    {/snippet}
+    <StructuredMergeRules
+      merge={rulesDraft.merge}
+      idPrefix={`repository-merge-${repositoryId}-${rulesDraft.id}`}
+      {disabled}
+      {readOnly}
+      onChange={(change) => changeRules(selectedDraft.id, change)}
+    />
+    {#if rulesProblem !== null}<FormError message={rulesProblem} />{/if}
+    {#snippet footer()}<Button onclick={closeRules}>Done</Button>{/snippet}
+  </Modal>
+{/if}
 
 <style>
-  .sync-pane.card {
-    background: var(--surface-base);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-strip);
-    display: block;
-    padding: var(--space-5);
-  }
-
-  .group-head {
-    align-items: end;
-    display: flex;
-    gap: var(--space-3);
-    justify-content: space-between;
-    margin-bottom: var(--space-2);
-  }
-
-  .group-name {
-    font-size: var(--font-size-title);
-    font-weight: 600;
-    margin: 0;
-    min-block-size: 12px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .policy-rows {
-    margin-bottom: var(--space-2);
-  }
-
-  /* The pane's rows stand on a raised surface, so the unsaved tint mixes into that rather
-     than into whatever is behind it. */
-  .policy-row.is-unsaved,
-  .entry-card.is-unsaved {
-    background: color-mix(in srgb, var(--brand-action-tint) 45%, var(--surface-raised));
-    box-shadow: inset 2px 0 var(--brand-action);
-  }
-
-  /* A block row keeps its sentence on the first line and lays the entries on a full-width
-     second one. `flex-basis: 100%` is what takes that line under the row law - the old
-     `grid-column: 1 / -1` addressed a grid the row no longer is. */
-  .pattern-line {
-    flex-basis: 100%;
-    margin-block: var(--space-1) 0;
-  }
-
-  .add-chip {
-    align-items: center;
-    background: var(--control-bg);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-chip);
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-    gap: 0.35rem;
-    justify-self: start;
-    min-block-size: 30px;
-    padding-block: 0;
-    padding-inline: 0.7rem;
-  }
-
-  .add-chip:hover {
-    background: var(--control-bg-hover);
-    border-style: solid;
-    color: var(--text-primary);
-  }
-
-  .add-chip:active {
-    background: var(--control-bg-pressed);
-  }
-
-  .add-chip .t {
-    text-box: trim-both cap alphabetic;
-  }
-
-  .add-entry {
-    margin-top: var(--space-3);
-  }
-
-  /* The global rule has no margin. These notes sit directly under the control
-     they describe rather than in a gapped column, and the sliver of side inset
-     lines them up with the field's own text. */
-  .form-note {
-    margin: 0.25rem 0.125rem 0;
-  }
-
-  /* Three lines rather than one run-on paragraph: what is happening, the
-     planner's own words for why, and how long ago it found that. The reason is
-     an error string and can run long, so it gets a line of its own. */
   .sync-pane-standdown {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    display: grid;
+    gap: var(--row-copy-gap);
   }
-
   .sync-pane-standdown-when {
     color: var(--text-muted);
   }
-
+  .sync-merge {
+    display: grid;
+    gap: var(--space-4);
+    min-inline-size: 0;
+    padding-block: var(--space-4);
+  }
+  /* The card owns the outer inset. A terminal editor must shed both its
+     inter-editor padding and the final row's internal half-band. */
+  .sync-merge:last-child {
+    padding-block-end: 0;
+  }
+  .sync-merge:last-child > .policy-row {
+    margin-block-end: calc((var(--row-pad-default) + var(--row-hairline)) * -1);
+  }
+  .sync-merge + .sync-merge {
+    border-top: 1px solid transparent;
+  }
+  .sync-merge:not(.is-unsaved) + .sync-merge:not(.is-unsaved) {
+    border-top-color: var(--border-subtle);
+  }
   .sync-pane-row {
-    align-items: center;
     display: flex;
+    align-items: end;
     flex-wrap: wrap;
     gap: var(--space-3);
-    padding-block: 0.7rem;
+    min-inline-size: 0;
   }
-
-  /* The control sits at the end of its row rather than at the end of the pane:
-     the spacer collapses when the row wraps, which puts the control under its
-     own name at a narrow width. */
-  .sync-pane-spacer {
-    flex: 1;
+  .file-heading {
+    align-items: end;
+    justify-content: space-between;
   }
-
-  /* Narrower than the shared-files form's, because an adjustment names a path
-     the workspace already lists rather than one somebody is typing out.
-     The boxes beside it share the shape and not the name: `.sync-merge-path`
-     is the file this row adjusts, and a selector reaching for that must not
-     also find a list rule's path or a substitution. */
-  .sync-merge-path,
-  /* Three named fields on one line, and the width a named field reads at is
-     what decides when the line breaks rather than a guess per row. */
-  .sync-merge-heading,
-  .sync-merge-find,
-  .sync-merge-list {
+  .file-actions {
+    align-items: center;
     display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: var(--entry-say-min);
+    flex: 0 0 auto;
+    gap: var(--space-2);
+    margin-inline-start: auto;
+    max-inline-size: 100%;
   }
-
-  /* Wide enough for a count and no wider: it holds a small ordinal, and a box
-     sized like the heading beside it would read as somewhere to type words.
-     The column and its gap come from `.entry-field`, whose margin the card
-     already zeroes. */
+  .composition-row {
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sync-merge-path,
+  .sync-merge-heading,
+  .sync-merge-find {
+    display: grid;
+    flex: 1 1 12rem;
+    gap: var(--row-copy-gap);
+    min-inline-size: 0;
+  }
+  .sync-merge-path .text-input {
+    font-family: var(--mono);
+    inline-size: 28ch;
+    max-inline-size: 100%;
+    min-inline-size: min(18ch, 100%);
+  }
+  .file-heading .sync-merge-path {
+    flex: 0 1 auto;
+    inline-size: fit-content;
+    max-inline-size: 100%;
+  }
+  @supports (field-sizing: content) {
+    .sync-merge-path .text-input {
+      field-sizing: content;
+      inline-size: auto;
+      max-inline-size: min(40ch, 100%);
+    }
+  }
   .sync-merge-occurrence {
-    width: 6rem;
+    inline-size: 6rem;
+    margin: 0;
   }
-
-  /* A hairline between sections rather than a card around each: they are steps
-     in one document's edit, and boxing every one of them turned a file with six
-     into six files. Drawn between rather than around, so the first sits flush
-     against the strategy row above it. */
+  .sync-merge-section {
+    display: grid;
+    gap: var(--space-4);
+  }
   .sync-merge-section + .sync-merge-section {
     border-top: 1px solid var(--border-subtle);
-    margin-top: var(--space-3);
-    padding-top: var(--space-3);
+    padding-block-start: var(--space-4);
   }
-
-  /* On a phone the head's parts cannot share one line, the say keeps the
-     line and the control moves under it, and the text fields lose their
-     12rem floor rather than holding the page wide. */
   @media (max-width: 30rem) {
-    .sync-pane.card {
-      box-sizing: border-box;
-      inline-size: 100%;
-      max-inline-size: 100%;
-      min-inline-size: 0;
-      padding: var(--space-4);
-    }
-
-    .entry-card,
-    .sync-pane-row {
-      inline-size: 100%;
-      max-inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .group-head {
-      flex-wrap: wrap;
-    }
-
-    .sync-merge-path,
     .sync-merge-heading,
-    .sync-merge-find,
-    .sync-merge-list {
+    .sync-merge-find {
       flex-basis: 100%;
-      min-width: 0;
     }
-
-    .sync-merge-occurrence {
-      width: 100%;
-    }
-
-    .sync-pane-row {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    .sync-pane-row .text-input,
     .sync-pane-row :global(fieldset) {
-      box-sizing: border-box;
-      inline-size: 100%;
       max-inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .sync-pane-row > :global(.btn) {
-      align-self: start;
-    }
-
-    .sync-pane-spacer {
-      display: none;
-    }
-
-    .form-note {
-      overflow-wrap: anywhere;
     }
   }
 </style>

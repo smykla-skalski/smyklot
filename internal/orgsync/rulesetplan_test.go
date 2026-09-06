@@ -134,9 +134,8 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 			Expect(plan(wanted, current)).To(BeEmpty())
 		})
 
-		// The admin's id is dropped; nobody else's is. An app, a team, a role
-		// and a deploy key are all somebody GitHub hands back by id, so two
-		// that differ have to keep comparing different
+		// Apps, teams, users and repository roles have stable identities.
+		// Organization admins and deploy keys describe classes of actors.
 		DescribeTable("still plans a replacement where another actor's id differs",
 			func(actorType string) {
 				named := orgsync.RulesetConfig{Rulesets: []orgsync.Ruleset{
@@ -158,7 +157,7 @@ var _ = Describe("Planning rulesets [Unit]", func() {
 			Entry("an app", "Integration"),
 			Entry("a team", "Team"),
 			Entry("a repository role", "RepositoryRole"),
-			Entry("a deploy key", "DeployKey"),
+			Entry("a user", "User"),
 		)
 
 		// The mode is not the id, and dropping one must not drop the other

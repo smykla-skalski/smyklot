@@ -4,7 +4,15 @@ import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**', 'storybook-static/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      '.svelte-kit/**',
+      '.svelte-kit-browser/**',
+      'storybook-static/**',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   svelte.configs.recommended,

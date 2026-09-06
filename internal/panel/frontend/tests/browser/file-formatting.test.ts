@@ -465,18 +465,27 @@ describe('configured file formatting in the development panel', () => {
               right: box.right,
               width: innerWidth,
               overflow: body.scrollWidth - body.clientWidth,
+              overflowing: [...body.querySelectorAll<HTMLElement>('*')]
+                .filter(
+                  (element) =>
+                    element.getBoundingClientRect().right > body.getBoundingClientRect().right + 1,
+                )
+                .map(
+                  (element) =>
+                    `${element.tagName}.${element.className}: ${element.getBoundingClientRect().right}`,
+                ),
               start: formatting.top - tabs.bottom,
               contentHeight: formatting.height,
             };
           });
           expect(geometry.left).toBeGreaterThanOrEqual(0);
           expect(geometry.right).toBeLessThanOrEqual(geometry.width + 1);
-          expect(geometry.overflow).toBeLessThanOrEqual(1);
-          expect(geometry.start).toBeGreaterThanOrEqual(15);
-          expect(geometry.contentHeight).toBeGreaterThan(400);
           await page.screenshot({
             path: `../../../.bart/sync-redesign/after/inspector-${width}-${colorScheme}.png`,
           });
+          expect(geometry.overflow, geometry.overflowing.join('\n')).toBeLessThanOrEqual(1);
+          expect(geometry.start).toBeGreaterThanOrEqual(15);
+          expect(geometry.contentHeight).toBeGreaterThan(400);
           await page.keyboard.press('Escape');
           await dialog.waitFor({ state: 'hidden' });
           expect(

@@ -12,6 +12,7 @@
   import type { NotificationPage, SecurityNotification } from '../types';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
+  import Link from './Link.svelte';
   import Chip from './Chip.svelte';
   import PageHeader from './PageHeader.svelte';
   import Pill from './Pill.svelte';
@@ -206,7 +207,7 @@ pager - a notification list has no last page worth naming.
     id="inbox-heading"
     eyebrow={viewerName}
     title="Inbox"
-    description="When an operator touches a workspace you own, the receipt lands here"
+    description="Operator changes to workspaces you own"
   >
     {#snippet actions()}
       <!-- The unread count is the only number the head owes a reader. "Retained" was a
@@ -268,6 +269,7 @@ pager - a notification list has no last page worth naming.
             </div>
             <div class="object-list">
               {#each group.events as notification (notification.id)}
+                {@const href = auditHref?.(notification)}
                 <div class="object-row">
                   <span class="object-main">
                     <span class="object-name-row">
@@ -280,9 +282,8 @@ pager - a notification list has no last page worth naming.
                       >{notification.actor.display_name}, as operator ·
                       <RelativeTime value={notification.created_at} nowMs={now} />
                       ·
-                      {#if auditHref !== undefined}
-                        <a href={auditHref(notification)}
-                          >audit entry in {notification.workspace.display_name}</a
+                      {#if href !== undefined}
+                        <Link {href}>View audit entry in {notification.workspace.display_name}</Link
                         >
                       {:else}
                         audit entry #{notification.audit_event_id}
@@ -309,8 +310,8 @@ pager - a notification list has no last page worth naming.
           <Card>
             <div class="state-panel">
               <span
-                ><strong>Nothing has needed your attention.</strong> When an operator writes to a workspace
-                you own, the receipt lands here</span
+                ><strong>No notifications yet</strong> When an operator writes to a workspace you own,
+                the receipt lands here</span
               >
             </div>
           </Card>

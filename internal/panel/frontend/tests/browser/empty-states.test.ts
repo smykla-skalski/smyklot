@@ -2,6 +2,7 @@ import type { Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { addressOf, inLanes, PANEL_ROUTES, startPanel, visit, type Panel } from './harness';
+import { captureVisualAudit } from './visual-audit';
 
 /**
  * A table with nothing in it says so, in words the reader can see.
@@ -61,6 +62,8 @@ async function emptyStateOn(page: Page): Promise<Verdict | null> {
       says: (empty?.textContent ?? '').trim().length,
     };
   });
+
+  await captureVisualAudit(page, `empty-${verdict.route}`);
 
   /* Put back, because a table's search is a synced preference and the mock keeps them in a file
      that outlives this process. Left set, every other sweep in this directory opens on a table

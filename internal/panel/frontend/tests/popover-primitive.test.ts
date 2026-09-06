@@ -78,6 +78,7 @@ describe('the popover primitive', () => {
       // Optional sections expand in the document and hold complete cards.
       'DisclosureSection.svelte',
       'FormattingEditor.svelte', // Explains setting precedence inline, not a menu.
+      'RepositorySyncPane.svelte', // Advanced merge rules expand in the document flow.
     ]);
 
     const offenders = others

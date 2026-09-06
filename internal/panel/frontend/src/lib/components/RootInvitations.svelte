@@ -492,13 +492,11 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
                pretending a search came up dry. -->
           <div class="state-panel">
             {#if hasFilters}
-              <span
-                ><strong>Nothing matches.</strong> No invitation here answers to what is being asked</span
-              >
+              <span><strong>No matching invitations</strong> Try another name or filter</span>
               <Button onclick={clearFilters}>Clear the filters</Button>
             {:else}
               <span
-                ><strong>No operator invitations are open.</strong> Invite an operator to create a one-time
+                ><strong>No open operator invitations</strong> Invite an operator to create a one-time
                 link with an expiry</span
               >
               {#if canManage}
@@ -598,8 +596,8 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
     <Callout class="root-warning">
       {#snippet icon()}<Icon name="warning" size="md" />{/snippet}
       <span
-        >Declining was an answer. A new link reaches the same GitHub identity, and asking twice is
-        visible to them and in the audit record</span
+        >This creates another invitation for the same GitHub user and records it in the audit
+        history</span
       >
     </Callout>
     <FormError message={createProblem} />

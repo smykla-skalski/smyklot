@@ -325,7 +325,9 @@
   const auditDays = $derived.by(() => {
     const days: Array<{ key: string; day: string; head: string; entries: AuditEntry[] }> = [];
     for (const entry of auditRows) {
-      const day = entry.created_at.slice(0, 10);
+      // Group using the same local calendar as the heading. UTC date prefixes
+      // can split one local day into two consecutive groups both called Today.
+      const day = new Date(entry.created_at).toDateString();
       const last = days.at(-1);
       if (last !== undefined && last.day === day) last.entries.push(entry);
       else {
@@ -1010,9 +1012,9 @@ where the record is.
                     <span class="object-sum" title={failureDetail(failure)}>
                       <!-- Whose work failed, on the page that reads every workspace's:
                            the repository above is one of many called `api-gateway`. -->
-                      {#if context === 'root'}{failure.workspace?.display_name ??
-                          'The service itself'} ·
-                      {/if}{sentenceCase(failure.reason)}
+                      {#if context === 'root'}{`${failure.workspace?.display_name ?? 'The service itself'} · `}{/if}{sentenceCase(
+                        failure.reason,
+                      )}
                       {failure.retryable ? '\u00b7 Smyklot retries on its own \u00b7' : '\u00b7'}
                       <RelativeTime
                         value={failure.occurred_at}
@@ -1026,7 +1028,9 @@ where the record is.
                       <Button
                         tone="quiet"
                         {href}
-                        aria-label="Open {repositoryName(failure.repository_full_name)}"
+                        aria-label="Open the repository {repositoryName(
+                          failure.repository_full_name,
+                        )}"
                       >
                         Open the repository
                       </Button>

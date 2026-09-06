@@ -71,7 +71,7 @@ func (s *server) initPanel() error {
 		OAuthCredentialPresent:   s.cfg.panel.clientSecret != "",
 		Assets:                   assets,
 	}, adminpanel.Dependencies{
-		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s,
+		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s, BypassActors: s,
 		Gates:     s,
 		Queue:     s,
 		SyncPlans: s,

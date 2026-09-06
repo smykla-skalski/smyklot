@@ -111,6 +111,14 @@ function target(): PanelTarget {
 
 const EXPECTED_CONTROLS = [
   [
+    'defaults.config_file_sync_enabled',
+    { section: 'defaults', path: ['file', 'config_file_sync_enabled'] },
+  ],
+  [
+    'defaults.pending_ci_bypass_policy_default',
+    { section: 'defaults', path: ['merge', 'pending_ci_bypass_policy_default'] },
+  ],
+  [
     'defaults.repository_default_enabled',
     { section: 'defaults', path: ['repositories', 'repository_default_enabled'] },
   ],
@@ -178,7 +186,9 @@ describe('target defaults settings adapter [Unit]', () => {
     const source = target();
 
     expect(buildTargetDefaultsDocument(source)).toEqual({
+      config_file_sync_enabled: false,
       repository_default_enabled: false,
+      pending_ci_bypass_policy_default: null,
       pending_ci_mode_default: 'checks',
       pending_ci_branch_patterns_default: {
         include: ['~DEFAULT_BRANCH', 'refs/heads/release/*'],

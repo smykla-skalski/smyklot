@@ -1,6 +1,7 @@
 package gate
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -155,6 +156,7 @@ func (reconciler *GateReconciler) reconcileChecks(
 		return reconciler.block(ctx, gate, err)
 	}
 	desired := ruleset(patterns, appID)
+	applyBypassPolicy(&desired, storage.EffectivePendingCIBypassPolicy(target, repository))
 	rulesetID, err := reconcilePendingCIRuleset(ctx, client, owner, name, gate, desired)
 	if err != nil {
 		return reconciler.block(ctx, gate, err)
@@ -534,6 +536,9 @@ func reconcilePendingCIRuleset(
 	if err != nil {
 		return 0, err
 	}
+	if desired.BypassActors == nil {
+		desired.BypassActors = actual.BypassActors
+	}
 	if !samePendingCIRuleset(actual, desired) {
 		if err := client.UpdateRepositoryRuleset(ctx, owner, repository, owned.ID, desired); err != nil {
 			return 0, err
@@ -584,6 +589,9 @@ func adoptOrCreatePendingCIRuleset(
 	if err != nil {
 		return 0, err
 	}
+	if desired.BypassActors == nil {
+		desired.BypassActors = actual.BypassActors
+	}
 	if !samePendingCIRuleset(actual, desired) {
 		return 0, gatePolicy(
 			errors.New("an unmanaged ruleset already uses Smyklot's managed name"),
@@ -604,6 +612,16 @@ func samePendingCIRuleset(left, right github.RepositoryRuleset) bool {
 		if ruleset.BypassActors == nil {
 			ruleset.BypassActors = []github.RulesetBypassActor{}
 		}
+		ruleset.BypassActors = slices.Clone(ruleset.BypassActors)
+		slices.SortFunc(ruleset.BypassActors, func(a, b github.RulesetBypassActor) int {
+			if order := cmp.Compare(a.ActorType, b.ActorType); order != 0 {
+				return order
+			}
+			if order := cmp.Compare(a.ActorID, b.ActorID); order != 0 {
+				return order
+			}
+			return cmp.Compare(a.Mode, b.Mode)
+		})
 		if ruleset.OtherRules == nil {
 			ruleset.OtherRules = []string{}
 		}

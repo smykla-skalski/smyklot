@@ -121,18 +121,19 @@ trusts.
 <style>
   .linked-control {
     align-items: center;
-    display: inline-flex;
+    display: inline-grid;
+    grid-template-columns: var(--inherit-marker-size) minmax(0, 1fr);
     /* As wide as the control it wraps - see the note above `.chip` in app.css. */
     inline-size: fit-content;
     gap: var(--inherit-marker-gap);
+    /* Let the track use the available row width instead of making its full option
+       list the parent's min-content floor. The marker keeps its own column. */
+    max-inline-size: 100%;
+    min-inline-size: 0;
   }
 
   .linked-control.fluid {
-    display: grid;
-    grid-template-columns: var(--inherit-marker-size) minmax(0, 1fr);
-    max-width: 100%;
-    min-width: 0;
-    width: 100%;
+    inline-size: 100%;
   }
 
   /* The linked chain is a passive provenance marker; only the broken chain is a

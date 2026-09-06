@@ -1,5 +1,13 @@
 <script lang="ts">
-  import { defaultKeymap, history, historyKeymap, undo, undoDepth } from '@codemirror/commands';
+  import {
+    defaultKeymap,
+    history,
+    historyKeymap,
+    invertedEffects,
+    isolateHistory,
+    undo,
+    undoDepth,
+  } from '@codemirror/commands';
   import { json } from '@codemirror/lang-json';
   import { markdown } from '@codemirror/lang-markdown';
   import { yaml } from '@codemirror/lang-yaml';
@@ -9,6 +17,7 @@
     Annotation,
     Compartment,
     EditorState,
+    Text,
     RangeSetBuilder,
     type Extension,
   } from '@codemirror/state';
@@ -27,7 +36,12 @@
   import { tags } from '@lezer/highlight';
   import { untrack } from 'svelte';
   import type { CodeLang } from '../code-tokens';
-  import { storeTemplateBody, templateBody, terminateTemplate } from '../template-content';
+  import {
+    storeTemplateBody,
+    templateBody,
+    templateLineEnding,
+    terminateTemplate,
+  } from '../template-content';
   import type { Attachment } from 'svelte/attachments';
 
   const {
@@ -39,6 +53,7 @@
     onHistory,
     onFormat,
     terminalNewline = false,
+    label = 'Code editor',
   }: {
     value: string;
     lang?: CodeLang;
@@ -52,6 +67,7 @@
     onFormat?: () => void;
     /** Shared files store the required final newline outside the visible document. */
     terminalNewline?: boolean;
+    label?: string;
   } = $props();
 
   /** The visible twin of Ctrl/Cmd+Z - a page button steps the same history. */
@@ -61,10 +77,18 @@
 
   /** Replace the document in one CodeMirror transaction so one Undo restores it. */
   export function replaceValue(text: string): void {
+    const ending = templateLineEnding(text);
     text = displayValue(text);
-    if (view === null || text === view.state.doc.toString()) return;
-    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+    if (view === null || (text === view.state.sliceDoc() && ending === view.state.lineBreak))
+      return;
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: editorText(text) },
+      effects: lineEnding.reconfigure(EditorState.lineSeparator.of(ending)),
+      annotations: isolateHistory.of('full'),
+    });
   }
+
+  const editorText = (text: string): Text => Text.of(text.split(/\r\n?|\n/u));
 
   function displayValue(text: string): string {
     return terminalNewline ? templateBody(terminateTemplate(text)) : text;
@@ -206,6 +230,8 @@
   };
 
   const holds = new Compartment();
+  const accessibleName = new Compartment();
+  const lineEnding = new Compartment();
   const marks = new Compartment();
   const externalValue = Annotation.define<boolean>();
 
@@ -216,22 +242,37 @@
        once in its lifetime. */
     const shadow = host.shadowRoot ?? (host as HTMLElement).attachShadow({ mode: 'open' });
     const state = EditorState.create({
-      doc: untrack(() => displayValue(value)),
+      doc: untrack(() => editorText(displayValue(value))),
       extensions: [
         lineNumbers(),
         history(),
+        invertedEffects.of((transaction) =>
+          transaction.startState.lineBreak === transaction.state.lineBreak
+            ? []
+            : [
+                lineEnding.reconfigure(
+                  EditorState.lineSeparator.of(transaction.startState.lineBreak),
+                ),
+              ],
+        ),
         keymap.of([formatKey, ...defaultKeymap, ...historyKeymap]),
         untrack(() => language()),
         syntaxHighlighting(inks),
         holds.of(frozen(untrack(() => readOnly))),
+        accessibleName.of(EditorView.contentAttributes.of({ 'aria-label': untrack(() => label) })),
+        lineEnding.of(EditorState.lineSeparator.of(untrack(() => templateLineEnding(value)))),
         marks.of([]),
         EditorView.updateListener.of((update) => {
           if (
-            update.docChanged &&
+            (update.docChanged || update.startState.lineBreak !== update.state.lineBreak) &&
             !update.transactions.some((transaction) => transaction.annotation(externalValue))
           ) {
-            const text = update.state.doc.toString();
-            onChange(terminalNewline ? storeTemplateBody(text) : text);
+            const text = update.state.sliceDoc();
+            onChange(
+              terminalNewline
+                ? storeTemplateBody(text, update.state.lineBreak as '\n' | '\r\n')
+                : text,
+            );
           }
           onHistory?.(undoDepth(update.state));
         }),
@@ -259,10 +300,12 @@
      recreating the editor. */
   $effect(() => {
     const next = displayValue(value);
+    const ending = templateLineEnding(value);
     const held = view;
-    if (held !== null && next !== held.state.doc.toString()) {
+    if (held !== null && (next !== held.state.sliceDoc() || ending !== held.state.lineBreak)) {
       held.dispatch({
-        changes: { from: 0, to: held.state.doc.length, insert: next },
+        changes: { from: 0, to: held.state.doc.length, insert: editorText(next) },
+        effects: lineEnding.reconfigure(EditorState.lineSeparator.of(ending)),
         annotations: externalValue.of(true),
       });
     }
@@ -271,6 +314,12 @@
   $effect(() => {
     const held = frozen(readOnly);
     view?.dispatch({ effects: holds.reconfigure(held) });
+  });
+
+  $effect(() => {
+    view?.dispatch({
+      effects: accessibleName.reconfigure(EditorView.contentAttributes.of({ 'aria-label': label })),
+    });
   });
 
   $effect(() => {

@@ -317,7 +317,7 @@ page directly still leads somewhere.
   <!-- h2: the page's own h1 is its title, and this is the first section under it. -->
   <h2 class="timeline-heading band-trim">Timeline</h2>
   <p class="timeline-lede band-trim">
-    Every durable event, newest last, with the delivery that caused it
+    Recorded events, newest last, with the delivery that caused each one
   </p>
 
   <section class="plate timeline-plate" aria-label="Timeline">

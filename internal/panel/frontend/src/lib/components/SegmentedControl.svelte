@@ -451,10 +451,19 @@ positioning will replace once it is portable.
     inline-size: fit-content;
     isolation: isolate;
     margin: 0;
+    max-inline-size: 100%;
     min-width: 0;
-    overflow: clip;
+    /* A narrow inspector can stand inside a desktop viewport. Keep every option
+       reachable whenever its containing row is smaller than the natural track. */
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
     padding: var(--seg-gutter);
     position: relative;
+  }
+
+  fieldset::-webkit-scrollbar {
+    display: none;
   }
 
   /* A sidebar popover carries its own surfaces, so a control inside one follows the popover rather
@@ -1090,18 +1099,6 @@ positioning will replace once it is portable.
   }
 
   @media (max-width: 36rem) {
-    fieldset {
-      box-sizing: border-box;
-      max-inline-size: 100%;
-      overflow-x: auto;
-      overflow-y: hidden;
-      scrollbar-width: none;
-    }
-
-    fieldset::-webkit-scrollbar {
-      display: none;
-    }
-
     fieldset.navigation .segment-label {
       padding-inline: var(--space-2);
     }

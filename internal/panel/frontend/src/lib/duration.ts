@@ -14,7 +14,7 @@ export interface DurationParts {
   unit: DurationUnit;
 }
 
-const UNIT_SECONDS: Record<DurationUnit, number> = {
+export const UNIT_SECONDS: Record<DurationUnit, number> = {
   seconds: 1,
   minutes: 60,
   hours: 3_600,
@@ -80,4 +80,25 @@ export function formatDuration(value: DurationParts | number): string {
   const word = parts.amount === 1 ? parts.unit.slice(0, -1) : parts.unit;
 
   return `${parts.amount} ${word}`;
+}
+
+/** Raw input stays separate from the wire until it represents whole seconds. */
+export interface DurationEditorValue {
+  amount: string;
+  unit: DurationUnit;
+}
+
+export function exactDurationSeconds(editor: DurationEditorValue): number | null {
+  if (editor.amount.trim() === '') return null;
+  const amount = Number(editor.amount);
+  const seconds = amount * UNIT_SECONDS[editor.unit];
+  const whole = Math.round(seconds);
+  // Converting one second to hours produces a repeating decimal. Tolerate only
+  // floating-point noise, never silently round a user's fractional second.
+  return Number.isFinite(amount) &&
+    amount >= 0 &&
+    Number.isSafeInteger(whole) &&
+    Math.abs(seconds - whole) <= Number.EPSILON * Math.max(1, Math.abs(seconds)) * 4
+    ? whole
+    : null;
 }

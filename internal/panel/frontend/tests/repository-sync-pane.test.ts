@@ -1,13 +1,33 @@
 // @vitest-environment jsdom
+import { EditorView } from '@codemirror/view';
+import { EditorState } from '@codemirror/state';
+import { tick } from 'svelte';
 import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import RepositorySyncPane from '../src/lib/components/RepositorySyncPane.svelte';
-import type {
-  SyncOverrideControlId,
-  SyncOverrideEditorEnvelope,
+import {
+  cloneSyncOverrideEditorEnvelope,
+  type SyncOverrideControlId,
+  type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
 import type { SyncOverride } from '../src/lib/types';
+
+function codeView(label: string, index = 0): EditorView | null {
+  let matching = 0;
+  for (const host of document.querySelectorAll('.code-editor')) {
+    const content = host.shadowRoot?.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+    if (content && matching++ === index) return EditorView.findFromDOM(content);
+  }
+  return null;
+}
+
+async function writeCode(label: string, text: string, index = 0): Promise<void> {
+  const view = codeView(label, index);
+  if (!view) throw new Error(`Editor ${label} not found`);
+  view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
+  await tick();
+}
 
 /** The controls measure themselves to place a thumb; jsdom does not. */
 class TestResizeObserver {
@@ -70,6 +90,12 @@ describe('RepositorySyncPane [Component]', () => {
     await vi.advanceTimersByTimeAsync(1_000);
   }
 
+  async function openMergeRules(): Promise<void> {
+    await fireEvent.click(screen.getByRole('button', { name: 'Merge rules' }));
+    await tick();
+    expect(screen.getByRole('dialog', { name: 'Merge rules' })).toBeTruthy();
+  }
+
   /** Adds one leave-alone pattern through the in-place entry editor. */
   async function addExclude(value: string): Promise<void> {
     await fireEvent.click(screen.getByRole('button', { name: 'Add' }));
@@ -78,10 +104,10 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.keyDown(input, { key: 'Enter' });
   }
 
-  it('says so where a repository takes every file as it is written', () => {
+  it('shows when a repository has no content adjustments', () => {
     render(RepositorySyncPane, { ...base, stored: override() });
 
-    expect(screen.getByText(/takes every file as the organization writes it/)).toBeTruthy();
+    expect(screen.getByText('No content adjustments for this repository')).toBeTruthy();
   });
 
   it('shows what a repository already adjusts', () => {
@@ -96,8 +122,7 @@ describe('RepositorySyncPane [Component]', () => {
 
     expect(screen.getByDisplayValue('renovate.json')).toBeTruthy();
 
-    const overrides = screen.getByLabelText('What this repository sets') as HTMLTextAreaElement;
-    expect(overrides.value).toContain('Europe/Warsaw');
+    expect(codeView('Content adjustments')?.state.doc.toString()).toContain('Europe/Warsaw');
   });
 
   it('sends an adjustment somebody wrote', async () => {
@@ -108,9 +133,7 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.input(screen.getByLabelText('File'), {
       target: { value: 'renovate.json' },
     });
-    await fireEvent.input(screen.getByLabelText('What this repository sets'), {
-      target: { value: '{"timezone": "Europe/Warsaw"}' },
-    });
+    await writeCode('Content adjustments', '{"timezone": "Europe/Warsaw"}');
     await rest();
 
     expect(sent).toHaveLength(1);
@@ -132,12 +155,10 @@ describe('RepositorySyncPane [Component]', () => {
       onChange,
     });
 
-    await fireEvent.input(screen.getByLabelText('What this repository sets'), {
-      target: { value: '{"timezone": ' },
-    });
+    await writeCode('Content adjustments', '{"timezone": ');
     await rest();
 
-    expect(screen.getByRole('alert').textContent).toContain('not a JSON object');
+    expect(screen.getByRole('alert').textContent).toContain('Enter a valid JSON object');
     expect(sent[0].override_texts).toEqual(['{"timezone": ']);
     expect(controls.at(-1)).toBe('repositories.repo-1.sync.files.document');
   });
@@ -240,6 +261,159 @@ describe('RepositorySyncPane [Component]', () => {
     });
 
     expect(screen.queryByRole('button', { name: 'Adjust a file' })).toBeNull();
+    expect(codeView('Content adjustments')?.state.facet(EditorState.readOnly)).toBe(true);
+  });
+
+  it('undoes an invalid code edit without losing the saved adjustment', async () => {
+    const { sent, onChange } = saved();
+    render(RepositorySyncPane, {
+      ...base,
+      onChange,
+      stored: override({
+        document: { merges: [{ path: 'renovate.json', overrides: { timezone: 'UTC' } }] },
+      }),
+    });
+
+    await writeCode('Content adjustments', '{"timezone":');
+    expect(screen.getByRole('alert').textContent).toContain('Enter a valid JSON object');
+    await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await tick();
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(sent[0].document.merges).toEqual([
+      { path: 'renovate.json', overrides: { timezone: 'UTC' } },
+    ]);
+    expect(JSON.parse(codeView('Content adjustments')?.state.doc.toString() ?? '')).toEqual({
+      timezone: 'UTC',
+    });
+  });
+
+  it('keeps undo history with its file when an earlier adjustment is removed', async () => {
+    const { sent, onChange } = saved();
+    const rendered = render(RepositorySyncPane, {
+      ...base,
+      onChange,
+      stored: override({
+        document: {
+          merges: [
+            { path: 'a.json', overrides: { a: 1 } },
+            { path: 'b.json', overrides: { b: 2 } },
+          ],
+        },
+      }),
+    });
+    const remaining = codeView('Content adjustments', 1);
+    await writeCode('Content adjustments', '{"b":3}', 1);
+    await rendered.rerender({ envelope: structuredClone(sent[0]) });
+    expect(codeView('Content adjustments', 1)).toBe(remaining);
+    await fireEvent.click(screen.getByRole('button', { name: 'Remove adjustment for a.json' }));
+    await rendered.rerender({ envelope: structuredClone(sent[0]) });
+    expect(codeView('Content adjustments')).toBe(remaining);
+    await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await tick();
+    expect(sent[0].document.merges).toEqual([{ path: 'b.json', overrides: { b: 2 } }]);
+
+    // Cached navigation can reuse this pane for a different repository with
+    // exactly the same document. Its history still belongs to that repository.
+    await rendered.rerender({ repositoryId: 'repo-2', envelope: structuredClone(sent[0]) });
+    expect(codeView('Content adjustments')).not.toBe(remaining);
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+
+    // Discard is a new document, not another local edit in the same history.
+    await rendered.rerender({ envelope: undefined });
+    expect(codeView('Content adjustments', 1)).not.toBe(remaining);
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+  });
+
+  it.each(['renovate.jsonc', 'config.toml'])(
+    'edits %s content adjustments as JSON',
+    async (path) => {
+      const { sent, onChange } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        onChange,
+        stored: override({ document: { merges: [{ path, overrides: { enabled: true } }] } }),
+      });
+
+      await writeCode('Content adjustments', '{"enabled":false}');
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(sent[0].document.merges).toEqual([{ path, overrides: { enabled: false } }]);
+      expect(sent[0].override_texts).toEqual(['{"enabled":false}']);
+    },
+  );
+
+  it('keeps invalid rules and editor history when the inspector closes', async () => {
+    const { sent, onChange } = saved();
+    const rendered = render(RepositorySyncPane, {
+      ...base,
+      onChange,
+      stored: override({
+        document: { merges: [{ path: 'renovate.json', overrides: { entries: [1] } }] },
+      }),
+    });
+    await writeCode('Content adjustments', '{"entries":[2]}');
+    const editor = codeView('Content adjustments');
+    await openMergeRules();
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
+    expect(screen.getByRole('alert').textContent).toContain('names no list');
+    const draft = cloneSyncOverrideEditorEnvelope(sent[0]);
+
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await tick();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(codeView('Content adjustments')).toBe(editor);
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
+    expect(sent[0]).toEqual(draft);
+    expect(screen.getByRole('alert').textContent).toContain('names no list');
+
+    await openMergeRules();
+    expect((screen.getByLabelText('List') as HTMLInputElement).value).toBe('');
+    expect(screen.getByRole('alert').textContent).toContain('names no list');
+
+    // An external discard changes draft identity and closes the old inspector.
+    await rendered.rerender({
+      envelope: {
+        enabled: null,
+        document: { merges: [{ path: 'other.json', overrides: { kept: true } }] },
+        override_texts: ['{"kept":true}'],
+      },
+    });
+    await tick();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect((screen.getByLabelText('File') as HTMLInputElement).value).toBe('other.json');
+  });
+
+  it('keeps undo history with its Markdown section after removing an earlier section', async () => {
+    const { sent, onChange } = saved();
+    render(RepositorySyncPane, {
+      ...base,
+      onChange,
+      stored: override({
+        document: {
+          merges: [
+            {
+              path: 'README.md',
+              sections: [
+                { action: 'append', content: 'First section' },
+                { action: 'append', content: 'Second section' },
+              ],
+            },
+          ],
+        },
+      }),
+    });
+    const remaining = codeView('What this repository writes', 1);
+    await writeCode('What this repository writes', 'Changed second section', 1);
+    await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
+    expect(codeView('What this repository writes')).toBe(remaining);
+    await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    await tick();
+    expect(sent[0].document.merges).toEqual([
+      {
+        path: 'README.md',
+        sections: [{ action: 'append', content: 'Second section' }],
+      },
+    ]);
   });
 
   /**
@@ -291,6 +465,7 @@ describe('RepositorySyncPane [Component]', () => {
         onChange,
       });
 
+      await openMergeRules();
       await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
       await fireEvent.input(screen.getByLabelText('List'), {
         target: { value: '$.packageRules' },
@@ -316,6 +491,7 @@ describe('RepositorySyncPane [Component]', () => {
         stored: override({ document: { merges: [{ path: 'renovate.json' }] } }),
       });
 
+      await openMergeRules();
       expect(screen.queryByText('Drop repeated entries')).toBeNull();
 
       await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
@@ -341,6 +517,7 @@ describe('RepositorySyncPane [Component]', () => {
         onChange,
       });
 
+      await openMergeRules();
       await fireEvent.click(
         screen.getByRole('checkbox', { name: 'Drop repeated entries from renovate.json' }),
       );
@@ -375,8 +552,8 @@ describe('RepositorySyncPane [Component]', () => {
         onChange,
       });
 
-      // The second: the first removes the adjustment, this one the rule inside it.
-      await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[1]);
+      await openMergeRules();
+      await fireEvent.click(screen.getByRole('button', { name: 'Remove list rule $.extends' }));
       await rest();
 
       expect(sent[0].document.merges).toEqual([
@@ -394,7 +571,7 @@ describe('RepositorySyncPane [Component]', () => {
         stored: override({ document: { merges: [{ path: 'CONTRIBUTING.md' }] } }),
       });
 
-      expect(screen.queryByLabelText('What this repository sets')).toBeNull();
+      expect(codeView('Content adjustments')).toBeNull();
       expect(screen.getByRole('button', { name: 'Edit a section' })).toBeTruthy();
     });
 
@@ -410,9 +587,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.input(screen.getByLabelText('Heading'), {
         target: { value: '### Prerequisites' },
       });
-      await fireEvent.input(screen.getByLabelText('What this repository writes'), {
-        target: { value: '### Project setup' },
-      });
+      await writeCode('What this repository writes', '### Project setup');
       await rest();
 
       expect(sent[0].document.merges).toEqual([
@@ -517,7 +692,7 @@ describe('RepositorySyncPane [Component]', () => {
 
       // The row is composed by keys again, which it can only be once the
       // Markdown strategy it was carrying is gone.
-      expect(screen.getByLabelText('What this repository sets')).toBeTruthy();
+      expect(codeView('Content adjustments')).toBeTruthy();
       expect(screen.queryByRole('button', { name: 'Edit a section' })).toBeNull();
     });
 
@@ -542,7 +717,7 @@ describe('RepositorySyncPane [Component]', () => {
       });
 
       expect(screen.getByRole('button', { name: 'Edit a section' })).toBeTruthy();
-      expect(screen.queryByLabelText('What this repository sets')).toBeNull();
+      expect(codeView('Content adjustments')).toBeNull();
     });
 
     /* A strategy the new path still allows is the row's answer, not noise. */
@@ -609,9 +784,7 @@ describe('RepositorySyncPane [Component]', () => {
       await fireEvent.input(screen.getByLabelText('Heading'), {
         target: { value: '### Prerequisites' },
       });
-      await fireEvent.input(screen.getByLabelText('What this repository writes'), {
-        target: { value: 'Run `mise install`' },
-      });
+      await writeCode('What this repository writes', 'Run `mise install`');
       await rest();
 
       expect(sent[0].document.merges).toEqual([
@@ -646,6 +819,7 @@ describe('RepositorySyncPane [Component]', () => {
           }),
         });
 
+        await openMergeRules();
         await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
 
         expect(refusal()).toContain('names no list');
@@ -874,6 +1048,7 @@ describe('RepositorySyncPane [Component]', () => {
         onChange,
       });
 
+      await openMergeRules();
       await fireEvent.click(screen.getByRole('button', { name: 'Add a list rule' }));
       await fireEvent.input(screen.getByLabelText('List'), { target: { value: '$.extends' } });
       await rest();

@@ -382,6 +382,7 @@ type DeliveryHealth struct {
 
 // Target is one GitHub App installation and its panel-owned settings.
 type Target struct {
+	ConfigFileSyncEnabled          bool
 	ID                             string
 	InstallationID                 string
 	Kind                           TargetKind
@@ -390,6 +391,7 @@ type Target struct {
 	RepositoryDefaultEnabled       bool
 	PendingCIModeDefault           PendingCIMode
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns
+	PendingCIBypassPolicyDefault   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride   *time.Duration
 
 	// PathIndexIntervalOverride is how often this installation's repositories
@@ -507,6 +509,7 @@ type RepositoryConfigMigration struct {
 
 // Repository is a catalog entry plus its panel-owned controls.
 type Repository struct {
+	ConfigFileSyncEnabled           bool
 	ID                              string
 	TargetID                        string
 	Name                            string
@@ -517,6 +520,7 @@ type Repository struct {
 	EnabledOverride                 *bool
 	PendingCIModeOverride           *PendingCIMode
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns
+	PendingCIBypassPolicyOverride   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride    *time.Duration
 
 	// PathIndexIntervalOverride is how often this repository's file list is
@@ -528,8 +532,11 @@ type Repository struct {
 	ConfigPatch          config.Patch
 	IgnoreRepositoryFile bool
 	ConfigFileStatus     RepositoryFileStatus
-	ConfigFilePatch      config.Patch
-	ConfigFileError      *string
+	// Keep the observation separate from the effective bypass state.
+	ConfigFileObservedStatus RepositoryFileStatus
+	ConfigFileObservedAt     *time.Time
+	ConfigFilePatch          config.Patch
+	ConfigFileError          *string
 
 	// ConfigFilePath is the file the configuration was read from, empty when
 	// the repository has none. Discovery looks in four places plus a
@@ -581,6 +588,7 @@ type InstallationSnapshot struct {
 
 // TargetSettingsChange atomically changes target defaults and records audit.
 type TargetSettingsChange struct {
+	ConfigFileSyncEnabled          bool
 	TargetID                       string
 	ActorAccountID                 string
 	ElevationID                    *string
@@ -588,6 +596,7 @@ type TargetSettingsChange struct {
 	RepositoryDefaultEnabled       bool
 	PendingCIModeDefault           PendingCIMode
 	PendingCIBranchPatternsDefault PendingCIBranchPatterns
+	PendingCIBypassPolicyDefault   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride   *time.Duration
 	RetunePendingCIQuietPeriod     bool
 	DeploymentPendingCIQuietPeriod time.Duration
@@ -600,6 +609,7 @@ type TargetSettingsChange struct {
 // RepositorySettingsChange atomically changes repository controls and records
 // audit.
 type RepositorySettingsChange struct {
+	ConfigFileSyncEnabled           bool
 	TargetID                        string
 	RepositoryID                    string
 	ActorAccountID                  string
@@ -608,6 +618,7 @@ type RepositorySettingsChange struct {
 	EnabledOverride                 *bool
 	PendingCIModeOverride           *PendingCIMode
 	PendingCIBranchPatternsOverride *PendingCIBranchPatterns
+	PendingCIBypassPolicyOverride   *PendingCIBypassPolicy
 	PendingCIQuietPeriodOverride    *time.Duration
 	RetunePendingCIQuietPeriod      bool
 	DeploymentPendingCIQuietPeriod  time.Duration

@@ -89,18 +89,22 @@ func writeTargetSettings(
 	change := work.prepared.change
 	result, err := tx.ExecContext(ctx, `
 UPDATE targets SET
+    config_file_sync_enabled = ?,
     repository_default_enabled = ?,
     pending_ci_mode_default = ?,
     pending_ci_branch_patterns_default = ?,
+    pending_ci_bypass_policy_default = ?,
     pending_ci_quiet_period_seconds_override = ?,
     path_index_interval_seconds_override = ?,
     config_patch = ?,
     revision = revision + 1,
     settings_updated_at = ?
 WHERE id = ? AND revision = ?`,
+		change.ConfigFileSyncEnabled,
 		change.RepositoryDefaultEnabled,
 		change.PendingCIModeDefault,
 		work.prepared.branchPatterns,
+		work.prepared.bypassPolicy,
 		durationSeconds(change.PendingCIQuietPeriodOverride),
 		durationSeconds(change.PathIndexIntervalOverride),
 		work.prepared.patch,
@@ -123,9 +127,11 @@ func writeRepositorySettings(
 	change := work.prepared.change
 	result, err := tx.ExecContext(ctx, `
 UPDATE repositories SET
+    config_file_sync_enabled = ?,
     enabled_override = ?,
     pending_ci_mode_override = ?,
     pending_ci_branch_patterns_override = ?,
+    pending_ci_bypass_policy_override = ?,
     pending_ci_quiet_period_seconds_override = ?,
     path_index_interval_seconds_override = ?,
     config_patch = ?,
@@ -133,9 +139,11 @@ UPDATE repositories SET
     revision = revision + 1,
     settings_updated_at = ?
 WHERE target_id = ? AND id = ? AND revision = ?`,
+		change.ConfigFileSyncEnabled,
 		change.EnabledOverride,
 		change.PendingCIModeOverride,
 		work.prepared.branchPatterns,
+		work.prepared.bypassPolicy,
 		durationSeconds(change.PendingCIQuietPeriodOverride),
 		durationSeconds(change.PathIndexIntervalOverride),
 		work.prepared.patch,
@@ -223,12 +231,18 @@ func (s *Store) recordInstallationSettings(
 		return 0, 0, err
 	}
 	sourceKind := settingsCheckpointSourceKind
+	action := actionInstallationSettingsSaved
+	summary := fmt.Sprintf("Saved %d workspace settings", len(work.items))
+	if source := request.ConfigFileImport; source != nil {
+		action = "configuration_file.imported"
+		summary = fmt.Sprintf("Imported %d settings from %s at %s", len(work.items), source.Path, source.HeadSHA)
+	}
 	auditEventID, err := insertAudit(ctx, tx, auditInsert{
 		TargetID: request.TargetID, SettingsCheckpointID: &checkpointID,
 		ActorAccountID: request.ActorAccountID, ElevationID: request.ElevationID,
 		SourceKind: &sourceKind, SourceID: &checkpointID,
-		Action:    actionInstallationSettingsSaved,
-		Summary:   fmt.Sprintf("Saved %d workspace settings", len(work.items)),
+		Action:    action,
+		Summary:   summary,
 		CreatedAt: request.ChangedAt,
 	})
 	if err != nil {

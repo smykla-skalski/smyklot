@@ -83,9 +83,11 @@ type targetResponse struct {
 	InstallationID                      string                          `json:"installation_id"`
 	Type                                storage.TargetKind              `json:"type"`
 	Account                             accountResponse                 `json:"account"`
+	ConfigFileSyncEnabled               bool                            `json:"config_file_sync_enabled"`
 	RepositoryDefaultEnabled            bool                            `json:"repository_default_enabled"`
 	PendingCIModeDefault                storage.PendingCIMode           `json:"pending_ci_mode_default"`
 	PendingCIBranchPatternsDefault      storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_default"`
+	PendingCIBypassPolicyDefault        *storage.PendingCIBypassPolicy  `json:"pending_ci_bypass_policy_default"`
 	PendingCIQuietPeriodSecondsOverride *int64                          `json:"pending_ci_quiet_period_seconds_override"`
 	// What this workspace would use if it set nothing: the value the running
 	// service resolved, never null. A panel that only knew "nothing is set here"
@@ -170,16 +172,20 @@ type repositoryDetailResponse struct {
 	ConfigSources                        map[string]config.Source         `json:"config_sources"`
 	FormattingSources                    config.FormattingSources         `json:"formatting_sources"`
 	ConfigFilePatch                      config.Patch                     `json:"config_file_patch"`
+	ConfigFileObservation                repositoryFileObservation        `json:"config_file_observation"`
 	ConfigFileError                      *string                          `json:"config_file_error,omitempty"`
 	ConfigFilePath                       string                           `json:"config_file_path,omitempty"`
 	ConfigFileSuperseded                 []string                         `json:"config_file_superseded,omitempty"`
 	ConfigMigration                      storage.ConfigMigrationState     `json:"config_migration"`
 	ConfigMigrationPR                    *int                             `json:"config_migration_pr,omitempty"`
+	ConfigFileSyncEnabled                bool                             `json:"config_file_sync_enabled"`
 	IgnoreRepositoryFile                 bool                             `json:"ignore_repository_file"`
 	PendingCIModeOverride                *storage.PendingCIMode           `json:"pending_ci_mode_override"`
 	PendingCIModeInherited               storage.PendingCIMode            `json:"pending_ci_mode_inherited"`
 	PendingCIBranchPatternsOverride      *storage.PendingCIBranchPatterns `json:"pending_ci_branch_patterns_override"`
+	PendingCIBypassPolicyOverride        *storage.PendingCIBypassPolicy   `json:"pending_ci_bypass_policy_override"`
 	PendingCIBranchPatternsInherited     storage.PendingCIBranchPatterns  `json:"pending_ci_branch_patterns_inherited"`
+	PendingCIBypassPolicyInherited       *storage.PendingCIBypassPolicy   `json:"pending_ci_bypass_policy_inherited"`
 	PendingCIQuietPeriodSecondsOverride  *int64                           `json:"pending_ci_quiet_period_seconds_override"`
 	PendingCIQuietPeriodSecondsInherited int64                            `json:"pending_ci_quiet_period_seconds_inherited"`
 	PathIndexIntervalSecondsOverride     *int64                           `json:"path_index_interval_seconds_override"`
@@ -295,9 +301,11 @@ func targetDTO(
 		InstallationID:                      target.InstallationID,
 		Type:                                target.Kind,
 		Account:                             accountDTO(target.Account),
+		ConfigFileSyncEnabled:               target.ConfigFileSyncEnabled,
 		RepositoryDefaultEnabled:            target.RepositoryDefaultEnabled,
 		PendingCIModeDefault:                target.PendingCIModeDefault,
 		PendingCIBranchPatternsDefault:      target.PendingCIBranchPatternsDefault,
+		PendingCIBypassPolicyDefault:        target.PendingCIBypassPolicyDefault,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(target.PendingCIQuietPeriodOverride),
 		PendingCIQuietPeriodSecondsInherited: int64(
 			runtime.PendingCIQuietPeriod / time.Second,
@@ -398,16 +406,20 @@ func repositoryDetailDTO(
 		ConfigSources:                       resolved.Sources,
 		FormattingSources:                   resolved.Formatting,
 		ConfigFilePatch:                     repository.ConfigFilePatch,
+		ConfigFileObservation:               repositoryFileObservationDTO(repository),
 		ConfigFileError:                     repository.ConfigFileError,
 		ConfigFilePath:                      repository.ConfigFilePath,
 		ConfigFileSuperseded:                repository.ConfigFileSuperseded,
 		ConfigMigration:                     migrationState(repository.ConfigMigration),
 		ConfigMigrationPR:                   repository.ConfigMigrationPR,
+		ConfigFileSyncEnabled:               repository.ConfigFileSyncEnabled,
 		IgnoreRepositoryFile:                repository.IgnoreRepositoryFile,
 		PendingCIModeOverride:               repository.PendingCIModeOverride,
 		PendingCIModeInherited:              target.PendingCIModeDefault,
 		PendingCIBranchPatternsOverride:     repository.PendingCIBranchPatternsOverride,
+		PendingCIBypassPolicyOverride:       repository.PendingCIBypassPolicyOverride,
 		PendingCIBranchPatternsInherited:    target.PendingCIBranchPatternsDefault,
+		PendingCIBypassPolicyInherited:      target.PendingCIBypassPolicyDefault,
 		PendingCIQuietPeriodSecondsOverride: durationSecondsDTO(repository.PendingCIQuietPeriodOverride),
 		PendingCIQuietPeriodSecondsInherited: inheritedSecondsDTO(
 			target.PendingCIQuietPeriodOverride, runtime.PendingCIQuietPeriod,

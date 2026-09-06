@@ -1,3 +1,6 @@
+import { observedRepositoryFileStatus } from './repository-files.js';
+import { mockBypassActorSuggestions } from './bypass-actors.ts';
+import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -572,6 +575,9 @@ function recomputeTarget(target: MockTarget): void {
 }
 
 function recomputeRepository(target: MockTarget, repository: MockRepository): void {
+  repository.detail.pending_ci_bypass_policy_inherited = structuredClone(
+    target.value.pending_ci_bypass_policy_default ?? null,
+  );
   const detail = repository.detail;
   const inherited = resolveConfig(
     target.value.config_patch,
@@ -594,7 +600,7 @@ function recomputeRepository(target: MockTarget, repository: MockRepository): vo
   detail.repository.enabled_source =
     detail.repository.enabled_override === null ? 'target' : 'repository';
   detail.repository.config_override_count = Object.keys(detail.config_patch).length;
-  if (detail.ignore_repository_file) detail.repository.config_file_status = 'bypassed';
+  detail.repository.config_file_status = observedRepositoryFileStatus(detail);
 }
 
 /**
@@ -2067,6 +2073,19 @@ async function handle(
       return;
     }
 
+    if (
+      /^\/api\/v1\/(?:targets|root\/workspaces)\/[^/]+\/bypass-actors$/.test(path) &&
+      method === 'GET'
+    ) {
+      respond(res, 200, {
+        items: mockBypassActorSuggestions(
+          parsed.searchParams.get('type'),
+          parsed.searchParams.get('q') ?? '',
+        ),
+      });
+      return;
+    }
+
     const targetSettings = path.match(/^\/api\/v1\/targets\/(?<target>[^/]+)\/settings$/);
     const rootTargetSettings = path.match(
       /^\/api\/v1\/root\/workspaces\/(?<target>[^/]+)\/settings$/,
@@ -3236,13 +3255,35 @@ function prepareMockWorkspaceSettings(
   };
 }
 
+function mockConfigFileSyncEnabled(value: unknown, current: boolean | undefined): boolean {
+  if (value === undefined) return current ?? false;
+  if (typeof value !== 'boolean')
+    invalidMockSettingsBatch('Configuration file sync must be a boolean');
+  return value;
+}
+
+function mockBypassPolicy(value: unknown) {
+  const policy = parseBypassPolicy(value);
+  if (policy === undefined)
+    throw new MockApiError(400, 'invalid_request', 'Bypass policy is invalid');
+  return policy;
+}
+
 function prepareMockTargetSettings(
   target: MockTarget,
   input: WorkspaceTargetSettingsInput,
 ): MockPreparedChange<PanelTarget> {
   const current = mockWorkspaceTargetDocument(target.value);
   const proposed = {
+    config_file_sync_enabled: mockConfigFileSyncEnabled(
+      input.config_file_sync_enabled,
+      target.value.config_file_sync_enabled,
+    ),
     repository_default_enabled: input.repository_default_enabled,
+    pending_ci_bypass_policy_default:
+      input.pending_ci_bypass_policy_default === undefined
+        ? (target.value.pending_ci_bypass_policy_default ?? null)
+        : mockBypassPolicy(input.pending_ci_bypass_policy_default),
     pending_ci_mode_default: input.pending_ci_mode_default,
     pending_ci_branch_patterns_default: structuredClone(input.pending_ci_branch_patterns_default),
     pending_ci_quiet_period_seconds_override: input.pending_ci_quiet_period_seconds_override,
@@ -3276,23 +3317,33 @@ function prepareMockRepositorySettings(
   const stored = findRepository(target, input.repository_id);
   const proposed = {
     enabled_override: input.enabled_override,
+    pending_ci_bypass_policy_override:
+      input.pending_ci_bypass_policy_override === undefined
+        ? (stored.detail.pending_ci_bypass_policy_override ?? null)
+        : mockBypassPolicy(input.pending_ci_bypass_policy_override),
     pending_ci_mode_override: input.pending_ci_mode_override,
     pending_ci_branch_patterns_override: structuredClone(input.pending_ci_branch_patterns_override),
     pending_ci_quiet_period_seconds_override: input.pending_ci_quiet_period_seconds_override,
     path_index_interval_seconds_override: input.path_index_interval_seconds_override,
     config_patch: structuredClone(input.config_patch),
+    config_file_sync_enabled: mockConfigFileSyncEnabled(
+      input.config_file_sync_enabled,
+      stored.detail.config_file_sync_enabled,
+    ),
     ignore_repository_file: input.ignore_repository_file,
   };
   const next = structuredClone(stored.detail);
   const changed = !sameMockDocument(mockWorkspaceRepositoryDocument(stored.detail), proposed);
   if (changed) {
     next.repository.enabled_override = proposed.enabled_override;
+    next.pending_ci_bypass_policy_override = proposed.pending_ci_bypass_policy_override;
     next.pending_ci_mode_override = proposed.pending_ci_mode_override;
     next.pending_ci_branch_patterns_override = proposed.pending_ci_branch_patterns_override;
     next.pending_ci_quiet_period_seconds_override =
       proposed.pending_ci_quiet_period_seconds_override;
     next.path_index_interval_seconds_override = proposed.path_index_interval_seconds_override;
     next.config_patch = proposed.config_patch;
+    next.config_file_sync_enabled = proposed.config_file_sync_enabled;
     next.ignore_repository_file = proposed.ignore_repository_file;
     next.revision += 1;
     next.repository.updated_at = new Date().toISOString();
@@ -3634,7 +3685,11 @@ function mockWorkspaceSettingsAuditSummary(verb: 'Saved' | 'Restored', count: nu
 
 function mockWorkspaceTargetDocument(target: PanelTarget) {
   return {
+    config_file_sync_enabled: target.config_file_sync_enabled ?? false,
     repository_default_enabled: target.repository_default_enabled,
+    pending_ci_bypass_policy_default: structuredClone(
+      target.pending_ci_bypass_policy_default ?? null,
+    ),
     pending_ci_mode_default: target.pending_ci_mode_default,
     pending_ci_branch_patterns_default: target.pending_ci_branch_patterns_default,
     pending_ci_quiet_period_seconds_override: target.pending_ci_quiet_period_seconds_override,
@@ -3646,18 +3701,26 @@ function mockWorkspaceTargetDocument(target: PanelTarget) {
 function mockWorkspaceRepositoryDocument(detail: RepositoryDetail) {
   return {
     enabled_override: detail.repository.enabled_override,
+    pending_ci_bypass_policy_override: structuredClone(
+      detail.pending_ci_bypass_policy_override ?? null,
+    ),
     pending_ci_mode_override: detail.pending_ci_mode_override,
     pending_ci_branch_patterns_override: detail.pending_ci_branch_patterns_override,
     pending_ci_quiet_period_seconds_override: detail.pending_ci_quiet_period_seconds_override,
     path_index_interval_seconds_override: detail.path_index_interval_seconds_override,
     config_patch: detail.config_patch,
+    config_file_sync_enabled: detail.config_file_sync_enabled ?? false,
     ignore_repository_file: detail.ignore_repository_file,
   };
 }
 
 function mockWorkspaceTargetCheckpointDocument(target: PanelTarget): Record<string, unknown> {
   return {
+    ...(target.config_file_sync_enabled === true ? { config_file_sync_enabled: true } : {}),
     repository_default_enabled: target.repository_default_enabled,
+    pending_ci_bypass_policy_default: structuredClone(
+      target.pending_ci_bypass_policy_default ?? null,
+    ),
     pending_ci_mode_default: target.pending_ci_mode_default,
     pending_ci_branch_patterns_default: structuredClone(target.pending_ci_branch_patterns_default),
     pending_ci_quiet_period_override: mockWorkspaceCheckpointDuration(
@@ -3675,6 +3738,9 @@ function mockWorkspaceRepositoryCheckpointDocument(
 ): Record<string, unknown> {
   return {
     enabled_override: detail.repository.enabled_override,
+    pending_ci_bypass_policy_override: structuredClone(
+      detail.pending_ci_bypass_policy_override ?? null,
+    ),
     pending_ci_mode_override: detail.pending_ci_mode_override,
     pending_ci_branch_patterns_override: structuredClone(
       detail.pending_ci_branch_patterns_override,
@@ -3686,6 +3752,7 @@ function mockWorkspaceRepositoryCheckpointDocument(
       detail.path_index_interval_seconds_override,
     ),
     config_patch: structuredClone(detail.config_patch),
+    ...(detail.config_file_sync_enabled === true ? { config_file_sync_enabled: true } : {}),
     ignore_repository_file: detail.ignore_repository_file,
   };
 }
@@ -4089,7 +4156,15 @@ function appendMockWorkspaceRestoreInput(
   switch (selection.kind) {
     case 'target':
       batch.target = {
+        config_file_sync_enabled: mockCheckpointBoolean(
+          document.config_file_sync_enabled === undefined
+            ? false
+            : document.config_file_sync_enabled,
+        ),
         repository_default_enabled: mockCheckpointBoolean(document.repository_default_enabled),
+        pending_ci_bypass_policy_default: parseBypassPolicy(
+          document.pending_ci_bypass_policy_default ?? null,
+        ),
         pending_ci_mode_default: mockCheckpointPendingCIMode(document.pending_ci_mode_default),
         pending_ci_branch_patterns_default: mockCheckpointBranchPatterns(
           document.pending_ci_branch_patterns_default,
@@ -4111,6 +4186,9 @@ function appendMockWorkspaceRestoreInput(
       (batch.repositories ??= []).push({
         repository_id: selection.repository_id,
         enabled_override: mockCheckpointNullableBoolean(document.enabled_override),
+        pending_ci_bypass_policy_override: parseBypassPolicy(
+          document.pending_ci_bypass_policy_override ?? null,
+        ),
         pending_ci_mode_override: mockCheckpointNullablePendingCIMode(
           document.pending_ci_mode_override,
         ),
@@ -4124,6 +4202,11 @@ function appendMockWorkspaceRestoreInput(
           document.path_index_interval_override,
         ),
         config_patch: mockCheckpointConfigPatch(document.config_patch),
+        config_file_sync_enabled: mockCheckpointBoolean(
+          document.config_file_sync_enabled === undefined
+            ? false
+            : document.config_file_sync_enabled,
+        ),
         ignore_repository_file: mockCheckpointBoolean(document.ignore_repository_file),
         expected_revision: selection.expected_revision,
       });
