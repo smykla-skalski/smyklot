@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -45,6 +46,15 @@ type Connection struct {
 	ConflictPaths [][]string        `json:"conflict_paths,omitempty"`
 	Resolution    *ResolutionChoice `json:"resolution,omitempty"`
 	Proposal      *Proposal         `json:"proposal,omitempty"`
+	Inputs        *InputRevisions   `json:"inputs,omitempty"`
+}
+
+// InputRevisions identifies the saved settings read by the last check. It is
+// optional for existing connections, which need a new check before claiming
+// that their observation covers the current settings.
+type InputRevisions struct {
+	Owner int64                  `json:"owner"`
+	Sync  map[orgsync.Kind]int64 `json:"sync"`
 }
 
 func DecodeConnection(stored storage.ConfigFileState, scope config.PanelFileScope) (Connection, error) {
@@ -70,6 +80,7 @@ func DecodeConnection(stored storage.ConfigFileState, scope config.PanelFileScop
 }
 
 func (connection Connection) change(snapshot PanelSnapshot, stored storage.ConfigFileState, now time.Time) (storage.ConfigFileStateChange, error) {
+	connection.Inputs = &InputRevisions{Owner: snapshot.OwnerRevision(), Sync: snapshot.SyncRevisions()}
 	document, err := json.Marshal(connection)
 	if err != nil {
 		return storage.ConfigFileStateChange{}, err

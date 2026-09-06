@@ -71,6 +71,8 @@ func TestPanelRootRouteAuthorizationMatrix(t *testing.T) {
 		{http.MethodPost, "/panel/api/v1/root/workspaces/" + target + "/settings/checkpoints/1/restore"},
 		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories"},
 		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20"},
+		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/config-file"},
+		{http.MethodGet, "/panel/api/v1/root/workspaces/" + target + "/repositories/repository-20/config-file"},
 		{
 			http.MethodPost,
 			"/panel/api/v1/root/workspaces/" + target +
@@ -255,6 +257,8 @@ func regularRouteProbes(target string) []authorizationProbe {
 		{http.MethodDelete, target + "/invitations/" + invitation},
 		{http.MethodGet, target + "/repositories"},
 		{http.MethodGet, target + "/repositories/repository-30"},
+		{http.MethodGet, target + "/config-file"},
+		{http.MethodGet, target + "/repositories/repository-30/config-file"},
 		{http.MethodPost, target + "/repositories/repository-30/config-migration"},
 		{http.MethodGet, target + "/repositories/repository-30/sync/labels"},
 		{http.MethodGet, target + "/sync/paths"},

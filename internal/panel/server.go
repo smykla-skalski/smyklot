@@ -314,6 +314,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) registerWorkspaceSettingsRoutes(mux *http.ServeMux, base string) {
+	s.registerConfigFileRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/bypass-actors", s.getTargetBypassActors)
 	mux.HandleFunc("GET "+base+"/api/v1/root/workspaces/{target}/bypass-actors", s.getRootBypassActors)
 	mux.HandleFunc(
