@@ -71,6 +71,7 @@
     fleet = null,
     syncOverride = undefined,
     syncEnvelope = undefined,
+    revealSyncFile = null,
     syncReadProblem = null,
     now = 0,
     onChangeSync = () => {},
@@ -114,6 +115,7 @@
     /** Undefined until the read comes back. */
     syncOverride?: SyncOverride | undefined;
     syncEnvelope?: SyncOverrideEditorEnvelope | undefined;
+    revealSyncFile?: string | null;
     syncReadProblem?: string | null;
     /** The clock the pane's relative times are read against. */
     now?: number;
@@ -650,6 +652,7 @@ so a link points at the pane a colleague was asked to look at.
               stored={syncOverride}
               repositoryId={repository.id}
               envelope={syncEnvelope}
+              revealPath={revealSyncFile}
               {readOnly}
               {now}
               dirtyEnabled={controlDirty(`repositories.${repository.id}.sync.files.enabled`)}

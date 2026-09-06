@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { page as routePage } from '$app/state';
+  import { fileAdjustmentPath } from '../file-adjustment-link';
   import { untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { useDebounce, useInterval } from 'runed';
@@ -783,6 +785,7 @@ a workspace has is not a number worth blocking the first screenful on.
     fleet={syncStatusQuery.data ?? null}
     syncOverride={syncOverrideQuery.data}
     syncEnvelope={activeSyncEnvelope}
+    revealSyncFile={fileAdjustmentPath(routePage.url.hash)}
     {syncReadProblem}
     {now}
     onChangeSync={(next, control) => stageSyncEnvelope(repository.id, next, control)}

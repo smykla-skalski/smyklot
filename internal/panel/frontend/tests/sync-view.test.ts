@@ -265,7 +265,7 @@ describe('SyncView [Component]', () => {
 
     await screen.findByRole('heading', { name: 'renovate.json' });
     await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
-    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustment' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustments' }));
     const remove = await screen.findByRole('button', { name: 'Stop changing timezone' });
     await waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false));
     await fireEvent.click(remove);

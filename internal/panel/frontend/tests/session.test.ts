@@ -288,6 +288,28 @@ describe('PanelSession [Unit]', () => {
     );
   });
 
+  it.each([null, '.config/quality.yaml'])('opens the shared file list from file %s', (file) => {
+    const session = createSession();
+    session.targets = [{ id: 'target-1', account: { login: 'acme' } } as PanelTarget];
+    session.selectedId = 'target-1';
+    routePage.url = at(`/workspace/acme/sync/files${file === null ? '' : `/${file}`}`);
+    routePage.params =
+      file === null ? { account: 'acme', section: 'files' } : { account: 'acme', file };
+    routePage.route = {
+      id:
+        file === null
+          ? '/workspace/[account]/sync/[section=syncSection]'
+          : '/workspace/[account]/sync/files/[...file=syncFilePath]',
+    };
+    session.syncRouteContext();
+    session.selectSyncSection('files');
+    if (file === null) expect(navigation.goto).not.toHaveBeenCalled();
+    else
+      expect(navigation.goto).toHaveBeenCalledWith(`${basePath}/workspace/acme/sync/files`, {
+        replace: false,
+      });
+  });
+
   it('refreshes every repository-count aggregate after a remote repository change', () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();

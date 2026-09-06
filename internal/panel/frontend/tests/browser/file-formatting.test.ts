@@ -142,7 +142,7 @@ describe('configured file formatting in the development panel', () => {
       expect(await inspector.getByRole('alert').count()).toBe(1);
       expect(await inspector.getByText('Preparing final output…').count()).toBe(0);
       await inspector
-        .getByRole('radio', { name: 'Content adjustment', exact: true })
+        .getByRole('radio', { name: 'Content adjustments', exact: true })
         .locator('xpath=ancestor::label[1]')
         .click();
       const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
@@ -682,7 +682,7 @@ describe('configured file formatting in the development panel', () => {
           }
           await inspector.getByRole('button', { name: 'Back to content' }).click();
           expect(await toolbar.getByText('Read only', { exact: true }).count()).toBe(0);
-          expect(await toolbar.getByText('Content adjustment', { exact: true }).count()).toBe(1);
+          expect(await toolbar.getByText('Content adjustments', { exact: true }).count()).toBe(1);
           expect(await editor.evaluate((node, previous) => node === previous, mounted)).toBe(true);
           expect(await editor.innerText()).toBe(edited);
           expect(await inspector.locator('.code:visible').count()).toBe(0);
@@ -862,7 +862,7 @@ describe('configured file formatting in the development panel', () => {
       const repository = page.getByRole('dialog', { name: 'smyklot', exact: true });
       expect(
         await repository
-          .getByRole('radio', { name: 'Content adjustment', exact: true })
+          .getByRole('radio', { name: 'Content adjustments', exact: true })
           .isChecked(),
       ).toBe(true);
       expect(
@@ -882,7 +882,7 @@ describe('configured file formatting in the development panel', () => {
         .click();
       expect(await repository.locator('.code-editor:visible').count()).toBe(0);
       await repository
-        .getByRole('radio', { name: 'Content adjustment', exact: true })
+        .getByRole('radio', { name: 'Content adjustments', exact: true })
         .locator('xpath=ancestor::label[1]')
         .click();
       await repository.getByRole('button', { name: 'Undo', exact: true }).click();
@@ -1216,7 +1216,7 @@ describe('configured file formatting in the development panel', () => {
           const dialog = page.getByRole('dialog', { name: 'smyklot', exact: true });
           expect(
             await dialog
-              .getByRole('radio', { name: 'Content adjustment', exact: true })
+              .getByRole('radio', { name: 'Content adjustments', exact: true })
               .isChecked(),
           ).toBe(true);
           await dialog.evaluate(async (node) => {

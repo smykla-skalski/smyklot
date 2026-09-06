@@ -29,6 +29,9 @@ import type {
   SyncOverride,
 } from '../src/lib/types';
 
+const navigation = vi.hoisted(() => ({ goto: vi.fn() }));
+vi.mock('$app/navigation', () => navigation);
+
 const POLICY = defaultFormattingPolicy();
 
 function repositoryPolicy(repository: string, repositoryId: string) {
@@ -127,11 +130,188 @@ function deferred<T>(): {
 
 describe('SyncFilePage [Component]', () => {
   beforeEach(() => {
+    navigation.goto.mockReset();
     vi.stubGlobal('ResizeObserver', TestResizeObserver);
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it.each([
+    ['config.yaml', 'enabled: true\n', { overrides: { enabled: false } }],
+    ['config.toml', 'enabled = true\n', { overrides: { enabled: false } }],
+    ['config.jsonc', '{/* shared */"enabled":true}\n', { overrides: { enabled: false } }],
+    [
+      'CONTRIBUTING.md',
+      '# Contributing\n',
+      { sections: [{ action: 'append', content: 'Local notes' }] },
+    ],
+  ])('offers the established adjustment editor for %s', async (path, content, adjustment) => {
+    const merge = { path, ...adjustment };
+    const stored: SyncOverride = {
+      kind: 'files',
+      enabled: null,
+      document: { merges: [merge] },
+      revision: 1,
+      unreadable: false,
+    };
+    const config = configWithTemplate();
+    config.document = { files: [{ path, content }] };
+    const onChangeOverride = vi.fn(() => true);
+    render(SyncFilePage, {
+      props: renderProps({
+        config,
+        path,
+        repositoryHref: (name) => `/workspace/org/repositories/${encodeURIComponent(name)}`,
+        context: {
+          repositories: 1,
+          covered: 1,
+          known_paths: [],
+          repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+          merges: [{ repository: 'repo-a', repository_id: 'repo-1', path, merge }],
+        },
+        fetchOverride: async () => ({ stored, envelope: buildSyncOverrideEditorEnvelope(stored) }),
+        onChangeOverride,
+      }),
+    });
+    if (path.endsWith('.md')) expect(screen.getByText('1 section change')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: /Open output for repo-a/ }));
+    const link = await screen.findByRole('link', { name: 'Edit adjustments' });
+    expect(link.getAttribute('href')).toBe(
+      `/workspace/org/repositories/repo-a#file-sync=${encodeURIComponent(path)}`,
+    );
+    expect(onChangeOverride).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    'hands off a file with no adjustment without creating a draft (read only %s)',
+    async (readOnly) => {
+      const stored: SyncOverride = {
+        kind: 'files',
+        enabled: null,
+        document: {},
+        revision: 0,
+        unreadable: false,
+      };
+      const onChangeOverride = vi.fn(() => true);
+      render(SyncFilePage, {
+        props: renderProps({
+          readOnly,
+          repositoryHref: () => '/workspace/org/repositories/repo-a',
+          context: {
+            repositories: 1,
+            covered: 1,
+            known_paths: [],
+            repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+            merges: [],
+          },
+          fetchOverride: async () => ({
+            stored,
+            envelope: buildSyncOverrideEditorEnvelope(stored),
+          }),
+          onChangeOverride,
+        }),
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /Open output for repo-a/ }));
+      expect(
+        await screen.findByRole('link', {
+          name: readOnly ? 'Inspect adjustments' : 'Edit adjustments',
+        }),
+      ).toBeTruthy();
+      expect(onChangeOverride).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['complete', 'close', 'unmount', 'invalid', 'modified click'] as const)(
+    'settles a pending handoff safely when it must %s',
+    async (outcome) => {
+      const pending = deferred<SyncFileRenderResponse>();
+      const stored: SyncOverride = {
+        kind: 'files',
+        enabled: null,
+        document: {},
+        revision: 0,
+        unreadable: false,
+      };
+      const onFormattingValidity = vi.fn();
+      const renderer = vi.fn(() => pending.promise);
+      const mounted = render(SyncFilePage, {
+        props: renderProps({
+          dirtyDocument: true,
+          savedDocument: { files: [{ path: 'renovate.json', content: '{"before":true}' }] },
+          repositoryHref: () => '/workspace/org/repositories/repo-a',
+          context: {
+            repositories: 1,
+            covered: 1,
+            known_paths: [],
+            repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+            merges: [],
+          },
+          fetchOverride: async () => ({
+            stored,
+            envelope: buildSyncOverrideEditorEnvelope(stored),
+          }),
+          renderFile: renderer,
+          onFormattingValidity,
+        }),
+      });
+      await fireEvent.click(screen.getByRole('button', { name: /Open output for repo-a/ }));
+      if (outcome === 'modified click') {
+        let intercepted = true;
+        window.addEventListener(
+          'click',
+          (event) => {
+            intercepted = event.defaultPrevented;
+            event.preventDefault(); // Stop jsdom's unimplemented tab navigation after the app sees it.
+          },
+          { once: true },
+        );
+        await fireEvent.click(await screen.findByRole('link', { name: 'Edit adjustments' }), {
+          metaKey: true,
+        });
+        expect(intercepted).toBe(false);
+        expect(navigation.goto).not.toHaveBeenCalled();
+        expect(screen.queryByRole('button', { name: 'Opening editor…' })).toBeNull();
+        pending.resolve(
+          validRender({ path: 'renovate.json', draft_content: '{}', template_formatting: {} }),
+        );
+        return;
+      }
+      await fireEvent.click(await screen.findByRole('link', { name: 'Edit adjustments' }));
+      expect(
+        (screen.getByRole('button', { name: 'Opening editor…' }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      expect(navigation.goto).not.toHaveBeenCalled();
+      if (outcome === 'close') await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+      if (outcome === 'unmount') mounted.unmount();
+      pending.resolve(
+        outcome === 'invalid'
+          ? {
+              valid: false,
+              final_content: '',
+              matches_formatting: false,
+              diagnostics: [
+                { stage: 'format', code: 'unsafe_format', message: 'Formatting is unsafe' },
+              ],
+            }
+          : validRender({ path: 'renovate.json', draft_content: '{}', template_formatting: {} }),
+      );
+      await tick();
+      await Promise.resolve();
+      if (outcome === 'complete' || outcome === 'invalid') {
+        await vi.waitFor(() =>
+          expect(navigation.goto).toHaveBeenCalledWith(
+            expect.stringContaining('/workspace/org/repositories/repo-a#file-sync=renovate.json'),
+          ),
+        );
+        expect(onFormattingValidity).toHaveBeenCalledWith(
+          'sync.files.template-render::renovate.json',
+          outcome !== 'invalid',
+          outcome === 'invalid' ? 'Formatting is unsafe' : expect.any(String),
+        );
+      } else expect(navigation.goto).not.toHaveBeenCalled();
+    },
+  );
 
   it.each(['{"id":2,"id":3}', '{"nested":{"id":2,"id":3}}', '{"id":2,"\\u0069d":3}'])(
     'keeps an invalid raw draft blocked when handed from repository to shared editor: %s',
@@ -558,7 +738,7 @@ describe('SyncFilePage [Component]', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
-    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustment' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Content adjustments' }));
     const remove = await screen.findByRole('button', { name: 'Stop changing timezone' });
     await vi.waitFor(() => expect((remove as HTMLButtonElement).disabled).toBe(false));
     await fireEvent.click(remove);

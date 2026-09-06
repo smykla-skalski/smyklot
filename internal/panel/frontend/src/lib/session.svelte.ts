@@ -511,7 +511,8 @@ export class PanelSession {
     if (
       this.currentView === 'sync' &&
       this.currentSyncSection === section &&
-      this.currentSyncRuleset === null
+      this.currentSyncRuleset === null &&
+      this.currentSyncFile === null
     ) {
       return;
     }

@@ -4,6 +4,7 @@ import {
   observedRepositoryFileStatus,
   type RepositoryFileFixture,
 } from './repository-files.js';
+import { NATIVE_FILE_VARIANTS } from './native-files.js';
 /**
  * The panel's fixture data, and the only copy of it.
  *
@@ -618,6 +619,7 @@ export function seed(
                   },
                 ],
               },
+              ...NATIVE_FILE_VARIANTS.map(({ merge }) => merge),
             ],
             formats: [
               {
@@ -968,7 +970,7 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
     updated_by: 'bart',
     updated_at: iso(-20 * 60_000),
     digest: 'sha256:files',
-    /* The design's five templates, content for content - the file pages are
+    /* The shared templates, including runnable native-format examples - the file pages are
        compared against the mock screen by screen. Freshness belongs to the
        strict configuration envelope, not inside the file document. */
     document: {
@@ -1016,6 +1018,10 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
             '',
             '- Conventional commits: `feat:`, `fix:`, `docs:`',
             '- Sign-off and GPG sign: `-sS`',
+            '',
+            '### Making Changes',
+            '',
+            'Run make check before opening a pull request',
           ].join('\n'),
         },
         {
@@ -1026,6 +1032,7 @@ export function syncFilesSeed(iso: (offsetMs: number) => string): SyncConfig {
           path: 'LICENSE',
           content: 'Apache License 2.0\n',
         },
+        ...NATIVE_FILE_VARIANTS.map(({ file }) => file),
       ],
       retired: ['.github/stale.yml'],
       excludes: ['LICENSE-*'],

@@ -16,6 +16,7 @@ import {
   type SyncOverrideEditorEnvelope,
 } from '../src/lib/repository-sync-override-settings';
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
+import { chooseOption } from './support/select';
 import type { SyncOverride } from '../src/lib/types';
 
 function codeView(label: string, index = 0): EditorView | null {
@@ -108,6 +109,39 @@ describe('RepositorySyncPane [Component]', () => {
     await fireEvent.input(input, { target: { value } });
     await fireEvent.keyDown(input, { key: 'Enter' });
   }
+
+  it('offers a prefilled adjustment after navigation without changing the draft first', async () => {
+    const { sent, onChange } = saved();
+    render(RepositorySyncPane, {
+      ...base,
+      stored: override({ document: {} }),
+      revealPath: 'config.toml',
+      onChange,
+    });
+    expect(sent).toHaveLength(0);
+    await fireEvent.click(screen.getByRole('button', { name: 'Add adjustment' }));
+    expect((screen.getByRole('textbox', { name: 'File' }) as HTMLInputElement).value).toBe(
+      'config.toml',
+    );
+    await writeCode('Content adjustments', '{"enabled":true}');
+    expect(sent[0].document.merges).toEqual([
+      { path: 'config.toml', overrides: { enabled: true } },
+    ]);
+  });
+
+  it('lets a read-only visitor inspect an unadjusted file without offering creation', () => {
+    const { sent, onChange } = saved();
+    render(RepositorySyncPane, {
+      ...base,
+      readOnly: true,
+      stored: override({ document: {} }),
+      revealPath: 'config.toml',
+      onChange,
+    });
+    expect(screen.getByRole('group', { name: 'Adjustment for config.toml' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add adjustment' })).toBeNull();
+    expect(sent).toHaveLength(0);
+  });
 
   it.each(['1e400', '-1e400', '1e-400', '-0'])(
     'stages and reopens exact file content containing %s',
@@ -497,7 +531,7 @@ describe('RepositorySyncPane [Component]', () => {
     });
     const remaining = codeView('What this repository writes', 1);
     await writeCode('What this repository writes', 'Changed second section', 1);
-    await fireEvent.click(screen.getAllByRole('button', { name: 'Remove' })[0]);
+    await fireEvent.click(screen.getByRole('button', { name: /Remove section adjustment 1/ }));
     expect(codeView('What this repository writes')).toBe(remaining);
     await fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
     await tick();
@@ -693,6 +727,48 @@ describe('RepositorySyncPane [Component]', () => {
       ]);
     });
 
+    it('leaves occurrence unspecified until a repeated heading is selected', async () => {
+      const { sent, onChange } = saved();
+      render(RepositorySyncPane, {
+        ...base,
+        stored: override({
+          document: {
+            merges: [
+              {
+                path: 'CONTRIBUTING.md',
+                sections: [{ action: 'after', heading: '## Checks', content: 'Run the checks' }],
+              },
+            ],
+          },
+        }),
+        onChange,
+      });
+      const occurrence = screen.getByRole('spinbutton', { name: 'Occurrence' });
+      expect((occurrence as HTMLInputElement).value).toBe('');
+      expect(occurrence.getAttribute('placeholder')).toBe('Unique');
+      expect(
+        document.getElementById(occurrence.getAttribute('aria-describedby')!)?.textContent,
+      ).toBe('Leave blank when the heading appears once; otherwise enter its number');
+      await fireEvent.input(occurrence, { target: { value: '2' } });
+      await rest();
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'CONTRIBUTING.md',
+          sections: [
+            { action: 'after', heading: '## Checks', content: 'Run the checks', occurrence: 2 },
+          ],
+        },
+      ]);
+      await fireEvent.input(occurrence, { target: { value: '' } });
+      await rest();
+      expect(sent[0].document.merges).toEqual([
+        {
+          path: 'CONTRIBUTING.md',
+          sections: [{ action: 'after', heading: '## Checks', content: 'Run the checks' }],
+        },
+      ]);
+    });
+
     /*
      * Appending addresses the document rather than a heading, and the engine
      * refuses one carrying a heading rather than ignoring it.
@@ -714,7 +790,10 @@ describe('RepositorySyncPane [Component]', () => {
         onChange,
       });
 
-      await fireEvent.click(screen.getByRole('radio', { name: 'Append to document' }));
+      await chooseOption(
+        screen.getByRole('combobox', { name: /Action for section 1/ }),
+        'Append to document',
+      );
       await rest();
 
       expect(sent[0].document.merges).toEqual([

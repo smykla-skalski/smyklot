@@ -1,6 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { fileFormat } from '#lib/file-format.js';
+  import { revealFileAdjustment } from '../file-adjustment-link';
+  import {
+    cloneSettingsJson,
+    sameSettingsJson,
+    type SettingsJson,
+  } from '../settings-draft-storage';
   import { patchedAt, storedList, withoutAt } from '#lib/form-lists.js';
   import { formatRelative } from '#lib/format.js';
   import { parseJson } from '#lib/merge.js';
@@ -20,13 +26,17 @@
   import Modal from './Modal.svelte';
   import PatternEntries from './PatternEntries.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
+  import Select from './Select.svelte';
   import StructuredMergeRules from './StructuredMergeRules.svelte';
   import Switch from './Switch.svelte';
+
+  const occurrenceHelpId = $props.id();
 
   const {
     stored,
     repositoryId,
     envelope = undefined,
+    revealPath = null,
     readOnly,
     now,
     dirtyEnabled = false,
@@ -36,6 +46,7 @@
     stored: SyncOverride;
     repositoryId: string;
     envelope?: SyncOverrideEditorEnvelope | undefined;
+    revealPath?: string | null;
     readOnly: boolean;
     /**
      * The list's clock, so a refusal can say how long ago it was found. Passed
@@ -63,11 +74,11 @@
 
   /** What one section does. Which fields it needs follows from it. */
   const SECTION_ACTIONS = [
-    { value: 'after', label: 'After' },
-    { value: 'before', label: 'Before' },
-    { value: 'replace', label: 'Replace' },
-    { value: 'delete', label: 'Delete' },
-    { value: 'patch', label: 'Patch' },
+    { value: 'after', label: 'After section' },
+    { value: 'before', label: 'Before section' },
+    { value: 'replace', label: 'Replace section' },
+    { value: 'delete', label: 'Delete section' },
+    { value: 'patch', label: 'Replace text in section' },
     { value: 'append', label: 'Append to document' },
     { value: 'prepend', label: 'Prepend to document' },
   ] as const;
@@ -121,15 +132,15 @@
       : (envelope ?? buildSyncOverrideEditorEnvelope(stored)),
   );
   let drafts = $state<Draft[]>(untrack(() => editorDrafts(controlledEnvelope)));
-  let lastDraftSignature = untrack(() => draftSignature(controlledEnvelope));
+  let lastDraftSnapshot = untrack(() => draftSnapshot(controlledEnvelope));
   // Registry echoes preserve the editors and their local undo history. An external
   // restore starts fresh editors, so a discarded document cannot return through Undo.
   $effect(() => {
     const source = controlledEnvelope;
-    const signature = draftSignature(source);
+    const snapshot = draftSnapshot(source);
     untrack(() => {
-      if (signature === lastDraftSignature) return;
-      lastDraftSignature = signature;
+      if (sameSettingsJson(snapshot, lastDraftSnapshot)) return;
+      lastDraftSnapshot = snapshot;
       drafts = editorDrafts(source);
     });
   });
@@ -137,6 +148,25 @@
   let wanted = $derived<boolean | null>(controlledEnvelope.enabled);
 
   const disabled = $derived(readOnly || stored.unreadable);
+  let locatedRequest = $state<string | null>(null);
+  const revealRequest = $derived(JSON.stringify([repositoryId, revealPath]));
+  const unadjustedPath = $derived(
+    !stored.unreadable &&
+      revealPath !== null &&
+      locatedRequest !== revealRequest &&
+      !drafts.some((draft) => draft.merge.path === revealPath)
+      ? revealPath
+      : null,
+  );
+  function revealExistingAdjustment(node: HTMLElement): (() => void) | undefined {
+    return untrack(() => {
+      // A handoff reveals once. Renaming this draft away and back must leave
+      // focus in its input rather than replaying the original navigation.
+      if (locatedRequest === revealRequest) return;
+      locatedRequest = revealRequest;
+      return revealFileAdjustment(node);
+    });
+  }
   let rulesDraftId = $state<number | null>(null);
   let rulesTrigger = $state<HTMLElement | null>(null);
   const rulesIndex = $derived(
@@ -482,8 +512,8 @@
     }));
   }
 
-  function draftSignature(from: SyncOverrideEditorEnvelope): string {
-    return JSON.stringify([repositoryId, from.document.merges ?? [], from.override_texts]);
+  function draftSnapshot(from: SyncOverrideEditorEnvelope): SettingsJson {
+    return cloneSettingsJson([repositoryId, from.document.merges ?? [], from.override_texts]);
   }
 
   function controlId(which: 'enabled' | 'document'): SyncOverrideControlId {
@@ -504,7 +534,7 @@
 
   function publish(control: 'enabled' | 'document'): void {
     const next = currentEnvelope();
-    lastDraftSignature = draftSignature(next);
+    lastDraftSnapshot = draftSnapshot(next);
     onChange(next, controlId(control));
   }
 
@@ -520,8 +550,9 @@
     stageDocument();
   }
 
-  function add(): void {
-    drafts = [...drafts, { id: ++nextIdentity, sectionIds: [], merge: { path: '' }, text: '' }];
+  function add(path = ''): void {
+    if (disabled) return;
+    drafts = [...drafts, { id: ++nextIdentity, sectionIds: [], merge: { path }, text: '' }];
     stageDocument();
   }
 
@@ -672,11 +703,31 @@ customization it described.
   <div class="card-head">
     <h2 class="card-title">File sync</h2>
     {#if !readOnly}
-      <Button tone="quiet" {disabled} onclick={add}
+      <Button tone="quiet" {disabled} onclick={() => add()}
         >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Adjust a file</Button
       >
     {/if}
   </div>
+
+  {#if unadjustedPath !== null}
+    <div
+      class="policy-row file-adjustment-target"
+      tabindex="-1"
+      role="group"
+      aria-label="Adjustment for {unadjustedPath}"
+      {@attach revealFileAdjustment}
+    >
+      <span class="setting-say">
+        <span class="setting-name">{unadjustedPath}</span>
+        <span class="setting-why">Uses the shared template without content adjustments</span>
+      </span>
+      {#if !readOnly}
+        <span class="policy-value"
+          ><Button {disabled} onclick={() => add(unadjustedPath!)}>Add adjustment</Button></span
+        >
+      {/if}
+    </div>
+  {/if}
 
   <!-- What the planner made of this repository, which is the question somebody
        opening this pane came to ask. A refusal is fail-closed and correct, and
@@ -761,10 +812,16 @@ customization it described.
     <p class="form-note">No content adjustments for this repository</p>
   {/if}
 
+  <span id={occurrenceHelpId} class="visually-hidden"
+    >Leave blank when the heading appears once; otherwise enter its number</span
+  >
   {#each drafts as draft, index (draft.id)}
     <article
       class={['sync-merge', { 'is-unsaved': dirtyDocument }]}
       data-unsaved={dirtyDocument || undefined}
+      tabindex="-1"
+      aria-label="Adjustment for {draft.merge.path || 'unnamed file'}"
+      {@attach revealPath === draft.merge.path ? revealExistingAdjustment : undefined}
     >
       <div class="sync-pane-row file-heading">
         <label class="sync-merge-path">
@@ -823,28 +880,32 @@ customization it described.
              follows the engine's own reading of the strategy and the extension. -->
         {#each draft.merge.sections ?? [] as section, at (draft.sectionIds[at])}
           <div class="sync-merge-section">
-            <div class="sync-pane-row">
-              <SegmentedControl
-                name="repository-sync-section-{index}-{at}"
-                label="What section {at + 1} of {draft.merge.path || 'this file'} does"
-                compact
-                options={SECTION_ACTIONS}
-                value={section.action}
-                {disabled}
-                onSelect={(selection) => setAction(index, at, selection)}
-              />
-
-              {#if !readOnly}
-                <Button tone="quiet" {disabled} onclick={() => removeSection(index, at)}
-                  >Remove</Button
-                >
-              {/if}
+            <div class="sync-pane-row section-action-row">
+              <span class="setting-name">Section action</span>
+              <div class="file-actions">
+                <Select
+                  aria-label="Action for section {at + 1} of {draft.merge.path || 'this file'}"
+                  options={SECTION_ACTIONS}
+                  value={section.action}
+                  {disabled}
+                  onValueChange={(selection) => setAction(index, at, selection)}
+                />
+                {#if !readOnly}
+                  <IconButton
+                    toolbar
+                    icon="trash"
+                    label="Remove section adjustment {at + 1} for {draft.merge.path || 'this file'}"
+                    {disabled}
+                    onclick={() => removeSection(index, at)}
+                  />
+                {/if}
+              </div>
             </div>
 
             {#if shapeOf(section.action).heading}
               <div class="sync-pane-row">
-                <label class="sync-merge-heading">
-                  <span class="setting-name">Heading</span>
+                <label class="form-field sync-merge-heading">
+                  <span class="form-label">Heading</span>
                   <input
                     class="text-input"
                     type="text"
@@ -856,11 +917,13 @@ customization it described.
                   />
                 </label>
 
-                <label class="entry-field sync-merge-occurrence">
-                  <span class="setting-name">Heading number</span>
+                <label class="form-field sync-merge-occurrence">
+                  <span class="form-label">Occurrence</span>
                   <input
                     class="text-input"
                     type="number"
+                    placeholder="Unique"
+                    aria-describedby={occurrenceHelpId}
                     min="1"
                     value={section.occurrence ?? ''}
                     {disabled}
@@ -884,9 +947,9 @@ customization it described.
 
             {#if shapeOf(section.action).patches}
               {#each section.patches ?? [] as substitution, which (`${draft.sectionIds[at]}-patch-${which}`)}
-                <div class="sync-pane-row">
-                  <label class="sync-merge-find">
-                    <span class="setting-name">Find</span>
+                <div class="replacement-row">
+                  <label class="form-field sync-merge-find">
+                    <span class="form-label">Find</span>
                     <input
                       class="text-input"
                       type="text"
@@ -898,36 +961,41 @@ customization it described.
                     />
                   </label>
 
-                  <label class="sync-merge-find">
-                    <span class="setting-name">Replace with</span>
-                    <input
-                      class="text-input"
-                      type="text"
-                      value={substitution.replace}
-                      {disabled}
-                      placeholder="mise run check"
-                      oninput={(event) =>
-                        patchSubstitution(index, at, which, { replace: event.currentTarget.value })}
-                    />
-                  </label>
+                  <div class="replacement-value">
+                    <label class="form-field sync-merge-find">
+                      <span class="form-label">Replace with</span>
+                      <input
+                        class="text-input"
+                        type="text"
+                        value={substitution.replace}
+                        {disabled}
+                        placeholder="mise run check"
+                        oninput={(event) =>
+                          patchSubstitution(index, at, which, {
+                            replace: event.currentTarget.value,
+                          })}
+                      />
+                    </label>
 
-                  {#if !readOnly}
-                    <Button
-                      tone="quiet"
-                      {disabled}
-                      onclick={() => removeSubstitution(index, at, which)}>Remove</Button
-                    >
-                  {/if}
+                    {#if !readOnly}
+                      <IconButton
+                        toolbar
+                        icon="trash"
+                        label="Remove replacement {which + 1} from section {at + 1} for {draft.merge
+                          .path || 'this file'}"
+                        {disabled}
+                        onclick={() => removeSubstitution(index, at, which)}
+                      />
+                    {/if}
+                  </div>
                 </div>
               {/each}
 
               {#if !readOnly}
-                <div class="policy-row">
-                  <span class="setting-say"><span class="setting-name">Replacements</span></span>
-                  <span class="policy-value"
-                    ><Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
-                      >Add a replacement</Button
-                    ></span
+                <div class="form-row">
+                  <span class="setting-name">Replacements</span>
+                  <Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
+                    >Add a replacement</Button
                   >
                 </div>
               {/if}
@@ -936,12 +1004,9 @@ customization it described.
         {/each}
 
         {#if !readOnly}
-          <div class="policy-row">
-            <span class="setting-say"><span class="setting-name">Sections</span></span>
-            <span class="policy-value"
-              ><Button tone="quiet" {disabled} onclick={() => addSection(index)}
-                >Edit a section</Button
-              ></span
+          <div class="form-row">
+            <span class="setting-name">Sections</span>
+            <Button tone="quiet" {disabled} onclick={() => addSection(index)}>Edit a section</Button
             >
           </div>
         {/if}
@@ -1000,6 +1065,10 @@ customization it described.
 {/if}
 
 <style>
+  .sync-merge,
+  .file-adjustment-target {
+    scroll-margin-block-start: var(--space-4);
+  }
   .sync-pane-standdown {
     display: grid;
     gap: var(--row-copy-gap);
@@ -1008,18 +1077,15 @@ customization it described.
     color: var(--text-muted);
   }
   .sync-merge {
+    container: file-adjustment / inline-size;
     display: grid;
     gap: var(--space-4);
     min-inline-size: 0;
     padding-block: var(--space-4);
   }
-  /* The card owns the outer inset. A terminal editor must shed both its
-     inter-editor padding and the final row's internal half-band. */
+  /* The card owns the outer inset, so the terminal editor sheds its separator padding. */
   .sync-merge:last-child {
     padding-block-end: 0;
-  }
-  .sync-merge:last-child > .policy-row {
-    margin-block-end: calc((var(--row-pad-default) + var(--row-hairline)) * -1);
   }
   .sync-merge + .sync-merge {
     border-top: 1px solid transparent;
@@ -1050,6 +1116,21 @@ customization it described.
     align-items: center;
     justify-content: space-between;
   }
+  .section-action-row {
+    align-items: center;
+    justify-content: space-between;
+  }
+  .replacement-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+  }
+  .replacement-value {
+    align-items: end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-3);
+  }
   .sync-merge-path,
   .sync-merge-heading,
   .sync-merge-find {
@@ -1077,8 +1158,13 @@ customization it described.
     }
   }
   .sync-merge-occurrence {
+    grid-template-columns: minmax(0, 1fr);
     inline-size: 6rem;
     margin: 0;
+  }
+  .sync-merge-occurrence .text-input {
+    inline-size: 100%;
+    min-inline-size: 0;
   }
   .sync-merge-section {
     display: grid;
@@ -1087,6 +1173,15 @@ customization it described.
   .sync-merge-section + .sync-merge-section {
     border-top: 1px solid var(--border-subtle);
     padding-block-start: var(--space-4);
+  }
+  @container file-adjustment (max-width: 25rem) {
+    .section-action-row {
+      align-items: start;
+      flex-direction: column;
+    }
+    .replacement-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
   @media (max-width: 30rem) {
     .sync-merge-heading,

@@ -63,8 +63,11 @@ where it arises.
 
 <script lang="ts">
   import { onDestroy, untrack } from 'svelte';
+  import { goto } from '$app/navigation';
 
   import { unifiedDiff } from '../code-tokens';
+  import { fileFormat } from '../file-format';
+  import { fileAdjustmentHref } from '../file-adjustment-link';
   import { arrayRulePath, mergeSummary, type ArrayRule, type FileMergeSpec } from '../filemerge';
   import {
     composeMergedText,
@@ -130,6 +133,7 @@ where it arises.
     renderFile,
     onFormattingValidity,
     onChangeOverride,
+    repositoryHref = null,
   }: {
     config: SyncConfig | null;
     savedDocument?: Record<string, unknown>;
@@ -156,6 +160,7 @@ where it arises.
       next: SyncOverrideEditorEnvelope,
       controlId: SyncOverrideControlId,
     ) => boolean;
+    repositoryHref?: ((repository: string) => string) | null;
   } = $props();
 
   const stored = $derived(config?.document ?? {});
@@ -253,6 +258,7 @@ where it arises.
     generation: number,
     validationControl: string,
   ): Promise<void> {
+    if (generation !== renderGeneration) return;
     templateRendering = true;
     try {
       const rendered = await renderFile(input);
@@ -400,6 +406,9 @@ where it arises.
   let repositoryTab = $state('content');
   let repositoryPreviousTab = $state('content');
   let repositoryTrigger = $state<HTMLElement | null>(null);
+  let handoffBusy = $state(false);
+  let handoffGeneration = 0;
+  let mounted = true;
   const matchingRepositories = $derived(
     repositoryRows
       .filter((entry) =>
@@ -418,7 +427,55 @@ where it arises.
       : matchingRepositories.slice(0, 8),
   );
   function closeRepository(): void {
+    handoffGeneration += 1;
+    handoffBusy = false;
     if (openEntry !== null) void toggleRow(openEntry);
+  }
+
+  async function followAdjustment(event: MouseEvent): Promise<void> {
+    // Modified clicks keep ordinary link behavior, including opening a new tab.
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    const href = (event.currentTarget as HTMLAnchorElement).href;
+    event.preventDefault();
+    if (handoffBusy || openEntry === null) return;
+    const request = ++handoffGeneration;
+    const repositoryId = openEntry.repository_id;
+    const templateGeneration = ++renderGeneration;
+    const repositoryGeneration = ++repositoryRenderGeneration;
+    handoffBusy = true;
+    try {
+      // Leaving before the debounce fires used to cancel the only validation of
+      // a dirty template and leave Save permanently waiting on that check.
+      // Finish the exact visible snapshot before giving the editor to the route.
+      await Promise.all([
+        refreshTemplateRender(
+          templateRenderInput(),
+          templateGeneration,
+          renderValidationControl('template'),
+        ),
+        ...(heldEnvelope !== null && repositoryDraftProblem === null
+          ? [
+              refreshRepositoryRender(
+                repositoryRenderInput(openEntry),
+                repositoryGeneration,
+                renderValidationControl('repository', repositoryId),
+              ),
+            ]
+          : []),
+      ]);
+      if (
+        !mounted ||
+        request !== handoffGeneration ||
+        openEntry?.repository_id !== repositoryId ||
+        renderGeneration !== templateGeneration ||
+        repositoryRenderGeneration !== repositoryGeneration
+      )
+        return;
+      await goto(href);
+    } finally {
+      if (request === handoffGeneration) handoffBusy = false;
+    }
   }
 
   const anyOverrideDirty = $derived(
@@ -534,7 +591,7 @@ where it arises.
     if (merge === undefined) {
       return entry.formatting === undefined ? 'uses the shared template' : 'changes formatting';
     }
-    if (merge.strategy === 'markdown') {
+    if (merge.strategy === 'markdown' || (!merge.strategy && fileFormat(path) === 'markdown')) {
       const sections = Array.isArray(merge.sections) ? merge.sections.length : 0;
       return `${sections} section ${sections === 1 ? 'change' : 'changes'}`;
     }
@@ -590,6 +647,7 @@ where it arises.
     generation: number,
     validationControl: string,
   ): Promise<void> {
+    if (generation !== repositoryRenderGeneration) return;
     repositoryRendering = true;
     try {
       const rendered = await renderFile(input);
@@ -1015,6 +1073,10 @@ where it arises.
   }
 
   onDestroy(() => {
+    mounted = false;
+    handoffGeneration += 1;
+    renderGeneration += 1;
+    repositoryRenderGeneration += 1;
     onFormattingValidity('sync.files.repository-formatting', true, '');
   });
 </script>
@@ -1220,7 +1282,7 @@ where it arises.
             label="Repository output view"
             value={repositoryTab}
             options={[
-              { value: 'content', label: 'Content adjustment' },
+              { value: 'content', label: 'Content adjustments' },
               { value: 'preview', label: 'Final output' },
             ]}
             onSelect={(value) => (repositoryTab = value)}
@@ -1263,15 +1325,17 @@ where it arises.
         <div class="card-stack">
           <section class="preview-pane">
             <div class="merge-pane-title">
-              <span class="t"
-                >{!rawOverrideOnly && (showStored || editedText === null)
-                  ? 'Adjustment settings'
-                  : 'Content adjustment'}</span
-              >
-              <span class="pane-tools">
+              <span class="merge-pane-label">
+                <span class="t"
+                  >{!rawOverrideOnly && (showStored || editedText === null)
+                    ? 'Adjustment settings'
+                    : 'Content adjustments'}</span
+                >
                 {#if showStored || editedText === null || mergeFrozen}<span
                     class="setting-unmanaged">Read only</span
                   >{/if}
+              </span>
+              <span class="pane-tools">
                 {#if editedText !== null && resultUndoDepth > 0}
                   <Button onclick={() => resultEditor?.undoEdit()}>
                     {#snippet icon()}<Icon name="undo" size="sm" />{/snippet}
@@ -1285,9 +1349,6 @@ where it arises.
             {:else if rawOverrideOnly}
               <CodeBlock text={rawOverrideText} lang="json" />
             {:else if editedText === null}
-              <p class="sync-note">
-                This adjustment cannot be edited here · Current settings are shown below
-              </p>
               <CodeBlock text={JSON.stringify(openMerge, null, 2)} lang="json" />
             {:else if held === null || heldEnvelope === null}
               <CodeBlock text={editedText} lang="json" />
@@ -1405,6 +1466,19 @@ where it arises.
     </div>
     {#snippet footer()}
       {#if overrideDirty(entry.repository_id)}<span class="unsaved-note">Unsaved changes</span>{/if}
+      {#if repositoryHref !== null && fileFormat(path) !== null}
+        {#if handoffBusy}
+          <Button tone="quiet" disabled aria-busy="true">Opening editor…</Button>
+        {:else}
+          <Button
+            tone="quiet"
+            href={fileAdjustmentHref(repositoryHref(entry.repository), path)}
+            onclick={followAdjustment}
+          >
+            {readOnly || held?.unreadable ? 'Inspect adjustments' : 'Edit adjustments'}
+          </Button>
+        {/if}
+      {/if}
       <Button onclick={closeRepository}>Done</Button>
     {/snippet}
   </Modal>
@@ -1472,6 +1546,7 @@ where it arises.
     align-items: center;
     color: var(--text-muted);
     display: flex;
+    flex-wrap: wrap;
     font-size: var(--font-size-micro);
     font-weight: 600;
     gap: var(--space-2);
@@ -1492,6 +1567,15 @@ where it arises.
     align-items: center;
     display: flex;
     gap: var(--space-2);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .merge-pane-label {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+  }
+  .merge-pane-label .setting-unmanaged {
     letter-spacing: 0;
     text-transform: none;
   }

@@ -316,6 +316,7 @@ jobs:
               tests/browser/callout-alignment.test.ts
               tests/browser/select-menus.test.ts
               tests/browser/bypass-identities.test.ts
+              tests/browser/native-file-handoff.test.ts
               tests/browser/pair-entry.test.ts
               tests/browser/dictionary.test.ts
           # Every cell of every row given a run longer than the service can

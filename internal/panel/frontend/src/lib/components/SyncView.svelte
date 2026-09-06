@@ -542,6 +542,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
 {:else if section === 'files'}
   {#if fileName !== null}
     <SyncFilePage
+      {repositoryHref}
       config={documents.files}
       savedDocument={canonicalConfigs.files?.document}
       context={filesContext}

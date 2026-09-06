@@ -494,6 +494,24 @@ A code-only alternative must have an explicit schema and preserve invalid raw dr
 before it can replace the form. Offer only formats the backend can apply, through the
 shared file-capability mapping
 
+When an inspector cannot edit a file's native adjustment, its persistent footer
+offers **Edit adjustments** in the existing repository editor. Keep **Read only**
+inline with the view controls; do not add another toolbar or helper row above the
+code. Read-only users receive an inspection action instead. The handoff identifies
+and reveals the requested file, preserves unsaved drafts, and focuses it once
+without stealing focus on later edits or renames
+
+Navigation must settle pending validation without letting an old editor update a
+new editor's draft. Leaving invalidates every outstanding render generation.
+Returning to the same settings preserves raw invalid text, selection, and Undo;
+object key order alone is not a settings change. Breadcrumbs and sidebar links
+must leave a file detail for the shared-file list within the same session
+
+Native file fixtures cover TOML, YAML, JSONC, and Markdown through the authoritative
+renderer, including Markdown sections and replacements. At narrow widths, long
+mode labels use the shared picker and removal actions remain square. Inputs stay
+inside their field tracks; code-to-action spacing comes from the shared row
+
 Optional settings outside an active editor may use a whole-card disclosure whose
 summary is its header. Explanations and toolbars that only choose a view do not
 require another card. Editable controls must never appear in a frameless inline
@@ -588,6 +606,7 @@ states without depending on a caller's scoped CSS
 | Optical centering, descenders, heights, mobile containment | `vertical-alignment`, `text-clipping`, `control-heights`, `mobile-layout` browser suites |
 | Duration styles and units, explanation alignment, gold state geometry | `duration-controls` browser suite and `duration-input`, `unsaved-colors` unit suites |
 | Editor inspector layout stability, focus return, draft preservation, regular card groups | `repository-file-sync` browser suite and `repository-sync-pane` unit suite |
+| Native editor handoff, delayed validation, same-session return, format variants | `native-file-handoff` browser suite and `file-adjustment-link`, `session`, `sync-file-page` unit suites |
 | File observation states, search priority, row alignment, inspector focus return | `config-migration` browser suite and `repository-control` unit suite |
 | Alias interactions and shared compact pickers | `pair-entry`, `segmented-control`, `dictionary` browser suites |
 | File editor modes, exact output, hidden newline, independent row controls | `file-formatting`, `repository-file-sync` browser suites and `code-editor` unit suite |
