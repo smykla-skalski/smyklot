@@ -2,6 +2,8 @@
   import { onMount } from 'svelte';
   import type { ScheduleProfile, ScheduleProfileInput } from '#lib/types.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import Callout from './Callout.svelte';
+  import FormError from './FormError.svelte';
   import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
 
   const {
@@ -120,8 +122,8 @@ changing a window here changes when every policy that names it runs.
 <ConfirmDialog
   id="profile-editor"
   {open}
-  title={profile === null ? 'New window profile' : 'Edit window profile'}
-  description="Uses this profile's timezone and updates the timing of scheduled work"
+  title={profile === null ? 'New hours profile' : 'Edit hours profile'}
+  description="Scheduled jobs use these hours and this timezone"
   {busy}
   busyLabel="Saving…"
   confirmLabel="Save profile"
@@ -130,77 +132,56 @@ changing a window here changes when every policy that names it runs.
   {onClose}
   onConfirm={submit}
 >
-  <div class="profile-form">
+  <div class="form-stack">
     {#if profile !== null}
-      <p class="impact" role="status">
-        Saving recomputes {profile.affected_items ?? 0} future queue
-        {profile.affected_items === 1 ? ' item' : ' items'} across
-        {profile.affected_workspaces ?? 0}
-        {profile.affected_workspaces === 1 ? ' workspace' : ' workspaces'} ·
-        {profile.affected_policies ?? 0}
-        {profile.affected_policies === 1 ? ' policy uses' : ' policies use'} this profile
-      </p>
+      <Callout>
+        <p>
+          Saving updates {profile.affected_items ?? 0} queued
+          {profile.affected_items === 1 ? ' item' : ' items'} in
+          {profile.affected_workspaces ?? 0}
+          {profile.affected_workspaces === 1 ? ' workspace' : ' workspaces'} and affects
+          {profile.affected_policies ?? 0}
+          {profile.affected_policies === 1 ? ' policy' : ' policies'}
+        </p>
+      </Callout>
     {/if}
-    <label for="profile-name">Profile name</label>
-    <input id="profile-name" bind:value={name} placeholder="Europe business hours" />
-    <label for="profile-timezone">Timezone</label>
-    <input id="profile-timezone" bind:value={timezone} placeholder="Europe/Warsaw" />
+    <label class="form-field" for="profile-name">
+      <span class="form-label">Profile name</span>
+      <input
+        class="text-input"
+        id="profile-name"
+        bind:value={name}
+        placeholder="Europe business hours"
+      />
+    </label>
+    <label class="form-field" for="profile-timezone">
+      <span class="form-label">Timezone</span>
+      <input
+        class="text-input"
+        id="profile-timezone"
+        bind:value={timezone}
+        placeholder="Europe/Warsaw"
+      />
+    </label>
     <ScheduleWindowsEditor
       idPrefix="profile-window"
       {windows}
       onChange={(next) => (windows = next)}
     />
-    <label for="profile-exceptions">Date exceptions</label>
-    <textarea
-      id="profile-exceptions"
-      rows="4"
-      bind:value={exceptions}
-      placeholder={exceptionExample}></textarea>
-    <p class="helper">
-      One local date per line: <code>YYYY-MM-DD closed</code> or
-      <code>YYYY-MM-DD HH:MM-HH:MM</code>
-    </p>
-    {#if error !== ''}<p class="form-error" role="alert">{error}</p>{/if}
+    <div class="form-field">
+      <label class="form-label" for="profile-exceptions">Date exceptions</label>
+      <textarea
+        class="text-input mono"
+        id="profile-exceptions"
+        aria-describedby="profile-exceptions-help"
+        rows="4"
+        bind:value={exceptions}
+        placeholder={exceptionExample}></textarea>
+      <p id="profile-exceptions-help" class="form-help">
+        Override weekly hours for a local date · One per line:<br />
+        <code>YYYY-MM-DD closed</code> or <code>YYYY-MM-DD HH:MM-HH:MM</code>
+      </p>
+    </div>
+    <FormError message={error} />
   </div>
 </ConfirmDialog>
-
-<style>
-  .profile-form {
-    display: grid;
-    gap: var(--space-3);
-  }
-  .profile-form > label {
-    font-size: 0.75rem;
-    font-weight: 720;
-  }
-  .profile-form > label {
-    margin-bottom: calc(var(--space-2) * -1);
-  }
-  input:not([type='checkbox']),
-  textarea {
-    background: var(--input-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--radius-control);
-    color: var(--text-primary);
-    font: inherit;
-    min-height: 2.75rem;
-    padding: var(--space-2) var(--space-3);
-  }
-  .helper {
-    color: var(--text-muted);
-    font-size: 0.72rem;
-    margin: calc(var(--space-2) * -1) 0 0;
-  }
-  .impact {
-    background: var(--surface-raised);
-    color: var(--text-secondary);
-    font-size: 0.75rem;
-    line-height: var(--leading-compact);
-    margin: 0;
-    padding: var(--space-3);
-  }
-  .form-error {
-    color: var(--danger);
-    margin: 0;
-  }
-</style>

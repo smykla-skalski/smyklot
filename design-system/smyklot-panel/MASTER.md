@@ -385,6 +385,11 @@ groups stay intrinsic and start-aligned inside a field; the containing row owns
 their placement. A modal's `form-row` centers its label and switch without adding
 settings-list dividers or row padding
 
+Repeated weekly-hours controls follow the same form rhythm without a second
+frame. Their Add action stays beside the group heading; each removal uses the
+shared square icon button. At narrow widths, keep removal beside its day and
+the two time fields together
+
 Plain-language textareas, including reasons and notes, use the shared prose
 font and control type size. Monospace is reserved for code, identifiers, and
 explicit technical grammars. A textarea's native browser font must not determine
@@ -612,6 +617,7 @@ states without depending on a caller's scoped CSS
 | Callout first-line icons, wrapped copy rhythm, text-only vertical balance | `tests/browser/callout-alignment.test.ts` and operator dialogs in `duration-controls` |
 | Optical centering, descenders, heights, mobile containment | `vertical-alignment`, `text-clipping`, `control-heights`, `mobile-layout` browser suites |
 | Duration styles and units, explanation alignment, gold state geometry | `duration-controls` browser suite and `duration-input`, `unsaved-colors` unit suites |
+| Hours-profile modal controls, square removal, responsive grouping and scroll reachability | `schedules` browser suite |
 | Editor inspector layout stability, focus return, draft preservation, regular card groups | `repository-file-sync` browser suite and `repository-sync-pane` unit suite |
 | Native editor handoff, delayed validation, same-session return, format variants | `native-file-handoff` browser suite and `file-adjustment-link`, `session`, `sync-file-page` unit suites |
 | File validation through navigation, restored drafts, retries, and discard | `file-validation-lifetime` browser suite and `file-draft-validation` unit suite |

@@ -171,6 +171,100 @@ describe('background work schedules [Integration]', () => {
     },
   );
 
+  it.each(
+    [375, 768, 1024, 1440].flatMap((width) =>
+      (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
+    ),
+  )('keeps hours profile forms coherent at $colorScheme $width', async ({ width, colorScheme }) => {
+    const page = await panel.browser.newPage({ colorScheme, viewport: { width, height: 1000 } });
+    page.setDefaultTimeout(10_000);
+    try {
+      await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+      await page.getByRole('button', { name: 'New hours profile', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+      await dialog.waitFor();
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      if (directory) {
+        await mkdir(directory, { recursive: true });
+        await dialog.screenshot({
+          path: join(directory, `profile-new-${colorScheme}-${width}.png`),
+          animations: 'disabled',
+        });
+      }
+      const geometry = await dialog.evaluate((node) => {
+        const name = node.querySelector<HTMLInputElement>('#profile-name')!;
+        const timezone = node.querySelector<HTMLInputElement>('#profile-timezone')!;
+        const controls = Array.from(
+          node.querySelectorAll('.window-row input, .window-row [role=combobox]'),
+        );
+        return {
+          nameHeight: name.getBoundingClientRect().height,
+          timezoneHeight: timezone.getBoundingClientRect().height,
+          controlHeights: controls.map((control) => control.getBoundingClientRect().height),
+          removeButtons: Array.from(node.querySelectorAll('.window-remove button')).map(
+            (button) => ({
+              width: button.getBoundingClientRect().width,
+              height: button.getBoundingClientRect().height,
+              glyphs: button.querySelectorAll('svg path').length,
+            }),
+          ),
+          overflow: node.scrollWidth - node.clientWidth,
+        };
+      });
+      expect.soft(geometry.nameHeight).toBe(34);
+      expect.soft(geometry.timezoneHeight).toBe(34);
+      expect.soft(geometry.controlHeights.every((height) => height === 34)).toBe(true);
+      expect(geometry.removeButtons).toHaveLength(5);
+      for (const button of geometry.removeButtons) {
+        expect(button.width).toBe(34);
+        expect(button.height).toBe(34);
+        expect(button.glyphs).toBeGreaterThan(0);
+      }
+      expect(geometry.overflow).toBeLessThanOrEqual(1);
+      if (width === 375) {
+        const exceptions = dialog.getByLabel('Date exceptions', { exact: true });
+        await exceptions.scrollIntoViewIfNeeded();
+        if (directory)
+          await dialog.screenshot({
+            path: join(directory, `profile-new-end-${colorScheme}-${width}.png`),
+            animations: 'disabled',
+          });
+        const control = await exceptions.boundingBox();
+        const save = await dialog.getByRole('button', { name: 'Save profile' }).boundingBox();
+        expect(control!.y + control!.height).toBeLessThan(save!.y);
+      }
+      await page.keyboard.press('Escape');
+      await page
+        .getByRole('button', { name: /^Edit - the .+ profile$/ })
+        .first()
+        .click();
+      const edit = page.getByRole('dialog', { name: 'Edit hours profile', exact: true });
+      await edit.waitFor();
+      if (directory)
+        await edit.screenshot({
+          path: join(directory, `profile-edit-${colorScheme}-${width}.png`),
+          animations: 'disabled',
+        });
+      expect(
+        await edit.evaluate((node) => node.scrollWidth - node.clientWidth),
+      ).toBeLessThanOrEqual(1);
+      if (width === 375) {
+        await edit.getByLabel('Date exceptions', { exact: true }).scrollIntoViewIfNeeded();
+        if (directory)
+          await edit.screenshot({
+            path: join(directory, `profile-edit-end-${colorScheme}-${width}.png`),
+            animations: 'disabled',
+          });
+      }
+      await edit.getByRole('button', { name: /^Remove Friday hours/ }).click();
+      expect(await edit.locator('.window-row').count()).toBe(4);
+      await edit.getByRole('button', { name: 'Add hours', exact: true }).click();
+      expect(await edit.locator('.window-row').count()).toBe(5);
+    } finally {
+      await page.close();
+    }
+  });
+
   it('announces the initial schedule load until every response arrives', async () => {
     const page = await panel.browser.newPage();
     let releaseResponse = (): void => {};

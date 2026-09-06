@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import IconButton from './IconButton.svelte';
   import Select from './Select.svelte';
 
   export interface EditableWindow {
@@ -40,18 +41,17 @@
 The weekly windows during which work may run, edited as a list rather than a calendar.
 A window is a day and a span, and the list is the profile.
 
-Overlapping windows are not an error and are not merged: two that overlap mean the same
-thing as one that spans both, and rewriting what somebody typed into what it is
-equivalent to is a change they did not make.
+Each caller owns validation and saving. Keep the entered windows intact so invalid
+or overlapping intervals remain visible for correction.
 -->
 
-<div class="windows-editor">
+<div class="form-stack windows-editor">
   <div class="windows-heading">
-    <span>Open hours, week by week</span>
-    <Button row onclick={() => onChange([...windows, newWindow()])}>Add a day</Button>
+    <span class="form-label">Weekly hours</span>
+    <Button row onclick={() => onChange([...windows, newWindow()])}>Add hours</Button>
   </div>
   {#each windows as window, index (window.id)}
-    <div class="window-row">
+    <div class="window-row" role="group" aria-label={`Hours for ${days[window.weekday]}`}>
       <label class="form-field" for={`${idPrefix}-day-${index}`}
         ><span class="form-label">Day</span><Select
           id={`${idPrefix}-day-${index}`}
@@ -78,48 +78,50 @@ equivalent to is a change they did not make.
           oninput={(event) => update(index, { end: event.currentTarget.value })}
         /></label
       >
-      <Button
-        row
-        tone="stop-quiet"
-        disabled={windows.length === 1}
-        onclick={() => onChange(windows.filter((_, at) => at !== index))}>Remove</Button
-      >
+      <div class="window-remove">
+        <IconButton
+          toolbar
+          icon="close"
+          label={`Remove ${days[window.weekday]} hours, ${window.start} to ${window.end}`}
+          disabled={windows.length === 1}
+          onclick={() => onChange(windows.filter((_, at) => at !== index))}
+        />
+      </div>
     </div>
   {/each}
 </div>
 
 <style>
   .windows-editor {
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--radius-control);
-    display: grid;
-    gap: var(--space-3);
-    padding: var(--space-3);
-  }
-  .windows-heading,
-  .window-row {
-    align-items: end;
-    display: grid;
-    gap: var(--space-3);
+    container: hours-editor / inline-size;
   }
   .windows-heading {
     align-items: center;
-    grid-template-columns: 1fr auto;
-  }
-  .windows-heading > span {
-    font-size: 0.75rem;
-    font-weight: 720;
+    display: flex;
+    gap: var(--space-4);
+    justify-content: space-between;
   }
   .window-row {
-    grid-template-columns: minmax(8rem, 1.4fr) 1fr 1fr auto;
+    align-items: end;
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr) auto;
   }
-  @media (max-width: 34rem) {
+  .window-remove {
+    display: flex;
+    justify-content: end;
+  }
+  @container hours-editor (max-width: 26rem) {
     .window-row {
-      align-items: stretch;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .window-row label:first-child {
-      grid-column: 1 / -1;
+    .window-remove {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .window-row label:nth-child(2),
+    .window-row label:nth-child(3) {
+      grid-row: 2;
     }
   }
 </style>
