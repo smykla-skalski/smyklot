@@ -3,12 +3,12 @@ package sqlstore
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 func (s *Store) validateInstallationSyncDocuments(
@@ -94,9 +94,7 @@ func validateInstallationSyncDocument[Document interface{ Validate() error }](
 	if err := requireInstallationSyncObject(document); err != nil {
 		return decoded, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&decoded); err != nil {
+	if err := config.DecodeExactJSON(document, &decoded); err != nil {
 		return decoded, fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
 	}
 	if err := decoded.Validate(); err != nil {
@@ -174,10 +172,8 @@ func validateInstallationEmptyOverride(document []byte) error {
 	if err := requireInstallationSyncObject(document); err != nil {
 		return err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
 	var empty struct{}
-	if err := decoder.Decode(&empty); err != nil {
+	if err := config.DecodeExactJSON(document, &empty); err != nil {
 		return fmt.Errorf("%w: stored override is not an empty object: %w",
 			orgsync.ErrInvalidConfig, err)
 	}
@@ -202,7 +198,7 @@ func validateInstallationFilesOverride(
 		if err := validateStoredSyncConfig(*currentFiles); err != nil {
 			return fmt.Errorf("the stored files sync config failed integrity validation: %w", err)
 		}
-		if err := json.Unmarshal(currentFiles.Document, &files); err != nil {
+		if err := config.DecodeExactJSON(currentFiles.Document, &files); err != nil {
 			return fmt.Errorf("%w: the stored files sync config cannot be read: %w",
 				orgsync.ErrInvalidConfig, err)
 		}
@@ -219,9 +215,7 @@ func decodeInstallationFilesOverride(document []byte) (orgsync.FileOverride, err
 		return orgsync.FileOverride{}, err
 	}
 	var adjustments orgsync.FileOverride
-	decoder := json.NewDecoder(bytes.NewReader(document))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&adjustments); err != nil {
+	if err := config.DecodeExactJSON(document, &adjustments); err != nil {
 		return orgsync.FileOverride{}, fmt.Errorf("%w: %w", orgsync.ErrInvalidConfig, err)
 	}
 

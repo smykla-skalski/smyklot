@@ -79,7 +79,7 @@ run = '''
 set -eu
 : "${SMYKLOT_TEST_POSTGRES_DSN:?Run mise run db:dev and set its DSN first}"
 mkdir -p tmp/storage
-ginkgo --race --fail-on-empty --focus='configuration file (connections|imports)' \
+ginkgo --race --fail-on-empty --focus='configuration file (connections|imports)|malformed or duplicate Sync resources' \
   --json-report=config-files.json --output-dir=tmp/storage \
   ./internal/storage/sqlite ./internal/storage/postgres
 jq -e 'length == 2 and all(.[]; [.SpecReports[]? | select(.State == "passed")] | length > 0)' \

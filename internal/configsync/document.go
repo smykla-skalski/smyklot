@@ -2,7 +2,6 @@ package configsync
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -113,7 +112,7 @@ func (snapshot PanelSnapshot) Document() (config.FileDocument, error) {
 		}
 	}
 	document.Runner = nil
-	return document, document.Panel.Validate()
+	return document, validateFileSyncShapes(document.Panel)
 }
 
 func (snapshot PanelSnapshot) JSON() ([]byte, error) {
@@ -127,13 +126,8 @@ func (snapshot PanelSnapshot) JSON() ([]byte, error) {
 // DecodeDocument validates the semantic envelope after a merge or resolution.
 // It does not authorize writing those values; storage verifies scope and opt-in.
 func DecodeDocument(content []byte, scope config.PanelFileScope) (config.FileDocument, error) {
-	if _, err := config.DecodeJSONObject(content); err != nil {
-		return config.FileDocument{}, err
-	}
 	var document config.FileDocument
-	decoder := json.NewDecoder(bytes.NewReader(content))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&document); err != nil {
+	if err := config.DecodeExactJSON(content, &document); err != nil {
 		return config.FileDocument{}, err
 	}
 	if document.Panel == nil || document.Panel.Scope != scope {
@@ -142,7 +136,7 @@ func DecodeDocument(content []byte, scope config.PanelFileScope) (config.FileDoc
 	if document.Runner != nil {
 		return config.FileDocument{}, errors.New("configuration sync cannot change the file-owned runner")
 	}
-	if err := document.Panel.Validate(); err != nil {
+	if err := validateFileSyncShapes(document.Panel); err != nil {
 		return config.FileDocument{}, err
 	}
 	// Exercise Patch normalization and the final renderer before importing.

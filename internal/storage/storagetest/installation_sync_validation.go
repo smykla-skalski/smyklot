@@ -203,11 +203,23 @@ func invalidInstallationSyncRequests(
 		Document: []byte(`{"merges":[{"path":"missing.json"}]}`),
 	}}
 
-	return []storage.SaveInstallationSettingsRequest{
+	invalid := []storage.SaveInstallationSettingsRequest{
 		duplicateConfig, duplicateOverride, unknownKind, malformedConfig,
 		malformedOverride, missingRepository, negativeRevision, invalidConcreteConfig,
 		unknownConfigField, nonFileOverrideDocument, invalidFilesOverride,
 	}
+	for _, document := range []string{
+		`{"has_wiki":true,"HAS_WIKI":false}`,
+		`{"HAS_WIKI":false,"has_wiki":true}`,
+		`{"has_wiki":true,"has_wiki":false}`,
+	} {
+		ambiguous := request()
+		ambiguous.SyncConfigs = []storage.InstallationSyncConfigChange{{
+			Kind: orgsync.KindSettings, Document: []byte(document),
+		}}
+		invalid = append(invalid, ambiguous)
+	}
+	return invalid
 }
 
 func assertNoInstallationSyncRows(

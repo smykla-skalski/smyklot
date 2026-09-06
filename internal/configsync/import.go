@@ -2,7 +2,6 @@ package configsync
 
 import (
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -75,27 +74,32 @@ func (snapshot PanelSnapshot) PrepareImport(
 			DeploymentPendingCIQuietPeriod: deploymentQuietPeriod,
 		}}
 	}
-	appendSyncImport(&request, snapshot, document.Panel)
-	return request, nil
+	err = appendSyncImport(&request, snapshot, document.Panel)
+	return request, err
 }
 
-func appendSyncImport(request *storage.SaveInstallationSettingsRequest, snapshot PanelSnapshot, section *config.PanelFileSection) {
+func appendSyncImport(request *storage.SaveInstallationSettingsRequest, snapshot PanelSnapshot, section *config.PanelFileSection) error {
 	revisions := snapshot.SyncRevisions()
 	for _, kind := range orgsync.Kinds() {
 		item, exists := section.Sync[string(kind)]
+		document, err := preservedSyncDocument(snapshot, kind, item.Document, exists)
+		if err != nil {
+			return err
+		}
 		if snapshot.Repository == nil {
 			enabled := item.Enabled != nil && *item.Enabled
 			request.SyncConfigs = append(request.SyncConfigs, storage.InstallationSyncConfigChange{
-				Kind: kind, Enabled: enabled, Document: slices.Clone(item.Document),
+				Kind: kind, Enabled: enabled, Document: document,
 				ExpectedRevision: revisions[kind], Remove: !exists,
 			})
 		} else {
 			request.SyncOverrides = append(request.SyncOverrides, storage.InstallationSyncOverrideChange{
 				RepositoryID: snapshot.Repository.ID, Kind: kind, Enabled: item.Enabled,
-				Document: slices.Clone(item.Document), ExpectedRevision: revisions[kind], Remove: !exists,
+				Document: document, ExpectedRevision: revisions[kind], Remove: !exists,
 			})
 		}
 	}
+	return nil
 }
 
 func storageMode(value *string) *storage.PendingCIMode {
