@@ -57,6 +57,7 @@ describe('code editor history context [Component]', () => {
     async (changeText) => {
       const value = '{"amount":1.50,"id":9007199254740993}\r\n';
       const next = changeText ? '{"amount":1.50,"id":9007199254740993,"enabled":true}\n' : value;
+      const withSpace = `{ ${next.slice(1)}`;
       const context = Object.freeze({ intent: 'remove a pin' });
       const changed = vi.fn();
       const result = render(CodeEditor, { value, terminalNewline: true, onChange: changed });
@@ -66,7 +67,7 @@ describe('code editor history context [Component]', () => {
       result.component.replaceValue(next, context);
       expect(changed).toHaveBeenLastCalledWith(next, context);
       view.dispatch({ changes: { from: 1, insert: ' ' } });
-      expect(changed).toHaveBeenLastCalledWith(next.replace('{', '{ '), context);
+      expect(changed).toHaveBeenLastCalledWith(withSpace, context);
       result.component.undoEdit();
       expect(changed).toHaveBeenLastCalledWith(next, context);
       result.component.undoEdit();
@@ -74,7 +75,7 @@ describe('code editor history context [Component]', () => {
       redo(view);
       expect(changed).toHaveBeenLastCalledWith(next, context);
       redo(view);
-      expect(changed).toHaveBeenLastCalledWith(next.replace('{', '{ '), context);
+      expect(changed).toHaveBeenLastCalledWith(withSpace, context);
       expect(context).toEqual({ intent: 'remove a pin' });
     },
   );

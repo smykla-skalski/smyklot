@@ -781,9 +781,7 @@ describe('SyncFilePage [Component]', () => {
       );
       const host = screen.getByRole('dialog').querySelector('.code-editor')!;
       const view = EditorView.findFromDOM(host.shadowRoot!.querySelector('.cm-content')!)!;
-      expect(view.state.sliceDoc()).toMatch(
-        new RegExp(`"id":\\s*${saved.replace(/[.+-]/gu, '\\$&')}`),
-      );
+      expect(view.state.sliceDoc().match(/"id":\s*([-+\d.eE]+)/u)?.[1]).toBe(saved);
       const edit = async (text: string) => {
         view.dispatch({
           changes: { from: 0, to: view.state.doc.length, insert: text },
