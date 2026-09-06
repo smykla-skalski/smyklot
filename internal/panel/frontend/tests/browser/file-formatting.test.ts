@@ -535,7 +535,7 @@ describe('configured file formatting in the development panel', () => {
                 ((await persistedMerge(page, repositoryId)) as { overrides: object })?.overrides,
             )
             .toEqual({ timezone: 'Europe/Warsaw' });
-          await editor.fill((await editor.innerText()).replace('{', '{ '));
+          await editor.fill(' ' + (await editor.innerText()));
           await expect
             .poll(
               async () =>
