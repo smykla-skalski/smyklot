@@ -331,6 +331,10 @@ func (s *Store) coalesceRecurringOccurrence(
 		!recurringCadenceElapsed(policy, previousAnchor, claim.Now) {
 		return nil
 	}
+	overridden, err := recurringScheduleOverridden(ctx, tx, item.ID)
+	if err != nil || overridden {
+		return err
+	}
 	anchor := recurringAnchor(previousAnchor, policy.Cadence, claim.Now)
 	if !anchor.After(previousAnchor) {
 		return nil
@@ -358,6 +362,16 @@ UPDATE queue_items SET state = ?, not_before = ?, cadence_anchor_at = ?, eligibl
 		ItemID: item.ID, ActorID: queueEventActor(queueActorSystem), Kind: "coalesced", State: state,
 		Summary: "Coalesced missed occurrences", CreatedAt: claim.Now,
 	})
+}
+
+func recurringScheduleOverridden(ctx context.Context, tx *transaction, itemID string) (bool, error) {
+	var overridden bool
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS (SELECT 1 FROM queue_events
+WHERE queue_item_id = ? AND kind IN ('action.next_window', 'action.schedule_at'))`, itemID).Scan(&overridden); err != nil {
+		return false, fmt.Errorf("check recurring schedule override: %w", err)
+	}
+	return overridden, nil
 }
 
 func recurringCadenceElapsed(

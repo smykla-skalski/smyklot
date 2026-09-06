@@ -78,6 +78,11 @@ func (s *server) panelMaintenanceJobs(ctx context.Context) []maintenanceJob {
 // leases an existing occurrence. It executes at most one lease per wake so an
 // overdue backlog yields to panel traffic before the next queue tick.
 func (s *server) dispatchDurableMaintenance(ctx context.Context) error {
+	// Publish source notifications before taking the matching job snapshot. A
+	// newly enabled connection must not be leased against a pre-enable catalog.
+	if _, err := s.store.DispatchConfigFileNotifications(ctx, time.Now().UTC()); err != nil {
+		return fmt.Errorf("schedule configuration changes: %w", err)
+	}
 	jobs, err := s.durableMaintenanceJobs(ctx)
 	if err != nil {
 		return fmt.Errorf("build maintenance queue: %w", err)

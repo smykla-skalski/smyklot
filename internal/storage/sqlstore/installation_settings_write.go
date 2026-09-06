@@ -24,6 +24,9 @@ func (s *Store) applyInstallationSettings(
 			return err
 		}
 	}
+	if err := notifyInstallationConfigFiles(ctx, tx, request, work); err != nil {
+		return err
+	}
 	if work.inclusionChanged || work.syncChanged || work.formattingChanged {
 		return invalidateLivePlans(ctx, tx, request.TargetID, request.ChangedAt)
 	}

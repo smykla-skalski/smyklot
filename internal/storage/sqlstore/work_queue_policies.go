@@ -495,16 +495,9 @@ func recomputeRecurringCadence(
 		item.State == workqueue.StateRetrying || item.CadenceAnchorAt == nil {
 		return nil
 	}
-	var overridden bool
-	if err := tx.QueryRowContext(ctx, `
-SELECT EXISTS (
-    SELECT 1 FROM queue_events
-    WHERE queue_item_id = ? AND kind IN ('action.next_window', 'action.schedule_at')
-)`, item.ID).Scan(&overridden); err != nil {
-		return fmt.Errorf("check recurring schedule override: %w", err)
-	}
-	if overridden {
-		return nil
+	overridden, err := recurringScheduleOverridden(ctx, tx, item.ID)
+	if err != nil || overridden {
+		return err
 	}
 	previous, err := previousRecurringItem(ctx, tx, *item)
 	if errors.Is(err, sql.ErrNoRows) {

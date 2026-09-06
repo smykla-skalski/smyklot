@@ -25,6 +25,7 @@ func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareQueueScheduleSpecs(runtime)
 	declareQueueLeaseSpecs(runtime)
 	declareConfigFileWorkloadSpecs(runtime)
+	declareConfigFileNotificationSpecs(runtime)
 }
 
 func declareQueuePolicySpecs(runtime queueRuntime) {

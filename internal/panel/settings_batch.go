@@ -9,6 +9,7 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
+	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // A batch may contain the one files document, plus the smaller documents and
@@ -162,6 +163,9 @@ func (s *Server) signalWorkspaceSettingsBatch(
 	if result.CatalogSettingsChanged {
 		s.pendingCI.Wake()
 		s.wakePendingCIGates()
+	}
+	if s.queue != nil {
+		s.queue.WakeQueue(workqueue.LaneMaintenance)
 	}
 	s.Announce(targetID, "")
 }
