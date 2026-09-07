@@ -277,12 +277,11 @@ jobs:
   # files one at a time, so giving each area its own runner is the only
   # parallelism available between them.
   #
-  # Areas because of the tail rather than the total. Every file pays for a dev
-  # server, a Chrome and a sign-in before it measures anything, which is about
-  # nine seconds here, so the areas do not cost what they cost on a laptop:
-  # measured one file per runner they run from 71s for `column-widths` down to
-  # 10s for `icon-geometry`. `column-widths` has an area to itself because it is
-  # the only file that would set the length of any area it joined.
+  # Balance by measured suite duration, not by subject. Run 34108122171 took
+  # 17 minutes in `type` while `phone` and `columns` finished in two minutes.
+  # The same 33 suites across six runners now total 314-319 seconds per group,
+  # using that run's per-file timings, before runner setup and new test cases.
+  # Rebalance when a group grows; keep the exact-once coverage check below.
   #
   # NOT EVERY FILE IS HERE, and which are missing is a decision rather than an
   # oversight. This job runs the sweeps and the budgets - the checks that fail on
@@ -302,69 +301,57 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Nineteen routes at two widths, so half the suite's pages are here.
-          - area: phone
-            files: tests/browser/mobile-layout.test.ts
-          # Which words the pages use, where those words sit, and whether any of
-          # them is cut off getting there.
-          - area: type
+          # 319s in the reference run
+          - area: group-1
             files: >-
-              tests/browser/vertical-alignment.test.ts
-              tests/browser/text-clipping.test.ts
-              tests/browser/control-heights.test.ts
               tests/browser/duration-controls.test.ts
-              tests/browser/callout-alignment.test.ts
-              tests/browser/select-menus.test.ts
-              tests/browser/bypass-identities.test.ts
-              tests/browser/native-file-handoff.test.ts
-              tests/browser/file-validation-lifetime.test.ts
-              tests/browser/config-file-sync.test.ts
-              tests/browser/config-file-review.test.ts
-              tests/browser/pair-entry.test.ts
-              tests/browser/dictionary.test.ts
-          # Every cell of every row given a run longer than the service can
-          # produce. Alone, at 71s: it found the same fault in five views at
-          # once, which is what a sweep is for and what it costs.
-          # `plan-rows` rides with it: a sweep over every table asks whether a
-          # heading and its cells agree, and the plan's cards have no heading -
-          # what they have is three cards that must agree with EACH OTHER, which
-          # is the same rule one level up and belongs in the same job.
-          - area: columns
-            files: >-
-              tests/browser/column-widths.test.ts
-              tests/browser/plan-rows.test.ts
-          # The two sweeps that read a rule off the sheet and ask every route
-          # whether it obeys - the universal laws, and WCAG 2.2. Together at
-          # 32s, so they sit under the tail above rather than setting it.
-          - area: audits
-            files: >-
-              tests/browser/law-audit.test.ts
               tests/browser/wcag-audit.test.ts
-              tests/browser/empty-states.test.ts
+              tests/browser/text-clipping.test.ts
+              tests/browser/bypass-identities.test.ts
               tests/browser/signed-out-layout.test.ts
-          # How much the panel asks for. `cached-navigation` is here rather than
-          # with the queue it was written against: what it guards is an effect
-          # ring reopening the stream on every navigation, which is the same
-          # silent, unbounded class `request-budget` exists for. Sync drafts
-          # belong here too: they cross routes and must still produce exactly
-          # one batch request when the user finally saves.
-          - area: requests
+          # 319s in the reference run
+          - area: group-2
             files: >-
-              tests/browser/request-budget.test.ts
-              tests/browser/runtime-settings.test.ts
-              tests/browser/cached-navigation.test.ts
-              tests/browser/access-navigation.test.ts
-              tests/browser/sync-drafts.test.ts
-              tests/browser/settings-draft-markers.test.ts
-          - area: controls
-            files: >-
-              tests/browser/segmented-control.test.ts
-              tests/browser/config-migration.test.ts
-              tests/browser/repository-file-sync.test.ts
+              tests/browser/config-file-sync.test.ts
+              tests/browser/select-menus.test.ts
+              tests/browser/control-heights.test.ts
               tests/browser/sidebar-selection.test.ts
-              tests/browser/icon-geometry.test.ts
-              tests/browser/file-formatting.test.ts
               tests/browser/sync-label-layout.test.ts
+          # 318s in the reference run
+          - area: group-3
+            files: >-
+              tests/browser/settings-draft-markers.test.ts
+              tests/browser/cached-navigation.test.ts
+              tests/browser/law-audit.test.ts
+              tests/browser/callout-alignment.test.ts
+              tests/browser/plan-rows.test.ts
+          # 314s in the reference run
+          - area: group-4
+            files: >-
+              tests/browser/native-file-handoff.test.ts
+              tests/browser/mobile-layout.test.ts
+              tests/browser/config-migration.test.ts
+              tests/browser/request-budget.test.ts
+              tests/browser/repository-file-sync.test.ts
+              tests/browser/icon-geometry.test.ts
+          # 318s in the reference run
+          - area: group-5
+            files: >-
+              tests/browser/file-formatting.test.ts
+              tests/browser/dictionary.test.ts
+              tests/browser/file-validation-lifetime.test.ts
+              tests/browser/sync-drafts.test.ts
+              tests/browser/segmented-control.test.ts
+              tests/browser/access-navigation.test.ts
+          # 319s in the reference run
+          - area: group-6
+            files: >-
+              tests/browser/config-file-review.test.ts
+              tests/browser/column-widths.test.ts
+              tests/browser/vertical-alignment.test.ts
+              tests/browser/empty-states.test.ts
+              tests/browser/runtime-settings.test.ts
+              tests/browser/pair-entry.test.ts
 
     steps:
       - name: Checkout code
