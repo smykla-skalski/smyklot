@@ -1325,7 +1325,7 @@ export interface SyncRulesetStatusChecksRule {
 export interface SyncRulesetStatusCheck {
   context: string;
   /** Pins the check to the App reporting it. Absent leaves it unpinned. */
-  integration_id?: number;
+  integration_id?: number | JsonNumber;
 }
 
 export interface SyncRulesetCodeScanningRule {

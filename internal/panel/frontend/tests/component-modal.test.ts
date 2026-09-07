@@ -41,4 +41,32 @@ describe('Modal [Component]', () => {
     expect(onClose).toHaveBeenCalledOnce();
     await waitFor(() => expect(document.activeElement).toBe(returnFocus));
   });
+  it('keeps its mounted content and focus when an incidental close is blocked', async () => {
+    const onClose = vi.fn();
+    const beforeClose = vi.fn(() => false);
+    const rendered = render(Modal, {
+      id: 'guarded-dialog',
+      open: true,
+      title: 'Private edit',
+      onClose,
+      beforeClose,
+      children: createRawSnippet(() => ({ render: () => '<input aria-label="Private value" />' })),
+    });
+    const input = screen.getByRole('textbox', { name: 'Private value' });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole('dialog', { name: 'Private edit' })),
+    );
+    input.focus();
+    await fireEvent.input(input, { target: { value: 'unfinished' } });
+    await fireEvent.keyDown(document, { key: 'Escape' });
+    expect(beforeClose).toHaveBeenCalledOnce();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: 'Private value' })).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('unfinished');
+
+    await rendered.rerender({ beforeClose: () => true });
+    await fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });

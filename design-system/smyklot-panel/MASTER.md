@@ -158,6 +158,20 @@ in the disclosure laws; do not nest decorative cards inside the originating card
   whose draft remains staged needs no confirmation
 - Repository settings use an addressable page with one vertical scroll. Secondary
   file controls use the shared inspector, with content adjustments before final output
+- Rule parameters use the shared inspector. Done stages one complete rule; Cancel
+  intentionally discards its private edits. Escape, outside dismissal and Close
+  must protect changed or invalid private input with a discard confirmation
+- Check and tool names are primary-text headings. App-pinned checks show the
+  resolved app name and shared avatar; missing metadata keeps the exact identifier
+  secondary and must not imply that the app itself is unavailable
+- Editing supported fields preserves unknown rule fields, app pins and exact
+  numeric literals. Returning a control to its opening value restores the original
+  field presence, and removing then restoring an entry restores its original data
+- Before staging a private rule, compare its current value and presence with the
+  opening snapshot. A same-rule change elsewhere blocks Done and explains the
+  conflict without discarding private input; unrelated rule changes do not block it
+  The final precondition runs after refreshing shared draft storage, before any
+  mutation adopts its revision. Rejected staging keeps the inspector input intact
 
 Callout symbols align with the cap-to-baseline center of the first text line,
 for either tone and regardless of wrapping. Subsequent lines and adjacent
@@ -369,6 +383,9 @@ row. Check rendered multiline text at narrow widths as well as single-line rows
 The floating composer follows the same 8px ink gap. Trim the title and subtitle
 to their cap and baseline edges, and use the shared copy leading when they wrap.
 Do not add body line-box space on top of the gap
+
+Form errors use the same trimmed 8px wrapped-copy rhythm as form help. Error
+messages must not inherit the wider body-prose line height
 
 Independently wrapping status facts use spacing to separate their roles. Do not
 attach generated punctuation that can remain at the end of a wrapped line or
@@ -748,7 +765,7 @@ states without depending on a caller's scoped CSS
 | Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
 | Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
-| Ruleset action grouping, independent markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
+| Ruleset action grouping, staged inspectors, lossless field restoration, named app pins, independent markers and 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page`, `ruleset-rule-editor` unit suites |
 | Repository option groups, readable picker values, anchored management, focus and wrapped status copy | `sync-drafts` browser suite and `sync-settings-page` unit suite |
 
 Paths above are relative to `internal/panel/frontend` except the backend suites.

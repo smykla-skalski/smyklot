@@ -16,7 +16,7 @@
     {
       key: 'pull_request',
       label: 'Require a pull request',
-      why: 'Nothing lands on the branch except through one',
+      why: 'Require changes to go through a pull request',
       parameterized: true,
     },
     {
@@ -38,13 +38,13 @@
     {
       key: 'update',
       label: 'Restrict updates',
-      why: 'Only this ruleset decides how the ref may move',
+      why: 'Only bypass actors can update matching branches',
       parameterized: true,
     },
     {
       key: 'code_scanning',
       label: 'Require code scanning',
-      why: 'Named tools must have reported before merging',
+      why: 'Block merges for missing scans or alerts above the selected thresholds',
       parameterized: true,
     },
   ];
@@ -55,11 +55,12 @@
 One ruleset's own page. Every card speaks the settings row grammar: say
 on the left, value on the right, ghost clear at the end. A rule's
 parameters ARE its value, so they sit in the value column as chips
-beside Edit, and the row opens into a small staged form - fields
-stacked left, Cancel and Done on a hairline foot.
+beside Edit. Parameterized rules open a shared inspector; Done stages the
+complete rule while Cancel leaves the document unchanged.
 -->
 
 <script lang="ts">
+  import { tick } from 'svelte';
   import { globRuns } from '../glob-runs';
   import { numericValue } from '../merge';
   import { receipts } from '../receipts.svelte';
@@ -76,7 +77,8 @@ stacked left, Cancel and Done on a hairline foot.
   import PageHeader from './PageHeader.svelte';
   import Popover from './Popover.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
-  import Switch from './Switch.svelte';
+  import RulesetRuleEditor from './RulesetRuleEditor.svelte';
+  import type { EditableRuleKey } from '../ruleset-rule-editor';
 
   const {
     config,
@@ -100,7 +102,10 @@ stacked left, Cancel and Done on a hairline foot.
     problem?: string | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
-    onChangeDocument: (document: Record<string, unknown>) => void;
+    onChangeDocument: (
+      document: Record<string, unknown>,
+      expectedDocument?: Record<string, unknown>,
+    ) => boolean | void;
     dirtyDocument?: boolean;
     lookupBypassActors?: BypassActorLookup;
   } = $props();
@@ -155,22 +160,31 @@ stacked left, Cancel and Done on a hairline foot.
   let addingActor = $state(false);
 
   /** Writes one changed ruleset back into the whole document. */
-  function patch(change: Partial<SyncRuleset>): void {
-    if (frozen || ruleset === null) return;
-    onChangeDocument({
-      ...stored,
-      rulesets: rulesets.map((held) => (held.name === name ? { ...held, ...change } : held)),
-    });
+  function patch(
+    change: Partial<SyncRuleset>,
+    expectedDocument?: Record<string, unknown>,
+  ): boolean | void {
+    if (frozen || ruleset === null) return false;
+    return onChangeDocument(
+      {
+        ...stored,
+        rulesets: rulesets.map((held) => (held.name === name ? { ...held, ...change } : held)),
+      },
+      expectedDocument,
+    );
   }
 
-  function patchRules(change: Partial<SyncRulesetRules>): void {
-    if (ruleset === null) return;
+  function patchRules(
+    change: Partial<SyncRulesetRules>,
+    expectedDocument?: Record<string, unknown>,
+  ): boolean | void {
+    if (ruleset === null) return false;
     const rules = { ...ruleset.rules };
     for (const [key, value] of Object.entries(change)) {
       if (value === undefined) delete rules[key as keyof SyncRulesetRules];
       else (rules as Record<string, unknown>)[key] = value;
     }
-    patch({ rules });
+    return patch({ rules }, expectedDocument);
   }
 
   /* What was deleted and where it stood, so the page can put it back. The document is
@@ -220,8 +234,6 @@ stacked left, Cancel and Done on a hairline foot.
 
   let includeOpen = $state(false);
   let excludeOpen = $state(false);
-  let checksOpen = $state(false);
-  let toolsOpen = $state(false);
   let addValue = $state('');
 
   function addPattern(side: 'include' | 'exclude'): void {
@@ -254,36 +266,18 @@ stacked left, Cancel and Done on a hairline foot.
 
   let pickingRule = $state(false);
 
-  /** A rule arrives holding a usable value; its editor is right there. */
-  function ruleOn(key: keyof SyncRulesetRules): void {
+  let addRuleButton = $state<HTMLButtonElement | null>(null);
+
+  async function ruleOn(key: keyof SyncRulesetRules): Promise<void> {
+    const owner = editorScope;
     pickingRule = false;
-    if (key === 'pull_request') {
-      patchRules({
-        pull_request: {
-          required_approving_review_count: 1,
-          allowed_merge_methods: ['merge', 'squash', 'rebase'],
-        },
-      });
-    } else if (key === 'required_status_checks') {
-      patchRules({
-        required_status_checks: {
-          required_status_checks: [],
-          strict_required_status_checks_policy: true,
-        },
-      });
-      editing = 'required_status_checks';
-      seedDrafts('required_status_checks');
-    } else if (key === 'update') {
-      patchRules({ update: {} });
-    } else if (key === 'code_scanning') {
-      patchRules({ code_scanning: { code_scanning_tools: [] } });
-    } else {
-      patchRules({ [key]: true } as Partial<SyncRulesetRules>);
-    }
+    if (isEditableRule(key)) {
+      await tick();
+      if (editorScope === owner && !frozen) ruleEditor?.show(key, addRuleButton ?? undefined);
+    } else patchRules({ [key]: true } as Partial<SyncRulesetRules>);
   }
 
   function ruleOff(key: keyof SyncRulesetRules): void {
-    if (editing === key) editing = null;
     patchRules({ [key]: undefined } as Partial<SyncRulesetRules>);
   }
 
@@ -321,126 +315,37 @@ stacked left, Cancel and Done on a hairline foot.
     return [];
   }
 
-  /* ---------- The staged rule editors ---------- */
+  let ruleEditor: { show: (key: EditableRuleKey, trigger?: HTMLElement) => void } | undefined =
+    $state();
+  const editorScope = $derived(`${sectionHref('rulesets')}/${name}`);
 
-  let editing = $state<keyof SyncRulesetRules | null>(null);
-
-  let prApprovals = $state(1);
-  let prStale = $state(false);
-  let prOwners = $state(false);
-  let prLastPush = $state(false);
-  let prThreads = $state(false);
-  let prMethods = $state<string[]>([]);
-
-  let checksList = $state<string[]>([]);
-  let checksStrict = $state(false);
-  let checksSkipCreate = $state(false);
-
-  let updateFetchMerge = $state(false);
-
-  let scanTools = $state<string[]>([]);
-
-  function seedDrafts(key: keyof SyncRulesetRules): void {
-    const rules = ruleset?.rules;
-    if (key === 'pull_request') {
-      const rule = rules?.pull_request;
-      prApprovals =
-        numericValue(rule?.required_approving_review_count) ?? (rule === undefined ? 1 : 0);
-      prStale = rule?.dismiss_stale_reviews_on_push === true;
-      prOwners = rule?.require_code_owner_review === true;
-      prLastPush = rule?.require_last_push_approval === true;
-      prThreads = rule?.required_review_thread_resolution === true;
-      prMethods = [...(rule?.allowed_merge_methods ?? ['merge', 'squash', 'rebase'])];
-    } else if (key === 'required_status_checks') {
-      const rule = rules?.required_status_checks;
-      checksList = (rule?.required_status_checks ?? []).map((check) => check.context);
-      checksStrict = rule?.strict_required_status_checks_policy === true;
-      checksSkipCreate = rule?.do_not_enforce_on_create === true;
-    } else if (key === 'update') {
-      updateFetchMerge = rules?.update?.update_allows_fetch_and_merge === true;
-    } else if (key === 'code_scanning') {
-      scanTools = (rules?.code_scanning?.code_scanning_tools ?? []).map((tool) => tool.tool);
-    }
+  function isEditableRule(key: keyof SyncRulesetRules): key is EditableRuleKey {
+    return (
+      key === 'pull_request' ||
+      key === 'required_status_checks' ||
+      key === 'update' ||
+      key === 'code_scanning'
+    );
   }
-
-  function openEditor(key: keyof SyncRulesetRules): void {
-    if (frozen) return;
-    seedDrafts(key);
-    editing = key;
-  }
-
-  function saveEditor(): void {
-    const key = editing;
-    editing = null;
-    if (key === 'pull_request') {
-      patchRules({
-        pull_request: {
-          ...(prApprovals > 0
-            ? { required_approving_review_count: Math.min(10, prApprovals) }
-            : {}),
-          ...(prStale ? { dismiss_stale_reviews_on_push: true } : {}),
-          ...(prOwners ? { require_code_owner_review: true } : {}),
-          ...(prLastPush ? { require_last_push_approval: true } : {}),
-          ...(prThreads ? { required_review_thread_resolution: true } : {}),
-          allowed_merge_methods: prMethods.length > 0 ? prMethods : ['merge'],
-        },
-      });
-    } else if (key === 'required_status_checks') {
-      const kept = ruleset?.rules?.required_status_checks?.required_status_checks ?? [];
-      patchRules({
-        required_status_checks: {
-          /* Names survive with their pinned apps: a context that was pinned
-             to the App reporting it stays pinned through a rename-free edit. */
-          required_status_checks: checksList.map(
-            (context) => kept.find((check) => check.context === context) ?? { context },
-          ),
-          ...(checksStrict ? { strict_required_status_checks_policy: true } : {}),
-          ...(checksSkipCreate ? { do_not_enforce_on_create: true } : {}),
-        },
-      });
-    } else if (key === 'update') {
-      patchRules({
-        update: updateFetchMerge ? { update_allows_fetch_and_merge: true } : {},
-      });
-    } else if (key === 'code_scanning') {
-      const kept = ruleset?.rules?.code_scanning?.code_scanning_tools ?? [];
-      patchRules({
-        code_scanning: {
-          /* ponytail: thresholds default on a fresh tool; editing them waits
-             for somebody to need it. */
-          code_scanning_tools: scanTools.map(
-            (tool) =>
-              kept.find((held) => held.tool === tool) ?? {
-                tool,
-                alerts_threshold: 'errors',
-                security_alerts_threshold: 'high_or_higher',
-              },
-          ),
-        },
-      });
-    }
-  }
-
-  function toggleMethod(method: string): void {
-    prMethods = prMethods.includes(method)
-      ? prMethods.filter((held) => held !== method)
-      : [...prMethods, method];
-  }
-
-  function addListValue(list: 'checks' | 'tools'): void {
-    const value = addValue.trim();
-    addValue = '';
-    checksOpen = false;
-    toolsOpen = false;
-    if (value === '') return;
-    if (list === 'checks' && !checksList.includes(value)) checksList = [...checksList, value];
-    if (list === 'tools' && !scanTools.includes(value)) scanTools = [...scanTools, value];
+  function openEditor(key: keyof SyncRulesetRules, trigger: HTMLElement): void {
+    if (!frozen && isEditableRule(key)) ruleEditor?.show(key, trigger);
   }
 
   /* ---------- The bypass list ---------- */
 
   const actors = $derived(ruleset?.bypass_actors ?? []);
 </script>
+
+<RulesetRuleEditor
+  bind:this={ruleEditor}
+  scope={editorScope}
+  rulesetName={name}
+  rules={ruleset?.rules}
+  disabled={frozen || ruleset === null}
+  lookup={lookupBypassActors}
+  onApply={(key, parameters) =>
+    patchRules({ [key]: parameters } as Partial<SyncRulesetRules>, stored)}
+/>
 
 <div class="view-frame">
   <!-- One crumb, to the row this page sits under. Sync is where that row lives,
@@ -662,7 +567,11 @@ stacked left, Cancel and Done on a hairline foot.
               {/if}
               <span class="rule-actions">
                 {#if rule.parameterized}
-                  <Button tone="quiet" disabled={frozen} onclick={() => openEditor(rule.key)}>
+                  <Button
+                    tone="quiet"
+                    disabled={frozen}
+                    onclick={(event) => openEditor(rule.key, event.currentTarget)}
+                  >
                     Edit
                   </Button>
                 {/if}
@@ -675,206 +584,6 @@ stacked left, Cancel and Done on a hairline foot.
                 />
               </span>
             </span>
-            {#if editing === rule.key}
-              <div class="rule-edit">
-                {#if rule.key === 'pull_request'}
-                  <div class="entry-field">
-                    <span class="entry-label">Approvals required</span>
-                    <input
-                      class="text-input text-inline num-input"
-                      type="number"
-                      min="0"
-                      max="10"
-                      bind:value={prApprovals}
-                      aria-label="Approvals required"
-                    />
-                  </div>
-                  <div class="rule-flag">
-                    <span>Dismiss stale approvals when new commits arrive</span>
-                    <Switch
-                      checked={prStale}
-                      bare
-                      label="Dismiss stale approvals"
-                      onToggle={(next) => (prStale = next)}
-                    />
-                  </div>
-                  <div class="rule-flag">
-                    <span>Require a code owner's review</span>
-                    <Switch
-                      checked={prOwners}
-                      bare
-                      label="Require a code owner's review"
-                      onToggle={(next) => (prOwners = next)}
-                    />
-                  </div>
-                  <div class="rule-flag">
-                    <span>Require the last push to be approved by somebody else</span>
-                    <Switch
-                      checked={prLastPush}
-                      bare
-                      label="Require last push approval"
-                      onToggle={(next) => (prLastPush = next)}
-                    />
-                  </div>
-                  <div class="rule-flag">
-                    <span>Require every review thread resolved</span>
-                    <Switch
-                      checked={prThreads}
-                      bare
-                      label="Require review threads resolved"
-                      onToggle={(next) => (prThreads = next)}
-                    />
-                  </div>
-                  <div class="entry-field">
-                    <span class="entry-label">Ways a pull request may land</span>
-                    <span class="chip-line">
-                      {#each ['merge', 'squash', 'rebase'] as method (method)}
-                        <button
-                          class="add-chip"
-                          class:is-held={prMethods.includes(method)}
-                          onclick={() => toggleMethod(method)}
-                        >
-                          {#if prMethods.includes(method)}<Icon
-                              name="check"
-                              size="xs"
-                            />{:else}<Icon name="plus" size="xs" />{/if}
-                          <span class="t">{method}</span>
-                        </button>
-                      {/each}
-                    </span>
-                  </div>
-                {:else if rule.key === 'required_status_checks'}
-                  <div class="entry-field">
-                    <span class="entry-label">Checks that must pass</span>
-                    <span class="chip-line">
-                      {#each checksList as context (context)}
-                        <span class="cond-chip"
-                          ><span class="t">{context}</span>
-                          <button
-                            aria-label="Remove {context}"
-                            onclick={() =>
-                              (checksList = checksList.filter((held) => held !== context))}
-                            ><Icon name="close" size="nano" /></button
-                          ></span
-                        >
-                      {/each}
-                      <Popover
-                        role="dialog"
-                        label="Check to add"
-                        align="start"
-                        bind:open={checksOpen}
-                        onopen={() => (addValue = '')}
-                      >
-                        {#snippet trigger(attributes)}
-                          <button {...attributes} class="add-chip">
-                            <Icon name="plus" size="xs" />
-                            <span class="t">Add a check</span>
-                          </button>
-                        {/snippet}
-                        <div class="name-menu">
-                          <div class="menu-search">
-                            <Icon name="search" size="xs" />
-                            <input
-                              placeholder="test"
-                              aria-label="Check to add"
-                              spellcheck="false"
-                              bind:value={addValue}
-                              onkeydown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  addListValue('checks');
-                                }
-                              }}
-                            />
-                          </div>
-                          <div class="menu-hint">Enter adds it · Esc closes</div>
-                        </div>
-                      </Popover>
-                    </span>
-                  </div>
-                  <div class="rule-flag">
-                    <span>Count a check only from its latest run</span>
-                    <Switch
-                      checked={checksStrict}
-                      bare
-                      label="Count a check only from its latest run"
-                      onToggle={(next) => (checksStrict = next)}
-                    />
-                  </div>
-                  <div class="rule-flag">
-                    <span>Skip these checks when the branch is first created</span>
-                    <Switch
-                      checked={checksSkipCreate}
-                      bare
-                      label="Skip on branch creation"
-                      onToggle={(next) => (checksSkipCreate = next)}
-                    />
-                  </div>
-                {:else if rule.key === 'update'}
-                  <div class="rule-flag">
-                    <span>Still allow updating by fetch and merge</span>
-                    <Switch
-                      checked={updateFetchMerge}
-                      bare
-                      label="Allow fetch and merge"
-                      onToggle={(next) => (updateFetchMerge = next)}
-                    />
-                  </div>
-                {:else if rule.key === 'code_scanning'}
-                  <div class="entry-field">
-                    <span class="entry-label">Tools that must have reported</span>
-                    <span class="chip-line">
-                      {#each scanTools as tool (tool)}
-                        <span class="cond-chip"
-                          ><span class="t">{tool}</span>
-                          <button
-                            aria-label="Remove {tool}"
-                            onclick={() => (scanTools = scanTools.filter((held) => held !== tool))}
-                            ><Icon name="close" size="nano" /></button
-                          ></span
-                        >
-                      {/each}
-                      <Popover
-                        role="dialog"
-                        label="Tool to add"
-                        align="start"
-                        bind:open={toolsOpen}
-                        onopen={() => (addValue = '')}
-                      >
-                        {#snippet trigger(attributes)}
-                          <button {...attributes} class="add-chip">
-                            <Icon name="plus" size="xs" />
-                            <span class="t">Add a tool</span>
-                          </button>
-                        {/snippet}
-                        <div class="name-menu">
-                          <div class="menu-search">
-                            <Icon name="search" size="xs" />
-                            <input
-                              placeholder="CodeQL"
-                              aria-label="Tool to add"
-                              spellcheck="false"
-                              bind:value={addValue}
-                              onkeydown={(event) => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault();
-                                  addListValue('tools');
-                                }
-                              }}
-                            />
-                          </div>
-                          <div class="menu-hint">Enter adds it · Esc closes</div>
-                        </div>
-                      </Popover>
-                    </span>
-                  </div>
-                {/if}
-                <div class="rule-edit-foot">
-                  <Button tone="quiet" onclick={() => (editing = null)}>Cancel</Button>
-                  <Button tone="signal" onclick={saveEditor}>Done</Button>
-                </div>
-              </div>
-            {/if}
           </div>
         {/each}
       </div>
@@ -901,7 +610,12 @@ stacked left, Cancel and Done on a hairline foot.
               >
               - {offRules.map((rule) => rule.label).join(', ')}</span
             >
-            <Button tone="quiet" disabled={frozen} onclick={() => (pickingRule = true)}>
+            <Button
+              tone="quiet"
+              bind:element={addRuleButton}
+              disabled={frozen}
+              onclick={() => (pickingRule = true)}
+            >
               {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
               Add a rule
             </Button>
@@ -1139,68 +853,6 @@ stacked left, Cancel and Done on a hairline foot.
 
   .add-chip .t {
     text-box: trim-both cap alphabetic;
-  }
-
-  /* ---------- The row opened for editing ---------- */
-
-  .rule-edit {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    display: grid;
-    flex-basis: 100%;
-    gap: var(--space-3);
-    /* Back inside the halo's overhang, aligned with the card's text edge. */
-    margin-block: var(--space-1) var(--space-2);
-    margin-inline: var(--space-2);
-    padding: var(--space-4);
-  }
-
-  .actor-edit {
-    flex: 1;
-  }
-
-  .entry-field {
-    display: grid;
-    gap: 0.5rem;
-  }
-
-  .entry-label {
-    color: var(--text-secondary);
-    font-size: var(--font-size-compact);
-    font-weight: 600;
-    min-block-size: 9px;
-    text-box: trim-both cap alphabetic;
-  }
-
-  .chip-line {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
-  }
-
-  .rule-flag {
-    align-items: center;
-    color: var(--text-secondary);
-    display: flex;
-    font-size: var(--font-size-compact);
-    gap: var(--space-3);
-    justify-content: space-between;
-  }
-
-  .rule-edit-foot {
-    border-top: 1px solid var(--border-subtle);
-    display: flex;
-    gap: var(--space-2);
-    justify-content: flex-end;
-    padding-top: var(--space-3);
-  }
-
-  .num-input {
-    padding-inline-end: 0.3rem;
-    text-align: center;
-    width: 4.2rem;
   }
 
   /* ---------- The unmanaged remainder ---------- */

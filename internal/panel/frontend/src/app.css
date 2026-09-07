@@ -1453,7 +1453,9 @@ code {
 .form-error {
   color: var(--danger);
   font-size: var(--font-size-meta);
+  line-height: var(--row-copy-leading);
   margin: 0;
+  text-box: trim-both cap alphabetic;
 }
 
 /* The rest of a form's furniture, beside the error that was already here. Two

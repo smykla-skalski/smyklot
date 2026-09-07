@@ -10,6 +10,7 @@
     variant = 'dialog',
     returnFocus = null,
     onClose,
+    beforeClose,
     children,
     footer,
     headerExtra,
@@ -21,12 +22,17 @@
     variant?: 'dialog' | 'inspector' | 'wide';
     returnFocus?: HTMLElement | null;
     onClose: () => void;
+    beforeClose?: () => boolean;
     children: Snippet;
     footer?: Snippet;
     headerExtra?: Snippet;
   } = $props();
 
   let openState = $derived(open);
+
+  function guardClose(event: Event): void {
+    if (beforeClose?.() === false) event.preventDefault();
+  }
 
   function handleOpenChange(detail: boolean): void {
     if (!detail) {
@@ -50,7 +56,9 @@ than at the top of the page.
 
 It portals into `.app-shell`, which is what carries the palette - a dialog rendered
 outside it comes out unthemed. Bits UI owns the focus trap, the escape key and the
-scrim; what is written here is the shape and the three widths.
+scrim; what is written here is the shape and the three widths. `beforeClose` may
+refuse Escape or outside dismissal before either the content or its focus trap is
+unmounted. Explicit caller actions and changes to `open` remain the caller’s decision.
 
 A dialog is for a decision. Something the reader can carry on past belongs in a
 `Callout` beside the work, and something a page has to say about having nothing to show
@@ -68,6 +76,8 @@ belongs in `EmptyState`.
       <Dialog.Content
         {id}
         class="modal-panel"
+        onEscapeKeydown={guardClose}
+        onInteractOutside={guardClose}
         aria-labelledby={`${id}-title`}
         aria-describedby={description === undefined ? undefined : `${id}-description`}
       >

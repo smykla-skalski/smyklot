@@ -6,6 +6,10 @@ import SyncRulesetPage from '../src/lib/components/SyncRulesetPage.svelte';
 import SyncRulesetsPage from '../src/lib/components/SyncRulesetsPage.svelte';
 import { formatJson, parseJson, type JsonValue } from '../src/lib/merge';
 import type { SyncConfig, SyncRuleset } from '../src/lib/types';
+import { chooseOption } from './support/select';
+import { tick } from 'svelte';
+import RulesetRuleEditor from '../src/lib/components/RulesetRuleEditor.svelte';
+import type { BypassActorDirectory } from '../src/lib/types';
 
 class TestResizeObserver {
   observe(): void {}
@@ -310,6 +314,8 @@ describe('the ruleset pages [Component]', () => {
       (held.textContent ?? '').includes('Require a pull request'),
     );
     await fireEvent.click(chip as HTMLButtonElement);
+    expect(sent).toHaveLength(0);
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 
     const saved = (sent[0]?.rulesets as Array<Record<string, unknown>>)[0];
     expect(saved?.rules).toEqual({
@@ -375,7 +381,7 @@ describe('the ruleset pages [Component]', () => {
       (screen.getByRole('spinbutton', { name: 'Approvals required' }) as HTMLInputElement).value,
     ).toBe('0');
     await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
-    expect(sent).toHaveBeenCalledWith(
+    expect(sent.mock.calls[0]![0]).toEqual(
       expect.objectContaining({
         rulesets: [
           expect.objectContaining({
@@ -428,5 +434,560 @@ describe('the ruleset pages [Component]', () => {
 
     expect(document.body.textContent).toContain('No ruleset by this name');
     expect(document.querySelector('.policy-row')).toBeNull();
+  });
+  it.each([
+    ['pull_request', { required_approving_review_count: 1, allowed_merge_methods: ['squash'] }],
+    [
+      'required_status_checks',
+      {
+        required_status_checks: [{ context: 'test', integration_id: 42, future_child: 'kept' }],
+        strict_required_status_checks_policy: false,
+      },
+    ],
+    ['update', { update_allows_fetch_and_merge: false }],
+    [
+      'code_scanning',
+      {
+        code_scanning_tools: [
+          {
+            tool: 'CodeQL',
+            alerts_threshold: 'all',
+            security_alerts_threshold: 'critical',
+            future_child: 'kept',
+          },
+        ],
+      },
+    ],
+  ] as const)(
+    'keeps complete %s parameters when Done stages an unchanged editor',
+    async (key, parameters) => {
+      const sent = vi.fn();
+      const rule = {
+        ...parameters,
+        future_parameter: parseJson('{"exact":9007199254740993,"huge":1e400}'),
+      };
+      render(SyncRulesetPage, {
+        ...shared,
+        name: 'guard',
+        config: config({
+          rulesets: [
+            {
+              name: 'guard',
+              target: 'branch',
+              enforcement: 'active',
+              conditions: { include: [], exclude: [] },
+              rules: { [key]: rule },
+            },
+          ],
+        }),
+        onChangeDocument: sent,
+      });
+      await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+      expect(sent).toHaveBeenCalledTimes(1);
+      const saved = sent.mock.calls[0]![0].rulesets[0].rules[key];
+      expect(formatJson(saved)).toBe(formatJson(rule as unknown as JsonValue));
+    },
+  );
+
+  it('does not create a parameterized rule until Done and Cancel leaves it absent', async () => {
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({
+        rulesets: [
+          {
+            name: 'guard',
+            target: 'branch',
+            enforcement: 'active',
+            conditions: { include: [], exclude: [] },
+            rules: {},
+          },
+        ],
+      }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /Add a rule/ }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Require a pull request' }));
+    expect(sent).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(sent).not.toHaveBeenCalled();
+    expect(screen.queryByText('Approvals required', { exact: true })).toBeNull();
+  });
+
+  it('makes an open editor read only when write permission is removed', async () => {
+    const sent = vi.fn();
+    const rendered = render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({
+        rulesets: [
+          {
+            name: 'guard',
+            target: 'branch',
+            enforcement: 'active',
+            conditions: { include: [], exclude: [] },
+            rules: { pull_request: { allowed_merge_methods: ['squash'] } },
+          },
+        ],
+      }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await rendered.rerender({ readOnly: true });
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: "Require a code owner's review",
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('closes a rule editor when the selected ruleset changes', async () => {
+    const make = (name: string) => ({
+      name,
+      target: 'branch',
+      enforcement: 'active',
+      conditions: { include: [], exclude: [] },
+      rules: { pull_request: { allowed_merge_methods: ['squash'] } },
+    });
+    const sent = vi.fn();
+    const rendered = render(SyncRulesetPage, {
+      ...shared,
+      name: 'first',
+      config: config({ rulesets: [make('first'), make('second')] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await rendered.rerender({ name: 'second' });
+    expect(screen.queryByText('Approvals required', { exact: true })).toBeNull();
+    expect(sent).not.toHaveBeenCalled();
+  });
+
+  it('keeps authored pinned checks through removal, re-addition and a policy edit', async () => {
+    const rule = parseJson(
+      '{"required_status_checks":[{"context":"test","integration_id":9007199254740993,"future_child":1e400},{"context":"lint","integration_id":77}],"strict_required_status_checks_policy":false,"future_parameter":-0}',
+    ) as Record<string, unknown>;
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({
+        rulesets: [
+          { ...savedProtection(), name: 'guard', rules: { required_status_checks: rule } },
+        ],
+      }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByText('App ID 9007199254740993')).toBeTruthy();
+    await fireEvent.click(screen.getByRole('button', { name: 'Remove test' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a check' }));
+    const input = screen.getByRole('textbox', { name: 'Check to add' });
+    await fireEvent.input(input, { target: { value: 'test' } });
+    await fireEvent.submit(input.closest('form')!);
+    await fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Require branches to be up to date' }),
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(sent).toHaveBeenCalledTimes(1);
+    expect(formatJson(sent.mock.calls[0]![0].rulesets[0].rules.required_status_checks)).toBe(
+      formatJson({ ...rule, strict_required_status_checks_policy: true } as JsonValue),
+    );
+  });
+
+  it('changes a scanning threshold without replacing its tool record or other thresholds', async () => {
+    const rule = parseJson(
+      '{"code_scanning_tools":[{"tool":"CodeQL","alerts_threshold":"errors","security_alerts_threshold":"critical","future_child":9007199254740993}],"future_parameter":1e-400}',
+    ) as Record<string, unknown>;
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({
+        rulesets: [{ ...savedProtection(), name: 'guard', rules: { code_scanning: rule } }],
+      }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await chooseOption(
+      screen.getByRole('combobox', { name: 'CodeQL alerts' }),
+      'Errors and warnings',
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    const tools = rule.code_scanning_tools as Record<string, unknown>[];
+    expect(formatJson(sent.mock.calls[0]![0].rulesets[0].rules.code_scanning)).toBe(
+      formatJson({
+        ...rule,
+        code_scanning_tools: [{ ...tools[0], alerts_threshold: 'errors_and_warnings' }],
+      } as JsonValue),
+    );
+  });
+
+  it('abandons edited values on Cancel and starts again from the current rule', async () => {
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await fireEvent.input(screen.getByRole('spinbutton', { name: 'Approvals required' }), {
+      target: { value: '4' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(sent).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(
+      (screen.getByRole('spinbutton', { name: 'Approvals required' }) as HTMLInputElement).value,
+    ).toBe('1');
+  });
+
+  it('retains and blocks an existing editor when its rule is removed externally', async () => {
+    const sent = vi.fn();
+    const rendered = render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await rendered.rerender({
+      config: config({ rulesets: [{ ...savedProtection(), rules: {} }] }),
+    });
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText(
+        'This rule changed elsewhere · close and reopen the editor to review its current values',
+      ),
+    ).toBeTruthy();
+    expect(sent).not.toHaveBeenCalled();
+  });
+  it('keeps an invalid approval count editable and never stages it', async () => {
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const input = screen.getByRole('spinbutton', { name: 'Approvals required' });
+    await fireEvent.input(input, { target: { value: '11' } });
+    expect(screen.getByText('Choose a whole number from 0 to 10')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(sent).not.toHaveBeenCalled();
+    await fireEvent.input(input, { target: { value: '2' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(
+      sent.mock.calls[0]![0].rulesets[0].rules.pull_request.required_approving_review_count,
+    ).toBe(2);
+  });
+
+  it('requires a valid scanning tool before staging a new rule', async () => {
+    const sent = vi.fn();
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'guard',
+      config: config({ rulesets: [{ ...savedProtection(), name: 'guard', rules: {} }] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a rule' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Require code scanning' }));
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sent).not.toHaveBeenCalled();
+    await fireEvent.click(screen.getByRole('button', { name: 'Add a tool' }));
+    const input = screen.getByRole('textbox', { name: 'Tool to add' });
+    await fireEvent.input(input, { target: { value: 'CodeQL' } });
+    await fireEvent.submit(input.closest('form')!);
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(sent.mock.calls[0]![0].rulesets[0].rules.code_scanning).toEqual({
+      code_scanning_tools: [
+        { tool: 'CodeQL', alerts_threshold: 'errors', security_alerts_threshold: 'high_or_higher' },
+      ],
+    });
+  });
+  it('resolves pinned app names and avatars without rounding adjacent large IDs', async () => {
+    const lookup = vi.fn().mockResolvedValue({
+      items: [
+        {
+          actor_type: 'Integration',
+          actor_id: JSON.rawJSON('9007199254740993'),
+          name: 'Known build app',
+          slug: 'known-build-app',
+          avatar_url: '/known-app.png',
+        },
+      ],
+    });
+    const rules = {
+      required_status_checks: {
+        required_status_checks: [
+          { context: 'unresolved', integration_id: JSON.rawJSON('9007199254740992') },
+          { context: 'resolved', integration_id: JSON.rawJSON('9007199254740993') },
+        ],
+      },
+    };
+    const rendered = render(RulesetRuleEditor, {
+      scope: 'first',
+      rulesetName: 'guard',
+      rules,
+      disabled: false,
+      lookup,
+      onApply: vi.fn(),
+    });
+    rendered.component.show('required_status_checks');
+    await tick();
+    expect(await screen.findByText('Known build app')).toBeTruthy();
+    expect(screen.getByText('App name unavailable')).toBeTruthy();
+    expect(screen.getByText('App ID 9007199254740992')).toBeTruthy();
+    expect(document.querySelector('img.avatar')?.getAttribute('src')).toBe('/known-app.png');
+  });
+
+  it('ignores old name lookups after closing and opening another scope', async () => {
+    let completeOld!: (value: BypassActorDirectory) => void;
+    const old = new Promise<BypassActorDirectory>((resolve) => {
+      completeOld = resolve;
+    });
+    const identity = {
+      actor_type: 'Integration',
+      actor_id: 77,
+      name: 'Current app',
+      slug: 'current-app',
+      avatar_url: null,
+    };
+    const lookup = vi
+      .fn()
+      .mockReturnValueOnce(old)
+      .mockResolvedValueOnce({ items: [identity] });
+    const rendered = render(RulesetRuleEditor, {
+      scope: 'first',
+      rulesetName: 'guard',
+      rules: {
+        required_status_checks: {
+          required_status_checks: [{ context: 'test', integration_id: 77 }],
+        },
+      },
+      disabled: false,
+      lookup,
+      onApply: vi.fn(),
+    });
+    rendered.component.show('required_status_checks');
+    await tick();
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await rendered.rerender({ scope: 'second' });
+    rendered.component.show('required_status_checks');
+    await tick();
+    expect(await screen.findByText('Current app')).toBeTruthy();
+    completeOld({ items: [{ ...identity, name: 'Stale app' }] });
+    await tick();
+    await tick();
+    expect(screen.queryByText('Stale app')).toBeNull();
+    expect(screen.getByText('Current app')).toBeTruthy();
+  });
+  it.each(['4', '11'])(
+    'keeps private approvals %s after refusing incidental dismissal',
+    async (value) => {
+      const sent = vi.fn();
+      render(SyncRulesetPage, {
+        ...shared,
+        name: 'main-protection',
+        config: config({ rulesets: [savedProtection()] }),
+        onChangeDocument: sent,
+      });
+      await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      const input = screen.getByRole('spinbutton', { name: 'Approvals required' });
+      await fireEvent.input(input, { target: { value } });
+      await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
+      expect(screen.getByRole('dialog', { name: 'Discard rule changes?' })).toBeTruthy();
+      expect(input.isConnected).toBe(true);
+      expect(sent).not.toHaveBeenCalled();
+      await fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByRole('spinbutton', { name: 'Approvals required' })).toBe(input);
+      expect((input as HTMLInputElement).value).toBe(value);
+      await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
+      await fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+      expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+      expect(sent).not.toHaveBeenCalled();
+    },
+  );
+
+  it('dismisses an unchanged or exactly reverted private rule without confirmation', async () => {
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+    });
+    for (const change of [false, true]) {
+      await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      if (change) {
+        const input = screen.getByRole('spinbutton', { name: 'Approvals required' });
+        await fireEvent.input(input, { target: { value: '4' } });
+        await fireEvent.input(input, { target: { value: '1' } });
+      }
+      await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
+      expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+      expect(screen.queryByRole('dialog', { name: 'Discard rule changes?' })).toBeNull();
+    }
+  });
+
+  it('invalidates the confirmation and private draft when its scope changes', async () => {
+    const sent = vi.fn();
+    const rendered = render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [savedProtection()] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await fireEvent.input(screen.getByRole('spinbutton', { name: 'Approvals required' }), {
+      target: { value: '4' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
+    expect(screen.getByRole('dialog', { name: 'Discard rule changes?' })).toBeTruthy();
+    await rendered.rerender({ name: 'another-ruleset' });
+    expect(screen.queryByRole('button', { name: 'Discard changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+    expect(sent).not.toHaveBeenCalled();
+  });
+  it.each(['changed', 'removed', 'created'] as const)(
+    'blocks stale private rules when the live rule is %s',
+    async (change) => {
+      const opening = { required_approving_review_count: 1, allowed_merge_methods: ['squash'] };
+      const make = (rule: typeof opening | undefined) => ({
+        ...savedProtection(),
+        rules: rule ? { pull_request: rule } : {},
+      });
+      const sent = vi.fn();
+      const rendered = render(SyncRulesetPage, {
+        ...shared,
+        name: 'main-protection',
+        config: config({ rulesets: [make(change === 'created' ? undefined : opening)] }),
+        onChangeDocument: sent,
+      });
+      if (change === 'created') {
+        await fireEvent.click(screen.getByRole('button', { name: 'Add a rule' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Require a pull request' }));
+      } else await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+      const input = screen.getByRole('spinbutton', { name: 'Approvals required' });
+      await fireEvent.input(input, { target: { value: '4' } });
+      await rendered.rerender({
+        config: config({
+          rulesets: [
+            make(
+              change === 'removed' ? undefined : { ...opening, required_approving_review_count: 2 },
+            ),
+          ],
+        }),
+      });
+      expect(
+        screen.getByText(
+          'This rule changed elsewhere · close and reopen the editor to review its current values',
+        ),
+      ).toBeTruthy();
+      expect(input.isConnected).toBe(true);
+      expect((input as HTMLInputElement).value).toBe('4');
+      expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(
+        true,
+      );
+      await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+      expect(sent).not.toHaveBeenCalled();
+      await rendered.rerender({
+        config: config({ rulesets: [make(change === 'created' ? undefined : opening)] }),
+      });
+      expect(
+        screen.queryByText(
+          'This rule changed elsewhere · close and reopen the editor to review its current values',
+        ),
+      ).toBeNull();
+      await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+      expect(
+        sent.mock.calls[0]![0].rulesets[0].rules.pull_request.required_approving_review_count,
+      ).toBe(4);
+    },
+  );
+
+  it('compares all lossless rule parameters while ignoring unrelated live rule changes', async () => {
+    const opening = parseJson(
+      '{"required_status_checks":[{"context":"build","integration_id":9007199254740992}],"future":1e400}',
+    ) as Record<string, unknown>;
+    const changed = parseJson(
+      '{"required_status_checks":[{"context":"build","integration_id":9007199254740993}],"future":1e400}',
+    ) as Record<string, unknown>;
+    const sent = vi.fn();
+    const make = (rule: Record<string, unknown>, deletion = true) => ({
+      ...savedProtection(),
+      rules: { required_status_checks: rule, deletion },
+    });
+    const rendered = render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config({ rulesets: [make(opening)] }),
+      onChangeDocument: sent,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await rendered.rerender({ config: config({ rulesets: [make(changed)] }) });
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    await rendered.rerender({
+      config: config({ rulesets: [make({ ...opening, future: JSON.rawJSON('1e401') })] }),
+    });
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    await rendered.rerender({ config: config({ rulesets: [make(opening, false)] }) });
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    const stored = sent.mock.calls[0]![0].rulesets[0].rules;
+    expect(formatJson(stored.required_status_checks)).toBe(formatJson(opening as JsonValue));
+    expect(stored.deletion).toBe(false);
+  });
+  it('keeps the private rule when compare-and-stage rejects an unseen document change', async () => {
+    const saved = { rulesets: [savedProtection()], future_document: JSON.rawJSON('1e400') };
+    const stage = vi.fn().mockReturnValue(false);
+    render(SyncRulesetPage, {
+      ...shared,
+      name: 'main-protection',
+      config: config(saved),
+      onChangeDocument: stage,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    const input = screen.getByRole('spinbutton', { name: 'Approvals required' });
+    await fireEvent.input(input, { target: { value: '4' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(stage).toHaveBeenCalledOnce();
+    expect(stage.mock.calls[0]![1]).toBe(saved);
+    expect(screen.getByRole('spinbutton', { name: 'Approvals required' })).toBe(input);
+    expect((input as HTMLInputElement).value).toBe('4');
+    expect(
+      screen.getByText(
+        'This edit could not be staged · close and reopen the editor to review the current settings',
+      ),
+    ).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Done' }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(stage).toHaveBeenCalledOnce();
+    await fireEvent.click(screen.getByRole('button', { name: 'Close rule editor' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect((input as HTMLInputElement).value).toBe('4');
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    stage.mockReturnValue(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(
+      screen.queryByText(
+        'This edit could not be staged · close and reopen the editor to review the current settings',
+      ),
+    ).toBeNull();
+    await fireEvent.input(screen.getByRole('spinbutton', { name: 'Approvals required' }), {
+      target: { value: '3' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(stage).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
   });
 });

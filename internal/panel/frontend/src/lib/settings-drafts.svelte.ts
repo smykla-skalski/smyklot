@@ -267,8 +267,9 @@ export class SettingsDraftRegistry {
     resource: SettingsResource,
     nextValue: SettingsJson,
     change: SettingsControlChange,
+    expectedValue?: SettingsJson,
   ): boolean {
-    return this.stageMany(resource, nextValue, [change]);
+    return this.stageMany(resource, nextValue, [change], expectedValue);
   }
 
   /** A single UI action may change several controls in the complete document. */
@@ -276,12 +277,16 @@ export class SettingsDraftRegistry {
     resource: SettingsResource,
     nextValue: SettingsJson,
     changes: readonly SettingsControlChange[],
+    expectedValue?: SettingsJson,
   ): boolean {
     this.syncFromStorage();
     const key = settingsResourceKey(resource);
     const current = this.resources[key];
     if (
       current === undefined ||
+      // Compare after importing shared storage, before adopting a stale edit at
+      // a newly saved revision. Rendered props may precede the storage event.
+      (expectedValue !== undefined && !sameSettingsJson(current.draft, expectedValue)) ||
       changes.length === 0 ||
       changes.some((change) => change.id.length === 0) ||
       changes.some((change, index) =>

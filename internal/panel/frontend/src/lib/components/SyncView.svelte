@@ -3,7 +3,8 @@
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { formatJson, type JsonValue } from '#lib/merge.js';
+  import { formatJson, parseJson, type JsonValue } from '#lib/merge.js';
+  import { sameSettingsJson } from '#lib/settings-draft-storage.js';
   import {
     adoptSyncOverrideSettings,
     stageSyncOverrideControl,
@@ -11,7 +12,11 @@
     type SyncOverrideControlId,
     type SyncOverrideEditorEnvelope,
   } from '#lib/repository-sync-override-settings.js';
-  import { getSettingsDraftRegistry, type SettingsScope } from '#lib/settings-drafts.svelte.js';
+  import {
+    getSettingsDraftRegistry,
+    type SettingsScope,
+    type SettingsJson,
+  } from '#lib/settings-drafts.svelte.js';
   import { getFileDraftValidation } from '#lib/file-draft-validation.js';
   import {
     adoptSyncConfigSettings,
@@ -277,14 +282,20 @@
     kind: SyncKind,
     envelope: SyncConfigEditorEnvelope,
     controlId: SyncConfigControlId,
+    expectedValue?: SyncConfigEditorEnvelope,
   ): boolean {
     const canonical = canonicalConfigs[kind];
     if (
       canonical === undefined ||
       canonical.unreadable ||
-      !stageSyncConfigControl(drafts, targetId, canonical, envelope, controlId)
+      !stageSyncConfigControl(drafts, targetId, canonical, envelope, controlId, expectedValue)
     ) {
-      setStageProblem(kind, 'This Sync configuration change is not valid');
+      setStageProblem(
+        kind,
+        expectedValue === undefined
+          ? 'This Sync configuration change is not valid'
+          : 'Settings changed before this edit could be applied · review the current values',
+      );
       return false;
     }
     setStageProblem(kind, null);
@@ -308,14 +319,32 @@
     return stageEnvelope(LABELS, { kind: LABELS, ...next, labels }, controlId);
   }
 
-  function stageDocument(kind: DocumentKind, document: Record<string, unknown>): boolean {
+  function stageDocument(
+    kind: DocumentKind,
+    document: Record<string, unknown>,
+    expectedDocument?: Record<string, unknown>,
+  ): boolean {
     const current = currentEnvelope(kind);
     if (current === null || current.kind === LABELS) return false;
     try {
+      if (
+        expectedDocument !== undefined &&
+        !sameSettingsJson(
+          parseJson(current.document_text) as SettingsJson,
+          expectedDocument as SettingsJson,
+        )
+      ) {
+        setStageProblem(
+          kind,
+          'Settings changed before this edit could be applied · review the current values',
+        );
+        return false;
+      }
       return stageEnvelope(
         kind,
         { ...current, document_text: formatJson(document as JsonValue).trimEnd() },
         `sync.${kind}.document`,
+        current,
       );
     } catch (cause) {
       setStageProblem(kind, messageOf(cause));
@@ -521,7 +550,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       problem={documentError.rulesets}
       {sectionHref}
       {onOpenSection}
-      onChangeDocument={(document) => void stageDocument(RULESETS, document)}
+      onChangeDocument={(document, expected) => stageDocument(RULESETS, document, expected)}
       dirtyDocument={dirtyControls.includes('sync.rulesets.document')}
     />
   {:else}
@@ -536,7 +565,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {rulesetHref}
       {onOpenRuleset}
       onToggleEnabled={(wanted) => toggleKind(RULESETS, wanted)}
-      onChangeDocument={(document) => void stageDocument(RULESETS, document)}
+      onChangeDocument={(document) => stageDocument(RULESETS, document)}
       dirtyEnabled={dirtyControls.includes('sync.rulesets.enabled')}
       dirtyDocument={dirtyControls.includes('sync.rulesets.document')}
     />

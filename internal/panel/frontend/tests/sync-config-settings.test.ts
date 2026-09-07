@@ -50,6 +50,62 @@ function isJsonRecord(value: JsonValue | undefined): value is { [key: string]: J
 }
 
 describe('Sync configuration settings adapter [Unit]', () => {
+  it.each([false, true])('rejects stale staging with storage event delivered=%s', (delivered) => {
+    const config = documentConfig('rulesets', '{"rulesets":[{"name":"main","rules":{}}]}');
+    const storage = new MemoryStorage();
+    const first = new SettingsDraftRegistry({ storage, writerId: 'first' });
+    const second = new SettingsDraftRegistry({ storage, writerId: 'second' });
+    first.hydrate('viewer');
+    second.hydrate('viewer');
+    adoptSyncConfigSettings(first, 'target', config);
+    adoptSyncConfigSettings(second, 'target', config);
+    const opening = buildSyncConfigEditorEnvelope(config) as SyncDocumentEditorEnvelope;
+    const remote = {
+      ...opening,
+      document_text:
+        '{"rulesets":[{"name":"main","rules":{"pull_request":{"required_approving_review_count":4}}}]}',
+    };
+    const local = {
+      ...opening,
+      document_text:
+        '{"rulesets":[{"name":"main","rules":{"pull_request":{"required_approving_review_count":1}}}]}',
+    };
+    expect(stageSyncConfigControl(second, 'target', config, remote, 'sync.rulesets.document')).toBe(
+      true,
+    );
+    const attempt = second.beginSave({ type: 'workspace', targetId: 'target' })!;
+    const resource = syncConfigResource('target', 'rulesets');
+    second.commitSave(attempt, [
+      { resource, revision: 5, value: remote, savedControls: syncConfigSavedControls(remote) },
+    ]);
+    // Exercise both the staging refresh and an explicit precondition held by its caller.
+    if (delivered) first.reconcile([...storage.values.values()][0]!);
+    expect(first.resource(resource)?.expectedRevision).toBe(delivered ? 5 : 4);
+    expect(
+      stageSyncConfigControl(
+        first,
+        'target',
+        config,
+        local,
+        'sync.rulesets.document',
+        delivered ? opening : undefined,
+      ),
+    ).toBe(false);
+    expect(first.resource(resource)).toMatchObject({
+      expectedRevision: 5,
+      dirty: false,
+      value: remote,
+    });
+    expect(first.beginSave({ type: 'workspace', targetId: 'target' })).toBeNull();
+    // A new edit based on the current value is permitted at the new revision.
+    expect(
+      stageSyncConfigControl(first, 'target', config, local, 'sync.rulesets.document', remote),
+    ).toBe(true);
+    expect(first.resource(resource)).toMatchObject({ expectedRevision: 5, dirty: true });
+    first.dispose();
+    second.dispose();
+  });
+
   it('restores a ruleset after actor and merge-method reorder without migrating persisted drafts', () => {
     const config = documentConfig(
       'rulesets',

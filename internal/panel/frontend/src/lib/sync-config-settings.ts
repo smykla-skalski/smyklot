@@ -158,6 +158,7 @@ export function stageSyncConfigControl(
   config: SyncConfig,
   nextValue: SyncConfigEditorEnvelope,
   controlId: SyncConfigControlId,
+  expectedValue?: SyncConfigEditorEnvelope,
 ): boolean {
   const kind = requireEditableConfig(config);
   const definition = syncConfigControls(kind).find(({ id }) => id === controlId);
@@ -193,12 +194,17 @@ export function stageSyncConfigControl(
   }
   const saved = syncConfigSavedControls(base);
   const current = syncConfigSavedControls(next);
-  return registry.stage(resource, next, {
-    id: controlId,
-    location: definition.location,
-    saved: saved[controlId]!,
-    value: current[controlId]!,
-  });
+  return registry.stage(
+    resource,
+    next,
+    {
+      id: controlId,
+      location: definition.location,
+      saved: saved[controlId]!,
+      value: current[controlId]!,
+    },
+    expectedValue ?? snapshot?.value ?? buildSyncConfigEditorEnvelope(config),
+  );
 }
 
 /** The required terminal newline is supplied by the backend, not a user edit. */
