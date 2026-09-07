@@ -521,6 +521,11 @@ for the same current input clears a transient request error. Typed formatting
 metadata must not suppress checks for that file or any other file, and file
 content retains exact numeric values through validation
 
+A validation message in the global composer links to the file that caused it,
+including a repository adjustment. The message and destination share the same
+validation owner; never substitute the oldest unrelated draft. Navigation and
+reload retain that destination and its unsaved text without enabling Save
+
 Returning to the same settings preserves raw invalid text, selection, and Undo;
 object key order alone is not a settings change. Breadcrumbs and sidebar links
 must leave a file detail for the shared-file list within the same session

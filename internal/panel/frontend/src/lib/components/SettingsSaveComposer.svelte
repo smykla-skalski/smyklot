@@ -116,6 +116,9 @@ changed something.
       {:else if invalidProblem !== null}
         <strong>Fix the invalid setting before saving</strong>
         <span>{invalidProblem}</span>
+        {#if problemHref !== undefined && problemLabel !== undefined}
+          <a href={problemHref} onclick={openProblem}>Open {problemLabel}</a>
+        {/if}
       {:else if problem !== null || conflict}
         <strong>{conflict ? 'Your draft is still safe' : 'Settings were not saved'}</strong>
         <span>{problem ?? 'Settings also changed in another open tab'}</span>

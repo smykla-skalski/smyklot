@@ -386,10 +386,15 @@ export class SettingsDraftRegistry {
   }
 
   validationProblem(scope: SettingsScope): string | null {
+    return this.validationIssue(scope)?.problem ?? null;
+  }
+
+  /** Keep a message paired with its owner so navigation cannot point at another draft. */
+  validationIssue(scope: SettingsScope): { controlId: string; problem: string } | null {
     const problems = this.validationProblems[settingsScopeKey(scope)];
     if (problems === undefined) return null;
     const first = Object.keys(problems).sort()[0];
-    return first === undefined ? null : (problems[first] ?? null);
+    return first === undefined ? null : { controlId: first, problem: problems[first]! };
   }
 
   hasConflicts(scope: SettingsScope): boolean {

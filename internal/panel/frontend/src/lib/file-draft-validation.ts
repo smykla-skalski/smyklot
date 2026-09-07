@@ -52,6 +52,8 @@ interface Check {
   scope: SettingsScope;
   control: string;
   targetId: string;
+  repositoryId: string;
+  path?: string;
   input?: SyncFileRenderInput;
   problem?: string;
 }
@@ -121,6 +123,21 @@ export class FileDraftValidation {
     const targets = new Set(snapshot.configurations.keys());
     for (const targetId of this.loaded.keys())
       if (!targets.has(targetId)) this.loaded.delete(targetId);
+  }
+
+  /** The exact file behind the displayed issue, including checks restored off-route. */
+  problemFile(
+    scope: SettingsScope,
+    controlId: string | undefined,
+  ): {
+    path: string;
+    repositoryId: string;
+  } | null {
+    if (scope.type !== 'workspace' || controlId === undefined) return null;
+    const check = this.jobs.get(`${scope.targetId}:${controlId}`)?.check;
+    return check?.path === undefined
+      ? null
+      : { path: check.path, repositoryId: check.repositoryId };
   }
 
   /** Share simultaneous requests; fresh previews also retry the current Save check. */
@@ -211,7 +228,15 @@ export class FileDraftValidation {
     const scope = { type: 'workspace', targetId } as const;
     const add = (path: string, input?: SyncFileRenderInput, problem?: string) => {
       const control = `sync.files.validation:${encodeURIComponent(repositoryId)}:${encodeURIComponent(path)}`;
-      checks.set(`${targetId}:${control}`, { scope, control, targetId, input, problem });
+      checks.set(`${targetId}:${control}`, {
+        scope,
+        control,
+        targetId,
+        repositoryId,
+        input,
+        problem,
+        ...(path === 'load' ? {} : { path }),
+      });
     };
     // Invalid raw envelopes already have a precise, persistent serializer error.
     const changes = resource.type === 'sync-override' ? adjustments(state.value) : null;

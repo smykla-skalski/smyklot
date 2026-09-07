@@ -49,6 +49,68 @@ async function repositories(page: Page) {
 }
 
 describe('file validation lifetime [Browser]', () => {
+  it('returns to the invalid repository adjustment instead of an older unrelated change', async () => {
+    const page = await panel.browser.newPage({ reducedMotion: 'reduce' });
+    page.setDefaultTimeout(8000);
+    await page.route('**/sync/files/render', async (route) => {
+      if (route.request().postDataJSON()?.repository?.merge?.overrides?.retries !== 8)
+        return route.continue();
+      await route.fulfill({
+        json: {
+          valid: false,
+          final_content: '',
+          matches_formatting: false,
+          diagnostics: [
+            {
+              stage: 'merge',
+              code: 'invalid_override',
+              message: 'Check this repository adjustment',
+            },
+          ],
+        },
+      });
+    });
+    try {
+      await visit(page, `${panel.origin}/workspace/${panel.account}/repositories/api-gateway`, {
+        ready: 'input[aria-label="Quiet period after checks pass"]',
+      });
+      const quiet = page.getByRole('textbox', { name: 'Quiet period after checks pass' });
+      const saved = await quiet.inputValue();
+      await quiet.fill(saved === '45' ? '46' : '45');
+      await quiet.blur();
+      await visit(
+        page,
+        `${panel.origin}/workspace/${panel.account}/sync/files/.config/quality.jsonc`,
+        { ready: '.file-editor' },
+      );
+      await page.getByRole('searchbox', { name: 'Find a repository output' }).fill('smyklot');
+      await page.getByRole('button', { name: 'Open output for smyklot', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'smyklot', exact: true });
+      await dialog.locator('.cm-content').fill('{"enabled":true,"retries":8}');
+      await dialog.getByRole('button', { name: 'Done', exact: true }).click();
+      await repositories(page);
+      await page.reload();
+      const composer = page.getByRole('complementary', { name: 'Settings draft' });
+      await composer
+        .getByText('.config/quality.jsonc: Check this repository adjustment', { exact: true })
+        .waitFor();
+      await composer.getByRole('link', { name: 'Open .config/quality.jsonc', exact: true }).click();
+      const adjustment = page.getByRole('article', {
+        name: 'Adjustment for .config/quality.jsonc',
+        exact: true,
+      });
+      await adjustment.waitFor();
+      expect(new URL(page.url()).hash).toBe('#file-sync=.config%2Fquality.jsonc');
+      expect(await adjustment.locator('.cm-content').innerText()).toContain('8');
+      expect(await composer.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(
+        true,
+      );
+      await capture(page, 'repository-invalid-return');
+    } finally {
+      await page.close();
+    }
+  });
+
   it.each(['before debounce', 'in flight'] as const)(
     'settles and saves after leaving %s without returning',
     async (phase) => {
@@ -197,6 +259,16 @@ describe('file validation lifetime [Browser]', () => {
           true,
         );
         await capture(page, `invalid-after-navigation-${colorScheme}-${width}`);
+        await page.getByRole('link', { name: 'Open .config/quality.yaml', exact: true }).click();
+        await expect
+          .poll(() => new URL(page.url()).pathname)
+          .toBe(`/workspace/${panel.account}/sync/files/.config/quality.yaml`);
+        await expect
+          .poll(() => page.locator('.file-editor .cm-content').first().innerText())
+          .toContain('unfinished-lifetime: [');
+        expect(await page.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(
+          true,
+        );
       } finally {
         release();
         await page.close();

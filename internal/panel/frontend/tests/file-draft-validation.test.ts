@@ -168,6 +168,21 @@ describe('application-owned file validation [Unit]', () => {
     expect(registry.beginSave(scope)).not.toBeNull();
   });
 
+  it('keeps the first validation message paired with its file across scopes and discard', async () => {
+    const { registry, api, owner, edit, update } = setup();
+    api.renderSyncFile.mockResolvedValue(invalid);
+    edit('unfinished: [');
+    await vi.advanceTimersByTimeAsync(120);
+    const issue = registry.validationIssue(scope)!;
+    expect(issue.problem).toContain('Invalid YAML');
+    expect(owner.problemFile(scope, issue.controlId)).toEqual({ path, repositoryId: '' });
+    expect(owner.problemFile({ type: 'workspace', targetId: 'other' }, issue.controlId)).toBeNull();
+    expect(owner.problemFile(scope, 'unrelated')).toBeNull();
+    registry.discardScope(scope);
+    update();
+    expect(owner.problemFile(scope, issue.controlId)).toBeNull();
+  });
+
   it('keeps an invalid result blocking after its requesting editor is gone', async () => {
     const { registry, api, edit, update } = setup();
     api.renderSyncFile.mockResolvedValue(invalid);
@@ -327,7 +342,7 @@ describe('application-owned file validation [Unit]', () => {
   });
 
   it('loads a template for a restored repository draft without a mounted Sync view', async () => {
-    const { registry, api, update } = setup({ files: false });
+    const { registry, api, owner, update } = setup({ files: false });
     const stored: SyncOverride = {
       kind: 'files',
       enabled: null,
@@ -356,6 +371,8 @@ describe('application-owned file validation [Unit]', () => {
     );
     update();
     expect(registry.validationProblem(scope)).toContain('Loading shared files');
+    expect(owner.problemFile(scope, registry.validationIssue(scope)?.controlId)).toBeNull();
+    api.renderSyncFile.mockResolvedValue(invalid);
     await vi.advanceTimersByTimeAsync(120);
     expect(api.fetchSyncConfig).toHaveBeenCalledTimes(1);
     expect(api.renderSyncFile).toHaveBeenCalledTimes(1);
@@ -364,7 +381,10 @@ describe('application-owned file validation [Unit]', () => {
     expect(wire).toContain('"other":-0');
     expect(wire).toContain('1e-400');
     expect(wire).toContain('9007199254740993');
-    expect(registry.validationProblem(scope)).toBeNull();
+    expect(owner.problemFile(scope, registry.validationIssue(scope)?.controlId)).toEqual({
+      path,
+      repositoryId: '4001',
+    });
   });
 
   it('does not render stale valid content behind an unfinished raw override', async () => {

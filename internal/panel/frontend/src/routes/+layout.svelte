@@ -10,6 +10,7 @@
   import { readPanelBuild } from '#lib/base.js';
   import { basePath } from '#lib/paths.js';
   import { legacyInboxRoute } from '#lib/dialog-route.svelte.js';
+  import { fileAdjustmentHref } from '#lib/file-adjustment-link.js';
   import { readPanelFailure } from '#lib/panel-error.js';
   import { readSignInFailure, signedOutReturn } from '#lib/sign-in-return.js';
   import { PanelSession, setPanelSession } from '#lib/session.svelte.js';
@@ -167,17 +168,31 @@
       ? null
       : workspaceDraftValidation(settingsDraftRegistry, selectedSettingsScope.targetId),
   );
+  const selectedRegistryValidation = $derived(
+    selectedSettingsScope === null
+      ? null
+      : settingsDraftRegistry.validationIssue(selectedSettingsScope),
+  );
+  const selectedFileProblem = $derived(
+    selectedSettingsScope === null
+      ? null
+      : fileDraftValidation.problemFile(
+          selectedSettingsScope,
+          selectedRegistryValidation?.controlId,
+        ),
+  );
   const selectedValidationProblem = $derived(
     selectedSettingsScope === null
       ? null
-      : (settingsDraftRegistry.validationProblem(selectedSettingsScope) ??
-          selectedWorkspaceValidation?.problem ??
-          null),
+      : (selectedRegistryValidation?.problem ?? selectedWorkspaceValidation?.problem ?? null),
   );
   const selectedSettingsConflict = $derived(
     selectedSettingsScope !== null && settingsDraftRegistry.hasConflicts(selectedSettingsScope),
   );
   const selectedProblemControl = $derived.by(() => {
+    if (selectedRegistryValidation !== null) {
+      return selectedDirtyControls.find(({ id }) => id === selectedRegistryValidation.controlId);
+    }
     const failed = selectedWorkspaceValidation?.control ?? selectedSaveProblemControl;
     if (
       failed !== null &&
@@ -189,8 +204,28 @@
     }
     return selectedDirtyControls[0];
   });
-  const selectedProblemHref = $derived(settingsProblemHref(selectedProblemControl));
-  const selectedProblemLabel = $derived(settingsProblemLabel(selectedProblemControl));
+  const selectedProblemHref = $derived.by(() => {
+    const file = selectedFileProblem;
+    const account = session.selectedTarget?.account.login;
+    if (file !== null && account !== undefined) {
+      // The repository route accepts an immutable ID on a cold load. Its normal
+      // detail read resolves the name, without fetching an entire paginated list.
+      return file.repositoryId === ''
+        ? panelAddress({ account, view: 'sync', sync: 'files', syncFile: file.path })
+        : fileAdjustmentHref(
+            panelAddress({
+              account,
+              view: 'repositories',
+              repository: { name: file.repositoryId },
+            }),
+            file.path,
+          );
+    }
+    return settingsProblemHref(selectedProblemControl);
+  });
+  const selectedProblemLabel = $derived(
+    selectedFileProblem?.path ?? settingsProblemLabel(selectedProblemControl),
+  );
   const hasSettingsAttention = $derived(settingsDraftRegistry.timestamps().attentionAt !== null);
   const currentDocumentTitle = $derived(
     session.isPersonal
@@ -609,6 +644,10 @@
   }
 
   function openSettingsProblem(): void {
+    if (selectedFileProblem !== null && selectedProblemHref !== undefined) {
+      void goto(selectedProblemHref);
+      return;
+    }
     const control = selectedProblemControl;
     if (control === undefined) return;
     if (control.location.section === 'sync') {

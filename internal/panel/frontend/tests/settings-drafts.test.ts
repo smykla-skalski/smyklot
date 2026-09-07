@@ -136,10 +136,15 @@ describe('SettingsDraftRegistry scopes and locations [Unit]', () => {
 
     drafts.setValidationProblem(targetOne, 'defaults.formatting.line_width', 'Invalid line width');
     expect(drafts.validationProblem(targetOne)).toBe('Invalid line width');
+    expect(drafts.validationIssue(targetOne)).toEqual({
+      controlId: 'defaults.formatting.line_width',
+      problem: 'Invalid line width',
+    });
     expect(drafts.beginSave(targetOne)).toBeNull();
 
     drafts.setValidationProblem(targetOne, 'defaults.formatting.line_width', null);
     expect(drafts.validationProblem(targetOne)).toBeNull();
+    expect(drafts.validationIssue(targetOne)).toBeNull();
     expect(drafts.beginSave(targetOne)).not.toBeNull();
   });
 });

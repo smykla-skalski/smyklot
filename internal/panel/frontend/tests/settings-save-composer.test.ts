@@ -93,6 +93,24 @@ describe('SettingsSaveComposer [Component]', () => {
     );
   });
 
+  it('returns to an invalid file without enabling Save or intercepting modified clicks', async () => {
+    const onOpenProblem = vi.fn();
+    render(SettingsSaveComposer, {
+      ...base,
+      invalidProblem: '.config/quality.yaml: Invalid YAML',
+      problemHref: '/workspace/example/sync/files/.config/quality.yaml',
+      problemLabel: '.config/quality.yaml',
+      onOpenProblem,
+    });
+    const link = screen.getByRole('link', { name: 'Open .config/quality.yaml' });
+    expect(link.getAttribute('href')).toBe('/workspace/example/sync/files/.config/quality.yaml');
+    await fireEvent.click(link);
+    expect(onOpenProblem).toHaveBeenCalledOnce();
+    await fireEvent.click(link, { ctrlKey: true });
+    expect(onOpenProblem).toHaveBeenCalledOnce();
+    expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('keeps validation-only feedback visible without an ineffective dismissal', async () => {
     vi.useFakeTimers();
     const onDismiss = vi.fn();
