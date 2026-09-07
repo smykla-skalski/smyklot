@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { Page } from 'playwright-core';
 
 import { startPanel, type Panel } from './harness';
+import { expectAddPill, expectAdditionPicker, expectStableExpansion } from './add-control-geometry';
 import { formatJson, parseJson, type JsonValue } from '../../src/lib/merge';
 
 let panel: Panel;
@@ -136,12 +137,11 @@ describe('settings draft destinations [Integration]', () => {
     },
   );
 
-  it.each([
-    { colorScheme: 'dark', width: 1440 },
-    { colorScheme: 'light', width: 1440 },
-    { colorScheme: 'dark', width: 375 },
-    { colorScheme: 'light', width: 375 },
-  ] as const)(
+  it.each(
+    [375, 768, 1024, 1440].flatMap((width) =>
+      (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
+    ),
+  )(
     'keeps ruleset changes local and separated at $colorScheme $width',
     async ({ colorScheme, width }) => {
       const page = await panel.browser.newPage({
@@ -167,6 +167,7 @@ describe('settings draft destinations [Integration]', () => {
         expect(await page.locator('.policy-row.is-unsaved').count()).toBe(0);
         expect(await bypass.locator('.actor-row.is-unsaved').count()).toBe(1);
         const addActor = bypass.getByRole('button', { name: 'Add an actor', exact: true });
+        await expectAddPill(addActor);
         expect(
           await bypass.locator('.card-head').getByRole('button', { name: 'Add an actor' }).count(),
         ).toBe(1);
@@ -185,6 +186,24 @@ describe('settings draft destinations [Integration]', () => {
         await addActor.click();
         await bypass.getByRole('combobox', { name: 'Who' }).waitFor();
         expect(await addActor.getAttribute('aria-expanded')).toBe('true');
+        const cancelStyle = await bypass
+          .getByRole('button', { name: 'Cancel', exact: true })
+          .evaluate((node) => ({
+            border: getComputedStyle(node).borderTopStyle,
+            radius: getComputedStyle(node).borderTopLeftRadius,
+            height: node.getBoundingClientRect().height,
+          }));
+        expect(cancelStyle).toEqual({ border: 'solid', radius: '8px', height: 34 });
+        if (directory) {
+          await bypass
+            .getByText('Looking for actors', { exact: false })
+            .waitFor({ state: 'hidden' });
+          await bypass.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+          await page.mouse.move(0, 0);
+          await bypass.screenshot({
+            path: join(directory, `bypass-expanded-${colorScheme}-${width}.png`),
+          });
+        }
         await addActor.click();
         await bypass.getByRole('combobox', { name: 'Who' }).waitFor({ state: 'hidden' });
         expect(await addActor.getAttribute('aria-expanded')).toBe('false');
@@ -197,6 +216,8 @@ describe('settings draft destinations [Integration]', () => {
           .filter({ has: page.getByRole('heading', { name: 'Where it applies', exact: true }) });
         const included = conditions.locator('.policy-row').filter({ hasText: 'Included branches' });
         const excluded = conditions.locator('.policy-row').filter({ hasText: 'Excluded branches' });
+        await expectAddPill(included.getByRole('button', { name: 'Add a pattern' }));
+        await expectAddPill(excluded.getByRole('button', { name: 'Add a pattern' }));
         await included.getByRole('button', { name: 'Add a pattern' }).click();
         await page.getByRole('textbox', { name: 'Pattern to add' }).fill('release/*');
         await page.getByRole('textbox', { name: 'Pattern to add' }).press('Enter');
@@ -246,6 +267,38 @@ describe('settings draft destinations [Integration]', () => {
         await included.getByRole('button', { name: 'Remove release/*', exact: true }).click();
         await excluded.getByRole('button', { name: 'Remove archive/*', exact: true }).click();
         await expect.poll(() => page.locator('.is-unsaved[data-unsaved]').count()).toBe(0);
+        expect(await page.locator('.card.is-unsaved').count()).toBe(0);
+        const addRule = page.getByRole('button', { name: 'Add a rule', exact: true });
+        await expectAddPill(addRule);
+        const rules = page.getByRole('dialog', { name: 'Rule choices', exact: true });
+        await expectStableExpansion(page, addRule, rules);
+        const choices = rules.locator('.addition-choices .btn-add');
+        expect(await choices.count()).toBeGreaterThan(1);
+        for (const choice of await choices.all()) await expectAddPill(choice);
+        await expectAdditionPicker(rules.locator('.addition-picker'));
+        if (directory) {
+          await page.mouse.move(0, 0);
+          await page.screenshot({
+            path: join(directory, `rule-choices-${colorScheme}-${width}.png`),
+          });
+        }
+        await rules.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await rules.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() => addRule.evaluate((node) => document.activeElement === node))
+          .toBe(true);
+        await addRule.click();
+        await rules.getByRole('button', { name: 'Require code scanning', exact: true }).click();
+        const inspector = page.getByRole('dialog', { name: 'Require code scanning', exact: true });
+        await inspector.waitFor();
+        await expect
+          .poll(() => inspector.evaluate((node) => node.contains(document.activeElement)))
+          .toBe(true);
+        await inspector.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await inspector.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() => addRule.evaluate((node) => document.activeElement === node))
+          .toBe(true);
         expect(await page.locator('.card.is-unsaved').count()).toBe(0);
       } finally {
         await page.close();

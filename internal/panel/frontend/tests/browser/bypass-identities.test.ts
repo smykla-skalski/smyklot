@@ -19,7 +19,7 @@ describe('unavailable bypass identities [Browser]', () => {
     try {
       await visit(page, addressOf(panel, 'workspace/settings'));
       await page.getByRole('combobox', { name: 'Bypass exception policy' }).click();
-      await page.getByRole('option', { name: 'Allow selected actors', exact: true }).click();
+      await page.getByRole('option', { name: 'Allow listed actors', exact: true }).click();
       const card = page
         .locator('.card')
         .filter({ has: page.getByRole('heading', { name: 'Merge exceptions', exact: true }) });
@@ -238,6 +238,79 @@ describe('unavailable bypass identities [Browser]', () => {
             .count(),
         ).toBe(1);
         expect(errors).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+});
+
+describe('merge exception hierarchy [Browser]', () => {
+  it.each(
+    [375, 1440].flatMap((width) =>
+      (['light', 'dark'] as const).flatMap((colorScheme) =>
+        (['workspace/settings', 'workspace/repositories/api-gateway'] as const).map((path) => ({
+          width,
+          colorScheme,
+          path,
+        })),
+      ),
+    ),
+  )(
+    'keeps policy and actor controls coherent at $width $colorScheme $path',
+    async ({ width, colorScheme, path }) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width, height: 1100 },
+        reducedMotion: 'reduce',
+      });
+      try {
+        await visit(page, addressOf(panel, path));
+        const card = page.getByRole('region', { name: 'Merge exceptions', exact: true });
+        await card.getByRole('combobox', { name: 'Bypass exception policy' }).click();
+        await page.getByRole('option', { name: 'Allow listed actors', exact: true }).click();
+        const add = card.getByRole('button', { name: 'Add an actor', exact: true });
+        await add.waitFor();
+        await add.click();
+        await card.getByRole('button', { name: 'Add smyklot', exact: true }).click();
+        await card.getByRole('button', { name: 'Remove smyklot', exact: true }).waitFor();
+        await card.locator('img').evaluateAll(async (images) => {
+          await Promise.all(
+            images.map((image) => (image as HTMLImageElement).decode().catch(() => {})),
+          );
+        });
+        expect(await card.locator('.card').count()).toBe(0);
+        expect(await card.locator('.actor-header').count()).toBe(0);
+        expect(
+          await card.locator('.card-head').getByRole('button', { name: 'Add an actor' }).count(),
+        ).toBe(1);
+        await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+        await page.evaluate(() => document.fonts.ready);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.mouse.move(0, 0);
+          await card.screenshot({
+            path: join(
+              directory,
+              `exceptions-${path.includes('repositories') ? 'repository' : 'workspace'}-${colorScheme}-${width}.png`,
+            ),
+          });
+        }
+        const geometry = await card.evaluate((node) => {
+          const frame = node.getBoundingClientRect();
+          return Array.from(node.querySelectorAll('button,[role="combobox"]')).every((control) => {
+            const bounds = control.getBoundingClientRect();
+            return bounds.left >= frame.left && bounds.right <= frame.right;
+          });
+        });
+        expect(geometry).toBe(true);
+        await add.click();
+        await card.getByRole('textbox', { name: 'App name or slug' }).waitFor();
+        expect(await add.getAttribute('aria-expanded')).toBe('true');
+        await add.click();
+        expect(await add.getAttribute('aria-expanded')).toBe('false');
+        expect(await card.getByRole('textbox', { name: 'App name or slug' }).count()).toBe(0);
       } finally {
         await page.close();
       }

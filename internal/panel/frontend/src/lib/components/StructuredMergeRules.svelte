@@ -91,7 +91,7 @@ rules exactly as they were typed and never changes the mounted content editor.
       <h3 class="card-title">Lists</h3>
       {#if !readOnly}
         <Button
-          tone="quiet"
+          tone="add"
           disabled={held}
           onclick={() => onChange({ arrays: [...rules, { path: '', strategy: 'append' }] })}
         >

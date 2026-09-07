@@ -1740,7 +1740,7 @@ offering it.
         {adding ? 'Sending…' : 'Invite again'}
       </Button>
     {:else}
-      <Button tone="ghost" onclick={closeAddModal}>
+      <Button tone={addStage === 'form' ? 'default' : 'ghost'} onclick={closeAddModal}>
         {addStage === 'form' ? 'Cancel' : 'Done'}
       </Button>
     {/if}
@@ -1811,7 +1811,7 @@ offering it.
     {/if}
 
     {#snippet footer()}
-      <Button tone="ghost" onclick={closeDecision}>Cancel</Button>
+      <Button onclick={closeDecision}>Cancel</Button>
       <Button
         tone={decisionPick === 'suspend' || decisionPick === 'role:none' ? 'stop' : 'signal'}
         disabled={savingAccount !== null || decisionPick === decisionCurrent(user)}

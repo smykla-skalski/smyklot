@@ -452,15 +452,17 @@ without the composer.
                 <span class="setting-unmanaged"
                   >From the deployment: {capitalize(current.log_level.deployment)}</span
                 >
+
+                <Button
+                  tone="add"
+                  aria-label="Override the deployment log level"
+                  title="Override the deployment log level"
+                  disabled={saving}
+                  onclick={() => setLogLevel(current.log_level.deployment)}
+                >
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+                </Button>
               </span>
-              <button
-                class="setting-clear"
-                title="Override the deployment log level"
-                disabled={saving}
-                onclick={() => setLogLevel(current.log_level.deployment)}
-              >
-                <Icon name="plus" size="micro" />
-              </button>
             {:else}
               <span class="policy-value">
                 <Popover
@@ -534,16 +536,18 @@ without the composer.
                     SESSION_SPEC.units,
                   )}</span
                 >
+
+                <Button
+                  tone="add"
+                  aria-label="Override the deployment session lifetime"
+                  title="Override the deployment session lifetime"
+                  disabled={saving}
+                  onclick={() =>
+                    setDuration(SESSION_SPEC, current.session_lifetime.deployment_seconds)}
+                >
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+                </Button>
               </span>
-              <button
-                class="setting-clear"
-                title="Override the deployment session lifetime"
-                disabled={saving}
-                onclick={() =>
-                  setDuration(SESSION_SPEC, current.session_lifetime.deployment_seconds)}
-              >
-                <Icon name="plus" size="micro" />
-              </button>
             {:else}
               <span class="policy-value">
                 {@render durationValue(SESSION_SPEC, 'Session lifetime')}

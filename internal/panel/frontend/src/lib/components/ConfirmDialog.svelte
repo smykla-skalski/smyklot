@@ -46,7 +46,7 @@ A dialog that asks before doing something, and the two buttons that end it.
 
 The bodies genuinely differ - one takes a reason for the audit record, one shows
 a consequence, one shows nothing - so the body stays the caller's. What repeated
-was the footer: a ghost Cancel that the dialog opens focused on, and a confirm
+was the footer: a bordered Cancel that the dialog opens focused on, and a confirm
 whose tone says whether the thing being done takes something away or gives it,
 disabled while the request is in flight and reading differently while it is.
 
@@ -61,7 +61,7 @@ removed from all nine places that wrote it.
   {@render children()}
 
   {#snippet footer()}
-    <Button tone="ghost" onclick={onClose}>{cancelLabel}</Button>
+    <Button onclick={onClose}>{cancelLabel}</Button>
     <Button tone={confirmTone} disabled={busy || confirmDisabled} onclick={onConfirm}>
       {busy ? busyLabel : confirmLabel}
     </Button>

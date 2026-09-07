@@ -179,7 +179,7 @@ fifteen behaviours.
     {/if}
   {/each}
 </span>
-<Button tone="quiet" class="pattern-add" disabled={readOnly} onclick={() => void add()}>
+<Button tone="add" class="pattern-add" disabled={readOnly} onclick={() => void add()}>
   {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
   Add
 </Button>

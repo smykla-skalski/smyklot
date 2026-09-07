@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { ConfigurationReviewSource } from '../config-file-review.svelte';
   import type { ConfigFileStatusConnection } from '../config-file-status';
   import ConfigurationFileSync from './ConfigurationFileSync.svelte';
@@ -395,15 +396,17 @@ so a link points at the pane a colleague was asked to look at.
                 <span class="setting-unmanaged"
                   >From the workspace: {detail.pending_ci_mode_inherited}</span
                 >
+
+                <Button
+                  tone="add"
+                  aria-label="Override the workspace mode"
+                  title="Override the workspace mode"
+                  {disabled}
+                  onclick={overrideMode}
+                >
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+                </Button>
               </span>
-              <button
-                class="setting-clear"
-                title="Override the workspace mode"
-                {disabled}
-                onclick={overrideMode}
-              >
-                <Icon name="plus" size="micro" />
-              </button>
             {:else}
               <span class="policy-value">
                 <Popover
@@ -479,15 +482,17 @@ so a link points at the pane a colleague was asked to look at.
                     ', ',
                   )}</span
                 >
+
+                <Button
+                  tone="add"
+                  aria-label="Override the protected branch patterns"
+                  title="Override the protected branch patterns"
+                  {disabled}
+                  onclick={overridePatterns}
+                >
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+                </Button>
               </span>
-              <button
-                class="setting-clear"
-                title="Override the protected branch patterns"
-                {disabled}
-                onclick={overridePatterns}
-              >
-                <Icon name="plus" size="micro" />
-              </button>
             {:else}
               <span class="policy-value"></span>
               <button
@@ -592,15 +597,17 @@ so a link points at the pane a colleague was asked to look at.
                     durationParts(detail.path_index_interval_seconds_inherited, PATH_INDEX_UNITS),
                   )}</span
                 >
+
+                <Button
+                  tone="add"
+                  aria-label="Override the path index interval for this repository"
+                  title="Answer for this repository"
+                  {disabled}
+                  onclick={() => setPathIndex(detail.path_index_interval_seconds_inherited)}
+                >
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+                </Button>
               </span>
-              <button
-                class="setting-clear"
-                title="Answer for this repository"
-                {disabled}
-                onclick={() => setPathIndex(detail.path_index_interval_seconds_inherited)}
-              >
-                <Icon name="plus" size="micro" />
-              </button>
             {:else}
               <span class="policy-value">
                 <DurationInput
@@ -636,27 +643,25 @@ so a link points at the pane a colleague was asked to look at.
           </p>
         {/if}
       </Card>
-      <Card unsaved={controlDirty(controlId('pending_ci_bypass_policy_override'))}>
-        <div class="card-head"><h2 class="card-title">Merge exceptions</h2></div>
-        <BypassPolicyEditor
-          {organizationActors}
-          value={detail.pending_ci_bypass_policy_override ?? null}
-          inherited={detail.pending_ci_bypass_policy_inherited ?? null}
-          lookup={lookupBypassActors}
-          readOnly={disabled}
-          onChange={(value) => {
-            const document = currentDocument();
-            if (document)
-              stage(
-                {
-                  ...document,
-                  pending_ci_bypass_policy_override: value,
-                } as RepositorySettingsDocument,
-                controlId('pending_ci_bypass_policy_override'),
-              );
-          }}
-        />
-      </Card>
+      <BypassPolicyEditor
+        unsaved={controlDirty(controlId('pending_ci_bypass_policy_override'))}
+        {organizationActors}
+        value={detail.pending_ci_bypass_policy_override ?? null}
+        inherited={detail.pending_ci_bypass_policy_inherited ?? null}
+        lookup={lookupBypassActors}
+        readOnly={disabled}
+        onChange={(value) => {
+          const document = currentDocument();
+          if (document)
+            stage(
+              {
+                ...document,
+                pending_ci_bypass_policy_override: value,
+              } as RepositorySettingsDocument,
+              controlId('pending_ci_bypass_policy_override'),
+            );
+        }}
+      />
 
       <ConfigEditor
         patch={detail.config_patch}

@@ -310,6 +310,35 @@ describe('shared bypass editors [Component]', () => {
     expect(onChange).toHaveBeenCalledWith({ allow: false, actors: [APP] });
   });
 
+  it('keeps the actor action in the card header and toggles its editor without changing policy', async () => {
+    const onChange = vi.fn();
+    render(BypassPolicyEditor, {
+      value: { allow: true, actors: [APP] },
+      lookup: async () => ({ items: [IDENTITY] }),
+      onChange,
+    });
+    const trigger = screen.getByRole('button', { name: 'Add an actor' });
+    expect(trigger.closest('.card-head')?.textContent).toContain('Merge exceptions');
+    expect(document.querySelectorAll('.card')).toHaveLength(1);
+    expect(document.querySelector('.actor-header')).toBeNull();
+    await fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByLabelText('App name or slug')).toBeTruthy();
+    await fireEvent.click(trigger);
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
+    expect(screen.queryByLabelText('App name or slug')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { value: null },
+    { value: { allow: false, actors: [APP] } },
+    { value: { allow: true, actors: [APP] }, readOnly: true },
+  ])('does not offer actor editing without an editable allowed policy: %o', (props) => {
+    render(BypassPolicyEditor, { ...props, onChange: vi.fn() });
+    expect(screen.queryByRole('button', { name: 'Add an actor' })).toBeNull();
+  });
+
   it('shows inherited actors read only until this repository selects its own policy', async () => {
     const onChange = vi.fn();
     render(BypassPolicyEditor, {
@@ -323,7 +352,7 @@ describe('shared bypass editors [Component]', () => {
     );
     expect(screen.queryByRole('combobox', { name: 'Bypass mode for Smyklot' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Add an actor' })).toBeNull();
-    await chooseOption(screen.getByLabelText('Bypass exception policy'), 'Allow selected actors');
+    await chooseOption(screen.getByLabelText('Bypass exception policy'), 'Allow listed actors');
     expect(onChange).toHaveBeenCalledWith({ allow: true, actors: [APP] });
   });
 });

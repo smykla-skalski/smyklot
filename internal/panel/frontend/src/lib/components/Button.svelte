@@ -3,14 +3,15 @@
    * What the button is for, not what colour it is.
    *
    * `default` is the bordered control; `signal` is the one action a view is here
-   * for; `ghost` dismisses and discards beside a real primary; `stop` is
+   * for; `ghost` is a low-emphasis supporting action; `stop` is
    * destructive; `stop-quiet` is destructive but bordered, for a flow whose filled
    * danger control is the confirmation at the end of it; `brand` is the console's
    * own action, tinted with whatever `--brand-action` is where it is drawn; `quiet`
-   * is a control that should not read as a control until it is wanted.
+   * is a control that should not read as a control until it is wanted; `add`
+   * introduces an optional configuration item or local override.
    */
   export type ButtonTone =
-    'default' | 'signal' | 'ghost' | 'stop' | 'stop-quiet' | 'brand' | 'quiet';
+    'default' | 'signal' | 'ghost' | 'stop' | 'stop-quiet' | 'brand' | 'quiet' | 'add';
 </script>
 
 <script lang="ts" generics="Href extends string | undefined = undefined">
@@ -46,29 +47,32 @@
     /** For a caller that has to focus this button again after a dialog closes. */
     element?: HTMLButtonElement | null;
     /** The one-off class a call site adds for its own layout, never for the button's own paint. */
-    class?: string;
+    class?: HTMLAttributes<NativeElement>['class'];
     children: Snippet;
   } & NativeAttributes = $props();
 
-  const classes = $derived(
-    ['btn', tone === 'default' ? '' : `btn-${tone}`, row ? 'btn-row' : '', extra]
-      .filter((name) => name !== '')
-      .join(' '),
-  );
+  const classes = $derived([
+    'btn',
+    tone === 'default' ? '' : `btn-${tone}`,
+    row ? 'btn-row' : '',
+    extra,
+  ]);
 </script>
 
 <!--
 @component
 A tone is a job, never a colour. `default` is the bordered control that does a view's
 ordinary work; `signal` is the one action a view exists for, and a view has one;
-`ghost` dismisses or discards beside a real primary; `stop` is destructive and
+`ghost` is a low-emphasis supporting action; `stop` is destructive and
 `stop-quiet` is destructive but bordered, for a flow whose filled danger control is
 the confirmation at the end of it; `brand` takes whatever `--brand-action` is where it
 is drawn, so the same markup is petrol in the panel and violet in the Root console;
 `quiet` should not read as a control until it is wanted.
 
-Disabled is a state rather than an eighth tone. It arrives through `rest`, and any of
-the seven can wear it.
+`add` is a dashed pill for adding optional configuration or overriding an inherited
+value. It is not a submit, navigation or primary creation action.
+
+Disabled is a state rather than a tone. It arrives through `rest`, and any tone can wear it.
 
 `href` draws an anchor instead of a button, which is what sign-in and the invitation's
 accept and decline are. Both wear `.btn`, which is why the tones live in `app.css` and

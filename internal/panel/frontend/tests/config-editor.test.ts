@@ -28,6 +28,7 @@ describe('ConfigEditor drafts [Component]', () => {
       await fireEvent.click(screen.getByRole('button', { name: 'Override another' }));
       const choice = screen.getByRole('button', { name: label });
       expect(choice.classList.contains('btn')).toBe(true);
+      expect(choice.classList.contains('btn-add')).toBe(true);
       expect(choice.querySelector(':scope > .button-label')?.textContent).toBe(label);
       expect(choice.querySelector(':scope > svg')).not.toBeNull();
       await fireEvent.click(choice);

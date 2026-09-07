@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import Icon from './Icon.svelte';
   import IconButton from './IconButton.svelte';
   import Select from './Select.svelte';
 
@@ -48,7 +49,9 @@ or overlapping intervals remain visible for correction.
 <div class="form-stack windows-editor">
   <div class="windows-heading">
     <span class="form-label">Weekly hours</span>
-    <Button row onclick={() => onChange([...windows, newWindow()])}>Add hours</Button>
+    <Button tone="add" row onclick={() => onChange([...windows, newWindow()])}
+      >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add hours</Button
+    >
   </div>
   {#each windows as window, index (window.id)}
     <div class="window-row" role="group" aria-label={`Hours for ${days[window.weekday]}`}>

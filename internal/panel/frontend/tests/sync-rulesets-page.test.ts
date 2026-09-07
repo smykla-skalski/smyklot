@@ -310,10 +310,9 @@ describe('the ruleset pages [Component]', () => {
     });
 
     await fireEvent.click(screen.getByRole('button', { name: /Add a rule/ }));
-    const chip = [...document.querySelectorAll<HTMLButtonElement>('.add-chip')].find((held) =>
-      (held.textContent ?? '').includes('Require a pull request'),
-    );
-    await fireEvent.click(chip as HTMLButtonElement);
+    const choice = screen.getByRole('button', { name: 'Require a pull request' });
+    expect(choice.classList.contains('btn-add')).toBe(true);
+    await fireEvent.click(choice);
     expect(sent).toHaveLength(0);
     await fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 

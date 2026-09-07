@@ -395,7 +395,7 @@ answered a question a workspace never asks and hid the one it does.
   </div>
 
   {#snippet footer()}
-    <Button tone="ghost" onclick={() => (open = false)}>Cancel</Button>
+    <Button onclick={() => (open = false)}>Cancel</Button>
     <Button
       tone="signal"
       disabled={busy || reason.trim() === '' || cadenceInvalid}

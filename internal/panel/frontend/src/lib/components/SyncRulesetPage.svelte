@@ -445,10 +445,9 @@ complete rule while Cancel leaves the document unchanged.
               onopen={() => (addValue = '')}
             >
               {#snippet trigger(attributes)}
-                <button {...attributes} class="add-chip" disabled={frozen}>
-                  <Icon name="plus" size="xs" />
-                  <span class="t">Add a pattern</span>
-                </button>
+                <Button {...attributes} tone="add" disabled={frozen}>
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add a pattern
+                </Button>
               {/snippet}
               <div class="name-menu">
                 <div class="menu-search">
@@ -505,10 +504,9 @@ complete rule while Cancel leaves the document unchanged.
               onopen={() => (addValue = '')}
             >
               {#snippet trigger(attributes)}
-                <button {...attributes} class="add-chip" disabled={frozen}>
-                  <Icon name="plus" size="xs" />
-                  <span class="t">Add a pattern</span>
-                </button>
+                <Button {...attributes} tone="add" disabled={frozen}>
+                  {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add a pattern
+                </Button>
               {/snippet}
               <div class="name-menu">
                 <div class="menu-search">
@@ -588,38 +586,38 @@ complete rule while Cancel leaves the document unchanged.
         {/each}
       </div>
       {#if offRules.length > 0}
-        <div class="group-rest rule-remainder" class:is-open={pickingRule}>
-          {#if pickingRule}
-            <span class="rest-say"
-              ><span class="rest-count">{offRules.length} rules are off</span> - pick one to switch on:</span
+        <div class="group-rest rule-remainder">
+          <span class="rest-say"
+            ><span class="rest-count"
+              >{offRules.length}
+              {offRules.length === 1 ? 'rule is' : 'rules are'} off</span
             >
-            <span class="rest-picks">
-              {#each offRules as rule (rule.key)}
-                <button class="add-chip" onclick={() => ruleOn(rule.key)}>
-                  <Icon name="plus" size="xs" />
-                  <span class="t">{rule.label}</span>
-                </button>
-              {/each}
-              <Button tone="quiet" onclick={() => (pickingRule = false)}>Cancel</Button>
-            </span>
-          {:else}
-            <span class="rest-say"
-              ><span class="rest-count"
-                >{offRules.length}
-                {offRules.length === 1 ? 'rule is' : 'rules are'} off</span
-              >
-              - {offRules.map((rule) => rule.label).join(', ')}</span
-            >
-            <Button
-              tone="quiet"
-              bind:element={addRuleButton}
-              disabled={frozen}
-              onclick={() => (pickingRule = true)}
-            >
-              {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-              Add a rule
-            </Button>
-          {/if}
+            - {offRules.map((rule) => rule.label).join(', ')}</span
+          >
+          <Popover
+            bind:open={pickingRule}
+            role="dialog"
+            label="Rule choices"
+            align="end"
+            itemSelector=".btn"
+          >
+            {#snippet trigger(attributes)}
+              <Button {...attributes} tone="add" bind:element={addRuleButton} disabled={frozen}>
+                {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add a rule
+              </Button>
+            {/snippet}
+            <div class="addition-picker addition-menu">
+              <span class="form-help">Choose a rule to add</span>
+              <div class="addition-choices">
+                {#each offRules as rule (rule.key)}
+                  <Button tone="add" disabled={frozen} onclick={() => ruleOn(rule.key)}>
+                    {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}{rule.label}
+                  </Button>
+                {/each}
+                <Button onclick={() => (pickingRule = false)}>Cancel</Button>
+              </div>
+            </div>
+          </Popover>
         </div>
       {/if}
     </Card>
@@ -628,7 +626,7 @@ complete rule while Cancel leaves the document unchanged.
       <div class="card-head">
         <h2 class="card-title">Bypass list</h2>
         <Button
-          tone="quiet"
+          tone="add"
           disabled={frozen}
           aria-expanded={addingActor}
           onclick={(event) => actorEditor?.toggleAdd(event.currentTarget)}
@@ -733,7 +731,7 @@ complete rule while Cancel leaves the document unchanged.
     flex: none;
   }
 
-  .rule-remainder :global(.btn) {
+  .rule-remainder > :global(.btn) {
     margin-inline-start: auto;
   }
 
@@ -819,42 +817,6 @@ complete rule while Cancel leaves the document unchanged.
     text-box: trim-both cap alphabetic;
   }
 
-  .add-chip {
-    align-items: center;
-    background: var(--control-bg);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-chip);
-    color: var(--text-secondary);
-    cursor: pointer;
-    display: inline-flex;
-    font-size: var(--font-size-compact);
-    font-weight: 500;
-    gap: 0.35rem;
-    min-block-size: 30px;
-    padding-block: 0;
-    padding-inline: 0.7rem;
-  }
-
-  .add-chip:hover {
-    background: var(--control-bg-hover);
-    border-style: solid;
-    color: var(--text-primary);
-  }
-
-  .add-chip:active {
-    background: var(--control-bg-pressed);
-  }
-
-  .add-chip.is-held {
-    background: var(--control-bg-pressed);
-    border-style: solid;
-    color: var(--text-primary);
-  }
-
-  .add-chip .t {
-    text-box: trim-both cap alphabetic;
-  }
-
   /* ---------- The unmanaged remainder ---------- */
 
   .group-rest {
@@ -878,13 +840,6 @@ complete rule while Cancel leaves the document unchanged.
   .rest-count {
     color: var(--text-secondary);
     font-weight: 600;
-  }
-
-  .rest-picks {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2);
   }
 
   /* ---------- The one-field popover every Add-a-... chip gets ---------- */
@@ -939,17 +894,6 @@ complete rule while Cancel leaves the document unchanged.
     .group-rest {
       align-items: stretch;
       flex-direction: column;
-    }
-
-    .rule-edit,
-    .entry-field,
-    .text-inline {
-      max-inline-size: 100%;
-      min-inline-size: 0;
-    }
-
-    .rule-edit-foot {
-      flex-wrap: wrap;
     }
   }
 </style>

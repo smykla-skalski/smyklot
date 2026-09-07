@@ -13,6 +13,7 @@
     'stop-quiet',
     'brand',
     'quiet',
+    'add',
   ];
 
   const { Story } = defineMeta({
@@ -30,6 +31,20 @@
 <Story name="Playground">
   {#snippet template({ children, ...args })}
     <Button {...args}>Try again</Button>
+  {/snippet}
+</Story>
+
+<Story name="Optional configuration">
+  {#snippet template()}
+    <div class="row">
+      <Button tone="add"
+        >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add a pattern</Button
+      >
+      <Button tone="add" disabled
+        >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override</Button
+      >
+      <Button>Cancel</Button>
+    </div>
   {/snippet}
 </Story>
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, untrack } from 'svelte';
+  import { onDestroy, tick, untrack } from 'svelte';
 
   import {
     BOOLEAN_FIELDS,
@@ -15,11 +15,13 @@
   } from '../config';
   import type { BooleanField } from '../config';
   import { COMMANDS } from '../types';
+  import { revealControl } from '../reveal-control';
   import type { ConfigKey, ConfigPatch, ConfigValues } from '../types';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
   import PairEntry from './PairEntry.svelte';
+  import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
 
   /* The linked-value rows name their inheritance source per scope. */
@@ -72,6 +74,8 @@
   let draft = $state<ConfigPatch>(initialPatch);
   let receivedPatch = $state<ConfigPatch>(clonePatch(initialPatch));
   let picking = $state(false);
+  let mounted = true;
+  let pendingFocus: { scope: typeof scope; idPrefix: string; field: BooleanField } | null = null;
   let addingAlias = $state(false);
   let aliasProblems = $state<Record<string, string | null>>({});
   const commandOptions = [
@@ -103,7 +107,11 @@
   $effect(() =>
     onValidity(Object.values(aliasProblems).find((problem) => problem !== null) ?? null),
   );
-  onDestroy(() => onValidity(null));
+  onDestroy(() => {
+    mounted = false;
+    pendingFocus = null;
+    onValidity(null);
+  });
 
   $effect(() => {
     const incoming = clonePatch(patch);
@@ -139,9 +147,38 @@
   /* Overriding pins what inheritance resolves to today; the switch beside it
      is how a different value is chosen. */
   function manage(field: BooleanField): void {
+    if (editorDisabled) return;
+    pendingFocus = { scope, idPrefix, field };
     draft = setExplicitPatchValue(draft, field.key, cloneValue(inherited[field.key]));
     picking = false;
     report(field.key);
+  }
+
+  async function focusManagedSetting(event: Event): Promise<void> {
+    if (pendingFocus === null) return;
+    event.preventDefault();
+    const request = pendingFocus;
+    // Removing the final choice tears down the popover while its closing effect
+    // still sees the previous draft. Resolve the new control after that flush.
+    await tick();
+    if (pendingFocus !== request) return;
+    pendingFocus = null;
+    if (
+      !mounted ||
+      editorDisabled ||
+      picking ||
+      request.scope !== scope ||
+      request.idPrefix !== idPrefix ||
+      !Object.hasOwn(draft, request.field.key)
+    )
+      return;
+    const card = document.getElementById(`config-${scope}-${idPrefix}-behavior`)?.closest('.card');
+    const input = [
+      ...(card?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? []),
+    ].find((node) => node.getAttribute('aria-label') === request.field.label);
+    if (!input?.isConnected || input.disabled) return;
+    input.focus({ preventScroll: true });
+    revealControl(input.closest<HTMLElement>('.policy-row') ?? input);
   }
 
   /* ---------- Commands ---------- */
@@ -298,7 +335,7 @@ account again.
                this card has to say about the same nine settings, and said in a strip of
                its own it read as a second card's worth of chrome. -->
           {#if restFields.length > 0}
-            <div class="policy-row" class:is-stacked={picking}>
+            <div class="policy-row">
               <span class="setting-say">
                 <span class="setting-name"
                   >{restFields.length}
@@ -306,24 +343,33 @@ account again.
                 >
                 <span class="setting-why">{scent(restFields)}</span>
               </span>
-              {#if picking}
-                <span class="policy-value setting-value-wrap">
-                  {#each restFields as field (field.key)}
-                    <Button tone="quiet" disabled={editorDisabled} onclick={() => manage(field)}>
-                      {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-                      {field.label}
+              <span class="policy-value">
+                <Popover
+                  bind:open={picking}
+                  role="dialog"
+                  label="Behavior choices"
+                  align="end"
+                  itemSelector=".btn"
+                  onCloseAutoFocus={focusManagedSetting}
+                >
+                  {#snippet trigger(attributes)}
+                    <Button {...attributes} tone="add" disabled={editorDisabled}>
+                      {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override another
                     </Button>
-                  {/each}
-                  <Button tone="quiet" onclick={() => (picking = false)}>Cancel</Button>
-                </span>
-              {:else}
-                <span class="policy-value">
-                  <Button tone="quiet" disabled={editorDisabled} onclick={() => (picking = true)}>
-                    {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
-                    Override another
-                  </Button>
-                </span>
-              {/if}
+                  {/snippet}
+                  <div class="addition-picker addition-menu">
+                    <span class="form-help">Choose a setting to override</span>
+                    <div class="addition-choices">
+                      {#each restFields as field (field.key)}
+                        <Button tone="add" disabled={editorDisabled} onclick={() => manage(field)}>
+                          {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}{field.label}
+                        </Button>
+                      {/each}
+                      <Button onclick={() => (picking = false)}>Cancel</Button>
+                    </div>
+                  </div>
+                </Popover>
+              </span>
             </div>
           {/if}
         </div>
@@ -472,7 +518,7 @@ account again.
                 />
               {/if}
               <Button
-                tone="quiet"
+                tone="add"
                 disabled={editorDisabled || addingAlias}
                 onclick={() => (addingAlias = true)}
               >

@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page, Request } from 'playwright-core';
 
 import { startPanel, visit, type Panel } from './harness';
+import { expectAddPill, expectAdditionPicker, expectStableExpansion } from './add-control-geometry';
 
 let panel: Panel;
 
@@ -25,7 +26,7 @@ function runtimeUpdate(page: Page): Promise<Request> {
 
 describe('Root runtime settings drafts', () => {
   it.each(
-    [375, 1440].flatMap((width) =>
+    [375, 768, 1024, 1440].flatMap((width) =>
       (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
     ),
   )(
@@ -44,19 +45,23 @@ describe('Root runtime settings drafts', () => {
       try {
         await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
         const card = page.getByRole('region', { name: 'Behavior', exact: true });
+        const menu = page.getByRole('dialog', { name: 'Behavior choices', exact: true });
         await card.waitFor({ timeout: 30000 });
         expect(await page.locator('html').getAttribute('data-theme')).toBe(colorScheme);
         const label = 'Merge draft pull requests';
         expect(await card.getByRole('checkbox', { name: label }).count()).toBe(0);
-        await card.getByRole('button', { name: 'Override another', exact: true }).click();
-        const choice = card.getByRole('button', { name: label, exact: true });
+        await expectStableExpansion(
+          page,
+          card.getByRole('button', { name: 'Override another', exact: true }),
+          menu,
+        );
+        const choice = menu.getByRole('button', { name: label, exact: true });
         await choice.waitFor();
-        await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
         await page.mouse.move(0, 0);
         await page.evaluate(() => document.fonts.ready);
-        const geometry = await card.evaluate((node) => ({
+        const geometry = await menu.evaluate((node) => ({
           overflow: node.scrollWidth - node.clientWidth,
-          controls: [...node.querySelectorAll('.setting-value-wrap button')].map((button) => {
+          controls: [...node.querySelectorAll('.addition-choices button')].map((button) => {
             const bounds = button.getBoundingClientRect();
             const cardBounds = node.getBoundingClientRect();
             return {
@@ -72,19 +77,29 @@ describe('Root runtime settings drafts', () => {
         for (const control of geometry.controls) {
           expect(control).toEqual({ shared: true, label: true, height: 34, contained: true });
         }
+        for (const control of await menu.locator('.addition-choices .btn-add').all())
+          await expectAddPill(control);
+        await expectAdditionPicker(menu.locator('.addition-picker'));
+        expect(
+          await menu
+            .getByRole('button', { name: 'Cancel', exact: true })
+            .evaluate((node) => node.classList.contains('btn-add')),
+        ).toBe(false);
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (directory) {
           await mkdir(directory, { recursive: true });
-          await card.screenshot({
+          await page.screenshot({
             path: join(directory, `behavior-choices-${colorScheme}-${width}.png`),
           });
         }
         const resting = await choice.evaluate((node) => getComputedStyle(node).backgroundImage);
         await choice.hover();
+        await expectAddPill(choice);
         expect(await choice.evaluate((node) => getComputedStyle(node).backgroundImage)).not.toBe(
           resting,
         );
         await page.mouse.down();
+        await expectAddPill(choice);
         const pressed = await choice.evaluate((node) => ({
           active: node.matches(':active'),
           shadow: getComputedStyle(node).boxShadow,
@@ -97,7 +112,10 @@ describe('Root runtime settings drafts', () => {
         const input = card.getByRole('checkbox', { name: label, exact: true });
         await input.waitFor();
         expect(await input.isChecked()).toBe(false);
-        expect(await choice.count()).toBe(0);
+        await menu.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() => input.evaluate((node) => document.activeElement === node), { timeout: 1000 })
+          .toBe(true);
         await input.locator('..').click();
         await expect.poll(() => input.isChecked()).toBe(true);
         const row = card
@@ -116,18 +134,20 @@ describe('Root runtime settings drafts', () => {
           .toBe(0);
         await card.getByRole('button', { name: 'Override another', exact: true }).click();
         await choice.waitFor();
-        await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await menu.getByRole('button', { name: 'Cancel', exact: true }).click();
         if (colorScheme === 'dark' && width === 1440) {
           await page.goto(`${panel.origin}/workspace/${panel.account}/settings`, {
             waitUntil: 'domcontentloaded',
           });
           await card.waitFor({ timeout: 30000 });
           expect(await page.locator('html').getAttribute('data-theme')).toBe(colorScheme);
-          await card.getByRole('button', { name: 'Override another', exact: true }).click();
-          await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+          await expectStableExpansion(
+            page,
+            card.getByRole('button', { name: 'Override another', exact: true }),
+            menu,
+          );
           await page.mouse.move(0, 0);
-          expect(await card.locator('.add-chip').count()).toBe(0);
-          const options = card.locator('.setting-value-wrap button');
+          const options = menu.locator('.addition-choices button');
           expect(await options.count()).toBeGreaterThan(2);
           expect(
             await options.evaluateAll((nodes) =>
@@ -137,14 +157,105 @@ describe('Root runtime settings drafts', () => {
               ),
             ),
           ).toBe(true);
+          for (const control of await menu.locator('.addition-choices .btn-add').all())
+            await expectAddPill(control);
+          await expectAdditionPicker(menu.locator('.addition-picker'));
           if (directory)
-            await card.screenshot({
+            await page.screenshot({
               path: join(directory, 'behavior-workspace-choices-dark-1440.png'),
             });
-          await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+          await menu.getByRole('button', { name: 'Cancel', exact: true }).click();
         }
         expect(writes).toHaveLength(0);
       } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
+    'focuses the final behavior override when no choices remain in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width: 375, height: 1100 },
+        reducedMotion: 'no-preference',
+      });
+      page.setDefaultTimeout(8000);
+      try {
+        await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+        const card = page.getByRole('region', { name: 'Behavior', exact: true });
+        await card.waitFor({ timeout: 30000 });
+        const trigger = card.getByRole('button', { name: 'Override another', exact: true });
+        const menu = page.getByRole('dialog', { name: 'Behavior choices', exact: true });
+        await expectStableExpansion(page, trigger, menu);
+        await page.keyboard.press('Escape');
+        await menu.waitFor({ state: 'hidden' });
+        let added = 0;
+        while (await trigger.count()) {
+          await trigger.click();
+          const option = menu.locator('.btn-add').first();
+          const label = (await option.innerText()).trim();
+          await option.click();
+          await menu.waitFor({ state: 'hidden' });
+          const control = card.getByRole('checkbox', { name: label, exact: true });
+          await expect
+            .poll(() => control.evaluate((node) => document.activeElement === node), {
+              timeout: 1000,
+            })
+            .toBe(true);
+          added += 1;
+        }
+        expect(added).toBe(10);
+        expect(await card.getByRole('checkbox').count()).toBe(10);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
+    'keeps additive triggers rounded and disabled while saving in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width: 375, height: 1100 },
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(8000);
+      let release = () => {};
+      const held = new Promise<void>((resolve) => (release = resolve));
+      await page.route('**/api/v1/root/runtime/settings', async (route) => {
+        if (route.request().method() === 'PUT') await held;
+        await route.continue();
+      });
+      try {
+        await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+        const card = page.getByRole('region', { name: 'Behavior', exact: true });
+        await card.waitFor({ timeout: 30000 });
+        const prefix = page.getByLabel('Prefix', { exact: true });
+        await prefix.fill((await prefix.inputValue()) + '-pending');
+        await card.getByRole('button', { name: 'Override another', exact: true }).click();
+        await Promise.all([
+          runtimeUpdate(page),
+          page.getByRole('button', { name: 'Save', exact: true }).click(),
+        ]);
+        const choice = card.getByRole('button', { name: 'Override another', exact: true });
+        await expect.poll(() => choice.isDisabled()).toBe(true);
+        await expectAddPill(choice);
+        expect(await choice.evaluate((node) => getComputedStyle(node).opacity)).toBe('0.5');
+        await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await card.screenshot({
+            path: join(directory, `behavior-disabled-${colorScheme}-375.png`),
+          });
+        }
+        release();
+        await expect.poll(() => choice.isEnabled()).toBe(true);
+      } finally {
+        release();
         await page.close();
       }
     },

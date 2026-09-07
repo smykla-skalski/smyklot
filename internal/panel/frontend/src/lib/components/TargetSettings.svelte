@@ -354,7 +354,7 @@ settings from them answers a different question than the one they asked.
                     )}</span
                   >
                   <Button
-                    tone="quiet"
+                    tone="add"
                     disabled={frozen}
                     onclick={() =>
                       stage(
@@ -561,20 +561,19 @@ settings from them answers a different question than the one they asked.
           </p>
         {/if}
       </Card>
-      <Card id="ws-exceptions" unsaved={controlDirty('defaults.pending_ci_bypass_policy_default')}>
-        <div class="card-head"><h2 class="card-title">Merge exceptions</h2></div>
-        <BypassPolicyEditor
-          organizationActors={target.type === 'Organization'}
-          value={target.pending_ci_bypass_policy_default ?? null}
-          lookup={lookupBypassActors}
-          readOnly={frozen}
-          onChange={(value) =>
-            stage(
-              { ...document, pending_ci_bypass_policy_default: value },
-              'defaults.pending_ci_bypass_policy_default',
-            )}
-        />
-      </Card>
+      <BypassPolicyEditor
+        id="ws-exceptions"
+        unsaved={controlDirty('defaults.pending_ci_bypass_policy_default')}
+        organizationActors={target.type === 'Organization'}
+        value={target.pending_ci_bypass_policy_default ?? null}
+        lookup={lookupBypassActors}
+        readOnly={frozen}
+        onChange={(value) =>
+          stage(
+            { ...document, pending_ci_bypass_policy_default: value },
+            'defaults.pending_ci_bypass_policy_default',
+          )}
+      />
 
       <ConfigEditor
         patch={target.config_patch}

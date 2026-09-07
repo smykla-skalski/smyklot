@@ -286,7 +286,7 @@ also supports inherited lists without turning them into local overrides.
 
 {#if !readOnly && showAddButton}
   <div class="actor-header">
-    <Button tone="quiet" aria-expanded={adding} onclick={(event) => toggleAdd(event.currentTarget)}>
+    <Button tone="add" aria-expanded={adding} onclick={(event) => toggleAdd(event.currentTarget)}>
       {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add an actor
     </Button>
   </div>
@@ -516,7 +516,7 @@ also supports inherited lists without turning them into local overrides.
           <FormError message={failure} />
         </div>
         <div class="actor-form-actions card-action-foot">
-          <Button tone="quiet" onclick={closeAdd}>Cancel</Button>
+          <Button onclick={closeAdd}>Cancel</Button>
           {#if !named}
             <Button
               type="submit"

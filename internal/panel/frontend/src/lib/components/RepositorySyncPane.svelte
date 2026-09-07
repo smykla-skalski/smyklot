@@ -703,7 +703,7 @@ customization it described.
   <div class="card-head">
     <h2 class="card-title">File sync</h2>
     {#if !readOnly}
-      <Button tone="quiet" {disabled} onclick={() => add()}
+      <Button tone="add" {disabled} onclick={() => add()}
         >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Adjust a file</Button
       >
     {/if}
@@ -723,7 +723,9 @@ customization it described.
       </span>
       {#if !readOnly}
         <span class="policy-value"
-          ><Button {disabled} onclick={() => add(unadjustedPath!)}>Add adjustment</Button></span
+          ><Button tone="add" {disabled} onclick={() => add(unadjustedPath!)}
+            >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add adjustment</Button
+          ></span
         >
       {/if}
     </div>
@@ -761,15 +763,17 @@ customization it described.
       {#if wanted === null}
         <span class="policy-value">
           <span class="setting-unmanaged">From the workspace</span>
+
+          <Button
+            tone="add"
+            aria-label="Override file sync for this repository"
+            title="Set file sync for this repository"
+            {disabled}
+            onclick={() => setWanted(true)}
+          >
+            {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Override
+          </Button>
         </span>
-        <button
-          class="setting-clear"
-          title="Set file sync for this repository"
-          {disabled}
-          onclick={() => setWanted(true)}
-        >
-          <Icon name="plus" size="micro" />
-        </button>
       {:else}
         <span class="policy-value">
           <span class="value-word" class:is-on={wanted}>{wanted ? 'On' : 'Off'}</span>
@@ -994,8 +998,8 @@ customization it described.
               {#if !readOnly}
                 <div class="form-row">
                   <span class="setting-name">Replacements</span>
-                  <Button tone="quiet" {disabled} onclick={() => addSubstitution(index, at)}
-                    >Add a replacement</Button
+                  <Button tone="add" {disabled} onclick={() => addSubstitution(index, at)}
+                    >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Add a replacement</Button
                   >
                 </div>
               {/if}
@@ -1006,7 +1010,8 @@ customization it described.
         {#if !readOnly}
           <div class="form-row">
             <span class="setting-name">Sections</span>
-            <Button tone="quiet" {disabled} onclick={() => addSection(index)}>Edit a section</Button
+            <Button tone="add" {disabled} onclick={() => addSection(index)}
+              >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}Edit a section</Button
             >
           </div>
         {/if}

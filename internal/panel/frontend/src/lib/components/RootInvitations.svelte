@@ -651,7 +651,7 @@ Worth revisiting if the two features converge. Not worth forcing while they diff
         {creating ? 'Creating…' : 'Invite again'}
       </Button>
     {:else}
-      <Button tone="ghost" onclick={closeCreate}>
+      <Button tone={createStage === 'form' ? 'default' : 'ghost'} onclick={closeCreate}>
         {createStage === 'form' ? 'Cancel' : 'Done'}
       </Button>
     {/if}

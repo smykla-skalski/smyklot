@@ -32,3 +32,5 @@
 <Story name="Selected actors" args={{ value: allowed }} />
 <Story name="No exceptions" args={{ value: { ...allowed, allow: false } }} />
 <Story name="Follow workspace" args={{ inherited: allowed }} />
+<Story name="Empty actor list" args={{ value: { allow: true, actors: [] } }} />
+<Story name="Read only" args={{ value: allowed, readOnly: true }} />

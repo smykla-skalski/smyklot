@@ -29,6 +29,7 @@
     children,
     onopen,
     onclose,
+    onCloseAutoFocus,
   }: {
     align?: 'start' | 'center' | 'end';
     side?: 'above' | 'below' | 'left' | 'right';
@@ -47,6 +48,8 @@
     children: Snippet;
     onopen?: () => void;
     onclose?: () => void;
+    /** Replace trigger restoration only when closing transfers focus to a new control. */
+    onCloseAutoFocus?: (event: Event) => void;
   } = $props();
 
   const sideName = $derived(side === 'above' ? 'top' : side === 'below' ? 'bottom' : side);
@@ -131,6 +134,7 @@ is the skin, the width rules and the roving focus that `itemSelector` drives.
       {role}
       aria-label={label}
       onOpenAutoFocus={opening}
+      {onCloseAutoFocus}
       onInteractOutside={interactingOutside}
       onkeydown={walk}
     >

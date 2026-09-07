@@ -392,7 +392,7 @@ their original numeric tokens.
             addError = null;
           }}
         >
-          {#snippet trigger(attributes)}<Button {...attributes} class="" tone="quiet" {disabled}
+          {#snippet trigger(attributes)}<Button {...attributes} class="" tone="add" {disabled}
               >{#snippet icon()}<Icon name="plus" size="sm" />{/snippet}{key ===
               'required_status_checks'
                 ? 'Add a check'
@@ -532,7 +532,7 @@ their original numeric tokens.
   >
     <p class="form-help">Your changes to this rule will be lost</p>
   </ConfirmDialog>
-  {#snippet footer()}<Button tone="quiet" onclick={close}>Cancel</Button><Button
+  {#snippet footer()}<Button onclick={close}>Cancel</Button><Button
       tone="signal"
       disabled={disabled || problem !== null || conflict !== null}
       onclick={apply}>Done</Button

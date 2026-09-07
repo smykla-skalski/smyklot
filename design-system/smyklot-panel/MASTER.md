@@ -94,7 +94,7 @@ long prose. Technical values use tabular figures.
 - Spacing scale: `4, 8, 12, 16, 20, 24, 32px`
 - Surface radius: `10px`
 - Control radius: `8px`
-- Chips and status badges may use a full pill radius
+- Chips, status badges and optional-addition buttons may use a full pill radius
 - Standalone controls: `34px` visual height, with an explicit `40px` tier
 - Touch controls: at least `44px` hit area
 - Object and setting rows grow around their content at every viewport width
@@ -138,6 +138,18 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Adding a managed option uses the shared anchored picker, without expanding the
   page. After selection, focus moves to the added option and the picker returns
   to its prompt. Only changes to the remaining option set mark its summary dirty
+- Opening or closing an addition picker must keep the same trigger and summary
+  row mounted, at the same position and dimensions. Do not replace the row with
+  choices, move the trigger, or grow the document to display the picker. Use the
+  shared anchored popover, with choices scrolling inside its available viewport
+- Opening, cancelling, Escape and repeated trigger presses preserve page scroll
+  and the positions of neighboring rows. Focus returns to the trigger on dismissal
+  without scrolling. Selecting an option may insert its new row and reveal that
+  control, but opening the chooser alone must never rearrange settings
+- Browser tests measure the trigger, summary row, neighboring rows and page scroll
+  before and after opening and dismissal, with a maximum one-pixel tolerance for
+  rounding. Test narrow and wide viewports, both themes, keyboard dismissal and
+  repeated toggles. A screenshot alone does not enforce this stability contract
 
 ### Tabs and view switches
 
@@ -351,6 +363,13 @@ That button toggles its editor and exposes its expanded state. In an expanded
 card, the inset below its final action matches the inset above the header action.
 Use the shared `card-action-foot` cap-height track and button margins to match
 `card-head`, keeping the heading aligned with neighboring cards
+
+Merge exceptions use one shared card across workspace and repository settings.
+The header owns Add an actor; the policy row explains how exceptions are managed,
+and the actor list follows it directly. Do not insert an isolated action row
+between the policy and its actors. Show the addition action only when the list is
+editable. Inherited actors remain visible but read only, and an empty allowed list
+must explain that nobody can bypass yet
 
 Continuing lists retain their row padding instead of subtracting it from the
 following form, and suggestion rows use the same left and right frame as its fields
@@ -631,11 +650,51 @@ shared hover, pressed, and keyboard-focus states. A switch and its surrounding h
 area form a separate control; toggling it must not navigate. List expansion belongs
 with the list heading and count, not a detached oversized footer action
 
-Inherited behavior choices use the shared Button with its icon and label slots.
-Expanding an override picker must retain the same control height, text alignment,
-focus and press states as its collapsed action. Never rely on a style class owned
-by another component to paint these choices. Check the expanded state in every
-configuration scope as well as the collapsed state
+Optional configuration additions use `Button tone="add"`: a transparent surface,
+1px dashed control border and fully rounded `--radius-chip` corners. This is an
+explicit exception to ordinary button corners. Retain the shared 34px control
+height, 8px icon/label gap, trimmed label, focus ring and tactile states. Keep the
+border dashed when hovered or pressed; only the shared state layer and border
+color change. Disabled controls retain their outline and use shared disabled paint
+
+Use this treatment when the action starts an optional configuration entry or
+selects something to add: inherited behavior overrides, aliases, patterns, rules,
+checks, tools, bypass actors, file adjustments, list rules and schedule windows.
+Use a leading plus and a visible, specific label. A compact override entrypoint
+may say **Override** with the setting named by its surrounding row. An open/close
+addition trigger keeps the same shape while expanded, with `aria-expanded`
+communicating its state
+
+Do not use it for Save, Done, confirmation submits, Cancel, Reset, Remove,
+navigation, selecting an existing value, or primary page-level creation actions
+such as creating a shared file or granting access. A final **Add** inside a form
+is a submit, not another optional entrypoint. Menu options and full-row suggestions
+retain their shared menu or row anatomy, even when choosing one adds an item.
+Existing dashed inheritance markers
+and unfinished editable fields retain their distinct control semantics
+
+Never reproduce this button's paint in a page or rely on another component's
+scoped class. Expanded override choices use the same shared primitive as their
+entrypoint. Inspect expanded and collapsed states in every configuration scope,
+both themes and narrow views; controls wrap whole with the shared 8px gap
+
+An expanded addition picker separates its explanatory copy from the action group
+by 16px, measured from the last text baseline to the first button's outer edge.
+Use the shared `addition-picker` and `addition-choices` layout; keep 8px between
+adjacent controls and wrapped rows. The title/description ink gap remains 8px
+
+Cancel and equivalent exits from an editing session use the regular bordered
+secondary Button, with a solid border and ordinary control corners. This applies
+to inline addition groups, forms, inspectors and confirmation footers. Keep Cancel
+in the same wrapping action group as the choices, aligned to its trailing edge
+with at least 8px from other controls, or beside the submit action;
+never present it as bare text or as another dashed addition. A close icon retains
+the shared icon-button treatment, and cancelling running work retains its action
+semantics rather than being restyled as an editing-session exit
+
+The dashed shape is this panel's convention. Assigning it one purpose follows
+[consistent button hierarchy and states](https://www.nngroup.com/articles/button-states-communicate-interaction/)
+and [semantic button variants](https://carbondesignsystem.com/components/button/usage/)
 
 A navigable row with a small switch or status badge and a direction mark keeps
 that compact group beside its text on phones. Use the shared compact object-side
@@ -769,8 +828,11 @@ states without depending on a caller's scoped CSS
 | Empty, signed-out, and label states | `empty-states`, `signed-out-layout`, `sync-label-layout` browser suites |
 | Navigation context and accurate day grouping | `sidebar-selection`, `text-clipping` browser suites |
 | Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
+| Persistent addition triggers, unchanged row and scroll geometry, keyboard dismissal | `runtime-settings` and `settings-draft-markers` browser suites |
+| Shared exception-card hierarchy, header action, inherited and empty states | `bypass-identities` browser suite and `bypass-editors` unit suite |
 | Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
+| Dashed additive controls, inheritance choices and shared geometry in both themes | `runtime-settings` browser suite, `config-editor` and `shared-picker-styles` unit suites |
 | Ruleset action grouping, staged inspectors, lossless field restoration, named app pins, independent markers and 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page`, `ruleset-rule-editor` unit suites |
 | Repository option groups, readable picker values, anchored management, focus and wrapped status copy | `sync-drafts` browser suite and `sync-settings-page` unit suite |
 

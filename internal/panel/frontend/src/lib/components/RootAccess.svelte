@@ -803,7 +803,7 @@ refuse.
   </form>
 
   {#snippet footer()}
-    <Button tone="ghost" disabled={addSaving} onclick={closeAddUser}>Cancel</Button>
+    <Button disabled={addSaving} onclick={closeAddUser}>Cancel</Button>
     <Button
       tone="signal"
       type="submit"
