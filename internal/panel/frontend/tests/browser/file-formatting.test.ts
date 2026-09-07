@@ -166,7 +166,10 @@ describe('configured file formatting in the development panel', () => {
       await inspector.getByRole('button', { name: 'Done', exact: true }).click();
       expect(await page.getByRole('button', { name: 'Save', exact: true }).isDisabled()).toBe(true);
       await page.setViewportSize({ width: 1440, height: 1000 });
-      await page.locator(`a[href="/workspace/${panel.account}/repositories"]`).click();
+      await page
+        .getByRole('navigation', { name: 'Pages', exact: true })
+        .getByRole('link', { name: /^Repositories/u })
+        .click();
       await page
         .getByRole('searchbox', { name: 'Search repositories', exact: true })
         .fill('smyklot');
