@@ -374,7 +374,7 @@ echo "Files: $(git ls-files '*.go' | wc -l | tr -d ' ')"
 
 [tasks."panel:frontend:install"]
 description = "Install the panel frontend's pinned dependencies"
-sources = ["internal/panel/frontend/package.json", "internal/panel/frontend/package-lock.json"]
+sources = ["internal/panel/frontend/package.json", "internal/panel/frontend/package-lock.json", "internal/panel/frontend/build/patch-dependencies.mjs"]
 # SvelteKit 3 writes the tsconfig every other one extends to `node_modules/$app`,
 # not to `.svelte-kit` - so naming the old path made mise warn on every run that the
 # task had produced nothing, and treat an install that had worked as incomplete.
@@ -388,7 +388,7 @@ run = "./scripts/install-panel-frontend.sh"
 
 [tasks."test:panel-install"]
 description = "Test panel dependency cache restoration"
-run = "./scripts/test-install-panel-frontend.sh"
+run = ["./scripts/test-install-panel-frontend.sh", "node --test internal/panel/frontend/build/patch-dependencies.test.mjs"]
 
 [tasks."panel:frontend:build"]
 description = "Build the panel frontend"

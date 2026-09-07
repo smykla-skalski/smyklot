@@ -855,7 +855,11 @@ describe('rule inspectors [Browser]', () => {
             scroll: scrollY,
           }));
           await trigger.click();
-          if (fresh) await card.getByRole('button', { name: title, exact: true }).click();
+          if (fresh)
+            await page
+              .getByRole('dialog', { name: 'Rule choices', exact: true })
+              .getByRole('button', { name: title, exact: true })
+              .click();
           const editor = page.getByRole('dialog', { name: title, exact: true });
           await editor.waitFor();
           if (key === 'pull-request') {

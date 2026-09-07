@@ -600,7 +600,7 @@ so a link points at the pane a colleague was asked to look at.
 
                 <Button
                   tone="add"
-                  aria-label="Override the path index interval for this repository"
+                  aria-label="Override the file index interval for this repository"
                   title="Answer for this repository"
                   {disabled}
                   onclick={() => setPathIndex(detail.path_index_interval_seconds_inherited)}

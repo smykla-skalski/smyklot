@@ -161,6 +161,7 @@ export async function expectStableExpansion(
   });
   expect(outside.inMenu).toBe(false);
   expect(outside.inTrigger).toBe(false);
+  await expectDismissalReady(menu);
   await page.mouse.click(outside.x, outside.y);
   await menu.waitFor({ state: 'hidden' });
   await expect.poll(snapshot).toEqual(before);
@@ -168,4 +169,20 @@ export async function expectStableExpansion(
   await trigger.click();
   await menu.waitFor();
   await expect.poll(snapshot).toEqual(before);
+}
+
+/** Wait for the exact content layer to own its document listeners. */
+export async function expectDismissalReady(menu: Locator): Promise<void> {
+  const dismissalReady = () =>
+    menu.evaluate((node) => {
+      const layers = (
+        globalThis as typeof globalThis & {
+          bitsDismissableLayers?: Map<{ opts: { ref: { current: HTMLElement | null } } }, unknown>;
+        }
+      ).bitsDismissableLayers;
+      return [...(layers?.keys() ?? [])].some((layer) => layer.opts.ref.current === node);
+    });
+  // Bits installs its document listeners in a separate timer after mounting.
+  // Visibility, autofocus and completed paint do not establish that boundary.
+  await expect.poll(dismissalReady).toBe(true);
 }

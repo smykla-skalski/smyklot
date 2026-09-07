@@ -2,9 +2,15 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page, Request } from 'playwright-core';
+import type { RootRuntimeSettings, RootRuntimeSettingsInput } from '../../src/lib/types';
 
 import { startPanel, visit, type Panel } from './harness';
-import { expectAddPill, expectAdditionPicker, expectStableExpansion } from './add-control-geometry';
+import {
+  expectAddPill,
+  expectAdditionPicker,
+  expectStableExpansion,
+  expectDismissalReady,
+} from './add-control-geometry';
 
 let panel: Panel;
 
@@ -25,6 +31,62 @@ function runtimeUpdate(page: Page): Promise<Request> {
 }
 
 describe('Root runtime settings drafts', () => {
+  it('dismisses the first outside click during popup setup', async () => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 375, height: 1100 },
+      reducedMotion: 'reduce',
+    });
+    const now = Date.now();
+    await page.clock.install({ time: now });
+    try {
+      await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+      const card = page.getByRole('region', { name: 'Behavior', exact: true });
+      const trigger = card.getByRole('button', { name: 'Override another', exact: true });
+      const menu = page.getByRole('dialog', { name: 'Behavior choices', exact: true });
+      await trigger.waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      await trigger.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+      const geometry = () =>
+        trigger.evaluate((node) => ({
+          trigger: node.getBoundingClientRect().toJSON(),
+          row: node.closest('.policy-row')!.getBoundingClientRect().toJSON(),
+          scrollY: window.scrollY,
+        }));
+      const before = await geometry();
+      await page.clock.pauseAt(now + 60000);
+      await page.mouse.click(
+        before.trigger.left + before.trigger.width / 2,
+        before.trigger.top + before.trigger.height / 2,
+      );
+      // The first frame re-registers the content ref. Click 15 ms later, before
+      // that registration's obsolete 20 ms cleanup could reset pointer state.
+      await page.clock.runFor(31);
+      expect(await menu.isVisible()).toBe(true);
+      await expectDismissalReady(menu);
+      expect(await geometry()).toEqual(before);
+      const outside = await card
+        .locator('.setting-name')
+        .last()
+        .evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          return { x: rect.left + 4, y: rect.top + rect.height / 2 };
+        });
+      const bounds = await menu.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(outside.y).toBeLessThan(bounds!.y);
+      await page.mouse.click(outside.x, outside.y);
+      // Let the actual 10 ms outside handler run across the old reset deadline.
+      // This advances virtual time, without sleeping or retrying the click.
+      await page.clock.runFor(10);
+      expect(await trigger.getAttribute('aria-expanded')).toBe('false');
+      await page.clock.runFor(16);
+      expect(await menu.isVisible()).toBe(false);
+      expect(await trigger.evaluate((node) => document.activeElement === node)).toBe(true);
+      expect(await geometry()).toEqual(before);
+    } finally {
+      await page.close();
+    }
+  });
   it.each(
     [375, 768, 1024, 1440].flatMap((width) =>
       (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
@@ -225,9 +287,30 @@ describe('Root runtime settings drafts', () => {
       page.setDefaultTimeout(8000);
       let release = () => {};
       const held = new Promise<void>((resolve) => (release = resolve));
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const baseline = (await (await page.request.get(endpoint)).json()) as RootRuntimeSettings;
+      let saved = baseline;
       await page.route('**/api/v1/root/runtime/settings', async (route) => {
-        if (route.request().method() === 'PUT') await held;
-        await route.continue();
+        if (route.request().method() === 'PUT') {
+          const input = route.request().postDataJSON() as RootRuntimeSettingsInput;
+          expect(input.expected_revision).toBe(saved.revision);
+          expect(input.bot_config?.command_prefix).toBe(
+            `${baseline.behavior_defaults.effective.command_prefix}-pending`,
+          );
+          await held;
+          saved = {
+            ...saved,
+            revision: saved.revision + 1,
+            behavior_defaults: {
+              ...saved.behavior_defaults,
+              override: input.bot_config,
+              effective: input.bot_config ?? saved.behavior_defaults.deployment,
+            },
+          };
+        }
+        // This pending-state check owns its response, so it cannot change the
+        // suite's persisted baseline before the real save/readback journeys.
+        await route.fulfill({ json: saved });
       });
       try {
         await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
@@ -254,6 +337,9 @@ describe('Root runtime settings drafts', () => {
         }
         release();
         await expect.poll(() => choice.isEnabled()).toBe(true);
+        const unchanged = (await (await page.request.get(endpoint)).json()) as RootRuntimeSettings;
+        expect(unchanged.revision).toBe(baseline.revision);
+        expect(unchanged.behavior_defaults).toEqual(baseline.behavior_defaults);
       } finally {
         release();
         await page.close();
