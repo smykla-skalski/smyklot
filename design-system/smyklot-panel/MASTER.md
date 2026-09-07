@@ -631,6 +631,12 @@ shared hover, pressed, and keyboard-focus states. A switch and its surrounding h
 area form a separate control; toggling it must not navigate. List expansion belongs
 with the list heading and count, not a detached oversized footer action
 
+Inherited behavior choices use the shared Button with its icon and label slots.
+Expanding an override picker must retain the same control height, text alignment,
+focus and press states as its collapsed action. Never rely on a style class owned
+by another component to paint these choices. Check the expanded state in every
+configuration scope as well as the collapsed state
+
 A navigable row with a small switch or status badge and a direction mark keeps
 that compact group beside its text on phones. Use the shared compact object-side
 layout; reserve stacked actions for groups that need more room. The primary filter

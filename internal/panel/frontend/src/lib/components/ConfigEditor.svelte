@@ -309,14 +309,10 @@ account again.
               {#if picking}
                 <span class="policy-value setting-value-wrap">
                   {#each restFields as field (field.key)}
-                    <button
-                      class="add-chip"
-                      disabled={editorDisabled}
-                      onclick={() => manage(field)}
-                    >
-                      <Icon name="plus" size="xs" />
-                      <span class="t">{field.label}</span>
-                    </button>
+                    <Button tone="quiet" disabled={editorDisabled} onclick={() => manage(field)}>
+                      {#snippet icon()}<Icon name="plus" size="sm" />{/snippet}
+                      {field.label}
+                    </Button>
                   {/each}
                   <Button tone="quiet" onclick={() => (picking = false)}>Cancel</Button>
                 </span>

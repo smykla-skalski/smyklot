@@ -1,3 +1,5 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page, Request } from 'playwright-core';
 
@@ -22,6 +24,132 @@ function runtimeUpdate(page: Page): Promise<Request> {
 }
 
 describe('Root runtime settings drafts', () => {
+  it.each(
+    [375, 1440].flatMap((width) =>
+      (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
+    ),
+  )(
+    'uses shared behavior choices and restores inheritance in $colorScheme at $width',
+    async ({ width, colorScheme }) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width, height: 1100 },
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(8000);
+      const writes: Request[] = [];
+      page.on('request', (request) => {
+        if (request.method() === 'PUT') writes.push(request);
+      });
+      try {
+        await page.goto(`${panel.origin}/root/runtime/settings`, { waitUntil: 'domcontentloaded' });
+        const card = page.getByRole('region', { name: 'Behavior', exact: true });
+        await card.waitFor({ timeout: 30000 });
+        expect(await page.locator('html').getAttribute('data-theme')).toBe(colorScheme);
+        const label = 'Merge draft pull requests';
+        expect(await card.getByRole('checkbox', { name: label }).count()).toBe(0);
+        await card.getByRole('button', { name: 'Override another', exact: true }).click();
+        const choice = card.getByRole('button', { name: label, exact: true });
+        await choice.waitFor();
+        await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+        await page.mouse.move(0, 0);
+        await page.evaluate(() => document.fonts.ready);
+        const geometry = await card.evaluate((node) => ({
+          overflow: node.scrollWidth - node.clientWidth,
+          controls: [...node.querySelectorAll('.setting-value-wrap button')].map((button) => {
+            const bounds = button.getBoundingClientRect();
+            const cardBounds = node.getBoundingClientRect();
+            return {
+              shared: button.classList.contains('btn'),
+              label: Boolean(button.querySelector(':scope > .button-label')),
+              height: bounds.height,
+              contained: bounds.left >= cardBounds.left && bounds.right <= cardBounds.right,
+            };
+          }),
+        }));
+        expect(geometry.overflow).toBeLessThanOrEqual(1);
+        expect(geometry.controls.length).toBeGreaterThan(2);
+        for (const control of geometry.controls) {
+          expect(control).toEqual({ shared: true, label: true, height: 34, contained: true });
+        }
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await card.screenshot({
+            path: join(directory, `behavior-choices-${colorScheme}-${width}.png`),
+          });
+        }
+        const resting = await choice.evaluate((node) => getComputedStyle(node).backgroundImage);
+        await choice.hover();
+        expect(await choice.evaluate((node) => getComputedStyle(node).backgroundImage)).not.toBe(
+          resting,
+        );
+        await page.mouse.down();
+        const pressed = await choice.evaluate((node) => ({
+          active: node.matches(':active'),
+          shadow: getComputedStyle(node).boxShadow,
+          translate: getComputedStyle(node).translate,
+        }));
+        expect(pressed.active).toBe(true);
+        expect(pressed.shadow).toContain('inset');
+        expect(pressed.translate).toBe('0px 1px');
+        await page.mouse.up();
+        const input = card.getByRole('checkbox', { name: label, exact: true });
+        await input.waitFor();
+        expect(await input.isChecked()).toBe(false);
+        expect(await choice.count()).toBe(0);
+        await input.locator('..').click();
+        await expect.poll(() => input.isChecked()).toBe(true);
+        const row = card
+          .locator('.policy-row')
+          .filter({ has: page.getByRole('checkbox', { name: label, exact: true }) });
+        if (directory) {
+          await page.mouse.move(0, 0);
+          await card.screenshot({
+            path: join(directory, `behavior-managed-${colorScheme}-${width}.png`),
+          });
+        }
+        await row.getByRole('button', { name: 'Reset', exact: true }).click();
+        await expect.poll(() => input.count()).toBe(0);
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
+          .toBe(0);
+        await card.getByRole('button', { name: 'Override another', exact: true }).click();
+        await choice.waitFor();
+        await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+        if (colorScheme === 'dark' && width === 1440) {
+          await page.goto(`${panel.origin}/workspace/${panel.account}/settings`, {
+            waitUntil: 'domcontentloaded',
+          });
+          await card.waitFor({ timeout: 30000 });
+          expect(await page.locator('html').getAttribute('data-theme')).toBe(colorScheme);
+          await card.getByRole('button', { name: 'Override another', exact: true }).click();
+          await card.evaluate((node) => node.scrollIntoView({ block: 'center' }));
+          await page.mouse.move(0, 0);
+          expect(await card.locator('.add-chip').count()).toBe(0);
+          const options = card.locator('.setting-value-wrap button');
+          expect(await options.count()).toBeGreaterThan(2);
+          expect(
+            await options.evaluateAll((nodes) =>
+              nodes.every(
+                (node) =>
+                  node.classList.contains('btn') && node.querySelector(':scope > .button-label'),
+              ),
+            ),
+          ).toBe(true);
+          if (directory)
+            await card.screenshot({
+              path: join(directory, 'behavior-workspace-choices-dark-1440.png'),
+            });
+          await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+        }
+        expect(writes).toHaveLength(0);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   it('places the automatic-work action below its copy when the card is narrow', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 375, height: 900 } });
     try {

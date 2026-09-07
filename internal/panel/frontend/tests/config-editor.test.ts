@@ -10,6 +10,70 @@ describe('ConfigEditor drafts [Component]', () => {
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
+  it.each(['runtime', 'target', 'repository'] as const)(
+    'uses shared behavior choices and preserves explicit false until Reset in %s',
+    async (scope) => {
+      const onChange = vi.fn();
+      render(ConfigEditor, {
+        patch: {},
+        inherited: { ...CONFIG, allow_draft_merges: false },
+        scope,
+        idPrefix: `choices-${scope}`,
+        section: 'behavior',
+        onChange,
+      });
+      const label = 'Merge draft pull requests';
+      expect(screen.queryByRole('checkbox', { name: label })).toBeNull();
+      expect(screen.queryByRole('button', { name: label })).toBeNull();
+      await fireEvent.click(screen.getByRole('button', { name: 'Override another' }));
+      const choice = screen.getByRole('button', { name: label });
+      expect(choice.classList.contains('btn')).toBe(true);
+      expect(choice.querySelector(':scope > .button-label')?.textContent).toBe(label);
+      expect(choice.querySelector(':scope > svg')).not.toBeNull();
+      await fireEvent.click(choice);
+      expect(onChange).toHaveBeenLastCalledWith(
+        { allow_draft_merges: false },
+        'allow_draft_merges',
+      );
+      expect(screen.queryByRole('button', { name: label })).toBeNull();
+      await fireEvent.click(screen.getByRole('checkbox', { name: label }));
+      expect(onChange).toHaveBeenLastCalledWith({ allow_draft_merges: true }, 'allow_draft_merges');
+      await fireEvent.click(screen.getByRole('checkbox', { name: label }));
+      expect(onChange).toHaveBeenLastCalledWith(
+        { allow_draft_merges: false },
+        'allow_draft_merges',
+      );
+      await fireEvent.click(screen.getByRole('button', { name: 'Reset' }));
+      expect(onChange).toHaveBeenLastCalledWith({}, 'allow_draft_merges');
+      expect(screen.queryByRole('checkbox', { name: label })).toBeNull();
+      await fireEvent.click(screen.getByRole('button', { name: 'Override another' }));
+      expect(screen.getByRole('button', { name: label })).not.toBeNull();
+    },
+  );
+
+  it('disables open behavior choices when edit permission is removed', async () => {
+    const onChange = vi.fn();
+    const view = render(ConfigEditor, {
+      patch: {},
+      inherited: CONFIG,
+      scope: 'target',
+      idPrefix: 'permission',
+      section: 'behavior',
+      onChange,
+    });
+    await fireEvent.click(screen.getByRole('button', { name: 'Override another' }));
+    await view.rerender({ disabled: true });
+    expect(
+      (screen.getByRole('button', { name: 'Merge draft pull requests' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(
+      (screen.getByRole('button', { name: 'Override another' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+  });
+
   it('reports staged changes synchronously with the changed key', async () => {
     const onChange = vi.fn();
     render(ConfigEditor, {
