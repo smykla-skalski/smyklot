@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncSettingsPage from '../src/lib/components/SyncSettingsPage.svelte';
+import { chooseOption } from './support/select';
 import type { SyncConfig } from '../src/lib/types';
 
 /** The segmented control measures itself to place its thumb; jsdom does not. */
@@ -64,9 +65,13 @@ describe('SyncSettingsPage [Component]', () => {
   it('renders only the managed settings as rows, the rest as one sentence', () => {
     render(SyncSettingsPage, { ...base, config: config() });
 
-    expect(document.querySelectorAll('.policy-row')).toHaveLength(2);
-    expect(row('Squash merging').textContent).toContain('On');
-    expect(row('Wiki').textContent).toContain('Off');
+    expect(document.querySelectorAll('[data-option]')).toHaveLength(2);
+    expect(
+      row('Squash merging').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked,
+    ).toBe(true);
+    expect(row('Wiki').querySelector<HTMLInputElement>('input[type=checkbox]')!.checked).toBe(
+      false,
+    );
     const rests = [...document.querySelectorAll('.rest-say')].map((el) => el.textContent ?? '');
     expect(rests.some((text) => text.includes('Merge commits'))).toBe(true);
   });
@@ -98,7 +103,7 @@ describe('SyncSettingsPage [Component]', () => {
       },
     });
 
-    const clear = row('Wiki').querySelector<HTMLButtonElement>('.setting-clear');
+    const clear = screen.getByRole('button', { name: 'Stop managing Wiki' });
     await fireEvent.click(clear as HTMLButtonElement);
 
     // Removed, not written false: absence is the third state.
@@ -116,12 +121,10 @@ describe('SyncSettingsPage [Component]', () => {
       },
     });
 
-    const restButtons = screen.getAllByRole('button', { name: /Manage another setting/ });
-    await fireEvent.click(restButtons[0] as HTMLElement);
-    const chip = [...document.querySelectorAll<HTMLButtonElement>('.add-chip')].find((held) =>
-      (held.textContent ?? '').includes('Merge commits'),
+    await chooseOption(
+      screen.getByRole('combobox', { name: 'Manage an option in Merging' }),
+      'Merge commits',
     );
-    await fireEvent.click(chip as HTMLButtonElement);
 
     expect(sent).toHaveLength(1);
     expect(sent[0]).toEqual({
@@ -154,7 +157,7 @@ describe('SyncSettingsPage [Component]', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('cannot read');
     const controls = document.querySelectorAll(
-      'input[type="checkbox"], .setting-clear, button.add-chip',
+      'input[type="checkbox"], .icon-button, [role="combobox"]',
     );
     for (const control of controls) {
       expect((control as HTMLInputElement | HTMLButtonElement).disabled).toBe(true);
@@ -189,7 +192,7 @@ describe('SyncSettingsPage [Component]', () => {
     );
     await fireEvent.click(everything as HTMLInputElement);
 
-    expect(document.querySelectorAll('.policy-row')).toHaveLength(17);
+    expect(document.querySelectorAll('[data-option]')).toHaveLength(17);
     expect(row('Merge commits').textContent).toContain('From each repository');
   });
 });

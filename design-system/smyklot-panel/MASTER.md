@@ -131,6 +131,13 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Focus replaces the normal control boundary with one two-pixel indicator
 - Press feedback uses the shared color, inset shadow, and sink motion. Hover and
   pressed surfaces are exclusive, including rows with a separate hit layer
+- A value picker and its remove action form one control group. They share the
+  compact height, stay on the same line, and wrap together. Once the group wraps
+  below its label, it can use the full row width; do not truncate a short value
+  against an empty half-row. A fixed switch/action pair keeps the copy beside it
+- Adding a managed option uses the shared anchored picker, without expanding the
+  page. After selection, focus moves to the added option and the picker returns
+  to its prompt. Only changes to the remaining option set mark its summary dirty
 
 ### Tabs and view switches
 
@@ -346,6 +353,11 @@ without an automatic browser scroll; reveal an offscreen field only as far as
 needed, accounting for floating actions. Closing returns focus to the trigger
 without jumping the page. Respect reduced motion and cancel obsolete reveal work
 when the user closes or reopens the editor
+
+Adding a managed option focuses its new control and reveals its whole row,
+including the setting name. Measure visible row geometry, not an invisible native
+input. Keep it clear of the fixed header and save composer without scrolling when
+the row is already visible
 
 ### Row copy rhythm
 
@@ -731,6 +743,7 @@ states without depending on a caller's scoped CSS
 | Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
 | Ruleset action grouping, independent markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
+| Repository option groups, readable picker values, anchored management and focus | `sync-drafts` browser suite and `sync-settings-page` unit suite |
 
 Paths above are relative to `internal/panel/frontend` except the backend suites.
 CI runs these browser and unit contracts. `mise run lint:matrix` rejects a browser

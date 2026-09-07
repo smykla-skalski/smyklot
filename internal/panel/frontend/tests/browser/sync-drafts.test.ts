@@ -1,3 +1,6 @@
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Page, Request } from 'playwright-core';
 
@@ -337,6 +340,184 @@ describe('automatic sync status interactions', () => {
         await page.mouse.click(copy.x + 5, copy.y + copy.height / 2);
         await page.waitForURL((url) => url.pathname.endsWith('/sync/labels'));
         await page.getByRole('heading', { name: 'Labels', exact: true }).waitFor();
+      } finally {
+        await page.close();
+      }
+    });
+  }
+});
+
+describe('repository option control anatomy', () => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [375, 768, 1440]) {
+      it(`${colorScheme} ${width} keeps options and actions together`, async () => {
+        const page = await panel.browser.newPage({
+          colorScheme,
+          viewport: { width, height: 1000 },
+        });
+        try {
+          await visit(page, addressOf(panel, 'workspace/sync/settings'));
+          const card = page
+            .locator('.card')
+            .filter({ has: page.getByRole('heading', { name: 'Commit wording', exact: true }) });
+          await card.scrollIntoViewIfNeeded();
+          const directory = process.env.SMYKLOT_OPTIONS_VISUAL_DIR;
+          if (directory) {
+            await mkdir(directory, { recursive: true });
+            await page.evaluate(() => {
+              if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+              window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+            });
+            await page.mouse.move(0, 0);
+            await page.screenshot({
+              path: join(directory, `${colorScheme}-${width}.png`),
+              fullPage: true,
+              animations: 'disabled',
+            });
+            await card.screenshot({ path: join(directory, `wording-${colorScheme}-${width}.png`) });
+          }
+          for (const label of ['Squash commit title', 'Squash commit message']) {
+            const row = card
+              .locator('.policy-row')
+              .filter({ has: page.locator('.setting-name', { hasText: label }) });
+            const picker = await row.locator('.value-select').boundingBox();
+            const remove = await row.locator('.setting-clear, .icon-button').boundingBox();
+            if (!picker || !remove) throw new Error('Missing option controls');
+            expect(Math.abs(picker.height - 34)).toBeLessThan(0.6);
+            expect(Math.abs(remove.height - picker.height)).toBeLessThan(0.6);
+            expect(Math.abs(remove.width - remove.height)).toBeLessThan(0.6);
+            expect(
+              Math.abs(remove.y + remove.height / 2 - picker.y - picker.height / 2),
+            ).toBeLessThan(0.6);
+            expect(remove.x).toBeGreaterThanOrEqual(picker.x + picker.width);
+            // A short value must stay readable when its pair has an entire line.
+            const labelBox = row.locator('.value-select .button-label');
+            expect(
+              await labelBox.evaluate((element) => element.scrollWidth - element.clientWidth),
+            ).toBeLessThanOrEqual(1);
+          }
+          const wiki = page.locator('[data-option=has_wiki]');
+          const wikiCopy = (await wiki.locator('.setting-say').boundingBox())!;
+          const wikiSwitch = (await wiki.locator('.switch').boundingBox())!;
+          expect(
+            Math.abs(wikiCopy.y + wikiCopy.height / 2 - wikiSwitch.y - wikiSwitch.height / 2),
+          ).toBeLessThan(0.6);
+          const trigger = card.getByRole('combobox', { name: 'Squash commit title', exact: true });
+          const initial = await trigger.innerText();
+          await trigger.click();
+          const menu = page.getByRole('listbox', { name: 'Squash commit title', exact: true });
+          await menu.waitFor();
+          if (directory)
+            await page.screenshot({ path: join(directory, `choices-${colorScheme}-${width}.png`) });
+          await page.keyboard.press('End');
+          await page.keyboard.press('Enter');
+          await expect.poll(() => trigger.innerText()).not.toBe(initial);
+          await trigger.click();
+          await page.keyboard.press('Home');
+          await page.keyboard.press('Enter');
+          await expect.poll(() => trigger.innerText()).toBe(initial);
+          await expect.poll(() => card.locator('.is-unsaved').count()).toBe(0);
+          await page
+            .getByRole('button', { name: 'Save', exact: true })
+            .waitFor({ state: 'hidden' });
+          const beforeHeight = (await card.boundingBox())!.height;
+          const manage = card.getByRole('combobox', {
+            name: 'Manage an option in Commit wording',
+            exact: true,
+          });
+          await manage.click();
+          const choices = page.getByRole('listbox', {
+            name: 'Manage an option in Commit wording',
+            exact: true,
+          });
+          await choices.waitFor();
+          expect(Math.abs((await card.boundingBox())!.height - beforeHeight)).toBeLessThan(0.6);
+          if (directory)
+            await page.screenshot({ path: join(directory, `manage-${colorScheme}-${width}.png`) });
+          await choices.getByRole('option', { name: 'Merge commit title', exact: true }).click();
+          const added = card
+            .locator('.policy-row')
+            .filter({ has: page.locator('.setting-name', { hasText: /^Merge commit title$/u }) });
+          await added.waitFor();
+          await expect.poll(() => manage.innerText()).toBe('Manage an option');
+          await expect
+            .poll(() =>
+              added.getByRole('combobox').evaluate((element) => element === document.activeElement),
+            )
+            .toBe(true);
+          await added
+            .getByRole('button', { name: 'Stop managing Merge commit title', exact: true })
+            .click();
+          await expect.poll(() => added.count()).toBe(0);
+          await expect.poll(() => card.locator('.is-unsaved').count()).toBe(0);
+          expect(
+            await page.evaluate(() => document.documentElement.scrollWidth - innerWidth),
+          ).toBeLessThanOrEqual(1);
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  }
+});
+
+describe('managed option focus visibility', () => {
+  for (const width of [375, 768]) {
+    it(`${width} reveals an added option above the current viewport`, async () => {
+      const page = await panel.browser.newPage({ viewport: { width, height: 520 } });
+      try {
+        await visit(page, addressOf(panel, 'workspace/sync/settings'));
+        const merging = page
+          .locator('.card')
+          .filter({ has: page.getByRole('heading', { name: 'Merging', exact: true }) });
+        await merging
+          .getByRole('button', { name: 'Stop managing Squash merging', exact: true })
+          .click();
+        const manage = merging.getByRole('combobox', {
+          name: 'Manage an option in Merging',
+          exact: true,
+        });
+        for (const label of ['Rebase merging', 'Offer to update the branch']) {
+          await manage.click();
+          await page.getByRole('option', { name: label, exact: true }).click();
+        }
+        await manage.evaluate((element) => {
+          const top = Math.max(
+            0,
+            document.querySelector('.top-bar')?.getBoundingClientRect().bottom ?? 0,
+          );
+          window.scrollBy({
+            top: element.getBoundingClientRect().top - top - 24,
+            behavior: 'instant',
+          });
+        });
+        await manage.click();
+        await page.getByRole('option', { name: 'Squash merging', exact: true }).click();
+        const input = merging.getByRole('checkbox', { name: 'Squash merging', exact: true });
+        await expect
+          .poll(() => input.evaluate((element) => document.activeElement === element))
+          .toBe(true);
+        await expect
+          .poll(() =>
+            input.evaluate((element) => {
+              const control = element.closest('.policy-row')!;
+              const top = Math.max(
+                0,
+                document.querySelector('.top-bar')?.getBoundingClientRect().bottom ?? 0,
+              );
+              return control.getBoundingClientRect().top - top;
+            }),
+          )
+          .toBeGreaterThanOrEqual(0);
+        const row = merging.locator('[data-option="allow_squash_merge"]');
+        const bounds = (await row.boundingBox())!;
+        const composer = await page.locator('.settings-composer').boundingBox();
+        expect(bounds.y + bounds.height).toBeLessThanOrEqual(composer?.y ?? 520);
+        const directory = process.env.SMYKLOT_OPTIONS_VISUAL_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({ path: join(directory, `focused-${width}.png`) });
+        }
       } finally {
         await page.close();
       }
