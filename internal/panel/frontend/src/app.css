@@ -2795,17 +2795,26 @@ button.object-row {
 
 /* One switch needs a fixed, small seat. Wrap its explanation beside it instead
    of letting the general minimum copy width push the control onto a second line. */
-:is(.setting-row, .policy-row):has(> :is(.setting-value, .policy-value) > .switch:only-child) {
-  flex-wrap: nowrap;
-}
-
 :is(.setting-row, .policy-row):has(> :is(.setting-value, .policy-value) > .switch:only-child)
   > .setting-say {
+  flex-basis: 0;
   min-inline-size: 0;
 }
 
 :is(.setting-row, .policy-row) > :is(.setting-value, .policy-value):has(> .switch:only-child) {
   flex: none;
+}
+
+/* A short status or single action can share a narrow row with readable copy.
+   Give the copy at least half the available row before deciding to stack; the
+   usual full reading-width floor unnecessarily orphans even a two-word badge.
+   Keep wrapping enabled so a genuinely wide action still gets its own line. */
+:is(.setting-row, .policy-row):has(
+    > :is(.setting-value, .policy-value) > :is(.pill, .btn):only-child
+  )
+  > .setting-say {
+  flex-basis: min(var(--setting-say-min), 50cqi);
+  min-inline-size: min(var(--setting-say-min), 50cqi);
 }
 
 /* A CHANGE NOT YET SAVED IS A STATE OF THE ROW IT WAS MADE IN, so a reader looking for

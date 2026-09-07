@@ -17,11 +17,26 @@ const card = (page: Page) =>
   page.getByRole('region', { name: 'Configuration file sync', exact: true });
 async function capture(page: Page, name: string) {
   const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
-  if (!directory) return;
-  await mkdir(directory, { recursive: true });
   await card(page).scrollIntoViewIfNeeded();
   await page.mouse.move(0, 0);
-  await card(page).screenshot({ path: join(directory, `${name}.png`) });
+  if (directory) {
+    await mkdir(directory, { recursive: true });
+    await card(page).screenshot({ path: join(directory, `${name}.png`) });
+  }
+  const status = await card(page)
+    .getByLabel('Saved connection status')
+    .evaluate((row) => {
+      const copy = row.querySelector('.setting-say')!.getBoundingClientRect();
+      const value = row.querySelector('.policy-value')!.getBoundingClientRect();
+      return {
+        copyRight: copy.right,
+        valueLeft: value.left,
+        copyMiddle: (copy.top + copy.bottom) / 2,
+        valueMiddle: (value.top + value.bottom) / 2,
+      };
+    });
+  expect(status.valueLeft, name).toBeGreaterThanOrEqual(status.copyRight);
+  expect(Math.abs(status.valueMiddle - status.copyMiddle), name).toBeLessThanOrEqual(1);
 }
 async function switchGeometry(page: Page) {
   const geometry = await card(page)

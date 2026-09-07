@@ -406,6 +406,11 @@ copy at every supported width. The copy wraps beside it, and both areas remain
 vertically centered. Do not move a single switch to a separate line as though it
 were a wide field group; shared row geometry owns this behavior
 
+Compact status badges and single row actions stay beside their explanation when
+both fit. At narrow widths, allow the copy to use half the row before wrapping
+the value below it. A longer action still moves as a whole when it cannot fit;
+never force it into clipped text or reduce its control height
+
 Standalone row inputs, selects, popover pickers, segmented controls and buttons use
 `--control-height-compact` (34px), including fields inside expanded inspectors.
 Popover pickers use the shared `PickerTrigger`, with the shared stroked chevron.
