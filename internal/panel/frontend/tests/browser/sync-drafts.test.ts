@@ -461,6 +461,73 @@ describe('repository option control anatomy', () => {
   }
 });
 
+describe('wrapping sync status facts', () => {
+  for (const colorScheme of ['light', 'dark'] as const) {
+    for (const width of [375, 768, 1440]) {
+      it(`${colorScheme} ${width} keeps status facts free of orphan separators`, async () => {
+        const page = await panel.browser.newPage({ colorScheme, viewport: { width, height: 900 } });
+        try {
+          await visit(page, addressOf(panel, 'workspace/sync/settings'));
+          const toggle = page.locator('.page-status input[type="checkbox"]');
+          for (const enabled of [true, false]) {
+            if ((await toggle.isChecked()) !== enabled) {
+              await page.locator('.page-status label.switch').click();
+            }
+            await expect.poll(() => toggle.isChecked()).toBe(enabled);
+            const facts = page.locator('.switch-facts');
+            const band = page.locator('.page-status');
+            expect(await band.evaluate((element) => getComputedStyle(element).padding)).toBe('8px');
+            expect(
+              await band.evaluate((element) => parseFloat(getComputedStyle(element).borderRadius)),
+            ).toBeGreaterThan(0);
+            const rows = await facts.evaluate((element) =>
+              [...element.children].map((child) => {
+                const box = child.getBoundingClientRect();
+                return {
+                  top: box.top,
+                  bottom: box.bottom,
+                  left: box.left,
+                  after: getComputedStyle(child, '::after').content,
+                };
+              }),
+            );
+            expect(rows).toHaveLength(3);
+            for (const [index, row] of rows.entries()) {
+              expect(['none', 'normal']).toContain(row.after);
+              const previous = rows[index - 1];
+              if (previous && row.left <= previous.left) {
+                expect(Math.abs(row.top - previous.bottom - 8)).toBeLessThan(0.6);
+              }
+            }
+            const directory = process.env.SMYKLOT_OPTIONS_VISUAL_DIR;
+            if (directory) {
+              await mkdir(directory, { recursive: true });
+              await page.evaluate(async () => {
+                await Promise.all(
+                  document
+                    .getAnimations()
+                    .filter((animation) =>
+                      Number.isFinite(animation.effect?.getComputedTiming().endTime),
+                    )
+                    .map((animation) => animation.finished.catch(() => undefined)),
+                );
+              });
+              await page.screenshot({
+                path: join(
+                  directory,
+                  `status-${enabled ? 'on' : 'paused'}-${colorScheme}-${width}.png`,
+                ),
+              });
+            }
+          }
+        } finally {
+          await page.close();
+        }
+      });
+    }
+  }
+});
+
 describe('managed option focus visibility', () => {
   for (const width of [375, 768]) {
     it(`${width} reveals an added option above the current viewport`, async () => {

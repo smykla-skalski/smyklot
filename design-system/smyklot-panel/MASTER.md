@@ -370,6 +370,12 @@ The floating composer follows the same 8px ink gap. Trim the title and subtitle
 to their cap and baseline edges, and use the shared copy leading when they wrap.
 Do not add body line-box space on top of the gap
 
+Independently wrapping status facts use spacing to separate their roles. Do not
+attach generated punctuation that can remain at the end of a wrapped line or
+after the last fact. Stacked facts follow the same trimmed 8px copy rhythm
+Status bands reserve an 8px inset and the shared control radius in both saved and
+changed states. Their text stays aligned with the page copy when the gold fill appears
+
 ### UI copy and compact choices
 
 UI labels, descriptions, hints, and toast messages have no trailing period. A toast
@@ -743,7 +749,7 @@ states without depending on a caller's scoped CSS
 | Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
 | Ruleset action grouping, independent markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
-| Repository option groups, readable picker values, anchored management and focus | `sync-drafts` browser suite and `sync-settings-page` unit suite |
+| Repository option groups, readable picker values, anchored management, focus and wrapped status copy | `sync-drafts` browser suite and `sync-settings-page` unit suite |
 
 Paths above are relative to `internal/panel/frontend` except the backend suites.
 CI runs these browser and unit contracts. `mise run lint:matrix` rejects a browser

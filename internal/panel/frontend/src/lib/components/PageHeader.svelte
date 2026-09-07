@@ -176,11 +176,14 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
 
   .page-status {
     align-items: center;
+    border-radius: var(--r-ctl);
     display: grid;
     gap: var(--space-4);
     grid-area: status;
     grid-template-columns: minmax(0, 1fr) auto;
     min-block-size: 34px;
+    margin-inline: calc(var(--space-2) * -1);
+    padding: var(--space-2);
   }
 
   /* The switch's tap box must not set the band's height - the hit area survives
@@ -189,7 +192,8 @@ The title is the page's `<h1>`. There is one page title per page, and it is this
     min-block-size: 32px;
   }
 
-  /* The staged switch keeps a quiet surface tint without changing its inset. */
+  /* Reserve the same inset in both states, so staging a switch adds its
+     surface without moving the text or leaving the fill flush with the ink. */
 
   .page-head-say {
     display: grid;

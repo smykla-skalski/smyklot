@@ -89,16 +89,16 @@ stops future reconciliation; work already sent to GitHub remains there.
 </p>
 
 <style>
-  /* Three roles on one line where there is room, joined by the separator's own
-     ink rather than by the ink of whatever it separates. */
+  /* Independent facts wrap as whole text groups. Spacing works on either side
+     of a wrap; generated punctuation would leave a stray dot at the line end. */
   .switch-facts {
     align-items: center;
     color: var(--text-secondary);
     display: flex;
     flex-wrap: wrap;
     font-size: var(--font-size-meta);
-    gap: var(--space-1) var(--space-2);
-    line-height: var(--leading-meta);
+    gap: var(--row-copy-gap) var(--space-4);
+    line-height: var(--row-copy-leading);
     margin: 0;
     text-wrap: pretty;
   }
@@ -112,30 +112,15 @@ stops future reconciliation; work already sent to GitHub remains there.
     color: var(--text-muted);
   }
 
-  /* THE SEPARATOR TRAILS WHAT IT FOLLOWS, never leads what it joins. Three
-     roles need 771px and the band is usually narrower than that, so the line
-     wraps on an ordinary desktop rather than only on a phone - and a leading
-     `·` pushed onto the second line reads as a bullet, not as a join. Trailing,
-     it ends a line the way a newspaper ends one, and the role that wrapped
-     starts clean. */
-  .switch-facts :is(.sf-status, .sf-why)::after {
-    color: var(--text-muted);
-    content: '·';
-    font-weight: 400;
-    margin-inline-start: var(--space-2);
+  .switch-facts > :is(strong, span) {
+    text-box: trim-both cap alphabetic;
   }
 
-  /* A phone has no room for one line of three, so each role takes its own -
-     and a separator ending a stacked line joins nothing. */
+  /* A phone presents the same facts vertically, with the same copy rhythm. */
   @media (max-width: 47.9375rem) {
     .switch-facts {
       align-items: start;
       display: grid;
-      gap: 2px;
-    }
-
-    .switch-facts :is(.sf-status, .sf-why)::after {
-      content: none;
     }
   }
 </style>
