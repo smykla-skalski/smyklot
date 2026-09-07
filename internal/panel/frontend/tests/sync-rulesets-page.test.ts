@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SyncRulesetPage from '../src/lib/components/SyncRulesetPage.svelte';
@@ -344,7 +344,8 @@ describe('the ruleset pages [Component]', () => {
     const row = [...document.querySelectorAll<HTMLElement>('.policy-row')].find((held) =>
       (held.textContent ?? '').includes('Restrict deletions'),
     );
-    await fireEvent.click(row?.querySelector('.setting-clear') as HTMLButtonElement);
+    expect(row).toBeDefined();
+    await fireEvent.click(within(row!).getByRole('button', { name: 'Switch the rule off' }));
 
     const saved = (sent[0]?.rulesets as Array<Record<string, unknown>>)[0];
     expect(saved?.rules).toEqual({ non_fast_forward: true });

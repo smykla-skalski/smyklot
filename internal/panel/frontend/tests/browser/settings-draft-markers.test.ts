@@ -23,6 +23,117 @@ async function openRepositories(page: Page): Promise<void> {
 }
 
 describe('settings draft destinations [Integration]', () => {
+  it.each(['light', 'dark'] as const)(
+    'keeps long check names clear of rule actions in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width: 375, height: 1000 },
+        reducedMotion: 'reduce',
+      });
+      try {
+        await page.goto(
+          `${panel.origin}/workspace/${panel.account}/sync/rulesets/main-protection`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        const row = page.locator('.policy-row').filter({
+          has: page.getByText('Require status checks', { exact: true }),
+        });
+        await row.getByRole('button', { name: 'Edit', exact: true }).click();
+        await row.getByRole('button', { name: 'Add a check', exact: true }).click();
+        const check = page.getByRole('textbox', { name: 'Check to add', exact: true });
+        const name = 'W'.repeat(24);
+        await check.fill(name);
+        await check.press('Enter');
+        await row.getByRole('button', { name: 'Done', exact: true }).click();
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await row.screenshot({ path: join(directory, `rules-long-${colorScheme}-375.png`) });
+        }
+        const chip = row.locator('.param-chip').filter({ hasText: name });
+        const geometry = await chip.evaluate((node) => {
+          const rect = node.getBoundingClientRect();
+          const actions = node
+            .closest('.rule-value')!
+            .querySelector('.rule-actions')!
+            .getBoundingClientRect();
+          return {
+            right: rect.right,
+            left: actions.left,
+            overflow: node.scrollWidth - node.clientWidth,
+          };
+        });
+        expect(geometry.overflow).toBeLessThanOrEqual(1);
+        expect(geometry.right).toBeLessThanOrEqual(geometry.left - 4);
+        await page.getByRole('button', { name: 'Discard', exact: true }).click();
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(
+    [375, 768, 1024, 1440].flatMap((width) =>
+      (['light', 'dark'] as const).map((colorScheme) => ({ width, colorScheme })),
+    ),
+  )(
+    'keeps each rule action group together at $colorScheme $width',
+    async ({ width, colorScheme }) => {
+      const page = await panel.browser.newPage({
+        colorScheme,
+        viewport: { width, height: 1000 },
+        reducedMotion: 'reduce',
+      });
+      try {
+        await page.goto(
+          `${panel.origin}/workspace/${panel.account}/sync/rulesets/main-protection`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        const card = page
+          .locator('.card')
+          .filter({ has: page.getByRole('heading', { name: 'What it enforces', exact: true }) });
+        await card.waitFor({ state: 'visible', timeout: 30_000 });
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await card.screenshot({
+            path: join(directory, `rules-${colorScheme}-${width}.png`),
+            animations: 'disabled',
+          });
+        }
+        for (const name of ['Require a pull request', 'Require status checks']) {
+          const row = card
+            .locator('.policy-row')
+            .filter({ has: page.getByText(name, { exact: true }) });
+          const edit = await row.getByRole('button', { name: 'Edit', exact: true }).boundingBox();
+          const remove = await row
+            .getByRole('button', { name: 'Switch the rule off', exact: true })
+            .boundingBox();
+          expect.soft(remove!.height).toBe(34);
+          expect.soft(remove!.width).toBe(34);
+          expect
+            .soft(Math.abs(edit!.y + edit!.height / 2 - (remove!.y + remove!.height / 2)))
+            .toBeLessThanOrEqual(1);
+        }
+        expect(
+          await card.evaluate((node) => node.scrollWidth - node.clientWidth),
+        ).toBeLessThanOrEqual(1);
+        const statusRule = card.locator('.policy-row').filter({
+          has: page.getByText('Require status checks', { exact: true }),
+        });
+        await statusRule.getByRole('button', { name: 'Switch the rule off', exact: true }).click();
+        expect(await statusRule.count()).toBe(0);
+        expect(await page.locator('.card.is-unsaved').count()).toBe(1);
+        await page.getByRole('button', { name: 'Discard', exact: true }).click();
+        await expect.poll(() => statusRule.count()).toBe(1);
+        expect(await page.locator('.card.is-unsaved').count()).toBe(0);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   it.each([
     { colorScheme: 'dark', width: 1440 },
     { colorScheme: 'light', width: 1440 },

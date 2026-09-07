@@ -68,6 +68,7 @@ stacked left, Cancel and Done on a hairline foot.
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
 
   import Button from './Button.svelte';
+  import IconButton from './IconButton.svelte';
   import Card from './Card.svelte';
   import BypassActorEditor from './BypassActorEditor.svelte';
   import FormError from './FormError.svelte';
@@ -636,7 +637,8 @@ stacked left, Cancel and Done on a hairline foot.
       <div class="policy-rows">
         {#each onRules as rule (rule.key)}
           <div
-            class="policy-row"
+            class="policy-row rule-row"
+            class:rule-simple={!rule.parameterized}
             class:is-unsaved={ruleDirty(rule.key)}
             data-unsaved={ruleDirty(rule.key) || undefined}
           >
@@ -646,28 +648,33 @@ stacked left, Cancel and Done on a hairline foot.
                 <span class="setting-why">{rule.why}</span>
               {/if}
             </span>
-            <span class="policy-value">
-              {#each paramChips(rule.key) as chip, at (at)}
-                <span class="param-chip"
-                  >{#if chip.strong !== undefined}<strong>{chip.strong}</strong>{/if}<span class="t"
-                    >{chip.text}</span
-                  ></span
-                >
-              {/each}
+            <span class="policy-value rule-value">
               {#if rule.parameterized}
-                <Button tone="quiet" disabled={frozen} onclick={() => openEditor(rule.key)}>
-                  Edit
-                </Button>
+                <span class="rule-summary">
+                  {#each paramChips(rule.key) as chip, at (at)}
+                    <span class="param-chip"
+                      >{#if chip.strong !== undefined}<strong>{chip.strong}</strong>{/if}<span
+                        class="t">{chip.text}</span
+                      ></span
+                    >
+                  {/each}
+                </span>
               {/if}
+              <span class="rule-actions">
+                {#if rule.parameterized}
+                  <Button tone="quiet" disabled={frozen} onclick={() => openEditor(rule.key)}>
+                    Edit
+                  </Button>
+                {/if}
+                <IconButton
+                  icon="close"
+                  toolbar
+                  label="Switch the rule off"
+                  disabled={frozen}
+                  onclick={() => ruleOff(rule.key)}
+                />
+              </span>
             </span>
-            <button
-              class="setting-clear"
-              title="Switch the rule off"
-              disabled={frozen}
-              onclick={() => ruleOff(rule.key)}
-            >
-              <Icon name="close" size="micro" />
-            </button>
             {#if editing === rule.key}
               <div class="rule-edit">
                 {#if rule.key === 'pull_request'}
@@ -872,7 +879,7 @@ stacked left, Cancel and Done on a hairline foot.
         {/each}
       </div>
       {#if offRules.length > 0}
-        <div class="group-rest" class:is-open={pickingRule}>
+        <div class="group-rest rule-remainder" class:is-open={pickingRule}>
           {#if pickingRule}
             <span class="rest-say"
               ><span class="rest-count">{offRules.length} rules are off</span> - pick one to switch on:</span
@@ -978,6 +985,51 @@ stacked left, Cancel and Done on a hairline foot.
     inset-inline: var(--space-2);
   }
 
+  /* A rule has two sides. Its Edit and off controls stay one action group
+     while summaries wrap independently inside the value side. */
+  .rule-value {
+    flex-wrap: nowrap;
+    margin-inline-start: auto;
+    min-inline-size: 0;
+  }
+
+  .rule-summary,
+  .rule-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .rule-summary {
+    flex-wrap: wrap;
+    min-inline-size: 0;
+  }
+
+  .rule-actions {
+    flex: none;
+    margin-inline-start: auto;
+  }
+
+  .rule-simple > .setting-say {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .rule-simple > .rule-value {
+    flex: none;
+  }
+
+  .rule-remainder :global(.btn) {
+    margin-inline-start: auto;
+  }
+
+  @container (max-width: 32rem) {
+    .rule-row:not(.rule-simple) > .rule-value {
+      flex-basis: 100%;
+      max-inline-size: 100%;
+    }
+  }
+
   /* ---------- Chips: a value, and a parameter said in a word ---------- */
 
   /* Not `.chip`: the app's own status chip owns that name globally, and a
@@ -1028,18 +1080,22 @@ stacked left, Cancel and Done on a hairline foot.
   .param-chip {
     align-items: center;
     background: var(--surface-inset);
-    block-size: var(--tier-mark);
+    min-block-size: var(--tier-mark);
+    max-inline-size: 100%;
     border-radius: var(--r-chip);
     color: var(--text-secondary);
     display: inline-flex;
     font-size: var(--font-size-micro);
     gap: 0.25rem;
     line-height: var(--leading-flat);
-    padding: 0 var(--space-2);
+    padding: var(--space-1) var(--space-2);
   }
 
   .param-chip .t {
     display: block;
+    line-height: var(--leading-tight);
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     text-box: trim-both cap alphabetic;
   }
 

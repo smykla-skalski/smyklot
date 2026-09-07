@@ -467,6 +467,12 @@ their values or actions occupy the right. Do not force Add onto a separate row w
 `flex-basis: 100%`. A collection-wide Add action belongs beside its collection heading;
 nested list actions use shared settings rows. Wrap only when content needs the room
 
+Row actions form one group: Edit and its adjacent removal control never wrap
+apart. Summaries may wrap independently; when they need a separate band, the
+action group stays at the right edge. A simple rule and its square off control
+remain on one row, including on phones. Long names wrap within their summary
+without covering actions or hiding any of the name
+
 Inline disclosures use shared `fold-inline` geometry, with a trailing chevron,
 aligned text, and the same width as neighboring rows. Use them for brief optional
 explanations, not an expanding settings form beneath an active code editor
@@ -631,7 +637,7 @@ states without depending on a caller's scoped CSS
 | Bypass authorization, inheritance, lookup, installation failures, storage | Bypass policy suites in frontend, panel, gate, GitHub, and both storage engines |
 | Unresolved actor references, recovered names, exact GitHub IDs through save and reload | `bypass-identities` browser suite and `bypass-policy`, `bypass-persistence`, `bypass-editors` unit suites |
 | Themed pickers, keyboard and form semantics, actor suggestions, toggle scrolling, square Remove actions | `select-menus` browser suite and `select`, `shared-picker-styles`, `bypass-editors` unit suites |
-| Independent ruleset and actor markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
+| Ruleset action grouping, independent markers, restored values, 1px adjacent changed-row gap | `settings-draft-markers` browser suite and `sync-rulesets-page` unit suite |
 
 Paths above are relative to `internal/panel/frontend` except the backend suites.
 CI runs these browser and unit contracts. `mise run lint:matrix` rejects a browser
