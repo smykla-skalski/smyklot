@@ -1,7 +1,10 @@
 <script lang="ts">
+  import type { ConfigFileStatusConnection } from '../config-file-status';
+  import ConfigurationFileSync from './ConfigurationFileSync.svelte';
   import type { BypassActorLookup } from '../types';
   import BypassPolicyEditor from './BypassPolicyEditor.svelte';
   import { untrack } from 'svelte';
+  import { useInterval } from 'runed';
 
   import { CONFIG_KEYS } from '../config';
   import {
@@ -53,6 +56,7 @@
      one the design does not model - the rules it holds are real and reachable nowhere
      else, so it is indexed like the rest rather than left off the list. */
   const TOC: readonly TocEntry[] = [
+    { id: 'ws-config-file', label: 'Configuration file sync' },
     { id: 'ws-newrepos', label: 'New repositories' },
     { id: 'ws-merging', label: 'Merging' },
     { id: 'ws-exceptions', label: 'Merge exceptions' },
@@ -67,8 +71,10 @@
     readOnly = false,
     timing,
     lookupBypassActors,
+    configFileConnection,
   }: {
     target: PanelTarget;
+    configFileConnection?: ConfigFileStatusConnection;
     lookupBypassActors?: BypassActorLookup;
     readOnly?: boolean;
     /**
@@ -80,6 +86,10 @@
   } = $props();
 
   const drafts = getSettingsDraftRegistry();
+  // This page owns its observation clock in both normal and Root workspace views.
+  // The Root wrapper's separate elevation clock intentionally pauses without a visit.
+  let now = $state(Date.now());
+  useInterval(30_000, { callback: () => (now = Date.now()) });
   const resource = $derived(targetDefaultsResource(canonicalTarget.id));
   const settingsScope = $derived({
     type: 'workspace',
@@ -207,12 +217,32 @@ settings from them answers a different question than the one they asked.
       <PageHeader
         id="defaults-heading"
         title="Workspace settings"
-        description="What every repository here inherits, unless one overrides it for itself"
+        description="Settings and defaults for this workspace"
       />
 
       {#if failure !== null}
         <FormError message={failure} />
       {/if}
+
+      <ConfigurationFileSync
+        id="ws-config-file"
+        {now}
+        scope="workspace"
+        repository={`${canonicalTarget.account.login}/.github`}
+        enabled={target.config_file_sync_enabled ?? false}
+        savedEnabled={parseTargetDefaultsDocument(drafts.resource(resource)?.base)
+          ?.config_file_sync_enabled ??
+          canonicalTarget.config_file_sync_enabled ??
+          false}
+        dirty={controlDirty('defaults.config_file_sync_enabled')}
+        {readOnly}
+        connection={configFileConnection}
+        onChange={(enabled) =>
+          stage(
+            { ...document, config_file_sync_enabled: enabled },
+            'defaults.config_file_sync_enabled',
+          )}
+      />
 
       <Card id="ws-newrepos" labelledby="settings-repositories">
         <div class="card-head">

@@ -310,6 +310,35 @@ describe('PanelSession [Unit]', () => {
       });
   });
 
+  it.each(['target.changed', 'repository.changed'] as const)(
+    'refreshes configuration-file status on %s',
+    (type) => {
+      const queryClient = new QueryClient();
+      const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+      const session = createSession(queryClient);
+      session.invalidateChange({
+        version: 1,
+        type,
+        target_id: 'target-1',
+        repository_id: 'repository-1',
+      });
+      expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toContainEqual([
+        'config-file-status',
+        'target-1',
+      ]);
+    },
+  );
+
+  it('refreshes configuration-file status when a local workspace save invalidates its data', () => {
+    const queryClient = new QueryClient();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
+    createSession(queryClient).invalidateTargetData('target-1');
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toContainEqual([
+      'config-file-status',
+      'target-1',
+    ]);
+  });
+
   it('refreshes every repository-count aggregate after a remote repository change', () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();

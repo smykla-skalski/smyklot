@@ -1,3 +1,9 @@
+import {
+  mockConfigFileInputs,
+  mockConfigFileStatus,
+  REPOSITORY_CONFIG_FILE_STATES,
+  workspaceConfigFileVariant,
+} from './config-file-status.js';
 import { observedRepositoryFileStatus } from './repository-files.js';
 import { mockBypassActorSuggestions } from './bypass-actors.ts';
 import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
@@ -175,6 +181,8 @@ interface MockState extends Fixtures {
   scheduleRequests: ScheduleRequest[];
   scheduleCounter: number;
   fileRenderer: GoFileRenderer;
+  configFileInputs: Map<string, string>;
+  configFileCheckedAt: string;
 }
 
 /** Marks the error renderer's own request for a shell, so `handle` stands aside. */
@@ -667,6 +675,27 @@ function install(httpServer: DevHttpServer | null | undefined, middlewares: Conn
     streams: new Set(),
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
     fileRenderer,
+    configFileCheckedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    configFileInputs: new Map(
+      fixtures.targets.flatMap((target) => [
+        [
+          target.value.id,
+          mockConfigFileInputs(fixtures, target.value.id, undefined, target.value.revision),
+        ] as const,
+        ...target.repositories.map(
+          ({ detail }) =>
+            [
+              `${target.value.id}/${detail.repository.id}`,
+              mockConfigFileInputs(
+                fixtures,
+                target.value.id,
+                detail.repository.id,
+                detail.revision,
+              ),
+            ] as const,
+        ),
+      ]),
+    ),
   };
   if (httpServer !== null && httpServer !== undefined) {
     const server = httpServer;
@@ -1369,6 +1398,41 @@ async function handle(
   }
 
   try {
+    const configFile = path.match(
+      /^\/api\/v1\/(?:targets|root\/workspaces)\/(?<target>[^/]+)(?:\/repositories\/(?<repository>[^/]+))?\/config-file$/u,
+    );
+    if (configFile && method === 'GET') {
+      const target = findTarget(state, configFile.groups?.target ?? '');
+      const selector = configFile.groups?.repository;
+      const repository = selector ? findRepository(target, selector) : undefined;
+      const variant = repository
+        ? (REPOSITORY_CONFIG_FILE_STATES[repository.detail.repository.name] ?? 'off')
+        : workspaceConfigFileVariant(target.value.account.login);
+      const owner = repository?.detail ?? target.value;
+      respond(
+        res,
+        200,
+        mockConfigFileStatus(
+          variant,
+          repository?.detail.repository.full_name ?? `${target.value.account.login}/.github`,
+          owner.config_file_sync_enabled ?? false,
+          owner.revision,
+          repository?.detail.ignore_repository_file ?? false,
+          repository === undefined,
+          state.configFileCheckedAt,
+          state.configFileInputs.get(
+            repository ? `${target.value.id}/${repository.detail.repository.id}` : target.value.id,
+          ) ===
+            mockConfigFileInputs(
+              state,
+              target.value.id,
+              repository?.detail.repository.id,
+              owner.revision,
+            ),
+        ),
+      );
+      return;
+    }
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,

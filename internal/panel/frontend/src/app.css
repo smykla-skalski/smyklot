@@ -2793,6 +2793,21 @@ button.object-row {
   margin-block: calc((20px - var(--touch-target)) / 2);
 }
 
+/* One switch needs a fixed, small seat. Wrap its explanation beside it instead
+   of letting the general minimum copy width push the control onto a second line. */
+:is(.setting-row, .policy-row):has(> :is(.setting-value, .policy-value) > .switch:only-child) {
+  flex-wrap: nowrap;
+}
+
+:is(.setting-row, .policy-row):has(> :is(.setting-value, .policy-value) > .switch:only-child)
+  > .setting-say {
+  min-inline-size: 0;
+}
+
+:is(.setting-row, .policy-row) > :is(.setting-value, .policy-value):has(> .switch:only-child) {
+  flex: none;
+}
+
 /* A CHANGE NOT YET SAVED IS A STATE OF THE ROW IT WAS MADE IN, so a reader looking for
    what they touched finds it without reading the values back. Use a surface tint,
    never a colored edge strip or an extra indent beside configured values. */

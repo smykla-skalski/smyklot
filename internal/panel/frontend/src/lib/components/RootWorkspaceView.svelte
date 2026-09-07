@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { configFileStatusQuery, configFileStatusRevision } from '../config-file-status';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { tick, untrack } from 'svelte';
   import { useInterval } from 'runed';
@@ -101,6 +102,16 @@
     onSettled: () => queryClient.invalidateQueries({ queryKey: detailKey }),
   }));
   const target = $derived<PanelTarget | null>(detailQuery.data?.target ?? null);
+  const configFileQuery = createQuery(() =>
+    configFileStatusQuery(
+      workspace.id,
+      'root',
+      undefined,
+      configFileStatusRevision(settingsDrafts, workspace.id, target?.revision ?? 0),
+      api.fetchRootConfigFileStatus,
+      target !== null && view === 'settings',
+    ),
+  );
   const elevation = $derived<RootElevation | null>(detailQuery.data?.elevation ?? null);
   const loading = $derived(detailQuery.isFetching);
   let detailFailure = $state<string | null>(null);
@@ -427,6 +438,7 @@ inside it.
     </div>
   {:else if target !== null && view === 'settings'}
     <TargetSettings
+      configFileConnection={configFileQuery}
       {target}
       readOnly={!canWrite}
       lookupBypassActors={(type, query) => api.fetchRootBypassActors(workspace.id, type, query)}
@@ -439,6 +451,8 @@ inside it.
       defaultEnabled={target.repository_default_enabled}
       fetchPage={fetchRepositories}
       onLoad={loadRepository}
+      configFileSurface="root"
+      onLoadConfigFileStatus={api.fetchRootConfigFileStatus}
       onResetConfigMigration={resetConfigMigration}
       onChanged={repositoryChanged}
       readOnly={!canWrite}

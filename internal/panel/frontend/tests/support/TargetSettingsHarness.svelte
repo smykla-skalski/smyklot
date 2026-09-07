@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ConfigFileStatusConnection } from '../../src/lib/config-file-status';
   import { untrack } from 'svelte';
 
   import TargetSettings from '../../src/lib/components/TargetSettings.svelte';
@@ -11,10 +12,16 @@
   const {
     drafts,
     target,
+    configFileConnection,
     readOnly = false,
-  }: { drafts: SettingsDraftRegistry; target: PanelTarget; readOnly?: boolean } = $props();
+  }: {
+    drafts: SettingsDraftRegistry;
+    target: PanelTarget;
+    configFileConnection?: ConfigFileStatusConnection;
+    readOnly?: boolean;
+  } = $props();
 
   setSettingsDraftRegistry(untrack(() => drafts));
 </script>
 
-<TargetSettings {target} {readOnly} />
+<TargetSettings {target} {readOnly} {configFileConnection} />

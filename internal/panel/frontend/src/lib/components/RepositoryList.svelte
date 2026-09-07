@@ -1,4 +1,9 @@
 <script lang="ts">
+  import {
+    configFileStatusQuery,
+    configFileStatusRevision,
+    type ConfigFileStatusReader,
+  } from '../config-file-status';
   import { page as routePage } from '$app/state';
   import { fileAdjustmentPath } from '../file-adjustment-link';
   import { untrack } from 'svelte';
@@ -10,6 +15,8 @@
   import type { FilterSection } from '../filter-menu';
   import {
     adoptRepositorySettings,
+    repositorySettingsResource,
+    parseRepositorySettingsDocument,
     overlayRepositorySettingsDocument,
     repositorySettingsDraftDocument,
     stageRepositorySettingsControls,
@@ -127,11 +134,15 @@
     onChanged,
     onLoadSyncOverride = null,
     onLoadSyncStatus = null,
+    onLoadConfigFileStatus,
+    configFileSurface = 'panel',
     readOnly = false,
     organizationActors = true,
     prefs = EPHEMERAL_PREFS,
   }: {
     targetId: string;
+    onLoadConfigFileStatus?: ConfigFileStatusReader;
+    configFileSurface?: 'panel' | 'root';
     lookupBypassActors?: BypassActorLookup;
     defaultEnabled: boolean;
     fetchPage: (request: RepositoryPageRequest) => Promise<Page<RepositorySummary>>;
@@ -347,6 +358,29 @@
       return onLoadSyncStatus();
     },
   }));
+  const configFileQuery = createQuery(() =>
+    configFileStatusQuery(
+      targetId,
+      configFileSurface,
+      activeRepositoryId ?? undefined,
+      configFileStatusRevision(
+        drafts,
+        targetId,
+        activeRepositoryId ? (details[activeRepositoryId]?.revision ?? 0) : 0,
+        activeRepositoryId ?? undefined,
+      ),
+      onLoadConfigFileStatus ??
+        (() => Promise.reject(new Error('Configuration file status is unavailable'))),
+      activeRepositoryId !== null && onLoadConfigFileStatus !== undefined,
+    ),
+  );
+  const savedRepositoryDocument = $derived(
+    activeRepositoryId
+      ? parseRepositorySettingsDocument(
+          drafts.resource(repositorySettingsResource(targetId, activeRepositoryId))?.base,
+        )
+      : null,
+  );
   const activeRepositoryDetail = $derived.by(() => {
     if (activeRepositoryId === null) return undefined;
     const canonical = details[activeRepositoryId];
@@ -771,6 +805,13 @@ a workspace has is not a number worth blocking the first screenful on.
       ((type, query) => session.api.fetchBypassActors(targetId, type, query))}
     {repository}
     detail={activeRepositoryDetail}
+    configFileConnection={onLoadConfigFileStatus ? configFileQuery : undefined}
+    savedConfigFileSyncEnabled={savedRepositoryDocument?.config_file_sync_enabled ??
+      details[repository.id]?.config_file_sync_enabled ??
+      false}
+    savedFileIgnored={savedRepositoryDocument?.ignore_repository_file ??
+      details[repository.id]?.ignore_repository_file ??
+      false}
     savedFormatting={details[repository.id]?.config_patch.formatting ?? {}}
     failure={failures[repository.id]?.message ?? null}
     {readOnly}

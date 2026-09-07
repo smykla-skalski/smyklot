@@ -87,6 +87,7 @@ export async function invalidateRootWorkspaceSettings(
     queryClient.invalidateQueries({ queryKey: ['root-workspaces'] }),
     queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
     queryClient.invalidateQueries({ queryKey: ['repositories', workspaceId] }),
+    queryClient.invalidateQueries({ queryKey: ['config-file-status', workspaceId] }),
     queryClient.invalidateQueries({ queryKey: ['targets'] }),
   ]);
 }

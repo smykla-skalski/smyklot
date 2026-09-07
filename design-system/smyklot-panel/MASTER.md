@@ -401,6 +401,11 @@ checklist anatomy with a visible check box and associated label. Native checkbox
 paint, local select paint, and page-wide overrides of shared control classes are
 forbidden. Verify modal controls in both themes as well as controls in page rows
 
+A setting whose only control is a switch keeps that switch to the right of its
+copy at every supported width. The copy wraps beside it, and both areas remain
+vertically centered. Do not move a single switch to a separate line as though it
+were a wide field group; shared row geometry owns this behavior
+
 Standalone row inputs, selects, popover pickers, segmented controls and buttons use
 `--control-height-compact` (34px), including fields inside expanded inspectors.
 Popover pickers use the shared `PickerTrigger`, with the shared stroked chevron.
@@ -582,6 +587,22 @@ Show explanatory status text when it tells the reader about a restriction, work 
 progress, or a recovery step. Development-fixture wording never appears in product
 copy; demo data uses the same vocabulary as real service responses
 
+Configuration-file sync separates draft policy from saved connection status.
+Toggling its switch only changes the draft; show when it starts or stops after
+Save. An old observation cannot describe newly saved settings as in sync. Keep its
+check time as context, and update relative time from the page's shared clock
+
+Workspace and repository connections keep distinct identities and cache entries.
+The workspace file lives in the workspace's `.github` repository and does not
+replace that repository's own configuration file. Status queries use a dedicated
+cache family, refreshed by saved settings and service events, so repository-detail
+updates cannot treat a status response as repository data
+
+Use the same status rows for disabled, waiting, syncing, proposed, blocked,
+unavailable, and failed reads. Keep a real outstanding pull request visible with a
+verified repository link. A pending operation is never described as a completed
+file update, and a read failure offers a shared retry without changing policy
+
 Merge exceptions inherit workspace defaults and allow repository overrides. Show
 GitHub actor names and available avatars, with suggestions and installation status.
 An unavailable app must not be silently removed from policy. Distinguish missing,
@@ -633,6 +654,7 @@ states without depending on a caller's scoped CSS
 | Native editor handoff, delayed validation, same-session return, format variants | `native-file-handoff` browser suite and `file-adjustment-link`, `session`, `sync-file-page` unit suites |
 | File validation through navigation, restored drafts, retries, and discard | `file-validation-lifetime` browser suite and `file-draft-validation` unit suite |
 | File observation states, search priority, row alignment, inspector focus return | `config-migration` browser suite and `repository-control` unit suite |
+| Configuration sync policy, saved observations, shared switch geometry, advancing timestamps and isolated cache ownership | `config-file-sync` browser suite and `configuration-file-sync`, `config-file-status`, `session` unit suites |
 | Alias interactions and shared compact pickers | `pair-entry`, `segmented-control`, `dictionary` browser suites |
 | File editor modes, exact output, hidden newline, independent row controls | `file-formatting`, `repository-file-sync` browser suites and `code-editor` unit suite |
 | Canonical drafts, save/discard, persistence, invalid input | Settings and editor unit suites, `sync-drafts`, `settings-draft-markers`, `runtime-settings` browser suites |

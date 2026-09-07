@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ConfigFileStatusConnection } from '../config-file-status';
+  import ConfigurationFileSync from './ConfigurationFileSync.svelte';
   import type { BypassActorLookup } from '../types';
   import BypassPolicyEditor from './BypassPolicyEditor.svelte';
   import { CONFIG_KEYS } from '../config';
@@ -57,6 +59,9 @@
     repository,
     detail,
     savedFormatting,
+    savedConfigFileSyncEnabled,
+    savedFileIgnored,
+    configFileConnection,
     failure = null,
     readOnly = false,
     organizationActors = true,
@@ -84,6 +89,9 @@
     lookupBypassActors?: BypassActorLookup;
     detail: RepositoryDetail | undefined;
     savedFormatting?: FormattingPatch;
+    savedConfigFileSyncEnabled?: boolean;
+    savedFileIgnored?: boolean;
+    configFileConnection?: ConfigFileStatusConnection;
     failure?: string | null;
     readOnly?: boolean;
     organizationActors?: boolean;
@@ -331,6 +339,26 @@ so a link points at the pane a colleague was asked to look at.
         {onEnablement}
         onUseFile={(use) => setBypass(!use)}
         {onResetMigration}
+      />
+      <ConfigurationFileSync
+        scope="repository"
+        repository={repository.full_name}
+        enabled={detail.config_file_sync_enabled ?? false}
+        savedEnabled={savedConfigFileSyncEnabled ?? detail.config_file_sync_enabled ?? false}
+        fileIgnored={detail.ignore_repository_file}
+        savedFileIgnored={savedFileIgnored ?? detail.ignore_repository_file}
+        dirty={controlDirty(controlId('config_file_sync_enabled'))}
+        {readOnly}
+        {now}
+        connection={configFileConnection}
+        onChange={(enabled) => {
+          const document = currentDocument();
+          if (document)
+            stage(
+              { ...document, config_file_sync_enabled: enabled },
+              controlId('config_file_sync_enabled'),
+            );
+        }}
       />
       {#if syncOverride?.problem || syncReadProblem}{@render syncCard()}{/if}
 

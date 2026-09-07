@@ -77,6 +77,7 @@ describe('panel query client [Unit]', () => {
       ['root-workspaces'],
       ['root-overview'],
       ['repositories', 'target-1'],
+      ['config-file-status', 'target-1'],
       ['targets'],
     ]);
   });

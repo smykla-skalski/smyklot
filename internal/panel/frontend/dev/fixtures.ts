@@ -1,4 +1,9 @@
 import {
+  CONFIG_FILE_STATUS_FIXTURES,
+  REPOSITORY_CONFIG_FILE_STATES,
+  workspaceConfigFileVariant,
+} from './config-file-status.js';
+import {
   REPOSITORY_FILE_SEARCH_PATHS,
   REPOSITORY_FILE_VARIANTS,
   observedRepositoryFileStatus,
@@ -449,6 +454,10 @@ export function seed(
       retryable: index % 3 === 1,
       occurred_at: iso(-(8 * 60 + index * 53) * 60_000),
     });
+  }
+  for (const repository of organization.repositories) {
+    const variant = REPOSITORY_CONFIG_FILE_STATES[repository.detail.repository.name] ?? 'off';
+    repository.detail.config_file_sync_enabled = CONFIG_FILE_STATUS_FIXTURES[variant].enabled;
   }
   recomputeTarget(organization);
 
@@ -1470,7 +1479,8 @@ export function targetSeed(input: {
       installation_id: input.workspaceId,
       type: input.type,
       account,
-      config_file_sync_enabled: false,
+      config_file_sync_enabled:
+        CONFIG_FILE_STATUS_FIXTURES[workspaceConfigFileVariant(input.login)].enabled,
       repository_default_enabled: input.repositoryDefaultEnabled,
       pending_ci_bypass_policy_default: null,
       pending_ci_mode_default: 'checks',
