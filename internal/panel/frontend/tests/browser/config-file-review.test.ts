@@ -492,6 +492,10 @@ describe('fresh configuration-file review [Browser]', () => {
         } else {
           // Browser Back dismisses the current repository route while its comparison is pending.
           await page.goBack();
+          // History traversal resolves before SvelteKit finishes replacing the route.
+          // Observe that departure before Forward can cancel it and retain the inspector.
+          await page.getByRole('heading', { name: 'Repositories', exact: true }).waitFor();
+          await dialog(page).waitFor({ state: 'hidden' });
           await page.goForward();
           await card(page).waitFor();
         }
