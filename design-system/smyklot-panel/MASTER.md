@@ -255,8 +255,21 @@ larger than the visual glyph.
 - Hover and press: `150-180ms`
 - Menus and tabs: `180-220ms`
 - Dialogs and inspectors: `240-280ms`
+
+Hover, press and release form one continuous change in depth. Animate the painted
+color, inset shadow and one-pixel sink with the shared motion tokens. Do not swap
+non-interpolating background images between states or remove a hover layer while
+the pressed surface is still moving. Neutral buttons animate one registered tint;
+icon buttons and segmented choices animate their actual painted surface. Reduced
+motion disables travel and transitions while retaining visible state feedback
+
+Browser evidence must include intermediate press and release frames, not only
+settled hover and pressed screenshots. Verify the rendered theme before accepting
+a screenshot as light or dark
+
 - Exit is faster than entry
-- Animate transform and opacity only
+- Use transform and opacity for movement and entry/exit; control state feedback also
+  interpolates its color and inset shadow
 - Never animate more than two elements for one interaction
 - Every effect has a `prefers-reduced-motion` fallback
 
@@ -440,6 +453,15 @@ Undo and Redo history. Returning a list choice to its saved value restores its
 original rule order and options. Compare numeric literals without floating-point
 rounding, and never replace a visible edit with an older rounded value when saving
 
+List-combination decisions belong to one shared card with ordinary policy rows.
+Each row names the list path, explains the selected behavior, and uses the shared
+intrinsic-width 34px segmented control. Unavailable alternatives stay visible and
+disabled, with native keyboard navigation skipping them. Explain the content
+constraint once at the group level. Do not use oversized radio cards, a second
+frame, or a decorative side strip. Highlight only changed rows and their containing
+card; restoring the saved choice or undoing it clears that state. The adjustment
+summary must name lists as well as scalar keys
+
 Load the complete saved and draft settings before starting editable history. A
 loading preview must not become an undoable user edit
 
@@ -574,6 +596,12 @@ shared hover, pressed, and keyboard-focus states. A switch and its surrounding h
 area form a separate control; toggling it must not navigate. List expansion belongs
 with the list heading and count, not a detached oversized footer action
 
+A navigable row with a small switch or status badge and a direction mark keeps
+that compact group beside its text on phones. Use the shared compact object-side
+layout; reserve stacked actions for groups that need more room. The primary filter
+and its tools button wrap together, with the search filling its own line when the
+toolbar is narrow. Never strand the tools button on a line by itself
+
 Alias pairs use the shared pair editor. Clicking or typing in an existing command
 field opens its suggestions. Suggestions use the compact control tier, with arrow
 keys, Enter, and Escape supported. Reset stays vertically centered beside the whole
@@ -607,6 +635,36 @@ Use the same status rows for disabled, waiting, syncing, proposed, blocked,
 unavailable, and failed reads. Keep a real outstanding pull request visible with a
 verified repository link. A pending operation is never described as a completed
 file update, and a read failure offers a shared retry without changing policy
+
+Configuration-file review starts with a fresh comparison scoped to the current
+account, workspace, repository and authority. Unsaved work in that workspace blocks
+comparison and resolution, including drafts found in storage before a cross-tab
+event arrives. Closing, leaving or changing the owner invalidates late responses
+
+The inspector defaults to **Conflicts**, a single unified comparison with both
+alternatives visible before any decision. Use shared line and word highlighting,
+explicit minus/plus source labels and accurate source line numbers. Fold unchanged
+context; its shared Show/Hide control stays mounted to retain focus and the scroll
+anchor. A changed comparison resets revealed context. **Full result** shows the
+complete selected outcome in the same code slot. Switching views never applies a
+choice or changes which side is kept
+
+The intrinsic **Keep values from** picker starts without a selection. It decides
+only overlapping values; independent changes on both sides remain in the result.
+Keep JSON/Read only metadata inline with the view control. Preserve exact numbers
+and the terminal newline while hiding its empty final display line
+
+A deleted file shows its sole available recreation result immediately; **Recreate
+file** is an explicit action. Invalid syntax, schema, scope, access or an outstanding
+pull request cannot produce fictional choices. Link to an outstanding proposal so
+the reader can review it on GitHub
+
+Submit only the current backend token and explicit side. Accepted work remains
+pending. A stale comparison clears the old choice and requires a fresh explicit
+action. Expired authority or a blocked resolution cannot automatically repeat a write
+
+A card header keeps its action and Read only metadata in one aligned group; the
+metadata must not become an orphaned row
 
 Merge exceptions inherit workspace defaults and allow repository overrides. Show
 GitHub actor names and available avatars, with suggestions and installation status.
@@ -662,6 +720,9 @@ states without depending on a caller's scoped CSS
 | Configuration sync policy, saved observations, shared switch geometry, advancing timestamps and isolated cache ownership | `config-file-sync` browser suite and `configuration-file-sync`, `config-file-status`, `session` unit suites |
 | Alias interactions and shared compact pickers | `pair-entry`, `segmented-control`, `dictionary` browser suites |
 | File editor modes, exact output, hidden newline, independent row controls | `file-formatting`, `repository-file-sync` browser suites and `code-editor` unit suite |
+| Compact list decisions, disabled alternatives, Undo and accessible descriptions | `file-formatting` browser suite and `sync-file-page` unit suite |
+| Continuous press/release paint and movement, including the row edge | `file-formatting` browser suite and `motion` unit suite |
+| Fresh conflict choices, view segments, exact highlighted alternatives, context folding and pending writes | `config-file-review` browser and unit suites, `config-file-review-mock`, `diff-block` and `diff-context` unit suites |
 | Canonical drafts, save/discard, persistence, invalid input | Settings and editor unit suites, `sync-drafts`, `settings-draft-markers`, `runtime-settings` browser suites |
 | Toast lifetime and decision composer | `mutation-receipt`, `settings-save-composer` unit suites and `duration-controls` browser suite |
 | Empty, signed-out, and label states | `empty-states`, `signed-out-layout`, `sync-label-layout` browser suites |

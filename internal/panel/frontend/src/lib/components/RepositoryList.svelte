@@ -1,4 +1,8 @@
 <script lang="ts">
+  import type {
+    ConfigurationReviewClient,
+    ConfigurationReviewSource,
+  } from '../config-file-review.svelte';
   import {
     configFileStatusQuery,
     configFileStatusRevision,
@@ -135,6 +139,7 @@
     onLoadSyncOverride = null,
     onLoadSyncStatus = null,
     onLoadConfigFileStatus,
+    configFileReview,
     configFileSurface = 'panel',
     readOnly = false,
     organizationActors = true,
@@ -142,6 +147,7 @@
   }: {
     targetId: string;
     onLoadConfigFileStatus?: ConfigFileStatusReader;
+    configFileReview?: ConfigurationReviewClient;
     configFileSurface?: 'panel' | 'root';
     lookupBypassActors?: BypassActorLookup;
     defaultEnabled: boolean;
@@ -381,6 +387,40 @@
         )
       : null,
   );
+  const configFileReviewSource = $derived.by((): ConfigurationReviewSource | undefined => {
+    const client = configFileReview;
+    const repositoryId = activeRepositoryId;
+    if (!client || !repositoryId) return undefined;
+    const ownerId = targetId;
+    const detail = details[repositoryId];
+    return {
+      identity: JSON.stringify([
+        drafts.accountId,
+        configFileSurface,
+        ownerId,
+        repositoryId,
+        detail?.repository.full_name,
+        detail?.repository.default_branch,
+        readOnly,
+        routePage.url.pathname,
+        configFileStatusRevision(drafts, ownerId, detail?.revision ?? 0, repositoryId),
+      ]),
+      prepare: () => drafts.refreshFromStorage(),
+      hasDrafts: drafts.dirtyControls(settingsScope).length > 0,
+      canWrite: !readOnly,
+      enabled:
+        savedRepositoryDocument?.config_file_sync_enabled ??
+        detail?.config_file_sync_enabled ??
+        false,
+      fileIgnored:
+        savedRepositoryDocument?.ignore_repository_file ?? detail?.ignore_repository_file ?? false,
+      preview: () => client.preview(ownerId, repositoryId),
+      resolve: (input) => client.resolve(ownerId, input, repositoryId),
+      onResolved: () => {
+        void configFileQuery.refetch();
+      },
+    };
+  });
   const activeRepositoryDetail = $derived.by(() => {
     if (activeRepositoryId === null) return undefined;
     const canonical = details[activeRepositoryId];
@@ -806,6 +846,7 @@ a workspace has is not a number worth blocking the first screenful on.
     {repository}
     detail={activeRepositoryDetail}
     configFileConnection={onLoadConfigFileStatus ? configFileQuery : undefined}
+    {configFileReviewSource}
     savedConfigFileSyncEnabled={savedRepositoryDocument?.config_file_sync_enabled ??
       details[repository.id]?.config_file_sync_enabled ??
       false}
@@ -858,52 +899,58 @@ a workspace has is not a number worth blocking the first screenful on.
         value={search}
         onInput={(value) => (search = value)}
       />
-      <!-- The one filter the list leads with: whether Smyklot answers there at all.
+      <div class="repository-filters">
+        <!-- The one filter the list leads with: whether Smyklot answers there at all.
            Everything narrower stays in the tools menu beside it. -->
-      <SegmentedControl
-        name="repository-state"
-        label="Show"
-        options={STATE_SEGMENTS}
-        value={stateFilter}
-        onSelect={(value) => selectStateFilter([value])}
-      />
-      <!-- Everything the column headings carry, for the widths where there are no
+        <SegmentedControl
+          name="repository-state"
+          label="Show"
+          options={STATE_SEGMENTS}
+          value={stateFilter}
+          onSelect={(value) => selectStateFilter([value])}
+        />
+        <!-- Everything the column headings carry, for the widths where there are no
          column headings: the table becomes a stack of cards on a phone and its
          three sorts and three filters went with the `thead`, leaving the search
          field alone on the page. Sharing the same state as the headings rather
          than a copy of it. -->
-      <!-- The narrower questions, on the same bar: which repositories carry their own
+        <!-- The narrower questions, on the same bar: which repositories carry their own
            settings, and what their configuration file is doing. The list leads with
            the switch a reader came for; these are one press away rather than three
            column headings wide. -->
-      <span class="push-end">
-        <ListToolsMenu
-          sorts={[
-            { label: 'Repository', direction: sortDirection('name'), onToggle: toggleNameSort },
-            { label: 'File state', direction: sortDirection('file'), onToggle: toggleFileSort },
-            { label: 'Updated', direction: sortDirection('updated'), onToggle: toggleUpdatedSort },
-          ]}
-          filters={[
-            {
-              label: 'Overrides',
-              hint: 'Match any selected repository override',
-              sections: SETTING_FILTER_SECTIONS,
-              selected: settingSelection,
-              multiple: true,
-              fallbackValue: 'all',
-              onChange: selectSettingFilter,
-            },
-            {
-              label: 'File state',
-              hint: 'Select one or more file states',
-              sections: FILE_FILTER_SECTIONS,
-              selected: fileFilters,
-              multiple: true,
-              onChange: selectFileFilters,
-            },
-          ]}
-        />
-      </span>
+        <span class="push-end">
+          <ListToolsMenu
+            sorts={[
+              { label: 'Repository', direction: sortDirection('name'), onToggle: toggleNameSort },
+              { label: 'File state', direction: sortDirection('file'), onToggle: toggleFileSort },
+              {
+                label: 'Updated',
+                direction: sortDirection('updated'),
+                onToggle: toggleUpdatedSort,
+              },
+            ]}
+            filters={[
+              {
+                label: 'Overrides',
+                hint: 'Match any selected repository override',
+                sections: SETTING_FILTER_SECTIONS,
+                selected: settingSelection,
+                multiple: true,
+                fallbackValue: 'all',
+                onChange: selectSettingFilter,
+              },
+              {
+                label: 'File state',
+                hint: 'Select one or more file states',
+                sections: FILE_FILTER_SECTIONS,
+                selected: fileFilters,
+                multiple: true,
+                onChange: selectFileFilters,
+              },
+            ]}
+          />
+        </span>
+      </div>
     </div>
 
     <div
@@ -996,7 +1043,7 @@ a workspace has is not a number worth blocking the first screenful on.
                     </span>
                     <span class="object-sum">{repositorySentence(repository, on)}</span>
                   </span>
-                  <span class="object-side">
+                  <span class="object-side is-compact">
                     {#if !repository.available}
                       <Chip small>Unavailable</Chip>
                     {:else}
@@ -1062,10 +1109,29 @@ a workspace has is not a number worth blocking the first screenful on.
 
   /* The search leads the bar and takes the room a name needs; the segments and the
      tools menu sit beside it. */
+  .filter-bar {
+    container: repository-toolbar / inline-size;
+  }
+
+  .repository-filters {
+    align-items: center;
+    display: flex;
+    flex: none;
+    gap: var(--space-3);
+    max-inline-size: 100%;
+  }
+
   .filter-bar :global(.search-field) {
     flex: 1 1 12rem;
     max-inline-size: 20rem;
     min-inline-size: 0;
+  }
+
+  @container repository-toolbar (max-width: 34rem) {
+    .filter-bar :global(.search-field) {
+      flex-basis: 100%;
+      max-inline-size: none;
+    }
   }
 
   /* The row's way in, at the end of the row where a reader looks for one. The

@@ -108,6 +108,10 @@ history is routed with its section. That is what makes an address like
             lookupBypassActors={(type, query) =>
               session.api.fetchBypassActors(session.selectedTarget!.id, type, query)}
             configFileConnection={configFileQuery}
+            configFileReview={{
+              preview: session.api.previewConfigFile,
+              resolve: session.api.resolveConfigFile,
+            }}
             target={session.selectedTarget}
             readOnly={!session.selectedTarget.capabilities.write}
             timing={{
@@ -135,6 +139,10 @@ history is routed with its section. That is what makes an address like
             fetchPage={fetchRepositories}
             onLoad={loadRepository}
             onLoadConfigFileStatus={session.api.fetchConfigFileStatus}
+            configFileReview={{
+              preview: session.api.previewConfigFile,
+              resolve: session.api.resolveConfigFile,
+            }}
             onResetConfigMigration={(targetId, repositoryId) =>
               session.api.resetConfigMigration(targetId, repositoryId)}
             onChanged={(targetId) => session.repositoryChanged(targetId)}

@@ -1,5 +1,10 @@
 <script lang="ts">
-  import type { ConfigFileStatusConnection } from '../config-file-status';
+  import { page } from '$app/state';
+  import type {
+    ConfigurationReviewClient,
+    ConfigurationReviewSource,
+  } from '../config-file-review.svelte';
+  import { configFileStatusRevision, type ConfigFileStatusConnection } from '../config-file-status';
   import ConfigurationFileSync from './ConfigurationFileSync.svelte';
   import type { BypassActorLookup } from '../types';
   import BypassPolicyEditor from './BypassPolicyEditor.svelte';
@@ -72,9 +77,11 @@
     timing,
     lookupBypassActors,
     configFileConnection,
+    configFileReview,
   }: {
     target: PanelTarget;
     configFileConnection?: ConfigFileStatusConnection;
+    configFileReview?: ConfigurationReviewClient;
     lookupBypassActors?: BypassActorLookup;
     readOnly?: boolean;
     /**
@@ -95,6 +102,32 @@
     type: 'workspace',
     targetId: canonicalTarget.id,
   } as const satisfies SettingsScope);
+  const reviewSource = $derived.by((): ConfigurationReviewSource | undefined => {
+    const client = configFileReview;
+    if (!client) return undefined;
+    const targetId = canonicalTarget.id;
+    const saved = parseTargetDefaultsDocument(drafts.resource(resource)?.base);
+    return {
+      identity: JSON.stringify([
+        drafts.accountId,
+        targetId,
+        canonicalTarget.account.login,
+        readOnly,
+        page.url.pathname,
+        configFileStatusRevision(drafts, targetId, canonicalTarget.revision),
+      ]),
+      prepare: () => drafts.refreshFromStorage(),
+      hasDrafts: drafts.dirtyControls(settingsScope).length > 0,
+      canWrite: !readOnly,
+      enabled: saved?.config_file_sync_enabled ?? canonicalTarget.config_file_sync_enabled ?? false,
+      fileIgnored: false,
+      preview: () => client.preview(targetId),
+      resolve: (input) => client.resolve(targetId, input),
+      onResolved: () => {
+        void configFileConnection?.refetch();
+      },
+    };
+  });
   const document = $derived(targetDefaultsDraftDocument(drafts, canonicalTarget));
   const target = $derived(overlayTargetDefaultsDocument(canonicalTarget, document));
   let failure = $state<string | null>(null);
@@ -237,6 +270,7 @@ settings from them answers a different question than the one they asked.
         dirty={controlDirty('defaults.config_file_sync_enabled')}
         {readOnly}
         connection={configFileConnection}
+        {reviewSource}
         onChange={(enabled) =>
           stage(
             { ...document, config_file_sync_enabled: enabled },

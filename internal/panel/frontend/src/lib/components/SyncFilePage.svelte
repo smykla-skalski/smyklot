@@ -75,6 +75,7 @@ where it arises.
     composedEditProblem,
     sameComposedContent,
     type MergeIntent,
+    type ListQuestion,
   } from '../jsontext';
   import { formatRelative } from '../format';
   import { FORMATTING_FIELDS, formattingPatchValue, type FormattingPatch } from '../formatting';
@@ -197,6 +198,7 @@ where it arises.
 
   /* Null while untouched, so a save elsewhere refreshing the config never
      fights an edit in progress. */
+  const instanceId = $props.id();
   let templateDraft = $state<string | null>(null);
   let templateSource = untrack(() => file?.content ?? '');
   let pendingTemplateText: string | null = null;
@@ -341,7 +343,7 @@ where it arises.
   type AdjustmentSnapshot = { text: string; merge: FileMergeSpec; overrideText: string };
   type ResultEditContext = { snapshot?: AdjustmentSnapshot | null; answers: ArrayRule[] };
   let initialAdjustment: AdjustmentSnapshot | null = null;
-  let savedAdjustment: AdjustmentSnapshot | null = null;
+  let savedAdjustment = $state.raw<AdjustmentSnapshot | null>(null);
   let openingMerge: FileMergeSpec | null = null;
   let openingAnswers: ArrayRule[] = [];
   let resultEditContext = $state.raw<ResultEditContext | undefined>(undefined);
@@ -997,10 +999,15 @@ where it arises.
   }
 
   const RULE_CHOICES = [
-    { value: 'append', title: 'Append', why: "The repository's entries follow the template's" },
-    { value: 'prepend', title: 'Prepend', why: "The repository's entries come first" },
-    { value: 'replace', title: 'Replace', why: "The repository's list stands alone" },
+    { value: 'append', label: 'Append', why: 'Add repository entries after the shared entries' },
+    { value: 'prepend', label: 'Prepend', why: 'Add repository entries before the shared entries' },
+    { value: 'replace', label: 'Replace', why: 'Use this list instead of the shared list' },
   ];
+
+  function listRuleDirty(repositoryId: string, question: ListQuestion): boolean {
+    const saved = savedAdjustment?.merge.arrays?.find((rule) => rule.path === question.path);
+    return overrideDirty(repositoryId) && question.chosen !== (saved?.strategy ?? 'replace');
+  }
 
   function askable(question: { canAppend: boolean; canPrepend: boolean }, value: string): boolean {
     if (value === 'append') return question.canAppend;
@@ -1320,7 +1327,7 @@ where it arises.
                   ? 'This repository changes'
                   : 'No changes to the template'}</span
               >
-              {#each openSummary?.changed ?? [] as key (key)}
+              {#each [...(openSummary?.changed ?? []), ...(openSummary?.listed.map(({ key }) => key) ?? [])] as key (key)}
                 <span class="patch-key"
                   ><span class="t">{key}</span>
                   <button
@@ -1348,31 +1355,53 @@ where it arises.
             </div>
           {/if}
 
-          {#each staged?.questions ?? [] as question (question.path)}
-            <div class="list-ask">
-              <span class="list-ask-word">Choose how to combine <code>{question.path}</code></span>
-              <div class="choice-cards ask-cards">
-                {#each RULE_CHOICES as option (option.value)}
-                  <label
-                    class="choice-card"
-                    class:is-chosen={question.chosen === option.value}
-                    class:is-unaskable={!askable(question, option.value)}
+          {#if (staged?.questions.length ?? 0) > 0}
+            <Card
+              label="List behavior"
+              unsaved={staged?.questions.some((question) =>
+                listRuleDirty(entry.repository_id, question),
+              )}
+            >
+              <div class="card-head"><h3 class="card-title">List behavior</h3></div>
+              <p class="group-note">
+                Choices keep the edited list intact · Reorder its entries to enable a different
+                placement
+              </p>
+              <div class="policy-rows">
+                {#each staged?.questions ?? [] as question, questionIndex (question.path)}
+                  {@const changed = listRuleDirty(entry.repository_id, question)}
+                  {@const descriptionId = `${instanceId}-list-${questionIndex}`}
+                  <div
+                    class="policy-row list-ask"
+                    class:is-unsaved={changed}
+                    data-unsaved={changed || undefined}
                   >
-                    <input
-                      type="radio"
-                      name="listrule-{entry.repository_id}-{question.path}"
-                      checked={question.chosen === option.value}
-                      disabled={mergeFrozen || !askable(question, option.value)}
-                      onchange={() => setListRule(question.path, option.value)}
-                    />
-                    <span class="choice-dot"></span>
-                    <span class="choice-title">{option.title}</span>
-                    <span class="choice-why">{option.why}</span>
-                  </label>
+                    <span class="setting-say">
+                      <span class="setting-name mono">{question.path}</span>
+                      <span class="setting-why" id={descriptionId}>
+                        {RULE_CHOICES.find((option) => option.value === question.chosen)?.why}
+                      </span>
+                    </span>
+                    <span class="policy-value">
+                      <SegmentedControl
+                        compact
+                        name={`listrule-${entry.repository_id}-${question.path}`}
+                        label={`How to combine ${question.path}`}
+                        {descriptionId}
+                        options={RULE_CHOICES.map((option) => ({
+                          ...option,
+                          disabled: !askable(question, option.value),
+                        }))}
+                        value={question.chosen}
+                        disabled={mergeFrozen}
+                        onSelect={(value) => setListRule(question.path, value)}
+                      />
+                    </span>
+                  </div>
                 {/each}
               </div>
-            </div>
-          {/each}
+            </Card>
+          {/if}
         </div>
       </div>
       {#if repositoryTab === 'formatting'}
@@ -1521,15 +1550,10 @@ where it arises.
 
   .patch-strip {
     align-items: center;
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
     display: flex;
     flex-wrap: wrap;
     font-size: var(--font-size-compact);
     gap: var(--space-2) var(--space-3);
-    margin-top: var(--space-3);
-    padding: var(--space-2) var(--space-3);
   }
 
   .patch-strip .patch-word {
@@ -1583,57 +1607,6 @@ where it arises.
 
   .patch-key button:active {
     background: var(--interactive-pressed);
-  }
-
-  /* The one question a merge cannot answer itself, asked where it arises.
-     The waiting-question mark is the same inset bar managed rows wear, in
-     the warning ink. */
-  .list-ask {
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: var(--r-ctl);
-    display: grid;
-    gap: var(--space-2);
-    margin-top: var(--space-3);
-    padding: var(--space-3);
-    position: relative;
-  }
-
-  .list-ask::before {
-    background: var(--warning);
-    border-radius: 2px;
-    content: '';
-    inset-block: var(--space-2);
-    inset-inline-start: 0;
-    position: absolute;
-    width: 3px;
-  }
-
-  .list-ask-word {
-    color: var(--text-primary);
-    font-size: var(--font-size-compact);
-    line-height: var(--leading-compact);
-  }
-
-  .list-ask-word code {
-    color: var(--code-key);
-    font-family: var(--mono);
-    /* The mono face's taller metrics raised the line box 1.5px over the
-       sans text around it; the words set the line, the key rides it. */
-    line-height: var(--leading-flat);
-  }
-
-  /* The group, the card, the dot and the two voices are one vocabulary in `app.css`.
-     What is this page's alone is the answer it cannot offer: the edited list no longer
-     holds the template's entries intact, so the option stays visible and unchoosable
-     rather than disappearing and taking its explanation with it. */
-  .choice-card.is-unaskable {
-    cursor: default;
-    opacity: 0.5;
-  }
-
-  .choice-card.is-unaskable:hover {
-    background: transparent;
   }
 
   .preview-pane {

@@ -19,6 +19,8 @@
  * `document.scrollWidth` is no good either - once the viewport has been widened
  * the document fits inside it exactly, so the page reports itself as fitting.
  */
+import { mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { inLanes, startPanel, visit, type Panel } from './harness';
@@ -129,6 +131,79 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await panel?.close();
+});
+
+describe('repository list control grouping', () => {
+  it.each(
+    (['light', 'dark'] as const).flatMap((theme) =>
+      [375, 768, 1024, 1440].map((width) => ({ theme, width })),
+    ),
+  )(
+    'keeps filters together and row switches beside text in $theme at $width',
+    async ({ theme, width }) => {
+      const page = await panel.browser.newPage({
+        viewport: { width, height: 1000 },
+        reducedMotion: 'reduce',
+        colorScheme: theme,
+      });
+      try {
+        await visit(page, `${panel.origin}/workspace/${panel.account}/repositories`, {
+          ready: '.repository-row',
+        });
+        expect(await page.locator('html').getAttribute('data-theme')).toBe(theme);
+        await page.mouse.move(0, 0);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `repositories-${theme}-${width}.png`),
+            animations: 'disabled',
+          });
+        }
+        const bar = page.locator('.filter-bar');
+        const segments = (await bar
+          .getByRole('group', { name: 'Show', exact: true })
+          .boundingBox())!;
+        const tools = (await bar
+          .getByRole('button', { name: 'Sort and filter', exact: true })
+          .boundingBox())!;
+        expect(
+          Math.abs(segments.y + segments.height / 2 - tools.y - tools.height / 2),
+        ).toBeLessThanOrEqual(1);
+        expect(tools.x).toBeGreaterThanOrEqual(segments.x + segments.width);
+        const rows = await page.locator('.repository-row').evaluateAll((elements) =>
+          elements.flatMap((row) => {
+            if (!row.querySelector('.switch')) return [];
+            const copy = row.querySelector('.object-main')!.getBoundingClientRect();
+            const side = row.querySelector('.object-side')!.getBoundingClientRect();
+            const bounds = row.getBoundingClientRect();
+            return [
+              {
+                name: row.querySelector('.object-name')?.textContent,
+                copyRight: copy.right,
+                sideLeft: side.left,
+                sideRight: side.right,
+                rowRight: bounds.right,
+                copyCenter: (copy.top + copy.bottom) / 2,
+                sideCenter: (side.top + side.bottom) / 2,
+              },
+            ];
+          }),
+        );
+        expect(rows.length).toBeGreaterThan(5);
+        for (const row of rows) {
+          expect(row.sideLeft, row.name ?? '').toBeGreaterThanOrEqual(row.copyRight);
+          expect(row.sideRight, row.name ?? '').toBeLessThanOrEqual(row.rowRight);
+          expect(Math.abs(row.copyCenter - row.sideCenter), row.name ?? '').toBeLessThanOrEqual(1);
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          width,
+        );
+      } finally {
+        await page.close();
+      }
+    },
+  );
 });
 
 async function measure(path: string, width: number): Promise<Measured> {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { ConfigurationReviewSource } from '../config-file-review.svelte';
   import type { ConfigFileStatusConnection } from '../config-file-status';
   import ConfigurationFileSync from './ConfigurationFileSync.svelte';
   import type { BypassActorLookup } from '../types';
@@ -62,6 +63,7 @@
     savedConfigFileSyncEnabled,
     savedFileIgnored,
     configFileConnection,
+    configFileReviewSource,
     failure = null,
     readOnly = false,
     organizationActors = true,
@@ -92,6 +94,7 @@
     savedConfigFileSyncEnabled?: boolean;
     savedFileIgnored?: boolean;
     configFileConnection?: ConfigFileStatusConnection;
+    configFileReviewSource?: ConfigurationReviewSource;
     failure?: string | null;
     readOnly?: boolean;
     organizationActors?: boolean;
@@ -351,6 +354,7 @@ so a link points at the pane a colleague was asked to look at.
         {readOnly}
         {now}
         connection={configFileConnection}
+        reviewSource={configFileReviewSource}
         onChange={(enabled) => {
           const document = currentDocument();
           if (document)

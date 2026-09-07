@@ -1,3 +1,5 @@
+import { mockConfigFilePreview } from './config-file-review.js';
+import type { ConfigFileChoiceSide } from '../src/lib/config-file-sync.js';
 import {
   mockConfigFileInputs,
   mockConfigFileStatus,
@@ -183,6 +185,10 @@ interface MockState extends Fixtures {
   fileRenderer: GoFileRenderer;
   configFileInputs: Map<string, string>;
   configFileCheckedAt: string;
+  configFileResolutions: Map<
+    string,
+    { inputs: string; side: ConfigFileChoiceSide; checkedAt: string }
+  >;
 }
 
 /** Marks the error renderer's own request for a shell, so `handle` stands aside. */
@@ -676,6 +682,7 @@ function install(httpServer: DevHttpServer | null | undefined, middlewares: Conn
     shell: () => Promise.reject(new Error('the mock dev server is not serving yet')),
     fileRenderer,
     configFileCheckedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+    configFileResolutions: new Map(),
     configFileInputs: new Map(
       fixtures.targets.flatMap((target) => [
         [
@@ -1398,6 +1405,103 @@ async function handle(
   }
 
   try {
+    const reviewRoute = path.match(
+      /^\/api\/v1\/(?<surface>targets|root\/workspaces)\/(?<target>[^/]+)(?:\/repositories\/(?<repository>[^/]+))?\/config-file\/(?<action>preview|resolution)$/u,
+    );
+    if (
+      reviewRoute &&
+      ((method === 'GET' && reviewRoute.groups?.action === 'preview') ||
+        (method === 'POST' && reviewRoute.groups?.action === 'resolution'))
+    ) {
+      const target = findTarget(state, reviewRoute.groups?.target ?? '');
+      const selector = reviewRoute.groups?.repository;
+      const repository = selector ? findRepository(target, selector) : undefined;
+      const repositoryId = repository?.detail.repository.id;
+      const owner = repository?.detail ?? target.value;
+      const key = repositoryId ? `${target.value.id}/${repositoryId}` : target.value.id;
+      const inputs = mockConfigFileInputs(state, target.value.id, repositoryId, owner.revision);
+      const variant = repository
+        ? (REPOSITORY_CONFIG_FILE_STATES[repository.detail.repository.name] ?? 'off')
+        : workspaceConfigFileVariant(target.value.account.login);
+      const name =
+        repository?.detail.repository.full_name ?? `${target.value.account.login}/.github`;
+      const token = createHash('sha256')
+        .update(
+          JSON.stringify([
+            key,
+            name,
+            inputs,
+            variant,
+            owner.config_file_sync_enabled,
+            repository?.detail.ignore_repository_file,
+            repository?.detail.repository.default_branch,
+          ]),
+        )
+        .digest('hex');
+      const preview = mockConfigFilePreview(
+        variant,
+        name,
+        token,
+        !repository,
+        owner.config_file_sync_enabled ?? false,
+        repository?.detail.ignore_repository_file ?? false,
+      );
+      const accepted = state.configFileResolutions.get(key);
+      if (method === 'GET') {
+        respond(
+          res,
+          200,
+          accepted?.inputs === inputs
+            ? { status: 'pending', checked_at: accepted.checkedAt, path: preview.path }
+            : preview,
+        );
+        return;
+      }
+      if (reviewRoute.groups?.surface === 'root/workspaces') requireRootWrite(state, target);
+      else if (!target.value.capabilities.write)
+        throw new MockApiError(403, 'forbidden', 'Write access is required to apply a choice');
+      const input = await readBody<{ review_token?: string; side?: ConfigFileChoiceSide }>(req);
+      if (
+        !input.review_token ||
+        !/^[a-f0-9]{64}$/iu.test(input.review_token) ||
+        !['panel', 'file'].includes(input.side ?? '')
+      )
+        throw new MockApiError(
+          400,
+          'invalid_config_file_choice',
+          'Review the current file and choose which conflicting values to keep',
+        );
+      if (preview.problem === 'sync_off' || preview.problem === 'file_disabled')
+        throw new MockApiError(
+          422,
+          preview.problem,
+          preview.message ?? 'Configuration file sync is blocked',
+        );
+      if (accepted?.inputs === inputs || input.review_token !== preview.review_token)
+        throw new MockApiError(
+          409,
+          'config_file_changed',
+          'Settings or the file changed. Review the current values before choosing again',
+        );
+      if (!preview.choices?.some((choice) => choice.side === input.side && choice.available))
+        throw new MockApiError(
+          422,
+          'resolution_unavailable',
+          'This choice cannot produce valid settings',
+        );
+      state.configFileResolutions.set(key, {
+        inputs,
+        side: input.side!,
+        checkedAt: new Date().toISOString(),
+      });
+      broadcast(state, {
+        type: repositoryId ? 'repository.changed' : 'target.changed',
+        target_id: target.value.id,
+        ...(repositoryId ? { repository_id: repositoryId } : {}),
+      });
+      respond(res, 202, { status: 'pending' });
+      return;
+    }
     const configFile = path.match(
       /^\/api\/v1\/(?:targets|root\/workspaces)\/(?<target>[^/]+)(?:\/repositories\/(?<repository>[^/]+))?\/config-file$/u,
     );
@@ -1409,6 +1513,34 @@ async function handle(
         ? (REPOSITORY_CONFIG_FILE_STATES[repository.detail.repository.name] ?? 'off')
         : workspaceConfigFileVariant(target.value.account.login);
       const owner = repository?.detail ?? target.value;
+      const key = repository
+        ? `${target.value.id}/${repository.detail.repository.id}`
+        : target.value.id;
+      const accepted = state.configFileResolutions.get(key);
+      if (
+        accepted?.inputs ===
+          mockConfigFileInputs(
+            state,
+            target.value.id,
+            repository?.detail.repository.id,
+            owner.revision,
+          ) &&
+        owner.config_file_sync_enabled &&
+        !repository?.detail.ignore_repository_file
+      ) {
+        respond(res, 200, {
+          enabled: true,
+          available: true,
+          status: 'pending',
+          last_check: {
+            checked_at: accepted.checkedAt,
+            status: 'pending',
+            settings_current: true,
+            path: repository ? '.smyklot.toml' : '.smyklot/workspace.toml',
+          },
+        });
+        return;
+      }
       respond(
         res,
         200,

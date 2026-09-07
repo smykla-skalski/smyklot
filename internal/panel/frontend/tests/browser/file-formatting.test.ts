@@ -1064,6 +1064,205 @@ describe('configured file formatting in the development panel', () => {
     }
   });
 
+  it.each(
+    (['light', 'dark'] as const).flatMap((colorScheme) =>
+      [375, 768, 1024, 1440].map((width) => ({ colorScheme, width })),
+    ),
+  )('uses compact list decisions in $colorScheme at $width', async ({ colorScheme, width }) => {
+    const page = await panel.browser.newPage({
+      viewport: { width, height: 1000 },
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    try {
+      await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/renovate.json`, {
+        ready: '.object-row',
+      });
+      await page.getByRole('button', { name: /api-gateway/ }).click();
+      const dialog = page.getByRole('dialog');
+      const question = dialog.locator('.list-ask').first();
+      await question.waitFor();
+      expect(await page.locator('html').getAttribute('data-theme')).toBe(colorScheme);
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      if (directory) {
+        await mkdir(directory, { recursive: true });
+        await question.screenshot({
+          path: join(directory, `list-choice-${colorScheme}-${width}.png`),
+          animations: 'disabled',
+        });
+        await dialog.screenshot({
+          path: join(directory, `list-inspector-${colorScheme}-${width}.png`),
+          animations: 'disabled',
+        });
+      }
+      const picker = question.getByRole('group');
+      expect(await picker.count()).toBe(1);
+      const geometry = await picker.boundingBox();
+      expect(geometry!.height).toBe(34);
+      expect(geometry!.width).toBeLessThan(300);
+      expect(await question.locator('.choice-card').count()).toBe(0);
+      expect(await question.evaluate((node) => getComputedStyle(node, '::before').content)).toBe(
+        'none',
+      );
+      const copyGap = await question.evaluate((node) => {
+        const title = node.querySelector('.setting-name')!.getBoundingClientRect();
+        const description = node.querySelector('.setting-why')!.getBoundingClientRect();
+        return description.top - title.bottom;
+      });
+      expect(copyGap).toBeCloseTo(8, 0);
+      const append = picker.getByRole('radio', { name: 'Append', exact: true });
+      const prepend = picker.getByRole('radio', { name: 'Prepend', exact: true });
+      const replace = picker.getByRole('radio', { name: 'Replace', exact: true });
+      expect(await append.isChecked()).toBe(true);
+      expect(await prepend.isDisabled()).toBe(true);
+      await append.focus();
+      await page.keyboard.press('ArrowRight');
+      expect(await replace.isChecked()).toBe(true);
+      expect(
+        await dialog.getByRole('region', { name: 'List behavior' }).getAttribute('data-unsaved'),
+      ).toBe('true');
+      expect(await question.getAttribute('data-unsaved')).toBe('true');
+      await page.keyboard.press('ArrowLeft');
+      expect(await append.isChecked()).toBe(true);
+      expect(await question.getAttribute('data-unsaved')).toBeNull();
+      expect(await page.getByRole('button', { name: 'Save', exact: true }).count()).toBe(0);
+      await replace.locator('..').click();
+      await dialog.getByRole('button', { name: 'Undo', exact: true }).click();
+      expect(await append.isChecked()).toBe(true);
+      expect(await question.getAttribute('data-unsaved')).toBeNull();
+      expect(await page.getByRole('button', { name: 'Save', exact: true }).count()).toBe(0);
+      expect(
+        await dialog.evaluate((node) => node.scrollWidth - node.clientWidth),
+      ).toBeLessThanOrEqual(1);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it.each(['light', 'dark'] as const)(
+    'keeps press frames continuous in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1440, height: 1000 },
+        colorScheme,
+        reducedMotion: 'no-preference',
+      });
+      try {
+        await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/renovate.json`, {
+          ready: '.object-row',
+        });
+        await page.locator('html:not(.is-booting)').waitFor();
+        const controls = [
+          ['row', page.getByRole('button', { name: 'Open output for api-gateway', exact: true })],
+          [
+            'row-edge',
+            page.getByRole('button', { name: 'Open output for api-gateway', exact: true }),
+          ],
+          ['button', page.getByRole('button', { name: /^Show all/ }).first()],
+          ['icon', page.getByRole('button', { name: /Template options|File options/ }).first()],
+          ['destructive', page.getByRole('button', { name: 'Delete this ruleset', exact: true })],
+        ] as const;
+        for (const [name, control] of controls) {
+          if (name === 'destructive') {
+            await visit(
+              page,
+              `${panel.origin}/workspace/${panel.account}/sync/rulesets/main-protection`,
+              { ready: '.policy-row' },
+            );
+            await page.locator('html:not(.is-booting)').waitFor();
+          }
+          await control.scrollIntoViewIfNeeded();
+          await control.hover(name === 'row-edge' ? { position: { x: 10, y: 0 } } : undefined);
+          await page.waitForTimeout(250);
+          await control.evaluate((node) => {
+            node.addEventListener(
+              'click',
+              (event) => {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+              },
+              { once: true, capture: true },
+            );
+          });
+          const recording = control.evaluate(async (node) => {
+            const surface = node.closest('.object-row') ?? node;
+            const frames: Array<{
+              t: number;
+              active: boolean;
+              hover: boolean;
+              background: string;
+              image: string;
+              translate: string;
+            }> = [];
+            const start = performance.now();
+            await new Promise<void>((resolve) => {
+              const sample = (time: number) => {
+                const style = getComputedStyle(surface);
+                frames.push({
+                  t: time - start,
+                  active: node.matches(':active'),
+                  hover: node.matches(':hover'),
+                  background: style.backgroundColor,
+                  image: style.backgroundImage,
+                  translate: style.translate,
+                });
+                if (time - start < 650) requestAnimationFrame(sample);
+                else resolve();
+              };
+              requestAnimationFrame(sample);
+            });
+            return frames;
+          });
+          await page.waitForTimeout(50);
+          await page.mouse.down();
+          await page.waitForTimeout(250);
+          await page.mouse.up();
+          const frames = await recording;
+          const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+          if (directory) {
+            await mkdir(directory, { recursive: true });
+            await writeFile(
+              join(directory, `press-${name}-${colorScheme}.json`),
+              JSON.stringify(frames, null, 2),
+            );
+          }
+          const pressed = frames.filter((frame) => frame.active);
+          expect(pressed.length).toBeGreaterThan(3);
+          expect(
+            pressed.every((frame) => frame.hover),
+            `${name} moved away from the pointer`,
+          ).toBe(true);
+          expect(
+            new Set(pressed.map((frame) => `${frame.background} ${frame.image}`)).size,
+            `${name} paint snapped`,
+          ).toBeGreaterThan(2);
+          const released = frames.slice(frames.findLastIndex((frame) => frame.active) + 1);
+          if (name === 'button' || name === 'destructive') {
+            expect(
+              new Set(pressed.map((frame) => frame.image)).size,
+              `${name} image snapped`,
+            ).toBeGreaterThan(2);
+            expect(
+              new Set(released.map((frame) => frame.image)).size,
+              `${name} release image snapped`,
+            ).toBeGreaterThan(2);
+          }
+          expect(
+            new Set(released.map((frame) => `${frame.background} ${frame.image}`)).size,
+            `${name} release paint snapped`,
+          ).toBeGreaterThan(2);
+          expect(
+            new Set(pressed.map((frame) => frame.translate)).size,
+            `${name} movement snapped`,
+          ).toBeGreaterThan(2);
+        }
+      } finally {
+        await page.mouse.up();
+        await page.close();
+      }
+    },
+  );
+
   it('uses one shared pressed surface for sync rows in both themes', async () => {
     for (const colorScheme of ['light', 'dark'] as const) {
       const page = await panel.browser.newPage({

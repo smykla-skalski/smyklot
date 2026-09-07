@@ -439,6 +439,7 @@ inside it.
   {:else if target !== null && view === 'settings'}
     <TargetSettings
       configFileConnection={configFileQuery}
+      configFileReview={{ preview: api.previewRootConfigFile, resolve: api.resolveRootConfigFile }}
       {target}
       readOnly={!canWrite}
       lookupBypassActors={(type, query) => api.fetchRootBypassActors(workspace.id, type, query)}
@@ -453,6 +454,7 @@ inside it.
       onLoad={loadRepository}
       configFileSurface="root"
       onLoadConfigFileStatus={api.fetchRootConfigFileStatus}
+      configFileReview={{ preview: api.previewRootConfigFile, resolve: api.resolveRootConfigFile }}
       onResetConfigMigration={resetConfigMigration}
       onChanged={repositoryChanged}
       readOnly={!canWrite}

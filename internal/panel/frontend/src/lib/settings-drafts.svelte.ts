@@ -782,6 +782,11 @@ export class SettingsDraftRegistry {
     return rebased;
   }
 
+  /** Read the latest account drafts before a saved-settings operation outside the Save flow. */
+  refreshFromStorage(): void {
+    this.syncFromStorage();
+  }
+
   private readonly onStorage = (event: StorageEvent): void => {
     if (this.accountId === null || event.key !== settingsDraftStorageKey(this.accountId)) return;
     this.reconcile(event.newValue);

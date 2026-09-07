@@ -137,6 +137,39 @@ describe('SyncFilePage [Component]', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('links list descriptions for whitespace keys without ID collisions', async () => {
+    const merge = {
+      path: 'renovate.json',
+      strategy: 'deep-merge',
+      overrides: { 'my list': ['repo'], my_list: ['repo'] },
+      arrays: [
+        { path: '$.my list', strategy: 'append' },
+        { path: '$.my_list', strategy: 'append' },
+      ],
+    };
+    render(SyncFilePage, {
+      props: renderProps({
+        config: configWithTemplate('{"my list":["base"],"my_list":["base"]}'),
+        context: {
+          repositories: 1,
+          covered: 1,
+          known_paths: [],
+          repository_policies: [repositoryPolicy('repo-a', 'repo-1')],
+          merges: [{ repository: 'repo-a', repository_id: 'repo-1', path: merge.path, merge }],
+        },
+      }),
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /repo-a/ }));
+    const groups = await screen.findAllByRole('group', { name: /^How to combine/ });
+    expect(groups).toHaveLength(2);
+    const ids = groups.map((group) => group.getAttribute('aria-describedby')!);
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) {
+      expect(id).not.toMatch(/\s/u);
+      expect(document.getElementById(id)?.textContent).toContain('Add repository entries');
+    }
+  });
+
   it.each([
     ['config.yaml', 'enabled: true\n', { overrides: { enabled: false } }],
     ['config.toml', 'enabled = true\n', { overrides: { enabled: false } }],

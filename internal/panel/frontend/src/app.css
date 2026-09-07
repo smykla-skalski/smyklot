@@ -423,10 +423,19 @@ button {
   cursor: pointer;
 }
 
+/* Gradients themselves do not interpolate. Animate their one tint so hover,
+   press and release remain one continuous surface, including a quick tap. */
+@property --control-state-layer {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
 button:not(:disabled),
 a[href] {
   touch-action: manipulation;
   transition:
+    --control-state-layer var(--duration-fast) var(--ease-standard),
     background-color var(--duration-fast) var(--ease-standard),
     border-color var(--duration-fast) var(--ease-standard),
     color var(--duration-fast) var(--ease-standard),
@@ -527,7 +536,9 @@ a[href]:active {
   transition:
     background-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
-    transform var(--duration-press) var(--ease-standard);
+    transform var(--duration-press) var(--ease-standard),
+    translate var(--duration-press) var(--ease-standard),
+    box-shadow var(--duration-press) var(--ease-standard);
   user-select: none;
   width: var(--tier-quiet);
   -webkit-tap-highlight-color: transparent;
@@ -542,12 +553,14 @@ a[href]:active {
    belongs to. `data-state` is what Bits UI writes; `aria-expanded` is what a
    hand-rolled trigger writes. */
 .icon-button:where(:hover, [aria-expanded='true'], [data-state='open']):not(:disabled) {
-  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
+  background-color: var(--interactive-hover-layer);
   color: var(--text-primary);
 }
 
 .icon-button:active:not(:disabled) {
-  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
+  background-color: var(--interactive-pressed);
+  background-image: none;
+  box-shadow: var(--pressed-inset);
   color: var(--text-primary);
 }
 
@@ -604,6 +617,7 @@ input[type='radio']:not(:disabled) {
   padding: 0 var(--space-3);
   text-decoration: none;
   transition:
+    --control-state-layer var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
     color var(--duration-fast) var(--ease-out),
@@ -652,11 +666,13 @@ input[type='radio']:not(:disabled) {
 .btn:not(:where(.btn-signal, .btn-ghost, .btn-stop, .btn-stop-quiet)):hover:not(:active):not(
     :disabled
   ) {
-  background-image: linear-gradient(var(--interactive-hover-layer), var(--interactive-hover-layer));
+  --control-state-layer: var(--interactive-hover-layer);
 }
 
 .btn:active:not(:disabled) {
-  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
+  --control-state-layer: var(--interactive-pressed);
+
+  background-image: linear-gradient(var(--control-state-layer), var(--control-state-layer));
   box-shadow: var(--pressed-inset);
   filter: none;
 }
@@ -687,32 +703,24 @@ select:disabled {
 /* The quiet variant: dismissals and Discard, which sit beside a real primary and
    should not compete with it for the same bordered-control weight. */
 .btn-ghost {
-  background: transparent;
+  background-color: transparent;
   border-color: transparent;
 }
 
 .btn-ghost:hover:not(:active):not(:disabled) {
-  background: var(--surface-inset);
+  background-color: var(--surface-inset);
   border-color: transparent;
 }
 
-.btn-ghost:active:not(:disabled) {
-  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
-}
-
 .btn-stop {
-  background: var(--danger);
+  background-color: var(--danger);
   border-color: var(--danger);
   color: var(--on-danger);
 }
 
 .btn-stop:hover:not(:active):not(:disabled) {
-  background: var(--danger-hover);
+  background-color: var(--danger-hover);
   border-color: var(--danger-hover);
-}
-
-.btn-stop:active:not(:disabled) {
-  background-image: linear-gradient(var(--interactive-pressed), var(--interactive-pressed));
 }
 
 /* The console's own action: tinted with whatever `--brand-action` is where it is
@@ -737,7 +745,7 @@ select:disabled {
 }
 
 .btn-stop-quiet:hover:not(:active):not(:disabled) {
-  background: var(--danger-tint);
+  background-color: var(--danger-tint);
   border-color: var(--danger);
 }
 
@@ -755,6 +763,13 @@ select:disabled {
 .btn-quiet:hover:not(:active):not(:disabled) {
   color: var(--text-primary);
   filter: none;
+}
+
+/* Keep the transparent layer mounted at rest too, so leaving a button eases
+   away instead of abruptly removing its hover image. Filled primary actions
+   transition their own background colors. Invisible row hits opt out below. */
+.btn:not(.btn-signal) {
+  background-image: linear-gradient(var(--control-state-layer), var(--control-state-layer));
 }
 
 .btn-row {
@@ -2631,6 +2646,16 @@ button.object-row {
   flex-wrap: wrap;
   gap: var(--space-3);
   justify-content: flex-end;
+}
+
+/* A small switch or badge with a direction mark does not need a separate row.
+   Other action groups keep the normal stacked layout when space runs out. */
+.object-row:has(> .object-side.is-compact) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.object-side.is-compact {
+  flex-wrap: nowrap;
 }
 
 /* The toolbar over a list: the search leads and the segments sit beside it, 12px

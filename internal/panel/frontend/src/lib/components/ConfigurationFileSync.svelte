@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ConfigurationReviewSource } from '../config-file-review.svelte';
+  import ConfigurationFileReview from './ConfigurationFileReview.svelte';
   import {
     configFileProposalHref,
     configFileStatusView,
@@ -21,6 +23,7 @@
     dirty = false,
     readOnly = false,
     connection,
+    reviewSource,
     id,
     now,
     onChange,
@@ -35,10 +38,14 @@
     dirty?: boolean;
     readOnly?: boolean;
     connection?: ConfigFileStatusConnection;
+    reviewSource?: ConfigurationReviewSource;
     id?: string;
     now: number;
     onChange: (enabled: boolean) => void;
   } = $props();
+
+  let review = $state<ConfigurationFileReview | null>(null);
+  const canReview = $derived(reviewSource !== undefined && savedEnabled);
 
   const view = $derived(
     connection?.data ? configFileStatusView(connection.data, savedEnabled, savedFileIgnored) : null,
@@ -55,12 +62,21 @@
 <!--
 @component
 The editable opt-in and the saved connection are separate facts. The parent owns
-reads and draft persistence; this card cannot start a sync or resolve a conflict.
+reads and draft persistence; the inspector uses the owner’s fresh comparison and resolution APIs.
 -->
 <Card {id} label="Configuration file sync">
   <div class="card-head">
     <h2 class="card-title">Configuration file sync</h2>
-    {#if readOnly}<span class="card-meta">Read only</span>{/if}
+    {#if canReview}
+      <div class="review-actions">
+        <Button tone="quiet" onclick={(event) => review?.openReview(event.currentTarget)}
+          >{check?.problem === 'conflicting_edits' ? 'Review conflicts' : 'Review file'}</Button
+        >
+        {#if readOnly}<span class="card-meta">Read only</span>{/if}
+      </div>
+    {:else if readOnly}
+      <span class="card-meta">Read only</span>
+    {/if}
   </div>
   <div class="policy-rows">
     <div class={['policy-row', { 'is-unsaved': dirty }]} data-unsaved={dirty || undefined}>
@@ -147,7 +163,24 @@ reads and draft persistence; this card cannot start a sync or resolve a conflict
   </div>
 </Card>
 
+{#if reviewSource}
+  <ConfigurationFileReview bind:this={review} source={reviewSource} {repository} />
+{/if}
+
 <style>
+  .card-head > .card-title {
+    flex-basis: 0;
+    min-inline-size: min-content;
+  }
+  .review-actions {
+    align-items: center;
+    display: flex;
+    gap: var(--space-2);
+    margin-block: calc((var(--card-head-line) - var(--control-height-compact)) / 2);
+  }
+  .review-actions > .card-meta {
+    flex: none;
+  }
   .file-path {
     overflow-wrap: anywhere;
   }
