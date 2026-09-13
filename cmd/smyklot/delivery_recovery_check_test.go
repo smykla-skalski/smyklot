@@ -47,6 +47,19 @@ func TestDeliveryRecoveryWorkloadControls(t *testing.T) {
 		{name: "configuration still works when commands disabled", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) {
 			s.target.RepositoryDefaultEnabled = false
 		}, reason: panel.RecoveryAvailable},
+		{name: "disconnected configuration", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) {
+			s.repository.ConfigFileSyncEnabled = false
+		}, reason: panel.RecoveryConfigurationDisconnected},
+		{name: "workspace configuration connection", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) {
+			s.repository.ConfigFileSyncEnabled = false
+			s.repository.Name = ".github"
+			s.target.ConfigFileSyncEnabled = true
+		}, reason: panel.RecoveryAvailable},
+		{name: "workspace connection does not enable unrelated repository", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) {
+			s.repository.ConfigFileSyncEnabled = false
+			s.repository.Name = "application"
+			s.target.ConfigFileSyncEnabled = true
+		}, reason: panel.RecoveryConfigurationDisconnected},
 		{name: "removed repository", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) { s.repository.Available = false }, reason: panel.RecoveryRepositoryUnavailable},
 		{name: "unknown target", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) { s.err = storage.ErrNotFound }, reason: panel.RecoveryRepositoryUnavailable},
 		{name: "database outage", change: func(_ *storage.DeliveryRecoveryInput, s *recoveryCheckStore) {
@@ -68,7 +81,7 @@ func TestDeliveryRecoveryWorkloadControls(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			repoID := storage.RepositoryID(7)
 			input := storage.DeliveryRecoveryInput{TargetID: storage.InstallationID(9), RepositoryID: &repoID, Event: "push", Payload: []byte(`{"installation":{"id":9},"repository":{"id":7,"owner":{"login":"owner"},"name":"repo","default_branch":"main"},"ref":"refs/heads/main"}`)}
-			store := recoveryCheckStore{target: storage.Target{Available: true, RepositoryDefaultEnabled: true}, repository: storage.Repository{Available: true, DefaultBranch: "main"}}
+			store := recoveryCheckStore{target: storage.Target{Available: true, RepositoryDefaultEnabled: true}, repository: storage.Repository{Available: true, DefaultBranch: "main", ConfigFileSyncEnabled: true}}
 			if test.change != nil {
 				test.change(&input, &store)
 			}

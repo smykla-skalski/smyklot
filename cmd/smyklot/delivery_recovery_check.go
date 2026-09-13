@@ -28,7 +28,7 @@ func (s *server) CheckDeliveryRecovery(ctx context.Context, input storage.Delive
 		return panel.DeliveryRecoveryCheck{}, err
 	}
 	if input.Event == webhook.EventPush {
-		return checkConfigPushRecovery(input, repository)
+		return checkConfigPushRecovery(input, target, repository)
 	}
 	if !storage.RepositoryEnabled(target, repository) {
 		return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryRepositoryDisabled}, nil
@@ -68,13 +68,17 @@ func checkNotificationRecovery(ctx context.Context, checker reauthorizationCheck
 	return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryAvailable, Effect: effect}, nil
 }
 
-func checkConfigPushRecovery(input storage.DeliveryRecoveryInput, repository storage.Repository) (panel.DeliveryRecoveryCheck, error) {
+func checkConfigPushRecovery(input storage.DeliveryRecoveryInput, target storage.Target, repository storage.Repository) (panel.DeliveryRecoveryCheck, error) {
 	push, err := parseConfigFilePush(input.Payload)
 	if err != nil {
 		return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryPayloadInvalid}, nil
 	}
 	if !push.relevant() || push.Ref != "refs/heads/"+repository.DefaultBranch {
 		return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryNoAction}, nil
+	}
+	connected := repository.ConfigFileSyncEnabled || (repository.Name == ".github" && target.ConfigFileSyncEnabled)
+	if !connected {
+		return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryConfigurationDisconnected}, nil
 	}
 	return panel.DeliveryRecoveryCheck{Reason: panel.RecoveryAvailable, Effect: "Reload configuration from the current default branch."}, nil
 }

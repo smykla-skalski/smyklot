@@ -39,6 +39,8 @@ export function recoveryExplanation(reason: string): string {
       'Processing is disabled for this repository. Enable it in repository settings before retrying.',
     source_changed:
       'The original command has changed or been superseded. Review the current comment in GitHub and issue the command there if needed.',
+    configuration_disconnected:
+      'File synchronization is disconnected for this configuration. Connect the configuration file in workspace or repository settings, then check again.',
     configuration_invalid:
       'Repository configuration still has errors. Fix the configuration, then check recovery again.',
     permission_changed:

@@ -15,6 +15,7 @@ type DeliveryRecoveryChecker interface {
 type DeliveryRecoveryReason string
 
 const (
+	RecoveryConfigurationDisconnected  DeliveryRecoveryReason = "configuration_disconnected"
 	RecoveryReauthorizationUnavailable DeliveryRecoveryReason = "reauthorization_unavailable"
 	RecoveryAvailable                  DeliveryRecoveryReason = "available"
 	RecoveryPayloadInvalid             DeliveryRecoveryReason = "payload_invalid"

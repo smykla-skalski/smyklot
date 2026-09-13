@@ -186,29 +186,51 @@ describe('desktop delivery retry', () => {
     }
   });
 
-  it('explains an unavailable retry without offering submission', async () => {
-    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
-    page.setDefaultTimeout(5000);
-    await isolateRecovery(page);
-    try {
-      await page.route('**/deliveries/*/recovery', (route) =>
-        route.fulfill({
-          json: {
-            available: false,
-            reason: 'configuration_invalid',
-            revision: 1,
-            current_run_id: 1,
-          },
-        }),
-      );
-      await visit(page, addressOf(panel, 'root/history/failures'));
-      await page.getByRole('button', { name: 'Inspect queue item' }).first().click();
-      const dialog = page.getByRole('dialog');
-      await dialog.getByRole('button', { name: 'Review retry' }).click();
-      await expect.poll(() => dialog.innerText()).toContain('Fix the configuration');
-      expect(await dialog.getByRole('button', { name: 'Start retry' }).count()).toBe(0);
-    } finally {
-      await page.close();
-    }
-  });
+  it.each([
+    {
+      reason: 'configuration_invalid',
+      message: 'Fix the configuration',
+      colorScheme: 'light' as const,
+    },
+    {
+      reason: 'configuration_disconnected',
+      message: 'Connect the configuration file',
+      colorScheme: 'light' as const,
+    },
+    {
+      reason: 'configuration_disconnected',
+      message: 'Connect the configuration file',
+      colorScheme: 'dark' as const,
+    },
+  ])(
+    'explains $reason in $colorScheme without offering submission',
+    async ({ reason, message, colorScheme }) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      page.setDefaultTimeout(5000);
+      await isolateRecovery(page);
+      try {
+        await page.route('**/deliveries/*/recovery', (route) =>
+          route.fulfill({
+            json: {
+              available: false,
+              reason,
+              revision: 1,
+              current_run_id: 1,
+            },
+          }),
+        );
+        await visit(page, addressOf(panel, 'root/history/failures'));
+        await page.getByRole('button', { name: 'Inspect queue item' }).first().click();
+        const dialog = page.getByRole('dialog');
+        await dialog.getByRole('button', { name: 'Review retry' }).click();
+        await expect.poll(() => dialog.innerText()).toContain(message);
+        expect(await dialog.getByRole('button', { name: 'Start retry' }).count()).toBe(0);
+      } finally {
+        await page.close();
+      }
+    },
+  );
 });

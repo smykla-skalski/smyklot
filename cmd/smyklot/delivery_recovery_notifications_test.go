@@ -53,6 +53,21 @@ var _ = Describe("Recovered notification worker [Unit]", func() {
 		Expect(f.call(http.MethodPost).Code).To(Equal(http.StatusOK))
 	})
 
+	It("refuses configuration recovery while its file connection is disabled", func() {
+		payload := []byte(strings.ReplaceAll(string(configFilePushPayload("refs/heads/main", "main", false)), ".github", "smyklot"))
+		f := newRecoveryEventFixture(webhook.EventPush, payload)
+		preview := f.call(http.MethodGet)
+		Expect(preview.Code).To(Equal(http.StatusOK), preview.Body.String())
+		Expect(preview.Body.String()).To(ContainSubstring(`"available":false`))
+		Expect(preview.Body.String()).To(ContainSubstring(`"reason":"configuration_disconnected"`))
+		refused := f.call(http.MethodPost)
+		Expect(refused.Code).To(Equal(http.StatusConflict), refused.Body.String())
+		op, err := f.service.store.GetDeliveryOperation(GinkgoT().Context(), f.target, f.original)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(op.Current.ID).To(Equal(f.original))
+		Expect(op.Current.Status).To(Equal(storage.DeliveryFailed))
+	})
+
 	DescribeTable("queues a fresh configuration read subject to current connection state", func(disconnect bool) {
 		payload := []byte(strings.ReplaceAll(string(configFilePushPayload("refs/heads/main", "main", false)), ".github", "smyklot"))
 		f := newRecoveryEventFixture(webhook.EventPush, payload)
