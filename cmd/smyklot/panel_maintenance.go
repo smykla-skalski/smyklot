@@ -434,7 +434,7 @@ func (s *server) runNextMaintenanceJob(
 	now := time.Now().UTC()
 	_, finishErr := s.store.FinishRecurringWork(
 		ctx, item.ID, workqueue.RecurringCompletion{
-			Failure: failure, Retryable: true,
+			Attempt: item.Attempt, Failure: failure, Retryable: true,
 		}, now,
 	)
 	s.announceRecurringWork(work)

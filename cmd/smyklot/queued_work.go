@@ -67,8 +67,10 @@ func (s *server) runClaimedRecurringWorkWithSummary(
 ) error {
 	s.announceRecurringWork(work)
 	successSummary, runErr := run(item)
+	completion := recurringCompletion(successSummary, runErr)
+	completion.Attempt = item.Attempt
 	_, finishErr := s.store.FinishRecurringWork(
-		ctx, item.ID, recurringCompletion(successSummary, runErr), time.Now().UTC(),
+		ctx, item.ID, completion, time.Now().UTC(),
 	)
 	s.announceRecurringWork(work)
 

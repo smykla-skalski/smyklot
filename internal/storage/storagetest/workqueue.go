@@ -24,6 +24,7 @@ func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareQueueListingSpecs(runtime)
 	declareQueueScheduleSpecs(runtime)
 	declareQueueLeaseSpecs(runtime)
+	declareRecurringCompletionSpecs(runtime)
 	declareQueueRequestIntentSpecs(runtime)
 	declareConfigFileWorkloadSpecs(runtime)
 	declareConfigFileNotificationSpecs(runtime)
@@ -296,7 +297,7 @@ func declareQueueListingSpecs(runtime queueRuntime) {
 			)
 			Expect(claimErr).NotTo(HaveOccurred())
 			Expect(claimed).To(BeTrue())
-			_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, at)
+			_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt}, at)
 			Expect(err).NotTo(HaveOccurred())
 			finished[item.ID] = at
 		}
@@ -575,7 +576,7 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		ctx, store, now := runtime()
 		claim := workqueue.RecurringClaim{
 			Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories",
-			Now: now, LeaseDuration: time.Minute,
+			Now: now, LeaseDuration: 2 * time.Minute,
 		}
 		item, claimed, err := store.ClaimRecurringWork(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
@@ -585,6 +586,7 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 
 		retrying, err := store.FinishRecurringWork(
 			ctx, item.ID, workqueue.RecurringCompletion{
+				Attempt: item.Attempt,
 				Failure: "GitHub unavailable", Retryable: true,
 			}, now.Add(time.Minute),
 		)
@@ -598,7 +600,7 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		Expect(claimed).To(BeTrue())
 		Expect(item.Attempt).To(Equal(2))
 		_, err = store.FinishRecurringWork(
-			ctx, item.ID, workqueue.RecurringCompletion{}, now.Add(3*time.Minute),
+			ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt}, now.Add(3*time.Minute),
 		)
 		Expect(err).NotTo(HaveOccurred())
 		next, err := store.NextQueueAvailability(
@@ -618,13 +620,14 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		ctx, store, now := runtime()
 		claim := workqueue.RecurringClaim{
 			Kind: workqueue.KindPendingCIGate, Title: "Hold pull requests until CI settles",
-			Now: now, LeaseDuration: time.Minute,
+			Now: now, LeaseDuration: 2 * time.Minute,
 		}
 		item, claimed, err := store.ClaimRecurringWork(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 
 		item, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+			Attempt: item.Attempt,
 			Failure: "GitHub rulesets require GitHub Pro", Blocked: true,
 		}, now.Add(time.Minute))
 		Expect(err).NotTo(HaveOccurred())
@@ -701,13 +704,13 @@ func declareQueueLeaseSpecs(runtime queueRuntime) {
 		account, _ := seedInstallation(ctx, store, now)
 		claim := workqueue.RecurringClaim{
 			Kind: workqueue.KindCatalogRefresh, Title: "Refresh the list of repositories",
-			Now: now, LeaseDuration: time.Minute,
+			Now: now, LeaseDuration: 2 * time.Minute,
 		}
 		first, claimed, err := store.ClaimRecurringWork(ctx, claim)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		_, err = store.FinishRecurringWork(
-			ctx, first.ID, workqueue.RecurringCompletion{}, now.Add(time.Minute),
+			ctx, first.ID, workqueue.RecurringCompletion{Attempt: first.Attempt}, now.Add(time.Minute),
 		)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -1156,7 +1159,7 @@ func seedDispatchOrderedQueue(
 		Expect(claimErr).NotTo(HaveOccurred())
 		Expect(claimed).To(BeTrue())
 		Expect(item.Kind).To(Equal(workqueue.KindReactionScan))
-		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{}, now)
+		_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt}, now)
 		Expect(err).NotTo(HaveOccurred())
 	}
 }

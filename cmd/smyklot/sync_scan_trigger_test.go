@@ -12,13 +12,15 @@ import (
 
 type scanOccurrenceStore struct {
 	storage.Store
-	finished string
-	readID   string
-	readErr  error
+	finished         string
+	completedAttempt int
+	readID           string
+	readErr          error
 }
 
-func (s *scanOccurrenceStore) FinishRecurringWork(_ context.Context, id string, _ workqueue.RecurringCompletion, _ time.Time) (workqueue.Item, error) {
+func (s *scanOccurrenceStore) FinishRecurringWork(_ context.Context, id string, completion workqueue.RecurringCompletion, _ time.Time) (workqueue.Item, error) {
 	s.finished = id
+	s.completedAttempt = completion.Attempt
 	return workqueue.Item{}, nil
 }
 
@@ -36,7 +38,7 @@ func TestMaintenanceSummaryReceivesClaimedOccurrence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if received.ID != item.ID || received.Attempt != 2 || received.State != workqueue.StateRunning || store.finished != item.ID {
+	if received.ID != item.ID || received.Attempt != 2 || received.State != workqueue.StateRunning || store.finished != item.ID || store.completedAttempt != item.Attempt {
 		t.Fatalf("received=%#v finished=%q", received, store.finished)
 	}
 }

@@ -577,7 +577,9 @@ func (s *Store) FinishRecurringWork(
 	if err != nil {
 		return workqueue.Item{}, noRows(err)
 	}
-	if item.SourceKind != queueSourceRecurring || item.State != workqueue.StateRunning {
+	if item.SourceKind != queueSourceRecurring || item.State != workqueue.StateRunning ||
+		completion.Attempt < 1 || item.Attempt != completion.Attempt ||
+		item.LeaseExpiresAt == nil || !item.LeaseExpiresAt.After(at) {
 		return workqueue.Item{}, storage.ErrConflict
 	}
 	state, eligible, blockedReason, summary, finished := s.recurringOutcome(

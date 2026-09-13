@@ -33,6 +33,7 @@ func declareConfigFileWorkloadSpecs(runtime queueRuntime) {
 			Expect(claimed).To(BeTrue())
 			Expect(item.Kind).To(Equal(workqueue.KindConfigFileSync))
 			retrying, err := store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+				Attempt: item.Attempt,
 				Failure: "GitHub is unavailable", Retryable: true,
 			}, now)
 			Expect(err).NotTo(HaveOccurred())
@@ -47,6 +48,7 @@ func declareConfigFileWorkloadSpecs(runtime queueRuntime) {
 			Expect(claimed).To(BeTrue())
 			Expect(item.Attempt).To(Equal(2))
 			_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+				Attempt:        item.Attempt,
 				SuccessSummary: "Configuration is up to date",
 			}, now.Add(time.Minute))
 			Expect(err).NotTo(HaveOccurred())
@@ -101,6 +103,7 @@ func declareConfigFileWindowSpecs(runtime queueRuntime) {
 			_, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
 			Expect(err).NotTo(HaveOccurred())
 			retrying, err := store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+				Attempt: item.Attempt,
 				Failure: "GitHub is unavailable", Retryable: true,
 			}, now)
 			Expect(err).NotTo(HaveOccurred())
@@ -148,6 +151,7 @@ func declareConfigFilePauseSpecs(runtime queueRuntime) {
 		policy, err = store.SaveQueuePolicy(ctx, policyChange(policy, account.ID, now))
 		Expect(err).NotTo(HaveOccurred())
 		paused, err := store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{
+			Attempt: item.Attempt,
 			Failure: "GitHub is unavailable", Retryable: true,
 		}, now)
 		Expect(err).NotTo(HaveOccurred())

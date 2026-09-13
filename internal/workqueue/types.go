@@ -458,6 +458,8 @@ type RecurringLease struct {
 }
 
 type RecurringCompletion struct {
+	// Attempt is the claimed lease generation. A previous worker cannot finish a newer attempt.
+	Attempt        int
 	Failure        string
 	SuccessSummary string
 	Retryable      bool
