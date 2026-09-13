@@ -35,10 +35,14 @@ type recoveryWorkerFixture struct {
 }
 
 func newRecoveryWorkerFixture() recoveryWorkerFixture {
+	return newRecoveryEventFixture(webhook.EventIssueComment, commandDelivery("/approve"))
+}
+
+func newRecoveryEventFixture(eventName string, payload []byte) recoveryWorkerFixture {
 	GinkgoHelper()
 	stub := newGitHubStub()
 	stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
-	stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
+	stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","default_branch":"main","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 	stub.members = `[{"id":42,"login":"bart"}]`
 	endpoint := httptest.NewServer(stub)
 	DeferCleanup(endpoint.Close)
@@ -78,13 +82,14 @@ func newRecoveryWorkerFixture() recoveryWorkerFixture {
 		TokenHash: hex.EncodeToString(digest[:]), AccountID: owner.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
 	}, 1)).To(Succeed())
 
-	payload := commandDelivery("/approve")
-	stub.observeIssueComment(payload)
+	if eventName == webhook.EventIssueComment {
+		stub.observeIssueComment(payload)
+	}
 	repository := storage.RepositoryID(githubtest.DefaultRepoID)
 	claim, err := service.store.ClaimDelivery(GinkgoT().Context(), storage.DeliveryClaim{
 		ClaimKey: "original-worker-recovery", DeliveryID: "original-worker-recovery",
 		TargetID: target.ID, RepositoryID: &repository, RepositoryFullName: "smykla-skalski/smyklot",
-		Event: webhook.EventIssueComment, Payload: payload, ClaimedAt: now,
+		Event: eventName, Payload: payload, ClaimedAt: now,
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(service.store.FailDelivery(GinkgoT().Context(), storage.DeliveryFailureChange{
@@ -92,19 +97,19 @@ func newRecoveryWorkerFixture() recoveryWorkerFixture {
 	})).To(Succeed())
 	operation, err := service.store.GetDeliveryOperation(GinkgoT().Context(), target.ID, claim.ID)
 	Expect(err).NotTo(HaveOccurred())
-	event, err := webhook.ParseIssueComment(payload)
-	Expect(err).NotTo(HaveOccurred())
+	var source pendingci.SourceRevisionRequest
+	if eventName == webhook.EventIssueComment {
+		event, parseErr := webhook.ParseIssueComment(payload)
+		Expect(parseErr).NotTo(HaveOccurred())
+		source = pendingci.SourceRevisionRequest{RepositoryID: repository, PullRequest: event.Issue.Number, CommentID: event.Comment.ID, Revision: event.Comment.UpdatedAt, Sequence: pendingci.CommentSequence(event.Action), SourceOrder: operation.SourceOrder, EventKey: "original-worker-recovery", ObservedAt: now}
+	}
 	request, err := json.Marshal(map[string]any{"expected_run_id": claim.ID, "expected_revision": operation.Revision, "request_key": "worker-recovery"})
 	Expect(err).NotTo(HaveOccurred())
 	return recoveryWorkerFixture{
 		service: service, stub: stub, target: target.ID, original: claim.ID,
 		cookie: &http.Cookie{Name: "smyklot_panel_session", Value: token},
 		path:   fmt.Sprintf("/panel/api/v1/targets/%s/deliveries/%d/recovery", target.ID, claim.ID), request: request,
-		source: pendingci.SourceRevisionRequest{
-			RepositoryID: repository, PullRequest: event.Issue.Number, CommentID: event.Comment.ID,
-			Revision: event.Comment.UpdatedAt, Sequence: pendingci.CommentSequence(event.Action),
-			SourceOrder: operation.SourceOrder, EventKey: "original-worker-recovery", ObservedAt: now,
-		},
+		source: source,
 	}
 }
 
