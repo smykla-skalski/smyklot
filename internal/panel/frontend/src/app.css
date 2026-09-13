@@ -208,18 +208,13 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   min-width: 0;
-  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8)) 0;
+  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8)) var(--space-8);
 }
 
-.workspace-content,
-.workspace > .foot {
+.workspace-content {
   margin-inline: auto;
   max-width: var(--content-max);
   width: 100%;
-}
-
-.workspace > .foot {
-  padding-bottom: var(--space-8);
 }
 
 .workspace-content {
@@ -1718,11 +1713,7 @@ code {
 
 @media (max-width: 38rem) {
   .workspace {
-    padding: var(--rhythm-pane-top-compact) var(--space-3) 0;
-  }
-
-  .workspace > .foot {
-    padding-bottom: var(--space-6);
+    padding: var(--rhythm-pane-top-compact) var(--space-3) var(--space-6);
   }
 
   .plate-head,

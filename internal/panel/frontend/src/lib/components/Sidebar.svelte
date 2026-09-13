@@ -69,9 +69,11 @@
 <script lang="ts">
   import { tick } from 'svelte';
 
+  import type { PanelBuild } from '../base';
   import { workspaceInitials } from '../workspace-mark.js';
   import AccountMenu from './AccountMenu.svelte';
   import Avatar from './Avatar.svelte';
+  import BuildInfo from './BuildInfo.svelte';
   import Icon from './Icon.svelte';
   import WorkspaceMenu from './WorkspaceMenu.svelte';
 
@@ -86,6 +88,7 @@
     chrome = null,
     onOpenSearch,
     searchLabel = 'Search',
+    build = { version: null, serviceHost: null },
   }: {
     /** The console's voice above the tree: "Workspace" / "Console". */
     kicker: string;
@@ -101,6 +104,7 @@
     onOpenSearch?: () => void;
     /** What the field searches: "Search this workspace". */
     searchLabel?: string;
+    build?: PanelBuild;
   } = $props();
 
   const consoleEntry = $derived(
@@ -508,6 +512,9 @@ it has to answer to the same fact.
       {/if}
     </div>
   {/if}
+  {#if build.version !== null || build.serviceHost !== null}
+    <div class="sidebar-build"><BuildInfo {build} /></div>
+  {/if}
   <!-- ONE TOOLTIP FOR THE WHOLE STRIP, and it is fixed. A name-on-hover written as a
        pseudo-element on each row is positioned inside the tree, which is the scroll
        region - so the row nearest either end had its name clipped away by the very
@@ -593,25 +600,21 @@ it has to answer to the same fact.
     scrollbar-width: thin;
   }
 
-  /* THE CLIPPED-EDGE CUE, bottom edge. Overlay scrollbars are not a reliable
-     sign that rows continue past the fold, so the tree wears a classic scroll
-     shadow: the shadow layer sticks to the scrollport's bottom edge (scroll)
-     while a same-coloured cover travels with the content (local) and blots it
-     out exactly when the content's end is on screen. Pure paint - no layout,
-     no listeners. The shade spans the rail because the bottom edge is the
-     sidebar's own, not any row's. */
+  /* The local cover stays opaque across the entire shadow before fading.
+     At the content end, including a tree that never overflows, it therefore
+     hides the cue completely. Both layers share the divider's inset edges. */
   .side > .tree {
     background-attachment: local, scroll;
     background-image:
-      linear-gradient(to top, var(--sidebar-bg), transparent),
+      linear-gradient(to top, var(--sidebar-bg) var(--space-3), transparent),
       linear-gradient(to top, var(--sidebar-scroll-shadow), transparent);
     background-position:
-      0 100%,
-      0 100%;
+      var(--space-3) 100%,
+      var(--space-3) 100%;
     background-repeat: no-repeat;
     background-size:
-      100% 20px,
-      100% 10px;
+      calc(100% - 2 * var(--space-3)) var(--space-8),
+      calc(100% - 2 * var(--space-3)) var(--space-3);
   }
 
   /* No end padding: the fold's right edge lands exactly on the rows' right
@@ -814,6 +817,14 @@ it has to answer to the same fact.
 
   .side-foot :global(.ws-mini) {
     border-radius: 50%;
+  }
+
+  .sidebar-build {
+    border-block-start: 1px solid var(--sidebar-border);
+    flex: none;
+    min-inline-size: 0;
+    padding-block-start: var(--space-4);
+    padding-inline: var(--tree-gutter);
   }
 
   .rail-badge {
@@ -1098,6 +1109,10 @@ it has to answer to the same fact.
      survives as a dot on its row's glyph. Only where the sidebar is in flow -
      below 64rem the drawer owns the narrow behaviour. */
   @media (min-width: 64.0625rem) {
+    :global(.app-shell.sidebar-collapsed) .sidebar-build {
+      display: none;
+    }
+
     :global(.app-shell.sidebar-collapsed) .side {
       /* 12+11+1px border = rows an even 48, so a 16px glyph centres on a
          whole pixel. */
@@ -1112,11 +1127,11 @@ it has to answer to the same fact.
        would dwarf the narrow column it annotates. */
     :global(.app-shell.sidebar-collapsed) .side > .tree {
       background-position:
-        0 100%,
+        12px 100%,
         12px 100%;
       background-size:
-        100% 20px,
-        calc(100% - 23px) 10px;
+        calc(100% - 23px) var(--space-8),
+        calc(100% - 23px) var(--space-3);
       margin-inline: -12px -11px;
       padding-inline: 12px 11px;
     }

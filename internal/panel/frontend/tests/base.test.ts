@@ -70,7 +70,7 @@ describe('panel build metadata', () => {
 });
 
 /**
- * The panel shipped without a footer because the server rewrote the frontend's
+ * The panel shipped without build details because the server rewrote the frontend's
  * own copy of a sentinel into the value that sentinel was there to detect, so
  * `readPanelBuild` reported every release as having no version and no host.
  *

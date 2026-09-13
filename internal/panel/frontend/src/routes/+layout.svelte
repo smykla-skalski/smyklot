@@ -55,7 +55,6 @@
 
   import Button from '#lib/components/Button.svelte';
   import ErrorPage from '#lib/components/ErrorPage.svelte';
-  import PageFooter from '#lib/components/PageFooter.svelte';
   import Plate from '#lib/components/Plate.svelte';
   import Rail from '#lib/components/Rail.svelte';
   import FindPalette, { type FindEntry } from '#lib/components/FindPalette.svelte';
@@ -1245,6 +1244,7 @@
 
       {#if showSidebar}
         <Sidebar
+          {build}
           kicker={session.isRootMode ? 'Console' : 'Workspace'}
           title={session.isRootMode
             ? 'Operations'
@@ -1361,7 +1361,6 @@
             onOpenProblem={openRootSettingsProblem}
           />
         {/if}
-        <PageFooter {build} />
       </div>
     </main>
   {/if}

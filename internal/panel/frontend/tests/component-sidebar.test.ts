@@ -52,7 +52,11 @@ const ENTRIES: SidebarEntry[] = [
   },
 ];
 
-function mount(entries: SidebarEntry[] = ENTRIES, collapsed = false) {
+function mount(
+  entries: SidebarEntry[] = ENTRIES,
+  collapsed = false,
+  build = { version: '1.56.0' as string | null, serviceHost: 'smyklot.com' as string | null },
+) {
   return render(Sidebar, {
     kicker: 'Workspace',
     title: 'Acme',
@@ -60,6 +64,7 @@ function mount(entries: SidebarEntry[] = ENTRIES, collapsed = false) {
     collapsed,
     onToggleCollapsed: vi.fn(),
     onSelectRow: vi.fn(),
+    build,
   });
 }
 
@@ -73,6 +78,43 @@ describe('Sidebar tree [Component]', () => {
   });
 
   afterEach(() => vi.unstubAllGlobals());
+
+  it('places build information after navigation without a page footer landmark', () => {
+    const { container } = mount();
+    const information = screen.getByRole('group', { name: 'Build information' });
+    expect(information.closest('aside')).toBe(screen.getByRole('complementary'));
+    expect(
+      information.compareDocumentPosition(screen.getByRole('navigation')) &
+        Node.DOCUMENT_POSITION_PRECEDING,
+    ).toBeTruthy();
+    expect(information.textContent).toMatch(/Panel\s*1\.56\.0/u);
+    expect(information.textContent).toMatch(/Service\s*smyklot\.com/u);
+    expect(container.querySelector('footer')).toBeNull();
+  });
+
+  it.each([
+    { version: null, serviceHost: null },
+    { version: '1.56.0', serviceHost: null },
+    { version: null, serviceHost: 'service.example.com' },
+  ])('renders only known build information: %j', (build) => {
+    const { container } = mount(ENTRIES, false, build);
+    const values = [...container.querySelectorAll('.build-info dd')].map(
+      (node) => node.textContent,
+    );
+    expect(values).toEqual([build.version, build.serviceHost].filter((value) => value !== null));
+    expect(container.querySelector('.sidebar-build') !== null).toBe(values.length > 0);
+  });
+
+  it('keeps long build values available as exact accessible text', () => {
+    const build = { version: 'release-' + 'a'.repeat(160), serviceHost: 'host-' + 'b'.repeat(160) };
+    const { container } = mount(ENTRIES, false, build);
+    const values = [...container.querySelectorAll('.build-info dd')];
+    expect(values.map((node) => node.textContent)).toEqual([build.version, build.serviceHost]);
+    expect(values.map((node) => node.getAttribute('title'))).toEqual([
+      build.version,
+      build.serviceHost,
+    ]);
+  });
 
   it('marks the row that holds unsaved configuration, and only that row', () => {
     mount();
