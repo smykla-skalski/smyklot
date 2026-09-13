@@ -403,6 +403,24 @@ beside the affected repository. Change details open over this view, preserving c
                                 : 'View pull request'}</Link
                             ></span
                           >{/if}
+                        {#if kind === 'files' && cell.state === 'declined'}
+                          <span class="observation-reason band-trim">
+                            To use the same changes, reopen the pull request on GitHub if that
+                            option is available. To propose different content, update the shared
+                            files and save.
+                          </span>
+                          <span
+                            ><Link
+                              href={sectionHref('files')}
+                              onclick={(event) => open(event, 'files')}>Review shared files</Link
+                            ></span
+                          >
+                          <span class="observation-reason band-trim">
+                            {canControl && !ongoing
+                              ? 'After updating GitHub, use Check now to refresh this status.'
+                              : 'The next sync check will refresh this status after GitHub changes.'}
+                          </span>
+                        {/if}
                       </dd>
                     </div>
                   {/each}

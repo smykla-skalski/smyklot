@@ -175,6 +175,61 @@ describe('desktop repository observation evidence', () => {
               fullPage: true,
             });
           }
+          if (scene.name === 'declined') {
+            const detail = page.locator('.sync-repo-detail');
+            expect(await detail.innerText()).toContain('reopen the pull request on GitHub');
+            expect(await detail.innerText()).toContain('use Check now');
+            const captureRecovery = async (state: string) => {
+              await page.mouse.move(1900, 20);
+              if (directory)
+                await page.screenshot({
+                  path: join(directory, `F33-recovery-${state}-${colorScheme}.png`),
+                  fullPage: true,
+                });
+            };
+            await captureRecovery('guidance');
+            await detail.getByRole('link', { name: 'Review shared files', exact: true }).click();
+            await page.getByRole('heading', { name: 'Shared files', exact: true }).waitFor();
+            expect(new URL(page.url()).pathname).toMatch(/\/sync\/files$/u);
+            await page.goBack();
+            await page.getByRole('heading', { name: 'Sync status', exact: true }).waitFor();
+            await page
+              .getByRole('button', { name: 'api-gateway sync details', exact: true })
+              .click();
+            let requests = 0;
+            await page.route('**/api/v1/targets/*/sync/run-now', (route) => {
+              requests++;
+              expect(route.request().method()).toBe('POST');
+              expect(route.request().postDataJSON().reason).toBe('Check sync from the status view');
+              return route.fulfill({ json: { status: 'scan_queued' } });
+            });
+            await page.getByRole('button', { name: 'Check now', exact: true }).click();
+            await page
+              .getByText('Repository check queued. Results will update when it finishes.', {
+                exact: true,
+              })
+              .waitFor();
+            expect(requests).toBe(1);
+            await captureRecovery('queued');
+            status.repositories[0]!.cells.files = {
+              state: 'in_step',
+              observed_outcome: 'matched',
+              observed_at: new Date().toISOString(),
+            };
+            status.latest_observed_at = status.repositories[0]!.cells.files.observed_at!;
+            await page.reload();
+            await page
+              .getByRole('button', { name: 'api-gateway sync details', exact: true })
+              .click();
+            expect(await page.locator('.sync-repo-detail').innerText()).not.toContain(
+              'reopen the pull request',
+            );
+            expect(await page.locator('.sync-repo-detail').innerText()).not.toContain(
+              'Pull request declined',
+            );
+            await captureRecovery('refreshed');
+            await page.unroute('**/api/v1/targets/*/sync/run-now');
+          }
           await page.unroute('**/api/v1/targets/*/sync/status');
         }
       } finally {

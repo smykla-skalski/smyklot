@@ -459,7 +459,7 @@
       if (response.plan !== undefined)
         queryClient.setQueryData(['sync-plan', targetId], { plan: response.plan });
       if (response.status === 'scan_queued')
-        runNotice = 'Checking repositories · changes will sync automatically';
+        runNotice = 'Repository check queued. Results will update when it finishes.';
       if (response.status === 'plan_dispatched') runNotice = 'Sync queued for immediate dispatch';
       if (response.status === 'approval_required')
         runNotice = 'An earlier sync needs a one-time decision · open Review changes';
