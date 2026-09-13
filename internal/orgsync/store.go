@@ -166,12 +166,20 @@ type RepositoryPathScan struct {
 	Partial      bool
 }
 
+// CheckReference fences plan creation to the queue occurrence that computed it.
+type CheckReference struct {
+	QueueID string
+	Attempt int
+}
+
 // PlanCreate records a computed plan and its actions together.
 //
 // One call rather than a plan then its actions, because a plan with no actions
 // yet is a plan another caller can see and approve. The database holds one live
 // plan per installation, and a half-written one would spend that slot.
 type PlanCreate struct {
+	OriginCheck *CheckReference
+
 	ID       string
 	TargetID string
 	Trigger  Trigger

@@ -57,6 +57,21 @@ func (s *Engine) PlanInstallationWithSummary(
 	targetID string,
 	trigger orgsync.Trigger,
 ) (string, error) {
+	return s.planInstallation(ctx, client, targetID, trigger, nil)
+}
+
+// PlanInstallationForCheck binds any resulting plan to this claimed occurrence.
+func (s *Engine) PlanInstallationForCheck(
+	ctx context.Context, client *github.Client, targetID string,
+	trigger orgsync.Trigger, check orgsync.CheckReference,
+) (string, error) {
+	return s.planInstallation(ctx, client, targetID, trigger, &check)
+}
+
+func (s *Engine) planInstallation(
+	ctx context.Context, client *github.Client, targetID string,
+	trigger orgsync.Trigger, check *orgsync.CheckReference,
+) (string, error) {
 	configs, err := s.store.ListSyncConfigs(ctx, targetID)
 	if err != nil {
 		return "", fmt.Errorf("read sync configuration: %w", err)
@@ -138,15 +153,16 @@ func (s *Engine) PlanInstallationWithSummary(
 		return "", err
 	}
 	plan, err := s.store.CreateSyncPlan(ctx, orgsync.PlanCreate{
-		ID:        newSyncPlanID(),
-		TargetID:  targetID,
-		Trigger:   trigger,
-		ActorID:   syncActor(active),
-		Digest:    scopeDigest(configs, held, s.formattingPolicy()),
-		Actions:   scan.actions,
-		Now:       now,
-		ExpiresAt: now.Add(approvalTTL),
-		Automatic: true,
+		OriginCheck: check,
+		ID:          newSyncPlanID(),
+		TargetID:    targetID,
+		Trigger:     trigger,
+		ActorID:     syncActor(active),
+		Digest:      scopeDigest(configs, held, s.formattingPolicy()),
+		Actions:     scan.actions,
+		Now:         now,
+		ExpiresAt:   now.Add(approvalTTL),
+		Automatic:   true,
 	})
 	if err != nil {
 		// Another caller won the slot between the read above and this write.

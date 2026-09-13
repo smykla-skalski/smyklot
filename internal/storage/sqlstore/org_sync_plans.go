@@ -169,6 +169,10 @@ func (s *Store) CreateSyncPlan(
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	if err := s.linkSyncCheckResult(ctx, tx, create); err != nil {
+		return orgsync.Plan{}, err
+	}
+
 	counts := countActions(create.Actions)
 
 	_, err = tx.ExecContext(ctx, `

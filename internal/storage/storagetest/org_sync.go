@@ -311,6 +311,21 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("retains the exact sync check result across retries and successor occurrences", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckResult(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
+		It("fences sync check results by target, attempt and live lease", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckFence(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
+		It("rolls back the sync check result when plan creation conflicts", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncCheckRollback(ctx, store, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"), now)
+		})
 		It("pages sync history without shifting when newer plans arrive", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)

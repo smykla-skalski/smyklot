@@ -2,6 +2,7 @@ package apply
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -71,6 +72,7 @@ type mixedScanStore struct {
 	freshCheckStore
 	created  orgsync.PlanCreate
 	conflict bool
+	failure  error
 }
 
 func (*mixedScanStore) ListRepositories(context.Context, string) ([]storage.Repository, error) {
@@ -79,6 +81,9 @@ func (*mixedScanStore) ListRepositories(context.Context, string) ([]storage.Repo
 
 func (s *mixedScanStore) CreateSyncPlan(_ context.Context, create orgsync.PlanCreate) (orgsync.Plan, error) {
 	s.created = create
+	if s.failure != nil {
+		return orgsync.Plan{}, s.failure
+	}
 	if s.conflict {
 		return orgsync.Plan{}, storage.ErrConflict
 	}
@@ -105,9 +110,12 @@ func TestQueuedChangesDoNotHideOtherFailedChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	store := &mixedScanStore{freshCheckStore: freshCheckStore{saved: orgsync.Config{Kind: orgsync.KindLabels, Enabled: true, Digest: "saved", Document: []byte(`{"labels":[{"name":"bug","color":"ffffff"}]}`)}}}
-	summary, err := New(store, nil, "").PlanInstallationWithSummary(t.Context(), client, "target", orgsync.TriggerManual)
+	summary, err := New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "claimed-check", Attempt: 2})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if store.created.OriginCheck == nil || store.created.OriginCheck.QueueID != "claimed-check" || store.created.OriginCheck.Attempt != 2 {
+		t.Fatalf("origin check lost: %#v", store.created.OriginCheck)
 	}
 	if len(store.created.Actions) != 1 || store.created.Actions[0].RepositoryID != "ready" {
 		t.Fatalf("planned actions: %#v", store.created.Actions)
@@ -119,6 +127,12 @@ func TestQueuedChangesDoNotHideOtherFailedChecks(t *testing.T) {
 	summary, err = New(store, nil, "").PlanInstallationWithSummary(t.Context(), client, "target", orgsync.TriggerManual)
 	if err != nil || !strings.Contains(summary, "A live sync plan is already available") || !strings.Contains(summary, "1 check failed") {
 		t.Fatalf("concurrent plan hid observed failure: %q, %v", summary, err)
+	}
+	store.conflict = false
+	store.failure = orgsync.ErrStaleCheck
+	_, err = New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "stale-check", Attempt: 1})
+	if !errors.Is(err, orgsync.ErrStaleCheck) {
+		t.Fatalf("stale check was treated as a competing live plan: %v", err)
 	}
 }
 

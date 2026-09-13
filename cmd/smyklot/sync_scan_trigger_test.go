@@ -50,3 +50,22 @@ func TestSyncScanDoesNotGuessIntentWhenHistoryReadFails(t *testing.T) {
 		t.Fatalf("err=%v occurrence=%q", err, store.readID)
 	}
 }
+
+func TestSyncScanRetryUsesItsRetainedResult(t *testing.T) {
+	service := &server{}
+	summary, err := service.runSyncScan(t.Context(), nil, "target", workqueue.Item{
+		ID: "check", Kind: workqueue.KindSyncScan, Attempt: 2,
+		Details: []byte(`{"result_plan_id":"original-plan"}`),
+	})
+	if err != nil || summary == "" {
+		t.Fatalf("retained result was not reused: %q, %v", summary, err)
+	}
+}
+
+func TestSyncScanRejectsMalformedRetainedResult(t *testing.T) {
+	service := &server{}
+	_, err := service.runSyncScan(t.Context(), nil, "target", workqueue.Item{Details: []byte(`{"result_plan_id":123}`)})
+	if err == nil {
+		t.Fatal("malformed result allowed a new scan")
+	}
+}
