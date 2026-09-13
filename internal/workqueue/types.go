@@ -478,6 +478,7 @@ type Store interface {
 	ListWorkQueue(context.Context, Filter) (Page, error)
 	GetQueueItem(context.Context, string) (Item, error)
 	ListQueueEvents(context.Context, string, int) ([]Event, error)
+	QueueRunWasRequested(context.Context, string) (bool, error)
 	CreateQueueItem(context.Context, Item) (Item, error)
 	ApplyQueueAction(context.Context, string, ItemAction) (Item, error)
 	ClaimNextRecurringWork(context.Context, RecurringLease) (Item, bool, error)

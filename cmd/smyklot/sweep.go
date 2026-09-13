@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
-	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/config"
@@ -439,10 +438,8 @@ func (s *server) reconcileInstallationSync(
 
 	_, err := s.runRecurringWorkWithSummary(ctx, recurringWork{
 		kind: workqueue.KindSyncScan, targetID: &targetID, title: "Check which repositories are in step",
-	}, func() (string, error) {
-		return s.sync.PlanInstallationWithSummary(
-			ctx, client, targetID, orgsync.TriggerReconcile,
-		)
+	}, func(item workqueue.Item) (string, error) {
+		return s.runSyncScan(ctx, client, targetID, item)
 	})
 	if err != nil {
 		return err

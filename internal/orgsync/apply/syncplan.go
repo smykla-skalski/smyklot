@@ -100,7 +100,7 @@ func (s *Engine) PlanInstallationWithSummary(
 	// Scoped by what is switched on rather than by what can act, so a kind
 	// waiting on a permission keeps its refusals rather than having them read
 	// as nothing being wrong.
-	scopes := syncScopesFor(switchedOn, held, s.formattingPolicy())
+	scopes := syncScopesFor(switchedOn, held, s.formattingPolicy(), trigger)
 
 	// Before the early returns below, and that is the whole reason this runs
 	// here: a refusal is only worth keeping while the planner is still looking,
@@ -336,14 +336,17 @@ func syncScopesFor(
 	active []orgsync.Config,
 	held syncInventory,
 	formatting appconfig.FormattingPolicy,
+	trigger orgsync.Trigger,
 ) map[orgsync.Kind]syncScope {
 	now := time.Now().UTC()
 	scopes := make(map[orgsync.Kind]syncScope, len(active))
 
 	for _, config := range active {
-		scopes[config.Kind] = newSyncScope(
+		scope := newSyncScope(
 			config, held.overrides, held.applied, now, formatting, held.target.ConfigPatch,
 		)
+		scope.fresh = trigger == orgsync.TriggerManual
+		scopes[config.Kind] = scope
 	}
 
 	return scopes
@@ -531,6 +534,7 @@ const RecheckInterval = orgsync.RecheckInterval
 
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
+	fresh       bool
 	config      orgsync.Config
 	overrides   map[string]*orgsync.RepositoryOverride
 	applied     map[string]orgsync.RepositoryState
@@ -599,6 +603,12 @@ func (s syncScope) watches(repository storage.Repository) bool {
 func (s syncScope) covers(repository storage.Repository) bool {
 	if !s.watches(repository) {
 		return false
+	}
+
+	// Explicit checks must observe GitHub again, including a proposal somebody
+	// reopened or merged since the last scheduled observation. Scope still applies.
+	if s.fresh {
+		return true
 	}
 
 	// A refusal is recorded with no digest, which is what keeps it out of this:

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/bot"
-	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
 	"github.com/smykla-skalski/smyklot/pkg/github"
@@ -26,7 +25,7 @@ func (s *server) maintainPanel(ctx context.Context) {
 type maintenanceJob struct {
 	work                 recurringWork
 	run                  func() error
-	runWithSummary       func() (string, error)
+	runWithSummary       func(workqueue.Item) (string, error)
 	coordinateRepository bool
 	failureMessage       string
 }
@@ -209,15 +208,13 @@ func (s *server) targetMaintenanceJobs(
 	return []maintenanceJob{
 		{
 			work: recurringWork{kind: workqueue.KindSyncScan, targetID: &targetID, title: "Check which repositories are in step"},
-			runWithSummary: func() (string, error) {
+			runWithSummary: func(item workqueue.Item) (string, error) {
 				client, err := s.queuedInstallationClient(installationID)
 				if err != nil {
 					return "", err
 				}
 
-				return s.sync.PlanInstallationWithSummary(
-					ctx, client, targetID, orgsync.TriggerReconcile,
-				)
+				return s.runSyncScan(ctx, client, targetID, item)
 			},
 			failureMessage: "organization sync scan failed",
 		},
@@ -495,7 +492,7 @@ func (s *server) runClaimedMaintenanceJob(
 ) error {
 	run, runWithSummary := s.coordinatedMaintenanceRun(ctx, job)
 	if runWithSummary == nil {
-		runWithSummary = func() (string, error) { return "", run() }
+		runWithSummary = func(workqueue.Item) (string, error) { return "", run() }
 	}
 
 	return s.runClaimedRecurringWorkWithSummary(ctx, item, job.work, runWithSummary)
@@ -504,17 +501,17 @@ func (s *server) runClaimedMaintenanceJob(
 func (s *server) coordinatedMaintenanceRun(
 	ctx context.Context,
 	job maintenanceJob,
-) (func() error, func() (string, error)) {
+) (func() error, func(workqueue.Item) (string, error)) {
 	run := job.run
 	runWithSummary := job.runWithSummary
 	if job.coordinateRepository && job.work.repositoryID != nil {
 		if runWithSummary != nil {
 			original := runWithSummary
-			runWithSummary = func() (string, error) {
+			runWithSummary = func(item workqueue.Item) (string, error) {
 				var summary string
 				err := s.pendingCICoordinator.Exclusive(ctx, *job.work.repositoryID, func() error {
 					var runErr error
-					summary, runErr = original()
+					summary, runErr = original(item)
 
 					return runErr
 				})

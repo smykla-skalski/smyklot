@@ -25,7 +25,7 @@ func (s *server) configurationFileMaintenanceJob(
 	}
 	return maintenanceJob{
 		work: work,
-		runWithSummary: func() (string, error) {
+		runWithSummary: func(workqueue.Item) (string, error) {
 			return s.reconcileQueuedConfigurationFile(ctx, targetID, repositoryID, installationID)
 		},
 		failureMessage: "configuration file synchronization failed",

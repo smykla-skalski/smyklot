@@ -78,7 +78,7 @@ func TestConfigFileWorkRechecksOptInBeforeGitHub(t *testing.T) {
 	service := &server{store: store}
 	for _, scope := range []string{"", repositoryID, "removed-repository"} {
 		// No credential provider: touching GitHub would panic instead of silently passing.
-		summary, err := service.configurationFileMaintenanceJob(t.Context(), targetID, scope, 1).runWithSummary()
+		summary, err := service.configurationFileMaintenanceJob(t.Context(), targetID, scope, 1).runWithSummary(workqueue.Item{})
 		if err != nil || summary != "Configuration file sync is off" {
 			t.Fatalf("disabled %q returned %q, %v", scope, summary, err)
 		}
