@@ -1735,7 +1735,7 @@ async function handle(
         await readBody<unknown>(req),
         Date.now(),
       );
-      if (result.status === 400 || result.status === 409) {
+      if (result.status === 400 || result.status === 404 || result.status === 409) {
         throw new MockApiError(result.status, result.body.code, result.body.message);
       }
       respond(res, result.status, result.body);

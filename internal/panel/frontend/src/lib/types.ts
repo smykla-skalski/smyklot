@@ -1707,14 +1707,24 @@ export interface SyncPlan {
 }
 
 export type SyncRunNowInput = { reason: string } & (
-  { action: 'check' } | { action: 'dispatch'; plan_id: string; expected_revision: number }
+  | { action: 'check'; request_key?: string }
+  | { action: 'dispatch'; plan_id: string; expected_revision: number }
 );
 
 export interface SyncRunNowResponse {
   status:
-    'scan_queued' | 'changes_pending' | 'approval_required' | 'already_running' | 'plan_dispatched';
+    | 'scan_queued'
+    | 'check_accepted'
+    | 'changes_pending'
+    | 'approval_required'
+    | 'already_running'
+    | 'plan_dispatched';
   plan?: SyncPlan;
   queue_item?: QueueItem;
+  /** Acceptance identity, not a snapshot of current queue state. */
+  check_id?: string;
+  /** True when receipt lookup recovered existing acceptance before submission. */
+  repeated?: boolean;
 }
 
 export interface SyncCheckObservation {

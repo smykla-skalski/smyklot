@@ -1,9 +1,9 @@
 import { recordMockSyncEvent } from './sync-queue.js';
 import { randomUUID } from 'node:crypto';
-import type { MockState } from './fixtures.js';
+import { VIEWER, type MockState } from './fixtures.js';
 import type { QueueItem, SyncPlan, SyncRunNowResponse } from '../src/lib/types.js';
 
-type State = Pick<MockState, 'queue' | 'syncPlans' | 'syncQueueEvents'>;
+type State = Pick<MockState, 'queue' | 'syncPlans' | 'syncQueueEvents' | 'syncCheckReceipts'>;
 type Reply =
   | { status: 200 | 202; body: SyncRunNowResponse }
   | { status: 400 | 404 | 409; body: { code: string; message: string } };
@@ -24,7 +24,13 @@ export function mockLiveSyncPlan(state: State, targetId: string): SyncPlan | nul
 }
 
 /** Mirror explicit check and exact-plan dispatch without changing request intent. */
-export function mockSyncRunNow(state: State, targetId: string, input: unknown, now: number): Reply {
+export function mockSyncRunNow(
+  state: State,
+  targetId: string,
+  input: unknown,
+  now: number,
+  actorId = VIEWER.id,
+): Reply {
   if (
     input === null ||
     typeof input !== 'object' ||
@@ -34,6 +40,9 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
   ) {
     return { status: 400, body: { code: 'invalid_request', message: 'run now requires a reason' } };
   }
+  const key = 'request_key' in input ? (input.request_key ?? '') : '';
+  if (typeof key !== 'string' || key.trim() !== key || new TextEncoder().encode(key).length > 200)
+    return { status: 400, body: { code: 'invalid_request', message: 'invalid check request key' } };
   if (
     !('action' in input) ||
     (input.action !== 'check' && input.action !== 'dispatch') ||
@@ -41,7 +50,8 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
       (('plan_id' in input && input.plan_id !== '') ||
         ('expected_revision' in input && input.expected_revision !== 0))) ||
     (input.action === 'dispatch' &&
-      (!('plan_id' in input) ||
+      (key !== '' ||
+        !('plan_id' in input) ||
         typeof input.plan_id !== 'string' ||
         !input.plan_id.trim() ||
         input.plan_id.trim() !== input.plan_id ||
@@ -55,6 +65,17 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
     };
   }
   const reason = input.reason.trim();
+  const receiptKey = JSON.stringify([actorId, key]);
+  if (input.action === 'check' && key !== '') {
+    const receipt = state.syncCheckReceipts.get(receiptKey);
+    if (receipt) {
+      if (receipt.targetId !== targetId || receipt.reason !== reason) return conflict();
+      return {
+        status: 200,
+        body: { status: 'check_accepted', check_id: receipt.checkId, repeated: true },
+      };
+    }
+  }
   const plan = mockLiveSyncPlan(state, targetId);
   if (input.action === 'dispatch') {
     const requested = state.syncPlans.get(targetId);
@@ -128,10 +149,12 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
     state.queue.push(item);
     recordMockSyncEvent(state, item, 'created', item.title, at);
   }
-  return {
-    status: 202,
-    body: { status: 'scan_queued', queue_item: request(state, item, reason, now) },
-  };
+  const accepted = request(state, item, reason, now);
+  if (key !== '') {
+    state.syncCheckReceipts.set(receiptKey, { targetId, reason, checkId: accepted.id });
+    return { status: 202, body: { status: 'check_accepted', check_id: accepted.id } };
+  }
+  return { status: 202, body: { status: 'scan_queued', queue_item: accepted } };
 }
 
 function conflict(): Reply {

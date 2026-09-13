@@ -234,6 +234,7 @@ export interface MockState {
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncQueueEvents: Map<string, QueueEvent[]>;
+  syncCheckReceipts: Map<string, { targetId: string; reason: string; checkId: string }>;
   syncCheckObservations: Map<string, SyncCheckObservation[]>;
   syncPlans: Map<string, SyncPlan>;
   syncHistory: Map<string, SyncPlan[]>;
@@ -784,6 +785,7 @@ export function seed(
       ],
     ]),
     syncQueueEvents: new Map(),
+    syncCheckReceipts: new Map(),
     syncCheckObservations: new Map(),
     syncHistory: new Map([
       [
