@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.55.0](https://github.com/smykla-skalski/smyklot/compare/v1.54.2...v1.55.0) (2026-09-13)
+
+### Features
+
+* **formatting:** cap inline collection length ([#386](https://github.com/smykla-skalski/smyklot/issues/386)) ([b5b0d40](https://github.com/smykla-skalski/smyklot/commit/b5b0d40da5502a8026f10edc5199f199ef4d9970))
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/oauth2 to v0.37.0 ([#374](https://github.com/smykla-skalski/smyklot/issues/374)) ([96c4599](https://github.com/smykla-skalski/smyklot/commit/96c4599245f87ee74b371e27dc4c9deaec82964a))
+
 ## [1.54.2](https://github.com/smykla-skalski/smyklot/compare/v1.54.1...v1.54.2) (2026-09-11)
 
 ### Bug Fixes
