@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { deliveryNextStep, words } from '#lib/queue-words.js';
   import { formatDateTime } from '#lib/format.js';
   import type { QueueDetail, QueueItem } from '#lib/types.js';
   import { workloadTitle } from '#lib/workloads.js';
@@ -12,6 +13,7 @@
     error,
     onClose,
     onRetry,
+    onInspectItem,
   }: {
     open: boolean;
     detail: QueueDetail | null;
@@ -19,11 +21,8 @@
     error: string;
     onClose: () => void;
     onRetry?: () => void;
+    onInspectItem?: (id: string) => void;
   } = $props();
-
-  function words(value: string): string {
-    return value.replaceAll('_', ' ').replace(/^./, (letter) => letter.toUpperCase());
-  }
 
   /** Seconds, because this dialog is where two events are put in order. */
   const absolute = (value: string, timeZone?: string): string =>
@@ -61,12 +60,44 @@ not.
     <p class="detail-message detail-error" role="alert">{error}</p>
   {:else if detail !== null}
     <dl class="facts">
+      {#if detail.item.kind === 'webhook_delivery'}
+        {@const nextStep = deliveryNextStep(detail.item, detail.delivery)}
+        <div class="next-step">
+          <dt>
+            {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
+              ? 'Latest execution'
+              : 'What happens next'}
+          </dt>
+          <dd>
+            {nextStep.message}
+            {#if nextStep.eligibleAt}
+              <span class="attempt-time"
+                >Eligible from&nbsp;<time datetime={nextStep.eligibleAt}
+                  >{absolute(nextStep.eligibleAt)}</time
+                >. The actual start depends on worker availability.</span
+              >
+            {/if}
+            {#if detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id && onInspectItem}
+              {@const latestId = detail.delivery.current.queue.id}
+              <div class="latest-run">
+                <Button tone="default" onclick={() => onInspectItem?.(latestId)}
+                  >Inspect latest run</Button
+                >
+              </div>
+            {/if}
+          </dd>
+        </div>
+      {/if}
       <div>
         <dt>Job</dt>
         <dd>{workloadTitle(detail.item.kind)}</dd>
       </div>
       <div>
-        <dt>State</dt>
+        <dt>
+          {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
+            ? 'Original run state'
+            : 'State'}
+        </dt>
         <dd>{words(detail.item.state)}</dd>
       </div>
       <div>
@@ -204,12 +235,19 @@ not.
     margin: 0;
     overflow: hidden;
   }
-  .facts div {
+  .facts > div {
     background: var(--control-bg);
     display: grid;
     gap: var(--space-1);
     min-width: 0;
     padding: var(--space-3);
+  }
+  .facts .next-step {
+    grid-column: 1 / -1;
+  }
+  .attempt-time {
+    display: block;
+    margin-top: var(--space-2);
   }
   dt {
     color: var(--text-muted);
@@ -222,6 +260,9 @@ not.
     font-size: 0.78rem;
     margin: 0;
     overflow-wrap: anywhere;
+  }
+  .latest-run {
+    margin-top: var(--space-3);
   }
   .workload-detail,
   .timeline {

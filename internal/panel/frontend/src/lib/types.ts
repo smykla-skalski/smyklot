@@ -480,7 +480,19 @@ export interface QueueEvent {
   created_at: string;
 }
 
+export interface DeliveryOperation {
+  retained: boolean;
+  revision: number;
+  current: {
+    id: number;
+    status: 'running' | 'failed' | 'succeeded';
+    payload_available: boolean;
+    queue: { id: string; state: QueueState; eligible_at: string } | null;
+  } | null;
+}
+
 export interface QueueDetail {
+  delivery?: DeliveryOperation;
   item: QueueItem;
   events: QueueEvent[];
 }

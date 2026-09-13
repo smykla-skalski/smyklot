@@ -17,15 +17,34 @@
     onClose: () => void;
   } = $props();
 
+  let followed = $state<{ origin: string; id: string } | null>(null);
+  const currentId = $derived(followed?.origin === itemId ? followed.id : itemId);
+  function close() {
+    followed = null;
+    onClose();
+  }
+
   const query = createQuery(() => ({
-    queryKey: queueDetailKey(targetId, itemId ?? ''),
+    queryKey: queueDetailKey(targetId, currentId ?? ''),
     queryFn: () => {
-      if (itemId === null) throw new Error('No queue item selected');
-      return fetchItem(itemId);
+      if (currentId === null) throw new Error('No queue item selected');
+      return fetchItem(currentId);
     },
     enabled: itemId !== null,
     staleTime: 0,
     retry: false,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const state =
+        data?.delivery?.current?.queue?.state ??
+        data?.delivery?.current?.status ??
+        data?.item.state;
+      return itemId !== null &&
+        state !== undefined &&
+        !['failed', 'cancelled', 'superseded', 'succeeded'].includes(state)
+        ? 15_000
+        : false;
+    },
   }));
   const unavailable = $derived(
     query.error instanceof PanelApiError && [401, 403, 404].includes(query.error.status),
@@ -58,5 +77,8 @@ to the original context. Temporary failures offer an explicit retry.
   loading={query.isFetching}
   {error}
   onRetry={error !== '' && !unavailable ? () => void query.refetch() : undefined}
-  {onClose}
+  onClose={close}
+  onInspectItem={(id) => {
+    if (itemId !== null) followed = { origin: itemId, id };
+  }}
 />

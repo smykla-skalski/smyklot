@@ -115,6 +115,92 @@ describe('desktop failure queue record lifecycle', () => {
     }
   });
 
+  it('follows the latest execution while retaining the original failure', async () => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    try {
+      await visit(page, addressOf(panel, 'root/history/failures'), { ready: '.object-row .pill' });
+      await page.route(/\/api\/v1\/root\/queue\/[^/?]+$/, async (route) => {
+        const response = await route.fetch();
+        const detail = await response.json();
+        if (detail.item.id === 'delivery:failure-1') {
+          detail.delivery = {
+            retained: true,
+            revision: 3,
+            current: {
+              id: 2,
+              status: 'running',
+              payload_available: true,
+              queue: {
+                id: 'delivery:failure-2',
+                state: 'running',
+                eligible_at: detail.item.eligible_at,
+              },
+            },
+          };
+        } else {
+          detail.item.state = 'running';
+        }
+        await route.fulfill({ json: detail });
+      });
+      const inspect = page.getByRole('button', { name: 'Inspect queue item' }).first();
+      await inspect.click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByText('A worker is processing this delivery now.').waitFor();
+      expect(await dialog.locator('dd').allTextContents()).toContain('Failed');
+      await dialog.getByRole('button', { name: 'Inspect latest run' }).click();
+      await expect.poll(() => dialog.locator('dd').allTextContents()).toContain('Running');
+      await page.keyboard.press('Escape');
+      await expect.poll(() => dialog.count()).toBe(0);
+      await inspect.click();
+      await dialog.getByRole('button', { name: 'Inspect latest run' }).waitFor();
+      expect(await dialog.locator('dd').allTextContents()).toContain('Failed');
+    } finally {
+      await page.close();
+    }
+  });
+
+  it.each([
+    ['retrying', 'An automatic retry is scheduled.', true],
+    ['ready', 'Waiting for a worker to process this delivery.', true],
+    ['running', 'A worker is processing this delivery now.', false],
+    ['failed', 'Automatic attempts have stopped.', false],
+    ['cancelled', 'No further attempt is scheduled.', false],
+    ['blocked', 'No start time is confirmed.', false],
+  ] as const)('explains the next step for %s work', async (state, guidance, scheduled) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    try {
+      await visit(page, addressOf(panel, 'root/history/failures'), { ready: '.object-row .pill' });
+      await page.route(/\/api\/v1\/root\/queue\/[^/?]+$/, async (route) => {
+        const response = await route.fetch();
+        const detail = await response.json();
+        detail.item.state = state;
+        detail.item.eligible_at = '2026-09-14T14:00:00Z';
+        await route.fulfill({ json: detail });
+      });
+      await page.getByRole('button', { name: 'Inspect queue item' }).first().click();
+      const dialog = page.getByRole('dialog');
+      await dialog.getByText(guidance, { exact: false }).waitFor();
+      const next = dialog.locator('.next-step');
+      expect(await next.innerText()).toContain(guidance);
+      expect(await next.locator('time').count()).toBe(scheduled ? 1 : 0);
+      if (scheduled) expect(await next.innerText()).toMatch(/Eligible from\s+\d/);
+      if (scheduled)
+        expect(await next.locator('time').getAttribute('datetime')).toBe('2026-09-14T14:00:00Z');
+      if (state !== 'retrying')
+        expect(await next.innerText()).not.toContain('automatic retry is scheduled');
+    } finally {
+      await page.close();
+    }
+  });
+
   it.each([403, 404, 503])('handles a queue lookup returning %s', async (status) => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     page.setDefaultTimeout(5000);

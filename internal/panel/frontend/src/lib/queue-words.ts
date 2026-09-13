@@ -10,7 +10,7 @@
  * owns the tick.
  */
 import { formatDateTime } from '#lib/format.js';
-import type { QueueItem } from '#lib/types.js';
+import type { DeliveryOperation, QueueItem } from '#lib/types.js';
 
 /** A row's sentence, in the three pieces a time has to be an element to sit between. */
 export interface QueueLine {
@@ -101,5 +101,65 @@ export function queueLine(item: QueueItem, now: number): QueueLine {
     }
     default:
       return { lead: `${detail} · runs`, when: next };
+  }
+}
+
+/** Delivery recovery follows the live queue state, never the failure classifier. */
+export function deliveryNextStep(
+  item: Pick<QueueItem, 'state' | 'eligible_at'>,
+  operation?: DeliveryOperation,
+): {
+  message: string;
+  eligibleAt?: string;
+} {
+  if (operation && !operation.retained) {
+    return {
+      message:
+        'The delivery history is no longer retained. This queue record remains available for reference.',
+    };
+  }
+  if (operation?.retained && !operation.current) {
+    return {
+      message: 'No current execution is retained. This record describes the earlier attempt.',
+    };
+  }
+  const current = operation?.current;
+  if (current && !current.queue) {
+    return {
+      message:
+        current.status === 'running'
+          ? 'A delivery run is active, but its queue record is no longer retained.'
+          : current.status === 'succeeded'
+            ? 'The latest delivery run succeeded. Its queue record is no longer retained.'
+            : 'The latest delivery run failed. Its queue record is no longer retained.',
+    };
+  }
+  const state = current?.queue?.state ?? item.state;
+  const eligibleAt = current?.queue?.eligible_at ?? item.eligible_at;
+  switch (state) {
+    case 'retrying':
+      return { message: 'An automatic retry is scheduled.', eligibleAt };
+    case 'scheduled':
+    case 'ready':
+      return {
+        message: 'Waiting for a worker to process this delivery.',
+        eligibleAt,
+      };
+    case 'running':
+      return { message: 'A worker is processing this delivery now.' };
+    case 'blocked':
+      return { message: 'Processing is blocked. No start time is confirmed.' };
+    case 'awaiting_approval':
+      return { message: 'Processing is waiting for approval.' };
+    case 'failed':
+      return {
+        message: 'Automatic attempts have stopped. No retry is currently scheduled.',
+      };
+    case 'cancelled':
+      return { message: 'This delivery was cancelled. No further attempt is scheduled.' };
+    case 'superseded':
+      return { message: 'This delivery was superseded. No further attempt is scheduled.' };
+    case 'succeeded':
+      return { message: 'This delivery finished successfully. No further attempt is needed.' };
   }
 }

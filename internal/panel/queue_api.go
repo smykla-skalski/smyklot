@@ -34,8 +34,9 @@ type queueActionInput struct {
 }
 
 type queueDetailResponse struct {
-	Item   workqueue.Item    `json:"item"`
-	Events []workqueue.Event `json:"events"`
+	Item     workqueue.Item             `json:"item"`
+	Events   []workqueue.Event          `json:"events"`
+	Delivery *deliveryOperationResponse `json:"delivery,omitempty"`
 }
 
 type queueActionPreview struct {
@@ -283,11 +284,16 @@ func (s *Server) writeQueueDetail(
 		s.writeStorageError(w, err)
 		return
 	}
+	delivery, err := s.queueDeliveryOperation(r, item)
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
 	prepareQueueItem(&item, canControl, root)
 	if !root {
 		redactWorkspaceQueueEvents(events)
 	}
-	writeJSON(w, http.StatusOK, queueDetailResponse{Item: item, Events: events})
+	writeJSON(w, http.StatusOK, queueDetailResponse{Item: item, Events: events, Delivery: delivery})
 }
 
 func prepareQueueItem(item *workqueue.Item, canControl, root bool) {
