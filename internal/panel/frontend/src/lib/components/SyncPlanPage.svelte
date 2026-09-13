@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { syncCheckIntent, syncCheckGuidance, syncCheckBlocker } from '../sync-check-guidance';
+  import type { SyncCheckCapability } from '../types';
   import {
     syncDispatchGuidance,
     syncDispatchIntent,
@@ -31,6 +33,10 @@
 
   const {
     plan,
+    targetId = '',
+    checkCapability,
+    onOpenBlockingPlan,
+    onOpenRunningCheck,
     embedded = false,
     nowMs,
     readOnly,
@@ -46,6 +52,10 @@
     onRunNow,
   }: {
     plan: SyncPlan | null;
+    targetId?: string;
+    checkCapability?: SyncCheckCapability;
+    onOpenBlockingPlan?: (id: string) => void;
+    onOpenRunningCheck?: (id: string) => void;
     embedded?: boolean;
     /** The clock, passed in so a story renders the same minute every time. */
     nowMs: number;
@@ -74,6 +84,19 @@
   const executionProblem = $derived(plan ? syncPlanExecutionProblem(plan) : null);
   const dispatchIntent = $derived(plan ? syncDispatchIntent(plan) : null);
   const dispatchGuidance = $derived(plan ? syncDispatchGuidance(plan) : null);
+  const checkIntent = $derived(syncCheckIntent(checkCapability, targetId));
+  const checkBlocker = $derived(syncCheckBlocker(checkCapability, targetId));
+  const checkGuidance = $derived(syncCheckGuidance(checkCapability, targetId));
+  const needsCheckRecovery = $derived(
+    plan !== null &&
+      (executionProblem !== null ||
+        ['expired', 'stale', 'failed', 'discarded', 'applied'].includes(plan.state)),
+  );
+  function openCheckConfirmation(): void {
+    if (!checkIntent || runNowBlocked || runNowBusy) return;
+    runIntent = checkIntent;
+    runConfirming = true;
+  }
   const actions = $derived(plan?.actions ?? []);
   const total = $derived(actions.length);
 
@@ -270,7 +293,9 @@
 
   /* ---------- The apply bar and the confirmation ---------- */
 
-  const approvable = $derived(plan !== null && plan.state === 'computed' && total > 0);
+  const approvable = $derived(
+    plan !== null && plan.state === 'computed' && executionProblem === null && total > 0,
+  );
 
   let confirming = $state(false);
   let runConfirming = $state(false);
@@ -283,7 +308,10 @@
     if (plan?.state === 'approved') {
       if (!dispatchIntent || runNowBlocked || runNowBusy) return;
       runIntent = dispatchIntent;
-    } else runIntent = { action: 'check' };
+    } else {
+      openCheckConfirmation();
+      return;
+    }
     runConfirming = true;
   }
 
@@ -337,11 +365,15 @@ the button.
           automatically</span
         >
         {#if canControl}
-          <Button tone="signal" disabled={runNowBusy || runNowBlocked} onclick={openRunConfirmation}
+          <Button
+            tone="signal"
+            disabled={runNowBusy || runNowBlocked || !checkIntent}
+            onclick={openCheckConfirmation}
             >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
           >
         {/if}
       </div>
+      <p>{checkGuidance}</p>
     </Card>
   {:else}
     <div class="hero">
@@ -377,6 +409,28 @@ the button.
           >
         {/if}
       </div>
+    {/if}
+    {#if needsCheckRecovery}
+      <section class="check-recovery" aria-label="Repository check recovery">
+        <p>{checkGuidance}</p>
+        <div class="check-recovery-actions">
+          <Button
+            row
+            disabled={!checkIntent || runNowBusy || runNowBlocked}
+            onclick={openCheckConfirmation}>Check repositories</Button
+          >
+          {#if checkBlocker?.kind === 'plan' && checkBlocker.id !== plan.id && onOpenBlockingPlan}
+            <Button row onclick={() => onOpenBlockingPlan?.(checkBlocker!.id)}
+              >View current changes</Button
+            >
+          {/if}
+          {#if checkBlocker?.kind === 'check' && onOpenRunningCheck}
+            <Button row onclick={() => onOpenRunningCheck?.(checkBlocker!.id)}
+              >View running check</Button
+            >
+          {/if}
+        </div>
+      </section>
     {/if}
     {#if plan.queue_item !== undefined && executionProblem === null}
       {@const queued = plan.queue_item}
@@ -725,6 +779,19 @@ the button.
 </div>
 
 <style>
+  .check-recovery {
+    display: grid;
+    gap: var(--space-3);
+  }
+  .check-recovery p {
+    margin: 0;
+    color: var(--text-secondary);
+  }
+  .check-recovery-actions {
+    display: flex;
+    gap: var(--space-3);
+  }
+
   .execution-guidance {
     display: flex;
     align-items: center;

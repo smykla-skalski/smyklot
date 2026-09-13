@@ -149,7 +149,10 @@
     onOpenHistoryResult: (id: string) => void;
     selectedPlanId?: string | null;
     onOpenPlan?: (planId: string) => void;
-    fetchPlan: (targetId: string, planId?: string) => Promise<{ plan: SyncPlan | null }>;
+    fetchPlan: (
+      targetId: string,
+      planId?: string,
+    ) => Promise<{ plan: SyncPlan | null; check?: import('../types').SyncCheckCapability }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
     runSyncNow?: (targetId: string, input: SyncRunNowInput) => Promise<SyncRunNowResponse>;
@@ -755,6 +758,12 @@ Live plan and status queries share the shell's event invalidation and polling fa
       <SyncPlanPage
         embedded
         plan={inspectedPlan}
+        {targetId}
+        checkCapability={selectedPlanId === null
+          ? planQuery.data?.check
+          : selectedPlanQuery.data?.check}
+        onOpenBlockingPlan={onOpenHistoryResult}
+        onOpenRunningCheck={onOpenCheck}
         refreshing={refreshingPlan}
         onRefresh={refreshInspectedPlan}
         {nowMs}
