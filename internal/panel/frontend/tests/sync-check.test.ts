@@ -25,6 +25,9 @@ describe('retained check interpretation', () => {
     );
   });
   it.each([
+    { ...result, blocking_plan_id: 'earlier' },
+    { ...result, disposition: 'deferred', blocking_plan_id: ' ' },
+    { ...result, disposition: 'deferred', blocking_plan_id: 42 },
     undefined,
     {},
     { ...result, counts: { matched: -1 } },
@@ -36,6 +39,10 @@ describe('retained check interpretation', () => {
     { ...result, disposition: 'unknown' },
   ])('does not invent a successful outcome for malformed details %j', (value) => {
     expect(checkOutcome(value)).toBeNull();
+  });
+  it('retains the exact blocker of a deferred check', () => {
+    const deferred = { ...result, disposition: 'deferred', blocking_plan_id: 'earlier:plan' };
+    expect(checkOutcome(deferred)).toEqual(deferred);
   });
   it.each(['disabled', 'unpermitted', 'deferred'] as const)(
     'does not describe %s as a successful comparison',

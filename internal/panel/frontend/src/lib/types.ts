@@ -1725,6 +1725,7 @@ export interface SyncCheckObservation {
 }
 
 export interface SyncCheckOutcome {
+  blocking_plan_id?: string;
   completed_at: string;
   disposition: 'checked' | 'disabled' | 'unpermitted' | 'deferred';
   summary: string;

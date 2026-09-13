@@ -75,6 +75,15 @@ repository details, and SyncOverview for current state rather than this snapshot
       </p>{/if}
     {#if item.blocked_reason}<p>{item.blocked_reason}</p>{/if}
   {/if}
+  {#if outcome?.disposition === 'deferred'}
+    {#if outcome.blocking_plan_id && resultHref}
+      <Link href={resultHref(outcome.blocking_plan_id)}>View earlier changes</Link>
+    {:else if !outcome.blocking_plan_id}
+      <p class="muted">
+        This check did not record which earlier changes prevented it from proceeding
+      </p>
+    {/if}
+  {/if}
   {#if planId && resultHref}<Link href={resultHref(planId)}>View changes from this check</Link>{/if}
 </section>
 

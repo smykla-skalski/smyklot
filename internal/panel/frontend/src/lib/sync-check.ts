@@ -21,6 +21,11 @@ export function checkOutcome(value: unknown): SyncCheckOutcome | null {
     !['checked', 'disabled', 'unpermitted', 'deferred'].includes(String(held.disposition)) ||
     typeof held.summary !== 'string' ||
     !held.summary.trim() ||
+    (held.blocking_plan_id !== undefined &&
+      (held.disposition !== 'deferred' ||
+        typeof held.blocking_plan_id !== 'string' ||
+        !held.blocking_plan_id.trim() ||
+        held.blocking_plan_id !== held.blocking_plan_id.trim())) ||
     typeof held.cached !== 'number' ||
     !Number.isSafeInteger(held.cached) ||
     held.cached < 0 ||

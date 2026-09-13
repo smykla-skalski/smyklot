@@ -23,10 +23,15 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
     return held.summary;
   const targetId = item.target_id!;
   const evidence: SyncCheckObservation[] = [];
-  const retain = (summary: string, disposition: SyncCheckOutcome['disposition'] = 'checked') => {
+  const retain = (
+    summary: string,
+    disposition: SyncCheckOutcome['disposition'] = 'checked',
+    blockingPlanId?: string,
+  ) => {
     const counts: SyncCheckOutcome['counts'] = {};
     for (const observed of evidence) counts[observed.outcome] = (counts[observed.outcome] ?? 0) + 1;
     const outcome: SyncCheckOutcome = {
+      ...(blockingPlanId ? { blocking_plan_id: blockingPlanId } : {}),
       completed_at: at,
       disposition,
       summary,
@@ -38,8 +43,13 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
     state.syncCheckObservations.set(item.id, structuredClone(evidence));
     return summary;
   };
-  if (['computed', 'approved', 'applying'].includes(state.syncPlans.get(targetId)?.state ?? ''))
-    return retain('A sync plan is already in progress. See Sync status for details.', 'deferred');
+  const livePlan = state.syncPlans.get(targetId);
+  if (livePlan && ['computed', 'approved', 'applying'].includes(livePlan.state))
+    return retain(
+      'Earlier changes were still in progress when this check ran',
+      'deferred',
+      livePlan.id,
+    );
   const status = state.syncStatus.get(targetId);
   if (!status || status.repositories.length === 0)
     return retain('No enabled repositories to check');

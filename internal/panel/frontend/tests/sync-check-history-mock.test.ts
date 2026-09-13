@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { seed } from '../dev/fixtures';
+import { seed, syncPlanSeed } from '../dev/fixtures';
 import { mockSyncRunNow } from '../dev/sync-run-now';
 import { finishMockSyncScan } from '../dev/sync-scan';
 import { mockSyncCheckPage } from '../dev/sync-check-history';
@@ -64,6 +64,20 @@ describe('retained mock check evidence', () => {
     expect(
       mockSyncCheckPage(state, target, item.id, new URLSearchParams({ cursor: foreign })).status,
     ).toBe(400);
+  });
+
+  it('retains the earlier plan when newer work replaces it', () => {
+    const { state, item } = setup();
+    const plan = syncPlanSeed((offset) => new Date(now + offset).toISOString());
+    state.syncPlans.set(target, { ...plan, id: 'earlier', state: 'approved' });
+    finishMockSyncScan(state, item, new Date(now).toISOString());
+    expect(item.details).toMatchObject({
+      outcome: { disposition: 'deferred', blocking_plan_id: 'earlier' },
+    });
+    expect(item.details).not.toHaveProperty('result_plan_id');
+    state.syncPlans.set(target, { ...plan, id: 'newer', state: 'approved' });
+    finishMockSyncScan(state, item, new Date(now + 60_000).toISOString());
+    expect(item.details).toMatchObject({ outcome: { blocking_plan_id: 'earlier' } });
   });
 
   it('distinguishes an unrecorded check from a recorded empty result', () => {
