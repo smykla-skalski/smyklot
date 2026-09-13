@@ -605,7 +605,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {fileHref}
       {onOpenFile}
       onToggleEnabled={(wanted) => toggleKind(FILES, wanted)}
-      onChangeDocument={(document) => void stageDocument(FILES, document)}
+      onChangeDocument={(document) => stageDocument(FILES, document)}
       dirtyEnabled={dirtyControls.includes('sync.files.enabled')}
       dirtyDocument={dirtyControls.includes('sync.files.document')}
     />

@@ -9,7 +9,6 @@ already hold - the index ships once, matching costs no requests.
 <script lang="ts">
   import { Command } from 'bits-ui';
 
-  import { formatRelative } from '../format';
   import { rankPaths, type PathMatch } from '../pathfinder';
   import { receipts } from '../receipts.svelte';
   import type {
@@ -58,7 +57,7 @@ already hold - the index ships once, matching costs no requests.
     fileHref: (path: string) => string;
     onOpenFile: (path: string) => void;
     onToggleEnabled: (enabled: boolean) => void;
-    onChangeDocument: (document: Record<string, unknown>) => void;
+    onChangeDocument: (document: Record<string, unknown>) => boolean;
     dirtyEnabled?: boolean;
     dirtyDocument?: boolean;
   } = $props();
@@ -76,9 +75,9 @@ already hold - the index ships once, matching costs no requests.
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
 
-  function stage(change: Partial<Record<string, unknown>>): void {
-    if (frozen) return;
-    onChangeDocument({ ...stored, ...change });
+  function stage(change: Partial<Record<string, unknown>>): boolean {
+    if (frozen) return false;
+    return onChangeDocument({ ...stored, ...change });
   }
 
   function same(left: unknown, right: unknown): boolean {
@@ -110,9 +109,11 @@ already hold - the index ships once, matching costs no requests.
     return `${count} ${count === 1 ? 'repository adjusts' : 'repositories adjust'} it`;
   }
 
-  function updatedWord(file: SyncFile & { updated_at?: string }): string {
-    const at = file.updated_at ?? config?.updated_at;
-    return at === undefined ? '' : ` · updated ${formatRelative(at, nowMs)}`;
+  function fileSummary(file: SyncFile): string {
+    if (dirtyDocument && !savedFiles.some((saved) => saved.path === file.path)) {
+      return 'Unsaved new file';
+    }
+    return `${fileDirty(file) ? 'Unsaved changes · ' : ''}${adjustersWord(file.path)}`;
   }
 
   function differs(path: string): number {
@@ -154,14 +155,12 @@ already hold - the index ships once, matching costs no requests.
   /** Choosing a path manages it: an existing template opens, a new one is born empty. */
   function choose(path: string): void {
     const clean = path.trim();
-    if (clean === '') return;
-    addOpen = false;
+    if (clean === '' || frozen) return;
     if (!files.some((file) => file.path === clean)) {
-      stage({ files: [...files, { path: clean, content: '' }] });
-      receipts.say(
-        `${clean} is shared now - the next sync opens a pull request in every syncing repository`,
-      );
+      if (!stage({ files: [...files, { path: clean, content: '' }] })) return;
+      receipts.say(`Draft template created for ${clean}. Add content, then save.`);
     }
+    addOpen = false;
     onOpenFile(clean);
   }
 
@@ -340,10 +339,12 @@ already hold - the index ships once, matching costs no requests.
                 <span class="object-name-row">
                   <span class="file-path">{file.path}</span>
                 </span>
-                <span class="object-sum">{adjustersWord(file.path)}{updatedWord(file)}</span>
+                <span class="object-sum">{fileSummary(file)}</span>
               </span>
               <span class="object-side">
-                {#if refused > 0}
+                {#if fileDirty(file)}
+                  <span class="mx-mark"><span class="t">Not saved</span></span>
+                {:else if refused > 0}
                   <span class="mx-mark mx-refused"
                     ><Icon name="failure" size="xs" /><span class="t">{refused} refused</span></span
                   >
@@ -352,7 +353,7 @@ already hold - the index ships once, matching costs no requests.
                     ><span class="t">{pending} {pending === 1 ? 'differs' : 'differ'}</span></span
                   >
                 {:else}
-                  <span class="mx-mark mx-instep"><Icon name="check" size="sm" /></span>
+                  <span class="mx-mark"><span class="t">Saved</span></span>
                 {/if}
                 <Icon name="chevron-right" size="xs" />
               </span>

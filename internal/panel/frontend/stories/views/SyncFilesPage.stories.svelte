@@ -141,7 +141,7 @@
       fileHref: (path: string) => `#/sync/files/${path}`,
       onOpenFile: fn(),
       onToggleEnabled: fn(),
-      onChangeDocument: fn(),
+      onChangeDocument: fn(() => true),
     },
   });
 </script>

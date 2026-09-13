@@ -341,6 +341,7 @@ jobs:
               tests/browser/dictionary.test.ts
               tests/browser/file-validation-lifetime.test.ts
               tests/browser/sync-drafts.test.ts
+              tests/browser/shared-file-lifecycle.test.ts
               tests/browser/segmented-control.test.ts
               tests/browser/access-navigation.test.ts
           # 319s in the reference run

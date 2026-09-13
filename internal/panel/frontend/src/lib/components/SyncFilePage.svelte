@@ -173,8 +173,9 @@ where it arises.
     Array.isArray(savedDocument.files) ? (savedDocument.files as SyncFile[]) : [],
   );
   const savedFile = $derived(savedFiles.find((held) => held.path === path) ?? null);
+  const newFile = $derived(dirtyDocument && file !== null && savedFile === null);
   const templateDirty = $derived(
-    dirtyDocument && (file?.content ?? '') !== (savedFile?.content ?? ''),
+    newFile || (dirtyDocument && (file?.content ?? '') !== (savedFile?.content ?? '')),
   );
   const lang = $derived(langOf(path));
 
@@ -185,13 +186,17 @@ where it arises.
     if (at === undefined) return '';
     const by = config?.updated_by ?? '';
     const when = formatRelative(at, nowMs);
-    return by === '' ? ` · updated ${when}` : ` · updated ${when} by ${by}`;
+    return by === ''
+      ? ` · shared-file settings updated ${when}`
+      : ` · shared-file settings updated ${when} by ${by}`;
   });
 
   const reach = $derived(
     file === null
       ? 'No template at this path - it may have been renamed or removed'
-      : `In ${context?.covered ?? 0} of ${context?.repositories ?? 0} repositories${freshness}`,
+      : newFile
+        ? 'Unsaved new file · Add content, then save to make this template available for synchronization'
+        : `File sync enabled for ${context?.covered ?? 0} of ${context?.repositories ?? 0} repositories${freshness}`,
   );
 
   /* ---------- The template, editable in place ---------- */
@@ -1072,7 +1077,7 @@ where it arises.
 
     <Card unsaved={anyOverrideDirty} labelledby="file-repositories-heading">
       <div class="card-head">
-        <h2 class="card-title" id="file-repositories-heading">Repository outputs</h2>
+        <h2 class="card-title" id="file-repositories-heading">Repository previews</h2>
         <span class="card-note band-trim"
           >{visibleRepositories.length === matchingRepositories.length
             ? matchingRepositories.length
