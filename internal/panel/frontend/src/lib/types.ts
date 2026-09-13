@@ -1707,14 +1707,11 @@ export interface SyncPlan {
 }
 
 // UI intent precedes persistence. Only the complete input may cross the API boundary.
-export type SyncRunNowIntent = { reason: string } & (
-  | { action: 'check'; request_key?: string }
-  | { action: 'dispatch'; plan_id: string; expected_revision: number }
+export type SyncRunNowIntent = { reason: string; request_key?: string } & (
+  { action: 'check' } | { action: 'dispatch'; plan_id: string; expected_revision: number }
 );
 
-export type SyncRunNowInput =
-  | (Extract<SyncRunNowIntent, { action: 'check' }> & { request_key: string })
-  | Extract<SyncRunNowIntent, { action: 'dispatch' }>;
+export type SyncRunNowInput = SyncRunNowIntent & { request_key: string };
 
 export interface SyncRunNowResponse {
   status:
@@ -1722,11 +1719,13 @@ export interface SyncRunNowResponse {
     | 'changes_pending'
     | 'approval_required'
     | 'already_running'
-    | 'plan_dispatched';
+    | 'dispatch_accepted';
   plan?: SyncPlan;
   queue_item?: QueueItem;
   /** Acceptance identity, not a snapshot of current queue state. */
   check_id?: string;
+  plan_id?: string;
+  queue_id?: string;
   /** True when receipt lookup recovered existing acceptance before submission. */
   repeated?: boolean;
 }

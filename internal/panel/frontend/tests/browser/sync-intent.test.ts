@@ -74,11 +74,14 @@ describe('desktop sync request intent', () => {
         expect((await dispatchResponse).status()).toBe(202);
         await expect
           .poll(() =>
-            page.getByText('Your selected changes are queued to run now', { exact: true }).count(),
+            page
+              .getByText('Your request to run these changes was accepted', { exact: true })
+              .count(),
           )
           .toBe(1);
         expect((await dispatchRequest).postDataJSON()).toEqual({
           action: 'dispatch',
+          request_key: expect.any(String),
           plan_id: original.id,
           expected_revision: original.queue_item.revision,
           reason: 'Run these reviewed changes',
@@ -86,7 +89,7 @@ describe('desktop sync request intent', () => {
         await inspector.getByRole('button', { name: 'Close sync details', exact: true }).click();
         await inspector.waitFor({ state: 'hidden' });
         await page
-          .getByText('Your selected changes are queued to run now', { exact: true })
+          .getByText('Your request to run these changes was accepted', { exact: true })
           .waitFor();
         await capture('dispatched');
       } finally {

@@ -31,7 +31,13 @@ describe('mock sync request contract [Unit]', () => {
       mockSyncRunNow(
         state,
         '2001',
-        { reason: input.reason, action: 'dispatch', plan_id: plan.id, expected_revision: revision },
+        {
+          reason: input.reason,
+          action: 'dispatch',
+          request_key: 'dispatch-request',
+          plan_id: plan.id,
+          expected_revision: revision,
+        },
         now,
       ).status,
     ).toBe(409);
@@ -41,6 +47,7 @@ describe('mock sync request contract [Unit]', () => {
       {
         reason: input.reason,
         action: 'dispatch',
+        request_key: 'dispatch-request',
         plan_id: plan.id,
         expected_revision: revision + 1,
       },
@@ -48,17 +55,17 @@ describe('mock sync request contract [Unit]', () => {
     );
     expect(result.status).toBe(202);
     if (result.status !== 202) throw new Error('Expected accepted dispatch');
-    expect(result.body.status).toBe('plan_dispatched');
-    expect(result.body.queue_item).toMatchObject({
+    expect(result.body.status).toBe('dispatch_accepted');
+    expect(state.queue.find((item) => item.id === result.body.queue_id)).toMatchObject({
       state: 'ready',
       immediate: true,
       window_mode: 'bypass',
       revision: revision + 2,
     });
-    expect(mockLiveSyncPlan(state, '2001')!.queue_item).toEqual(result.body.queue_item);
+    expect(mockLiveSyncPlan(state, '2001')!.queue_item?.id).toBe(result.body.queue_id);
     expect(
       mockSyncHistory(state, '2001').find((entry) => entry.id === plan.id)?.queue_item,
-    ).toEqual(result.body.queue_item);
+    ).toEqual(mockLiveSyncPlan(state, '2001')!.queue_item);
     expect(state.queue.filter((item) => item.kind === 'sync_scan')).toHaveLength(0);
   });
 
@@ -84,6 +91,7 @@ describe('mock sync request contract [Unit]', () => {
       const plan = state.syncPlans.get('2001')!;
       const request = {
         action: 'dispatch',
+        request_key: 'dispatch-request',
         plan_id: plan.id,
         expected_revision: 1,
         reason: 'Run selected changes',

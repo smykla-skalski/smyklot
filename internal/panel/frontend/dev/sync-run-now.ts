@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { VIEWER, type MockState } from './fixtures.js';
 import type { QueueItem, SyncPlan, SyncRunNowResponse } from '../src/lib/types.js';
 
-type State = Pick<MockState, 'queue' | 'syncPlans' | 'syncQueueEvents' | 'syncCheckReceipts'>;
+type State = Pick<
+  MockState,
+  'queue' | 'syncPlans' | 'syncQueueEvents' | 'syncCheckReceipts' | 'syncDispatchReceipts'
+>;
 type Reply =
   | { status: 200 | 202; body: SyncRunNowResponse }
   | { status: 400 | 404 | 409; body: { code: string; message: string } };
@@ -41,8 +44,13 @@ export function mockSyncRunNow(
     return { status: 400, body: { code: 'invalid_request', message: 'run now requires a reason' } };
   }
   const key = 'request_key' in input ? (input.request_key ?? '') : '';
-  if (typeof key !== 'string' || key.trim() !== key || new TextEncoder().encode(key).length > 200)
-    return { status: 400, body: { code: 'invalid_request', message: 'invalid check request key' } };
+  if (
+    typeof key !== 'string' ||
+    key === '' ||
+    key.trim() !== key ||
+    new TextEncoder().encode(key).length > 200
+  )
+    return { status: 400, body: { code: 'invalid_request', message: 'invalid sync request key' } };
   if (
     !('action' in input) ||
     (input.action !== 'check' && input.action !== 'dispatch') ||
@@ -51,8 +59,7 @@ export function mockSyncRunNow(
         ('plan_id' in input && input.plan_id !== '') ||
         ('expected_revision' in input && input.expected_revision !== 0))) ||
     (input.action === 'dispatch' &&
-      (key !== '' ||
-        !('plan_id' in input) ||
+      (!('plan_id' in input) ||
         typeof input.plan_id !== 'string' ||
         !input.plan_id.trim() ||
         input.plan_id.trim() !== input.plan_id ||
@@ -77,6 +84,29 @@ export function mockSyncRunNow(
       };
     }
   }
+  if (input.action === 'dispatch') {
+    const receipt = state.syncDispatchReceipts.get(receiptKey);
+    if (receipt) {
+      if (
+        receipt.targetId !== targetId ||
+        !('plan_id' in input) ||
+        receipt.planId !== input.plan_id ||
+        !('expected_revision' in input) ||
+        receipt.expectedRevision !== input.expected_revision ||
+        receipt.reason !== reason
+      )
+        return conflict();
+      return {
+        status: 200,
+        body: {
+          status: 'dispatch_accepted',
+          plan_id: receipt.planId,
+          queue_id: receipt.queueId,
+          repeated: true,
+        },
+      };
+    }
+  }
   const plan = mockLiveSyncPlan(state, targetId);
   if (input.action === 'dispatch') {
     const requested = state.syncPlans.get(targetId);
@@ -90,7 +120,7 @@ export function mockSyncRunNow(
       return { status: 200, body: { status: 'approval_required', plan } };
     if (plan.state === 'applying')
       return { status: 200, body: { status: 'already_running', plan } };
-    if (plan.state !== 'approved') {
+    if (plan.state !== 'approved' || Date.parse(plan.expires_at) <= now) {
       return {
         status: 409,
         body: { code: 'unsupported_plan_state', message: 'sync plan cannot run now' },
@@ -108,13 +138,16 @@ export function mockSyncRunNow(
     }
     if (item.state === 'running' || terminal.has(item.state)) return conflict();
     const updated = request(state, item, reason, now);
+    state.syncDispatchReceipts.set(receiptKey, {
+      targetId,
+      planId: plan.id,
+      expectedRevision: Number(input.expected_revision),
+      reason,
+      queueId: updated.id,
+    });
     return {
       status: 202,
-      body: {
-        status: 'plan_dispatched',
-        plan: { ...plan, queue_item: updated },
-        queue_item: updated,
-      },
+      body: { status: 'dispatch_accepted', plan_id: plan.id, queue_id: updated.id },
     };
   }
   const held = state.queue.findLast(

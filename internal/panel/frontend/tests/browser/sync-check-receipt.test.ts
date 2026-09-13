@@ -39,6 +39,7 @@ describe('development check acceptance HTTP contract', () => {
       const missing = await page.request.post(endpoint, {
         data: {
           action: 'dispatch',
+          request_key: 'dispatch-request',
           plan_id: 'missing-plan',
           expected_revision: 1,
           reason: 'Dispatch original',

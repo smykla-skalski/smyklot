@@ -1,8 +1,10 @@
 package panel
 
 import (
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -22,6 +24,8 @@ type syncRunNowInput struct {
 type syncRunNowResponse struct {
 	Status   string          `json:"status"`
 	CheckID  string          `json:"check_id,omitempty"`
+	PlanID   string          `json:"plan_id,omitempty"`
+	QueueID  string          `json:"queue_id,omitempty"`
 	Repeated bool            `json:"repeated,omitempty"`
 	Plan     *syncPlanDTO    `json:"plan,omitempty"`
 	Queue    *workqueue.Item `json:"queue_item,omitempty"`
@@ -30,11 +34,14 @@ type syncRunNowResponse struct {
 // valid keeps checking repositories distinct from dispatching approved changes.
 // A revision belongs to one plan, so it cannot identify a dispatch by itself.
 func (input syncRunNowInput) valid() bool {
+	if input.RequestKey == "" || len(input.RequestKey) > 200 || strings.TrimSpace(input.RequestKey) != input.RequestKey {
+		return false
+	}
 	switch input.Action {
 	case "check":
-		return input.PlanID == "" && input.ExpectedRevision == 0 && input.RequestKey != "" && len(input.RequestKey) <= 200 && strings.TrimSpace(input.RequestKey) == input.RequestKey
+		return input.PlanID == "" && input.ExpectedRevision == 0
 	case syncDispatchAction:
-		return input.RequestKey == "" && strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0
+		return strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0
 	default:
 		return false
 	}
@@ -62,6 +69,16 @@ func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if input.Action == syncDispatchAction {
+		request := dispatchRequest(account, target, input, s.now().UTC())
+		receipt, err := s.store.FindSyncPlanDispatch(r.Context(), request)
+		if err == nil {
+			writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "dispatch_accepted", PlanID: receipt.PlanID, QueueID: receipt.QueueID, Repeated: true})
+			return
+		}
+		if !errors.Is(err, storage.ErrNotFound) {
+			s.writeStorageError(w, err)
+			return
+		}
 		plan, actions, err := s.store.GetSyncPlan(r.Context(), target.ID, input.PlanID)
 		if err != nil {
 			s.writeStorageError(w, err)
@@ -101,22 +118,19 @@ func (s *Server) handleSyncDispatch(
 			})
 			return
 		}
-		item, actionErr := s.store.ApplyQueueAction(r.Context(), dto.Queue.ID, workqueue.ItemAction{
-			Type: workqueue.ActionRunNow, ExpectedRevision: input.ExpectedRevision,
-			ActorID: account.ID, Reason: input.Reason, ChangedAt: s.now().UTC(),
-		})
+		receipt, actionErr := s.store.DispatchSyncPlan(r.Context(), dispatchRequest(account, target, input, s.now().UTC()))
 		if actionErr != nil {
 			s.writeStorageError(w, actionErr)
 			return
 		}
-		prepareQueueItem(&item, true, false)
-		dto.Queue = &item
 		s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
 		s.wakeScheduledWork(workqueue.LaneMaintenance)
-		writeJSON(w, http.StatusAccepted, syncRunNowResponse{
-			Status: "plan_dispatched", Plan: &dto, Queue: &item,
-		})
+		writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "dispatch_accepted", PlanID: receipt.PlanID, QueueID: receipt.QueueID})
 	default:
 		s.writeError(w, http.StatusConflict, "unsupported_plan_state", "sync plan cannot run now")
 	}
+}
+
+func dispatchRequest(account storage.Account, target storage.Target, input syncRunNowInput, now time.Time) orgsync.PlanDispatch {
+	return orgsync.PlanDispatch{TargetID: target.ID, PlanID: input.PlanID, ActorID: account.ID, RequestKey: input.RequestKey, ExpectedRevision: input.ExpectedRevision, Reason: input.Reason, Now: now}
 }

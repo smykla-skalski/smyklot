@@ -61,7 +61,7 @@ func TestSyncDispatchNeverFallsBackToAnotherPlanOrCheck(t *testing.T) {
 			}
 			response := h.request(t, http.MethodPost,
 				"/panel/api/v1/targets/"+panelSyncTarget+"/sync/run-now",
-				strings.NewReader(fmt.Sprintf(`{"action":"dispatch","plan_id":%q,"expected_revision":1,"reason":"run reviewed changes"}`, tc.requested)), session)
+				strings.NewReader(fmt.Sprintf(`{"action":"dispatch","request_key":"dispatch-1","plan_id":%q,"expected_revision":1,"reason":"run reviewed changes"}`, tc.requested)), session)
 			expected := http.StatusConflict
 			if tc.requested == "missing" {
 				expected = http.StatusNotFound
@@ -89,6 +89,8 @@ func assertSyncPlanNotDispatched(t *testing.T, h *panelHarness, id string) {
 
 func TestSyncRunNowRequiresUnambiguousIntent(t *testing.T) {
 	for _, body := range []string{
+		`{"action":"dispatch","plan_id":"p","expected_revision":1,"reason":"missing key"}`,
+		`{"action":"dispatch","request_key":"","plan_id":"p","expected_revision":1,"reason":"empty key"}`,
 		`{"reason":"old ambiguous request"}`,
 		`{"action":"check","reason":"missing key"}`,
 		`{"action":"check","request_key":"","reason":"empty key"}`,
@@ -100,8 +102,8 @@ func TestSyncRunNowRequiresUnambiguousIntent(t *testing.T) {
 		`{"action":"check","request_key":"valid-key","plan_id":"some-plan","reason":"mixed intent"}`,
 		`{"action":"check","request_key":"valid-key","expected_revision":2,"reason":"mixed intent"}`,
 		`{"action":"dispatch","expected_revision":2,"reason":"missing identity"}`,
-		`{"action":"dispatch","plan_id":" p ","expected_revision":2,"reason":"invalid identity"}`,
-		`{"action":"dispatch","plan_id":"p","reason":"missing revision"}`,
+		`{"action":"dispatch","request_key":"dispatch-1","plan_id":" p ","expected_revision":2,"reason":"invalid identity"}`,
+		`{"action":"dispatch","request_key":"dispatch-1","plan_id":"p","reason":"missing revision"}`,
 	} {
 		t.Run(body, func(t *testing.T) {
 			h := newPanelHarness(t, "owner")

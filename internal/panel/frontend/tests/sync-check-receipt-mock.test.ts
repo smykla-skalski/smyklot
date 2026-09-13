@@ -80,17 +80,4 @@ describe('mock accepted check receipts [Unit]', () => {
       expect(state.syncCheckReceipts.size).toBe(0);
     },
   );
-
-  it('refuses a check key on a dispatch request', () => {
-    const state = seed(undefined, now);
-    const plan = state.syncPlans.get('2001')!;
-    expect(
-      mockSyncRunNow(
-        state,
-        '2001',
-        { ...input, action: 'dispatch', plan_id: plan.id, expected_revision: 1 },
-        now,
-      ).status,
-    ).toBe(400);
-  });
 });

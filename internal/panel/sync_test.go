@@ -180,7 +180,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		}
 		response := postPanelSyncRunNow(t, harness, session, item.Revision)
 		requireResponse(t, response, "approved-plan run now", http.StatusAccepted,
-			`"status":"plan_dispatched"`, `"state":"ready"`, `"immediate":true`)
+			`"status":"dispatch_accepted"`, `"plan_id":"approved"`, `"queue_id":"sync-plan:approved"`)
 	})
 
 	t.Run("reports a plan that is already applying", func(t *testing.T) {
@@ -247,7 +247,7 @@ func postPanelSyncRunNow(
 	t.Helper()
 	body := `{"action":"check","request_key":"operator-check-1","reason":"operator request"}`
 	if expectedRevision > 0 {
-		body = fmt.Sprintf(`{"action":"dispatch","plan_id":"approved","reason":"operator request","expected_revision":%d}`, expectedRevision)
+		body = fmt.Sprintf(`{"action":"dispatch","request_key":"dispatch-1","plan_id":"approved","reason":"operator request","expected_revision":%d}`, expectedRevision)
 	}
 
 	return harness.request(t, http.MethodPost,

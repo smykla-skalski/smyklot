@@ -32,6 +32,7 @@
     approving,
     discarding,
     runNowBusy,
+    runNowBlocked = false,
     onApprove,
     onDiscard,
     onRunNow,
@@ -45,6 +46,7 @@
     approving: boolean;
     discarding: boolean;
     runNowBusy: boolean;
+    runNowBlocked?: boolean;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
     onRunNow: (input: SyncRunNowIntent) => void;
@@ -317,7 +319,7 @@ the button.
           automatically</span
         >
         {#if canControl}
-          <Button tone="signal" disabled={runNowBusy} onclick={openRunConfirmation}
+          <Button tone="signal" disabled={runNowBusy || runNowBlocked} onclick={openRunConfirmation}
             >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
           >
         {/if}
@@ -355,8 +357,11 @@ the button.
           <div class="schedule-card-actions">
             <span class="schedule-state">{queued.state.replaceAll('_', ' ')}</span>
             {#if canControl && plan.state === 'approved'}
-              <Button row tone="signal" disabled={runNowBusy} onclick={openRunConfirmation}
-                >{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
+              <Button
+                row
+                tone="signal"
+                disabled={runNowBusy || runNowBlocked}
+                onclick={openRunConfirmation}>{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
               >
             {/if}
           </div>
