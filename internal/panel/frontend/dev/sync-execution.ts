@@ -11,7 +11,13 @@ import { recordMockSyncEvent } from './sync-queue.js';
 
 type State = Pick<
   MockState,
-  'queue' | 'syncPlans' | 'syncHistory' | 'syncStatus' | 'targets' | 'syncQueueEvents'
+  | 'queue'
+  | 'syncPlans'
+  | 'syncHistory'
+  | 'syncStatus'
+  | 'targets'
+  | 'syncQueueEvents'
+  | 'syncCheckObservations'
 >;
 const RUN_MS = 4_000;
 

@@ -79,6 +79,7 @@ import type {
   SyncPathIndex,
   SyncPlan,
   SyncPlanSummary,
+  SyncCheckObservation,
   SyncRunNowResponse,
   SyncFilesContext,
   SyncStatus,
@@ -329,6 +330,11 @@ export interface PanelApi {
     targetId: string,
     request: { limit: number; cursor?: string },
   ): Promise<Page<SyncPlanSummary>>;
+  fetchSyncCheckObservations(
+    targetId: string,
+    checkId: string,
+    request: { limit: number; cursor?: string },
+  ): Promise<Page<SyncCheckObservation>>;
   fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
@@ -1213,6 +1219,18 @@ export function createPanelApi(
       const params = new URLSearchParams({ limit: String(request.limit) });
       if (request.cursor) params.set('cursor', request.cursor);
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plans?${params}`);
+    },
+
+    fetchSyncCheckObservations(
+      targetId: string,
+      checkId: string,
+      request: { limit: number; cursor?: string },
+    ): Promise<Page<SyncCheckObservation>> {
+      const params = new URLSearchParams({ limit: String(request.limit) });
+      if (request.cursor) params.set('cursor', request.cursor);
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/checks/${pathSegment(checkId)}/observations?${params}`,
+      );
     },
 
     fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }> {

@@ -1,3 +1,4 @@
+import { mockSyncCheckPage } from './sync-check-history';
 import { advanceMockSync } from './sync-execution.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
 import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
@@ -1671,6 +1672,22 @@ async function handle(
         respond(res, 200, override);
         return;
       }
+    }
+
+    const checkEvidenceMatch =
+      /^\/api\/v1\/targets\/([^/]+)\/sync\/checks\/([^/]+)\/observations$/.exec(
+        path.slice(route('').length),
+      );
+    if (checkEvidenceMatch && method === 'GET') {
+      const target = findTarget(state, checkEvidenceMatch[1] ?? '');
+      const reply = mockSyncCheckPage(
+        state,
+        target.value.id,
+        decodeURIComponent(checkEvidenceMatch[2] ?? ''),
+        parsed.searchParams,
+      );
+      respond(res, reply.status, reply.body);
+      return;
     }
 
     const historyMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans$/.exec(

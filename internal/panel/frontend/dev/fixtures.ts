@@ -50,6 +50,7 @@ import type {
   PendingCIRequest,
   QueueItem,
   QueueEvent,
+  SyncCheckObservation,
   WorkspaceRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -233,6 +234,7 @@ export interface MockState {
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncQueueEvents: Map<string, QueueEvent[]>;
+  syncCheckObservations: Map<string, SyncCheckObservation[]>;
   syncPlans: Map<string, SyncPlan>;
   syncHistory: Map<string, SyncPlan[]>;
   /** The fleet: where every covered repository stands, per workspace. */
@@ -782,6 +784,7 @@ export function seed(
       ],
     ]),
     syncQueueEvents: new Map(),
+    syncCheckObservations: new Map(),
     syncHistory: new Map([
       [
         organization.value.id,

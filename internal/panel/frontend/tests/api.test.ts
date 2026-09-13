@@ -1270,3 +1270,18 @@ describe('history and authentication routes', () => {
     );
   });
 });
+
+it('fetches the exact check evidence page with encoded identities and cursor', async () => {
+  const page = { items: [], total: 0, next_cursor: null };
+  const stub = stubFetch([jsonResponse(200, page)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(
+    api.fetchSyncCheckObservations('target:1', 'check:one/two', {
+      limit: 10,
+      cursor: 'cursor+value',
+    }),
+  ).resolves.toEqual(page);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3A1/sync/checks/check%3Aone%2Ftwo/observations?limit=10&cursor=cursor%2Bvalue',
+  );
+});

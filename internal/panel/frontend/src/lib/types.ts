@@ -1711,3 +1711,24 @@ export interface SyncRunNowResponse {
   plan?: SyncPlan;
   queue_item?: QueueItem;
 }
+
+export interface SyncCheckObservation {
+  repository_id: string;
+  repository: string;
+  kind: SyncKind;
+  outcome: NonNullable<SyncCell['observed_outcome']> | '';
+  observed_at: string;
+  input_digest: string;
+  reason?: string;
+  proposal_url?: string;
+  cached: boolean;
+}
+
+export interface SyncCheckOutcome {
+  completed_at: string;
+  disposition: 'checked' | 'disabled' | 'unpermitted' | 'deferred';
+  summary: string;
+  counts: Partial<Record<SyncCheckObservation['outcome'], number>>;
+  cached: number;
+  missing_permissions: SyncKind[] | null;
+}

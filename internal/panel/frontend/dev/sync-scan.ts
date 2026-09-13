@@ -1,17 +1,48 @@
 import { randomUUID } from 'node:crypto';
 import { syncPlanSeed, type MockState } from './fixtures.js';
-import { SYNC_KINDS, type QueueItem, type SyncCell, type SyncPlan } from '../src/lib/types.js';
+import {
+  SYNC_KINDS,
+  type QueueItem,
+  type SyncCell,
+  type SyncPlan,
+  type SyncCheckObservation,
+  type SyncCheckOutcome,
+} from '../src/lib/types.js';
 import { recordMockSyncEvent } from './sync-queue.js';
 
-type State = Pick<MockState, 'syncStatus' | 'syncPlans' | 'queue' | 'syncQueueEvents'>;
+type State = Pick<
+  MockState,
+  'syncStatus' | 'syncPlans' | 'queue' | 'syncQueueEvents' | 'syncCheckObservations' | 'targets'
+>;
 
 /** Refresh only evidence represented by the development fixture, never a saved policy alone. */
 export function finishMockSyncScan(state: State, item: QueueItem, at: string): string {
+  if (item.kind !== 'sync_scan') throw new Error('Expected a repository check');
+  const held = item.details?.outcome;
+  if (held && typeof held === 'object' && 'summary' in held && typeof held.summary === 'string')
+    return held.summary;
   const targetId = item.target_id!;
+  const evidence: SyncCheckObservation[] = [];
+  const retain = (summary: string, disposition: SyncCheckOutcome['disposition'] = 'checked') => {
+    const counts: SyncCheckOutcome['counts'] = {};
+    for (const observed of evidence) counts[observed.outcome] = (counts[observed.outcome] ?? 0) + 1;
+    const outcome: SyncCheckOutcome = {
+      completed_at: at,
+      disposition,
+      summary,
+      counts,
+      cached: 0,
+      missing_permissions: [],
+    };
+    item.details = { ...item.details, outcome };
+    state.syncCheckObservations.set(item.id, structuredClone(evidence));
+    return summary;
+  };
   if (['computed', 'approved', 'applying'].includes(state.syncPlans.get(targetId)?.state ?? ''))
-    return 'A sync plan is already in progress. See Sync status for details.';
+    return retain('A sync plan is already in progress. See Sync status for details.', 'deferred');
   const status = state.syncStatus.get(targetId);
-  if (!status || status.repositories.length === 0) return 'No enabled repositories to check';
+  if (!status || status.repositories.length === 0)
+    return retain('No enabled repositories to check');
   const template = syncPlanSeed((offset) => new Date(Date.parse(at) + offset).toISOString());
   const actions: SyncPlan['actions'] = [];
   const counts = new Map<string, number>();
@@ -39,6 +70,21 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
         }
       }
       row.cells[kind] = cell;
+      const repository = state.targets
+        .find((target) => target.value.id === targetId)
+        ?.repositories.find((entry) => entry.detail.repository.name === row.repository)
+        ?.detail.repository;
+      evidence.push({
+        repository_id: repository?.id ?? `mock:${row.repository}`,
+        repository: repository?.full_name ?? row.repository,
+        kind,
+        outcome: cell.observed_outcome ?? '',
+        observed_at: cell.observed_at ?? at,
+        input_digest: '',
+        reason: cell.reason,
+        proposal_url: cell.proposal_url,
+        cached: false,
+      });
       const outcome = cell.observed_outcome ?? 'unknown';
       counts.set(outcome, (counts.get(outcome) ?? 0) + 1);
     }
@@ -60,9 +106,9 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
     const count = counts.get(key!) ?? 0;
     return count ? [`${count} ${count === 1 ? 'check' : 'checks'} ${label}`] : [];
   });
-  if (!parts.length) return 'No enabled repositories to check';
+  if (!parts.length) return retain('No enabled repositories to check');
   if (actions.length) parts.push(`${actions.length} changes queued`);
-  return `${parts.join('. ')}. See Sync status for details.`;
+  return retain(`${parts.join('. ')}. See Sync status for details.`);
 }
 
 function observed(cell: SyncCell, at: string, repositoryReason?: string): SyncCell {
