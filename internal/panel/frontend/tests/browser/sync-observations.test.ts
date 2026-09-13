@@ -354,7 +354,7 @@ describe('desktop repository observation evidence', () => {
           }),
         );
         await page.reload();
-        await page.getByText('Sync result not found', { exact: true }).waitFor();
+        await page.getByText('These changes are unavailable', { exact: true }).waitFor();
         expect(
           await page.getByRole('heading', { name: '2 changes processed', exact: true }).count(),
         ).toBe(0);

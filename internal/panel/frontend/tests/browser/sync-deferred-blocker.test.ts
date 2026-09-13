@@ -62,7 +62,9 @@ describe('desktop deferred-check blocker identity and return navigation', () => 
           },
         } as Record<string, unknown>,
       };
-      let unavailable: 0 | 403 | 404 = 0;
+      let unavailable: 0 | 403 | 404 | 503 = 0;
+      let holdRead = false;
+      let releaseRead: (() => void) | undefined;
       const requested: string[] = [];
       await page.route('**/api/v1/targets/*/queue/scan%3Adeferred', (route) =>
         route.fulfill({ json: { item: check, events: [] } }),
@@ -70,7 +72,12 @@ describe('desktop deferred-check blocker identity and return navigation', () => 
       await page.route('**/api/v1/targets/*/sync/plan', (route) =>
         route.fulfill({ json: { plan: { ...syncPlanSeed(iso), id: 'newer-plan' } } }),
       );
-      await page.route('**/api/v1/targets/*/sync/plans/*', (route) => {
+      await page.route('**/api/v1/targets/*/sync/plans/*', async (route) => {
+        expect(route.request().method()).toBe('GET');
+        if (holdRead)
+          await new Promise<void>((resolve) => {
+            releaseRead = resolve;
+          });
         requested.push(
           decodeURIComponent(new URL(route.request().url()).pathname.split('/').at(-1)!),
         );
@@ -137,24 +144,41 @@ describe('desktop deferred-check blocker identity and return navigation', () => 
       await capture('retained');
       await page.reload();
       await assertResult();
-      await page.getByRole('button', { name: 'Close sync details', exact: true }).click();
+      await page.getByRole('button', { name: 'Back to check', exact: true }).click();
       await page.waitForURL(checkURL);
       await resultLink.waitFor();
       await page.goBack();
       await assertResult();
+      unavailable = 503;
+      await page.reload();
+      await page.getByText('Changes could not be loaded', { exact: true }).waitFor();
+      await capture('retry');
+      unavailable = 0;
+      holdRead = true;
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      const pending = page.getByRole('button', { name: 'Trying again…', exact: true });
+      await pending.waitFor();
+      expect(await pending.isDisabled()).toBe(true);
+      await expect.poll(() => releaseRead !== undefined).toBe(true);
+      await capture('retry-pending');
+      holdRead = false;
+      releaseRead!();
+      await assertResult();
       unavailable = 404;
       await page.reload();
-      await page.getByText('Sync result not found', { exact: true }).waitFor();
+      await page.getByText('These changes are unavailable', { exact: true }).waitFor();
+      expect(await page.getByRole('button', { name: 'Try again', exact: true }).count()).toBe(0);
       await capture('missing');
-      await page.getByRole('button', { name: 'Close sync details', exact: true }).click();
+      await page.getByRole('button', { name: 'Back to check', exact: true }).click();
       await page.waitForURL(checkURL);
       await resultLink.waitFor();
       unavailable = 403;
       await resultLink.click();
-      await page.getByText('You no longer have access to these changes', { exact: true }).waitFor();
+      await page.getByText('You cannot view these changes', { exact: true }).waitFor();
       expect(await page.getByText('earlier-change-label', { exact: true }).count()).toBe(0);
+      expect(await page.getByRole('button', { name: 'Try again', exact: true }).count()).toBe(0);
       await capture('denied');
-      await page.getByRole('button', { name: 'Close sync details', exact: true }).click();
+      await page.getByRole('button', { name: 'Back to check', exact: true }).click();
       await page.waitForURL(checkURL);
       delete (check.details.outcome as Record<string, unknown>).blocking_plan_id;
       await page.reload();

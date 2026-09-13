@@ -49,6 +49,8 @@
   import type { QueueDetail } from '../types';
   import type { Page, SyncPlanSummary } from '../types';
   import FormError from './FormError.svelte';
+  import ResultProblem from './ResultProblem.svelte';
+  import { syncResultProblem } from '../sync-result-error';
   import Modal from './Modal.svelte';
   import Button from './Button.svelte';
   import PageHeader from './PageHeader.svelte';
@@ -202,8 +204,21 @@
   const selectedPlanQuery = createQuery(() => ({
     queryKey: ['sync-plan', targetId, selectedPlanId],
     enabled: selectedPlanId !== null,
+    retry: false,
     queryFn: () => fetchPlan(targetId, selectedPlanId ?? undefined),
   }));
+  let retryingPlanId = $state<string | null>(null);
+  async function retrySelectedPlan(): Promise<void> {
+    const id = selectedPlanId;
+    if (id === null) return;
+    retryingPlanId = id;
+    try {
+      await selectedPlanQuery.refetch();
+    } finally {
+      if (retryingPlanId === id) retryingPlanId = null;
+    }
+  }
+  const selectedPlanProblem = $derived(syncResultProblem(selectedPlanQuery.error));
   const inspectedPlan = $derived(
     selectedPlanId === null
       ? (planQuery.data?.plan ?? null)
@@ -572,11 +587,16 @@ Live plan and status queries share the shell's event invalidation and polling fa
   >
     {#snippet headerExtra()}<Button
         tone="quiet"
-        aria-label="Close sync details"
-        onclick={closeDetails}>Close</Button
+        aria-label={selectedCheckId !== null ? 'Back to check' : 'Close sync details'}
+        onclick={closeDetails}>{selectedCheckId !== null ? 'Back to check' : 'Close'}</Button
       >{/snippet}
-    {#if selectedPlanId !== null && selectedPlanQuery.error}
-      <FormError message={messageOf(selectedPlanQuery.error)} />
+    {#if selectedPlanId !== null && (selectedPlanQuery.error || retryingPlanId === selectedPlanId)}
+      <ResultProblem
+        title={selectedPlanProblem.title}
+        problem={selectedPlanProblem.description}
+        onRetry={selectedPlanProblem.retry ? () => void retrySelectedPlan() : undefined}
+        busy={selectedPlanQuery.isFetching}
+      />
     {:else if selectedPlanId !== null && selectedPlanQuery.isPending}
       <p role="status">Loading sync result…</p>
     {:else}

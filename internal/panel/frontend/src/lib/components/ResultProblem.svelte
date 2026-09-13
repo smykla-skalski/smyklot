@@ -11,7 +11,7 @@
     /** What could not be read, as a sentence: "Repositories could not be loaded". */
     title: string;
     problem: string;
-    onRetry: () => void;
+    onRetry?: () => void;
     busy?: boolean;
     /**
      * Whether readable content sits behind this. A refresh that fails over a
@@ -24,7 +24,7 @@
 
 <!--
 @component
-A request that failed, and the retry. Distinct from `EmptyState`, which is a
+A request that failed, with a retry when repeating the read can help. Distinct from `EmptyState`, which is a
 collection that succeeded and holds nothing: an empty list is not an error and drawing
 it as one teaches a reader to distrust the page.
 
@@ -49,7 +49,7 @@ first is still in flight.
       <strong>{title}</strong>
       <span>{problem}</span>
     </span>
-    {@render retry()}
+    {#if onRetry}{@render retry()}{/if}
   </div>
 {:else}
   <!-- The same shape the empty state has, because it stands in the same place and
@@ -57,7 +57,7 @@ first is still in flight.
        went wrong rather than a thing that is not there. -->
   <div class="state-panel is-error" role="alert">
     <span><strong>{title}</strong> {problem}</span>
-    {@render retry()}
+    {#if onRetry}{@render retry()}{/if}
   </div>
 {/if}
 
