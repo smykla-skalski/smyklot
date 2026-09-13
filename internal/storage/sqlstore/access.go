@@ -249,6 +249,10 @@ func (s *Store) ResolveTargetAccess(
 	accountID, targetID string,
 	now time.Time,
 ) (storage.TargetAccess, error) {
+	return resolveTargetAccess(ctx, s.db, accountID, targetID, now)
+}
+
+func resolveTargetAccess(ctx context.Context, queryer rowQuerier, accountID, targetID string, now time.Time) (storage.TargetAccess, error) {
 	var systemRole storage.SystemRole
 	var suspended bool
 	var status storage.PanelUserStatus
@@ -256,7 +260,7 @@ func (s *Store) ResolveTargetAccess(
 	var ownershipSyncedAt StoredTime
 	var ownerCount int
 	var owned bool
-	err := s.db.QueryRowContext(ctx, `
+	err := queryer.QueryRowContext(ctx, `
 SELECT
     pu.system_role,
     pu.status,

@@ -45,7 +45,7 @@ func (s *Store) ClaimDelivery(ctx context.Context, claim storage.DeliveryClaim) 
 			return storage.DeliveryClaimResult{Disposition: disposition}, nil
 		}
 	}
-	id, err := insertDeliveryRun(ctx, tx, claim, operation.sourceOrder)
+	id, err := insertDeliveryRun(ctx, tx, claim, operation.sourceOrder, queueActorSystem)
 	if err != nil {
 		return storage.DeliveryClaimResult{}, err
 	}
@@ -83,7 +83,7 @@ func (s *Store) lockDeliveryOperation(ctx context.Context, tx *transaction, key,
 	return operation, nil
 }
 
-func insertDeliveryRun(ctx context.Context, tx *transaction, claim storage.DeliveryClaim, sourceOrder sql.NullInt64) (int64, error) {
+func insertDeliveryRun(ctx context.Context, tx *transaction, claim storage.DeliveryClaim, sourceOrder sql.NullInt64, actorID string) (int64, error) {
 	var id int64
 	var order any
 	if sourceOrder.Valid {
@@ -104,7 +104,7 @@ func insertDeliveryRun(ctx context.Context, tx *transaction, claim storage.Deliv
 		Lane: workqueue.LaneWebhook, TargetID: claim.TargetID, RepositoryID: claim.RepositoryID,
 		SourceKind: queueSourceDelivery, SourceID: strconv.FormatInt(id, 10),
 		Title: "Webhook: " + claim.Event, Summary: claim.RepositoryFullName,
-		State: workqueue.StateScheduled, NotBefore: claim.ClaimedAt, ActorID: queueActorSystem,
+		State: workqueue.StateScheduled, NotBefore: claim.ClaimedAt, ActorID: actorID,
 		Details: map[string]any{"delivery_id": claim.DeliveryID, "event": claim.Event},
 	})
 	if err != nil {
