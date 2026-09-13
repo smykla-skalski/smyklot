@@ -467,6 +467,9 @@ type RecurringCompletion struct {
 }
 
 type RecurringRequest struct {
+	// RequestKey preserves the accepted occurrence across retries. Empty keys are
+	// reserved for callers that intentionally issue a new command on every call.
+	RequestKey   string
 	Kind         Kind
 	TargetID     *string
 	RepositoryID *string
@@ -488,6 +491,7 @@ type Store interface {
 	EnsureRecurringWork(context.Context, RecurringClaim) (Item, error)
 	SupersedeMissingRecurringWork(context.Context, []RecurringClaim, time.Time) ([]Item, error)
 	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
+	FindRecurringWorkRequest(context.Context, RecurringRequest) (Item, error)
 	FinishRecurringWork(context.Context, string, RecurringCompletion, time.Time) (Item, error)
 	PruneWorkQueue(context.Context, time.Time) (int64, error)
 	NextQueueAvailability(context.Context, Lane, time.Time) (*time.Time, error)
