@@ -2,6 +2,8 @@ package sqlstore
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -40,7 +42,10 @@ func (s *Store) authorizeDeliveryRecovery(ctx context.Context, tx *transaction, 
 	var accountID string
 	var expiresAt, revokedAt StoredTime
 	if err := tx.QueryRowContext(ctx, "SELECT account_id, expires_at, revoked_at FROM sessions WHERE token_hash = ?", request.SessionTokenHash).Scan(&accountID, &expiresAt, &revokedAt); err != nil {
-		return fmt.Errorf("read recovery session: %w", noRows(err))
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.ErrRevoked
+		}
+		return fmt.Errorf("read recovery session: %w", err)
 	}
 	if accountID != request.ActorAccountID || revokedAt.Valid() || !request.RequestedAt.Before(expiresAt.Time()) {
 		return storage.ErrRevoked

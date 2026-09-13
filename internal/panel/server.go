@@ -99,6 +99,7 @@ type Dependencies struct {
 	PendingCI PendingCIController
 	Gates     PendingCIGateController
 	Queue     WorkQueueController
+	Recovery  DeliveryRecoveryChecker
 	SyncPlans syncScopeVerifier
 	// Candidates reads the roster logins are completed against. Optional: a
 	// panel without one offers no completion, which is what the dialogs did
@@ -129,6 +130,7 @@ type Server struct {
 	pendingCI    PendingCIController
 	gates        PendingCIGateController
 	queue        WorkQueueController
+	recovery     DeliveryRecoveryChecker
 	syncPlans    syncScopeVerifier
 	// prefsMu spans each preference commit and its fan-out so announce order
 	// matches commit order (see applyPrefsPatch).
@@ -210,6 +212,7 @@ func New(cfg Config, deps Dependencies) (*Server, error) {
 		pendingCI:    deps.PendingCI,
 		gates:        deps.Gates,
 		queue:        deps.Queue,
+		recovery:     deps.Recovery,
 		syncPlans:    deps.SyncPlans,
 	}, nil
 }
@@ -296,10 +299,7 @@ func (s *Server) Handler() http.Handler {
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/audit", s.getAudit)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/failures", s.getFailures)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue", s.getTargetQueue)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/queue/{queue}", s.getTargetQueueItem)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions/preview", s.previewTargetQueueAction)
-	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/queue/{queue}/actions", s.postTargetQueueAction)
+	s.registerQueueRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedules", s.getTargetSchedules)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/schedule-requests", s.getTargetScheduleRequests)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/schedule-requests", s.postTargetScheduleRequest)

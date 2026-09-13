@@ -38,7 +38,7 @@ func declareDeliveryRecoveryReceiptSpecs(runtime func() (context.Context, storag
 		Expect(err).To(MatchError(storage.ErrConflict))
 		Expect(store.DeleteSession(ctx, request.SessionTokenHash, storage.ElevationRevoked, now)).To(Succeed())
 		_, err = store.GetDeliveryRecoveryReceipt(ctx, request)
-		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError(storage.ErrRevoked))
 	})
 	DescribeTable("rejects delivery recovery receipt access changes", func(kind string) {
 		ctx, store, now := runtime()

@@ -74,6 +74,7 @@ func (s *server) initPanel() error {
 		Store: s.store, Catalog: s, Users: s, Runtime: s, Candidates: s, BypassActors: s, ConfigFiles: s,
 		Gates:     s,
 		Queue:     s,
+		Recovery:  s,
 		SyncPlans: s,
 		PendingCI: s.gate.NewControl(s.store),
 	})
