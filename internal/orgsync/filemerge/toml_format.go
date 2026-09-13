@@ -186,6 +186,20 @@ func renderTOMLArrayChild(
 	if child.kind == unstable.Array && tomlArrayFormattingNeeded(content, child, policy) {
 		return renderTOMLArray(content, child, policy, indent, eol, baseIndent)
 	}
+	if child.kind == unstable.InlineTable && policy.Common.InlineMaxChars > 0 && policy.TOML.Arrays == formatAuto {
+		edits := make([]byteEdit, 0, len(child.children))
+		for _, member := range child.children {
+			rendered, err := renderTOMLArrayChild(content, member, policy, indent, eol, baseIndent)
+			if err != nil {
+				return nil, err
+			}
+			edits = append(edits, byteEdit{
+				start: member.span.start - child.span.start,
+				end:   member.span.end - child.span.start, replacement: rendered,
+			})
+		}
+		return applyByteEdits(content[child.span.start:child.span.end], edits)
+	}
 	if child.kind != unstable.String || policy.TOML.QuoteStyle == formatPreserve {
 		return bytes.Clone(content[child.span.start:child.span.end]), nil
 	}
@@ -245,8 +259,7 @@ func tomlArrayLayout(
 		return formatExpanded
 	}
 	compact := compactTOMLArray(content, value, children, policy)
-	if tomlArrayStartColumn(content, value.span.start)+utf8.RuneCount(compact) <=
-		policy.Common.LineWidth {
+	if inlineCollectionFits(utf8.RuneCount(compact), tomlArrayStartColumn(content, value.span.start), policy.Common) {
 		return formatCompact
 	}
 

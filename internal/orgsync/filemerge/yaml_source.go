@@ -312,7 +312,7 @@ func resolveYAMLCollectionStyles(
 		case "block":
 			ref.targetFlow = false
 		case formatAuto:
-			ref.targetFlow = yamlCollectionFits(ref, policy.Common.LineWidth)
+			ref.targetFlow = yamlCollectionFits(ref, policy.Common)
 		default:
 			return fmt.Errorf("%w: unknown YAML collection style %q", ErrUnwritable, configured)
 		}
@@ -328,18 +328,18 @@ func resolveYAMLCollectionStyles(
 	return nil
 }
 
-func yamlCollectionFits(ref *yamlCollectionRef, width int) bool {
+func yamlCollectionFits(ref *yamlCollectionRef, common config.FormattingCommonPolicy) bool {
 	setYAMLNodeFlow(ref.node, true)
 	if yamlHasBlockCollectionChild(ref.node) {
 		return false
 	}
-	rendered, err := encodeYAMLFragment(ref.node, 2)
+	rendered, err := encodeYAMLFragment(yamlCollectionRenderNode(ref, common.InlineMaxChars > 0), 2)
 	if err != nil || strings.ContainsAny(rendered, "\r\n") {
 		return false
 	}
 	column := yamlCollectionStartToken(ref.source, ref.currentFlow).Position.Column
 
-	return column-1+utf8.RuneCountInString(rendered) <= width
+	return inlineCollectionFits(utf8.RuneCountInString(rendered), column-1, common)
 }
 
 func yamlCollectionPolicy(node *yaml.Node, policy config.FormattingPolicy) string {
@@ -378,14 +378,18 @@ func yamlCollectionEdit(
 	policy config.FormattingPolicy,
 	indentWidth int,
 ) (byteEdit, bool, error) {
-	if ref.currentFlow == ref.targetFlow {
+	// A capped automatic flow collection must emit the representation measured
+	// above, rather than retain potentially much wider source whitespace.
+	cappedAuto := policy.Common.InlineMaxChars > 0 && yamlCollectionPolicy(ref.node, policy) == formatAuto
+	canonicalFlow := ref.targetFlow && cappedAuto
+	if ref.currentFlow == ref.targetFlow && !canonicalFlow {
 		return byteEdit{}, false, nil
 	}
 	start, end, err := yamlCollectionSpan(layout, ref.source, ref.currentFlow)
 	if err != nil {
 		return byteEdit{}, false, err
 	}
-	rendered, err := encodeYAMLFragment(ref.node, indentWidth)
+	rendered, err := encodeYAMLFragment(yamlCollectionRenderNode(ref, cappedAuto), indentWidth)
 	if err != nil {
 		return byteEdit{}, false, err
 	}

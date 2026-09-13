@@ -134,6 +134,88 @@ describe('FormattingEditor [Component]', () => {
     expect(onValidity).toHaveBeenLastCalledWith(true);
   });
 
+  it.each(['runtime', 'target', 'repository', 'template', 'path'] as const)(
+    'edits the inherited inline length cap in the %s scope',
+    async (scope) => {
+      const inherited = defaultFormattingPolicy();
+      inherited.common.inline_max_chars = 48;
+      const onChange = vi.fn();
+      render(FormattingEditor, {
+        patch: {},
+        inherited,
+        scope,
+        idPrefix: `inline-${scope}`,
+        onChange,
+        ...(scope === 'template' || scope === 'path' ? { path: 'renovate.json' } : {}),
+      });
+      const limit = screen.getByRole('spinbutton', { name: 'Inline length limit' });
+      expect((limit as HTMLInputElement).value).toBe('48');
+      expect(limit.getAttribute('min')).toBe('0');
+      expect(limit.getAttribute('max')).toBe('320');
+      const help = document.getElementById(limit.getAttribute('aria-describedby')!);
+      expect(help?.textContent).toMatch(/automatic/iu);
+      expect(help?.textContent).toMatch(/(?:0|zero).*line width/iu);
+
+      await fireEvent.input(limit, { target: { value: '0' } });
+      expect(onChange).toHaveBeenLastCalledWith(
+        { common: { inline_max_chars: 0 } },
+        'formatting.common.inline_max_chars',
+      );
+      await fireEvent.click(
+        screen.getByRole('button', { name: 'Stop overriding Inline length limit' }),
+      );
+      expect(onChange).toHaveBeenLastCalledWith({}, 'formatting.common.inline_max_chars');
+      expect((limit as HTMLInputElement).value).toBe('48');
+    },
+  );
+
+  it.each([{}, { common: { inline_max_chars: 0 } }])(
+    'restores the saved presence of a zero inline length cap: %j',
+    async (savedPatch) => {
+      const onChange = vi.fn();
+      render(FormattingEditor, {
+        patch: { common: { inline_max_chars: 32 } },
+        savedPatch,
+        inherited: defaultFormattingPolicy(),
+        scope: 'target',
+        idPrefix: 'inline-restore',
+        onChange,
+      });
+      await fireEvent.input(screen.getByRole('spinbutton', { name: 'Inline length limit' }), {
+        target: { value: '0' },
+      });
+      expect(onChange).toHaveBeenLastCalledWith(savedPatch, 'formatting.common.inline_max_chars');
+    },
+  );
+
+  it('retains invalid inline cap input until corrected without staging it', async () => {
+    const onChange = vi.fn();
+    const onValidity = vi.fn();
+    render(FormattingEditor, {
+      patch: {},
+      inherited: defaultFormattingPolicy(),
+      scope: 'target',
+      idPrefix: 'inline-invalid',
+      onChange,
+      onValidity,
+    });
+    const limit = screen.getByRole('spinbutton', { name: 'Inline length limit' });
+    for (const value of ['-1', '321', '1.5', '']) {
+      await fireEvent.input(limit, { target: { value } });
+      expect(limit.getAttribute('aria-invalid')).toBe('true');
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onValidity).toHaveBeenLastCalledWith(false);
+      expect(screen.getByRole('alert').textContent).toBe('Use a whole number from 0 to 320');
+    }
+    await fireEvent.input(limit, { target: { value: '320' } });
+    expect(limit.getAttribute('aria-invalid')).toBeNull();
+    expect(onValidity).toHaveBeenLastCalledWith(true);
+    expect(onChange).toHaveBeenLastCalledWith(
+      { common: { inline_max_chars: 320 } },
+      'formatting.common.inline_max_chars',
+    );
+  });
+
   it.each([{}, { common: { indent_width: 2 } }])(
     'restores the saved numeric leaf presence after a draft roundtrip: %j',
     async (savedPatch) => {
@@ -199,6 +281,19 @@ describe('FormattingEditor [Component]', () => {
     expect(screen.queryByRole('region', { name: 'YAML' })).toBeNull();
     expect(screen.queryByRole('region', { name: 'TOML' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Formatting file type' })).toBeNull();
+  });
+
+  it('omits the inline collection cap from Markdown-only file options', () => {
+    const { container } = render(FormattingEditor, {
+      patch: {},
+      inherited: defaultFormattingPolicy(),
+      scope: 'template',
+      idPrefix: 'markdown-cap',
+      path: 'CONTRIBUTING.md',
+      onChange: vi.fn(),
+    });
+    expect(container.querySelector('input[id$="formatting.common.inline_max_chars"]')).toBeNull();
+    expect(screen.getByRole('spinbutton', { name: 'Line Width' })).toBeDefined();
   });
 
   it('keeps JSON rules editable for JSONC output', async () => {

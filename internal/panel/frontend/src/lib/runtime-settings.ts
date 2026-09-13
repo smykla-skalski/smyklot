@@ -471,6 +471,19 @@ function parseConfig(value: unknown): RuntimeConfigDocument | null | undefined {
   // opt-in default instead of making unrelated saved work unreadable.
   if (!Object.hasOwn(normalized, 'allow_draft_merges')) normalized.allow_draft_merges = false;
   if (!Object.hasOwn(normalized, 'formatting')) normalized.formatting = defaultFormattingPolicy();
+  // Existing complete runtime drafts predate this optional automatic-layout cap.
+  // Default only its absent leaf here; live policies and malformed leaves stay strict.
+  const policy = normalized.formatting;
+  if (
+    isRecord(policy) &&
+    isRecord(policy.common) &&
+    !Object.hasOwn(policy.common, 'inline_max_chars')
+  ) {
+    normalized.formatting = {
+      ...policy,
+      common: { ...policy.common, inline_max_chars: 0 },
+    };
+  }
   if (CONFIG_KEYS.some((key) => !validConfigValue(key, normalized[key]))) {
     return undefined;
   }

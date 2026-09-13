@@ -99,6 +99,13 @@
               "maximum": 16,
               "default": 2
             },
+            "inline_max_chars": {
+              "type": "integer",
+              "description": "Limits automatically inlined collections by rendered characters; zero uses only line width",
+              "minimum": 0,
+              "maximum": 320,
+              "default": 0
+            },
             "line_ending": {
               "type": "string",
               "description": "Chooses LF, CRLF, or the document's existing endings",
@@ -121,6 +128,7 @@
             "final_newline": "preserve",
             "indent_style": "preserve",
             "indent_width": 2,
+            "inline_max_chars": 0,
             "line_ending": "preserve",
             "line_width": 100
           }
@@ -387,6 +395,7 @@
           "final_newline": "preserve",
           "indent_style": "preserve",
           "indent_width": 2,
+          "inline_max_chars": 0,
           "line_ending": "preserve",
           "line_width": 100
         },

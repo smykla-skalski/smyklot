@@ -100,6 +100,23 @@
     return scale === 0 ? 1 : scale;
   }
 
+  function revealFocusedOption(input: HTMLInputElement): void {
+    const option = input.closest('label');
+    const track = input.closest('fieldset');
+    if (!option || !track) return;
+    const optionBox = option.getBoundingClientRect();
+    const trackBox = track.getBoundingClientRect();
+    const delta =
+      optionBox.left < trackBox.left
+        ? optionBox.left - trackBox.left
+        : optionBox.right > trackBox.right
+          ? optionBox.right - trackBox.right
+          : 0;
+    // The hidden radio can gain focus before its full label is visible. Scroll
+    // only this track, retaining the page and inspector's vertical anchors.
+    if (delta !== 0) track.scrollLeft += delta / scaleOf(track);
+  }
+
   function positionSelection(node: HTMLFieldSetElement, selection: string) {
     let currentSelection = selection;
 
@@ -294,6 +311,7 @@ positioning will replace once it is portable.
         value={option.value}
         checked={value === option.value}
         disabled={option.disabled}
+        onfocus={(event) => revealFocusedOption(event.currentTarget)}
         onchange={(event) => onSelect(event.currentTarget.value)}
       />
       <span class="segment-label">

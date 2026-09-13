@@ -14,7 +14,7 @@ func FormattingKeys() []string {
 	return []string{
 		"formatting.preset",
 		"formatting.common.indent_style", "formatting.common.indent_width",
-		"formatting.common.line_width", "formatting.common.line_ending",
+		"formatting.common.line_width", "formatting.common.inline_max_chars", "formatting.common.line_ending",
 		"formatting.common.final_newline",
 		"formatting.json.arrays", "formatting.json.objects", "formatting.json.key_order",
 		"formatting.jsonc.trailing_commas",
@@ -59,6 +59,7 @@ func (p FormattingCommonPatch) appendKeys(keys *[]string) {
 	appendKey(keys, "formatting.common.indent_style", p.IndentStyle)
 	appendKey(keys, "formatting.common.indent_width", p.IndentWidth)
 	appendKey(keys, "formatting.common.line_width", p.LineWidth)
+	appendKey(keys, "formatting.common.inline_max_chars", p.InlineMaxChars)
 	appendKey(keys, "formatting.common.line_ending", p.LineEnding)
 	appendKey(keys, "formatting.common.final_newline", p.FinalNewline)
 }
@@ -139,6 +140,7 @@ func (p *FormattingCommonPatch) normalize() error {
 		enumSetting("formatting.common.indent_style", p.IndentStyle, "preserve", "spaces", "tabs"),
 		boundedSetting("formatting.common.indent_width", p.IndentWidth, 1, 16),
 		boundedSetting("formatting.common.line_width", p.LineWidth, 40, 320),
+		boundedSetting("formatting.common.inline_max_chars", p.InlineMaxChars, 0, 320),
 		enumSetting("formatting.common.line_ending", p.LineEnding, "preserve", "lf", "crlf"),
 		enumSetting("formatting.common.final_newline", p.FinalNewline, "preserve", "insert", "remove"),
 	}
@@ -215,7 +217,7 @@ func firstError(errors []error) error {
 
 // AsPatch returns a complete sparse representation of this policy.
 func (p FormattingPolicy) AsPatch() FormattingPatch {
-	common := FormattingCommonPatch{IndentStyle: &p.Common.IndentStyle, IndentWidth: &p.Common.IndentWidth, LineWidth: &p.Common.LineWidth, LineEnding: &p.Common.LineEnding, FinalNewline: &p.Common.FinalNewline}
+	common := FormattingCommonPatch{IndentStyle: &p.Common.IndentStyle, IndentWidth: &p.Common.IndentWidth, LineWidth: &p.Common.LineWidth, InlineMaxChars: &p.Common.InlineMaxChars, LineEnding: &p.Common.LineEnding, FinalNewline: &p.Common.FinalNewline}
 	json := FormattingJSONPatch{Arrays: &p.JSON.Arrays, Objects: &p.JSON.Objects, KeyOrder: &p.JSON.KeyOrder}
 	jsonc := FormattingJSONCPatch{TrailingCommas: &p.JSONC.TrailingCommas}
 	yaml := FormattingYAMLPatch{Sequences: &p.YAML.Sequences, Mappings: &p.YAML.Mappings, QuoteStyle: &p.YAML.QuoteStyle, SequenceIndent: &p.YAML.SequenceIndent, DocumentStart: &p.YAML.DocumentStart}

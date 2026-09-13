@@ -4,11 +4,12 @@ func formattingSources(sources map[string]Source) FormattingSources {
 	return FormattingSources{
 		Preset: sources["formatting.preset"],
 		Common: FormattingCommonSources{
-			IndentStyle:  sources["formatting.common.indent_style"],
-			IndentWidth:  sources["formatting.common.indent_width"],
-			LineWidth:    sources["formatting.common.line_width"],
-			LineEnding:   sources["formatting.common.line_ending"],
-			FinalNewline: sources["formatting.common.final_newline"],
+			IndentStyle:    sources["formatting.common.indent_style"],
+			IndentWidth:    sources["formatting.common.indent_width"],
+			LineWidth:      sources["formatting.common.line_width"],
+			InlineMaxChars: sources["formatting.common.inline_max_chars"],
+			LineEnding:     sources["formatting.common.line_ending"],
+			FinalNewline:   sources["formatting.common.final_newline"],
 		},
 		JSON: FormattingJSONSources{
 			Arrays:   sources["formatting.json.arrays"],

@@ -109,7 +109,27 @@ var _ = Describe("Formatting configuration [Unit]", func() {
 		Entry("TOML indent above", config.FormatTOML, "[formatting.common]\nindent_width = 17\n", config.KeyFormattingCommonIndentWidth),
 		Entry("YAML width below", config.FormatYAML, "formatting:\n  common:\n    line_width: 39\n", config.KeyFormattingCommonLineWidth),
 		Entry("YAML width above", config.FormatYAML, "formatting:\n  common:\n    line_width: 321\n", config.KeyFormattingCommonLineWidth),
+		Entry("TOML inline limit below", config.FormatTOML, "[formatting.common]\ninline_max_chars = -1\n", config.KeyFormattingCommonInlineMaxChars),
+		Entry("YAML inline limit above", config.FormatYAML, "formatting:\n  common:\n    inline_max_chars: 321\n", config.KeyFormattingCommonInlineMaxChars),
 	)
+
+	It("inherits an omitted inline limit and retains an explicit zero reset", func() {
+		limit, zero := 80, 0
+		base := config.ApplyFormattingPatch(config.DefaultFormattingPolicy(), config.FormattingPatch{
+			Common: &config.FormattingCommonPatch{InlineMaxChars: &limit},
+		})
+		Expect(config.ApplyFormattingPatch(base, config.FormattingPatch{}).Common.InlineMaxChars).To(Equal(80))
+		reset := config.FormattingPatch{Common: &config.FormattingCommonPatch{InlineMaxChars: &zero}}
+		document, err := config.RenderTOML(config.Patch{Formatting: &reset})
+		Expect(err).NotTo(HaveOccurred())
+		parsed, err := config.ParsePatch(config.FormatTOML, document)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(parsed.Formatting.SetKeys()).To(ContainElement(config.KeyFormattingCommonInlineMaxChars))
+		resolved := config.ApplyFormattingPatch(base, *parsed.Formatting)
+		Expect(resolved.Common.InlineMaxChars).To(BeZero())
+		Expect(resolved.AsPatch().Common.InlineMaxChars).NotTo(BeNil())
+		Expect(*resolved.AsPatch().Common.InlineMaxChars).To(BeZero())
+	})
 
 	It("publishes exact environment and flag names for nested leaves", func() {
 		Expect(config.EnvVar(config.KeyFormattingJSONArrays)).To(Equal("SMYKLOT_FORMATTING_JSON_ARRAYS"))
@@ -185,7 +205,7 @@ func fullFormattingSources(source config.Source) config.FormattingSources {
 	return config.FormattingSources{
 		Preset: source,
 		Common: config.FormattingCommonSources{
-			IndentStyle: source, IndentWidth: source, LineWidth: source,
+			IndentStyle: source, IndentWidth: source, LineWidth: source, InlineMaxChars: source,
 			LineEnding: source, FinalNewline: source,
 		},
 		JSON: config.FormattingJSONSources{
@@ -220,11 +240,12 @@ func fullFormattingPatch() config.FormattingPatch {
 	return config.FormattingPatch{
 		Preset: stringValue(config.KeyFormattingPreset),
 		Common: &config.FormattingCommonPatch{
-			IndentStyle:  stringValue(config.KeyFormattingCommonIndentStyle),
-			IndentWidth:  intValue(config.KeyFormattingCommonIndentWidth),
-			LineWidth:    intValue(config.KeyFormattingCommonLineWidth),
-			LineEnding:   stringValue(config.KeyFormattingCommonLineEnding),
-			FinalNewline: stringValue(config.KeyFormattingCommonFinalNewline),
+			IndentStyle:    stringValue(config.KeyFormattingCommonIndentStyle),
+			IndentWidth:    intValue(config.KeyFormattingCommonIndentWidth),
+			LineWidth:      intValue(config.KeyFormattingCommonLineWidth),
+			InlineMaxChars: intValue(config.KeyFormattingCommonInlineMaxChars),
+			LineEnding:     stringValue(config.KeyFormattingCommonLineEnding),
+			FinalNewline:   stringValue(config.KeyFormattingCommonFinalNewline),
 		},
 		JSON: &config.FormattingJSONPatch{
 			Arrays: stringValue(config.KeyFormattingJSONArrays), Objects: stringValue(config.KeyFormattingJSONObjects),
@@ -254,30 +275,31 @@ func fullFormattingPolicy() config.FormattingPolicy {
 
 func fullFormattingValues() map[string]string {
 	return map[string]string{
-		config.KeyFormattingPreset:              "preserve",
-		config.KeyFormattingCommonIndentStyle:   "tabs",
-		config.KeyFormattingCommonIndentWidth:   "4",
-		config.KeyFormattingCommonLineWidth:     "120",
-		config.KeyFormattingCommonLineEnding:    "crlf",
-		config.KeyFormattingCommonFinalNewline:  "remove",
-		config.KeyFormattingJSONArrays:          "compact",
-		config.KeyFormattingJSONObjects:         "expanded",
-		config.KeyFormattingJSONKeyOrder:        "sort",
-		config.KeyFormattingJSONCTrailingCommas: "insert",
-		config.KeyFormattingYAMLSequences:       "flow",
-		config.KeyFormattingYAMLMappings:        "block",
-		config.KeyFormattingYAMLQuoteStyle:      "prefer_single",
-		config.KeyFormattingYAMLSequenceIndent:  "indentless",
-		config.KeyFormattingYAMLDocumentStart:   "insert",
-		config.KeyFormattingTOMLArrays:          "expanded",
-		config.KeyFormattingTOMLTrailingCommas:  "multiline",
-		config.KeyFormattingTOMLQuoteStyle:      "prefer_literal",
-		config.KeyFormattingTOMLAlignEntries:    "align",
-		config.KeyFormattingTOMLAlignComments:   "compact",
-		config.KeyFormattingTOMLKeyOrder:        "sort",
-		config.KeyFormattingMarkdownProseWrap:   "never",
-		config.KeyFormattingMarkdownListSpacing: "loose",
-		config.KeyFormattingMarkdownTables:      "compact",
+		config.KeyFormattingPreset:               "preserve",
+		config.KeyFormattingCommonIndentStyle:    "tabs",
+		config.KeyFormattingCommonIndentWidth:    "4",
+		config.KeyFormattingCommonLineWidth:      "120",
+		config.KeyFormattingCommonInlineMaxChars: "4",
+		config.KeyFormattingCommonLineEnding:     "crlf",
+		config.KeyFormattingCommonFinalNewline:   "remove",
+		config.KeyFormattingJSONArrays:           "compact",
+		config.KeyFormattingJSONObjects:          "expanded",
+		config.KeyFormattingJSONKeyOrder:         "sort",
+		config.KeyFormattingJSONCTrailingCommas:  "insert",
+		config.KeyFormattingYAMLSequences:        "flow",
+		config.KeyFormattingYAMLMappings:         "block",
+		config.KeyFormattingYAMLQuoteStyle:       "prefer_single",
+		config.KeyFormattingYAMLSequenceIndent:   "indentless",
+		config.KeyFormattingYAMLDocumentStart:    "insert",
+		config.KeyFormattingTOMLArrays:           "expanded",
+		config.KeyFormattingTOMLTrailingCommas:   "multiline",
+		config.KeyFormattingTOMLQuoteStyle:       "prefer_literal",
+		config.KeyFormattingTOMLAlignEntries:     "align",
+		config.KeyFormattingTOMLAlignComments:    "compact",
+		config.KeyFormattingTOMLKeyOrder:         "sort",
+		config.KeyFormattingMarkdownProseWrap:    "never",
+		config.KeyFormattingMarkdownListSpacing:  "loose",
+		config.KeyFormattingMarkdownTables:       "compact",
 	}
 }
 

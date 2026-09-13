@@ -17,6 +17,7 @@ import {
   parseFormattingPolicy,
   setFormattingPatchValue,
 } from '../src/lib/formatting';
+import { parseJson } from '../src/lib/merge';
 
 describe('generated formatting contract [Unit]', () => {
   it('parses both generated presets as complete policies', () => {
@@ -24,7 +25,7 @@ describe('generated formatting contract [Unit]', () => {
     expect(parseFormattingPolicy(FORMATTING_PRESETS.conventional)).toEqual(
       FORMATTING_PRESETS.conventional,
     );
-    expect(FORMATTING_FIELDS).toHaveLength(24);
+    expect(FORMATTING_FIELDS).toHaveLength(25);
     expect(FORMATTING_GROUPS.map(({ label }) => label)).toEqual([
       'Common',
       'JSON',
@@ -63,6 +64,67 @@ describe('generated formatting contract [Unit]', () => {
       'preserve',
     );
   });
+
+  it('preserves zero as an explicit inline cap override and restores its source', () => {
+    const inherited = applyFormattingPatch(defaultFormattingPolicy(), {
+      common: { inline_max_chars: 48 },
+    });
+    const automatic = { common: { inline_max_chars: 0 } };
+    const field = FORMATTING_FIELDS.find(
+      ({ key }) => key === 'formatting.common.inline_max_chars',
+    )!;
+
+    expect(defaultFormattingPolicy().common.inline_max_chars).toBe(0);
+    expect(applyFormattingPatch(inherited, {}).common.inline_max_chars).toBe(48);
+    expect(applyFormattingPatch(inherited, automatic).common.inline_max_chars).toBe(0);
+    expect(parseFormattingPatch(JSON.parse(JSON.stringify(automatic)))).toEqual(automatic);
+    expect(formattingPatchesEqual({}, automatic)).toBe(false);
+    expect(formattingPolicyPatch(inherited, applyFormattingPatch(inherited, automatic))).toEqual(
+      automatic,
+    );
+    expect(
+      applyFormattingSources(formattingSources('process'), automatic, 'target').common,
+    ).toMatchObject({ inline_max_chars: 'target', line_width: 'process' });
+    expect(setFormattingPatchValue(automatic, field, undefined)).toEqual({});
+  });
+
+  it.each([-1, 321, 1.5, Number.NaN, Number.POSITIVE_INFINITY, '32', null])(
+    'rejects an invalid inline length cap: %s',
+    (inline_max_chars) => {
+      expect(parseFormattingPatch({ common: { inline_max_chars } })).toBeNull();
+    },
+  );
+
+  it.each([0, 1, 320])('accepts an inline length cap at its valid boundaries: %s', (value) => {
+    expect(parseFormattingPatch({ common: { inline_max_chars: value } })).toEqual({
+      common: { inline_max_chars: value },
+    });
+  });
+
+  it('reads bounded formatting metadata from lossless shared-file drafts', () => {
+    const raw = parseJson('{"common":{"inline_max_chars":16,"line_width":100}}');
+    expect(parseFormattingPatch(raw)).toEqual({
+      common: { inline_max_chars: 16, line_width: 100 },
+    });
+    const field = FORMATTING_FIELDS.find(
+      ({ key }) => key === 'formatting.common.inline_max_chars',
+    )!;
+    expect(formattingPatchValue({ common: { inline_max_chars: JSON.rawJSON('16') } }, field)).toBe(
+      16,
+    );
+    expect(formattingPatchValue({ common: { inline_max_chars: JSON.rawJSON('0') } }, field)).toBe(
+      0,
+    );
+  });
+
+  it.each(['321', '-1', '1.5', '1e1', '9007199254740993', '"16"'])(
+    'rejects an invalid raw inline cap literal: %s',
+    (literal) => {
+      expect(
+        parseFormattingPatch(parseJson(`{"common":{"inline_max_chars":${literal}}}`)),
+      ).toBeNull();
+    },
+  );
 
   it('strictly rejects unknown, partial, and out-of-bounds documents', () => {
     expect(parseFormattingPatch({ json: { unknown: 'preserve' } })).toBeNull();

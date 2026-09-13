@@ -117,6 +117,9 @@ const (
 	// KeyFormattingCommonLineWidth addresses formatting.common.line_width.
 	KeyFormattingCommonLineWidth = "formatting.common.line_width"
 
+	// KeyFormattingCommonInlineMaxChars addresses formatting.common.inline_max_chars.
+	KeyFormattingCommonInlineMaxChars = "formatting.common.inline_max_chars"
+
 	// KeyFormattingCommonLineEnding addresses formatting.common.line_ending.
 	KeyFormattingCommonLineEnding = "formatting.common.line_ending"
 
@@ -251,6 +254,7 @@ func Keys() []string {
 		KeyFormattingCommonIndentStyle,
 		KeyFormattingCommonIndentWidth,
 		KeyFormattingCommonLineWidth,
+		KeyFormattingCommonInlineMaxChars,
 		KeyFormattingCommonLineEnding,
 		KeyFormattingCommonFinalNewline,
 		KeyFormattingJSONArrays,
@@ -334,7 +338,7 @@ func (c Config) AsPatch() Patch {
 // only the pointers can answer. Counting or enumerating them by hand is how a
 // key comes to be left out of one caller and not another.
 func (p Patch) SetKeys() []string {
-	keys := make([]string, 0, 38)
+	keys := make([]string, 0, 39)
 
 	if p.Formatting != nil {
 		keys = append(keys, p.Formatting.SetKeys()...)
@@ -415,6 +419,7 @@ func RegisterFlags(flags *pflag.FlagSet) {
 	flags.String(FlagName(KeyFormattingCommonIndentStyle), defaults.Formatting.Common.IndentStyle, "Chooses spaces, tabs, or the document's existing indentation")
 	flags.Int(FlagName(KeyFormattingCommonIndentWidth), defaults.Formatting.Common.IndentWidth, "Sets the number of spaces per indentation level")
 	flags.Int(FlagName(KeyFormattingCommonLineWidth), defaults.Formatting.Common.LineWidth, "Sets the target line length for automatic wrapping")
+	flags.Int(FlagName(KeyFormattingCommonInlineMaxChars), defaults.Formatting.Common.InlineMaxChars, "Limits automatically inlined collections by rendered characters; zero uses only line width")
 	flags.String(FlagName(KeyFormattingCommonLineEnding), defaults.Formatting.Common.LineEnding, "Chooses LF, CRLF, or the document's existing endings")
 	flags.String(FlagName(KeyFormattingCommonFinalNewline), defaults.Formatting.Common.FinalNewline, "Inserts, removes, or preserves the last line ending")
 	flags.String(FlagName(KeyFormattingJSONArrays), defaults.Formatting.JSON.Arrays, "Controls JSON array layout")
@@ -536,6 +541,21 @@ func envPatch(lookup func(string) (string, bool)) (Patch, error) {
 			patch.Formatting.Common = &FormattingCommonPatch{}
 		}
 		patch.Formatting.Common.LineWidth = &value
+	}
+
+	if raw, ok := lookup(EnvVar(KeyFormattingCommonInlineMaxChars)); ok && raw != "" {
+		value, err := parseInt(KeyFormattingCommonInlineMaxChars, raw)
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.InlineMaxChars = &value
 	}
 
 	if raw, ok := lookup(EnvVar(KeyFormattingCommonLineEnding)); ok && raw != "" {
@@ -944,6 +964,21 @@ func flagPatch(flags *pflag.FlagSet) (Patch, error) {
 			patch.Formatting.Common = &FormattingCommonPatch{}
 		}
 		patch.Formatting.Common.LineWidth = &value
+	}
+
+	if flags.Changed(FlagName(KeyFormattingCommonInlineMaxChars)) {
+		value, err := flags.GetInt(FlagName(KeyFormattingCommonInlineMaxChars))
+		if err != nil {
+			return Patch{}, err
+		}
+
+		if patch.Formatting == nil {
+			patch.Formatting = &FormattingPatch{}
+		}
+		if patch.Formatting.Common == nil {
+			patch.Formatting.Common = &FormattingCommonPatch{}
+		}
+		patch.Formatting.Common.InlineMaxChars = &value
 	}
 
 	if flags.Changed(FlagName(KeyFormattingCommonLineEnding)) {
@@ -1388,43 +1423,44 @@ func applyPatch(values *Config, patch Patch, sources map[string]Source, source S
 
 func processSources() map[string]Source {
 	return map[string]Source{
-		KeyFormattingPreset:              SourceProcess,
-		KeyFormattingCommonIndentStyle:   SourceProcess,
-		KeyFormattingCommonIndentWidth:   SourceProcess,
-		KeyFormattingCommonLineWidth:     SourceProcess,
-		KeyFormattingCommonLineEnding:    SourceProcess,
-		KeyFormattingCommonFinalNewline:  SourceProcess,
-		KeyFormattingJSONArrays:          SourceProcess,
-		KeyFormattingJSONObjects:         SourceProcess,
-		KeyFormattingJSONKeyOrder:        SourceProcess,
-		KeyFormattingJSONCTrailingCommas: SourceProcess,
-		KeyFormattingYAMLSequences:       SourceProcess,
-		KeyFormattingYAMLMappings:        SourceProcess,
-		KeyFormattingYAMLQuoteStyle:      SourceProcess,
-		KeyFormattingYAMLSequenceIndent:  SourceProcess,
-		KeyFormattingYAMLDocumentStart:   SourceProcess,
-		KeyFormattingTOMLArrays:          SourceProcess,
-		KeyFormattingTOMLTrailingCommas:  SourceProcess,
-		KeyFormattingTOMLQuoteStyle:      SourceProcess,
-		KeyFormattingTOMLAlignEntries:    SourceProcess,
-		KeyFormattingTOMLAlignComments:   SourceProcess,
-		KeyFormattingTOMLKeyOrder:        SourceProcess,
-		KeyFormattingMarkdownProseWrap:   SourceProcess,
-		KeyFormattingMarkdownListSpacing: SourceProcess,
-		KeyFormattingMarkdownTables:      SourceProcess,
-		KeyQuietSuccess:                  SourceProcess,
-		KeyQuietReactions:                SourceProcess,
-		KeyQuietPending:                  SourceProcess,
-		KeyAllowedCommands:               SourceProcess,
-		KeyCommandAliases:                SourceProcess,
-		KeyCommandPrefix:                 SourceProcess,
-		KeyDisableMentions:               SourceProcess,
-		KeyDisableBareCommands:           SourceProcess,
-		KeyDisableUnapprove:              SourceProcess,
-		KeyDisableReactions:              SourceProcess,
-		KeyDisableDeletedComments:        SourceProcess,
-		KeyAllowSelfApproval:             SourceProcess,
-		KeyAllowDraftMerges:              SourceProcess,
-		KeyRunner:                        SourceProcess,
+		KeyFormattingPreset:               SourceProcess,
+		KeyFormattingCommonIndentStyle:    SourceProcess,
+		KeyFormattingCommonIndentWidth:    SourceProcess,
+		KeyFormattingCommonLineWidth:      SourceProcess,
+		KeyFormattingCommonInlineMaxChars: SourceProcess,
+		KeyFormattingCommonLineEnding:     SourceProcess,
+		KeyFormattingCommonFinalNewline:   SourceProcess,
+		KeyFormattingJSONArrays:           SourceProcess,
+		KeyFormattingJSONObjects:          SourceProcess,
+		KeyFormattingJSONKeyOrder:         SourceProcess,
+		KeyFormattingJSONCTrailingCommas:  SourceProcess,
+		KeyFormattingYAMLSequences:        SourceProcess,
+		KeyFormattingYAMLMappings:         SourceProcess,
+		KeyFormattingYAMLQuoteStyle:       SourceProcess,
+		KeyFormattingYAMLSequenceIndent:   SourceProcess,
+		KeyFormattingYAMLDocumentStart:    SourceProcess,
+		KeyFormattingTOMLArrays:           SourceProcess,
+		KeyFormattingTOMLTrailingCommas:   SourceProcess,
+		KeyFormattingTOMLQuoteStyle:       SourceProcess,
+		KeyFormattingTOMLAlignEntries:     SourceProcess,
+		KeyFormattingTOMLAlignComments:    SourceProcess,
+		KeyFormattingTOMLKeyOrder:         SourceProcess,
+		KeyFormattingMarkdownProseWrap:    SourceProcess,
+		KeyFormattingMarkdownListSpacing:  SourceProcess,
+		KeyFormattingMarkdownTables:       SourceProcess,
+		KeyQuietSuccess:                   SourceProcess,
+		KeyQuietReactions:                 SourceProcess,
+		KeyQuietPending:                   SourceProcess,
+		KeyAllowedCommands:                SourceProcess,
+		KeyCommandAliases:                 SourceProcess,
+		KeyCommandPrefix:                  SourceProcess,
+		KeyDisableMentions:                SourceProcess,
+		KeyDisableBareCommands:            SourceProcess,
+		KeyDisableUnapprove:               SourceProcess,
+		KeyDisableReactions:               SourceProcess,
+		KeyDisableDeletedComments:         SourceProcess,
+		KeyAllowSelfApproval:              SourceProcess,
+		KeyAllowDraftMerges:               SourceProcess,
+		KeyRunner:                         SourceProcess,
 	}
 }

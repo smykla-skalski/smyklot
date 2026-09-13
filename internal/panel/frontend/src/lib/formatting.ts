@@ -135,7 +135,10 @@ export function formattingPolicyValue(
   policy: FormattingPolicy,
   field: FormattingField,
 ): FormattingLeafValue {
-  const value = valueAtPath(policy as unknown as Record<string, unknown>, field.path);
+  const value = normalizeLeaf(
+    field,
+    valueAtPath(policy as unknown as Record<string, unknown>, field.path),
+  );
   if (typeof value !== 'string' && typeof value !== 'number') {
     throw new TypeError(`formatting policy is missing ${field.key}`);
   }
@@ -143,10 +146,10 @@ export function formattingPolicyValue(
 }
 
 export function formattingPatchValue(
-  patch: FormattingPatch,
+  patch: FormattingPatch | Record<string, unknown>,
   field: FormattingField,
 ): FormattingLeafValue | undefined {
-  const value = valueAtPath(patch as Record<string, unknown>, field.path);
+  const value = normalizeLeaf(field, valueAtPath(patch as Record<string, unknown>, field.path));
   return typeof value === 'string' || typeof value === 'number' ? value : undefined;
 }
 
@@ -255,8 +258,9 @@ function parseNode(
     }
     const candidate = value[key];
     if (child.field !== undefined) {
-      if (!validLeaf(child.field, candidate)) return null;
-      parsed[key] = candidate;
+      const leaf = normalizeLeaf(child.field, candidate);
+      if (!validLeaf(child.field, leaf)) return null;
+      parsed[key] = leaf;
       continue;
     }
     const nested = parseNode(candidate, child, complete);
@@ -290,6 +294,19 @@ function parseSourceNode<Source extends string>(
     parsed[key] = nested;
   }
   return parsed;
+}
+
+/** Only bounded integer metadata may leave the lossless document's raw-number boxes. */
+function normalizeLeaf(field: FormattingField, value: unknown): unknown {
+  if (
+    field.kind !== 'int' ||
+    typeof JSON.isRawJSON !== 'function' ||
+    !JSON.isRawJSON(value) ||
+    !/^-?(?:0|[1-9]\d*)$/u.test(value.rawJSON)
+  )
+    return value;
+  const integer = Number(value.rawJSON);
+  return validLeaf(field, integer) ? integer : value;
 }
 
 function validLeaf(field: FormattingField, value: unknown): value is FormattingLeafValue {

@@ -6,10 +6,12 @@ import { join } from 'node:path';
 import { startPanel, visit, type Panel } from './harness';
 import type {
   SettingsCheckpoint,
+  SyncConfig,
   SyncOverride,
   WorkspaceSettingsBatchInput,
   WorkspaceSettingsBatchResponse,
 } from '../../src/lib/types';
+import type { SyncFileRenderResponse } from '../../src/lib/sync-file-render.generated';
 
 let panel: Panel;
 
@@ -94,6 +96,222 @@ async function persistedMerge(page: Page, repositoryId: string): Promise<unknown
 }
 
 describe('configured file formatting in the development panel', () => {
+  it.each([
+    { format: 'json', path: 'renovate.json' },
+    { format: 'jsonc', path: '.config/quality.jsonc' },
+  ])('saves an inline length cap with mixed $format collections', async ({ format, path }) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1440, height: 1000 },
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(8000);
+    const configUrl = `${panel.origin}/api/v1/targets/2001/sync/config/files`;
+    const original = (await (await page.request.get(configUrl)).json()) as SyncConfig;
+    let saved = false;
+    const source = [
+      '{',
+      ...(format === 'jsonc' ? ['  // Keep this explanation'] : []),
+      '  "shortArray": ["🦊", "🦊", "🦊"],',
+      '  "longArray": ["alpha", "bravo", "charlie", "delta"],',
+      '  "shortObject": {"ok": true},',
+      '  "longObject": {"manager": "npm", "group": "dependency updates"},',
+      '  "exactNumber": 9007199254740993',
+      '}',
+    ].join('\n');
+    try {
+      await visit(page, `${panel.origin}/workspace/${panel.account}/sync/files/${path}`, {
+        ready: '.file-editor .cm-content',
+      });
+      const editor = page.locator('.file-editor');
+      await editor.locator('.cm-content').fill(source);
+      await editor.getByRole('button', { name: 'Template options', exact: true }).click();
+      const options = page.getByRole('dialog', { name: 'Template options', exact: true });
+      await options
+        .getByRole('group', { name: 'Formatting preset' })
+        .getByRole('radio', { name: 'Conventional', exact: true })
+        .locator('xpath=ancestor::label[1]')
+        .click();
+      const limit = options.getByRole('spinbutton', { name: 'Inline length limit' });
+      expect(await limit.inputValue()).toBe('0');
+      const rendering = page.waitForResponse((response) => {
+        if (!response.url().endsWith('/sync/files/render')) return false;
+        const input = response.request().postDataJSON();
+        return (
+          input.path === path &&
+          input.repository === undefined &&
+          input.template_formatting?.common?.inline_max_chars === 16
+        );
+      });
+      await limit.fill('16');
+      const rendered = (await (await rendering).json()) as SyncFileRenderResponse;
+      expect(rendered.valid).toBe(true);
+      expect(rendered.final_content).toContain('"shortArray": ["🦊", "🦊", "🦊"]');
+      expect(rendered.final_content).toContain('"shortObject": {"ok": true}');
+      expect(rendered.final_content).toMatch(/"longArray": \[\r?\n/u);
+      expect(rendered.final_content).toMatch(/"longObject": \{\r?\n/u);
+      expect(rendered.final_content).toContain('9007199254740993');
+      if (format === 'jsonc') expect(rendered.final_content).toContain('// Keep this explanation');
+      await options.getByRole('button', { name: 'Apply formatting', exact: true }).click();
+      await options.waitFor({ state: 'hidden' });
+      await expect
+        .poll(() => editor.locator('.cm-content').innerText())
+        .toBe(rendered.final_content.trimEnd());
+
+      // A page reload restores both the formatting leaf and exact edited source.
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect
+        .poll(() => editor.locator('.cm-content').innerText())
+        .toBe(rendered.final_content.trimEnd());
+      await editor.getByRole('button', { name: 'Template options', exact: true }).click();
+      await expect.poll(() => limit.inputValue()).toBe('16');
+      await options.getByRole('button', { name: 'Done', exact: true }).click();
+      const saving = page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          response.url().endsWith('/api/v1/targets/2001/settings'),
+      );
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      const response = await saving;
+      expect(response.ok(), await response.text()).toBe(true);
+      saved = true;
+      const body = response.request().postDataJSON() as WorkspaceSettingsBatchInput;
+      const files = body.sync_configs?.find((config) => config.kind === 'files');
+      expect(files && 'document' in files ? files.document.files : []).toContainEqual(
+        expect.objectContaining({
+          path,
+          content: rendered.final_content,
+          formatting: expect.objectContaining({
+            common: expect.objectContaining({ inline_max_chars: 16 }),
+          }),
+        }),
+      );
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await expect
+        .poll(() => editor.locator('.cm-content').innerText())
+        .toBe(rendered.final_content.trimEnd());
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      if (directory) await mkdir(directory, { recursive: true });
+      for (const width of format === 'json' ? [375, 768, 1024, 1440] : [1440]) {
+        for (const colorScheme of ['light', 'dark'] as const) {
+          await page.setViewportSize({ width, height: 1000 });
+          await page.emulateMedia({ colorScheme });
+          await expect
+            .poll(() => page.locator('html').getAttribute('data-theme'))
+            .toBe(colorScheme);
+          await editor.getByRole('button', { name: 'Template options', exact: true }).click();
+          await limit.scrollIntoViewIfNeeded();
+          expect(await limit.inputValue()).toBe('16');
+          const geometry = await limit.evaluate((node) => {
+            const rect = node.getBoundingClientRect();
+            const row = node.closest('.policy-row')!.getBoundingClientRect();
+            return {
+              height: rect.height,
+              contained: rect.left >= row.left && rect.right <= row.right,
+              overflow: document.documentElement.scrollWidth - innerWidth,
+            };
+          });
+          expect(geometry).toEqual({ height: 34, contained: true, overflow: 0 });
+          await page.mouse.move(0, 0);
+          await page.evaluate(() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          });
+          if (directory)
+            await options.screenshot({
+              path: join(directory, `inline-limit-${format}-${colorScheme}-${width}.png`),
+            });
+          const jsonOptions = options.getByRole('region', { name: 'JSON', exact: true });
+          await jsonOptions.scrollIntoViewIfNeeded();
+          for (const name of ['Arrays', 'Objects']) {
+            const control = jsonOptions.getByRole('group', { name, exact: true });
+            const track = await control.evaluate((node) => {
+              const box = node.getBoundingClientRect();
+              const row = node.closest('.policy-row')!.getBoundingClientRect();
+              return {
+                contained: box.left >= row.left && box.right <= row.right,
+                overflow: node.scrollWidth - node.clientWidth,
+              };
+            });
+            expect(track.contained).toBe(true);
+            // A desktop inspector has enough width for every intrinsic option.
+            if (width > 375) expect(track.overflow).toBeLessThanOrEqual(1);
+            // Native radio navigation must also reveal the last option on phones.
+            const auto = control.getByRole('radio', { name: 'Auto', exact: true });
+            await auto.focus();
+            const anchor = (await control.boundingBox())!.y;
+            await page.keyboard.press('ArrowRight');
+            await page.keyboard.press('ArrowRight');
+            const expanded = control.getByRole('radio', { name: 'Expanded', exact: true });
+            await expect.poll(() => expanded.isChecked()).toBe(true);
+            expect(await expanded.evaluate((node) => node === document.activeElement)).toBe(true);
+            const visible = await expanded.evaluate((node) => {
+              const label = node.closest('label')!.getBoundingClientRect();
+              const track = node.closest('fieldset')!.getBoundingClientRect();
+              return label.left >= track.left - 1 && label.right <= track.right + 1;
+            });
+            expect(visible).toBe(true);
+            expect((await control.boundingBox())!.y).toBeCloseTo(anchor, 1);
+            await page.keyboard.press('ArrowLeft');
+            await page.keyboard.press('ArrowLeft');
+            await expect.poll(() => auto.isChecked()).toBe(true);
+            // Remove the explicit Auto selection, preserving preset inheritance.
+            await control
+              .locator('xpath=ancestor::span[contains(@class,"linked-control")][1]')
+              .getByRole('button', { name: /Set here · press/u })
+              .click();
+          }
+          await page.mouse.move(0, 0);
+          await page.evaluate(() => {
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+          });
+          await jsonOptions.scrollIntoViewIfNeeded();
+          if (directory) {
+            const clip = (await options.boundingBox())!;
+            // Element screenshots scroll the whole dialog into view again, which
+            // hides the rows we intentionally revealed in its scroll body.
+            await page.screenshot({
+              path: join(directory, `inline-layout-${format}-${colorScheme}-${width}.png`),
+              clip,
+            });
+          }
+          await options.getByRole('button', { name: 'Done', exact: true }).click();
+          await options.waitFor({ state: 'hidden' });
+          if (directory)
+            await editor.screenshot({
+              path: join(directory, `inline-output-${format}-${colorScheme}-${width}.png`),
+            });
+        }
+      }
+      // Removing the saved override returns to the inherited cap. Restoring the
+      // saved number again clears the draft without leaving an explicit zero.
+      await editor.getByRole('button', { name: 'Template options', exact: true }).click();
+      await options.getByRole('button', { name: 'Stop overriding Inline length limit' }).click();
+      expect(await limit.inputValue()).toBe('0');
+      await limit.fill('16');
+      await options.getByRole('button', { name: 'Done', exact: true }).click();
+      await expect
+        .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
+        .toBe(0);
+    } finally {
+      if (saved) {
+        const latest = (await (await page.request.get(configUrl)).json()) as SyncConfig;
+        const restored = await page.request.put(`${panel.origin}/api/v1/targets/2001/settings`, {
+          data: {
+            sync_configs: [
+              {
+                kind: 'files',
+                enabled: original.enabled,
+                document: original.document,
+                expected_revision: latest.revision,
+              },
+            ],
+          },
+        });
+        expect(restored.ok(), await restored.text()).toBe(true);
+      }
+      await page.close();
+    }
+  });
+
   it('preserves a rejected raw draft when moving between repository and shared-file editors', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1440, height: 1000 } });
     const renderRequests: string[] = [];

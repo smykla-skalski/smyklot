@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { PanelApiError } from '../src/lib/api';
-import { applyFormattingPatch } from '../src/lib/formatting';
+import { applyFormattingPatch, parseFormattingPolicy } from '../src/lib/formatting';
 import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '../src/lib/root-settings-save';
 import {
   adoptRuntimeSettings,
@@ -97,6 +97,56 @@ describe('Root runtime settings drafts [Unit]', () => {
     const parsed = parseRuntimeSettingsDraftDocument(legacy);
 
     expect(parsed?.bot_config?.allow_draft_merges).toBe(false);
+  });
+
+  it('restores pre-limit runtime drafts without losing other unsaved values', () => {
+    const storage = memoryStorage();
+    const first = registry(storage);
+    const current = runtime();
+    adoptRuntimeSettings(first, current);
+    const legacy = {
+      ...buildRuntimeSettingsDraftDocument(current),
+      bot_config: {
+        ...current.behavior_defaults.deployment,
+        command_prefix: '/pending',
+        formatting: applyFormattingPatch(current.behavior_defaults.deployment.formatting, {
+          common: { line_width: 120 },
+          json: { arrays: 'auto' },
+        }),
+      },
+    };
+    delete (legacy.bot_config.formatting.common as Record<string, unknown>).inline_max_chars;
+    expect(parseFormattingPolicy(legacy.bot_config.formatting)).toBeNull();
+    expect(
+      first.stage(RUNTIME_RESOURCE, legacy, {
+        id: 'runtime.bot_config.command_prefix',
+        location: { section: 'runtime', path: ['settings', 'runtime', 'command_prefix'] },
+        saved: current.behavior_defaults.deployment.command_prefix,
+        value: '/pending',
+      }),
+    ).toBe(true);
+
+    const restarted = registry(storage);
+    const restored = runtimeSettingsDraftDocument(restarted, current);
+    expect(restored.bot_config?.command_prefix).toBe('/pending');
+    expect(restored.bot_config?.formatting.common).toEqual({
+      ...current.behavior_defaults.deployment.formatting.common,
+      line_width: 120,
+      inline_max_chars: 0,
+    });
+    expect(restored.bot_config?.formatting.json.arrays).toBe('auto');
+    expect(serializeRuntimeSettingsDraft(current.revision, restored)).toMatchObject({
+      ok: true,
+      input: {
+        bot_config: {
+          command_prefix: '/pending',
+          formatting: {
+            common: { inline_max_chars: 0, line_width: 120 },
+          },
+        },
+      },
+    });
+    expect(Object.hasOwn(legacy.bot_config.formatting.common, 'inline_max_chars')).toBe(false);
   });
 
   it('persists bounded raw duration input and refuses it before the wire', () => {
