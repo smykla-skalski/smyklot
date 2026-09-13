@@ -45,7 +45,7 @@ describe('desktop sync against the live development lifecycle', () => {
         await inspector
           .getByRole('heading', { name: 'Check which repositories are in step', exact: true })
           .waitFor();
-        await inspector.getByText('Running', { exact: true }).waitFor();
+        await inspector.getByRole('heading', { name: 'Check in progress', exact: true }).waitFor();
         const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
         const capture = async (scene: string) => {
           if (!directory) return;
@@ -57,13 +57,18 @@ describe('desktop sync against the live development lifecycle', () => {
           });
         };
         await capture('running');
-        await inspector.getByText('Succeeded', { exact: true }).waitFor();
+        await inspector
+          .getByRole('heading', { name: 'Check finished with gaps', exact: true })
+          .waitFor();
         expect(await inspector.innerText()).toContain('found an open proposal');
         expect(await inspector.innerText()).toContain('could not proceed');
         expect(new URL(page.url()).pathname).toBe(href);
         await capture('complete');
         await page.reload();
-        await inspector.getByText('Succeeded', { exact: true }).waitFor();
+        await inspector
+          .getByRole('heading', { name: 'Check finished with gaps', exact: true })
+          .waitFor();
+        await inspector.locator('summary').filter({ hasText: 'Execution details' }).click();
         expect(await inspector.innerText()).toContain('Run now requested:');
         await inspector.getByRole('button', { name: 'Close', exact: true }).click();
         await page.waitForURL(/\/sync$/u);

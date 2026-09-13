@@ -5,8 +5,9 @@
   import type { QueueDetail, QueueItem } from '#lib/types.js';
   import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
-  import Link from './Link.svelte';
   import Modal from './Modal.svelte';
+  import SyncCheckSummary from './SyncCheckSummary.svelte';
+  import DisclosureSection from './DisclosureSection.svelte';
 
   const {
     open,
@@ -18,6 +19,7 @@
     onRetry,
     onInspectItem,
     recovery,
+    checkEvidence,
     recoveryPending = false,
   }: {
     open: boolean;
@@ -29,6 +31,7 @@
     onRetry?: () => void;
     onInspectItem?: (id: string) => void;
     recovery?: Snippet;
+    checkEvidence?: Snippet;
     recoveryPending?: boolean;
   } = $props();
 
@@ -54,12 +57,170 @@ already on screen and fetches the rest, so it has a state the list behind it doe
 not.
 -->
 
+{#snippet executionDetails(detail: QueueDetail)}
+  <dl class="facts">
+    {#if detail.item.kind === 'webhook_delivery'}
+      {@const nextStep = deliveryNextStep(detail.item, detail.delivery)}
+      <div class="next-step">
+        <dt>
+          {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
+            ? 'Latest execution'
+            : 'What happens next'}
+        </dt>
+        <dd>
+          {nextStep.message}
+          {#if nextStep.eligibleAt}
+            <span class="attempt-time"
+              >Eligible from&nbsp;<time datetime={nextStep.eligibleAt}
+                >{absolute(nextStep.eligibleAt)}</time
+              >. The actual start depends on worker availability.</span
+            >
+          {/if}
+          {#if detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id && onInspectItem}
+            {@const latestId = detail.delivery.current.queue.id}
+            <div class="latest-run">
+              <Button
+                tone="default"
+                disabled={recoveryPending}
+                onclick={() => onInspectItem?.(latestId)}>Inspect latest run</Button
+              >
+            </div>
+          {/if}
+          {#if recovery}{@render recovery()}{/if}
+        </dd>
+      </div>
+    {/if}
+    <div>
+      <dt>Job</dt>
+      <dd>{workloadTitle(detail.item.kind)}</dd>
+    </div>
+    <div>
+      <dt>
+        {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
+          ? 'Original run state'
+          : 'State'}
+      </dt>
+      <dd>{words(detail.item.state)}</dd>
+    </div>
+    <div>
+      <dt>Scope</dt>
+      <dd>{scope(detail.item)}</dd>
+    </div>
+    <div>
+      <dt>Priority</dt>
+      <dd>{words(detail.item.priority)}</dd>
+    </div>
+    <div>
+      <dt>Hours</dt>
+      <dd>
+        {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
+          ? ` · ${detail.item.profile_timezone}`
+          : ''}
+      </dd>
+    </div>
+    <div>
+      <dt>Ready, in your timezone</dt>
+      <dd>{absolute(detail.item.eligible_at)}</dd>
+    </div>
+    {#if detail.item.profile_timezone}
+      <div>
+        <dt>Ready, in the job's timezone</dt>
+        <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
+      </div>
+    {/if}
+    <div>
+      <dt>Estimated start</dt>
+      <dd>
+        {detail.item.estimated_start_at
+          ? `${absolute(detail.item.estimated_start_at)} · estimate`
+          : 'Not estimated'}
+      </dd>
+    </div>
+    <div>
+      <dt>Work ahead</dt>
+      <dd>{detail.item.work_ahead}</dd>
+    </div>
+    <div>
+      <dt>Attempts</dt>
+      <dd>{detail.item.attempt}</dd>
+    </div>
+    <div>
+      <dt>Revision</dt>
+      <dd>{detail.item.revision}</dd>
+    </div>
+  </dl>
+
+  <section class="workload-detail" aria-labelledby="queue-workload-detail">
+    <h3 id="queue-workload-detail">What this job is doing</h3>
+    {#if detail.item.kind === 'webhook_delivery'}
+      {#if detail.item.details}
+        <p>
+          Event {detail.item.details.event ?? 'unknown'} · delivery {detail.item.details
+            .delivery_id ?? 'unknown'}
+        </p>
+      {:else}
+        <p>Webhook contents and delivery failure details are restricted</p>
+      {/if}
+      {#if detail.item.summary}
+        <p>{detail.item.summary}</p>
+      {/if}
+    {:else if detail.item.kind === 'pending_ci'}
+      <p>
+        Pull request {detail.item.details?.pull_request ?? 'unknown'} · head
+        {detail.item.details?.head_sha?.slice(0, 12) ?? 'unknown'}
+      </p>
+    {:else if detail.item.kind === 'sync_apply'}
+      <p>
+        {detail.item.details?.create ?? 0} create · {detail.item.details?.update ?? 0} update ·
+        {detail.item.details?.delete ?? 0} delete
+      </p>
+    {:else if detail.item.kind === 'schedule_change'}
+      <p>
+        The job asked about: {detail.item.details?.policy_kind === undefined
+          ? 'unknown'
+          : workloadTitle(detail.item.details.policy_kind)}
+      </p>
+    {:else}
+      <p>{detail.item.summary ?? 'No additional details were recorded for this job'}</p>
+    {/if}
+    {#if detail.item.blocked_reason}
+      <p class="blocking"><strong>Blocked:</strong> {detail.item.blocked_reason}</p>
+    {/if}
+    {#if detail.item.reason}
+      <p><strong>Action reason:</strong> {detail.item.reason}</p>
+    {/if}
+  </section>
+
+  <section class="timeline" aria-labelledby="queue-timeline">
+    <h3 id="queue-timeline">Timeline</h3>
+    {#if detail.events.length === 0}
+      <p class="detail-message">No events recorded</p>
+    {:else}
+      <ol>
+        {#each detail.events as event (event.id)}
+          <li>
+            <span class="timeline-mark" aria-hidden="true"></span>
+            <div>
+              <strong>{event.summary}</strong>
+              <span>{words(event.kind)} · {words(event.state)}</span>
+              <time datetime={event.created_at}>{absolute(event.created_at)}</time>
+              <span>Actor {event.actor}</span>
+            </div>
+          </li>
+        {/each}
+      </ol>
+    {/if}
+  </section>
+{/snippet}
+
 <Modal
   id="queue-detail"
   {open}
   variant="inspector"
   title={detail?.item.title ?? 'Queue item'}
-  description="When it runs, what it has done, and every change it has been through"
+  description={detail?.item.kind === 'sync_scan'
+    ? 'What this check found and what needs your attention'
+    : 'When it runs, what it has done, and every change it has been through'}
   {onClose}
   beforeClose={() => !recoveryPending}
 >
@@ -68,167 +229,18 @@ not.
   {:else if error !== ''}
     <p class="detail-message detail-error" role="alert">{error}</p>
   {:else if detail !== null}
-    {#if detail.item.kind === 'sync_scan' && typeof detail.item.details?.result_plan_id === 'string' && detail.item.details.result_plan_id.trim() !== '' && syncResultHref}
-      <section class="workload-detail" aria-label="Check result">
-        <p>Review the changes found by this check.</p>
-        <Link href={syncResultHref(detail.item.details.result_plan_id)}
-          >View changes from this check</Link
-        >
-      </section>
+    {#if detail.item.kind === 'sync_scan'}
+      <SyncCheckSummary item={detail.item} resultHref={syncResultHref} />
+      {#if checkEvidence}{@render checkEvidence()}{/if}
+      <DisclosureSection
+        title="Execution details"
+        description="Queue timing, attempts and timeline"
+      >
+        {@render executionDetails(detail)}
+      </DisclosureSection>
+    {:else}
+      {@render executionDetails(detail)}
     {/if}
-    <dl class="facts">
-      {#if detail.item.kind === 'webhook_delivery'}
-        {@const nextStep = deliveryNextStep(detail.item, detail.delivery)}
-        <div class="next-step">
-          <dt>
-            {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
-              ? 'Latest execution'
-              : 'What happens next'}
-          </dt>
-          <dd>
-            {nextStep.message}
-            {#if nextStep.eligibleAt}
-              <span class="attempt-time"
-                >Eligible from&nbsp;<time datetime={nextStep.eligibleAt}
-                  >{absolute(nextStep.eligibleAt)}</time
-                >. The actual start depends on worker availability.</span
-              >
-            {/if}
-            {#if detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id && onInspectItem}
-              {@const latestId = detail.delivery.current.queue.id}
-              <div class="latest-run">
-                <Button
-                  tone="default"
-                  disabled={recoveryPending}
-                  onclick={() => onInspectItem?.(latestId)}>Inspect latest run</Button
-                >
-              </div>
-            {/if}
-            {#if recovery}{@render recovery()}{/if}
-          </dd>
-        </div>
-      {/if}
-      <div>
-        <dt>Job</dt>
-        <dd>{workloadTitle(detail.item.kind)}</dd>
-      </div>
-      <div>
-        <dt>
-          {detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id
-            ? 'Original run state'
-            : 'State'}
-        </dt>
-        <dd>{words(detail.item.state)}</dd>
-      </div>
-      <div>
-        <dt>Scope</dt>
-        <dd>{scope(detail.item)}</dd>
-      </div>
-      <div>
-        <dt>Priority</dt>
-        <dd>{words(detail.item.priority)}</dd>
-      </div>
-      <div>
-        <dt>Hours</dt>
-        <dd>
-          {detail.item.profile_name ?? 'Immediate'}{detail.item.profile_timezone
-            ? ` · ${detail.item.profile_timezone}`
-            : ''}
-        </dd>
-      </div>
-      <div>
-        <dt>Ready, in your timezone</dt>
-        <dd>{absolute(detail.item.eligible_at)}</dd>
-      </div>
-      {#if detail.item.profile_timezone}
-        <div>
-          <dt>Ready, in the job's timezone</dt>
-          <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
-        </div>
-      {/if}
-      <div>
-        <dt>Estimated start</dt>
-        <dd>
-          {detail.item.estimated_start_at
-            ? `${absolute(detail.item.estimated_start_at)} · estimate`
-            : 'Not estimated'}
-        </dd>
-      </div>
-      <div>
-        <dt>Work ahead</dt>
-        <dd>{detail.item.work_ahead}</dd>
-      </div>
-      <div>
-        <dt>Attempts</dt>
-        <dd>{detail.item.attempt}</dd>
-      </div>
-      <div>
-        <dt>Revision</dt>
-        <dd>{detail.item.revision}</dd>
-      </div>
-    </dl>
-
-    <section class="workload-detail" aria-labelledby="queue-workload-detail">
-      <h3 id="queue-workload-detail">What this job is doing</h3>
-      {#if detail.item.kind === 'webhook_delivery'}
-        {#if detail.item.details}
-          <p>
-            Event {detail.item.details.event ?? 'unknown'} · delivery {detail.item.details
-              .delivery_id ?? 'unknown'}
-          </p>
-        {:else}
-          <p>Webhook contents and delivery failure details are restricted</p>
-        {/if}
-        {#if detail.item.summary}
-          <p>{detail.item.summary}</p>
-        {/if}
-      {:else if detail.item.kind === 'pending_ci'}
-        <p>
-          Pull request {detail.item.details?.pull_request ?? 'unknown'} · head
-          {detail.item.details?.head_sha?.slice(0, 12) ?? 'unknown'}
-        </p>
-      {:else if detail.item.kind === 'sync_apply'}
-        <p>
-          {detail.item.details?.create ?? 0} create · {detail.item.details?.update ?? 0} update ·
-          {detail.item.details?.delete ?? 0} delete
-        </p>
-      {:else if detail.item.kind === 'schedule_change'}
-        <p>
-          The job asked about: {detail.item.details?.policy_kind === undefined
-            ? 'unknown'
-            : workloadTitle(detail.item.details.policy_kind)}
-        </p>
-      {:else}
-        <p>{detail.item.summary ?? 'No additional details were recorded for this job'}</p>
-      {/if}
-      {#if detail.item.blocked_reason}
-        <p class="blocking"><strong>Blocked:</strong> {detail.item.blocked_reason}</p>
-      {/if}
-      {#if detail.item.reason}
-        <p><strong>Action reason:</strong> {detail.item.reason}</p>
-      {/if}
-    </section>
-
-    <section class="timeline" aria-labelledby="queue-timeline">
-      <h3 id="queue-timeline">Timeline</h3>
-      {#if detail.events.length === 0}
-        <p class="detail-message">No events recorded</p>
-      {:else}
-        <ol>
-          {#each detail.events as event (event.id)}
-            <li>
-              <span class="timeline-mark" aria-hidden="true"></span>
-              <div>
-                <strong>{event.summary}</strong>
-                <span>{words(event.kind)} · {words(event.state)}</span>
-                <time datetime={event.created_at}>{absolute(event.created_at)}</time>
-                <span>Actor {event.actor}</span>
-              </div>
-            </li>
-          {/each}
-        </ol>
-      {/if}
-    </section>
   {/if}
 
   {#snippet footer()}

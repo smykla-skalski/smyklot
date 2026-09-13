@@ -41,7 +41,12 @@ Loading disables navigation and page-size changes. The count is announced polite
     <Button tone="quiet" disabled={busy || !canPrevious} onclick={onPrevious}>Previous</Button>
     <Button tone="quiet" disabled={busy || !canNext} onclick={onNext}>Next</Button>
   </div>
-  <PageSizeSelect value={pageSize} label={`${label} per page`} onSelect={onPageSizeSelect} />
+  <PageSizeSelect
+    disabled={busy}
+    value={pageSize}
+    label={`${label} per page`}
+    onSelect={onPageSizeSelect}
+  />
 </footer>
 
 <style>

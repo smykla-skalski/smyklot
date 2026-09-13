@@ -479,6 +479,7 @@ inside it.
     />
   {:else if target !== null && view === 'history'}
     <HistoryPanel
+      checkEvidenceApi={api}
       recoveryApi={api}
       targetId={workspace.id}
       section={historySection}

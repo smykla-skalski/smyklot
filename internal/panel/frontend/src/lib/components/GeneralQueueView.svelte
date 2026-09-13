@@ -857,6 +857,7 @@ without the buttons, rather than buttons that refuse.
 {/key}
 
 <QueueInspector
+  checkEvidenceApi={api}
   {syncResultHref}
   recoveryApi={api}
   itemId={detailOpen ? detailItemID : null}

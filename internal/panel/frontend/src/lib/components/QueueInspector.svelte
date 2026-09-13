@@ -5,16 +5,20 @@
   import type { QueueDetail } from '../types';
   import DeliveryRetry from './DeliveryRetry.svelte';
   import QueueDetailDialog from './QueueDetailDialog.svelte';
+  import SyncCheckEvidence from './SyncCheckEvidence.svelte';
+  import { checkOutcome } from '../sync-check';
 
   const {
     itemId,
     recoveryApi,
+    checkEvidenceApi,
     targetId,
     fetchItem,
     onClose,
     syncResultHref,
   }: {
     itemId: string | null;
+    checkEvidenceApi?: Pick<PanelApi, 'fetchSyncCheckObservations'>;
     recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
     targetId?: string;
     fetchItem: (id: string) => Promise<QueueDetail>;
@@ -92,6 +96,17 @@ to the original context. Temporary failures offer an explicit retry.
     if (!recoveryPending && itemId !== null) followed = { origin: itemId, id };
   }}
 >
+  {#snippet checkEvidence()}
+    {#if checkEvidenceApi && query.data?.item.kind === 'sync_scan' && query.data.item.target_id && checkOutcome(query.data.item.details?.outcome)}
+      {#key `${query.data.item.target_id}:${query.data.item.id}`}
+        <SyncCheckEvidence
+          api={checkEvidenceApi}
+          targetId={query.data.item.target_id}
+          checkId={query.data.item.id}
+        />
+      {/key}
+    {/if}
+  {/snippet}
   {#snippet recovery()}
     {#if recoveryApi && query.data?.item.kind === 'webhook_delivery' && query.data.item.state === 'failed' && query.data.item.target_id && query.data.item.source_id}
       {#key `${targetId ?? 'root'}:${query.data.item.id}`}

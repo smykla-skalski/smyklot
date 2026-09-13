@@ -90,6 +90,7 @@
     fetchFailures,
     fetchQueueItem,
     recoveryApi,
+    checkEvidenceApi,
     queueTargetId,
     context = 'workspace',
     section,
@@ -117,6 +118,7 @@
     exportAudit?: (request: AuditHistoryRequest) => string;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     fetchQueueItem?: (id: string) => Promise<QueueDetail>;
+    checkEvidenceApi?: Pick<PanelApi, 'fetchSyncCheckObservations'>;
     recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
     queueTargetId?: string;
     context?: HistoryContext;
@@ -1082,6 +1084,7 @@ where the record is.
 
 {#if fetchQueueItem}
   <QueueInspector
+    {checkEvidenceApi}
     {recoveryApi}
     itemId={failureQueueId}
     targetId={queueTargetId}

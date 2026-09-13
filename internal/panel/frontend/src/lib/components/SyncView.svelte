@@ -80,6 +80,7 @@
     selectedCheckId = null,
     checkHref,
     fetchCheck,
+    checkEvidenceApi,
     onOpenPlan,
     approvePlan,
     discardPlan,
@@ -102,6 +103,7 @@
     clock = Date.now,
     lookupBypassActors,
   }: {
+    checkEvidenceApi?: Pick<import('../api').PanelApi, 'fetchSyncCheckObservations'>;
     selectedCheckId?: string | null;
     checkHref: (id: string) => string;
     fetchCheck: (id: string) => Promise<QueueDetail>;
@@ -702,6 +704,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
 {/if}
 
 <QueueInspector
+  {checkEvidenceApi}
   itemId={section === 'overview' ? selectedCheckId : null}
   syncResultHref={(id) =>
     selectedCheckId === null ? historyResultHref(id) : checkResultHref(selectedCheckId, id)}

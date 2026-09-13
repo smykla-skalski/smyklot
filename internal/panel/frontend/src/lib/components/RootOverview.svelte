@@ -393,6 +393,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
 </div>
 
 <QueueInspector
+  checkEvidenceApi={api}
   recoveryApi={api}
   itemId={failureQueueId}
   fetchItem={api.fetchRootQueueItem}

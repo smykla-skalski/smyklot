@@ -163,6 +163,7 @@ history is routed with its section. That is what makes an address like
       {:then { default: SyncView }}
         {#key session.selectedTarget.id}
           <SyncView
+            checkEvidenceApi={session.api}
             organizationActors={session.selectedTarget.type === 'Organization'}
             targetId={session.selectedTarget.id}
             section={session.currentSyncSection}
@@ -268,6 +269,7 @@ history is routed with its section. That is what makes an address like
       {:then { default: HistoryPanel }}
         {#key session.selectedTarget.id}
           <HistoryPanel
+            checkEvidenceApi={session.api}
             recoveryApi={session.api}
             targetId={session.selectedTarget.id}
             queueTargetId={session.selectedTarget.id}
