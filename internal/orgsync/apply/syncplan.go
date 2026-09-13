@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -480,285 +479,6 @@ func (s *Engine) planSyncActions(
 	return actions, nil
 }
 
-// repositoryQuestion asks one repository what one kind would take.
-//
-// problem is empty where the answer covers the whole of what this kind
-// configures, which is nearly always, and for labels and settings is always. A
-// ruleset a repository holds twice is one exception: nothing can say which one
-// the configuration meant, so part of the kind is unresolved however much of
-// the rest was worked out. A file sync has three of its own.
-//
-// A problem throws the actions away with it, because the executor records a
-// kind settled once its every action applied - so acting on the resolved part
-// would mark the unresolved part up to date too. It is words rather than a
-// flag because it is the only account of why this repository is not being
-// synced that anybody outside the service log ever sees.
-//
-// An error is different: the repository could not be read at all, which is
-// nobody's mistake to fix and is retried on the next tick.
-type repositoryQuestion func(
-	context.Context, storage.Repository,
-) (found []orgsync.Action, problem string, err error)
-
-// repositoryPlanner reads a kind's stored document and returns what to ask each
-// repository with it.
-//
-// The one place a kind's stored document meets its planner, and it is read once
-// for the whole kind rather than once per repository: the document is the same
-// for all of them, so decoding it inside the loop would decode it a hundred
-// times over and report a document nobody can read a hundred times too.
-//
-// Validated here as well as in the panel. The panel covers what somebody typed;
-// this covers a row written before a rule existed, or by a hand on the database,
-// and every rule it checks is one GitHub answers with a 422. A kind this version
-// does not know is refused rather than skipped, because skipping would record
-// the repository as settled for work nothing did.
-func repositoryPlanner(
-	client *github.Client,
-	syncConfig orgsync.Config,
-	overrides map[string]*orgsync.RepositoryOverride,
-	formatting appconfig.FormattingPolicy,
-	targetPatch appconfig.Patch,
-) (repositoryQuestion, error) {
-	switch syncConfig.Kind {
-	case orgsync.KindLabels:
-		return labelPlanner(client, syncConfig)
-
-	case orgsync.KindSettings:
-		return settingsPlanner(client, syncConfig)
-
-	case orgsync.KindRulesets:
-		return rulesetPlanner(client, syncConfig)
-
-	case orgsync.KindFiles:
-		return filePlanner(client, syncConfig, overrides, formatting, targetPatch)
-
-	default:
-		return nil, fmt.Errorf("%w: %s", errSyncKindUnsupported, syncConfig.Kind)
-	}
-}
-
-func labelPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
-	labels, err := decodeSyncDocument[orgsync.LabelConfig](config)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(
-		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, string, error) {
-		owner, name := splitFullName(repository.FullName)
-
-		current, err := client.ListRepositoryLabels(ctx, owner, name)
-		if err != nil {
-			return nil, "", err
-		}
-
-		return orgsync.PlanLabels(
-			repository.ID, labels, asCurrentLabels(current), labels.Exclusions(),
-		), "", nil
-	}, nil
-}
-
-func settingsPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
-	settings, err := decodeSyncDocument[orgsync.SettingsConfig](config)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(
-		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, string, error) {
-		owner, name := splitFullName(repository.FullName)
-
-		current, err := client.GetRepositorySettings(ctx, owner, name)
-		if err != nil {
-			return nil, "", err
-		}
-
-		return orgsync.PlanSettings(
-			repository.ID, settings, asCurrentSettings(current),
-		), "", nil
-	}, nil
-}
-
-func rulesetPlanner(client *github.Client, config orgsync.Config) (repositoryQuestion, error) {
-	rulesets, err := decodeSyncDocument[orgsync.RulesetConfig](config)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(
-		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, string, error) {
-		owner, name := splitFullName(repository.FullName)
-
-		current, err := readRulesets(ctx, client, owner, name, rulesets)
-		if err != nil {
-			return nil, "", err
-		}
-
-		actions, ambiguous := orgsync.PlanRulesets(
-			repository.ID, rulesets, current, rulesets.Exclusions())
-		if len(ambiguous) > 0 {
-			// A ruleset nothing can address produces no action, so a plan
-			// cannot carry it and a person reading one would see a repository
-			// that looks finished.
-			return nil, "more than one ruleset here carries a configured name (" +
-				strings.Join(ambiguous, ", ") +
-				"), so nothing can say which one the configuration means", nil
-		}
-
-		return actions, "", nil
-	}, nil
-}
-
-func filePlanner(
-	client *github.Client,
-	syncConfig orgsync.Config,
-	overrides map[string]*orgsync.RepositoryOverride,
-	formatting appconfig.FormattingPolicy,
-	targetPatch appconfig.Patch,
-) (repositoryQuestion, error) {
-	files, err := decodeSyncDocument[orgsync.FileConfig](syncConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	return func(
-		ctx context.Context, repository storage.Repository,
-	) ([]orgsync.Action, string, error) {
-		policy := repositoryFormattingPolicy(formatting, targetPatch, repository)
-		return planRepositoryFiles(
-			ctx, client, repository, files, overrides[repository.ID], policy,
-		)
-	}, nil
-}
-
-// planRepositoryFiles answers what one repository's files would take, and where
-// it cannot answer, why.
-//
-// Three ways not to: a repository with nowhere to propose against, adjustments
-// that cannot be used, and files that cannot be composed. The last two are
-// somebody's to fix, and recording a digest against either would say the
-// repository matches for six hours when nothing has looked at it. All three are
-// returned in words, because the alternative is a repository that is quietly
-// receiving none of the organization's files and nothing anybody can read that
-// says so.
-func planRepositoryFiles(
-	ctx context.Context,
-	client *github.Client,
-	repository storage.Repository,
-	config orgsync.FileConfig,
-	override *orgsync.RepositoryOverride,
-	formatting appconfig.FormattingPolicy,
-) ([]orgsync.Action, string, error) {
-	target := syncTargetFor(repository)
-
-	if target.DefaultBranch == "" {
-		// A repository with no commits has nowhere to propose against, and
-		// GitHub names no branch for one. Said here rather than discovered
-		// against the API, which would spend a request per repository per tick
-		// learning it again.
-		return nil, "this repository has no default branch, " +
-			"so there is nowhere to propose a change", nil
-	}
-	if !repository.IgnoreRepositoryFile && repository.ConfigFileError != nil {
-		return nil, "the repository configuration cannot be used: " +
-			*repository.ConfigFileError, nil
-	}
-
-	adjustments, err := decodeFileOverride(override, config)
-	if err != nil {
-		return nil, "the adjustments saved for this repository cannot be used: " +
-			err.Error(), nil
-	}
-
-	current, err := readTreePaths(
-		ctx, client, target, target.DefaultBranch, config.Managed())
-	if err != nil {
-		return nil, "", err
-	}
-
-	if current.Missing {
-		// There is no tree at that branch. GitHub names a default branch
-		// whatever the case - the name is configuration, and it is there long
-		// before the branch is - so the name says nothing about whether there
-		// is anything to propose against. The tree read does, and it is a read
-		// the planner makes already.
-		//
-		// Said rather than planned. Every managed path is absent from a
-		// repository with no tree, so the planner would emit a create for each,
-		// a person would approve them, and the apply would refuse for want of a
-		// branch to build on - which spends the installation's one live plan
-		// slot and marks every plan riding with it failed.
-		//
-		// The reason lists the causes rather than picking one. GitHub answers
-		// 404 for a repository with no commits, for a branch that was renamed
-		// since the catalog last looked, and for one this installation can no
-		// longer read, and the read cannot tell them apart.
-		return nil, "there is nothing at " + target.DefaultBranch +
-			" to propose against: this repository has no commits, the branch was " +
-			"renamed, or Smyklot can no longer read it", nil
-	}
-
-	plan, err := orgsync.PlanFiles(
-		repository.ID, config, adjustments, target.DefaultBranch, current.Files, formatting)
-	if err != nil {
-		// A merge that cannot be applied. Fail-closed: no actions, and no
-		// digest, so the repository is asked again once somebody fixes it.
-		return nil, "these files cannot be composed: " + err.Error(), nil
-	}
-
-	if len(plan.Actions) == 0 {
-		return nil, "", nil
-	}
-
-	asked, err := proposalOutstanding(ctx, client, target, plan.Proposal)
-	if err != nil {
-		return nil, "", err
-	}
-
-	if asked {
-		// Already asked, so there is nothing to plan and the repository is
-		// settled rather than asked again on every horizon. This is the whole
-		// of what a file sync can do: propose. The branch is named after what
-		// the files should end up saying, so a configuration that changes is a
-		// different branch and the question is put once more.
-		logging.From(ctx).Info(
-			"this repository already has this change in front of it, so it is left alone",
-			"repo", repository.FullName, "branch", plan.Proposal)
-
-		return nil, "", nil
-	}
-
-	return plan.Actions, "", nil
-}
-
-// proposalOutstanding reports a change this repository has already been asked
-// about and not resolved.
-//
-// Whatever state, because the answer decides whether to propose again. An open
-// one is being considered and a closed one was refused, and both mean the
-// asking is done - a plan computed for either would be the same plan, approved
-// again, adopting the same pull request, once every horizon for as long as it
-// sat there. A merged one is not outstanding: the change landed, and files that
-// still differ after it are a new question.
-func proposalOutstanding(
-	ctx context.Context,
-	client *github.Client,
-	target syncTarget,
-	proposal string,
-) (bool, error) {
-	pull, err := client.FindPullRequestByHead(
-		ctx, target.Owner, target.Name, proposal, target.DefaultBranch)
-	if err != nil || pull == nil {
-		return false, err
-	}
-
-	return !pull.Merged, nil
-}
-
 // syncDocument is a kind's configuration: something to decode, and something
 // that knows what GitHub would refuse.
 type syncDocument interface{ Validate() error }
@@ -912,24 +632,12 @@ func (s syncScope) digestFor(repository storage.Repository) string {
 	)
 }
 
-// refused reports a repository the last look could not manage this kind on.
-//
-// Asked where a repository plans work, and only there: a refusal that still
-// stands is rewritten with whatever the reason is now, and one that settles is
-// overwritten by the digest. Work planned is the one outcome that writes
-// nothing of its own, so it is the one that has to ask.
-func (s syncScope) refused(repositoryID string) bool {
-	return s.applied[repositoryID].Problem != ""
-}
-
 // ask puts the question to one repository and reads the answer as two things:
 // what to plan, and what is now known about the repository.
 //
-// Four answers, and only one of them plans anything. A repository that cannot
-// be read at all is left for the next tick; one this kind cannot be managed on
-// records why; one that matches records the digest that lets the next sweep
-// skip it; and one with work to do records nothing unless it is taking a
-// refusal off.
+// Every check replaces earlier evidence. Failure and newly observed drift
+// invalidate the cache; agreement, a proposal or its rejection records the
+// outcome beside the digest. None of those outcomes is inferred from silence.
 func (s syncScope) ask(
 	ctx context.Context,
 	question repositoryQuestion,
@@ -943,7 +651,8 @@ func (s syncScope) ask(
 		AppliedAt:    s.now,
 	}
 
-	found, problem, err := question(ctx, repository)
+	answer, err := question(ctx, repository)
+	found, problem := answer.actions, answer.problem
 	if err != nil {
 		// One repository refusing must not stop the rest. It will be planned
 		// again on the next tick, and reporting a plan that silently omitted it
@@ -951,7 +660,8 @@ func (s syncScope) ask(
 		logging.From(ctx).Warn("could not read a repository while planning",
 			"repo", repository.FullName, "kind", s.config.Kind, "error", err)
 
-		return nil, nil
+		state.Problem = "Could not check this repository. Smyklot will retry automatically."
+		return nil, []orgsync.RepositoryState{state}
 	}
 
 	if problem != "" {
@@ -986,26 +696,20 @@ func (s syncScope) ask(
 		return nil, []orgsync.RepositoryState{state}
 	}
 
-	if len(found) == 0 {
+	if len(found) == 0 && answer.observation != "" {
 		// Nothing to do, which is a fact worth keeping. It appears in no plan,
 		// so an apply would never record it, and without a record this
 		// repository is read from GitHub again on every tick for ever - the
 		// cost the digest exists to remove.
 		state.AppliedDigest = s.digestFor(repository)
+		state.Observation = answer.observation
 
 		return nil, []orgsync.RepositoryState{state}
 	}
 
-	if s.refused(repository.ID) {
-		// Planned, so whatever stopped this repository last time no longer
-		// does. The digest is not written - the work has not been applied, and
-		// the executor records that when it lands - but a refusal left standing
-		// would have the panel saying the files are not being synced here while
-		// a plan to sync them waited for approval.
-		return found, []orgsync.RepositoryState{state}
-	}
-
-	return found, nil
+	// A newly observed difference invalidates earlier agreement even if this
+	// plan later expires. Preserve no cache proof for work still to do.
+	return found, []orgsync.RepositoryState{state}
 }
 
 // asCurrentSettings reads what GitHub said as what the planner compares.

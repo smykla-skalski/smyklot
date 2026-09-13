@@ -75,9 +75,23 @@ func (o *RepositoryOverride) Disabled() bool {
 	return o != nil && o.Enabled != nil && !*o.Enabled
 }
 
-// RepositoryState is what is known about one repository for one kind: what it
-// has already had applied, or why nothing could be.
+// Observation records what was actually established about a repository. A
+// completed file operation can be a proposal, not agreement on the default
+// branch. The empty value is historical evidence whose outcome is unknown.
+type Observation string
+
+const (
+	ObservationMatched  Observation = "matched"
+	ObservationApplied  Observation = "applied"
+	ObservationProposed Observation = "proposed"
+	ObservationDeclined Observation = "declined"
+)
+
+// RepositoryState is what is known about one repository for one kind: what
+// was observed, applied or proposed, or why nothing could be.
 //
+// The digest is a cache key, not proof that the repository matches.
+// A proposal or declined proposal also suppresses repeated work.
 // The applied half is the reason a steady-state reconcile costs nothing. Where
 // the stored digest matches the configured one, the planner does not need to
 // ask GitHub what the repository looks like.
@@ -86,6 +100,7 @@ type RepositoryState struct {
 	Kind          Kind
 	AppliedDigest string
 	AppliedAt     time.Time
+	Observation   Observation
 
 	// Problem is why this kind is not being synced here, in words somebody
 	// reading the panel can act on, or empty where nothing is wrong.

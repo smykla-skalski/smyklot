@@ -311,10 +311,16 @@ func (s *Engine) applyRepositoryWork(
 			continue
 		}
 
-		applied := s.applyKind(ctx, client, target, kind, outcome)
+		observation, applied := s.applyKind(ctx, client, target, kind, outcome)
 		if !applied {
 			blocker = kind.Kind
 
+			continue
+		}
+
+		// Carried actions establish no fresh observation. Keep any existing
+		// evidence, and let the planner inspect a kind without a state row.
+		if observation == "" {
 			continue
 		}
 
@@ -326,6 +332,7 @@ func (s *Engine) applyRepositoryWork(
 			Kind:          kind.Kind,
 			AppliedDigest: digests.of(repository, kind.Kind),
 			AppliedAt:     time.Now().UTC(),
+			Observation:   observation,
 		})
 	}
 }
@@ -359,7 +366,7 @@ func (s *Engine) applyKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) bool {
+) (orgsync.Observation, bool) {
 	// A kind that proposes is one change, not a list of them. Every path a
 	// repository needs goes into one commit behind one pull request, so they
 	// are applied together and share whatever becomes of it.
@@ -368,6 +375,7 @@ func (s *Engine) applyKind(
 	}
 
 	succeeded := true
+	var observation orgsync.Observation
 
 	for _, action := range work.Actions {
 		// Work an earlier attempt already settled. A lease carries every action
@@ -393,11 +401,12 @@ func (s *Engine) applyKind(
 			continue
 		}
 
+		observation = orgsync.ObservationApplied
 		outcome.Apply(action)
 		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 	}
 
-	return succeeded
+	return observation, succeeded
 }
 
 // recordSyncAction writes what became of one action.
@@ -439,7 +448,7 @@ func (s *Engine) applyFileKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) bool {
+) (orgsync.Observation, bool) {
 	pending := slices.ContainsFunc(work.Actions, func(action orgsync.Action) bool {
 		return action.State == orgsync.ActionPending
 	})
@@ -452,10 +461,10 @@ func (s *Engine) applyFileKind(
 			succeeded = succeeded && action.State == orgsync.ActionApplied
 		}
 
-		return succeeded
+		return "", succeeded
 	}
 
-	err := applyFileActions(ctx, client, target, work.Actions)
+	observation, err := applyFileActions(ctx, client, target, work.Actions)
 	if err != nil {
 		logging.From(ctx).Warn("sync files failed", "error", err)
 	}
@@ -486,7 +495,7 @@ func (s *Engine) applyFileKind(
 		s.recordSyncAction(ctx, action, orgsync.ActionFailed, err.Error(), "")
 	}
 
-	return err == nil
+	return observation, err == nil
 }
 
 // applyAction performs one action against GitHub.

@@ -1,0 +1,60 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/smykla-skalski/smyklot/internal/storage/sqlstore"
+)
+
+func TestSyncObservationsMigrationKeepsLegacyEvidenceUnknown(t *testing.T) {
+	ctx := context.Background()
+	db := openLegacyDatabase(t, ctx, filepath.Join(t.TempDir(), "observations.db"), 56)
+
+	dialect := Dialect{}
+	statements := []string{
+		`INSERT INTO accounts (id, provider, subject_id, login, display_name, updated_at)
+VALUES ('owner', 'github', '1', 'owner', 'Owner', '2026-09-13T12:00:00.000000000Z')`,
+		`INSERT INTO targets (id, installation_id, kind, account_id, settings_updated_at, synced_at)
+VALUES ('target', '1', 'Organization', 'owner', '2026-09-13T12:00:00.000000000Z', '2026-09-13T12:00:00.000000000Z')`,
+		`INSERT INTO repositories (id, target_id, name, full_name, private, settings_updated_at, synced_at)
+VALUES ('repo', 'target', 'repo', 'owner/repo', FALSE, '2026-09-13T12:00:00.000000000Z', '2026-09-13T12:00:00.000000000Z')`,
+		`INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at, problem)
+VALUES ('repo', 'files', 'legacy-digest', '2026-09-13T12:00:00.000000000Z', '')`,
+		`INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at, problem)
+VALUES ('repo', 'labels', '', '2026-09-13T12:00:00.000000000Z', 'retained problem')`,
+	}
+	for _, statement := range statements {
+		if _, err := db.ExecContext(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		if err := sqlstore.Migrate(ctx, db, dialect, migrations); err != nil {
+			t.Fatal(err)
+		}
+		assertLegacySyncObservation(t, db, "files", "legacy-digest", "")
+		assertLegacySyncObservation(t, db, "labels", "", "retained problem")
+	}
+}
+
+func assertLegacySyncObservation(t *testing.T, db *sql.DB, kind, wantDigest, wantProblem string) {
+	t.Helper()
+	var digest, problem, observation string
+	var observed sqlstore.StoredTime
+	err := db.QueryRowContext(t.Context(), (Dialect{}).Rebind(`SELECT applied_digest, applied_at, problem, observation
+FROM sync_repository_state WHERE repository_id = 'repo' AND kind = ?`), kind).
+		Scan(&digest, &observed, &problem, &observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation != "" || !observed.Time().Equal(time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("invented evidence: %q at %v", observation, observed.Time())
+	}
+	if digest != wantDigest || problem != wantProblem {
+		t.Fatalf("changed legacy evidence: %s %q %q", kind, digest, problem)
+	}
+}

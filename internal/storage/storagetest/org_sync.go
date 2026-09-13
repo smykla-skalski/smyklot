@@ -1268,6 +1268,38 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("repository state", func() {
+		DescribeTable("round trips classified sync evidence",
+			func(observation orgsync.Observation) {
+				ctx, store, now := runtime()
+				seed(ctx, store, now)
+				state := orgsync.RepositoryState{
+					RepositoryID: repoA, Kind: orgsync.KindFiles,
+					AppliedDigest: "configuration", AppliedAt: now,
+					Observation: observation,
+				}
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
+				read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(read).To(Equal(state))
+				listed, err := store.ListSyncRepositoryState(ctx, target)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(listed).To(ConsistOf(state))
+
+				// A later failed observation must remove the old classification.
+				state.Observation, state.AppliedDigest = "", ""
+				state.Problem = "could not read repository"
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
+				read, err = store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(read).To(Equal(state))
+			},
+			Entry("historical evidence stays unknown", orgsync.Observation("")),
+			Entry("matching default branch", orgsync.ObservationMatched),
+			Entry("direct changes applied", orgsync.ObservationApplied),
+			Entry("open proposal", orgsync.ObservationProposed),
+			Entry("declined proposal", orgsync.ObservationDeclined),
+		)
+
 		It("keeps why a repository could not be synced", func() {
 			ctx, store, now := runtime()
 			seed(ctx, store, now)

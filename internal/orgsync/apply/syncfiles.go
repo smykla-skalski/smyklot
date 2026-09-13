@@ -221,7 +221,7 @@ func applyFileActions(
 	client *github.Client,
 	target syncTarget,
 	actions []orgsync.Action,
-) error {
+) (orgsync.Observation, error) {
 	var (
 		files    []plannedFile
 		proposal string
@@ -230,7 +230,7 @@ func applyFileActions(
 	for _, action := range actions {
 		planned, err := orgsync.DecodeFile(action.Payload)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		// Every action of one repository's file work names the same branch,
@@ -242,7 +242,7 @@ func applyFileActions(
 			proposal = planned.Proposal
 
 		case planned.Proposal != proposal:
-			return fmt.Errorf("%w: this repository's file work names two branches, %s and %s",
+			return "", fmt.Errorf("%w: this repository's file work names two branches, %s and %s",
 				orgsync.ErrInvalidPlan, proposal, planned.Proposal)
 		}
 
@@ -254,7 +254,7 @@ func applyFileActions(
 	}
 
 	if proposal == "" {
-		return fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
+		return "", fmt.Errorf("%w: no branch to propose the files on", orgsync.ErrInvalidPlan)
 	}
 
 	return proposeFiles(ctx, client, target, proposal, files)
@@ -274,19 +274,19 @@ func proposeFiles(
 	target syncTarget,
 	proposal string,
 	files []plannedFile,
-) error {
+) (orgsync.Observation, error) {
 	if target.DefaultBranch == "" {
-		return fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
+		return "", fmt.Errorf("%w: GitHub named no default branch", errSyncFilesUnreadable)
 	}
 
 	branch, err := readProposal(ctx, client, target, proposal)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	changed, err := commitFiles(ctx, client, target, proposal, branch, files)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if !changed && branch.BuildOn == "" {
@@ -296,10 +296,13 @@ func proposeFiles(
 		// There is nothing to propose and nothing to open.
 		logging.From(ctx).Info("the files already say what they should; nothing proposed")
 
-		return nil
+		return orgsync.ObservationMatched, nil
 	}
 
-	return openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files)
+	if err := openOrUpdateProposal(ctx, client, target, proposal, branch.Pull, files); err != nil {
+		return "", err
+	}
+	return orgsync.ObservationProposed, nil
 }
 
 // proposalBranch is where a repository's file work stands.
