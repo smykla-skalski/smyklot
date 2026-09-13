@@ -1661,6 +1661,17 @@ async function handle(
       }
     }
 
+    const retainedPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (retainedPlanMatch && method === 'GET') {
+      const plan = state.syncPlans.get(decodeURIComponent(retainedPlanMatch[1] ?? ''));
+      if (plan?.id !== decodeURIComponent(retainedPlanMatch[2] ?? ''))
+        respond(res, 404, { error: { code: 'not_found', message: 'Sync result not found' } });
+      else respond(res, 200, { plan });
+      return;
+    }
+
     const syncPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plan$/.exec(
       path.slice(route('').length),
     );

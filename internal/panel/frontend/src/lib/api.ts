@@ -324,7 +324,7 @@ export interface PanelApi {
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
-  fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }>;
+  fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
   fetchSyncStatus(targetId: string): Promise<SyncStatus>;
@@ -1201,8 +1201,10 @@ export function createPanelApi(
       );
     },
 
-    fetchSyncPlan(targetId: string): Promise<{ plan: SyncPlan | null }> {
-      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plan`);
+    fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/${planId === undefined ? 'plan' : `plans/${pathSegment(planId)}`}`,
+      );
     },
 
     fetchSyncStatus(targetId: string): Promise<SyncStatus> {

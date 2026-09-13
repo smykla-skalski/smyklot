@@ -184,11 +184,12 @@ describe('desktop repository observation evidence', () => {
   );
 
   it.each(['light', 'dark'] as const)(
-    'links a completed file action while sync continues in %s',
+    'retains a selected result through completion and reload in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({
         viewport: { width: 1920, height: 1200 },
         colorScheme,
+        reducedMotion: 'reduce',
       });
       page.setDefaultTimeout(7000);
       try {
@@ -200,7 +201,11 @@ describe('desktop repository observation evidence', () => {
           { ...file, repository: 'worker', state: 'pending' },
         ];
         plan.counts = { create: 2, update: 0, delete: 0 };
+        let finished = false;
         await page.route('**/api/v1/targets/*/sync/plan', (route) =>
+          route.fulfill({ json: { plan: finished ? null : plan } }),
+        );
+        await page.route('**/api/v1/targets/*/sync/plans/*', (route) =>
           route.fulfill({ json: { plan } }),
         );
         await page
@@ -222,6 +227,7 @@ describe('desktop repository observation evidence', () => {
         await page
           .getByRole('heading', { name: '1 of 2 changes processed', exact: true })
           .waitFor();
+        expect(page.url()).toContain(`/sync/plan/${encodeURIComponent(plan.id)}`);
         const group = page.locator('.repo-row').filter({ hasText: 'api-gateway' });
         if ((await group.getAttribute('aria-expanded')) !== 'true') await group.click();
         const link = page.getByRole('link', { name: 'View pull request', exact: true });
@@ -238,6 +244,44 @@ describe('desktop repository observation evidence', () => {
             fullPage: false,
           });
         }
+        finished = true;
+        plan.state = 'applied';
+        plan.actions = plan.actions.map((action) => ({ ...action, state: 'applied' }));
+        await page.reload();
+        await page.getByRole('heading', { name: '2 changes processed', exact: true }).waitFor();
+        const retainedGroup = page.locator('.repo-row').filter({ hasText: 'api-gateway' });
+        if ((await retainedGroup.getAttribute('aria-expanded')) !== 'true')
+          await retainedGroup.click();
+        expect(
+          await page
+            .getByRole('link', { name: 'View pull request', exact: true })
+            .getAttribute('href'),
+        ).toBe(proposalURL);
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F33-history-completed-${colorScheme}.png`),
+            fullPage: false,
+          });
+        await page.getByRole('button', { name: 'Close sync details', exact: true }).click();
+        await page.waitForURL((url) => !url.pathname.includes('/sync/plan/'));
+        await page.goBack();
+        await page.getByRole('heading', { name: '2 changes processed', exact: true }).waitFor();
+        await page.route('**/api/v1/targets/*/sync/plans/*', (route) =>
+          route.fulfill({
+            status: 404,
+            json: { error: { code: 'not_found', message: 'Sync result not found' } },
+          }),
+        );
+        await page.reload();
+        await page.getByText('Sync result not found', { exact: true }).waitFor();
+        expect(
+          await page.getByRole('heading', { name: '2 changes processed', exact: true }).count(),
+        ).toBe(0);
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F33-history-missing-${colorScheme}.png`),
+            fullPage: false,
+          });
       } finally {
         await page.close();
       }

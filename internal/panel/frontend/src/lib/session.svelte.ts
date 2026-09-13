@@ -505,6 +505,24 @@ export class PanelSession {
     return 'overview';
   }
 
+  get currentSyncPlan(): string | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncPlan ?? null)
+      : null;
+  }
+
+  openSyncPlan(planId: string): void {
+    const target = this.selectedTarget;
+    if (target === null) return;
+    void this.navigate({
+      account: target.account.login,
+      view: 'sync',
+      sync: 'plan',
+      syncPlan: planId,
+    });
+  }
+
   selectSyncSection(section: SyncSection): void {
     const target = this.selectedTarget;
     if (target === null) return;
@@ -512,7 +530,8 @@ export class PanelSession {
       this.currentView === 'sync' &&
       this.currentSyncSection === section &&
       this.currentSyncRuleset === null &&
-      this.currentSyncFile === null
+      this.currentSyncFile === null &&
+      this.currentSyncPlan === null
     ) {
       return;
     }

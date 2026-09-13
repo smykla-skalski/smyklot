@@ -90,7 +90,13 @@ export function panelAddress(route: PanelRoute): string {
     });
   }
 
-  /* One ruleset's own page, a level below its list. */
+  /* A selected result has a stable address after leaving the live slot. */
+  if (route.view === 'sync' && route.sync === 'plan' && route.syncPlan !== undefined) {
+    return resolve('/workspace/[account]/sync/plan/[plan]', {
+      account,
+      plan: encodeURIComponent(route.syncPlan),
+    });
+  }
   if (route.view === 'sync' && route.sync === 'rulesets' && route.syncRuleset !== undefined) {
     return resolve('/workspace/[account]/sync/rulesets/[ruleset]', {
       account,
@@ -262,6 +268,8 @@ export function panelRouteAt(
       return { account, view: 'sync', sync: asSyncSection(section) };
     case '/workspace/[account]/sync/rulesets/[ruleset]':
       return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
+    case '/workspace/[account]/sync/plan/[plan]':
+      return { account, view: 'sync', sync: 'plan', syncPlan: params.plan ?? '' };
     case '/workspace/[account]/sync/files/[...file=syncFilePath]': {
       /* SvelteKit has already decoded every segment in the rest parameter.
          Decoding again turns a literal percent sequence into another name -

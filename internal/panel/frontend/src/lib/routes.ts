@@ -231,6 +231,8 @@ export type WorkspaceRoute = {
    * all. Only ever present with `sync === 'files'`.
    */
   syncFile?: string;
+  /** Stable execution result selected in the sync inspector. */
+  syncPlan?: string;
   /** The Queue page the address names; absent means Active. */
   queue?: QueueSection;
   /** What is open on top of the view; see `route-dialogs`. */
@@ -571,17 +573,17 @@ function parseSection(
 function parseTrailingSync(
   view: string,
   segments: string[],
-): Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile'> | undefined | 'invalid' {
+): Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan'> | undefined | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
 
   const [rawSection, ...encodedRest] = segments;
   const sync = WRITTEN_SYNC_SECTIONS.find((section) => section === rawSection);
   if (sync === undefined) return 'invalid';
   if (encodedRest.length === 0) return { sync };
-  /* Only the two object sections list named things. A ruleset's name is one
-     segment; a file's path is as many as it carries slashes. */
-  if (sync !== 'rulesets' && sync !== 'files') return 'invalid';
-  if (sync === 'rulesets' && encodedRest.length > 1) return 'invalid';
+  /* Rulesets and results use one identifying segment. A file path may
+     contain several segments. */
+  if (sync !== 'rulesets' && sync !== 'files' && sync !== 'plan') return 'invalid';
+  if (sync !== 'files' && encodedRest.length > 1) return 'invalid';
 
   let parts: string[];
   try {
@@ -590,6 +592,8 @@ function parseTrailingSync(
     return 'invalid';
   }
   if (parts.some((part) => part.trim() === '')) return 'invalid';
+
+  if (sync === 'plan') return { sync, syncPlan: parts[0] ?? '' };
 
   return sync === 'rulesets'
     ? { sync, syncRuleset: parts[0] ?? '' }

@@ -173,6 +173,8 @@ history is routed with its section. That is what makes an address like
               session.api.fetchBypassActors(session.selectedTarget!.id, type, query)}
             fetchConfig={session.api.fetchSyncConfig}
             fetchPlan={session.api.fetchSyncPlan}
+            selectedPlanId={session.currentSyncPlan}
+            onOpenPlan={(id) => session.openSyncPlan(id)}
             approvePlan={session.api.approveSyncPlan}
             discardPlan={session.api.discardSyncPlan}
             runSyncNow={session.api.runSyncNow}

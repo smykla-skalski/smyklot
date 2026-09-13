@@ -78,7 +78,7 @@ describe('panel routes', () => {
     // `overview` is never written, so an address naming it does not resolve.
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/overview')).toBeNull();
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/nonsense')).toBeNull();
-    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan/extra')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/plan/extra/extra')).toBeNull();
   });
 
   it('parses Queue pages and refuses non-pages', () => {
@@ -484,4 +484,9 @@ describe('history sections are addressable', () => {
       }),
     ).toBe(`${basePath}/root/workspaces/acme/history/failures`);
   });
+});
+
+it('round trips a retained sync result address', () => {
+  const route = { account: 'acme', view: 'sync', sync: 'plan', syncPlan: 'run-42' } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
 });

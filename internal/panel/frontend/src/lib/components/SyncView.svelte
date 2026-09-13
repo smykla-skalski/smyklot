@@ -66,6 +66,8 @@
     canControl = false,
     fetchConfig,
     fetchPlan,
+    selectedPlanId = null,
+    onOpenPlan,
     approvePlan,
     discardPlan,
     runSyncNow = async () => {
@@ -109,7 +111,9 @@
     renderFile: (targetId: string, input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
-    fetchPlan: (targetId: string) => Promise<{ plan: SyncPlan | null }>;
+    selectedPlanId?: string | null;
+    onOpenPlan?: (planId: string) => void;
+    fetchPlan: (targetId: string, planId?: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
     runSyncNow?: (
@@ -169,6 +173,16 @@
     notifyOnChangeProps: ['data', 'error'],
     queryFn: () => fetchPlan(targetId),
   }));
+  const selectedPlanQuery = createQuery(() => ({
+    queryKey: ['sync-plan', targetId, selectedPlanId],
+    enabled: selectedPlanId !== null,
+    queryFn: () => fetchPlan(targetId, selectedPlanId ?? undefined),
+  }));
+  const inspectedPlan = $derived(
+    selectedPlanId === null
+      ? (planQuery.data?.plan ?? null)
+      : (selectedPlanQuery.data?.plan ?? null),
+  );
   const statusQuery = createQuery(() => ({
     queryKey: ['sync-status', targetId],
     queryFn: () => fetchStatus(targetId),
@@ -183,7 +197,8 @@
   }
   function openDetails(trigger: HTMLElement): void {
     detailsTrigger = trigger;
-    detailsOpen = true;
+    if (plan !== null && onOpenPlan !== undefined) onOpenPlan(plan.id);
+    else detailsOpen = true;
   }
   let filesContext = $state<SyncFilesContext | null>(null);
   /* The injected clock keeps catalogue examples deterministic while live views age. */
@@ -395,7 +410,10 @@
         ['sync-plan', targetId],
         await approvePlan(targetId, planId, digest),
       );
-      await statusQuery.refetch();
+      await Promise.all([
+        statusQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['sync-plan', targetId, planId] }),
+      ]);
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -409,7 +427,7 @@
     error = null;
     try {
       await discardPlan(targetId, planId);
-      await Promise.all([planQuery.refetch(), statusQuery.refetch()]);
+      await Promise.all([planQuery.refetch(), statusQuery.refetch(), selectedPlanQuery.refetch()]);
     } catch (cause) {
       error = messageOf(cause);
     } finally {
@@ -511,19 +529,25 @@ Live plan and status queries share the shell's event invalidation and polling fa
         aria-label="Close sync details"
         onclick={closeDetails}>Close</Button
       >{/snippet}
-    <SyncPlanPage
-      embedded
-      {plan}
-      {nowMs}
-      {readOnly}
-      {canControl}
-      {approving}
-      {discarding}
-      runNowBusy={runningNow}
-      onApprove={(planId, digest) => void onApprove(planId, digest)}
-      onDiscard={(planId) => void onDiscard(planId)}
-      onRunNow={(reason) => void onRunNow(reason)}
-    />
+    {#if selectedPlanId !== null && selectedPlanQuery.error}
+      <FormError message={messageOf(selectedPlanQuery.error)} />
+    {:else if selectedPlanId !== null && selectedPlanQuery.isPending}
+      <p role="status">Loading sync result…</p>
+    {:else}
+      <SyncPlanPage
+        embedded
+        plan={inspectedPlan}
+        {nowMs}
+        {readOnly}
+        {canControl}
+        {approving}
+        {discarding}
+        runNowBusy={runningNow}
+        onApprove={(planId, digest) => void onApprove(planId, digest)}
+        onDiscard={(planId) => void onDiscard(planId)}
+        onRunNow={(reason) => void onRunNow(reason)}
+      />
+    {/if}
   </Modal>
 {:else if section === 'labels'}
   {#key config === null}
