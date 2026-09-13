@@ -418,7 +418,9 @@ UI labels, descriptions, hints, and toast messages have no trailing period. A to
 description does not repeat its title. Segmented formatting pickers occupy their
 content width without stretching across the containing panel. When there is less
 room than their contents need, the shared track scrolls horizontally within its
-container at every viewport width. Never clip an option or widen the page
+container at every viewport width. Keyboard focus reveals the entire option label
+by scrolling only that track, preserving the page and inspector's vertical position.
+Never clip an option or widen the page
 
 Optional explanations open in place through a quiet native disclosure. Its text
 shares the card heading's left edge, its trailing chevron stays inside the hit
@@ -541,6 +543,16 @@ Formatting is secondary to editing content. Keep it in the inspector or a closed
 disclosure until requested. Every template and rendered file has its terminal
 newline, including preserved-format output. The editor hides that terminal blank
 line, excludes it from change counts, and never offers it as a formatting choice
+
+Inline length limits belong to the shared formatting editor, with the same numeric
+control, inheritance marker, validation, and save behavior at every scope. Explain
+that the limit applies to automatic collection layouts and that zero uses line
+width alone. A positive limit counts rendered Unicode characters inside the
+collection, including delimiters and spaces, excluding the surrounding key and
+indentation. Line width remains a separate cap. Never silently change an explicit
+Preserve, Compact, or Expanded choice when the limit changes. Browser checks must
+show mixed short and long collections in the real backend-rendered final output,
+and verify that saving, reloading, and restoring inheritance retain the choice
 
 ### Rows, pairs, and compact actions
 

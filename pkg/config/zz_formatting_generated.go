@@ -9,11 +9,12 @@ func formattingPresetPolicy(preset string) FormattingPolicy {
 		return FormattingPolicy{
 			Preset: "conventional",
 			Common: FormattingCommonPolicy{
-				IndentStyle:  "spaces",
-				IndentWidth:  2,
-				LineWidth:    100,
-				LineEnding:   "lf",
-				FinalNewline: "insert",
+				IndentStyle:    "spaces",
+				IndentWidth:    2,
+				LineWidth:      100,
+				InlineMaxChars: 0,
+				LineEnding:     "lf",
+				FinalNewline:   "insert",
 			},
 			JSON: FormattingJSONPolicy{
 				Arrays:   "auto",
@@ -48,11 +49,12 @@ func formattingPresetPolicy(preset string) FormattingPolicy {
 		return FormattingPolicy{
 			Preset: "preserve",
 			Common: FormattingCommonPolicy{
-				IndentStyle:  "preserve",
-				IndentWidth:  2,
-				LineWidth:    100,
-				LineEnding:   "preserve",
-				FinalNewline: "preserve",
+				IndentStyle:    "preserve",
+				IndentWidth:    2,
+				LineWidth:      100,
+				InlineMaxChars: 0,
+				LineEnding:     "preserve",
+				FinalNewline:   "preserve",
 			},
 			JSON: FormattingJSONPolicy{
 				Arrays:   "preserve",

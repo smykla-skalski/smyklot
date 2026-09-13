@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/tailscale/hujson"
@@ -174,8 +175,33 @@ func (ctx jsonFormatContext) collectionLayout(choice string, value hujson.Value,
 	}
 
 	copy := value.Clone()
-	compactJSONValue(&copy)
-	if depth*len(ctx.indent)+len(copy.Pack()) <= ctx.policy.Common.LineWidth {
+	if ctx.policy.Common.InlineMaxChars == 0 {
+		compactJSONValue(&copy)
+	} else {
+		restoreJSONCommaMarkers(&copy, &value)
+		// Children already chose their own layouts. A compact parent must not
+		// override an expanded or preserved multiline child to satisfy its cap.
+		switch node := copy.Value.(type) {
+		case *hujson.Object:
+			compactJSONObject(node)
+		case *hujson.Array:
+			compactJSONArray(node)
+		}
+		// Apply after cloning: the clone may collapse an empty trailing-comma
+		// marker to nil. Measure the comma policy that the output will receive.
+		if ctx.jsonc {
+			setJSONCTrailingCommas(&copy, ctx.policy.JSONC.TrailingCommas)
+		}
+	}
+	packed := copy.Pack()
+	characters := len(packed)
+	if ctx.policy.Common.InlineMaxChars > 0 {
+		if bytes.ContainsAny(packed, "\r\n") {
+			return formatExpanded
+		}
+		characters = utf8.RuneCount(packed)
+	}
+	if inlineCollectionFits(characters, depth*len(ctx.indent), ctx.policy.Common) {
 		return formatCompact
 	}
 

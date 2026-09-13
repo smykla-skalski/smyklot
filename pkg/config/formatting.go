@@ -27,6 +27,8 @@ type FormattingCommonPatch struct {
 	IndentWidth *int `json:"indent_width,omitempty" yaml:"indent_width,omitempty" toml:"indent_width,omitempty" default:"2" min:"1" max:"16"`
 	// LineWidth sets the target line length for automatic wrapping.
 	LineWidth *int `json:"line_width,omitempty" yaml:"line_width,omitempty" toml:"line_width,omitempty" default:"100" min:"40" max:"320"`
+	// InlineMaxChars limits automatically inlined collections by rendered characters; zero uses only line width.
+	InlineMaxChars *int `json:"inline_max_chars,omitempty" yaml:"inline_max_chars,omitempty" toml:"inline_max_chars,omitempty" default:"0" min:"0" max:"320"`
 	// LineEnding chooses LF, CRLF, or the document's existing endings.
 	LineEnding *string `json:"line_ending,omitempty" yaml:"line_ending,omitempty" toml:"line_ending,omitempty" default:"preserve" enum:"preserve,lf,crlf" presets:"conventional=lf"`
 	// FinalNewline inserts, removes, or preserves the last line ending.
@@ -97,11 +99,12 @@ type FormattingPolicy struct {
 }
 
 type FormattingCommonPolicy struct {
-	IndentStyle  string `json:"indent_style"`
-	IndentWidth  int    `json:"indent_width"`
-	LineWidth    int    `json:"line_width"`
-	LineEnding   string `json:"line_ending"`
-	FinalNewline string `json:"final_newline"`
+	IndentStyle    string `json:"indent_style"`
+	IndentWidth    int    `json:"indent_width"`
+	LineWidth      int    `json:"line_width"`
+	InlineMaxChars int    `json:"inline_max_chars"`
+	LineEnding     string `json:"line_ending"`
+	FinalNewline   string `json:"final_newline"`
 }
 
 type FormattingJSONPolicy struct {
@@ -150,11 +153,12 @@ type FormattingSources struct {
 }
 
 type FormattingCommonSources struct {
-	IndentStyle  Source `json:"indent_style"`
-	IndentWidth  Source `json:"indent_width"`
-	LineWidth    Source `json:"line_width"`
-	LineEnding   Source `json:"line_ending"`
-	FinalNewline Source `json:"final_newline"`
+	IndentStyle    Source `json:"indent_style"`
+	IndentWidth    Source `json:"indent_width"`
+	LineWidth      Source `json:"line_width"`
+	InlineMaxChars Source `json:"inline_max_chars"`
+	LineEnding     Source `json:"line_ending"`
+	FinalNewline   Source `json:"final_newline"`
 }
 
 type FormattingJSONSources struct {

@@ -24,6 +24,19 @@ func encodeYAMLFragment(node *yaml.Node, indentWidth int) (string, error) {
 	return strings.TrimSuffix(output.String(), lf), nil
 }
 
+// Flow spans own only their delimiters and contents. Collection-level comments
+// remain outside that span; child comments still belong to the replacement.
+func yamlCollectionRenderNode(ref *yamlCollectionRef, capped bool) *yaml.Node {
+	if !capped || !ref.currentFlow {
+		return ref.node
+	}
+	node := *ref.node
+	node.HeadComment = ""
+	node.LineComment = ""
+	node.FootComment = ""
+	return &node
+}
+
 func yamlStringEdit(
 	layout sourceLayout,
 	ref yamlStringRef,

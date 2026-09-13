@@ -6,6 +6,7 @@ export type FormattingPolicy = {
     'indent_style': 'preserve' | 'spaces' | 'tabs';
     'indent_width': number;
     'line_width': number;
+    'inline_max_chars': number;
     'line_ending': 'preserve' | 'lf' | 'crlf';
     'final_newline': 'preserve' | 'insert' | 'remove';
   };
@@ -67,6 +68,7 @@ export const FORMATTING_PRESETS = {
       'indent_style': 'preserve',
       'indent_width': 2,
       'line_width': 100,
+      'inline_max_chars': 0,
       'line_ending': 'preserve',
       'final_newline': 'preserve',
     },
@@ -105,6 +107,7 @@ export const FORMATTING_PRESETS = {
       'indent_style': 'spaces',
       'indent_width': 2,
       'line_width': 100,
+      'inline_max_chars': 0,
       'line_ending': 'lf',
       'final_newline': 'insert',
     },
@@ -184,6 +187,15 @@ export const FORMATTING_FIELDS = [
     minimum: 40,
     maximum: 320,
     description: 'Sets the target line length for automatic wrapping',
+  },
+  {
+    key: 'formatting.common.inline_max_chars',
+    path: ['common', 'inline_max_chars'],
+    kind: 'int',
+    defaultValue: 0,
+    minimum: 0,
+    maximum: 320,
+    description: 'Limits automatically inlined collections by rendered characters; zero uses only line width',
   },
   {
     key: 'formatting.common.line_ending',

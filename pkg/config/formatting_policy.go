@@ -44,6 +44,7 @@ func applyFormattingPatch(
 	applyMarkdownFormatting(&target.Markdown, patch.Markdown, sources, source)
 }
 
+//nolint:dupl // Each group explicitly maps its typed leaves to their provenance keys.
 func applyCommonFormatting(target *FormattingCommonPolicy, patch *FormattingCommonPatch, sources map[string]Source, source Source) {
 	if patch == nil {
 		return
@@ -51,6 +52,7 @@ func applyCommonFormatting(target *FormattingCommonPolicy, patch *FormattingComm
 	setFormatting(&target.IndentStyle, patch.IndentStyle, sources, "formatting.common.indent_style", source)
 	setFormatting(&target.IndentWidth, patch.IndentWidth, sources, "formatting.common.indent_width", source)
 	setFormatting(&target.LineWidth, patch.LineWidth, sources, "formatting.common.line_width", source)
+	setFormatting(&target.InlineMaxChars, patch.InlineMaxChars, sources, "formatting.common.inline_max_chars", source)
 	setFormatting(&target.LineEnding, patch.LineEnding, sources, "formatting.common.line_ending", source)
 	setFormatting(&target.FinalNewline, patch.FinalNewline, sources, "formatting.common.final_newline", source)
 }
@@ -81,6 +83,7 @@ func applyYAMLFormatting(target *FormattingYAMLPolicy, patch *FormattingYAMLPatc
 	setFormatting(&target.DocumentStart, patch.DocumentStart, sources, "formatting.yaml.document_start", source)
 }
 
+//nolint:dupl // Each group explicitly maps its typed leaves to their provenance keys.
 func applyTOMLFormatting(target *FormattingTOMLPolicy, patch *FormattingTOMLPatch, sources map[string]Source, source Source) {
 	if patch == nil {
 		return

@@ -377,6 +377,23 @@ This does not bypass reviews or required checks. If the pull request is converte
 
 Action workflows that enable this setting must pass the immutable event revision as `COMMENT_UPDATED_AT: ${{ github.event.comment.updated_at }}` alongside `COMMENT_BODY`. Smyklot rejects a delayed workflow when the live comment no longer matches both values.
 
+### Inline collection length
+
+Use automatic layout with an inline length limit to keep short collections on one line and expand longer ones. For example, this keeps JSON and JSONC arrays and objects inline only when their rendered content fits within 80 characters and the configured line width:
+
+```toml
+[formatting.common]
+inline_max_chars = 80
+
+[formatting.json]
+arrays = "auto"
+objects = "auto"
+```
+
+In the panel, open **Formatting**, set **Common → Inline length limit**, and choose **Auto** for the relevant collection layout. This setting is available at runtime, workspace, repository, template, and file override scopes through the shared formatting editor. Repository and workspace configuration files use the same `formatting.common.inline_max_chars` key. Process configuration also accepts `SMYKLOT_FORMATTING_COMMON_INLINE_MAX_CHARS` or `--formatting-common-inline-max-chars`.
+
+The limit accepts 0 through 320. Zero, the default, uses line width alone. A positive limit counts rendered Unicode characters, including brackets, braces, quotes, and spaces, but excludes the surrounding key and indentation. Line width remains a separate cap. The limit also applies to automatic YAML sequences and mappings and TOML arrays. Explicit Preserve, Compact/Flow, and Expanded/Block choices remain unchanged; comments and multiline child values can keep a collection expanded for safety.
+
 ## Running as a service
 
 Smyklot can run as a long-running process instead of a per-comment workflow. One process serves every repository the App is installed on, so no repository needs a workflow file, and a command takes effect without a workflow run being queued first.

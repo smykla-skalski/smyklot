@@ -132,6 +132,7 @@
     FORMATTING_FIELDS.filter(
       (field) =>
         field.key !== 'formatting.common.final_newline' &&
+        !(fileGroup === 'markdown' && field.key === 'formatting.common.inline_max_chars') &&
         (field.key === 'formatting.preset' ||
           relevantGroups.some((group) => group.key === field.path[0])),
     ),
@@ -274,6 +275,7 @@
   }
 
   function fieldLabel(field: FormattingField): string {
+    if (field.key === 'formatting.common.inline_max_chars') return 'Inline length limit';
     return optionLabel(field.path.at(-1) ?? field.key);
   }
 </script>
@@ -385,14 +387,20 @@ three things among thirty finds them again.
         <div class="policy-rows">
           {#each fieldsIn(group.key) as field (field.key)}
             <div
-              class={['policy-row', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+              class={[
+                'policy-row',
+                {
+                  'is-unsaved': dirtyKeySet.has(field.key),
+                  'is-stacked': field.kind === 'enum' && field.options.length >= 4,
+                },
+              ]}
               data-unsaved={dirtyKeySet.has(field.key) || undefined}
             >
               <span class="setting-say">
                 <label class="setting-name" for="formatting-{scope}-{idPrefix}-{field.key}"
                   >{fieldLabel(field)}</label
                 >
-                <span class="setting-why"
+                <span class="setting-why" id="formatting-{scope}-{idPrefix}-{field.key}-help"
                   >{field.description} · {formattingPatchValue(draft, field) !== undefined
                     ? 'Set here'
                     : `From ${sourceFor(field)}`}</span
@@ -460,9 +468,11 @@ three things among thirty finds them again.
                     step="1"
                     value={shownNumber(field)}
                     aria-invalid={invalidNumbers[field.key] || undefined}
-                    aria-describedby={invalidNumbers[field.key]
-                      ? `formatting-${scope}-${idPrefix}-${field.key}-error`
-                      : undefined}
+                    aria-describedby={`formatting-${scope}-${idPrefix}-${field.key}-help${
+                      invalidNumbers[field.key]
+                        ? ` formatting-${scope}-${idPrefix}-${field.key}-error`
+                        : ''
+                    }`}
                     {disabled}
                     oninput={(event) => typeNumber(field, event.currentTarget.value)}
                     onblur={() => finishNumber(field)}
