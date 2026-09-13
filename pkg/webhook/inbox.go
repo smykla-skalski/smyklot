@@ -36,12 +36,14 @@ type ClaimResult struct {
 }
 
 type Work struct {
-	ClaimID    int64
-	Key        string
-	DeliveryID string
-	Event      string
-	Payload    []byte
-	Attempt    int
+	// SourceOrder preserves the original acceptance order across new executions.
+	SourceOrder int64
+	ClaimID     int64
+	Key         string
+	DeliveryID  string
+	Event       string
+	Payload     []byte
+	Attempt     int
 }
 
 type Lease struct {

@@ -76,6 +76,37 @@ func TestMemoryInboxForgetsARetryableFailure(t *testing.T) {
 	}
 }
 
+func TestMemoryInboxRedeliveryPreservesOrder(t *testing.T) {
+	t.Parallel()
+	inbox := webhook.NewMemoryInbox(webhook.MemoryInboxOptions{})
+	first, err := inbox.Claim(t.Context(), claimOf("old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.Fail(t.Context(), webhook.Failure{ClaimID: first.ID, Retryable: true, At: time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	newer, err := inbox.Claim(t.Context(), claimOf("new"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := inbox.Complete(t.Context(), newer.ID, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	repeated, err := inbox.Claim(t.Context(), claimOf("old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	leased, err := inbox.Lease(t.Context(), now, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if leased.Work == nil || leased.Work.ClaimID != repeated.ID || leased.Work.SourceOrder != first.ID || leased.Work.SourceOrder >= newer.ID {
+		t.Fatalf("old delivery gained new ordering on redelivery: %+v", leased.Work)
+	}
+}
+
 func TestMemoryInboxLeasesExclusively(t *testing.T) {
 	t.Parallel()
 

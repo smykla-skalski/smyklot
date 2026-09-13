@@ -116,12 +116,13 @@ func (i deliveryInbox) Lease(
 	}
 
 	return webhook.Lease{Work: &webhook.Work{
-		ClaimID:    result.Work.ID,
-		Key:        result.Work.ClaimKey,
-		DeliveryID: result.Work.DeliveryID,
-		Event:      result.Work.Event,
-		Payload:    result.Work.Payload,
-		Attempt:    result.Work.Attempt,
+		ClaimID:     result.Work.ID,
+		SourceOrder: result.Work.SourceOrder,
+		Key:         result.Work.ClaimKey,
+		DeliveryID:  result.Work.DeliveryID,
+		Event:       result.Work.Event,
+		Payload:     result.Work.Payload,
+		Attempt:     result.Work.Attempt,
 	}}, nil
 }
 
@@ -223,7 +224,7 @@ func (s *server) executeDelivery(ctx context.Context, delivery webhook.Delivery)
 		}
 	}
 
-	return s.handleIssueComment(ctx, event, delivery.Key, delivery.ClaimID)
+	return s.handleIssueComment(ctx, event, delivery.Key, delivery.SourceOrder)
 }
 
 func retryDelivery(cause error, attempt int) (time.Duration, bool) {

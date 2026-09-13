@@ -61,11 +61,13 @@ func (m *MemoryInbox) Claim(_ context.Context, claim Claim) (ClaimResult, error)
 	defer m.mu.Unlock()
 
 	now := m.now()
+	var sourceOrder int64
 	if existing, ok := m.byKey[claim.Key]; ok && !m.expired(existing, now) {
 		switch {
 		case existing.settledAt.IsZero():
 			return ClaimResult{Disposition: InProgress}, nil
 		case existing.forgotten:
+			sourceOrder = existing.work.SourceOrder
 			delete(m.byKey, existing.key)
 			delete(m.rows, existing.id)
 		default:
@@ -75,11 +77,14 @@ func (m *MemoryInbox) Claim(_ context.Context, claim Claim) (ClaimResult, error)
 
 	m.evict(now)
 	m.nextID++
+	if sourceOrder == 0 {
+		sourceOrder = m.nextID
+	}
 	row := &memoryRow{
 		id:  m.nextID,
 		key: claim.Key,
 		work: Work{
-			ClaimID: m.nextID, Key: claim.Key, DeliveryID: claim.DeliveryID,
+			ClaimID: m.nextID, SourceOrder: sourceOrder, Key: claim.Key, DeliveryID: claim.DeliveryID,
 			Event: claim.Event, Payload: claim.Payload,
 		},
 		nextAttemptAt: now,

@@ -31,9 +31,10 @@ func (s *Store) ClaimDelivery(
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO deliveries (
     claim_key, delivery_id, target_id, repository_id, repository_full_name,
-    event, status, payload, claimed_at, next_attempt_at
+    event, status, payload, claimed_at, next_attempt_at, source_order
 )
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+    (SELECT MIN(COALESCE(source_order, id)) FROM deliveries WHERE claim_key = ? AND target_id = ?))
 ON CONFLICT DO NOTHING
 RETURNING id`,
 		claim.ClaimKey,
@@ -46,6 +47,8 @@ RETURNING id`,
 		claim.Payload,
 		claim.ClaimedAt,
 		claim.ClaimedAt,
+		claim.ClaimKey,
+		claim.TargetID,
 	).Scan(&claimID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return storage.DeliveryClaimResult{}, fmt.Errorf("claim delivery: %w", err)
@@ -186,7 +189,7 @@ func (s *Store) selectReadyDelivery(
 	var repositoryID sql.NullString
 	err = tx.QueryRowContext(ctx, `
 SELECT id, claim_key, delivery_id, target_id, repository_id,
-       repository_full_name, event, payload, attempt_count
+       repository_full_name, event, payload, attempt_count, COALESCE(source_order, id)
 FROM deliveries
 WHERE id = ? AND status = ? AND payload IS NOT NULL
   AND next_attempt_at <= ?
@@ -205,6 +208,7 @@ WHERE id = ? AND status = ? AND payload IS NOT NULL
 		&work.Event,
 		&work.Payload,
 		&work.Attempt,
+		&work.SourceOrder,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

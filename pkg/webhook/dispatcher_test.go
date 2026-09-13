@@ -124,6 +124,7 @@ var _ = Describe("Dispatcher [Unit]", func() {
 		Expect(delivered.Attempt).To(Equal(1))
 		Expect(delivered.Source.Repository.FullName).To(Equal(testOwner + "/" + testRepo))
 		Expect(delivered.ClaimID).NotTo(BeZero())
+		Expect(delivered.SourceOrder).To(Equal(delivered.ClaimID))
 
 		Eventually(func() int {
 			completed, _, _ := inbox.outcomes()
