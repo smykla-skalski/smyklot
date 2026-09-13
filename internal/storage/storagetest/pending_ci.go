@@ -601,8 +601,22 @@ func declarePendingCISpecs(runtime func() (context.Context, storage.Store, time.
 			ClaimedAt: quietAt,
 		})
 		Expect(err).NotTo(HaveOccurred())
+		phaseStore, ok := store.(interface {
+			MarkMergeCheckSucceeded(context.Context, pendingci.MarkMergeCheckSucceededRequest) (pendingci.Request, error)
+		})
+		Expect(ok).To(BeTrue())
+		marked, err := phaseStore.MarkMergeCheckSucceeded(ctx, pendingci.MarkMergeCheckSucceededRequest{
+			ID: claimed.ID, ExpectedRevision: claimed.Revision, MarkedAt: quietAt,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(marked.MergePhase).To(Equal(pendingci.MergeCheckSucceeded))
+		Expect(marked.Revision).To(Equal(claimed.Revision + 1))
+		_, err = phaseStore.MarkMergeCheckSucceeded(ctx, pendingci.MarkMergeCheckSucceededRequest{
+			ID: claimed.ID, ExpectedRevision: claimed.Revision, MarkedAt: quietAt,
+		})
+		Expect(err).To(MatchError(storage.ErrConflict))
 		finished, err := store.Finish(ctx, pendingci.FinishRequest{
-			ID: claimed.ID, ExpectedRevision: claimed.Revision,
+			ID: marked.ID, ExpectedRevision: marked.Revision,
 			Lifecycle: pendingci.LifecycleMerged, Trigger: pendingci.TriggerQuietPeriod,
 			Reason: "CI passed and pull request merged", FinishedAt: quietAt.Add(time.Second),
 		})

@@ -655,7 +655,7 @@ func (s *Store) MarkMergeCheckSucceeded(
 UPDATE pending_ci_requests SET
 	merge_phase = 'check_succeeded', updated_at = ?, revision = revision + 1
 WHERE id = ? AND lifecycle = ? AND revision = ? AND merge_phase = 'claimed'`,
-		nil,
+		func(_, _ pendingci.Request) []pendingci.Event { return nil },
 		change.MarkedAt,
 		change.ID,
 		pendingci.LifecycleArmed,
