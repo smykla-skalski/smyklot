@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.55.2](https://github.com/smykla-skalski/smyklot/compare/v1.55.1...v1.55.2) (2026-09-13)
+
+### Bug Fixes
+
+* **panel:** move build details into the sidebar ([#388](https://github.com/smykla-skalski/smyklot/issues/388)) ([f2b58f7](https://github.com/smykla-skalski/smyklot/commit/f2b58f78d0382e579285ab325a066269bb23080d))
+
 ## [1.55.1](https://github.com/smykla-skalski/smyklot/compare/v1.55.0...v1.55.1) (2026-09-13)
 
 ### Bug Fixes
