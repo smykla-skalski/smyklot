@@ -59,11 +59,23 @@ describe('the responsive shell [Unit]', () => {
     );
     expect(sidebar).toMatch(/background-attachment: local, scroll/u);
     expect(sidebar).toMatch(
+      /radial-gradient\(\s*ellipse 50% 100% at 50% 100%,\s*var\(--sidebar-scroll-shadow\),\s*transparent\s*\)/su,
+    );
+    expect(sidebar).toMatch(
       /background-size:\s*calc\(100% - 2 \* var\(--space-3\)\) var\(--space-8\),\s*calc\(100% - 2 \* var\(--space-3\)\) var\(--space-3\)/su,
     );
     expect(sidebar).toMatch(
       /background-size:\s*calc\(100% - 23px\) var\(--space-8\),\s*calc\(100% - 23px\) var\(--space-3\)/su,
     );
+  });
+
+  it('aligns build metadata with consistent line boxes in browsers without text trimming', () => {
+    const info = source('lib/components/BuildInfo.svelte');
+    expect(info).not.toMatch(/text-box:/u);
+    expect(info).toMatch(/dl > div\s*\{[^}]*align-items:\s*baseline/su);
+    // Line height supplies the visible row gap; a grid gap would add it twice.
+    expect(info).toMatch(/dl\s*\{[^}]*row-gap:\s*0/su);
+    expect(info).toMatch(/line-height:\s*var\(--row-copy-leading\)/u);
   });
 
   /* The pages that stand OUTSIDE the panel centre themselves.

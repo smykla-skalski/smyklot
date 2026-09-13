@@ -877,7 +877,8 @@ erase the state being reviewed
 Panel version and service host belong once at the bottom of the Pages sidebar,
 the wider navigation rail beside the workspace icons. They are quiet supporting
 information, not a page footer, status alert, or primary action. Use shared muted
-text and compact spacing. Align values in a shared column. Keep long values
+text and compact spacing. Align values in a shared column and align each label
+with its value on the same baseline across browsers, without relying on text trimming. Keep long values
 inside the rail with ellipsis while preserving their full accessible text and title.
 
 Anchor this block below navigation without covering links or making the page
@@ -891,5 +892,6 @@ for missing build data, long values, and the absence of page-level build footers
 
 The navigation overflow shadow appears only while links remain below the visible
 scroll area. It disappears at the end and when all links fit, including after
-resize or navigation changes. Its horizontal bounds match the sidebar divider;
-it must not leave permanent haze or double the separator above build information.
+resize or navigation changes. Its horizontal bounds follow the sidebar divider,
+with a soft fade to transparent at both ends instead of a clipped rectangular band.
+It must not leave permanent haze or double the separator above build information.

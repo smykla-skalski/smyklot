@@ -38,13 +38,15 @@ accessible text and native tooltips while the visible columns remain bounded by 
   }
 
   dl {
+    column-gap: var(--space-2);
     display: grid;
-    gap: var(--space-2);
     grid-template-columns: max-content minmax(0, 1fr);
     margin: 0;
+    row-gap: 0;
   }
 
   dl > div {
+    align-items: baseline;
     display: grid;
     gap: var(--space-2);
     grid-column: 1 / -1;
@@ -55,7 +57,6 @@ accessible text and native tooltips while the visible columns remain bounded by 
   dt,
   dd {
     margin: 0;
-    text-box: trim-both cap alphabetic;
   }
 
   dd {

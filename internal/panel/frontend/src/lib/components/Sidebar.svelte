@@ -602,12 +602,13 @@ it has to answer to the same fact.
 
   /* The local cover stays opaque across the entire shadow before fading.
      At the content end, including a tree that never overflows, it therefore
-     hides the cue completely. Both layers share the divider's inset edges. */
+     hides the cue completely. Both layers share the divider's inset edges;
+     the ellipse fades to transparent at those edges instead of clipping. */
   .side > .tree {
     background-attachment: local, scroll;
     background-image:
       linear-gradient(to top, var(--sidebar-bg) var(--space-3), transparent),
-      linear-gradient(to top, var(--sidebar-scroll-shadow), transparent);
+      radial-gradient(ellipse 50% 100% at 50% 100%, var(--sidebar-scroll-shadow), transparent);
     background-position:
       var(--space-3) 100%,
       var(--space-3) 100%;
