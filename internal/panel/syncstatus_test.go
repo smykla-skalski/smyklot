@@ -69,6 +69,16 @@ func TestSyncStatusCountsOnlyUnfinishedActions(t *testing.T) {
 	if err := harness.store.FinishSyncPlan(ctx, orgsync.PlanOutcome{PlanID: plan.ID, State: orgsync.PlanFailed, Now: harness.now}); err != nil {
 		t.Fatal(err)
 	}
+	retained := harness.request(t, http.MethodGet, "/panel/api/v1/targets/"+panelSyncTarget+"/sync/plans/"+plan.ID, nil, session)
+	requireResponse(t, retained, "retained failed plan", http.StatusOK,
+		`"id":"status-actions"`, `"state":"failed"`,
+		`"proposal_url":"https://github.com/smykla-skalski/smyklot/pull/42"`)
+	live := harness.request(t, http.MethodGet, "/panel/api/v1/targets/"+panelSyncTarget+"/sync/plan", nil, session)
+	requireResponse(t, live, "finished plan leaves live slot", http.StatusOK, `"plan":null`)
+	missing := harness.request(t, http.MethodGet, "/panel/api/v1/targets/"+panelSyncTarget+"/sync/plans/missing", nil, session)
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("missing retained plan: %d %s", missing.Code, missing.Body.String())
+	}
 	facts, err = harness.server.syncStatusFacts(httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx), target)
 	if err != nil {
 		t.Fatal(err)

@@ -556,15 +556,23 @@ func (s *Server) syncEditorLogin(ctx context.Context, accountID string) (string,
 	return account.Login, nil
 }
 
-// getSyncPlan reads whatever plan an workspace has in flight.
+// getSyncPlan reads the live plan or one retained plan in the authorized workspace.
 func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 	_, target, access, ok := s.requireTarget(w, r, false)
 	if !ok {
 		return
 	}
 
-	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
-	if errors.Is(err, storage.ErrNotFound) {
+	var plan orgsync.Plan
+	var actions []orgsync.Action
+	var err error
+	planID := r.PathValue("plan")
+	if planID == "" {
+		plan, actions, err = s.store.GetLiveSyncPlan(r.Context(), target.ID)
+	} else {
+		plan, actions, err = s.store.GetSyncPlan(r.Context(), target.ID, planID)
+	}
+	if errors.Is(err, storage.ErrNotFound) && planID == "" {
 		// Nothing in flight is an answer, not a missing page.
 		writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: nil})
 

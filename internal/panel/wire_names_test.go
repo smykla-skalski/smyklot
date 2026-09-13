@@ -32,6 +32,7 @@ func TestPanelResponsesUseWireNames(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
 	session := harness.signIn(t)
 	seedPanelWireNameRows(t, harness)
+	createPanelSyncPlan(t, harness, "sync-plan-1", harness.now.Add(time.Hour))
 	harness.server.configFiles = &configFileControllerProbe{}
 
 	paths := panelWireNameProbePaths()
@@ -193,6 +194,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/targets/" + target + "/sync/config/labels",
 		"/panel/api/v1/targets/" + target + "/sync/paths",
 		"/panel/api/v1/targets/" + target + "/sync/plan",
+		"/panel/api/v1/targets/" + target + "/sync/plans/sync-plan-1",
 		"/panel/api/v1/targets/" + target + "/sync/status",
 		"/panel/api/v1/targets/" + target + "/sync/files/context",
 		"/panel/api/v1/targets/" + target + "/audit",
