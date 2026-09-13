@@ -62,7 +62,7 @@ func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
 	if err := scanner.Scan(
 		&action.ID, &action.PlanID, &action.RepositoryID, &action.Kind,
 		&action.Operation, &action.Subject, &action.Before, &action.After,
-		&payload, &action.State, &action.Error, &action.Blocker, &action.InputDigest,
+		&payload, &action.State, &action.Error, &action.Blocker, &action.InputDigest, &action.ProposalURL,
 	); err != nil {
 		return orgsync.Action{}, fmt.Errorf("scan sync action: %w", err)
 	}
@@ -79,7 +79,7 @@ func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
 
 const syncActionColumns = `
     id, plan_id, repository_id, kind, operation, subject,
-    before_state, after_state, payload, state, error, blocker, input_digest`
+    before_state, after_state, payload, state, error, blocker, input_digest, proposal_url`
 
 // invalidateLivePlans marks every plan an installation could still apply as
 // stale.
@@ -581,14 +581,14 @@ func (s *Store) RecordSyncActionOutcome(
 	}
 	defer func() { _ = tx.Rollback() }()
 	var (
-		planID, repositoryID, subject, previousError, previousBlocker string
-		kind                                                          orgsync.Kind
-		previousState                                                 orgsync.ActionState
+		planID, repositoryID, subject, previousError, previousBlocker, previousProposal string
+		kind                                                                            orgsync.Kind
+		previousState                                                                   orgsync.ActionState
 	)
 	err = tx.QueryRowContext(ctx, `
-SELECT plan_id, repository_id, kind, subject, state, error, blocker
+SELECT plan_id, repository_id, kind, subject, state, error, blocker, proposal_url
 FROM sync_plan_actions WHERE id = ?`+s.dialect.RowLock(), outcome.ActionID).Scan(
-		&planID, &repositoryID, &kind, &subject, &previousState, &previousError, &previousBlocker,
+		&planID, &repositoryID, &kind, &subject, &previousState, &previousError, &previousBlocker, &previousProposal,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return storage.ErrNotFound
@@ -597,12 +597,13 @@ FROM sync_plan_actions WHERE id = ?`+s.dialect.RowLock(), outcome.ActionID).Scan
 		return fmt.Errorf("read sync action outcome: %w", err)
 	}
 	if previousState == outcome.State && previousError == outcome.Error &&
-		previousBlocker == string(outcome.Blocker) {
+		previousBlocker == string(outcome.Blocker) && (outcome.ProposalURL == "" || previousProposal == outcome.ProposalURL) {
 		return nil
 	}
 	if _, err := tx.ExecContext(ctx, `
-UPDATE sync_plan_actions SET state = ?, error = ?, blocker = ? WHERE id = ?`,
-		outcome.State, outcome.Error, string(outcome.Blocker), outcome.ActionID,
+UPDATE sync_plan_actions SET state = ?, error = ?, blocker = ?,
+    proposal_url = CASE WHEN ? = '' THEN proposal_url ELSE ? END WHERE id = ?`,
+		outcome.State, outcome.Error, string(outcome.Blocker), outcome.ProposalURL, outcome.ProposalURL, outcome.ActionID,
 	); err != nil {
 		return fmt.Errorf("record sync action outcome: %w", err)
 	}
@@ -621,7 +622,7 @@ UPDATE queue_items SET progress_current = ?, progress_total = ?, updated_at = ?,
 		return fmt.Errorf("update sync queue progress: %w", err)
 	}
 	details, err := json.Marshal(map[string]any{
-		"action_id": outcome.ActionID, "action_state": outcome.State,
+		"action_id": outcome.ActionID, "action_state": outcome.State, "proposal_url": outcome.ProposalURL,
 		"repository_id": repositoryID, "kind": kind, "subject": subject,
 		"progress_current": completed, "progress_total": total,
 	})
@@ -869,9 +870,9 @@ DELETE FROM sync_repository_state WHERE repository_id = ? AND kind = ?`,
 	}
 
 	if _, err := tx.ExecContext(ctx, `
-INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at, problem, observation, observed_digest)
-VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		state.RepositoryID, state.Kind, state.AppliedDigest, state.AppliedAt, state.Problem, state.Observation, state.ObservedDigest,
+INSERT INTO sync_repository_state (repository_id, kind, applied_digest, applied_at, problem, observation, observed_digest, proposal_url)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		state.RepositoryID, state.Kind, state.AppliedDigest, state.AppliedAt, state.Problem, state.Observation, state.ObservedDigest, state.ProposalURL,
 	); err != nil {
 		return fmt.Errorf("record sync repository state: %w", err)
 	}

@@ -17,6 +17,7 @@
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
+  import Link from './Link.svelte';
   import PageHeader from './PageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
   import Switch from './Switch.svelte';
@@ -393,6 +394,13 @@ beside the affected repository. Change details open over this view, preserving c
                           >{/if}
                         {#if cell.reason}<span class="observation-reason band-trim"
                             >{cell.reason}</span
+                          >{/if}
+                        {#if cell.proposal_url}<span
+                            ><Link href={cell.proposal_url} target="_blank" rel="noreferrer"
+                              >{cell.state === 'outdated'
+                                ? 'View earlier pull request'
+                                : 'View pull request'}</Link
+                            ></span
                           >{/if}
                       </dd>
                     </div>

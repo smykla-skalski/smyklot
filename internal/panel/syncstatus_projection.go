@@ -52,6 +52,7 @@ func repositorySyncCell(repositoryID string, kind orgsync.Kind, enabled bool, di
 	if state.Observation != "" {
 		cell.ObservedAt = observedTime(state.AppliedAt)
 		cell.ObservedOutcome = state.Observation
+		cell.ProposalURL = state.ProposalURL
 	}
 	if cell, active := pendingRepositorySyncCell(repositoryID, kind, digest, facts, cell); active {
 		return cell

@@ -699,6 +699,7 @@ func (s syncScope) ask(
 		// cost the digest exists to remove.
 		state.AppliedDigest = state.ObservedDigest
 		state.Observation = answer.observation
+		state.ProposalURL = answer.proposalURL
 
 		return nil, []orgsync.RepositoryState{state}
 	}

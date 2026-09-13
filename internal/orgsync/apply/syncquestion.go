@@ -19,6 +19,7 @@ type repositoryAnswer struct {
 	actions     []orgsync.Action
 	problem     string
 	observation orgsync.Observation
+	proposalURL string
 }
 
 func compared(actions []orgsync.Action) repositoryAnswer {
@@ -267,7 +268,7 @@ func planRepositoryFiles(
 		return repositoryAnswer{}, err
 	}
 
-	if observation != "" {
+	if observation.state != "" {
 		// Already asked, so there is nothing to plan. Preserve whether the
 		// proposal is open or declined instead of claiming the files match. This is the whole
 		// of what a file sync can do: propose. The branch is named after what
@@ -277,7 +278,7 @@ func planRepositoryFiles(
 			"this repository already has this change in front of it, so it is left alone",
 			"repo", repository.FullName, "branch", plan.Proposal)
 
-		return repositoryAnswer{observation: observation}, nil
+		return repositoryAnswer{observation: observation.state, proposalURL: observation.proposalURL}, nil
 	}
 
 	return compared(plan.Actions), nil
@@ -296,19 +297,19 @@ func proposalObservation(
 	client *github.Client,
 	target syncTarget,
 	proposal string,
-) (orgsync.Observation, error) {
+) (kindObservation, error) {
 	pull, err := client.FindPullRequestByHead(
 		ctx, target.Owner, target.Name, proposal, target.DefaultBranch)
 	if err != nil || pull == nil {
-		return "", err
+		return kindObservation{}, err
 	}
 
 	if pull.Merged {
-		return "", nil
+		return kindObservation{}, nil
 	}
 	if pull.State == github.PullRequestClosed {
-		return orgsync.ObservationDeclined, nil
+		return kindObservation{state: orgsync.ObservationDeclined, proposalURL: pull.URL}, nil
 	}
 
-	return orgsync.ObservationProposed, nil
+	return kindObservation{state: orgsync.ObservationProposed, proposalURL: pull.URL}, nil
 }

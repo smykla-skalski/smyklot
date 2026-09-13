@@ -88,3 +88,17 @@ func TestSyncStatusOverrideCannotEnableDisabledScope(t *testing.T) {
 		})
 	}
 }
+
+func TestSyncProposalDestinationSurvivesChangedInputs(t *testing.T) {
+	now := time.Now().UTC()
+	for _, observation := range []orgsync.Observation{orgsync.ObservationProposed, orgsync.ObservationDeclined} {
+		state := orgsync.RepositoryState{Observation: observation, ObservedDigest: "saved", AppliedAt: now, ProposalURL: "https://github.com/owner/repo/pull/42"}
+		facts := syncStatusFacts{now: now, observations: map[string]map[orgsync.Kind]orgsync.RepositoryState{"repo": {orgsync.KindFiles: state}}}
+		for _, digest := range []string{"saved", "changed"} {
+			cell := repositorySyncCell("repo", orgsync.KindFiles, true, digest, facts)
+			if cell.ProposalURL != state.ProposalURL {
+				t.Fatalf("lost proposal reference: %#v", cell)
+			}
+		}
+	}
+}

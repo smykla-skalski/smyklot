@@ -250,6 +250,9 @@ type Action struct {
 	// Empty means a legacy plan whose input identity was not recorded.
 	InputDigest string
 
+	// ProposalURL retains the actual proposal destination in execution history.
+	ProposalURL string
+
 	State ActionState
 
 	// Error is why the action failed, empty otherwise. Actions fail alone: no

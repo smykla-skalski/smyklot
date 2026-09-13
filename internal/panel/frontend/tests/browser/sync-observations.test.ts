@@ -2,6 +2,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SyncCell, SyncStatus } from '../../src/lib/types';
+import { syncPlanSeed } from '../../dev/fixtures';
 import { addressOf, startPanel, visit, type Panel } from './harness';
 
 let panel: Panel;
@@ -12,6 +13,7 @@ afterAll(async () => {
   await panel?.close();
 });
 
+const proposalURL = 'https://github.com/smykla-skalski/api-gateway/pull/42';
 const observed = new Date(Date.now() - 5 * 60_000).toISOString();
 const scenes: Array<{ name: string; cells: SyncCell[]; words: string[]; latest: string | null }> = [
   {
@@ -29,6 +31,7 @@ const scenes: Array<{ name: string; cells: SyncCell[]; words: string[]; latest: 
       { state: 'off' },
       {
         state: 'proposed',
+        proposal_url: proposalURL,
         observed_at: observed,
         observed_outcome: 'proposed',
         reason: 'A pull request was opened. Its changes still need to be merged.',
@@ -45,6 +48,7 @@ const scenes: Array<{ name: string; cells: SyncCell[]; words: string[]; latest: 
       { state: 'off' },
       {
         state: 'declined',
+        proposal_url: proposalURL,
         observed_at: observed,
         observed_outcome: 'declined',
         reason:
@@ -56,10 +60,11 @@ const scenes: Array<{ name: string; cells: SyncCell[]; words: string[]; latest: 
   {
     name: 'outdated',
     latest: observed,
-    cells: Array.from({ length: 4 }, () => ({
+    cells: Array.from({ length: 4 }, (_, index) => ({
+      proposal_url: index === 3 ? proposalURL : undefined,
       state: 'outdated',
       observed_at: observed,
-      observed_outcome: 'matched',
+      observed_outcome: index === 3 ? 'proposed' : 'matched',
       reason: 'Settings changed since the last check.',
     })),
     words: ['Needs a fresh check', 'Settings changed since the last check.'],
@@ -108,6 +113,11 @@ describe('desktop repository observation evidence', () => {
       });
       page.setDefaultTimeout(7000);
       try {
+        await page
+          .context()
+          .route(proposalURL, (route) =>
+            route.fulfill({ contentType: 'text/html', body: '<h1>Proposal destination</h1>' }),
+          );
         await page.route('**/api/v1/targets/*/sync/plan', (route) =>
           route.fulfill({ json: { plan: null } }),
         );
@@ -147,14 +157,86 @@ describe('desktop repository observation evidence', () => {
             await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
           ).toBe(true);
           const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
-          if (directory) {
+          if (scene.cells.some((cell) => cell.proposal_url)) {
+            const link = page.locator('.sync-repo-detail').getByRole('link', {
+              name: scene.name === 'outdated' ? 'View earlier pull request' : 'View pull request',
+              exact: true,
+            });
+            expect(await link.getAttribute('href')).toBe(proposalURL);
+            const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()]);
+            await popup.getByRole('heading', { name: 'Proposal destination' }).waitFor();
+            expect(popup.url()).toBe(proposalURL);
+            await popup.close();
+          }
+          if (directory && scene.cells.some((cell) => cell.proposal_url)) {
             await mkdir(directory, { recursive: true });
             await page.screenshot({
-              path: join(directory, `F33-${scene.name}-${colorScheme}.png`),
+              path: join(directory, `F33-proposal-${scene.name}-${colorScheme}.png`),
               fullPage: true,
             });
           }
           await page.unroute('**/api/v1/targets/*/sync/status');
+        }
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
+    'links a completed file action while sync continues in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      page.setDefaultTimeout(7000);
+      try {
+        const plan = syncPlanSeed((offset) => new Date(Date.now() + offset).toISOString());
+        const file = plan.actions.find((action) => action.kind === 'files')!;
+        plan.state = 'applying';
+        plan.actions = [
+          { ...file, repository: 'api-gateway', state: 'applied', proposal_url: proposalURL },
+          { ...file, repository: 'worker', state: 'pending' },
+        ];
+        plan.counts = { create: 2, update: 0, delete: 0 };
+        await page.route('**/api/v1/targets/*/sync/plan', (route) =>
+          route.fulfill({ json: { plan } }),
+        );
+        await page
+          .context()
+          .route(proposalURL, (route) =>
+            route.fulfill({ contentType: 'text/html', body: '<h1>Proposal destination</h1>' }),
+          );
+        await visit(page, addressOf(panel, 'workspace/sync'));
+        await page.getByRole('button', { name: /Account menu for/u }).click();
+        await page
+          .getByRole('radio', {
+            name: `${colorScheme === 'light' ? 'Light' : 'Dark'} theme`,
+            exact: true,
+          })
+          .locator('..')
+          .click();
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'View changes', exact: true }).first().click();
+        await page
+          .getByRole('heading', { name: '1 of 2 changes processed', exact: true })
+          .waitFor();
+        const group = page.locator('.repo-row').filter({ hasText: 'api-gateway' });
+        if ((await group.getAttribute('aria-expanded')) !== 'true') await group.click();
+        const link = page.getByRole('link', { name: 'View pull request', exact: true });
+        expect(await link.getAttribute('href')).toBe(proposalURL);
+        const [popup] = await Promise.all([page.waitForEvent('popup'), link.click()]);
+        await popup.getByRole('heading', { name: 'Proposal destination' }).waitFor();
+        expect(popup.url()).toBe(proposalURL);
+        await popup.close();
+        const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F33-proposal-action-${colorScheme}.png`),
+            fullPage: false,
+          });
         }
       } finally {
         await page.close();

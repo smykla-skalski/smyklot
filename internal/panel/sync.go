@@ -99,12 +99,13 @@ type syncCountsDTO struct {
 }
 
 type syncActionDTO struct {
-	Repository string `json:"repository"`
-	Kind       string `json:"kind"`
-	Operation  string `json:"operation"`
-	Subject    string `json:"subject"`
-	Before     string `json:"before,omitempty"`
-	After      string `json:"after,omitempty"`
+	ProposalURL string `json:"proposal_url,omitempty"`
+	Repository  string `json:"repository"`
+	Kind        string `json:"kind"`
+	Operation   string `json:"operation"`
+	Subject     string `json:"subject"`
+	Before      string `json:"before,omitempty"`
+	After       string `json:"after,omitempty"`
 	// Detail is what this action is about, typed, so a reader can format it
 	// rather than print a sentence somebody else formatted. See syncActionDetail.
 	Detail  *syncDetailDTO `json:"detail,omitempty"`
@@ -870,16 +871,17 @@ func syncPlanToDTO(
 			repository = action.RepositoryID
 		}
 		dto.Actions = append(dto.Actions, syncActionDTO{
-			Repository: repository,
-			Kind:       string(action.Kind),
-			Operation:  string(action.Operation),
-			Subject:    action.Subject,
-			Before:     action.Before,
-			After:      action.After,
-			Detail:     syncActionDetail(action),
-			State:      string(action.State),
-			Error:      action.Error,
-			Blocker:    string(action.Blocker),
+			Repository:  repository,
+			ProposalURL: action.ProposalURL,
+			Kind:        string(action.Kind),
+			Operation:   string(action.Operation),
+			Subject:     action.Subject,
+			Before:      action.Before,
+			After:       action.After,
+			Detail:      syncActionDetail(action),
+			State:       string(action.State),
+			Error:       action.Error,
+			Blocker:     string(action.Blocker),
 		})
 	}
 

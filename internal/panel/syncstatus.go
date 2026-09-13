@@ -23,7 +23,8 @@ const (
 // syncCellDTO is where one repository stands for one kind: settled, waiting on
 // a plan, refused with a reason a person can act on, or switched off there.
 type syncCellDTO struct {
-	State string `json:"state"`
+	ProposalURL string `json:"proposal_url,omitempty"`
+	State       string `json:"state"`
 
 	// Changes is pending only: how many of the plan's changes land here.
 	Changes         int                 `json:"changes,omitempty"`

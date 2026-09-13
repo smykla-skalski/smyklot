@@ -1268,6 +1268,23 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("repository state", func() {
+		It("retains the proposal destination in completed execution history", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			planFor(ctx, store, "proposal-plan", account.ID, "scope", now, []orgsync.Action{{RepositoryID: repoA, Kind: orgsync.KindFiles, Operation: orgsync.OperationCreate, Subject: "config.json"}})
+			lease := approveAndLease(ctx, store, account.ID, "proposal-plan", "scope", now)
+			note := orgsync.ActionOutcome{ActionID: lease.Actions[0].ID, State: orgsync.ActionApplied, ProposalURL: "https://github.com/team/repo/pull/42"}
+			Expect(store.RecordSyncActionOutcome(ctx, note)).To(Succeed())
+			// Recording already completed work without fresh metadata must not erase history.
+			note.ProposalURL = ""
+			Expect(store.RecordSyncActionOutcome(ctx, note)).To(Succeed())
+			Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{PlanID: "proposal-plan", State: orgsync.PlanApplied, Now: now})).To(Succeed())
+			_, actions, err := store.GetSyncPlan(ctx, target, "proposal-plan")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(actions).To(HaveLen(1))
+			Expect(actions[0].ProposalURL).To(Equal("https://github.com/team/repo/pull/42"))
+		})
+
 		DescribeTable("retains planned inputs after execution failure",
 			func(input string) {
 				ctx, store, now := runtime()
@@ -1309,6 +1326,9 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 					AppliedDigest: "configuration", ObservedDigest: "checked-input", AppliedAt: now,
 					Observation: observation,
 				}
+				state.ProposalURL = map[orgsync.Observation]string{
+					orgsync.ObservationProposed: "https://github.com/team/repo/pull/42", orgsync.ObservationDeclined: "https://github.com/team/repo/pull/42",
+				}[observation]
 				if observation == orgsync.ObservationDifferent || observation == orgsync.ObservationFailed || observation == orgsync.ObservationBlocked {
 					state.AppliedDigest = ""
 				}
@@ -1321,7 +1341,7 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				Expect(listed).To(ConsistOf(state))
 
 				// A later failed observation must remove the old classification.
-				state.Observation, state.AppliedDigest = "", ""
+				state.Observation, state.AppliedDigest, state.ProposalURL = "", "", ""
 				state.Problem = "could not read repository"
 				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
 				read, err = store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)

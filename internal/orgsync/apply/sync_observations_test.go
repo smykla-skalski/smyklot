@@ -25,8 +25,8 @@ func TestSyncObservationReplacesStaleAgreement(t *testing.T) {
 		wantObservation orgsync.Observation
 	}{
 		{name: "matching", answer: compared(nil), wantDigest: true, wantObservation: orgsync.ObservationMatched},
-		{name: "proposed", answer: repositoryAnswer{observation: orgsync.ObservationProposed}, wantDigest: true, wantObservation: orgsync.ObservationProposed},
-		{name: "declined", answer: repositoryAnswer{observation: orgsync.ObservationDeclined}, wantDigest: true, wantObservation: orgsync.ObservationDeclined},
+		{name: "proposed", answer: repositoryAnswer{observation: orgsync.ObservationProposed, proposalURL: "https://github.com/team/repo/pull/42"}, wantDigest: true, wantObservation: orgsync.ObservationProposed},
+		{name: "declined", answer: repositoryAnswer{observation: orgsync.ObservationDeclined, proposalURL: "https://github.com/team/repo/pull/42"}, wantDigest: true, wantObservation: orgsync.ObservationDeclined},
 		{name: "new drift", answer: compared([]orgsync.Action{{Subject: "README.md"}}), wantObservation: orgsync.ObservationDifferent},
 		{name: "read failed", err: errors.New("transport failed"), wantProblem: true, wantObservation: orgsync.ObservationFailed},
 		{name: "refused", answer: repositoryAnswer{problem: "cannot compose"}, wantProblem: true, wantObservation: orgsync.ObservationBlocked},
@@ -48,7 +48,7 @@ func TestSyncObservationReplacesStaleAgreement(t *testing.T) {
 			if (state.AppliedDigest != "") != test.wantDigest || (state.Problem != "") != test.wantProblem {
 				t.Fatalf("state = %#v", state)
 			}
-			if state.Observation != test.wantObservation || !state.AppliedAt.Equal(now) || state.ObservedDigest != scope.digestFor(repository) {
+			if state.ProposalURL != test.answer.proposalURL || state.Observation != test.wantObservation || !state.AppliedAt.Equal(now) || state.ObservedDigest != scope.digestFor(repository) {
 				t.Fatalf("evidence = %#v", state)
 			}
 			if len(actions) != len(test.answer.actions) {
@@ -71,12 +71,12 @@ func TestCarriedSyncActionsDoNotInventFreshObservations(t *testing.T) {
 			}}
 			var outcome orgsync.Outcome
 			observation, succeeded := engine.applyKind(t.Context(), nil, syncTarget{}, work, &outcome)
-			if !succeeded || observation != "" {
+			if !succeeded || observation.state != "" {
 				t.Fatalf("carried result = %q, %t", observation, succeeded)
 			}
 			work.Actions[0].State = orgsync.ActionFailed
 			observation, succeeded = engine.applyKind(t.Context(), nil, syncTarget{}, work, &outcome)
-			if succeeded || observation != "" {
+			if succeeded || observation.state != "" {
 				t.Fatalf("failed result = %q, %t", observation, succeeded)
 			}
 		})

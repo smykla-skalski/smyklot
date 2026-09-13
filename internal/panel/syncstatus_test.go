@@ -15,7 +15,7 @@ import (
 
 func TestSyncStatusCountsOnlyUnfinishedActions(t *testing.T) {
 	harness := newPanelHarness(t, "owner")
-	harness.signIn(t)
+	session := harness.signIn(t)
 	ctx := t.Context()
 	actions := make([]orgsync.Action, 3)
 	for index := range actions {
@@ -25,6 +25,9 @@ func TestSyncStatusCountsOnlyUnfinishedActions(t *testing.T) {
 			Payload: []byte(`{"name":"label","color":"ffffff"}`),
 		}
 	}
+	actions[0].Kind = orgsync.KindFiles
+	actions[0].Subject = "config.json"
+	actions[0].Payload = []byte(`{"path":"config.json","proposal":"proposal"}`)
 	plan, err := harness.store.CreateSyncPlan(ctx, orgsync.PlanCreate{
 		ID: "status-actions", TargetID: panelSyncTarget, ActorID: "github:test:user:1",
 		Trigger: orgsync.TriggerReconcile, Digest: "saved", Actions: actions, Automatic: true,
@@ -40,6 +43,7 @@ func TestSyncStatusCountsOnlyUnfinishedActions(t *testing.T) {
 	for index, state := range []orgsync.ActionState{orgsync.ActionApplied, orgsync.ActionFailed} {
 		if err := harness.store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
 			ActionID: lease.Actions[index].ID, State: state, Error: "",
+			ProposalURL: map[int]string{0: "https://github.com/smykla-skalski/smyklot/pull/42"}[index],
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -57,6 +61,10 @@ func TestSyncStatusCountsOnlyUnfinishedActions(t *testing.T) {
 	}
 	if facts.problems["repository-20"][orgsync.KindLabels] == "" {
 		t.Fatal("a failure without provider text must still have a recovery reason")
+	}
+	response := harness.request(t, http.MethodGet, "/panel/api/v1/targets/"+panelSyncTarget+"/sync/plan", nil, session)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"proposal_url":"https://github.com/smykla-skalski/smyklot/pull/42"`) {
+		t.Fatalf("proposal absent from live action: %d %s", response.Code, response.Body.String())
 	}
 	if err := harness.store.FinishSyncPlan(ctx, orgsync.PlanOutcome{PlanID: plan.ID, State: orgsync.PlanFailed, Now: harness.now}); err != nil {
 		t.Fatal(err)

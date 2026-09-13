@@ -112,6 +112,9 @@ type RepositoryState struct {
 	// can be retained. A changed configuration supersedes earlier failures.
 	ObservedDigest string
 
+	// ProposalURL is the GitHub-provided destination for an observed file proposal.
+	ProposalURL string
+
 	// Problem is why this kind is not being synced here, in words somebody
 	// reading the panel can act on, or empty where nothing is wrong.
 	//
@@ -232,10 +235,11 @@ type PlanLease struct {
 
 // ActionOutcome is what became of one action.
 type ActionOutcome struct {
-	ActionID int64
-	State    ActionState
-	Error    string
-	Blocker  Kind
+	ProposalURL string
+	ActionID    int64
+	State       ActionState
+	Error       string
+	Blocker     Kind
 }
 
 // PlanOutcome closes a plan, recording where each repository ended up.

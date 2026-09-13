@@ -11,6 +11,7 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import DiffBlock from './DiffBlock.svelte';
   import Icon from './Icon.svelte';
+  import Link from './Link.svelte';
   import LabelBadge from './LabelBadge.svelte';
   import PageHeader from './PageHeader.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -264,7 +265,7 @@
       : { lead: 'Expires ', strong: until };
   });
 
-  const landed = $derived(actions.filter((action) => action.state === 'applied').length);
+  const completed = $derived(actions.filter((action) => action.state === 'applied').length);
   const failed = $derived(actions.filter((action) => action.state === 'failed').length);
 
   const profileTime = (value: string, timezone?: string): string =>
@@ -310,15 +311,15 @@ the button.
           >
           {total === 1 ? 'needs' : 'need'} attention{:else if plan.state === 'approved'}<span
             class="is-drift">{total} {total === 1 ? 'change' : 'changes'}</span
-          > queued{:else if plan.state === 'applying'}Syncing · {landed} of {total} changes applied{:else if plan.state === 'applied'}{total}
-          {total === 1 ? 'change' : 'changes'} applied{:else if plan.state === 'failed'}<span
+          > queued{:else if plan.state === 'applying'}{completed} of {total} changes processed{:else if plan.state === 'applied'}{total}
+          {total === 1 ? 'change' : 'changes'} processed{:else if plan.state === 'failed'}<span
             class="is-failed">{failed} of {total} failed</span
           >{:else if plan.state === 'stale'}This check is <span class="is-stale">out of date</span
           >{:else}This check
           <span class="is-expired">expired</span>{/if}
       </h2>
       <span class="hero-meta hero-meta-lines">
-        <span>Checked <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
+        <span>Changes prepared <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
         {#if plan.state === 'computed' && expiresWording !== null}
           <span>{expiresWording.lead}<strong>{expiresWording.strong}</strong></span>
         {/if}
@@ -545,6 +546,11 @@ the button.
                         <DiffBlock before={action.before ?? ''} after={action.after ?? ''} />
                       </div>
                     {/if}
+                    {#if action.proposal_url}<span class="action-proposal"
+                        ><Link href={action.proposal_url} target="_blank" rel="noreferrer"
+                          >View pull request</Link
+                        ></span
+                      >{/if}
                     {#if action.error !== undefined}
                       <span class="action-fail">{action.error}</span>
                     {:else if action.blocker !== undefined}
@@ -1157,6 +1163,10 @@ the button.
 
   /* The error belongs to ITS row: pulled to 4px under its own line, so the
      next row (16px of paddings away) can never claim it. */
+  .action-proposal {
+    grid-column: 3;
+  }
+
   .action-fail {
     color: var(--danger);
     font-size: var(--font-size-micro);

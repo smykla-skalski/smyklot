@@ -308,7 +308,7 @@ func (s *Engine) applyRepositoryWork(
 
 		// Carried actions establish no fresh observation. Keep any existing
 		// evidence, and let the planner inspect a kind without a state row.
-		if observation == "" {
+		if observation.state == "" {
 			continue
 		}
 
@@ -321,7 +321,8 @@ func (s *Engine) applyRepositoryWork(
 			Kind:           kind.Kind,
 			AppliedDigest:  digest,
 			AppliedAt:      time.Now().UTC(),
-			Observation:    observation,
+			Observation:    observation.state,
+			ProposalURL:    observation.proposalURL,
 			ObservedDigest: digest,
 		})
 	}
@@ -356,7 +357,7 @@ func (s *Engine) applyKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) (orgsync.Observation, bool) {
+) (kindObservation, bool) {
 	// A kind that proposes is one change, not a list of them. Every path a
 	// repository needs goes into one commit behind one pull request, so they
 	// are applied together and share whatever becomes of it.
@@ -365,7 +366,7 @@ func (s *Engine) applyKind(
 	}
 
 	succeeded := true
-	var observation orgsync.Observation
+	var observation kindObservation
 
 	for _, action := range work.Actions {
 		// Work an earlier attempt already settled. A lease carries every action
@@ -391,7 +392,7 @@ func (s *Engine) applyKind(
 			continue
 		}
 
-		observation = orgsync.ObservationApplied
+		observation.state = orgsync.ObservationApplied
 		outcome.Apply(action)
 		s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 	}
@@ -413,7 +414,7 @@ func (s *Engine) recordSyncAction(
 	blocker orgsync.Kind,
 ) {
 	if err := s.store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
-		ActionID: action.ID, State: state, Error: reason, Blocker: blocker,
+		ActionID: action.ID, State: state, Error: reason, Blocker: blocker, ProposalURL: action.ProposalURL,
 	}); err != nil {
 		logging.From(ctx).Error("could not record what became of a sync action",
 			"subject", action.Subject, "error", err)
@@ -438,7 +439,7 @@ func (s *Engine) applyFileKind(
 	target syncTarget,
 	work orgsync.KindWork,
 	outcome *orgsync.Outcome,
-) (orgsync.Observation, bool) {
+) (kindObservation, bool) {
 	pending := slices.ContainsFunc(work.Actions, func(action orgsync.Action) bool {
 		return action.State == orgsync.ActionPending
 	})
@@ -451,7 +452,7 @@ func (s *Engine) applyFileKind(
 			succeeded = succeeded && action.State == orgsync.ActionApplied
 		}
 
-		return "", succeeded
+		return kindObservation{}, succeeded
 	}
 
 	observation, err := applyFileActions(ctx, client, target, work.Actions)
@@ -466,6 +467,7 @@ func (s *Engine) applyFileKind(
 		// recording the next would otherwise leave the first saying "failed"
 		// about a change that is now in the repository's proposal.
 		if err == nil {
+			action.ProposalURL = observation.proposalURL
 			outcome.Apply(action)
 			s.recordSyncAction(ctx, action, orgsync.ActionApplied, "", "")
 

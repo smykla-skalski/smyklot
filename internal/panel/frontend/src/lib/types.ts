@@ -1522,6 +1522,7 @@ export type SyncKind = (typeof SYNC_KINDS)[number];
  * switched off there.
  */
 export interface SyncCell {
+  proposal_url?: string;
   /** Why this kind cannot continue, when blocked. */
   reason?: string;
   state:
@@ -1663,6 +1664,7 @@ export interface SyncActionDetail {
 
 /** One change a plan would make. */
 export interface SyncAction {
+  proposal_url?: string;
   repository: string;
   kind: string;
   operation: 'create' | 'update' | 'delete';

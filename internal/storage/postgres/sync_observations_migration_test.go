@@ -71,11 +71,11 @@ VALUES ('repo', 'labels', '', '2026-09-13T12:00:00.000000000Z', 'retained proble
 
 func assertLegacySyncObservation(t *testing.T, db *sql.DB, kind, wantDigest, wantProblem, wantObservation string) {
 	t.Helper()
-	var digest, problem, observation, inputDigest string
+	var digest, problem, observation, inputDigest, proposalURL string
 	var observed sqlstore.StoredTime
-	err := db.QueryRowContext(t.Context(), (Dialect{}).Rebind(`SELECT applied_digest, applied_at, problem, observation, observed_digest
+	err := db.QueryRowContext(t.Context(), (Dialect{}).Rebind(`SELECT applied_digest, applied_at, problem, observation, observed_digest, proposal_url
 FROM sync_repository_state WHERE repository_id = 'repo' AND kind = ?`), kind).
-		Scan(&digest, &observed, &problem, &observation, &inputDigest)
+		Scan(&digest, &observed, &problem, &observation, &inputDigest, &proposalURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,6 +85,9 @@ FROM sync_repository_state WHERE repository_id = 'repo' AND kind = ?`), kind).
 	wantInput := ""
 	if wantObservation != "" {
 		wantInput = wantDigest
+	}
+	if proposalURL != "" {
+		t.Fatalf("invented proposal URL: %s", proposalURL)
 	}
 	if inputDigest != wantInput {
 		t.Fatalf("input digest = %q, want %q", inputDigest, wantInput)
@@ -111,11 +114,11 @@ VALUES ('legacy-plan', 'repo', 'labels', 'create', 'bug', '{"name":"bug"}', 'pen
 
 func assertLegacySyncAction(t *testing.T, db *sql.DB) {
 	t.Helper()
-	var input, payload string
-	if err := db.QueryRowContext(t.Context(), `SELECT input_digest, payload FROM sync_plan_actions WHERE plan_id = 'legacy-plan'`).Scan(&input, &payload); err != nil {
+	var input, payload, proposalURL string
+	if err := db.QueryRowContext(t.Context(), `SELECT input_digest, payload, proposal_url FROM sync_plan_actions WHERE plan_id = 'legacy-plan'`).Scan(&input, &payload, &proposalURL); err != nil {
 		t.Fatal(err)
 	}
-	if input != "" || payload != `{"name":"bug"}` {
+	if proposalURL != "" || input != "" || payload != `{"name":"bug"}` {
 		t.Fatalf("changed legacy action: input=%q payload=%q", input, payload)
 	}
 }
