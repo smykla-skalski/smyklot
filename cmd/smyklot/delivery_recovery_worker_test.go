@@ -39,12 +39,20 @@ func newRecoveryWorkerFixture() recoveryWorkerFixture {
 }
 
 func newRecoveryEventFixture(eventName string, payload []byte) recoveryWorkerFixture {
+	return newRecoveryProviderFixture(eventName, payload, nil)
+}
+
+func newRecoveryProviderFixture(eventName string, payload []byte, wrap func(*githubStub) http.Handler) recoveryWorkerFixture {
 	GinkgoHelper()
 	stub := newGitHubStub()
 	stub.installations = `[{"id":987,"account":{"id":7,"login":"smykla-skalski","type":"Organization"}}]`
 	stub.repos = `{"repositories":[{"id":123456,"name":"smyklot","default_branch":"main","full_name":"smykla-skalski/smyklot","owner":{"login":"smykla-skalski"}}]}`
 	stub.members = `[{"id":42,"login":"bart"}]`
-	endpoint := httptest.NewServer(stub)
+	handler := http.Handler(stub)
+	if wrap != nil {
+		handler = wrap(stub)
+	}
+	endpoint := httptest.NewServer(handler)
 	DeferCleanup(endpoint.Close)
 	service, err := newServer(&serveConfig{
 		database:    GinkgoT().TempDir() + "/recovery.sqlite3",
