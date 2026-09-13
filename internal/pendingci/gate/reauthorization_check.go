@@ -97,3 +97,14 @@ func (g *Gate) checkPendingCIReauthorization(
 	}
 	return reauthorizationCheck{allowed: true, approvalRequired: bot.PendingCIApprovalRequired(runtime, info)}, nil
 }
+
+// CheckReauthorization observes current eligibility without approving or changing
+// a pending request. Execution must recheck it under the repository coordinator.
+func (g *Gate) CheckReauthorization(ctx context.Context, repositoryID string, signal pendingci.Signal) (bool, error) {
+	candidate, found, err := g.reauthorizationCandidate(ctx, repositoryID, signal)
+	if err != nil || !found {
+		return false, err
+	}
+	check, err := g.checkPendingCIReauthorization(ctx, candidate, signal)
+	return check.allowed, err
+}
