@@ -27,6 +27,7 @@ func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareRecurringCompletionSpecs(runtime)
 	declareQueueRequestIntentSpecs(runtime)
 	declareRecurringRequestReceiptSpecs(runtime)
+	declareSyncDispatchSpecs(runtime)
 	declareConfigFileWorkloadSpecs(runtime)
 	declareConfigFileNotificationSpecs(runtime)
 }

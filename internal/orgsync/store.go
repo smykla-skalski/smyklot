@@ -422,14 +422,18 @@ type Store interface {
 	GetSyncPlan(context.Context, string, string) (Plan, []Action, error)
 
 	// GetLiveSyncPlan answers the one plan an installation may have in flight,
-	// or storage.ErrNotFound. It is what makes pressing "sync now" twice
-	// idempotent.
+	// or storage.ErrNotFound. It describes current work. Accepted request
+	// identity comes from receipts and must not be inferred from this plan.
 	//
 	// This package names no storage errors, and deliberately: it does not
 	// import the package that defines them, so the domain stays sayable
 	// without a database. The engine supplies them, exactly as it does for
 	// internal/pendingci.
 	GetLiveSyncPlan(context.Context, string) (Plan, []Action, error)
+
+	// Dispatch acceptance survives queue retention. Callers authorize actor and target.
+	FindSyncPlanDispatch(context.Context, PlanDispatch) (PlanDispatchReceipt, error)
+	DispatchSyncPlan(context.Context, PlanDispatch) (PlanDispatchReceipt, error)
 
 	ApproveSyncPlan(context.Context, PlanApproval) (Plan, error)
 	InvalidateSyncPlans(context.Context, string, time.Time) error

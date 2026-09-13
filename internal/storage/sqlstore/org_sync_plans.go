@@ -209,7 +209,7 @@ INSERT INTO sync_plan_actions (
 	if err := insertLinkedQueueItem(ctx, tx, linkedQueueItem{
 		ID: "sync-plan:" + create.ID, Kind: workqueue.KindSyncApply,
 		Lane: workqueue.LaneMaintenance, TargetID: create.TargetID,
-		SourceKind: "sync_plan", SourceID: create.ID, Title: "Organization sync",
+		SourceKind: queueSourceSyncPlan, SourceID: create.ID, Title: "Organization sync",
 		Summary: fmt.Sprintf("%d to add, %d to change, %d to remove",
 			counts.Create, counts.Update, counts.Delete),
 		State: workqueue.StateAwaitingApproval, NotBefore: create.Now,
@@ -500,7 +500,7 @@ func (s *Store) LeaseSyncPlan(
 	if err != nil {
 		return orgsync.PlanLease{}, err
 	}
-	if !available || choice.item.SourceKind != "sync_plan" {
+	if !available || choice.item.SourceKind != queueSourceSyncPlan {
 		return orgsync.PlanLease{}, nil
 	}
 

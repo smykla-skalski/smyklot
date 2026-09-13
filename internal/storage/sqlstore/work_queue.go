@@ -21,6 +21,7 @@ const (
 	queueSourceDelivery  = "delivery"
 	queueSourcePendingCI = "pending_ci"
 	queueSourceRecurring = "recurring"
+	queueSourceSyncPlan  = "sync_plan"
 	queryAllRows         = "1 = 1"
 	queryTargetIDEquals  = "target_id = ?"
 )
