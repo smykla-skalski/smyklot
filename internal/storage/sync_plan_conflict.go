@@ -1,7 +1,7 @@
 package storage
 
 // LiveSyncPlanConflict identifies the plan observed occupying a target's live
-// slot while creation was serialized. It is not an identifier collision.
+// slot while creation or a fresh check request was serialized. It is not an identifier collision.
 type LiveSyncPlanConflict struct {
 	PlanID string
 }

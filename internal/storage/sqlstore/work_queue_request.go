@@ -52,6 +52,9 @@ func (s *Store) RequestRecurringWork(
 		}
 	}
 
+	if err := s.prepareSyncCheckRequest(ctx, tx, request); err != nil {
+		return workqueue.Item{}, err
+	}
 	item, err := s.recurringRequestCandidate(ctx, tx, request, claim)
 	if err != nil {
 		return workqueue.Item{}, err

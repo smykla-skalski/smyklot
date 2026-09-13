@@ -68,3 +68,16 @@ func TestSyncCheckReceiptRequiresCurrentSession(t *testing.T) {
 		t.Fatal("revoked session exposed check identity")
 	}
 }
+
+func TestSyncCheckRetiresExpiredWaitingPlan(t *testing.T) {
+	h := newPanelHarness(t, "owner")
+	session := h.signIn(t)
+	createPanelSyncPlan(t, h, "expired-blocker", h.now.Add(time.Minute))
+	*h.clock = h.now.Add(time.Minute)
+	response := postReceiptCheck(t, h, session, "Check current settings")
+	requireResponse(t, response, "expired plan recovery", http.StatusAccepted, `"status":"check_accepted"`)
+	plan, _, err := h.store.GetSyncPlan(t.Context(), panelSyncTarget, "expired-blocker")
+	if err != nil || plan.State != "expired" {
+		t.Fatalf("old plan was not retired: %#v %v", plan, err)
+	}
+}

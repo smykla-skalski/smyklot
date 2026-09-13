@@ -490,6 +490,9 @@ type Store interface {
 	ClaimRecurringWork(context.Context, RecurringClaim) (Item, bool, error)
 	EnsureRecurringWork(context.Context, RecurringClaim) (Item, error)
 	SupersedeMissingRecurringWork(context.Context, []RecurringClaim, time.Time) ([]Item, error)
+	// Sync scans preserve a current live plan, returning its blocking identity.
+	// Expired waiting plans retire atomically with acceptance of a fresh scan.
+	// Receipt recovery precedes this decision and never retires newer work.
 	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
 	FindRecurringWorkRequest(context.Context, RecurringRequest) (Item, error)
 	FinishRecurringWork(context.Context, string, RecurringCompletion, time.Time) (Item, error)

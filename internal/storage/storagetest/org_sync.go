@@ -25,6 +25,8 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 		repoB  = "github:repository:2"
 	)
 
+	declareSyncCheckRequestSpecs(runtime)
+
 	// seed puts one installation with two repositories behind the port, which
 	// is what every sync row references.
 	seed := func(ctx context.Context, store storage.Store, now time.Time) storage.Account {

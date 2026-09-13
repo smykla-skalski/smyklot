@@ -129,7 +129,11 @@ export function mockSyncRunNow(
       return { status: 404, body: { code: 'not_found', message: 'sync plan not found' } };
     plan = projectMockSyncPlan(state, targetId, requested, now);
   }
-  if (plan !== null) {
+  const expiredWaiting =
+    plan !== null &&
+    ['computed', 'approved'].includes(plan.state) &&
+    Date.parse(plan.expires_at) <= now;
+  if (plan !== null && !(input.action === 'check' && expiredWaiting)) {
     if (input.action === 'check') return { status: 200, body: { status: 'changes_pending', plan } };
     if (plan.dispatch?.reason === 'approval_required')
       return { status: 200, body: { status: 'approval_required', plan } };
@@ -173,6 +177,7 @@ export function mockSyncRunNow(
     (item) => item.target_id === targetId && item.kind === 'sync_scan',
   );
   if (held?.state === 'running') return conflict();
+  if (plan && expiredWaiting) retireExpiredPlan(state, targetId, plan, now);
   let item = held;
   if (!item || terminal.has(item.state)) {
     const at = new Date(now).toISOString();
@@ -234,4 +239,24 @@ function request(state: State, item: QueueItem, reason: string, now: number): Qu
   state.queue[state.queue.indexOf(item)] = updated;
   recordMockSyncEvent(state, updated, 'action.run_now', `Run now requested: ${reason}`, at);
   return updated;
+}
+
+function retireExpiredPlan(state: State, targetId: string, plan: SyncPlan, now: number): void {
+  const at = new Date(now).toISOString();
+  const retired: SyncPlan = { ...plan, state: 'expired', finished_at: at };
+  state.syncPlans.set(targetId, retired);
+  const history = state.syncHistory.get(targetId) ?? [];
+  state.syncHistory.set(targetId, [...history.filter((entry) => entry.id !== plan.id), retired]);
+  for (const item of state.queue) {
+    if (
+      item.source_kind === 'sync_plan' &&
+      item.source_id === plan.id &&
+      ['awaiting_approval', 'blocked', 'scheduled', 'ready', 'retrying'].includes(item.state)
+    ) {
+      item.state = 'superseded';
+      item.finished_at = at;
+      item.updated_at = at;
+      item.revision++;
+    }
+  }
 }

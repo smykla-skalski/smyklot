@@ -33,25 +33,27 @@ func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account
 	if s.answerAcceptedSyncCheck(w, r, request) {
 		return
 	}
-	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
-	if err == nil {
-		dto, err := s.syncPlanDTO(r.Context(), plan, actions, role)
-		if err != nil {
-			s.writeStorageError(w, err)
+	item, err := s.store.RequestRecurringWork(r.Context(), request)
+	var blocked *storage.LiveSyncPlanConflict
+	if errors.As(err, &blocked) {
+		plan, actions, readErr := s.store.GetSyncPlan(r.Context(), target.ID, blocked.PlanID)
+		if readErr != nil {
+			s.writeStorageError(w, readErr)
+			return
+		}
+		dto, readErr := s.syncPlanDTO(r.Context(), plan, actions, role)
+		if readErr != nil {
+			s.writeStorageError(w, readErr)
 			return
 		}
 		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "changes_pending", Plan: &dto})
 		return
 	}
-	if !errors.Is(err, storage.ErrNotFound) {
-		s.writeStorageError(w, err)
-		return
-	}
-	item, err := s.store.RequestRecurringWork(r.Context(), request)
 	if err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
+
 	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
 	s.wakeScheduledWork(workqueue.LaneMaintenance)
 	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID})

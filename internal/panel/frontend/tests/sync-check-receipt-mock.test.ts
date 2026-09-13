@@ -81,3 +81,56 @@ describe('mock accepted check receipts [Unit]', () => {
     },
   );
 });
+
+describe('mock fresh checks after expiry [Unit]', () => {
+  it.each(['computed', 'approved'] as const)(
+    'retires expired %s work only when accepting a check',
+    (phase) => {
+      const state = seed(undefined, now);
+      const plan = state.syncPlans.get('2001')!;
+      plan.state = phase;
+      plan.expires_at = new Date(now).toISOString();
+      const result = mockSyncRunNow(state, '2001', input, now);
+      expect(result).toMatchObject({ status: 202, body: { status: 'check_accepted' } });
+      expect(state.syncPlans.get('2001')?.state).toBe('expired');
+      expect(state.syncHistory.get('2001')?.find((p) => p.id === plan.id)?.state).toBe('expired');
+      expect(
+        state.queue.find((item) => item.source_kind === 'sync_plan' && item.source_id === plan.id)
+          ?.state,
+      ).toBe('superseded');
+      const before = structuredClone(state);
+      expect(mockSyncRunNow(state, '2001', input, now)).toMatchObject({
+        status: 200,
+        body: { repeated: true },
+      });
+      expect(state).toEqual(before);
+    },
+  );
+  it('preserves an expired plan when a running check prevents acceptance', () => {
+    const state = seed(undefined, now);
+    const plan = state.syncPlans.get('2001')!;
+    state.syncPlans.delete('2001');
+    const accepted = mockSyncRunNow(state, '2001', input, now);
+    if (accepted.status !== 202) throw new Error('Expected acceptance');
+    state.queue.find((item) => item.id === accepted.body.check_id)!.state = 'running';
+    plan.expires_at = new Date(now).toISOString();
+    state.syncPlans.set('2001', plan);
+    const before = structuredClone(state);
+    expect(mockSyncRunNow(state, '2001', { ...input, request_key: 'new-check' }, now).status).toBe(
+      409,
+    );
+    expect(state).toEqual(before);
+  });
+  it('does not retire applying work after approval expiry', () => {
+    const state = seed(undefined, now);
+    const plan = state.syncPlans.get('2001')!;
+    plan.state = 'applying';
+    plan.expires_at = new Date(now).toISOString();
+    const before = structuredClone(state);
+    expect(mockSyncRunNow(state, '2001', input, now)).toMatchObject({
+      status: 200,
+      body: { status: 'changes_pending' },
+    });
+    expect(state).toEqual(before);
+  });
+});
