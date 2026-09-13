@@ -1,25 +1,31 @@
 <script lang="ts">
-  import { createQuery } from '@tanstack/svelte-query';
-  import { PanelApiError } from '../api';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { PanelApiError, type PanelApi } from '../api';
   import { queueDetailKey } from '../queue-cache';
   import type { QueueDetail } from '../types';
+  import DeliveryRetry from './DeliveryRetry.svelte';
   import QueueDetailDialog from './QueueDetailDialog.svelte';
 
   const {
     itemId,
+    recoveryApi,
     targetId,
     fetchItem,
     onClose,
   }: {
     itemId: string | null;
+    recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
     targetId?: string;
     fetchItem: (id: string) => Promise<QueueDetail>;
     onClose: () => void;
   } = $props();
 
+  const client = useQueryClient();
+  let recoveryPending = $state(false);
   let followed = $state<{ origin: string; id: string } | null>(null);
   const currentId = $derived(followed?.origin === itemId ? followed.id : itemId);
   function close() {
+    if (recoveryPending) return;
     followed = null;
     onClose();
   }
@@ -78,7 +84,29 @@ to the original context. Temporary failures offer an explicit retry.
   {error}
   onRetry={error !== '' && !unavailable ? () => void query.refetch() : undefined}
   onClose={close}
+  {recoveryPending}
   onInspectItem={(id) => {
-    if (itemId !== null) followed = { origin: itemId, id };
+    if (!recoveryPending && itemId !== null) followed = { origin: itemId, id };
   }}
-/>
+>
+  {#snippet recovery()}
+    {#if recoveryApi && query.data?.item.kind === 'webhook_delivery' && query.data.item.state === 'failed' && query.data.item.target_id && query.data.item.source_id}
+      {#key `${targetId ?? 'root'}:${query.data.item.id}`}
+        <DeliveryRetry
+          api={recoveryApi}
+          targetId={query.data.item.target_id}
+          deliveryId={query.data.item.source_id}
+          root={targetId === undefined}
+          onPendingChange={(pending) => {
+            recoveryPending = pending;
+          }}
+          onAccepted={(id) => {
+            if (itemId !== null) followed = { origin: itemId, id };
+            void client.invalidateQueries({ queryKey: ['queue'] });
+            void client.invalidateQueries({ queryKey: ['root-overview'] });
+          }}
+        />
+      {/key}
+    {/if}
+  {/snippet}
+</QueueDetailDialog>

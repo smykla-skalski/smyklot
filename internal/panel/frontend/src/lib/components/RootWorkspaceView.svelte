@@ -479,6 +479,7 @@ inside it.
     />
   {:else if target !== null && view === 'history'}
     <HistoryPanel
+      recoveryApi={api}
       targetId={workspace.id}
       section={historySection}
       fetchAudit={(request) => api.fetchRootTargetAudit(workspace.id, request)}

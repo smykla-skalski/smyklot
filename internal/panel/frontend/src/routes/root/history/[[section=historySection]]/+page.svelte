@@ -59,6 +59,7 @@
 
 <section class="root-workspace" aria-labelledby="root-page-heading">
   <HistoryPanel
+    recoveryApi={session.api}
     context="root"
     targetId="root"
     {section}

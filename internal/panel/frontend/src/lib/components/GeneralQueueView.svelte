@@ -855,6 +855,7 @@ without the buttons, rather than buttons that refuse.
 {/key}
 
 <QueueInspector
+  recoveryApi={api}
   itemId={detailOpen ? detailItemID : null}
   {targetId}
   fetchItem={fetchDetail}

@@ -1,3 +1,8 @@
+import type {
+  DeliveryRecoveryPreview,
+  DeliveryRecoveryRequest,
+  DeliveryRecoveryResult,
+} from './delivery-recovery';
 import { panelUrl } from './base';
 import type {
   ConfigFilePreview,
@@ -128,6 +133,17 @@ export interface PanelApi {
   fetchRootQueue(query?: string): Promise<QueuePage>;
   fetchTargetQueue(targetId: string, query?: string): Promise<QueuePage>;
   fetchRootQueueItem(itemId: string): Promise<QueueDetail>;
+  previewDeliveryRecovery(
+    targetId: string,
+    deliveryId: string,
+    root: boolean,
+  ): Promise<DeliveryRecoveryPreview>;
+  retryDelivery(
+    targetId: string,
+    deliveryId: string,
+    root: boolean,
+    input: DeliveryRecoveryRequest,
+  ): Promise<DeliveryRecoveryResult>;
   fetchTargetQueueItem(targetId: string, itemId: string): Promise<QueueDetail>;
   actOnRootQueue(itemId: string, input: QueueActionInput): Promise<QueueItem>;
   actOnTargetQueue(targetId: string, itemId: string, input: QueueActionInput): Promise<QueueItem>;
@@ -557,6 +573,27 @@ export function createPanelApi(
 
     fetchTargetQueue(targetId: string, query = ''): Promise<QueuePage> {
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/queue${query}`);
+    },
+
+    previewDeliveryRecovery(
+      targetId: string,
+      deliveryId: string,
+      root: boolean,
+    ): Promise<DeliveryRecoveryPreview> {
+      return jsonRequest(
+        `/api/v1/${root ? 'root/workspaces' : 'targets'}/${pathSegment(targetId)}/deliveries/${pathSegment(deliveryId)}/recovery`,
+      );
+    },
+    retryDelivery(
+      targetId: string,
+      deliveryId: string,
+      root: boolean,
+      input: DeliveryRecoveryRequest,
+    ): Promise<DeliveryRecoveryResult> {
+      return postJson(
+        `/api/v1/${root ? 'root/workspaces' : 'targets'}/${pathSegment(targetId)}/deliveries/${pathSegment(deliveryId)}/recovery`,
+        input,
+      );
     },
 
     fetchRootQueueItem(itemId: string): Promise<QueueDetail> {

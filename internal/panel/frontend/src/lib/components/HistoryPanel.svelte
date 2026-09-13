@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { PanelApi } from '../api';
   import { untrack } from 'svelte';
   import { createInfiniteQuery, createQuery, type InfiniteData } from '@tanstack/svelte-query';
   import { useDebounce, useInterval } from 'runed';
@@ -88,6 +89,7 @@
     exportAudit,
     fetchFailures,
     fetchQueueItem,
+    recoveryApi,
     queueTargetId,
     context = 'workspace',
     section,
@@ -115,6 +117,7 @@
     exportAudit?: (request: AuditHistoryRequest) => string;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
     fetchQueueItem?: (id: string) => Promise<QueueDetail>;
+    recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
     queueTargetId?: string;
     context?: HistoryContext;
     section?: HistoryType;
@@ -1079,6 +1082,7 @@ where the record is.
 
 {#if fetchQueueItem}
   <QueueInspector
+    {recoveryApi}
     itemId={failureQueueId}
     targetId={queueTargetId}
     fetchItem={fetchQueueItem}

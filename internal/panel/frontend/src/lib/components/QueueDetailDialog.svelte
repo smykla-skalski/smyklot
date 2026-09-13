@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { deliveryNextStep, words } from '#lib/queue-words.js';
   import { formatDateTime } from '#lib/format.js';
   import type { QueueDetail, QueueItem } from '#lib/types.js';
@@ -14,6 +15,8 @@
     onClose,
     onRetry,
     onInspectItem,
+    recovery,
+    recoveryPending = false,
   }: {
     open: boolean;
     detail: QueueDetail | null;
@@ -22,6 +25,8 @@
     onClose: () => void;
     onRetry?: () => void;
     onInspectItem?: (id: string) => void;
+    recovery?: Snippet;
+    recoveryPending?: boolean;
   } = $props();
 
   /** Seconds, because this dialog is where two events are put in order. */
@@ -53,6 +58,7 @@ not.
   title={detail?.item.title ?? 'Queue item'}
   description="When it runs, what it has done, and every change it has been through"
   {onClose}
+  beforeClose={() => !recoveryPending}
 >
   {#if loading && detail === null}
     <p class="detail-message" aria-live="polite">Loading queue item…</p>
@@ -80,11 +86,14 @@ not.
             {#if detail.delivery?.current?.queue && detail.delivery.current.queue.id !== detail.item.id && onInspectItem}
               {@const latestId = detail.delivery.current.queue.id}
               <div class="latest-run">
-                <Button tone="default" onclick={() => onInspectItem?.(latestId)}
-                  >Inspect latest run</Button
+                <Button
+                  tone="default"
+                  disabled={recoveryPending}
+                  onclick={() => onInspectItem?.(latestId)}>Inspect latest run</Button
                 >
               </div>
             {/if}
+            {#if recovery}{@render recovery()}{/if}
           </dd>
         </div>
       {/if}
@@ -215,7 +224,7 @@ not.
     {#if onRetry}
       <Button onclick={onRetry} disabled={loading}>Try again</Button>
     {/if}
-    <Button onclick={onClose}>Close</Button>
+    <Button disabled={recoveryPending} onclick={onClose}>Close</Button>
   {/snippet}
 </Modal>
 

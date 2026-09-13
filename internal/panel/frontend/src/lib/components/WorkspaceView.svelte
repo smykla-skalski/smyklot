@@ -257,6 +257,7 @@ history is routed with its section. That is what makes an address like
       {:then { default: HistoryPanel }}
         {#key session.selectedTarget.id}
           <HistoryPanel
+            recoveryApi={session.api}
             targetId={session.selectedTarget.id}
             queueTargetId={session.selectedTarget.id}
             fetchQueueItem={(id) =>

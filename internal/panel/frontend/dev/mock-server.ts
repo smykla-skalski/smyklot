@@ -1,3 +1,9 @@
+import {
+  mockRecoverDelivery,
+  mockRecoveryPreview,
+  mockRecoveryOperation,
+} from './delivery-recovery';
+import type { DeliveryRecoveryRequest } from '../src/lib/delivery-recovery';
 import { mockConfigFilePreview } from './config-file-review.js';
 import type { ConfigFileChoiceSide } from '../src/lib/config-file-sync.js';
 import {
@@ -1831,6 +1837,27 @@ async function handle(
       respond(res, 200, mockPerformance(Number(parsed.searchParams.get('window') ?? '24')));
       return;
     }
+    const deliveryRecovery = path.match(
+      /^\/api\/v1\/(?:root\/workspaces|targets)\/(?<target>[^/]+)\/deliveries\/(?<delivery>[^/]+)\/recovery$/,
+    );
+    if (deliveryRecovery && (method === 'GET' || method === 'POST')) {
+      const target = findTarget(state, deliveryRecovery.groups?.target ?? '');
+      const delivery = decodeURIComponent(deliveryRecovery.groups?.delivery ?? '');
+      if (method === 'GET')
+        respond(res, 200, mockRecoveryPreview(state.queue, target.value.id, delivery));
+      else {
+        const result = mockRecoverDelivery(
+          state.queue,
+          target.value.id,
+          delivery,
+          await readBody<DeliveryRecoveryRequest>(req),
+        );
+        respond(res, result.status, result.body);
+        if (result.status === 202)
+          broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      }
+      return;
+    }
     if (path === route('/api/v1/root/queue') && method === 'GET') {
       respond(res, 200, mockQueuePage(state.queue, parsed.searchParams));
       return;
@@ -1858,7 +1885,10 @@ async function handle(
         ? findTarget(state, targetQueueDetail.groups?.target ?? '')
         : undefined;
       const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
-      respond(res, 200, mockQueueDetail(item));
+      respond(res, 200, {
+        ...mockQueueDetail(item),
+        delivery: mockRecoveryOperation(state.queue, item),
+      });
       return;
     }
     const rootQueuePreview = path.match(
