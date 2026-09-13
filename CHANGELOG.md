@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.55.1](https://github.com/smykla-skalski/smyklot/compare/v1.55.0...v1.55.1) (2026-09-13)
+
+### Bug Fixes
+
+* **pendingci:** finish after checks pass ([#387](https://github.com/smykla-skalski/smyklot/issues/387)) ([308b4b6](https://github.com/smykla-skalski/smyklot/commit/308b4b6a066c5fe7398997184f4ee3f22847e259))
+
 ## [1.55.0](https://github.com/smykla-skalski/smyklot/compare/v1.54.2...v1.55.0) (2026-09-13)
 
 ### Features
