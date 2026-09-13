@@ -29,6 +29,7 @@ func recoveryFixture(ctx context.Context, store storage.Store, now time.Time) (s
 
 func declareDeliveryRecoverySpecs(runtime func() (context.Context, storage.Store, time.Time)) {
 	declareDeliveryRecoveryInputSpecs(runtime)
+	declareDeliveryRecoveryReceiptSpecs(runtime)
 	It("recovers a permanent delivery failure once and retains its receipt", func() {
 		ctx, store, now := runtime()
 		request, _ := recoveryFixture(ctx, store, now)

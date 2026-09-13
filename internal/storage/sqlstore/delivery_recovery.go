@@ -16,7 +16,7 @@ import (
 // Callers must additionally establish workload-specific replay eligibility before
 // exposing this operation. Execution retains its normal freshness/permission checks.
 func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRecovery) (storage.DeliveryRecoveryResult, error) {
-	if strings.TrimSpace(request.RequestKey) == "" || len(request.RequestKey) > 200 || request.SourceRunID <= 0 || request.ExpectedRunID <= 0 || request.ExpectedRevision <= 0 || request.RequestedAt.IsZero() {
+	if !validDeliveryRecovery(request) {
 		return storage.DeliveryRecoveryResult{}, storage.ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -123,4 +123,8 @@ func recordDeliveryRecoveryAudit(ctx context.Context, tx *transaction, request s
 	}
 
 	return nil
+}
+
+func validDeliveryRecovery(request storage.DeliveryRecovery) bool {
+	return strings.TrimSpace(request.RequestKey) != "" && len(request.RequestKey) <= 200 && request.SourceRunID > 0 && request.ExpectedRunID > 0 && request.ExpectedRevision > 0 && !request.RequestedAt.IsZero()
 }
