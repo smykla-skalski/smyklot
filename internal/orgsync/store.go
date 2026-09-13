@@ -179,6 +179,7 @@ type CheckReference struct {
 // plan per installation, and a half-written one would spend that slot.
 type PlanCreate struct {
 	OriginCheck *CheckReference
+	CheckResult *CheckResult
 
 	ID       string
 	TargetID string
@@ -309,6 +310,8 @@ type AuditEntry struct {
 // the domain says what it needs and the engine supplies it, rather than the
 // domain reaching for a handle.
 type Store interface {
+	RecordSyncCheckResult(context.Context, CheckResultCreate) error
+	ListSyncCheckObservations(context.Context, string, string, int, int) (CheckObservationPage, error)
 	GetSyncConfig(context.Context, string, Kind) (Config, error)
 	ListSyncConfigs(context.Context, string) ([]Config, error)
 

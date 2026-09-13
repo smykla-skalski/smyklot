@@ -15,11 +15,12 @@ import (
 
 type freshCheckStore struct {
 	Store
-	saved      orgsync.Config
-	repository storage.Repository
-	before     orgsync.RepositoryState
-	learned    []orgsync.RepositoryState
-	live       bool
+	saved       orgsync.Config
+	repository  storage.Repository
+	before      orgsync.RepositoryState
+	learned     []orgsync.RepositoryState
+	live        bool
+	checkResult orgsync.CheckResultCreate
 }
 
 func (s *freshCheckStore) ListSyncConfigs(context.Context, string) ([]orgsync.Config, error) {
@@ -98,4 +99,9 @@ func TestExplicitCheckRefreshesCachedRepositoryEvidence(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (s *freshCheckStore) RecordSyncCheckResult(_ context.Context, create orgsync.CheckResultCreate) error {
+	s.checkResult = create
+	return nil
 }

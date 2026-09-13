@@ -28,6 +28,7 @@ func checkPlanInput(item workqueue.Item, target, actor string, action orgsync.Ac
 		ID: "from-check", TargetID: target, ActorID: actor, Trigger: orgsync.TriggerManual,
 		Digest: "checked", Actions: []orgsync.Action{action}, Now: now, ExpiresAt: now.Add(time.Hour),
 		OriginCheck: &orgsync.CheckReference{QueueID: item.ID, Attempt: item.Attempt},
+		CheckResult: &orgsync.CheckResult{Outcome: orgsync.CheckOutcome{CompletedAt: now, Disposition: "checked", Summary: "Found differences", Counts: map[orgsync.Observation]int{orgsync.ObservationDifferent: 1}}, Observations: []orgsync.CheckObservation{{RepositoryID: action.RepositoryID, Kind: action.Kind, Outcome: orgsync.ObservationDifferent, ObservedAt: now}}},
 	}
 }
 
@@ -36,7 +37,7 @@ func checkResult(item workqueue.Item) string {
 	if len(item.Details) == 0 {
 		return ""
 	}
-	var details workqueue.SyncScanDetails
+	var details orgsync.CheckDetails
 	Expect(json.Unmarshal(item.Details, &details)).To(Succeed())
 	return details.ResultPlanID
 }
@@ -50,6 +51,9 @@ func verifySyncCheckResult(ctx context.Context, store storage.Store, target, act
 	read, err := store.GetQueueItem(ctx, item.ID)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(checkResult(read)).To(Equal(plan.ID))
+	page, err := store.ListSyncCheckObservations(ctx, target, item.ID, 0, 10)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(page.Items).To(Equal(create.CheckResult.Observations))
 	_, err = store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{TargetID: target, PlanID: plan.ID, ActorID: actor, Now: now})
 	Expect(err).NotTo(HaveOccurred())
 	create.ID = "overwrite-result"
@@ -94,6 +98,8 @@ func verifySyncCheckFence(ctx context.Context, store storage.Store, target, acto
 	read, err := store.GetQueueItem(ctx, item.ID)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(checkResult(read)).To(BeEmpty())
+	_, err = store.ListSyncCheckObservations(ctx, target, item.ID, 0, 10)
+	Expect(err).To(MatchError(storage.ErrNotFound))
 }
 
 func verifySyncCheckRollback(ctx context.Context, store storage.Store, target, actor string, action orgsync.Action, now time.Time) {
@@ -109,6 +115,16 @@ func verifySyncCheckRollback(ctx context.Context, store storage.Store, target, a
 	read, err := store.GetQueueItem(ctx, item.ID)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(checkResult(read)).To(BeEmpty())
+	_, err = store.ListSyncCheckObservations(ctx, target, item.ID, 0, 10)
+	Expect(err).To(MatchError(storage.ErrNotFound))
 	_, _, err = store.GetSyncPlan(ctx, target, create.ID)
 	Expect(err).To(MatchError(storage.ErrNotFound))
+	// Retrying the same evidence ordinals proves the failed transaction left no rows.
+	_, err = store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{TargetID: target, PlanID: legacy.ID, ActorID: actor, Now: now})
+	Expect(err).NotTo(HaveOccurred())
+	_, err = store.CreateSyncPlan(ctx, create)
+	Expect(err).NotTo(HaveOccurred())
+	page, err := store.ListSyncCheckObservations(ctx, target, item.ID, 0, 10)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(page.Items).To(Equal(create.CheckResult.Observations))
 }

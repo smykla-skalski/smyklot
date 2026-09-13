@@ -13,11 +13,17 @@ import (
 // runSyncScan retains explicit intent after the queue consumes immediate dispatch.
 // Reading the occurrence's durable event also preserves it across lease retries.
 func (s *server) runSyncScan(ctx context.Context, client *github.Client, targetID string, item workqueue.Item) (string, error) {
-	var result workqueue.SyncScanDetails
+	var result orgsync.CheckDetails
 	if len(item.Details) > 0 {
 		if err := json.Unmarshal(item.Details, &result); err != nil {
 			return "", fmt.Errorf("read retained check result: %w", err)
 		}
+	}
+	if result.Outcome != nil {
+		if result.Outcome.Summary == "" {
+			return "", fmt.Errorf("retained check outcome has no summary")
+		}
+		return result.Outcome.Summary, nil
 	}
 	if result.ResultPlanID != "" {
 		return "This check already queued a sync plan. See its retained result.", nil

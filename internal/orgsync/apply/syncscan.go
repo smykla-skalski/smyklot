@@ -15,6 +15,7 @@ import (
 // is one repository and sync kind, not one action or one whole repository.
 type syncScanResult struct {
 	actions      []orgsync.Action
+	evidence     []orgsync.CheckObservation
 	observations []orgsync.RepositoryState
 	cached       int
 	unpermitted  int
@@ -94,11 +95,15 @@ func (s *Engine) planSyncActions(ctx context.Context, client *github.Client, act
 			}
 			if err == nil && !scope.covers(repository) {
 				result.cached++
+				result.evidence = append(result.evidence, checkObservation(repository, scope.applied[repository.ID], true))
 				continue
 			}
 			found, learned := scope.ask(ctx, ask, repository)
 			result.actions = append(result.actions, found...)
 			result.observations = append(result.observations, learned...)
+			for _, state := range learned {
+				result.evidence = append(result.evidence, checkObservation(repository, state, false))
+			}
 		}
 	}
 	if err := s.store.RecordSyncRepositoryState(ctx, result.observations); err != nil {

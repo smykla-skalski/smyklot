@@ -38,7 +38,7 @@ func TestScanSummaryPreservesNoActionOutcomes(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := &freshCheckStore{saved: orgsync.Config{Kind: test.kind, Enabled: true, Document: []byte(test.document), Digest: "saved"}, repository: storage.Repository{ID: "repo", FullName: "owner/repo", DefaultBranch: "main", Available: true}}
-			summary, err := New(store, nil, "").PlanInstallationWithSummary(t.Context(), client, "target", orgsync.TriggerManual)
+			summary, err := New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "check", Attempt: 1})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,6 +48,7 @@ func TestScanSummaryPreservesNoActionOutcomes(t *testing.T) {
 			if len(store.learned) != 1 || store.learned[0].Observation != test.want {
 				t.Fatalf("observations: %#v", store.learned)
 			}
+			assertRetainedScan(t, store.checkResult.Result, summary, test.want)
 			if test.want == orgsync.ObservationBlocked && store.learned[0].Problem == "" {
 				t.Fatal("invalid input has no recovery guidance")
 			}
@@ -117,6 +118,9 @@ func TestQueuedChangesDoNotHideOtherFailedChecks(t *testing.T) {
 	if store.created.OriginCheck == nil || store.created.OriginCheck.QueueID != "claimed-check" || store.created.OriginCheck.Attempt != 2 {
 		t.Fatalf("origin check lost: %#v", store.created.OriginCheck)
 	}
+	if store.created.CheckResult == nil || store.created.CheckResult.Outcome.Counts[orgsync.ObservationFailed] != 1 || len(store.created.CheckResult.Observations) != 2 {
+		t.Fatalf("atomic result lost: %#v", store.created.CheckResult)
+	}
 	if len(store.created.Actions) != 1 || store.created.Actions[0].RepositoryID != "ready" {
 		t.Fatalf("planned actions: %#v", store.created.Actions)
 	}
@@ -156,5 +160,15 @@ func serveScanOutcome(t *testing.T, w http.ResponseWriter, r *http.Request, fail
 	default:
 		t.Errorf("unexpected request: %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
+	}
+}
+
+func assertRetainedScan(t *testing.T, result orgsync.CheckResult, summary string, want orgsync.Observation) {
+	t.Helper()
+	if result.Outcome.Summary != summary || result.Outcome.Counts[want] != 1 || len(result.Observations) != 1 {
+		t.Fatalf("retained result lost: %#v", result)
+	}
+	if result.Observations[0].Repository != "owner/repo" || result.Observations[0].InputDigest == "" {
+		t.Fatalf("historical identity lost: %#v", result.Observations)
 	}
 }

@@ -311,6 +311,11 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("retains paged sync check evidence without a plan", func() {
+			ctx, store, now := runtime()
+			seed(ctx, store, now)
+			verifySyncCheckEvidence(ctx, store, target, now)
+		})
 		It("retains the exact sync check result across retries and successor occurrences", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)

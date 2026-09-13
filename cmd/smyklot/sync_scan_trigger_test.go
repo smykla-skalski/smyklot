@@ -71,3 +71,15 @@ func TestSyncScanRejectsMalformedRetainedResult(t *testing.T) {
 		t.Fatal("malformed result allowed a new scan")
 	}
 }
+
+func TestSyncScanRetryPreservesNoPlanOutcome(t *testing.T) {
+	service := &server{}
+	summary, err := service.runSyncScan(t.Context(), nil, "target", workqueue.Item{Details: []byte(`{"outcome":{"summary":"1 check failed. 2 checks matched saved settings."}}`)})
+	if err != nil || summary != "1 check failed. 2 checks matched saved settings." {
+		t.Fatalf("retained no-plan result changed: %q, %v", summary, err)
+	}
+	_, err = service.runSyncScan(t.Context(), nil, "target", workqueue.Item{Details: []byte(`{"outcome":{}}`)})
+	if err == nil {
+		t.Fatal("incomplete retained outcome allowed a new scan")
+	}
+}

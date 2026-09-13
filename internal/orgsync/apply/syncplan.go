@@ -32,10 +32,8 @@ type queuePolicyReader interface {
 
 // PlanInstallation computes what one installation's repositories would need.
 //
-// It writes a plan only when there is something to do. A reconcile that found
-// nothing is not an event, and recording one every tick would fill the audit
-// with roughly a hundred and seventy-five thousand rows a year per installation
-// saying that nothing happened.
+// A change plan exists only when work is needed. Queue-backed checks separately
+// retain their comparison outcome, including results that need no changes.
 func (s *Engine) PlanInstallation(
 	ctx context.Context,
 	client *github.Client,
@@ -60,7 +58,8 @@ func (s *Engine) PlanInstallationWithSummary(
 	return s.planInstallation(ctx, client, targetID, trigger, nil)
 }
 
-// PlanInstallationForCheck binds any resulting plan to this claimed occurrence.
+// PlanInstallationForCheck retains this occurrence's comparison evidence and
+// binds any resulting change plan in the same transaction.
 func (s *Engine) PlanInstallationForCheck(
 	ctx context.Context, client *github.Client, targetID string,
 	trigger orgsync.Trigger, check orgsync.CheckReference,
@@ -90,6 +89,8 @@ func (s *Engine) planInstallation(
 
 	switchedOn := switchedOnSyncKinds(configs)
 	active := activeSyncKinds(ctx, switchedOn, target)
+	missing := missingCheckPermissions(switchedOn, active)
+	inactive := inactiveCheckDisposition(switchedOn)
 
 	applied, err := s.store.ListSyncRepositoryState(ctx, targetID)
 	if err != nil {
@@ -101,7 +102,7 @@ func (s *Engine) planInstallation(
 	// having read one table, which is what it did before a refusal had to be
 	// cleared - and a refusal to clear is the exception, not the tick.
 	if len(active) == 0 && !anyRefused(applied) {
-		return inactiveSyncSummary(switchedOn), nil
+		return s.retainCheck(ctx, targetID, check, (syncScanResult{}).checkResult(inactive, inactiveSyncSummary(switchedOn), missing))
 	}
 
 	held, err := s.syncInventoryFor(ctx, target, applied)
@@ -125,14 +126,16 @@ func (s *Engine) planInstallation(
 	if len(active) == 0 {
 		// Nothing switched on and permitted, so there is nothing to compare
 		// against.
-		return inactiveSyncSummary(switchedOn), nil
+		return s.retainCheck(ctx, targetID, check, (syncScanResult{}).checkResult(inactive, inactiveSyncSummary(switchedOn), missing))
 	}
 
 	// A plan already in flight holds the installation's one live slot. Leaving
 	// it alone is what makes pressing "sync now" twice, or a reconcile landing
 	// beside it, idempotent rather than a conflict somebody has to read about.
-	if summary, found, err := s.livePlanSummary(ctx, targetID); err != nil || found {
-		return summary, err
+	if summary, found, err := s.livePlanSummary(ctx, targetID); err != nil {
+		return "", err
+	} else if found {
+		return s.retainCheck(ctx, targetID, check, (syncScanResult{}).checkResult("deferred", summary, missing))
 	}
 
 	scan, err := s.planSyncActions(ctx, client, active, scopes, held)
@@ -141,19 +144,21 @@ func (s *Engine) planInstallation(
 	}
 	scan.unpermitted = len(switchedOn) - len(active)
 	if len(scan.actions) == 0 {
-		return scan.summary(), nil
+		return s.retainCheck(ctx, targetID, check, scan.checkResult("checked", scan.summary(), missing))
 	}
 
 	// Whoever last saved the configuration being enforced, carried onto the
 	// plan. A reconcile is doing what they asked for on a timer, so naming them
 	// is truthful where a synthetic account would not be.
-	now := time.Now().UTC()
 	approvalTTL, err := s.syncApprovalTTL(ctx, targetID)
 	if err != nil {
 		return "", err
 	}
+	result := scan.checkResult("checked", "Repository changes queued for automatic sync. "+scan.summary(), missing)
+	now := time.Now().UTC()
 	plan, err := s.store.CreateSyncPlan(ctx, orgsync.PlanCreate{
 		OriginCheck: check,
+		CheckResult: &result,
 		ID:          newSyncPlanID(),
 		TargetID:    targetID,
 		Trigger:     trigger,
@@ -168,7 +173,7 @@ func (s *Engine) planInstallation(
 		// Another caller won the slot between the read above and this write.
 		// That is the index doing its job, not a failure worth reporting.
 		if errors.Is(err, storage.ErrConflict) {
-			return "A live sync plan is already available. " + scan.summary(), nil
+			return s.retainCheck(ctx, targetID, check, scan.checkResult("deferred", "A live sync plan is already available. "+scan.summary(), missing))
 		}
 
 		return "", fmt.Errorf("record sync plan: %w", err)
@@ -190,7 +195,7 @@ func (s *Engine) planInstallation(
 		return "", err
 	}
 
-	return "Repository changes queued for automatic sync. " + scan.summary(), nil
+	return result.Outcome.Summary, nil
 }
 
 func (s *Engine) livePlanSummary(ctx context.Context, targetID string) (string, bool, error) {
