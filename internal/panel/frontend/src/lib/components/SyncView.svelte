@@ -73,6 +73,8 @@
     fetchPlan,
     fetchHistory,
     historyResultHref,
+    checkResultHref,
+    onOpenCheck,
     onOpenHistoryResult,
     selectedPlanId = null,
     selectedCheckId = null,
@@ -130,6 +132,8 @@
       request: { limit: number; cursor?: string },
     ) => Promise<Page<SyncPlanSummary>>;
     historyResultHref: (id: string) => string;
+    checkResultHref: (checkId: string, planId: string) => string;
+    onOpenCheck: (id: string) => void;
     onOpenHistoryResult: (id: string) => void;
     selectedPlanId?: string | null;
     onOpenPlan?: (planId: string) => void;
@@ -213,7 +217,10 @@
   let detailsTrigger = $state<HTMLElement | null>(null);
   function closeDetails(): void {
     detailsOpen = false;
-    if (section === 'plan') onOpenSection('overview');
+    if (section === 'plan') {
+      if (selectedCheckId !== null) onOpenCheck(selectedCheckId);
+      else onOpenSection('overview');
+    }
     if (section === 'history') onOpenSection('history');
   }
   function openDetails(trigger: HTMLElement): void {
@@ -695,7 +702,9 @@ Live plan and status queries share the shell's event invalidation and polling fa
 {/if}
 
 <QueueInspector
-  itemId={selectedCheckId}
+  itemId={section === 'overview' ? selectedCheckId : null}
+  syncResultHref={(id) =>
+    selectedCheckId === null ? historyResultHref(id) : checkResultHref(selectedCheckId, id)}
   {targetId}
   fetchItem={fetchCheck}
   onClose={() => onOpenSection('overview')}

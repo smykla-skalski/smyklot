@@ -503,3 +503,17 @@ it('round trips a history result without losing its return section', () => {
   const route = { account: 'acme', view: 'sync', sync: 'history', syncPlan: 'run-42' } as const;
   expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
 });
+
+it('retains both the originating check and exact result across address round trips', () => {
+  const route = {
+    account: 'acme',
+    view: 'sync',
+    sync: 'plan',
+    syncCheck: 'scan:original',
+    syncPlan: 'plan:original',
+  } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result')).toBeNull();
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/b/extra')).toBeNull();
+  expect(parsePanelRoute('', '/workspace/acme/sync/check/a/result/%20')).toBeNull();
+});

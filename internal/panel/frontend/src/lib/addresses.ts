@@ -91,6 +91,13 @@ export function panelAddress(route: PanelRoute): string {
   }
 
   /* A selected result has a stable address after leaving the live slot. */
+  if (route.view === 'sync' && route.syncCheck !== undefined && route.syncPlan !== undefined) {
+    return resolve('/workspace/[account]/sync/check/[check]/result/[plan]', {
+      account,
+      check: encodeURIComponent(route.syncCheck),
+      plan: encodeURIComponent(route.syncPlan),
+    });
+  }
   if (route.view === 'sync' && route.syncCheck !== undefined) {
     return resolve('/workspace/[account]/sync/check/[check]', {
       account,
@@ -280,6 +287,14 @@ export function panelRouteAt(
       return { account, view: 'sync', sync: asSyncSection(section) };
     case '/workspace/[account]/sync/rulesets/[ruleset]':
       return { account, view: 'sync', sync: 'rulesets', syncRuleset: params.ruleset ?? '' };
+    case '/workspace/[account]/sync/check/[check]/result/[plan]':
+      return {
+        account,
+        view: 'sync',
+        sync: 'plan',
+        syncCheck: params.check ?? '',
+        syncPlan: params.plan ?? '',
+      };
     case '/workspace/[account]/sync/check/[check]':
       return { account, view: 'sync', sync: 'overview', syncCheck: params.check ?? '' };
     case '/workspace/[account]/sync/history/[plan]':

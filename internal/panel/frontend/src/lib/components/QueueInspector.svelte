@@ -12,12 +12,14 @@
     targetId,
     fetchItem,
     onClose,
+    syncResultHref,
   }: {
     itemId: string | null;
     recoveryApi?: Pick<PanelApi, 'previewDeliveryRecovery' | 'retryDelivery'>;
     targetId?: string;
     fetchItem: (id: string) => Promise<QueueDetail>;
     onClose: () => void;
+    syncResultHref?: (id: string) => string;
   } = $props();
 
   const client = useQueryClient();
@@ -78,6 +80,7 @@ to the original context. Temporary failures offer an explicit retry.
 -->
 
 <QueueDetailDialog
+  {syncResultHref}
   open={itemId !== null}
   detail={query.data ?? null}
   loading={query.isFetching}

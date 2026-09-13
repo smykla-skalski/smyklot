@@ -531,6 +531,30 @@ export class PanelSession {
         });
   }
 
+  syncCheckResultHref(checkId: string, planId: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'plan',
+          syncCheck: checkId,
+          syncPlan: planId,
+        });
+  }
+
+  openSyncCheck(id: string): void {
+    const target = this.selectedTarget;
+    if (target !== null)
+      void this.navigate({
+        account: target.account.login,
+        view: 'sync',
+        sync: 'overview',
+        syncCheck: id,
+      });
+  }
+
   syncHistoryResultHref(id: string): string {
     const target = this.selectedTarget;
     return target === null

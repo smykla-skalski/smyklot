@@ -138,6 +138,7 @@ describe('finite mock sync execution [Unit]', () => {
     const plan = mockLiveSyncPlan(state, target)!;
     expect(plan.state).toBe('approved');
     expect(plan.id).not.toBe('plan-1');
+    expect(item.details).toMatchObject({ result_plan_id: plan.id });
     expect(plan.queue_item!.id).not.toBe(item.id);
     expect(plan.queue_item!.source_id).toBe(plan.id);
     expect(plan.actions.every((action) => action.repository !== 'smyklot')).toBe(true);

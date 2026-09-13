@@ -5,6 +5,7 @@
   import type { QueueDetail, QueueItem } from '#lib/types.js';
   import { workloadTitle } from '#lib/workloads.js';
   import Button from './Button.svelte';
+  import Link from './Link.svelte';
   import Modal from './Modal.svelte';
 
   const {
@@ -13,6 +14,7 @@
     loading,
     error,
     onClose,
+    syncResultHref,
     onRetry,
     onInspectItem,
     recovery,
@@ -23,6 +25,7 @@
     loading: boolean;
     error: string;
     onClose: () => void;
+    syncResultHref?: (id: string) => string;
     onRetry?: () => void;
     onInspectItem?: (id: string) => void;
     recovery?: Snippet;
@@ -65,6 +68,14 @@ not.
   {:else if error !== ''}
     <p class="detail-message detail-error" role="alert">{error}</p>
   {:else if detail !== null}
+    {#if detail.item.kind === 'sync_scan' && typeof detail.item.details?.result_plan_id === 'string' && detail.item.details.result_plan_id.trim() !== '' && syncResultHref}
+      <section class="workload-detail" aria-label="Check result">
+        <p>Review the changes found by this check.</p>
+        <Link href={syncResultHref(detail.item.details.result_plan_id)}
+          >View changes from this check</Link
+        >
+      </section>
+    {/if}
     <dl class="facts">
       {#if detail.item.kind === 'webhook_delivery'}
         {@const nextStep = deliveryNextStep(detail.item, detail.delivery)}

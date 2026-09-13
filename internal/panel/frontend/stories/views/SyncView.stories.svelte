@@ -43,6 +43,8 @@
     fetchCheck: async () => {
       throw new Error('No check selected');
     },
+    checkResultHref: (checkId: string, planId: string) => `/sync/check/${checkId}/result/${planId}`,
+    onOpenCheck: () => {},
     historyResultHref: (id: string) => `#/sync/history/${id}`,
     onOpenHistoryResult: () => {},
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),

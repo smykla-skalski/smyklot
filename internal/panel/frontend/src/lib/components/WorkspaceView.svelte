@@ -179,6 +179,8 @@ history is routed with its section. That is what makes an address like
             selectedCheckId={session.currentSyncCheck}
             checkHref={(id) => session.syncCheckHref(id)}
             fetchCheck={(id) => session.api.fetchTargetQueueItem(session.selectedTarget!.id, id)}
+            checkResultHref={(checkId, planId) => session.syncCheckResultHref(checkId, planId)}
+            onOpenCheck={(id) => session.openSyncCheck(id)}
             selectedPlanId={session.currentSyncPlan}
             onOpenPlan={(id) => session.openSyncPlan(id)}
             approvePlan={session.api.approveSyncPlan}
@@ -219,6 +221,7 @@ history is routed with its section. That is what makes an address like
             canControl={session.selectedTarget.effective_role === 'admin' ||
               session.selectedTarget.effective_role === 'owner'}
             planHref={session.syncSectionHref('plan')}
+            syncResultHref={(id) => session.syncHistoryResultHref(id)}
             onOpenPlan={(event) => {
               if (!plainClick(event)) return;
               event.preventDefault();

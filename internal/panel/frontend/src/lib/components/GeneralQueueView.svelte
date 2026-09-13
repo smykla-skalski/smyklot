@@ -38,6 +38,7 @@
     canControl = false,
     section = 'active',
     planHref,
+    syncResultHref,
     onOpenPlan,
     onSelectSection,
   }: {
@@ -53,6 +54,7 @@
      * address to send anybody to.
      */
     planHref?: string;
+    syncResultHref?: (id: string) => string;
     onOpenPlan?: (event: MouseEvent) => void;
     /**
      * Which of the queue's five views to show. Each is still its own address - the
@@ -855,6 +857,7 @@ without the buttons, rather than buttons that refuse.
 {/key}
 
 <QueueInspector
+  {syncResultHref}
   recoveryApi={api}
   itemId={detailOpen ? detailItemID : null}
   {targetId}

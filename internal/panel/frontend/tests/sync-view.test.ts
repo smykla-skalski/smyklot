@@ -137,6 +137,9 @@ describe('SyncView [Component]', () => {
       fetchCheck: async () => {
         throw new Error('No check selected');
       },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
@@ -364,6 +367,9 @@ describe('SyncView [Component]', () => {
       fetchCheck: async () => {
         throw new Error('No check selected');
       },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
@@ -409,6 +415,9 @@ describe('SyncView [Component]', () => {
       fetchCheck: async () => {
         throw new Error('No check selected');
       },
+      checkResultHref: (checkId: string, planId: string) =>
+        `/sync/check/${checkId}/result/${planId}`,
+      onOpenCheck: () => {},
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),

@@ -241,7 +241,7 @@ export type WorkspaceRoute = {
   syncFile?: string;
   /** Stable execution result selected in the sync inspector. */
   syncPlan?: string;
-  /** Exact queued repository check selected over Sync status. */
+  /** Queued check selected over Sync status, or the origin of its selected result. */
   syncCheck?: string;
   /** The Queue page the address names; absent means Active. */
   queue?: QueueSection;
@@ -591,10 +591,16 @@ function parseTrailingSync(
 
   const [rawSection, ...encodedRest] = segments;
   if (rawSection === 'check') {
-    if (encodedRest.length !== 1) return 'invalid';
+    if (encodedRest.length !== 1 && !(encodedRest.length === 3 && encodedRest[1] === 'result'))
+      return 'invalid';
     try {
       const syncCheck = decodeURIComponent(encodedRest[0]!);
-      return syncCheck.trim() === '' ? 'invalid' : { sync: 'overview', syncCheck };
+      if (syncCheck.trim() === '') return 'invalid';
+      if (encodedRest.length === 3) {
+        const syncPlan = decodeURIComponent(encodedRest[2]!);
+        return syncPlan.trim() === '' ? 'invalid' : { sync: 'plan', syncCheck, syncPlan };
+      }
+      return { sync: 'overview', syncCheck };
     } catch {
       return 'invalid';
     }

@@ -44,7 +44,10 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
     }
   }
   if (counts.size > 0) status.latest_observed_at = at;
-  if (actions.length > 0) queuePlan(state, targetId, template, actions, at);
+  if (actions.length > 0) {
+    const resultPlanId = queuePlan(state, targetId, template, actions, at);
+    item.details = { ...item.details, result_plan_id: resultPlanId };
+  }
   const labels = [
     ['failed', 'failed'],
     ['blocked', 'could not proceed'],
@@ -98,7 +101,7 @@ function queuePlan(
   template: SyncPlan,
   actions: SyncPlan['actions'],
   at: string,
-): void {
+): string {
   const id = `plan:${randomUUID()}`;
   const plan: SyncPlan = {
     ...template,
@@ -144,4 +147,5 @@ function queuePlan(
   state.syncPlans.set(targetId, plan);
   state.queue.push(item);
   recordMockSyncEvent(state, item, 'created', item.summary!, at);
+  return plan.id;
 }
