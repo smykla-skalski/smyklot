@@ -1,7 +1,6 @@
 package panel
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 const syncDispatchAction = "dispatch"
 
 type syncRunNowInput struct {
+	RequestKey       string `json:"request_key,omitempty"`
 	Action           string `json:"action"`
 	PlanID           string `json:"plan_id,omitempty"`
 	ExpectedRevision int64  `json:"expected_revision"`
@@ -20,9 +20,11 @@ type syncRunNowInput struct {
 }
 
 type syncRunNowResponse struct {
-	Status string          `json:"status"`
-	Plan   *syncPlanDTO    `json:"plan,omitempty"`
-	Queue  *workqueue.Item `json:"queue_item,omitempty"`
+	Status   string          `json:"status"`
+	CheckID  string          `json:"check_id,omitempty"`
+	Repeated bool            `json:"repeated,omitempty"`
+	Plan     *syncPlanDTO    `json:"plan,omitempty"`
+	Queue    *workqueue.Item `json:"queue_item,omitempty"`
 }
 
 // valid keeps checking repositories distinct from dispatching approved changes.
@@ -30,9 +32,9 @@ type syncRunNowResponse struct {
 func (input syncRunNowInput) valid() bool {
 	switch input.Action {
 	case "check":
-		return input.PlanID == "" && input.ExpectedRevision == 0
+		return input.PlanID == "" && input.ExpectedRevision == 0 && len(input.RequestKey) <= 200 && strings.TrimSpace(input.RequestKey) == input.RequestKey
 	case syncDispatchAction:
-		return strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0
+		return input.RequestKey == "" && strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0
 	default:
 		return false
 	}
@@ -68,33 +70,7 @@ func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
 		s.handleSyncDispatch(w, r, account, target, access.Role, input, plan, actions)
 		return
 	}
-	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
-	if err == nil {
-		dto, err := s.syncPlanDTO(r.Context(), plan, actions, access.Role)
-		if err != nil {
-			s.writeStorageError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "changes_pending", Plan: &dto})
-		return
-	}
-	if !errors.Is(err, storage.ErrNotFound) {
-		s.writeStorageError(w, err)
-		return
-	}
-	item, err := s.store.RequestRecurringWork(r.Context(), workqueue.RecurringRequest{
-		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
-		Title: "Check which repositories are in step", ActorID: account.ID,
-		Reason: input.Reason, Now: s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	prepareQueueItem(&item, true, false)
-	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
-	s.wakeScheduledWork(workqueue.LaneMaintenance)
-	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "scan_queued", Queue: &item})
+	s.handleSyncCheck(w, r, account, target, access.Role, input)
 }
 
 func (s *Server) handleSyncDispatch(
