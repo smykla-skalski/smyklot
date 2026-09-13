@@ -133,6 +133,10 @@ describe('SyncView [Component]', () => {
       drafts,
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
       fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
@@ -356,6 +360,10 @@ describe('SyncView [Component]', () => {
         return Promise.resolve(config(kind));
       },
       fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
@@ -397,6 +405,10 @@ describe('SyncView [Component]', () => {
         return Promise.resolve(config(kind));
       },
       fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      checkHref: (id: string) => `/sync/check/${id}`,
+      fetchCheck: async () => {
+        throw new Error('No check selected');
+      },
       historyResultHref: (id) => `/sync/history/${id}`,
       onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),

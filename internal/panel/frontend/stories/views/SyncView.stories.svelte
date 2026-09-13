@@ -39,6 +39,10 @@
         request.limit,
         request.cursor ?? null,
       ),
+    checkHref: (id: string) => `/sync/check/${id}`,
+    fetchCheck: async () => {
+      throw new Error('No check selected');
+    },
     historyResultHref: (id: string) => `#/sync/history/${id}`,
     onOpenHistoryResult: () => {},
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),

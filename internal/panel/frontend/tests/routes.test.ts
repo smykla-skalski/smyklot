@@ -75,6 +75,14 @@ describe('panel routes', () => {
       view: 'sync',
       sync: 'labels',
     });
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check/scan%3A123')).toEqual({
+      account: 'smykla-skalski',
+      view: 'sync',
+      sync: 'overview',
+      syncCheck: 'scan:123',
+    });
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check')).toBeNull();
+    expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/check/a/b')).toBeNull();
     // `overview` is never written, so an address naming it does not resolve.
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/overview')).toBeNull();
     expect(parsePanelRoute('', '/workspace/smykla-skalski/sync/nonsense')).toBeNull();

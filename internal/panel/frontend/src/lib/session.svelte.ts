@@ -512,6 +512,25 @@ export class PanelSession {
       : null;
   }
 
+  get currentSyncCheck(): string | null {
+    const route = this.parsedRoute;
+    return route !== null && 'view' in route && route.view === 'sync'
+      ? (route.syncCheck ?? null)
+      : null;
+  }
+
+  syncCheckHref(id: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'overview',
+          syncCheck: id,
+        });
+  }
+
   syncHistoryResultHref(id: string): string {
     const target = this.selectedTarget;
     return target === null
@@ -543,7 +562,8 @@ export class PanelSession {
       this.currentSyncSection === section &&
       this.currentSyncRuleset === null &&
       this.currentSyncFile === null &&
-      this.currentSyncPlan === null
+      this.currentSyncPlan === null &&
+      this.currentSyncCheck === null
     ) {
       return;
     }

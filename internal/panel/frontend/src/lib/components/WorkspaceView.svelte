@@ -176,6 +176,9 @@ history is routed with its section. That is what makes an address like
             fetchHistory={session.api.fetchSyncHistory}
             historyResultHref={(id) => session.syncHistoryResultHref(id)}
             onOpenHistoryResult={(id) => session.openSyncPlan(id, true)}
+            selectedCheckId={session.currentSyncCheck}
+            checkHref={(id) => session.syncCheckHref(id)}
+            fetchCheck={(id) => session.api.fetchTargetQueueItem(session.selectedTarget!.id, id)}
             selectedPlanId={session.currentSyncPlan}
             onOpenPlan={(id) => session.openSyncPlan(id)}
             approvePlan={session.api.approveSyncPlan}

@@ -241,6 +241,8 @@ export type WorkspaceRoute = {
   syncFile?: string;
   /** Stable execution result selected in the sync inspector. */
   syncPlan?: string;
+  /** Exact queued repository check selected over Sync status. */
+  syncCheck?: string;
   /** The Queue page the address names; absent means Active. */
   queue?: QueueSection;
   /** What is open on top of the view; see `route-dialogs`. */
@@ -581,10 +583,22 @@ function parseSection(
 function parseTrailingSync(
   view: string,
   segments: string[],
-): Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan'> | undefined | 'invalid' {
+):
+  | Pick<WorkspaceRoute, 'sync' | 'syncRuleset' | 'syncFile' | 'syncPlan' | 'syncCheck'>
+  | undefined
+  | 'invalid' {
   if (view !== 'sync' || segments.length === 0) return undefined;
 
   const [rawSection, ...encodedRest] = segments;
+  if (rawSection === 'check') {
+    if (encodedRest.length !== 1) return 'invalid';
+    try {
+      const syncCheck = decodeURIComponent(encodedRest[0]!);
+      return syncCheck.trim() === '' ? 'invalid' : { sync: 'overview', syncCheck };
+    } catch {
+      return 'invalid';
+    }
+  }
   const sync = WRITTEN_SYNC_SECTIONS.find((section) => section === rawSection);
   if (sync === undefined) return 'invalid';
   if (encodedRest.length === 0) return { sync };

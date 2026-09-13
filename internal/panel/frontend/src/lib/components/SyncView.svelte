@@ -44,6 +44,9 @@
   import type { SyncSection } from '#lib/routes.js';
 
   import SyncHistory from './SyncHistory.svelte';
+  import QueueInspector from './QueueInspector.svelte';
+  import Link from './Link.svelte';
+  import type { QueueDetail } from '../types';
   import type { Page, SyncPlanSummary } from '../types';
   import FormError from './FormError.svelte';
   import Modal from './Modal.svelte';
@@ -72,6 +75,9 @@
     historyResultHref,
     onOpenHistoryResult,
     selectedPlanId = null,
+    selectedCheckId = null,
+    checkHref,
+    fetchCheck,
     onOpenPlan,
     approvePlan,
     discardPlan,
@@ -94,6 +100,9 @@
     clock = Date.now,
     lookupBypassActors,
   }: {
+    selectedCheckId?: string | null;
+    checkHref: (id: string) => string;
+    fetchCheck: (id: string) => Promise<QueueDetail>;
     permissionsHref?: string | null;
     queueHref?: string | null;
     repositoryHref?: ((repository: string) => string) | null;
@@ -220,6 +229,7 @@
   let discarding = $state(false);
   let runningNow = $state(false);
   let runNotice = $state('');
+  let requestedCheckId = $state<string | null>(null);
 
   let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
@@ -451,6 +461,7 @@
     runningNow = true;
     error = null;
     runNotice = '';
+    requestedCheckId = null;
     try {
       const response = await runSyncNow(targetId, {
         expected_revision: plan?.queue_item?.revision ?? 0,
@@ -458,8 +469,10 @@
       });
       if (response.plan !== undefined)
         queryClient.setQueryData(['sync-plan', targetId], { plan: response.plan });
-      if (response.status === 'scan_queued')
+      if (response.status === 'scan_queued') {
+        requestedCheckId = response.queue_item?.id ?? null;
         runNotice = 'Repository check queued. Results will update when it finishes.';
+      }
       if (response.status === 'plan_dispatched') runNotice = 'Sync queued for immediate dispatch';
       if (response.status === 'approval_required')
         runNotice = 'An earlier sync needs a one-time decision · open Review changes';
@@ -499,7 +512,10 @@ Live plan and status queries share the shell's event invalidation and polling fa
   {#if planQuery.error || statusQuery.error}<FormError
       message={messageOf(planQuery.error ?? statusQuery.error)}
     />{/if}
-  {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
+  {#if runNotice !== ''}<div class="sync-run-notice" role="status">
+      <p>{runNotice}</p>
+      {#if requestedCheckId}<Link href={checkHref(requestedCheckId)}>View check</Link>{/if}
+    </div>{/if}
   {#if section === 'history'}
     <SyncHistory
       {targetId}
@@ -677,6 +693,13 @@ Live plan and status queries share the shell's event invalidation and polling fa
     />
   </section>
 {/if}
+
+<QueueInspector
+  itemId={selectedCheckId}
+  {targetId}
+  fetchItem={fetchCheck}
+  onClose={() => onOpenSection('overview')}
+/>
 
 <style>
   /* The settings page's plates, on the settings page's ground. */
