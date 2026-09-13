@@ -315,7 +315,7 @@ the button.
           {total === 1 ? 'change' : 'changes'} processed{:else if plan.state === 'failed'}<span
             class="is-failed">{failed} of {total} failed</span
           >{:else if plan.state === 'stale'}This check is <span class="is-stale">out of date</span
-          >{:else}This check
+          >{:else if plan.state === 'discarded'}Changes declined{:else}This check
           <span class="is-expired">expired</span>{/if}
       </h2>
       <span class="hero-meta hero-meta-lines">

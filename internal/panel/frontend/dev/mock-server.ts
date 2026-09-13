@@ -1,3 +1,4 @@
+import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
 import {
   mockRecoverDelivery,
   mockRecoveryPreview,
@@ -1661,11 +1662,31 @@ async function handle(
       }
     }
 
+    const historyMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans$/.exec(
+      path.slice(route('').length),
+    );
+    if (historyMatch && method === 'GET') {
+      const targetId = decodeURIComponent(historyMatch[1] ?? '');
+      const limit = Number(parsed.searchParams.get('limit') ?? 20);
+      respond(
+        res,
+        200,
+        mockSyncHistoryPage(
+          mockSyncHistory(state, targetId),
+          limit,
+          parsed.searchParams.get('cursor'),
+        ),
+      );
+      return;
+    }
+
     const retainedPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plans\/([^/]+)$/.exec(
       path.slice(route('').length),
     );
     if (retainedPlanMatch && method === 'GET') {
-      const plan = state.syncPlans.get(decodeURIComponent(retainedPlanMatch[1] ?? ''));
+      const plan = mockSyncHistory(state, decodeURIComponent(retainedPlanMatch[1] ?? '')).find(
+        (entry) => entry.id === decodeURIComponent(retainedPlanMatch[2] ?? ''),
+      );
       if (plan?.id !== decodeURIComponent(retainedPlanMatch[2] ?? ''))
         respond(res, 404, { error: { code: 'not_found', message: 'Sync result not found' } });
       else respond(res, 200, { plan });
@@ -1821,6 +1842,10 @@ async function handle(
       if (!plan || plan.id !== planId) {
         throw new MockApiError(404, 'not_found', 'there is no such plan to discard');
       }
+      state.syncHistory.set(targetId, [
+        ...(state.syncHistory.get(targetId) ?? []),
+        { ...plan, state: 'discarded', finished_at: new Date().toISOString() },
+      ]);
       state.syncPlans.delete(targetId);
       respond(res, 200, { plan: { ...plan, state: 'discarded' } });
       return;

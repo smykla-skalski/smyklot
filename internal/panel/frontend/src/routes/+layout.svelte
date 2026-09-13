@@ -762,6 +762,7 @@
           rulesets: 'branch',
           files: 'file',
           plan: 'plan',
+          history: 'history',
         } as const;
         return {
           id: `sync-${section}`,

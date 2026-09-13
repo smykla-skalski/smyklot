@@ -232,6 +232,7 @@ export interface MockState {
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
   syncPlans: Map<string, SyncPlan>;
+  syncHistory: Map<string, SyncPlan[]>;
   /** The fleet: where every covered repository stands, per workspace. */
   syncStatus: Map<string, SyncStatus>;
 }
@@ -774,6 +775,23 @@ export function seed(
             'because docs is not a directory in this repository',
           problem_at: iso(-4 * 60_000),
         },
+      ],
+    ]),
+    syncHistory: new Map([
+      [
+        organization.value.id,
+        Array.from({ length: 24 }, (_, index): SyncPlan => ({
+          ...syncPlanSeed(iso),
+          id: `history-${index + 1}`,
+          state: index % 4 === 0 ? 'failed' : 'applied',
+          computed_at: iso(-(index + 1) * 3600000),
+          finished_at: iso(-(index + 1) * 3600000 + 60000),
+          actions: syncPlanSeed(iso).actions.map((action, actionIndex) => ({
+            ...action,
+            state: index % 4 === 0 && actionIndex === 0 ? 'failed' : 'applied',
+            error: index % 4 === 0 && actionIndex === 0 ? 'GitHub refused the change' : undefined,
+          })),
+        })),
       ],
     ]),
     syncPlans: new Map([

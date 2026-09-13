@@ -43,6 +43,8 @@
   } from '#lib/sync-file-render.generated.js';
   import type { SyncSection } from '#lib/routes.js';
 
+  import SyncHistory from './SyncHistory.svelte';
+  import type { Page, SyncPlanSummary } from '../types';
   import FormError from './FormError.svelte';
   import Modal from './Modal.svelte';
   import Button from './Button.svelte';
@@ -66,6 +68,9 @@
     canControl = false,
     fetchConfig,
     fetchPlan,
+    fetchHistory,
+    historyResultHref,
+    onOpenHistoryResult,
     selectedPlanId = null,
     onOpenPlan,
     approvePlan,
@@ -111,6 +116,12 @@
     renderFile: (targetId: string, input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
+    fetchHistory: (
+      targetId: string,
+      request: { limit: number; cursor?: string },
+    ) => Promise<Page<SyncPlanSummary>>;
+    historyResultHref: (id: string) => string;
+    onOpenHistoryResult: (id: string) => void;
     selectedPlanId?: string | null;
     onOpenPlan?: (planId: string) => void;
     fetchPlan: (targetId: string, planId?: string) => Promise<{ plan: SyncPlan | null }>;
@@ -194,6 +205,7 @@
   function closeDetails(): void {
     detailsOpen = false;
     if (section === 'plan') onOpenSection('overview');
+    if (section === 'history') onOpenSection('history');
   }
   function openDetails(trigger: HTMLElement): void {
     detailsTrigger = trigger;
@@ -480,7 +492,7 @@ Save publishes the desired state, and the service reconciles it automatically.
 Live plan and status queries share the shell's event invalidation and polling fallback.
 -->
 
-{#if section === 'overview' || section === 'plan'}
+{#if section === 'overview' || section === 'plan' || section === 'history'}
   {#if error !== null}
     <FormError message={error} />
   {/if}
@@ -488,7 +500,16 @@ Live plan and status queries share the shell's event invalidation and polling fa
       message={messageOf(planQuery.error ?? statusQuery.error)}
     />{/if}
   {#if runNotice !== ''}<p class="sync-run-notice" role="status">{runNotice}</p>{/if}
-  {#if syncStatus !== null}
+  {#if section === 'history'}
+    <SyncHistory
+      {targetId}
+      {nowMs}
+      {fetchHistory}
+      resultHref={historyResultHref}
+      onOpenResult={onOpenHistoryResult}
+      onStatus={() => onOpenSection('overview')}
+    />
+  {:else if syncStatus !== null}
     <SyncOverview
       status={syncStatus}
       savedConfigs={canonicalConfigs}
@@ -518,7 +539,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
   {/if}
   <Modal
     id="sync-details"
-    open={detailsOpen || section === 'plan'}
+    open={detailsOpen || section === 'plan' || (section === 'history' && selectedPlanId !== null)}
     title="Sync details"
     variant="inspector"
     returnFocus={detailsTrigger}

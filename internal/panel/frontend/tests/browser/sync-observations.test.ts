@@ -313,3 +313,127 @@ describe('desktop repository observation evidence', () => {
     }
   });
 });
+
+it.each(['light', 'dark'] as const)(
+  'pages sync history and returns to the same page in %s',
+  async (colorScheme) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(7000);
+    let releaseHistory = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseHistory = resolve;
+    });
+    const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
+    try {
+      await visit(page, addressOf(panel, 'workspace/sync'));
+      await page.getByRole('button', { name: /Account menu for/u }).click();
+      await page
+        .getByRole('radio', {
+          name: `${colorScheme === 'light' ? 'Light' : 'Dark'} theme`,
+          exact: true,
+        })
+        .locator('..')
+        .click();
+      await page.keyboard.press('Escape');
+      await page.route(
+        '**/api/v1/targets/*/sync/plans?*',
+        async (route) => {
+          await gate;
+          await route.continue();
+        },
+        { times: 1 },
+      );
+      await page.getByRole('button', { name: 'Sync history', exact: true }).click();
+      await page.getByText('Loading sync history…', { exact: true }).waitFor();
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-loading-${colorScheme}.png`),
+          fullPage: false,
+        });
+      releaseHistory();
+      const table = page.getByRole('table', { name: 'Sync history', exact: true });
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(20);
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-first-${colorScheme}.png`),
+          fullPage: true,
+        });
+      await page.getByRole('button', { name: 'Next', exact: true }).click();
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(5);
+      expect(await page.getByRole('button', { name: 'Next', exact: true }).isDisabled()).toBe(true);
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-last-${colorScheme}.png`),
+          fullPage: true,
+        });
+      const firstHref = await table
+        .getByRole('link', { name: 'View result', exact: true })
+        .first()
+        .getAttribute('href');
+      await table.getByRole('link', { name: 'View result', exact: true }).first().click();
+      await page.getByRole('button', { name: 'Close sync details', exact: true }).waitFor();
+      expect(page.url()).toContain(firstHref!);
+      await page.getByRole('heading', { name: '14 changes processed', exact: true }).waitFor();
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-inspector-${colorScheme}.png`),
+          fullPage: false,
+        });
+      await page.getByRole('button', { name: 'Close sync details', exact: true }).click();
+      await page.waitForURL((url) => url.pathname.endsWith('/sync/history'));
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(5);
+      expect(
+        await table
+          .getByRole('link', { name: 'View result', exact: true })
+          .first()
+          .getAttribute('href'),
+      ).toBe(firstHref);
+      await page.getByRole('button', { name: 'Previous', exact: true }).click();
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(20);
+      await page.getByRole('combobox', { name: 'Sync history per page', exact: true }).click();
+      await page.getByRole('option', { name: '10', exact: true }).click();
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(10);
+      expect(await page.getByRole('button', { name: 'Previous', exact: true }).isDisabled()).toBe(
+        true,
+      );
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-size-${colorScheme}.png`),
+          fullPage: true,
+        });
+      await page.route('**/api/v1/targets/*/sync/plans?*', (route) =>
+        route.fulfill({
+          status: 503,
+          json: { error: { code: 'unavailable', message: 'History is temporarily unavailable' } },
+        }),
+      );
+      await page.reload();
+      await page.getByText('Sync history could not be loaded', { exact: true }).waitFor();
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-error-${colorScheme}.png`),
+          fullPage: false,
+        });
+      await page.unroute('**/api/v1/targets/*/sync/plans?*');
+      await page.getByRole('button', { name: 'Try again', exact: true }).click();
+      await expect.poll(() => table.locator('tbody tr').count()).toBe(20);
+      await page.route('**/api/v1/targets/*/sync/plans?*', (route) =>
+        route.fulfill({ json: { items: [], total: 0, next_cursor: null } }),
+      );
+      await page.reload();
+      await page.getByText('No sync results here', { exact: true }).waitFor();
+      if (directory)
+        await page.screenshot({
+          path: join(directory, `F33-history-list-empty-${colorScheme}.png`),
+          fullPage: false,
+        });
+    } finally {
+      releaseHistory();
+      await page.close();
+    }
+  },
+);

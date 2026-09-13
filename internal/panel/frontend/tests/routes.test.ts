@@ -490,3 +490,8 @@ it('round trips a retained sync result address', () => {
   const route = { account: 'acme', view: 'sync', sync: 'plan', syncPlan: 'run-42' } as const;
   expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
 });
+
+it('round trips a history result without losing its return section', () => {
+  const route = { account: 'acme', view: 'sync', sync: 'history', syncPlan: 'run-42' } as const;
+  expect(parsePanelRoute(basePath, panelAddress(route))).toEqual(route);
+});

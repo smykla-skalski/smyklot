@@ -1,6 +1,8 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
+  import { seed } from '../../dev/fixtures';
+  import { mockSyncHistory, mockSyncHistoryPage } from '../../dev/sync-history';
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
   import {
@@ -31,6 +33,14 @@
     clock: () => NOW,
     fetchConfig: async (_id: string, kind: string) => config(kind),
     fetchPlan: async () => ({ plan: PLAN }),
+    fetchHistory: async (id: string, request: { limit: number; cursor?: string }) =>
+      mockSyncHistoryPage(
+        mockSyncHistory(seed(undefined, NOW), id),
+        request.limit,
+        request.cursor ?? null,
+      ),
+    historyResultHref: (id: string) => `#/sync/history/${id}`,
+    onOpenHistoryResult: () => {},
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},
     runSyncNow: async () => ({ status: 'scan_queued' as const }),

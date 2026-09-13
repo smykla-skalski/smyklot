@@ -146,6 +146,7 @@ beside the affected repository. Change details open over this view, preserving c
     description="Saved settings, pending changes, and repository checks"
   >
     {#snippet actions()}
+      <Button tone="quiet" onclick={() => onOpenSection('history')}>Sync history</Button>
       {#if canControl && !ongoing}<Button disabled={busy} onclick={onCheck}
           >{busy ? 'Checking…' : 'Check now'}</Button
         >{/if}

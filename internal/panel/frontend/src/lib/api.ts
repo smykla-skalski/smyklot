@@ -78,6 +78,7 @@ import type {
   SyncOverride,
   SyncPathIndex,
   SyncPlan,
+  SyncPlanSummary,
   SyncRunNowResponse,
   SyncFilesContext,
   SyncStatus,
@@ -324,6 +325,10 @@ export interface PanelApi {
   fetchSyncConfig(targetId: string, kind: string): Promise<SyncConfig>;
   fetchSyncPaths(targetId: string): Promise<SyncPathIndex>;
   fetchSyncOverride(targetId: string, repositoryId: string, kind: string): Promise<SyncOverride>;
+  fetchSyncHistory(
+    targetId: string,
+    request: { limit: number; cursor?: string },
+  ): Promise<Page<SyncPlanSummary>>;
   fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
@@ -1199,6 +1204,15 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/repositories/` +
           `${pathSegment(repositoryId)}/sync/${pathSegment(kind)}`,
       );
+    },
+
+    fetchSyncHistory(
+      targetId: string,
+      request: { limit: number; cursor?: string },
+    ): Promise<Page<SyncPlanSummary>> {
+      const params = new URLSearchParams({ limit: String(request.limit) });
+      if (request.cursor) params.set('cursor', request.cursor);
+      return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/plans?${params}`);
     },
 
     fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }> {

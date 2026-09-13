@@ -512,13 +512,25 @@ export class PanelSession {
       : null;
   }
 
-  openSyncPlan(planId: string): void {
+  syncHistoryResultHref(id: string): string {
+    const target = this.selectedTarget;
+    return target === null
+      ? '#'
+      : panelAddress({
+          account: target.account.login,
+          view: 'sync',
+          sync: 'history',
+          syncPlan: id,
+        });
+  }
+
+  openSyncPlan(planId: string, history = false): void {
     const target = this.selectedTarget;
     if (target === null) return;
     void this.navigate({
       account: target.account.login,
       view: 'sync',
-      sync: 'plan',
+      sync: history ? 'history' : 'plan',
       syncPlan: planId,
     });
   }
@@ -890,6 +902,7 @@ export class PanelSession {
         this.queryClient.invalidateQueries({ queryKey: ['queue-detail'] }),
         this.queryClient.invalidateQueries({ queryKey: ['schedules'] }),
         this.queryClient.invalidateQueries({ queryKey: ['sync-plan'] }),
+        this.queryClient.invalidateQueries({ queryKey: ['sync-history'] }),
         this.queryClient.invalidateQueries({ queryKey: ['sync-status'] }),
         this.queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
       ]);

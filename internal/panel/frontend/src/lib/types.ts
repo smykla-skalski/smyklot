@@ -1685,10 +1685,16 @@ export interface SyncAction {
 }
 
 /** A computed answer to "what would change", and the unit somebody approves. */
+export type SyncPlanSummary = Pick<
+  SyncPlan,
+  'id' | 'trigger' | 'state' | 'counts' | 'computed_at' | 'finished_at'
+>;
+
 export interface SyncPlan {
   id: string;
   trigger: string;
-  state: 'computed' | 'approved' | 'applying' | 'applied' | 'failed' | 'stale' | 'expired';
+  state:
+    'computed' | 'approved' | 'applying' | 'applied' | 'failed' | 'stale' | 'expired' | 'discarded';
   digest: string;
   counts: { create: number; update: number; delete: number };
   actions: SyncAction[];

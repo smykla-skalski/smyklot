@@ -132,6 +132,9 @@ describe('SyncView [Component]', () => {
       readOnly: false,
       drafts,
       fetchConfig: (_id: string, kind: string) => Promise.resolve(answers[kind]),
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: state.plan ?? null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
@@ -352,6 +355,9 @@ describe('SyncView [Component]', () => {
 
         return Promise.resolve(config(kind));
       },
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),
@@ -390,6 +396,9 @@ describe('SyncView [Component]', () => {
 
         return Promise.resolve(config(kind));
       },
+      fetchHistory: async () => ({ items: [], total: 0, next_cursor: null }),
+      historyResultHref: (id) => `/sync/history/${id}`,
+      onOpenHistoryResult: () => {},
       fetchPlan: () => Promise.resolve({ plan: null }),
       approvePlan: () => Promise.reject(new Error('not in this test')),
       discardPlan: () => Promise.reject(new Error('not in this test')),

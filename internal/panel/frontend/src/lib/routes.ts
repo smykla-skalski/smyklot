@@ -119,7 +119,14 @@ export const ROOT_RUNTIME_SECTIONS = ['service', 'settings'] as const;
  * `overview` is not written into the path: it is where the view opens, so the
  * bare `/workspace/acme/sync` already means it.
  */
-export const WRITTEN_SYNC_SECTIONS = ['labels', 'settings', 'rulesets', 'files', 'plan'] as const;
+export const WRITTEN_SYNC_SECTIONS = [
+  'labels',
+  'settings',
+  'rulesets',
+  'files',
+  'plan',
+  'history',
+] as const;
 export const SYNC_SECTIONS = ['overview', ...WRITTEN_SYNC_SECTIONS] as const;
 export type SyncSection = (typeof SYNC_SECTIONS)[number];
 
@@ -139,6 +146,7 @@ export const SYNC_SECTION_LABELS: Record<SyncSection, string> = {
   rulesets: 'Rulesets',
   files: 'Shared files',
   plan: 'Plan',
+  history: 'Sync history',
 };
 
 /** One repository's own page. */
@@ -582,7 +590,8 @@ function parseTrailingSync(
   if (encodedRest.length === 0) return { sync };
   /* Rulesets and results use one identifying segment. A file path may
      contain several segments. */
-  if (sync !== 'rulesets' && sync !== 'files' && sync !== 'plan') return 'invalid';
+  if (sync !== 'rulesets' && sync !== 'files' && sync !== 'plan' && sync !== 'history')
+    return 'invalid';
   if (sync !== 'files' && encodedRest.length > 1) return 'invalid';
 
   let parts: string[];
@@ -593,7 +602,7 @@ function parseTrailingSync(
   }
   if (parts.some((part) => part.trim() === '')) return 'invalid';
 
-  if (sync === 'plan') return { sync, syncPlan: parts[0] ?? '' };
+  if (sync === 'plan' || sync === 'history') return { sync, syncPlan: parts[0] ?? '' };
 
   return sync === 'rulesets'
     ? { sync, syncRuleset: parts[0] ?? '' }
