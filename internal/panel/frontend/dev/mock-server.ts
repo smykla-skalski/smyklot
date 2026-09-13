@@ -1,3 +1,4 @@
+import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
 import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
 import {
   mockRecoverDelivery,
@@ -1693,12 +1694,35 @@ async function handle(
       return;
     }
 
+    const syncRunNowMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/run-now$/.exec(
+      path.slice(route('').length),
+    );
+    if (syncRunNowMatch && method === 'POST') {
+      const target = findTarget(state, syncRunNowMatch[1] ?? '');
+      if (!['owner', 'admin'].includes(target.value.effective_role)) {
+        throw new MockApiError(403, 'forbidden', 'Admin or Owner access is required');
+      }
+      const result = mockSyncRunNow(
+        state,
+        target.value.id,
+        await readBody<unknown>(req),
+        Date.now(),
+      );
+      if (result.status === 400 || result.status === 409) {
+        throw new MockApiError(result.status, result.body.code, result.body.message);
+      }
+      respond(res, result.status, result.body);
+      if (result.status === 202)
+        broadcast(state, { type: 'queue.changed', target_id: target.value.id });
+      return;
+    }
+
     const syncPlanMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/plan$/.exec(
       path.slice(route('').length),
     );
     if (syncPlanMatch && method === 'GET') {
       const targetId = decodeURIComponent(syncPlanMatch[1] ?? '');
-      respond(res, 200, { plan: state.syncPlans.get(targetId) ?? null });
+      respond(res, 200, { plan: mockLiveSyncPlan(state, targetId) });
       return;
     }
 

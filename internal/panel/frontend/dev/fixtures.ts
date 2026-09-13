@@ -557,6 +557,8 @@ export function seed(
     delete automaticSync.repository_id;
     delete automaticSync.repository_name;
     delete automaticSync.started_at;
+    automaticSync.source_kind = 'sync_plan';
+    automaticSync.source_id = 'plan-1';
     automaticSync.title = 'Sync shared configuration';
     automaticSync.summary = '14 changes queued automatically';
     automaticSync.state = 'scheduled';
