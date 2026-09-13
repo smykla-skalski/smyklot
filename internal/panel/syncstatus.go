@@ -420,7 +420,7 @@ func (s *Server) deleteSyncPlan(w http.ResponseWriter, r *http.Request) {
 	if !s.requireSameOrigin(w, r) {
 		return
 	}
-	account, target, _, ok := s.requireTarget(w, r, true)
+	account, target, access, ok := s.requireTarget(w, r, true)
 	if !ok {
 		return
 	}
@@ -459,5 +459,10 @@ func (s *Server) deleteSyncPlan(w http.ResponseWriter, r *http.Request) {
 
 	s.Announce(target.ID, "")
 
-	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: syncPlanToDTO(plan, nil, nil)})
+	dto, err := s.syncPlanDTO(r.Context(), plan, nil, access.Role)
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto})
 }

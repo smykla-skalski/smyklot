@@ -53,14 +53,16 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	if err != nil {
 		return orgsync.PlanDispatchReceipt{}, noRows(err)
 	}
-	if plan.State != orgsync.PlanApproved || !plan.ExpiresAt.After(request.Now) {
+	// Before reading the queue, only an otherwise eligible plan can report
+	// a missing queue. Revalidate with the locked item below.
+	if reason := orgsync.PlanDispatchEligibility(plan, nil, request.Now); reason != orgsync.DispatchQueueUnavailable {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	item, err := getQueueItem(ctx, tx, "sync-plan:"+plan.ID, s.dialect.RowLock())
 	if err != nil {
 		return orgsync.PlanDispatchReceipt{}, noRows(err)
 	}
-	if item.Revision != request.ExpectedRevision || item.State == workqueue.StateRunning || item.State.Terminal() || item.TargetID == nil || *item.TargetID != request.TargetID || item.SourceID != request.PlanID || item.SourceKind != queueSourceSyncPlan || item.Kind != workqueue.KindSyncApply {
+	if item.Revision != request.ExpectedRevision || orgsync.PlanDispatchEligibility(plan, &item, request.Now) != orgsync.DispatchAvailable {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	updated, summary, err := s.applyQueueAction(ctx, tx, item, workqueue.ItemAction{Type: workqueue.ActionRunNow, ExpectedRevision: request.ExpectedRevision, ActorID: request.ActorID, Reason: request.Reason, ChangedAt: request.Now})

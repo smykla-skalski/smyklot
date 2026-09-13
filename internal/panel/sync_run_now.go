@@ -105,12 +105,12 @@ func (s *Server) handleSyncDispatch(
 		s.writeStorageError(w, err)
 		return
 	}
-	switch plan.State {
-	case orgsync.PlanComputed:
+	switch dto.Dispatch.Reason {
+	case string(orgsync.DispatchApprovalRequired):
 		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "approval_required", Plan: &dto})
-	case orgsync.PlanApplying:
+	case string(orgsync.DispatchAlreadyRunning):
 		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "already_running", Plan: &dto})
-	case orgsync.PlanApproved:
+	case string(orgsync.DispatchAvailable):
 		if dto.Queue == nil || input.ExpectedRevision != dto.Queue.Revision {
 			writeJSON(w, http.StatusConflict, map[string]any{
 				jsonFieldCode: errorCodeStaleRevision, jsonFieldMessage: "sync queue item changed; review the latest state",
@@ -127,7 +127,9 @@ func (s *Server) handleSyncDispatch(
 		s.wakeScheduledWork(workqueue.LaneMaintenance)
 		writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "dispatch_accepted", PlanID: receipt.PlanID, QueueID: receipt.QueueID})
 	default:
-		s.writeError(w, http.StatusConflict, "unsupported_plan_state", "sync plan cannot run now")
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"code": "unsupported_plan_state", "message": "these changes cannot run now", syncDispatchAction: dto.Dispatch,
+		})
 	}
 }
 

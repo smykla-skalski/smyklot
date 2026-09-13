@@ -77,18 +77,19 @@ var emptyDocument = json.RawMessage(`{}`)
 // syncPlanDTO is a plan as a person reads it: what it would do, and enough to
 // approve exactly this one.
 type syncPlanDTO struct {
-	ID             string          `json:"id"`
-	Trigger        string          `json:"trigger"`
-	State          string          `json:"state"`
-	Digest         string          `json:"digest"`
-	Counts         syncCountsDTO   `json:"counts"`
-	Actions        []syncActionDTO `json:"actions"`
-	Computed       time.Time       `json:"computed_at"`
-	Expires        time.Time       `json:"expires_at"`
-	Approved       *time.Time      `json:"approved_at,omitempty"`
-	Finished       *time.Time      `json:"finished_at,omitempty"`
-	ExecutionStage string          `json:"execution_stage"`
-	Queue          *workqueue.Item `json:"queue_item,omitempty"`
+	Dispatch       syncDispatchCapability `json:"dispatch"`
+	ID             string                 `json:"id"`
+	Trigger        string                 `json:"trigger"`
+	State          string                 `json:"state"`
+	Digest         string                 `json:"digest"`
+	Counts         syncCountsDTO          `json:"counts"`
+	Actions        []syncActionDTO        `json:"actions"`
+	Computed       time.Time              `json:"computed_at"`
+	Expires        time.Time              `json:"expires_at"`
+	Approved       *time.Time             `json:"approved_at,omitempty"`
+	Finished       *time.Time             `json:"finished_at,omitempty"`
+	ExecutionStage string                 `json:"execution_stage"`
+	Queue          *workqueue.Item        `json:"queue_item,omitempty"`
 }
 
 type syncCountsDTO struct {
@@ -572,14 +573,8 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID, actions)
+	dto, err := s.syncPlanDTO(r.Context(), plan, actions, access.Role)
 	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-	dto := syncPlanToDTO(plan, actions, repositoryNames)
-	if err := s.attachSyncPlanQueue(r.Context(), &dto, access.Role); err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
@@ -601,6 +596,7 @@ func (s *Server) syncPlanDTO(
 		return syncPlanDTO{}, err
 	}
 
+	dto.Dispatch = currentSyncDispatchCapability(plan, dto.Queue, role, s.now().UTC())
 	return dto, nil
 }
 
@@ -687,15 +683,8 @@ func (s *Server) postSyncPlanApproval(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	repositoryNames, err := s.syncPlanRepositoryNames(r.Context(), target.ID, actions)
+	dto, err := s.syncPlanDTO(r.Context(), plan, actions, access.Role)
 	if err != nil {
-		s.writeStorageError(w, err)
-
-		return
-	}
-
-	dto := syncPlanToDTO(plan, actions, repositoryNames)
-	if err := s.attachSyncPlanQueue(r.Context(), &dto, access.Role); err != nil {
 		s.writeStorageError(w, err)
 		return
 	}
