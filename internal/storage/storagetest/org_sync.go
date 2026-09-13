@@ -311,6 +311,16 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("identifies the competing sync check plan under concurrent creation", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncPlanContention(ctx, store, target, account.ID, now)
+		})
+		It("preserves a deferred sync check blocker after later work starts", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifyDeferredSyncCheck(ctx, store, target, account.ID, now)
+		})
 		It("retains paged sync check evidence without a plan", func() {
 			ctx, store, now := runtime()
 			seed(ctx, store, now)

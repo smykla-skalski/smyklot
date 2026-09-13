@@ -91,7 +91,7 @@ func (s *Store) SaveInstallationSettings(
 			return storage.SaveInstallationSettingsResult{}, err
 		}
 	}
-	if err := s.lockInstallationSettingsTarget(ctx, tx, request.TargetID); err != nil {
+	if err := s.lockInstallationTarget(ctx, tx, request.TargetID); err != nil {
 		return storage.SaveInstallationSettingsResult{}, err
 	}
 	if err := prepareConfigFileImport(ctx, tx, request); err != nil {
@@ -316,14 +316,14 @@ func prepareInstallationRepositorySettings(
 	return preparedRepositorySettings{change: change, patch: patch, branchPatterns: patterns, bypassPolicy: bypass}, nil
 }
 
-func (s *Store) lockInstallationSettingsTarget(
+func (s *Store) lockInstallationTarget(
 	ctx context.Context,
 	tx *transaction,
 	targetID string,
 ) error {
 	var held string
-	// Settings never change the target identity. Allow audit foreign-key reads
-	// while excluding other settings writers: an elevation revocation holds its
+	// Settings and plan creation never change target identity. Permit audit
+	// foreign-key reads while excluding other target writers: an elevation revocation holds its
 	// grant before inserting that audit, while this writer reads the grant next.
 	// FOR UPDATE would turn those two valid operations into a deadlock cycle.
 	err := tx.QueryRowContext(ctx,
@@ -333,7 +333,7 @@ func (s *Store) lockInstallationSettingsTarget(
 		return storage.ErrNotFound
 	}
 	if err != nil {
-		return fmt.Errorf("lock installation settings target: %w", err)
+		return fmt.Errorf("lock installation target: %w", err)
 	}
 
 	return nil

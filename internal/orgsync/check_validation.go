@@ -16,6 +16,9 @@ func (result CheckResult) Validate() error {
 	default:
 		return fmt.Errorf("unknown check disposition %q", outcome.Disposition)
 	}
+	if outcome.BlockingPlanID != "" && (outcome.Disposition != "deferred" || strings.TrimSpace(outcome.BlockingPlanID) != outcome.BlockingPlanID) {
+		return fmt.Errorf("only deferred checks can name a blocking plan with a nonblank identity")
+	}
 	counts := map[Observation]int{}
 	cached := 0
 	seen := map[string]bool{}

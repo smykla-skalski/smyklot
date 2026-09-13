@@ -30,6 +30,12 @@ func TestCheckRetainsReasonsForNoComparison(t *testing.T) {
 			if outcome.Disposition != test.want || outcome.Summary != summary || outcome.CompletedAt.IsZero() || len(outcome.Counts) != 0 {
 				t.Fatalf("misleading result: %#v", outcome)
 			}
+			if test.live && outcome.BlockingPlanID != "existing" {
+				t.Fatalf("deferred check lost its blocker: %#v", outcome)
+			}
+			if !test.live && outcome.BlockingPlanID != "" {
+				t.Fatalf("check invented a blocker: %#v", outcome)
+			}
 			if test.want == "unpermitted" && len(outcome.MissingPermissions) != 1 {
 				t.Fatalf("missing permission lost: %#v", outcome)
 			}

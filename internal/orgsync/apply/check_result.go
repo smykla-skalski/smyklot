@@ -60,3 +60,9 @@ func inactiveCheckDisposition(enabled []orgsync.Config) string {
 	}
 	return "unpermitted"
 }
+
+func (result syncScanResult) deferredCheckResult(planID, summary string, missing []orgsync.Kind) orgsync.CheckResult {
+	check := result.checkResult("deferred", summary, missing)
+	check.Outcome.BlockingPlanID = planID
+	return check
+}

@@ -132,10 +132,10 @@ func (s *Engine) planInstallation(
 	// A plan already in flight holds the installation's one live slot. Leaving
 	// it alone is what makes pressing "sync now" twice, or a reconcile landing
 	// beside it, idempotent rather than a conflict somebody has to read about.
-	if summary, found, err := s.livePlanSummary(ctx, targetID); err != nil {
+	if planID, found, err := s.livePlanIdentity(ctx, targetID); err != nil {
 		return "", err
 	} else if found {
-		return s.retainCheck(ctx, targetID, check, (syncScanResult{}).checkResult("deferred", summary, missing))
+		return s.retainCheck(ctx, targetID, check, (syncScanResult{}).deferredCheckResult(planID, "A live sync plan is already available", missing))
 	}
 
 	scan, err := s.planSyncActions(ctx, client, active, scopes, held)
@@ -170,10 +170,11 @@ func (s *Engine) planInstallation(
 		Automatic:   true,
 	})
 	if err != nil {
-		// Another caller won the slot between the read above and this write.
-		// That is the index doing its job, not a failure worth reporting.
-		if errors.Is(err, storage.ErrConflict) {
-			return s.retainCheck(ctx, targetID, check, scan.checkResult("deferred", "A live sync plan is already available. "+scan.summary(), missing))
+		// Only a proven occupied slot explains deferral. Other conflicts are
+		// failures, not evidence that another plan exists.
+		var occupied *storage.LiveSyncPlanConflict
+		if errors.As(err, &occupied) {
+			return s.retainCheck(ctx, targetID, check, scan.deferredCheckResult(occupied.PlanID, "A live sync plan is already available. "+scan.summary(), missing))
 		}
 
 		return "", fmt.Errorf("record sync plan: %w", err)
@@ -198,9 +199,9 @@ func (s *Engine) planInstallation(
 	return result.Outcome.Summary, nil
 }
 
-func (s *Engine) livePlanSummary(ctx context.Context, targetID string) (string, bool, error) {
-	if _, _, err := s.store.GetLiveSyncPlan(ctx, targetID); err == nil {
-		return "A live sync plan is already available", true, nil
+func (s *Engine) livePlanIdentity(ctx context.Context, targetID string) (string, bool, error) {
+	if plan, _, err := s.store.GetLiveSyncPlan(ctx, targetID); err == nil {
+		return plan.ID, true, nil
 	} else if !errors.Is(err, storage.ErrNotFound) {
 		return "", false, fmt.Errorf("read live sync plan: %w", err)
 	}

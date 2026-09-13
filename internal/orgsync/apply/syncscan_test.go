@@ -86,7 +86,7 @@ func (s *mixedScanStore) CreateSyncPlan(_ context.Context, create orgsync.PlanCr
 		return orgsync.Plan{}, s.failure
 	}
 	if s.conflict {
-		return orgsync.Plan{}, storage.ErrConflict
+		return orgsync.Plan{}, &storage.LiveSyncPlanConflict{PlanID: "concurrent-plan"}
 	}
 	return orgsync.Plan{ID: create.ID, ComputedAt: create.Now}, nil
 }
@@ -127,12 +127,26 @@ func TestQueuedChangesDoNotHideOtherFailedChecks(t *testing.T) {
 	if !strings.Contains(summary, "queued for automatic sync") || !strings.Contains(summary, "1 check failed") || !strings.Contains(summary, "1 check found differences") {
 		t.Fatalf("partial outcome lost: %q", summary)
 	}
+	verifyScanCreationConflicts(t, client, store)
+}
+
+func verifyScanCreationConflicts(t *testing.T, client *github.Client, store *mixedScanStore) {
+	t.Helper()
 	store.conflict = true
-	summary, err = New(store, nil, "").PlanInstallationWithSummary(t.Context(), client, "target", orgsync.TriggerManual)
+	summary, err := New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "claimed-check", Attempt: 2})
 	if err != nil || !strings.Contains(summary, "A live sync plan is already available") || !strings.Contains(summary, "1 check failed") {
 		t.Fatalf("concurrent plan hid observed failure: %q, %v", summary, err)
 	}
+	if store.checkResult.Result.Outcome.BlockingPlanID != "concurrent-plan" || store.checkResult.Result.Outcome.Counts[orgsync.ObservationFailed] != 1 {
+		t.Fatalf("concurrent blocker or evidence lost: %#v", store.checkResult)
+	}
 	store.conflict = false
+	store.failure = storage.ErrConflict
+	store.checkResult = orgsync.CheckResultCreate{}
+	_, err = New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "claimed-check", Attempt: 2})
+	if !errors.Is(err, storage.ErrConflict) || !store.checkResult.Result.Outcome.CompletedAt.IsZero() {
+		t.Fatalf("unrelated conflict invented a deferred outcome: %v, %#v", err, store.checkResult)
+	}
 	store.failure = orgsync.ErrStaleCheck
 	_, err = New(store, nil, "").PlanInstallationForCheck(t.Context(), client, "target", orgsync.TriggerManual, orgsync.CheckReference{QueueID: "stale-check", Attempt: 1})
 	if !errors.Is(err, orgsync.ErrStaleCheck) {

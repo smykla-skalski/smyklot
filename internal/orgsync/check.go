@@ -10,6 +10,8 @@ type CheckDetails struct {
 }
 
 type CheckOutcome struct {
+	// BlockingPlanID names earlier work, never a result produced by this check.
+	BlockingPlanID     string              `json:"blocking_plan_id,omitempty"`
 	CompletedAt        time.Time           `json:"completed_at"`
 	Disposition        string              `json:"disposition"`
 	Summary            string              `json:"summary"`

@@ -169,7 +169,7 @@ func (s *Store) CreateSyncPlan(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := s.linkSyncCheckResult(ctx, tx, create); err != nil {
+	if err := s.prepareSyncPlanCreation(ctx, tx, create); err != nil {
 		return orgsync.Plan{}, err
 	}
 
