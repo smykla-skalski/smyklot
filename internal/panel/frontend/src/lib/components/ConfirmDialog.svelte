@@ -11,6 +11,7 @@
     description,
     returnFocus = null,
     onClose,
+    beforeClose,
     onConfirm,
     confirmLabel = 'Confirm',
     busyLabel = 'Saving…',
@@ -26,6 +27,8 @@
     description?: string;
     returnFocus?: HTMLElement | null;
     onClose: () => void;
+    /** Guard private edits before either incidental dismissal or Cancel. */
+    beforeClose?: () => boolean;
     onConfirm: () => void;
     confirmLabel?: string;
     /** What the confirm reads while the request is in flight. */
@@ -38,6 +41,10 @@
     cancelLabel?: string;
     children: Snippet;
   } = $props();
+
+  function cancel(): void {
+    if (beforeClose?.() !== false) onClose();
+  }
 </script>
 
 <!--
@@ -57,11 +64,11 @@ Which control opens focused is Bits UI's to decide - the panel's own
 removed from all nine places that wrote it.
 -->
 
-<Modal {id} {open} {title} {description} {returnFocus} {onClose}>
+<Modal {id} {open} {title} {description} {returnFocus} {onClose} {beforeClose}>
   {@render children()}
 
   {#snippet footer()}
-    <Button onclick={onClose}>{cancelLabel}</Button>
+    <Button onclick={cancel}>{cancelLabel}</Button>
     <Button tone={confirmTone} disabled={busy || confirmDisabled} onclick={onConfirm}>
       {busy ? busyLabel : confirmLabel}
     </Button>

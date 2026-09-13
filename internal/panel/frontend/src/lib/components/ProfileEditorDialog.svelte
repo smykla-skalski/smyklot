@@ -32,6 +32,10 @@
     { id: 'default-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
   let exceptions = $state('');
+  let baseline = $state('');
+  let confirmingDiscard = $state(false);
+  let editingControl = $state<HTMLElement | null>(null);
+  const changed = $derived(baseline !== '' && snapshot() !== baseline);
   const exceptionExample = '2026-12-25 closed\n2026-12-31 09:00-13:00';
 
   onMount(() => {
@@ -53,7 +57,40 @@
           : `${entry.date} ${minuteTime(entry.start_minute ?? 0)}-${minuteTime(entry.end_minute ?? 0)}`,
       )
       .join('\n');
+    baseline = snapshot();
   });
+
+  /** Window ids are editing handles, not settings. Restoring the same hours is clean. */
+  function snapshot(): string {
+    return JSON.stringify({
+      name: name.trim(),
+      timezone: timezone.trim(),
+      windows: windows
+        .map(({ weekday, start, end }) => ({ weekday, start, end }))
+        .sort(
+          (a, b) =>
+            a.weekday - b.weekday || a.start.localeCompare(b.start) || a.end.localeCompare(b.end),
+        ),
+      exceptions: exceptions
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean),
+    });
+  }
+
+  function beforeClose(): boolean {
+    if (busy) return false;
+    if (!changed) return true;
+    if (!confirmingDiscard) {
+      const active = document.activeElement;
+      editingControl =
+        active instanceof HTMLElement && active.closest('#profile-editor')
+          ? active
+          : document.getElementById('profile-editor');
+      confirmingDiscard = true;
+    }
+    return false;
+  }
 
   function minuteTime(minutes: number): string {
     return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
@@ -130,6 +167,7 @@ changing a window here changes when every policy that names it runs.
   confirmTone="signal"
   confirmDisabled={name.trim() === '' || timezone.trim() === '' || !windowsValid()}
   {onClose}
+  {beforeClose}
   onConfirm={submit}
 >
   <div class="form-stack">
@@ -184,4 +222,17 @@ changing a window here changes when every policy that names it runs.
     </div>
     <FormError message={error} />
   </div>
+  <ConfirmDialog
+    id="discard-hours-changes"
+    open={confirmingDiscard}
+    title="Discard hours changes?"
+    returnFocus={editingControl}
+    onClose={() => (confirmingDiscard = false)}
+    onConfirm={onClose}
+    confirmLabel="Discard changes"
+    confirmTone="stop"
+    cancelLabel="Keep editing"
+  >
+    <p class="form-help">Your changes to this hours profile will be lost</p>
+  </ConfirmDialog>
 </ConfirmDialog>

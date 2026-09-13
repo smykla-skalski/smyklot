@@ -7,6 +7,126 @@ import { addressOf, startPanel, visit, type Panel } from './harness';
 
 let panel: Panel;
 
+describe('desktop hours draft protection', () => {
+  const fields = [
+    ['Profile name', 'Release hours'],
+    ['Timezone', 'UTC'],
+    ['Date exceptions', '2026-12-25 closed'],
+  ] as const;
+
+  it('keeps an existing profile mounted during save and retains edits after rejection', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+    page.setDefaultTimeout(5000);
+    let release = (): void => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let submitted = false;
+    try {
+      await page.route('**/api/v1/root/schedule-profiles/*', async (route) => {
+        if (route.request().method() !== 'PUT') return route.continue();
+        submitted = true;
+        await held;
+        await route.fulfill({
+          status: 503,
+          json: { error: { code: 'unavailable', message: 'Try saving again' } },
+        });
+      });
+      await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+      const edit = page.getByRole('button', { name: /^Edit - the .+ profile$/ }).first();
+      await edit.click();
+      const editor = page.getByRole('dialog', { name: 'Edit hours profile', exact: true });
+      const name = editor.getByLabel('Profile name', { exact: true });
+      const original = await name.inputValue();
+      await name.fill('Temporary changed name');
+      await name.fill(original);
+      await page.keyboard.press('Escape');
+      await editor.waitFor({ state: 'hidden' });
+      await edit.click();
+      await name.fill('Release working hours');
+      await editor.getByRole('button', { name: 'Save profile' }).click();
+      await expect.poll(() => submitted).toBe(true);
+      await page.keyboard.press('Escape');
+      await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+      expect(await editor.isVisible()).toBe(true);
+      expect(
+        await page.getByRole('dialog', { name: 'Discard hours changes?', exact: true }).count(),
+      ).toBe(0);
+      release();
+      await editor.getByText('Try saving again', { exact: true }).waitFor();
+      await expect.poll(() => name.inputValue()).toBe('Release working hours');
+      await page.keyboard.press('Escape');
+      const guard = page.getByRole('dialog', { name: 'Discard hours changes?', exact: true });
+      await guard.getByRole('button', { name: 'Discard changes' }).click();
+      await editor.waitFor({ state: 'hidden' });
+    } finally {
+      release();
+      await page.close();
+    }
+  });
+
+  it.each(fields)(
+    'retains changed %s through incidental and explicit dismissal',
+    async (label, value) => {
+      const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+      page.setDefaultTimeout(5000);
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page.getByRole('button', { name: 'New hours profile' }).click();
+        const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        const field = editor.getByLabel(label, { exact: true });
+        await field.fill(value);
+        await page.keyboard.press('Escape');
+        const guard = page.getByRole('dialog', { name: 'Discard hours changes?', exact: true });
+        await guard.waitFor();
+        await guard.getByRole('button', { name: 'Keep editing' }).click();
+        await expect.poll(() => field.inputValue()).toBe(value);
+        await expect
+          .poll(() => field.evaluate((node) => node === document.activeElement))
+          .toBe(true);
+        await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await guard.waitFor();
+        await guard.getByRole('button', { name: 'Discard changes' }).click();
+        await editor.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() =>
+            page
+              .getByRole('button', { name: 'New hours profile' })
+              .evaluate((node) => node === document.activeElement),
+          )
+          .toBe(true);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it('protects weekly windows on outside dismissal and closes restored drafts without a guard', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+    page.setDefaultTimeout(5000);
+    try {
+      await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+      await page.getByRole('button', { name: 'New hours profile' }).click();
+      const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+      const start = editor.locator('.window-row input[type=time]').first();
+      const original = await start.inputValue();
+      await start.fill('10:00');
+      await page.mouse.click(400, 300);
+      const guard = page.getByRole('dialog', { name: 'Discard hours changes?', exact: true });
+      await guard.waitFor();
+      await page.keyboard.press('Escape');
+      await guard.waitFor({ state: 'hidden' });
+      await expect.poll(() => start.inputValue()).toBe('10:00');
+      await start.fill(original);
+      await page.keyboard.press('Escape');
+      await editor.waitFor({ state: 'hidden' });
+      expect(await guard.count()).toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
+});
+
 async function expectSharedModalControls(dialog: Locator): Promise<void> {
   const geometry = await dialog.evaluate((node) => {
     const durations = Array.from(node.querySelectorAll('.duration-field')).map((field) => {
