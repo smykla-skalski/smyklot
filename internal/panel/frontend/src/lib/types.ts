@@ -1706,14 +1706,18 @@ export interface SyncPlan {
   queue_item?: QueueItem;
 }
 
-export type SyncRunNowInput = { reason: string } & (
+// UI intent precedes persistence. Only the complete input may cross the API boundary.
+export type SyncRunNowIntent = { reason: string } & (
   | { action: 'check'; request_key?: string }
   | { action: 'dispatch'; plan_id: string; expected_revision: number }
 );
 
+export type SyncRunNowInput =
+  | (Extract<SyncRunNowIntent, { action: 'check' }> & { request_key: string })
+  | Extract<SyncRunNowIntent, { action: 'dispatch' }>;
+
 export interface SyncRunNowResponse {
   status:
-    | 'scan_queued'
     | 'check_accepted'
     | 'changes_pending'
     | 'approval_required'

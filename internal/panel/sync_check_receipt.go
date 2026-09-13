@@ -30,7 +30,7 @@ func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account
 		Title: "Check which repositories are in step", ActorID: account.ID,
 		Reason: input.Reason, Now: s.now().UTC(),
 	}
-	if input.RequestKey != "" && s.answerAcceptedSyncCheck(w, r, request) {
+	if s.answerAcceptedSyncCheck(w, r, request) {
 		return
 	}
 	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
@@ -52,12 +52,7 @@ func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account
 		s.writeStorageError(w, err)
 		return
 	}
-	prepareQueueItem(&item, true, false)
 	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
 	s.wakeScheduledWork(workqueue.LaneMaintenance)
-	if input.RequestKey != "" {
-		writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID})
-		return
-	}
-	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "scan_queued", Queue: &item})
+	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID})
 }

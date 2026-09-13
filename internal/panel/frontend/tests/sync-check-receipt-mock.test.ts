@@ -70,7 +70,7 @@ describe('mock accepted check receipts [Unit]', () => {
     expect(mockSyncRunNow(state, '2001', input, now).status).toBe(202);
   });
 
-  it.each([' padded', 'padded ', 'ą'.repeat(101), 123])(
+  it.each([undefined, null, '', ' ', ' padded', 'padded ', 'ą'.repeat(101), 123])(
     'rejects malformed key %j without mutation',
     (request_key) => {
       const state = fixture();

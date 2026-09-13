@@ -90,9 +90,15 @@ func assertSyncPlanNotDispatched(t *testing.T, h *panelHarness, id string) {
 func TestSyncRunNowRequiresUnambiguousIntent(t *testing.T) {
 	for _, body := range []string{
 		`{"reason":"old ambiguous request"}`,
+		`{"action":"check","reason":"missing key"}`,
+		`{"action":"check","request_key":"","reason":"empty key"}`,
+		`{"action":"check","request_key":null,"reason":"null key"}`,
+		`{"action":"check","request_key":" padded","reason":"invalid key"}`,
+		`{"action":"check","request_key":123,"reason":"invalid key type"}`,
+		`{"action":"check","request_key":"` + strings.Repeat("ą", 101) + `","reason":"oversize key"}`,
 		`{"action":"other","reason":"unknown action"}`,
-		`{"action":"check","plan_id":"some-plan","reason":"mixed intent"}`,
-		`{"action":"check","expected_revision":2,"reason":"mixed intent"}`,
+		`{"action":"check","request_key":"valid-key","plan_id":"some-plan","reason":"mixed intent"}`,
+		`{"action":"check","request_key":"valid-key","expected_revision":2,"reason":"mixed intent"}`,
 		`{"action":"dispatch","expected_revision":2,"reason":"missing identity"}`,
 		`{"action":"dispatch","plan_id":" p ","expected_revision":2,"reason":"invalid identity"}`,
 		`{"action":"dispatch","plan_id":"p","reason":"missing revision"}`,

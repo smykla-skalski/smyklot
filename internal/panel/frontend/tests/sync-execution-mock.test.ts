@@ -13,13 +13,13 @@ function scan(state: ReturnType<typeof seed>, at = now) {
   const response = mockSyncRunNow(
     state,
     target,
-    { action: 'check', reason: 'Verify outcomes' },
+    { action: 'check', request_key: crypto.randomUUID(), reason: 'Verify outcomes' },
     at,
   );
-  if (response.status !== 202 || response.body.status !== 'scan_queued')
+  if (response.status !== 202 || response.body.status !== 'check_accepted')
     throw new Error('Expected scan');
   complete(state, at);
-  return state.queue.find((item) => item.id === response.body.queue_item!.id)!;
+  return state.queue.find((item) => item.id === response.body.check_id)!;
 }
 
 describe('finite mock sync execution [Unit]', () => {

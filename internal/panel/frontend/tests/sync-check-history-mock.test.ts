@@ -13,12 +13,12 @@ function setup() {
   const request = mockSyncRunNow(
     state,
     target,
-    { action: 'check', reason: 'Check repositories' },
+    { action: 'check', request_key: crypto.randomUUID(), reason: 'Check repositories' },
     now,
   );
-  if (request.status !== 202 || request.body.status !== 'scan_queued')
+  if (request.status !== 202 || request.body.status !== 'check_accepted')
     throw new Error('Expected a check');
-  const item = state.queue.find((item) => item.id === request.body.queue_item!.id)!;
+  const item = state.queue.find((item) => item.id === request.body.check_id)!;
   return { state, item };
 }
 

@@ -1,7 +1,8 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
 
-  import { seed } from '../../dev/fixtures';
+  import { seed, VIEWER } from '../../dev/fixtures';
+  import { mockSyncRunNow } from '../../dev/sync-run-now';
   import { mockSyncHistory, mockSyncHistoryPage } from '../../dev/sync-history';
   import SyncView from '#lib/components/SyncView.svelte';
   import Seeded from '../support/Seeded.svelte';
@@ -15,7 +16,7 @@
     SYNC_STATUS_IN_STEP,
     TARGET,
   } from '../support/fixtures.js';
-  import type { SyncConfig } from '#lib/types.js';
+  import type { SyncConfig, SyncRunNowInput } from '#lib/types.js';
 
   /* Plan, status and desired documents all come from one mock seed. A story that
      restates any one of them can describe changes its own editors do not request. */
@@ -28,6 +29,7 @@
   if (PLAN === null) throw new Error('the catalogue seed must include a sync plan');
   const base = {
     targetId: TARGET.id,
+    actorId: VIEWER.id,
     section: 'overview' as const,
     readOnly: false,
     clock: () => NOW,
@@ -49,7 +51,11 @@
     onOpenHistoryResult: () => {},
     approvePlan: async () => ({ plan: { ...PLAN, state: 'approved' as const } }),
     discardPlan: async () => {},
-    runSyncNow: async () => ({ status: 'scan_queued' as const }),
+    runSyncNow: async (id: string, input: SyncRunNowInput) => {
+      const reply = mockSyncRunNow(seed(undefined, NOW), id, input, NOW);
+      if ('message' in reply.body) throw new Error(reply.body.message);
+      return reply.body;
+    },
     canControl: true,
     fetchStatus: async () => SYNC_STATUS,
     sectionHref: (section: string) => `#/sync/${section}`,

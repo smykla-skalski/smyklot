@@ -6,7 +6,7 @@
     SYNC_KINDS,
     type SyncAction,
     type SyncPlan,
-    type SyncRunNowInput,
+    type SyncRunNowIntent,
     type SyncRulesetDetail,
   } from '../types';
   import { SYNC_SECTION_LABELS } from '../routes';
@@ -47,7 +47,7 @@
     runNowBusy: boolean;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
-    onRunNow: (input: SyncRunNowInput) => void;
+    onRunNow: (input: SyncRunNowIntent) => void;
   } = $props();
 
   const actions = $derived(plan?.actions ?? []);
@@ -252,7 +252,7 @@
   let runConfirming = $state(false);
   let runReason = $state('');
   let runIntent = $state<
-    Omit<Extract<SyncRunNowInput, { action: 'dispatch' }>, 'reason'> | { action: 'check' }
+    Omit<Extract<SyncRunNowIntent, { action: 'dispatch' }>, 'reason'> | { action: 'check' }
   >({ action: 'check' });
 
   function openRunConfirmation(): void {

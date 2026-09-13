@@ -19,6 +19,11 @@ describe('development check acceptance HTTP contract', () => {
         request_key: 'http-check-receipt',
         reason: 'Verify original request',
       };
+      for (const request_key of [undefined, null, '', ' ', 'ą'.repeat(101)]) {
+        const rejected = await page.request.post(endpoint, { data: { ...data, request_key } });
+        expect(rejected.status()).toBe(400);
+        expect(await rejected.json()).toMatchObject({ error: { code: 'invalid_request' } });
+      }
       const first = await page.request.post(endpoint, { data });
       expect(first.status()).toBe(202);
       const accepted = await first.json();

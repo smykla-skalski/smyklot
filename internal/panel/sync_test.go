@@ -143,7 +143,8 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		harness := newPanelHarness(t, "owner")
 		response := postPanelSyncRunNow(t, harness, harness.signIn(t), 0)
 		requireResponse(t, response, "no-plan run now", http.StatusAccepted,
-			`"status":"scan_queued"`, `"kind":"sync_scan"`, `"immediate":true`)
+			`"status":"check_accepted"`, `"check_id":`)
+		assertAcceptedSyncCheckQueued(t, harness, response)
 	})
 
 	t.Run("opens a computed plan for approval", func(t *testing.T) {
@@ -215,7 +216,8 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		*harness.clock = later
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "expired-plan run now", http.StatusAccepted,
-			`"status":"scan_queued"`, `"kind":"sync_scan"`)
+			`"status":"check_accepted"`, `"check_id":`)
+		assertAcceptedSyncCheckQueued(t, harness, response)
 	})
 }
 
@@ -243,7 +245,7 @@ func postPanelSyncRunNow(
 	expectedRevision int64,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	body := `{"action":"check","reason":"operator request"}`
+	body := `{"action":"check","request_key":"operator-check-1","reason":"operator request"}`
 	if expectedRevision > 0 {
 		body = fmt.Sprintf(`{"action":"dispatch","plan_id":"approved","reason":"operator request","expected_revision":%d}`, expectedRevision)
 	}
@@ -568,5 +570,23 @@ func TestSyncConfigSaysWhenAWorkflowNeedsMore(t *testing.T) {
 	if answer := syncConfigAnswer(workflow, granted, ""); answer.Unavailable != "" {
 		t.Errorf("unavailable = %q, wanted nothing: the permission is granted",
 			answer.Unavailable)
+	}
+}
+
+func assertAcceptedSyncCheckQueued(t *testing.T, h *panelHarness, response *httptest.ResponseRecorder) {
+	t.Helper()
+	var accepted syncRunNowResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &accepted); err != nil {
+		t.Fatal(err)
+	}
+	if accepted.Queue != nil || accepted.CheckID == "" {
+		t.Fatal("acceptance must identify the check separately from current progress")
+	}
+	item, err := h.store.GetQueueItem(t.Context(), accepted.CheckID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.Kind != workqueue.KindSyncScan || !item.Immediate {
+		t.Fatalf("accepted check was not queued immediately: %#v", item)
 	}
 }

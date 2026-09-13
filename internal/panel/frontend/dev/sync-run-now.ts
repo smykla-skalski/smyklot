@@ -47,7 +47,8 @@ export function mockSyncRunNow(
     !('action' in input) ||
     (input.action !== 'check' && input.action !== 'dispatch') ||
     (input.action === 'check' &&
-      (('plan_id' in input && input.plan_id !== '') ||
+      (key === '' ||
+        ('plan_id' in input && input.plan_id !== '') ||
         ('expected_revision' in input && input.expected_revision !== 0))) ||
     (input.action === 'dispatch' &&
       (key !== '' ||
@@ -66,7 +67,7 @@ export function mockSyncRunNow(
   }
   const reason = input.reason.trim();
   const receiptKey = JSON.stringify([actorId, key]);
-  if (input.action === 'check' && key !== '') {
+  if (input.action === 'check') {
     const receipt = state.syncCheckReceipts.get(receiptKey);
     if (receipt) {
       if (receipt.targetId !== targetId || receipt.reason !== reason) return conflict();
@@ -150,11 +151,8 @@ export function mockSyncRunNow(
     recordMockSyncEvent(state, item, 'created', item.title, at);
   }
   const accepted = request(state, item, reason, now);
-  if (key !== '') {
-    state.syncCheckReceipts.set(receiptKey, { targetId, reason, checkId: accepted.id });
-    return { status: 202, body: { status: 'check_accepted', check_id: accepted.id } };
-  }
-  return { status: 202, body: { status: 'scan_queued', queue_item: accepted } };
+  state.syncCheckReceipts.set(receiptKey, { targetId, reason, checkId: accepted.id });
+  return { status: 202, body: { status: 'check_accepted', check_id: accepted.id } };
 }
 
 function conflict(): Reply {

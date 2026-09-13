@@ -32,7 +32,7 @@ type syncRunNowResponse struct {
 func (input syncRunNowInput) valid() bool {
 	switch input.Action {
 	case "check":
-		return input.PlanID == "" && input.ExpectedRevision == 0 && len(input.RequestKey) <= 200 && strings.TrimSpace(input.RequestKey) == input.RequestKey
+		return input.PlanID == "" && input.ExpectedRevision == 0 && input.RequestKey != "" && len(input.RequestKey) <= 200 && strings.TrimSpace(input.RequestKey) == input.RequestKey
 	case syncDispatchAction:
 		return input.RequestKey == "" && strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0
 	default:

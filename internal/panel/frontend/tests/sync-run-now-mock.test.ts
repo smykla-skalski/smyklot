@@ -4,7 +4,11 @@ import { seed } from '../dev/fixtures.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from '../dev/sync-run-now.js';
 
 const now = Date.UTC(2026, 8, 13);
-const input = { action: 'check', reason: 'Check sync from the status view' };
+const input = {
+  action: 'check',
+  request_key: 'check-1',
+  reason: 'Check sync from the status view',
+};
 
 describe('mock sync request contract [Unit]', () => {
   it.each([null, {}, { reason: ' ' }, { reason: 42 }])(
@@ -27,14 +31,19 @@ describe('mock sync request contract [Unit]', () => {
       mockSyncRunNow(
         state,
         '2001',
-        { ...input, action: 'dispatch', plan_id: plan.id, expected_revision: revision },
+        { reason: input.reason, action: 'dispatch', plan_id: plan.id, expected_revision: revision },
         now,
       ).status,
     ).toBe(409);
     const result = mockSyncRunNow(
       state,
       '2001',
-      { ...input, action: 'dispatch', plan_id: plan.id, expected_revision: revision + 1 },
+      {
+        reason: input.reason,
+        action: 'dispatch',
+        plan_id: plan.id,
+        expected_revision: revision + 1,
+      },
       now,
     );
     expect(result.status).toBe(202);
@@ -94,17 +103,20 @@ describe('mock sync request contract [Unit]', () => {
     state.syncPlans.delete('2001');
     const first = mockSyncRunNow(state, '2001', input, now);
     if (first.status !== 202) throw new Error('Expected queued scan');
-    const id = first.body.queue_item!.id;
-    const second = mockSyncRunNow(state, '2001', input, now + 1_000);
-    expect(second).toMatchObject({ status: 202, body: { queue_item: { id, revision: 3 } } });
+    const id = first.body.check_id!;
+    const second = mockSyncRunNow(state, '2001', { ...input, request_key: 'check-2' }, now + 1_000);
+    expect(second).toMatchObject({ status: 202, body: { check_id: id } });
+    expect(state.queue.find((entry) => entry.id === id)?.revision).toBe(3);
     const item = state.queue.find((entry) => entry.id === id)!;
     item.state = 'running';
-    expect(mockSyncRunNow(state, '2001', input, now + 2_000).status).toBe(409);
+    expect(
+      mockSyncRunNow(state, '2001', { ...input, request_key: 'check-3' }, now + 2_000).status,
+    ).toBe(409);
     item.state = 'succeeded';
     const completed = structuredClone(item);
-    const third = mockSyncRunNow(state, '2001', input, now + 3_000);
+    const third = mockSyncRunNow(state, '2001', { ...input, request_key: 'check-3' }, now + 3_000);
     if (third.status !== 202) throw new Error('Expected new occurrence');
-    expect(third.body.queue_item!.id).not.toBe(id);
+    expect(third.body.check_id!).not.toBe(id);
     expect(state.queue.find((entry) => entry.id === id)).toEqual(completed);
   });
 
@@ -112,11 +124,11 @@ describe('mock sync request contract [Unit]', () => {
     const state = seed(undefined, now);
     state.syncPlans.get('2001')!.state = 'expired';
     const first = mockSyncRunNow(state, '2001', input, now);
-    const second = mockSyncRunNow(state, '2002', input, now);
+    const second = mockSyncRunNow(state, '2002', { ...input, request_key: 'workspace-2' }, now);
     if (first.status !== 202 || second.status !== 202) throw new Error('Expected scans');
-    expect(first.body.queue_item!.target_id).toBe('2001');
-    expect(second.body.queue_item!.target_id).toBe('2002');
-    expect(first.body.queue_item!.id).not.toBe(second.body.queue_item!.id);
+    expect(state.queue.find((item) => item.id === first.body.check_id)?.target_id).toBe('2001');
+    expect(state.queue.find((item) => item.id === second.body.check_id)?.target_id).toBe('2002');
+    expect(first.body.check_id!).not.toBe(second.body.check_id);
     expect(mockLiveSyncPlan(state, '2001')).toBeNull();
   });
 });

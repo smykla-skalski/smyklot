@@ -39,6 +39,7 @@
     SyncPlan,
     SyncRunNowResponse,
     SyncRunNowInput,
+    SyncRunNowIntent,
     SyncStatus,
   } from '#lib/types.js';
   import type {
@@ -502,7 +503,7 @@
     }
   }
 
-  async function onRunNow(input: SyncRunNowInput): Promise<void> {
+  async function onRunNow(input: SyncRunNowIntent): Promise<void> {
     if (runningNow) return;
     if (
       input.action === 'check' &&
@@ -524,7 +525,8 @@
         pendingCheck = checkStore.begin(input.reason);
         input = pendingCheck;
       }
-      const response = await runSyncNow(requestTargetId, input);
+      const request: SyncRunNowInput = input.action === 'check' ? pendingCheck! : input;
+      const response = await runSyncNow(requestTargetId, request);
       if (input.action === 'check') {
         if (response.status !== 'check_accepted' && response.status !== 'changes_pending')
           throw new Error(
