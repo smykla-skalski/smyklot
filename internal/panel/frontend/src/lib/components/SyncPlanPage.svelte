@@ -1,5 +1,10 @@
 <script lang="ts">
-  import { syncDispatchGuidance, syncDispatchIntent } from '../sync-dispatch-guidance';
+  import {
+    syncDispatchGuidance,
+    syncDispatchIntent,
+    syncPlanExecutionProblem,
+  } from '../sync-dispatch-guidance';
+  import { tick } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
@@ -34,6 +39,8 @@
     discarding,
     runNowBusy,
     runNowBlocked = false,
+    onRefresh,
+    refreshing = false,
     onApprove,
     onDiscard,
     onRunNow,
@@ -48,11 +55,23 @@
     discarding: boolean;
     runNowBusy: boolean;
     runNowBlocked?: boolean;
+    onRefresh?: () => Promise<void>;
+    refreshing?: boolean;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
     onRunNow: (input: SyncRunNowIntent) => void;
   } = $props();
 
+  let statusHeading: HTMLHeadingElement | null = $state(null);
+  async function refreshStatus(event: MouseEvent): Promise<void> {
+    if (!onRefresh || refreshing) return;
+    const trigger = event.currentTarget as HTMLButtonElement;
+    const restoreFocus = document.activeElement === trigger;
+    await onRefresh();
+    await tick();
+    if (restoreFocus && !trigger.isConnected) statusHeading?.focus({ preventScroll: true });
+  }
+  const executionProblem = $derived(plan ? syncPlanExecutionProblem(plan) : null);
   const dispatchIntent = $derived(plan ? syncDispatchIntent(plan) : null);
   const dispatchGuidance = $derived(plan ? syncDispatchGuidance(plan) : null);
   const actions = $derived(plan?.actions ?? []);
@@ -326,8 +345,9 @@ the button.
     </Card>
   {:else}
     <div class="hero">
-      <h2>
-        {#if plan.state === 'computed'}<span class="is-drift"
+      <h2 bind:this={statusHeading} tabindex="-1">
+        {#if executionProblem}{executionProblem}{:else if plan.state === 'computed'}<span
+            class="is-drift"
             >{total}
             {total === 1 ? 'change' : 'changes'}</span
           >
@@ -348,10 +368,17 @@ the button.
       </span>
     </div>
 
-    {#if dispatchGuidance && ['approved', 'applying'].includes(plan.state)}
-      <p id="dispatch-guidance" class="dispatch-guidance">{dispatchGuidance}</p>
+    {#if dispatchGuidance && (executionProblem || ['approved', 'applying'].includes(plan.state))}
+      <div class="execution-guidance">
+        <p id="dispatch-guidance" class="dispatch-guidance">{dispatchGuidance}</p>
+        {#if executionProblem && onRefresh}
+          <Button row disabled={refreshing} onclick={refreshStatus}
+            >{refreshing ? 'Refreshing…' : 'Refresh status'}</Button
+          >
+        {/if}
+      </div>
     {/if}
-    {#if plan.queue_item !== undefined}
+    {#if plan.queue_item !== undefined && executionProblem === null}
       {@const queued = plan.queue_item}
       <section class="schedule-card" aria-labelledby="plan-schedule-title">
         <div class="schedule-card-head">
@@ -698,6 +725,14 @@ the button.
 </div>
 
 <style>
+  .execution-guidance {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+  .execution-guidance .dispatch-guidance {
+    flex: 1;
+  }
   .dispatch-guidance {
     margin: 0;
     color: var(--text-secondary);

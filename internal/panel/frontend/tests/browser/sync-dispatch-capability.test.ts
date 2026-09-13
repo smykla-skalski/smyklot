@@ -20,11 +20,26 @@ describe('desktop dispatch capability guidance', () => {
           reducedMotion: 'reduce',
         });
         try {
+          let reads = 0;
+          let posts = 0;
+          let release: (() => void) | undefined;
+          const unavailable = ['plan_expired', 'queue_unavailable'].includes(reason);
+          page.on('request', (request) => {
+            if (request.method() === 'POST' && request.url().includes('/sync/')) posts++;
+          });
           await page.route('**/api/v1/targets/2001/sync/plans/*', async (route) => {
             if (route.request().method() !== 'GET') return route.continue();
             const response = await route.fetch();
             const body = await response.json();
             if (body.plan) {
+              reads++;
+              if (unavailable && reads > 1) {
+                await new Promise<void>((resolve) => {
+                  release = resolve;
+                });
+                await route.fulfill({ response, json: body });
+                return;
+              }
               expect(body.plan.dispatch).toBeDefined();
               body.plan.dispatch = {
                 ...body.plan.dispatch,
@@ -40,7 +55,7 @@ describe('desktop dispatch capability guidance', () => {
           const inspector = page.getByRole('dialog', { name: 'Sync details', exact: true });
           await inspector.waitFor();
           const run = inspector.getByRole('button', { name: 'Run now', exact: true });
-          if (reason === 'queue_unavailable') expect(await run.count()).toBe(0);
+          if (unavailable) expect(await run.count()).toBe(0);
           else expect(await run.isDisabled()).toBe(reason !== 'available');
           const text = {
             available: 'Run now skips the scheduling window.',
@@ -51,14 +66,54 @@ describe('desktop dispatch capability guidance', () => {
           await inspector.getByText(text, { exact: false }).waitFor();
           const capture = async (scene: string) => {
             const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
-            if (!directory) return;
+            if (!directory || !unavailable) return;
             await mkdir(directory, { recursive: true });
             await page.mouse.move(1900, 20);
             await page.screenshot({
-              path: join(directory, `F33-dispatch-capability-${scene}-${theme}.png`),
+              path: join(
+                directory,
+                scene === reason
+                  ? `F33-dispatch-capability-${scene}-${theme}.png`
+                  : `F33-current-status-${reason}-${scene}-${theme}.png`,
+              ),
             });
           };
+          if (unavailable) {
+            await inspector
+              .getByRole('heading', {
+                name:
+                  reason === 'plan_expired'
+                    ? 'These changes have expired'
+                    : 'Execution status unavailable',
+                exact: true,
+              })
+              .waitFor();
+            expect(
+              await inspector
+                .getByRole('heading', { name: 'Execution schedule', exact: true })
+                .count(),
+            ).toBe(0);
+          }
           await capture(reason);
+          if (unavailable) {
+            const url = page.url();
+            await inspector.getByRole('button', { name: 'Refresh status', exact: true }).click();
+            await inspector.getByRole('button', { name: 'Refreshing…', exact: true }).waitFor();
+            await capture('refreshing');
+            await expect.poll(() => release !== undefined).toBe(true);
+            release!();
+            await inspector.getByRole('button', { name: 'Run now', exact: true }).waitFor();
+            await expect
+              .poll(() =>
+                inspector
+                  .getByRole('heading', { name: /changes queued$/ })
+                  .evaluate((heading) => document.activeElement === heading),
+              )
+              .toBe(true);
+            expect(page.url()).toBe(url);
+            expect(posts).toBe(0);
+            await capture('recovered');
+          }
           if (reason === 'available') {
             await run.click();
             await page.getByRole('dialog', { name: 'Sync now?', exact: true }).waitFor();

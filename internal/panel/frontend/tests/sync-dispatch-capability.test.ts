@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { seed } from '../dev/fixtures';
 import { projectMockSyncPlan } from '../dev/sync-capability';
 import { mockSyncRunNow } from '../dev/sync-run-now';
-import { syncDispatchGuidance, syncDispatchIntent } from '../src/lib/sync-dispatch-guidance';
+import {
+  syncDispatchGuidance,
+  syncDispatchIntent,
+  syncPlanExecutionProblem,
+} from '../src/lib/sync-dispatch-guidance';
 import type { SyncDispatchCapability } from '../src/lib/types';
 const now = Date.UTC(2026, 8, 14);
 describe('current dispatch capabilities', () => {
@@ -80,5 +84,36 @@ describe('current dispatch capabilities', () => {
     p.dispatch =
       change === undefined ? undefined : ({ ...p.dispatch!, ...change } as SyncDispatchCapability);
     expect(syncDispatchIntent(p)).toBeNull();
+  });
+});
+
+describe('execution status evidence', () => {
+  it.each([
+    'plan_expired',
+    'plan_changed',
+    'plan_finished',
+    'queue_finished',
+    'queue_unavailable',
+    'state_unsupported',
+  ] as const)('qualifies queued claims for %s', (reason) => {
+    const state = seed(undefined, now);
+    const p = projectMockSyncPlan(state, '2001', state.syncPlans.get('2001')!, now);
+    p.dispatch = { ...p.dispatch!, available: false, reason };
+    expect(syncPlanExecutionProblem(p)).toBeTruthy();
+  });
+  it('keeps role restrictions separate from current execution', () => {
+    const state = seed(undefined, now);
+    const p = projectMockSyncPlan(state, '2001', state.syncPlans.get('2001')!, now);
+    p.dispatch = { ...p.dispatch!, available: false, reason: 'admin_or_owner_required' };
+    expect(syncPlanExecutionProblem(p)).toBeNull();
+    delete p.queue_item;
+    expect(syncPlanExecutionProblem(p)).toBe('Execution status unavailable');
+  });
+  it('never replaces a completed result with a capability message', () => {
+    const state = seed(undefined, now);
+    const p = projectMockSyncPlan(state, '2001', state.syncPlans.get('2001')!, now);
+    p.state = 'applied';
+    p.dispatch = { ...p.dispatch!, available: false, reason: 'plan_expired' };
+    expect(syncPlanExecutionProblem(p)).toBeNull();
   });
 });

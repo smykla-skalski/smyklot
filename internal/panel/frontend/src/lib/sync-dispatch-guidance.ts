@@ -43,3 +43,24 @@ export function syncDispatchIntent(plan: SyncPlan) {
     ? { action: 'dispatch' as const, plan_id: c.plan_id, expected_revision: c.expected_revision! }
     : null;
 }
+
+/** Current execution claims must not outlive the evidence that supports them. */
+export function syncPlanExecutionProblem(plan: SyncPlan): string | null {
+  if (!['approved', 'computed'].includes(plan.state)) return null;
+  const reason = plan.dispatch?.plan_id === plan.id ? plan.dispatch.reason : undefined;
+  switch (reason) {
+    case 'plan_expired':
+      return 'These changes have expired';
+    case 'plan_changed':
+      return 'These changes are out of date';
+    case 'plan_finished':
+    case 'queue_finished':
+      return 'This execution has finished';
+    case 'queue_unavailable':
+      return 'Execution status unavailable';
+    case 'state_unsupported':
+      return 'Execution status needs an update';
+    default:
+      return plan.state === 'approved' && !plan.queue_item ? 'Execution status unavailable' : null;
+  }
+}

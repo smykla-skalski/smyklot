@@ -223,6 +223,16 @@
       if (retryingPlanId === id) retryingPlanId = null;
     }
   }
+  let refreshingPlan = $state(false);
+  async function refreshInspectedPlan(): Promise<void> {
+    if (refreshingPlan) return;
+    refreshingPlan = true;
+    try {
+      await (selectedPlanId === null ? planQuery : selectedPlanQuery).refetch();
+    } finally {
+      refreshingPlan = false;
+    }
+  }
   const selectedPlanProblem = $derived(syncResultProblem(selectedPlanQuery.error));
   const inspectedPlan = $derived(
     selectedPlanId === null
@@ -745,6 +755,8 @@ Live plan and status queries share the shell's event invalidation and polling fa
       <SyncPlanPage
         embedded
         plan={inspectedPlan}
+        refreshing={refreshingPlan}
+        onRefresh={refreshInspectedPlan}
         {nowMs}
         {readOnly}
         {canControl}
