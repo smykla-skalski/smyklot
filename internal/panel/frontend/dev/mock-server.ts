@@ -1,3 +1,4 @@
+import { advanceMockSync } from './sync-execution.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
 import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
 import {
@@ -741,7 +742,14 @@ function install(httpServer: DevHttpServer | null | undefined, middlewares: Conn
  * measuring a table cannot have the table re-sort itself half way through the measurement.
  */
 function runReconciler(state: MockState): void {
-  if (process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN === '1') return;
+  if (process.env.SMYKLOT_PANEL_DEV_MOCK_FROZEN === '1') {
+    if (process.env.SMYKLOT_PANEL_DEV_MOCK_SYNC_LIVE === '1') {
+      setInterval(() => {
+        if (advanceMockSync(state, Date.now())) broadcast(state, { type: 'resync' });
+      }, 1_000).unref();
+    }
+    return;
+  }
   setInterval(() => reconcile(state), 1_000).unref();
 }
 
@@ -766,6 +774,7 @@ function reconcile(state: MockState): void {
   }
 
   if (advanceQueue(state, now)) changed = true;
+  if (advanceMockSync(state, now)) changed = true;
 
   if (changed) broadcast(state, { type: 'resync' });
 }
@@ -809,6 +818,7 @@ function advanceQueue(state: MockState, now: number): boolean {
   const looping = state.queue.filter((item) => state.queueRest.has(item.id));
 
   for (const [index, item] of state.queue.entries()) {
+    if (item.kind === 'sync_apply' || item.kind === 'sync_scan') continue;
     const next = advanceQueueItem(state, item, now, looping.indexOf(item), looping.length);
     if (next === item) continue;
     state.queue[index] = next;
@@ -1947,6 +1957,9 @@ async function handle(
       const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
       respond(res, 200, {
         ...mockQueueDetail(item),
+        ...(state.syncQueueEvents.has(item.id)
+          ? { events: structuredClone(state.syncQueueEvents.get(item.id)) }
+          : {}),
         delivery: mockRecoveryOperation(state.queue, item),
       });
       return;

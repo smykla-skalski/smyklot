@@ -1,8 +1,9 @@
+import { recordMockSyncEvent } from './sync-queue.js';
 import { randomUUID } from 'node:crypto';
 import type { MockState } from './fixtures.js';
 import type { QueueItem, SyncPlan, SyncRunNowResponse } from '../src/lib/types.js';
 
-type State = Pick<MockState, 'queue' | 'syncPlans'>;
+type State = Pick<MockState, 'queue' | 'syncPlans' | 'syncQueueEvents'>;
 type Reply =
   | { status: 200 | 202; body: SyncRunNowResponse }
   | { status: 400 | 409; body: { code: string; message: string } };
@@ -98,6 +99,7 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
       actions: ['run_now', 'next_window', 'schedule_at', 'set_priority', 'cancel'],
     };
     state.queue.push(item);
+    recordMockSyncEvent(state, item, 'created', item.title, at);
   }
   return {
     status: 202,
@@ -130,5 +132,6 @@ function request(state: State, item: QueueItem, reason: string, now: number): Qu
   delete updated.lease_expires_at;
   delete updated.finished_at;
   state.queue[state.queue.indexOf(item)] = updated;
+  recordMockSyncEvent(state, updated, 'action.run_now', `Run now requested: ${reason}`, at);
   return updated;
 }

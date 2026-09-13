@@ -49,6 +49,7 @@ import type {
   RootPanelUser,
   PendingCIRequest,
   QueueItem,
+  QueueEvent,
   WorkspaceRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -231,6 +232,7 @@ export interface MockState {
   sync: Map<string, SyncConfig>;
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
+  syncQueueEvents: Map<string, QueueEvent[]>;
   syncPlans: Map<string, SyncPlan>;
   syncHistory: Map<string, SyncPlan[]>;
   /** The fleet: where every covered repository stands, per workspace. */
@@ -779,6 +781,7 @@ export function seed(
         },
       ],
     ]),
+    syncQueueEvents: new Map(),
     syncHistory: new Map([
       [
         organization.value.id,
