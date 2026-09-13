@@ -56,6 +56,9 @@ func DeclareSpecs(harness Harness) {
 	declareServiceSampleSpecs(func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})
+	declareFailureQueueSpecs(harness, func() (context.Context, storage.Store, time.Time) {
+		return ctx, store, now
+	})
 	declareRuntimeSettingsHistorySpecs(harness, func() (context.Context, storage.Store, time.Time) {
 		return ctx, store, now
 	})

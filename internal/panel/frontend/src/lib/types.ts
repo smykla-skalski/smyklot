@@ -1153,6 +1153,8 @@ export type AuditCategory =
 
 export interface DeliveryFailure {
   id: string;
+  /** Only present when the server found a retained queue record for this delivery. */
+  queue_item_id?: string;
   workspace?: PanelAccount;
   delivery_id: string;
   repository_full_name: string;

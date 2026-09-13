@@ -465,16 +465,20 @@ FROM queue_items WHERE source_kind = 'delivery' AND state = 'retrying' AND updat
 
 const failureSelect = `
 SELECT
-    id,
-    delivery_id,
-    target_id,
-    repository_full_name,
-    event,
-    stage,
-    reason,
-    retryable,
-    finished_at
-FROM deliveries`
+    deliveries.id,
+    deliveries.delivery_id,
+    deliveries.target_id,
+    deliveries.repository_full_name,
+    deliveries.event,
+    deliveries.stage,
+    deliveries.reason,
+    deliveries.retryable,
+    deliveries.finished_at,
+    failure_queue.id
+FROM deliveries
+LEFT JOIN queue_items failure_queue
+  ON failure_queue.id = 'delivery:' || CAST(deliveries.id AS TEXT)
+  AND failure_queue.target_id = deliveries.target_id`
 
 // ListFailures returns one filtered page of sanitized delivery failures.
 func (s *Store) ListFailures(
@@ -514,17 +518,17 @@ func (s *Store) ListFailures(
 func failurePageOrder(order storage.HistoryOrder) (string, error) {
 	switch order {
 	case "", storage.HistoryNewest:
-		return "id DESC", nil
+		return "deliveries.id DESC", nil
 	case storage.HistoryOldest:
-		return "id ASC", nil
+		return "deliveries.id ASC", nil
 	case storage.HistoryStatusAscending:
-		return "retryable ASC, id DESC", nil
+		return "deliveries.retryable ASC, deliveries.id DESC", nil
 	case storage.HistoryStatusDescending:
-		return "retryable DESC, id DESC", nil
+		return "deliveries.retryable DESC, deliveries.id DESC", nil
 	case storage.HistoryRepositoryAscending:
-		return caseFold("repository_full_name") + " ASC, id DESC", nil
+		return caseFold("deliveries.repository_full_name") + " ASC, deliveries.id DESC", nil
 	case storage.HistoryRepositoryDescending:
-		return caseFold("repository_full_name") + " DESC, id DESC", nil
+		return caseFold("deliveries.repository_full_name") + " DESC, deliveries.id DESC", nil
 	default:
 		return "", fmt.Errorf("unsupported failure order %q", order)
 	}
@@ -534,19 +538,22 @@ func failureFilters(
 	targetID string,
 	page storage.FailurePageRequest,
 ) ([]string, []any) {
-	clauses := []string{queryTargetIDEquals, "status = ?"}
+	clauses := []string{"deliveries.target_id = ?", "deliveries.status = ?"}
 	arguments := []any{targetID, storage.DeliveryFailed}
 	if page.Query != "" {
-		columns := []string{"delivery_id", "repository_full_name", "event", "stage", "reason"}
+		columns := []string{
+			"deliveries.delivery_id", "deliveries.repository_full_name",
+			"deliveries.event", "deliveries.stage", "deliveries.reason",
+		}
 		clauses = append(clauses, containsAnyClause(columns...))
 		arguments = append(arguments, containsArguments(page.Query, len(columns))...)
 	}
 	if page.Retryable != nil {
-		clauses = append(clauses, "retryable = ?")
+		clauses = append(clauses, "deliveries.retryable = ?")
 		arguments = append(arguments, *page.Retryable)
 	}
 	if page.Since != nil {
-		clauses = append(clauses, "finished_at >= ?")
+		clauses = append(clauses, "deliveries.finished_at >= ?")
 		arguments = append(arguments, *page.Since)
 	}
 
@@ -596,6 +603,7 @@ SELECT COUNT(*) FROM deliveries WHERE id = ?`, claimID).Scan(&exists); err != ni
 func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 	var failure storage.DeliveryFailure
 	var occurredAt StoredTime
+	var queueItemID sql.NullString
 
 	if err := scanner.Scan(
 		&failure.ID,
@@ -607,11 +615,13 @@ func scanDeliveryFailure(scanner rowScanner) (storage.DeliveryFailure, error) {
 		&failure.Reason,
 		&failure.Retryable,
 		&occurredAt,
+		&queueItemID,
 	); err != nil {
 		return storage.DeliveryFailure{}, err
 	}
 
 	failure.OccurredAt = occurredAt.Time()
+	failure.QueueItemID = stringPointer(queueItemID)
 
 	return failure, nil
 }

@@ -1275,6 +1275,7 @@ func TestPanelRootOverview(t *testing.T) {
 		`"status":"healthy"`, `"version":"1.0.0"`,
 		`"workspaces":1`, `"repositories":1`,
 		`"fresh":1`, `"delivery_id":"overview-failure"`,
+		`"queue_item_id":"delivery:`,
 		`"storage":"healthy"`,
 		`"database":{"state":"healthy","engine":"`+engine+`","version":"`,
 	)
@@ -1297,6 +1298,7 @@ func TestPanelRootOverview(t *testing.T) {
 	requireResponse(
 		t, failures, "Root failures", http.StatusOK,
 		`"delivery_id":"overview-failure"`, `"login":"smykla-skalski"`,
+		`"queue_item_id":"delivery:`,
 	)
 	invalid := harness.request(
 		t, http.MethodGet, "/panel/api/v1/root/history/audit?category=unknown", nil, rootSession,
@@ -2607,6 +2609,12 @@ func assertFailureHistory(t *testing.T, harness *panelHarness, targetPath string
 		failurePage.Items[0].DeliveryID != "delivery-retryable" {
 		t.Fatalf("unexpected failure page: %#v", failurePage)
 	}
+	queueID := failurePage.Items[0].QueueItemID
+	if queueID == nil || *queueID != "delivery:"+failurePage.Items[0].ID {
+		t.Fatalf("failure queue reference = %v", queueID)
+	}
+	queueItem := harness.request(t, http.MethodGet, targetPath+"/queue/"+*queueID, nil, session)
+	requireResponse(t, queueItem, "failure queue record", http.StatusOK, `"id":"`+*queueID+`"`)
 
 	statusAscending := harness.request(
 		t,

@@ -206,6 +206,7 @@ type auditResponse struct {
 
 type failureResponse struct {
 	ID                 string    `json:"id"`
+	QueueItemID        *string   `json:"queue_item_id,omitempty"`
 	DeliveryID         string    `json:"delivery_id"`
 	RepositoryFullName string    `json:"repository_full_name"`
 	Event              string    `json:"event"`
@@ -526,6 +527,7 @@ func failurePageDTO(page storage.FailurePage) pageResponse[failureResponse] {
 func failureDTO(failure storage.DeliveryFailure) failureResponse {
 	return failureResponse{
 		ID: strconv.FormatInt(failure.ID, 10), DeliveryID: failure.DeliveryID,
+		QueueItemID:        failure.QueueItemID,
 		RepositoryFullName: failure.RepositoryFullName, Event: failure.Event,
 		Stage: failure.Stage, Reason: failure.Reason,
 		Retryable: failure.Retryable, OccurredAt: failure.OccurredAt,

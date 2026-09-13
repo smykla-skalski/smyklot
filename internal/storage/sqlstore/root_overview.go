@@ -135,16 +135,18 @@ func scanRootFailure(scanner rowScanner) (storage.RootFailure, error) {
 	var item storage.RootFailure
 	var occurredAt, accountUpdatedAt StoredTime
 	var avatar sql.NullString
+	var queueItemID sql.NullString
 	if err := scanner.Scan(
 		&item.Failure.ID, &item.Failure.DeliveryID, &item.Failure.TargetID,
 		&item.Failure.RepositoryFullName, &item.Failure.Event, &item.Failure.Stage,
-		&item.Failure.Reason, &item.Failure.Retryable, &occurredAt,
+		&item.Failure.Reason, &item.Failure.Retryable, &occurredAt, &queueItemID,
 		&item.Target.ID, &item.Target.Provider, &item.Target.SubjectID,
 		&item.Target.Login, &item.Target.DisplayName, &avatar, &accountUpdatedAt,
 	); err != nil {
 		return storage.RootFailure{}, err
 	}
 	item.Failure.OccurredAt = occurredAt.Time()
+	item.Failure.QueueItemID = stringPointer(queueItemID)
 	item.Target.UpdatedAt = accountUpdatedAt.Time()
 	item.Target.AvatarURL = stringPointer(avatar)
 

@@ -758,7 +758,9 @@ type DeliveryFailureChange struct {
 
 // DeliveryFailure is a persisted, sanitized failure shown to operators.
 type DeliveryFailure struct {
-	ID                 int64
+	ID int64
+	// QueueItemID is absent for failures whose queue record is not retained.
+	QueueItemID        *string
 	DeliveryID         string
 	TargetID           string
 	RepositoryFullName string
