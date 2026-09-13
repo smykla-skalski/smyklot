@@ -17,13 +17,11 @@
   import NightMeteors from './NightMeteors.svelte';
   import NightRocket from './NightRocket.svelte';
   import NightSky from './NightSky.svelte';
-  import PageFooter from './PageFooter.svelte';
   import ThemeSwitch from './ThemeSwitch.svelte';
 
   const {
     title,
     documentTitle,
-    build,
     busy = false,
     size = 'default',
     children,
@@ -49,20 +47,8 @@
      it, which is what the sky is drawn around. */
   const MARK_SIZE = 104;
 
-  /* The sky measures itself against the gap above the card, and a compact card
-     leaves a much larger one, so the same percentage reaches further down and
-     the fade ends up under the footer rather than above it: at 1280x900 the
-     invitation's sky finishes 79px above the footer and the compact page's
-     finished 120px below it, taking the footer's host line to 4.12:1.
-     It is squeezed from both ends. The title is light ink and needs dark sky
-     behind it, the footer is dark ink and needs to be clear of the fade, and a
-     short card puts the two closer together than any other page does. Swept
-     200-480% against both, in light, at 390x844, 768x700, 1280x900 and
-     1920x1200: below 350% the title falls to 3.32:1 on a phone, the 480% default
-     drops the footer to 4.12:1, and 400% is the one value where everything
-     clears - worst case 4.63:1.
-     `undefined` leaves NightSky's own default, so the pages that want it keep
-     the number in one place. */
+  /* Compact cards leave a larger gap above them. Bound their sky while keeping
+     the title on its dark ground; other pages retain NightSky's default. */
   const skyHeight = $derived(size === 'compact' ? 'clamp(44rem, 400%, 72rem)' : undefined);
 
   /* The same synced document the panel writes, without the stream behind it: a
@@ -181,8 +167,6 @@ are written once.
         {@render children()}
       </div>
     </section>
-
-    <PageFooter {build} />
   </div>
 </main>
 

@@ -18,9 +18,7 @@ explicitly documented.
 
 Decorative gold, gradients, glows, glass surfaces, decorative motion, left-edge content
 accents, and mixed icon families are not part of the panel system. The official
-Smyklot avatar and the three-pixel closing rule above the app footer may retain the
-brand rainbow. The closing rule moves its seamless, full-hue repeated spectrum
-slowly to the right, with reduced-motion preferences disabling the movement.
+Smyklot avatar may retain the brand rainbow.
 Gold has one functional exception: unsaved state and the action that resolves it,
 specified under Settings interaction laws
 
@@ -873,3 +871,27 @@ erase the state being reviewed
 - No content hidden behind fixed navigation
 - Loading surfaces reserve their final geometry
 - Light and dark states are tested independently
+
+## Build information placement
+
+Panel version and service host belong once at the bottom of the Pages sidebar,
+the wider navigation rail beside the workspace icons. They are quiet supporting
+information, not a page footer, status alert, or primary action. Use shared muted
+text and compact spacing. Align values in a shared column and align each label
+with its value on the same baseline across browsers, without relying on text trimming. Keep long values
+inside the rail with ellipsis while preserving their full accessible text and title.
+
+Anchor this block below navigation without covering links or making the page
+content pay for its height. Keep it within the sidebar drawer on smaller screens.
+A collapsed rail must not squeeze version or host text into unreadable fragments.
+Pages without that sidebar, including signed-out and error pages, have no build
+footer. Dialog action footers and list pagination remain part of their controls.
+
+Enforce placement through the shared shell and sidebar, with regression coverage
+for missing build data, long values, and the absence of page-level build footers.
+
+The navigation overflow shadow appears only while links remain below the visible
+scroll area. It disappears at the end and when all links fit, including after
+resize or navigation changes. Its horizontal bounds follow the sidebar divider,
+with a soft fade to transparent at both ends instead of a clipped rectangular band.
+It must not leave permanent haze or double the separator above build information.

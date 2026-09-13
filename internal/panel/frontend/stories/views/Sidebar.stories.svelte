@@ -148,6 +148,7 @@
       title: 'Smykla Skalski',
       entries: WORKSPACE_ENTRIES,
       collapsed: false,
+      build: { version: '1.56.0', serviceHost: 'smyklot.com' },
       onToggleCollapsed: fn(),
       onSelectRow: fn(),
     },

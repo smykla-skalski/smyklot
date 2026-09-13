@@ -20,7 +20,7 @@
 </script>
 
 <!--
-  The page every signed-out address uses: the sky, a card on it, and the footer. The
+  The page every signed-out address uses: the sky and a card on it. The
   card is a straight-through quiet zone - nothing crosses behind it.
 -->
 <Story name="Default">

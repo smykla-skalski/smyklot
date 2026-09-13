@@ -27,8 +27,8 @@ describe('the responsive shell [Unit]', () => {
      inside a page that scrolls, and neither states a height.
 
      A bare `height`, not `min-height`: the shell and the workspace are both at
-     least as tall as the viewport, which is what puts the footer at the bottom of
-     a short page. That is a floor and it is what a page does. What glued was the
+     least as tall as the viewport, which gives a short page a full-height content
+     surface. That is a floor and it is what a page does. What glued was the
      pair - an exact `100dvh` with `overflow: hidden`, which caps the page at the
      window and moves the scrolling inside it. A dialog may still be viewport-tall;
      it is not the page. */
@@ -37,6 +37,45 @@ describe('the responsive shell [Unit]', () => {
     const glued = [...shell.matchAll(/^\s*(?:block-size|height):\s*100dvh/gmu)];
 
     expect(glued.map((one) => one[0].trim())).toEqual([]);
+  });
+
+  it('keeps build information in existing navigation rather than page content', () => {
+    const layout = source('routes/+layout.svelte');
+    const night = source('lib/components/NightPage.svelte');
+    const sidebar = source('lib/components/Sidebar.svelte');
+    expect(layout).not.toContain('PageFooter');
+    expect(night).not.toContain('PageFooter');
+    expect(layout).toMatch(/\{#if showSidebar\}\s*<Sidebar[^>]*\{build\}/su);
+    expect(sidebar).toMatch(/sidebar-collapsed\) \.sidebar-build\s*\{\s*display: none/su);
+    expect(source('app.css')).not.toMatch(/\.workspace > \.foot/u);
+  });
+
+  it('fully masks the inset scroll cue when navigation reaches its end', () => {
+    const sidebar = source('lib/components/Sidebar.svelte');
+    // A cover that starts fading at the edge leaves a permanent residual shadow,
+    // even when the tree fits. Its opaque band must span the complete shadow.
+    expect(sidebar).toMatch(
+      /linear-gradient\(to top, var\(--sidebar-bg\) var\(--space-3\), transparent\)/u,
+    );
+    expect(sidebar).toMatch(/background-attachment: local, scroll/u);
+    expect(sidebar).toMatch(
+      /radial-gradient\(\s*ellipse 50% 100% at 50% 100%,\s*var\(--sidebar-scroll-shadow\),\s*transparent\s*\)/su,
+    );
+    expect(sidebar).toMatch(
+      /background-size:\s*calc\(100% - 2 \* var\(--space-3\)\) var\(--space-8\),\s*calc\(100% - 2 \* var\(--space-3\)\) var\(--space-3\)/su,
+    );
+    expect(sidebar).toMatch(
+      /background-size:\s*calc\(100% - 23px\) var\(--space-8\),\s*calc\(100% - 23px\) var\(--space-3\)/su,
+    );
+  });
+
+  it('aligns build metadata with consistent line boxes in browsers without text trimming', () => {
+    const info = source('lib/components/BuildInfo.svelte');
+    expect(info).not.toMatch(/text-box:/u);
+    expect(info).toMatch(/dl > div\s*\{[^}]*align-items:\s*baseline/su);
+    // Line height supplies the visible row gap; a grid gap would add it twice.
+    expect(info).toMatch(/dl\s*\{[^}]*row-gap:\s*0/su);
+    expect(info).toMatch(/line-height:\s*var\(--row-copy-leading\)/u);
   });
 
   /* The pages that stand OUTSIDE the panel centre themselves.
