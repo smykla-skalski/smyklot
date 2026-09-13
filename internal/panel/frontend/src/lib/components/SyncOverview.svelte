@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from 'svelte';
   import { formatRelative, formatUntil } from '../format';
   import {
     SYNC_KINDS,
@@ -35,6 +36,8 @@
     readOnly = false,
     canControl = false,
     busy = false,
+    checkPending = false,
+    feedback,
     onCheck = () => {},
     onDetails = () => {},
     repositoryHref = null,
@@ -56,6 +59,8 @@
     readOnly?: boolean;
     canControl?: boolean;
     busy?: boolean;
+    checkPending?: boolean;
+    feedback?: Snippet;
     onCheck?: () => void;
     onDetails?: (trigger: HTMLElement) => void;
     repositoryHref?: ((repository: string) => string) | null;
@@ -147,11 +152,12 @@ beside the affected repository. Change details open over this view, preserving c
   >
     {#snippet actions()}
       <Button tone="quiet" onclick={() => onOpenSection('history')}>Sync history</Button>
-      {#if canControl && !ongoing}<Button disabled={busy} onclick={onCheck}
+      {#if canControl && !ongoing && !checkPending}<Button disabled={busy} onclick={onCheck}
           >{busy ? 'Checking…' : 'Check now'}</Button
         >{/if}
     {/snippet}
   </PageHeader>
+  {@render feedback?.()}
 
   <Card>
     <div class="card-head verdict-head">

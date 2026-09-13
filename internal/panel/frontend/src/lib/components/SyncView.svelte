@@ -1,5 +1,7 @@
 <script lang="ts">
-  import { untrack } from 'svelte';
+  import { untrack, onMount } from 'svelte';
+  import { SyncCheckIntentStore, type SyncCheckIntent } from '#lib/sync-check-intent.js';
+  import Callout from './Callout.svelte';
   import { receipts } from '#lib/receipts.svelte.js';
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -67,6 +69,7 @@
 
   const {
     targetId,
+    actorId = '',
     section,
     rulesetName = null,
     fileName = null,
@@ -115,6 +118,7 @@
     queueHref?: string | null;
     repositoryHref?: ((repository: string) => string) | null;
     targetId: string;
+    actorId?: string;
     lookupBypassActors?: BypassActorLookup;
     /** Which of the view's sections the address names; see `routes.ts`. */
     section: SyncSection;
@@ -253,6 +257,24 @@
   let runningNow = $state(false);
   let runNotice = $state('');
   let requestedCheckId = $state<string | null>(null);
+  let pendingCheck = $state.raw<SyncCheckIntent | null>(null);
+  let checkStorageProblem = $state<string | null>(null);
+  let checkUncertain = $state(false);
+  let checkStore: SyncCheckIntentStore | null = null;
+  onMount(() => {
+    if (!actorId) {
+      checkStorageProblem = 'Your account must be loaded before requesting a check.';
+      return;
+    }
+    try {
+      checkStore = new SyncCheckIntentStore(window.sessionStorage, actorId, targetId);
+      pendingCheck = checkStore.read();
+      checkUncertain = pendingCheck !== null;
+    } catch {
+      checkStorageProblem =
+        'The previous check request could not be read from browser storage. New checks are paused to avoid repeating work.';
+    }
+  });
 
   let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
@@ -481,22 +503,57 @@
   }
 
   async function onRunNow(input: SyncRunNowInput): Promise<void> {
+    if (runningNow) return;
+    if (
+      input.action === 'check' &&
+      pendingCheck &&
+      input.request_key !== pendingCheck.request_key
+    ) {
+      error = 'Recover the previous check request before starting another check.';
+      return;
+    }
     const requestTargetId = targetId;
     runningNow = true;
     error = null;
     runNotice = '';
     requestedCheckId = null;
     try {
+      if (input.action === 'check') {
+        if (!checkStore || (checkStorageProblem && !pendingCheck))
+          throw new Error('Browser storage is unavailable. The check has not been sent.');
+        pendingCheck = checkStore.begin(input.reason);
+        input = pendingCheck;
+      }
       const response = await runSyncNow(requestTargetId, input);
+      if (input.action === 'check') {
+        if (response.status !== 'check_accepted' && response.status !== 'changes_pending')
+          throw new Error(
+            'The check response could not be confirmed. Recover the request before starting another.',
+          );
+        if (response.status === 'check_accepted' && !response.check_id)
+          throw new Error(
+            'The accepted check did not include its identity. Recover the request before starting another.',
+          );
+        if (response.status === 'check_accepted') {
+          requestedCheckId = response.check_id!;
+          runNotice = 'Your check request was accepted. Open the check to see its current result.';
+        }
+        try {
+          checkStore!.clear(input.request_key!);
+          pendingCheck = null;
+          checkUncertain = false;
+          checkStorageProblem = null;
+        } catch {
+          checkUncertain = true;
+          checkStorageProblem =
+            'The check response was received, but its saved request could not be cleared. New checks are paused.';
+        }
+      }
       if (response.plan !== undefined) {
         queryClient.setQueryData(['sync-plan', requestTargetId], { plan: response.plan });
         queryClient.setQueryData(['sync-plan', requestTargetId, response.plan.id], {
           plan: response.plan,
         });
-      }
-      if (response.status === 'scan_queued') {
-        requestedCheckId = response.queue_item?.id ?? null;
-        runNotice = 'Repository check queued. Results will update when it finishes.';
       }
       if (response.status === 'plan_dispatched')
         receipts.say('Your selected changes are queued to run now');
@@ -507,6 +564,7 @@
         runNotice = 'An earlier sync needs a one-time decision · open Review changes';
       if (response.status === 'already_running') runNotice = 'Sync is already running';
     } catch (cause) {
+      if (input.action === 'check' && pendingCheck) checkUncertain = true;
       error = messageOf(cause);
     } finally {
       runningNow = false;
@@ -534,18 +592,46 @@ Save publishes the desired state, and the service reconciles it automatically.
 Live plan and status queries share the shell's event invalidation and polling fallback.
 -->
 
-{#if section === 'overview' || section === 'plan' || section === 'history'}
-  {#if error !== null}
-    <FormError message={error} />
+{#snippet requestFeedback()}
+  {#if checkStorageProblem || (pendingCheck && checkUncertain) || error !== null || planQuery.error || statusQuery.error || runNotice !== ''}
+    <div class="sync-feedback">
+      {#if checkStorageProblem}<FormError message={checkStorageProblem} />{/if}
+      {#if pendingCheck && checkUncertain}
+        <Callout role="status">
+          <div class="callout-copy">
+            <strong>Check request needs confirmation</strong>
+            <p>
+              The previous request may already have been accepted. Recover it before starting
+              another check.
+            </p>
+          </div>
+          {#snippet actions()}
+            {#if canControl}<Button
+                disabled={runningNow}
+                onclick={() => pendingCheck && void onRunNow(pendingCheck)}
+                >{runningNow ? 'Recovering…' : 'Recover check'}</Button
+              >
+            {:else}<span>You need Admin or Owner access to recover this request.</span>{/if}
+          {/snippet}
+        </Callout>
+      {/if}
+      {#if error !== null}
+        <FormError message={error} />
+      {/if}
+      {#if planQuery.error || statusQuery.error}<FormError
+          message={messageOf(planQuery.error ?? statusQuery.error)}
+        />{/if}
+      {#if runNotice !== ''}<div class="sync-run-notice" role="status">
+          <p>{runNotice}</p>
+          {#if requestedCheckId}<Link href={checkHref(requestedCheckId)}>View check</Link>{/if}
+        </div>{/if}
+    </div>
   {/if}
-  {#if planQuery.error || statusQuery.error}<FormError
-      message={messageOf(planQuery.error ?? statusQuery.error)}
-    />{/if}
-  {#if runNotice !== ''}<div class="sync-run-notice" role="status">
-      <p>{runNotice}</p>
-      {#if requestedCheckId}<Link href={checkHref(requestedCheckId)}>View check</Link>{/if}
-    </div>{/if}
+{/snippet}
+
+{#if section === 'overview' || section === 'plan' || section === 'history'}
   {#if section === 'history'}
+    {@render requestFeedback()}
     <SyncHistory
       {targetId}
       {nowMs}
@@ -556,6 +642,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
     />
   {:else if syncStatus !== null}
     <SyncOverview
+      feedback={requestFeedback}
       status={syncStatus}
       savedConfigs={canonicalConfigs}
       {permissionsHref}
@@ -571,6 +658,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {repositoryHref}
       {canControl}
       busy={runningNow}
+      checkPending={pendingCheck !== null || checkStorageProblem !== null}
       onCheck={() => void onRunNow({ action: 'check', reason: 'Check sync from the status view' })}
       onDetails={openDetails}
       {sectionHref}
@@ -579,8 +667,9 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {dirtyControls}
       {readOnly}
     />
-  {:else if !statusQuery.error}
-    <p role="status">Loading sync status…</p>
+  {:else}
+    {@render requestFeedback()}
+    {#if !statusQuery.error}<p role="status">Loading sync status…</p>{/if}
   {/if}
   <Modal
     id="sync-details"
@@ -744,9 +833,16 @@ Live plan and status queries share the shell's event invalidation and polling fa
     background: var(--surface-base);
   }
 
+  .sync-feedback {
+    display: grid;
+    gap: var(--space-3);
+  }
+
   .sync-run-notice {
     color: var(--text-secondary);
-    margin: var(--space-3) 0;
-    padding-block: var(--space-2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
   }
 </style>

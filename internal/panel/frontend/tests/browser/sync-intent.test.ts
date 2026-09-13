@@ -37,6 +37,7 @@ describe('desktop sync request intent', () => {
         await page.getByRole('button', { name: 'Check now', exact: true }).click();
         expect((await checkRequest).postDataJSON()).toEqual({
           action: 'check',
+          request_key: expect.any(String),
           reason: 'Check sync from the status view',
         });
         await page

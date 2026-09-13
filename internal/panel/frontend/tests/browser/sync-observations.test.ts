@@ -213,13 +213,16 @@ describe('desktop repository observation evidence', () => {
               requests++;
               expect(route.request().method()).toBe('POST');
               expect(route.request().postDataJSON().reason).toBe('Check sync from the status view');
-              return route.fulfill({ json: { status: 'scan_queued', queue_item: check } });
+              return route.fulfill({ json: { status: 'check_accepted', check_id: check.id } });
             });
             await page.getByRole('button', { name: 'Check now', exact: true }).click();
             await page
-              .getByText('Repository check queued. Results will update when it finishes.', {
-                exact: true,
-              })
+              .getByText(
+                'Your check request was accepted. Open the check to see its current result.',
+                {
+                  exact: true,
+                },
+              )
               .waitFor();
             expect(requests).toBe(1);
             await captureRecovery('queued');
@@ -232,7 +235,10 @@ describe('desktop repository observation evidence', () => {
             await inspector.getByRole('heading', { name: check.title, exact: true }).waitFor();
             check.summary = 'Checked 4 repository settings: 4 matched.';
             check.state = 'succeeded';
-            await inspector.getByText(check.summary, { exact: true }).waitFor({ timeout: 20_000 });
+            await inspector
+              .getByRole('region', { name: 'Check outcome', exact: true })
+              .getByText(check.summary, { exact: true })
+              .waitFor({ timeout: 20_000 });
             await captureRecovery('check-complete');
             await inspector.getByRole('button', { name: 'Close', exact: true }).click();
             await page.waitForURL(/\/sync$/u);

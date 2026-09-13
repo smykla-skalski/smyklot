@@ -161,9 +161,10 @@ history is routed with its section. That is what makes an address like
       {#await import('./SyncView.svelte')}
         {@render loadingView('sync')}
       {:then { default: SyncView }}
-        {#key session.selectedTarget.id}
+        {#key JSON.stringify([session.viewer?.account.id, session.selectedTarget.id])}
           <SyncView
             checkEvidenceApi={session.api}
+            actorId={session.viewer?.account.id ?? ''}
             organizationActors={session.selectedTarget.type === 'Organization'}
             targetId={session.selectedTarget.id}
             section={session.currentSyncSection}
