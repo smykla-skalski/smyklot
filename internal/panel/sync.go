@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
@@ -267,17 +266,6 @@ func syncSettingsDetail(action orgsync.Action) *syncDetailDTO {
 	}
 
 	return detail
-}
-
-type syncRunNowInput struct {
-	ExpectedRevision int64  `json:"expected_revision"`
-	Reason           string `json:"reason"`
-}
-
-type syncRunNowResponse struct {
-	Status string          `json:"status"`
-	Plan   *syncPlanDTO    `json:"plan,omitempty"`
-	Queue  *workqueue.Item `json:"queue_item,omitempty"`
 }
 
 // syncKind reads the kind from the address, refusing one this version does not
@@ -596,99 +584,6 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto})
-}
-
-func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSameOrigin(w, r) {
-		return
-	}
-	account, target, access, ok := s.requireTarget(w, r, false)
-	if !ok {
-		return
-	}
-	if access.Role != storage.InstallationRoleAdmin && access.Role != storage.InstallationRoleOwner {
-		s.writeError(w, http.StatusForbidden, "forbidden", "Admin or Owner access is required")
-		return
-	}
-	var input syncRunNowInput
-	if !decodeJSON(w, r, &input) {
-		return
-	}
-	input.Reason = strings.TrimSpace(input.Reason)
-	if input.Reason == "" {
-		s.writeError(w, http.StatusBadRequest, "invalid_request", "run now requires a reason")
-		return
-	}
-	plan, actions, err := s.store.GetLiveSyncPlan(r.Context(), target.ID)
-	if err == nil {
-		s.handleLiveSyncRunNow(w, r, account, target, access.Role, input, plan, actions)
-		return
-	}
-	if !errors.Is(err, storage.ErrNotFound) {
-		s.writeStorageError(w, err)
-		return
-	}
-	item, err := s.store.RequestRecurringWork(r.Context(), workqueue.RecurringRequest{
-		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
-		Title: "Check which repositories are in step", ActorID: account.ID,
-		Reason: input.Reason, Now: s.now().UTC(),
-	})
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	prepareQueueItem(&item, true, false)
-	s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
-	s.wakeScheduledWork(workqueue.LaneMaintenance)
-	writeJSON(w, http.StatusAccepted, syncRunNowResponse{Status: "scan_queued", Queue: &item})
-}
-
-func (s *Server) handleLiveSyncRunNow(
-	w http.ResponseWriter,
-	r *http.Request,
-	account storage.Account,
-	target storage.Target,
-	role storage.InstallationRole,
-	input syncRunNowInput,
-	plan orgsync.Plan,
-	actions []orgsync.Action,
-) {
-	dto, err := s.syncPlanDTO(r.Context(), plan, actions, role)
-	if err != nil {
-		s.writeStorageError(w, err)
-		return
-	}
-	switch plan.State {
-	case orgsync.PlanComputed:
-		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "approval_required", Plan: &dto})
-	case orgsync.PlanApplying:
-		writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "already_running", Plan: &dto})
-	case orgsync.PlanApproved:
-		if dto.Queue == nil || input.ExpectedRevision != dto.Queue.Revision {
-			writeJSON(w, http.StatusConflict, map[string]any{
-				jsonFieldCode: errorCodeStaleRevision, jsonFieldMessage: "sync queue item changed; review the latest state",
-				jsonFieldCurrent: dto,
-			})
-			return
-		}
-		item, actionErr := s.store.ApplyQueueAction(r.Context(), dto.Queue.ID, workqueue.ItemAction{
-			Type: workqueue.ActionRunNow, ExpectedRevision: input.ExpectedRevision,
-			ActorID: account.ID, Reason: input.Reason, ChangedAt: s.now().UTC(),
-		})
-		if actionErr != nil {
-			s.writeStorageError(w, actionErr)
-			return
-		}
-		prepareQueueItem(&item, true, false)
-		dto.Queue = &item
-		s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
-		s.wakeScheduledWork(workqueue.LaneMaintenance)
-		writeJSON(w, http.StatusAccepted, syncRunNowResponse{
-			Status: "plan_dispatched", Plan: &dto, Queue: &item,
-		})
-	default:
-		s.writeError(w, http.StatusConflict, "unsupported_plan_state", "sync plan cannot run now")
-	}
 }
 
 func (s *Server) syncPlanDTO(

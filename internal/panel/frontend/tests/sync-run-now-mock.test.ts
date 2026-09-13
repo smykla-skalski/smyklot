@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { mockSyncHistory } from '../dev/sync-history.js';
 import { seed } from '../dev/fixtures.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from '../dev/sync-run-now.js';
 
 const now = Date.UTC(2026, 8, 13);
-const input = { reason: 'Check sync from the status view' };
+const input = { action: 'check', reason: 'Check sync from the status view' };
 
 describe('mock sync request contract [Unit]', () => {
   it.each([null, {}, { reason: ' ' }, { reason: 42 }])(
@@ -23,12 +24,17 @@ describe('mock sync request contract [Unit]', () => {
     const revision = plan.queue_item!.revision;
     plan.queue_item!.revision++;
     expect(
-      mockSyncRunNow(state, '2001', { ...input, expected_revision: revision }, now).status,
+      mockSyncRunNow(
+        state,
+        '2001',
+        { ...input, action: 'dispatch', plan_id: plan.id, expected_revision: revision },
+        now,
+      ).status,
     ).toBe(409);
     const result = mockSyncRunNow(
       state,
       '2001',
-      { ...input, expected_revision: revision + 1 },
+      { ...input, action: 'dispatch', plan_id: plan.id, expected_revision: revision + 1 },
       now,
     );
     expect(result.status).toBe(202);
@@ -41,12 +47,16 @@ describe('mock sync request contract [Unit]', () => {
       revision: revision + 2,
     });
     expect(mockLiveSyncPlan(state, '2001')!.queue_item).toEqual(result.body.queue_item);
+    expect(
+      mockSyncHistory(state, '2001').find((entry) => entry.id === plan.id)?.queue_item,
+    ).toEqual(result.body.queue_item);
     expect(state.queue.filter((item) => item.kind === 'sync_scan')).toHaveLength(0);
   });
 
   it.each([
-    ['computed', 'approval_required'],
-    ['applying', 'already_running'],
+    ['computed', 'changes_pending'],
+    ['applying', 'changes_pending'],
+    ['approved', 'changes_pending'],
   ] as const)('returns %s without creating another check', (phase, response) => {
     const state = seed(undefined, now);
     state.syncPlans.get('2001')!.state = phase;
@@ -57,6 +67,27 @@ describe('mock sync request contract [Unit]', () => {
     });
     expect(state.queue).toEqual(before);
   });
+
+  it.each(['missing', 'terminal'] as const)(
+    'never turns a %s dispatch into a fresh check',
+    (kind) => {
+      const state = seed(undefined, now);
+      const plan = state.syncPlans.get('2001')!;
+      const request = {
+        action: 'dispatch',
+        plan_id: plan.id,
+        expected_revision: 1,
+        reason: 'Run selected changes',
+      };
+      if (kind === 'missing') request.plan_id = 'another-plan';
+      else plan.state = 'expired';
+      const before = structuredClone(state.queue);
+      expect(mockSyncRunNow(state, '2001', request, now).status).toBe(
+        kind === 'missing' ? 404 : 409,
+      );
+      expect(state.queue).toEqual(before);
+    },
+  );
 
   it('reuses a waiting occurrence, rejects a running one and preserves completed history', () => {
     const state = seed(undefined, now);

@@ -2,7 +2,13 @@
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
-  import { SYNC_KINDS, type SyncAction, type SyncPlan, type SyncRulesetDetail } from '../types';
+  import {
+    SYNC_KINDS,
+    type SyncAction,
+    type SyncPlan,
+    type SyncRunNowInput,
+    type SyncRulesetDetail,
+  } from '../types';
   import { SYNC_SECTION_LABELS } from '../routes';
 
   import ApplyBar from './ApplyBar.svelte';
@@ -41,7 +47,7 @@
     runNowBusy: boolean;
     onApprove: (planId: string, digest: string) => void;
     onDiscard: (planId: string) => void;
-    onRunNow: (reason: string) => void;
+    onRunNow: (input: SyncRunNowInput) => void;
   } = $props();
 
   const actions = $derived(plan?.actions ?? []);
@@ -245,6 +251,21 @@
   let confirming = $state(false);
   let runConfirming = $state(false);
   let runReason = $state('');
+  let runIntent = $state<
+    Omit<Extract<SyncRunNowInput, { action: 'dispatch' }>, 'reason'> | { action: 'check' }
+  >({ action: 'check' });
+
+  function openRunConfirmation(): void {
+    runIntent =
+      plan?.state === 'approved'
+        ? {
+            action: 'dispatch',
+            plan_id: plan.id,
+            expected_revision: plan.queue_item?.revision ?? 0,
+          }
+        : { action: 'check' };
+    runConfirming = true;
+  }
 
   const removals = $derived(actions.filter((action) => action.operation === 'delete'));
 
@@ -296,7 +317,7 @@ the button.
           automatically</span
         >
         {#if canControl}
-          <Button tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
+          <Button tone="signal" disabled={runNowBusy} onclick={openRunConfirmation}
             >{runNowBusy ? 'Queuing scan…' : 'Check drift now'}</Button
           >
         {/if}
@@ -334,7 +355,7 @@ the button.
           <div class="schedule-card-actions">
             <span class="schedule-state">{queued.state.replaceAll('_', ' ')}</span>
             {#if canControl && plan.state === 'approved'}
-              <Button row tone="signal" disabled={runNowBusy} onclick={() => (runConfirming = true)}
+              <Button row tone="signal" disabled={runNowBusy} onclick={openRunConfirmation}
                 >{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
               >
             {/if}
@@ -633,11 +654,11 @@ the button.
   <ConfirmDialog
     id="sync-run-now-dialog"
     open={runConfirming}
-    title={plan?.state === 'approved' ? 'Sync now?' : 'Check sync now?'}
-    description={plan?.state === 'approved'
+    title={runIntent.action === 'dispatch' ? 'Sync now?' : 'Check sync now?'}
+    description={runIntent.action === 'dispatch'
       ? 'Run the queued changes now, outside the assigned schedule'
       : 'Check repositories now and queue changes from your saved configuration'}
-    confirmLabel={plan?.state === 'approved' ? 'Run now' : 'Check now'}
+    confirmLabel={runIntent.action === 'dispatch' ? 'Run now' : 'Check now'}
     busyLabel="Queuing…"
     confirmTone="signal"
     busy={runNowBusy}
@@ -650,7 +671,7 @@ the button.
       if (reason === '') return;
       runConfirming = false;
       runReason = '';
-      onRunNow(reason);
+      onRunNow({ ...runIntent, reason });
     }}
   >
     <label class="run-reason" for="sync-run-reason"

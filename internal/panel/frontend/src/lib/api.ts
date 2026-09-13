@@ -81,6 +81,7 @@ import type {
   SyncPlanSummary,
   SyncCheckObservation,
   SyncRunNowResponse,
+  SyncRunNowInput,
   SyncFilesContext,
   SyncStatus,
   InvitationDays,
@@ -192,10 +193,7 @@ export interface PanelApi {
     id: string,
     expectedRevision: number,
   ): Promise<ScheduleRequest>;
-  runSyncNow(
-    targetId: string,
-    input: { expected_revision: number; reason: string },
-  ): Promise<SyncRunNowResponse>;
+  runSyncNow(targetId: string, input: SyncRunNowInput): Promise<SyncRunNowResponse>;
   fetchRootUsers(request: RootPanelUserPageRequest): Promise<Page<RootPanelUser>>;
   updateRootUser(accountId: string, input: UpdateRootUserInput): Promise<void>;
   fetchRootInvitations(request: InvitationPageRequest): Promise<Page<PanelInvitation>>;
@@ -747,10 +745,7 @@ export function createPanelApi(
       );
     },
 
-    runSyncNow(
-      targetId: string,
-      input: { expected_revision: number; reason: string },
-    ): Promise<SyncRunNowResponse> {
+    runSyncNow(targetId: string, input: SyncRunNowInput): Promise<SyncRunNowResponse> {
       return postJson(`/api/v1/targets/${pathSegment(targetId)}/sync/run-now`, input);
     },
 

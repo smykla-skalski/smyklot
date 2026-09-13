@@ -1706,8 +1706,13 @@ export interface SyncPlan {
   queue_item?: QueueItem;
 }
 
+export type SyncRunNowInput = { reason: string } & (
+  { action: 'check' } | { action: 'dispatch'; plan_id: string; expected_revision: number }
+);
+
 export interface SyncRunNowResponse {
-  status: 'scan_queued' | 'approval_required' | 'already_running' | 'plan_dispatched';
+  status:
+    'scan_queued' | 'changes_pending' | 'approval_required' | 'already_running' | 'plan_dispatched';
   plan?: SyncPlan;
   queue_item?: QueueItem;
 }

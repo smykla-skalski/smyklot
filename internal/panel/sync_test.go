@@ -152,7 +152,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		createPanelSyncPlan(t, harness, "computed", harness.now.Add(time.Hour))
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "computed-plan run now", http.StatusOK,
-			`"status":"approval_required"`, `"state":"computed"`)
+			`"status":"changes_pending"`, `"state":"computed"`)
 		item, err := harness.store.GetQueueItem(t.Context(), "sync-plan:computed")
 		if err != nil {
 			t.Fatal(err)
@@ -201,7 +201,7 @@ func TestSyncRunNowSafetyMatrix(t *testing.T) {
 		}
 		response := postPanelSyncRunNow(t, harness, session, 0)
 		requireResponse(t, response, "applying-plan run now", http.StatusOK,
-			`"status":"already_running"`, `"state":"applying"`)
+			`"status":"changes_pending"`, `"state":"applying"`)
 	})
 
 	t.Run("queues a fresh scan after a plan expires", func(t *testing.T) {
@@ -243,7 +243,10 @@ func postPanelSyncRunNow(
 	expectedRevision int64,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	body := fmt.Sprintf(`{"reason":"operator request","expected_revision":%d}`, expectedRevision)
+	body := `{"action":"check","reason":"operator request"}`
+	if expectedRevision > 0 {
+		body = fmt.Sprintf(`{"action":"dispatch","plan_id":"approved","reason":"operator request","expected_revision":%d}`, expectedRevision)
+	}
 
 	return harness.request(t, http.MethodPost,
 		"/panel/api/v1/targets/"+panelSyncTarget+"/sync/run-now",

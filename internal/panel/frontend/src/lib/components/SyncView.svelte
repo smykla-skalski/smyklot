@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { receipts } from '#lib/receipts.svelte.js';
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -35,6 +36,7 @@
     SyncOverride,
     SyncPlan,
     SyncRunNowResponse,
+    SyncRunNowInput,
     SyncStatus,
   } from '#lib/types.js';
   import type {
@@ -144,10 +146,7 @@
     fetchPlan: (targetId: string, planId?: string) => Promise<{ plan: SyncPlan | null }>;
     approvePlan: (targetId: string, planId: string, digest: string) => Promise<{ plan: SyncPlan }>;
     discardPlan: (targetId: string, planId: string) => Promise<void>;
-    runSyncNow?: (
-      targetId: string,
-      input: { expected_revision: number; reason: string },
-    ) => Promise<SyncRunNowResponse>;
+    runSyncNow?: (targetId: string, input: SyncRunNowInput) => Promise<SyncRunNowResponse>;
     fetchStatus: (targetId: string) => Promise<SyncStatus>;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
@@ -481,23 +480,29 @@
     }
   }
 
-  async function onRunNow(reason: string): Promise<void> {
+  async function onRunNow(input: SyncRunNowInput): Promise<void> {
+    const requestTargetId = targetId;
     runningNow = true;
     error = null;
     runNotice = '';
     requestedCheckId = null;
     try {
-      const response = await runSyncNow(targetId, {
-        expected_revision: plan?.queue_item?.revision ?? 0,
-        reason,
-      });
-      if (response.plan !== undefined)
-        queryClient.setQueryData(['sync-plan', targetId], { plan: response.plan });
+      const response = await runSyncNow(requestTargetId, input);
+      if (response.plan !== undefined) {
+        queryClient.setQueryData(['sync-plan', requestTargetId], { plan: response.plan });
+        queryClient.setQueryData(['sync-plan', requestTargetId, response.plan.id], {
+          plan: response.plan,
+        });
+      }
       if (response.status === 'scan_queued') {
         requestedCheckId = response.queue_item?.id ?? null;
         runNotice = 'Repository check queued. Results will update when it finishes.';
       }
-      if (response.status === 'plan_dispatched') runNotice = 'Sync queued for immediate dispatch';
+      if (response.status === 'plan_dispatched')
+        receipts.say('Your selected changes are queued to run now');
+      if (response.status === 'changes_pending')
+        runNotice =
+          'Earlier changes are still pending. Review them before requesting another check.';
       if (response.status === 'approval_required')
         runNotice = 'An earlier sync needs a one-time decision · open Review changes';
       if (response.status === 'already_running') runNotice = 'Sync is already running';
@@ -566,7 +571,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {repositoryHref}
       {canControl}
       busy={runningNow}
-      onCheck={() => void onRunNow('Check sync from the status view')}
+      onCheck={() => void onRunNow({ action: 'check', reason: 'Check sync from the status view' })}
       onDetails={openDetails}
       {sectionHref}
       {onOpenSection}
@@ -611,7 +616,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
         runNowBusy={runningNow}
         onApprove={(planId, digest) => void onApprove(planId, digest)}
         onDiscard={(planId) => void onDiscard(planId)}
-        onRunNow={(reason) => void onRunNow(reason)}
+        onRunNow={(input) => void onRunNow(input)}
       />
     {/if}
   </Modal>

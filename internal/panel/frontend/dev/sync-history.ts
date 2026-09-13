@@ -1,9 +1,10 @@
+import { mockLiveSyncPlan } from './sync-run-now.js';
 import type { MockState } from './fixtures';
 import type { Page, SyncPlan, SyncPlanSummary } from '../src/lib/types';
 
 export function mockSyncHistory(state: MockState, targetId: string): SyncPlan[] {
   const plans = new Map((state.syncHistory.get(targetId) ?? []).map((plan) => [plan.id, plan]));
-  const live = state.syncPlans.get(targetId);
+  const live = mockLiveSyncPlan(state, targetId) ?? state.syncPlans.get(targetId);
   if (live) plans.set(live.id, live);
   return [...plans.values()].sort(
     (a, b) => b.computed_at.localeCompare(a.computed_at) || b.id.localeCompare(a.id),

@@ -10,7 +10,12 @@ function setup() {
   const state = seed(undefined, now);
   state.syncPlans.delete(target);
   state.queue = state.queue.filter((item) => item.kind !== 'sync_apply');
-  const request = mockSyncRunNow(state, target, { reason: 'Check repositories' }, now);
+  const request = mockSyncRunNow(
+    state,
+    target,
+    { action: 'check', reason: 'Check repositories' },
+    now,
+  );
   if (request.status !== 202 || request.body.status !== 'scan_queued')
     throw new Error('Expected a check');
   const item = state.queue.find((item) => item.id === request.body.queue_item!.id)!;

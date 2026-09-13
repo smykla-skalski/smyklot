@@ -10,7 +10,12 @@ function complete(state: ReturnType<typeof seed>, at = now) {
   expect(advanceMockSync(state, at + 4_000)).toBe(true);
 }
 function scan(state: ReturnType<typeof seed>, at = now) {
-  const response = mockSyncRunNow(state, target, { reason: 'Verify outcomes' }, at);
+  const response = mockSyncRunNow(
+    state,
+    target,
+    { action: 'check', reason: 'Verify outcomes' },
+    at,
+  );
   if (response.status !== 202 || response.body.status !== 'scan_queued')
     throw new Error('Expected scan');
   complete(state, at);

@@ -6,7 +6,7 @@ import type { QueueItem, SyncPlan, SyncRunNowResponse } from '../src/lib/types.j
 type State = Pick<MockState, 'queue' | 'syncPlans' | 'syncQueueEvents'>;
 type Reply =
   | { status: 200 | 202; body: SyncRunNowResponse }
-  | { status: 400 | 409; body: { code: string; message: string } };
+  | { status: 400 | 404 | 409; body: { code: string; message: string } };
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
 
 /** Project the current queue revision, never a copy left in the seeded plan. */
@@ -23,7 +23,7 @@ export function mockLiveSyncPlan(state: State, targetId: string): SyncPlan | nul
   return { ...plan, queue_item: queue };
 }
 
-/** Mirror postSyncRunNow: a live plan wins over creating another scan. */
+/** Mirror explicit check and exact-plan dispatch without changing request intent. */
 export function mockSyncRunNow(state: State, targetId: string, input: unknown, now: number): Reply {
   if (
     input === null ||
@@ -34,9 +34,36 @@ export function mockSyncRunNow(state: State, targetId: string, input: unknown, n
   ) {
     return { status: 400, body: { code: 'invalid_request', message: 'run now requires a reason' } };
   }
+  if (
+    !('action' in input) ||
+    (input.action !== 'check' && input.action !== 'dispatch') ||
+    (input.action === 'check' &&
+      (('plan_id' in input && input.plan_id !== '') ||
+        ('expected_revision' in input && input.expected_revision !== 0))) ||
+    (input.action === 'dispatch' &&
+      (!('plan_id' in input) ||
+        typeof input.plan_id !== 'string' ||
+        !input.plan_id.trim() ||
+        input.plan_id.trim() !== input.plan_id ||
+        !('expected_revision' in input) ||
+        !Number.isSafeInteger(input.expected_revision) ||
+        Number(input.expected_revision) <= 0))
+  ) {
+    return {
+      status: 400,
+      body: { code: 'invalid_request', message: 'a check or exact plan dispatch is required' },
+    };
+  }
   const reason = input.reason.trim();
   const plan = mockLiveSyncPlan(state, targetId);
+  if (input.action === 'dispatch') {
+    const requested = state.syncPlans.get(targetId);
+    if (!requested || !('plan_id' in input) || input.plan_id !== requested.id)
+      return { status: 404, body: { code: 'not_found', message: 'sync plan not found' } };
+    if (plan === null) return conflict();
+  }
   if (plan !== null) {
+    if (input.action === 'check') return { status: 200, body: { status: 'changes_pending', plan } };
     if (plan.state === 'computed')
       return { status: 200, body: { status: 'approval_required', plan } };
     if (plan.state === 'applying')
