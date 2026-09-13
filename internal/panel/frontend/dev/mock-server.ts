@@ -1681,7 +1681,7 @@ async function handle(
         res,
         200,
         state.syncStatus.get(targetId) ?? {
-          checked_at: new Date().toISOString(),
+          latest_observed_at: null,
           repositories: [],
         },
       );
@@ -3427,6 +3427,63 @@ function applyMockWorkspaceSettingsPlan(
   }
   if (plan.target?.changed === true || plan.repositories.some(({ changed }) => changed)) {
     recomputeTarget(target);
+  }
+  invalidateMockSyncObservations(state, target, plan);
+}
+
+/** Saving policy changes cannot manufacture a new observation of GitHub. */
+function invalidateMockSyncObservations(
+  state: MockState,
+  target: MockTarget,
+  plan: MockWorkspaceSettingsPlan,
+): void {
+  const status = state.syncStatus.get(target.value.id);
+  if (status === undefined) return;
+  const workspaceFormattingChanged =
+    plan.target?.changed === true &&
+    JSON.stringify(plan.target.before?.config_patch.formatting) !==
+      JSON.stringify(plan.target.next.config_patch.formatting);
+  for (const row of status.repositories) {
+    const repository = target.repositories.find(
+      (entry) => entry.detail.repository.name === row.repository,
+    );
+    if (repository === undefined) continue;
+    const repositoryId = repository.detail.repository.id;
+    const changedRepository = plan.repositories.find(
+      (entry) => entry.changed && entry.next.repository.id === repositoryId,
+    );
+    const repositoryFormattingChanged =
+      changedRepository !== undefined &&
+      (JSON.stringify(changedRepository.before?.config_patch.formatting) !==
+        JSON.stringify(changedRepository.next.config_patch.formatting) ||
+        changedRepository.before?.ignore_repository_file !==
+          changedRepository.next.ignore_repository_file);
+    for (const kind of SYNC_KINDS) {
+      const config = state.sync.get(`${target.value.id}/${kind}`);
+      const override = state.syncOverrides.get(`${repositoryId}/${kind}`);
+      const enabled =
+        config?.enabled === true &&
+        repository.detail.repository.effective_enabled &&
+        override?.enabled !== false;
+      const cell = row.cells[kind];
+      const changed =
+        plan.syncConfigs.some((entry) => entry.changed && entry.next.kind === kind) ||
+        plan.syncOverrides.some(
+          (entry) =>
+            entry.changed &&
+            entry.next.kind === kind &&
+            entry.repository.detail.repository.id === repositoryId,
+        ) ||
+        (kind === 'files' && (workspaceFormattingChanged || repositoryFormattingChanged));
+      if (!enabled) row.cells[kind] = { ...cell, state: 'off', changes: 0, reason: undefined };
+      else if (changed || cell.state === 'off')
+        row.cells[kind] = {
+          ...cell,
+          state: cell.observed_at === undefined ? 'unknown' : 'outdated',
+          changes: 0,
+          reason: 'Saved settings need a fresh repository check.',
+        };
+    }
   }
 }
 

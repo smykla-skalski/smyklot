@@ -54,7 +54,7 @@ describe('SyncLabelsPage [Component]', () => {
       onChange,
     });
 
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Enable label sync' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Remove bug' }));
 
     expect(sent).toHaveLength(2);
@@ -77,7 +77,7 @@ describe('SyncLabelsPage [Component]', () => {
     };
     const page = render(SyncLabelsPage, props);
 
-    await fireEvent.click(screen.getByRole('checkbox', { name: 'Resume label syncing' }));
+    await fireEvent.click(screen.getByRole('checkbox', { name: 'Enable label sync' }));
     await fireEvent.click(screen.getByRole('checkbox', { name: 'Delete unlisted labels' }));
 
     // The parent overlays the registry draft while its canonical revision

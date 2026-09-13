@@ -176,7 +176,7 @@ func filePlanner(
 	return func(
 		ctx context.Context, repository storage.Repository,
 	) (repositoryAnswer, error) {
-		policy := repositoryFormattingPolicy(formatting, targetPatch, repository)
+		policy := storage.RepositoryFormattingPolicy(formatting, targetPatch, repository)
 		return planRepositoryFiles(
 			ctx, client, repository, files, overrides[repository.ID], policy,
 		)

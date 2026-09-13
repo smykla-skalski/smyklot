@@ -842,10 +842,12 @@ export function syncStatusSeed(iso: (offsetMs: number) => string): SyncStatus {
   const cell = (mark: Mark): SyncCell => {
     if (mark === 'off') return { state: 'off' };
     if (mark === 'ref') return { state: 'refused' };
-    return mark > 0 ? { state: 'pending', changes: mark } : { state: 'in_step' };
+    return mark > 0
+      ? { state: 'pending', changes: mark }
+      : { state: 'in_step', observed_at: iso(-5 * 60_000), observed_outcome: 'matched' };
   };
   return {
-    checked_at: iso(-5 * 60_000),
+    latest_observed_at: iso(-5 * 60_000),
     repositories: fleet.map(([repository, labels, settings, rulesets, files]) => ({
       repository,
       cells: {

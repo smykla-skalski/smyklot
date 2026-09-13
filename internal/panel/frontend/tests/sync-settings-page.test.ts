@@ -144,7 +144,7 @@ describe('SyncSettingsPage [Component]', () => {
       },
     });
 
-    await fireEvent.click(screen.getByLabelText('Resume repository option syncing'));
+    await fireEvent.click(screen.getByLabelText('Enable repository option sync'));
 
     expect(sent).toEqual([true]);
   });

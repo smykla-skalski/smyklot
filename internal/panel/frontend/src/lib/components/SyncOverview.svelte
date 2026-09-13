@@ -8,7 +8,12 @@
     type SyncStatus,
   } from '../types';
   import { SYNC_SECTION_LABELS, type SyncSection } from '../routes';
-  import { repositorySyncHealth, syncIssues } from '../sync-health';
+  import {
+    repositorySyncHealth,
+    syncIssues,
+    SYNC_HEALTH_WORDS as healthWords,
+    SYNC_CELL_WORDS as cellWords,
+  } from '../sync-health';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
@@ -22,7 +27,6 @@
     plan,
     configs,
     nowMs,
-    repositories = null,
     sectionHref,
     onOpenSection,
     onToggleKind,
@@ -44,7 +48,6 @@
     plan: SyncPlan | null;
     configs: Partial<Record<SyncKind, SyncConfig>>;
     nowMs: number;
-    repositories?: number | null;
     sectionHref: (section: SyncSection) => string;
     onOpenSection: (section: SyncSection) => void;
     onToggleKind: (kind: SyncKind, enabled: boolean) => void;
@@ -69,13 +72,17 @@
     syncing: rows.filter((row) => repositorySyncHealth(row) === 'syncing').length,
     blocked: rows.filter((row) => repositorySyncHealth(row) === 'blocked').length,
     paused: rows.filter((row) => repositorySyncHealth(row) === 'paused').length,
+    review: rows.filter((row) => repositorySyncHealth(row) === 'review').length,
+    unchecked: rows.filter((row) => repositorySyncHealth(row) === 'unchecked').length,
   });
   const options = $derived([
     { value: 'all', label: 'All', badge: rows.length },
     { value: 'blocked', label: 'Blocked', badge: counts.blocked },
-    { value: 'syncing', label: 'Syncing', badge: counts.syncing },
-    { value: 'settled', label: 'Up to date', badge: counts.settled },
-    { value: 'paused', label: 'Paused', badge: counts.paused },
+    { value: 'syncing', label: 'Changes pending', badge: counts.syncing },
+    { value: 'settled', label: 'No pending changes', badge: counts.settled },
+    { value: 'paused', label: 'Disabled', badge: counts.paused },
+    { value: 'review', label: 'Proposals', badge: counts.review },
+    { value: 'unchecked', label: 'Needs a check', badge: counts.unchecked },
   ]);
   const matching = $derived(
     rows
@@ -85,7 +92,7 @@
           row.repository.toLowerCase().includes(search.toLowerCase()),
       )
       .toSorted((a, b) => {
-        const order = { blocked: 0, syncing: 1, settled: 2, paused: 3 };
+        const order = { blocked: 0, unchecked: 1, review: 2, syncing: 3, settled: 4, paused: 5 };
         return (
           order[repositorySyncHealth(a)] - order[repositorySyncHealth(b)] ||
           a.repository.localeCompare(b.repository)
@@ -99,18 +106,6 @@
   const applied = $derived(
     plan?.actions.filter((action) => action.state === 'applied').length ?? 0,
   );
-  const healthWords = {
-    blocked: 'Blocked',
-    syncing: 'Syncing',
-    settled: 'Up to date',
-    paused: 'Paused',
-  };
-  const cellWords = {
-    refused: 'Blocked',
-    pending: 'Syncing',
-    in_step: 'Up to date',
-    off: 'Paused',
-  };
   const kindIcons = {
     labels: 'tag',
     settings: 'sliders',
@@ -147,7 +142,7 @@ beside the affected repository. Change details open over this view, preserving c
     id="sync-overview-heading"
     section="Sync"
     title="Sync status"
-    description="Your shared configuration, kept in step automatically"
+    description="Saved settings, pending changes, and repository checks"
   >
     {#snippet actions()}
       {#if canControl && !ongoing}<Button disabled={busy} onclick={onCheck}
@@ -159,7 +154,7 @@ beside the affected repository. Change details open over this view, preserving c
   <Card>
     <div class="card-head verdict-head">
       <h2 class="card-title">
-        {activeKinds.length === 0 || queueBlocked ? 'Sync is paused' : 'Automatic sync is on'}
+        {activeKinds.length === 0 ? 'Sync disabled' : 'Sync enabled'}
       </h2>
       <span class="card-note band-trim">
         {#if activeKinds.length === 0}Enable a configuration below to start syncing
@@ -167,11 +162,14 @@ beside the affected repository. Change details open over this view, preserving c
         {:else if issues.length > 0}{issues.length}
           {issues.length === 1 ? 'issue needs' : 'issues need'} your attention · other changes continue
           automatically
-        {:else}Saved configuration is kept in sync · no action needed{/if}
+        {:else if counts.unchecked > 0}Some repositories need a fresh check before their status can
+          be confirmed
+        {:else if counts.review > 0}Review the shared-file proposals shown below
+        {:else}Repository status reflects the last recorded observations{/if}
       </span>
     </div>
     <div class="sync-totals" aria-label="Repository sync summary">
-      {#each ['settled', 'syncing', 'blocked', 'paused'] as state (state)}
+      {#each ['settled', 'syncing', 'review', 'unchecked', 'blocked', 'paused'] as state (state)}
         <div class="sync-total" data-health={state}>
           <strong class="band-trim">{counts[state as keyof typeof counts]}</strong>
           <span class="band-trim"
@@ -182,7 +180,10 @@ beside the affected repository. Change details open over this view, preserving c
     </div>
     <div class="sync-freshness">
       <span class="band-trim"
-        >Last checked {formatRelative(status.checked_at, nowMs)} · {repositories ?? rows.length} repositories</span
+        >{status.latest_observed_at
+          ? `Latest repository observation ${formatRelative(status.latest_observed_at, nowMs)}`
+          : 'No repository observations yet'} · {rows.length}
+        {rows.length === 1 ? 'repository' : 'repositories'}</span
       >
       {#if savedConfigs.files?.enabled}<span class="band-trim"
           >Shared files arrive as pull requests</span
@@ -194,8 +195,8 @@ beside the affected repository. Change details open over this view, preserving c
           <span class="object-name"
             >{queueBlocked
               ? 'Queued changes are on hold'
-              : plan?.state === 'applying'
-                ? `Syncing · ${applied} of ${plan?.actions.length} changes applied`
+              : plan?.queue_item?.state === 'running'
+                ? `Processing changes · ${applied} of ${plan?.actions.length} changes completed`
                 : 'Changes queued for sync'}</span
           >
           <span class="object-sum">
@@ -291,7 +292,7 @@ beside the affected repository. Change details open over this view, preserving c
     </div>
     <div class="filter-bar">
       <SearchField
-        label="Find a syncing repository"
+        label="Find a repository"
         placeholder="Find a repository"
         value={search}
         onInput={(value) => {
@@ -360,7 +361,11 @@ beside the affected repository. Change details open over this view, preserving c
                         ? 'refresh'
                         : health === 'paused'
                           ? 'minus-circle'
-                          : 'check'}
+                          : health === 'settled'
+                            ? 'check'
+                            : health === 'review'
+                              ? 'branch'
+                              : 'history'}
                     size="sm"
                   />
                   <span class="band-trim">{healthWords[health]}</span>
@@ -374,17 +379,30 @@ beside the affected repository. Change details open over this view, preserving c
               <div class="sync-repo-detail" id={`sync-repo-${index}`}>
                 <dl>
                   {#each SYNC_KINDS as kind (kind)}
+                    {@const cell = row.cells[kind]}
                     <div class="sync-kind-state">
                       <dt class="band-trim">{SYNC_SECTION_LABELS[kind]}</dt>
-                      <dd class="band-trim">
-                        {cellWords[row.cells[kind].state]}{row.cells[kind].changes
-                          ? ` · ${row.cells[kind].changes} ${row.cells[kind].changes === 1 ? 'change' : 'changes'}`
-                          : ''}
+                      <dd>
+                        <span class="band-trim"
+                          >{cellWords[cell.state]}{cell.changes
+                            ? ` · ${cell.changes} ${cell.changes === 1 ? 'change' : 'changes'}`
+                            : ''}</span
+                        >
+                        {#if cell.observed_at}<span class="observation-time band-trim"
+                            >Observed {formatRelative(cell.observed_at, nowMs)}</span
+                          >{/if}
+                        {#if cell.reason}<span class="observation-reason band-trim"
+                            >{cell.reason}</span
+                          >{/if}
                       </dd>
                     </div>
                   {/each}
                 </dl>
-                {#if row.reason}<p class="object-sum">{row.reason}</p>{/if}
+                {#if row.reason && !SYNC_KINDS.some((kind) => row.cells[kind].reason === row.reason)}<p
+                    class="object-sum"
+                  >
+                    {row.reason}
+                  </p>{/if}
                 <div class="object-side">
                   {#if plan?.actions.some((action) => action.repository === row.repository)}<Button
                       tone="quiet"
@@ -463,9 +481,15 @@ beside the affected repository. Change details open over this view, preserving c
   }
   .sync-totals {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: var(--space-4);
     margin-block: var(--space-6);
+  }
+  .observation-time,
+  .observation-reason {
+    display: block;
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
   }
   .sync-total {
     display: flex;
@@ -547,6 +571,7 @@ beside the affected repository. Change details open over this view, preserving c
   }
   .sync-kind-state {
     display: grid;
+    align-content: start;
     gap: var(--row-copy-gap);
   }
   .sync-kind-state dt {
@@ -555,6 +580,8 @@ beside the affected repository. Change details open over this view, preserving c
   }
   .sync-kind-state dd {
     margin: 0;
+    display: grid;
+    gap: var(--row-copy-gap);
     font-size: var(--font-size-meta);
   }
   .sync-repo-detail p {

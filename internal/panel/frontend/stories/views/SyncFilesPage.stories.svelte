@@ -110,7 +110,7 @@
   };
 
   const STATUS: SyncStatus = {
-    checked_at: new Date(NOW - 5 * 60_000).toISOString(),
+    latest_observed_at: new Date(NOW - 5 * 60_000).toISOString(),
     repositories: [
       {
         repository: 'legacy-service',

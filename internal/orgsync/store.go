@@ -75,6 +75,9 @@ func (o *RepositoryOverride) Disabled() bool {
 	return o != nil && o.Enabled != nil && !*o.Enabled
 }
 
+// RecheckInterval bounds reuse of a repository observation.
+const RecheckInterval = 6 * time.Hour
+
 // Observation records what was actually established about a repository. A
 // completed file operation can be a proposal, not agreement on the default
 // branch. The empty value is historical evidence whose outcome is unknown.

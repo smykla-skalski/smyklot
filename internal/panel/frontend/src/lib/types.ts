@@ -1524,7 +1524,21 @@ export type SyncKind = (typeof SYNC_KINDS)[number];
 export interface SyncCell {
   /** Why this kind cannot continue, when blocked. */
   reason?: string;
-  state: 'in_step' | 'pending' | 'refused' | 'off';
+  state:
+    | 'in_step'
+    | 'applied'
+    | 'pending'
+    | 'refused'
+    | 'off'
+    | 'unknown'
+    | 'outdated'
+    | 'proposed'
+    | 'declined'
+    | 'needs_sync'
+    | 'check_failed';
+  observed_at?: string;
+  observed_outcome?:
+    'matched' | 'applied' | 'proposed' | 'declined' | 'different' | 'failed' | 'blocked';
   /** Pending only: how many of the plan's changes land here for this kind. */
   changes?: number;
 }
@@ -1547,7 +1561,7 @@ export interface SyncStatus {
   /** Installation-wide blockers, shown once rather than once per repository. */
   unavailable?: Partial<Record<SyncKind, string>>;
   invalid?: Partial<Record<SyncKind, string>>;
-  checked_at: string;
+  latest_observed_at: string | null;
   repositories: SyncRepositoryStatus[];
 }
 

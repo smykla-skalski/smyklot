@@ -26,8 +26,10 @@ type syncCellDTO struct {
 	State string `json:"state"`
 
 	// Changes is pending only: how many of the plan's changes land here.
-	Changes int    `json:"changes,omitempty"`
-	Reason  string `json:"reason,omitempty"`
+	Changes         int                 `json:"changes,omitempty"`
+	Reason          string              `json:"reason,omitempty"`
+	ObservedAt      *time.Time          `json:"observed_at,omitempty"`
+	ObservedOutcome orgsync.Observation `json:"observed_outcome,omitempty"`
 }
 
 // syncRepositoryStatusDTO is one repository on the overview's board.
@@ -45,14 +47,20 @@ type syncRepositoryStatusDTO struct {
 // syncStatusFacts is everything getSyncStatus reads, keyed the way the row
 // builder asks: by repository, then by kind.
 type syncStatusFacts struct {
-	enabled     map[orgsync.Kind]bool
-	answered    map[string]map[orgsync.Kind]*bool
-	problems    map[string]map[orgsync.Kind]string
-	pending     map[string]map[orgsync.Kind]int
-	removals    map[string]int
-	checked     time.Time
-	unavailable map[orgsync.Kind]string
-	invalid     map[orgsync.Kind]string
+	enabled      map[orgsync.Kind]bool
+	overrides    map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
+	configs      map[orgsync.Kind]string
+	observations map[string]map[orgsync.Kind]orgsync.RepositoryState
+	actionInputs map[string]map[orgsync.Kind]string
+	target       storage.Target
+	formatting   appconfig.FormattingPolicy
+	now          time.Time
+	problems     map[string]map[orgsync.Kind]string
+	pending      map[string]map[orgsync.Kind]int
+	removals     map[string]int
+	checked      time.Time
+	unavailable  map[orgsync.Kind]string
+	invalid      map[orgsync.Kind]string
 }
 
 // getSyncStatus answers the fleet: every repository sync covers and where each
@@ -84,12 +92,6 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if facts.checked.IsZero() {
-		// Nothing has been looked at yet - a fresh workspace. The board is
-		// still an answer, dated to the moment it was composed.
-		facts.checked = s.now().UTC()
-	}
-
 	rows := make([]syncRepositoryStatusDTO, 0, len(repositories))
 	for _, repository := range repositories {
 		rows = append(rows, syncStatusRow(repository, facts))
@@ -99,10 +101,10 @@ func (s *Server) getSyncStatus(w http.ResponseWriter, r *http.Request) {
 	})
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"checked_at":    facts.checked,
-		"unavailable":   facts.unavailable,
-		"invalid":       facts.invalid,
-		repositoriesKey: rows,
+		"latest_observed_at": observedTime(facts.checked),
+		"unavailable":        facts.unavailable,
+		"invalid":            facts.invalid,
+		repositoriesKey:      rows,
 	})
 }
 
@@ -112,7 +114,11 @@ func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncSt
 	ctx := r.Context()
 	targetID := target.ID
 	facts := syncStatusFacts{
-		answered:    map[string]map[orgsync.Kind]*bool{},
+		overrides:    map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
+		configs:      map[orgsync.Kind]string{},
+		observations: map[string]map[orgsync.Kind]orgsync.RepositoryState{},
+		actionInputs: map[string]map[orgsync.Kind]string{},
+		target:       target, formatting: s.runtimeValues().BotConfig.Formatting, now: s.now().UTC(),
 		problems:    map[string]map[orgsync.Kind]string{},
 		pending:     map[string]map[orgsync.Kind]int{},
 		removals:    map[string]int{},
@@ -127,6 +133,7 @@ func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncSt
 	facts.enabled = make(map[orgsync.Kind]bool, len(configs))
 	for _, config := range configs {
 		facts.enabled[config.Kind] = config.Enabled
+		facts.configs[config.Kind] = config.Digest
 		if config.Enabled && syncConfigToDTO(config, "").Unreadable {
 			facts.invalid[config.Kind] = "This configuration cannot be read; restore a valid saved configuration to continue"
 		}
@@ -140,10 +147,10 @@ func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncSt
 		return facts, err
 	}
 	for _, override := range overrides {
-		if facts.answered[override.RepositoryID] == nil {
-			facts.answered[override.RepositoryID] = map[orgsync.Kind]*bool{}
+		if facts.overrides[override.RepositoryID] == nil {
+			facts.overrides[override.RepositoryID] = map[orgsync.Kind]*orgsync.RepositoryOverride{}
 		}
-		facts.answered[override.RepositoryID][override.Kind] = override.Enabled
+		facts.overrides[override.RepositoryID][override.Kind] = &override
 	}
 
 	states, err := s.store.ListSyncRepositoryState(ctx, targetID)
@@ -151,16 +158,13 @@ func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncSt
 		return facts, err
 	}
 	for _, state := range states {
-		if state.AppliedAt.After(facts.checked) {
+		if state.Observation != "" && state.AppliedAt.After(facts.checked) {
 			facts.checked = state.AppliedAt
 		}
-		if state.Problem == "" {
-			continue
+		if facts.observations[state.RepositoryID] == nil {
+			facts.observations[state.RepositoryID] = map[orgsync.Kind]orgsync.RepositoryState{}
 		}
-		if facts.problems[state.RepositoryID] == nil {
-			facts.problems[state.RepositoryID] = map[orgsync.Kind]string{}
-		}
-		facts.problems[state.RepositoryID][state.Kind] = state.Problem
+		facts.observations[state.RepositoryID][state.Kind] = state
 	}
 
 	return facts, s.pendingSyncFacts(ctx, targetID, &facts)
@@ -172,17 +176,18 @@ func (s *Server) syncStatusFacts(r *http.Request, target storage.Target) (syncSt
 func (s *Server) pendingSyncFacts(
 	ctx context.Context, targetID string, facts *syncStatusFacts,
 ) error {
-	plan, actions, err := s.store.GetLiveSyncPlan(ctx, targetID)
+	_, actions, err := s.store.GetLiveSyncPlan(ctx, targetID)
 	if errors.Is(err, storage.ErrNotFound) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if plan.ComputedAt.After(facts.checked) {
-		facts.checked = plan.ComputedAt
-	}
 	for _, action := range actions {
+		if facts.actionInputs[action.RepositoryID] == nil {
+			facts.actionInputs[action.RepositoryID] = map[orgsync.Kind]string{}
+		}
+		facts.actionInputs[action.RepositoryID][action.Kind] = action.InputDigest
 		if action.State == orgsync.ActionApplied {
 			continue
 		}
@@ -207,49 +212,6 @@ func (s *Server) pendingSyncFacts(
 	}
 
 	return nil
-}
-
-// syncStatusRow reads one repository's standing off the gathered facts.
-func syncStatusRow(repository storage.Repository, facts syncStatusFacts) syncRepositoryStatusDTO {
-	row := syncRepositoryStatusDTO{
-		Repository: repository.Name,
-		Cells:      make(map[string]syncCellDTO, len(orgsync.Kinds())),
-	}
-	for _, kind := range orgsync.Kinds() {
-		enabled := facts.enabled[kind]
-		if answer := facts.answered[repository.ID][kind]; answer != nil {
-			enabled = *answer
-		}
-
-		switch {
-		case !enabled:
-			row.Cells[string(kind)] = syncCellDTO{State: "off"}
-		case facts.unavailable[kind] != "":
-			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.unavailable[kind]}
-			if row.Reason == "" {
-				row.Reason = facts.unavailable[kind]
-			}
-		case facts.invalid[kind] != "":
-			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.invalid[kind]}
-			if row.Reason == "" {
-				row.Reason = facts.invalid[kind]
-			}
-		case facts.problems[repository.ID][kind] != "":
-			row.Cells[string(kind)] = syncCellDTO{State: syncStateRefused, Reason: facts.problems[repository.ID][kind]}
-			if row.Reason == "" {
-				row.Reason = facts.problems[repository.ID][kind]
-			}
-		case facts.pending[repository.ID][kind] > 0:
-			row.Cells[string(kind)] = syncCellDTO{
-				State: "pending", Changes: facts.pending[repository.ID][kind],
-			}
-		default:
-			row.Cells[string(kind)] = syncCellDTO{State: "in_step"}
-		}
-	}
-	row.Removals = facts.removals[repository.ID]
-
-	return row
 }
 
 // syncFileMergeEntryDTO is one repository's adjustment of one template.

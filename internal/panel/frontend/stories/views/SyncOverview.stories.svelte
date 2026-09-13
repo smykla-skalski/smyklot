@@ -70,7 +70,7 @@
   const minutes = (count: number): string => new Date(NOW - count * 60_000).toISOString();
   const hours = (count: number): string => new Date(NOW - count * 3_600_000).toISOString();
 
-  const STATUS: SyncStatus = { checked_at: minutes(5), repositories };
+  const STATUS: SyncStatus = { latest_observed_at: minutes(5), repositories };
 
   function config(kind: SyncKind, overrides: Partial<SyncConfig>): SyncConfig {
     return {
@@ -182,7 +182,7 @@
   name="All in step"
   args={{
     status: {
-      checked_at: STATUS.checked_at,
+      latest_observed_at: STATUS.latest_observed_at,
       repositories: repositories.map((row) => ({
         repository: row.repository,
         cells: Object.fromEntries(KINDS.map((kind) => [kind, { state: 'in_step' }])) as Record<

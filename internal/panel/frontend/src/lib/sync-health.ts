@@ -1,5 +1,6 @@
 import {
   SYNC_KINDS,
+  type SyncCell,
   type SyncConfig,
   type PanelTarget,
   type SyncKind,
@@ -8,15 +9,43 @@ import {
   type SyncStatus,
 } from './types';
 
-export type SyncHealth = 'blocked' | 'syncing' | 'paused' | 'settled';
+export type SyncHealth = 'blocked' | 'syncing' | 'paused' | 'settled' | 'review' | 'unchecked';
 
 export function repositorySyncHealth(row: SyncRepositoryStatus): SyncHealth {
   const cells = SYNC_KINDS.map((kind) => row.cells[kind]);
   if (cells.some((cell) => cell.state === 'refused')) return 'blocked';
   if (cells.every((cell) => cell.state === 'off')) return 'paused';
-  if (cells.some((cell) => cell.state === 'pending' || (cell.changes ?? 0) > 0)) return 'syncing';
-  return 'settled';
+  if (cells.some((cell) => ['unknown', 'outdated', 'check_failed'].includes(cell.state)))
+    return 'unchecked';
+  if (cells.some((cell) => cell.state === 'pending' || cell.state === 'needs_sync'))
+    return 'syncing';
+  if (cells.some((cell) => cell.state === 'proposed' || cell.state === 'declined')) return 'review';
+  if (cells.every((cell) => ['in_step', 'applied', 'off'].includes(cell.state))) return 'settled';
+  return 'unchecked';
 }
+
+export const SYNC_HEALTH_WORDS: Record<SyncHealth, string> = {
+  blocked: 'Blocked',
+  syncing: 'Changes pending',
+  paused: 'Sync disabled',
+  settled: 'No pending changes',
+  review: 'Proposals',
+  unchecked: 'Needs a check',
+};
+
+export const SYNC_CELL_WORDS: Record<SyncCell['state'], string> = {
+  in_step: 'Matched at last check',
+  applied: 'Changes applied',
+  pending: 'Changes pending',
+  refused: 'Blocked',
+  off: 'Sync disabled',
+  unknown: 'Not checked',
+  outdated: 'Needs a fresh check',
+  proposed: 'Pull request proposed',
+  declined: 'Pull request declined',
+  needs_sync: 'Changes needed',
+  check_failed: 'Last attempt failed',
+};
 
 export interface SyncIssue {
   id: string;

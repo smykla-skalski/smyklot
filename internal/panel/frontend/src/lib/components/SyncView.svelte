@@ -489,7 +489,6 @@ Live plan and status queries share the shell's event invalidation and polling fa
       busy={runningNow}
       onCheck={() => void onRunNow('Check sync from the status view')}
       onDetails={openDetails}
-      repositories={filesContext?.repositories ?? null}
       {sectionHref}
       {onOpenSection}
       onToggleKind={toggleKind}

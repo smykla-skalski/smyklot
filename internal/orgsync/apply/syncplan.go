@@ -527,7 +527,7 @@ func newSyncPlanID() string {
 // hundred requests every six hours against a budget of five thousand an hour;
 // what it buys is the difference between noticing a hand-made change by the
 // same evening and never.
-const RecheckInterval = 6 * time.Hour
+const RecheckInterval = orgsync.RecheckInterval
 
 // syncScope answers which repositories a plan covers.
 type syncScope struct {
@@ -621,7 +621,7 @@ func (s syncScope) covers(repository storage.Repository) bool {
 func (s syncScope) digestFor(repository storage.Repository) string {
 	return orgsync.DigestRepositoryConfiguration(
 		s.config.Kind, s.config.Digest, s.overrides[repository.ID],
-		repositoryFormattingPolicy(s.formatting, s.targetPatch, repository),
+		storage.RepositoryFormattingPolicy(s.formatting, s.targetPatch, repository),
 	)
 }
 
