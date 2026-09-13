@@ -20,14 +20,14 @@ func recordSyncFailures(ctx context.Context, tx *transaction, planID string, now
 		statesClause = "('failed', 'skipped', 'pending')"
 	}
 	rows, err := tx.QueryContext(ctx, `
-SELECT repository_id, kind, error FROM sync_plan_actions
+SELECT repository_id, kind, error, input_digest FROM sync_plan_actions
 WHERE plan_id = ? AND state IN `+statesClause+` ORDER BY id`, planID)
 	if err != nil {
 		return fmt.Errorf("read unresolved sync actions: %w", err)
 	}
 	states, err := collectRows(rows, func(row rowScanner) (orgsync.RepositoryState, error) {
-		state := orgsync.RepositoryState{AppliedAt: now}
-		err := row.Scan(&state.RepositoryID, &state.Kind, &state.Problem)
+		state := orgsync.RepositoryState{AppliedAt: now, Observation: orgsync.ObservationFailed}
+		err := row.Scan(&state.RepositoryID, &state.Kind, &state.Problem, &state.ObservedDigest)
 		return state, err
 	})
 	if err != nil {

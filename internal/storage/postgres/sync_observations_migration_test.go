@@ -57,10 +57,12 @@ VALUES ('repo', 'labels', '', '2026-09-13T12:00:00.000000000Z', 'retained proble
  VALUES ('repo', 'rulesets', 'classified-input', '2026-09-13T12:00:00.000000000Z', '', 'matched')`); err != nil {
 		t.Fatal(err)
 	}
+	seedLegacySyncAction(t, db)
 	for range 2 {
 		if err := sqlstore.Migrate(ctx, db, dialect, migrations); err != nil {
 			t.Fatal(err)
 		}
+		assertLegacySyncAction(t, db)
 		assertLegacySyncObservation(t, db, "files", "legacy-digest", "", "")
 		assertLegacySyncObservation(t, db, "labels", "", "retained problem", "")
 		assertLegacySyncObservation(t, db, "rulesets", "classified-input", "", "matched")
@@ -89,5 +91,31 @@ FROM sync_repository_state WHERE repository_id = 'repo' AND kind = ?`), kind).
 	}
 	if digest != wantDigest || problem != wantProblem {
 		t.Fatalf("changed legacy evidence: %s %q %q", kind, digest, problem)
+	}
+}
+
+func seedLegacySyncAction(t *testing.T, db *sql.DB) {
+	t.Helper()
+	for _, statement := range []string{
+		`INSERT INTO sync_plans (id, target_id, trigger_kind, actor_account_id, digest, state, computed_at, expires_at)
+VALUES ('legacy-plan', 'target', 'manual', 'owner', 'old-scope', 'computed',
+ '2026-09-13T12:00:00.000000000Z', '2026-09-13T13:00:00.000000000Z')`,
+		`INSERT INTO sync_plan_actions (plan_id, repository_id, kind, operation, subject, payload, state)
+VALUES ('legacy-plan', 'repo', 'labels', 'create', 'bug', '{"name":"bug"}', 'pending')`,
+	} {
+		if _, err := db.ExecContext(t.Context(), statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func assertLegacySyncAction(t *testing.T, db *sql.DB) {
+	t.Helper()
+	var input, payload string
+	if err := db.QueryRowContext(t.Context(), `SELECT input_digest, payload FROM sync_plan_actions WHERE plan_id = 'legacy-plan'`).Scan(&input, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if input != "" || payload != `{"name":"bug"}` {
+		t.Fatalf("changed legacy action: input=%q payload=%q", input, payload)
 	}
 }

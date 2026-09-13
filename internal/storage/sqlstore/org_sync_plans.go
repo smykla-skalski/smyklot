@@ -62,7 +62,7 @@ func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
 	if err := scanner.Scan(
 		&action.ID, &action.PlanID, &action.RepositoryID, &action.Kind,
 		&action.Operation, &action.Subject, &action.Before, &action.After,
-		&payload, &action.State, &action.Error, &action.Blocker,
+		&payload, &action.State, &action.Error, &action.Blocker, &action.InputDigest,
 	); err != nil {
 		return orgsync.Action{}, fmt.Errorf("scan sync action: %w", err)
 	}
@@ -79,7 +79,7 @@ func scanSyncAction(scanner rowScanner) (orgsync.Action, error) {
 
 const syncActionColumns = `
     id, plan_id, repository_id, kind, operation, subject,
-    before_state, after_state, payload, state, error, blocker`
+    before_state, after_state, payload, state, error, blocker, input_digest`
 
 // invalidateLivePlans marks every plan an installation could still apply as
 // stale.
@@ -194,10 +194,10 @@ INSERT INTO sync_plans (
 		if _, err := tx.ExecContext(ctx, `
 INSERT INTO sync_plan_actions (
     plan_id, repository_id, kind, operation, subject,
-    before_state, after_state, payload, state, error, blocker
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '')`,
+    before_state, after_state, payload, state, error, blocker, input_digest
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', '', '', ?)`,
 			create.ID, action.RepositoryID, action.Kind, action.Operation,
-			action.Subject, action.Before, action.After, string(action.Payload),
+			action.Subject, action.Before, action.After, string(action.Payload), action.InputDigest,
 		); err != nil {
 			return orgsync.Plan{}, fmt.Errorf("insert sync plan action: %w", err)
 		}

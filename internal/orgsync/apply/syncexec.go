@@ -11,7 +11,6 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/bot"
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/pkg/config"
 	"github.com/smykla-skalski/smyklot/pkg/github"
 	"github.com/smykla-skalski/smyklot/pkg/logging"
 )
@@ -190,23 +189,13 @@ func (s *Engine) applySyncPlan(
 		return orgsync.Outcome{}, err
 	}
 
-	// What each repository would have once this plan lands, computed the same
-	// way the planner computes what to compare against. Both call the same
-	// function, so a value recorded here is a value the next plan will test -
-	// two spellings of the same idea would drift, and the drift would look like
-	// a repository that never settles.
-	digests, err := s.syncDigests(ctx, lease.Plan.TargetID)
-	if err != nil {
-		return orgsync.Outcome{}, err
-	}
-
 	var outcome orgsync.Outcome
 
 	for _, work := range orgsync.Schedule(lease.Actions) {
 		err := s.applyRepositoryIfEnabled(
 			ctx, lease.Plan.TargetID, work, &outcome,
 			func(repository storage.Repository) error {
-				s.applyRepositoryWork(ctx, client, repository, work, digests, &outcome)
+				s.applyRepositoryWork(ctx, client, repository, work, &outcome)
 
 				return nil
 			},
@@ -288,7 +277,6 @@ func (s *Engine) applyRepositoryWork(
 	client *github.Client,
 	repository storage.Repository,
 	work orgsync.RepositoryWork,
-	digests syncDigestIndex,
 	outcome *orgsync.Outcome,
 ) {
 	target := syncTargetFor(repository)
@@ -327,7 +315,7 @@ func (s *Engine) applyRepositoryWork(
 		// Only a kind whose every action succeeded records a digest. A kind
 		// that half-applied has to be planned again, and recording it would
 		// tell the next reconcile that work nobody did is done.
-		digest := digests.of(repository, kind.Kind)
+		digest := plannedKindDigest(kind)
 		outcome.Applied = append(outcome.Applied, orgsync.RepositoryState{
 			RepositoryID:   repository.ID,
 			Kind:           kind.Kind,
@@ -568,57 +556,20 @@ func unavailableForTarget(
 	return orgsync.Unavailable{}, false
 }
 
-// syncDigestIndex answers what a repository and kind should record once its
-// work lands.
-type syncDigestIndex struct {
-	configs     map[orgsync.Kind]string
-	overrides   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride
-	formatting  config.FormattingPolicy
-	targetPatch config.Patch
-}
-
-func (i syncDigestIndex) of(repository storage.Repository, kind orgsync.Kind) string {
-	return orgsync.DigestRepositoryConfiguration(
-		kind, i.configs[kind], i.overrides[repository.ID][kind],
-		repositoryFormattingPolicy(i.formatting, i.targetPatch, repository),
-	)
-}
-
-// syncDigests reads what an installation has configured, once per plan rather
-// than once per repository.
-func (s *Engine) syncDigests(ctx context.Context, targetID string) (syncDigestIndex, error) {
-	configs, err := s.store.ListSyncConfigs(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync configuration: %w", err)
+// plannedKindDigest never substitutes present settings for historical inputs.
+// A legacy or inconsistent plan can record its result, but cannot establish a
+// cache hit or evidence that the current settings were checked.
+func plannedKindDigest(work orgsync.KindWork) string {
+	if len(work.Actions) == 0 {
+		return ""
 	}
-
-	overrides, err := s.store.ListSyncRepositoryOverrides(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync overrides: %w", err)
-	}
-	target, err := s.store.GetTarget(ctx, targetID)
-	if err != nil {
-		return syncDigestIndex{}, fmt.Errorf("read sync installation: %w", err)
-	}
-
-	index := syncDigestIndex{
-		configs:     make(map[orgsync.Kind]string, len(configs)),
-		overrides:   map[string]map[orgsync.Kind]*orgsync.RepositoryOverride{},
-		formatting:  s.formattingPolicy(),
-		targetPatch: target.ConfigPatch,
-	}
-
-	for _, config := range configs {
-		index.configs[config.Kind] = config.Digest
-	}
-	for _, override := range overrides {
-		if index.overrides[override.RepositoryID] == nil {
-			index.overrides[override.RepositoryID] = map[orgsync.Kind]*orgsync.RepositoryOverride{}
+	digest := work.Actions[0].InputDigest
+	for _, action := range work.Actions {
+		if action.InputDigest != digest {
+			return ""
 		}
-		index.overrides[override.RepositoryID][override.Kind] = &override
 	}
-
-	return index, nil
+	return digest
 }
 
 // installationClient mints a client for one installation.

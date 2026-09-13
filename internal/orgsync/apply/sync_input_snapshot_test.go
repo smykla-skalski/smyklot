@@ -76,7 +76,48 @@ func TestPlanningUsesTheInputsRecordedInItsObservation(t *testing.T) {
 	if !strings.HasSuffix(string(file.Content), "\n") {
 		t.Fatalf("planned bytes used newer inputs: %q", file.Content)
 	}
+	if actions[0].InputDigest != scope.digestFor(repository) {
+		t.Fatal("planned action lost its input identity")
+	}
 	if store.states[0].ObservedDigest != scope.digestFor(repository) || store.states[0].Observation != orgsync.ObservationDifferent {
 		t.Fatalf("observation does not describe planned inputs: %#v", store.states[0])
+	}
+}
+
+func TestExecutionRecordsPlannedInputsWithoutReadingNewSettings(t *testing.T) {
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/repos/owner/repo/labels" {
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"name":"bug","color":"ffffff"}`))
+	}))
+	defer endpoint.Close()
+	client, err := github.NewClient("test-token", endpoint.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{"planned-input", ""} {
+		t.Run("input="+input, func(t *testing.T) {
+			store := &syncExecutionStore{}
+			engine := New(store, nil, "")
+			actions := orgsync.PlanLabels("repo", orgsync.LabelConfig{Labels: []orgsync.Label{{Name: "bug", Color: "ffffff"}}}, nil, orgsync.Excludes{})
+			if len(actions) != 1 {
+				t.Fatalf("actions = %#v", actions)
+			}
+			actions[0].InputDigest = input
+			actions[0].State = orgsync.ActionPending
+			var outcome orgsync.Outcome
+			engine.applyRepositoryWork(t.Context(), client,
+				storage.Repository{ID: "repo", FullName: "owner/repo"},
+				orgsync.RepositoryWork{RepositoryID: "repo", Kinds: []orgsync.KindWork{{Kind: orgsync.KindLabels, Actions: actions}}}, &outcome)
+			if len(outcome.Applied) != 1 {
+				t.Fatalf("outcome = %#v", outcome)
+			}
+			if outcome.Applied[0].ObservedDigest != input || outcome.Applied[0].AppliedDigest != input {
+				t.Fatalf("substituted present settings for planned inputs: %#v", outcome.Applied[0])
+			}
+		})
 	}
 }

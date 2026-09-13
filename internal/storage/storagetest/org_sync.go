@@ -1268,6 +1268,38 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("repository state", func() {
+		DescribeTable("retains planned inputs after execution failure",
+			func(input string) {
+				ctx, store, now := runtime()
+				account := seed(ctx, store, now)
+				planFor(ctx, store, "input-plan", account.ID, "scope", now, []orgsync.Action{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, Operation: orgsync.OperationCreate,
+					Subject: "bug", InputDigest: input,
+				}})
+				lease := approveAndLease(ctx, store, account.ID, "input-plan", "scope", now)
+				Expect(lease.Actions).To(HaveLen(1))
+				Expect(lease.Actions[0].InputDigest).To(Equal(input))
+				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{{
+					RepositoryID: repoA, Kind: orgsync.KindLabels, AppliedAt: now,
+					Observation: orgsync.ObservationMatched, ObservedDigest: "newer-input", AppliedDigest: "newer-input",
+				}})).To(Succeed())
+				Expect(store.RecordSyncActionOutcome(ctx, orgsync.ActionOutcome{
+					ActionID: lease.Actions[0].ID, State: orgsync.ActionFailed, Error: "could not apply",
+				})).To(Succeed())
+				Expect(store.FinishSyncPlan(ctx, orgsync.PlanOutcome{
+					PlanID: "input-plan", State: orgsync.PlanFailed, Now: now.Add(time.Minute),
+				})).To(Succeed())
+				state, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindLabels)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(state.Observation).To(Equal(orgsync.ObservationFailed))
+				Expect(state.ObservedDigest).To(Equal(input))
+				Expect(state.AppliedDigest).To(BeEmpty())
+				Expect(state.Problem).To(Equal("could not apply"))
+			},
+			Entry("the original input survives", "planned-input"),
+			Entry("legacy inputs stay unknown", ""),
+		)
+
 		DescribeTable("round trips classified sync evidence",
 			func(observation orgsync.Observation) {
 				ctx, store, now := runtime()

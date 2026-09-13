@@ -705,6 +705,9 @@ func (s syncScope) ask(
 
 	// A newly observed difference invalidates earlier agreement even if this
 	// plan later expires. Preserve no cache proof for work still to do.
+	for index := range found {
+		found[index].InputDigest = state.ObservedDigest
+	}
 	if len(found) > 0 {
 		state.Observation = orgsync.ObservationDifferent
 	}

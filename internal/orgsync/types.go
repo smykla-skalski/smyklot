@@ -246,6 +246,10 @@ type Action struct {
 	// whatever holds the name by then.
 	Payload []byte
 
+	// InputDigest binds these bytes to the settings used during planning.
+	// Empty means a legacy plan whose input identity was not recorded.
+	InputDigest string
+
 	State ActionState
 
 	// Error is why the action failed, empty otherwise. Actions fail alone: no
