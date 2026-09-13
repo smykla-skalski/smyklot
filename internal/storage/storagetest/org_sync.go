@@ -311,6 +311,11 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 	})
 
 	Describe("plans", func() {
+		It("pages sync history without shifting when newer plans arrive", func() {
+			ctx, store, now := runtime()
+			account := seed(ctx, store, now)
+			verifySyncHistoryPages(ctx, store, now, target, account.ID, action(repoA, orgsync.OperationCreate, "bug"))
+		})
 		It("schedules saved configuration atomically and waits for its execution window", func() {
 			ctx, store, now := runtime()
 			account := seed(ctx, store, now)

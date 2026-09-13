@@ -399,6 +399,9 @@ type Store interface {
 
 	CreateSyncPlan(context.Context, PlanCreate) (Plan, error)
 
+	// ListSyncPlans returns bounded summaries in immutable creation order.
+	ListSyncPlans(context.Context, string, PlanPageRequest) (PlanPage, error)
+
 	// GetSyncPlan reads one plan, scoped to the installation it belongs to.
 	//
 	// The installation is a parameter rather than something to check afterwards,
