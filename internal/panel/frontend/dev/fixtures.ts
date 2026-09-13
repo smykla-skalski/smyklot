@@ -520,6 +520,37 @@ export function seed(
     capabilities: capabilitiesFor('none'),
   });
   const queue = queueSeeds(iso).filter((item) => item.id !== 'queue-sync-scheduled');
+  // Keep both retained and expired failure records, as the durable inbox does.
+  for (const [index, failure] of organization.failures.slice(0, 2).entries()) {
+    const queueId = `delivery:${failure.id}`;
+    failure.queue_item_id = queueId;
+    queue.push({
+      id: queueId,
+      kind: 'webhook_delivery',
+      lane: 'webhook',
+      target_id: organization.value.id,
+      source_kind: 'delivery',
+      source_id: failure.id,
+      title: `Process ${failure.event} for ${failure.repository_full_name}`,
+      summary: failure.reason,
+      state: 'failed',
+      priority: 'normal',
+      priority_overridden: false,
+      window_mode: 'respect',
+      immediate: true,
+      work_ahead: 0,
+      progress_current: 0,
+      progress_total: 0,
+      attempt: failure.retryable ? 5 : 1,
+      revision: 1,
+      not_before: failure.occurred_at,
+      eligible_at: failure.occurred_at,
+      created_at: failure.occurred_at,
+      updated_at: failure.occurred_at,
+      finished_at: failure.occurred_at,
+      details: { delivery_id: index + 1, event: failure.event },
+    });
+  }
   const automaticSync = queue.find((item) => item.id === 'queue-sync-apply');
   if (automaticSync !== undefined) {
     delete automaticSync.repository_id;

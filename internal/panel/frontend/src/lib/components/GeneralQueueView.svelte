@@ -25,7 +25,7 @@
   import PageHeader from './PageHeader.svelte';
   import Plate from './Plate.svelte';
   import QueueActionDialog from './QueueActionDialog.svelte';
-  import QueueDetailDialog from './QueueDetailDialog.svelte';
+  import QueueInspector from './QueueInspector.svelte';
   import QueueList from './QueueList.svelte';
   import RootPageHeader from './RootPageHeader.svelte';
   import SearchField from './SearchField.svelte';
@@ -152,12 +152,6 @@
     queryFn: () => fetchQueue(doneAsk),
     enabled: shows('done'),
   }));
-  const detailQuery = createQuery(() => ({
-    queryKey: queueDetailKey(targetId, detailItemID ?? ''),
-    queryFn: () => fetchDetail(detailItemID),
-    enabled: detailOpen && detailItemID !== null,
-  }));
-
   const cardQueries = { decision: decisionQuery, live: liveQuery, done: doneQuery };
   /* The facets belong to the whole page rather than to one card, so they are read off
      whichever card the view leads with - the same filter answers for all of them. */
@@ -236,9 +230,6 @@
       .map((card) => errorMessage(cardQueries[card.id].error))
       .find((message) => message !== '') ?? '',
   );
-  const detail = $derived<QueueDetail | null>(detailQuery.data ?? null);
-  const detailLoading = $derived(detailQuery.isFetching);
-  const detailError = $derived(errorMessage(detailQuery.error));
 
   const workloads = $derived(facets.workloads);
   const profiles = $derived(facets.profiles);
@@ -863,11 +854,10 @@ without the buttons, rather than buttons that refuse.
   />
 {/key}
 
-<QueueDetailDialog
-  open={detailOpen}
-  {detail}
-  loading={detailLoading}
-  error={detailError}
+<QueueInspector
+  itemId={detailOpen ? detailItemID : null}
+  {targetId}
+  fetchItem={fetchDetail}
   onClose={closeDetail}
 />
 

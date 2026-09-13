@@ -65,6 +65,7 @@
     fetchAudit={session.api.fetchRootAudit}
     exportAudit={session.api.rootAuditExportHref}
     fetchFailures={session.api.fetchRootFailures}
+    fetchQueueItem={session.api.fetchRootQueueItem}
     fetchSettingsCheckpoint={session.api.fetchRootWorkspaceSettingsCheckpoint}
     restoreSettingsCheckpoint={session.api.restoreRootWorkspaceSettingsCheckpoint}
     fetchRootSettingsCheckpoint={session.api.fetchRootRuntimeSettingsCheckpoint}

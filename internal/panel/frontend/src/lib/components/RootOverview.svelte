@@ -34,6 +34,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   } from '../types';
   import { cadenceWords, workloadTitle } from '../workloads';
 
+  import QueueInspector from './QueueInspector.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
   import Icon from './Icon.svelte';
@@ -43,6 +44,8 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { queueHeading, queueSubject } from './WorkspaceOverview.svelte';
 
   const { api }: { api: PanelApi } = $props();
+
+  let failureQueueId = $state<string | null>(null);
 
   const session = getPanelSession();
 
@@ -326,7 +329,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
       <div class="object-list">
         {#each failures as item (item.failure.id)}
           {@const classification = failureClassification(item.failure.retryable)}
-          <a class="object-row" href={failuresHref}>
+          <div class="object-row">
             <span class="object-main">
               <span class="object-name-row">
                 <span class="object-name">
@@ -343,8 +346,16 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
                 <RelativeTime value={item.failure.occurred_at} {nowMs} /></span
               >
             </span>
-            <span class="object-side"><Icon name="chevron-right" size="xs" /></span>
-          </a>
+            <span class="object-side">
+              {#if item.failure.queue_item_id}
+                <Button
+                  tone="quiet"
+                  onclick={() => (failureQueueId = item.failure.queue_item_id ?? null)}
+                  >Inspect queue item</Button
+                >
+              {/if}
+            </span>
+          </div>
         {/each}
       </div>
     {/if}
@@ -380,3 +391,9 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     </div>
   </Card>
 </div>
+
+<QueueInspector
+  itemId={failureQueueId}
+  fetchItem={api.fetchRootQueueItem}
+  onClose={() => (failureQueueId = null)}
+/>

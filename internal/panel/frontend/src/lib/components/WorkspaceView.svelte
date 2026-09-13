@@ -258,6 +258,9 @@ history is routed with its section. That is what makes an address like
         {#key session.selectedTarget.id}
           <HistoryPanel
             targetId={session.selectedTarget.id}
+            queueTargetId={session.selectedTarget.id}
+            fetchQueueItem={(id) =>
+              session.api.fetchTargetQueueItem(session.selectedTarget!.id, id)}
             section={session.currentHistorySection}
             fetchAudit={(request: Parameters<typeof session.api.fetchAudit>[1]) =>
               session.api.fetchAudit(session.selectedTarget!.id, request)}

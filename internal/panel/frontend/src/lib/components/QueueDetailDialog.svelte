@@ -11,12 +11,14 @@
     loading,
     error,
     onClose,
+    onRetry,
   }: {
     open: boolean;
     detail: QueueDetail | null;
     loading: boolean;
     error: string;
     onClose: () => void;
+    onRetry?: () => void;
   } = $props();
 
   function words(value: string): string {
@@ -126,6 +128,9 @@ not.
         {:else}
           <p>Webhook contents and delivery failure details are restricted</p>
         {/if}
+        {#if detail.item.summary}
+          <p>{detail.item.summary}</p>
+        {/if}
       {:else if detail.item.kind === 'pending_ci'}
         <p>
           Pull request {detail.item.details?.pull_request ?? 'unknown'} · head
@@ -176,6 +181,9 @@ not.
   {/if}
 
   {#snippet footer()}
+    {#if onRetry}
+      <Button onclick={onRetry} disabled={loading}>Try again</Button>
+    {/if}
     <Button onclick={onClose}>Close</Button>
   {/snippet}
 </Modal>

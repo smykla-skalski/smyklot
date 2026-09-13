@@ -15,6 +15,7 @@
     AuditHistoryRequest,
     AuditScope,
     DeliveryFailure,
+    QueueDetail,
     FailureHistoryRequest,
     FailureKind,
     HistorySort,
@@ -25,6 +26,7 @@
     RootRuntimeSettings,
   } from '../types';
   import { receipts } from '../receipts.svelte';
+  import QueueInspector from './QueueInspector.svelte';
   import Skeleton from './Skeleton.svelte';
   import Button from './Button.svelte';
   import Card from './Card.svelte';
@@ -39,6 +41,8 @@
   import EmptyState from './EmptyState.svelte';
   import ListToolsMenu, { type ToolsFilter, type ToolsSort } from './ListToolsMenu.svelte';
   import SettingsCheckpointDialog from './SettingsCheckpointDialog.svelte';
+
+  let failureQueueId = $state<string | null>(null);
 
   type HistoryType = 'audit' | 'failures';
   type HistoryContext = 'workspace' | 'root';
@@ -83,6 +87,8 @@
     fetchAudit,
     exportAudit,
     fetchFailures,
+    fetchQueueItem,
+    queueTargetId,
     context = 'workspace',
     section,
     prefs = EPHEMERAL_PREFS,
@@ -108,6 +114,8 @@
      */
     exportAudit?: (request: AuditHistoryRequest) => string;
     fetchFailures: (request: FailureHistoryRequest) => Promise<Page<DeliveryFailure>>;
+    fetchQueueItem?: (id: string) => Promise<QueueDetail>;
+    queueTargetId?: string;
     context?: HistoryContext;
     section?: HistoryType;
     prefs?: PrefsAccessor;
@@ -1026,6 +1034,13 @@ where the record is.
                     </span>
                   </span>
                   <span class="object-side">
+                    {#if fetchQueueItem && failure.queue_item_id}
+                      <Button
+                        tone="quiet"
+                        onclick={() => (failureQueueId = failure.queue_item_id ?? null)}
+                        >Inspect queue item</Button
+                      >
+                    {/if}
                     {#if href !== null}
                       <Button
                         tone="quiet"
@@ -1061,6 +1076,15 @@ where the record is.
     {/if}
   </div>
 </section>
+
+{#if fetchQueueItem}
+  <QueueInspector
+    itemId={failureQueueId}
+    targetId={queueTargetId}
+    fetchItem={fetchQueueItem}
+    onClose={() => (failureQueueId = null)}
+  />
+{/if}
 
 {#if settingsCheckpointId !== null && (settingsCheckpointRoot || settingsCheckpointTargetId !== null)}
   <SettingsCheckpointDialog
