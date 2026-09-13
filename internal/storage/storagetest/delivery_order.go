@@ -22,6 +22,9 @@ func declareDeliveryOrderSpecs(runtime func() (context.Context, storage.Store, t
 		Expect(first.Work).NotTo(BeNil())
 		Expect(first.Work.SourceOrder).To(Equal(original.ID))
 		Expect(store.FailDelivery(ctx, storage.DeliveryFailureChange{ClaimID: original.ID, Stage: "execute", Reason: "temporary failure", Retryable: true, FailedAt: now})).To(Succeed())
+		abandoned, err := store.ClaimDelivery(ctx, claim)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(store.AbandonDelivery(ctx, abandoned.ID)).To(Succeed())
 		later := claim
 		later.ClaimKey = "later-command"
 		later.DeliveryID = "later-delivery"
