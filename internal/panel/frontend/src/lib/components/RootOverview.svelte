@@ -22,7 +22,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
   import { queueListKey, ROOT_OVERVIEW_ACTIVE_QUEUE } from '#lib/queue-cache.js';
   import { queueLine } from '#lib/queue-words.js';
   import type { PanelApi } from '../api';
-  import { failureAct } from '../failures';
+  import { failureAct, failureClassification } from '../failures';
   import { formatLatency, sentenceCase } from '../format';
   import { getPanelSession } from '../session.svelte';
   import type {
@@ -325,6 +325,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
     {:else}
       <div class="object-list">
         {#each failures as item (item.failure.id)}
+          {@const classification = failureClassification(item.failure.retryable)}
           <a class="object-row" href={failuresHref}>
             <span class="object-main">
               <span class="object-name-row">
@@ -332,13 +333,13 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
                   {failureAct(item.failure.stage)}
                   <code class="file-path">{repositoryName(item.failure.repository_full_name)}</code>
                 </span>
-                <Pill tone={item.failure.retryable ? 'warning' : 'danger'}>
-                  {item.failure.retryable ? 'Retrying' : 'Needs a fix'}
+                <Pill tone={classification.tone}>
+                  {classification.label}
                 </Pill>
               </span>
               <span class="object-sum"
                 >{item.workspace.display_name} · {sentenceCase(item.failure.reason)}
-                {item.failure.retryable ? '· Smyklot retries on its own ·' : '·'}
+                · {classification.guidance} ·
                 <RelativeTime value={item.failure.occurred_at} {nowMs} /></span
               >
             </span>

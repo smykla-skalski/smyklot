@@ -476,6 +476,7 @@ npm run test:browser -- \
   tests/browser/queue-list.test.ts \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
+  tests/browser/failure-status.test.ts \
   tests/browser/schedules.test.ts
 '''
 

@@ -435,11 +435,23 @@ export function seed(
       ),
     );
   }
-  const failureReasons = [
-    'repository configuration is invalid',
-    'GitHub request timed out after credentials were refreshed',
-    'Smyklot no longer has access to this repository',
-    'command could not be applied to the pull request state',
+  const failureKinds = [
+    { stage: 'config', reason: 'repository configuration is invalid', retryable: false },
+    {
+      stage: 'github',
+      reason: 'GitHub request timed out after credentials were refreshed',
+      retryable: true,
+    },
+    {
+      stage: 'github',
+      reason: 'Smyklot no longer has access to this repository',
+      retryable: false,
+    },
+    {
+      stage: 'execute',
+      reason: 'command could not be applied to the pull request state',
+      retryable: false,
+    },
   ] as const;
   for (let index = 0; index < 27; index += 1) {
     const repository = cycled(organization.repositories, index);
@@ -449,9 +461,7 @@ export function seed(
       delivery_id: `${deliveryPrefix}-0000-4000-8000-${String(index + 3).padStart(12, '0')}`,
       repository_full_name: repository.detail.repository.full_name,
       event: index % 2 === 0 ? 'issue_comment' : 'pull_request',
-      stage: index % 3 === 0 ? 'config' : 'github',
-      reason: cycled(failureReasons, index),
-      retryable: index % 3 === 1,
+      ...cycled(failureKinds, index),
       occurred_at: iso(-(8 * 60 + index * 53) * 60_000),
     });
   }
