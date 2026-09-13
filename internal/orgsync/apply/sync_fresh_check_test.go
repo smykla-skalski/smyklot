@@ -27,7 +27,7 @@ func (s *freshCheckStore) ListSyncConfigs(context.Context, string) ([]orgsync.Co
 }
 
 func (s *freshCheckStore) GetTarget(context.Context, string) (storage.Target, error) {
-	return storage.Target{ID: "target", Available: true, RepositoryDefaultEnabled: true, Permissions: map[string]string{"issues": "write"}}, nil
+	return storage.Target{ID: "target", Available: true, RepositoryDefaultEnabled: true, Permissions: map[string]string{"issues": "write", "contents": "write"}}, nil
 }
 
 func (s *freshCheckStore) ListRepositories(context.Context, string) ([]storage.Repository, error) {

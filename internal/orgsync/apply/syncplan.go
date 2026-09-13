@@ -24,10 +24,7 @@ import (
 // live slot is not held overnight by a plan nobody came back to. A plan that
 // expires is not lost: the next reconcile computes the same answer from the
 // same state.
-const (
-	syncPlanTTL   = 2 * time.Hour
-	noSyncChanges = "No changes"
-)
+const syncPlanTTL = 2 * time.Hour
 
 type queuePolicyReader interface {
 	GetEffectiveQueuePolicy(context.Context, workqueue.Kind, *string) (workqueue.Policy, error)
@@ -52,8 +49,8 @@ func (s *Engine) PlanInstallation(
 
 // PlanInstallationWithSummary computes drift and names the durable result for
 // the queue ledger. Scheduled scans still avoid a domain audit row when there
-// is no drift, while a person who explicitly requested the scan can see the
-// affirmative "No changes" outcome on that queue occurrence.
+// is no drift. The queue summary distinguishes observed agreement, cached
+// evidence, proposals and checks that could not finish.
 func (s *Engine) PlanInstallationWithSummary(
 	ctx context.Context,
 	client *github.Client,
@@ -89,7 +86,7 @@ func (s *Engine) PlanInstallationWithSummary(
 	// having read one table, which is what it did before a refusal had to be
 	// cleared - and a refusal to clear is the exception, not the tick.
 	if len(active) == 0 && !anyRefused(applied) {
-		return noSyncChanges, nil
+		return inactiveSyncSummary(switchedOn), nil
 	}
 
 	held, err := s.syncInventoryFor(ctx, target, applied)
@@ -113,7 +110,7 @@ func (s *Engine) PlanInstallationWithSummary(
 	if len(active) == 0 {
 		// Nothing switched on and permitted, so there is nothing to compare
 		// against.
-		return noSyncChanges, nil
+		return inactiveSyncSummary(switchedOn), nil
 	}
 
 	// A plan already in flight holds the installation's one live slot. Leaving
@@ -123,12 +120,13 @@ func (s *Engine) PlanInstallationWithSummary(
 		return summary, err
 	}
 
-	actions, err := s.planSyncActions(ctx, client, active, scopes, held)
+	scan, err := s.planSyncActions(ctx, client, active, scopes, held)
 	if err != nil {
 		return "", err
 	}
-	if len(actions) == 0 {
-		return noSyncChanges, nil
+	scan.unpermitted = len(switchedOn) - len(active)
+	if len(scan.actions) == 0 {
+		return scan.summary(), nil
 	}
 
 	// Whoever last saved the configuration being enforced, carried onto the
@@ -145,7 +143,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		Trigger:   trigger,
 		ActorID:   syncActor(active),
 		Digest:    scopeDigest(configs, held, s.formattingPolicy()),
-		Actions:   actions,
+		Actions:   scan.actions,
 		Now:       now,
 		ExpiresAt: now.Add(approvalTTL),
 		Automatic: true,
@@ -154,14 +152,14 @@ func (s *Engine) PlanInstallationWithSummary(
 		// Another caller won the slot between the read above and this write.
 		// That is the index doing its job, not a failure worth reporting.
 		if errors.Is(err, storage.ErrConflict) {
-			return "A live sync plan is already available", nil
+			return "A live sync plan is already available. " + scan.summary(), nil
 		}
 
 		return "", fmt.Errorf("record sync plan: %w", err)
 	}
 
 	logging.From(ctx).Info("sync plan computed",
-		"sync_plan", plan.ID, "trigger", trigger, "actions", len(actions))
+		"sync_plan", plan.ID, "trigger", trigger, "actions", len(scan.actions))
 
 	// Only now, with a plan that has something in it. Every path above that
 	// returns early returns without writing an entry, which is the rule: a
@@ -176,7 +174,7 @@ func (s *Engine) PlanInstallationWithSummary(
 		return "", err
 	}
 
-	return "Repository changes queued for automatic sync", nil
+	return "Repository changes queued for automatic sync. " + scan.summary(), nil
 }
 
 func (s *Engine) livePlanSummary(ctx context.Context, targetID string) (string, bool, error) {
@@ -428,58 +426,6 @@ func clearedState(state orgsync.RepositoryState, now time.Time) orgsync.Reposito
 		Kind:         state.Kind,
 		AppliedAt:    now,
 	}
-}
-
-// planSyncActions asks each repository in scope what it would take to match.
-func (s *Engine) planSyncActions(
-	ctx context.Context,
-	client *github.Client,
-	active []orgsync.Config,
-	scopes map[orgsync.Kind]syncScope,
-	held syncInventory,
-) ([]orgsync.Action, error) {
-	var (
-		actions []orgsync.Action
-		matched []orgsync.RepositoryState
-	)
-
-	// Kind by kind, because each has its own configuration, its own fingerprint
-	// and its own record of what a repository already has. A repository settled
-	// for its labels may be out of date for its settings.
-	for _, config := range active {
-		scope := scopes[config.Kind]
-
-		ask, err := repositoryPlanner(
-			client, config, scope.overrides, scope.formatting, scope.targetPatch,
-		)
-		if err != nil {
-			// A stored document this version cannot use. Every repository would
-			// answer the same way, so the kind stands down rather than failing
-			// once per repository - and it stands down rather than planning,
-			// because a plan holding work GitHub is going to refuse asks
-			// somebody to approve a promise it cannot keep.
-			logging.From(ctx).Warn("sync configuration cannot be planned",
-				"kind", config.Kind, "error", err)
-
-			continue
-		}
-
-		for _, repository := range held.repositories {
-			if !scope.covers(repository) {
-				continue
-			}
-
-			found, learned := scope.ask(ctx, ask, repository)
-			actions = append(actions, found...)
-			matched = append(matched, learned...)
-		}
-	}
-
-	if err := s.store.RecordSyncRepositoryState(ctx, matched); err != nil {
-		return nil, err
-	}
-
-	return actions, nil
 }
 
 // syncDocument is a kind's configuration: something to decode, and something

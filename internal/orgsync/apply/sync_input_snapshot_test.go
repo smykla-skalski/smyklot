@@ -61,11 +61,12 @@ func TestPlanningUsesTheInputsRecordedInItsObservation(t *testing.T) {
 	scope := newSyncScope(saved, nil, nil, time.Now().UTC(), before, config.Patch{})
 	// The process setting changes after the planning scope was captured.
 	engine.SetFormattingPolicy(after)
-	actions, err := engine.planSyncActions(t.Context(), client, []orgsync.Config{saved},
+	scan, err := engine.planSyncActions(t.Context(), client, []orgsync.Config{saved},
 		map[orgsync.Kind]syncScope{orgsync.KindFiles: scope}, syncInventory{repositories: []storage.Repository{repository}})
 	if err != nil {
 		t.Fatal(err)
 	}
+	actions := scan.actions
 	if len(actions) != 1 || len(store.states) != 1 {
 		t.Fatalf("actions=%d states=%d", len(actions), len(store.states))
 	}
