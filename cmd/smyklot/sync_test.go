@@ -496,6 +496,8 @@ var _ = Describe("Org sync [Unit]", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(states).To(HaveLen(1))
 			Expect(states[0].Observation).To(Equal(orgsync.ObservationApplied))
+			Expect(states[0].ObservedDigest).To(Equal(states[0].AppliedDigest))
+			Expect(states[0].ObservedDigest).NotTo(BeEmpty())
 		})
 
 		// The digest is what stops the next reconcile asking GitHub about a

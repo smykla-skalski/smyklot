@@ -327,12 +327,14 @@ func (s *Engine) applyRepositoryWork(
 		// Only a kind whose every action succeeded records a digest. A kind
 		// that half-applied has to be planned again, and recording it would
 		// tell the next reconcile that work nobody did is done.
+		digest := digests.of(repository, kind.Kind)
 		outcome.Applied = append(outcome.Applied, orgsync.RepositoryState{
-			RepositoryID:  repository.ID,
-			Kind:          kind.Kind,
-			AppliedDigest: digests.of(repository, kind.Kind),
-			AppliedAt:     time.Now().UTC(),
-			Observation:   observation,
+			RepositoryID:   repository.ID,
+			Kind:           kind.Kind,
+			AppliedDigest:  digest,
+			AppliedAt:      time.Now().UTC(),
+			Observation:    observation,
+			ObservedDigest: digest,
 		})
 	}
 }
@@ -576,16 +578,9 @@ type syncDigestIndex struct {
 }
 
 func (i syncDigestIndex) of(repository storage.Repository, kind orgsync.Kind) string {
-	var inputs []orgsync.DigestInput
-	if kind == orgsync.KindFiles {
-		policy := repositoryFormattingPolicy(i.formatting, i.targetPatch, repository)
-		inputs = append(inputs, orgsync.DigestInput{
-			Name: digestInputFormatting, Digest: orgsync.DigestFormattingPolicy(policy),
-		})
-	}
-
-	return orgsync.DigestRepositoryKindWithInputs(
-		i.configs[kind], i.overrides[repository.ID][kind], inputs,
+	return orgsync.DigestRepositoryConfiguration(
+		kind, i.configs[kind], i.overrides[repository.ID][kind],
+		repositoryFormattingPolicy(i.formatting, i.targetPatch, repository),
 	)
 }
 

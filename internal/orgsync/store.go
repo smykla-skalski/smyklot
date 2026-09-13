@@ -81,10 +81,13 @@ func (o *RepositoryOverride) Disabled() bool {
 type Observation string
 
 const (
-	ObservationMatched  Observation = "matched"
-	ObservationApplied  Observation = "applied"
-	ObservationProposed Observation = "proposed"
-	ObservationDeclined Observation = "declined"
+	ObservationMatched   Observation = "matched"
+	ObservationApplied   Observation = "applied"
+	ObservationProposed  Observation = "proposed"
+	ObservationDeclined  Observation = "declined"
+	ObservationDifferent Observation = "different"
+	ObservationFailed    Observation = "failed"
+	ObservationBlocked   Observation = "blocked"
 )
 
 // RepositoryState is what is known about one repository for one kind: what
@@ -101,6 +104,10 @@ type RepositoryState struct {
 	AppliedDigest string
 	AppliedAt     time.Time
 	Observation   Observation
+
+	// ObservedDigest identifies the inputs checked even when no cache entry
+	// can be retained. A changed configuration supersedes earlier failures.
+	ObservedDigest string
 
 	// Problem is why this kind is not being synced here, in words somebody
 	// reading the panel can act on, or empty where nothing is wrong.

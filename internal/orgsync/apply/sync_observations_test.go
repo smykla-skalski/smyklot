@@ -17,18 +17,19 @@ func TestSyncObservationReplacesStaleAgreement(t *testing.T) {
 	scope := newSyncScope(orgsync.Config{Kind: orgsync.KindFiles, Digest: "config"},
 		nil, nil, now, config.DefaultFormattingPolicy(), config.Patch{})
 	for _, test := range []struct {
-		name        string
-		answer      repositoryAnswer
-		err         error
-		wantDigest  bool
-		wantProblem bool
+		name            string
+		answer          repositoryAnswer
+		err             error
+		wantDigest      bool
+		wantProblem     bool
+		wantObservation orgsync.Observation
 	}{
-		{name: "matching", answer: compared(nil), wantDigest: true},
-		{name: "proposed", answer: repositoryAnswer{observation: orgsync.ObservationProposed}, wantDigest: true},
-		{name: "declined", answer: repositoryAnswer{observation: orgsync.ObservationDeclined}, wantDigest: true},
-		{name: "new drift", answer: compared([]orgsync.Action{{Subject: "README.md"}})},
-		{name: "read failed", err: errors.New("transport failed"), wantProblem: true},
-		{name: "refused", answer: repositoryAnswer{problem: "cannot compose"}, wantProblem: true},
+		{name: "matching", answer: compared(nil), wantDigest: true, wantObservation: orgsync.ObservationMatched},
+		{name: "proposed", answer: repositoryAnswer{observation: orgsync.ObservationProposed}, wantDigest: true, wantObservation: orgsync.ObservationProposed},
+		{name: "declined", answer: repositoryAnswer{observation: orgsync.ObservationDeclined}, wantDigest: true, wantObservation: orgsync.ObservationDeclined},
+		{name: "new drift", answer: compared([]orgsync.Action{{Subject: "README.md"}}), wantObservation: orgsync.ObservationDifferent},
+		{name: "read failed", err: errors.New("transport failed"), wantProblem: true, wantObservation: orgsync.ObservationFailed},
+		{name: "refused", answer: repositoryAnswer{problem: "cannot compose"}, wantProblem: true, wantObservation: orgsync.ObservationBlocked},
 		{name: "no evidence", answer: repositoryAnswer{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -47,7 +48,7 @@ func TestSyncObservationReplacesStaleAgreement(t *testing.T) {
 			if (state.AppliedDigest != "") != test.wantDigest || (state.Problem != "") != test.wantProblem {
 				t.Fatalf("state = %#v", state)
 			}
-			if state.Observation != test.answer.observation || !state.AppliedAt.Equal(now) {
+			if state.Observation != test.wantObservation || !state.AppliedAt.Equal(now) || state.ObservedDigest != scope.digestFor(repository) {
 				t.Fatalf("evidence = %#v", state)
 			}
 			if len(actions) != len(test.answer.actions) {

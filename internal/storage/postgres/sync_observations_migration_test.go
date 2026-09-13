@@ -45,27 +45,47 @@ VALUES ('repo', 'labels', '', '2026-09-13T12:00:00.000000000Z', 'retained proble
 			t.Fatal(err)
 		}
 	}
+	classified, err := sqlstore.MigrationsBefore(migrations, 57)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sqlstore.Migrate(ctx, db, dialect, classified); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO sync_repository_state
+ (repository_id, kind, applied_digest, applied_at, problem, observation)
+ VALUES ('repo', 'rulesets', 'classified-input', '2026-09-13T12:00:00.000000000Z', '', 'matched')`); err != nil {
+		t.Fatal(err)
+	}
 	for range 2 {
 		if err := sqlstore.Migrate(ctx, db, dialect, migrations); err != nil {
 			t.Fatal(err)
 		}
-		assertLegacySyncObservation(t, db, "files", "legacy-digest", "")
-		assertLegacySyncObservation(t, db, "labels", "", "retained problem")
+		assertLegacySyncObservation(t, db, "files", "legacy-digest", "", "")
+		assertLegacySyncObservation(t, db, "labels", "", "retained problem", "")
+		assertLegacySyncObservation(t, db, "rulesets", "classified-input", "", "matched")
 	}
 }
 
-func assertLegacySyncObservation(t *testing.T, db *sql.DB, kind, wantDigest, wantProblem string) {
+func assertLegacySyncObservation(t *testing.T, db *sql.DB, kind, wantDigest, wantProblem, wantObservation string) {
 	t.Helper()
-	var digest, problem, observation string
+	var digest, problem, observation, inputDigest string
 	var observed sqlstore.StoredTime
-	err := db.QueryRowContext(t.Context(), (Dialect{}).Rebind(`SELECT applied_digest, applied_at, problem, observation
+	err := db.QueryRowContext(t.Context(), (Dialect{}).Rebind(`SELECT applied_digest, applied_at, problem, observation, observed_digest
 FROM sync_repository_state WHERE repository_id = 'repo' AND kind = ?`), kind).
-		Scan(&digest, &observed, &problem, &observation)
+		Scan(&digest, &observed, &problem, &observation, &inputDigest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observation != "" || !observed.Time().Equal(time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)) {
+	if observation != wantObservation || !observed.Time().Equal(time.Date(2026, time.September, 13, 12, 0, 0, 0, time.UTC)) {
 		t.Fatalf("invented evidence: %q at %v", observation, observed.Time())
+	}
+	wantInput := ""
+	if wantObservation != "" {
+		wantInput = wantDigest
+	}
+	if inputDigest != wantInput {
+		t.Fatalf("input digest = %q, want %q", inputDigest, wantInput)
 	}
 	if digest != wantDigest || problem != wantProblem {
 		t.Fatalf("changed legacy evidence: %s %q %q", kind, digest, problem)

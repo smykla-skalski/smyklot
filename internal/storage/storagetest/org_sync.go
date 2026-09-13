@@ -1274,8 +1274,11 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 				seed(ctx, store, now)
 				state := orgsync.RepositoryState{
 					RepositoryID: repoA, Kind: orgsync.KindFiles,
-					AppliedDigest: "configuration", AppliedAt: now,
+					AppliedDigest: "configuration", ObservedDigest: "checked-input", AppliedAt: now,
 					Observation: observation,
+				}
+				if observation == orgsync.ObservationDifferent || observation == orgsync.ObservationFailed || observation == orgsync.ObservationBlocked {
+					state.AppliedDigest = ""
 				}
 				Expect(store.RecordSyncRepositoryState(ctx, []orgsync.RepositoryState{state})).To(Succeed())
 				read, err := store.GetSyncRepositoryState(ctx, target, repoA, orgsync.KindFiles)
@@ -1298,6 +1301,9 @@ func declareOrgSyncSpecs(runtime func() (context.Context, storage.Store, time.Ti
 			Entry("direct changes applied", orgsync.ObservationApplied),
 			Entry("open proposal", orgsync.ObservationProposed),
 			Entry("declined proposal", orgsync.ObservationDeclined),
+			Entry("different contents", orgsync.ObservationDifferent),
+			Entry("failed check", orgsync.ObservationFailed),
+			Entry("blocked check", orgsync.ObservationBlocked),
 		)
 
 		It("keeps why a repository could not be synced", func() {

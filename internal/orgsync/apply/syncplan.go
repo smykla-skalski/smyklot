@@ -447,7 +447,7 @@ func (s *Engine) planSyncActions(
 		scope := scopes[config.Kind]
 
 		ask, err := repositoryPlanner(
-			client, config, scope.overrides, s.formattingPolicy(), held.target.ConfigPatch,
+			client, config, scope.overrides, scope.formatting, scope.targetPatch,
 		)
 		if err != nil {
 			// A stored document this version cannot use. Every repository would
@@ -619,16 +619,9 @@ func (s syncScope) covers(repository storage.Repository) bool {
 // compares against. One expression, so the value written and the value tested
 // cannot drift into disagreeing about whether a repository is settled.
 func (s syncScope) digestFor(repository storage.Repository) string {
-	var inputs []orgsync.DigestInput
-	if s.config.Kind == orgsync.KindFiles {
-		policy := repositoryFormattingPolicy(s.formatting, s.targetPatch, repository)
-		inputs = append(inputs, orgsync.DigestInput{
-			Name: digestInputFormatting, Digest: orgsync.DigestFormattingPolicy(policy),
-		})
-	}
-
-	return orgsync.DigestRepositoryKindWithInputs(
-		s.config.Digest, s.overrides[repository.ID], inputs,
+	return orgsync.DigestRepositoryConfiguration(
+		s.config.Kind, s.config.Digest, s.overrides[repository.ID],
+		repositoryFormattingPolicy(s.formatting, s.targetPatch, repository),
 	)
 }
 
@@ -646,9 +639,10 @@ func (s syncScope) ask(
 	// state is this repository's row for this kind, filled in by whichever
 	// answer writes one.
 	state := orgsync.RepositoryState{
-		RepositoryID: repository.ID,
-		Kind:         s.config.Kind,
-		AppliedAt:    s.now,
+		RepositoryID:   repository.ID,
+		Kind:           s.config.Kind,
+		AppliedAt:      s.now,
+		ObservedDigest: s.digestFor(repository),
 	}
 
 	answer, err := question(ctx, repository)
@@ -660,6 +654,7 @@ func (s syncScope) ask(
 		logging.From(ctx).Warn("could not read a repository while planning",
 			"repo", repository.FullName, "kind", s.config.Kind, "error", err)
 
+		state.Observation = orgsync.ObservationFailed
 		state.Problem = "Could not check this repository. Smyklot will retry automatically."
 		return nil, []orgsync.RepositoryState{state}
 	}
@@ -691,6 +686,7 @@ func (s syncScope) ask(
 		logging.From(ctx).Warn("this kind is not being synced on this repository",
 			"repo", repository.FullName, "kind", s.config.Kind, "reason", problem)
 
+		state.Observation = orgsync.ObservationBlocked
 		state.Problem = problem
 
 		return nil, []orgsync.RepositoryState{state}
@@ -701,7 +697,7 @@ func (s syncScope) ask(
 		// so an apply would never record it, and without a record this
 		// repository is read from GitHub again on every tick for ever - the
 		// cost the digest exists to remove.
-		state.AppliedDigest = s.digestFor(repository)
+		state.AppliedDigest = state.ObservedDigest
 		state.Observation = answer.observation
 
 		return nil, []orgsync.RepositoryState{state}
@@ -709,6 +705,9 @@ func (s syncScope) ask(
 
 	// A newly observed difference invalidates earlier agreement even if this
 	// plan later expires. Preserve no cache proof for work still to do.
+	if len(found) > 0 {
+		state.Observation = orgsync.ObservationDifferent
+	}
 	return found, []orgsync.RepositoryState{state}
 }
 

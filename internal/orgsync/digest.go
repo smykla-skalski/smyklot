@@ -66,6 +66,22 @@ func DigestRepositoryKindWithInputs(
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
+// DigestRepositoryConfiguration is the current input identity for one kind.
+// Every producer and reader of repository evidence must include the same
+// kind-specific inputs. File formatting changes invalidate file evidence only.
+func DigestRepositoryConfiguration(
+	kind Kind,
+	configDigest string,
+	override *RepositoryOverride,
+	formatting config.FormattingPolicy,
+) string {
+	var inputs []DigestInput
+	if kind == KindFiles {
+		inputs = []DigestInput{{Name: "formatting", Digest: DigestFormattingPolicy(formatting)}}
+	}
+	return DigestRepositoryKindWithInputs(configDigest, override, inputs)
+}
+
 // DigestScope fingerprints everything a plan for one installation was computed
 // from: each kind's configuration, and every repository override that decides
 // whether a repository is in scope at all.
