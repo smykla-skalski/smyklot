@@ -31,7 +31,7 @@ func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, re
 	if err != nil {
 		return fmt.Errorf("read check blocker: %w", err)
 	}
-	if plan.State == orgsync.PlanApplying || plan.ExpiresAt.After(request.Now) {
+	if orgsync.FreshCheckPlanBlocker(plan, request.Now) != "" {
 		return &storage.LiveSyncPlanConflict{PlanID: plan.ID}
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE sync_plans SET state = 'expired', finished_at = ? WHERE id = ?", request.Now, plan.ID); err != nil {

@@ -1,4 +1,4 @@
-import { projectMockSyncPlan } from './sync-capability.js';
+import { mockCheckCapability, projectMockSyncPlan } from './sync-capability.js';
 import { mockSyncCheckPage } from './sync-check-history';
 import { advanceMockSync } from './sync-execution.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
@@ -1718,7 +1718,11 @@ async function handle(
       );
       if (plan?.id !== decodeURIComponent(retainedPlanMatch[2] ?? ''))
         respond(res, 404, { error: { code: 'not_found', message: 'Sync result not found' } });
-      else respond(res, 200, { plan });
+      else
+        respond(res, 200, {
+          plan,
+          check: mockCheckCapability(state, decodeURIComponent(retainedPlanMatch[1] ?? '')),
+        });
       return;
     }
 
@@ -1754,7 +1758,10 @@ async function handle(
     );
     if (syncPlanMatch && method === 'GET') {
       const targetId = decodeURIComponent(syncPlanMatch[1] ?? '');
-      respond(res, 200, { plan: mockLiveSyncPlan(state, targetId) });
+      respond(res, 200, {
+        plan: mockLiveSyncPlan(state, targetId),
+        check: mockCheckCapability(state, targetId),
+      });
       return;
     }
 

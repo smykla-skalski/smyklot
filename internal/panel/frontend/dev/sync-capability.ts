@@ -1,4 +1,9 @@
-import type { QueueItem, SyncPlan, SyncDispatchCapability } from '../src/lib/types.js';
+import type {
+  QueueItem,
+  SyncPlan,
+  SyncDispatchCapability,
+  SyncCheckCapability,
+} from '../src/lib/types.js';
 import type { MockState } from './fixtures.js';
 
 export function mockDispatchCapability(
@@ -84,4 +89,31 @@ export function projectMockSyncPlan(
     queue_item: item,
     dispatch: mockDispatchCapability(plan, targetId, item, role, now),
   };
+}
+
+export function mockCheckCapability(
+  state: Pick<MockState, 'queue' | 'targets' | 'syncPlans'>,
+  targetId: string,
+  now = Date.now(),
+): SyncCheckCapability {
+  const result: SyncCheckCapability = {
+    action: 'check',
+    target_id: targetId,
+    available: false,
+    reason: 'admin_or_owner_required',
+    effect: 'request_repository_check',
+  };
+  const role = state.targets.find((target) => target.value.id === targetId)?.value.effective_role;
+  if (role !== 'admin' && role !== 'owner') return result;
+  const plan = state.syncPlans.get(targetId);
+  if (plan?.state === 'applying')
+    return { ...result, reason: 'changes_running', blocking_plan_id: plan.id };
+  if (plan && ['computed', 'approved'].includes(plan.state) && Date.parse(plan.expires_at) > now)
+    return { ...result, reason: 'changes_pending', blocking_plan_id: plan.id };
+  const check = state.queue.findLast(
+    (item) => item.target_id === targetId && item.kind === 'sync_scan',
+  );
+  if (check?.state === 'running')
+    return { ...result, reason: 'check_running', running_check_id: check.id };
+  return { ...result, available: true, reason: 'available' };
 }

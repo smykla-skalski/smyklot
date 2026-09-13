@@ -552,9 +552,13 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	check, err := s.currentSyncCheckCapability(r.Context(), target.ID, access.Role)
+	if err != nil {
+		s.writeStorageError(w, err)
+		return
+	}
 	var plan orgsync.Plan
 	var actions []orgsync.Action
-	var err error
 	planID := r.PathValue("plan")
 	if planID == "" {
 		plan, actions, err = s.store.GetLiveSyncPlan(r.Context(), target.ID)
@@ -563,7 +567,7 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	if errors.Is(err, storage.ErrNotFound) && planID == "" {
 		// Nothing in flight is an answer, not a missing page.
-		writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: nil})
+		writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: nil, syncCheckAction: check})
 
 		return
 	}
@@ -578,7 +582,7 @@ func (s *Server) getSyncPlan(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto})
+	writeJSON(w, http.StatusOK, map[string]any{syncPlanKey: dto, syncCheckAction: check})
 }
 
 func (s *Server) syncPlanDTO(

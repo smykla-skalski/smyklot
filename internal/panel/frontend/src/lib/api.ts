@@ -78,6 +78,7 @@ import type {
   SyncOverride,
   SyncPathIndex,
   SyncPlan,
+  SyncPlanResponse,
   SyncPlanSummary,
   SyncCheckObservation,
   SyncRunNowResponse,
@@ -333,7 +334,7 @@ export interface PanelApi {
     checkId: string,
     request: { limit: number; cursor?: string },
   ): Promise<Page<SyncCheckObservation>>;
-  fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }>;
+  fetchSyncPlan(targetId: string, planId?: string): Promise<SyncPlanResponse>;
   approveSyncPlan(targetId: string, planId: string, digest: string): Promise<{ plan: SyncPlan }>;
   discardSyncPlan(targetId: string, planId: string): Promise<void>;
   fetchSyncStatus(targetId: string): Promise<SyncStatus>;
@@ -1228,7 +1229,7 @@ export function createPanelApi(
       );
     },
 
-    fetchSyncPlan(targetId: string, planId?: string): Promise<{ plan: SyncPlan | null }> {
+    fetchSyncPlan(targetId: string, planId?: string): Promise<SyncPlanResponse> {
       return jsonRequest(
         `/api/v1/targets/${pathSegment(targetId)}/sync/${planId === undefined ? 'plan' : `plans/${pathSegment(planId)}`}`,
       );

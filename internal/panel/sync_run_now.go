@@ -38,7 +38,7 @@ func (input syncRunNowInput) valid() bool {
 		return false
 	}
 	switch input.Action {
-	case "check":
+	case syncCheckAction:
 		return input.PlanID == "" && input.ExpectedRevision == 0
 	case syncDispatchAction:
 		return strings.TrimSpace(input.PlanID) != "" && input.PlanID == strings.TrimSpace(input.PlanID) && input.ExpectedRevision > 0

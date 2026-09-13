@@ -1773,3 +1773,24 @@ export interface SyncCheckOutcome {
   cached: number;
   missing_permissions: SyncKind[] | null;
 }
+
+/** Current workspace capability, including when the inspected plan is historical. */
+export interface SyncCheckCapability {
+  action: 'check';
+  target_id: string;
+  available: boolean;
+  reason:
+    | 'available'
+    | 'admin_or_owner_required'
+    | 'changes_pending'
+    | 'changes_running'
+    | 'check_running';
+  effect: 'request_repository_check';
+  blocking_plan_id?: string;
+  running_check_id?: string;
+}
+
+export interface SyncPlanResponse {
+  plan: SyncPlan | null;
+  check: SyncCheckCapability;
+}

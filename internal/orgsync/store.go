@@ -431,6 +431,9 @@ type Store interface {
 	// internal/pendingci.
 	GetLiveSyncPlan(context.Context, string) (Plan, []Action, error)
 
+	// GetSyncCheckAvailability reads current workspace blockers without retiring work.
+	GetSyncCheckAvailability(context.Context, string, time.Time) (CheckAvailability, error)
+
 	// Dispatch acceptance survives queue retention. Callers authorize actor and target.
 	FindSyncPlanDispatch(context.Context, PlanDispatch) (PlanDispatchReceipt, error)
 	DispatchSyncPlan(context.Context, PlanDispatch) (PlanDispatchReceipt, error)

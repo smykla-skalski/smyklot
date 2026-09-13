@@ -34,6 +34,12 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			_, err := store.CreateSyncPlan(ctx, create)
 			Expect(err).NotTo(HaveOccurred())
 			request.Now = create.ExpiresAt
+			availability, err := store.GetSyncCheckAvailability(ctx, create.TargetID, request.Now)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(availability.Reason).To(Equal("available"))
+			unchanged, _, err := store.GetSyncPlan(ctx, create.TargetID, create.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(unchanged.State).NotTo(Equal(orgsync.PlanExpired))
 			item, err := store.RequestRecurringWork(ctx, request)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Kind).To(Equal(workqueue.KindSyncScan))
@@ -56,6 +62,10 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			create.Automatic = automatic
 			_, err := store.CreateSyncPlan(ctx, create)
 			Expect(err).NotTo(HaveOccurred())
+			availability, err := store.GetSyncCheckAvailability(ctx, create.TargetID, request.Now)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(availability.Reason).To(Equal("changes_pending"))
+			Expect(availability.BlockingPlanID).To(Equal(create.ID))
 			_, err = store.RequestRecurringWork(ctx, request)
 			var blocked *storage.LiveSyncPlanConflict
 			Expect(errors.As(err, &blocked)).To(BeTrue())
@@ -79,6 +89,21 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(plan.State).To(Equal(orgsync.PlanApplying))
 		})
+		It("reports the running check without claiming acceptance", func() {
+			item, err := store.RequestRecurringWork(ctx, request)
+			Expect(err).NotTo(HaveOccurred())
+			leased, found, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{Kind: request.Kind, TargetID: request.TargetID, Title: "Check", Now: now, LeaseDuration: time.Minute})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			Expect(leased.ID).To(Equal(item.ID))
+			availability, err := store.GetSyncCheckAvailability(ctx, create.TargetID, now)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(availability).To(Equal(orgsync.CheckAvailability{Reason: "check_running", RunningCheckID: item.ID}))
+			request.RequestKey = "another-check"
+			_, err = store.RequestRecurringWork(ctx, request)
+			Expect(err).To(MatchError(storage.ErrConflict))
+		})
+
 		It("accepts concurrent recovery commands once", func() {
 			create.Automatic = true
 			_, err := store.CreateSyncPlan(ctx, create)
