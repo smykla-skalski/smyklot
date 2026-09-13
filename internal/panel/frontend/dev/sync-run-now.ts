@@ -1,29 +1,41 @@
+import { projectMockSyncPlan } from './sync-capability.js';
 import { recordMockSyncEvent } from './sync-queue.js';
 import { randomUUID } from 'node:crypto';
 import { VIEWER, type MockState } from './fixtures.js';
-import type { QueueItem, SyncPlan, SyncRunNowResponse } from '../src/lib/types.js';
+import type {
+  QueueItem,
+  SyncPlan,
+  SyncRunNowResponse,
+  SyncDispatchCapability,
+} from '../src/lib/types.js';
 
 type State = Pick<
   MockState,
-  'queue' | 'syncPlans' | 'syncQueueEvents' | 'syncCheckReceipts' | 'syncDispatchReceipts'
+  | 'syncHistory'
+  | 'targets'
+  | 'queue'
+  | 'syncPlans'
+  | 'syncQueueEvents'
+  | 'syncCheckReceipts'
+  | 'syncDispatchReceipts'
 >;
 type Reply =
   | { status: 200 | 202; body: SyncRunNowResponse }
-  | { status: 400 | 404 | 409; body: { code: string; message: string } };
+  | {
+      status: 400 | 404 | 409;
+      body: { code: string; message: string; dispatch?: SyncDispatchCapability };
+    };
 const terminal = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
 
 /** Project the current queue revision, never a copy left in the seeded plan. */
-export function mockLiveSyncPlan(state: State, targetId: string): SyncPlan | null {
+export function mockLiveSyncPlan(
+  state: State,
+  targetId: string,
+  now = Date.now(),
+): SyncPlan | null {
   const plan = state.syncPlans.get(targetId);
   if (!plan || !['computed', 'approved', 'applying'].includes(plan.state)) return null;
-  const queue = state.queue.find(
-    (item) =>
-      item.target_id === targetId &&
-      item.kind === 'sync_apply' &&
-      item.source_id === plan.id &&
-      item.source_kind === 'sync_plan',
-  );
-  return { ...plan, queue_item: queue };
+  return projectMockSyncPlan(state, targetId, plan, now);
 }
 
 /** Mirror explicit check and exact-plan dispatch without changing request intent. */
@@ -107,23 +119,30 @@ export function mockSyncRunNow(
       };
     }
   }
-  const plan = mockLiveSyncPlan(state, targetId);
+  let plan = mockLiveSyncPlan(state, targetId, now);
   if (input.action === 'dispatch') {
-    const requested = state.syncPlans.get(targetId);
+    const requested = [
+      state.syncPlans.get(targetId),
+      ...(state.syncHistory.get(targetId) ?? []),
+    ].find((p) => p && 'plan_id' in input && p.id === input.plan_id);
     if (!requested || !('plan_id' in input) || input.plan_id !== requested.id)
       return { status: 404, body: { code: 'not_found', message: 'sync plan not found' } };
-    if (plan === null) return conflict();
+    plan = projectMockSyncPlan(state, targetId, requested, now);
   }
   if (plan !== null) {
     if (input.action === 'check') return { status: 200, body: { status: 'changes_pending', plan } };
-    if (plan.state === 'computed')
+    if (plan.dispatch?.reason === 'approval_required')
       return { status: 200, body: { status: 'approval_required', plan } };
-    if (plan.state === 'applying')
+    if (plan.dispatch?.reason === 'already_running')
       return { status: 200, body: { status: 'already_running', plan } };
-    if (plan.state !== 'approved' || Date.parse(plan.expires_at) <= now) {
+    if (!plan.dispatch?.available) {
       return {
         status: 409,
-        body: { code: 'unsupported_plan_state', message: 'sync plan cannot run now' },
+        body: {
+          code: 'unsupported_plan_state',
+          message: 'these changes cannot run now',
+          dispatch: plan.dispatch,
+        },
       };
     }
     const item = plan.queue_item;

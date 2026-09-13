@@ -1,3 +1,4 @@
+import { projectMockSyncPlan } from './sync-capability.js';
 import { mockSyncCheckPage } from './sync-check-history';
 import { advanceMockSync } from './sync-execution.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
@@ -1735,6 +1736,10 @@ async function handle(
         await readBody<unknown>(req),
         Date.now(),
       );
+      if (result.status === 409 && result.body.dispatch) {
+        respond(res, result.status, result.body);
+        return;
+      }
       if (result.status === 400 || result.status === 404 || result.status === 409) {
         throw new MockApiError(result.status, result.body.code, result.body.message);
       }
@@ -1879,7 +1884,17 @@ async function handle(
         approved_at: new Date().toISOString(),
       };
       state.syncPlans.set(targetId, approved);
-      respond(res, 200, { plan: approved });
+      const queue = state.queue.find(
+        (item) =>
+          item.source_id === approved.id &&
+          item.target_id === targetId &&
+          item.kind === 'sync_apply',
+      );
+      if (queue) {
+        queue.state = Date.parse(queue.eligible_at) > Date.now() ? 'scheduled' : 'ready';
+        queue.revision++;
+      }
+      respond(res, 200, { plan: projectMockSyncPlan(state, targetId, approved) });
       return;
     }
 
@@ -1898,7 +1913,9 @@ async function handle(
         { ...plan, state: 'discarded', finished_at: new Date().toISOString() },
       ]);
       state.syncPlans.delete(targetId);
-      respond(res, 200, { plan: { ...plan, state: 'discarded' } });
+      respond(res, 200, {
+        plan: projectMockSyncPlan(state, targetId, { ...plan, state: 'discarded' }),
+      });
       return;
     }
 

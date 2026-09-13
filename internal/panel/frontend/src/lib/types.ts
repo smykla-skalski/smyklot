@@ -1690,7 +1690,29 @@ export type SyncPlanSummary = Pick<
   'id' | 'trigger' | 'state' | 'counts' | 'computed_at' | 'finished_at'
 >;
 
+export interface SyncDispatchCapability {
+  action: 'dispatch';
+  available: boolean;
+  reason:
+    | 'available'
+    | 'admin_or_owner_required'
+    | 'approval_required'
+    | 'already_running'
+    | 'plan_expired'
+    | 'plan_changed'
+    | 'plan_finished'
+    | 'queue_unavailable'
+    | 'queue_finished'
+    | 'state_unsupported';
+  effect: 'schedule_reviewed_changes_without_waiting_for_window';
+  plan_id: string;
+  queue_id?: string;
+  expected_revision?: number;
+}
+
 export interface SyncPlan {
+  /** Present on API projections; absent on persisted mock seeds and old responses. */
+  dispatch?: SyncDispatchCapability;
   id: string;
   trigger: string;
   state:

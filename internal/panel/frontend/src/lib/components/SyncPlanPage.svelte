@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { syncDispatchGuidance, syncDispatchIntent } from '../sync-dispatch-guidance';
   import { SvelteSet } from 'svelte/reactivity';
 
   import { formatDateTime, formatRelative, formatUntil } from '../format';
@@ -52,6 +53,8 @@
     onRunNow: (input: SyncRunNowIntent) => void;
   } = $props();
 
+  const dispatchIntent = $derived(plan ? syncDispatchIntent(plan) : null);
+  const dispatchGuidance = $derived(plan ? syncDispatchGuidance(plan) : null);
   const actions = $derived(plan?.actions ?? []);
   const total = $derived(actions.length);
 
@@ -258,14 +261,10 @@
   >({ action: 'check' });
 
   function openRunConfirmation(): void {
-    runIntent =
-      plan?.state === 'approved'
-        ? {
-            action: 'dispatch',
-            plan_id: plan.id,
-            expected_revision: plan.queue_item?.revision ?? 0,
-          }
-        : { action: 'check' };
+    if (plan?.state === 'approved') {
+      if (!dispatchIntent || runNowBlocked || runNowBusy) return;
+      runIntent = dispatchIntent;
+    } else runIntent = { action: 'check' };
     runConfirming = true;
   }
 
@@ -349,6 +348,9 @@ the button.
       </span>
     </div>
 
+    {#if dispatchGuidance && ['approved', 'applying'].includes(plan.state)}
+      <p id="dispatch-guidance" class="dispatch-guidance">{dispatchGuidance}</p>
+    {/if}
     {#if plan.queue_item !== undefined}
       {@const queued = plan.queue_item}
       <section class="schedule-card" aria-labelledby="plan-schedule-title">
@@ -360,12 +362,18 @@ the button.
               <Button
                 row
                 tone="signal"
-                disabled={runNowBusy || runNowBlocked}
+                disabled={runNowBusy || runNowBlocked || dispatchIntent === null}
+                aria-describedby={dispatchGuidance ? 'dispatch-guidance' : undefined}
                 onclick={openRunConfirmation}>{runNowBusy ? 'Dispatching…' : 'Run now'}</Button
               >
             {/if}
           </div>
         </div>
+        {#if dispatchIntent}
+          <p class="dispatch-guidance">
+            Run now skips the scheduling window. Execution starts when a worker is available.
+          </p>
+        {/if}
         <dl class="schedule-facts">
           <div>
             <dt>Runs no earlier than</dt>
@@ -690,6 +698,11 @@ the button.
 </div>
 
 <style>
+  .dispatch-guidance {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: var(--font-size-meta);
+  }
   /* The reading column is the sheet's; what is this page's own is the apply bar's seat -
      the marker's named view timeline is declared in the slot after it and handed back up
      here. */
