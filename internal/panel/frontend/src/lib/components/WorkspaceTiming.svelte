@@ -1,5 +1,6 @@
 <script lang="ts">
   import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleHoursProblems } from '#lib/schedule-validation.js';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { PanelApi } from '#lib/api.js';
@@ -168,6 +169,10 @@
         })),
         exceptions: windowMode === 'custom' ? parseScheduleExceptions(exceptions) : [],
       };
+      if (windowMode === 'custom') {
+        const invalid = scheduleHoursProblems(custom)[0];
+        if (invalid !== undefined) throw new Error(invalid.message);
+      }
       await api.createTargetScheduleRequest(targetId, {
         kind,
         base_revision: current.revision,

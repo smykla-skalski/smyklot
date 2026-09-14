@@ -16,7 +16,16 @@ export function scheduleHoursProblems(profile: Hours): ScheduleProblem[] {
   if (profile.windows.length === 0 && profile.exceptions.length === 0) {
     problems.push({ field: 'windows', message: 'Add weekly hours or a date exception' });
   }
-  for (const [index, window] of profile.windows.entries()) {
+  return [
+    ...problems,
+    ...scheduleWindowProblems(profile.windows),
+    ...scheduleExceptionProblems(profile.exceptions),
+  ];
+}
+
+export function scheduleWindowProblems(windows: ScheduleProfile['windows']): ScheduleProblem[] {
+  const problems: ScheduleProblem[] = [];
+  for (const [index, window] of windows.entries()) {
     if (!Number.isInteger(window.weekday) || window.weekday < 0 || window.weekday > 6) {
       problems.push({ field: 'windows', index, message: 'Choose a day of the week' });
     }
@@ -28,7 +37,7 @@ export function scheduleHoursProblems(profile: Hours): ScheduleProblem[] {
       });
     }
     if (
-      profile.windows.some(
+      windows.some(
         (other, at) => at !== index && other.weekday === window.weekday && overlaps(window, other),
       )
     ) {
@@ -39,7 +48,7 @@ export function scheduleHoursProblems(profile: Hours): ScheduleProblem[] {
       });
     }
   }
-  return [...problems, ...scheduleExceptionProblems(profile.exceptions)];
+  return problems;
 }
 
 export function scheduleExceptionProblems(

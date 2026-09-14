@@ -65,6 +65,69 @@ describe('desktop hours draft protection', () => {
   });
 
   it.each(['light', 'dark'] as const)(
+    'explains invalid weekly rows and their recovery in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page.getByRole('button', { name: 'New hours profile' }).click();
+        const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        await editor.getByLabel('Profile name', { exact: true }).fill('Weekly validation');
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+          await editor.evaluate(async (node) => {
+            await Promise.all(
+              node.getAnimations({ subtree: true }).map((animation) => animation.finished),
+            );
+          });
+          const count = await editor.locator('.window-row').count();
+          await editor.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
+          await expect.poll(() => editor.locator('.window-row').count()).toBe(count - 1);
+        }
+        const first = editor.locator('.window-row').first();
+        const opens = first.getByLabel('Opens', { exact: true });
+        await opens.fill('18:00');
+        await first.getByRole('alert').waitFor();
+        expect(await opens.getAttribute('aria-invalid')).toBe('true');
+        const errorId = await opens.getAttribute('aria-describedby');
+        expect(await editor.locator(`[id="${errorId}"]`).innerText()).toContain(
+          'Closing time must be after opening time',
+        );
+        expect(await editor.getByRole('button', { name: 'Save profile' }).isDisabled()).toBe(true);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-weekly-range-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await opens.fill('09:00');
+        await expect.poll(() => first.getByRole('alert').count()).toBe(0);
+        await editor.getByRole('button', { name: 'Add hours', exact: true }).click();
+        await expect.poll(() => editor.locator('.window-problem').count()).toBe(2);
+        expect(await editor.getByRole('button', { name: 'Save profile' }).isDisabled()).toBe(true);
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F08-weekly-overlap-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        const second = editor.locator('.window-row').last();
+        await second.getByLabel('Closes', { exact: true }).fill('18:00');
+        await second.getByLabel('Opens', { exact: true }).fill('17:00');
+        await expect.poll(() => editor.locator('.window-problem').count()).toBe(0);
+        expect(await opens.getAttribute('aria-invalid')).toBeNull();
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.waitFor({ state: 'hidden' });
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'retains invalid exception text for correction in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleWindowProblems } from '#lib/schedule-validation.js';
   import { onMount } from 'svelte';
   import type { ScheduleProfile, ScheduleProfileInput } from '#lib/types.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -100,20 +101,16 @@
   }
 
   function windowsValid(): boolean {
-    const byDay: Array<Array<{ start: number; end: number }>> = Array.from({ length: 7 }, () => []);
-    for (const window of windows) {
-      const start = scheduleMinute(window.start);
-      const end = scheduleMinute(window.end);
-      if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return false;
-      byDay[window.weekday]?.push({ start, end });
-    }
-    for (const day of byDay) {
-      day.sort((left, right) => left.start - right.start);
-      if (day.some((entry, index) => index > 0 && entry.start < (day[index - 1]?.end ?? 0)))
-        return false;
-    }
-
-    return windows.length > 0 || exceptions.trim() !== '';
+    return (
+      scheduleWindowProblems(
+        windows.map((window) => ({
+          weekday: window.weekday,
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
+        })),
+      ).length === 0 &&
+      (windows.length > 0 || exceptions.trim() !== '')
+    );
   }
 
   function submit(): void {
