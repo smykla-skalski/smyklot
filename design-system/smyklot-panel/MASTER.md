@@ -974,3 +974,11 @@ value. Editing a number back to its original inherited value can undo an edit;
 explicitly choosing to pin that value is a separate action and persists ownership.
 The action names the field and value, clears invalid local text, and preserves
 sibling fields. Inherited chains stay muted; only explicit overrides use amber.
+
+## Editor gutter contrast
+
+Line numbers use `--code-gutter` at full opacity. Keep their contrast at least
+4.5:1 against the rendered editor background in both themes. Subordinate the
+gutter through placement and spacing rather than translucent text. Managed-line
+numbers retain their semantic ink and must meet the same contrast requirement.
+Verify focus, selection and validation states when changing editor surfaces.

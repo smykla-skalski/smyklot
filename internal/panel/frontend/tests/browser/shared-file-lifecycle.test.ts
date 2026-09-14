@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { addressOf, startPanel, visit, type Panel } from './harness';
 
@@ -72,6 +74,95 @@ describe('desktop shared-file lifecycle', () => {
           'shared-file settings updated',
         );
         expect(saves).toHaveLength(2);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+});
+
+describe('desktop editor gutter contrast', () => {
+  it.each(['light', 'dark'] as const)(
+    'keeps shared-file line numbers readable in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      const measurements: { state: string; ratios: number[] }[] = [];
+      try {
+        await visit(page, addressOf(panel, 'workspace/sync/files/renovate.json'));
+        const content = page.locator('.cm-content').first();
+        await content.waitFor();
+        for (const state of ['normal', 'focused', 'selected']) {
+          if (state === 'focused') await content.click();
+          if (state === 'selected') await content.press('ControlOrMeta+a');
+          const ratios = await page
+            .locator('.cm-lineNumbers .cm-gutterElement')
+            .evaluateAll((nodes) => {
+              const canvas = document.createElement('canvas');
+              canvas.width = canvas.height = 1;
+              const pen = canvas.getContext('2d', { willReadFrequently: true })!;
+              const luminance = () => {
+                const values = [...pen.getImageData(0, 0, 1, 1).data].slice(0, 3).map((channel) => {
+                  const value = channel / 255;
+                  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+                });
+                return values[0]! * 0.2126 + values[1]! * 0.7152 + values[2]! * 0.0722;
+              };
+              return nodes
+                .filter((node) => node.checkVisibility() && node.textContent?.trim())
+                .map((node) => {
+                  const ancestors: Element[] = [];
+                  let current: Element | null = node;
+                  while (current) {
+                    ancestors.push(current);
+                    const root = current.getRootNode();
+                    current =
+                      current.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+                  }
+                  pen.globalAlpha = 1;
+                  pen.fillStyle = 'white';
+                  pen.fillRect(0, 0, 1, 1);
+                  for (const ancestor of [...ancestors].reverse()) {
+                    pen.fillStyle = getComputedStyle(ancestor).backgroundColor;
+                    pen.fillRect(0, 0, 1, 1);
+                  }
+                  const background = luminance();
+                  pen.globalAlpha = ancestors.reduce(
+                    (alpha, ancestor) => alpha * Number(getComputedStyle(ancestor).opacity),
+                    1,
+                  );
+                  pen.fillStyle = getComputedStyle(node).color;
+                  pen.fillRect(0, 0, 1, 1);
+                  const foreground = luminance();
+                  return (
+                    (Math.max(foreground, background) + 0.05) /
+                    (Math.min(foreground, background) + 0.05)
+                  );
+                });
+            });
+          expect(ratios.length).toBeGreaterThan(0);
+          measurements.push({ state, ratios });
+          if (directory) {
+            await mkdir(directory, { recursive: true });
+            await page.evaluate(() => document.fonts.ready);
+            await page.mouse.move(0, 0);
+            await page.screenshot({
+              path: join(directory, `F06-shared-${state}-${colorScheme}.png`),
+            });
+          }
+        }
+        if (directory)
+          await writeFile(
+            join(directory, `F06-shared-${colorScheme}.json`),
+            JSON.stringify(measurements, null, 2),
+          );
+        for (const measurement of measurements) {
+          for (const ratio of measurement.ratios)
+            expect(ratio, measurement.state).toBeGreaterThanOrEqual(4.5);
+        }
       } finally {
         await page.close();
       }
