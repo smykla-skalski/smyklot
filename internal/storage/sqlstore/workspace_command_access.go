@@ -21,6 +21,13 @@ type workspaceCommandAuthority struct {
 // Lock revocable authority through command acceptance. Account and session locks
 // precede target, ownership and role locks, as in access revocation writes.
 func (s *Store) authorizeWorkspaceCommand(ctx context.Context, tx *transaction, request workspaceCommandAuthority) error {
+	if err := s.lockWorkspaceAuthority(ctx, tx, request); err != nil {
+		return err
+	}
+	return s.validateWorkspaceCommand(ctx, tx, request)
+}
+
+func (s *Store) lockWorkspaceAuthority(ctx context.Context, tx *transaction, request workspaceCommandAuthority) error {
 	for _, lock := range []struct {
 		query string
 		args  []any
@@ -54,7 +61,7 @@ func (s *Store) authorizeWorkspaceCommand(ctx context.Context, tx *transaction, 
 			return fmt.Errorf("lock command elevation: %w", noRows(err))
 		}
 	}
-	return s.validateWorkspaceCommand(ctx, tx, request)
+	return nil
 }
 
 // Reuse held authority locks when only time can have changed during a command.
@@ -63,18 +70,7 @@ func (s *Store) validateWorkspaceCommand(ctx context.Context, tx *transaction, r
 		return storage.ErrConflict
 	}
 	at := request.Clock().UTC()
-	var accountID string
-	var expiresAt, revokedAt StoredTime
-	if err := tx.QueryRowContext(ctx, "SELECT account_id, expires_at, revoked_at FROM sessions WHERE token_hash = ?", request.SessionTokenHash).Scan(&accountID, &expiresAt, &revokedAt); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return storage.ErrRevoked
-		}
-		return fmt.Errorf("read command session: %w", err)
-	}
-	if accountID != request.ActorAccountID || revokedAt.Valid() || !at.Before(expiresAt.Time()) {
-		return storage.ErrRevoked
-	}
-	access, err := resolveTargetAccess(ctx, tx, request.ActorAccountID, request.TargetID, at)
+	access, err := s.workspaceSessionAccess(ctx, tx, request, at)
 	if err != nil {
 		return err
 	}
@@ -86,4 +82,19 @@ func (s *Store) validateWorkspaceCommand(ctx context.Context, tx *transaction, r
 		return storage.ErrRevoked
 	}
 	return nil
+}
+
+func (s *Store) workspaceSessionAccess(ctx context.Context, tx *transaction, request workspaceCommandAuthority, at time.Time) (storage.TargetAccess, error) {
+	var accountID string
+	var expiresAt, revokedAt StoredTime
+	if err := tx.QueryRowContext(ctx, "SELECT account_id, expires_at, revoked_at FROM sessions WHERE token_hash = ?", request.SessionTokenHash).Scan(&accountID, &expiresAt, &revokedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return storage.TargetAccess{}, storage.ErrRevoked
+		}
+		return storage.TargetAccess{}, fmt.Errorf("read command session: %w", err)
+	}
+	if accountID != request.ActorAccountID || revokedAt.Valid() || !at.Before(expiresAt.Time()) {
+		return storage.TargetAccess{}, storage.ErrRevoked
+	}
+	return resolveTargetAccess(ctx, tx, request.ActorAccountID, request.TargetID, at)
 }

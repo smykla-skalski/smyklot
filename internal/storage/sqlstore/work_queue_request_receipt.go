@@ -76,7 +76,7 @@ func insertRecurringRequestReceipt(ctx context.Context, tx *transaction, request
 	if err != nil {
 		return fmt.Errorf("encode recurring request receipt: %w", err)
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO recurring_request_receipts (actor_account_id, request_key, input_json, accepted_item, requested_at) VALUES (?, ?, ?, ?, ?)`, request.ActorID, request.RequestKey, recurringRequestInput(request), string(accepted), request.Now)
+	_, err = tx.ExecContext(ctx, `INSERT INTO recurring_request_receipts (actor_account_id, request_key, input_json, accepted_item, requested_at, kind, target_id, queue_id, reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, request.ActorID, request.RequestKey, recurringRequestInput(request), string(accepted), request.Now, request.Kind, request.TargetID, item.ID, request.Reason)
 	if err != nil {
 		return fmt.Errorf("record recurring request receipt: %w", err)
 	}

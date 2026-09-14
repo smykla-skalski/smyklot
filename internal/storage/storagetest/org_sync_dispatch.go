@@ -39,6 +39,10 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 		})
 		AfterEach(func() { cancel() })
 
+		declareSyncRequestHistorySpecs(func() (context.Context, storage.Store, time.Time, orgsync.PlanDispatch, workqueue.Item) {
+			return ctx, store, now, request, before
+		})
+
 		declareSyncDispatchAuthoritySpecs(func() (context.Context, storage.Store, time.Time, orgsync.PlanDispatch, workqueue.Item) {
 			return ctx, store, now, request, before
 		})
