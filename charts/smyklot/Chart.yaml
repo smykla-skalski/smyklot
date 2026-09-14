@@ -5,8 +5,8 @@ type: application
 
 # Both are rewritten at release time, so the chart and the image it deploys
 # always carry the same version
-version: 1.55.3
-appVersion: "1.55.3"
+version: 1.55.4
+appVersion: "1.55.4"
 
 home: https://github.com/smykla-skalski/smyklot
 sources:

@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.55.4](https://github.com/smykla-skalski/smyklot/compare/v1.55.3...v1.55.4) (2026-09-14)
+
+### Bug Fixes
+
+* **storage:** tolerate legacy check metadata ([#392](https://github.com/smykla-skalski/smyklot/issues/392)) ([2c02f9b](https://github.com/smykla-skalski/smyklot/commit/2c02f9b2dac160dcbc7bd59a8a42a065345da6c0))
+
 ## [1.55.3](https://github.com/smykla-skalski/smyklot/compare/v1.55.2...v1.55.3) (2026-09-14)
 
 ### Bug Fixes
