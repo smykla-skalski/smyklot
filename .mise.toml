@@ -67,6 +67,19 @@ description = "Run the shared storage suite against every engine"
 env = { CGO_ENABLED = "1" }
 run = "ginkgo -r --race --fail-on-empty ./internal/storage"
 
+[tasks."test:storage:sync-requests"]
+description = "Check accepted sync request reads on SQLite and PostgreSQL"
+env = { CGO_ENABLED = "1" }
+run = '''
+set -eu
+: "${SMYKLOT_TEST_POSTGRES_DSN:?Run mise run db:dev and set its DSN first}"
+mkdir -p tmp/storage
+ginkgo --race --procs=2 --fail-on-empty --focus='accepted sync request discovery' ./internal/storage/sqlite
+ginkgo --race --procs=2 --fail-on-empty --focus='accepted sync request discovery' \
+  --json-report=sync-requests-postgres.json --output-dir=tmp/storage ./internal/storage/postgres
+jq -e '[.[].SpecReports[]? | select((.ContainerHierarchyTexts | join(" ")) | contains("accepted sync request discovery"))] | length > 0 and all(.[]; .State == "passed")' tmp/storage/sync-requests-postgres.json > /dev/null
+'''
+
 [tasks."test:config-files"]
 description = "Check configuration file round trips and bidirectional reconciliation"
 env = { CGO_ENABLED = "1" }

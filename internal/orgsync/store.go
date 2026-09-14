@@ -438,6 +438,7 @@ type Store interface {
 
 	// Dispatch acceptance survives queue retention. Callers authorize actor and target.
 	ListSyncRequests(context.Context, RequestHistoryQuery, func() time.Time) (RequestHistoryPage, error)
+	GetSyncRequest(context.Context, RequestLookup, func() time.Time) (RequestAcceptance, error)
 
 	FindSyncPlanDispatch(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)
 	DispatchSyncPlan(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)

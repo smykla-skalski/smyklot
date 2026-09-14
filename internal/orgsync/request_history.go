@@ -40,3 +40,13 @@ type RequestHistoryPage struct {
 	Items []RequestAcceptance
 	Next  *RequestHistoryPosition
 }
+
+// RequestLookup reads one original acceptance without accepting work or requiring
+// command authority. Identity is scoped to the current actor and workspace.
+type RequestLookup struct {
+	ActorID          string
+	SessionTokenHash string
+	TargetID         string
+	Action           string
+	RequestKey       string
+}

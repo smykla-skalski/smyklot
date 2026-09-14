@@ -83,6 +83,7 @@ func TestSyncRequestsRemainReadableAfterCommandPermissionIsLost(t *testing.T) {
 		t.Fatal(err)
 	}
 	requireResponse(t, h.request(t, http.MethodGet, syncRequestsPath, nil, cookie), "viewer history", http.StatusOK, `"reason":"My accepted check"`)
+	requireResponse(t, h.request(t, http.MethodGet, syncRequestsPath+"/check/check-request-1", nil, cookie), "viewer exact receipt", http.StatusOK, `"reason":"My accepted check"`)
 	requireResponse(t, postReceiptCheck(t, h, cookie, "My accepted check"), "viewer command", http.StatusForbidden)
 }
 

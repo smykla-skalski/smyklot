@@ -35,6 +35,10 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			query = orgsync.RequestHistoryQuery{ActorID: dispatch.ActorID, SessionTokenHash: dispatch.SessionTokenHash, TargetID: dispatch.TargetID, Limit: 1}
 		})
 
+		declareSyncRequestLookupSpecs(func() (context.Context, storage.Store, time.Time, workqueue.RecurringRequest, orgsync.RequestHistoryQuery) {
+			return ctx, store, now, check, query
+		})
+
 		It("discovers both command effects and original identities without a request key", func() {
 			query.Limit = 10
 			page, err := store.ListSyncRequests(ctx, query, clock)
@@ -105,6 +109,8 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			empty, err := store.ListSyncRequests(ctx, query, clock)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(empty.Items).To(BeEmpty())
+			_, err = store.GetSyncRequest(ctx, orgsync.RequestLookup{ActorID: query.ActorID, TargetID: query.TargetID, SessionTokenHash: query.SessionTokenHash, Action: "check", RequestKey: check.RequestKey}, clock)
+			Expect(err).To(MatchError(storage.ErrNotFound))
 			Expect(empty.Next).To(BeNil())
 			unrelated := check
 			unrelated.Kind, unrelated.RequestKey = workqueue.KindPathRefresh, "unrelated-request"
@@ -145,6 +151,7 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			after, err := store.ListSyncRequests(ctx, query, clock)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(after).To(Equal(before))
+			assertExactSyncRequests(ctx, store, query, before.Items, clock)
 			_, err = store.GetQueueItem(ctx, item.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
@@ -175,6 +182,7 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			after, err := store.ListSyncRequests(ctx, query, clock)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(after).To(Equal(before))
+			assertExactSyncRequests(ctx, store, query, before.Items, clock)
 			retained, err := store.ListSyncCheckObservations(ctx, query.TargetID, item.ID, 0, 10)
 			Expect(err).NotTo(HaveOccurred(), "accepted check history must retain its evidence when worker rows are pruned")
 			Expect(retained).To(Equal(evidence))
@@ -232,6 +240,13 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			Expect(err).NotTo(HaveOccurred())
 			Expect(page.Items).To(HaveLen(1))
 			Expect(page.Items[0].Action).To(Equal("check"))
+			lookup := orgsync.RequestLookup{ActorID: query.ActorID, TargetID: query.TargetID, SessionTokenHash: query.SessionTokenHash, Action: "check", RequestKey: check.RequestKey}
+			got, err := store.GetSyncRequest(ctx, lookup, clock)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal(page.Items[0]))
+			lookup.Action, lookup.RequestKey = "dispatch", dispatch.RequestKey
+			_, err = store.GetSyncRequest(ctx, lookup, clock)
+			Expect(err).To(MatchError(storage.ErrNotFound))
 			_, err = store.RequestRecurringWork(ctx, check, clock)
 			Expect(err).To(MatchError(storage.ErrRevoked))
 			_, err = store.SetTargetAccess(ctx, storage.TargetAccessChange{TargetID: query.TargetID, SubjectAccountID: actor.ID, ActorAccountID: dispatch.ActorID, Role: &role, Suspended: true, ExpectedRevision: 2, ChangedAt: now})

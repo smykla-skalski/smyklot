@@ -64,14 +64,9 @@ func (s *Server) getSyncRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	result := syncRequestHistoryResponse{Items: make([]syncRequestHistoryItem, 0, len(page.Items))}
 	for _, item := range page.Items {
-		dto := syncRequestHistoryItem{Action: item.Action, RequestKey: item.RequestKey, Reason: item.Reason, AcceptedAt: item.AcceptedAt}
-		switch item.Action {
-		case orgsync.RequestActionCheck:
-			dto.CheckID = item.QueueID
-		case orgsync.RequestActionDispatch:
-			dto.QueueID, dto.PlanID, dto.ExpectedRevision = item.QueueID, item.PlanID, item.ExpectedRevision
-		default:
-			s.writeInternal(w, fmt.Errorf("unknown accepted request action %q", item.Action))
+		dto, err := syncAcceptanceDTO(item)
+		if err != nil {
+			s.writeInternal(w, err)
 			return
 		}
 		result.Items = append(result.Items, dto)
@@ -137,4 +132,17 @@ func decodeSyncRequestCursor(raw, actorID, targetID string) (syncRequestCursor, 
 		return cursor, invalid
 	}
 	return cursor, nil
+}
+
+func syncAcceptanceDTO(item orgsync.RequestAcceptance) (syncRequestHistoryItem, error) {
+	dto := syncRequestHistoryItem{Action: item.Action, RequestKey: item.RequestKey, Reason: item.Reason, AcceptedAt: item.AcceptedAt}
+	switch item.Action {
+	case orgsync.RequestActionCheck:
+		dto.CheckID = item.QueueID
+	case orgsync.RequestActionDispatch:
+		dto.QueueID, dto.PlanID, dto.ExpectedRevision = item.QueueID, item.PlanID, item.ExpectedRevision
+	default:
+		return dto, fmt.Errorf("unknown accepted request action %q", item.Action)
+	}
+	return dto, nil
 }
