@@ -20,7 +20,7 @@ describe('desktop exact dispatch recovery', () => {
       });
       page.setDefaultTimeout(10000);
       try {
-        let submitted: unknown;
+        let submitted: { request_key: string } | undefined;
         let accepted: { plan_id: string; queue_id: string } | undefined;
         let count = 0;
         await page.route('**/api/v1/targets/2001/sync/run-now', async (route) => {
@@ -46,7 +46,7 @@ describe('desktop exact dispatch recovery', () => {
         const confirmation = page.getByRole('dialog', { name: 'Sync now?', exact: true });
         await confirmation.getByLabel('Reason', { exact: true }).fill('Run the selected changes');
         await confirmation.getByRole('button', { name: 'Run now', exact: true }).click();
-        await inspector.getByRole('button', { name: 'Recover run request', exact: true }).waitFor();
+        await inspector.getByRole('button', { name: 'Confirm request', exact: true }).waitFor();
         expect(
           await inspector.getByRole('button', { name: 'Run now', exact: true }).isDisabled(),
         ).toBe(true);
@@ -64,23 +64,27 @@ describe('desktop exact dispatch recovery', () => {
         await inspector.waitFor({ state: 'hidden' });
         await page.waitForURL(/\/sync$/);
         await page.reload();
-        const recover = page.getByRole('button', { name: 'Recover run request', exact: true });
+        const recover = page.getByRole('button', { name: 'Confirm request', exact: true });
         await recover.waitFor();
         expect(count).toBe(1);
         await capture('reloaded');
         await recover.click();
-        const link = page.getByRole('link', { name: 'View accepted changes', exact: true });
+        const link = page.getByRole('link', { name: 'View request', exact: true });
         await link.waitFor();
-        expect(await link.getAttribute('href')).toContain(encodeURIComponent(accepted!.plan_id));
-        expect(count).toBe(2);
+        expect(await link.getAttribute('href')).toContain(
+          encodeURIComponent(submitted!.request_key),
+        );
+        expect(count).toBe(1);
         await capture('accepted');
         await link.click();
+        await page.getByRole('dialog', { name: 'Sync request', exact: true }).waitFor();
+        await page.getByRole('link', { name: 'View change results', exact: true }).click();
         await inspector.waitFor();
         expect(decodeURIComponent(new URL(page.url()).pathname)).toContain(accepted!.plan_id);
         await capture('original-changes');
         await page.reload();
         await inspector.waitFor();
-        expect(count).toBe(2);
+        expect(count).toBe(1);
       } finally {
         await page.close();
       }
@@ -132,7 +136,7 @@ describe('desktop exact dispatch recovery', () => {
           .getByText('sync queue item changed; review the latest state', { exact: true })
           .waitFor();
         expect(
-          await inspector.getByRole('button', { name: 'Recover run request', exact: true }).count(),
+          await inspector.getByRole('button', { name: 'Confirm request', exact: true }).count(),
         ).toBe(0);
         await expect
           .poll(() => inspector.getByRole('button', { name: 'Run now', exact: true }).isDisabled())

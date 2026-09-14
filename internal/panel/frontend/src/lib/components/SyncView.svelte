@@ -317,6 +317,9 @@
   let requestStorageProblem = $state<string | null>(null);
   let requestUncertain = $state(false);
   let requestCleanupPending = $state(false);
+  let requestNotRecorded = $state(false);
+  let confirmedRequest = $state<{ action: 'check' | 'dispatch'; key: string } | null>(null);
+  let focusConfirmedRequest = false;
   let requestStore: SyncRequestIntentStore | null = null;
   function readRequestStorage(): void {
     if (runningNow || pendingRequest) return;
@@ -565,6 +568,49 @@
     }
   }
 
+  async function confirmRequest(trigger: HTMLButtonElement): Promise<void> {
+    const request = pendingRequest;
+    if (!request || !fetchOperation || runningNow) return;
+    const requestTargetId = targetId;
+    runningNow = true;
+    requestNotRecorded = false;
+    error = null;
+    try {
+      const operation = await fetchOperation(requestTargetId, request.action, request.request_key);
+      const accepted = operation.acceptance;
+      if (
+        operation.target_id !== requestTargetId ||
+        accepted.action !== request.action ||
+        accepted.request_key !== request.request_key ||
+        accepted.reason !== request.reason.trim() ||
+        (accepted.action === 'check' && !accepted.check_id?.trim()) ||
+        (accepted.action === 'dispatch' && !accepted.queue_id?.trim()) ||
+        (request.action === 'dispatch' &&
+          (accepted.action !== 'dispatch' ||
+            accepted.plan_id !== request.plan_id ||
+            accepted.expected_revision !== request.expected_revision))
+      )
+        throw new Error(
+          'The saved request could not be matched to this response. Keep it and try confirming again.',
+        );
+      focusConfirmedRequest = trigger.ownerDocument.activeElement === trigger;
+      confirmedRequest = { action: request.action, key: request.request_key };
+      requestCleanupPending = true;
+      requestUncertain = false;
+      finishRequestRecovery();
+      runNotice = 'Your request was accepted. Open it to see what happened.';
+    } catch (cause) {
+      requestNotRecorded = cause instanceof PanelApiError && cause.status === 404;
+      error = requestNotRecorded
+        ? canControl
+          ? 'Your request is not recorded yet. It may still be arriving. Confirm again, or retry the original request without creating a new one.'
+          : 'Your request is not recorded yet. It may still be arriving. Confirm again to check its status.'
+        : messageOf(cause);
+    } finally {
+      runningNow = false;
+    }
+  }
+
   async function onRunNow(input: SyncRunNowIntent): Promise<void> {
     if (runningNow) return;
     if (pendingRequest && input.request_key !== pendingRequest.request_key) {
@@ -573,6 +619,8 @@
     }
     const requestTargetId = targetId;
     const recovering = requestUncertain;
+    confirmedRequest = null;
+    requestNotRecorded = false;
     runningNow = true;
     error = null;
     runNotice = '';
@@ -721,6 +769,16 @@ Live plan and status queries share the shell's event invalidation and polling fa
             {#if requestCleanupPending}<Button onclick={finishRequestRecovery}
                 >Finish recovery</Button
               >
+            {:else if fetchOperation}<Button
+                aria-disabled={runningNow}
+                onclick={(event) => void confirmRequest(event.currentTarget)}
+                >{runningNow ? 'Confirming…' : 'Confirm request'}</Button
+              >
+              {#if requestNotRecorded && canControl}<Button
+                  disabled={runningNow}
+                  onclick={() => pendingRequest && void onRunNow(pendingRequest)}
+                  >Retry original request</Button
+                >{/if}
             {:else if canControl}<Button
                 disabled={runningNow}
                 onclick={() => pendingRequest && void onRunNow(pendingRequest)}
@@ -740,6 +798,15 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {#if feedbackReadError}<FormError message={messageOf(feedbackReadError)} />{/if}
       {#if runNotice !== ''}<div class="sync-run-notice" role="status">
           <p>{runNotice}</p>
+          {#if confirmedRequest && requestHref}<Link
+              href={requestHref(confirmedRequest.action, confirmedRequest.key)}
+              {@attach (element) => {
+                if (focusConfirmedRequest) {
+                  focusConfirmedRequest = false;
+                  (element as HTMLAnchorElement).focus();
+                }
+              }}>View request</Link
+            >{/if}
           {#if requestedCheckId}<Link href={checkHref(requestedCheckId)}>View check</Link>{/if}
           {#if requestedDispatchId}<Link href={historyResultHref(requestedDispatchId)}
               >View accepted changes</Link

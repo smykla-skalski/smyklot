@@ -52,6 +52,28 @@ describe('desktop sync storage recovery', () => {
             json: { status: 'check_accepted', check_id: 'original-check', repeated: true },
           });
         });
+        await page.route(
+          '**/api/v1/targets/2001/sync/requests/check/saved-before-response-loss',
+          async (route) => {
+            await route.fulfill({
+              json: {
+                target_id: '2001',
+                acceptance: {
+                  ...pending,
+                  check_id: 'original-check',
+                  accepted_at: '2026-09-14T10:00:00Z',
+                },
+                observation_started_at: '2026-09-14T10:01:00Z',
+                observed_at: '2026-09-14T10:01:00Z',
+                comparison: null,
+                plan: null,
+                execution: null,
+                check: { available: true },
+                dispatch: null,
+              },
+            });
+          },
+        );
         await visit(page, addressOf(panel, 'workspace/sync'));
         const capture = async (scene: string) => {
           const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
@@ -71,7 +93,7 @@ describe('desktop sync storage recovery', () => {
           (window as unknown as { blockSyncStorage: boolean }).blockSyncStorage = false;
         });
         await retry.click();
-        const recover = page.getByRole('button', { name: 'Recover check', exact: true });
+        const recover = page.getByRole('button', { name: 'Confirm request', exact: true });
         await recover.waitFor();
         expect(commands).toHaveLength(0);
         await capture('known');
@@ -85,15 +107,15 @@ describe('desktop sync storage recovery', () => {
             { exact: true },
           )
           .waitFor();
-        expect(commands).toEqual([pending]);
-        await page.getByRole('link', { name: 'View check', exact: true }).waitFor();
+        expect(commands).toEqual([]);
+        await page.getByRole('link', { name: 'View request', exact: true }).waitFor();
         await capture('cleanup-blocked');
         await page.evaluate(() => {
           (window as unknown as { blockSyncStorage: boolean }).blockSyncStorage = false;
         });
         await page.getByRole('button', { name: 'Finish recovery', exact: true }).click();
         await expect.poll(() => recover.count()).toBe(0);
-        expect(commands).toEqual([pending]);
+        expect(commands).toEqual([]);
         await expect
           .poll(() =>
             page.evaluate(
@@ -104,7 +126,7 @@ describe('desktop sync storage recovery', () => {
             ),
           )
           .toBe(0);
-        await page.getByRole('link', { name: 'View check', exact: true }).waitFor();
+        await page.getByRole('link', { name: 'View request', exact: true }).waitFor();
         await capture('confirmed');
       } finally {
         await page.close();

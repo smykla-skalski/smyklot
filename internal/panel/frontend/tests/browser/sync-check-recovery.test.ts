@@ -28,7 +28,7 @@ describe('desktop uncertain check recovery', () => {
             timeout: 20_000,
           })
           .toBeNull();
-        let originalInput: unknown;
+        let originalInput: { request_key: string } | undefined;
         let acceptedId = '';
         let requests = 0;
         await page.route('**/api/v1/targets/2001/sync/run-now', async (route) => {
@@ -53,7 +53,7 @@ describe('desktop uncertain check recovery', () => {
         });
         await visit(page, addressOf(panel, 'workspace/sync'));
         await page.getByRole('button', { name: 'Check now', exact: true }).click();
-        const recover = page.getByRole('button', { name: 'Recover check', exact: true });
+        const recover = page.getByRole('button', { name: 'Confirm request', exact: true });
         await recover.waitFor();
         expect(await page.getByRole('button', { name: 'Check now', exact: true }).count()).toBe(0);
         const capture = async (scene: string) => {
@@ -71,13 +71,17 @@ describe('desktop uncertain check recovery', () => {
         expect(requests).toBe(1);
         await capture('reloaded');
         await recover.click();
-        const link = page.getByRole('link', { name: 'View check', exact: true });
+        const link = page.getByRole('link', { name: 'View request', exact: true });
         await link.waitFor();
-        expect(await link.getAttribute('href')).toContain(encodeURIComponent(acceptedId));
+        expect(await link.getAttribute('href')).toContain(
+          encodeURIComponent(originalInput!.request_key),
+        );
         expect(await recover.count()).toBe(0);
-        expect(requests).toBe(2);
+        expect(requests).toBe(1);
         await capture('accepted');
         await link.click();
+        await page.getByRole('dialog', { name: 'Sync request', exact: true }).waitFor();
+        await page.getByRole('link', { name: 'View repository results', exact: true }).click();
         await page
           .getByRole('dialog')
           .getByRole('heading', { name: 'Repository check', exact: true })
@@ -92,7 +96,7 @@ describe('desktop uncertain check recovery', () => {
           .getByRole('dialog')
           .getByRole('heading', { name: 'Check finished with gaps', exact: true })
           .waitFor();
-        expect(requests).toBe(2);
+        expect(requests).toBe(1);
       } finally {
         await page.close();
       }
