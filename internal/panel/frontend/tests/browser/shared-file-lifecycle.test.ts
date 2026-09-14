@@ -105,7 +105,19 @@ describe('desktop editor gutter contrast', () => {
           'repository-adjustment',
           'parsed-settings',
           'configuration-review',
+          'language-jsonc',
+          'language-yaml',
+          'language-toml',
+          'language-markdown',
         ]) {
+          if (state.startsWith('language-')) {
+            const language = state.slice('language-'.length);
+            const path =
+              language === 'markdown' ? 'CONTRIBUTING.md' : `.config/quality.${language}`;
+            await visit(page, addressOf(panel, `workspace/sync/files/${path}`));
+            await page.locator('.cm-content').first().waitFor();
+            if (language === 'jsonc') await page.locator('.cm-jsonc-comment').first().waitFor();
+          }
           if (state === 'focused') await content.click();
           if (state === 'selected') await content.press('ControlOrMeta+a');
           const output = page.getByRole('dialog', { name: 'smyklot', exact: true });
