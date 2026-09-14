@@ -469,14 +469,16 @@ type RecurringCompletion struct {
 type RecurringRequest struct {
 	// RequestKey preserves the accepted occurrence across retries. Empty keys are
 	// reserved for callers that intentionally issue a new command on every call.
-	RequestKey   string
-	Kind         Kind
-	TargetID     *string
-	RepositoryID *string
-	Title        string
-	ActorID      string
-	Reason       string
-	Now          time.Time
+	RequestKey string
+	// SessionTokenHash is required for explicit sync checks, not scheduled claims.
+	SessionTokenHash string
+	Kind             Kind
+	TargetID         *string
+	RepositoryID     *string
+	Title            string
+	ActorID          string
+	Reason           string
+	Now              time.Time
 }
 
 type Store interface {

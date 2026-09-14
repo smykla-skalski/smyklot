@@ -76,12 +76,12 @@ func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if !errors.Is(err, storage.ErrNotFound) {
-			s.writeSyncDispatchError(w, err)
+			s.writeSyncCommandError(w, err)
 			return
 		}
 		plan, actions, err := s.store.GetSyncPlan(r.Context(), target.ID, input.PlanID)
 		if err != nil {
-			s.writeSyncDispatchError(w, err)
+			s.writeSyncCommandError(w, err)
 			return
 		}
 		s.handleSyncDispatch(w, r, account, target, access.Role, input, plan, actions)
@@ -102,7 +102,7 @@ func (s *Server) handleSyncDispatch(
 ) {
 	dto, err := s.syncPlanDTO(r.Context(), plan, actions, role)
 	if err != nil {
-		s.writeSyncDispatchError(w, err)
+		s.writeSyncCommandError(w, err)
 		return
 	}
 	switch dto.Dispatch.Reason {
@@ -120,7 +120,7 @@ func (s *Server) handleSyncDispatch(
 		}
 		receipt, actionErr := s.store.DispatchSyncPlan(r.Context(), dispatchRequest(r, account, target, input, s.now().UTC()))
 		if actionErr != nil {
-			s.writeSyncDispatchError(w, actionErr)
+			s.writeSyncCommandError(w, actionErr)
 			return
 		}
 		s.events.announce(panelEvent{Type: panelEventQueueChanged, TargetID: target.ID})
@@ -134,18 +134,21 @@ func (s *Server) handleSyncDispatch(
 }
 
 func dispatchRequest(r *http.Request, account storage.Account, target storage.Target, input syncRunNowInput, now time.Time) orgsync.PlanDispatch {
-	cookie, _ := r.Cookie(sessionCookieName)
-	sessionHash := ""
-	if cookie != nil {
-		sessionHash = tokenHash(cookie.Value)
-	}
-	return orgsync.PlanDispatch{SessionTokenHash: sessionHash, TargetID: target.ID, PlanID: input.PlanID, ActorID: account.ID, RequestKey: input.RequestKey, ExpectedRevision: input.ExpectedRevision, Reason: input.Reason, Now: now}
+	return orgsync.PlanDispatch{SessionTokenHash: syncRequestSessionHash(r), TargetID: target.ID, PlanID: input.PlanID, ActorID: account.ID, RequestKey: input.RequestKey, ExpectedRevision: input.ExpectedRevision, Reason: input.Reason, Now: now}
 }
 
-func (s *Server) writeSyncDispatchError(w http.ResponseWriter, err error) {
+func (s *Server) writeSyncCommandError(w http.ResponseWriter, err error) {
 	if errors.Is(err, storage.ErrRevoked) || errors.Is(err, storage.ErrExpired) {
 		s.writeError(w, http.StatusForbidden, "access_revoked", "Your access changed; refresh the workspace before requesting changes")
 		return
 	}
 	s.writeStorageError(w, err)
+}
+
+func syncRequestSessionHash(r *http.Request) string {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return ""
+	}
+	return tokenHash(cookie.Value)
 }

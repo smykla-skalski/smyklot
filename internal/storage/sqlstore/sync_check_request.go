@@ -43,3 +43,14 @@ func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, re
 	}
 	return nil
 }
+
+// Scheduled checks use ClaimRecurringWork; this boundary handles explicit intent.
+func (s *Store) authorizeSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest) error {
+	if request.Kind != workqueue.KindSyncScan {
+		return nil
+	}
+	if request.TargetID == nil || *request.TargetID == "" || request.RequestKey == "" || request.Now.IsZero() {
+		return storage.ErrConflict
+	}
+	return s.authorizeWorkspaceCommand(ctx, tx, workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: *request.TargetID, RequestedAt: request.Now})
+}

@@ -42,6 +42,9 @@ func (s *Store) RequestRecurringWork(
 	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
 		return workqueue.Item{}, err
 	}
+	if err := s.authorizeSyncCheckRequest(ctx, tx, request); err != nil {
+		return workqueue.Item{}, err
+	}
 	if request.RequestKey != "" {
 		accepted, err := recurringRequestReceipt(ctx, tx, request)
 		if err == nil {

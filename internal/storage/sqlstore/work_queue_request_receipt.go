@@ -16,12 +16,24 @@ func validRecurringRequestKey(key string) bool {
 }
 
 // FindRecurringWorkRequest reads acceptance without changing work. The caller
-// must authorize the actor and requested scope before exposing the receipt.
+// must authorize the actor and requested scope before exposing non-sync receipts.
+// Explicit sync receipts also require current authority inside this read.
 func (s *Store) FindRecurringWorkRequest(ctx context.Context, request workqueue.RecurringRequest) (workqueue.Item, error) {
 	if request.RequestKey == "" || !validRecurringRequestKey(request.RequestKey) {
 		return workqueue.Item{}, storage.ErrConflict
 	}
-	return recurringRequestReceipt(ctx, s.db, request)
+	if request.Kind != workqueue.KindSyncScan {
+		return recurringRequestReceipt(ctx, s.db, request)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return workqueue.Item{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := s.authorizeSyncCheckRequest(ctx, tx, request); err != nil {
+		return workqueue.Item{}, err
+	}
+	return recurringRequestReceipt(ctx, tx, request)
 }
 
 func recurringRequestInput(request workqueue.RecurringRequest) string {

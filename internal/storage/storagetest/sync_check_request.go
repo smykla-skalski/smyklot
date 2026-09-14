@@ -25,10 +25,17 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			account := testAccount(now)
 			Expect(store.UpsertAccount(ctx, account)).To(Succeed())
 			Expect(store.ReconcileCatalog(ctx, []storage.InstallationSnapshot{testInstallation(account, now, nil)})).To(Succeed())
+			_, err := store.CreatePanelUser(ctx, storage.PanelUserCreate{AccountID: account.ID, ActorAccountID: account.ID, ChangedAt: now})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(store.CreateSession(ctx, storage.Session{TokenHash: "check-session", AccountID: account.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, 2)).To(Succeed())
 			target := "github:installation:100"
-			request = workqueue.RecurringRequest{Kind: workqueue.KindSyncScan, TargetID: &target, RequestKey: "fresh-check", Title: "Check", ActorID: account.ID, Reason: "Check saved settings", Now: now}
+			request = workqueue.RecurringRequest{Kind: workqueue.KindSyncScan, TargetID: &target, RequestKey: "fresh-check", SessionTokenHash: "check-session", Title: "Check", ActorID: account.ID, Reason: "Check saved settings", Now: now}
 			create = orgsync.PlanCreate{ID: "old-plan", TargetID: target, ActorID: account.ID, Trigger: orgsync.TriggerManual, Digest: "reviewed", Now: now, ExpiresAt: now.Add(time.Minute)}
 		})
+		declareSyncCheckAuthoritySpecs(func() (context.Context, storage.Store, time.Time, workqueue.RecurringRequest, orgsync.PlanCreate) {
+			return ctx, store, now, request, create
+		})
+
 		DescribeTable("retires waiting plans at expiry", func(automatic bool) {
 			create.Automatic = automatic
 			_, err := store.CreateSyncPlan(ctx, create)
@@ -130,7 +137,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(after.Revision).To(Equal(before.Revision + 1))
 		})
 
-		It("rolls retirement back when the check cannot be accepted", func() {
+		It("preserves waiting work when the actor cannot request a check", func() {
 			_, err := store.CreateSyncPlan(ctx, create)
 			Expect(err).NotTo(HaveOccurred())
 			request.Now = create.ExpiresAt

@@ -16,7 +16,7 @@ func (s *Server) answerAcceptedSyncCheck(w http.ResponseWriter, r *http.Request,
 		return false
 	}
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeSyncCommandError(w, err)
 		return true
 	}
 	writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "check_accepted", CheckID: item.ID, Repeated: true})
@@ -25,8 +25,8 @@ func (s *Server) answerAcceptedSyncCheck(w http.ResponseWriter, r *http.Request,
 
 func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account storage.Account, target storage.Target, role storage.InstallationRole, input syncRunNowInput) {
 	request := workqueue.RecurringRequest{
-		RequestKey: input.RequestKey,
-		Kind:       workqueue.KindSyncScan, TargetID: &target.ID,
+		RequestKey: input.RequestKey, SessionTokenHash: syncRequestSessionHash(r),
+		Kind: workqueue.KindSyncScan, TargetID: &target.ID,
 		Title: "Check which repositories are in step", ActorID: account.ID,
 		Reason: input.Reason, Now: s.now().UTC(),
 	}
@@ -50,7 +50,7 @@ func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account
 		return
 	}
 	if err != nil {
-		s.writeStorageError(w, err)
+		s.writeSyncCommandError(w, err)
 		return
 	}
 
