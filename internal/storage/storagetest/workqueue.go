@@ -22,6 +22,7 @@ type queueRuntime = func() (context.Context, storage.Store, time.Time)
 func declareWorkQueueSpecs(runtime queueRuntime) {
 	declareQueuePolicySpecs(runtime)
 	declareQueueListingSpecs(runtime)
+	declareQueueNameRetentionSpecs(runtime)
 	declareQueueScheduleSpecs(runtime)
 	declareQueueLeaseSpecs(runtime)
 	declareRecurringCompletionSpecs(runtime)
