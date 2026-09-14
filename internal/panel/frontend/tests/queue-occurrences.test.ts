@@ -62,3 +62,32 @@ it('bounds generated history while retaining seeds and active work', () => {
   expect(state.queueLoop.has(history[0]!.id)).toBe(false);
   expect(pruneMockOccurrences(state)).toBe(false);
 });
+
+it('retains cancellation history while scheduling one later recurring occurrence', () => {
+  const template = queueSeeds(() => new Date(now).toISOString())[3]!;
+  const item = {
+    ...template,
+    state: 'cancelled' as const,
+    finished_at: new Date(now).toISOString(),
+    actions: [],
+  };
+  const before = structuredClone(item);
+  const state = {
+    queue: [item],
+    queueRest: new Map([[item.id, template]]),
+    queueLoop: new Set<string>(),
+  };
+  expect(scheduleMockOccurrence(state, item, now, 45000)).toBe(true);
+  expect(scheduleMockOccurrence(state, item, now, 45000)).toBe(false);
+  expect(state.queue[0]).toEqual(before);
+  expect(state.queue).toHaveLength(2);
+  expect(state.queue[1]).toMatchObject({
+    state: 'scheduled',
+    source_id: item.source_id,
+    attempt: 0,
+    revision: 1,
+  });
+  expect(state.queue[1]!.id).not.toBe(item.id);
+  expect(Date.parse(state.queue[1]!.eligible_at)).toBe(now + 45000);
+  expect(state.queue[1]!.actions).toEqual(template.actions);
+});

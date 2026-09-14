@@ -9,13 +9,12 @@ export function scheduleMockOccurrence(
   waitMs: number,
 ): boolean {
   const template = state.queueRest.get(item.id);
-  if (
-    !template ||
-    item.state !== 'succeeded' ||
-    item.source_kind !== 'recurring' ||
-    !state.queueLoop.has(item.id)
-  )
-    return false;
+  if (!template || item.source_kind !== 'recurring') return false;
+  const completedHere = item.state === 'succeeded' && state.queueLoop.has(item.id);
+  const cancelledHere =
+    item.state === 'cancelled' &&
+    !['succeeded', 'failed', 'cancelled', 'superseded'].includes(template.state);
+  if (!completedHere && !cancelledHere) return false;
   const next: QueueItem = {
     ...template,
     id: `${item.source_id ?? template.id}:occurrence:${now}`,
