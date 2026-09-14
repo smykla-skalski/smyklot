@@ -20,6 +20,12 @@ func TestSyncCheckResultsPreserveLegacyEvidenceAfterPruning(t *testing.T) {
 		{"completed-check", "sync_scan", details},
 		{"plan-only", "sync_scan", `{"result_plan_id":"legacy-plan"}`},
 		{"unknown-check", "sync_scan", `{}`},
+		{"empty-check", "sync_scan", ""},
+		{"whitespace-check", "sync_scan", " \n\t"},
+		{"malformed-check", "sync_scan", `{"outcome":`},
+		{"null-check", "sync_scan", `null`},
+		{"scalar-check", "sync_scan", `"legacy"`},
+		{"malformed-other-work", "catalog_refresh", "not json"},
 		{"other-work", "catalog_refresh", details},
 	} {
 		_, err := db.ExecContext(ctx, dialect.Rebind(`INSERT INTO queue_items (id, kind, lane, title, state, priority, window_mode, not_before, eligible_at, created_at, updated_at, target_id, details) VALUES (?, ?, 'maintenance', 'Historical work', 'succeeded', 'normal', 'respect', ?, ?, ?, ?, 'target', ?)`), row.id, row.kind, stamp, stamp, stamp, stamp, row.details)
@@ -27,7 +33,7 @@ func TestSyncCheckResultsPreserveLegacyEvidenceAfterPruning(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.ExecContext(ctx, dialect.Rebind(`INSERT INTO sync_check_observations (queue_id, ordinal, evidence) VALUES ('completed-check', 1, ?)`), evidence); err != nil {
+	if _, err := db.ExecContext(ctx, dialect.Rebind(`INSERT INTO sync_check_observations (queue_id, ordinal, evidence) VALUES ('completed-check', 1, ?), ('malformed-check', 1, ?)`), evidence, evidence); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
@@ -47,8 +53,8 @@ func TestSyncCheckResultsPreserveLegacyEvidenceAfterPruning(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_check_observations`).Scan(&remaining); err != nil {
 		t.Fatal(err)
 	}
-	if remaining != 0 {
-		t.Fatal("domain removal left orphaned evidence")
+	if remaining != 1 {
+		t.Fatal("domain removal changed evidence belonging to another check")
 	}
 }
 
@@ -68,11 +74,23 @@ func assertRetainedLegacyCheck(t *testing.T, db *sql.DB, details, evidence strin
 	if observation != evidence {
 		t.Fatalf("changed evidence: %q", observation)
 	}
+	if err := db.QueryRowContext(ctx, `SELECT details FROM sync_check_results WHERE check_id = 'malformed-check'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored != `{"outcome":` {
+		t.Fatalf("rewrote legacy metadata: %q", stored)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT evidence FROM sync_check_observations WHERE queue_id = 'malformed-check' AND ordinal = 1`).Scan(&observation); err != nil {
+		t.Fatal(err)
+	}
+	if observation != evidence {
+		t.Fatalf("lost evidence attached to malformed metadata: %q", observation)
+	}
 	var count int
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sync_check_results`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
-	if count != 2 {
+	if count != 3 {
 		t.Fatalf("invented or lost results: %d", count)
 	}
 	if err := db.QueryRowContext(ctx, `SELECT details FROM sync_check_results WHERE check_id = 'plan-only'`).Scan(&stored); err != nil {
