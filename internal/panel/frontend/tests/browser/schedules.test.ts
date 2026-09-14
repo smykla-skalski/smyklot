@@ -65,6 +65,87 @@ describe('desktop hours draft protection', () => {
   });
 
   it.each(['light', 'dark'] as const)(
+    'keeps workspace schedule errors inside the request dialog in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      page.setDefaultTimeout(5000);
+      const submitted: Array<{ custom_profile: { windows: unknown[]; exceptions: unknown[] } }> =
+        [];
+      try {
+        await page.route('**/api/v1/targets/*/schedule-requests', async (route) => {
+          if (route.request().method() === 'POST') submitted.push(route.request().postDataJSON());
+          await route.continue();
+        });
+        await visit(page, addressOf(panel, 'workspace/settings'), { ready: '#ws-timing' });
+        const timing = page.locator('#ws-timing');
+        await timing.locator('summary').click();
+        await timing.getByRole('button', { name: 'Request a change' }).click();
+        const dialog = page.getByRole('dialog', {
+          name: 'Request a change to when Smyklot acts',
+          exact: true,
+        });
+        await dialog.getByRole('combobox', { name: 'Hours', exact: true }).click();
+        await page.getByRole('option', { name: 'Hours of your own', exact: true }).click();
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+          await dialog.evaluate(async (node) => {
+            await Promise.allSettled(
+              node.getAnimations({ subtree: true }).map((animation) => animation.finished),
+            );
+          });
+          const count = await dialog.locator('.window-row').count();
+          await dialog.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
+          await expect.poll(() => dialog.locator('.window-row').count()).toBe(count - 1);
+        }
+        const reason = `Keep release work within the agreed hours (${colorScheme})`;
+        await dialog.getByLabel('Reason', { exact: true }).fill(reason);
+        const exceptions = dialog.getByLabel('Date exceptions', { exact: true });
+        await exceptions.fill('2026-02-30 closed');
+        await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
+        const error = dialog.getByRole('alert').filter({ hasText: 'Choose a valid calendar date' });
+        await error.waitFor();
+        expect(submitted).toHaveLength(0);
+        expect(await exceptions.inputValue()).toBe('2026-02-30 closed');
+        await error.scrollIntoViewIfNeeded();
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-workspace-date-error-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await exceptions.fill('2026-12-25 closed');
+        await dialog.getByLabel('Opens', { exact: true }).fill('18:00');
+        await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
+        expect(submitted).toHaveLength(0);
+        await dialog.locator('.window-problem').scrollIntoViewIfNeeded();
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F08-workspace-range-error-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        await dialog.getByRole('checkbox', { name: 'Close at end of Monday (24:00)' }).check();
+        await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
+        await dialog.waitFor({ state: 'hidden' });
+        expect(submitted).toHaveLength(1);
+        expect(submitted[0]?.custom_profile.windows).toEqual([
+          { weekday: 1, start_minute: 1080, end_minute: 1440 },
+        ]);
+        expect(submitted[0]?.custom_profile.exceptions).toEqual([
+          { date: '2026-12-25', closed: true },
+        ]);
+        await timing.getByText(reason, { exact: false }).waitFor();
+      } finally {
+        await page.unrouteAll({ behavior: 'wait' });
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'preserves end-of-day closing times in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

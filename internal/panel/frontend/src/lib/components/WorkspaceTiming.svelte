@@ -18,6 +18,7 @@
   import { workloadCadenceDescription, workloadTitle } from '#lib/workloads.js';
 
   import Button from './Button.svelte';
+  import FormError from './FormError.svelte';
   import DurationInput from './DurationInput.svelte';
   import Chip, { type ChipTone } from './Chip.svelte';
   import Modal from './Modal.svelte';
@@ -255,7 +256,7 @@ answered a question a workspace never asks and hid the one it does.
   {/each}
 </div>
 
-{#if problem !== ''}
+{#if problem !== '' && !open}
   <div class="state-panel is-error" role="alert">
     <span><strong>Request failed</strong> · {problem}</span>
   </div>
@@ -380,6 +381,7 @@ answered a question a workspace never asks and hid the one it does.
         bind:value={reason}
         placeholder="What this timing is getting in the way of"></textarea>
     </label>
+    <FormError message={problem} />
   </div>
 
   {#snippet footer()}
