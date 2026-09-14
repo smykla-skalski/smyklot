@@ -50,6 +50,7 @@
   import type { SyncSection } from '#lib/routes.js';
 
   import SyncHistory from './SyncHistory.svelte';
+  import SyncRequests from './SyncRequests.svelte';
   import SyncCheckInspector from './SyncCheckInspector.svelte';
   import Link from './Link.svelte';
   import type { SyncCheckResponse } from '../types';
@@ -81,6 +82,7 @@
     fetchConfig,
     fetchPlan,
     fetchHistory,
+    fetchRequests,
     historyResultHref,
     checkResultHref,
     onOpenCheck,
@@ -139,6 +141,7 @@
     renderFile: (targetId: string, input: SyncFileRenderInput) => Promise<SyncFileRenderResponse>;
     fetchOverride: (targetId: string, repositoryId: string, kind: string) => Promise<SyncOverride>;
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
+    fetchRequests?: import('../api').PanelApi['fetchSyncRequests'];
     fetchHistory: (
       targetId: string,
       request: { limit: number; cursor?: string },
@@ -703,6 +706,20 @@ Live plan and status queries share the shell's event invalidation and polling fa
 
 {#snippet pageFeedback()}
   {#if !detailsVisible}{@render requestFeedback()}{/if}
+  {#if fetchRequests && actorId}
+    {#key JSON.stringify([actorId, targetId])}
+      <SyncRequests
+        {actorId}
+        {targetId}
+        {nowMs}
+        {fetchRequests}
+        {checkHref}
+        resultHref={historyResultHref}
+        {onOpenCheck}
+        onOpenResult={onOpenHistoryResult}
+      />
+    {/key}
+  {/if}
 {/snippet}
 
 {#if section === 'overview' || section === 'plan' || section === 'history'}
