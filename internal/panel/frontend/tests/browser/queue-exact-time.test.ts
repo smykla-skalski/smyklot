@@ -1,4 +1,5 @@
-import { mkdir } from 'node:fs/promises';
+import axe from 'axe-core';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { startPanel, type Panel } from './harness';
@@ -21,9 +22,33 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
       });
       page.setDefaultTimeout(5000);
       const capture = async (scene: string) => {
+        await page.evaluate(axe.source);
+        const accessibility = await page.evaluate(async () => {
+          const roots = [...document.querySelectorAll('[role="dialog"], [role="listbox"]')];
+          return (window as unknown as { axe: typeof axe }).axe.run({ include: roots });
+        });
+        expect(
+          accessibility.violations.map(({ id, nodes }) => ({
+            id,
+            targets: nodes.map(({ target, html, failureSummary }) => ({
+              target,
+              html,
+              failureSummary,
+            })),
+          })),
+        ).toEqual([]);
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (!directory) return;
         await mkdir(directory, { recursive: true });
+        await writeFile(
+          join(
+            directory,
+            '..',
+            'evidence',
+            `F14-${timezoneId.split('/')[1]}-${scene}-${colorScheme}-axe.json`,
+          ),
+          JSON.stringify(accessibility, null, 2),
+        );
         await page.screenshot({
           path: join(directory, `F14-${timezoneId.split('/')[1]}-${scene}-${colorScheme}.png`),
           animations: 'disabled',
@@ -74,8 +99,16 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
             await dialog.getByRole('button', { name: 'Apply', exact: true }).isDisabled(),
           ).toBe(true);
           await capture('repeated');
-          await occurrence.click();
-          await page.getByRole('option', { name: /UTC\+01:00/ }).click();
+          await occurrence.focus();
+          await page.keyboard.press('ArrowDown');
+          await page.getByRole('listbox', { name: 'Occurrence', exact: true }).waitFor();
+          const controlled = await occurrence.getAttribute('aria-controls');
+          expect(await page.locator(`[id="${controlled}"]`).count()).toBe(1);
+          await capture('occurrence-menu');
+          await page.keyboard.press('End');
+          await page.keyboard.press('Enter');
+          expect(await occurrence.textContent()).toContain('UTC+01:00');
+          expect(await occurrence.evaluate((node) => node === document.activeElement)).toBe(true);
           await preview.click();
         }
         await dialog.getByText('Can start from', { exact: true }).waitFor();

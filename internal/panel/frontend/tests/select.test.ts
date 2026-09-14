@@ -16,6 +16,15 @@ describe('shared themed Select [Component]', () => {
     await chooseOption(screen.getByRole('combobox', { name: 'Count' }), 'Two');
     expect(onValueChange).toHaveBeenLastCalledWith(2);
   });
+  it('names the popup from the native field label', async () => {
+    const { container } = render(Select, { id: 'native-choice', value: undefined, options });
+    const label = document.createElement('label');
+    label.htmlFor = 'native-choice';
+    label.textContent = 'Native choice';
+    container.prepend(label);
+    await fireEvent.keyDown(screen.getByLabelText('Native choice'), { key: 'ArrowDown' });
+    expect(await screen.findByRole('listbox', { name: 'Native choice' })).toBeTruthy();
+  });
   it('preserves numeric, string, empty and null choices and resets its form default', async () => {
     render(SelectHarness);
     const picker = screen.getByLabelText('Typed choice');
