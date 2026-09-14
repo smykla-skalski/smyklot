@@ -142,7 +142,7 @@ and provide retry independently of changing the schedule.
     Search by city or timezone name. Scheduled hours use this timezone.
   </p>
   <div aria-live="polite">
-    {#if pending}<p class="form-help">Checking timezone…</p>
+    {#if pending && preview === null}<p class="form-help">Checking timezone…</p>
     {:else if preview}<p class="form-help">Local time: {timezoneLocalLabel(preview)}</p>{/if}
   </div>
   {#if problem}<div id={errorId}><FormError message={visibleProblem} /></div>{/if}
