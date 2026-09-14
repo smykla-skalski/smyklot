@@ -131,8 +131,8 @@ describe('the general Queue list [Integration]', () => {
       const dialog = page.getByRole('dialog', { name: 'Sync shared configuration' });
       await dialog.waitFor({ state: 'visible' });
       await dialog.getByRole('heading', { name: 'What this job is doing' }).waitFor();
-      await dialog.getByText('Eligible from, in your timezone').waitFor();
-      await dialog.getByText("Eligible from, in the job's timezone").waitFor();
+      await dialog.getByText('Can start from, in your timezone').waitFor();
+      await dialog.getByText("Can start from, in the job's timezone").waitFor();
       await dialog.getByText('8 create · 5 update · 1 delete').waitFor();
       await dialog.getByRole('heading', { name: 'Timeline' }).waitFor();
     } finally {

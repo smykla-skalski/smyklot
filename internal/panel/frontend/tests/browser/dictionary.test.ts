@@ -220,7 +220,7 @@ describe('The dictionary [Browser]', () => {
     const opened = await inLanes(
       BEHIND_A_CONTROL,
       async (place): Promise<{ place: string; said: number; hits: Found[] }> => {
-        const page = await panel.browser.newPage({ viewport: { width: 1440, height: 960 } });
+        const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
         try {
           await visit(page, addressOf(panel, place.route));
           await openFolds(page);

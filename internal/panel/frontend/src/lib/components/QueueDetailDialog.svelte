@@ -72,7 +72,7 @@ not.
           {nextStep.message}
           {#if nextStep.eligibleAt}
             <span class="attempt-time"
-              >Eligible from&nbsp;<time datetime={nextStep.eligibleAt}
+              >Can start from&nbsp;<time datetime={nextStep.eligibleAt}
                 >{absolute(nextStep.eligibleAt)}</time
               >. The actual start depends on worker availability.</span
             >
@@ -134,12 +134,12 @@ not.
       </div>
     {:else if detail.item.state !== 'running'}
       <div>
-        <dt>Eligible from, in your timezone</dt>
+        <dt>Can start from, in your timezone</dt>
         <dd>{absolute(detail.item.eligible_at)}</dd>
       </div>
       {#if detail.item.profile_timezone}
         <div>
-          <dt>Eligible from, in the job's timezone</dt>
+          <dt>Can start from, in the job's timezone</dt>
           <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
         </div>
       {/if}

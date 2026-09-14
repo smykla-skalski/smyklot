@@ -191,7 +191,7 @@ describe('desktop failure queue record lifecycle', () => {
       const next = dialog.locator('.next-step');
       expect(await next.innerText()).toContain(guidance);
       expect(await next.locator('time').count()).toBe(scheduled ? 1 : 0);
-      if (scheduled) expect(await next.innerText()).toMatch(/Eligible from\s+\d/);
+      if (scheduled) expect(await next.innerText()).toMatch(/Can start from\s+\d/);
       if (scheduled)
         expect(await next.locator('time').getAttribute('datetime')).toBe('2026-09-14T14:00:00Z');
       if (state !== 'retrying')

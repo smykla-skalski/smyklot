@@ -311,6 +311,7 @@ jobs:
               tests/browser/signed-out-layout.test.ts
               tests/browser/installation.test.ts
               tests/browser/queue-occurrences.test.ts
+              tests/browser/queue-exact-time.test.ts
               tests/browser/required-reasons.test.ts
           # 319s in the reference run
           - area: group-2

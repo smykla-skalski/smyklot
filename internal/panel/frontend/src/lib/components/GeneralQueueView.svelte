@@ -852,6 +852,7 @@ without the buttons, rather than buttons that refuse.
     error={actionError}
     onClose={closeAction}
     onPreview={previewAction}
+    onResolveTime={api.resolveScheduleLocalTime}
     onSubmit={(input) => void submitAction(input)}
   />
 {/key}

@@ -1,5 +1,6 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
+  import { createPanelApi } from '#lib/api.js';
   import { fn } from 'storybook/test';
 
   import QueueActionDialog from '#lib/components/QueueActionDialog.svelte';
@@ -36,6 +37,7 @@
       busy: false,
       error: '',
       onClose: fn(),
+      onResolveTime: createPanelApi('', fetch).resolveScheduleLocalTime,
       onPreview: fn(async () => ({
         item_revision: 4,
         requested_at: '2026-08-24T13:00:00Z',

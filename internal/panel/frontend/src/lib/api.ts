@@ -1,3 +1,4 @@
+import { parseLocalTimeResolution, type LocalTimeResolution } from './schedule-local-time';
 import {
   parseScheduleDatePreview,
   type ScheduleDatePreview,
@@ -172,6 +173,11 @@ export interface PanelApi {
     input: SchedulePreviewInput,
     signal?: AbortSignal,
   ): Promise<ScheduleDatePreview>;
+  resolveScheduleLocalTime(
+    timezone: string,
+    localTime: string,
+    signal?: AbortSignal,
+  ): Promise<LocalTimeResolution>;
   previewScheduleTimezone(
     timezone: string,
     at: string,
@@ -711,6 +717,25 @@ export function createPanelApi(
       return preview;
     },
 
+    async resolveScheduleLocalTime(
+      timezone: string,
+      localTime: string,
+      signal?: AbortSignal,
+    ): Promise<LocalTimeResolution> {
+      const query = new URLSearchParams({ timezone, local_time: localTime });
+      const result = parseLocalTimeResolution(
+        await jsonRequest<unknown>(`/api/v1/schedule-local-time?${query}`, { signal }),
+      );
+      if (
+        result.timezone !== timezone ||
+        result.local_time !== localTime ||
+        result.options.some(
+          (option) => option.timezone !== timezone || option.local_time.slice(0, 16) !== localTime,
+        )
+      )
+        throw new Error('Local time resolution does not match the requested time');
+      return result;
+    },
     async previewScheduleTimezone(
       timezone: string,
       at: string,
