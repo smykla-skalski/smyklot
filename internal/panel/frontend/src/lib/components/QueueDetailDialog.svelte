@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
+  import { queueRepositoryName } from '#lib/queue-names.js';
   import { deliveryNextStep, words } from '#lib/queue-words.js';
   import { formatDateTime } from '#lib/format.js';
   import type { QueueDetail, QueueItem } from '#lib/types.js';
@@ -40,7 +41,8 @@
     formatDateTime(value, { timeZone, named: true, seconds: true });
 
   function scope(item: QueueItem): string {
-    if (item.repository_id) return `${item.target_id ?? 'Global'} / ${item.repository_id}`;
+    const repository = queueRepositoryName(item);
+    if (repository) return repository;
     return item.target_id ?? 'Global';
   }
 </script>

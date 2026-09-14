@@ -15,6 +15,7 @@
 </script>
 
 <script lang="ts">
+  import { queueRepositoryName } from '#lib/queue-names.js';
   import { queueActionLabel, queueLine, words } from '#lib/queue-words.js';
   import type { QueueActionType } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
@@ -88,8 +89,8 @@
    */
   function subject(item: QueueItem): string | null {
     const where = workspace?.(item) ?? null;
-    const repository = item.repository_name?.split('/').at(-1);
-    if (repository === undefined || repository === '') return where;
+    const repository = queueRepositoryName(item, true);
+    if (repository === null) return where;
     const pull = item.kind === 'pending_ci' ? item.details?.pull_request : undefined;
     const said = pull === undefined ? repository : `${repository} #${pull}`;
 

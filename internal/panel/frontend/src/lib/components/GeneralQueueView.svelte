@@ -4,6 +4,7 @@
   import { useDebounce } from 'runed';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import type { PanelApi } from '#lib/api.js';
+  import { queueRepositoryName, queueProfileName } from '#lib/queue-names.js';
   import { sentenceCase } from '#lib/format.js';
   import { LiveList } from '#lib/live-list.svelte.js';
   import { queueDetailKey, queueListKey, queueListScopeKey } from '#lib/queue-cache.js';
@@ -379,7 +380,10 @@
         {
           options: [
             { value: 'all', label: 'All hours' },
-            ...profiles.map((value) => ({ value, label: value })),
+            ...profiles.map((value) => ({
+              value,
+              label: queueProfileName(value, facets.profile_names?.[value]),
+            })),
           ],
         },
       ],
@@ -419,7 +423,13 @@
         {
           options: [
             { value: 'all', label: 'All repositories' },
-            ...repositories.map((value) => ({ value, label: value })),
+            ...repositories.map((value) => ({
+              value,
+              label: queueRepositoryName({
+                repository_id: value,
+                repository_name: facets.repository_names?.[value],
+              })!,
+            })),
           ],
         },
       ],
