@@ -52,6 +52,32 @@ describe('ConfigEditor drafts [Component]', () => {
     },
   );
 
+  it('describes rejected command choices on every focused checkbox', async () => {
+    const view = render(ConfigEditor, {
+      patch: { allowed_commands: ['merge', 'approve'] },
+      inherited: CONFIG,
+      scope: 'runtime',
+      idPrefix: 'command-error',
+      section: 'commands',
+      serverProblems: { allowed_commands: 'Command selection was rejected' },
+      onChange: vi.fn(),
+    });
+    const group = screen.getByRole('group', { name: 'Commands it answers' });
+    const choices = within(group).getAllByRole('checkbox');
+    expect(choices.length).toBeGreaterThan(1);
+    for (const choice of choices) {
+      const id = choice.getAttribute('aria-describedby');
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id!)?.textContent).toBe('Command selection was rejected');
+      expect(choice.getAttribute('aria-invalid')).toBe('true');
+    }
+    await view.rerender({ serverProblems: {} });
+    for (const choice of choices) {
+      expect(choice.getAttribute('aria-describedby')).toBeNull();
+      expect(choice.getAttribute('aria-invalid')).toBeNull();
+    }
+  });
+
   it('disables open behavior choices when edit permission is removed', async () => {
     const onChange = vi.fn();
     const view = render(ConfigEditor, {

@@ -479,6 +479,8 @@ account again.
                   <input
                     type="checkbox"
                     checked={on}
+                    aria-invalid={Boolean(serverProblems.allowed_commands) || undefined}
+                    aria-describedby={problemId('allowed_commands')}
                     disabled={editorDisabled || (on && allowedCount === 1)}
                     onchange={() => toggleCommand(command)}
                   />
