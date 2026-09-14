@@ -337,7 +337,11 @@ func (s *Server) respondToInvitation(
 	})
 	if err != nil {
 		status, code, message := invitationErrorStatus(err)
-		s.writePageError(w, r, status, code, message)
+		if errors.Is(err, storage.ErrIdentityMismatch) && wantsDocument(r) {
+			s.writeErrorDocumentWithInvitation(w, status, code, message, intent.token)
+		} else {
+			s.writePageError(w, r, status, code, message)
+		}
 
 		return false, true
 	}

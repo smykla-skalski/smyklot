@@ -516,6 +516,7 @@ npm run test:browser -- \
   tests/browser/sync-requests.test.ts \
   tests/browser/sync-retained-check.test.ts \
   tests/browser/sync-storage-recovery.test.ts \
+  tests/browser/invitation-recovery.test.ts
   tests/browser/sidebar-collapse.test.ts
   tests/browser/settings-toc.test.ts
 '''

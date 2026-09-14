@@ -1319,6 +1319,11 @@ async function handle(
       Number(preview.groups?.status),
       preview.groups?.code ?? '',
       parsed.searchParams.get('message') ?? 'a mock error, for looking at',
+      preview.groups?.status === '403' &&
+        preview.groups?.code === 'wrong_identity' &&
+        parsed.searchParams.get('recover') === '1'
+        ? state.invitations.find((invitation) => invitation.status === 'pending')?.token
+        : undefined,
     );
     return;
   }
@@ -6876,6 +6881,7 @@ async function respondError(
   status: number,
   code: string,
   message: string,
+  invitationToken?: string,
 ): Promise<void> {
   if (!wantsDocument(req)) {
     respond(res, status, { error: { code, message } });
@@ -6883,7 +6889,7 @@ async function respondError(
   }
   let page: string;
   try {
-    page = await renderErrorDocument(state, status, code, message);
+    page = await renderErrorDocument(state, status, code, message, invitationToken);
   } catch (error) {
     /* Loud rather than quiet. A mock that cannot borrow a page and answers with
        JSON instead looks exactly like a mock that decided the caller wanted JSON,
@@ -6918,8 +6924,16 @@ async function renderErrorDocument(
   status: number,
   code: string,
   message: string,
+  invitationToken?: string,
 ): Promise<string> {
-  const descriptor = escapeHtml(JSON.stringify({ status, code, message }));
+  const descriptor = escapeHtml(
+    JSON.stringify({
+      status,
+      code,
+      message,
+      ...(invitationToken ? { invitation_token: invitationToken } : {}),
+    }),
+  );
 
   return (await state.shell())
     .replace(

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { PanelApi } from '../api';
   import { panelUrl, type PanelBuild } from '../base';
-  import { describeFailure, type PanelFailure } from '../panel-error';
+  import { describeFailure, invitationRecoveryToken, type PanelFailure } from '../panel-error';
   import Card from './Card.svelte';
   import ErrorCard from './ErrorCard.svelte';
   import NightPage from './NightPage.svelte';
@@ -25,6 +25,10 @@
     destinations?: ReadonlyArray<{ label: string; href: string }>;
   } = $props();
 
+  const recoveryToken = $derived(invitationRecoveryToken(failure));
+  const invitationHref = $derived(
+    recoveryToken === null ? null : panelUrl(base, `/invite/${recoveryToken}`),
+  );
   const content = $derived(describeFailure(failure));
 </script>
 
@@ -71,7 +75,12 @@ lib/panel-error.ts.
   </div>
 {:else}
   <NightPage title={content.title} documentTitle={content.title} {build}>
-    <ErrorCard {content} panelHref={panelUrl(base, '/')} signInHref={api.signInUrl()} />
+    <ErrorCard
+      {content}
+      {invitationHref}
+      panelHref={panelUrl(base, '/')}
+      signInHref={api.signInUrl()}
+    />
   </NightPage>
 {/if}
 

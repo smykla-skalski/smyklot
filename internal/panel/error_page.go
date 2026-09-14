@@ -82,9 +82,19 @@ func acceptsHTML(accept string) bool {
 // is a lie to every cache and crawler between here and the reader - and the body is
 // the same bundle the panel always boots, told which error to render.
 func (s *Server) writeErrorDocument(w http.ResponseWriter, status int, code, message string) {
-	descriptor, err := json.Marshal(map[string]any{
+	s.writeErrorDocumentWithInvitation(w, status, code, message, "")
+}
+
+// Only a verified invitation intent may supply recovery context. The token is
+// a local review destination, never an instruction to accept or decline.
+func (s *Server) writeErrorDocumentWithInvitation(w http.ResponseWriter, status int, code, message, token string) {
+	payload := map[string]any{
 		"status": status, jsonFieldCode: code, jsonFieldMessage: message,
-	})
+	}
+	if token != "" {
+		payload["invitation_token"] = token
+	}
+	descriptor, err := json.Marshal(payload)
 	if err != nil {
 		writeError(w, status, code, message)
 

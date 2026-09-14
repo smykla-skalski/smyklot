@@ -911,3 +911,17 @@ scroll area. It disappears at the end and when all links fit, including after
 resize or navigation changes. Its horizontal bounds follow the sidebar divider,
 with a soft fade to transparent at both ends instead of a clipped rectangular band.
 It must not leave permanent haze or double the separator above build information.
+
+### Invitation failure recovery
+
+A rejected invitation response must leave an executable recovery path. For a
+wrong GitHub identity, preserve only the server-verified invitation token and
+link to invitation review. Review does not accept or decline; a new response
+still passes OAuth state, invitation signature and identity checks. Explain
+that the reader must switch GitHub accounts before responding again.
+
+If the browser has no verified context, do not reconstruct an invitation from
+callback query parameters. Tell the reader to retrieve the original link from
+the sender's message, ask for a new link if unavailable, and provide a return
+to the panel. Recovery links request a fresh document so server error metadata
+is not retained by client navigation. Never promise that restarting guarantees access.

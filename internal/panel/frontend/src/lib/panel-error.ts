@@ -15,6 +15,8 @@ export interface PanelFailure {
   status: number;
   code: string;
   message: string;
+  /** Recovery context emitted only after the server verifies the signed intent. */
+  invitation_token?: string;
 }
 
 /**
@@ -22,7 +24,7 @@ export interface PanelFailure {
  * catalogue stays a piece of writing, and so no entry can offer a link that this
  * page has no way to build.
  */
-export type ErrorActionKind = 'panel' | 'sign-in';
+export type ErrorActionKind = 'panel' | 'sign-in' | 'invitation';
 
 export interface ErrorAction {
   kind: ErrorActionKind;
@@ -69,6 +71,9 @@ function asFailure(value: unknown): PanelFailure | null {
     status,
     code: typeof code === 'string' ? code : '',
     message: typeof message === 'string' ? message : '',
+    ...(invitationRecoveryToken(value as PanelFailure) === null
+      ? {}
+      : { invitation_token: invitationRecoveryToken(value as PanelFailure)! }),
   };
 }
 
@@ -133,17 +138,17 @@ const BY_STATUS_AND_CODE: Readonly<Record<string, ErrorContent>> = {
   },
   '401:invalid_invitation': {
     status: 401,
-    title: 'Wrong browser',
-    lead: 'This was started in another browser',
-    note: 'Answering an invitation has to finish in the browser that began it. Open the link again here and it will go through',
-    action: null,
+    title: 'Invitation interrupted',
+    lead: 'The invitation response could not be verified',
+    note: 'This browser has no verified invitation to restart. Find the original invitation link in the message from its sender and open it here. If you cannot find it, ask the sender for a new link',
+    action: OPEN_PANEL,
   },
   '403:wrong_identity': {
     status: 403,
     title: 'Wrong account',
     lead: 'This invitation names a different GitHub account',
-    note: 'It was issued to one account by name, and that is not the one you signed in with. Sign in as the account it was sent to, or ask for one addressed to this account',
-    action: null,
+    note: 'Find the original invitation link in the message from its sender. Open it to check which GitHub account was invited, then switch to that account on GitHub before responding again',
+    action: OPEN_PANEL,
   },
   '410:invitation_expired': {
     status: 410,
@@ -253,7 +258,16 @@ const BY_STATUS: Readonly<Record<number, ErrorContent>> = {
  */
 export function describeFailure(failure: PanelFailure): ErrorContent {
   const specific = BY_STATUS_AND_CODE[`${failure.status}:${failure.code}`];
-  if (specific !== undefined) return specific;
+  if (specific !== undefined) {
+    if (invitationRecoveryToken(failure) !== null) {
+      return {
+        ...specific,
+        note: 'Review the invitation to check which GitHub account was invited. Switch to that account on GitHub before accepting or declining again. Your previous response did not change the invitation',
+        action: { kind: 'invitation', label: 'Review invitation' },
+      };
+    }
+    return specific;
+  }
 
   const byStatus = BY_STATUS[failure.status];
   if (byStatus !== undefined) return byStatus;
@@ -273,4 +287,14 @@ export function describeFailure(failure: PanelFailure): ErrorContent {
         note: 'The address was understood but there is nothing here to show for it. Start again from the panel',
         action: OPEN_PANEL,
       };
+}
+
+/** Accept an opaque token, never a server-provided URL or callback query value. */
+export function invitationRecoveryToken(failure: PanelFailure): string | null {
+  return failure.status === 403 &&
+    failure.code === 'wrong_identity' &&
+    typeof failure.invitation_token === 'string' &&
+    /^[A-Za-z0-9_-]{43}$/.test(failure.invitation_token)
+    ? failure.invitation_token
+    : null;
 }
