@@ -42,3 +42,28 @@ export function scheduleMockOccurrence(
   state.queue.push(next);
   return true;
 }
+
+/** Bound generated demo history, preserving seeds, live work and other domains. */
+export function pruneMockOccurrences(
+  state: Pick<MockState, 'queue' | 'queueRest' | 'queueLoop'>,
+): boolean {
+  const history = state.queue
+    .filter(
+      (item) =>
+        item.source_kind === 'recurring' &&
+        item.id.includes(':occurrence:') &&
+        ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+    )
+    .sort(
+      (a, b) =>
+        Date.parse(b.finished_at ?? b.updated_at) - Date.parse(a.finished_at ?? a.updated_at),
+    );
+  const removed = new Set(history.slice(200).map((item) => item.id));
+  if (removed.size === 0) return false;
+  state.queue = state.queue.filter((item) => !removed.has(item.id));
+  for (const id of removed) {
+    state.queueRest.delete(id);
+    state.queueLoop.delete(id);
+  }
+  return true;
+}

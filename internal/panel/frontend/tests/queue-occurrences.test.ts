@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { queueSeeds } from '../dev/fixtures';
-import { scheduleMockOccurrence } from '../dev/queue-occurrences';
+import { pruneMockOccurrences, scheduleMockOccurrence } from '../dev/queue-occurrences';
 const now = Date.parse('2026-09-14T12:00:00Z');
 it('keeps completed history and creates exactly one fresh occurrence', () => {
   const template = queueSeeds(() => new Date(now).toISOString())[3]!;
@@ -36,4 +36,29 @@ it.each(['cancelled', 'failed', 'superseded'] as const)('does not restart %s wor
   };
   expect(scheduleMockOccurrence(state, item, now, 45000)).toBe(false);
   expect(state.queue).toHaveLength(1);
+});
+
+it('bounds generated history while retaining seeds and active work', () => {
+  const seed = queueSeeds(() => new Date(now).toISOString())[3]!;
+  const history = Array.from({ length: 205 }, (_, index) => ({
+    ...seed,
+    id: `scan:occurrence:${index}`,
+    state: 'succeeded' as const,
+    finished_at: new Date(now + index).toISOString(),
+  }));
+  const live = { ...seed, id: 'scan:occurrence:live' };
+  const state = {
+    queue: [seed, live, ...history],
+    queueRest: new Map(history.map((item) => [item.id, item])),
+    queueLoop: new Set(history.map((item) => item.id)),
+  };
+  expect(pruneMockOccurrences(state)).toBe(true);
+  expect(state.queue).toHaveLength(202);
+  expect(state.queue).toContain(seed);
+  expect(state.queue).toContain(live);
+  expect(state.queue).not.toContain(history[0]);
+  expect(state.queue).toContain(history[204]);
+  expect(state.queueRest.has(history[0]!.id)).toBe(false);
+  expect(state.queueLoop.has(history[0]!.id)).toBe(false);
+  expect(pruneMockOccurrences(state)).toBe(false);
 });

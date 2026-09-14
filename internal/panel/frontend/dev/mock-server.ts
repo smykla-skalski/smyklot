@@ -1,4 +1,4 @@
-import { scheduleMockOccurrence } from './queue-occurrences';
+import { pruneMockOccurrences, scheduleMockOccurrence } from './queue-occurrences';
 import { mockQueueActions, projectMockQueueItem } from './queue-capabilities';
 import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
 import { scheduleHoursProblems } from '../src/lib/schedule-validation';
@@ -819,7 +819,7 @@ function advanceQueue(state: MockState, now: number): boolean {
     changed = true;
   }
 
-  return changed;
+  return pruneMockOccurrences(state) || changed;
 }
 
 function advanceQueueItem(
@@ -5694,12 +5694,17 @@ function mockPolicyStatuses(state: MockState, targetID?: string): QueuePolicySta
         (targetID === undefined || item.target_id === targetID) &&
         !['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
     );
-    const last = state.queue.find(
-      (item) =>
-        item.kind === policy.kind &&
-        (targetID === undefined || item.target_id === targetID) &&
-        ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
-    );
+    const last = [...state.queue]
+      .sort(
+        (a, b) =>
+          Date.parse(b.finished_at ?? b.updated_at) - Date.parse(a.finished_at ?? a.updated_at),
+      )
+      .find(
+        (item) =>
+          item.kind === policy.kind &&
+          (targetID === undefined || item.target_id === targetID) &&
+          ['succeeded', 'failed', 'cancelled', 'superseded'].includes(item.state),
+      );
     const next =
       current?.eligible_at ?? new Date(now + Number(policy.cadence) / 1_000_000).toISOString();
     return {
