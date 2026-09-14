@@ -1,5 +1,6 @@
 import type { Locator, Route } from 'playwright-core';
-import { mkdir } from 'node:fs/promises';
+import axe from 'axe-core';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -288,9 +289,10 @@ describe('desktop hours draft protection', () => {
         await date.fill('2026-12-28');
         await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
         await expect.poll(() => held.length).toBe(2);
-        expect(
-          await section.getByRole('button', { name: 'Checking hours…', exact: true }).isDisabled(),
-        ).toBe(true);
+        const checking = section.getByRole('button', { name: 'Checking hours…', exact: true });
+        expect(await checking.getAttribute('aria-disabled')).toBe('true');
+        await checking.press('Enter');
+        expect(held).toHaveLength(2);
         release();
         await section
           .getByText('Opens 2026-12-28 at 09:00 (UTC+00:00)', { exact: false })
@@ -312,6 +314,83 @@ describe('desktop hours draft protection', () => {
         await section
           .getByText('Opens 2026-12-28 at 10:00 (UTC+00:00)', { exact: false })
           .waitFor();
+        const summary = section.locator('summary');
+        await summary.focus();
+        await summary.press('Space');
+        expect(await section.evaluate((node) => (node as HTMLDetailsElement).open)).toBe(false);
+        await summary.press('Enter');
+        expect(await section.evaluate((node) => (node as HTMLDetailsElement).open)).toBe(true);
+        await summary.press('Tab');
+        expect(await date.evaluate((node) => node === document.activeElement)).toBe(true);
+        const previewButton = section.getByRole('button', { name: 'Preview hours', exact: true });
+        for (let step = 0; step < 8; step++) {
+          if (await previewButton.evaluate((node) => node === document.activeElement)) break;
+          await page.keyboard.press('Tab');
+        }
+        expect(await previewButton.evaluate((node) => node === document.activeElement)).toBe(true);
+        await page.keyboard.press('Enter');
+        await section
+          .getByText('Opens 2026-12-28 at 10:00 (UTC+00:00)', { exact: false })
+          .waitFor();
+        expect(await previewButton.evaluate((node) => node === document.activeElement)).toBe(true);
+        const announcement = section.locator('[aria-live="polite"]');
+        expect(await announcement.innerText()).toContain('Closes 2026-12-29 at 00:00');
+        await page.evaluate(axe.source);
+        const accessibility = await section.evaluate(async (node) =>
+          (window as unknown as { axe: typeof axe }).axe.run(node),
+        );
+        // The shared button paints a uniform state layer over its opaque base.
+        // Axe cannot resolve that gradient, so measure the composited colors.
+        const contrast = await previewButton.evaluate((node) => {
+          const style = getComputedStyle(node);
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 1;
+          const pen = canvas.getContext('2d', { willReadFrequently: true })!;
+          const luminance = () => {
+            const values = [...pen.getImageData(0, 0, 1, 1).data].slice(0, 3).map((channel) => {
+              const value = channel / 255;
+              return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            });
+            return values[0]! * 0.2126 + values[1]! * 0.7152 + values[2]! * 0.0722;
+          };
+          pen.fillStyle = style.backgroundColor;
+          pen.fillRect(0, 0, 1, 1);
+          const alpha = pen.getImageData(0, 0, 1, 1).data[3];
+          pen.fillStyle = style.getPropertyValue('--control-state-layer');
+          pen.fillRect(0, 0, 1, 1);
+          const background = luminance();
+          pen.clearRect(0, 0, 1, 1);
+          pen.fillStyle = style.color;
+          pen.fillRect(0, 0, 1, 1);
+          const foreground = luminance();
+          return {
+            alpha,
+            ratio:
+              (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05),
+            background: style.backgroundColor,
+            foreground: style.color,
+            layer: style.getPropertyValue('--control-state-layer'),
+          };
+        });
+        expect(contrast.alpha).toBe(255);
+        expect(contrast.ratio).toBeGreaterThanOrEqual(4.5);
+        const evidence = process.env.SMYKLOT_SCHEDULE_A11Y_EVIDENCE;
+        if (evidence) {
+          await mkdir(evidence, { recursive: true });
+          await writeFile(
+            join(evidence, `F08-preview-${colorScheme}-axe.json`),
+            JSON.stringify({ ...accessibility, buttonContrast: contrast }, null, 2),
+          );
+        }
+        expect(accessibility.violations).toEqual([]);
+        if (directory) {
+          await page.screenshot({
+            path: join(directory, `F08-preview-keyboard-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await page.keyboard.press('Tab');
+        expect(await section.evaluate((node) => node.contains(document.activeElement))).toBe(false);
       } finally {
         release();
         await page.unrouteAll({ behavior: 'wait' });

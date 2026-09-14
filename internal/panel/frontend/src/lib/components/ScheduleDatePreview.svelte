@@ -37,7 +37,7 @@
   });
 
   async function preview(): Promise<void> {
-    if (!valid) return;
+    if (!valid || busy) return;
     controller?.abort();
     const request = new AbortController();
     controller = request;
@@ -81,7 +81,7 @@ hides old answers; previewing never saves or schedules work.
     {#if !timezoneValid || scheduleHoursProblems(profile).length > 0}<p class="form-help">
         Correct the schedule fields before previewing.
       </p>{/if}
-    <Button disabled={!valid || busy} onclick={preview}
+    <Button disabled={!valid} aria-disabled={busy} aria-busy={busy} onclick={preview}
       >{busy ? 'Checking hours…' : current?.error ? 'Retry preview' : 'Preview hours'}</Button
     >
     <div class="form-stack" aria-live="polite">
