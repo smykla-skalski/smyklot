@@ -10,7 +10,7 @@
  * owns the tick.
  */
 import { formatDateTime } from '#lib/format.js';
-import type { DeliveryOperation, QueueItem } from '#lib/types.js';
+import type { DeliveryOperation, QueueActionType, QueueItem } from '#lib/types.js';
 
 /** A row's sentence, in the three pieces a time has to be an element to sit between. */
 export interface QueueLine {
@@ -163,4 +163,16 @@ export function deliveryNextStep(
     case 'succeeded':
       return { message: 'This delivery finished successfully. No further attempt is needed.' };
   }
+}
+
+/** Label the occurrence affected, while the confirmation explains dispatch eligibility. */
+export function queueActionLabel(action: QueueActionType, item?: QueueItem | null): string {
+  if (action === 'run_now') {
+    if (item?.state === 'retrying') return 'Retry now';
+    return item?.source_kind === 'recurring' ? 'Run next occurrence now' : 'Run now';
+  }
+  if (action === 'next_window') return 'Move to next window';
+  if (action === 'schedule_at') return 'Schedule exact time';
+  if (action === 'set_priority') return 'Change priority';
+  return item?.source_kind === 'recurring' ? 'Cancel this occurrence' : 'Cancel work';
 }

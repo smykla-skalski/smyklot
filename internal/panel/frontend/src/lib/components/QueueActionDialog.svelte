@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { queueActionLabel } from '#lib/queue-words.js';
   import { onMount } from 'svelte';
   import { formatDateTime } from '#lib/format.js';
   import type {
@@ -58,23 +59,6 @@
     const date = new Date(value);
     const offset = date.getTimezoneOffset() * 60_000;
     return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-  }
-
-  function titleFor(value: QueueActionType | null): string {
-    switch (value) {
-      case 'run_now':
-        return 'Run now';
-      case 'next_window':
-        return 'Move to next window';
-      case 'schedule_at':
-        return 'Schedule exact time';
-      case 'set_priority':
-        return 'Change priority';
-      case 'cancel':
-        return 'Cancel queued work';
-      default:
-        return 'Queue action';
-    }
   }
 
   function submit(): void {
@@ -141,11 +125,13 @@ to ask it four different ways.
 <ConfirmDialog
   id="queue-action"
   open={item !== null && action !== null}
-  title={titleFor(action)}
+  title={action === null ? 'Queue action' : queueActionLabel(action, item)}
   description={item === null ? undefined : item.title}
   {busy}
   busyLabel="Applying…"
-  confirmLabel={action === 'run_now' ? 'Run now' : action === 'cancel' ? 'Cancel work' : 'Apply'}
+  confirmLabel={action === 'run_now' || action === 'cancel'
+    ? queueActionLabel(action, item)
+    : 'Apply'}
   confirmTone={action === 'cancel' ? 'stop' : action === 'run_now' ? 'signal' : 'default'}
   confirmDisabled={invalid}
   {onClose}
@@ -154,10 +140,14 @@ to ask it four different ways.
   <div class="form-stack queue-action-form">
     {#if action === 'run_now'}
       <p>
-        Run this job once now, outside its normal schedule · Work already running is not interrupted
+        Make this queued occurrence eligible now, bypassing its delay and allowed hours. A worker
+        starts it when capacity is available. This does not create another occurrence or interrupt
+        work already running.
       </p>
     {:else if action === 'next_window'}
-      <p>Clear the delay and use the next available time within the job's hours</p>
+      <p>
+        Remove this occurrence's delay and wait for its next allowed window and an available worker.
+      </p>
     {:else if action === 'schedule_at'}
       <div class="form-field">
         <label class="form-label" for="queue-action-time">Not before</label>

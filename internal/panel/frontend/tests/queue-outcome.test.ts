@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { queueLine } from '../src/lib/queue-words';
+import { queueActionLabel, queueLine } from '../src/lib/queue-words';
 import { queueSeeds } from '../dev/fixtures';
 
 it.each(['succeeded', 'failed', 'cancelled', 'superseded'] as const)(
@@ -21,4 +21,16 @@ it('does not present an update time as a completed occurrence finish', () => {
   const result = queueLine({ ...item, finished_at: undefined }, Date.now());
   expect(result.lead).toContain('finish time unavailable');
   expect(result.when).toBeUndefined();
+});
+
+it('names retry and recurring actions by the occurrence they change', () => {
+  const item = queueSeeds(() => '2026-09-14T12:00:00Z')[3]!;
+  expect(queueActionLabel('run_now', item)).toBe('Retry now');
+  expect(queueActionLabel('run_now', { ...item, state: 'scheduled' })).toBe(
+    'Run next occurrence now',
+  );
+  expect(queueActionLabel('cancel', item)).toBe('Cancel this occurrence');
+  expect(queueActionLabel('run_now', { ...item, state: 'ready', source_kind: undefined })).toBe(
+    'Run now',
+  );
 });

@@ -15,7 +15,7 @@
 </script>
 
 <script lang="ts">
-  import { queueLine, words } from '#lib/queue-words.js';
+  import { queueActionLabel, queueLine, words } from '#lib/queue-words.js';
   import type { QueueActionType } from '#lib/types.js';
   import { cubicOut } from 'svelte/easing';
   import { onMount } from 'svelte';
@@ -129,14 +129,6 @@
     return 'neutral';
   }
 
-  function actionLabel(action: QueueActionType): string {
-    if (action === 'next_window') return 'Next window';
-    if (action === 'schedule_at') return 'Schedule exact time';
-    if (action === 'set_priority') return 'Change priority';
-    if (action === 'cancel') return 'Cancel work';
-    return 'Run now';
-  }
-
   function actionItems(item: QueueItem): ActionMenuItem[] {
     return (item.actions ?? [])
       .filter((action) => action !== 'run_now')
@@ -144,7 +136,7 @@
         (action) =>
           ({
             id: action,
-            label: actionLabel(action),
+            label: queueActionLabel(action, item),
             description:
               action === 'next_window'
                 ? "Keep the job's hours"
@@ -277,7 +269,9 @@ from the wall clock cannot be photographed.
                     </Button>
                   {/if}
                   {#if item.actions?.includes('run_now')}
-                    <Button onclick={() => onAction(item, 'run_now')}>Run now</Button>
+                    <Button onclick={() => onAction(item, 'run_now')}
+                      >{queueActionLabel('run_now', item)}</Button
+                    >
                   {/if}
                   {#if actionItems(item).length > 0}
                     <ActionMenu
