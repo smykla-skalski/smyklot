@@ -187,6 +187,10 @@
       caretColor: 'var(--text-primary)',
       padding: '0',
     },
+    '.cm-content ::selection, .cm-content::selection': {
+      color: 'var(--code-selection-ink)',
+      backgroundColor: 'var(--code-selection-bg)',
+    },
     '.cm-line': {
       padding: '0 var(--space-3) 0 0',
     },

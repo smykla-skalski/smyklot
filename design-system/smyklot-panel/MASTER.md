@@ -982,3 +982,7 @@ Line numbers use `--code-gutter` at full opacity. Keep their contrast at least
 gutter through placement and spacing rather than translucent text. Managed-line
 numbers retain their semantic ink and must meet the same contrast requirement.
 Verify focus, selection and validation states when changing editor surfaces.
+
+Selected code uses the paired `--code-selection-bg` and `--code-selection-ink`
+tokens with an opaque background and at least 4.5:1 text contrast. Apply the
+foreground to every selected syntax span, not only the editor container.

@@ -144,10 +144,10 @@ describe('desktop editor gutter contrast', () => {
           const ratios = await surface
             .locator(
               state.includes('selected')
-                ? '.cm-lineNumbers .cm-gutterElement'
+                ? '.cm-lineNumbers .cm-gutterElement, .cm-line, .cm-line > span'
                 : '.cm-lineNumbers .cm-gutterElement, .cm-line, .cm-line > span, .editor-problem .form-error',
             )
-            .evaluateAll((nodes) => {
+            .evaluateAll((nodes, selected) => {
               const canvas = document.createElement('canvas');
               canvas.width = canvas.height = 1;
               const pen = canvas.getContext('2d', { willReadFrequently: true })!;
@@ -176,12 +176,24 @@ describe('desktop editor gutter contrast', () => {
                     pen.fillStyle = getComputedStyle(ancestor).backgroundColor;
                     pen.fillRect(0, 0, 1, 1);
                   }
+                  const selection =
+                    selected && node.closest('.cm-content')
+                      ? getComputedStyle(node, '::selection')
+                      : null;
+                  if (selection) {
+                    pen.clearRect(0, 0, 1, 1);
+                    pen.fillStyle = selection.backgroundColor;
+                    pen.fillRect(0, 0, 1, 1);
+                    if (pen.getImageData(0, 0, 1, 1).data[3] !== 255) {
+                      throw new Error('Selected code needs an explicit opaque background');
+                    }
+                  }
                   const background = luminance();
                   pen.globalAlpha = ancestors.reduce(
                     (alpha, ancestor) => alpha * Number(getComputedStyle(ancestor).opacity),
                     1,
                   );
-                  pen.fillStyle = getComputedStyle(node).color;
+                  pen.fillStyle = selection?.color ?? getComputedStyle(node).color;
                   pen.fillRect(0, 0, 1, 1);
                   const foreground = luminance();
                   return (
@@ -189,7 +201,7 @@ describe('desktop editor gutter contrast', () => {
                     (Math.min(foreground, background) + 0.05)
                   );
                 });
-            });
+            }, state.includes('selected'));
           expect(ratios.length).toBeGreaterThan(0);
           measurements.push({ state, ratios });
           if (directory) {
