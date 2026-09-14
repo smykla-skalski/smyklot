@@ -26,9 +26,16 @@ type SchedulePreviewRequest struct {
 	Profile workqueue.Profile `json:"profile"`
 }
 
-// Request is one render or timezone message. InheritedLayers identifies the layers
-// below the current editor so render requests return both formatting policies.
+// LocalTimeRequest resolves an exact wall-clock minute in a named timezone.
+type LocalTimeRequest struct {
+	Timezone  string `json:"timezone"`
+	LocalTime string `json:"local_time"`
+}
+
+// Request carries one operation. InheritedLayers identifies the layers below
+// the current editor so render requests return both formatting policies.
 type Request struct {
+	LocalTime       *LocalTimeRequest       `json:"local_time,omitempty"`
 	SchedulePreview *SchedulePreviewRequest `json:"schedule_preview,omitempty"`
 	TimezonePreview *TimezoneRequest        `json:"timezone_preview,omitempty"`
 	Version         int                     `json:"version"`
@@ -57,17 +64,18 @@ type Diagnostic struct {
 
 // Response is one correlated render answer.
 type Response struct {
-	SchedulePreview   *workqueue.DatePreview     `json:"schedule_preview,omitempty"`
-	TimezonePreview   *workqueue.TimezonePreview `json:"timezone_preview,omitempty"`
-	Version           int                        `json:"version"`
-	ID                string                     `json:"id"`
-	Valid             bool                       `json:"valid"`
-	FinalContent      string                     `json:"final_content"`
-	MatchesFormatting bool                       `json:"matches_formatting"`
-	InheritedPolicy   config.FormattingPolicy    `json:"inherited_policy"`
-	EffectivePolicy   config.FormattingPolicy    `json:"effective_policy"`
-	Provenance        config.FormattingSources   `json:"provenance"`
-	Diagnostics       []Diagnostic               `json:"diagnostics"`
+	LocalTime         *workqueue.LocalTimeResolution `json:"local_time,omitempty"`
+	SchedulePreview   *workqueue.DatePreview         `json:"schedule_preview,omitempty"`
+	TimezonePreview   *workqueue.TimezonePreview     `json:"timezone_preview,omitempty"`
+	Version           int                            `json:"version"`
+	ID                string                         `json:"id"`
+	Valid             bool                           `json:"valid"`
+	FinalContent      string                         `json:"final_content"`
+	MatchesFormatting bool                           `json:"matches_formatting"`
+	InheritedPolicy   config.FormattingPolicy        `json:"inherited_policy"`
+	EffectivePolicy   config.FormattingPolicy        `json:"effective_policy"`
+	Provenance        config.FormattingSources       `json:"provenance"`
+	Diagnostics       []Diagnostic                   `json:"diagnostics"`
 }
 
 // Render validates and executes one bridge request.
@@ -75,6 +83,9 @@ func Render(request Request) Response {
 	answer := baseResponse(request.ID)
 	if request.Version != ProtocolVersion || request.ID == "" {
 		return invalid(answer, "request", "invalid_request", "the render request is invalid")
+	}
+	if request.LocalTime != nil {
+		return resolveLocalTime(answer, *request.LocalTime)
 	}
 	if request.SchedulePreview != nil {
 		profile := request.SchedulePreview.Profile
@@ -88,17 +99,7 @@ func Render(request Request) Response {
 		return answer
 	}
 	if request.TimezonePreview != nil {
-		at, err := time.Parse(time.RFC3339Nano, request.TimezonePreview.At)
-		if err != nil {
-			return invalid(answer, "at", "invalid_instant", "Choose a date and time with an explicit UTC offset")
-		}
-		preview, err := workqueue.PreviewTimezone(request.TimezonePreview.Timezone, at)
-		if err != nil {
-			return invalid(answer, "timezone", "invalid_timezone", "Choose a timezone supported by the scheduler")
-		}
-		answer.Valid = true
-		answer.TimezonePreview = &preview
-		return answer
+		return previewTimezone(answer, *request.TimezonePreview)
 	}
 	if request.Path == "" {
 		return invalid(answer, "request", "invalid_request", "the render request is invalid")
@@ -163,5 +164,29 @@ func baseResponse(id string) Response {
 
 func invalid(answer Response, stage, code, message string) Response {
 	answer.Diagnostics = []Diagnostic{{Stage: stage, Code: code, Message: message}}
+	return answer
+}
+
+func resolveLocalTime(answer Response, request LocalTimeRequest) Response {
+	result, err := workqueue.ResolveLocalTime(request.Timezone, request.LocalTime)
+	if err != nil {
+		return invalid(answer, "timezone", "invalid_local_time", err.Error())
+	}
+	answer.Valid = true
+	answer.LocalTime = &result
+	return answer
+}
+
+func previewTimezone(answer Response, request TimezoneRequest) Response {
+	at, err := time.Parse(time.RFC3339Nano, request.At)
+	if err != nil {
+		return invalid(answer, "at", "invalid_instant", "Choose a date and time with an explicit UTC offset")
+	}
+	preview, err := workqueue.PreviewTimezone(request.Timezone, at)
+	if err != nil {
+		return invalid(answer, "timezone", "invalid_timezone", "Choose a timezone supported by the scheduler")
+	}
+	answer.Valid = true
+	answer.TimezonePreview = &preview
 	return answer
 }

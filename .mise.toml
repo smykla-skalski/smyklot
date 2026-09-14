@@ -551,6 +551,7 @@ sources = [
   "cmd/panel-render-bridge/**/*.go",
   "internal/orgsync/**/*.go",
   "internal/panelrenderbridge/**/*.go",
+  "internal/workqueue/**/*.go",
   "pkg/config/**/*.go",
   "go.mod",
   "go.sum",

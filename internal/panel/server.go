@@ -237,6 +237,7 @@ func (s *Server) Handler() http.Handler {
 
 	s.registerSessionRoutes(mux, base)
 	mux.HandleFunc("GET "+base+"/api/v1/schedule-timezone", s.getScheduleTimezone)
+	mux.HandleFunc("GET "+base+"/api/v1/schedule-local-time", s.getScheduleLocalTime)
 	mux.HandleFunc("POST "+base+"/api/v1/schedule-preview", s.postSchedulePreview)
 	mux.HandleFunc("GET "+base+"/api/v1/targets", s.getTargets)
 	mux.HandleFunc("GET "+base+"/api/v1/notifications", s.getSecurityNotifications)

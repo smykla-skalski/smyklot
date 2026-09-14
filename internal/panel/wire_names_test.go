@@ -175,6 +175,7 @@ func panelWireNameProbePaths() []string {
 		"/panel/api/v1/session",
 		"/panel/api/v1/installation",
 		"/panel/api/v1/schedule-timezone?timezone=UTC&at=2026-01-01T00:00:00Z",
+		"/panel/api/v1/schedule-local-time?timezone=Europe/Warsaw&local_time=2026-10-25T02:30",
 		"/panel/api/v1/notifications",
 		"/panel/api/v1/invites/" + token,
 		"/panel/api/v1/targets",

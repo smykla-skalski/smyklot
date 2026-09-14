@@ -1590,6 +1590,19 @@ async function handle(
       respond(res, 200, preview.schedule_preview);
       return;
     }
+    if (path === route('/api/v1/schedule-local-time') && method === 'GET') {
+      const result = await state.fileRenderer.resolveLocalTime(
+        parsed.searchParams.get('timezone') ?? '',
+        parsed.searchParams.get('local_time') ?? '',
+      );
+      if (!result.valid) {
+        const problem = result.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (!result.local_time) throw new Error('Missing authoritative local time resolution');
+      respond(res, 200, result.local_time);
+      return;
+    }
     if (path === route('/api/v1/schedule-timezone') && method === 'GET') {
       const preview = await state.fileRenderer.previewTimezone(
         parsed.searchParams.get('timezone') ?? '',

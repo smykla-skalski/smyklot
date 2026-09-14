@@ -1,3 +1,4 @@
+import { parseLocalTimeResolution, type LocalTimeResolution } from '../src/lib/schedule-local-time';
 import {
   parseScheduleDatePreview,
   type ScheduleDatePreview,
@@ -58,6 +59,7 @@ export interface TimezonePreview {
 export interface GoRenderResponse {
   schedule_preview?: ScheduleDatePreview;
   timezone_preview?: TimezonePreview;
+  local_time?: LocalTimeResolution;
   valid: boolean;
   final_content: string;
   matches_formatting: boolean;
@@ -79,6 +81,10 @@ export class GoFileRenderer {
     return this.#request(input);
   }
 
+  resolveLocalTime(timezone: string, local_time: string): Promise<GoRenderResponse> {
+    return this.#request({ local_time: { timezone, local_time } });
+  }
+
   previewTimezone(timezone: string, at: string): Promise<GoRenderResponse> {
     return this.#request({ timezone_preview: { timezone, at } });
   }
@@ -90,6 +96,7 @@ export class GoFileRenderer {
   #request(
     input:
       | GoRenderInput
+      | { local_time: { timezone: string; local_time: string } }
       | { timezone_preview: { timezone: string; at: string } }
       | { schedule_preview: SchedulePreviewInput },
   ): Promise<GoRenderResponse> {
@@ -177,6 +184,7 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     'provenance',
     'diagnostics',
     'timezone_preview',
+    'local_time',
     'schedule_preview',
   ]);
   const inherited = parseFormattingPolicy(record?.inherited_policy);
@@ -197,6 +205,9 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     throw new TypeError('the Go development renderer returned an invalid response');
   }
   return {
+    ...(record.local_time === undefined
+      ? {}
+      : { local_time: parseLocalTimeResolution(record.local_time) }),
     ...(record.schedule_preview === undefined
       ? {}
       : { schedule_preview: parseScheduleDatePreview(record.schedule_preview) }),
