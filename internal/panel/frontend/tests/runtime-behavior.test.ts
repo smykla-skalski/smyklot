@@ -56,7 +56,7 @@ describe('runtime behavior ownership [Unit]', () => {
         current,
         {
           ...document,
-          bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+          bot_config: applyRuntimeConfigPatch({
             quiet_success: desired,
           }),
         },

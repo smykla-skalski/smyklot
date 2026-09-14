@@ -23,10 +23,7 @@ export function runtimeFieldConflicts(
 ): RuntimeFieldConflict[] {
   const snapshot = registry.resource(RUNTIME_RESOURCE);
   if (snapshot === null || snapshot.conflict?.type !== 'revision') return [];
-  const saved = runtimeSettingsSavedControls(
-    buildRuntimeSettingsDraftDocument(latest),
-    latest.behavior_defaults.deployment,
-  );
+  const saved = runtimeSettingsSavedControls(buildRuntimeSettingsDraftDocument(latest));
   return snapshot.controls.flatMap((control) => {
     const remote = saved[control.id as keyof typeof saved];
     if (

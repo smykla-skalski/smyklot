@@ -246,14 +246,11 @@ export function stageRuntimeSettingsControl(
       next[key] = cloneJson(base[key]);
     }
   }
-  const saved = runtimeSettingsSavedControls(base, settings.behavior_defaults.deployment);
-  const current = runtimeSettingsSavedControls(next, settings.behavior_defaults.deployment);
+  const saved = runtimeSettingsSavedControls(base);
+  const current = runtimeSettingsSavedControls(next);
   const previousDocument = parseRuntimeSettingsDraftDocument(snapshot?.value ?? base);
   if (previousDocument === null) return false;
-  const previous = runtimeSettingsSavedControls(
-    previousDocument,
-    settings.behavior_defaults.deployment,
-  );
+  const previous = runtimeSettingsSavedControls(previousDocument);
 
   // Presets may remove redundant leaf overrides. Their markers must transition
   // with the document instead of retaining stale values from an earlier edit.
@@ -268,9 +265,8 @@ export function stageRuntimeSettingsControl(
 
 export function runtimeSettingsSavedControls(
   document: RuntimeSettingsDraftDocument,
-  deployment: ConfigValues,
 ): Readonly<Record<RuntimeSettingsControlId, SettingsJson>> {
-  const patch = runtimeConfigPatch(deployment, document.bot_config);
+  const patch = runtimeConfigPatch(document.bot_config);
   const controls: Record<string, SettingsJson> = {
     'runtime.log_level': document.log_level,
   };
@@ -398,21 +394,17 @@ export function runtimeSettingsCommittedResource(
     resource: RUNTIME_RESOURCE,
     revision: settings.revision,
     value,
-    savedControls: runtimeSettingsSavedControls(value, settings.behavior_defaults.deployment),
+    savedControls: runtimeSettingsSavedControls(value),
   };
 }
 
 export function runtimeConfigPatch(
-  _deployment: ConfigValues,
   override: RuntimeConfigDocument | ConfigValues | RuntimeBehaviorIntent | null,
 ): ConfigPatch {
   return parseRuntimeBehavior(override)?.overrides ?? {};
 }
 
-export function applyRuntimeConfigPatch(
-  _deployment: ConfigValues,
-  patch: ConfigPatch,
-): RuntimeConfigDocument | null {
+export function applyRuntimeConfigPatch(patch: ConfigPatch): RuntimeConfigDocument | null {
   return runtimeBehaviorFromPatch(patch) as RuntimeConfigDocument | null;
 }
 

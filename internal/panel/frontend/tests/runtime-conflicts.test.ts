@@ -23,7 +23,7 @@ async function conflict(remotePrefix: string | null) {
     current,
     {
       ...runtimeSettingsDraftDocument(registry, current),
-      bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+      bot_config: applyRuntimeConfigPatch({
         command_prefix: '/mine',
       }),
     },

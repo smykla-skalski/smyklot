@@ -55,7 +55,7 @@ describe('Root runtime settings drafts [Unit]', () => {
     });
     const next = {
       ...document,
-      bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+      bot_config: applyRuntimeConfigPatch({
         formatting: { preset: 'conventional' },
       }),
     };
@@ -331,7 +331,7 @@ describe('Root runtime settings drafts [Unit]', () => {
       current,
       {
         ...afterLog,
-        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+        bot_config: applyRuntimeConfigPatch({
           formatting: { preset: 'conventional' },
         }),
       },

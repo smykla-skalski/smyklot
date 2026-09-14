@@ -116,10 +116,7 @@ export function rebaseRootSettingsConflict(
 
   const latestBase = buildRuntimeSettingsDraftDocument(latest);
   const merged = buildRuntimeSettingsDraftDocument(latest);
-  const configPatch = runtimeConfigPatch(
-    latest.behavior_defaults.deployment,
-    latestBase.bot_config,
-  );
+  const configPatch = runtimeConfigPatch(latestBase.bot_config);
   for (const control of snapshot.controls) {
     if (useSaved.has(control.id)) continue;
     if (control.id.startsWith('runtime.bot_config.')) {
@@ -166,18 +163,15 @@ export function rebaseRootSettingsConflict(
     }
     return false;
   }
-  merged.bot_config = applyRuntimeConfigPatch(
-    latest.behavior_defaults.deployment,
-    configPatch as ConfigPatch,
-  );
+  merged.bot_config = applyRuntimeConfigPatch(configPatch as ConfigPatch);
 
   return registry.rebase(
     RUNTIME_RESOURCE,
     latest.revision,
     latestBase,
-    runtimeSettingsSavedControls(latestBase, latest.behavior_defaults.deployment),
+    runtimeSettingsSavedControls(latestBase),
     merged,
-    runtimeSettingsSavedControls(merged, latest.behavior_defaults.deployment),
+    runtimeSettingsSavedControls(merged),
   );
 }
 

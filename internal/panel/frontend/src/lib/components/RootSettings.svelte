@@ -213,7 +213,7 @@
     stage(
       {
         ...document,
-        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
+        bot_config: applyRuntimeConfigPatch(patch),
       },
       `runtime.bot_config.${changedKey}`,
     );
@@ -222,13 +222,13 @@
   function updateFormatting(formatting: FormattingPatch, changedKey: FormattingFieldKey): void {
     const current = canonicalSettings;
     if (current === null || document === null) return;
-    const patch = runtimeConfigPatch(current.behavior_defaults.deployment, document.bot_config);
+    const patch = runtimeConfigPatch(document.bot_config);
     if (formattingOverrideCount(formatting) === 0) delete patch.formatting;
     else patch.formatting = formatting;
     stage(
       {
         ...document,
-        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, patch),
+        bot_config: applyRuntimeConfigPatch(patch),
       },
       `runtime.bot_config.${changedKey}`,
     );
@@ -570,7 +570,6 @@ without the composer.
 
       <ConfigEditor
         patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
           current.behavior_defaults.intent === undefined
             ? current.behavior_defaults.override
             : current.behavior_defaults.intent,
@@ -591,7 +590,6 @@ without the composer.
 
       <FormattingEditor
         patch={runtimeConfigPatch(
-          current.behavior_defaults.deployment,
           current.behavior_defaults.intent === undefined
             ? current.behavior_defaults.override
             : current.behavior_defaults.intent,
@@ -599,7 +597,6 @@ without the composer.
         savedPatch={canonicalSettings === null
           ? {}
           : (runtimeConfigPatch(
-              canonicalSettings.behavior_defaults.deployment,
               canonicalSettings.behavior_defaults.intent === undefined
                 ? canonicalSettings.behavior_defaults.override
                 : canonicalSettings.behavior_defaults.intent,
