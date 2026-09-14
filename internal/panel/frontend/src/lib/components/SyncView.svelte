@@ -939,11 +939,17 @@ Live plan and status queries share the shell's event invalidation and polling fa
     gap: var(--space-3);
   }
 
+  /* Keep the response and its next step together, including inside inspectors. */
   .sync-run-notice {
     color: var(--text-secondary);
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+  }
+
+  .sync-run-notice p {
+    margin: 0;
+    min-width: 0;
   }
 </style>
