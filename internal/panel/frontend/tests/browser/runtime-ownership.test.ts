@@ -30,7 +30,7 @@ describe('desktop runtime override ownership', () => {
         await page.evaluate(() => document.fonts.ready);
         await page.mouse.move(0, 0);
         await page.screenshot({
-          path: join(directory, `F04-field-recovery-${scene}-${colorScheme}.png`),
+          path: join(directory, `F04-inline-recovery-${scene}-${colorScheme}.png`),
         });
       };
       try {
@@ -81,6 +81,12 @@ describe('desktop runtime override ownership', () => {
           .poll(() => prefix.evaluate((node) => node === document.activeElement))
           .toBe(true);
         expect(await prefix.inputValue()).toBe('/server-recovery');
+        expect(await prefix.getAttribute('aria-invalid')).toBe('true');
+        const description = await prefix.getAttribute('aria-describedby');
+        expect(description).toBeTruthy();
+        expect(await page.locator(`[id="${description}"]`).textContent()).toBe(
+          'Runtime settings were rejected by the service',
+        );
         await capture('returned');
         await page.reload({ waitUntil: 'domcontentloaded' });
         await prefix.waitFor();
@@ -91,6 +97,8 @@ describe('desktop runtime override ownership', () => {
         );
         await capture('restored');
         await prefix.fill('/corrected');
+        await expect.poll(() => prefix.getAttribute('aria-invalid')).toBeNull();
+        expect(await prefix.getAttribute('aria-describedby')).toBeNull();
         await expect
           .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isEnabled())
           .toBe(true);

@@ -581,6 +581,12 @@ without the composer.
         idPrefix="root"
         disabled={saving}
         dirtyKeys={dirtyConfigKeys}
+        serverProblems={Object.fromEntries(
+          CONFIG_KEYS.flatMap((key) => {
+            const problem = drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.bot_config.${key}`);
+            return problem === null ? [] : [[key, problem]];
+          }),
+        )}
         onChange={updateBehavior}
         onValidity={(problem) =>
           drafts.setValidationProblem(

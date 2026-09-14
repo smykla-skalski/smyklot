@@ -393,6 +393,15 @@ export class SettingsDraftRegistry {
     this.validationProblems = validationProblems;
   }
 
+  serverProblem(scope: SettingsScope, controlId: string): string | null {
+    for (const state of this.dirtyStates(scope)) {
+      const control = state.controls[controlId];
+      if (control !== undefined && !sameSettingsJson(control.saved, control.value))
+        return control.serverProblem ?? null;
+    }
+    return null;
+  }
+
   validationProblem(scope: SettingsScope): string | null {
     return this.validationIssue(scope)?.problem ?? null;
   }

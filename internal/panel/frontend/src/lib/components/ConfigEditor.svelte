@@ -23,6 +23,7 @@
   import PairEntry from './PairEntry.svelte';
   import Popover from './Popover.svelte';
   import Switch from './Switch.svelte';
+  import FieldProblem from './FieldProblem.svelte';
 
   /* The linked-value rows name their inheritance source per scope. */
   const SOURCE_BY_SCOPE = {
@@ -41,6 +42,7 @@
     section = 'all',
     only,
     dirtyKeys = [],
+    serverProblems = {},
     onChange,
     onValidity = () => {},
   }: {
@@ -57,10 +59,15 @@
     only?: readonly ConfigKey[];
     /** Keys whose draft values differ from their saved values. */
     dirtyKeys?: readonly ConfigKey[];
+    serverProblems?: Partial<Record<ConfigKey, string>>;
     /** Changes are staged synchronously and never saved by the editor. */
     onChange: (next: ConfigPatch, changedKey: ConfigKey) => void;
     onValidity?: (problem: string | null) => void;
   } = $props();
+
+  function problemId(key: ConfigKey): string | undefined {
+    return serverProblems[key] ? `config-${scope}-${idPrefix}-${key}-server-problem` : undefined;
+  }
 
   const source = $derived(SOURCE_BY_SCOPE[scope]);
   const shownFields = $derived(
@@ -285,6 +292,7 @@ account again.
           >
             <span class="setting-say">
               <span class="setting-name">{field.label}</span>
+              <FieldProblem id={problemId(field.key) ?? ''} message={serverProblems[field.key]} />
               <span class="setting-why">{field.help}</span>
             </span>
             <span class="policy-value">
@@ -319,6 +327,7 @@ account again.
             >
               <span class="setting-say">
                 <span class="setting-name">{field.label}</span>
+                <FieldProblem id={problemId(field.key) ?? ''} message={serverProblems[field.key]} />
                 <span class="setting-why">{field.help}</span>
               </span>
               <span class="policy-value">
@@ -326,6 +335,8 @@ account again.
                 <Switch
                   checked={on}
                   label={field.label}
+                  invalid={Boolean(serverProblems[field.key])}
+                  descriptionId={problemId(field.key)}
                   disabled={editorDisabled}
                   onToggle={(next) => toggleBoolean(field, next)}
                 />
@@ -400,6 +411,10 @@ account again.
         >
           <span class="setting-say">
             <label class="setting-name" for="config-{scope}-{idPrefix}-prefix">Prefix</label>
+            <FieldProblem
+              id={problemId('command_prefix') ?? ''}
+              message={serverProblems.command_prefix}
+            />
             <span class="setting-why"
               >What a comment starts with to address Smyklot. Editing the inherited value creates an
               override</span
@@ -408,6 +423,8 @@ account again.
           <span class="policy-value">
             <input
               id="config-{scope}-{idPrefix}-prefix"
+              aria-invalid={Boolean(serverProblems.command_prefix) || undefined}
+              aria-describedby={problemId('command_prefix')}
               class="text-input mono prefix-inline"
               value={effectiveValue(draft, inherited, 'command_prefix')}
               {disabled}
@@ -432,6 +449,10 @@ account again.
           data-unsaved={dirtyKeySet.has('allowed_commands') || undefined}
         >
           <span class="setting-say">
+            <FieldProblem
+              id={problemId('allowed_commands') ?? ''}
+              message={serverProblems.allowed_commands}
+            />
             <span class="command-heading">
               <span class="setting-name" id="config-{scope}-{idPrefix}-allowed"
                 >Commands it answers</span
@@ -450,6 +471,7 @@ account again.
               class="check-line"
               role="group"
               aria-labelledby="config-{scope}-{idPrefix}-allowed"
+              aria-describedby={problemId('allowed_commands')}
             >
               {#each COMMANDS as command (command)}
                 {@const on = commandIsAllowed(allowedList, command)}
@@ -479,6 +501,10 @@ account again.
         >
           <span class="setting-say">
             <span class="setting-name" id="config-{scope}-{idPrefix}-aliases">Aliases</span>
+            <FieldProblem
+              id={problemId('command_aliases') ?? ''}
+              message={serverProblems.command_aliases}
+            />
             <span class="setting-why">Extra words mapped to the commands they run</span>
           </span>
           <span class="policy-value alias-controls">
@@ -486,6 +512,7 @@ account again.
               class="alias-pairs"
               role="group"
               aria-labelledby="config-{scope}-{idPrefix}-aliases"
+              aria-describedby={problemId('command_aliases')}
             >
               {#each aliasEntries as [name, command] (name)}
                 <PairEntry
