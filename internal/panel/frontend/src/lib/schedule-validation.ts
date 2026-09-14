@@ -1,8 +1,11 @@
 import type { ScheduleProfile } from './types';
 
+export type ScheduleControl = 'weekday' | 'date' | 'mode' | 'start' | 'end';
+
 export interface ScheduleProblem {
   field: 'name' | 'windows' | 'exceptions';
   index?: number;
+  controls?: readonly ScheduleControl[];
   message: string;
 }
 
@@ -27,12 +30,18 @@ export function scheduleWindowProblems(windows: ScheduleProfile['windows']): Sch
   const problems: ScheduleProblem[] = [];
   for (const [index, window] of windows.entries()) {
     if (!Number.isInteger(window.weekday) || window.weekday < 0 || window.weekday > 6) {
-      problems.push({ field: 'windows', index, message: 'Choose a day of the week' });
+      problems.push({
+        field: 'windows',
+        index,
+        controls: ['weekday'],
+        message: 'Choose a day of the week',
+      });
     }
     if (!validRange(window)) {
       problems.push({
         field: 'windows',
         index,
+        controls: rangeControls(window),
         message: 'Closing time must be after opening time on the same day',
       });
     }
@@ -44,6 +53,7 @@ export function scheduleWindowProblems(windows: ScheduleProfile['windows']): Sch
       problems.push({
         field: 'windows',
         index,
+        controls: ['weekday', 'start', 'end'],
         message: 'These hours overlap another window on this day',
       });
     }
@@ -57,12 +67,18 @@ export function scheduleExceptionProblems(
   const problems: ScheduleProblem[] = [];
   for (const [index, exception] of exceptions.entries()) {
     if (!validScheduleDate(exception.date)) {
-      problems.push({ field: 'exceptions', index, message: 'Choose a valid calendar date' });
+      problems.push({
+        field: 'exceptions',
+        index,
+        controls: ['date'],
+        message: 'Choose a valid calendar date',
+      });
     }
     if (!exception.closed && !validRange(exception)) {
       problems.push({
         field: 'exceptions',
         index,
+        controls: rangeControls(exception),
         message: 'Closing time must be after opening time on the same day',
       });
     }
@@ -77,6 +93,7 @@ export function scheduleExceptionProblems(
       problems.push({
         field: 'exceptions',
         index,
+        controls: exception.closed ? ['date', 'mode'] : ['date', 'mode', 'start', 'end'],
         message: 'Use either a closed day or non-overlapping hours for this date',
       });
     }
@@ -112,4 +129,18 @@ function overlaps(left: Range, right: Range): boolean {
     left.start_minute! < right.end_minute! &&
     right.start_minute! < left.end_minute!
   );
+}
+
+/** Identify the inputs that need correction, without parsing human-readable messages. */
+function rangeControls(range: Range): ScheduleControl[] {
+  const controls: ScheduleControl[] = [];
+  if (
+    !Number.isInteger(range.start_minute) ||
+    range.start_minute! < 0 ||
+    range.start_minute! >= 1440
+  )
+    controls.push('start');
+  if (!Number.isInteger(range.end_minute) || range.end_minute! <= 0 || range.end_minute! > 1440)
+    controls.push('end');
+  return controls.length ? controls : ['start', 'end'];
 }

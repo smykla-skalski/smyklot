@@ -103,12 +103,31 @@ describe('schedule calendar validation [Unit]', () => {
     expect(
       scheduleHoursProblems({ ...profile, exceptions: [{ date: '2026-02-30', closed: false }] }),
     ).toEqual([
-      { field: 'exceptions', index: 0, message: 'Choose a valid calendar date' },
       {
         field: 'exceptions',
         index: 0,
+        controls: ['date'],
+        message: 'Choose a valid calendar date',
+      },
+      {
+        field: 'exceptions',
+        index: 0,
+        controls: ['start', 'end'],
         message: 'Closing time must be after opening time on the same day',
       },
     ]);
+  });
+});
+
+describe('schedule correction targets', () => {
+  it.each([
+    [NaN, 60, ['start']],
+    [0, NaN, ['end']],
+    [60, 30, ['start', 'end']],
+  ])('addresses only invalid range inputs %s to %s', (start_minute, end_minute, controls) => {
+    expect(
+      scheduleHoursProblems({ ...profile, windows: [{ ...window, start_minute, end_minute }] })[0]
+        ?.controls,
+    ).toEqual(controls);
   });
 });

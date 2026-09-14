@@ -75,17 +75,17 @@ or overlapping intervals remain visible for correction.
     >
   </div>
   {#each windows as window, index (window.id)}
-    {@const problem = problems
-      .filter((entry) => entry.index === index)
-      .map((entry) => entry.message)
-      .join('. ')}
+    {@const rowProblems = problems.filter((entry) => entry.index === index)}
+    {@const problem = rowProblems.map((entry) => entry.message).join('. ')}
+    {@const invalid = (control: 'weekday' | 'start' | 'end') =>
+      rowProblems.some((entry) => entry.controls?.includes(control))}
     {@const problemId = `${idPrefix}-problem-${window.id}`}
     <div class="window-row" role="group" aria-label={`Hours for ${days[window.weekday]}`}>
       <label class="form-field" for={`${idPrefix}-day-${index}`}
         ><span class="form-label">Day</span><Select
           id={`${idPrefix}-day-${index}`}
-          aria-invalid={problem !== '' ? true : undefined}
-          aria-describedby={problem ? problemId : undefined}
+          aria-invalid={invalid('weekday') || undefined}
+          aria-describedby={invalid('weekday') ? problemId : undefined}
           value={window.weekday}
           onValueChange={(value) => update(index, { weekday: value })}
           options={days.map((day, weekday) => ({ value: weekday, label: day }))}
@@ -96,8 +96,8 @@ or overlapping intervals remain visible for correction.
           class="text-input"
           id={`${idPrefix}-start-${index}`}
           type="time"
-          aria-invalid={problem !== '' ? true : undefined}
-          aria-describedby={problem ? problemId : undefined}
+          aria-invalid={invalid('start') || undefined}
+          aria-describedby={invalid('start') ? problemId : undefined}
           value={window.start}
           oninput={(event) => update(index, { start: event.currentTarget.value })}
         /></label
@@ -109,16 +109,22 @@ or overlapping intervals remain visible for correction.
             class="text-input"
             id={`${idPrefix}-end-${index}`}
             value="End of day"
+            aria-invalid={invalid('end') || undefined}
             readonly
-            aria-describedby={`${idPrefix}-end-of-day-${window.id}`}
+            aria-describedby={[
+              `${idPrefix}-end-of-day-${window.id}`,
+              invalid('end') ? problemId : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
           />
         {:else}
           <input
             class="text-input"
             id={`${idPrefix}-end-${index}`}
             type="time"
-            aria-invalid={problem !== '' ? true : undefined}
-            aria-describedby={problem ? problemId : undefined}
+            aria-invalid={invalid('end') || undefined}
+            aria-describedby={invalid('end') ? problemId : undefined}
             value={window.end}
             oninput={(event) => update(index, { end: event.currentTarget.value })}
           />

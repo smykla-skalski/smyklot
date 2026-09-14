@@ -56,13 +56,11 @@ between closed and custom hours preserves the entered opening and closing times.
       No exceptions. Weekly hours apply to every date.
     </p>{/if}
   {#each entries as entry, index (entry.id)}
-    {@const problem =
-      showProblems || touched.has(entry.id)
-        ? problems
-            .filter((item) => item.index === index)
-            .map((item) => item.message)
-            .join('. ')
-        : ''}
+    {@const rowProblems =
+      showProblems || touched.has(entry.id) ? problems.filter((item) => item.index === index) : []}
+    {@const problem = rowProblems.map((item) => item.message).join('. ')}
+    {@const invalid = (control: 'date' | 'mode' | 'start' | 'end') =>
+      rowProblems.some((item) => item.controls?.includes(control))}
     {@const errorId = `${idPrefix}-${entry.id}-error`}
     <div
       class="exception-row"
@@ -77,8 +75,8 @@ between closed and custom hours preserves the entered opening and closing times.
           id={`${idPrefix}-${entry.id}-date`}
           type="date"
           value={entry.date}
-          aria-invalid={problem ? true : undefined}
-          aria-describedby={problem ? errorId : undefined}
+          aria-invalid={invalid('date') || undefined}
+          aria-describedby={invalid('date') ? errorId : undefined}
           oninput={(event) => change(index, { date: event.currentTarget.value })}
         />
       </label>
@@ -86,6 +84,8 @@ between closed and custom hours preserves the entered opening and closing times.
         <span class="form-label">Hours</span>
         <Select
           id={`${idPrefix}-${entry.id}-mode`}
+          aria-invalid={invalid('mode') || undefined}
+          aria-describedby={invalid('mode') ? errorId : undefined}
           value={entry.closed ? 'closed' : 'custom'}
           options={[
             { value: 'closed', label: 'Closed all day' },
@@ -108,9 +108,10 @@ between closed and custom hours preserves the entered opening and closing times.
             class="text-input"
             id={`${idPrefix}-${entry.id}-start`}
             type="time"
+            aria-invalid={invalid('start') || undefined}
             value={entry.start}
             oninput={(event) => change(index, { start: event.currentTarget.value })}
-            aria-describedby={problem ? errorId : undefined}
+            aria-describedby={invalid('start') ? errorId : undefined}
           /></label
         >
         <label class="form-field" for={`${idPrefix}-${entry.id}-end`}
@@ -119,15 +120,18 @@ between closed and custom hours preserves the entered opening and closing times.
               class="text-input"
               id={`${idPrefix}-${entry.id}-end`}
               value="End of day"
+              aria-invalid={invalid('end') || undefined}
+              aria-describedby={invalid('end') ? errorId : undefined}
               readonly
             />
           {:else}<input
               class="text-input"
               id={`${idPrefix}-${entry.id}-end`}
               type="time"
+              aria-invalid={invalid('end') || undefined}
               value={entry.end}
               oninput={(event) => change(index, { end: event.currentTarget.value })}
-              aria-describedby={problem ? errorId : undefined}
+              aria-describedby={invalid('end') ? errorId : undefined}
             />{/if}
         </label>
         <label class="check-item exception-wide"

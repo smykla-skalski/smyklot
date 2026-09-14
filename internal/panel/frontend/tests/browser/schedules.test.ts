@@ -223,11 +223,6 @@ describe('desktop hours draft protection', () => {
           .getByLabel('Profile name', { exact: true })
           .fill(`Structured hours ${colorScheme}`);
         for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
-          await editor.evaluate(async (node) => {
-            await Promise.allSettled(
-              node.getAnimations({ subtree: true }).map((animation) => animation.finished),
-            );
-          });
           await editor.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
         }
         await editor.getByRole('button', { name: 'Add date', exact: true }).click();
@@ -236,7 +231,32 @@ describe('desktop hours draft protection', () => {
         const mode = first.getByRole('combobox', { name: 'Hours', exact: true });
         await mode.click();
         await page.getByRole('option', { name: 'Custom hours', exact: true }).click();
-        await first.getByLabel('Closes', { exact: true }).fill('13:00');
+        const opens = first.getByLabel('Opens', { exact: true });
+        const closes = first.getByLabel('Closes', { exact: true });
+        await closes.fill('08:00');
+        await closes.press('Tab');
+        await first.getByRole('alert').waitFor();
+        expect(
+          await first.getByLabel('Date', { exact: true }).getAttribute('aria-invalid'),
+        ).toBeNull();
+        expect(await mode.getAttribute('aria-invalid')).toBeNull();
+        expect(await opens.getAttribute('aria-invalid')).toBe('true');
+        expect(await closes.getAttribute('aria-invalid')).toBe('true');
+        const problemId = await closes.getAttribute('aria-describedby');
+        expect(await first.locator(`[id="${problemId}"]`).innerText()).toContain('Closing time');
+        const auditDirectory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (auditDirectory) {
+          await mkdir(auditDirectory, { recursive: true });
+          await page.screenshot({
+            path: join(auditDirectory, `F08-exception-range-targets-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await closes.fill('13:00');
+        await closes.press('Tab');
+        await expect.poll(() => first.getByRole('alert').count()).toBe(0);
+        expect(await opens.getAttribute('aria-invalid')).toBeNull();
+        expect(await closes.getAttribute('aria-invalid')).toBeNull();
         await mode.click();
         await page.getByRole('option', { name: 'Closed all day', exact: true }).click();
         await mode.click();
@@ -263,6 +283,12 @@ describe('desktop hours draft protection', () => {
         await second.getByLabel('Date', { exact: true }).fill('2026-12-25');
         await editor.getByRole('button', { name: 'Save profile' }).click();
         await expect.poll(() => editor.getByRole('alert').count()).toBe(2);
+        expect(await mode.getAttribute('aria-invalid')).toBe('true');
+        expect(
+          await second
+            .getByRole('combobox', { name: 'Hours', exact: true })
+            .getAttribute('aria-invalid'),
+        ).toBe('true');
         if (directory) {
           await second.scrollIntoViewIfNeeded();
           await page.screenshot({
@@ -429,11 +455,6 @@ describe('desktop hours draft protection', () => {
         const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
         await editor.getByLabel('Profile name', { exact: true }).fill('Weekly validation');
         for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
-          await editor.evaluate(async (node) => {
-            await Promise.allSettled(
-              node.getAnimations({ subtree: true }).map((animation) => animation.finished),
-            );
-          });
           const count = await editor.locator('.window-row').count();
           await editor.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
           await expect.poll(() => editor.locator('.window-row').count()).toBe(count - 1);
@@ -443,6 +464,11 @@ describe('desktop hours draft protection', () => {
         await opens.fill('18:00');
         await first.getByRole('alert').waitFor();
         expect(await opens.getAttribute('aria-invalid')).toBe('true');
+        expect(
+          await first
+            .getByRole('combobox', { name: 'Day', exact: true })
+            .getAttribute('aria-invalid'),
+        ).toBeNull();
         const errorId = await opens.getAttribute('aria-describedby');
         expect(await editor.locator(`[id="${errorId}"]`).innerText()).toContain(
           'Closing time must be after opening time',
