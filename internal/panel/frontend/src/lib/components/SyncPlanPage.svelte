@@ -409,7 +409,7 @@ the button.
           <span class="is-expired">expired</span>{/if}
       </h2>
       <span class="hero-meta hero-meta-lines">
-        <span>Changes prepared <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
+        <span>Changes prepared: <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
         {#if plan.state === 'computed' && expiresWording !== null}
           <span>{expiresWording.lead}<strong>{expiresWording.strong}</strong></span>
         {/if}

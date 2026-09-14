@@ -1799,7 +1799,7 @@ offering it.
 
     {#if decisionPick === 'suspend'}
       <label class="form-field reason-field">
-        <span>Reason <small>Optional</small></span>
+        <span>Reason (optional)</span>
         <textarea
           class="reason-textarea"
           placeholder="Add context for other administrators"
@@ -2082,11 +2082,6 @@ offering it.
 
   .form-field > span {
     font: 600 0.75rem / var(--leading-flat) var(--sans);
-  }
-
-  .form-field > span small {
-    color: var(--text-muted);
-    font-weight: 400;
   }
 
   .form-field > small {

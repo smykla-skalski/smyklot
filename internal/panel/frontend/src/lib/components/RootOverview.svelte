@@ -160,7 +160,7 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
         {#if attention === 0}
           Nothing needs attention
         {:else}
-          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need attention
+          {attention} {attention === 1 ? 'item needs' : 'items need'} attention
         {/if}
       </h2>
       {#if overview !== null}

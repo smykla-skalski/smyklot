@@ -675,7 +675,7 @@ refuse.
 >
   {#if pendingAction === 'ban' || pendingAction === 'remove'}
     <label class="reason-field">
-      <span>Reason <small>Optional</small></span>
+      <span>Reason (optional)</span>
       <textarea
         placeholder="Add context to the immutable audit record"
         maxlength="500"

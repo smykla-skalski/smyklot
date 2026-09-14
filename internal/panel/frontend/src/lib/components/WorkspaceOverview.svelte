@@ -217,12 +217,12 @@ what would otherwise be four visits.
         {#if attention === 0}
           {unchecked > 0 ? 'Repository checks are incomplete' : 'Nothing needs attention'}
         {:else}
-          <span class="is-drift">{attention} {attention === 1 ? 'item' : 'items'}</span> need attention
+          {attention} {attention === 1 ? 'item needs' : 'items need'} attention
         {/if}
       </h2>
       {#if checked !== null}
         <span class="card-note"
-          >Latest repository observation
+          >Latest repository observation:
           <strong><RelativeTime value={checked} {nowMs} /></strong></span
         >
       {/if}
