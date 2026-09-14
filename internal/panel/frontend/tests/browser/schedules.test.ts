@@ -350,6 +350,9 @@ describe('desktop hours draft protection', () => {
         await error.waitFor();
         expect(submitted).toHaveLength(0);
         expect(await exceptions.inputValue()).toBe('');
+        await expect
+          .poll(() => exceptions.evaluate((node) => node === document.activeElement))
+          .toBe(true);
         await error.scrollIntoViewIfNeeded();
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (directory) {
@@ -363,6 +366,13 @@ describe('desktop hours draft protection', () => {
         await dialog.getByLabel('Opens', { exact: true }).fill('18:00');
         await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
         expect(submitted).toHaveLength(0);
+        await expect
+          .poll(() =>
+            dialog
+              .getByLabel('Opens', { exact: true })
+              .evaluate((node) => node === document.activeElement),
+          )
+          .toBe(true);
         await dialog.locator('.window-problem').scrollIntoViewIfNeeded();
         if (directory)
           await page.screenshot({
@@ -525,6 +535,9 @@ describe('desktop hours draft protection', () => {
           .filter({ hasText: 'Choose a valid calendar date' });
         await dateError.waitFor();
         expect(await field.inputValue()).toBe('');
+        await expect
+          .poll(() => field.evaluate((node) => node === document.activeElement))
+          .toBe(true);
         await page.keyboard.press('Escape');
         const guard = page.getByRole('dialog', { name: 'Discard hours changes?', exact: true });
         await guard.getByRole('button', { name: 'Keep editing', exact: true }).click();

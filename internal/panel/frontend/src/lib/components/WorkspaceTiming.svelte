@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { focusInvalidControl } from '#lib/focus-invalid-control.js';
   import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
   import { scheduleMinute } from '#lib/schedule-input.js';
   import { scheduleHoursProblems } from '#lib/schedule-validation.js';
@@ -179,7 +180,10 @@
       };
       if (windowMode === 'custom') {
         const invalid = scheduleHoursProblems(custom)[0];
-        if (invalid?.index !== undefined) return;
+        if (invalid?.index !== undefined) {
+          await focusInvalidControl('workspace-timing-request');
+          return;
+        }
         if (invalid !== undefined) throw new Error(invalid.message);
       }
       await api.createTargetScheduleRequest(targetId, {

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { focusInvalidControl } from '#lib/focus-invalid-control.js';
   import type { PanelApi } from '#lib/api.js';
   import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
   import { scheduleMinute } from '#lib/schedule-input.js';
@@ -116,12 +117,15 @@
     );
   }
 
-  function submit(): void {
+  async function submit(): Promise<void> {
     if (!timezoneValid) return;
     inputProblem = '';
     showExceptionProblems = true;
     const parsedExceptions = exceptionInputs(exceptions);
-    if (scheduleExceptionProblems(parsedExceptions).length > 0) return;
+    if (scheduleExceptionProblems(parsedExceptions).length > 0) {
+      await focusInvalidControl('profile-editor');
+      return;
+    }
     onSubmit({
       name: name.trim(),
       timezone: timezone.trim(),
