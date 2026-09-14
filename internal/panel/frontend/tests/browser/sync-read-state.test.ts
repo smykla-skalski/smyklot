@@ -25,6 +25,8 @@ describe('desktop live sync read states', () => {
       try {
         let reads = 0;
         let fail = true;
+        const retryGate: { wait?: Promise<void> } = {};
+        let releaseRetry = () => {};
         let posts = 0;
         page.on('request', (request) => {
           if (request.method() === 'POST' && request.url().includes('/sync/')) posts++;
@@ -32,6 +34,7 @@ describe('desktop live sync read states', () => {
         await page.route('**/api/v1/targets/2001/sync/plan', async (route) => {
           reads++;
           if (reads === 1) await firstRead;
+          if (retryGate.wait) await retryGate.wait;
           await route.fulfill(
             fail
               ? { status: 503, json: { error: 'temporarily unavailable' } }
@@ -68,8 +71,12 @@ describe('desktop live sync read states', () => {
         expect(await empty.count()).toBe(0);
         await capture('initial-failure');
         fail = false;
-        await inspector.getByRole('button', { name: 'Try again', exact: true }).click();
+        await inspector.getByRole('button', { name: 'Try again', exact: true }).focus();
+        await inspector.getByRole('button', { name: 'Try again', exact: true }).press('Enter');
         await empty.waitFor();
+        await expect
+          .poll(() => empty.evaluate((element) => element === document.activeElement))
+          .toBe(true);
         expect(page.url()).toBe(url);
         await capture('recovered-empty');
         fail = true;
@@ -81,9 +88,28 @@ describe('desktop live sync read states', () => {
         ).toBe(0);
         await capture('refresh-failure');
         fail = false;
-        await inspector.getByRole('button', { name: 'Try again', exact: true }).click();
+        await inspector.getByRole('button', { name: 'Try again', exact: true }).focus();
+        await inspector.getByRole('button', { name: 'Try again', exact: true }).press('Enter');
         await empty.waitFor();
+        await expect
+          .poll(() => empty.evaluate((element) => element === document.activeElement))
+          .toBe(true);
         expect(page.url()).toBe(url);
+        fail = true;
+        await inspector.getByRole('button', { name: 'Refresh status', exact: true }).click();
+        await inspector.getByText('Changes could not be loaded', { exact: true }).waitFor();
+        fail = false;
+        retryGate.wait = new Promise<void>((resolve) => {
+          releaseRetry = resolve;
+        });
+        await inspector.getByRole('button', { name: 'Try again', exact: true }).click();
+        await inspector.getByRole('button', { name: 'Trying again…', exact: true }).waitFor();
+        const close = inspector.getByRole('button', { name: 'Close sync details', exact: true });
+        await close.focus();
+        releaseRetry();
+        await empty.waitFor();
+        expect(await close.evaluate((element) => element === document.activeElement)).toBe(true);
+        await capture('focus-preserved');
         expect(posts).toBe(0);
       } finally {
         release();

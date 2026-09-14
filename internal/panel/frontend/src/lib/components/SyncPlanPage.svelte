@@ -73,6 +73,9 @@
   } = $props();
 
   let statusHeading: HTMLHeadingElement | null = $state(null);
+  export function focusStatus(): void {
+    statusHeading?.focus({ preventScroll: true });
+  }
   async function refreshStatus(event: MouseEvent): Promise<void> {
     if (!onRefresh || refreshing) return;
     const trigger = event.currentTarget as HTMLButtonElement;

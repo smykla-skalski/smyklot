@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack, onMount } from 'svelte';
+  import { untrack, onMount, tick } from 'svelte';
   import { PanelApiError } from '#lib/api.js';
   import { SyncRequestIntentStore } from '#lib/sync-request-intent.js';
   import Callout from './Callout.svelte';
@@ -226,6 +226,33 @@
     } finally {
       refreshingPlan = false;
     }
+  }
+  let inspectedPage: { focusStatus: () => void } | undefined = $state();
+  async function retryInspectedPlan(): Promise<void> {
+    const trigger = document.activeElement;
+    const requestedTarget = targetId;
+    const requestedPlan = selectedPlanId;
+    let movedFocus = false;
+    const trackFocus = (event: FocusEvent) => {
+      if (trigger?.isConnected && event.target !== trigger && event.target !== document.body)
+        movedFocus = true;
+    };
+    document.addEventListener('focusin', trackFocus);
+    try {
+      await refreshInspectedPlan();
+      await tick();
+    } finally {
+      document.removeEventListener('focusin', trackFocus);
+    }
+    if (
+      detailsVisible &&
+      targetId === requestedTarget &&
+      selectedPlanId === requestedPlan &&
+      trigger instanceof HTMLElement &&
+      !trigger.isConnected &&
+      !movedFocus
+    )
+      inspectedPage?.focusStatus();
   }
   const inspectedPlanProblem = $derived(syncResultProblem(inspectedPlanQuery.error));
   const inspectedPlan = $derived(
@@ -738,13 +765,14 @@ Live plan and status queries share the shell's event invalidation and polling fa
       <ResultProblem
         title={inspectedPlanProblem.title}
         problem={inspectedPlanProblem.description}
-        onRetry={inspectedPlanProblem.retry ? () => void refreshInspectedPlan() : undefined}
+        onRetry={inspectedPlanProblem.retry ? () => void retryInspectedPlan() : undefined}
         busy={inspectedPlanQuery.isFetching}
       />
     {:else if inspectedPlanQuery.isPending}
       <p role="status">Loading sync result…</p>
     {:else}
       <SyncPlanPage
+        bind:this={inspectedPage}
         embedded
         plan={inspectedPlan}
         {targetId}
