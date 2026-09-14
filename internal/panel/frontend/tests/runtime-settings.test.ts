@@ -1,9 +1,11 @@
+import { parseRuntimeBehavior, resolveRuntimeBehavior } from '../src/lib/runtime-behavior';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PanelApiError } from '../src/lib/api';
 import { applyFormattingPatch, parseFormattingPolicy } from '../src/lib/formatting';
 import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '../src/lib/root-settings-save';
 import {
+  applyRuntimeConfigPatch,
   adoptRuntimeSettings,
   buildRuntimeSettingsDraftDocument,
   parseRuntimeSettingsDraftDocument,
@@ -49,7 +51,9 @@ describe('Root runtime settings drafts [Unit]', () => {
     });
     const next = {
       ...document,
-      bot_config: { ...current.behavior_defaults.deployment, formatting },
+      bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+        formatting: { preset: 'conventional' },
+      }),
     };
 
     expect(
@@ -62,8 +66,16 @@ describe('Root runtime settings drafts [Unit]', () => {
 
     expect(serialized.ok).toBe(true);
     if (!serialized.ok) return;
-    expect(serialized.input.bot_config?.formatting).toEqual(formatting);
-    expect(serialized.input.bot_config?.formatting.json.arrays).toBe('auto');
+    expect(serialized.input.bot_config).toEqual({
+      version: 1,
+      overrides: { formatting: { preset: 'conventional' } },
+    });
+    expect(
+      resolveRuntimeBehavior(
+        current.behavior_defaults.deployment,
+        parseRuntimeBehavior(serialized.input.bot_config),
+      ).formatting,
+    ).toEqual(formatting);
   });
 
   it('rejects invalid complete formatting policies before serialization', () => {
@@ -91,12 +103,15 @@ describe('Root runtime settings drafts [Unit]', () => {
         effective: RUNTIME.behavior_defaults.effective,
       },
     });
-    const legacy = buildRuntimeSettingsDraftDocument(current);
+    const legacy = {
+      ...buildRuntimeSettingsDraftDocument(current),
+      bot_config: { ...current.behavior_defaults.deployment },
+    };
     delete (legacy.bot_config as Record<string, unknown>).allow_draft_merges;
 
     const parsed = parseRuntimeSettingsDraftDocument(legacy);
 
-    expect(parsed?.bot_config?.allow_draft_merges).toBe(false);
+    expect(parsed?.bot_config?.overrides.allow_draft_merges).toBe(false);
   });
 
   it('restores pre-limit runtime drafts without losing other unsaved values', () => {
@@ -128,20 +143,21 @@ describe('Root runtime settings drafts [Unit]', () => {
 
     const restarted = registry(storage);
     const restored = runtimeSettingsDraftDocument(restarted, current);
-    expect(restored.bot_config?.command_prefix).toBe('/pending');
-    expect(restored.bot_config?.formatting.common).toEqual({
+    expect(restored.bot_config?.overrides.command_prefix).toBe('/pending');
+    expect(restored.bot_config?.overrides.formatting?.common).toEqual({
       ...current.behavior_defaults.deployment.formatting.common,
       line_width: 120,
       inline_max_chars: 0,
     });
-    expect(restored.bot_config?.formatting.json.arrays).toBe('auto');
+    expect(restored.bot_config?.overrides.formatting?.json?.arrays).toBe('auto');
     expect(serializeRuntimeSettingsDraft(current.revision, restored)).toMatchObject({
       ok: true,
       input: {
         bot_config: {
-          command_prefix: '/pending',
-          formatting: {
-            common: { inline_max_chars: 0, line_width: 120 },
+          version: 1,
+          overrides: {
+            command_prefix: '/pending',
+            formatting: { common: { inline_max_chars: 0, line_width: 120 } },
           },
         },
       },
@@ -301,18 +317,14 @@ describe('Root runtime settings drafts [Unit]', () => {
       'runtime.log_level',
     );
     const afterLog = runtimeSettingsDraftDocument(drafts, current);
-    const wantedFormatting = applyFormattingPatch(current.behavior_defaults.deployment.formatting, {
-      preset: 'conventional',
-    });
     stageRuntimeSettingsControl(
       drafts,
       current,
       {
         ...afterLog,
-        bot_config: {
-          ...current.behavior_defaults.deployment,
-          formatting: wantedFormatting,
-        },
+        bot_config: applyRuntimeConfigPatch(current.behavior_defaults.deployment, {
+          formatting: { preset: 'conventional' },
+        }),
       },
       'runtime.bot_config.formatting.preset',
     );
@@ -352,8 +364,8 @@ describe('Root runtime settings drafts [Unit]', () => {
     const rebased = runtimeSettingsDraftDocument(drafts, latest);
     expect(rebased.log_level).toBe('debug');
     expect(rebased.session_ttl_seconds.override_seconds).toBe(3_600);
-    expect(rebased.bot_config?.formatting).toEqual(wantedFormatting);
-    expect(rebased.bot_config?.formatting.json.arrays).toBe('auto');
+    expect(rebased.bot_config?.overrides.formatting?.preset).toBe('conventional');
+    expect(rebased.bot_config?.overrides.formatting?.json?.arrays).toBe('expanded');
     expect(drafts.hasConflicts(ROOT_SETTINGS_SCOPE)).toBe(false);
   });
 });

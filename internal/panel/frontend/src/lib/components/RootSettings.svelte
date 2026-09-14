@@ -165,7 +165,10 @@
     try {
       const updated = await saveSettings({
         background_work_paused: paused,
-        bot_config: current.behavior_defaults.override,
+        bot_config:
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         log_level: current.log_level.override,
         reaction_poll_interval_seconds: current.reaction_poll_interval.override_seconds,
         merge_after_ci_quiet_period_seconds: current.merge_after_ci_quiet_period.override_seconds,
@@ -568,7 +571,9 @@ without the composer.
       <ConfigEditor
         patch={runtimeConfigPatch(
           current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         )}
         inherited={current.behavior_defaults.deployment}
         scope="runtime"
@@ -587,13 +592,17 @@ without the composer.
       <FormattingEditor
         patch={runtimeConfigPatch(
           current.behavior_defaults.deployment,
-          current.behavior_defaults.override,
+          current.behavior_defaults.intent === undefined
+            ? current.behavior_defaults.override
+            : current.behavior_defaults.intent,
         ).formatting ?? {}}
         savedPatch={canonicalSettings === null
           ? {}
           : (runtimeConfigPatch(
               canonicalSettings.behavior_defaults.deployment,
-              canonicalSettings.behavior_defaults.override,
+              canonicalSettings.behavior_defaults.intent === undefined
+                ? canonicalSettings.behavior_defaults.override
+                : canonicalSettings.behavior_defaults.intent,
             ).formatting ?? {})}
         inherited={current.behavior_defaults.deployment.formatting}
         scope="runtime"

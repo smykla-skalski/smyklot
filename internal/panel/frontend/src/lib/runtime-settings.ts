@@ -1,14 +1,12 @@
+import {
+  parseRuntimeBehavior,
+  runtimeBehaviorFromPatch,
+  resolveRuntimeBehavior,
+  type RuntimeBehaviorIntent,
+} from './runtime-behavior';
 import { CONFIG_KEYS } from './config';
 import { durationParts, exactDurationSeconds, type DurationUnit } from './duration';
-import {
-  FORMATTING_FIELDS,
-  applyFormattingPatch,
-  formattingPolicyPatch,
-  defaultFormattingPolicy,
-  formattingPoliciesEqual,
-  formattingPolicyValue,
-  parseFormattingPolicy,
-} from './formatting';
+import { FORMATTING_FIELDS, formattingPatchValue } from './formatting';
 import type { SettingsCommittedResource, SettingsDraftRegistry } from './settings-drafts.svelte';
 import type { SettingsJson, SettingsLocation, SettingsResource } from './settings-draft-storage';
 import { sameSettingsJson } from './settings-draft-storage';
@@ -43,7 +41,7 @@ const MAX_DURATION_AMOUNT_LENGTH = 32;
 
 export type RuntimeDurationKey = (typeof DURATION_KEYS)[number];
 
-export type RuntimeConfigDocument = Record<string, SettingsJson> & ConfigValues;
+export type RuntimeConfigDocument = Record<string, SettingsJson> & RuntimeBehaviorIntent;
 
 export interface RuntimeDurationEditor extends Record<string, SettingsJson> {
   amount: string;
@@ -151,7 +149,10 @@ export function buildRuntimeSettingsDraftDocument(
   settings: RootRuntimeSettings,
 ): RuntimeSettingsDraftDocument {
   const document = parseRuntimeSettingsDraftDocument({
-    bot_config: settings.behavior_defaults.override,
+    bot_config:
+      settings.behavior_defaults.intent === undefined
+        ? settings.behavior_defaults.override
+        : settings.behavior_defaults.intent,
     log_level: settings.log_level.override,
     reaction_poll_interval_seconds: durationDraft(settings.reaction_poll_interval.override_seconds),
     merge_after_ci_quiet_period_seconds: durationDraft(
@@ -277,13 +278,8 @@ export function runtimeSettingsSavedControls(
     controls[`runtime.bot_config.${key}`] = patch[key] === undefined ? null : cloneJson(patch[key]);
   }
   for (const field of FORMATTING_FIELDS) {
-    const deploymentValue = formattingPolicyValue(deployment.formatting, field);
-    const overrideValue =
-      document.bot_config === null
-        ? deploymentValue
-        : formattingPolicyValue(document.bot_config.formatting, field);
     controls[`runtime.bot_config.${field.key}`] =
-      document.bot_config !== null && overrideValue !== deploymentValue ? overrideValue : null;
+      formattingPatchValue(patch.formatting ?? {}, field) ?? null;
   }
   for (const key of DURATION_KEYS) controls[`runtime.${key}`] = cloneJson(document[key]);
   return controls as Record<RuntimeSettingsControlId, SettingsJson>;
@@ -297,7 +293,14 @@ export function overlayRuntimeSettings(
   if (parsed === null) throw new TypeError('runtime settings draft is invalid');
   return {
     ...settings,
-    behavior_defaults: { ...settings.behavior_defaults, override: parsed.bot_config },
+    behavior_defaults: {
+      ...settings.behavior_defaults,
+      intent: parsed.bot_config,
+      override:
+        parsed.bot_config === null
+          ? null
+          : resolveRuntimeBehavior(settings.behavior_defaults.deployment, parsed.bot_config),
+    },
     log_level: { ...settings.log_level, override: parsed.log_level },
     reaction_poll_interval: {
       ...settings.reaction_poll_interval,
@@ -400,34 +403,17 @@ export function runtimeSettingsCommittedResource(
 }
 
 export function runtimeConfigPatch(
-  deployment: ConfigValues,
-  override: RuntimeConfigDocument | ConfigValues | null,
+  _deployment: ConfigValues,
+  override: RuntimeConfigDocument | ConfigValues | RuntimeBehaviorIntent | null,
 ): ConfigPatch {
-  if (override === null) return {};
-  const patch = Object.fromEntries(
-    CONFIG_KEYS.flatMap((key) =>
-      sameJson(override[key], deployment[key]) ? [] : [[key, cloneJson(override[key])]],
-    ),
-  ) as ConfigPatch;
-  if (!formattingPoliciesEqual(override.formatting, deployment.formatting)) {
-    patch.formatting = formattingPolicyPatch(deployment.formatting, override.formatting);
-  }
-  return patch;
+  return parseRuntimeBehavior(override)?.overrides ?? {};
 }
 
 export function applyRuntimeConfigPatch(
-  deployment: ConfigValues,
+  _deployment: ConfigValues,
   patch: ConfigPatch,
 ): RuntimeConfigDocument | null {
-  if (Object.keys(patch).length === 0) return null;
-  const resolved = cloneJson(deployment) as RuntimeConfigDocument;
-  for (const key of CONFIG_KEYS) {
-    if (patch[key] !== undefined) Object.assign(resolved, { [key]: cloneJson(patch[key]) });
-  }
-  if (patch.formatting !== undefined) {
-    resolved.formatting = applyFormattingPatch(resolved.formatting, patch.formatting);
-  }
-  return resolved;
+  return runtimeBehaviorFromPatch(patch) as RuntimeConfigDocument | null;
 }
 
 function durationDraft(seconds: number | null): RuntimeDurationDraft {
@@ -463,44 +449,11 @@ function parseDurationEditor(value: unknown): RuntimeDurationEditor | null | und
 }
 
 function parseConfig(value: unknown): RuntimeConfigDocument | null | undefined {
-  if (value === null) return null;
-  if (!isRecord(value)) return undefined;
-  const normalized = { ...value };
-  // Root overrides and browser drafts saved by an older panel contain the
-  // complete config shape from that release. Preserve them with the safe
-  // opt-in default instead of making unrelated saved work unreadable.
-  if (!Object.hasOwn(normalized, 'allow_draft_merges')) normalized.allow_draft_merges = false;
-  if (!Object.hasOwn(normalized, 'formatting')) normalized.formatting = defaultFormattingPolicy();
-  // Existing complete runtime drafts predate this optional automatic-layout cap.
-  // Default only its absent leaf here; live policies and malformed leaves stay strict.
-  const policy = normalized.formatting;
-  if (
-    isRecord(policy) &&
-    isRecord(policy.common) &&
-    !Object.hasOwn(policy.common, 'inline_max_chars')
-  ) {
-    normalized.formatting = {
-      ...policy,
-      common: { ...policy.common, inline_max_chars: 0 },
-    };
-  }
-  if (CONFIG_KEYS.some((key) => !validConfigValue(key, normalized[key]))) {
+  try {
+    return parseRuntimeBehavior(value) as RuntimeConfigDocument | null;
+  } catch {
     return undefined;
   }
-  const formatting = parseFormattingPolicy(normalized.formatting);
-  if (formatting === null) return undefined;
-  normalized.formatting = formatting;
-  if (!Object.values(normalized).every(isSettingsJson)) return undefined;
-  return cloneJson(normalized) as RuntimeConfigDocument;
-}
-
-function validConfigValue(key: ConfigKey, value: unknown): boolean {
-  if (key === 'allowed_commands') return Array.isArray(value) && value.every(isString);
-  if (key === 'command_aliases') {
-    return isRecord(value) && Object.values(value).every(isString);
-  }
-  if (key === 'command_prefix') return typeof value === 'string';
-  return typeof value === 'boolean';
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
@@ -513,10 +466,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function isString(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
 function isLogLevel(value: unknown): value is string {
   return typeof value === 'string' && LOG_LEVELS.has(value);
 }
@@ -525,21 +474,10 @@ function isDurationUnit(value: unknown): value is DurationUnit {
   return value === 'seconds' || value === 'minutes' || value === 'hours' || value === 'days';
 }
 
-function isSettingsJson(value: unknown): value is SettingsJson {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
-  if (typeof value === 'number') return Number.isFinite(value);
-  if (Array.isArray(value)) return value.every(isSettingsJson);
-  return isRecord(value) && Object.values(value).every(isSettingsJson);
-}
-
 function cloneJson<T>(value: T): T {
   if (Array.isArray(value)) return value.map((entry) => cloneJson(entry)) as T;
   if (!isRecord(value)) return value;
   return Object.fromEntries(
     Object.entries(value).map(([key, nested]) => [key, cloneJson(nested)]),
   ) as T;
-}
-
-function sameJson(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
 }

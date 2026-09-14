@@ -1,3 +1,4 @@
+import { parseRuntimeBehavior, resolveRuntimeBehavior } from '../../src/lib/runtime-behavior';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -294,7 +295,7 @@ describe('Root runtime settings drafts', () => {
         if (route.request().method() === 'PUT') {
           const input = route.request().postDataJSON() as RootRuntimeSettingsInput;
           expect(input.expected_revision).toBe(saved.revision);
-          expect(input.bot_config?.command_prefix).toBe(
+          expect(parseRuntimeBehavior(input.bot_config)?.overrides.command_prefix).toBe(
             `${baseline.behavior_defaults.effective.command_prefix}-pending`,
           );
           await held;
@@ -303,8 +304,18 @@ describe('Root runtime settings drafts', () => {
             revision: saved.revision + 1,
             behavior_defaults: {
               ...saved.behavior_defaults,
-              override: input.bot_config,
-              effective: input.bot_config ?? saved.behavior_defaults.deployment,
+              intent: parseRuntimeBehavior(input.bot_config),
+              override:
+                input.bot_config === null
+                  ? null
+                  : resolveRuntimeBehavior(
+                      saved.behavior_defaults.deployment,
+                      parseRuntimeBehavior(input.bot_config),
+                    ),
+              effective: resolveRuntimeBehavior(
+                saved.behavior_defaults.deployment,
+                parseRuntimeBehavior(input.bot_config),
+              ),
             },
           };
         }

@@ -1,3 +1,4 @@
+import type { RuntimeBehaviorIntent } from '../src/lib/runtime-behavior';
 import {
   CONFIG_FILE_STATUS_FIXTURES,
   REPOSITORY_CONFIG_FILE_STATES,
@@ -211,7 +212,7 @@ export interface MockState {
   queueRest: Map<string, QueueItem>;
   runtime: {
     backgroundWorkPaused: boolean;
-    behaviorOverride: ConfigValues | null;
+    behaviorOverride: ConfigValues | RuntimeBehaviorIntent | null;
     logLevelOverride: string | null;
     pollIntervalOverride: number | null;
     pendingCIQuietPeriodOverride: number | null;

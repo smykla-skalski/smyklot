@@ -1,3 +1,4 @@
+import type { RuntimeBehaviorIntent } from './runtime-behavior';
 import type { ArrayStrategy, JsonNumber } from '#lib/merge.js';
 import type {
   FormattingPatch,
@@ -745,6 +746,7 @@ export interface RootRuntimeSettings {
   behavior_defaults: {
     deployment: ConfigValues;
     override: ConfigValues | null;
+    intent?: RuntimeBehaviorIntent | null;
     effective: ConfigValues;
   };
   log_level: {
@@ -798,7 +800,7 @@ export interface RootRuntimeSettings {
 export interface RootRuntimeSettingsInput {
   /** Optional for older clients; omitted writes preserve the current pause state. */
   background_work_paused?: boolean;
-  bot_config: ConfigValues | null;
+  bot_config: ConfigValues | RuntimeBehaviorIntent | null;
   log_level: string | null;
   reaction_poll_interval_seconds: number | null;
   merge_after_ci_quiet_period_seconds: number | null;

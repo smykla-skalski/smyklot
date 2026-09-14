@@ -1,3 +1,8 @@
+import {
+  parseRuntimeBehavior,
+  resolveRuntimeBehavior,
+  type RuntimeBehaviorIntent,
+} from '../src/lib/runtime-behavior';
 import { mockSyncOperation } from './sync-operation.js';
 import { mockSyncRequests } from './sync-request-history.js';
 import { mockCheckCapability, projectMockSyncPlan } from './sync-capability.js';
@@ -113,7 +118,6 @@ import {
   formattingSources,
   defaultFormattingPolicy,
   parseFormattingPatch,
-  parseFormattingPolicy,
   type FormattingPatch,
 } from '../src/lib/formatting.ts';
 import { canonicalStringify, PREF_DEFAULTS } from '../src/lib/preferences-sync.ts';
@@ -5224,7 +5228,7 @@ function mockRootRuntimeCheckpointState(state: MockState): SettingsCheckpointSta
 function mockRootRuntimeDocument(state: MockState): Record<string, unknown> {
   return {
     background_work_paused: state.runtime.backgroundWorkPaused,
-    bot_config: copyOptionalConfig(state.runtime.behaviorOverride),
+    bot_config: parseRuntimeBehavior(state.runtime.behaviorOverride),
     log_level: state.runtime.logLevelOverride,
     poll_interval: mockRootRuntimeDuration(state.runtime.pollIntervalOverride),
     pending_ci_quiet_period: mockRootRuntimeDuration(state.runtime.pendingCIQuietPeriodOverride),
@@ -5239,7 +5243,7 @@ function mockRootRuntimeDocumentFromInput(
 ): Record<string, unknown> {
   return {
     background_work_paused: input.background_work_paused ?? state.runtime.backgroundWorkPaused,
-    bot_config: copyOptionalConfig(input.bot_config),
+    bot_config: parseRuntimeBehavior(input.bot_config),
     log_level: input.log_level,
     poll_interval: mockRootRuntimeDuration(input.reaction_poll_interval_seconds),
     pending_ci_quiet_period: mockRootRuntimeDuration(input.merge_after_ci_quiet_period_seconds),
@@ -5267,7 +5271,7 @@ function mockRootRuntimeInputFromDocument(
 function applyMockRootRuntimeDocument(state: MockState, document: Record<string, unknown>): void {
   const input = mockRootRuntimeInputFromDocument(document, state.runtime.revision);
   state.runtime.backgroundWorkPaused = input.background_work_paused ?? false;
-  state.runtime.behaviorOverride = copyOptionalConfig(input.bot_config);
+  state.runtime.behaviorOverride = parseRuntimeBehavior(input.bot_config);
   state.runtime.logLevelOverride = input.log_level;
   state.runtime.pollIntervalOverride = input.reaction_poll_interval_seconds;
   state.runtime.pendingCIQuietPeriodOverride = input.merge_after_ci_quiet_period_seconds;
@@ -5303,16 +5307,16 @@ function mockRootRuntimePaused(value: unknown): boolean {
   return value;
 }
 
-function mockRootRuntimeConfig(value: unknown): ConfigValues | null {
-  if (value === null) return null;
-  if (!isMockRootRuntimeConfig(value)) {
+function mockRootRuntimeConfig(value: unknown): RuntimeBehaviorIntent | null {
+  try {
+    return parseRuntimeBehavior(value);
+  } catch {
     throw new MockApiError(
       409,
       'settings_restore_blocked',
       'the selected settings cannot be restored',
     );
   }
-  return copyConfig(value);
 }
 
 function mockRootRuntimeLogLevel(value: unknown): string | null {
@@ -5350,8 +5354,12 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
   ) {
     invalidMockRootRuntimeSettings('background work pause must be true or false');
   }
-  if (input.bot_config !== null && !isMockRootRuntimeConfig(input.bot_config)) {
-    invalidMockRootRuntimeSettings('behavior defaults are invalid');
+  try {
+    parseRuntimeBehavior(input.bot_config);
+  } catch (error) {
+    invalidMockRootRuntimeSettings(
+      error instanceof Error ? error.message : 'behavior defaults are invalid',
+    );
   }
   if (
     input.log_level !== null &&
@@ -5404,43 +5412,20 @@ function validateMockRootRuntimeDuration(
   }
 }
 
-function isMockRootRuntimeConfig(value: unknown): value is ConfigValues {
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
-  const candidate = value as Record<string, unknown>;
-  if (Object.keys(candidate).length !== CONFIG_KEYS.length + 1) return false;
-  if (parseFormattingPolicy(candidate.formatting) === null) return false;
-  return CONFIG_KEYS.every((key) => {
-    const held = candidate[key];
-    if (key === 'allowed_commands') return Array.isArray(held) && held.every(isStringValue);
-    if (key === 'command_aliases') {
-      return (
-        held !== null &&
-        typeof held === 'object' &&
-        !Array.isArray(held) &&
-        Object.values(held).every(isStringValue)
-      );
-    }
-    if (key === 'command_prefix') return typeof held === 'string';
-    return typeof held === 'boolean';
-  });
-}
-
-function isStringValue(value: unknown): value is string {
-  return typeof value === 'string';
-}
-
 function invalidMockRootRuntimeSettings(message: string): never {
   throw new MockApiError(400, 'invalid_runtime_settings', message);
 }
 
 function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
-  const behaviorOverride = copyOptionalConfig(state.runtime.behaviorOverride);
+  const behaviorOverride = parseRuntimeBehavior(state.runtime.behaviorOverride);
   return {
     background_work_paused: state.runtime.backgroundWorkPaused,
     behavior_defaults: {
       deployment: copyConfig(DEFAULT_CONFIG),
-      override: behaviorOverride,
-      effective: behaviorOverride ?? copyConfig(DEFAULT_CONFIG),
+      intent: behaviorOverride,
+      override:
+        behaviorOverride === null ? null : resolveRuntimeBehavior(DEFAULT_CONFIG, behaviorOverride),
+      effective: resolveRuntimeBehavior(DEFAULT_CONFIG, behaviorOverride),
     },
     log_level: {
       deployment: 'info',
@@ -5504,10 +5489,6 @@ function mockDatabaseStatus(): DatabaseStatus {
     latency_ms: 1.24,
     connections: { open: 3, in_use: 1, idle: 2, max: 16, wait_count: 2, wait_ms: 41 },
   };
-}
-
-function copyOptionalConfig(value: ConfigValues | null): ConfigValues | null {
-  return value === null ? null : copyConfig(value);
 }
 
 function copyConfig(value: ConfigValues): ConfigValues {
@@ -6957,3 +6938,7 @@ function escapeHtml(value: string): string {
 }
 
 export default mockServer;
+
+function isStringValue(value: unknown): value is string {
+  return typeof value === 'string';
+}
