@@ -686,9 +686,9 @@
   function actionReceipt(action: QueueActionType, title: string): string {
     switch (action) {
       case 'run_now':
-        return `Running now - ${title}`;
+        return `Ready when worker capacity is available - ${title}`;
       case 'next_window':
-        return `${title} runs in its next hours`;
+        return `${title} will wait for allowed hours and worker capacity`;
       case 'schedule_at':
         return `${title} is scheduled`;
       case 'set_priority':
