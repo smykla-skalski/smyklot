@@ -11,7 +11,6 @@ describe('desktop hours draft protection', () => {
   const fields = [
     ['Profile name', 'Release hours'],
     ['Timezone', 'UTC'],
-    ['Date exceptions', '2026-12-25 closed'],
   ] as const;
 
   it('rejects invalid calendar rules without changing mock profiles', async () => {
@@ -65,6 +64,78 @@ describe('desktop hours draft protection', () => {
   });
 
   it.each(['light', 'dark'] as const)(
+    'edits structured exception modes without losing hours in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page.getByRole('button', { name: 'New hours profile' }).click();
+        const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        await editor
+          .getByLabel('Profile name', { exact: true })
+          .fill(`Structured hours ${colorScheme}`);
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+          await editor.evaluate(async (node) => {
+            await Promise.allSettled(
+              node.getAnimations({ subtree: true }).map((animation) => animation.finished),
+            );
+          });
+          await editor.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
+        }
+        await editor.getByRole('button', { name: 'Add date', exact: true }).click();
+        const first = editor.getByRole('group', { name: 'Date exception 1', exact: true });
+        await first.getByLabel('Date', { exact: true }).fill('2026-12-25');
+        const mode = first.getByRole('combobox', { name: 'Hours', exact: true });
+        await mode.click();
+        await page.getByRole('option', { name: 'Custom hours', exact: true }).click();
+        await first.getByLabel('Closes', { exact: true }).fill('13:00');
+        await mode.click();
+        await page.getByRole('option', { name: 'Closed all day', exact: true }).click();
+        await mode.click();
+        await page.getByRole('option', { name: 'Custom hours', exact: true }).click();
+        expect(await first.getByLabel('Closes', { exact: true }).inputValue()).toBe('13:00');
+        const endOfDay = first.getByRole('checkbox', {
+          name: 'Close at end of day (24:00)',
+          exact: true,
+        });
+        await endOfDay.check();
+        await endOfDay.uncheck();
+        expect(await first.getByLabel('Closes', { exact: true }).inputValue()).toBe('13:00');
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await first.scrollIntoViewIfNeeded();
+          await page.screenshot({
+            path: join(directory, `F08-structured-custom-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await editor.getByRole('button', { name: 'Add date', exact: true }).click();
+        const second = editor.getByRole('group', { name: 'Date exception 2', exact: true });
+        await second.getByLabel('Date', { exact: true }).fill('2026-12-25');
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await expect.poll(() => editor.getByRole('alert').count()).toBe(2);
+        if (directory) {
+          await second.scrollIntoViewIfNeeded();
+          await page.screenshot({
+            path: join(directory, `F08-structured-conflict-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await second.getByRole('button', { name: 'Remove date exception 2', exact: true }).click();
+        await expect.poll(() => editor.getByRole('alert').count()).toBe(0);
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.waitFor({ state: 'hidden' });
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'keeps workspace schedule errors inside the request dialog in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({
@@ -101,13 +172,13 @@ describe('desktop hours draft protection', () => {
         }
         const reason = `Keep release work within the agreed hours (${colorScheme})`;
         await dialog.getByLabel('Reason', { exact: true }).fill(reason);
-        const exceptions = dialog.getByLabel('Date exceptions', { exact: true });
-        await exceptions.fill('2026-02-30 closed');
+        await dialog.getByRole('button', { name: 'Add date', exact: true }).click();
+        const exceptions = dialog.getByLabel('Date', { exact: true });
         await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
         const error = dialog.getByRole('alert').filter({ hasText: 'Choose a valid calendar date' });
         await error.waitFor();
         expect(submitted).toHaveLength(0);
-        expect(await exceptions.inputValue()).toBe('2026-02-30 closed');
+        expect(await exceptions.inputValue()).toBe('');
         await error.scrollIntoViewIfNeeded();
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (directory) {
@@ -117,7 +188,7 @@ describe('desktop hours draft protection', () => {
             animations: 'disabled',
           });
         }
-        await exceptions.fill('2026-12-25 closed');
+        await exceptions.fill('2026-12-25');
         await dialog.getByLabel('Opens', { exact: true }).fill('18:00');
         await dialog.getByRole('button', { name: 'Send request', exact: true }).click();
         expect(submitted).toHaveLength(0);
@@ -264,7 +335,7 @@ describe('desktop hours draft protection', () => {
   );
 
   it.each(['light', 'dark'] as const)(
-    'retains invalid exception text for correction in %s',
+    'preserves unfinished exception rows for correction in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({
         viewport: { width: 1920, height: 1200 },
@@ -275,21 +346,28 @@ describe('desktop hours draft protection', () => {
         await page.getByRole('button', { name: 'New hours profile' }).click();
         const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
         await editor.getByLabel('Profile name', { exact: true }).fill('Strict exception input');
-        const field = editor.getByLabel('Date exceptions', { exact: true });
-        const invalid = '2026-12-25 closed extra';
-        await field.fill(invalid);
+        await editor.getByRole('button', { name: 'Add date', exact: true }).click();
+        const field = editor.getByLabel('Date', { exact: true });
         await editor.getByRole('button', { name: 'Save profile' }).click();
-        await editor.getByRole('alert').filter({ hasText: 'Date exceptions, line 1:' }).waitFor();
-        expect(await field.inputValue()).toBe(invalid);
+        const dateError = editor
+          .getByRole('alert')
+          .filter({ hasText: 'Choose a valid calendar date' });
+        await dateError.waitFor();
+        expect(await field.inputValue()).toBe('');
+        await page.keyboard.press('Escape');
+        const guard = page.getByRole('dialog', { name: 'Discard hours changes?', exact: true });
+        await guard.getByRole('button', { name: 'Keep editing', exact: true }).click();
+        expect(await field.count()).toBe(1);
+        await dateError.scrollIntoViewIfNeeded();
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (directory) {
           await mkdir(directory, { recursive: true });
           await page.screenshot({
-            path: join(directory, `F08-parser-error-${colorScheme}.png`),
+            path: join(directory, `F08-structured-date-error-${colorScheme}.png`),
             animations: 'disabled',
           });
         }
-        await field.fill('2026-12-25 closed');
+        await field.fill('2026-12-25');
         await editor.getByRole('button', { name: 'Save profile' }).click();
         await editor.waitFor({ state: 'hidden' });
       } finally {
@@ -339,9 +417,14 @@ describe('desktop hours draft protection', () => {
           .click();
         const editor = page.getByRole('dialog', { name: 'Edit hours profile', exact: true });
         expect(await editor.locator('.window-row').count()).toBe(0);
-        expect(await editor.getByLabel('Date exceptions', { exact: true }).inputValue()).toBe(
-          '2026-12-25 closed\n2026-12-31 09:00-13:00',
-        );
+        expect(
+          await editor
+            .getByLabel('Date', { exact: true })
+            .evaluateAll((nodes) => nodes.map((node) => (node as HTMLInputElement).value)),
+        ).toEqual(['2026-12-25', '2026-12-31']);
+        const custom = editor.getByRole('group', { name: 'Date exception 2', exact: true });
+        expect(await custom.getByLabel('Opens', { exact: true }).inputValue()).toBe('09:00');
+        expect(await custom.getByLabel('Closes', { exact: true }).inputValue()).toBe('13:00');
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (directory) {
           await mkdir(directory, { recursive: true });
@@ -689,7 +772,7 @@ describe('background work schedules [Integration]', () => {
       }
       expect(geometry.overflow).toBeLessThanOrEqual(1);
       if (width === 375) {
-        const exceptions = dialog.getByLabel('Date exceptions', { exact: true });
+        const exceptions = dialog.getByRole('group', { name: 'Date exceptions', exact: true });
         await exceptions.scrollIntoViewIfNeeded();
         if (directory)
           await dialog.screenshot({
@@ -716,7 +799,9 @@ describe('background work schedules [Integration]', () => {
         await edit.evaluate((node) => node.scrollWidth - node.clientWidth),
       ).toBeLessThanOrEqual(1);
       if (width === 375) {
-        await edit.getByLabel('Date exceptions', { exact: true }).scrollIntoViewIfNeeded();
+        await edit
+          .getByRole('group', { name: 'Date exceptions', exact: true })
+          .scrollIntoViewIfNeeded();
         if (directory)
           await edit.screenshot({
             path: join(directory, `profile-edit-end-${colorScheme}-${width}.png`),

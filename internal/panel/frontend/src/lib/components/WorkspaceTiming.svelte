@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleMinute } from '#lib/schedule-input.js';
   import { scheduleHoursProblems } from '#lib/schedule-validation.js';
+  import { exceptionInputs, type EditableException } from '#lib/schedule-exceptions.js';
+  import ScheduleExceptionsEditor from './ScheduleExceptionsEditor.svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import type { PanelApi } from '#lib/api.js';
@@ -123,7 +125,8 @@
     { id: 'request-4', weekday: 4, start: '09:00', end: '17:00' },
     { id: 'request-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
-  let exceptions = $state('');
+  let exceptions = $state.raw<EditableException[]>([]);
+  let showExceptionProblems = $state(false);
   let cadenceProblem = $state<string | null>(null);
   let cadence = $state<number | null | undefined>(undefined);
   let priority = $state<QueuePriority | null>(null);
@@ -156,6 +159,7 @@
     if (current === undefined || reason.trim() === '' || cadenceInvalid) return;
     busy = true;
     problem = '';
+    showExceptionProblems = true;
     try {
       const custom: ScheduleProfile = {
         id: '',
@@ -168,10 +172,11 @@
           start_minute: scheduleMinute(window.start),
           end_minute: scheduleMinute(window.end),
         })),
-        exceptions: windowMode === 'custom' ? parseScheduleExceptions(exceptions) : [],
+        exceptions: windowMode === 'custom' ? exceptionInputs(exceptions) : [],
       };
       if (windowMode === 'custom') {
         const invalid = scheduleHoursProblems(custom)[0];
+        if (invalid?.index !== undefined) return;
         if (invalid !== undefined) throw new Error(invalid.message);
       }
       await api.createTargetScheduleRequest(targetId, {
@@ -322,18 +327,12 @@ answered a question a workspace never asks and hid the one it does.
           onChange={(next) => (windows = next)}
         />
       </div>
-      <label class="form-field">
-        <span class="form-label">Date exceptions</span>
-        <textarea
-          class="text-input mono"
-          rows="4"
-          bind:value={exceptions}
-          placeholder="2026-12-25 closed&#10;2026-12-31 09:00-13:00"></textarea>
-      </label>
-      <p class="form-help">
-        One local date per line: <code>YYYY-MM-DD closed</code> or
-        <code>YYYY-MM-DD HH:MM-HH:MM</code>
-      </p>
+      <ScheduleExceptionsEditor
+        idPrefix="timing-exception"
+        entries={exceptions}
+        onChange={(next) => (exceptions = next)}
+        showProblems={showExceptionProblems}
+      />
     {/if}
 
     <div
@@ -395,10 +394,6 @@ answered a question a workspace never asks and hid the one it does.
 </Modal>
 
 <style>
-  .form-help code {
-    font-family: var(--mono);
-  }
-
   .text-input {
     width: 100%;
   }

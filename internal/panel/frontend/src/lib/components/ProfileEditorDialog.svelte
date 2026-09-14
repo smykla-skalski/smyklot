@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { parseScheduleExceptions, scheduleMinute } from '#lib/schedule-input.js';
-  import { scheduleWindowProblems } from '#lib/schedule-validation.js';
+  import { scheduleMinute } from '#lib/schedule-input.js';
+  import { scheduleExceptionProblems, scheduleWindowProblems } from '#lib/schedule-validation.js';
+  import {
+    editableExceptions,
+    exceptionDraft,
+    exceptionInputs,
+    type EditableException,
+  } from '#lib/schedule-exceptions.js';
+  import ScheduleExceptionsEditor from './ScheduleExceptionsEditor.svelte';
   import { onMount } from 'svelte';
   import type { ScheduleProfile, ScheduleProfileInput } from '#lib/types.js';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -34,12 +41,12 @@
     { id: 'default-4', weekday: 4, start: '09:00', end: '17:00' },
     { id: 'default-5', weekday: 5, start: '09:00', end: '17:00' },
   ]);
-  let exceptions = $state('');
+  let exceptions = $state.raw<EditableException[]>([]);
+  let showExceptionProblems = $state(false);
   let baseline = $state('');
   let confirmingDiscard = $state(false);
   let editingControl = $state<HTMLElement | null>(null);
   const changed = $derived(baseline !== '' && snapshot() !== baseline);
-  const exceptionExample = '2026-12-25 closed\n2026-12-31 09:00-13:00';
 
   onMount(() => {
     name = profile?.name ?? '';
@@ -54,13 +61,7 @@
         end: minuteTime(window.end_minute),
       }));
     }
-    exceptions = (profile?.exceptions ?? [])
-      .map((entry) =>
-        entry.closed
-          ? `${entry.date} closed`
-          : `${entry.date} ${minuteTime(entry.start_minute ?? 0)}-${minuteTime(entry.end_minute ?? 0)}`,
-      )
-      .join('\n');
+    exceptions = editableExceptions(profile?.exceptions ?? []);
     baseline = snapshot();
   });
 
@@ -75,10 +76,7 @@
           (a, b) =>
             a.weekday - b.weekday || a.start.localeCompare(b.start) || a.end.localeCompare(b.end),
         ),
-      exceptions: exceptions
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean),
+      exceptions: exceptionDraft(exceptions),
     });
   }
 
@@ -109,19 +107,15 @@
           end_minute: scheduleMinute(window.end),
         })),
       ).length === 0 &&
-      (windows.length > 0 || exceptions.trim() !== '')
+      (windows.length > 0 || exceptions.length > 0)
     );
   }
 
   function submit(): void {
     inputProblem = '';
-    let parsedExceptions: ScheduleProfileInput['exceptions'];
-    try {
-      parsedExceptions = parseScheduleExceptions(exceptions);
-    } catch (cause) {
-      inputProblem = cause instanceof Error ? cause.message : String(cause);
-      return;
-    }
+    showExceptionProblems = true;
+    const parsedExceptions = exceptionInputs(exceptions);
+    if (scheduleExceptionProblems(parsedExceptions).length > 0) return;
     onSubmit({
       name: name.trim(),
       timezone: timezone.trim(),
@@ -196,20 +190,12 @@ changing a window here changes when every policy that names it runs.
       {windows}
       onChange={(next) => (windows = next)}
     />
-    <div class="form-field">
-      <label class="form-label" for="profile-exceptions">Date exceptions</label>
-      <textarea
-        class="text-input mono"
-        id="profile-exceptions"
-        aria-describedby="profile-exceptions-help"
-        rows="4"
-        bind:value={exceptions}
-        placeholder={exceptionExample}></textarea>
-      <p id="profile-exceptions-help" class="form-help">
-        Override weekly hours for a local date · One per line:<br />
-        <code>YYYY-MM-DD closed</code> or <code>YYYY-MM-DD HH:MM-HH:MM</code>
-      </p>
-    </div>
+    <ScheduleExceptionsEditor
+      idPrefix="profile-exception"
+      entries={exceptions}
+      onChange={(next) => (exceptions = next)}
+      showProblems={showExceptionProblems}
+    />
     <FormError message={inputProblem || error} />
   </div>
   <ConfirmDialog
