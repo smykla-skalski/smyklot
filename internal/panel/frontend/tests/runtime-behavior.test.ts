@@ -15,6 +15,28 @@ import {
 import { SettingsDraftRegistry } from '../src/lib/settings-drafts.svelte';
 
 describe('runtime behavior ownership [Unit]', () => {
+  it.each([
+    [{ quiet_success: null }, 'bot_config.quiet_success'],
+    [{ quiet_success: 'yes' }, 'bot_config.quiet_success'],
+    [{ formatting: { common: { indent_width: 99 } } }, 'bot_config.formatting.common.indent_width'],
+    [
+      { formatting: { common: { indent_width: 'bad' } } },
+      'bot_config.formatting.common.indent_width',
+    ],
+    [
+      { formatting: { common: { indent_style: 'bad' } } },
+      'bot_config.formatting.common.indent_style',
+    ],
+    [
+      { formatting: { common: { indent_width: null } } },
+      'bot_config.formatting.common.indent_width',
+    ],
+  ])('identifies a rejected behavior leaf independently of its message', (overrides, field) => {
+    expect(() => parseRuntimeBehavior({ version: 1, overrides })).toThrow(
+      expect.objectContaining({ field }),
+    );
+  });
+
   it('keeps explicit false and empty values while omitted fields follow deployment', () => {
     const input = {
       version: 1,

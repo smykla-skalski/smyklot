@@ -1,8 +1,11 @@
 package panel
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/smykla-skalski/smyklot/pkg/config"
 )
 
 // runtimeFieldError keeps recovery identity independent of the displayed text.
@@ -15,6 +18,15 @@ func (err *runtimeFieldError) Error() string { return err.cause.Error() }
 func (err *runtimeFieldError) Unwrap() error { return err.cause }
 
 func runtimeFieldFailure(field string, cause error) error {
+	if field == "bot_config" {
+		var setting *config.FieldError
+		var wrongType *json.UnmarshalTypeError
+		if errors.As(cause, &setting) {
+			field += "." + setting.Field
+		} else if errors.As(cause, &wrongType) && wrongType.Field != "" {
+			field += "." + wrongType.Field
+		}
+	}
 	return &runtimeFieldError{field: field, cause: cause}
 }
 

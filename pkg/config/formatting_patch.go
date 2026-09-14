@@ -196,14 +196,14 @@ func enumSetting(key string, value *string, choices ...string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w for %s: %q is not one of %v", ErrInvalidValue, key, *value, choices)
+	return &FieldError{Field: key, Cause: fmt.Errorf("%w for %s: %q is not one of %v", ErrInvalidValue, key, *value, choices)}
 }
 
 func boundedSetting(key string, value *int, minimum, maximum int) error {
 	if value == nil || (*value >= minimum && *value <= maximum) {
 		return nil
 	}
-	return fmt.Errorf("%w for %s: %d is outside %d..%d", ErrInvalidValue, key, *value, minimum, maximum)
+	return &FieldError{Field: key, Cause: fmt.Errorf("%w for %s: %d is outside %d..%d", ErrInvalidValue, key, *value, minimum, maximum)}
 }
 
 func firstError(errors []error) error {

@@ -10,13 +10,18 @@ import (
 func TestRuntimeValidationIdentifiesRequestField(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	session := harness.signIn(t)
-	for _, sample := range []struct{ field, value string }{
-		{"session_ttl_seconds", "1"},
-		{"reaction_poll_interval_seconds", "-1"},
-		{"merge_after_ci_quiet_period_seconds", "-1"},
-		{"path_index_interval_seconds", "-1"},
-		{"bot_config", `{"version":1,"overrides":{"quiet_success":null}}`},
-		{"bot_config", `{"version":1,"overrides":{"quiet_success":false,"quiet_success":true}}`},
+	for _, sample := range []struct{ field, value, rejectedField string }{
+		{"session_ttl_seconds", "1", "session_ttl_seconds"},
+		{"reaction_poll_interval_seconds", "-1", "reaction_poll_interval_seconds"},
+		{"merge_after_ci_quiet_period_seconds", "-1", "merge_after_ci_quiet_period_seconds"},
+		{"path_index_interval_seconds", "-1", "path_index_interval_seconds"},
+		{"bot_config", `{"version":1,"overrides":{"quiet_success":null}}`, "bot_config.quiet_success"},
+		{"bot_config", `{"version":1,"overrides":{"quiet_success":false,"quiet_success":true}}`, "bot_config"},
+		{"bot_config", `{"version":1,"overrides":{"quiet_success":"yes"}}`, "bot_config.quiet_success"},
+		{"bot_config", `{"version":1,"overrides":{"formatting":{"common":{"indent_width":99}}}}`, "bot_config.formatting.common.indent_width"},
+		{"bot_config", `{"version":1,"overrides":{"formatting":{"common":{"indent_width":"bad"}}}}`, "bot_config.formatting.common.indent_width"},
+		{"bot_config", `{"version":1,"overrides":{"formatting":{"common":{"indent_style":"bad"}}}}`, "bot_config.formatting.common.indent_style"},
+		{"bot_config", `{"version":1,"overrides":{"formatting":{"common":{"indent_width":null}}}}`, "bot_config.formatting.common.indent_width"},
 	} {
 		t.Run(sample.field+sample.value, func(t *testing.T) {
 			body := strings.Replace(rootRuntimeSettingsBody("info", 0), `"`+sample.field+`":null`, `"`+sample.field+`":`+sample.value, 1)
@@ -28,7 +33,7 @@ func TestRuntimeValidationIdentifiesRequestField(t *testing.T) {
 			if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
 				t.Fatal(err)
 			}
-			if payload.Error.Field != sample.field || payload.Error.Code != "invalid_runtime_settings" || payload.Error.Message == "" {
+			if payload.Error.Field != sample.rejectedField || payload.Error.Code != "invalid_runtime_settings" || payload.Error.Message == "" {
 				t.Fatalf("invalid field response: %s", response.Body.String())
 			}
 			read := harness.request(t, http.MethodGet, "/panel/api/v1/root/runtime/settings", nil, session)

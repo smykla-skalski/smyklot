@@ -4,10 +4,20 @@ import {
   completeFormattingPatch,
   defaultFormattingPolicy,
   formattingOverrideCount,
+  formattingValidationField,
   parseFormattingPatch,
   parseFormattingPolicy,
 } from './formatting';
 import type { ConfigKey, ConfigPatch, ConfigValues } from './types';
+
+export class RuntimeBehaviorValidationError extends TypeError {
+  constructor(
+    readonly field: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** Presence owns a field, even when its value equals the deployment default. */
 export interface RuntimeBehaviorIntent {
@@ -33,15 +43,23 @@ export function runtimeBehaviorFromPatch(value: unknown): RuntimeBehaviorIntent 
   for (const [key, field] of Object.entries(value)) {
     if (key === 'formatting') {
       const formatting = parseFormattingPatch(field);
-      if (formatting === null) throw new TypeError('bot_config.overrides.formatting is invalid');
+      if (formatting === null)
+        throw new RuntimeBehaviorValidationError(
+          `bot_config.${formattingValidationField(field) ?? 'formatting'}`,
+          'bot_config.overrides.formatting is invalid',
+        );
       if (formattingOverrideCount(formatting) > 0) overrides.formatting = formatting;
       continue;
     }
     if (!CONFIG_KEYS.includes(key as ConfigKey)) {
-      throw new TypeError(`bot_config.overrides.${key} is not a runtime setting`);
+      throw new RuntimeBehaviorValidationError(
+        `bot_config.${key}`,
+        `bot_config.overrides.${key} is not a runtime setting`,
+      );
     }
     if (!validConfigValue(key as ConfigKey, field)) {
-      throw new TypeError(
+      throw new RuntimeBehaviorValidationError(
+        `bot_config.${key}`,
         `bot_config.overrides.${key} must have a valid value or be omitted to inherit`,
       );
     }
@@ -103,11 +121,15 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
   const patch: Record<string, unknown> = {};
   for (const key of CONFIG_KEYS) {
     if (!validConfigValue(key, normalized[key]))
-      throw new TypeError(`bot_config.${key} is invalid`);
+      throw new RuntimeBehaviorValidationError(`bot_config.${key}`, `bot_config.${key} is invalid`);
     patch[key] = normalized[key];
   }
   const formatting = parseFormattingPolicy(normalized.formatting);
-  if (formatting === null) throw new TypeError('bot_config.formatting is invalid');
+  if (formatting === null)
+    throw new RuntimeBehaviorValidationError(
+      `bot_config.${formattingValidationField(normalized.formatting, true) ?? 'formatting'}`,
+      'bot_config.formatting is invalid',
+    );
   patch.formatting = completeFormattingPatch(formatting);
   // Every legacy config owns its complete field set, including false and empty values.
   return runtimeBehaviorFromPatch(patch)!;

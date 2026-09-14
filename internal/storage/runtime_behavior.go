@@ -110,7 +110,7 @@ func parseRuntimeBehaviorPatch(content []byte) (config.Patch, error) {
 	if err != nil {
 		return config.Patch{}, err
 	}
-	if err := rejectRuntimeNulls(object, "behavior"); err != nil {
+	if err := rejectRuntimeNulls(object, ""); err != nil {
 		return config.Patch{}, err
 	}
 	patch, err := config.ParsePatch(config.Format("json"), content)
@@ -125,9 +125,12 @@ func parseRuntimeBehaviorPatch(content []byte) (config.Patch, error) {
 
 func rejectRuntimeNulls(object map[string]any, path string) error {
 	for key, value := range object {
-		field := path + "." + key
+		field := key
+		if path != "" {
+			field = path + "." + key
+		}
 		if value == nil {
-			return fmt.Errorf("%s must have a value or be omitted to inherit", field)
+			return &config.FieldError{Field: field, Cause: fmt.Errorf("behavior.%s must have a value or be omitted to inherit", field)}
 		}
 		if nested, ok := value.(map[string]any); ok {
 			if err := rejectRuntimeNulls(nested, field); err != nil {

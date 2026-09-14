@@ -43,6 +43,15 @@ export function parseFormattingPatch(value: unknown): FormattingPatch | null {
   return parseNode(value, DEFINITION, false) as FormattingPatch | null;
 }
 
+/** First rejected formatting path, using the same parser as accepted values. */
+export function formattingValidationField(value: unknown, complete = false): string | null {
+  let field: string | null = null;
+  parseNode(value, DEFINITION, complete, (path) => {
+    field = path;
+  });
+  return field;
+}
+
 /** Parse a complete provenance tree with the same shape as a formatting policy. */
 export function parseFormattingSources<Source extends string>(
   value: unknown,
@@ -246,24 +255,39 @@ function parseNode(
   value: unknown,
   definition: DefinitionNode,
   complete: boolean,
+  onInvalid?: (path: string) => void,
+  path = 'formatting',
 ): Record<string, unknown> | null {
-  if (!isPlainRecord(value)) return null;
-  if (Object.keys(value).some((key) => !definition.children.has(key))) return null;
+  if (!isPlainRecord(value)) {
+    onInvalid?.(path);
+    return null;
+  }
+  const unknown = Object.keys(value).find((key) => !definition.children.has(key));
+  if (unknown !== undefined) {
+    onInvalid?.(`${path}.${unknown}`);
+    return null;
+  }
 
   const parsed: Record<string, unknown> = {};
   for (const [key, child] of definition.children) {
     if (!Object.hasOwn(value, key)) {
-      if (complete) return null;
+      if (complete) {
+        onInvalid?.(`${path}.${key}`);
+        return null;
+      }
       continue;
     }
     const candidate = value[key];
     if (child.field !== undefined) {
       const leaf = normalizeLeaf(child.field, candidate);
-      if (!validLeaf(child.field, leaf)) return null;
+      if (!validLeaf(child.field, leaf)) {
+        onInvalid?.(`${path}.${key}`);
+        return null;
+      }
       parsed[key] = leaf;
       continue;
     }
-    const nested = parseNode(candidate, child, complete);
+    const nested = parseNode(candidate, child, complete, onInvalid, `${path}.${key}`);
     if (nested === null) return null;
     parsed[key] = nested;
   }

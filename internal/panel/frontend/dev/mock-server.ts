@@ -1,5 +1,6 @@
 import {
   parseRuntimeBehavior,
+  RuntimeBehaviorValidationError,
   resolveRuntimeBehavior,
   type RuntimeBehaviorIntent,
 } from '../src/lib/runtime-behavior';
@@ -5363,7 +5364,7 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
   } catch (error) {
     invalidMockRootRuntimeSettings(
       error instanceof Error ? error.message : 'behavior defaults are invalid',
-      'bot_config',
+      error instanceof RuntimeBehaviorValidationError ? error.field : 'bot_config',
     );
   }
   if (
