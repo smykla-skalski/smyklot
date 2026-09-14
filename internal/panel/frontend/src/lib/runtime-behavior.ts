@@ -109,15 +109,7 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
   ) {
     throw new TypeError('bot_config.runner is invalid');
   }
-  if (!Object.hasOwn(normalized, 'formatting')) normalized.formatting = defaultFormattingPolicy();
-  const policy = normalized.formatting;
-  if (
-    isRecord(policy) &&
-    isRecord(policy.common) &&
-    !Object.hasOwn(policy.common, 'inline_max_chars')
-  ) {
-    normalized.formatting = { ...policy, common: { ...policy.common, inline_max_chars: 0 } };
-  }
+  normalized.formatting = legacyFormatting(value);
   const patch: Record<string, unknown> = {};
   for (const key of CONFIG_KEYS) {
     if (!validConfigValue(key, normalized[key]))
@@ -133,6 +125,52 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
   patch.formatting = completeFormattingPatch(formatting);
   // Every legacy config owns its complete field set, including false and empty values.
   return runtimeBehaviorFromPatch(patch)!;
+}
+
+/** Historical Config decoding merges concrete structs and ignores null scalars. */
+function legacyFormatting(value: Record<string, unknown>): Record<string, unknown> {
+  const defaults = defaultFormattingPolicy();
+  const zero = (node: unknown): unknown =>
+    isRecord(node)
+      ? Object.fromEntries(Object.entries(node).map(([key, child]) => [key, zero(child)]))
+      : typeof node === 'number'
+        ? 0
+        : '';
+  // Production initializes defaults only for records without the exact old tag.
+  const policy = (Object.hasOwn(value, 'formatting') ? zero(defaults) : defaults) as Record<
+    string,
+    unknown
+  >;
+  for (const [key, field] of Object.entries(value)) {
+    if (key.toLowerCase() === 'formatting')
+      mergeLegacyFormatting(policy, field, 'bot_config.formatting');
+  }
+  return policy;
+}
+
+function mergeLegacyFormatting(
+  target: Record<string, unknown>,
+  value: unknown,
+  path: string,
+): void {
+  if (value === null) return;
+  if (!isRecord(value)) throw new RuntimeBehaviorValidationError(path, `${path} is invalid`);
+  for (const [name, field] of Object.entries(value)) {
+    const key = name.toLowerCase();
+    if (!Object.hasOwn(target, key) || field === null) continue;
+    const current = target[key];
+    const fieldPath = `${path}.${key}`;
+    if (isRecord(current)) {
+      mergeLegacyFormatting(current, field, fieldPath);
+    } else if (
+      typeof field !== typeof current ||
+      (typeof field === 'number' && !Number.isInteger(field))
+    ) {
+      throw new RuntimeBehaviorValidationError(fieldPath, `${fieldPath} is invalid`);
+    } else {
+      target[key] = field;
+    }
+  }
 }
 
 /** Match encoding/json's historical field folding and repeated-field updates. */

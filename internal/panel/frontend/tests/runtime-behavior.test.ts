@@ -65,6 +65,31 @@ describe('runtime behavior ownership [Unit]', () => {
     ).toThrow();
   });
 
+  it('matches historical formatting struct decoding without weakening new overrides', () => {
+    const policy = structuredClone(RUNTIME.behavior_defaults.deployment.formatting);
+    const legacy = {
+      formatting: policy,
+      FORMATTING: { COMMON: { INDENT_WIDTH: 4, indent_width: null }, unknown: true },
+    };
+    expect(parseRuntimeBehavior(legacy)?.overrides.formatting?.common?.indent_width).toBe(4);
+    expect(policy.common.indent_width).toBe(2);
+    expect(
+      parseRuntimeBehavior({ FORMATTING: { COMMON: { INDENT_WIDTH: 6 } } })?.overrides.formatting
+        ?.common?.indent_width,
+    ).toBe(6);
+    expect(() => parseRuntimeBehavior({ formatting: null })).toThrow();
+    expect(() => parseRuntimeBehavior({ formatting: { common: { indent_width: 4 } } })).toThrow();
+    expect(() =>
+      parseRuntimeBehavior({ formatting: policy, FORMATTING: { common: { indent_width: 'bad' } } }),
+    ).toThrow();
+    expect(() =>
+      parseRuntimeBehavior({
+        version: 1,
+        overrides: { formatting: { common: { INDENT_WIDTH: 4 } } },
+      }),
+    ).toThrow();
+  });
+
   it('preserves the historical zero value of null collection entries', () => {
     const legacy = {
       allowed_commands: [null, 'approve'],

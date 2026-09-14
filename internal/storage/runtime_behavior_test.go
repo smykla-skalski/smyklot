@@ -155,3 +155,29 @@ func TestRuntimeBehaviorLegacyFieldCase(t *testing.T) {
 		}
 	}
 }
+
+func TestRuntimeBehaviorLegacyFormattingFields(t *testing.T) {
+	policy, err := json.Marshal(config.DefaultFormattingPolicy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value storage.RuntimeBehavior
+	document := `{"formatting":` + string(policy) + `,"FORMATTING":{"COMMON":{"INDENT_WIDTH":4,"indent_width":null},"unknown":true}}`
+	if err := json.Unmarshal([]byte(document), &value); err != nil {
+		t.Fatal(err)
+	}
+	if got := value.Resolve(config.Default()).Formatting.Common.IndentWidth; got != 4 {
+		t.Fatalf("got width %d", got)
+	}
+	if err := json.Unmarshal([]byte(`{"FORMATTING":{"COMMON":{"INDENT_WIDTH":6}}}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	if got := value.Resolve(config.Default()).Formatting.Common.IndentWidth; got != 6 {
+		t.Fatalf("got width %d", got)
+	}
+	for _, document := range []string{`{"formatting":null}`, `{"formatting":{"common":{"indent_width":4}}}`, `{"formatting":` + string(policy) + `,"FORMATTING":{"common":{"indent_width":"bad"}}}`} {
+		if err := json.Unmarshal([]byte(document), &value); err == nil {
+			t.Fatalf("invalid formatting accepted: %s", document)
+		}
+	}
+}
