@@ -1474,7 +1474,7 @@
         {#each runtimeConflictReview.conflicts as field (field.id)}
           <div class="form-field">
             <label class="form-label" for={`conflict-${field.id}`}>{field.label}</label>
-            <dl class="runtime-conflict-values">
+            <dl id={`conflict-values-${field.id}`} class="runtime-conflict-values">
               <div>
                 <dt>My draft</dt>
                 <dd>{runtimeConflictValue(field.id, field.draft)}</dd>
@@ -1486,6 +1486,7 @@
             </dl>
             <Select
               id={`conflict-${field.id}`}
+              aria-describedby={`conflict-values-${field.id}`}
               value={runtimeConflictReview.choices[field.id]}
               placeholder="Choose a value"
               options={[

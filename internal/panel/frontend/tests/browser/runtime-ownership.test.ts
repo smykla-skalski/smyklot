@@ -1727,6 +1727,19 @@ describe('desktop runtime conflict review', () => {
         expect(
           await dialog.getByRole('button', { name: 'Update draft', exact: true }).isDisabled(),
         ).toBe(true);
+        for (const [label, draftValue, savedValue] of [
+          ['Command prefix', mine, theirs],
+          ['Formatting: common indent width', '4', '6'],
+        ]) {
+          const picker = dialog.getByRole('combobox', { name: label, exact: true });
+          await picker.focus();
+          const description = await picker.getAttribute('aria-describedby');
+          expect(description).toBeTruthy();
+          const comparison = dialog.locator(`[id="${description}"]`);
+          expect((await comparison.textContent())?.replace(/\s+/g, ' ').trim()).toBe(
+            `My draft ${draftValue} Saved in another session ${savedValue}`,
+          );
+        }
         await shot('unanswered');
         await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
         expect(await prefix.inputValue()).toBe(mine);
