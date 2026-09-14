@@ -8,14 +8,14 @@ import {
   type SyncCheckObservation,
   type SyncCheckOutcome,
 } from '../src/lib/types.js';
-import { recordMockSyncEvent } from './sync-queue.js';
+import { recordMockQueueEvent } from './queue-events.js';
 
 type State = Pick<
   MockState,
   | 'syncStatus'
   | 'syncPlans'
   | 'queue'
-  | 'syncQueueEvents'
+  | 'queueEvents'
   | 'syncCheckObservations'
   | 'syncCheckResults'
   | 'targets'
@@ -217,6 +217,6 @@ function queuePlan(
   };
   state.syncPlans.set(targetId, plan);
   state.queue.push(item);
-  recordMockSyncEvent(state, item, 'created', item.summary!, at);
+  recordMockQueueEvent(state, item, 'created', item.summary!, at);
   return plan.id;
 }

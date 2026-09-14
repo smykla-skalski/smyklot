@@ -1,3 +1,4 @@
+import { seedMockQueueEvents } from './queue-events.js';
 import type { RuntimeBehaviorIntent } from '../src/lib/runtime-behavior';
 import {
   CONFIG_FILE_STATUS_FIXTURES,
@@ -235,7 +236,7 @@ export interface MockState {
   sync: Map<string, SyncConfig>;
   /** What each repository adjusts, keyed by repository and kind together. */
   syncOverrides: Map<string, SyncOverride>;
-  syncQueueEvents: Map<string, QueueEvent[]>;
+  queueEvents: Map<string, QueueEvent[]>;
   syncDispatchReceipts: Map<
     string,
     {
@@ -804,7 +805,7 @@ export function seed(
         },
       ],
     ]),
-    syncQueueEvents: new Map(),
+    queueEvents: seedMockQueueEvents(queue),
     syncCheckReceipts: new Map(),
     syncDispatchReceipts: new Map(),
     syncCheckObservations: new Map(),
@@ -1930,6 +1931,8 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
       eligible_at: iso(-90 * 60_000),
       created_at: iso(-90 * 60_000),
       updated_at: iso(-88 * 60_000),
+      started_at: iso(-89 * 60_000),
+      attempt: 1,
       finished_at: iso(-88 * 60_000),
       actions: [],
     },

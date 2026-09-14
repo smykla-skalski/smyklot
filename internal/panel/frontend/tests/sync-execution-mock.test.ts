@@ -59,11 +59,12 @@ describe('finite mock sync execution [Unit]', () => {
       history,
       rows,
       queue: state.queue,
-      events: state.syncQueueEvents,
+      events: state.queueEvents,
     });
     expect(advanceMockSync(state, now + 600_000)).toBe(false);
-    expect({ history, rows, queue: state.queue, events: state.syncQueueEvents }).toEqual(snapshot);
-    expect(state.syncQueueEvents.get('queue-sync-apply')!.map((event) => event.kind)).toEqual([
+    expect({ history, rows, queue: state.queue, events: state.queueEvents }).toEqual(snapshot);
+    expect(state.queueEvents.get('queue-sync-apply')!.map((event) => event.kind)).toEqual([
+      'created',
       'started',
       'succeeded',
     ]);
@@ -118,7 +119,7 @@ describe('finite mock sync execution [Unit]', () => {
     expect(cells.files.state).toBe('declined');
     expect(cells.labels.state).toBe('in_step');
     expect(mockLiveSyncPlan(state, target)).toBeNull();
-    expect(state.syncQueueEvents.get(item.id)!.map((event) => event.kind)).toEqual([
+    expect(state.queueEvents.get(item.id)!.map((event) => event.kind)).toEqual([
       'created',
       'action.run_now',
       'started',

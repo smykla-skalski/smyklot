@@ -1,9 +1,10 @@
+import { recordMockQueueEvent } from './queue-events.js';
 import type { MockState } from './fixtures';
 import type { QueueItem } from '../src/lib/types';
 
 /** A completed occurrence stays immutable while its next scheduled record is created. */
 export function scheduleMockOccurrence(
-  state: Pick<MockState, 'queue' | 'queueRest' | 'queueLoop'>,
+  state: Pick<MockState, 'queue' | 'queueRest' | 'queueLoop' | 'queueEvents'>,
   item: QueueItem,
   now: number,
   waitMs: number,
@@ -39,12 +40,13 @@ export function scheduleMockOccurrence(
   state.queueLoop.delete(item.id);
   state.queueRest.set(next.id, next);
   state.queue.push(next);
+  recordMockQueueEvent(state, next, 'created', `Queued ${next.title}`, next.created_at);
   return true;
 }
 
 /** Bound generated demo history, preserving seeds, live work and other domains. */
 export function pruneMockOccurrences(
-  state: Pick<MockState, 'queue' | 'queueRest' | 'queueLoop'>,
+  state: Pick<MockState, 'queue' | 'queueRest' | 'queueLoop' | 'queueEvents'>,
 ): boolean {
   const history = state.queue
     .filter(
@@ -61,6 +63,7 @@ export function pruneMockOccurrences(
   if (removed.size === 0) return false;
   state.queue = state.queue.filter((item) => !removed.has(item.id));
   for (const id of removed) {
+    state.queueEvents.delete(id);
     state.queueRest.delete(id);
     state.queueLoop.delete(id);
   }

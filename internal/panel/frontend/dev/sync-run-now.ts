@@ -1,5 +1,5 @@
 import { projectMockSyncPlan } from './sync-capability.js';
-import { recordMockSyncEvent } from './sync-queue.js';
+import { recordMockQueueEvent } from './queue-events.js';
 import { randomUUID } from 'node:crypto';
 import { VIEWER, type MockState } from './fixtures.js';
 import type {
@@ -15,7 +15,7 @@ type State = Pick<
   | 'targets'
   | 'queue'
   | 'syncPlans'
-  | 'syncQueueEvents'
+  | 'queueEvents'
   | 'syncCheckReceipts'
   | 'syncDispatchReceipts'
 >;
@@ -206,7 +206,7 @@ export function mockSyncRunNow(
       actions: ['run_now', 'next_window', 'schedule_at', 'set_priority', 'cancel'],
     };
     state.queue.push(item);
-    recordMockSyncEvent(state, item, 'created', item.title, at);
+    recordMockQueueEvent(state, item, 'created', item.title, at);
   }
   const accepted = request(state, item, reason, now);
   state.syncCheckReceipts.set(receiptKey, {
@@ -243,7 +243,7 @@ function request(state: State, item: QueueItem, reason: string, now: number): Qu
   delete updated.lease_expires_at;
   delete updated.finished_at;
   state.queue[state.queue.indexOf(item)] = updated;
-  recordMockSyncEvent(state, updated, 'action.run_now', `Run now requested: ${reason}`, at);
+  recordMockQueueEvent(state, updated, 'action.run_now', `Run now requested: ${reason}`, at);
   return updated;
 }
 

@@ -1,3 +1,4 @@
+import { recordMockQueueEvent } from './queue-events.js';
 import { pruneMockOccurrences, scheduleMockOccurrence } from './queue-occurrences';
 import { mockQueueActions, projectMockQueueItem } from './queue-capabilities';
 import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
@@ -65,7 +66,6 @@ import type {
   PendingCIDetail,
   PendingCIRequest,
   QueueActionInput,
-  QueueDetail,
   QueueItem,
   QueuePage,
   QueueSchedulePreview,
@@ -815,6 +815,15 @@ function advanceQueue(state: MockState, now: number): boolean {
     if (scheduleMockOccurrence(state, item, now, QUEUE_WAIT_MS)) changed = true;
     const next = advanceQueueItem(state, item, now, looping.indexOf(item), looping.length);
     if (next === item) continue;
+    if (next.state !== item.state) {
+      recordMockQueueEvent(
+        state,
+        next,
+        next.state === 'running' ? 'started' : next.state,
+        `${next.title}: ${next.state}`,
+        next.state === 'running' ? next.started_at! : (next.finished_at ?? next.updated_at),
+      );
+    }
     state.queue[index] = next;
     changed = true;
   }
@@ -2045,10 +2054,8 @@ async function handle(
         : undefined;
       const item = findMockQueueItem(state.queue, match?.groups?.item ?? '', target?.value.id);
       respond(res, 200, {
-        ...mockQueueDetail(item),
-        ...(state.syncQueueEvents.has(item.id)
-          ? { events: structuredClone(state.syncQueueEvents.get(item.id)) }
-          : {}),
+        item: structuredClone(projectMockQueueItem(item)),
+        events: structuredClone(state.queueEvents.get(item.id) ?? []),
         delivery: mockRecoveryOperation(state.queue, item),
       });
       return;
@@ -2084,6 +2091,13 @@ async function handle(
         match?.groups?.item ?? '',
         input,
         target?.value.id,
+      );
+      recordMockQueueEvent(
+        state,
+        item,
+        input.type,
+        input.reason ?? `Requested ${input.type}`,
+        item.updated_at,
       );
       broadcast(state, { type: 'queue.changed', target_id: item.target_id ?? '' });
       respond(res, 200, item);
@@ -5939,33 +5953,6 @@ function findMockQueueItem(items: QueueItem[], encodedID: string, targetID?: str
   if (item === undefined) throw new MockApiError(404, 'not_found', 'queue item not found');
 
   return item;
-}
-
-function mockQueueDetail(item: QueueItem): QueueDetail {
-  const events = [
-    {
-      id: 1,
-      item_id: item.id,
-      actor: 'system',
-      kind: 'created',
-      state: item.state,
-      summary: `Queued ${item.title}`,
-      created_at: item.created_at,
-    },
-  ];
-  if (item.updated_at !== item.created_at) {
-    events.push({
-      id: 2,
-      item_id: item.id,
-      actor: 'system',
-      kind: item.state === 'running' ? 'started' : 'updated',
-      state: item.state,
-      summary: item.state === 'running' ? `Started ${item.title}` : `Updated ${item.title}`,
-      created_at: item.updated_at,
-    });
-  }
-
-  return { item: structuredClone(projectMockQueueItem(item)), events };
 }
 
 function applyMockQueueAction(

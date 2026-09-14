@@ -7,7 +7,7 @@ import {
   type SyncPlan,
 } from '../src/lib/types.js';
 import { finishMockSyncScan } from './sync-scan.js';
-import { recordMockSyncEvent } from './sync-queue.js';
+import { recordMockQueueEvent } from './queue-events.js';
 
 type State = Pick<
   MockState,
@@ -16,7 +16,7 @@ type State = Pick<
   | 'syncHistory'
   | 'syncStatus'
   | 'targets'
-  | 'syncQueueEvents'
+  | 'queueEvents'
   | 'syncCheckObservations'
   | 'syncCheckResults'
 >;
@@ -69,7 +69,7 @@ export function advanceMockSync(state: State, now: number): boolean {
         plan.state = 'applying';
         plan.execution_stage = 'Sync in progress';
       }
-      recordMockSyncEvent(state, item, 'started', item.summary, at);
+      recordMockQueueEvent(state, item, 'started', item.summary, at);
       changed = true;
     } else if (now - Date.parse(item.started_at ?? item.updated_at) >= RUN_MS) {
       if (plan) finishPlan(state, item, plan, at);
@@ -93,7 +93,7 @@ function finishItem(
   item.updated_at = at;
   item.revision++;
   item.actions = [];
-  recordMockSyncEvent(state, item, result, summary, at);
+  recordMockQueueEvent(state, item, result, summary, at);
 }
 
 function finishPlan(state: State, item: QueueItem, plan: SyncPlan, at: string): void {

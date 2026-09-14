@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest';
+import { seedMockQueueEvents } from '../dev/queue-events';
 import { queueSeeds } from '../dev/fixtures';
 import { pruneMockOccurrences, scheduleMockOccurrence } from '../dev/queue-occurrences';
 const now = Date.parse('2026-09-14T12:00:00Z');
@@ -11,6 +12,7 @@ it('keeps completed history and creates exactly one fresh occurrence', () => {
   };
   const before = structuredClone(item);
   const state = {
+    queueEvents: new Map(),
     queue: [item],
     queueRest: new Map([[item.id, template]]),
     queueLoop: new Set([item.id]),
@@ -22,6 +24,9 @@ it('keeps completed history and creates exactly one fresh occurrence', () => {
   expect(next.id).not.toBe(item.id);
   expect(next.source_id).toBe(item.source_id);
   expect(next.state).toBe('scheduled');
+  expect(state.queueEvents.get(next.id)).toMatchObject([
+    { kind: 'created', state: 'scheduled', created_at: next.created_at },
+  ]);
   expect(next.finished_at).toBeUndefined();
   expect(next.attempt).toBe(0);
   expect(next.revision).toBe(1);
@@ -30,6 +35,7 @@ it('keeps completed history and creates exactly one fresh occurrence', () => {
 it.each(['cancelled', 'failed', 'superseded'] as const)('does not restart %s work', (status) => {
   const item = { ...queueSeeds(() => new Date(now).toISOString())[3]!, state: status };
   const state = {
+    queueEvents: new Map(),
     queue: [item],
     queueRest: new Map([[item.id, item]]),
     queueLoop: new Set([item.id]),
@@ -48,6 +54,7 @@ it('bounds generated history while retaining seeds and active work', () => {
   }));
   const live = { ...seed, id: 'scan:occurrence:live' };
   const state = {
+    queueEvents: seedMockQueueEvents([seed, live, ...history]),
     queue: [seed, live, ...history],
     queueRest: new Map(history.map((item) => [item.id, item])),
     queueLoop: new Set(history.map((item) => item.id)),
@@ -60,6 +67,8 @@ it('bounds generated history while retaining seeds and active work', () => {
   expect(state.queue).toContain(history[204]);
   expect(state.queueRest.has(history[0]!.id)).toBe(false);
   expect(state.queueLoop.has(history[0]!.id)).toBe(false);
+  expect(state.queueEvents.has(history[0]!.id)).toBe(false);
+  expect(state.queueEvents.has(history[204]!.id)).toBe(true);
   expect(pruneMockOccurrences(state)).toBe(false);
 });
 
@@ -73,6 +82,7 @@ it('retains cancellation history while scheduling one later recurring occurrence
   };
   const before = structuredClone(item);
   const state = {
+    queueEvents: new Map(),
     queue: [item],
     queueRest: new Map([[item.id, template]]),
     queueLoop: new Set<string>(),

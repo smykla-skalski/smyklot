@@ -36,10 +36,10 @@ describe('mock accepted check receipts [Unit]', () => {
     const first = mockSyncRunNow(state, '2001', input, now);
     if (first.status !== 202) throw new Error('Expected acceptance');
     state.queue.find((item) => item.id === first.body.check_id)!.state = 'running';
-    const before = structuredClone({ queue: state.queue, events: state.syncQueueEvents });
+    const before = structuredClone({ queue: state.queue, events: state.queueEvents });
     const recovered = mockSyncRunNow(state, '2001', input, now + 1_000);
     expect(recovered).toMatchObject({ status: 200, body: { check_id: first.body.check_id } });
-    expect({ queue: state.queue, events: state.syncQueueEvents }).toEqual(before);
+    expect({ queue: state.queue, events: state.queueEvents }).toEqual(before);
   });
 
   it('binds the key to actor, workspace and normalized reason', () => {
