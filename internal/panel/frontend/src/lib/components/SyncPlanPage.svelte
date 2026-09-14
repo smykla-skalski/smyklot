@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { syncActionProblem } from '../sync-action-problem';
+  import { syncActionFeedback } from '../sync-action-feedback';
   import { syncCheckIntent, syncCheckGuidance, syncCheckBlocker } from '../sync-check-guidance';
   import type { SyncCheckCapability } from '../types';
   import {
@@ -570,7 +570,13 @@ the button.
                   {@const opens = expandable(action)}
                   {@const showing = opens && expanded.has(keyOf(action))}
                   {@const shape = rowShape(action)}
-                  {@const problem = syncActionProblem(action)}
+                  {@const feedback =
+                    ['applying', 'applied', 'failed'].includes(plan.state) ||
+                    action.state !== 'pending' ||
+                    action.error ||
+                    action.blocker
+                      ? syncActionFeedback(action)
+                      : null}
                   <!-- ONE ROW, whatever it can do. A row that opens a diff used to be
                    a second component - a 24px button beside a 40px div, holding
                    the same three spans - so a list of six rows kept two rhythms
@@ -673,9 +679,9 @@ the button.
                           >View pull request</Link
                         ></span
                       >{/if}
-                    {#if problem}<span
+                    {#if feedback}<span
                         class="action-fail"
-                        class:is-skipped={action.state === 'skipped'}>{problem}</span
+                        class:is-neutral={action.state !== 'failed'}>{feedback}</span
                       >{/if}
                   </div>
                 {/each}
@@ -1318,7 +1324,7 @@ the button.
     margin-block-start: calc(var(--space-1) - var(--space-3));
   }
 
-  .action-fail.is-skipped {
+  .action-fail.is-neutral {
     color: var(--text-secondary);
   }
 

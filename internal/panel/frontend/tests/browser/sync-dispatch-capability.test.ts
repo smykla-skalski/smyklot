@@ -54,10 +54,26 @@ describe('desktop dispatch capability guidance', () => {
             if (reason === 'queue_unavailable') delete body.plan.queue_item;
             if (reason === 'already_running') {
               body.plan.state = 'applying';
+              const fileIndex = body.plan.actions.findIndex(
+                (action: Record<string, unknown>, index: number) =>
+                  index > 2 && action.kind === 'files',
+              );
+              expect(fileIndex).toBeGreaterThan(2);
               body.plan.actions = body.plan.actions.map(
                 (action: Record<string, unknown>, index: number) => ({
                   ...action,
-                  state: ['applied', 'failed', 'skipped', 'applied'][index] ?? action.state,
+                  state:
+                    index === fileIndex
+                      ? 'applied'
+                      : (['applied', 'failed', 'skipped'][index] ?? 'pending'),
+                  ...(index === fileIndex
+                    ? {
+                        proposal_url:
+                          outcomeReasons === 'disabled'
+                            ? ''
+                            : 'https://github.com/example/repo/pull/42',
+                      }
+                    : {}),
                   ...(index === 1 && outcomeReasons !== 'missing'
                     ? { error: 'GitHub denied this label change.' }
                     : {}),
@@ -161,10 +177,14 @@ describe('desktop dispatch capability guidance', () => {
           await inspector.getByText('Skipped: No reason was recorded.', { exact: true }).waitFor();
           const details = inspector.locator('details').filter({ hasText: 'Scheduling details' });
           expect(await details.getAttribute('open')).toBeNull();
-          const directory = process.env.SMYKLOT_SYNC_ACTION_PROBLEM_SCREENSHOTS;
+          await inspector.getByText('Succeeded', { exact: true }).waitFor();
+          await inspector.getByText('Proposed in a pull request', { exact: true }).waitFor();
+          // The first repository is expanded; the other repositories keep their rows collapsed.
+          expect(await inspector.getByText('Pending', { exact: true }).count()).toBe(2);
+          const directory = process.env.SMYKLOT_SYNC_ACTION_OUTCOME_SCREENSHOTS;
           if (directory) {
             await mkdir(directory, { recursive: true });
-            await page.screenshot({ path: join(directory, `F33-action-problems-${theme}.png`) });
+            await page.screenshot({ path: join(directory, `F33-action-outcomes-${theme}.png`) });
           }
           for (const mode of ['dependency', 'disabled'] as const) {
             outcomeReasons = mode;
@@ -180,9 +200,17 @@ describe('desktop dispatch capability guidance', () => {
                 { exact: true },
               )
               .waitFor({ timeout: 5000 });
+            await inspector
+              .getByText(
+                mode === 'disabled'
+                  ? 'Completed; no pull request link recorded'
+                  : 'Proposed in a pull request',
+                { exact: true },
+              )
+              .waitFor();
             if (directory)
               await page.screenshot({
-                path: join(directory, `F33-action-problems-${mode}-${theme}.png`),
+                path: join(directory, `F33-action-outcomes-${mode}-${theme}.png`),
               });
           }
           expect(posts).toBe(0);
