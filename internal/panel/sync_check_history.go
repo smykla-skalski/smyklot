@@ -48,18 +48,18 @@ func (s *Server) getSyncCheckObservations(w http.ResponseWriter, r *http.Request
 func parseSyncCheckPage(values url.Values, checkID string) (int, int, error) {
 	limit := DefaultPageSize
 	for key, entries := range values {
-		if (key != "limit" && key != "cursor") || len(entries) != 1 {
+		if (key != historyLimitParameter && key != historyCursorParameter) || len(entries) != 1 {
 			return 0, 0, fmt.Errorf("unsupported check evidence query")
 		}
 	}
-	if raw := values.Get("limit"); raw != "" {
+	if raw := values.Get(historyLimitParameter); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil || parsed <= 0 || parsed > MaxPageSize {
 			return 0, 0, fmt.Errorf("invalid check evidence page size")
 		}
 		limit = parsed
 	}
-	raw := values.Get("cursor")
+	raw := values.Get(historyCursorParameter)
 	if raw == "" {
 		return limit, 0, nil
 	}

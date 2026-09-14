@@ -279,9 +279,7 @@ func (s *Server) Handler() http.Handler {
 		s.getSyncOverride,
 	)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plan", s.getSyncPlan)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plans", s.getSyncHistory)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/checks/{check}/observations", s.getSyncCheckObservations)
-	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/plans/{plan}", s.getSyncPlan)
+	s.registerSyncHistoryRoutes(mux, base)
 	mux.HandleFunc("POST "+base+"/api/v1/targets/{target}/sync/run-now", s.postSyncRunNow)
 	mux.HandleFunc("GET "+base+"/api/v1/targets/{target}/sync/status", s.getSyncStatus)
 	mux.HandleFunc(

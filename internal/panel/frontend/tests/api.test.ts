@@ -1285,3 +1285,26 @@ it('fetches the exact check evidence page with encoded identities and cursor', a
     '/panel/api/v1/targets/target%3A1/sync/checks/check%3Aone%2Ftwo/observations?limit=10&cursor=cursor%2Bvalue',
   );
 });
+
+it('fetches personal sync acceptance history without inventing a total', async () => {
+  const page = {
+    items: [
+      {
+        action: 'check',
+        request_key: 'original',
+        check_id: 'check:1',
+        reason: 'Verify settings',
+        accepted_at: '2026-09-14T00:00:00Z',
+      },
+    ],
+    next_cursor: null,
+  };
+  const stub = stubFetch([jsonResponse(200, page)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(
+    api.fetchSyncRequests('target:one/two', { limit: 10, cursor: 'cursor+value' }),
+  ).resolves.toEqual(page);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3Aone%2Ftwo/sync/requests?limit=10&cursor=cursor%2Bvalue',
+  );
+});

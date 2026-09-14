@@ -13,6 +13,11 @@ import (
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 )
 
+const (
+	historyCursorParameter = "cursor"
+	historyLimitParameter  = "limit"
+)
+
 type syncHistoryCursor struct {
 	ComputedAt time.Time `json:"computed_at"`
 	ID         string    `json:"id"`
@@ -65,18 +70,18 @@ func (s *Server) getSyncHistory(w http.ResponseWriter, r *http.Request) {
 func parseSyncHistoryPage(values url.Values) (orgsync.PlanPageRequest, error) {
 	page := orgsync.PlanPageRequest{Limit: DefaultPageSize}
 	for key, entries := range values {
-		if (key != "limit" && key != "cursor") || len(entries) != 1 {
+		if (key != historyLimitParameter && key != historyCursorParameter) || len(entries) != 1 {
 			return page, fmt.Errorf("unsupported sync history query")
 		}
 	}
-	if raw := values.Get("limit"); raw != "" {
+	if raw := values.Get(historyLimitParameter); raw != "" {
 		limit, err := strconv.Atoi(raw)
 		if err != nil || limit <= 0 || limit > MaxPageSize {
 			return page, fmt.Errorf("invalid history page size")
 		}
 		page.Limit = limit
 	}
-	if raw := values.Get("cursor"); raw != "" {
+	if raw := values.Get(historyCursorParameter); raw != "" {
 		if len(raw) > 1024 {
 			return page, fmt.Errorf("invalid history cursor")
 		}

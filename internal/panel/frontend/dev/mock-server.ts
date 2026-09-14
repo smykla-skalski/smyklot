@@ -1,3 +1,4 @@
+import { mockSyncRequests } from './sync-request-history.js';
 import { mockCheckCapability, projectMockSyncPlan } from './sync-capability.js';
 import { mockSyncCheckPage } from './sync-check-history';
 import { advanceMockSync } from './sync-execution.js';
@@ -1673,6 +1674,16 @@ async function handle(
         respond(res, 200, override);
         return;
       }
+    }
+
+    const requestsMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/requests$/.exec(
+      path.slice(route('').length),
+    );
+    if (requestsMatch && method === 'GET') {
+      const target = findTarget(state, requestsMatch[1] ?? '');
+      const reply = mockSyncRequests(state, target.value.id, parsed.searchParams);
+      respond(res, reply.status, reply.body);
+      return;
     }
 
     const checkEvidenceMatch =

@@ -167,6 +167,7 @@ export function mockSyncRunNow(
       expectedRevision: Number(input.expected_revision),
       reason,
       queueId: updated.id,
+      acceptedAt: new Date(now).toISOString(),
     });
     return {
       status: 202,
@@ -208,7 +209,12 @@ export function mockSyncRunNow(
     recordMockSyncEvent(state, item, 'created', item.title, at);
   }
   const accepted = request(state, item, reason, now);
-  state.syncCheckReceipts.set(receiptKey, { targetId, reason, checkId: accepted.id });
+  state.syncCheckReceipts.set(receiptKey, {
+    targetId,
+    reason,
+    checkId: accepted.id,
+    acceptedAt: new Date(now).toISOString(),
+  });
   return { status: 202, body: { status: 'check_accepted', check_id: accepted.id } };
 }
 

@@ -236,9 +236,19 @@ export interface MockState {
   syncQueueEvents: Map<string, QueueEvent[]>;
   syncDispatchReceipts: Map<
     string,
-    { targetId: string; planId: string; expectedRevision: number; reason: string; queueId: string }
+    {
+      targetId: string;
+      planId: string;
+      expectedRevision: number;
+      reason: string;
+      queueId: string;
+      acceptedAt: string;
+    }
   >;
-  syncCheckReceipts: Map<string, { targetId: string; reason: string; checkId: string }>;
+  syncCheckReceipts: Map<
+    string,
+    { targetId: string; reason: string; checkId: string; acceptedAt: string }
+  >;
   syncCheckObservations: Map<string, SyncCheckObservation[]>;
   syncPlans: Map<string, SyncPlan>;
   syncHistory: Map<string, SyncPlan[]>;

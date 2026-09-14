@@ -1752,6 +1752,21 @@ export interface SyncRunNowResponse {
   repeated?: boolean;
 }
 
+/** Historical acceptance, independent of current work or browser persistence. */
+export type SyncRequestAcceptance = {
+  request_key: string;
+  reason: string;
+  accepted_at: string;
+} & (
+  | { action: 'check'; check_id: string }
+  | { action: 'dispatch'; plan_id: string; queue_id: string; expected_revision: number }
+);
+
+export interface SyncRequestHistory {
+  items: SyncRequestAcceptance[];
+  next_cursor: string | null;
+}
+
 export interface SyncCheckObservation {
   repository_id: string;
   repository: string;
