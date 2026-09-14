@@ -48,7 +48,9 @@ describe('desktop delayed sync acceptance', () => {
         await expect.poll(() => posts).toBe(1);
         await changes.getByRole('button', { name: 'Close sync details', exact: true }).click();
         await changes.waitFor({ state: 'hidden' });
-        await page.getByRole('button', { name: 'Confirm request', exact: true }).waitFor();
+        expect(
+          await page.getByRole('button', { name: 'Confirm request', exact: true }).count(),
+        ).toBe(0);
         release();
         const link = page.getByRole('link', { name: 'View request', exact: true });
         await link.waitFor();

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { untrack, onMount, tick } from 'svelte';
-  import { PanelApiError } from '#lib/api.js';
-  import { SyncRequestIntentStore } from '#lib/sync-request-intent.js';
+  import { SyncRequestController } from '#lib/sync-request-controller.svelte.js';
   import Callout from './Callout.svelte';
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
@@ -85,8 +84,7 @@
     fetchRequests,
     fetchOperation,
     selectedRequest = null,
-    acceptedRequest = null,
-    onAcceptedRequest,
+    requestController,
     requestHref,
     onOpenRequest,
     onCloseRequest,
@@ -151,12 +149,7 @@
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     fetchRequests?: import('../api').PanelApi['fetchSyncRequests'];
     fetchOperation?: import('../api').PanelApi['fetchSyncOperation'];
-    acceptedRequest?: import('../session.svelte').AcceptedSyncRequest | null;
-    onAcceptedRequest?: (
-      actorId: string,
-      targetId: string,
-      request: import('../session.svelte').AcceptedSyncRequest | null,
-    ) => void;
+    requestController?: SyncRequestController;
     selectedRequest?: { action: 'check' | 'dispatch'; requestKey: string } | null;
     requestHref?: (action: 'check' | 'dispatch', key: string) => string;
     onOpenRequest?: (action: 'check' | 'dispatch', key: string) => void;
@@ -316,62 +309,42 @@
   useInterval(30_000, { callback: () => (nowMs = clock()) });
   let approving = $state(false);
   let discarding = $state(false);
-  let runningNow = $state(false);
-  let runNotice = $state('');
-  let requestedCheckId = $state<string | null>(null);
-  let requestedDispatchId = $state<string | null>(null);
-  let pendingRequest = $state.raw<SyncRunNowInput | null>(null);
-  let requestStorageProblem = $state<string | null>(null);
-  let requestUncertain = $state(false);
-  let requestCleanupPending = $state(false);
-  let requestNotRecorded = $state(false);
-  let localAcceptance = $state<import('../session.svelte').AcceptedSyncRequest | null>(null);
-  const confirmedRequest = $derived(acceptedRequest ?? localAcceptance);
+  const localController = untrack(
+    () =>
+      new SyncRequestController(actorId, targetId, {
+        runSyncNow,
+        fetchOperation,
+        refresh: refreshSyncQueries,
+        storage: () => window.sessionStorage,
+      }),
+  );
+  const requests = $derived(requestController ?? localController);
+  const runningNow = $derived(requests.runningNow);
+  const runNotice = $derived(requests.runNotice);
+  const requestedCheckId = $derived(requests.requestedCheckId);
+  const requestedDispatchId = $derived(requests.requestedDispatchId);
+  const pendingRequest = $derived(requests.pendingRequest);
+  const requestStorageProblem = $derived(requests.requestStorageProblem);
+  const requestUncertain = $derived(requests.requestUncertain);
+  const requestCleanupPending = $derived(requests.requestCleanupPending);
+  const requestNotRecorded = $derived(requests.requestNotRecorded);
+  const confirmedRequest = $derived(requests.localAcceptance);
   const requestNotice = $derived(
-    runNotice ||
-      (confirmedRequest ? 'Your request was accepted. Open it to see what happened.' : ''),
+    runningNow && pendingRequest && !requestUncertain && !requestCleanupPending
+      ? 'Sending your sync request…'
+      : runNotice,
   );
   let focusConfirmedRequest = false;
-  let requestStore: SyncRequestIntentStore | null = null;
+  let viewError = $state<string | null>(null);
+  const error = $derived(requests.error ?? viewError);
   function readRequestStorage(): void {
-    if (runningNow || pendingRequest) return;
-    if (!actorId) {
-      requestStorageProblem = 'Your account must be loaded before requesting sync.';
-      return;
-    }
-    try {
-      requestStore = new SyncRequestIntentStore(window.sessionStorage, actorId, targetId);
-      pendingRequest = requestStore.read();
-      requestUncertain = pendingRequest !== null;
-      requestStorageProblem = null;
-    } catch {
-      requestStorageProblem =
-        'Browser storage could not be read. Retry access to recover any saved request. New requests remain paused.';
-    }
+    requests.readRequestStorage();
+  }
+  function finishRequestRecovery(): void {
+    requests.finishRequestRecovery();
   }
   onMount(readRequestStorage);
 
-  // A response can arrive in the session after routing has replaced this view.
-  // Reconcile only the exact saved intent, never an unrelated earlier acceptance.
-  $effect(() => {
-    const accepted = acceptedRequest;
-    if (!accepted) return;
-    untrack(() => {
-      if (
-        runningNow ||
-        pendingRequest?.request_key !== accepted.key ||
-        pendingRequest.action !== accepted.action
-      )
-        return;
-      requestCleanupPending = true;
-      requestUncertain = false;
-      requestNotRecorded = false;
-      error = null;
-      finishRequestRecovery();
-    });
-  });
-
-  let error = $state<string | null>(null);
   const labelsError = $derived(stageProblems.labels ?? editorStates.labels?.problem ?? error);
   const documentError = $derived<Record<DocumentKind, string | null>>({
     settings: stageProblems.settings ?? editorStates.settings?.problem ?? null,
@@ -405,7 +378,7 @@
   });
 
   async function load(id: string): Promise<void> {
-    error = null;
+    viewError = null;
     try {
       const [loadedConfig, loadedSettings, loadedRulesets, loadedFiles, loadedContext] =
         await Promise.all([
@@ -423,7 +396,7 @@
       filesContext = loadedContext;
       nowMs = clock();
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     }
   }
 
@@ -574,12 +547,12 @@
   async function onApprove(planId: string, digest: string): Promise<void> {
     const requestTargetId = targetId;
     approving = true;
-    error = null;
+    viewError = null;
     try {
       await approvePlan(requestTargetId, planId, digest);
       await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     } finally {
       approving = false;
     }
@@ -589,168 +562,26 @@
   async function onDiscard(planId: string): Promise<void> {
     const requestTargetId = targetId;
     discarding = true;
-    error = null;
+    viewError = null;
     try {
       await discardPlan(requestTargetId, planId);
       await refreshSyncQueries(requestTargetId);
     } catch (cause) {
-      error = messageOf(cause);
+      viewError = messageOf(cause);
     } finally {
       discarding = false;
     }
   }
 
   async function confirmRequest(trigger: HTMLButtonElement): Promise<void> {
-    const request = pendingRequest;
-    if (!request || !fetchOperation || runningNow) return;
-    const requestTargetId = targetId;
-    const requestActorId = actorId;
-    runningNow = true;
-    requestNotRecorded = false;
-    error = null;
-    try {
-      const operation = await fetchOperation(requestTargetId, request.action, request.request_key);
-      const accepted = operation.acceptance;
-      if (
-        operation.target_id !== requestTargetId ||
-        accepted.action !== request.action ||
-        accepted.request_key !== request.request_key ||
-        accepted.reason !== request.reason.trim() ||
-        (accepted.action === 'check' && !accepted.check_id?.trim()) ||
-        (accepted.action === 'dispatch' && !accepted.queue_id?.trim()) ||
-        (request.action === 'dispatch' &&
-          (accepted.action !== 'dispatch' ||
-            accepted.plan_id !== request.plan_id ||
-            accepted.expected_revision !== request.expected_revision))
-      )
-        throw new Error(
-          'The saved request could not be matched to this response. Keep it and try confirming again.',
-        );
+    const controller = requests;
+    await controller.confirmRequest(canControl, () => {
       focusConfirmedRequest = trigger.ownerDocument.activeElement === trigger;
-      localAcceptance = { action: request.action, key: request.request_key };
-      onAcceptedRequest?.(requestActorId, requestTargetId, localAcceptance);
-      requestCleanupPending = true;
-      requestUncertain = false;
-      finishRequestRecovery();
-      runNotice = 'Your request was accepted. Open it to see what happened.';
-    } catch (cause) {
-      requestNotRecorded = cause instanceof PanelApiError && cause.status === 404;
-      error = requestNotRecorded
-        ? canControl
-          ? 'Your request is not recorded yet. It may still be arriving. Confirm again, or retry the original request without creating a new one.'
-          : 'Your request is not recorded yet. It may still be arriving. Confirm again to check its status.'
-        : messageOf(cause);
-    } finally {
-      runningNow = false;
-    }
+    });
   }
 
   async function onRunNow(input: SyncRunNowIntent): Promise<void> {
-    if (runningNow) return;
-    if (pendingRequest && input.request_key !== pendingRequest.request_key) {
-      error = 'Recover the previous sync request before starting another.';
-      return;
-    }
-    const requestTargetId = targetId;
-    const requestActorId = actorId;
-    const recovering = requestUncertain;
-    localAcceptance = null;
-    onAcceptedRequest?.(requestActorId, requestTargetId, null);
-    requestNotRecorded = false;
-    runningNow = true;
-    error = null;
-    runNotice = '';
-    requestedCheckId = null;
-    requestedDispatchId = null;
-    try {
-      if (!pendingRequest) {
-        try {
-          if (!requestStore || requestStorageProblem) throw new Error('Storage unavailable');
-          pendingRequest = requestStore.begin(input);
-        } catch {
-          requestStorageProblem =
-            'The request could not be saved in browser storage and has not been sent. Retry browser storage before starting again.';
-          return;
-        }
-      }
-      // The exact pending command is already known. Storage failure must not prevent
-      // its idempotent recovery or replace its identity with a new request.
-      const request = pendingRequest;
-      const response = await runSyncNow(requestTargetId, request);
-      const valid =
-        request.action === 'check'
-          ? response.status === 'changes_pending' ||
-            (response.status === 'check_accepted' && !!response.check_id)
-          : response.status === 'approval_required' ||
-            response.status === 'already_running' ||
-            (response.status === 'dispatch_accepted' &&
-              response.plan_id === request.plan_id &&
-              !!response.queue_id);
-      if (!valid)
-        throw new Error(
-          'The sync response could not be confirmed. Recover the request before starting another.',
-        );
-      requestCleanupPending = true;
-      requestUncertain = false;
-      finishRequestRecovery();
-      if (response.status === 'check_accepted' || response.status === 'dispatch_accepted') {
-        localAcceptance = { action: request.action, key: request.request_key };
-        onAcceptedRequest?.(requestActorId, requestTargetId, localAcceptance);
-        runNotice = 'Your request was accepted. Open it to see what happened.';
-        if (!requestHref) {
-          if (response.status === 'check_accepted') requestedCheckId = response.check_id!;
-          else requestedDispatchId = response.plan_id!;
-        }
-      }
-      if (response.status === 'changes_pending')
-        runNotice =
-          'Earlier changes are still pending. Review them before requesting another check.';
-      if (response.status === 'approval_required')
-        runNotice = 'These changes need approval before they can run.';
-      if (response.status === 'already_running') runNotice = 'These changes are already running.';
-      await refreshSyncQueries(requestTargetId);
-    } catch (cause) {
-      if (
-        !recovering &&
-        pendingRequest &&
-        cause instanceof PanelApiError &&
-        [400, 404, 409].includes(cause.status) &&
-        [
-          'invalid_request',
-          'not_found',
-          'stale_revision',
-          'unsupported_plan_state',
-          'conflict',
-        ].includes(cause.code)
-      ) {
-        try {
-          requestStore!.clear(pendingRequest.request_key);
-          pendingRequest = null;
-          void queryClient.invalidateQueries({ queryKey: ['sync-plan', requestTargetId] });
-        } catch {
-          /* Preserve the request if storage cannot confirm its removal. */
-        }
-      }
-      if (pendingRequest) requestUncertain = true;
-      error = messageOf(cause);
-    } finally {
-      runningNow = false;
-    }
-  }
-
-  function finishRequestRecovery(): void {
-    if (!pendingRequest || !requestCleanupPending) return;
-    try {
-      if (!requestStore) throw new Error('Storage unavailable');
-      requestStore.clear(pendingRequest.request_key);
-      pendingRequest = null;
-      requestCleanupPending = false;
-      requestUncertain = false;
-      requestStorageProblem = null;
-    } catch {
-      requestStorageProblem =
-        'The response was received, but its saved request could not be cleared. New requests are paused.';
-    }
+    await requests.submit(input);
   }
 
   function messageOf(cause: unknown): string {
@@ -841,9 +672,11 @@ Live plan and status queries share the shell's event invalidation and polling fa
                 }
               }}>View request</Link
             >{/if}
-          {#if requestedCheckId}<Link href={checkHref(requestedCheckId)}>View check</Link>{/if}
-          {#if requestedDispatchId}<Link href={historyResultHref(requestedDispatchId)}
-              >View accepted changes</Link
+          {#if requestedCheckId && !requestHref}<Link href={checkHref(requestedCheckId)}
+              >View check</Link
+            >{/if}
+          {#if requestedDispatchId && !requestHref}<Link
+              href={historyResultHref(requestedDispatchId)}>View accepted changes</Link
             >{/if}
         </div>{/if}
     </div>

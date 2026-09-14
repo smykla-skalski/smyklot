@@ -1,3 +1,4 @@
+import { SyncRequestController } from './sync-request-controller.svelte';
 /**
  * Session state shared across the panel's route tree.
  *
@@ -78,8 +79,6 @@ export interface SessionQueryState {
   targetsError: unknown;
 }
 
-export type AcceptedSyncRequest = { action: 'check' | 'dispatch'; key: string };
-
 export class PanelSession {
   readonly api: PanelApi;
   readonly build: PanelBuild;
@@ -88,22 +87,27 @@ export class PanelSession {
 
   loading = $state(true);
   private syncRequestFocusTarget = $state<string | null>(null);
-  private acceptedSyncRequests = $state.raw<Record<string, AcceptedSyncRequest>>({});
+  // The controller identity cache is not rendered. Each controller owns its reactivity.
+  private readonly syncRequests: Record<string, SyncRequestController> = {};
 
-  acceptedSyncRequest(actorId: string, targetId: string): AcceptedSyncRequest | null {
-    return this.acceptedSyncRequests[JSON.stringify([actorId, targetId])] ?? null;
-  }
-
-  rememberSyncRequest(
-    actorId: string,
-    targetId: string,
-    request: AcceptedSyncRequest | null,
-  ): void {
-    const next = { ...this.acceptedSyncRequests };
+  syncRequestController(actorId: string, targetId: string): SyncRequestController {
     const scope = JSON.stringify([actorId, targetId]);
-    if (request) next[scope] = request;
-    else delete next[scope];
-    this.acceptedSyncRequests = next;
+    let controller = this.syncRequests[scope];
+    if (!controller) {
+      controller = new SyncRequestController(actorId, targetId, {
+        runSyncNow: this.api.runSyncNow,
+        fetchOperation: this.api.fetchSyncOperation,
+        storage: () => window.sessionStorage,
+        refresh: async (id) => {
+          await Promise.all([
+            this.queryClient.invalidateQueries({ queryKey: ['sync-plan', id] }),
+            this.queryClient.invalidateQueries({ queryKey: ['sync-status', id] }),
+          ]);
+        },
+      });
+      this.syncRequests[scope] = controller;
+    }
+    return controller;
   }
 
   viewer = $state.raw<PanelViewer | null>(null);

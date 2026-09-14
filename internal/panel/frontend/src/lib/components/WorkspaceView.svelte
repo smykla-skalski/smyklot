@@ -178,12 +178,10 @@ history is routed with its section. That is what makes an address like
             fetchHistory={session.api.fetchSyncHistory}
             fetchRequests={session.api.fetchSyncRequests}
             fetchOperation={session.api.fetchSyncOperation}
-            acceptedRequest={session.acceptedSyncRequest(
+            requestController={session.syncRequestController(
               session.viewer?.account.id ?? '',
               session.selectedTarget.id,
             )}
-            onAcceptedRequest={(actorId, targetId, request) =>
-              session.rememberSyncRequest(actorId, targetId, request)}
             selectedRequest={session.currentSyncRequest}
             onCloseRequest={() => session.closeSyncRequest()}
             onRequestsReady={(element) =>
