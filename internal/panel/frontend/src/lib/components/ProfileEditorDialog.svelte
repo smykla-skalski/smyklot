@@ -42,7 +42,8 @@
     name = profile?.name ?? '';
     timezone = profile?.timezone ?? (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
     const storedWindows = profile?.windows ?? [];
-    if (storedWindows.length > 0) {
+    // Defaults belong only to a new profile. Empty saved hours mean exceptions only.
+    if (profile !== null) {
       windows = storedWindows.map((window, index) => ({
         id: `stored-${index}`,
         weekday: window.weekday,
@@ -115,7 +116,7 @@
         return false;
     }
 
-    return windows.length > 0;
+    return windows.length > 0 || exceptions.trim() !== '';
   }
 
   function parseExceptions(): ScheduleProfileInput['exceptions'] {

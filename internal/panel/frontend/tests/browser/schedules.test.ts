@@ -14,6 +14,69 @@ describe('desktop hours draft protection', () => {
     ['Date exceptions', '2026-12-25 closed'],
   ] as const;
 
+  it.each(['light', 'dark'] as const)(
+    'preserves an exception-only profile in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+      });
+      page.setDefaultTimeout(5000);
+      const exceptions = [
+        { date: '2026-12-25', closed: true },
+        { date: '2026-12-31', closed: false, start_minute: 540, end_minute: 780 },
+      ];
+      let submitted: { windows: unknown[]; exceptions: unknown[] } | undefined;
+      try {
+        await page.route('**/api/v1/root/schedule-profiles', async (route) => {
+          const response = await route.fetch();
+          const document = (await response.json()) as {
+            profiles: Array<{
+              system: boolean;
+              name: string;
+              windows: unknown[];
+              exceptions: unknown[];
+            }>;
+          };
+          const profile = document.profiles.find((entry) => !entry.system)!;
+          profile.name = 'Holiday releases';
+          profile.windows = [];
+          profile.exceptions = exceptions;
+          await route.fulfill({ response, json: document });
+        });
+        await page.route('**/api/v1/root/schedule-profiles/*', async (route) => {
+          if (route.request().method() !== 'PUT') return route.continue();
+          submitted = route.request().postDataJSON() as typeof submitted;
+          await route.continue();
+        });
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page
+          .getByRole('button', { name: 'Edit - the Holiday releases profile', exact: true })
+          .click();
+        const editor = page.getByRole('dialog', { name: 'Edit hours profile', exact: true });
+        expect(await editor.locator('.window-row').count()).toBe(0);
+        expect(await editor.getByLabel('Date exceptions', { exact: true }).inputValue()).toBe(
+          '2026-12-25 closed\n2026-12-31 09:00-13:00',
+        );
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-exception-only-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await editor.getByLabel('Profile name', { exact: true }).fill('Holiday release hours');
+        await editor.getByRole('button', { name: 'Save profile' }).click();
+        await editor.waitFor({ state: 'hidden' });
+        expect(submitted?.windows).toEqual([]);
+        expect(submitted?.exceptions).toEqual(exceptions);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
   it('keeps an existing profile mounted during save and retains edits after rejection', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     page.setDefaultTimeout(5000);
