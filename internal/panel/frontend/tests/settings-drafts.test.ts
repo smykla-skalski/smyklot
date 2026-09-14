@@ -81,6 +81,72 @@ function stageBoolean(
   ).toBe(true);
 }
 
+describe('persisted server validation [Unit]', () => {
+  it('retains rejection through reload and same-value edits, clearing it on correction', () => {
+    const storage = new MemoryStorage();
+    const drafts = registry(storage);
+    drafts.hydrate('account-1');
+    stageBoolean(drafts, defaults, 'enabled', 'defaults', []);
+    const attempt = drafts.beginSave(targetOne)!;
+    expect(
+      drafts.failSave(attempt, 'Not allowed', [], [{ resource: defaults, controlId: 'enabled' }]),
+    ).toBe(true);
+    const restored = registry(storage, { value: 2000 }, 'reopened');
+    restored.hydrate('account-1');
+    expect(restored.validationIssue(targetOne)).toEqual({
+      controlId: 'enabled',
+      problem: 'Not allowed',
+    });
+    stageBoolean(restored, defaults, 'enabled', 'defaults', []);
+    expect(restored.validationIssue(targetOne)?.problem).toBe('Not allowed');
+    stageBoolean(restored, defaults, 'enabled', 'defaults', [], false, false);
+    expect(restored.validationIssue(targetOne)).toBeNull();
+    stageBoolean(restored, defaults, 'enabled', 'defaults', []);
+    expect(restored.validationIssue(targetOne)).toBeNull();
+  });
+
+  it('clears a rejected value replaced during rebase', () => {
+    const drafts = registry();
+    drafts.hydrate('account-1');
+    stageBoolean(drafts, defaults, 'enabled', 'defaults', []);
+    drafts.failSave(
+      drafts.beginSave(targetOne)!,
+      'Not allowed',
+      [],
+      [{ resource: defaults, controlId: 'enabled' }],
+    );
+    expect(
+      drafts.rebase(
+        defaults,
+        2,
+        { enabled: false },
+        { enabled: false },
+        { enabled: false },
+        { enabled: false },
+      ),
+    ).toBe(true);
+    expect(drafts.validationIssue(targetOne)).toBeNull();
+  });
+
+  it('does not attach an old response to a corrected or unknown control', () => {
+    const drafts = registry();
+    drafts.hydrate('account-1');
+    stageBoolean(drafts, defaults, 'enabled', 'defaults', []);
+    const attempt = drafts.beginSave(targetOne)!;
+    stageBoolean(drafts, defaults, 'enabled', 'defaults', [], false, false);
+    drafts.failSave(
+      attempt,
+      'Old response',
+      [],
+      [
+        { resource: defaults, controlId: 'enabled' },
+        { resource: defaults, controlId: 'unknown' },
+      ],
+    );
+    expect(drafts.validationIssue(targetOne)).toBeNull();
+  });
+});
+
 describe('SettingsDraftRegistry scopes and locations [Unit]', () => {
   it('holds every resource kind and bubbles dirty controls through semantic locations', () => {
     const drafts = registry();

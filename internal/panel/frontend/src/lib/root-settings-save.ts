@@ -94,7 +94,18 @@ export async function saveRootSettingsDraft(
         // Keep the service's conflict message when the follow-up read also fails
       }
     }
-    registry.failSave(attempt, messageOf(cause));
+    const controlId =
+      cause instanceof PanelApiError && cause.status === 400 && cause.field !== undefined
+        ? `runtime.${cause.field}`
+        : null;
+    registry.failSave(
+      attempt,
+      messageOf(cause),
+      [],
+      controlId !== null && entry.controls.some((control) => control.id === controlId)
+        ? [{ resource: RUNTIME_RESOURCE, controlId }]
+        : [],
+    );
     return { saved: false };
   }
 }

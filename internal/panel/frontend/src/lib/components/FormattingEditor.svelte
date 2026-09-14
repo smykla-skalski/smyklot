@@ -307,6 +307,7 @@ three things among thirty finds them again.
       <div class="policy-rows rows-continue">
         <div
           class={['policy-row', { 'is-unsaved': dirtyKeySet.has(presetField.key) }]}
+          data-settings-field={presetField.key}
           data-unsaved={dirtyKeySet.has(presetField.key) || undefined}
         >
           <span class="setting-say">
@@ -394,6 +395,7 @@ three things among thirty finds them again.
                   'is-stacked': field.kind === 'enum' && field.options.length >= 4,
                 },
               ]}
+              data-settings-field={field.key}
               data-unsaved={dirtyKeySet.has(field.key) || undefined}
             >
               <span class="setting-say">

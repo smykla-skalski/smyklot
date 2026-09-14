@@ -635,7 +635,29 @@
       return;
     }
     await tick();
-    const invalid = document.querySelector<HTMLElement>('.root-settings [aria-invalid="true"]');
+    const issue = settingsDraftRegistry.validationIssue(ROOT_SETTINGS_SCOPE);
+    const field = issue?.controlId.replace(/^runtime\.(?:bot_config\.)?/, '');
+    if (field?.startsWith('formatting.')) {
+      const group = field.split('.')[1];
+      document
+        .querySelector<HTMLInputElement>(
+          `.root-settings input[name="formatting-group-runtime-root"][value="${CSS.escape(group ?? '')}"]`,
+        )
+        ?.click();
+      await tick();
+    }
+    const row =
+      field === undefined
+        ? null
+        : document.querySelector<HTMLElement>(
+            `.root-settings [data-settings-field="${CSS.escape(field)}"]`,
+          );
+    const invalid =
+      row?.querySelector<HTMLElement>(
+        'input:not([type="radio"]):not([type="hidden"]):not(:disabled), textarea:not(:disabled), select:not(:disabled), input[type="radio"]:checked:not(:disabled)',
+      ) ??
+      row?.querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled)') ??
+      document.querySelector<HTMLElement>('.root-settings [aria-invalid="true"]');
     if (invalid !== null) {
       invalid.focus({ preventScroll: true });
       revealControl(invalid);

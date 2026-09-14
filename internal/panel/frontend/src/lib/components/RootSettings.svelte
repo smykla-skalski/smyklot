@@ -444,6 +444,7 @@ without the composer.
         <div class="policy-rows">
           <div
             class={['policy-row', { 'is-unsaved': controlDirty('runtime.log_level') }]}
+            data-settings-field="log_level"
             data-unsaved={controlDirty('runtime.log_level') || undefined}
           >
             <span class="setting-say">
@@ -523,6 +524,7 @@ without the composer.
                 'is-invalid': durationProblem(SESSION_SPEC) !== null,
               },
             ]}
+            data-settings-field="session_ttl_seconds"
             data-unsaved={controlDirty('runtime.session_ttl_seconds') || undefined}
           >
             <span class="setting-say">

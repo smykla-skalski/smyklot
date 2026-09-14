@@ -33,6 +33,7 @@ export interface SettingsLocation {
 }
 
 export interface StoredSettingsControl {
+  serverProblem?: string;
   id: string;
   location: { section: SettingsSection; path: string[] };
   saved: SettingsJson;
@@ -311,6 +312,7 @@ function parseStoredControl(value: unknown): StoredSettingsControl | null {
     saved: cloneJson(value.saved),
     value: cloneJson(value.value),
     changedAt: value.changedAt,
+    ...(isNonEmptyString(value.serverProblem) ? { serverProblem: value.serverProblem } : {}),
   };
 }
 

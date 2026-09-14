@@ -280,6 +280,7 @@ account again.
           {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
           <div
             class={['policy-row', 'is-managed', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+            data-settings-field={field.key}
             data-unsaved={dirtyKeySet.has(field.key) || undefined}
           >
             <span class="setting-say">
@@ -313,6 +314,7 @@ account again.
             {@const on = fieldEnabled(field, effectiveValue(draft, inherited, field.key))}
             <div
               class={['policy-row', 'is-managed', { 'is-unsaved': dirtyKeySet.has(field.key) }]}
+              data-settings-field={field.key}
               data-unsaved={dirtyKeySet.has(field.key) || undefined}
             >
               <span class="setting-say">
@@ -393,6 +395,7 @@ account again.
             { 'is-managed': Object.hasOwn(draft, 'command_prefix') },
             { 'is-unsaved': dirtyKeySet.has('command_prefix') },
           ]}
+          data-settings-field="command_prefix"
           data-unsaved={dirtyKeySet.has('command_prefix') || undefined}
         >
           <span class="setting-say">
@@ -425,6 +428,7 @@ account again.
             { 'is-managed': Object.hasOwn(draft, 'allowed_commands') },
             { 'is-unsaved': dirtyKeySet.has('allowed_commands') },
           ]}
+          data-settings-field="allowed_commands"
           data-unsaved={dirtyKeySet.has('allowed_commands') || undefined}
         >
           <span class="setting-say">
@@ -470,6 +474,7 @@ account again.
             { 'is-managed': Object.hasOwn(draft, 'command_aliases') },
             { 'is-unsaved': dirtyKeySet.has('command_aliases') },
           ]}
+          data-settings-field="command_aliases"
           data-unsaved={dirtyKeySet.has('command_aliases') || undefined}
         >
           <span class="setting-say">
