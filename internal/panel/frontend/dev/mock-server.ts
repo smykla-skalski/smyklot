@@ -29,7 +29,7 @@ import { observedRepositoryFileStatus } from './repository-files.js';
 import { mockBypassActorSuggestions } from './bypass-actors.ts';
 import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
 import { preserveNumberToken } from '../src/lib/merge.js';
-import { parseRequestJSON } from './request-json.js';
+import { DuplicateRequestFieldError, parseRequestJSON } from './request-json.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -5353,26 +5353,31 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
     input.background_work_paused !== undefined &&
     typeof input.background_work_paused !== 'boolean'
   ) {
-    invalidMockRootRuntimeSettings('background work pause must be true or false');
+    invalidMockRootRuntimeSettings(
+      'background work pause must be true or false',
+      'background_work_paused',
+    );
   }
   try {
     parseRuntimeBehavior(input.bot_config);
   } catch (error) {
     invalidMockRootRuntimeSettings(
       error instanceof Error ? error.message : 'behavior defaults are invalid',
+      'bot_config',
     );
   }
   if (
     input.log_level !== null &&
     (typeof input.log_level !== 'string' || !ROOT_RUNTIME_LOG_LEVELS.has(input.log_level))
   ) {
-    invalidMockRootRuntimeSettings('log level is invalid');
+    invalidMockRootRuntimeSettings('log level is invalid', 'log_level');
   }
   validateMockRootRuntimeDuration(
     input.reaction_poll_interval_seconds,
     0,
     86_400,
     'reaction sweep interval',
+    'reaction_poll_interval_seconds',
     true,
   );
   validateMockRootRuntimeDuration(
@@ -5380,18 +5385,21 @@ function validateMockRootRuntimeSettingsInput(input: RootRuntimeSettingsInput): 
     0,
     86_400,
     'merge-after-CI quiet period',
+    'merge_after_ci_quiet_period_seconds',
   );
   validateMockRootRuntimeDuration(
     input.path_index_interval_seconds,
     0,
     DEV_MAX_PATH_INDEX_SECONDS,
     'file list refresh interval',
+    'path_index_interval_seconds',
   );
   validateMockRootRuntimeDuration(
     input.session_ttl_seconds,
     60,
     ROOT_RUNTIME_MAX_SESSION_SECONDS,
     'session lifetime',
+    'session_ttl_seconds',
   );
 }
 
@@ -5400,6 +5408,7 @@ function validateMockRootRuntimeDuration(
   minimum: number,
   maximum: number,
   label: string,
+  field: string,
   zeroIsOptional = false,
 ): void {
   if (value === null) return;
@@ -5409,12 +5418,17 @@ function validateMockRootRuntimeDuration(
     value > maximum ||
     (value === 0 ? !zeroIsOptional && minimum > 0 : value < minimum)
   ) {
-    invalidMockRootRuntimeSettings(`${label} is outside the supported range`);
+    invalidMockRootRuntimeSettings(`${label} is outside the supported range`, field);
   }
 }
 
-function invalidMockRootRuntimeSettings(message: string): never {
-  throw new MockApiError(400, 'invalid_runtime_settings', message);
+function invalidMockRootRuntimeSettings(message: string, field?: string): never {
+  throw new MockApiError(
+    400,
+    'invalid_runtime_settings',
+    message,
+    field === undefined ? {} : { field },
+  );
 }
 
 function rootRuntimeSettingsValue(state: MockState): RootRuntimeSettings {
@@ -6832,7 +6846,10 @@ async function readBody<T>(req: IncomingMessage, uniqueFields: readonly string[]
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   try {
     return parseRequestJSON(Buffer.concat(chunks).toString('utf8'), uniqueFields) as T;
-  } catch {
+  } catch (error) {
+    if (error instanceof DuplicateRequestFieldError) {
+      invalidMockRootRuntimeSettings(error.message, error.field);
+    }
     throw new MockApiError(400, 'invalid_request', 'request body must be valid JSON');
   }
 }

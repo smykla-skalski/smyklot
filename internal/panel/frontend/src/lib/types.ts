@@ -1227,6 +1227,7 @@ export interface Page<T> {
 
 export interface PanelErrorBody {
   error: {
+    field?: string;
     code: string;
     message: string;
     kind?: SyncKind;

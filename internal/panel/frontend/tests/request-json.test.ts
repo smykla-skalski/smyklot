@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseRequestJSON } from '../dev/request-json.js';
+import { DuplicateRequestFieldError, parseRequestJSON } from '../dev/request-json.js';
 
 const runtime = (text: string) => parseRequestJSON(text, ['bot_config']);
 
@@ -14,6 +14,13 @@ describe('mock request JSON decoding [Unit]', () => {
     '{"bot_config":{"quiet_success":false,"quiet_success":true},"bot_config":null}',
   ])('rejects duplicate runtime fields before parsing loses them: %s', (text) => {
     expect(() => runtime(text)).toThrow(SyntaxError);
+  });
+
+  it('reports the strict request field without parsing the error message', () => {
+    expect(() => runtime('{"bot_config":{"x":1,"x":2}}')).toThrow(
+      expect.objectContaining({ field: 'bot_config' }),
+    );
+    expect(() => runtime('{"bot_config":{"x":1,"x":2}}')).toThrow(DuplicateRequestFieldError);
   });
 
   it('permits names reused in separate objects and duplicate-looking string content', () => {

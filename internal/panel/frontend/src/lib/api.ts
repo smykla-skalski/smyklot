@@ -101,6 +101,7 @@ export class PanelApiError extends Error {
     message: string,
     readonly kind?: string,
     readonly conflicts: WorkspaceSettingsConflict[] = [],
+    readonly field?: string,
   ) {
     super(message);
     this.name = 'PanelApiError';
@@ -1567,6 +1568,7 @@ async function readError(response: Response): Promise<PanelApiError> {
   let code = 'unknown';
   let message = describeStatus(response.status);
   let kind: string | undefined;
+  let field: string | undefined;
   let conflicts: WorkspaceSettingsConflict[] = [];
   try {
     const text = await response.text();
@@ -1580,9 +1582,10 @@ async function readError(response: Response): Promise<PanelApiError> {
       message = body.error.message;
     }
     kind = body.error?.kind;
+    field = typeof body.error?.field === 'string' ? body.error.field : undefined;
     conflicts = preserved.error?.conflicts ?? [];
   } catch {
     // Proxies and crashes are not required to understand the panel envelope.
   }
-  return new PanelApiError(response.status, code, message, kind, conflicts);
+  return new PanelApiError(response.status, code, message, kind, conflicts, field);
 }

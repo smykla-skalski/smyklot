@@ -330,6 +330,31 @@ describe('targets and repositories', () => {
     );
   });
 
+  it.each(['session_ttl_seconds', undefined, 42])(
+    'retains only string validation field identifiers: %s',
+    async (field) => {
+      const stub = stubFetch([
+        new Response(
+          JSON.stringify({
+            error: {
+              code: 'invalid_runtime_settings',
+              message: 'Session lifetime is invalid',
+              field,
+            },
+          }),
+          { status: 400 },
+        ),
+      ]);
+      const api = createPanelApi('/panel', stub.fetch);
+      await expect(api.fetchRootRuntimeSettings()).rejects.toMatchObject({
+        status: 400,
+        code: 'invalid_runtime_settings',
+        message: 'Session lifetime is invalid',
+        field: typeof field === 'string' ? field : undefined,
+      });
+    },
+  );
+
   it('keeps structured batch conflicts and their latest documents', async () => {
     const conflict =
       '{"error":{"code":"conflict","message":"settings changed in another session",' +
