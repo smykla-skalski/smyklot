@@ -1,3 +1,4 @@
+import { runtimeFieldConflicts, type RuntimeConflictChoice } from './runtime-conflicts';
 import { PanelApiError } from './api';
 import { CONFIG_KEYS } from './config';
 import { formattingField, formattingPatchValue, setFormattingPatchValue } from './formatting';
@@ -91,9 +92,15 @@ export async function saveRootSettingsDraft(
 export function rebaseRootSettingsConflict(
   registry: SettingsDraftRegistry,
   latest: RootRuntimeSettings,
+  choices: Readonly<Record<string, RuntimeConflictChoice>> = {},
 ): boolean {
   const snapshot = registry.resource(RUNTIME_RESOURCE);
   if (snapshot === null || snapshot.conflict?.type !== 'revision') return false;
+  const conflicts = runtimeFieldConflicts(registry, latest);
+  if (conflicts.some((conflict) => choices[conflict.id] === undefined)) return false;
+  const useSaved = new Set(
+    conflicts.filter((conflict) => choices[conflict.id] === 'saved').map((conflict) => conflict.id),
+  );
   const draft = parseRuntimeSettingsDraftDocument(snapshot.value);
   if (draft === null) return false;
 
@@ -104,6 +111,7 @@ export function rebaseRootSettingsConflict(
     latestBase.bot_config,
   );
   for (const control of snapshot.controls) {
+    if (useSaved.has(control.id)) continue;
     if (control.id.startsWith('runtime.bot_config.')) {
       const key = control.id.slice('runtime.bot_config.'.length);
       const field = formattingField(key);
@@ -159,6 +167,7 @@ export function rebaseRootSettingsConflict(
     latestBase,
     runtimeSettingsSavedControls(latestBase, latest.behavior_defaults.deployment),
     merged,
+    runtimeSettingsSavedControls(merged, latest.behavior_defaults.deployment),
   );
 }
 

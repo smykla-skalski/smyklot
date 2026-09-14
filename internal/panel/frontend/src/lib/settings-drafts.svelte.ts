@@ -628,6 +628,7 @@ export class SettingsDraftRegistry {
     latestBase: SettingsJson,
     savedControls: Readonly<Record<string, SettingsJson>>,
     rebasedDraft?: SettingsJson,
+    rebasedControls?: Readonly<Record<string, SettingsJson>>,
   ): boolean {
     assertRevision(expectedRevision);
     this.syncFromStorage();
@@ -638,6 +639,13 @@ export class SettingsDraftRegistry {
     }
     const controls = completeSavedProjection(current, savedControls);
     if (controls === null) return false;
+    if (rebasedControls !== undefined) {
+      for (const [id, control] of Object.entries(controls)) {
+        const value = rebasedControls[id];
+        if (value === undefined) return false;
+        control.value = cloneSettingsJson(value);
+      }
+    }
 
     const rebased: ResourceState = {
       ...current,

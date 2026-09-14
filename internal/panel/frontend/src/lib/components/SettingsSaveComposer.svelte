@@ -3,6 +3,7 @@
   import { fly } from 'svelte/transition';
 
   import Button from './Button.svelte';
+  import { reserveComposerSpace } from '../reveal-control';
 
   const {
     count,
@@ -96,6 +97,7 @@ changed something.
 
 {#if visible}
   <aside
+    {@attach reserveComposerSpace}
     class="settings-composer"
     class:action-required={needsAction || saving || resolving}
     aria-label={isReceipt ? 'Settings receipt' : 'Settings draft'}

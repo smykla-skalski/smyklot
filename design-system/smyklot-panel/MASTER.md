@@ -324,6 +324,11 @@ a screenshot as light or dark
 
 ### Floating action composer exception
 
+Floating save composers reserve their measured height and bottom inset in page
+padding and native scroll clearance. Update this space when content wraps, and
+release it when the composer leaves. A focused field and an additive picker must
+remain reachable above the bar, including after the final override is added.
+
 A floating composer that requires a decision uses a 2px border in
 `--decision-accent`, an alias of the existing gold `--warning` color used by unsaved
 star badges. Its Save or resolve action uses the same accent

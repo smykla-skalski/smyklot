@@ -340,6 +340,7 @@ describe('Root runtime settings drafts [Unit]', () => {
       revision: current.revision + 1,
       behavior_defaults: {
         deployment: current.behavior_defaults.deployment,
+        intent: { version: 1, overrides: { formatting: { json: { arrays: 'expanded' } } } },
         override: concurrentConfig,
         effective: concurrentConfig,
       },

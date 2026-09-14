@@ -24,7 +24,16 @@
     workspaceDraftValidation,
   } from '#lib/workspace-settings-save.js';
   import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
-  import { ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
+  import {
+    runtimeFieldConflicts,
+    runtimeConflictValue,
+    type RuntimeFieldConflict,
+    type RuntimeConflictChoice,
+  } from '#lib/runtime-conflicts.js';
+  import { sameSettingsJson } from '#lib/settings-draft-storage.js';
+  import ConfirmDialog from '#lib/components/ConfirmDialog.svelte';
+  import Select from '#lib/components/Select.svelte';
+  import { RUNTIME_RESOURCE, ROOT_SETTINGS_SCOPE } from '#lib/runtime-settings.js';
   import {
     setSettingsDraftRegistry,
     SettingsDraftRegistry,
@@ -38,7 +47,7 @@
     fileDraftValidationSnapshot,
     setFileDraftValidation,
   } from '#lib/file-draft-validation.js';
-  import type { PanelTarget } from '#lib/types.js';
+  import type { PanelTarget, RootRuntimeSettings } from '#lib/types.js';
   import {
     SYNC_SECTIONS,
     SYNC_SECTION_LABELS,
@@ -122,6 +131,13 @@
   let attentionNotice = $state<'inactive' | null>(null);
   let dismissedStorageProblem = $state<string | null>(null);
   let resolvingSettingsConflict = $state(false);
+  let runtimeConflictReview = $state<{
+    latest: RootRuntimeSettings;
+    conflicts: RuntimeFieldConflict[];
+    choices: Record<string, RuntimeConflictChoice>;
+    draft: import('#lib/settings-draft-storage.js').SettingsJson;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
   let selectedSaveProblemControl = $state<SettingsDirtyControl | null>(null);
   const viewerAccountId = $derived(session.viewer?.account.id ?? null);
   const settingsDraftsReady = $derived(
@@ -538,12 +554,40 @@
     ]);
   }
 
+  function applyRuntimeConflictChoices(): void {
+    const review = runtimeConflictReview;
+    if (review === null || review.conflicts.some((field) => review.choices[field.id] === undefined))
+      return;
+    const current = settingsDraftRegistry.resource(RUNTIME_RESOURCE);
+    if (current === null || !sameSettingsJson(current.value, review.draft)) {
+      runtimeConflictReview = null;
+      void updateRootSettingsDraft();
+      return;
+    }
+    if (!rebaseRootSettingsConflict(settingsDraftRegistry, review.latest, review.choices)) return;
+    queryClient.setQueryData(['root-settings'], review.latest);
+    settingsDraftRegistry.dismissProblem(ROOT_SETTINGS_SCOPE);
+    runtimeConflictReview = null;
+  }
+
   async function updateRootSettingsDraft(): Promise<void> {
     if (resolvingSettingsConflict) return;
     resolvingSettingsConflict = true;
     await tick();
     try {
       const latest = await api.fetchRootRuntimeSettings();
+      const conflicts = runtimeFieldConflicts(settingsDraftRegistry, latest);
+      if (conflicts.length > 0) {
+        runtimeConflictReview = {
+          latest,
+          conflicts,
+          choices: {},
+          draft: settingsDraftRegistry.resource(RUNTIME_RESOURCE)!.value,
+          returnFocus:
+            document.activeElement instanceof HTMLElement ? document.activeElement : null,
+        };
+        return;
+      }
       queryClient.setQueryData(['root-settings'], latest);
       rebaseRootSettingsConflict(settingsDraftRegistry, latest);
       settingsDraftRegistry.resolveExternalConflicts(ROOT_SETTINGS_SCOPE);
@@ -1367,6 +1411,48 @@
   {/if}
   <!-- The shell's, not a page's: a change made in a dialog is reported once the dialog
        has closed, and a receipt a page owned would leave with the page. -->
+  {#if runtimeConflictReview !== null}
+    <ConfirmDialog
+      id="runtime-conflict-review"
+      open
+      title="Choose which values to keep"
+      description="These settings changed in another session. Choose each value for your draft. Other edits are kept. Nothing is saved yet."
+      returnFocus={runtimeConflictReview.returnFocus}
+      onClose={() => (runtimeConflictReview = null)}
+      onConfirm={applyRuntimeConflictChoices}
+      confirmLabel="Update draft"
+      confirmDisabled={runtimeConflictReview.conflicts.some(
+        (field) => runtimeConflictReview!.choices[field.id] === undefined,
+      )}
+    >
+      <div class="form-stack">
+        {#each runtimeConflictReview.conflicts as field (field.id)}
+          <div class="form-field">
+            <label class="form-label" for={`conflict-${field.id}`}>{field.label}</label>
+            <Select
+              id={`conflict-${field.id}`}
+              value={runtimeConflictReview.choices[field.id]}
+              placeholder="Choose a value"
+              options={[
+                {
+                  value: 'draft',
+                  label: `My draft: ${runtimeConflictValue(field.id, field.draft)}`,
+                },
+                {
+                  value: 'saved',
+                  label: `Saved in another session: ${runtimeConflictValue(field.id, field.saved)}`,
+                },
+              ]}
+              onValueChange={(value) => {
+                if (runtimeConflictReview !== null && (value === 'draft' || value === 'saved'))
+                  runtimeConflictReview.choices[field.id] = value;
+              }}
+            />
+          </div>
+        {/each}
+      </div>
+    </ConfirmDialog>
+  {/if}
   <MutationReceipt />
 </QueryClientProvider>
 

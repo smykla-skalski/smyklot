@@ -52,6 +52,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-padding-bottom: var(--settings-composer-clearance, 0px);
+}
+
 html:focus-within {
   scroll-behavior: smooth;
 }
@@ -208,7 +212,8 @@ body {
   flex-direction: column;
   min-height: 100dvh;
   min-width: 0;
-  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8)) var(--space-8);
+  padding: var(--rhythm-pane-top-wide) clamp(var(--space-4), 2.4vw, var(--space-8))
+    max(var(--space-8), var(--settings-composer-clearance, 0px));
 }
 
 .workspace-content {
@@ -1713,7 +1718,8 @@ code {
 
 @media (max-width: 38rem) {
   .workspace {
-    padding: var(--rhythm-pane-top-compact) var(--space-3) var(--space-6);
+    padding: var(--rhythm-pane-top-compact) var(--space-3)
+      max(var(--space-6), var(--settings-composer-clearance, 0px));
   }
 
   .plate-head,
