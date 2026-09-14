@@ -515,7 +515,8 @@ npm run test:browser -- \
   tests/browser/sync-request-confirmation.test.ts \
   tests/browser/sync-requests.test.ts \
   tests/browser/sync-retained-check.test.ts \
-  tests/browser/sync-storage-recovery.test.ts
+  tests/browser/sync-storage-recovery.test.ts \
+  tests/browser/settings-toc.test.ts
 '''
 
 [tasks."panel:assets:generate"]

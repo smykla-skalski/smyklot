@@ -290,6 +290,8 @@ describe('automatic sync status interactions', () => {
         expect(Math.abs(geometry.width)).toBeLessThan(1);
         expect(Math.abs(geometry.height)).toBeLessThan(1);
 
+        // Coordinates only represent a reachable pointer target once the row is in view.
+        await first.scrollIntoViewIfNeeded();
         // Real pointer coordinates catch content intercepting an invisible row target.
         const name = await first.locator('.object-name').boundingBox();
         if (name === null) throw new Error('repository name has no bounds');
