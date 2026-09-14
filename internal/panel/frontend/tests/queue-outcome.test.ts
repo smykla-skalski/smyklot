@@ -34,3 +34,21 @@ it('names retry and recurring actions by the occurrence they change', () => {
     'Run now',
   );
 });
+
+it('does not promise an execution time while dependencies block work', () => {
+  const item = queueSeeds(() => '2026-09-14T12:00:00Z')[1]!;
+  const line = queueLine(item, Date.parse(item.eligible_at));
+  expect(line.lead).toContain('Waiting on required checks');
+  expect(line.lead).toContain('start time not confirmed');
+  expect(line.when).toBeUndefined();
+});
+it.each(['scheduled', 'ready', 'retrying'] as const)(
+  'qualifies %s eligibility with worker availability',
+  (state) => {
+    const item = queueSeeds(() => '2026-09-14T12:00:00Z')[3]!;
+    const line = queueLine({ ...item, state }, Date.parse(item.eligible_at) - 120000);
+    expect(line.lead).toContain('can start');
+    expect(line.when?.relative).toBe('in 2 minutes');
+    expect(line.tail).toContain('when a worker is available');
+  },
+);

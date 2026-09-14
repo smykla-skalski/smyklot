@@ -82,12 +82,14 @@ export function queueLine(item: QueueItem, now: number): QueueLine {
             : 'Running',
       };
     case 'blocked':
-      return { lead: `${item.blocked_reason ?? 'Waiting on something else'} · runs`, when: next };
+      return {
+        lead: `${item.blocked_reason ?? 'Waiting on a dependency'} · start time not confirmed`,
+      };
     case 'retrying':
       return {
-        lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · tries again`,
+        lead: `${item.blocked_reason ?? `Attempt ${item.attempt} did not finish`} · retry can start`,
         when: next,
-        tail: ', on its own',
+        tail: ', when a worker is available',
       };
     case 'succeeded':
     case 'failed':
@@ -101,7 +103,11 @@ export function queueLine(item: QueueItem, now: number): QueueLine {
       };
     }
     default:
-      return { lead: `${detail} · runs`, when: next };
+      return {
+        lead: `${detail} · can start`,
+        when: next,
+        tail: ', when a worker is available',
+      };
   }
 }
 
