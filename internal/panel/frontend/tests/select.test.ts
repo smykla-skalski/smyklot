@@ -25,6 +25,29 @@ describe('shared themed Select [Component]', () => {
     await fireEvent.keyDown(screen.getByLabelText('Native choice'), { key: 'ArrowDown' });
     expect(await screen.findByRole('listbox', { name: 'Native choice' })).toBeTruthy();
   });
+  it('keeps an explicit popup label independent of the selected value', async () => {
+    render(Select, { value: undefined, options, 'aria-label': 'Count' });
+    await fireEvent.keyDown(screen.getByRole('combobox', { name: 'Count' }), { key: 'ArrowDown' });
+    expect(await screen.findByRole('listbox', { name: 'Count' })).toBeTruthy();
+  });
+  it('preserves a referenced label and its updates', async () => {
+    const { container } = render(Select, {
+      value: 1,
+      options,
+      'aria-label': 'Fallback',
+      'aria-labelledby': 'count-label',
+    });
+    const label = document.createElement('span');
+    label.id = 'count-label';
+    label.textContent = 'Item count';
+    container.prepend(label);
+    await fireEvent.keyDown(screen.getByRole('combobox', { name: 'Item count' }), {
+      key: 'ArrowDown',
+    });
+    expect(await screen.findByRole('listbox', { name: 'Item count' })).toBeTruthy();
+    label.textContent = 'Updated count';
+    expect(screen.getByRole('listbox', { name: 'Updated count' })).toBeTruthy();
+  });
   it('preserves numeric, string, empty and null choices and resets its form default', async () => {
     render(SelectHarness);
     const picker = screen.getByLabelText('Typed choice');

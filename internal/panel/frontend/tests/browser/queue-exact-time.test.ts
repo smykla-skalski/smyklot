@@ -37,6 +37,64 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
             })),
           })),
         ).toEqual([]);
+        const contrast = await page
+          .getByRole('dialog', { name: 'Schedule exact time', exact: true })
+          .evaluate((region) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = canvas.height = 1;
+            const pen = canvas.getContext('2d', { willReadFrequently: true })!;
+            const luminance = () => {
+              const rgb = [...pen.getImageData(0, 0, 1, 1).data].slice(0, 3).map((channel) => {
+                const value = channel / 255;
+                return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+              });
+              return rgb[0]! * 0.2126 + rgb[1]! * 0.7152 + rgb[2]! * 0.0722;
+            };
+            return [
+              ...region.querySelectorAll<HTMLElement>(
+                'button:not(:disabled), .form-help, .form-error',
+              ),
+            ]
+              .filter(
+                (node) =>
+                  node.getAttribute('aria-disabled') !== 'true' &&
+                  node.getAttribute('role') !== 'switch',
+              )
+              .map((node) => {
+                const style = getComputedStyle(node);
+                const ancestors: Element[] = [];
+                for (
+                  let ancestor: Element | null = node;
+                  ancestor;
+                  ancestor = ancestor.parentElement
+                )
+                  ancestors.unshift(ancestor);
+                const ratios = ['black', 'white'].map((base) => {
+                  pen.clearRect(0, 0, 1, 1);
+                  pen.fillStyle = base;
+                  pen.fillRect(0, 0, 1, 1);
+                  for (const ancestor of ancestors) {
+                    pen.fillStyle = getComputedStyle(ancestor).backgroundColor;
+                    pen.fillRect(0, 0, 1, 1);
+                  }
+                  if (node.tagName === 'BUTTON') {
+                    pen.fillStyle = style.getPropertyValue('--control-state-layer');
+                    pen.fillRect(0, 0, 1, 1);
+                  }
+                  const background = luminance();
+                  pen.fillStyle = style.color;
+                  pen.fillRect(0, 0, 1, 1);
+                  const foreground = luminance();
+                  return (
+                    (Math.max(background, foreground) + 0.05) /
+                    (Math.min(background, foreground) + 0.05)
+                  );
+                });
+                return { text: node.innerText, color: style.color, ratios };
+              });
+          });
+        for (const sample of contrast)
+          expect(Math.min(...sample.ratios), sample.text).toBeGreaterThanOrEqual(4.5);
         const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
         if (!directory) return;
         await mkdir(directory, { recursive: true });
@@ -47,7 +105,7 @@ for (const timezoneId of ['Europe/Warsaw', 'Asia/Tokyo']) {
             'evidence',
             `F14-${timezoneId.split('/')[1]}-${scene}-${colorScheme}-axe.json`,
           ),
-          JSON.stringify(accessibility, null, 2),
+          JSON.stringify({ ...accessibility, contrast }, null, 2),
         );
         await page.screenshot({
           path: join(directory, `F14-${timezoneId.split('/')[1]}-${scene}-${colorScheme}.png`),
