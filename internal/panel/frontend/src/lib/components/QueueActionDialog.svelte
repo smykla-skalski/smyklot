@@ -176,11 +176,12 @@ to ask it four different ways.
         </span>
       </div>
       <Button row disabled={at === '' || previewBusy} onclick={() => void refreshPreview()}
-        >{previewBusy ? 'Calculating…' : 'Preview when it runs'}</Button
+        >{previewBusy ? 'Calculating…' : 'Preview earliest start'}</Button
       >
       {#if preview !== null && previewKey === scheduleKey()}
         <div class="schedule-preview" role="status">
-          <strong>It would first run</strong>
+          <strong>Eligible from</strong>
+          <span>Actual start depends on worker availability.</span>
           <time datetime={preview.eligible_at}>{previewTime(preview.eligible_at)}</time>
           {#if preview.profile_timezone !== undefined}
             <span
@@ -210,7 +211,13 @@ to ask it four different ways.
         />
       </div>
     {:else if action === 'cancel'}
-      <p>The cancellation and who requested it remain in Queue history</p>
+      <p>
+        This cancels the selected occurrence. The cancellation and requester remain in Queue
+        history.
+      </p>
+      {#if item?.source_kind === 'recurring'}
+        <p>The recurring schedule stays enabled. Future occurrences can still be queued.</p>
+      {/if}
     {/if}
 
     {#if needsReason}

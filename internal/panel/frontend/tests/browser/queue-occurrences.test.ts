@@ -40,6 +40,16 @@ it.each(['light', 'dark'] as const)(
         await capture(scope === 'root' ? 'root-retry' : 'workspace-retry');
         await page.keyboard.press('Escape');
         await dialog.waitFor({ state: 'hidden' });
+        await page
+          .getByRole('button', { name: 'Open Refresh the list of repositories', exact: true })
+          .click();
+        const completed = page.getByRole('dialog', { name: 'Refresh the list of repositories' });
+        await completed.getByText('Finished', { exact: true }).waitFor();
+        expect(await completed.getByText('Estimated start', { exact: true }).count()).toBe(0);
+        expect(await completed.getByText('Succeeded', { exact: true }).count()).toBeGreaterThan(0);
+        await capture(scope === 'root' ? 'root-completed' : 'workspace-completed');
+        await page.keyboard.press('Escape');
+        await completed.waitFor({ state: 'hidden' });
       }
     } finally {
       await page.close();

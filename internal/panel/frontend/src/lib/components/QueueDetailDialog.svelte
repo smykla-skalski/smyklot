@@ -58,6 +58,7 @@ not.
 -->
 
 {#snippet executionDetails(detail: QueueDetail)}
+  {@const terminal = ['succeeded', 'failed', 'cancelled', 'superseded'].includes(detail.item.state)}
   <dl class="facts">
     {#if detail.item.kind === 'webhook_delivery'}
       {@const nextStep = deliveryNextStep(detail.item, detail.delivery)}
@@ -118,28 +119,43 @@ not.
           : ''}
       </dd>
     </div>
-    <div>
-      <dt>Ready, in your timezone</dt>
-      <dd>{absolute(detail.item.eligible_at)}</dd>
-    </div>
-    {#if detail.item.profile_timezone}
+    {#if detail.item.started_at}
       <div>
-        <dt>Ready, in the job's timezone</dt>
-        <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
+        <dt>Started</dt>
+        <dd>{absolute(detail.item.started_at)}</dd>
       </div>
     {/if}
-    <div>
-      <dt>Estimated start</dt>
-      <dd>
-        {detail.item.estimated_start_at
-          ? `${absolute(detail.item.estimated_start_at)} · estimate`
-          : 'Not estimated'}
-      </dd>
-    </div>
-    <div>
-      <dt>Work ahead</dt>
-      <dd>{detail.item.work_ahead}</dd>
-    </div>
+    {#if terminal}
+      <div>
+        <dt>Finished</dt>
+        <dd>
+          {detail.item.finished_at ? absolute(detail.item.finished_at) : 'Finish time unavailable'}
+        </dd>
+      </div>
+    {:else if detail.item.state !== 'running'}
+      <div>
+        <dt>Eligible from, in your timezone</dt>
+        <dd>{absolute(detail.item.eligible_at)}</dd>
+      </div>
+      {#if detail.item.profile_timezone}
+        <div>
+          <dt>Eligible from, in the job's timezone</dt>
+          <dd>{absolute(detail.item.eligible_at, detail.item.profile_timezone)}</dd>
+        </div>
+      {/if}
+      <div>
+        <dt>Estimated start</dt>
+        <dd>
+          {detail.item.estimated_start_at
+            ? `${absolute(detail.item.estimated_start_at)} · estimate`
+            : 'Not estimated'}
+        </dd>
+      </div>
+      <div>
+        <dt>Work ahead</dt>
+        <dd>{detail.item.work_ahead}</dd>
+      </div>
+    {/if}
     <div>
       <dt>Attempts</dt>
       <dd>{detail.item.attempt}</dd>
@@ -220,7 +236,7 @@ not.
   title={detail?.item.title ?? 'Queue item'}
   description={detail?.item.kind === 'sync_scan'
     ? 'What this check found and what needs your attention'
-    : 'When it runs, what it has done, and every change it has been through'}
+    : 'This occurrence, its timing, outcome and recorded changes'}
   {onClose}
   beforeClose={() => !recoveryPending}
 >
