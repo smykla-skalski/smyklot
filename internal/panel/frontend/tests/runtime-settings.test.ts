@@ -13,6 +13,7 @@ import {
   adoptRuntimeSettings,
   buildRuntimeSettingsDraftDocument,
   parseRuntimeSettingsDraftDocument,
+  decodeRuntimeSettingsDraftDocument,
   RUNTIME_DURATION_SPECS,
   RUNTIME_RESOURCE,
   ROOT_SETTINGS_SCOPE,
@@ -97,6 +98,9 @@ describe('Root runtime settings drafts [Unit]', () => {
     };
 
     expect(parseRuntimeSettingsDraftDocument(invalid)).toBeNull();
+    expect(() => decodeRuntimeSettingsDraftDocument(invalid)).toThrow(
+      expect.objectContaining({ field: 'bot_config.formatting.json.arrays' }),
+    );
   });
 
   it('hydrates legacy full-config documents with the safe draft-merge default', () => {

@@ -16,7 +16,7 @@
     adoptRuntimeSettings,
     applyRuntimeConfigPatch,
     overlayRuntimeSettings,
-    parseRuntimeSettingsDraftDocument,
+    decodeRuntimeSettingsDraftDocument,
     ROOT_SETTINGS_SCOPE,
     RUNTIME_DURATION_SPECS,
     runtimeConfigPatch,
@@ -197,13 +197,18 @@
 
   function stage(nextValue: unknown, controlId: RuntimeSettingsControlId): boolean {
     const current = canonicalSettings;
-    const next = parseRuntimeSettingsDraftDocument(nextValue);
-    if (
-      current === null ||
-      next === null ||
-      !stageRuntimeSettingsControl(drafts, current, next, controlId)
-    ) {
-      actionFailure = 'This setting is not valid';
+    if (current === null) {
+      actionFailure = 'Settings are not loaded. Reload this page and try again';
+      return false;
+    }
+    try {
+      const next = decodeRuntimeSettingsDraftDocument(nextValue);
+      if (!stageRuntimeSettingsControl(drafts, current, next, controlId)) {
+        actionFailure = 'The draft could not be updated. Reload this page and try again';
+        return false;
+      }
+    } catch (cause) {
+      actionFailure = cause instanceof Error ? cause.message : String(cause);
       return false;
     }
     actionFailure = null;

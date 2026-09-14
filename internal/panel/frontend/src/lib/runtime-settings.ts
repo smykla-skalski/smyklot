@@ -1,5 +1,6 @@
 import {
   parseRuntimeBehavior,
+  RuntimeBehaviorValidationError,
   runtimeBehaviorFromPatch,
   resolveRuntimeBehavior,
   type RuntimeBehaviorIntent,
@@ -169,22 +170,49 @@ export function buildRuntimeSettingsDraftDocument(
 export function parseRuntimeSettingsDraftDocument(
   value: unknown,
 ): RuntimeSettingsDraftDocument | null {
-  if (!isRecord(value) || !hasExactKeys(value, DOCUMENT_KEYS)) return null;
-  const botConfig = parseConfig(value.bot_config);
-  if (botConfig === undefined) return null;
-  if (value.log_level !== null && !isLogLevel(value.log_level)) return null;
+  try {
+    return decodeRuntimeSettingsDraftDocument(value);
+  } catch {
+    return null;
+  }
+}
+
+/** Decode an editable document without losing the offending field's diagnostic. */
+export function decodeRuntimeSettingsDraftDocument(value: unknown): RuntimeSettingsDraftDocument {
+  if (!isRecord(value)) throw new TypeError('Service settings must be an object');
+  for (const key of DOCUMENT_KEYS) {
+    if (!Object.hasOwn(value, key))
+      throw new RuntimeBehaviorValidationError(key, `Service settings are missing ${key}`);
+  }
+  for (const key of Object.keys(value)) {
+    if (!DOCUMENT_KEYS.some((known) => known === key))
+      throw new RuntimeBehaviorValidationError(
+        key,
+        `Service settings contain an unknown field: ${key}`,
+      );
+  }
+  const botConfig = parseRuntimeBehavior(value.bot_config) as RuntimeConfigDocument | null;
+  if (value.log_level !== null && !isLogLevel(value.log_level)) {
+    throw new RuntimeBehaviorValidationError('log_level', 'Log level is invalid');
+  }
   if (
     typeof value.path_index_max_seconds !== 'number' ||
     !Number.isSafeInteger(value.path_index_max_seconds) ||
     value.path_index_max_seconds <= 0
   ) {
-    return null;
+    throw new RuntimeBehaviorValidationError(
+      'path_index_max_seconds',
+      'File index maximum must be a positive whole number of seconds',
+    );
   }
 
   const durations = Object.fromEntries(
     DURATION_KEYS.map((key) => [key, parseDurationDraft(value[key])]),
   ) as Record<RuntimeDurationKey, RuntimeDurationDraft | null>;
-  if (DURATION_KEYS.some((key) => durations[key] === null)) return null;
+  for (const key of DURATION_KEYS) {
+    if (durations[key] === null)
+      throw new RuntimeBehaviorValidationError(key, `${key} contains an invalid duration draft`);
+  }
 
   return {
     bot_config: botConfig,
@@ -438,14 +466,6 @@ function parseDurationEditor(value: unknown): RuntimeDurationEditor | null | und
     return undefined;
   }
   return { amount: value.amount, unit: value.unit };
-}
-
-function parseConfig(value: unknown): RuntimeConfigDocument | null | undefined {
-  try {
-    return parseRuntimeBehavior(value) as RuntimeConfigDocument | null;
-  } catch {
-    return undefined;
-  }
 }
 
 function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
