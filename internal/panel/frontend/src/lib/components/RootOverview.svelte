@@ -240,11 +240,11 @@ Each card reads its own endpoint, so one slow answer does not hold up the rest.
           <a class="object-row" href={inboxHref}>
             <span class="object-main">
               <span class="object-name-row">
-                <span class="object-name">Read the security notifications</span>
+                <span class="object-name">Review unread notifications</span>
                 <span class="mx-mark mx-pending"><span class="t">{unread} unread</span></span>
               </span>
               <span class="object-sum"
-                >GitHub told the owners something about this App and nobody has read it yet</span
+                >Operator activity in workspaces you own · unread in your inbox</span
               >
             </span>
             <span class="object-side"><Icon name="chevron-right" size="xs" /></span>

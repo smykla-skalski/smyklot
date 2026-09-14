@@ -104,7 +104,10 @@
     actionProblem = null;
     try {
       await markAllRead();
-      await notificationsQuery.refetch();
+      await Promise.all([
+        notificationsQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+      ]);
     } catch (error) {
       actionProblem = error instanceof Error ? error.message : String(error);
     } finally {
@@ -117,7 +120,10 @@
     actionProblem = null;
     try {
       await markReadMutation.mutateAsync(notification.id);
-      await notificationsQuery.refetch();
+      await Promise.all([
+        notificationsQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ['root-overview'] }),
+      ]);
     } catch (error) {
       actionProblem = error instanceof Error ? error.message : String(error);
     }
