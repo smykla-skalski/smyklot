@@ -149,6 +149,8 @@ describe('ConfigEditor drafts [Component]', () => {
     await rerender({ serverProblems: {} });
     expect(value.getAttribute('aria-describedby')).toBeNull();
     expect(key.getAttribute('aria-describedby') ?? '').not.toContain(description);
+    expect((key as HTMLInputElement).value).toBe('lgtm');
+    expect(key.getAttribute('aria-invalid')).toBe('true');
   });
 
   function aliases() {

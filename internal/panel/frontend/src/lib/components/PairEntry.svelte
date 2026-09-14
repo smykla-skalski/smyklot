@@ -64,8 +64,16 @@
     ),
   );
 
+  let receivedKey = untrack(() => keyValue);
+  let receivedValue = untrack(() => value);
+
+  // Refreshing unrelated props must not erase an in-progress edit or error.
+  // Only a different canonical pair resets the local editor.
   // External reset restores both halves. A valid commit is adopted by the owner.
   $effect(() => {
+    if (keyValue === receivedKey && value === receivedValue) return;
+    receivedKey = keyValue;
+    receivedValue = value;
     keyText = keyValue;
     selected = value;
     touched = false;
