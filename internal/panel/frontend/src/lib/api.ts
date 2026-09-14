@@ -1,3 +1,8 @@
+import {
+  parseScheduleDatePreview,
+  type ScheduleDatePreview,
+  type SchedulePreviewInput,
+} from './schedule-preview';
 import { parseScheduleTimezonePreview, type ScheduleTimezonePreview } from './schedule-timezone';
 import type {
   DeliveryRecoveryPreview,
@@ -162,6 +167,10 @@ export interface PanelApi {
     itemId: string,
     input: QueueActionInput,
   ): Promise<QueueSchedulePreview>;
+  previewScheduleDate(
+    input: SchedulePreviewInput,
+    signal?: AbortSignal,
+  ): Promise<ScheduleDatePreview>;
   previewScheduleTimezone(
     timezone: string,
     at: string,
@@ -662,6 +671,22 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}/actions/preview`,
         input,
       );
+    },
+
+    async previewScheduleDate(
+      input: SchedulePreviewInput,
+      signal?: AbortSignal,
+    ): Promise<ScheduleDatePreview> {
+      const preview = parseScheduleDatePreview(
+        await jsonRequest<unknown>('/api/v1/schedule-preview', {
+          method: 'POST',
+          body: JSON.stringify(input),
+          signal,
+        }),
+      );
+      if (preview.date !== input.date || preview.timezone !== input.profile.timezone)
+        throw new Error('Schedule preview does not match the requested date and timezone');
+      return preview;
     },
 
     async previewScheduleTimezone(

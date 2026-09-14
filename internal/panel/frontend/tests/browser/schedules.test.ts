@@ -135,6 +135,88 @@ describe('desktop hours draft protection', () => {
     },
   );
 
+  it.each(['light', 'dark'] as const)(
+    'previews date-specific hours and recovers errors in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'), { ready: '.view-frame .object-row' });
+        await page.getByRole('button', { name: 'New hours profile' }).click();
+        const editor = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        await editor.getByLabel('Profile name', { exact: true }).fill('Clock changes');
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+          await editor.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
+        const timezone = editor.getByRole('combobox', { name: 'Timezone', exact: true });
+        await timezone.fill('Europe/Warsaw');
+        await timezone.press('Tab');
+        const row = editor.locator('.window-row');
+        await row.getByRole('combobox', { name: 'Day', exact: true }).click();
+        await page.getByRole('option', { name: 'Sunday', exact: true }).click();
+        await row.getByLabel('Opens', { exact: true }).fill('02:15');
+        await row.getByLabel('Closes', { exact: true }).fill('02:45');
+        await editor.locator('summary').filter({ hasText: 'Preview a date' }).click();
+        const date = editor.getByLabel('Preview date', { exact: true });
+        const section = editor.locator('details').filter({ hasText: 'Preview a date' });
+        const capture = async (scene: string) => {
+          const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+          if (!directory) return;
+          await mkdir(directory, { recursive: true });
+          await section.scrollIntoViewIfNeeded();
+          await page.screenshot({
+            path: join(directory, `F08-date-preview-${scene}-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        };
+        await date.fill('2026-10-25');
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section
+          .getByText('Opens 2026-10-25 at 02:15 (UTC+02:00)', { exact: false })
+          .waitFor();
+        expect(await section.innerText()).toContain('Closes 2026-10-25 at 02:45 (UTC+01:00)');
+        await capture('repeated');
+        await date.fill('2026-03-29');
+        await expect
+          .poll(() => section.getByText('Hours for 2026-10-25', { exact: false }).count())
+          .toBe(0);
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section
+          .getByText('This interval does not open because the clocks move forward.', {
+            exact: true,
+          })
+          .waitFor();
+        await capture('gap');
+        await page.route('**/api/v1/schedule-preview', (route) =>
+          route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({ error: { code: 'unavailable', message: 'Unavailable' } }),
+          }),
+        );
+        await date.fill('2026-12-27');
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section.getByRole('alert').waitFor();
+        await capture('retry');
+        await page.unroute('**/api/v1/schedule-preview');
+        await section.getByRole('button', { name: 'Retry preview', exact: true }).click();
+        await section
+          .getByText('Opens 2026-12-27 at 02:15 (UTC+01:00)', { exact: false })
+          .waitFor();
+        await editor.getByRole('button', { name: 'Add date', exact: true }).click();
+        await editor.getByLabel('Date', { exact: true }).fill('2026-12-27');
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section.getByText('Closed on this date.', { exact: true }).waitFor();
+        await capture('closed');
+      } finally {
+        await page.unrouteAll({ behavior: 'wait' });
+        await page.close();
+      }
+    },
+  );
+
   it('previews unsaved schedule dates without changing mock profiles', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     try {

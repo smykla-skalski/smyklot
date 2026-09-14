@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ScheduleDatePreview from './ScheduleDatePreview.svelte';
   import { focusInvalidControl } from '#lib/focus-invalid-control.js';
   import type { PanelApi } from '#lib/api.js';
   import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
@@ -202,6 +203,21 @@ changing a window here changes when every policy that names it runs.
       entries={exceptions}
       onChange={(next) => (exceptions = next)}
       showProblems={showExceptionProblems}
+    />
+    <ScheduleDatePreview
+      id="profile-preview-date"
+      {api}
+      {timezoneValid}
+      profile={{
+        name: name.trim(),
+        timezone: timezone.trim(),
+        windows: windows.map((window) => ({
+          weekday: window.weekday,
+          start_minute: scheduleMinute(window.start),
+          end_minute: scheduleMinute(window.end),
+        })),
+        exceptions: exceptionInputs(exceptions),
+      }}
     />
     <FormError message={inputProblem || error} />
   </div>

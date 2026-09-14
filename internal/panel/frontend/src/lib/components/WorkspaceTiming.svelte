@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ScheduleDatePreview from './ScheduleDatePreview.svelte';
   import { focusInvalidControl } from '#lib/focus-invalid-control.js';
   import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
   import { scheduleMinute } from '#lib/schedule-input.js';
@@ -341,6 +342,21 @@ answered a question a workspace never asks and hid the one it does.
         entries={exceptions}
         onChange={(next) => (exceptions = next)}
         showProblems={showExceptionProblems}
+      />
+      <ScheduleDatePreview
+        id="timing-preview-date"
+        {api}
+        {timezoneValid}
+        profile={{
+          name: customName.trim(),
+          timezone: timezone.trim(),
+          windows: windows.map((window) => ({
+            weekday: window.weekday,
+            start_minute: scheduleMinute(window.start),
+            end_minute: scheduleMinute(window.end),
+          })),
+          exceptions: exceptionInputs(exceptions),
+        }}
       />
     {/if}
 
