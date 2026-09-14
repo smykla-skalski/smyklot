@@ -14,6 +14,126 @@ afterAll(async () => {
 
 describe('desktop runtime override ownership', () => {
   it.each(['light', 'dark'] as const)(
+    'restores checkpoint ownership and resets individual formatting fields in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(10_000);
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const read = async (): Promise<RootRuntimeSettings> =>
+        (await page.request.get(endpoint)).json();
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      const capture = async (scene: string) => {
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({ path: join(directory, `F04-history-${scene}-${colorScheme}.png`) });
+      };
+      const save = async () => {
+        const response = page.waitForResponse(
+          (r) => r.url() === endpoint && r.request().method() === 'PUT',
+        );
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        expect((await response).status()).toBe(200);
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
+          .toBe(0);
+      };
+      try {
+        const initial = await read();
+        expect(
+          (
+            await page.request.put(endpoint, {
+              data: {
+                bot_config: null,
+                background_work_paused: false,
+                log_level: null,
+                reaction_poll_interval_seconds: null,
+                merge_after_ci_quiet_period_seconds: null,
+                path_index_interval_seconds: null,
+                session_ttl_seconds: null,
+                expected_revision: initial.revision,
+              },
+            })
+          ).ok(),
+        ).toBe(true);
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        const prefix = page.getByLabel('Prefix', { exact: true });
+        const width = page.getByLabel('Indent Width', { exact: true });
+        await prefix.fill('/history-test');
+        await width.fill('4');
+        await save();
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await expect.poll(() => width.inputValue()).toBe('4');
+        expect((await read()).behavior_defaults.intent?.overrides).toEqual({
+          command_prefix: '/history-test',
+          formatting: { common: { indent_width: 4 } },
+        });
+        await width.scrollIntoViewIfNeeded();
+        await capture('formatting-saved');
+        for (const phase of ['clear', 'restore'] as const) {
+          await visit(page, addressOf(panel, 'root/history/audit'));
+          await page
+            .getByRole('button', { name: /inspect the settings snapshot/ })
+            .first()
+            .click();
+          const dialog = page.getByRole('dialog', { name: 'Settings history', exact: true });
+          await dialog.getByText('After · Selected', { exact: true }).waitFor();
+          await capture(`${phase}-after-preview`);
+          await dialog
+            .getByRole('radio', { name: 'Before change', exact: true })
+            .locator('..')
+            .click();
+          expect(await dialog.getByText('Before · Selected', { exact: true }).count()).toBe(1);
+          expect(await dialog.getByText('After · Selected', { exact: true }).count()).toBe(0);
+          await capture(`${phase}-preview`);
+          await dialog.getByRole('button', { name: 'Restore selected', exact: true }).click();
+          await capture(`${phase}-confirm`);
+          const response = page.waitForResponse(
+            (r) => r.url().endsWith('/restore') && r.request().method() === 'POST',
+          );
+          await dialog.getByRole('button', { name: 'Confirm restore', exact: true }).click();
+          expect((await response).status()).toBe(200);
+          await dialog.waitFor({ state: 'hidden' });
+          const intent = (await read()).behavior_defaults.intent;
+          if (phase === 'clear') expect(intent).toBeNull();
+          else
+            expect(intent?.overrides).toEqual({
+              command_prefix: '/history-test',
+              formatting: { common: { indent_width: 4 } },
+            });
+        }
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        await expect.poll(() => width.inputValue()).toBe('4');
+        await page
+          .getByRole('button', { name: 'Stop overriding Indent Width', exact: true })
+          .click();
+        await save();
+        expect((await read()).behavior_defaults.intent?.overrides).toEqual({
+          command_prefix: '/history-test',
+        });
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await expect
+          .poll(() => width.inputValue())
+          .toBe(String(initial.behavior_defaults.deployment.formatting.common.indent_width));
+        await width.scrollIntoViewIfNeeded();
+        await capture('formatting-reset');
+        await prefix.fill(initial.behavior_defaults.deployment.command_prefix);
+        await save();
+        expect((await read()).behavior_defaults.intent).toBeNull();
+        expect(errors).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+  it.each(['light', 'dark'] as const)(
     'keeps every override reachable above the save bar in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

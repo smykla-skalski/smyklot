@@ -952,3 +952,12 @@ Route wrappers provide layout only. Use an ordinary container for `root-workspac
 ## Sidebar current destination
 
 A sidebar tree has at most one current destination. Select the most specific visible route row. When contextual workspace rows are present in Operations, select that workspace page and leave the Workspaces catalogue as a normal navigation link. The contextual group heading carries the workspace identity. The current-page ARIA marker, active text colors and moving selection background must all belong to the same row. Verify direct entry, sibling navigation, parent return, both themes and reduced motion.
+
+## Settings history restore confirmation
+
+The selected Before or After state owns the comparison emphasis and an explicit
+text label. Current-state matching is a separate status, never a substitute for
+selection. Final confirmation names only the selected resources and identifies
+the history entry by an absolute timestamp with seconds and time zone. Before
+means immediately before that change; do not invent a timestamp for the prior
+state. Shared checkpoint component tests enforce names, side and time identity.

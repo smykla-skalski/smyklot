@@ -269,7 +269,15 @@ describe('SettingsCheckpointDialog [Component]', () => {
 
     await fireEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
     expect(restore).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert').textContent).toContain('creates new active revisions');
+    const confirmation = screen.getByRole('alert');
+    expect(confirmation.textContent).toContain(
+      'Workspace settings, smykla-skalski/website · Files override',
+    );
+    expect(confirmation.textContent).toContain('saved by the change');
+    expect(confirmation.querySelector('time')?.getAttribute('datetime')).toBe(
+      checkpoint().created_at,
+    );
+    expect(confirmation.textContent).toContain('creates new active revisions');
 
     await fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
     await waitFor(() => expect(restore).toHaveBeenCalledOnce());
@@ -301,7 +309,10 @@ describe('SettingsCheckpointDialog [Component]', () => {
       false,
     );
 
+    expect(screen.getAllByText('After · Selected').length).toBeGreaterThan(0);
     await fireEvent.click(screen.getByRole('radio', { name: 'Before change' }));
+    expect(screen.queryByText('After · Selected')).toBeNull();
+    expect(screen.getAllByText('Before · Selected').length).toBeGreaterThan(0);
     expect(screen.getByRole('checkbox', { name: 'Restore Workspace settings' })).toHaveProperty(
       'checked',
       false,
@@ -317,6 +328,12 @@ describe('SettingsCheckpointDialog [Component]', () => {
     expect(screen.queryByText('This stored document is no longer compatible')).toBeNull();
 
     await fireEvent.click(screen.getByRole('button', { name: 'Restore selected' }));
+    const confirmation = screen.getByRole('alert');
+    expect(confirmation.textContent).toContain('smykla-skalski/smyklot, Labels Sync');
+    expect(confirmation.textContent).toContain('immediately before the change');
+    expect(confirmation.querySelector('time')?.getAttribute('datetime')).toBe(
+      checkpoint().created_at,
+    );
     await fireEvent.click(screen.getByRole('button', { name: 'Confirm restore' }));
     await waitFor(() => expect(restore).toHaveBeenCalledOnce());
     expect(restore.mock.calls[0]?.[1]).toEqual({

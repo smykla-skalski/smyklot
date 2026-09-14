@@ -309,12 +309,12 @@ act sees the same history without the button.
             />
           </header>
           <div class="state-comparison">
-            <div>
-              <span>Before</span>
+            <div class:selected-state={restoreState === 'before'}>
+              <span>Before{restoreState === 'before' ? ' · Selected' : ''}</span>
               <p>{sideSummary(item, item.before)}</p>
             </div>
-            <div class="after-state">
-              <span>After</span>
+            <div class:selected-state={restoreState === 'after'}>
+              <span>After{restoreState === 'after' ? ' · Selected' : ''}</span>
               <p>{sideSummary(item, item.after)}</p>
             </div>
           </div>
@@ -375,9 +375,17 @@ act sees the same history without the button.
 
     {#if confirming}
       <p class="restore-confirmation" role="alert">
-        Restore {selected.length}
-        {selected.length === 1 ? 'resource' : 'resources'}? This creates new active revisions and a
-        new history entry
+        Restore {checkpoint.items
+          .filter((item) => selected.includes(itemIdentity(item)))
+          .map(settingsCheckpointItemLabel)
+          .join(', ')} to the state {restoreState === 'before'
+          ? 'immediately before the change'
+          : checkpoint.action.endsWith('.baseline')
+            ? 'captured'
+            : 'saved by the change'} at
+        <time datetime={checkpoint.created_at}
+          >{formatDateTime(checkpoint.created_at, { named: true, seconds: true })}</time
+        >? This creates new active revisions and a new history entry
       </p>
     {/if}
   {/if}
@@ -579,7 +587,7 @@ act sees the same history without the button.
     overflow-wrap: anywhere;
   }
 
-  .after-state {
+  .selected-state {
     background: var(--surface-inset);
     border-radius: var(--r-ctl);
   }
