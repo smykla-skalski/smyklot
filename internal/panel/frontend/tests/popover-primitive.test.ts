@@ -77,6 +77,7 @@ describe('the popover primitive', () => {
       'TargetSettings.svelte',
       // Optional sections expand in the document and hold complete cards.
       'DisclosureSection.svelte',
+      'ScheduleDatePreview.svelte', // Optional date calculation expands inline in the form.
       'FormattingEditor.svelte', // Explains setting precedence inline, not a menu.
       'RepositorySyncPane.svelte', // Advanced merge rules expand in the document flow.
     ]);

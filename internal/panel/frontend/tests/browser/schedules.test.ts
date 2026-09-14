@@ -217,6 +217,92 @@ describe('desktop hours draft protection', () => {
     },
   );
 
+  it.each(['light', 'dark'] as const)(
+    'keeps workspace date previews current through cancelled reads in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(5000);
+      const held: Route[] = [];
+      let release: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      try {
+        await visit(page, addressOf(panel, 'workspace/settings'), { ready: '#ws-timing' });
+        const timing = page.locator('#ws-timing');
+        await timing.locator('summary').click();
+        await timing.getByRole('button', { name: 'Request a change' }).click();
+        const dialog = page.getByRole('dialog', {
+          name: 'Request a change to when Smyklot acts',
+          exact: true,
+        });
+        await dialog.getByRole('combobox', { name: 'Hours', exact: true }).click();
+        await page.getByRole('option', { name: 'Hours of your own', exact: true }).click();
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday'])
+          await dialog.getByRole('button', { name: new RegExp(`^Remove ${day} hours`) }).click();
+        const timezone = dialog.getByRole('combobox', { name: 'Timezone', exact: true });
+        await timezone.fill('UTC');
+        await timezone.press('Tab');
+        const row = dialog.locator('.window-row');
+        await row.getByLabel('Opens', { exact: true }).fill('09:00');
+        await row
+          .getByRole('checkbox', { name: 'Close at end of Monday (24:00)', exact: true })
+          .check();
+        const section = dialog.locator('details').filter({ hasText: 'Preview a date' });
+        await section.locator('summary').click();
+        const date = section.getByLabel('Preview date', { exact: true });
+        await date.fill('2026-12-28');
+        await page.route('**/api/v1/schedule-preview', async (route) => {
+          held.push(route);
+          await gate;
+          await route.continue();
+        });
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await expect.poll(() => held.length).toBe(1);
+        const cancelled = page.waitForEvent('requestfailed', {
+          predicate: (request) => request.url().endsWith('/api/v1/schedule-preview'),
+        });
+        await date.fill('2026-12-29');
+        await cancelled;
+        await date.fill('2026-12-28');
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await expect.poll(() => held.length).toBe(2);
+        expect(
+          await section.getByRole('button', { name: 'Checking hours…', exact: true }).isDisabled(),
+        ).toBe(true);
+        release();
+        await section
+          .getByText('Opens 2026-12-28 at 09:00 (UTC+00:00)', { exact: false })
+          .waitFor();
+        expect(await section.innerText()).toContain('Closes 2026-12-29 at 00:00 (UTC+00:00)');
+        expect(await section.getByRole('alert').count()).toBe(0);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await section.scrollIntoViewIfNeeded();
+          await page.screenshot({
+            path: join(directory, `F08-workspace-date-preview-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        await row.getByLabel('Opens', { exact: true }).fill('10:00');
+        await expect.poll(() => section.getByText('Hours for', { exact: false }).count()).toBe(0);
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section
+          .getByText('Opens 2026-12-28 at 10:00 (UTC+00:00)', { exact: false })
+          .waitFor();
+      } finally {
+        release();
+        await page.unrouteAll({ behavior: 'wait' });
+        await page.close();
+      }
+    },
+  );
+
   it('previews unsaved schedule dates without changing mock profiles', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     try {
