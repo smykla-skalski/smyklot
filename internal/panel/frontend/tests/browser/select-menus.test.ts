@@ -76,13 +76,13 @@ describe('themed shared picker [Browser]', () => {
       timelines.push({
         change: 'collapse',
         frames: await sample(() =>
-          page.getByRole('button', { name: 'Collapse pages', exact: true }).click(),
+          page.getByRole('button', { name: 'Collapse navigation', exact: true }).click(),
         ),
       });
       timelines.push({
         change: 'expand',
         frames: await sample(() =>
-          page.getByRole('button', { name: 'Expand pages', exact: true }).click(),
+          page.getByRole('button', { name: 'Expand navigation', exact: true }).click(),
         ),
       });
       await page.setViewportSize({ width: 1024, height: 1000 });
@@ -357,14 +357,14 @@ describe('themed shared picker [Browser]', () => {
             animations: 'disabled',
           });
         if (width === 1440) {
-          await page.getByRole('button', { name: 'Collapse pages', exact: true }).click();
+          await page.getByRole('button', { name: 'Collapse navigation', exact: true }).click();
           await checkComposer();
           if (directory)
             await page.screenshot({
               path: join(directory, `bypass-collapsed-${colorScheme}-${width}.png`),
               animations: 'disabled',
             });
-          await page.getByRole('button', { name: 'Expand pages', exact: true }).click();
+          await page.getByRole('button', { name: 'Expand navigation', exact: true }).click();
         }
         await form.getByLabel('App name or slug').fill('smyklot');
         await form.getByText('Looking for actors', { exact: true }).waitFor({ state: 'hidden' });

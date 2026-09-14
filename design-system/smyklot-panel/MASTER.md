@@ -114,6 +114,11 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - The bottom account area stays visually quiet and does not add a custom role strip
 - The collapse control sits beside the brand when expanded and straddles the
   sidebar edge when collapsed; it appears only on sidebar hover or focus-within
+- Desktop collapse compacts the whole navigation, so its control says Collapse
+  navigation or Expand navigation. The compact workspace avatar retains a menu
+  chevron and a shared hover/focus label identifying the current scope and Switch
+  workspace action. Workspace and console switching remain keyboard reachable
+  without expanding navigation.
 - Mobile uses a top bar and a navigation drawer preserving desktop page order
 - Selection and `aria-current` identify the displayed page, never a remembered
   workspace page while Search or Inbox is open. Personal pages retain workspace
