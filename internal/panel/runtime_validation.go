@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/smykla-skalski/smyklot/pkg/config"
 )
@@ -26,6 +27,11 @@ func runtimeFieldFailure(field string, cause error) error {
 		} else if errors.As(cause, &wrongType) && wrongType.Field != "" {
 			field += "." + wrongType.Field
 		}
+	}
+	// Alias entries belong to one atomic draft control. Preserve the detailed
+	// path in the cause, while recovery identifies the editable collection.
+	if strings.HasPrefix(field, "bot_config.command_aliases.") {
+		field = "bot_config.command_aliases"
 	}
 	return &runtimeFieldError{field: field, cause: cause}
 }

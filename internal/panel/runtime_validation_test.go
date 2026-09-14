@@ -11,6 +11,9 @@ func TestRuntimeValidationIdentifiesRequestField(t *testing.T) {
 	harness := newPanelHarness(t, "root")
 	session := harness.signIn(t)
 	for _, sample := range []struct{ field, value, rejectedField string }{
+		{"bot_config", `{"version":1,"overrides":{"command_aliases":{"a":null}}}`, "bot_config.command_aliases"},
+		{"bot_config", `{"version":1,"overrides":{"command_aliases":{"a":42}}}`, "bot_config.command_aliases"},
+		{"bot_config", `{"version":1,"overrides":{"allowed_commands":[null]}}`, "bot_config.allowed_commands"},
 		{"session_ttl_seconds", "1", "session_ttl_seconds"},
 		{"reaction_poll_interval_seconds", "-1", "reaction_poll_interval_seconds"},
 		{"merge_after_ci_quiet_period_seconds", "-1", "merge_after_ci_quiet_period_seconds"},
