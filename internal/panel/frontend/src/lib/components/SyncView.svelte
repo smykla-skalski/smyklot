@@ -3,7 +3,6 @@
   import { PanelApiError } from '#lib/api.js';
   import { SyncRequestIntentStore } from '#lib/sync-request-intent.js';
   import Callout from './Callout.svelte';
-  import { receipts } from '#lib/receipts.svelte.js';
   import { useInterval } from 'runed';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -86,6 +85,8 @@
     fetchRequests,
     fetchOperation,
     selectedRequest = null,
+    acceptedRequest = null,
+    onAcceptedRequest,
     requestHref,
     onOpenRequest,
     onCloseRequest,
@@ -150,6 +151,12 @@
     fetchConfig: (targetId: string, kind: string) => Promise<SyncConfig>;
     fetchRequests?: import('../api').PanelApi['fetchSyncRequests'];
     fetchOperation?: import('../api').PanelApi['fetchSyncOperation'];
+    acceptedRequest?: import('../session.svelte').AcceptedSyncRequest | null;
+    onAcceptedRequest?: (
+      actorId: string,
+      targetId: string,
+      request: import('../session.svelte').AcceptedSyncRequest | null,
+    ) => void;
     selectedRequest?: { action: 'check' | 'dispatch'; requestKey: string } | null;
     requestHref?: (action: 'check' | 'dispatch', key: string) => string;
     onOpenRequest?: (action: 'check' | 'dispatch', key: string) => void;
@@ -310,7 +317,11 @@
   let approving = $state(false);
   let discarding = $state(false);
   let runningNow = $state(false);
-  let runNotice = $state('');
+  let runNotice = $state(
+    untrack(() =>
+      acceptedRequest ? 'Your request was accepted. Open it to see what happened.' : '',
+    ),
+  );
   let requestedCheckId = $state<string | null>(null);
   let requestedDispatchId = $state<string | null>(null);
   let pendingRequest = $state.raw<SyncRunNowInput | null>(null);
@@ -318,7 +329,9 @@
   let requestUncertain = $state(false);
   let requestCleanupPending = $state(false);
   let requestNotRecorded = $state(false);
-  let confirmedRequest = $state<{ action: 'check' | 'dispatch'; key: string } | null>(null);
+  let confirmedRequest = $state<import('../session.svelte').AcceptedSyncRequest | null>(
+    untrack(() => acceptedRequest),
+  );
   let focusConfirmedRequest = false;
   let requestStore: SyncRequestIntentStore | null = null;
   function readRequestStorage(): void {
@@ -572,6 +585,7 @@
     const request = pendingRequest;
     if (!request || !fetchOperation || runningNow) return;
     const requestTargetId = targetId;
+    const requestActorId = actorId;
     runningNow = true;
     requestNotRecorded = false;
     error = null;
@@ -595,6 +609,7 @@
         );
       focusConfirmedRequest = trigger.ownerDocument.activeElement === trigger;
       confirmedRequest = { action: request.action, key: request.request_key };
+      onAcceptedRequest?.(requestActorId, requestTargetId, confirmedRequest);
       requestCleanupPending = true;
       requestUncertain = false;
       finishRequestRecovery();
@@ -618,8 +633,10 @@
       return;
     }
     const requestTargetId = targetId;
+    const requestActorId = actorId;
     const recovering = requestUncertain;
     confirmedRequest = null;
+    onAcceptedRequest?.(requestActorId, requestTargetId, null);
     requestNotRecorded = false;
     runningNow = true;
     error = null;
@@ -657,16 +674,14 @@
       requestCleanupPending = true;
       requestUncertain = false;
       finishRequestRecovery();
-      if (response.status === 'check_accepted') {
-        requestedCheckId = response.check_id!;
-        runNotice = 'Your check request was accepted. Open the check to see its current result.';
-      }
-      if (response.status === 'dispatch_accepted') {
-        if (recovering) {
-          requestedDispatchId = response.plan_id!;
-          runNotice =
-            'Your request to run these changes was accepted. Open the changes to see their current result.';
-        } else receipts.say('Your request to run these changes was accepted');
+      if (response.status === 'check_accepted' || response.status === 'dispatch_accepted') {
+        confirmedRequest = { action: request.action, key: request.request_key };
+        onAcceptedRequest?.(requestActorId, requestTargetId, confirmedRequest);
+        runNotice = 'Your request was accepted. Open it to see what happened.';
+        if (!requestHref) {
+          if (response.status === 'check_accepted') requestedCheckId = response.check_id!;
+          else requestedDispatchId = response.plan_id!;
+        }
       }
       if (response.status === 'changes_pending')
         runNotice =

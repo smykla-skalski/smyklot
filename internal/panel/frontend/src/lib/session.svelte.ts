@@ -78,6 +78,8 @@ export interface SessionQueryState {
   targetsError: unknown;
 }
 
+export type AcceptedSyncRequest = { action: 'check' | 'dispatch'; key: string };
+
 export class PanelSession {
   readonly api: PanelApi;
   readonly build: PanelBuild;
@@ -86,6 +88,24 @@ export class PanelSession {
 
   loading = $state(true);
   private syncRequestFocusTarget = $state<string | null>(null);
+  private acceptedSyncRequests = $state.raw<Record<string, AcceptedSyncRequest>>({});
+
+  acceptedSyncRequest(actorId: string, targetId: string): AcceptedSyncRequest | null {
+    return this.acceptedSyncRequests[JSON.stringify([actorId, targetId])] ?? null;
+  }
+
+  rememberSyncRequest(
+    actorId: string,
+    targetId: string,
+    request: AcceptedSyncRequest | null,
+  ): void {
+    const next = { ...this.acceptedSyncRequests };
+    const scope = JSON.stringify([actorId, targetId]);
+    if (request) next[scope] = request;
+    else delete next[scope];
+    this.acceptedSyncRequests = next;
+  }
+
   viewer = $state.raw<PanelViewer | null>(null);
   targets = $state.raw<PanelTarget[]>([]);
   selectedId = $state<string | null>(null);

@@ -151,7 +151,7 @@ describe('desktop exact dispatch recovery', () => {
         }
         await submit();
         await page
-          .getByText('Your request to run these changes was accepted', { exact: true })
+          .getByText('Your request was accepted. Open it to see what happened.', { exact: true })
           .waitFor();
         expect(count).toBe(2);
       } finally {

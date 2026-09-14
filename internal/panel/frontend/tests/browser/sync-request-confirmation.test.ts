@@ -141,7 +141,7 @@ describe('desktop confirmation preserves uncertain requests', () => {
         mode = 'missing';
         await confirm.click();
         await retry.click();
-        await page.getByRole('link', { name: 'View accepted changes', exact: true }).waitFor();
+        await page.getByRole('link', { name: 'View request', exact: true }).waitFor();
         expect(commands).toEqual([pending]);
         expect(await saved()).toEqual([]);
         await capture('explicit-retry');

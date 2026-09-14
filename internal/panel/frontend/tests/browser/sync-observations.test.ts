@@ -209,35 +209,52 @@ describe('desktop repository observation evidence', () => {
             await page.route('**/api/v1/targets/*/sync/checks/scan%3Adesktop-check', (route) =>
               route.fulfill({ json: checkResponse(check) }),
             );
+            let requestKey = '';
+            await page.route('**/api/v1/targets/*/sync/requests/check/*', (route) =>
+              route.fulfill({
+                json: {
+                  target_id: '2001',
+                  acceptance: {
+                    action: 'check',
+                    request_key: requestKey,
+                    reason: 'Check sync from the status view',
+                    check_id: check.id,
+                    accepted_at: new Date().toISOString(),
+                  },
+                  observation_started_at: new Date().toISOString(),
+                  observed_at: new Date().toISOString(),
+                  comparison: null,
+                  plan: null,
+                  execution: checkResponse(check).execution,
+                  check: { available: true },
+                  dispatch: null,
+                },
+              }),
+            );
             let requests = 0;
             await page.route('**/api/v1/targets/*/sync/run-now', (route) => {
               requests++;
+              requestKey = route.request().postDataJSON().request_key;
               expect(route.request().method()).toBe('POST');
               expect(route.request().postDataJSON().reason).toBe('Check sync from the status view');
               return route.fulfill({ json: { status: 'check_accepted', check_id: check.id } });
             });
             await page.getByRole('button', { name: 'Check now', exact: true }).click();
             await page
-              .getByText(
-                'Your check request was accepted. Open the check to see its current result.',
-                {
-                  exact: true,
-                },
-              )
+              .getByText('Your request was accepted. Open it to see what happened.', {
+                exact: true,
+              })
               .waitFor();
             expect(requests).toBe(1);
             await captureRecovery('queued');
-            await page.getByRole('link', { name: 'View check', exact: true }).click();
+            await page.getByRole('link', { name: 'View request', exact: true }).click();
+            await page.getByRole('dialog', { name: 'Sync request', exact: true }).waitFor();
             const inspector = page.getByRole('dialog');
-            await inspector
-              .getByRole('heading', { name: 'Repository check', exact: true })
-              .waitFor();
-            expect(new URL(page.url()).pathname).toContain('/sync/check/scan%3Adesktop-check');
+            await inspector.getByRole('heading', { name: 'Sync request', exact: true }).waitFor();
+            expect(new URL(page.url()).pathname).toContain(`/sync/request/check/${requestKey}`);
             await captureRecovery('check-running');
             await page.reload();
-            await inspector
-              .getByRole('heading', { name: 'Repository check', exact: true })
-              .waitFor();
+            await inspector.getByRole('heading', { name: 'Sync request', exact: true }).waitFor();
             check.summary = 'Checked 4 repository settings: 4 matched.';
             check.state = 'succeeded';
             await inspector
@@ -245,7 +262,7 @@ describe('desktop repository observation evidence', () => {
               .getByText(check.summary, { exact: true })
               .waitFor({ timeout: 20_000 });
             await captureRecovery('check-complete');
-            await inspector.getByRole('button', { name: 'Close check', exact: true }).click();
+            await inspector.getByRole('button', { name: 'Close request', exact: true }).click();
             await page.waitForURL(/\/sync$/u);
             await page.unroute('**/api/v1/targets/*/sync/checks/scan%3Adesktop-check');
             status.repositories[0]!.cells.files = {

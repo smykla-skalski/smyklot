@@ -36,13 +36,13 @@ describe('desktop sync against the live development lifecycle', () => {
           .toBeNull();
         await visit(page, addressOf(panel, 'workspace/sync'));
         await page.getByRole('button', { name: 'Check now', exact: true }).click();
-        const link = page.getByRole('link', { name: 'View check', exact: true });
+        const link = page.getByRole('link', { name: 'View request', exact: true });
         await link.waitFor();
         const href = await link.getAttribute('href');
-        expect(href).toContain('/sync/check/');
+        expect(href).toContain('/sync/request/check/');
         await link.click();
+        await page.getByRole('dialog', { name: 'Sync request', exact: true }).waitFor();
         const inspector = page.getByRole('dialog');
-        await inspector.getByRole('heading', { name: 'Repository check', exact: true }).waitFor();
         await inspector.getByRole('heading', { name: 'Check in progress', exact: true }).waitFor();
         const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
         const capture = async (scene: string) => {
@@ -70,6 +70,17 @@ describe('desktop sync against the live development lifecycle', () => {
         expect(await inspector.innerText()).toContain('Succeeded');
         expect(await inspector.innerText()).toContain('Attempt');
         expect(await inspector.innerText()).toContain('Finished');
+        const results = inspector.getByRole('link', {
+          name: 'View repository results',
+          exact: true,
+        });
+        const resultHref = await results.getAttribute('href');
+        await results.click();
+        await inspector.getByRole('heading', { name: 'Repository check', exact: true }).waitFor();
+        expect(new URL(page.url()).pathname).toBe(resultHref);
+        await inspector
+          .getByRole('heading', { name: 'Check finished with gaps', exact: true })
+          .waitFor();
         await inspector.getByRole('button', { name: 'Close check', exact: true }).click();
         await page.waitForURL(/\/sync$/u);
         await page

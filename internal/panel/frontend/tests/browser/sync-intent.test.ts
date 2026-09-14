@@ -75,7 +75,9 @@ describe('desktop sync request intent', () => {
         await expect
           .poll(() =>
             page
-              .getByText('Your request to run these changes was accepted', { exact: true })
+              .getByText('Your request was accepted. Open it to see what happened.', {
+                exact: true,
+              })
               .count(),
           )
           .toBe(1);
@@ -89,9 +91,25 @@ describe('desktop sync request intent', () => {
         await inspector.getByRole('button', { name: 'Close sync details', exact: true }).click();
         await inspector.waitFor({ state: 'hidden' });
         await page
-          .getByText('Your request to run these changes was accepted', { exact: true })
+          .getByText('Your request was accepted. Open it to see what happened.', { exact: true })
           .waitFor();
         await capture('dispatched');
+        const requestLink = page.getByRole('link', { name: 'View request', exact: true });
+        expect(await requestLink.getAttribute('href')).toContain(
+          (await dispatchRequest).postDataJSON().request_key,
+        );
+        await requestLink.click();
+        const requestInspector = page.getByRole('dialog', { name: 'Sync request', exact: true });
+        await requestInspector.waitFor();
+        await requestInspector.getByText('Run these reviewed changes', { exact: true }).waitFor();
+        await capture('request');
+        await page.reload();
+        await requestInspector.getByText('Run these reviewed changes', { exact: true }).waitFor();
+        await requestInspector
+          .getByRole('link', { name: 'View change results', exact: true })
+          .click();
+        await inspector.waitFor();
+        expect(decodeURIComponent(new URL(page.url()).pathname)).toContain(original.id);
       } finally {
         await page.close();
       }

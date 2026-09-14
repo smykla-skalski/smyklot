@@ -83,6 +83,24 @@ describe('PanelSession [Unit]', () => {
     vi.unstubAllGlobals();
   });
 
+  it('remembers accepted requests only for their submitting account and workspace', () => {
+    const session = createSession();
+    const first = { action: 'check', key: 'first' } as const;
+    const second = { action: 'dispatch', key: 'second' } as const;
+    session.rememberSyncRequest('alice', 'one', first);
+    session.rememberSyncRequest('bob', 'one', second);
+    expect(session.acceptedSyncRequest('alice', 'one')).toEqual(first);
+    expect(session.acceptedSyncRequest('alice', 'two')).toBeNull();
+    expect(session.acceptedSyncRequest('bob', 'one')).toEqual(second);
+    session.rememberSyncRequest('alice', 'one', null);
+    expect(session.acceptedSyncRequest('alice', 'one')).toBeNull();
+    expect(session.acceptedSyncRequest('bob', 'one')).toEqual(second);
+    // An old workspace's delayed response keeps its original scope.
+    session.rememberSyncRequest('alice', 'two', first);
+    expect(session.acceptedSyncRequest('alice', 'one')).toBeNull();
+    expect(session.acceptedSyncRequest('alice', 'two')).toEqual(first);
+  });
+
   it('leaves an unauthorized Root route even when there is no workspace to return to', () => {
     const session = createSession();
 
