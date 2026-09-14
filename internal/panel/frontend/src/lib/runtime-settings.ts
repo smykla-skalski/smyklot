@@ -149,7 +149,7 @@ export function runtimeSettingsControls(): readonly RuntimeSettingsControlDefini
 export function buildRuntimeSettingsDraftDocument(
   settings: RootRuntimeSettings,
 ): RuntimeSettingsDraftDocument {
-  const document = parseRuntimeSettingsDraftDocument({
+  return decodeRuntimeSettingsDraftDocument({
     bot_config:
       settings.behavior_defaults.intent === undefined
         ? settings.behavior_defaults.override
@@ -163,8 +163,6 @@ export function buildRuntimeSettingsDraftDocument(
     session_ttl_seconds: durationDraft(settings.session_lifetime.override_seconds),
     path_index_max_seconds: settings.path_index_interval.max_seconds,
   });
-  if (document === null) throw new TypeError('runtime settings contain invalid editable values');
-  return document;
 }
 
 export function parseRuntimeSettingsDraftDocument(

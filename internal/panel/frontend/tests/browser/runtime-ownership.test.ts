@@ -14,6 +14,63 @@ afterAll(async () => {
 
 describe('desktop runtime override ownership', () => {
   it.each(['light', 'dark'] as const)(
+    'recovers from malformed runtime data before editing in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      let malformed = true;
+      const capture = async (scene: string) => {
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({
+          path: join(directory, `F04-malformed-load-${scene}-${colorScheme}.png`),
+        });
+      };
+      try {
+        await page.route(endpoint, async (route) => {
+          if (route.request().method() !== 'GET' || !malformed) return route.continue();
+          const response = await route.fetch();
+          const data = await response.json();
+          data.behavior_defaults.intent = {
+            version: 1,
+            overrides: { formatting: { common: { indent_width: 'bad' } } },
+          };
+          await route.fulfill({ response, json: data });
+        });
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        await page.getByText('The settings could not be read', { exact: true }).waitFor();
+        expect(await page.getByRole('alert').textContent()).toContain(
+          'bot_config.formatting.common.indent_width',
+        );
+        expect(await page.getByRole('button', { name: 'Save', exact: true }).count()).toBe(0);
+        expect(
+          await page.getByRole('button', { name: 'Override another', exact: true }).count(),
+        ).toBe(0);
+        await capture('rejected');
+        malformed = false;
+        await page.getByRole('button', { name: 'Try again', exact: true }).click();
+        await page.getByRole('button', { name: 'Override another', exact: true }).waitFor();
+        expect(
+          await page.getByText('The settings could not be read', { exact: true }).count(),
+        ).toBe(0);
+        await capture('recovered');
+        expect(errors).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'recovers rejected YAML formatting with keyboard focus in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

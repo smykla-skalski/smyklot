@@ -12,8 +12,10 @@
     type FormattingPatch,
   } from '../formatting';
   import type { RootRuntimeSection } from '../routes';
+  import { RuntimeBehaviorValidationError } from '../runtime-behavior';
   import {
     adoptRuntimeSettings,
+    buildRuntimeSettingsDraftDocument,
     applyRuntimeConfigPatch,
     overlayRuntimeSettings,
     decodeRuntimeSettingsDraftDocument,
@@ -103,7 +105,11 @@
   const queryClient = useQueryClient();
   const settingsQuery = createQuery(() => ({
     queryKey: ['root-settings'],
-    queryFn: fetchSettings,
+    queryFn: async () => {
+      const current = await fetchSettings();
+      buildRuntimeSettingsDraftDocument(current);
+      return current;
+    },
   }));
   const canonicalSettings = $derived<RootRuntimeSettings | null>(settingsQuery.data ?? null);
   const document = $derived(
@@ -122,13 +128,13 @@
   let actionFailure = $state<string | null>(null);
   let pauseDialogOpen = $state(false);
   let pauseSaving = $state(false);
+  function errorMessage(cause: unknown): string {
+    if (cause instanceof RuntimeBehaviorValidationError) return `${cause.message} (${cause.field})`;
+    return cause instanceof Error ? cause.message : String(cause);
+  }
+
   const failure = $derived(
-    actionFailure ??
-      (settingsQuery.error === null
-        ? null
-        : settingsQuery.error instanceof Error
-          ? settingsQuery.error.message
-          : String(settingsQuery.error)),
+    actionFailure ?? (settingsQuery.error === null ? null : errorMessage(settingsQuery.error)),
   );
 
   const runtimeOverridden = $derived(
@@ -182,7 +188,7 @@
       queryClient.setQueryData(['root-settings'], updated);
       pauseDialogOpen = false;
     } catch (cause) {
-      actionFailure = cause instanceof Error ? cause.message : String(cause);
+      actionFailure = errorMessage(cause);
       await settingsQuery.refetch();
     } finally {
       pauseSaving = false;
@@ -208,7 +214,7 @@
         return false;
       }
     } catch (cause) {
-      actionFailure = cause instanceof Error ? cause.message : String(cause);
+      actionFailure = errorMessage(cause);
       return false;
     }
     actionFailure = null;
