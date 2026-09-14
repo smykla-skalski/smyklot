@@ -153,15 +153,29 @@
     }
     return order;
   });
-  /* One flat run of everything the arrows walk, rows and the tail together. */
-  const walk = $derived([
-    ...shown.map((entry) => ({ kind: 'entry' as const, entry })),
-    ...(crossLabel !== undefined && !allScopes && terms.length > 0
-      ? [{ kind: 'scope' as const, entry: null }]
-      : []),
-  ]);
-  const recentWalk = $derived(terms.length === 0 ? recents : []);
-  const steps = $derived(terms.length === 0 ? recentWalk.length : walk.length);
+  const menuId = $props.id();
+  // Arrow order is the rendered group order, not the pre-grouped lookup order.
+  const walk = $derived(groups.flatMap((group) => group.rows));
+  const recentWalk = $derived(query.trim() === '' ? recents : []);
+  const steps = $derived(asking ? walk.length : recentWalk.length);
+  const activeIndex = $derived(steps === 0 ? -1 : Math.min(at, steps - 1));
+  const activeId = $derived(
+    activeIndex < 0
+      ? undefined
+      : asking
+        ? optionId(walk[activeIndex])
+        : `${menuId}-recent-${encodeURIComponent(recentWalk[activeIndex])}`,
+  );
+
+  function optionId(entry: FindEntry): string {
+    return `${menuId}-result-${encodeURIComponent(`${entry.cross ?? ''}:${entry.group}:${entry.href}:${entry.title}`)}`;
+  }
+
+  $effect(() => {
+    if (open && activeId !== undefined && document.activeElement === field) {
+      document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' });
+    }
+  });
 
   $effect(() => {
     if (!open) return;
@@ -186,6 +200,7 @@
      replace a newer one. */
   $effect(() => {
     const text = query.trim();
+    const mine = ++asked;
     if (lookup === undefined || !asking) {
       untrack(() => {
         lookedUp = [];
@@ -193,7 +208,6 @@
       });
       return;
     }
-    const mine = ++asked;
     untrack(() => (looking = true));
     const timer = setTimeout(() => {
       void lookup(text).then((rows) => {
@@ -226,6 +240,7 @@
   }
 
   function keys(event: KeyboardEvent): void {
+    if (event.isComposing) return;
     if (event.key === 'Escape') {
       open = false;
       return;
@@ -233,23 +248,21 @@
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       if (steps === 0) return;
       event.preventDefault();
-      at = (at + (event.key === 'ArrowDown' ? 1 : steps - 1)) % steps;
+      at = Math.max(0, Math.min(steps - 1, activeIndex + (event.key === 'ArrowDown' ? 1 : -1)));
       return;
     }
     if (event.key !== 'Enter') return;
     event.preventDefault();
     if (terms.length === 0) {
-      const recent = recentWalk[at];
+      const recent = recentWalk[activeIndex];
       if (recent !== undefined) {
         query = recent;
         field?.focus();
       }
       return;
     }
-    const step = walk[at];
-    if (step === undefined) return;
-    if (step.kind === 'scope') allScopes = true;
-    else choose(step.entry);
+    const entry = walk[activeIndex];
+    if (entry !== undefined) choose(entry);
   }
 </script>
 
@@ -261,13 +274,17 @@ this one, and the people in it.
 Scoped to the console the reader is in, because a result that quietly changes
 console is a result that loses them. What the other console holds is one row away -
 and when it is offered, it is offered under the shield, named.
+
+The combobox keeps DOM focus and exposes the active result by id. Arrows follow
+the visible grouped order and Enter opens only that result. Tab reaches Close,
+Clear, all-results and scope actions outside the listbox; native dialog Escape
+returns focus to the invoker. Standard text editing and composition remain native.
 -->
 
 <dialog
   class="find-panel"
   bind:this={dialog}
   aria-label="Search"
-  onkeydown={keys}
   onclose={() => (open = false)}
   onclick={(event) => {
     if (event.target === dialog) open = false;
@@ -287,7 +304,9 @@ and when it is offered, it is offered under the shield, named.
         {placeholder}
         aria-label="Search"
         aria-expanded={steps > 0}
-        aria-controls="find-menu"
+        aria-controls={menuId}
+        aria-activedescendant={activeId}
+        onkeydown={keys}
         aria-autocomplete="list"
       />
       <button
@@ -299,122 +318,128 @@ and when it is offered, it is offered under the shield, named.
         <Icon name="close" size="sm" />
       </button>
     </div>
-    <div class="find-menu" id="find-menu" role="listbox" aria-label="Results">
-      {#if terms.length === 0}
-        {#if query.trim() !== ''}
-          <!-- One letter is not a question: it matches most of the panel, so saying so
-               is better than answering it with everything. -->
-          <p class="find-note">Keep typing - a search starts at {SEARCH_MINIMUM} letters</p>
-        {:else if recents.length === 0}
-          <p class="find-note">Type to search - pages, repositories, people</p>
-        {:else}
-          <div class="find-group" role="group" aria-labelledby="find-g-recent">
-            <span class="find-group-head">
-              <span class="find-group-name" id="find-g-recent">Recent</span>
-              <button
-                class="find-clear"
-                type="button"
-                aria-label="Clear recent searches - the list only, never your data"
-                onclick={() => {
-                  recents = [];
-                  writeRecents(recents);
-                }}
-              >
-                Clear
-              </button>
-            </span>
-            {#each recents as recent, index (recent)}
-              <button
-                class="find-row is-recent"
-                class:is-at={at === index}
-                type="button"
-                role="option"
-                tabindex="-1"
-                aria-selected={at === index}
-                onclick={() => {
-                  query = recent;
-                  field?.focus();
-                }}
-              >
-                <span class="gi"><Icon name="history" size="sm" /></span>
-                <span class="t">{recent}</span>
-              </button>
-            {/each}
-          </div>
-        {/if}
-      {:else if shown.length === 0}
-        <!-- Never "nothing matches" while the answer is still on its way: the
-             repositories and the people are asked for, and a claim made before
-             they arrive is a claim that is wrong every time. -->
+    <div class="find-menu">
+      {#if !asking && query.trim() === '' && recents.length > 0}
+        <div class="find-group-head">
+          <span class="find-group-name">Recent</span>
+          <button
+            class="find-clear"
+            type="button"
+            aria-label="Clear recent searches - the list only, never your data"
+            onclick={() => {
+              recents = [];
+              writeRecents(recents);
+              field?.focus();
+            }}>Clear</button
+          >
+        </div>
+      {/if}
+      {#if !asking && query.trim() !== ''}
+        <p class="find-note" role="status">
+          Keep typing - a search starts at {SEARCH_MINIMUM} letters
+        </p>
+      {:else if !asking && recents.length === 0}
+        <p class="find-note">Type to search - pages, repositories, people</p>
+      {:else if asking && shown.length === 0}
         <p class="find-note" role="status">
           {looking ? 'Looking…' : `Nothing here matches "${query.trim()}"`}
         </p>
-      {:else}
-        {#each groups as group (`${group.cross ?? ''}:${group.name}`)}
-          <div class="find-group" role="group">
-            {#if group.cross !== undefined}
-              <span class="find-group-name is-cross">
-                <Icon name="shield" size="xs" />{group.cross} · {group.name}
-              </span>
-            {:else}
-              <span class="find-group-name">{group.name}</span>
-            {/if}
-            {#each group.rows as row (row.href + row.title)}
-              <a
-                class="find-row"
-                class:is-at={walk[at]?.entry === row}
-                href={row.href}
-                role="option"
-                tabindex="-1"
-                aria-selected={walk[at]?.entry === row}
-                onclick={(event) => {
-                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0)
-                    return;
-                  event.preventDefault();
-                  choose(row);
-                }}
-              >
-                <span class="find-row-head">
-                  {#each findMarks(row.title, terms) as part, index (index)}
-                    {#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
-                  {/each}
-                </span>
-                <span class="find-row-text">
-                  {#each findMarks(row.say, terms) as part, index (index)}
-                    {#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
-                  {/each}
-                </span>
-              </a>
-            {/each}
-          </div>
-        {/each}
-        {#if hits.length > shown.length}
-          <!-- The count used to be the end of it: a reader was told twelve of their
-               matches were on screen and left with no way to the rest.
-
-               No number on the link. This palette counts what it is scoped to and the
-               page counts both consoles, so a count here is a promise the page does not
-               keep - it said twenty and showed thirty-one. -->
-          <a class="find-note find-all" href={searchAddress(query)} onclick={() => (open = false)}>
-            See all results for “{query.trim()}”
-          </a>
-        {/if}
       {/if}
-      {#if crossLabel !== undefined && !allScopes && terms.length > 0}
+      <div id={menuId} role="listbox" aria-label="Results" hidden={steps === 0}>
+        {#if !asking}
+          {#each recentWalk as recent, index (recent)}
+            <button
+              id={`${menuId}-recent-${encodeURIComponent(recent)}`}
+              class="find-row is-recent"
+              class:is-at={activeIndex === index}
+              type="button"
+              role="option"
+              tabindex="-1"
+              aria-selected={activeIndex === index}
+              onclick={() => {
+                query = recent;
+                field?.focus();
+              }}
+            >
+              <span class="gi"><Icon name="history" size="sm" /></span>
+              <span class="t">{recent}</span>
+            </button>
+          {/each}
+        {:else}
+          {#each groups as group (`${group.cross ?? ''}:${group.name}`)}
+            <div
+              class="find-group"
+              role="group"
+              aria-label={group.cross ? `${group.cross} · ${group.name}` : group.name}
+            >
+              <span
+                class="find-group-name"
+                class:is-cross={group.cross !== undefined}
+                aria-hidden="true"
+              >
+                {#if group.cross !== undefined}<Icon name="shield" size="xs" />{group.cross} ·
+                {/if}{group.name}
+              </span>
+              {#each group.rows as row (row.href + row.title)}
+                <a
+                  id={optionId(row)}
+                  class="find-row"
+                  class:is-at={walk[activeIndex] === row}
+                  href={row.href}
+                  role="option"
+                  tabindex="-1"
+                  aria-selected={walk[activeIndex] === row}
+                  onclick={(event) => {
+                    if (
+                      event.metaKey ||
+                      event.ctrlKey ||
+                      event.shiftKey ||
+                      event.altKey ||
+                      event.button !== 0
+                    )
+                      return;
+                    event.preventDefault();
+                    choose(row);
+                  }}
+                >
+                  <span class="find-row-head">
+                    {#each findMarks(row.title, terms) as part, index (index)}
+                      {#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
+                    {/each}
+                  </span>
+                  <span class="find-row-text">
+                    {#each findMarks(row.say, terms) as part, index (index)}
+                      {#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}
+                    {/each}
+                  </span>
+                </a>
+              {/each}
+            </div>
+          {/each}
+        {/if}
+      </div>
+      {#if asking && hits.length > shown.length}
+        <a class="find-note find-all" href={searchAddress(query)} onclick={() => (open = false)}
+          >See all results for “{query.trim()}”</a
+        >
+      {/if}
+      {#if crossLabel !== undefined && !allScopes && asking}
         <button
           class="find-scope"
-          class:is-at={walk[at]?.kind === 'scope'}
           type="button"
-          onclick={() => (allScopes = true)}
+          onclick={() => {
+            allScopes = true;
+            field?.focus();
+          }}
         >
-          <Icon name="shield" size="sm" />
-          Search {crossLabel} as well
+          <Icon name="shield" size="sm" />Search {crossLabel} as well
         </button>
       {/if}
     </div>
     <footer class="find-foot">
       <span><kbd>↑</kbd><kbd>↓</kbd> to move</span>
       <span><kbd>↵</kbd> to open</span>
+      <span><kbd>Tab</kbd> for actions</span>
       <span><kbd>esc</kbd> to close</span>
     </footer>
   </div>
@@ -724,8 +749,7 @@ and when it is offered, it is offered under the shield, named.
     text-align: start;
   }
 
-  .find-scope:hover,
-  .find-scope.is-at {
+  .find-scope:hover {
     background: var(--interactive-hover-layer);
     color: var(--text-primary);
   }

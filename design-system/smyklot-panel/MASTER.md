@@ -925,3 +925,17 @@ callback query parameters. Tell the reader to retrieve the original link from
 the sender's message, ask for a new link if unavailable, and provide a return
 to the panel. Recovery links request a fresh document so server error metadata
 is not retained by client navigation. Never promise that restarting guarantees access.
+
+### Search palette keyboard and accessibility contract
+
+The search field retains focus while arrows select results in rendered order.
+Its active descendant points to the selected option's stable id; clearing the
+results removes that relationship. Scroll the active option into view. Enter
+activates a result only when the search field owns the key event. Preserve
+standard text editing and composition keys.
+
+Recent searches and matched destinations are listbox options. Clear, scope
+expansion and all-results actions remain outside the listbox and are reached
+with Tab, along with Close. Tab does not visit each option. The named modal
+contains focus, and Escape or Close returns it to the invoker. Name result
+groups by category and console so cross-scope navigation is explicit.
