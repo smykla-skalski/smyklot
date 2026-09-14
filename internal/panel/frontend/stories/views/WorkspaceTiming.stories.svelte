@@ -3,7 +3,7 @@
 
   import WorkspaceTiming from '#lib/components/WorkspaceTiming.svelte';
   import type { QueuePolicy, ScheduleProfile, ScheduleRequest } from '#lib/types.js';
-  import { stubApi } from '../support/api.js';
+  import { stubApi, previewScheduleTimezoneFixture } from '../support/api.js';
 
   const alwaysOpen: ScheduleProfile = {
     id: 'always-open',
@@ -64,6 +64,7 @@
   function schedules(profile: ScheduleProfile, requests: ScheduleRequest[] = []) {
     const only = policy(profile);
     return stubApi({
+      previewScheduleTimezone: previewScheduleTimezoneFixture,
       fetchTargetSchedules: async () => ({
         policies: {
           current: [only],

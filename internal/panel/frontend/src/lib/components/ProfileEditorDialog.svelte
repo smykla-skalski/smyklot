@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { PanelApi } from '#lib/api.js';
+  import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
   import { scheduleMinute } from '#lib/schedule-input.js';
   import { scheduleExceptionProblems, scheduleWindowProblems } from '#lib/schedule-validation.js';
   import {
@@ -16,6 +18,7 @@
   import ScheduleWindowsEditor, { type EditableWindow } from './ScheduleWindowsEditor.svelte';
 
   const {
+    api,
     profile,
     open,
     busy,
@@ -23,6 +26,7 @@
     onClose,
     onSubmit,
   }: {
+    api: PanelApi;
     profile: ScheduleProfile | null;
     open: boolean;
     busy: boolean;
@@ -33,6 +37,7 @@
 
   let inputProblem = $state('');
   let name = $state('');
+  let timezoneValid = $state(false);
   let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   let windows = $state.raw<EditableWindow[]>([
     { id: 'default-1', weekday: 1, start: '09:00', end: '17:00' },
@@ -112,6 +117,7 @@
   }
 
   function submit(): void {
+    if (!timezoneValid) return;
     inputProblem = '';
     showExceptionProblems = true;
     const parsedExceptions = exceptionInputs(exceptions);
@@ -149,7 +155,7 @@ changing a window here changes when every policy that names it runs.
   busyLabel="Saving…"
   confirmLabel="Save profile"
   confirmTone="signal"
-  confirmDisabled={name.trim() === '' || timezone.trim() === '' || !windowsValid()}
+  confirmDisabled={name.trim() === '' || !timezoneValid || !windowsValid()}
   {onClose}
   {beforeClose}
   onConfirm={submit}
@@ -176,15 +182,12 @@ changing a window here changes when every policy that names it runs.
         placeholder="Europe business hours"
       />
     </label>
-    <label class="form-field" for="profile-timezone">
-      <span class="form-label">Timezone</span>
-      <input
-        class="text-input"
-        id="profile-timezone"
-        bind:value={timezone}
-        placeholder="Europe/Warsaw"
-      />
-    </label>
+    <ScheduleTimezoneField
+      id="profile-timezone"
+      {api}
+      bind:value={timezone}
+      onValidityChange={(valid) => (timezoneValid = valid)}
+    />
     <ScheduleWindowsEditor
       idPrefix="profile-window"
       {windows}

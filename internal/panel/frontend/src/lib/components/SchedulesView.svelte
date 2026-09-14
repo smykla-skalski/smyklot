@@ -550,6 +550,7 @@ in their own settings.
 {/key}
 {#key `${editingProfile?.id ?? 'new'}:${profileOpen}`}
   <ProfileEditorDialog
+    {api}
     profile={editingProfile}
     open={profileOpen}
     busy={dialogBusy}

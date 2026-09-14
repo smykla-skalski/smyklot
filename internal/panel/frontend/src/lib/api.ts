@@ -1,3 +1,4 @@
+import { parseScheduleTimezonePreview, type ScheduleTimezonePreview } from './schedule-timezone';
 import type {
   DeliveryRecoveryPreview,
   DeliveryRecoveryRequest,
@@ -161,6 +162,11 @@ export interface PanelApi {
     itemId: string,
     input: QueueActionInput,
   ): Promise<QueueSchedulePreview>;
+  previewScheduleTimezone(
+    timezone: string,
+    at: string,
+    signal?: AbortSignal,
+  ): Promise<ScheduleTimezonePreview>;
   fetchRootScheduleProfiles(): Promise<ScheduleProfile[]>;
   fetchRootJobPolicies(): Promise<RootJobPolicies>;
   fetchRootScheduleRequests(): Promise<ScheduleRequest[]>;
@@ -656,6 +662,20 @@ export function createPanelApi(
         `/api/v1/targets/${pathSegment(targetId)}/queue/${pathSegment(itemId)}/actions/preview`,
         input,
       );
+    },
+
+    async previewScheduleTimezone(
+      timezone: string,
+      at: string,
+      signal?: AbortSignal,
+    ): Promise<ScheduleTimezonePreview> {
+      const query = new URLSearchParams({ timezone, at });
+      const preview = parseScheduleTimezonePreview(
+        await jsonRequest<unknown>(`/api/v1/schedule-timezone?${query}`, { signal }),
+      );
+      if (preview.timezone !== timezone || Date.parse(preview.at) !== Date.parse(at))
+        throw new Error('Timezone preview does not match the requested time');
+      return preview;
     },
 
     async fetchRootScheduleProfiles(): Promise<ScheduleProfile[]> {

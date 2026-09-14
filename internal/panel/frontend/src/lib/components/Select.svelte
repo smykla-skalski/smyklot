@@ -175,24 +175,3 @@ A form-backed field preserves submission, required validation and reset behavior
     />
   {/if}
 </span>
-
-<style>
-  :global(.select-menu) {
-    background: var(--popover-bg);
-    border: 1px solid var(--popover-border);
-    border-radius: var(--radius-popover);
-    box-shadow: var(--shadow-popover);
-    color: var(--text-primary);
-    max-block-size: min(20rem, var(--bits-floating-available-height));
-    max-inline-size: var(--bits-floating-available-width);
-    min-inline-size: var(--bits-floating-anchor-width);
-    overflow: auto;
-    z-index: var(--layer-popover);
-  }
-  :global(.select-menu-in-dialog) {
-    z-index: var(--layer-dialog-popover);
-  }
-  :global(.select-options) {
-    min-inline-size: 0;
-  }
-</style>

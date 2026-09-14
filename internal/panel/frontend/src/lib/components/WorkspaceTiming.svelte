@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ScheduleTimezoneField from './ScheduleTimezoneField.svelte';
   import { scheduleMinute } from '#lib/schedule-input.js';
   import { scheduleHoursProblems } from '#lib/schedule-validation.js';
   import { exceptionInputs, type EditableException } from '#lib/schedule-exceptions.js';
@@ -117,6 +118,7 @@
   let windowMode = $state<'existing' | 'custom'>('existing');
   let chosenProfile = $state<string | null>(null);
   let customName = $state('Workspace hours');
+  let timezoneValid = $state(false);
   let timezone = $state(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
   let windows = $state.raw<EditableWindow[]>([
     { id: 'request-1', weekday: 1, start: '09:00', end: '17:00' },
@@ -155,6 +157,7 @@
   }
 
   async function send(): Promise<void> {
+    if (windowMode === 'custom' && !timezoneValid) return;
     const current = chosen;
     if (current === undefined || reason.trim() === '' || cadenceInvalid) return;
     busy = true;
@@ -316,10 +319,12 @@ answered a question a workspace never asks and hid the one it does.
         <span class="form-label">Name</span>
         <input class="text-input" bind:value={customName} />
       </label>
-      <label class="form-field">
-        <span class="form-label">Timezone</span>
-        <input class="text-input" bind:value={timezone} placeholder="Europe/Warsaw" />
-      </label>
+      <ScheduleTimezoneField
+        id="timing-timezone"
+        {api}
+        bind:value={timezone}
+        onValidityChange={(valid) => (timezoneValid = valid)}
+      />
       <div class="request-windows">
         <ScheduleWindowsEditor
           idPrefix="timing-window"
@@ -387,7 +392,10 @@ answered a question a workspace never asks and hid the one it does.
     <Button onclick={() => (open = false)}>Cancel</Button>
     <Button
       tone="signal"
-      disabled={busy || reason.trim() === '' || cadenceInvalid}
+      disabled={busy ||
+        reason.trim() === '' ||
+        cadenceInvalid ||
+        (windowMode === 'custom' && !timezoneValid)}
       onclick={() => void send()}>{busy ? 'Sending…' : 'Send request'}</Button
     >
   {/snippet}

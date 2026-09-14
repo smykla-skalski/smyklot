@@ -13,6 +13,128 @@ describe('desktop hours draft protection', () => {
     ['Timezone', 'UTC'],
   ] as const;
 
+  it.each(['light', 'dark'] as const)(
+    'checks searchable timezones and recovers failed previews in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      page.setDefaultTimeout(5000);
+      try {
+        await visit(page, addressOf(panel, 'root/schedules'));
+        await page.getByRole('button', { name: 'New hours profile', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'New hours profile', exact: true });
+        await dialog.getByLabel('Profile name', { exact: true }).fill('Timezone recovery');
+        for (const day of ['Tuesday', 'Wednesday', 'Thursday', 'Friday']) {
+          await dialog.getByRole('button', { name: new RegExp(`Remove ${day} hours`) }).click();
+        }
+        const timezone = dialog.getByRole('combobox', { name: 'Timezone', exact: true });
+        await timezone.fill('Mars/Olympus');
+        await timezone.press('Tab');
+        await dialog
+          .getByText('Choose a timezone supported by the scheduler', { exact: true })
+          .waitFor();
+        expect(
+          await dialog.getByRole('button', { name: 'Save profile', exact: true }).isDisabled(),
+        ).toBe(true);
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (directory) {
+          await mkdir(directory, { recursive: true });
+          await page.screenshot({
+            path: join(directory, `F08-timezone-invalid-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        }
+        let fail = true;
+        await page.route('**/api/v1/schedule-timezone?**', async (route) => {
+          if (fail && new URL(route.request().url()).searchParams.get('timezone') === 'UTC') {
+            fail = false;
+            await route.fulfill({
+              status: 503,
+              contentType: 'application/json',
+              body: JSON.stringify({ error: { code: 'unavailable', message: 'Unavailable' } }),
+            });
+          } else await route.continue();
+        });
+        await timezone.fill('UTC');
+        await timezone.press('Tab');
+        await dialog.getByRole('button', { name: 'Retry timezone check', exact: true }).waitFor();
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F08-timezone-retry-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        await dialog.getByRole('button', { name: 'Retry timezone check', exact: true }).click();
+        await expect
+          .poll(() => dialog.getByRole('button', { name: 'Save profile', exact: true }).isEnabled())
+          .toBe(true);
+        let releaseOld: (() => void) | undefined;
+        let oldRequested = false;
+        const oldGate = new Promise<void>((resolve) => {
+          releaseOld = resolve;
+        });
+        await page.route('**/api/v1/schedule-timezone?**', async (route) => {
+          if (new URL(route.request().url()).searchParams.get('timezone') !== 'Asia/Tokyo')
+            return route.fallback();
+          oldRequested = true;
+          await oldGate;
+          await route.continue();
+        });
+        try {
+          await timezone.fill('Asia/Tokyo');
+          await timezone.press('Tab');
+          await expect.poll(() => oldRequested).toBe(true);
+          expect(
+            await dialog.getByRole('button', { name: 'Save profile', exact: true }).isDisabled(),
+          ).toBe(true);
+          await timezone.fill('UTC');
+          await timezone.press('Tab');
+          await expect
+            .poll(() =>
+              dialog.getByRole('button', { name: 'Save profile', exact: true }).isEnabled(),
+            )
+            .toBe(true);
+        } finally {
+          releaseOld?.();
+        }
+        await expect.poll(() => timezone.inputValue()).toBe('UTC');
+        await timezone.fill('Warsaw');
+        await page.getByRole('option', { name: 'Europe/Warsaw', exact: true }).waitFor();
+        const optionEdge = await page
+          .getByRole('option', { name: 'Europe/Warsaw', exact: true })
+          .evaluate((node) => {
+            const popup = node.closest('.select-menu')!.getBoundingClientRect();
+            return popup.right - node.getBoundingClientRect().right;
+          });
+        expect(optionEdge).toBeLessThanOrEqual(6);
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F08-timezone-search-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        await timezone.press('ArrowDown');
+        await timezone.press('Enter');
+        await expect.poll(() => timezone.inputValue()).toBe('Europe/Warsaw');
+        await expect
+          .poll(() => dialog.getByRole('button', { name: 'Save profile', exact: true }).isEnabled())
+          .toBe(true);
+        await dialog.getByText(/^Local time:/).waitFor();
+        if (directory)
+          await page.screenshot({
+            path: join(directory, `F08-timezone-preview-${colorScheme}.png`),
+            animations: 'disabled',
+          });
+        await dialog.getByRole('button', { name: 'Save profile', exact: true }).click();
+        await dialog.waitFor({ state: 'hidden' });
+      } finally {
+        await page.unrouteAll({ behavior: 'wait' });
+        await page.close();
+      }
+    },
+  );
+
   it('previews schedule timezones with the authoritative Go database', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     try {

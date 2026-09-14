@@ -2,6 +2,7 @@
   import { defineMeta } from '@storybook/addon-svelte-csf';
   import { fn } from 'storybook/test';
 
+  import { stubApi, previewScheduleTimezoneFixture } from '../support/api.js';
   import ProfileEditorDialog from '#lib/components/ProfileEditorDialog.svelte';
   import type { ScheduleProfile } from '#lib/types.js';
 
@@ -26,6 +27,7 @@
     title: 'Views/ProfileEditorDialog',
     component: ProfileEditorDialog,
     args: {
+      api: stubApi({ previewScheduleTimezone: previewScheduleTimezoneFixture }),
       profile,
       open: true,
       busy: false,
