@@ -1,5 +1,5 @@
 import type { ScheduleProfile } from './types';
-import { scheduleMinute } from './schedule-input';
+import { scheduleMinute, scheduleMinuteText } from './schedule-input';
 
 export interface EditableException {
   id: string;
@@ -14,8 +14,8 @@ export function editableExceptions(entries: ScheduleProfile['exceptions']): Edit
     id: `stored-exception-${index}`,
     date: entry.date,
     closed: entry.closed,
-    start: minuteText(entry.start_minute ?? 540),
-    end: minuteText(entry.end_minute ?? 1020),
+    start: scheduleMinuteText(entry.start_minute ?? 540),
+    end: scheduleMinuteText(entry.end_minute ?? 1020),
   }));
 }
 
@@ -36,8 +36,4 @@ export function exceptionInputs(
 
 export function exceptionDraft(entries: readonly EditableException[]): unknown {
   return entries.map(({ date, closed, start, end }) => ({ date, closed, start, end }));
-}
-
-function minuteText(value: number): string {
-  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
 }

@@ -2,6 +2,7 @@
   import type { PanelApi } from '#lib/api.js';
   import type { ScheduleDatePreview, SchedulePreviewInput } from '#lib/schedule-preview.js';
   import { scheduleHoursProblems, validScheduleDate } from '#lib/schedule-validation.js';
+  import { scheduleMinuteText } from '#lib/schedule-input.js';
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
 
@@ -89,8 +90,13 @@ hides old answers; previewing never saves or schedules work.
         {#if current.preview.windows.length === 0}<p class="form-help">Closed on this date.</p>
         {:else}
           <ul class="form-stack preview-windows">
-            {#each current.preview.windows as window, index (index)}
+            {#each current.preview.windows as window (`${window.start_minute}:${window.end_minute}`)}
               <li class="form-help">
+                <strong
+                  >{scheduleMinuteText(window.start_minute)} to {scheduleMinuteText(
+                    window.end_minute,
+                  )}</strong
+                ><br />
                 {#if window.available}
                   Opens {boundary(window.opens_at!)}<br />Closes {boundary(window.closes_at!)}
                 {:else}This interval does not open because the clocks move forward.{/if}

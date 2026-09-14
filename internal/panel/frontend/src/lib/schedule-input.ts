@@ -5,3 +5,8 @@ export function scheduleMinute(value: string): number {
   const [hour = 0, minute = 0] = value.split(':').map(Number);
   return hour * 60 + minute;
 }
+
+/** Render a validated schedule boundary, including end-of-day minute 1440. */
+export function scheduleMinuteText(value: number): string {
+  return `${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`;
+}

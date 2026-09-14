@@ -185,10 +185,27 @@ describe('desktop hours draft protection', () => {
         await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
         await section
           .getByText('This interval does not open because the clocks move forward.', {
-            exact: true,
+            exact: false,
           })
           .waitFor();
         await capture('gap');
+        await editor.getByRole('button', { name: 'Add hours', exact: true }).click();
+        const additional = editor.locator('.window-row').last();
+        await additional.getByRole('combobox', { name: 'Day', exact: true }).click();
+        await page.getByRole('option', { name: 'Sunday', exact: true }).click();
+        await additional.getByLabel('Opens', { exact: true }).fill('09:00');
+        await additional.getByLabel('Closes', { exact: true }).fill('17:00');
+        await section.getByRole('button', { name: 'Preview hours', exact: true }).click();
+        await section
+          .getByText('Opens 2026-03-29 at 09:00 (UTC+02:00)', { exact: false })
+          .waitFor();
+        const intervals = section.getByRole('listitem');
+        expect(await intervals.count()).toBe(2);
+        expect(await intervals.nth(0).innerText()).toContain('02:15 to 02:45');
+        expect(await intervals.nth(0).innerText()).toContain('does not open');
+        expect(await intervals.nth(1).innerText()).toContain('09:00 to 17:00');
+        await capture('multiple');
+        await additional.getByRole('button', { name: /^Remove Sunday hours/ }).click();
         await page.route('**/api/v1/schedule-preview', (route) =>
           route.fulfill({
             status: 503,

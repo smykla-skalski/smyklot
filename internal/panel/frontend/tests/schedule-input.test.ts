@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { scheduleMinute } from '../src/lib/schedule-input';
+import { scheduleMinute, scheduleMinuteText } from '../src/lib/schedule-input';
 
 describe('schedule input preservation [Unit]', () => {
   it.each(['', '9:00', '09:60', '23:99', '24:01', '25:00', '09:00:30', '1e1:00', '-1:00'])(
@@ -15,5 +15,6 @@ describe('schedule input preservation [Unit]', () => {
     ['24:00', 1440],
   ] as const)('preserves %s', (value, minutes) => {
     expect(scheduleMinute(value)).toBe(minutes);
+    expect(scheduleMinuteText(minutes)).toBe(value);
   });
 });
