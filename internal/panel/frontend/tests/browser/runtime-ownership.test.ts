@@ -392,7 +392,10 @@ describe('desktop runtime override ownership', () => {
         await page.evaluate(() => document.fonts.ready);
         await page.mouse.move(0, 0);
         await page.screenshot({
-          path: join(directory, `F04-log-server-${scene}-${colorScheme}.png`),
+          path: join(
+            directory,
+            `${process.env.SMYKLOT_VISUAL_AUDIT_PREFIX ?? 'F04-log-server'}-${scene}-${colorScheme}.png`,
+          ),
         });
       };
       try {
@@ -423,7 +426,17 @@ describe('desktop runtime override ownership', () => {
           });
         });
         await visit(page, addressOf(panel, 'root/runtime/settings'));
+        expect(
+          await page
+            .getByRole('region', { name: 'Service settings', exact: true })
+            .getByText('Unsaved changes', { exact: true })
+            .count(),
+        ).toBe(0);
         await page.getByRole('button', { name: 'Override the deployment log level' }).click();
+        await page
+          .getByRole('region', { name: 'Service settings', exact: true })
+          .getByText('Unsaved changes', { exact: true })
+          .waitFor();
         const prefix = page.getByRole('button', { name: 'Runtime log level', exact: true });
         await prefix.click();
         await page.getByRole('option', { name: 'Debug', exact: true }).click();
@@ -479,6 +492,13 @@ describe('desktop runtime override ownership', () => {
         await expect
           .poll(() => page.getByRole('button', { name: 'Save', exact: true }).count())
           .toBe(0);
+        expect(
+          await page
+            .getByRole('region', { name: 'Service settings', exact: true })
+            .getByText('Unsaved changes', { exact: true })
+            .count(),
+        ).toBe(0);
+        expect(await page.getByText('Changes wait for Save', { exact: true }).count()).toBe(0);
         await capture('saved');
       } finally {
         await page.close();

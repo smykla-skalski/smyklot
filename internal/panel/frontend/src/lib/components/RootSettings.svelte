@@ -369,8 +369,8 @@ without the composer.
 
 <section class="root-settings" aria-label={SECTION_COPY[section].ariaLabel}>
   <RootPageHeader title={SECTION_COPY[section].title} subtitle={SECTION_COPY[section].subtitle}>
-    {#if section === 'settings'}
-      <StatusPill dot={settingsDirty}>Changes wait for Save</StatusPill>
+    {#if section === 'settings' && settingsDirty}
+      <StatusPill dot state="warning">Unsaved changes</StatusPill>
     {/if}
   </RootPageHeader>
   {#if loading && settings === null}
