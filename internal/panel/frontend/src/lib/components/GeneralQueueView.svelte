@@ -238,6 +238,10 @@
   const profiles = $derived(facets.profiles);
   const workspaces = $derived(facets.targets);
   const repositories = $derived(facets.repositories);
+  const namesUnavailable = $derived(
+    repositories.some((id) => !facets.repository_names?.[id]?.trim()) ||
+      profiles.some((id) => id !== 'immediate' && !facets.profile_names?.[id]?.trim()),
+  );
 
   /* The queue speaks in target ids - the rows carry one and the facets are a list of
      them - and nobody reading the console knows a workspace by its id. The catalog is
@@ -822,6 +826,22 @@ without the buttons, rather than buttons that refuse.
   </div>
 
   <p class="visually-hidden" aria-live="polite">{announcement}</p>
+  {#if namesUnavailable}
+    <Plate label="Some queue names are unavailable">
+      <p role="status">
+        IDs identify repositories or hours profiles whose names could not be loaded. Retry to check
+        again. Deleted records keep their IDs.
+      </p>
+      <Button
+        aria-disabled={updating}
+        onclick={() => {
+          if (!updating) void load();
+        }}
+      >
+        {updating ? 'Retrying names…' : 'Retry names'}
+      </Button>
+    </Plate>
+  {/if}
   <!-- Its own region, because the word beside the button is drawn with `visibility` and a
        hidden node is not in the accessibility tree to be announced from. -->
   <p class="visually-hidden" aria-live="polite">{updating ? 'Updating…' : ''}</p>

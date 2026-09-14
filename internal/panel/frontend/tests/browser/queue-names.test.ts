@@ -58,3 +58,63 @@ it.each(['light', 'dark'] as const)('names queue filters in %s desktop', async (
     await page.close();
   }
 });
+
+it.each(['light', 'dark'] as const)(
+  'recovers missing queue names in %s desktop',
+  async (colorScheme) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    let missing = true;
+    await page.route('**/api/v1/root/queue?*', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      if (missing && body.facets) {
+        body.facets.repository_names = {};
+        body.facets.profile_names = {};
+        for (const item of body.items ?? []) item.repository_name = '';
+      }
+      await route.fulfill({ response, json: body });
+    });
+    const capture = async (scene: string) => {
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      if (!directory) return;
+      await mkdir(directory, { recursive: true });
+      await page.screenshot({
+        path: join(directory, `F13-${scene}-${colorScheme}.png`),
+        animations: 'disabled',
+      });
+    };
+    try {
+      await page.goto(`${panel.origin}/root/queue`);
+      await page.getByRole('button', { name: 'Retry names', exact: true }).waitFor();
+      await page.getByRole('button', { name: 'Filter queue', exact: true }).click();
+      const fallback = page.getByRole('option', {
+        name: 'Repository 4002 (name unavailable)',
+        exact: true,
+      });
+      await fallback.scrollIntoViewIfNeeded();
+      await capture('missing-names');
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Retry names', exact: true }).click();
+      await page.getByRole('button', { name: 'Retry names', exact: true }).waitFor();
+      expect(
+        await page.getByText('Deleted records keep their IDs.', { exact: false }).count(),
+      ).toBe(1);
+      missing = false;
+      await page.getByRole('button', { name: 'Retry names', exact: true }).click();
+      await page
+        .getByRole('button', { name: 'Retry names', exact: true })
+        .waitFor({ state: 'hidden' });
+      await page.getByRole('button', { name: 'Open Merge after CI', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: 'Merge after CI', exact: true });
+      await detail.getByText('smykla-skalski/platform-infra', { exact: true }).waitFor();
+      await capture('named-inspector');
+    } finally {
+      await page.close();
+    }
+  },
+);
