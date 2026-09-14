@@ -7,7 +7,7 @@ type Reply = {
 };
 
 export function mockSyncCheckPage(
-  state: Pick<MockState, 'queue' | 'syncCheckObservations'>,
+  state: Pick<MockState, 'syncCheckResults' | 'syncCheckObservations'>,
   targetId: string,
   checkId: string,
   params: URLSearchParams,
@@ -16,10 +16,12 @@ export function mockSyncCheckPage(
     status,
     body: { error: { code: status === 404 ? 'not_found' : 'invalid_check_query', message } },
   });
-  const item = state.queue.find(
-    (item) => item.id === checkId && item.target_id === targetId && item.kind === 'sync_scan',
-  );
-  if (!item || !state.syncCheckObservations.has(checkId))
+  const retained = state.syncCheckResults.get(checkId);
+  if (
+    retained?.targetId !== targetId ||
+    !retained.result.outcome ||
+    !state.syncCheckObservations.has(checkId)
+  )
     return error(404, 'Check evidence not found');
   for (const [key] of params)
     if (!['limit', 'cursor'].includes(key) || params.getAll(key).length !== 1)

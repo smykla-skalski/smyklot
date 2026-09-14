@@ -51,6 +51,7 @@ import type {
   QueueItem,
   QueueEvent,
   SyncCheckObservation,
+  SyncCheckResponse,
   WorkspaceRole,
   TargetUserAccess,
   RepositoryDetail,
@@ -250,6 +251,10 @@ export interface MockState {
     { targetId: string; reason: string; checkId: string; acceptedAt: string }
   >;
   syncCheckObservations: Map<string, SyncCheckObservation[]>;
+  syncCheckResults: Map<
+    string,
+    { targetId: string; result: NonNullable<SyncCheckResponse['result']> }
+  >;
   syncPlans: Map<string, SyncPlan>;
   syncHistory: Map<string, SyncPlan[]>;
   /** The fleet: where every covered repository stands, per workspace. */
@@ -802,6 +807,7 @@ export function seed(
     syncCheckReceipts: new Map(),
     syncDispatchReceipts: new Map(),
     syncCheckObservations: new Map(),
+    syncCheckResults: new Map(),
     syncHistory: new Map([
       [
         organization.value.id,

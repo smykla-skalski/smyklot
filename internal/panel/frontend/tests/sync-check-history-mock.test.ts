@@ -3,6 +3,7 @@ import { seed, syncPlanSeed } from '../dev/fixtures';
 import { mockSyncRunNow } from '../dev/sync-run-now';
 import { finishMockSyncScan } from '../dev/sync-scan';
 import { mockSyncCheckPage } from '../dev/sync-check-history';
+import { mockSyncCheck } from '../dev/sync-check';
 
 const now = Date.UTC(2026, 8, 13);
 const target = '2001';
@@ -94,5 +95,44 @@ describe('retained mock check evidence', () => {
       status: 200,
       body: { items: [], total: 0, next_cursor: null },
     });
+  });
+});
+
+describe('task-oriented check reads', () => {
+  it('retains original results after queue cleanup and allows read-only members', () => {
+    const { state, item } = setup();
+    finishMockSyncScan(state, item, new Date(now).toISOString());
+    const before = mockSyncCheck(state, target, item.id, now);
+    if (!('result' in before.body)) throw new Error('Expected a check');
+    expect(before.body.result?.outcome).toBeDefined();
+    const original = structuredClone(before.body.result);
+    item.details = { outcome: { summary: 'Replaced queue display' } };
+    state.queue = state.queue.filter((candidate) => candidate.id !== item.id);
+    state.targets.find((entry) => entry.value.id === target)!.value.effective_role = 'viewer';
+    const after = mockSyncCheck(state, target, item.id, now + 1000);
+    expect(after.status).toBe(200);
+    if (!('result' in after.body)) throw new Error('Expected retained result');
+    expect(after.body.result).toEqual(original);
+    expect(after.body.execution).toBeNull();
+    expect(after.body.observed_at).toBe(new Date(now + 1000).toISOString());
+    expect(after.body.check).toMatchObject({ available: false, reason: 'admin_or_owner_required' });
+    expect(mockSyncCheckPage(state, target, item.id, new URLSearchParams()).status).toBe(200);
+    expect(mockSyncCheck(state, '1001', item.id, now).status).toBe(404);
+    state.targets.find((entry) => entry.value.id === target)!.value.effective_role = 'none';
+    expect(mockSyncCheck(state, target, item.id, now).status).toBe(404);
+  });
+
+  it('keeps unrecorded and successful empty comparisons distinct', () => {
+    const { state, item } = setup();
+    const pending = mockSyncCheck(state, target, item.id, now);
+    if (!('result' in pending.body)) throw new Error('Expected pending check');
+    expect(pending.body.result).toBeNull();
+    expect(pending.body.execution).not.toBeNull();
+    state.syncStatus.get(target)!.repositories = [];
+    finishMockSyncScan(state, item, new Date(now).toISOString());
+    const completed = mockSyncCheck(state, target, item.id, now);
+    if (!('result' in completed.body)) throw new Error('Expected comparison');
+    expect(completed.body.result?.outcome).toMatchObject({ counts: {}, disposition: 'checked' });
+    expect(mockSyncCheck(state, target, 'missing', now).status).toBe(404);
   });
 });

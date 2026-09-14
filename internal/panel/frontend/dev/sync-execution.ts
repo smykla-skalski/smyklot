@@ -18,6 +18,7 @@ type State = Pick<
   | 'targets'
   | 'syncQueueEvents'
   | 'syncCheckObservations'
+  | 'syncCheckResults'
 >;
 const RUN_MS = 4_000;
 

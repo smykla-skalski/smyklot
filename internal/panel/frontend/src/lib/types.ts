@@ -1789,6 +1789,24 @@ export interface SyncCheckOutcome {
   missing_permissions: SyncKind[] | null;
 }
 
+/** Comparison history, current worker evidence and workspace actions are distinct. */
+export interface SyncCheckResponse {
+  check_id: string;
+  target_id: string;
+  observed_at: string;
+  result: { result_plan_id?: string; outcome?: SyncCheckOutcome } | null;
+  execution: {
+    state: QueueItem['state'];
+    summary: string;
+    progress_current: number;
+    progress_total: number;
+    attempt: number;
+    started_at: string | null;
+    finished_at: string | null;
+  } | null;
+  check: SyncCheckCapability;
+}
+
 /** Current workspace capability, including when the inspected plan is historical. */
 export interface SyncCheckCapability {
   action: 'check';

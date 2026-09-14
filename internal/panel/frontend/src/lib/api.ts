@@ -82,6 +82,7 @@ import type {
   SyncPlanSummary,
   SyncCheckObservation,
   SyncRequestHistory,
+  SyncCheckResponse,
   SyncRunNowResponse,
   SyncRunNowInput,
   SyncFilesContext,
@@ -334,6 +335,7 @@ export interface PanelApi {
     targetId: string,
     request: { limit: number; cursor?: string },
   ): Promise<SyncRequestHistory>;
+  fetchSyncCheck(targetId: string, checkId: string): Promise<SyncCheckResponse>;
   fetchSyncCheckObservations(
     targetId: string,
     checkId: string,
@@ -1229,6 +1231,12 @@ export function createPanelApi(
       const params = new URLSearchParams({ limit: String(request.limit) });
       if (request.cursor) params.set('cursor', request.cursor);
       return jsonRequest(`/api/v1/targets/${pathSegment(targetId)}/sync/requests?${params}`);
+    },
+
+    fetchSyncCheck(targetId: string, checkId: string): Promise<SyncCheckResponse> {
+      return jsonRequest(
+        `/api/v1/targets/${pathSegment(targetId)}/sync/checks/${pathSegment(checkId)}`,
+      );
     },
 
     fetchSyncCheckObservations(

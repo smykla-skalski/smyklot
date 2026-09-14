@@ -1,6 +1,7 @@
 import { mockSyncRequests } from './sync-request-history.js';
 import { mockCheckCapability, projectMockSyncPlan } from './sync-capability.js';
 import { mockSyncCheckPage } from './sync-check-history';
+import { mockSyncCheck } from './sync-check.js';
 import { advanceMockSync } from './sync-execution.js';
 import { mockLiveSyncPlan, mockSyncRunNow } from './sync-run-now.js';
 import { mockSyncHistory, mockSyncHistoryPage } from './sync-history';
@@ -1682,6 +1683,19 @@ async function handle(
     if (requestsMatch && method === 'GET') {
       const target = findTarget(state, requestsMatch[1] ?? '');
       const reply = mockSyncRequests(state, target.value.id, parsed.searchParams);
+      respond(res, reply.status, reply.body);
+      return;
+    }
+
+    const checkMatch = /^\/api\/v1\/targets\/([^/]+)\/sync\/checks\/([^/]+)$/.exec(
+      path.slice(route('').length),
+    );
+    if (checkMatch && method === 'GET') {
+      const reply = mockSyncCheck(
+        state,
+        decodeURIComponent(checkMatch[1] ?? ''),
+        decodeURIComponent(checkMatch[2] ?? ''),
+      );
       respond(res, reply.status, reply.body);
       return;
     }

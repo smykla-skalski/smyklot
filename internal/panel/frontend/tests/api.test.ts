@@ -1308,3 +1308,20 @@ it('fetches personal sync acceptance history without inventing a total', async (
     '/panel/api/v1/targets/target%3Aone%2Ftwo/sync/requests?limit=10&cursor=cursor%2Bvalue',
   );
 });
+
+it('reads a selected check without conflating missing worker evidence with its result', async () => {
+  const result = {
+    check_id: 'check:one/two',
+    target_id: 'target:one/two',
+    observed_at: '2026-09-14T00:00:00Z',
+    result: { outcome: { summary: 'Original comparison' } },
+    execution: null,
+    check: { action: 'check', available: false },
+  };
+  const stub = stubFetch([jsonResponse(200, result)]);
+  const api = createPanelApi('/panel', stub.fetch);
+  await expect(api.fetchSyncCheck('target:one/two', 'check:one/two')).resolves.toEqual(result);
+  expect(stub.calls[0]?.url).toBe(
+    '/panel/api/v1/targets/target%3Aone%2Ftwo/sync/checks/check%3Aone%2Ftwo',
+  );
+});

@@ -12,13 +12,19 @@ import { recordMockSyncEvent } from './sync-queue.js';
 
 type State = Pick<
   MockState,
-  'syncStatus' | 'syncPlans' | 'queue' | 'syncQueueEvents' | 'syncCheckObservations' | 'targets'
+  | 'syncStatus'
+  | 'syncPlans'
+  | 'queue'
+  | 'syncQueueEvents'
+  | 'syncCheckObservations'
+  | 'syncCheckResults'
+  | 'targets'
 >;
 
 /** Refresh only evidence represented by the development fixture, never a saved policy alone. */
 export function finishMockSyncScan(state: State, item: QueueItem, at: string): string {
   if (item.kind !== 'sync_scan') throw new Error('Expected a repository check');
-  const held = item.details?.outcome;
+  const held = state.syncCheckResults.get(item.id)?.result.outcome ?? item.details?.outcome;
   if (held && typeof held === 'object' && 'summary' in held && typeof held.summary === 'string')
     return held.summary;
   const targetId = item.target_id!;
@@ -40,6 +46,15 @@ export function finishMockSyncScan(state: State, item: QueueItem, at: string): s
       missing_permissions: [],
     };
     item.details = { ...item.details, outcome };
+    state.syncCheckResults.set(item.id, {
+      targetId,
+      result: {
+        outcome: structuredClone(outcome),
+        ...(typeof item.details.result_plan_id === 'string'
+          ? { result_plan_id: item.details.result_plan_id }
+          : {}),
+      },
+    });
     state.syncCheckObservations.set(item.id, structuredClone(evidence));
     return summary;
   };
