@@ -14,6 +14,56 @@ describe('desktop hours draft protection', () => {
     ['Date exceptions', '2026-12-25 closed'],
   ] as const;
 
+  it('rejects invalid calendar rules without changing mock profiles', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+    try {
+      const url = addressOf(panel, 'api/v1/root/schedule-profiles');
+      const before = await (await page.request.get(url)).json();
+      const base = {
+        name: 'Calendar validation',
+        timezone: 'UTC',
+        expected_revision: 0,
+        windows: [],
+        exceptions: [],
+      };
+      for (const rules of [
+        { exceptions: [{ date: '2026-02-30', closed: true }] },
+        { windows: [{ weekday: 1, start_minute: 600, end_minute: 500 }] },
+        {
+          windows: [
+            { weekday: 1, start_minute: 0, end_minute: 1440 },
+            { weekday: 1, start_minute: 600, end_minute: 700 },
+          ],
+        },
+        {
+          exceptions: [
+            { date: '2026-12-25', closed: true },
+            { date: '2026-12-25', closed: false, start_minute: 600, end_minute: 700 },
+          ],
+        },
+      ]) {
+        const response = await page.request.post(url, { data: { ...base, ...rules } });
+        expect(response.status()).toBe(400);
+        expect((await response.json()).error.code).toBe('invalid_schedule');
+      }
+      expect(await (await page.request.get(url)).json()).toEqual(before);
+      const valid = await page.request.post(url, {
+        data: {
+          ...base,
+          exceptions: [{ date: '2028-02-29', closed: false, start_minute: 0, end_minute: 1440 }],
+        },
+      });
+      expect(valid.status()).toBe(201);
+      const saved = await valid.json();
+      expect(saved.windows).toEqual([]);
+      expect(saved.exceptions).toEqual([
+        { date: '2028-02-29', closed: false, start_minute: 0, end_minute: 1440 },
+      ]);
+    } finally {
+      await page.close();
+    }
+  });
+
   it.each(['light', 'dark'] as const)(
     'preserves an exception-only profile in %s',
     async (colorScheme) => {

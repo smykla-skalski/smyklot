@@ -1,3 +1,4 @@
+import { scheduleHoursProblems } from '../src/lib/schedule-validation';
 import {
   parseRuntimeBehavior,
   RuntimeBehaviorValidationError,
@@ -2313,6 +2314,7 @@ async function handle(
     if (targetScheduleRequests && method === 'POST') {
       const target = findTarget(state, targetScheduleRequests.groups?.target ?? '');
       const input = await readBody<ScheduleRequestInput>(req);
+      if (input.custom_profile !== undefined) validateMockScheduleHours(input.custom_profile);
       const effective = targetSchedulePolicies(state, target.value.id).effective.find(
         (policy) => policy.kind === input.kind,
       );
@@ -5718,11 +5720,21 @@ function findMockScheduleProfile(state: MockState, encodedID: string): ScheduleP
   return profile;
 }
 
+function validateMockScheduleHours(input: ScheduleProfileInput | ScheduleProfile): void {
+  const problem = scheduleHoursProblems(input)[0];
+  if (problem !== undefined) {
+    const field =
+      problem.index === undefined ? problem.field : `${problem.field}[${problem.index}]`;
+    throw new MockApiError(400, 'invalid_schedule', `${field}: ${problem.message}`);
+  }
+}
+
 function saveMockScheduleProfile(
   state: MockState,
   input: ScheduleProfileInput,
   encodedID?: string,
 ): ScheduleProfile {
+  validateMockScheduleHours(input);
   const existing = encodedID === undefined ? undefined : findMockScheduleProfile(state, encodedID);
   if (existing !== undefined && input.expected_revision !== existing.revision) {
     throw new MockApiError(409, 'conflict', 'schedule profile changed; reload and try again');
