@@ -1,3 +1,4 @@
+import axe from 'axe-core';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { beforeAll, afterAll, it, expect } from 'vitest';
@@ -30,6 +31,20 @@ it.each(['light', 'dark'] as const)(
       }
     };
     try {
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route('**/api/v1/installation', async (route) => {
+        await held;
+        await route.continue();
+      });
+      await page.goto(`${panel.origin}/?scenario=empty`);
+      await page.getByRole('status').filter({ hasText: 'Loading installation link' }).waitFor();
+      await capture('loading');
+      release();
+      await page.getByRole('link', { name: 'Install GitHub App', exact: true }).waitFor();
+      await page.unroute('**/api/v1/installation');
       await page.goto(`${panel.origin}/?scenario=installation-unavailable`);
       const prompt = page.getByRole('region', { name: 'Get workspace access' });
       await prompt
@@ -50,7 +65,14 @@ it.each(['light', 'dark'] as const)(
       );
       expect(await prompt.innerText()).toContain('ask your organization owner');
       expect(await prompt.innerText()).toContain('Ask a workspace owner to give you access');
-      await install.focus();
+      await prompt.getByRole('button', { name: 'Reload panel', exact: true }).focus();
+      await page.keyboard.press('Shift+Tab');
+      expect(await install.evaluate((node) => node === document.activeElement)).toBe(true);
+      await page.evaluate(axe.source);
+      const accessibility = await prompt.evaluate((node) =>
+        (window as unknown as { axe: typeof axe }).axe.run(node),
+      );
+      expect(accessibility.violations).toEqual([]);
       await capture('ready');
       await page.context().route('https://github.com/apps/smyklot/installations/new', (route) =>
         route.fulfill({

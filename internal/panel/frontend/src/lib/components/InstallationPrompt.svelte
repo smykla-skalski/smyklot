@@ -3,7 +3,6 @@
   import type { PanelApi } from '#lib/api.js';
   import Button from './Button.svelte';
   import FormError from './FormError.svelte';
-  import Skeleton from './Skeleton.svelte';
 
   const { api, reload }: { api: Pick<PanelApi, 'fetchInstallation'>; reload: () => Promise<void> } =
     $props();
@@ -26,7 +25,7 @@ installation permissions. The panel keeps its return point and refresh action.
     Install the GitHub App on your account or organization, then return here and reload the panel.
   </p>
   {#if installation.isPending && installation.data === undefined}
-    <Skeleton rows={1} bars label="Loading installation link" />
+    <p class="form-help" role="status">Loading installation link…</p>
   {:else if installation.isError}
     <FormError
       message="Could not load the installation link. Try again, or ask the person who runs this Smyklot service for the link."
