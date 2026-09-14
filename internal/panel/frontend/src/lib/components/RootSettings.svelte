@@ -42,6 +42,7 @@
   import FormattingEditor from './FormattingEditor.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
   import FormError from './FormError.svelte';
+  import FieldProblem from './FieldProblem.svelte';
   import Icon from './Icon.svelte';
   import Link from './Link.svelte';
   import Popover from './Popover.svelte';
@@ -114,6 +115,8 @@
       : overlayRuntimeSettings(canonicalSettings, document),
   );
   const loading = $derived(settingsQuery.isPending);
+  const logProblem = $derived(drafts.serverProblem(ROOT_SETTINGS_SCOPE, 'runtime.log_level'));
+  const logProblemId = $derived(logProblem ? 'runtime-log-level-problem' : undefined);
   const saving = $derived(drafts.operation(ROOT_SETTINGS_SCOPE).saving);
   const settingsDirty = $derived(drafts.hasDirty(ROOT_SETTINGS_SCOPE));
   let actionFailure = $state<string | null>(null);
@@ -450,6 +453,7 @@ without the composer.
           >
             <span class="setting-say">
               <span class="setting-name">Log level</span>
+              <FieldProblem id="runtime-log-level-problem" message={logProblem} />
               <span class="setting-why">Updates the process logger without restarting Smyklot</span>
             </span>
             {#if current.log_level.override === null}
@@ -461,6 +465,7 @@ without the composer.
                 <Button
                   tone="add"
                   aria-label="Override the deployment log level"
+                  aria-describedby={logProblemId}
                   title="Override the deployment log level"
                   disabled={saving}
                   onclick={() => setLogLevel(current.log_level.deployment)}
@@ -481,6 +486,7 @@ without the composer.
                       {...attributes}
                       type="button"
                       aria-label="Runtime log level"
+                      aria-describedby={logProblemId}
                       disabled={saving}
                     >
                       {capitalize(current.log_level.override ?? current.log_level.deployment)}
