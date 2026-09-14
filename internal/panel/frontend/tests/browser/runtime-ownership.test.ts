@@ -14,6 +14,89 @@ afterAll(async () => {
 
 describe('desktop runtime override ownership', () => {
   it.each(['light', 'dark'] as const)(
+    'retains invalid duration edits across navigation and focuses recovery in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const errors: string[] = [];
+      page.on('pageerror', (error) => errors.push(error.message));
+      const capture = async (scene: string) => {
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({
+          path: join(directory, `F04-validation-${scene}-${colorScheme}.png`),
+        });
+      };
+      try {
+        const initial = await (await page.request.get(endpoint)).json();
+        expect(
+          (
+            await page.request.put(endpoint, {
+              data: {
+                bot_config: null,
+                log_level: null,
+                reaction_poll_interval_seconds: null,
+                merge_after_ci_quiet_period_seconds: null,
+                path_index_interval_seconds: null,
+                session_ttl_seconds: null,
+                expected_revision: initial.revision,
+              },
+            })
+          ).status(),
+        ).toBe(200);
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        await page.getByLabel('Prefix', { exact: true }).fill('/validation');
+        await page
+          .getByRole('button', { name: 'Override the deployment session lifetime' })
+          .click();
+        const amount = page.getByLabel('Session lifetime amount', { exact: true });
+        await amount.fill('1e');
+        await expect.poll(() => amount.getAttribute('aria-invalid')).toBe('true');
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isDisabled())
+          .toBe(true);
+        await capture('invalid');
+        await visit(page, addressOf(panel, 'root/history/audit'));
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page
+          .getByText('Session lifetime must be between 1 minute and 30 days', { exact: true })
+          .waitFor();
+        await capture('away');
+        await page.getByRole('link', { name: 'Open Service settings', exact: true }).click();
+        await expect
+          .poll(() => amount.evaluate((element) => element === document.activeElement))
+          .toBe(true);
+        expect(await amount.inputValue()).toBe('1e');
+        expect(await page.getByLabel('Prefix', { exact: true }).inputValue()).toBe('/validation');
+        await capture('recovery');
+        await amount.fill('2');
+        await expect
+          .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isEnabled())
+          .toBe(true);
+        const saved = page.waitForResponse(
+          (r) => r.url() === endpoint && r.request().method() === 'PUT',
+        );
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        expect((await saved).status()).toBe(200);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        expect(await amount.inputValue()).toBe('2');
+        expect(await page.getByLabel('Prefix', { exact: true }).inputValue()).toBe('/validation');
+        await capture('saved');
+        expect(errors).toEqual([]);
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'restores checkpoint ownership and resets individual formatting fields in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { PanelApiError } from '../src/lib/api';
 import { applyFormattingPatch, parseFormattingPolicy } from '../src/lib/formatting';
-import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '../src/lib/root-settings-save';
+import {
+  rebaseRootSettingsConflict,
+  rootSettingsDraftValidation,
+  saveRootSettingsDraft,
+} from '../src/lib/root-settings-save';
 import {
   applyRuntimeConfigPatch,
   adoptRuntimeSettings,
@@ -197,7 +201,12 @@ describe('Root runtime settings drafts [Unit]', () => {
       controlId: 'runtime.merge_after_ci_quiet_period_seconds',
       problem: RUNTIME_DURATION_SPECS.merge_after_ci_quiet_period_seconds.problem,
     });
-    expect(storage.value(settingsDraftStorageKey('viewer'))).toContain('1e');
+    expect(rootSettingsDraftValidation(restarted)).toEqual(
+      serializeRuntimeSettingsDraft(current.revision, restored!),
+    );
+    restarted.discardScope(ROOT_SETTINGS_SCOPE);
+    expect(rootSettingsDraftValidation(restarted)).toBeNull();
+    expect(storage.value(settingsDraftStorageKey('viewer'))).not.toContain('1e');
   });
 
   it('clears a restored duration even when typed in a different unit', async () => {

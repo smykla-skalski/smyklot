@@ -961,3 +961,8 @@ selection. Final confirmation names only the selected resources and identifies
 the history entry by an absolute timestamp with seconds and time zone. Before
 means immediately before that change; do not invent a timestamp for the prior
 state. Shared checkpoint component tests enforce names, side and time identity.
+
+Runtime duration validation derives from retained draft values, including raw
+invalid text, before Save and while the editor is unmounted. Recovery waits for
+the shared settings query before focusing and revealing the invalid input.
+Correction preserves sibling edits, and discard clears the validation result.

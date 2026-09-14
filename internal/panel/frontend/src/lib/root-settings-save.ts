@@ -35,6 +35,16 @@ export interface RootSettingsSaveResult {
 const savedNotice = 'Saved runtime settings';
 const noOpNotice = 'Your draft already matches the saved runtime settings';
 
+/** Validate persisted runtime edits even while their page is not mounted. */
+export function rootSettingsDraftValidation(registry: SettingsDraftRegistry) {
+  const resource = registry.resource(RUNTIME_RESOURCE);
+  if (resource === null || !registry.hasDirty(ROOT_SETTINGS_SCOPE)) return null;
+  const document = parseRuntimeSettingsDraftDocument(resource.value);
+  if (document === null) return null;
+  const result = serializeRuntimeSettingsDraft(resource.expectedRevision, document);
+  return result.ok ? null : result;
+}
+
 export async function saveRootSettingsDraft(
   registry: SettingsDraftRegistry,
   fetchSettings: FetchRootRuntimeSettings,

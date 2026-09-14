@@ -23,7 +23,12 @@
     saveWorkspaceDrafts,
     workspaceDraftValidation,
   } from '#lib/workspace-settings-save.js';
-  import { rebaseRootSettingsConflict, saveRootSettingsDraft } from '#lib/root-settings-save.js';
+  import {
+    rebaseRootSettingsConflict,
+    rootSettingsDraftValidation,
+    saveRootSettingsDraft,
+  } from '#lib/root-settings-save.js';
+  import { revealControl } from '#lib/reveal-control.js';
   import {
     runtimeFieldConflicts,
     runtimeConflictValue,
@@ -158,8 +163,11 @@
       .toSorted((left, right) => left.changedAt - right.changedAt),
   );
   const rootSettingsOperation = $derived(settingsDraftRegistry.operation(ROOT_SETTINGS_SCOPE));
+  const rootDraftValidation = $derived(rootSettingsDraftValidation(settingsDraftRegistry));
   const rootValidationProblem = $derived(
-    settingsDraftRegistry.validationProblem(ROOT_SETTINGS_SCOPE),
+    settingsDraftRegistry.validationProblem(ROOT_SETTINGS_SCOPE) ??
+      rootDraftValidation?.problem ??
+      null,
   );
   const rootSettingsConflict = $derived(settingsDraftRegistry.hasConflicts(ROOT_SETTINGS_SCOPE));
   const rootProblemControl = $derived(rootDirtyControls[0]);
@@ -615,8 +623,23 @@
     settingsDraftRegistry.dismissNotice(ROOT_SETTINGS_SCOPE);
   }
 
-  function openRootSettingsProblem(): void {
-    session.selectRootRuntimeSection('settings');
+  async function openRootSettingsProblem(): Promise<void> {
+    await goto(session.rootRuntimeHref('settings'));
+    try {
+      await queryClient.ensureQueryData({
+        queryKey: ['root-settings'],
+        queryFn: api.fetchRootRuntimeSettings,
+      });
+    } catch {
+      // The settings page exposes its read error; no input exists to focus yet.
+      return;
+    }
+    await tick();
+    const invalid = document.querySelector<HTMLElement>('.root-settings [aria-invalid="true"]');
+    if (invalid !== null) {
+      invalid.focus({ preventScroll: true });
+      revealControl(invalid);
+    }
   }
 
   async function updateSelectedSettingsDraft(): Promise<void> {
@@ -1403,7 +1426,7 @@
             onDiscard={discardRootSettings}
             onResolveConflict={() => void updateRootSettingsDraft()}
             onDismiss={dismissRootSettingsNotice}
-            onOpenProblem={openRootSettingsProblem}
+            onOpenProblem={() => void openRootSettingsProblem()}
           />
         {/if}
       </div>
