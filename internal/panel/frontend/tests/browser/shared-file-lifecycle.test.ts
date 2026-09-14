@@ -95,10 +95,41 @@ describe('desktop editor gutter contrast', () => {
         await visit(page, addressOf(panel, 'workspace/sync/files/renovate.json'));
         const content = page.locator('.cm-content').first();
         await content.waitFor();
-        for (const state of ['normal', 'focused', 'selected']) {
+        for (const state of [
+          'normal',
+          'focused',
+          'selected',
+          'output',
+          'output-selected',
+          'output-invalid',
+        ]) {
           if (state === 'focused') await content.click();
           if (state === 'selected') await content.press('ControlOrMeta+a');
-          const ratios = await page
+          const output = page.getByRole('dialog', { name: 'smyklot', exact: true });
+          if (state === 'output') {
+            await page
+              .getByRole('button', { name: 'Open output for smyklot', exact: true })
+              .click();
+            await output.locator('.cm-content').waitFor();
+            await expect.poll(() => output.locator('.cm-overridden-no').count()).toBeGreaterThan(0);
+          }
+          if (state === 'output-selected') {
+            await output.locator('.cm-content').click();
+            await output.locator('.cm-content').press('ControlOrMeta+a');
+          }
+          if (state === 'output-invalid') {
+            await output.locator('.cm-content').fill('{');
+            await output.locator('.editor-problem').waitFor();
+          }
+          if (state.startsWith('output')) {
+            await output.evaluate(async (node) => {
+              await Promise.all(
+                node.getAnimations({ subtree: true }).map((animation) => animation.finished),
+              );
+            });
+          }
+          const surface = state.startsWith('output') ? output : page;
+          const ratios = await surface
             .locator('.cm-lineNumbers .cm-gutterElement')
             .evaluateAll((nodes) => {
               const canvas = document.createElement('canvas');
