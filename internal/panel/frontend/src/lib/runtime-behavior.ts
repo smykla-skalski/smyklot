@@ -100,6 +100,21 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
               : false;
     }
   }
+  // encoding/json preserves string zero values for null collection entries in
+  // concrete historical Config documents. Sparse overrides still reject nulls.
+  if (Array.isArray(normalized.allowed_commands)) {
+    normalized.allowed_commands = normalized.allowed_commands.map((entry) =>
+      entry === null ? '' : entry,
+    );
+  }
+  if (isRecord(normalized.command_aliases)) {
+    normalized.command_aliases = Object.fromEntries(
+      Object.entries(normalized.command_aliases).map(([key, entry]) => [
+        key,
+        entry === null ? '' : entry,
+      ]),
+    );
+  }
   if (
     normalized.runner !== undefined &&
     normalized.runner !== null &&

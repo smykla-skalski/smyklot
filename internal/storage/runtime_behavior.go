@@ -129,11 +129,22 @@ func rejectRuntimeNulls(object map[string]any, path string) error {
 		if path != "" {
 			field = path + "." + key
 		}
-		if value == nil {
-			return &config.FieldError{Field: field, Cause: fmt.Errorf("behavior.%s must have a value or be omitted to inherit", field)}
+		if err := rejectRuntimeNullValue(value, field); err != nil {
+			return err
 		}
-		if nested, ok := value.(map[string]any); ok {
-			if err := rejectRuntimeNulls(nested, field); err != nil {
+	}
+	return nil
+}
+
+func rejectRuntimeNullValue(value any, field string) error {
+	switch nested := value.(type) {
+	case nil:
+		return &config.FieldError{Field: field, Cause: fmt.Errorf("behavior.%s must have a value or be omitted to inherit", field)}
+	case map[string]any:
+		return rejectRuntimeNulls(nested, field)
+	case []any:
+		for _, entry := range nested {
+			if err := rejectRuntimeNullValue(entry, field); err != nil {
 				return err
 			}
 		}

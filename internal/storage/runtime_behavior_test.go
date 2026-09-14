@@ -95,6 +95,8 @@ func TestRuntimeBehaviorRejectsAmbiguousOverrides(t *testing.T) {
 		`{"version":1}`,
 		`{"version":1,"overrides":null}`,
 		`{"version":1,"overrides":{"quiet_success":null}}`,
+		`{"version":1,"overrides":{"allowed_commands":[null]}}`,
+		`{"version":1,"overrides":{"command_aliases":{"a":null}}}`,
 		`{"version":1,"overrides":{"quiet_success":false,"quiet_success":true}}`,
 		`{"version":1,"overrides":{"runner":"action"}}`,
 		`{"version":1,"overrides":{"unknown":true}}`,
@@ -123,5 +125,16 @@ func TestRuntimeBehaviorBeforeFormattingExisted(t *testing.T) {
 	}
 	if resolved.Formatting != config.DefaultFormattingPolicy() {
 		t.Fatal("pre-formatting records must preserve file presentation")
+	}
+}
+
+func TestRuntimeBehaviorLegacyNullCollectionEntries(t *testing.T) {
+	var value storage.RuntimeBehavior
+	if err := json.Unmarshal([]byte(`{"allowed_commands":[null,"approve"],"command_aliases":{"a":null,"m":"merge"}}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	resolved := value.Resolve(config.Default())
+	if !reflect.DeepEqual(resolved.AllowedCommands, []string{"", "approve"}) || !reflect.DeepEqual(resolved.CommandAliases, map[string]string{"a": "", "m": "merge"}) {
+		t.Fatalf("legacy null entries changed: %+v", resolved)
 	}
 }

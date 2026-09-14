@@ -37,6 +37,27 @@ describe('runtime behavior ownership [Unit]', () => {
     );
   });
 
+  it('preserves the historical zero value of null collection entries', () => {
+    const legacy = {
+      allowed_commands: [null, 'approve'],
+      command_aliases: { a: null, m: 'merge' },
+    };
+    const intent = parseRuntimeBehavior(legacy);
+    expect(intent?.overrides.allowed_commands).toEqual(['', 'approve']);
+    expect(intent?.overrides.command_aliases).toEqual({ a: '', m: 'merge' });
+    expect(legacy.allowed_commands[0]).toBeNull();
+    expect(legacy.command_aliases.a).toBeNull();
+    expect(() =>
+      parseRuntimeBehavior({
+        version: 1,
+        overrides: { allowed_commands: legacy.allowed_commands },
+      }),
+    ).toThrow();
+    expect(() =>
+      parseRuntimeBehavior({ version: 1, overrides: { command_aliases: legacy.command_aliases } }),
+    ).toThrow();
+  });
+
   it('keeps explicit false and empty values while omitted fields follow deployment', () => {
     const input = {
       version: 1,
