@@ -49,11 +49,7 @@ func (s *Server) getSyncHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	result := pageResponse[syncPlanSummaryDTO]{Items: make([]syncPlanSummaryDTO, 0, len(page.Items)), Total: page.Total}
 	for _, plan := range page.Items {
-		result.Items = append(result.Items, syncPlanSummaryDTO{
-			ID: plan.ID, Trigger: plan.Trigger, State: plan.State,
-			Counts:     syncCountsDTO{Create: plan.Counts.Create, Update: plan.Counts.Update, Delete: plan.Counts.Delete},
-			ComputedAt: plan.ComputedAt, FinishedAt: plan.FinishedAt,
-		})
+		result.Items = append(result.Items, syncPlanSummary(plan))
 	}
 	if page.Next != nil {
 		encoded, err := json.Marshal(syncHistoryCursor{ComputedAt: page.Next.ComputedAt, ID: page.Next.ID})
@@ -96,4 +92,8 @@ func parseSyncHistoryPage(values url.Values) (orgsync.PlanPageRequest, error) {
 		page.Before = &orgsync.PlanCursor{ComputedAt: cursor.ComputedAt, ID: cursor.ID}
 	}
 	return page, nil
+}
+
+func syncPlanSummary(plan orgsync.Plan) syncPlanSummaryDTO {
+	return syncPlanSummaryDTO{ID: plan.ID, Trigger: plan.Trigger, State: plan.State, Counts: syncCountsDTO{Create: plan.Counts.Create, Update: plan.Counts.Update, Delete: plan.Counts.Delete}, ComputedAt: plan.ComputedAt, FinishedAt: plan.FinishedAt}
 }

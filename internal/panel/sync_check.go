@@ -44,7 +44,7 @@ func (s *Server) getSyncCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err == nil && item.Kind == workqueue.KindSyncScan && item.TargetID != nil && *item.TargetID == target.ID {
-		body.Execution = &syncCheckExecution{State: item.State, Summary: item.Summary, ProgressCurrent: item.ProgressCurrent, ProgressTotal: item.ProgressTotal, Attempt: item.Attempt, StartedAt: item.StartedAt, FinishedAt: item.FinishedAt}
+		body.Execution = syncExecutionFacts(item)
 	}
 	result, err := s.store.GetSyncCheckResult(r.Context(), target.ID, body.CheckID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {

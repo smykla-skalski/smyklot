@@ -39,3 +39,10 @@ func (s *Store) ListSyncPlans(ctx context.Context, targetID string, request orgs
 	page.Items = items
 	return page, nil
 }
+
+// GetSyncPlanSummary reads one scoped plan without its potentially large action
+// list. Counts and state belong to the plan; worker progress is a separate fact.
+func (s *Store) GetSyncPlanSummary(ctx context.Context, targetID, planID string) (orgsync.Plan, error) {
+	plan, err := scanSyncPlan(s.db.QueryRowContext(ctx, "SELECT"+syncPlanColumns+" FROM sync_plans WHERE id = ? AND target_id = ?", planID, targetID))
+	return plan, noRows(err)
+}

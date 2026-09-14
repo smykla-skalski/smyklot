@@ -13,6 +13,26 @@ import (
 )
 
 func declareSyncRequestLookupSpecs(runtime func() (context.Context, storage.Store, time.Time, workqueue.RecurringRequest, orgsync.RequestHistoryQuery)) {
+	It("reads the exact scoped plan summary without requiring action details", func() {
+		ctx, store, now, _, query := runtime()
+		page, err := store.ListSyncRequests(ctx, orgsync.RequestHistoryQuery{ActorID: query.ActorID, TargetID: query.TargetID, SessionTokenHash: query.SessionTokenHash, Limit: 10}, func() time.Time { return now })
+		Expect(err).NotTo(HaveOccurred())
+		var planID string
+		for _, item := range page.Items {
+			if item.Action == "dispatch" {
+				planID = item.PlanID
+			}
+		}
+		Expect(planID).NotTo(BeEmpty())
+		plan, _, err := store.GetSyncPlan(ctx, query.TargetID, planID)
+		Expect(err).NotTo(HaveOccurred())
+		summary, err := store.GetSyncPlanSummary(ctx, query.TargetID, planID)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(summary).To(Equal(plan))
+		_, err = store.GetSyncPlanSummary(ctx, "another-workspace", planID)
+		Expect(err).To(MatchError(storage.ErrNotFound))
+	})
+
 	It("looks up exact acceptance without scanning history or starting work", func() {
 		ctx, store, now, _, query := runtime()
 		clock := func() time.Time { return now }

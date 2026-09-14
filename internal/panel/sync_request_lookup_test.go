@@ -23,10 +23,11 @@ func TestSyncRequestReadReturnsExactAcceptance(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertWireNames(t, path, wire)
-	var got syncRequestHistoryItem
-	if err := json.Unmarshal(response.Body.Bytes(), &got); err != nil {
+	var body syncOperationResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
+	got := body.Acceptance
 	if got.PlanID != accepted.PlanID || got.QueueID != accepted.QueueID || got.ExpectedRevision != dispatch.ExpectedRevision || got.Reason != dispatch.Reason || !got.AcceptedAt.Equal(h.now) {
 		t.Fatalf("lost acceptance: %#v", got)
 	}

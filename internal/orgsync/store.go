@@ -423,6 +423,9 @@ type Store interface {
 	// plan is shown to somebody who has rights over another.
 	GetSyncPlan(context.Context, string, string) (Plan, []Action, error)
 
+	// GetSyncPlanSummary reads plan state and counts without loading actions.
+	GetSyncPlanSummary(context.Context, string, string) (Plan, error)
+
 	// GetLiveSyncPlan answers the one plan an installation may have in flight,
 	// or storage.ErrNotFound. It describes current work. Accepted request
 	// identity comes from receipts and must not be inferred from this plan.

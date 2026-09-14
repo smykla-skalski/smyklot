@@ -1827,3 +1827,16 @@ export interface SyncPlanResponse {
   plan: SyncPlan | null;
   check: SyncCheckCapability;
 }
+
+/** Original acceptance plus facts read during the stated observation interval. */
+export interface SyncOperationResponse {
+  target_id: string;
+  acceptance: SyncRequestAcceptance;
+  observation_started_at: string;
+  observed_at: string;
+  comparison: SyncCheckResponse['result'];
+  plan: SyncPlanSummary | null;
+  execution: SyncCheckResponse['execution'];
+  check: SyncCheckCapability;
+  dispatch: SyncDispatchCapability | null;
+}

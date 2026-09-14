@@ -22,7 +22,7 @@ func (s *Server) getSyncRequest(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_request_lookup", "An exact check or dispatch request identity is required")
 		return
 	}
-	item, err := s.store.GetSyncRequest(r.Context(), orgsync.RequestLookup{ActorID: account.ID, TargetID: target.ID, SessionTokenHash: syncRequestSessionHash(r), Action: action, RequestKey: key}, s.now)
+	body, err := s.readSyncOperation(r.Context(), orgsync.RequestLookup{ActorID: account.ID, TargetID: target.ID, SessionTokenHash: syncRequestSessionHash(r), Action: action, RequestKey: key})
 	if errors.Is(err, storage.ErrRevoked) || errors.Is(err, storage.ErrExpired) {
 		s.writeError(w, http.StatusForbidden, "access_revoked", "Your access changed; refresh the workspace to read your accepted request")
 		return
@@ -31,10 +31,5 @@ func (s *Server) getSyncRequest(w http.ResponseWriter, r *http.Request) {
 		s.writeStorageError(w, err)
 		return
 	}
-	dto, err := syncAcceptanceDTO(item)
-	if err != nil {
-		s.writeInternal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, dto)
+	writeJSON(w, http.StatusOK, body)
 }

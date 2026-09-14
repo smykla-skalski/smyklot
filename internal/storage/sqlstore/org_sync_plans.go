@@ -311,11 +311,7 @@ func (s *Store) GetSyncPlan(
 	targetID string,
 	planID string,
 ) (orgsync.Plan, []orgsync.Action, error) {
-	plan, err := scanSyncPlan(s.db.QueryRowContext(ctx, `
-SELECT`+syncPlanColumns+` FROM sync_plans WHERE id = ? AND target_id = ?`, planID, targetID))
-	if errors.Is(err, sql.ErrNoRows) {
-		return orgsync.Plan{}, nil, storage.ErrNotFound
-	}
+	plan, err := s.GetSyncPlanSummary(ctx, targetID, planID)
 	if err != nil {
 		return orgsync.Plan{}, nil, err
 	}
