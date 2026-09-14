@@ -70,7 +70,7 @@ func (s *Server) postSyncRunNow(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.Action == syncDispatchAction {
 		request := dispatchRequest(r, account, target, input, s.now().UTC())
-		receipt, err := s.store.FindSyncPlanDispatch(r.Context(), request)
+		receipt, err := s.store.FindSyncPlanDispatch(r.Context(), request, s.now)
 		if err == nil {
 			writeJSON(w, http.StatusOK, syncRunNowResponse{Status: "dispatch_accepted", PlanID: receipt.PlanID, QueueID: receipt.QueueID, Repeated: true})
 			return
@@ -118,7 +118,7 @@ func (s *Server) handleSyncDispatch(
 			})
 			return
 		}
-		receipt, actionErr := s.store.DispatchSyncPlan(r.Context(), dispatchRequest(r, account, target, input, s.now().UTC()))
+		receipt, actionErr := s.store.DispatchSyncPlan(r.Context(), dispatchRequest(r, account, target, input, s.now().UTC()), s.now)
 		if actionErr != nil {
 			s.writeSyncCommandError(w, actionErr)
 			return

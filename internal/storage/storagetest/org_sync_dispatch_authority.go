@@ -16,7 +16,7 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 	DescribeTable("requires current authority before accepting or recovering", func(revoke string) {
 		ctx, store, now, request, before := runtime()
 		if revoke == "accepted then revoked" {
-			_, err := store.DispatchSyncPlan(ctx, request)
+			_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			before, err = store.GetQueueItem(ctx, before.ID)
 			Expect(err).NotTo(HaveOccurred())
@@ -33,9 +33,9 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 		}
 		events, err := store.ListQueueEvents(ctx, before.ID, 100)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.DispatchSyncPlan(ctx, request)
+		_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 		Expect(err).To(MatchError(storage.ErrRevoked))
-		_, err = store.FindSyncPlanDispatch(ctx, request)
+		_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 		Expect(err).To(MatchError(storage.ErrRevoked))
 		current, err := store.GetQueueItem(ctx, before.ID)
 		Expect(err).NotTo(HaveOccurred())
@@ -57,7 +57,7 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 		Expect(err).NotTo(HaveOccurred())
 		request.ActorID, request.SessionTokenHash = actor.ID, "admin-session"
 		Expect(store.CreateSession(ctx, storage.Session{TokenHash: request.SessionTokenHash, AccountID: actor.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, 2)).To(Succeed())
-		_, err = store.DispatchSyncPlan(ctx, request)
+		_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 		if allowed {
 			Expect(err).NotTo(HaveOccurred())
 		} else {
@@ -70,21 +70,43 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 
 	It("rejects a ban before acceptance and preserves the original receipt", func() {
 		ctx, store, now, request, _ := runtime()
-		accepted, err := store.DispatchSyncPlan(ctx, request)
+		accepted, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 		Expect(err).NotTo(HaveOccurred())
 		user, err := store.GetPanelUser(ctx, request.ActorID)
 		Expect(err).NotTo(HaveOccurred())
 		_, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{AccountID: request.ActorID, ActorAccountID: request.ActorID, Status: storage.PanelUserBanned, ExpectedRevision: user.Revision, ChangedAt: now})
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.FindSyncPlanDispatch(ctx, request)
+		_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 		Expect(err).To(MatchError(storage.ErrRevoked))
-		_, err = store.DispatchSyncPlan(ctx, request)
+		_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 		Expect(err).To(MatchError(storage.ErrRevoked))
 		_, err = store.UpdatePanelUser(ctx, storage.PanelUserChange{AccountID: request.ActorID, ActorAccountID: request.ActorID, Status: storage.PanelUserActive, ExpectedRevision: user.Revision + 1, ChangedAt: now})
 		Expect(err).NotTo(HaveOccurred())
-		repeated, err := store.FindSyncPlanDispatch(ctx, request)
+		repeated, err := store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repeated).To(Equal(accepted))
+	})
+
+	It("rolls dispatch back when approval expires before commit", func() {
+		ctx, store, now, request, before := runtime()
+		// Keep current ownership fresh while the approved plan reaches its deadline.
+		later := now.Add(2 * time.Hour)
+		Expect(store.ReconcileInstallation(ctx, testInstallation(testAccount(later), later, nil))).To(Succeed())
+		calls := 0
+		clock := func() time.Time {
+			calls++
+			if calls >= 5 {
+				return later
+			}
+			return now
+		}
+		_, err := store.DispatchSyncPlan(ctx, request, clock)
+		Expect(err).To(MatchError(storage.ErrConflict))
+		current, err := store.GetQueueItem(ctx, before.ID)
+		Expect(err).NotTo(HaveOccurred())
+		assertSameDispatchQueue(current, before)
+		_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return later })
+		Expect(err).To(MatchError(storage.ErrNotFound))
 	})
 
 	It("serializes session revocation with dispatch without accepting later work", func() {
@@ -92,7 +114,11 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 		dispatchResult := make(chan error, 1)
 		revokeResult := make(chan error, 1)
 		start := make(chan struct{})
-		go func() { <-start; _, err := store.DispatchSyncPlan(ctx, request); dispatchResult <- err }()
+		go func() {
+			<-start
+			_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
+			dispatchResult <- err
+		}()
 		go func() {
 			<-start
 			revokeResult <- store.DeleteSession(ctx, request.SessionTokenHash, storage.ElevationRevoked, now)
@@ -108,7 +134,7 @@ func declareSyncDispatchAuthoritySpecs(runtime func() (context.Context, storage.
 			Expect(dispatched).To(MatchError(storage.ErrRevoked))
 			assertSameDispatchQueue(current, before)
 		}
-		_, err = store.DispatchSyncPlan(ctx, request)
+		_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 		Expect(err).To(MatchError(storage.ErrRevoked))
 		after, err := store.GetQueueItem(ctx, before.ID)
 		Expect(err).NotTo(HaveOccurred())

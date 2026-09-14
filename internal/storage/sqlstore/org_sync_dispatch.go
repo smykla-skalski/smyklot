@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -19,8 +20,8 @@ func validSyncDispatch(request orgsync.PlanDispatch) bool {
 
 // FindSyncPlanDispatch reads immutable acceptance under current session and
 // workspace authority, including when a plan no longer exists.
-func (s *Store) FindSyncPlanDispatch(ctx context.Context, request orgsync.PlanDispatch) (orgsync.PlanDispatchReceipt, error) {
-	if !validSyncDispatch(request) {
+func (s *Store) FindSyncPlanDispatch(ctx context.Context, request orgsync.PlanDispatch, now func() time.Time) (orgsync.PlanDispatchReceipt, error) {
+	if now == nil || !validSyncDispatch(request) {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -28,7 +29,7 @@ func (s *Store) FindSyncPlanDispatch(ctx context.Context, request orgsync.PlanDi
 		return orgsync.PlanDispatchReceipt{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.authorizeSyncDispatch(ctx, tx, request); err != nil {
+	if err := s.authorizeWorkspaceCommand(ctx, tx, dispatchAuthority(request, now)); err != nil {
 		return orgsync.PlanDispatchReceipt{}, err
 	}
 	return syncDispatchReceipt(ctx, tx, request)
@@ -36,8 +37,8 @@ func (s *Store) FindSyncPlanDispatch(ctx context.Context, request orgsync.PlanDi
 
 // DispatchSyncPlan checks the selected source and revision in the transaction
 // that records acceptance. No repeated request changes queue state or events.
-func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispatch) (orgsync.PlanDispatchReceipt, error) {
-	if !validSyncDispatch(request) {
+func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispatch, now func() time.Time) (orgsync.PlanDispatchReceipt, error) {
+	if now == nil || !validSyncDispatch(request) {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -50,7 +51,7 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
 		return orgsync.PlanDispatchReceipt{}, err
 	}
-	if err := s.authorizeSyncDispatch(ctx, tx, request); err != nil {
+	if err := s.authorizeWorkspaceCommand(ctx, tx, dispatchAuthority(request, now)); err != nil {
 		return orgsync.PlanDispatchReceipt{}, err
 	}
 	receipt, err := syncDispatchReceipt(ctx, tx, request)
@@ -60,6 +61,7 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	if !errors.Is(err, storage.ErrNotFound) {
 		return orgsync.PlanDispatchReceipt{}, err
 	}
+	request.Now = now().UTC()
 	plan, err := scanSyncPlan(tx.QueryRowContext(ctx, "SELECT"+syncPlanColumns+" FROM sync_plans WHERE id = ? AND target_id = ?"+s.dialect.RowLock(), request.PlanID, request.TargetID))
 	if err != nil {
 		return orgsync.PlanDispatchReceipt{}, noRows(err)
@@ -73,6 +75,10 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	if err != nil {
 		return orgsync.PlanDispatchReceipt{}, noRows(err)
 	}
+	if err := s.validateWorkspaceCommand(ctx, tx, dispatchAuthority(request, now)); err != nil {
+		return orgsync.PlanDispatchReceipt{}, err
+	}
+	request.Now = now().UTC()
 	if item.Revision != request.ExpectedRevision || orgsync.PlanDispatchEligibility(plan, &item, request.Now) != orgsync.DispatchAvailable {
 		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
@@ -90,6 +96,12 @@ func (s *Store) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispat
 	receipt = orgsync.PlanDispatchReceipt{PlanID: plan.ID, QueueID: item.ID, AcceptedAt: request.Now}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO sync_dispatch_receipts (actor_account_id, request_key, target_id, plan_id, expected_revision, reason, queue_id, accepted_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, request.ActorID, request.RequestKey, request.TargetID, request.PlanID, request.ExpectedRevision, request.Reason, receipt.QueueID, receipt.AcceptedAt); err != nil {
 		return orgsync.PlanDispatchReceipt{}, fmt.Errorf("record sync dispatch: %w", err)
+	}
+	if err := s.validateWorkspaceCommand(ctx, tx, dispatchAuthority(request, now)); err != nil {
+		return orgsync.PlanDispatchReceipt{}, err
+	}
+	if orgsync.PlanDispatchEligibility(plan, &item, now().UTC()) != orgsync.DispatchAvailable {
+		return orgsync.PlanDispatchReceipt{}, storage.ErrConflict
 	}
 	if err := tx.Commit(); err != nil {
 		return orgsync.PlanDispatchReceipt{}, fmt.Errorf("commit sync dispatch: %w", err)
@@ -111,6 +123,6 @@ func syncDispatchReceipt(ctx context.Context, reader runner, request orgsync.Pla
 	return orgsync.PlanDispatchReceipt{PlanID: plan, QueueID: queue, AcceptedAt: accepted.Time()}, nil
 }
 
-func (s *Store) authorizeSyncDispatch(ctx context.Context, tx *transaction, request orgsync.PlanDispatch) error {
-	return s.authorizeWorkspaceCommand(ctx, tx, workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: request.TargetID, RequestedAt: request.Now})
+func dispatchAuthority(request orgsync.PlanDispatch, now func() time.Time) workspaceCommandAuthority {
+	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: request.TargetID, RequestedAt: request.Now, Clock: now}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -14,9 +15,9 @@ type revokingDispatchStore struct {
 	before func()
 }
 
-func (s revokingDispatchStore) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispatch) (orgsync.PlanDispatchReceipt, error) {
+func (s revokingDispatchStore) DispatchSyncPlan(ctx context.Context, request orgsync.PlanDispatch, now func() time.Time) (orgsync.PlanDispatchReceipt, error) {
 	s.before()
-	return s.Store.DispatchSyncPlan(ctx, request)
+	return s.Store.DispatchSyncPlan(ctx, request, now)
 }
 
 func TestSyncDispatchRechecksSessionAtAcceptance(t *testing.T) {

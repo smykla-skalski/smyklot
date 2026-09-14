@@ -11,6 +11,7 @@ import (
 )
 
 type workspaceCommandAuthority struct {
+	Clock            func() time.Time
 	ActorAccountID   string
 	SessionTokenHash string
 	TargetID         string
@@ -48,6 +49,14 @@ func (s *Store) authorizeWorkspaceCommand(ctx context.Context, tx *transaction, 
 		if err != nil {
 			return err
 		}
+	}
+	return s.validateWorkspaceCommand(ctx, tx, request)
+}
+
+// Reuse held authority locks when only time can have changed during a command.
+func (s *Store) validateWorkspaceCommand(ctx context.Context, tx *transaction, request workspaceCommandAuthority) error {
+	if request.Clock != nil {
+		request.RequestedAt = request.Clock().UTC()
 	}
 	var accountID string
 	var expiresAt, revokedAt StoredTime

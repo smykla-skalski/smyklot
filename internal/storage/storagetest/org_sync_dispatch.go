@@ -44,11 +44,11 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 		})
 
 		It("accepts once and preserves the exact receipt without changing events", func() {
-			_, err := store.FindSyncPlanDispatch(ctx, request)
+			_, err := store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 			events, err := store.ListQueueEvents(ctx, before.ID, 100)
 			Expect(err).NotTo(HaveOccurred())
-			accepted, err := store.DispatchSyncPlan(ctx, request)
+			accepted, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(accepted).To(Equal(orgsync.PlanDispatchReceipt{PlanID: request.PlanID, QueueID: before.ID, AcceptedAt: now}))
 			current, err := store.GetQueueItem(ctx, before.ID)
@@ -57,7 +57,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			Expect(current.Immediate).To(BeTrue())
 			request.Now = now.Add(2 * time.Hour)
 			Expect(store.ReconcileInstallation(ctx, testInstallation(testAccount(request.Now), request.Now, nil))).To(Succeed())
-			repeated, err := store.DispatchSyncPlan(ctx, request)
+			repeated, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
 			after, err := store.GetQueueItem(ctx, before.ID)
@@ -69,7 +69,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 		})
 
 		It("binds actor key to target plan revision and reason", func() {
-			_, err := store.DispatchSyncPlan(ctx, request)
+			_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			other := testInstallation(testAccount(now), now, nil)
 			other.TargetID, other.InstallationID = "github:installation:101", "101"
@@ -82,18 +82,18 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			} {
 				changed := request
 				change(&changed)
-				_, err := store.FindSyncPlanDispatch(ctx, changed)
+				_, err := store.FindSyncPlanDispatch(ctx, changed, func() time.Time { return changed.Now })
 				Expect(err).To(MatchError(storage.ErrConflict))
-				_, err = store.DispatchSyncPlan(ctx, changed)
+				_, err = store.DispatchSyncPlan(ctx, changed, func() time.Time { return changed.Now })
 				Expect(err).To(MatchError(storage.ErrConflict))
 			}
 			request.ActorID = "other-actor"
-			_, err = store.FindSyncPlanDispatch(ctx, request)
+			_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrRevoked))
 		})
 
 		It("retains acceptance after discard pruning and newer work", func() {
-			accepted, err := store.DispatchSyncPlan(ctx, request)
+			accepted, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			_, err = store.DiscardSyncPlan(ctx, orgsync.PlanDiscard{TargetID: request.TargetID, PlanID: request.PlanID, ActorID: request.ActorID, Now: now})
 			Expect(err).NotTo(HaveOccurred())
@@ -105,13 +105,13 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			newer, err := store.GetQueueItem(ctx, "sync-plan:newer")
 			Expect(err).NotTo(HaveOccurred())
-			repeated, err := store.DispatchSyncPlan(ctx, request)
+			repeated, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
 			current, err := store.GetQueueItem(ctx, newer.ID)
 			Expect(err).NotTo(HaveOccurred())
 			assertSameDispatchQueue(current, newer)
-			read, err := store.FindSyncPlanDispatch(ctx, request)
+			read, err := store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(read).To(Equal(accepted))
 		})
@@ -120,7 +120,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			request.ActorID = "missing-account"
 			events, err := store.ListQueueEvents(ctx, before.ID, 100)
 			Expect(err).NotTo(HaveOccurred())
-			_, err = store.DispatchSyncPlan(ctx, request)
+			_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(HaveOccurred())
 			current, err := store.GetQueueItem(ctx, before.ID)
 			Expect(err).NotTo(HaveOccurred())
@@ -138,7 +138,7 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			} {
 				changed := request
 				change(&changed)
-				_, err := store.DispatchSyncPlan(ctx, changed)
+				_, err := store.DispatchSyncPlan(ctx, changed, func() time.Time { return changed.Now })
 				Expect(err).To(HaveOccurred())
 			}
 			current, err := store.GetQueueItem(ctx, before.ID)
@@ -150,29 +150,29 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			running, err := store.GetQueueItem(ctx, before.ID)
 			Expect(err).NotTo(HaveOccurred())
 			request.ExpectedRevision = running.Revision
-			_, err = store.DispatchSyncPlan(ctx, request)
+			_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrConflict))
-			_, err = store.FindSyncPlanDispatch(ctx, request)
+			_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
 		It("requires an approved plan and never accepts invalidated changes", func() {
 			Expect(store.InvalidateSyncPlans(ctx, request.TargetID, now)).To(Succeed())
-			_, err := store.DispatchSyncPlan(ctx, request)
+			_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrConflict))
 			_, err = store.CreateSyncPlan(ctx, orgsync.PlanCreate{ID: "unapproved", TargetID: request.TargetID, ActorID: request.ActorID, Trigger: orgsync.TriggerManual, Digest: "new", Now: now, ExpiresAt: now.Add(time.Hour)})
 			Expect(err).NotTo(HaveOccurred())
 			request.PlanID = "unapproved"
-			_, err = store.DispatchSyncPlan(ctx, request)
+			_, err = store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrConflict))
-			_, err = store.FindSyncPlanDispatch(ctx, request)
+			_, err = store.FindSyncPlanDispatch(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
 		It("rejects malformed identities before changing the queue", func() {
 			for _, key := range []string{"", " ", " padded", strings.Repeat("ą", 101)} {
 				request.RequestKey = key
-				_, err := store.DispatchSyncPlan(ctx, request)
+				_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
 				Expect(err).To(MatchError(storage.ErrConflict))
 			}
 			current, err := store.GetQueueItem(ctx, before.ID)
@@ -188,7 +188,11 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			results := make(chan result, 2)
 			start := make(chan struct{})
 			for range 2 {
-				go func() { <-start; r, e := store.DispatchSyncPlan(ctx, request); results <- result{r, e} }()
+				go func() {
+					<-start
+					r, e := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
+					results <- result{r, e}
+				}()
 			}
 			close(start)
 			first, second := <-results, <-results
@@ -208,7 +212,11 @@ func declareSyncDispatchSpecs(runtime queueRuntime) {
 			}
 			leaseResults := make(chan leaseResult, 1)
 			start := make(chan struct{})
-			go func() { <-start; _, err := store.DispatchSyncPlan(ctx, request); dispatchResult <- err }()
+			go func() {
+				<-start
+				_, err := store.DispatchSyncPlan(ctx, request, func() time.Time { return request.Now })
+				dispatchResult <- err
+			}()
 			go func() {
 				<-start
 				l, e := store.LeaseSyncPlan(ctx, now, now.Add(time.Minute))

@@ -435,8 +435,8 @@ type Store interface {
 	GetSyncCheckAvailability(context.Context, string, time.Time) (CheckAvailability, error)
 
 	// Dispatch acceptance survives queue retention. Callers authorize actor and target.
-	FindSyncPlanDispatch(context.Context, PlanDispatch) (PlanDispatchReceipt, error)
-	DispatchSyncPlan(context.Context, PlanDispatch) (PlanDispatchReceipt, error)
+	FindSyncPlanDispatch(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)
+	DispatchSyncPlan(context.Context, PlanDispatch, func() time.Time) (PlanDispatchReceipt, error)
 
 	ApproveSyncPlan(context.Context, PlanApproval) (Plan, error)
 	InvalidateSyncPlans(context.Context, string, time.Time) error

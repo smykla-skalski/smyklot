@@ -4,6 +4,7 @@ import "time"
 
 // PlanDispatch names the exact reviewed action. Now is execution context, not
 // part of its identity. SessionTokenHash supplies current authority at acceptance.
+// Storage samples its supplied clock for decisions after locks, not this snapshot.
 type PlanDispatch struct {
 	TargetID         string
 	PlanID           string
