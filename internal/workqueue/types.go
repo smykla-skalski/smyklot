@@ -495,8 +495,8 @@ type Store interface {
 	// Sync scans preserve a current live plan, returning its blocking identity.
 	// Expired waiting plans retire atomically with acceptance of a fresh scan.
 	// Receipt recovery precedes this decision and never retires newer work.
-	RequestRecurringWork(context.Context, RecurringRequest) (Item, error)
-	FindRecurringWorkRequest(context.Context, RecurringRequest) (Item, error)
+	RequestRecurringWork(context.Context, RecurringRequest, func() time.Time) (Item, error)
+	FindRecurringWorkRequest(context.Context, RecurringRequest, func() time.Time) (Item, error)
 	FinishRecurringWork(context.Context, string, RecurringCompletion, time.Time) (Item, error)
 	PruneWorkQueue(context.Context, time.Time) (int64, error)
 	NextQueueAvailability(context.Context, Lane, time.Time) (*time.Time, error)

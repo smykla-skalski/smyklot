@@ -47,7 +47,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			unchanged, _, err := store.GetSyncPlan(ctx, create.TargetID, create.ID)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(unchanged.State).NotTo(Equal(orgsync.PlanExpired))
-			item, err := store.RequestRecurringWork(ctx, request)
+			item, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(item.Kind).To(Equal(workqueue.KindSyncScan))
 			old, _, err := store.GetSyncPlan(ctx, create.TargetID, create.ID)
@@ -61,7 +61,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			create.ExpiresAt = request.Now.Add(time.Hour)
 			_, err = store.CreateSyncPlan(ctx, create)
 			Expect(err).NotTo(HaveOccurred())
-			repeated, err := store.RequestRecurringWork(ctx, request)
+			repeated, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated.ID).To(Equal(item.ID))
 		}, Entry("computed", false), Entry("approved", true))
@@ -73,11 +73,11 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(availability.Reason).To(Equal("changes_pending"))
 			Expect(availability.BlockingPlanID).To(Equal(create.ID))
-			_, err = store.RequestRecurringWork(ctx, request)
+			_, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			var blocked *storage.LiveSyncPlanConflict
 			Expect(errors.As(err, &blocked)).To(BeTrue())
 			Expect(blocked.PlanID).To(Equal(create.ID))
-			_, err = store.FindRecurringWorkRequest(ctx, request)
+			_, err = store.FindRecurringWorkRequest(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		}, Entry("computed", false), Entry("approved", true))
 		It("preserves applying work after its approval expiry", func() {
@@ -88,7 +88,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(lease.Plan.ID).To(Equal(create.ID))
 			request.Now = create.ExpiresAt
-			_, err = store.RequestRecurringWork(ctx, request)
+			_, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			var blocked *storage.LiveSyncPlanConflict
 			Expect(errors.As(err, &blocked)).To(BeTrue())
 			Expect(blocked.PlanID).To(Equal(create.ID))
@@ -97,7 +97,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(plan.State).To(Equal(orgsync.PlanApplying))
 		})
 		It("reports the running check without claiming acceptance", func() {
-			item, err := store.RequestRecurringWork(ctx, request)
+			item, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			leased, found, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{Kind: request.Kind, TargetID: request.TargetID, Title: "Check", Now: now, LeaseDuration: time.Minute})
 			Expect(err).NotTo(HaveOccurred())
@@ -107,7 +107,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(availability).To(Equal(orgsync.CheckAvailability{Reason: "check_running", RunningCheckID: item.ID}))
 			request.RequestKey = "another-check"
-			_, err = store.RequestRecurringWork(ctx, request)
+			_, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrConflict))
 		})
 
@@ -125,7 +125,11 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			results := make(chan result, 2)
 			start := make(chan struct{})
 			for range 2 {
-				go func() { <-start; item, err := store.RequestRecurringWork(ctx, request); results <- result{item, err} }()
+				go func() {
+					<-start
+					item, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
+					results <- result{item, err}
+				}()
 			}
 			close(start)
 			first, second := <-results, <-results
@@ -142,7 +146,7 @@ func declareSyncCheckRequestSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			request.Now = create.ExpiresAt
 			request.ActorID = "missing-actor"
-			_, err = store.RequestRecurringWork(ctx, request)
+			_, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(HaveOccurred())
 			plan, _, err := store.GetSyncPlan(ctx, create.TargetID, create.ID)
 			Expect(err).NotTo(HaveOccurred())

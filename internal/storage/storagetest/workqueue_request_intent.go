@@ -18,7 +18,7 @@ func declareQueueRequestIntentSpecs(runtime queueRuntime) {
 		requested, err := store.QueueRunWasRequested(ctx, "missing")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(requested).To(BeFalse())
-		item, err := store.RequestRecurringWork(ctx, workqueue.RecurringRequest{Kind: workqueue.KindCatalogRefresh, Title: "Refresh", ActorID: account.ID, Reason: "Check changed GitHub state", Now: now})
+		item, err := store.RequestRecurringWork(ctx, workqueue.RecurringRequest{Kind: workqueue.KindCatalogRefresh, Title: "Refresh", ActorID: account.ID, Reason: "Check changed GitHub state", Now: now}, func() time.Time { return now })
 		Expect(err).NotTo(HaveOccurred())
 		claim := workqueue.RecurringClaim{Kind: workqueue.KindCatalogRefresh, Title: "Refresh", Now: now, LeaseDuration: time.Minute}
 		leased, claimed, err := store.ClaimRecurringWork(ctx, claim)

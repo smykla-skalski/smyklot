@@ -20,20 +20,13 @@ import (
 func (s *Store) RequestRecurringWork(
 	ctx context.Context,
 	request workqueue.RecurringRequest,
+	now func() time.Time,
 ) (workqueue.Item, error) {
-	claim := workqueue.RecurringClaim{
-		Kind: request.Kind, TargetID: request.TargetID, RepositoryID: request.RepositoryID,
-		Title: request.Title, Now: request.Now, LeaseDuration: time.Minute,
-	}
-	if err := validateRecurringClaim(claim); err != nil {
+	claim, err := recurringRequestClaim(request, now)
+	if err != nil {
 		return workqueue.Item{}, err
 	}
-	if !validRecurringRequestKey(request.RequestKey) {
-		return workqueue.Item{}, storage.ErrConflict
-	}
-	if strings.TrimSpace(request.ActorID) == "" || strings.TrimSpace(request.Reason) == "" {
-		return workqueue.Item{}, errors.New("recurring request actor and reason are required")
-	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return workqueue.Item{}, fmt.Errorf("begin recurring request: %w", err)
@@ -42,7 +35,7 @@ func (s *Store) RequestRecurringWork(
 	if _, err := s.lockQueueDispatchState(ctx, tx, workqueue.LaneMaintenance); err != nil {
 		return workqueue.Item{}, err
 	}
-	if err := s.authorizeSyncCheckRequest(ctx, tx, request); err != nil {
+	if err := s.authorizeSyncCheckRequest(ctx, tx, request, now); err != nil {
 		return workqueue.Item{}, err
 	}
 	if request.RequestKey != "" {
@@ -55,9 +48,11 @@ func (s *Store) RequestRecurringWork(
 		}
 	}
 
-	if err := s.prepareSyncCheckRequest(ctx, tx, request); err != nil {
+	if err := s.prepareSyncCheckRequest(ctx, tx, request, now); err != nil {
 		return workqueue.Item{}, err
 	}
+	request.Now = now().UTC()
+	claim.Now = request.Now
 	item, err := s.recurringRequestCandidate(ctx, tx, request, claim)
 	if err != nil {
 		return workqueue.Item{}, err
@@ -65,6 +60,10 @@ func (s *Store) RequestRecurringWork(
 	if item.State == workqueue.StateRunning {
 		return workqueue.Item{}, storage.ErrConflict
 	}
+	if err := s.validateSyncCheckRequest(ctx, tx, request, now); err != nil {
+		return workqueue.Item{}, err
+	}
+	request.Now = now().UTC()
 	action := workqueue.ItemAction{
 		Type: workqueue.ActionRunNow, ExpectedRevision: item.Revision,
 		ActorID: request.ActorID, Reason: request.Reason, ChangedAt: request.Now,
@@ -84,6 +83,9 @@ func (s *Store) RequestRecurringWork(
 		return workqueue.Item{}, err
 	}
 	if err := insertRecurringRequestReceipt(ctx, tx, request, updated); err != nil {
+		return workqueue.Item{}, err
+	}
+	if err := s.validateSyncCheckRequest(ctx, tx, request, now); err != nil {
 		return workqueue.Item{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -111,4 +113,21 @@ func (s *Store) recurringRequestCandidate(ctx context.Context, tx *transaction, 
 		}
 	}
 	return item, nil
+}
+
+func recurringRequestClaim(request workqueue.RecurringRequest, now func() time.Time) (workqueue.RecurringClaim, error) {
+	claim := workqueue.RecurringClaim{
+		Kind: request.Kind, TargetID: request.TargetID, RepositoryID: request.RepositoryID,
+		Title: request.Title, Now: request.Now, LeaseDuration: time.Minute,
+	}
+	if err := validateRecurringClaim(claim); err != nil {
+		return workqueue.RecurringClaim{}, err
+	}
+	if now == nil || !validRecurringRequestKey(request.RequestKey) {
+		return workqueue.RecurringClaim{}, storage.ErrConflict
+	}
+	if strings.TrimSpace(request.ActorID) == "" || strings.TrimSpace(request.Reason) == "" {
+		return workqueue.RecurringClaim{}, errors.New("recurring request actor and reason are required")
+	}
+	return claim, nil
 }

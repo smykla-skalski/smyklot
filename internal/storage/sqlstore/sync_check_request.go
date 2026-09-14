@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
@@ -14,7 +15,7 @@ import (
 // Run under the maintenance dispatch lock, after receipt recovery and before
 // accepting new work. The target lock serializes this decision with creation
 // of a new plan. Expiry and request acceptance either both commit or neither.
-func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest) error {
+func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest, now func() time.Time) error {
 	if request.Kind != workqueue.KindSyncScan {
 		return nil
 	}
@@ -31,6 +32,7 @@ func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, re
 	if err != nil {
 		return fmt.Errorf("read check blocker: %w", err)
 	}
+	request.Now = now().UTC()
 	if orgsync.FreshCheckPlanBlocker(plan, request.Now) != "" {
 		return &storage.LiveSyncPlanConflict{PlanID: plan.ID}
 	}
@@ -45,12 +47,23 @@ func (s *Store) prepareSyncCheckRequest(ctx context.Context, tx *transaction, re
 }
 
 // Scheduled checks use ClaimRecurringWork; this boundary handles explicit intent.
-func (s *Store) authorizeSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest) error {
+func (s *Store) authorizeSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest, now func() time.Time) error {
 	if request.Kind != workqueue.KindSyncScan {
 		return nil
 	}
 	if request.TargetID == nil || *request.TargetID == "" || request.RequestKey == "" || request.Now.IsZero() {
 		return storage.ErrConflict
 	}
-	return s.authorizeWorkspaceCommand(ctx, tx, workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: *request.TargetID, RequestedAt: request.Now})
+	return s.authorizeWorkspaceCommand(ctx, tx, checkAuthority(request, now))
+}
+
+func (s *Store) validateSyncCheckRequest(ctx context.Context, tx *transaction, request workqueue.RecurringRequest, now func() time.Time) error {
+	if request.Kind != workqueue.KindSyncScan {
+		return nil
+	}
+	return s.validateWorkspaceCommand(ctx, tx, checkAuthority(request, now))
+}
+
+func checkAuthority(request workqueue.RecurringRequest, now func() time.Time) workspaceCommandAuthority {
+	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: *request.TargetID, RequestedAt: request.Now, Clock: now}
 }

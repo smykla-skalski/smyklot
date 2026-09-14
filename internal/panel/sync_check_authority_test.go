@@ -17,18 +17,18 @@ type revokingCheckStore struct {
 	onRead bool
 }
 
-func (s revokingCheckStore) RequestRecurringWork(ctx context.Context, request workqueue.RecurringRequest) (workqueue.Item, error) {
+func (s revokingCheckStore) RequestRecurringWork(ctx context.Context, request workqueue.RecurringRequest, now func() time.Time) (workqueue.Item, error) {
 	if !s.onRead {
 		s.before()
 	}
-	return s.Store.RequestRecurringWork(ctx, request)
+	return s.Store.RequestRecurringWork(ctx, request, now)
 }
 
-func (s revokingCheckStore) FindRecurringWorkRequest(ctx context.Context, request workqueue.RecurringRequest) (workqueue.Item, error) {
+func (s revokingCheckStore) FindRecurringWorkRequest(ctx context.Context, request workqueue.RecurringRequest, now func() time.Time) (workqueue.Item, error) {
 	if s.onRead {
 		s.before()
 	}
-	return s.Store.FindRecurringWorkRequest(ctx, request)
+	return s.Store.FindRecurringWorkRequest(ctx, request, now)
 }
 
 func TestSyncCheckRechecksSessionAfterHTTPAccess(t *testing.T) {

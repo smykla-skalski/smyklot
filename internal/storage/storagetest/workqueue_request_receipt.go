@@ -25,14 +25,14 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 		})
 
 		It("keeps original acceptance through execution, completion and queue pruning", func() {
-			_, err := store.FindRecurringWorkRequest(ctx, request)
+			_, err := store.FindRecurringWorkRequest(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
-			accepted, err := store.RequestRecurringWork(ctx, request)
+			accepted, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			events, err := store.ListQueueEvents(ctx, accepted.ID, 100)
 			Expect(err).NotTo(HaveOccurred())
 			request.Now = now.Add(time.Second)
-			repeated, err := store.RequestRecurringWork(ctx, request)
+			repeated, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
 			afterEvents, err := store.ListQueueEvents(ctx, accepted.ID, 100)
@@ -41,7 +41,7 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 			leased, found, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{Kind: request.Kind, Title: request.Title, Now: now, LeaseDuration: time.Minute})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(found).To(BeTrue())
-			repeated, err = store.RequestRecurringWork(ctx, request)
+			repeated, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
 			_, err = store.FinishRecurringWork(ctx, leased.ID, workqueue.RecurringCompletion{Attempt: leased.Attempt}, now)
@@ -50,20 +50,20 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 			Expect(err).NotTo(HaveOccurred())
 			_, err = store.GetQueueItem(ctx, accepted.ID)
 			Expect(err).To(MatchError(storage.ErrNotFound))
-			repeated, err = store.RequestRecurringWork(ctx, request)
+			repeated, err = store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(repeated).To(Equal(accepted))
-			recovered, err := store.FindRecurringWorkRequest(ctx, request)
+			recovered, err := store.FindRecurringWorkRequest(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(recovered).To(Equal(accepted))
 			request.RequestKey = "new-user-request"
-			fresh, err := store.RequestRecurringWork(ctx, request)
+			fresh, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fresh.ID).NotTo(Equal(accepted.ID))
 		})
 
 		It("rejects changed input and never exposes another actor's receipt", func() {
-			_, err := store.RequestRecurringWork(ctx, request)
+			_, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			target := "another-workspace"
 			changed := []workqueue.RecurringRequest{request, request, request, request}
@@ -72,15 +72,15 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 			changed[2].TargetID = &target
 			changed[3].Kind = workqueue.KindSyncScan
 			for _, input := range changed {
-				_, err := store.FindRecurringWorkRequest(ctx, input)
+				_, err := store.FindRecurringWorkRequest(ctx, input, func() time.Time { return input.Now })
 				Expect(err).To(MatchError(storage.ErrConflict))
 			}
 			changedRequest := request
 			changedRequest.Reason = "different reason"
-			_, err = store.RequestRecurringWork(ctx, changedRequest)
+			_, err = store.RequestRecurringWork(ctx, changedRequest, func() time.Time { return changedRequest.Now })
 			Expect(err).To(MatchError(storage.ErrConflict))
 			request.ActorID = "another-actor"
-			_, err = store.FindRecurringWorkRequest(ctx, request)
+			_, err = store.FindRecurringWorkRequest(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
@@ -94,7 +94,7 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 			for range 2 {
 				go func() {
 					<-start
-					item, err := store.RequestRecurringWork(ctx, request)
+					item, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 					results <- result{item, err}
 				}()
 			}
@@ -115,11 +115,11 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 		})
 
 		It("advances the revision for a distinct request on the same waiting occurrence", func() {
-			first, err := store.RequestRecurringWork(ctx, request)
+			first, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			request.RequestKey = "another-command"
 			request.Now = now.Add(time.Second)
-			second, err := store.RequestRecurringWork(ctx, request)
+			second, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(second.ID).To(Equal(first.ID))
 			Expect(second.Revision).To(Equal(first.Revision + 1))
@@ -130,12 +130,12 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 
 		It("does not retain acceptance when the transaction fails", func() {
 			request.ActorID = "missing-account"
-			_, err := store.RequestRecurringWork(ctx, request)
+			_, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(HaveOccurred())
-			_, err = store.FindRecurringWorkRequest(ctx, request)
+			_, err = store.FindRecurringWorkRequest(ctx, request, func() time.Time { return request.Now })
 			Expect(err).To(MatchError(storage.ErrNotFound))
 			Expect(store.UpsertAccount(ctx, storage.Account{ID: request.ActorID, Provider: "github", SubjectID: request.ActorID, Login: "operator"})).To(Succeed())
-			accepted, err := store.RequestRecurringWork(ctx, request)
+			accepted, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 			Expect(err).NotTo(HaveOccurred())
 			Expect(accepted.Revision).To(Equal(int64(2)))
 		})
@@ -143,7 +143,7 @@ func declareRecurringRequestReceiptSpecs(runtime queueRuntime) {
 		It("rejects malformed keys without acceptance", func() {
 			for _, key := range []string{" padded", "padded ", strings.Repeat("x", 201)} {
 				request.RequestKey = key
-				_, err := store.RequestRecurringWork(ctx, request)
+				_, err := store.RequestRecurringWork(ctx, request, func() time.Time { return request.Now })
 				Expect(err).To(MatchError(storage.ErrConflict))
 			}
 		})

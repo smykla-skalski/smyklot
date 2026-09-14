@@ -11,7 +11,7 @@ import (
 // The caller authorizes the current actor and target before any receipt lookup.
 // Acceptance identifies the check; it does not claim the check is still queued.
 func (s *Server) answerAcceptedSyncCheck(w http.ResponseWriter, r *http.Request, request workqueue.RecurringRequest) bool {
-	item, err := s.store.FindRecurringWorkRequest(r.Context(), request)
+	item, err := s.store.FindRecurringWorkRequest(r.Context(), request, s.now)
 	if errors.Is(err, storage.ErrNotFound) {
 		return false
 	}
@@ -33,7 +33,7 @@ func (s *Server) handleSyncCheck(w http.ResponseWriter, r *http.Request, account
 	if s.answerAcceptedSyncCheck(w, r, request) {
 		return
 	}
-	item, err := s.store.RequestRecurringWork(r.Context(), request)
+	item, err := s.store.RequestRecurringWork(r.Context(), request, s.now)
 	var blocked *storage.LiveSyncPlanConflict
 	if errors.As(err, &blocked) {
 		plan, actions, readErr := s.store.GetSyncPlan(r.Context(), target.ID, blocked.PlanID)
