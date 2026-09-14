@@ -1898,6 +1898,8 @@ export function queueSeeds(iso: (offsetMs: number) => string): QueueItem[] {
     {
       ...common,
       id: 'queue-reaction-retry',
+      source_kind: 'recurring',
+      source_id: 'reaction-scan:4003',
       kind: 'reaction_scan',
       lane: 'maintenance',
       repository_id: '4003',

@@ -1,3 +1,4 @@
+import { scheduleMockOccurrence } from './queue-occurrences';
 import { mockQueueActions, projectMockQueueItem } from './queue-capabilities';
 import type { SchedulePreviewInput } from '../src/lib/schedule-preview';
 import { scheduleHoursProblems } from '../src/lib/schedule-validation';
@@ -794,36 +795,13 @@ function reconcile(state: MockState): void {
   if (changed) broadcast(state, { type: 'resync' });
 }
 
-/**
- * One row's loop: it waits, it runs, it rests, it waits again.
- *
- * Proportioned so a reader watching the overview sees both marks: a row spends a third
- * of its cycle running, and the rows are held apart in phase, so the column almost
- * always carries one of each.
- */
+/** Accelerated development cadence; every completed occurrence keeps its identity. */
 const QUEUE_WAIT_MS = 45_000;
 const QUEUE_RUN_MS = 30_000;
-const QUEUE_REST_MS = 10_000;
 
 const QUEUE_DONE = new Set(['succeeded', 'failed', 'cancelled', 'superseded']);
 
-/**
- * The queue's rows, walked the way the pending-CI table's already are.
- *
- * The seeds carried the variety - one row running, one waiting on required checks, one
- * retrying after a rate limit - and nothing moved them, so every estimate in them was
- * stamped once at startup and went stale within the hour. A dev server left open for an
- * afternoon showed three rows all reading "now", which is not one of the states the
- * fixture describes and is not a state the service can be in either.
- *
- * So each row runs its own loop: a waiting row whose estimate passes starts, a running
- * row fills its progress and finishes, and a finished row rests and then waits again with
- * a fresh estimate. The resting shape comes off `queueRest`, so a row goes back to being
- * blocked on the thing it was blocked on rather than to a guess.
- *
- * Rows that are somebody's decision rather than the service's - `awaiting_approval` -
- * stand still, because nothing but a person moves them.
- */
+/** Advance live work and publish separate successors for completed recurring work. */
 function advanceQueue(state: MockState, now: number): boolean {
   let changed = false;
 
@@ -832,8 +810,9 @@ function advanceQueue(state: MockState, now: number): boolean {
      after - every row's cycle is the same length. */
   const looping = state.queue.filter((item) => state.queueRest.has(item.id));
 
-  for (const [index, item] of state.queue.entries()) {
+  for (const [index, item] of [...state.queue].entries()) {
     if (item.kind === 'sync_apply' || item.kind === 'sync_scan') continue;
+    if (scheduleMockOccurrence(state, item, now, QUEUE_WAIT_MS)) changed = true;
     const next = advanceQueueItem(state, item, now, looping.indexOf(item), looping.length);
     if (next === item) continue;
     state.queue[index] = next;
@@ -854,38 +833,7 @@ function advanceQueueItem(
   const rest = state.queueRest.get(item.id);
   if (item.state === 'awaiting_approval' || rest === undefined) return item;
 
-  if (QUEUE_DONE.has(item.state)) {
-    /* Only what this process watched SUCCEED, and only the loop's own doing. The seeded
-       terminal rows are the past that Recent exists to show, and a past that arms itself
-       again is not a past - that is the rule the pending-CI table follows. The state is
-       checked as well as the id, because a row somebody cancelled is also terminal and
-       also in the loop: without it the mock put a cancelled row back ten seconds later,
-       which is the mock overruling the person using it. */
-    if (item.state !== 'succeeded' || !state.queueLoop.has(item.id)) return item;
-    const finished = Date.parse(item.finished_at ?? item.updated_at);
-    if (Number.isNaN(finished) || now - finished < QUEUE_REST_MS) return item;
-
-    /* A row rests as a WAITING row, whatever it was seeded as. `queue-sync-apply` is
-       seeded mid-run, because that is the picture the fixture is drawing; putting that
-       shape back would hand it a start time from before the process began and finish it
-       again on the next tick, so it would flap between running and done and never be
-       seen waiting. */
-    const waiting: QueueItem = { ...rest };
-    delete waiting.started_at;
-    delete waiting.finished_at;
-
-    return {
-      ...waiting,
-      state: rest.state === 'running' || QUEUE_DONE.has(rest.state) ? 'scheduled' : rest.state,
-      ...(rest.progress_total === undefined ? {} : { progress_current: 0 }),
-      not_before: at(0),
-      eligible_at: at(QUEUE_WAIT_MS),
-      estimated_start_at: at(QUEUE_WAIT_MS),
-      created_at: at(0),
-      updated_at: at(0),
-      revision: item.revision + 1,
-    };
-  }
+  if (QUEUE_DONE.has(item.state)) return item;
 
   if (item.state === 'running') {
     const started = Date.parse(item.started_at ?? item.updated_at);
