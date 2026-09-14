@@ -66,6 +66,11 @@
   );
 </script>
 
+<!--
+@component
+Read-only history for an accepted sync request, scoped to the actor, workspace, action and request key. Original acceptance remains distinct from current execution and comparison evidence. Refreshing never resubmits the request or establishes the outcome of an unconfirmed request.
+-->
+
 <Modal
   id="sync-operation"
   open

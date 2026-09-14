@@ -610,7 +610,7 @@ Live plan and status queries share the shell's event invalidation and polling fa
     <div class="sync-feedback">
       {#if requestStorageProblem}
         <FormError message={requestStorageProblem} />
-        {#if !pendingRequest}<Button tone="quiet" onclick={readRequestStorage}
+        {#if pendingRequest === null}<Button tone="quiet" onclick={readRequestStorage}
             >Retry browser storage</Button
           >{/if}
       {/if}

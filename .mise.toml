@@ -490,7 +490,32 @@ npm run test:browser -- \
   tests/browser/queue-live.test.ts \
   tests/browser/repository-page.test.ts \
   tests/browser/failure-status.test.ts \
-  tests/browser/schedules.test.ts
+  tests/browser/schedules.test.ts \
+  tests/browser/access-decisions.test.ts \
+  tests/browser/delivery-retry.test.ts \
+  tests/browser/inline-word-spacing.test.ts \
+  tests/browser/notification-overview.test.ts \
+  tests/browser/sync-check-controls.test.ts \
+  tests/browser/sync-check-evidence.test.ts \
+  tests/browser/sync-check-receipt.test.ts \
+  tests/browser/sync-check-recovery.test.ts \
+  tests/browser/sync-check-result.test.ts \
+  tests/browser/sync-confirmation-viewer.test.ts \
+  tests/browser/sync-deferred-blocker.test.ts \
+  tests/browser/sync-dispatch-capability.test.ts \
+  tests/browser/sync-dispatch-recovery.test.ts \
+  tests/browser/sync-empty-recovery.test.ts \
+  tests/browser/sync-execution.test.ts \
+  tests/browser/sync-intent.test.ts \
+  tests/browser/sync-late-acceptance.test.ts \
+  tests/browser/sync-late-outcome.test.ts \
+  tests/browser/sync-mutation-refresh.test.ts \
+  tests/browser/sync-operation.test.ts \
+  tests/browser/sync-read-state.test.ts \
+  tests/browser/sync-request-confirmation.test.ts \
+  tests/browser/sync-requests.test.ts \
+  tests/browser/sync-retained-check.test.ts \
+  tests/browser/sync-storage-recovery.test.ts
 '''
 
 [tasks."panel:assets:generate"]

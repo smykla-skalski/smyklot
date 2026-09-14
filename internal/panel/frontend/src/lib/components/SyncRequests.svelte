@@ -69,6 +69,11 @@
   }
 </script>
 
+<!--
+@component
+The current actor's accepted requests in one workspace, with cursor pagination and links to their exact identities. This is historical acceptance, not proof of completion or a way to identify unconfirmed work by its time or reason. Closing restores focus to the entry button.
+-->
+
 <div class="requests-entry">
   <Button
     id="sync-requests-trigger"

@@ -57,6 +57,11 @@
   const missing = $derived(query.error instanceof PanelApiError && query.error.status === 404);
 </script>
 
+<!--
+@component
+Read-only evidence for one repository check. Comparison results and worker execution are separate records; neither substitutes for the other. Refreshing only reads the selected check, while current workspace guidance may point to different work.
+-->
+
 <Modal
   id="sync-check"
   open={itemId !== null}
