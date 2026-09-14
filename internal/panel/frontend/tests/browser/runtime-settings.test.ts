@@ -534,7 +534,7 @@ describe('Root runtime settings drafts', () => {
   });
 
   it('keeps invalid raw duration text and blocks Save before the wire', async () => {
-    const page = await panel.browser.newPage({ viewport: { width: 1280, height: 900 } });
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     const writes: Request[] = [];
     page.on('request', (request) => {
       if (
@@ -550,19 +550,18 @@ describe('Root runtime settings drafts', () => {
       await page.getByRole('button', { name: 'Override the deployment session lifetime' }).click();
       const amount = page.getByRole('textbox', { name: 'Session lifetime amount' });
       await amount.fill('1e');
-      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect
+        .poll(() => page.getByRole('button', { name: 'Save', exact: true }).isDisabled())
+        .toBe(true);
 
-      await page
-        .getByText('Session lifetime must be between 1 minute and 30 days')
-        .first()
-        .waitFor();
+      await page.getByText('Enter a duration in whole seconds').first().waitFor();
       expect(writes).toHaveLength(0);
       expect(await amount.getAttribute('aria-invalid')).toBe('true');
 
       await page.getByRole('link', { name: 'Service health' }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/service');
       await page.reload({ waitUntil: 'domcontentloaded' });
-      await page.getByRole('link', { name: 'Service settings' }).click();
+      await page.getByRole('link', { name: 'Open Service settings', exact: true }).click();
       await page.waitForURL((url) => url.pathname === '/root/runtime/settings');
       expect(
         await page.getByRole('textbox', { name: 'Session lifetime amount' }).inputValue(),
