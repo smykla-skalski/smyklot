@@ -138,3 +138,20 @@ func TestRuntimeBehaviorLegacyNullCollectionEntries(t *testing.T) {
 		t.Fatalf("legacy null entries changed: %+v", resolved)
 	}
 }
+
+func TestRuntimeBehaviorLegacyFieldCase(t *testing.T) {
+	var value storage.RuntimeBehavior
+	document := `{"QUIET_SUCCESS":true,"quiet_success":null,"COMMAND_PREFIX":"!","ALLOWED_COMMANDS":["merge"],"allowed_commands":["approve"],"COMMAND_ALIASES":{"ship":"merge"},"command_aliases":{"ok":"approve"}}`
+	if err := json.Unmarshal([]byte(document), &value); err != nil {
+		t.Fatal(err)
+	}
+	resolved := value.Resolve(config.Default())
+	if !resolved.QuietSuccess || resolved.CommandPrefix != "!" || !reflect.DeepEqual(resolved.AllowedCommands, []string{"approve"}) || !reflect.DeepEqual(resolved.CommandAliases, map[string]string{"ship": "merge", "ok": "approve"}) {
+		t.Fatalf("legacy field case changed: %+v", resolved)
+	}
+	for _, invalid := range []string{`{"RUNNER":"unknown"}`, `{"QUIET_SUCCESS":"yes","quiet_success":true}`, `{"version":1,"overrides":{"QUIET_SUCCESS":true}}`, `{"version":1,"overrides":{"formatting":{"common":{"INDENT_WIDTH":4}}}}`} {
+		if err := json.Unmarshal([]byte(invalid), &value); err == nil {
+			t.Fatalf("invalid document accepted: %s", invalid)
+		}
+	}
+}

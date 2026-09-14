@@ -85,7 +85,7 @@ export function resolveRuntimeBehavior(
 }
 
 function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorIntent {
-  const normalized = { ...value };
+  const normalized = legacyBehaviorFields(value);
   // Historical concrete Go configs pin zero values for omitted behavior fields.
   // This is migration behavior only; versioned overrides remain strict and sparse.
   for (const key of CONFIG_KEYS) {
@@ -99,21 +99,6 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
               ? ''
               : false;
     }
-  }
-  // encoding/json preserves string zero values for null collection entries in
-  // concrete historical Config documents. Sparse overrides still reject nulls.
-  if (Array.isArray(normalized.allowed_commands)) {
-    normalized.allowed_commands = normalized.allowed_commands.map((entry) =>
-      entry === null ? '' : entry,
-    );
-  }
-  if (isRecord(normalized.command_aliases)) {
-    normalized.command_aliases = Object.fromEntries(
-      Object.entries(normalized.command_aliases).map(([key, entry]) => [
-        key,
-        entry === null ? '' : entry,
-      ]),
-    );
   }
   if (
     normalized.runner !== undefined &&
@@ -148,6 +133,42 @@ function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorI
   patch.formatting = completeFormattingPatch(formatting);
   // Every legacy config owns its complete field set, including false and empty values.
   return runtimeBehaviorFromPatch(patch)!;
+}
+
+/** Match encoding/json's historical field folding and repeated-field updates. */
+function legacyBehaviorFields(value: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = Object.create(null);
+  for (const [name, raw] of Object.entries(value)) {
+    const key = name.toLowerCase();
+    if (!CONFIG_KEYS.includes(key as ConfigKey) && key !== 'runner') {
+      normalized[name] = raw;
+      continue;
+    }
+    // Null leaves concrete Go scalars unchanged, but clears slices and maps.
+    if (raw === null && key !== 'allowed_commands' && key !== 'command_aliases') continue;
+    let field = raw;
+    if (key === 'allowed_commands' && Array.isArray(field)) {
+      field = field.map((entry) => (entry === null ? '' : entry));
+    }
+    if (key === 'command_aliases' && isRecord(field)) {
+      field = Object.fromEntries(
+        Object.entries(field).map(([alias, entry]) => [alias, entry === null ? '' : entry]),
+      );
+    }
+    // Go retains a type error even if a later differently-cased field is valid.
+    if (
+      field !== null &&
+      (key === 'runner' ? typeof field !== 'string' : !validConfigValue(key as ConfigKey, field))
+    ) {
+      throw new RuntimeBehaviorValidationError(`bot_config.${key}`, `bot_config.${key} is invalid`);
+    }
+    if (key === 'command_aliases' && isRecord(field) && isRecord(normalized[key])) {
+      normalized[key] = { ...normalized[key], ...field };
+    } else {
+      normalized[key] = field;
+    }
+  }
+  return normalized;
 }
 
 function validConfigValue(key: ConfigKey, value: unknown): boolean {

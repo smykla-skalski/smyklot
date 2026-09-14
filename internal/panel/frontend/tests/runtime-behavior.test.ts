@@ -37,6 +37,34 @@ describe('runtime behavior ownership [Unit]', () => {
     );
   });
 
+  it('preserves case-insensitive historical behavior fields in document order', () => {
+    const legacy = {
+      QUIET_SUCCESS: true,
+      quiet_success: null,
+      COMMAND_PREFIX: '!',
+      ALLOWED_COMMANDS: ['merge'],
+      allowed_commands: ['approve'],
+      COMMAND_ALIASES: { ship: 'merge' },
+      command_aliases: { ok: 'approve' },
+    };
+    expect(parseRuntimeBehavior(legacy)?.overrides).toMatchObject({
+      quiet_success: true,
+      command_prefix: '!',
+      allowed_commands: ['approve'],
+      command_aliases: { ship: 'merge', ok: 'approve' },
+    });
+    expect(legacy.COMMAND_ALIASES).toEqual({ ship: 'merge' });
+    expect(
+      parseRuntimeBehavior(JSON.parse('{"__proto__":{"quiet_success":true}}'))?.overrides
+        .quiet_success,
+    ).toBe(false);
+    expect(() => parseRuntimeBehavior({ RUNNER: 'unknown' })).toThrow();
+    expect(() => parseRuntimeBehavior({ QUIET_SUCCESS: 'yes', quiet_success: true })).toThrow();
+    expect(() =>
+      parseRuntimeBehavior({ version: 1, overrides: { QUIET_SUCCESS: true } }),
+    ).toThrow();
+  });
+
   it('preserves the historical zero value of null collection entries', () => {
     const legacy = {
       allowed_commands: [null, 'approve'],

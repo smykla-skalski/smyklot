@@ -113,6 +113,10 @@ func parseRuntimeBehaviorPatch(content []byte) (config.Patch, error) {
 	if err := rejectRuntimeNulls(object, ""); err != nil {
 		return config.Patch{}, err
 	}
+	var exact config.Patch
+	if err := config.DecodeExactJSON(content, &exact); err != nil {
+		return config.Patch{}, err
+	}
 	patch, err := config.ParsePatch(config.Format("json"), content)
 	if err != nil {
 		return config.Patch{}, err
