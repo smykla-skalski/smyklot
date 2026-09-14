@@ -197,6 +197,7 @@ type ShellSource = () => Promise<string>;
    with the built shell. Both are typed against `node:`, which is exactly why they are
    here and not in `fixtures.ts`. */
 interface MockState extends Fixtures {
+  installationState?: 'unavailable' | 'error';
   streams: Set<Duplex>;
   shell: ShellSource;
   scheduleProfiles: ScheduleProfile[];
@@ -1308,7 +1309,9 @@ async function handle(
   const method = req.method ?? 'GET';
 
   if (path === '/' && method === 'GET') {
-    applyScenario(state, parsed.searchParams.get('scenario'));
+    // Background shell/cache reads must not erase a chosen visual scenario.
+    if (req.headers['sec-fetch-dest'] !== 'empty' || parsed.searchParams.has('scenario'))
+      applyScenario(state, parsed.searchParams.get('scenario'));
     next();
     return;
   }
@@ -1602,7 +1605,18 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/installation') && method === 'GET') {
-      respond(res, 200, { installation_url: 'https://github.com/apps/smyklot/installations/new' });
+      if (state.installationState === 'error')
+        throw new MockApiError(
+          503,
+          'installation_lookup_failed',
+          'Could not load the installation link. Try again.',
+        );
+      respond(res, 200, {
+        installation_url:
+          state.installationState === 'unavailable'
+            ? null
+            : 'https://github.com/apps/smyklot/installations/new',
+      });
       return;
     }
     if (path === route('/api/v1/schedule-preview') && method === 'POST') {
@@ -3243,7 +3257,15 @@ function applyScenario(state: MockState, scenario: string | null): void {
      a way of looking at the mock and not a change to it. Emptying it stuck: every
      later request in the same process saw an account with no workspaces, and
      whatever was being looked at next quietly measured the wrong panel. */
-  state.hideTargets = scenario === 'empty';
+  state.hideTargets = ['empty', 'installation-unavailable', 'installation-error'].includes(
+    scenario ?? '',
+  );
+  state.installationState =
+    scenario === 'installation-unavailable'
+      ? 'unavailable'
+      : scenario === 'installation-error'
+        ? 'error'
+        : undefined;
 }
 
 function findTarget(state: MockState, encodedId: string): MockTarget {

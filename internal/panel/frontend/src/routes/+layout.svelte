@@ -1,4 +1,5 @@
 <script lang="ts">
+  import InstallationPrompt from '#lib/components/InstallationPrompt.svelte';
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { createQuery, QueryClientProvider } from '@tanstack/svelte-query';
@@ -1264,17 +1265,7 @@
     <SignInPage {api} {build} ended={session.sessionEnded} failed={signInFailure} {returnTo} />
   {:else if session.awaitingWorkspace}
     <NightPage title="No workspaces" documentTitle="No workspaces" {build} size="compact">
-      <div class="install-prompt">
-        <span class="install-mark" aria-hidden="true">+</span>
-        <div class="install-copy">
-          <strong>Install Smyklot to begin</strong>
-          <p>
-            Install the Smyklot GitHub App on an organization or personal account, then reload this
-            panel
-          </p>
-        </div>
-        <Button tone="signal" onclick={() => void session.load()}>Reload panel</Button>
-      </div>
+      <InstallationPrompt {api} reload={() => session.load()} />
     </NightPage>
   {:else}
     <a class="skip-link" href="#panel-content">Skip to panel content</a>
@@ -1573,32 +1564,5 @@
   }
   .skeleton-row {
     height: 3.25rem;
-  }
-  .install-prompt {
-    display: grid;
-    gap: var(--space-4);
-    justify-items: center;
-    text-align: center;
-  }
-  .install-copy strong {
-    display: block;
-    font-size: 1rem;
-  }
-  .install-copy p {
-    color: var(--text-muted);
-    margin: var(--space-2) 0 0;
-    max-width: var(--measure-note);
-  }
-  .install-mark {
-    align-items: center;
-    background: var(--brand-action-tint);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 34%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--brand-action);
-    display: inline-flex;
-    font: 650 1.5rem/1 var(--sans);
-    height: 3rem;
-    justify-content: center;
-    width: 3rem;
   }
 </style>

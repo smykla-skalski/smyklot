@@ -136,6 +136,7 @@ export interface PanelApi {
     query?: string,
   ): Promise<BypassActorDirectory>;
   fetchViewer(): Promise<PanelViewer | null>;
+  fetchInstallation(signal?: AbortSignal): Promise<string | null>;
   fetchTargets(): Promise<PanelTarget[]>;
   fetchRootWorkspaces(): Promise<RootWorkspace[]>;
   syncRootWorkspaces(): Promise<string[]>;
@@ -560,6 +561,27 @@ export function createPanelApi(
         throw await readError(response);
       }
       return (await response.json()) as PanelViewer;
+    },
+
+    async fetchInstallation(signal?: AbortSignal): Promise<string | null> {
+      const body = await jsonRequest<{ installation_url: unknown }>('/api/v1/installation', {
+        signal,
+      });
+      if (body.installation_url === null) return null;
+      if (typeof body.installation_url !== 'string')
+        throw new TypeError('Invalid installation link');
+      const url = new URL(body.installation_url);
+      if (
+        !['http:', 'https:'].includes(url.protocol) ||
+        !url.host ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        !/^\/(?:apps|github-apps)\/[^/]+\/installations\/new$/u.test(url.pathname)
+      )
+        throw new TypeError('Invalid installation link');
+      return url.href;
     },
 
     async fetchTargets(): Promise<PanelTarget[]> {

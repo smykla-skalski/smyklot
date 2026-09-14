@@ -309,6 +309,7 @@ jobs:
               tests/browser/text-clipping.test.ts
               tests/browser/bypass-identities.test.ts
               tests/browser/signed-out-layout.test.ts
+              tests/browser/installation.test.ts
           # 319s in the reference run
           - area: group-2
             files: >-

@@ -5,6 +5,7 @@
   import { plainClick } from '#lib/follow.js';
   import { getPanelSession, type PanelSession } from '#lib/session.svelte.js';
   import { getSettingsDraftRegistry } from '#lib/settings-drafts.svelte.js';
+  import InstallationPrompt from './InstallationPrompt.svelte';
   import Button from './Button.svelte';
   import Plate from './Plate.svelte';
 
@@ -323,17 +324,7 @@ history is routed with its section. That is what makes an address like
   {/if}
 {:else if session.failure === null}
   <Plate label="No workspaces">
-    <div class="empty-panel-state">
-      <span class="empty-panel-mark" aria-hidden="true">+</span>
-      <div>
-        <strong>Install Smyklot to begin</strong>
-        <p class="dim">
-          Install the Smyklot GitHub App on an organization or personal account, then reload this
-          panel
-        </p>
-      </div>
-      <Button tone="signal" onclick={() => void session.load()}>Reload panel</Button>
-    </div>
+    <InstallationPrompt api={session.api} reload={() => session.load()} />
   </Plate>
 {/if}
 
@@ -350,38 +341,5 @@ history is routed with its section. That is what makes an address like
   .route-loading {
     color: var(--text-muted);
     margin: 0;
-  }
-  .empty-panel-state {
-    align-items: center;
-    display: grid;
-    gap: var(--space-4);
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 7rem;
-  }
-  .empty-panel-state p {
-    margin: var(--space-1) 0 0;
-    max-width: 42rem;
-  }
-  .empty-panel-mark {
-    align-items: center;
-    background: var(--brand-action-tint);
-    border: 1px solid color-mix(in srgb, var(--brand-action) 34%, transparent);
-    border-radius: var(--radius-control);
-    color: var(--brand-action);
-    display: inline-flex;
-    font: 650 1.25rem/var(--leading-flat) var(--sans);
-    height: 2.5rem;
-    justify-content: center;
-    width: 2.5rem;
-  }
-  @media (max-width: 36rem) {
-    .empty-panel-state {
-      align-items: start;
-      grid-template-columns: auto minmax(0, 1fr);
-    }
-    .empty-panel-state :global(.btn) {
-      grid-column: 1 / -1;
-      justify-self: start;
-    }
   }
 </style>
