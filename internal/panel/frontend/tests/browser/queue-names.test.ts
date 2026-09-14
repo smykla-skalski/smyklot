@@ -118,3 +118,58 @@ it.each(['light', 'dark'] as const)(
     }
   },
 );
+
+it.each(['light', 'dark'] as const)(
+  'refreshes repository inspector names in %s desktop',
+  async (colorScheme) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    let missing = true;
+    await page.route('**/api/v1/**/queue/*', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      if (missing && body.item) body.item.repository_name = '';
+      await route.fulfill({ response, json: body });
+    });
+    const capture = async (scene: string) => {
+      const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+      if (!directory) return;
+      await mkdir(directory, { recursive: true });
+      await page.screenshot({
+        path: join(directory, `F13-${scene}-${colorScheme}.png`),
+        animations: 'disabled',
+      });
+    };
+    try {
+      for (const scope of ['root', 'workspace/smykla-skalski']) {
+        missing = true;
+        const prefix = scope === 'root' ? 'root' : 'workspace';
+        await page.goto(`${panel.origin}/${scope}/queue`);
+        await page.getByRole('button', { name: 'Open Merge after CI', exact: true }).click();
+        const dialog = page.getByRole('dialog', { name: 'Merge after CI', exact: true });
+        await dialog.getByText('Repository 4002 (name unavailable)', { exact: false }).waitFor();
+        await capture(`${prefix}-inspector-missing`);
+        await dialog.getByRole('button', { name: 'Refresh', exact: true }).click();
+        await dialog.getByRole('button', { name: 'Refresh', exact: true }).waitFor();
+        expect(await dialog.innerText()).toContain('Deleted repositories keep their IDs');
+        missing = false;
+        await dialog.getByRole('button', { name: 'Refresh', exact: true }).focus();
+        await page.keyboard.press('Enter');
+        await dialog.getByText('smykla-skalski/platform-infra', { exact: true }).waitFor();
+        expect(
+          await dialog
+            .getByRole('button', { name: 'Refresh', exact: true })
+            .evaluate((node) => node === document.activeElement),
+        ).toBe(true);
+        await capture(`${prefix}-inspector-recovered`);
+        await page.keyboard.press('Escape');
+      }
+    } finally {
+      await page.close();
+    }
+  },
+);

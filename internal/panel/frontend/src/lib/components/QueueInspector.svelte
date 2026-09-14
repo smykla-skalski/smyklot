@@ -90,6 +90,7 @@ to the original context. Temporary failures offer an explicit retry.
   loading={query.isFetching}
   {error}
   onRetry={error !== '' && !unavailable ? () => void query.refetch() : undefined}
+  onRefresh={!unavailable ? () => void query.refetch() : undefined}
   onClose={close}
   {recoveryPending}
   onInspectItem={(id) => {

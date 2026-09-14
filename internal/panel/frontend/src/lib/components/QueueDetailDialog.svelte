@@ -18,6 +18,7 @@
     onClose,
     syncResultHref,
     onRetry,
+    onRefresh,
     onInspectItem,
     recovery,
     checkEvidence,
@@ -30,6 +31,7 @@
     onClose: () => void;
     syncResultHref?: (id: string) => string;
     onRetry?: () => void;
+    onRefresh?: () => void;
     onInspectItem?: (id: string) => void;
     recovery?: Snippet;
     checkEvidence?: Snippet;
@@ -105,7 +107,12 @@ not.
     </div>
     <div>
       <dt>Scope</dt>
-      <dd>{scope(detail.item)}</dd>
+      <dd>
+        {scope(detail.item)}
+        {#if detail.item.repository_id && !detail.item.repository_name?.trim() && onRefresh}
+          <p role="status">Refresh to check the name again. Deleted repositories keep their IDs.</p>
+        {/if}
+      </dd>
     </div>
     {#if detail.item.started_at}
       <div>
@@ -278,6 +285,15 @@ not.
   {#snippet footer()}
     {#if onRetry}
       <Button onclick={onRetry} disabled={loading}>Try again</Button>
+    {:else if onRefresh && detail !== null}
+      <Button
+        aria-disabled={loading}
+        onclick={() => {
+          if (!loading) onRefresh();
+        }}
+      >
+        {loading ? 'Refreshing…' : 'Refresh'}
+      </Button>
     {/if}
     <Button disabled={recoveryPending} onclick={onClose}>Close</Button>
   {/snippet}
