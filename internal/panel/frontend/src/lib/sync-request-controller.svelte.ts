@@ -14,6 +14,7 @@ export interface SyncRequestDependencies {
 export class SyncRequestController {
   runningNow = $state(false);
   runNotice = $state('');
+  relatedPlan = $state<{ id: string; label: string } | null>(null);
   requestedCheckId = $state<string | null>(null);
   requestedDispatchId = $state<string | null>(null);
   pendingRequest = $state.raw<SyncRunNowInput | null>(null);
@@ -114,6 +115,7 @@ export class SyncRequestController {
     this.runningNow = true;
     this.error = null;
     this.runNotice = '';
+    this.relatedPlan = null;
     this.requestedCheckId = null;
     this.requestedDispatchId = null;
     try {
@@ -132,12 +134,18 @@ export class SyncRequestController {
       // its idempotent recovery or replace its identity with a new request.
       const request = this.pendingRequest;
       const response = await this.dependencies.runSyncNow(requestTargetId, request);
+      const responsePlanId = response.plan?.id;
+      const validPlan =
+        typeof responsePlanId === 'string' &&
+        responsePlanId.trim() !== '' &&
+        responsePlanId === responsePlanId.trim() &&
+        (request.action === 'check' || responsePlanId === request.plan_id);
       const valid =
         request.action === 'check'
-          ? response.status === 'changes_pending' ||
+          ? (response.status === 'changes_pending' && validPlan) ||
             (response.status === 'check_accepted' && !!response.check_id)
-          : response.status === 'approval_required' ||
-            response.status === 'already_running' ||
+          : ((response.status === 'approval_required' || response.status === 'already_running') &&
+              validPlan) ||
             (response.status === 'dispatch_accepted' &&
               response.plan_id === request.plan_id &&
               !!response.queue_id);
@@ -145,6 +153,21 @@ export class SyncRequestController {
         throw new Error(
           'The sync response could not be confirmed. Recover the request before starting another.',
         );
+      if (
+        response.status === 'changes_pending' ||
+        response.status === 'approval_required' ||
+        response.status === 'already_running'
+      ) {
+        this.relatedPlan = {
+          id: responsePlanId!,
+          label:
+            response.status === 'changes_pending'
+              ? 'Review earlier changes'
+              : response.status === 'approval_required'
+                ? 'Review changes'
+                : 'View changes',
+        };
+      }
       this.requestCleanupPending = true;
       this.requestUncertain = false;
       this.finishRequestRecovery();
@@ -155,12 +178,11 @@ export class SyncRequestController {
         else this.requestedDispatchId = response.plan_id!;
       }
       if (response.status === 'changes_pending')
-        this.runNotice =
-          'Earlier changes are still pending. Review them before requesting another check.';
+        this.runNotice = 'No check was started because earlier changes were pending.';
       if (response.status === 'approval_required')
-        this.runNotice = 'These changes need approval before they can run.';
+        this.runNotice = 'No run was started because these changes needed approval.';
       if (response.status === 'already_running')
-        this.runNotice = 'These changes are already running.';
+        this.runNotice = 'No new run was started because these changes were already running.';
       await this.dependencies.refresh(requestTargetId);
     } catch (cause) {
       if (

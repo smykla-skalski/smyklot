@@ -663,6 +663,9 @@ Live plan and status queries share the shell's event invalidation and polling fa
       {#if feedbackReadError}<FormError message={messageOf(feedbackReadError)} />{/if}
       {#if requestNotice !== ''}<div class="sync-run-notice" role="status">
           <p>{requestNotice}</p>
+          {#if requests.relatedPlan && selectedPlanId !== requests.relatedPlan.id}<Link
+              href={historyResultHref(requests.relatedPlan.id)}>{requests.relatedPlan.label}</Link
+            >{/if}
           {#if confirmedRequest && requestHref}<Link
               href={requestHref(confirmedRequest.action, confirmedRequest.key)}
               {@attach (element) => {

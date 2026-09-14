@@ -41,10 +41,7 @@ describe('desktop sync request intent', () => {
           reason: 'Check sync from the status view',
         });
         await page
-          .getByText(
-            'Earlier changes are still pending. Review them before requesting another check.',
-            { exact: true },
-          )
+          .getByText('No check was started because earlier changes were pending.', { exact: true })
           .waitFor();
         const retained = (await (await page.request.get(endpoint)).json()).plan;
         expect(retained.queue_item).toEqual(original.queue_item);
@@ -57,8 +54,23 @@ describe('desktop sync request intent', () => {
           });
         };
         await capture('check-blocked');
-        await page.getByRole('button', { name: 'View changes', exact: true }).click();
+        const related = page.getByRole('link', { name: 'Review earlier changes', exact: true });
+        expect(await related.getAttribute('href')).toContain(original.id);
+        const relatedDirectory = process.env.SMYKLOT_SYNC_RELATED_PLAN_SCREENSHOTS;
+        if (relatedDirectory) {
+          await mkdir(relatedDirectory, { recursive: true });
+          await page.screenshot({
+            path: join(relatedDirectory, `F33-related-plan-check-${colorScheme}.png`),
+          });
+        }
+        await related.click();
         const inspector = page.getByRole('dialog', { name: 'Sync details', exact: true });
+        await inspector.getByRole('button', { name: 'Run now', exact: true }).waitFor();
+        expect(await related.count()).toBe(0);
+        if (relatedDirectory)
+          await page.screenshot({
+            path: join(relatedDirectory, `F33-related-plan-check-inspector-${colorScheme}.png`),
+          });
         await inspector.getByRole('button', { name: 'Run now', exact: true }).click();
         const confirmation = page.getByRole('dialog', { name: 'Sync now?', exact: true });
         await confirmation.getByLabel('Reason', { exact: true }).fill('Run these reviewed changes');

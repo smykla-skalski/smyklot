@@ -16,14 +16,14 @@ const outcomes = [
     name: 'approval',
     status: 200,
     body: { status: 'approval_required' },
-    message: 'These changes need approval before they can run.',
+    message: 'No run was started because these changes needed approval.',
     uncertain: false,
   },
   {
     name: 'running',
     status: 200,
     body: { status: 'already_running' },
-    message: 'These changes are already running.',
+    message: 'No new run was started because these changes were already running.',
     uncertain: false,
   },
   {
@@ -68,6 +68,7 @@ describe('desktop delayed sync outcomes', () => {
           release = resolve;
         });
         let posts = 0;
+        let originalPlan: { id: string };
         const capture = async (scene: string) => {
           const directory = process.env.SMYKLOT_SYNC_OBSERVATION_SCREENSHOTS;
           if (!directory) return;
@@ -78,10 +79,16 @@ describe('desktop delayed sync outcomes', () => {
           });
         };
         try {
+          originalPlan = (
+            await (await page.request.get(`${panel.origin}/api/v1/targets/2001/sync/plan`)).json()
+          ).plan;
           await page.route('**/api/v1/targets/2001/sync/run-now', async (route) => {
             posts++;
             await held;
-            await route.fulfill({ status: outcome.status, json: outcome.body });
+            await route.fulfill({
+              status: outcome.status,
+              json: { ...outcome.body, ...(outcome.status === 200 ? { plan: originalPlan } : {}) },
+            });
           });
           await visit(page, addressOf(panel, 'workspace/sync'));
           await page.getByRole('button', { name: 'View changes', exact: true }).click();
@@ -112,6 +119,36 @@ describe('desktop delayed sync outcomes', () => {
           );
           expect(posts).toBe(1);
           await capture(outcome.name);
+          if (outcome.status === 200) {
+            const link = page.getByRole('link', {
+              name: outcome.name === 'approval' ? 'Review changes' : 'View changes',
+              exact: true,
+            });
+            expect(await link.getAttribute('href')).toContain(originalPlan.id);
+            const directory = process.env.SMYKLOT_SYNC_RELATED_PLAN_SCREENSHOTS;
+            if (directory) {
+              await mkdir(directory, { recursive: true });
+              await page.screenshot({
+                path: join(directory, `F33-related-plan-${outcome.name}-${colorScheme}.png`),
+              });
+            }
+            await link.click();
+            await page.getByRole('dialog', { name: 'Sync details', exact: true }).waitFor();
+            await page
+              .getByRole('dialog', { name: 'Sync details', exact: true })
+              .getByRole('button', { name: 'Run now', exact: true })
+              .waitFor();
+            expect(await link.count()).toBe(0);
+            if (directory)
+              await page.screenshot({
+                path: join(
+                  directory,
+                  `F33-related-plan-${outcome.name}-inspector-${colorScheme}.png`,
+                ),
+              });
+            expect(page.url()).toContain(originalPlan.id);
+            expect(posts).toBe(1);
+          }
         } finally {
           release();
           await page.close();
