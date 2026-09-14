@@ -906,7 +906,7 @@
       label: 'Workspaces',
       icon: 'book',
       href: session.rootHrefFor('workspaces'),
-      active: !session.isPersonal && session.rootValue === 'workspaces',
+      active: !session.isPersonal && session.currentRootRoute.rootView === 'workspaces',
       dirty: dirtyTargetIds.size > 0,
     },
     {

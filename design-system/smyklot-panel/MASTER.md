@@ -943,3 +943,7 @@ groups by category and console so cross-scope navigation is explicit.
 ## Console landmark ownership
 
 Route wrappers provide layout only. Use an ordinary container for `root-workspace`; do not name it after a heading owned by its child. The application shell owns the single main landmark. Page components may expose a region when it is a useful navigation destination, named by their visible heading. Independent sibling regions need distinct names. Loading and error states must not leave references to absent headings. Verify console landmark uniqueness across route variants when changing page structure.
+
+## Sidebar current destination
+
+A sidebar tree has at most one current destination. Select the most specific visible route row. When contextual workspace rows are present in Operations, select that workspace page and leave the Workspaces catalogue as a normal navigation link. The contextual group heading carries the workspace identity. The current-page ARIA marker, active text colors and moving selection background must all belong to the same row. Verify direct entry, sibling navigation, parent return, both themes and reduced motion.
