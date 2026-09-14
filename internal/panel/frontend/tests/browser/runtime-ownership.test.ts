@@ -14,6 +14,90 @@ afterAll(async () => {
 
 describe('desktop runtime override ownership', () => {
   it.each(['light', 'dark'] as const)(
+    'pins an equal formatting number and resets only that field in %s',
+    async (colorScheme) => {
+      const page = await panel.browser.newPage({
+        viewport: { width: 1920, height: 1200 },
+        colorScheme,
+        reducedMotion: 'reduce',
+      });
+      const endpoint = `${panel.origin}/api/v1/root/runtime/settings`;
+      const read = async () => (await page.request.get(endpoint)).json();
+      const capture = async (scene: string) => {
+        const directory = process.env.SMYKLOT_VISUAL_AUDIT_DIR;
+        if (!directory) return;
+        await mkdir(directory, { recursive: true });
+        await page.evaluate(() => document.fonts.ready);
+        await page.mouse.move(0, 0);
+        await page.screenshot({
+          path: join(directory, `F04-equal-formatting-${scene}-${colorScheme}.png`),
+        });
+      };
+      const save = async () => {
+        const response = page.waitForResponse(
+          (r) => r.url() === endpoint && r.request().method() === 'PUT',
+        );
+        await page.getByRole('button', { name: 'Save', exact: true }).click();
+        expect((await response).status()).toBe(200);
+      };
+      try {
+        const initial = await read();
+        expect(
+          (
+            await page.request.put(endpoint, {
+              data: {
+                bot_config: null,
+                log_level: null,
+                reaction_poll_interval_seconds: null,
+                merge_after_ci_quiet_period_seconds: null,
+                path_index_interval_seconds: null,
+                session_ttl_seconds: null,
+                expected_revision: initial.revision,
+              },
+            })
+          ).status(),
+        ).toBe(200);
+        await visit(page, addressOf(panel, 'root/runtime/settings'));
+        await page.getByLabel('Prefix', { exact: true }).fill('/pin');
+        const width = page.getByLabel('Indent Width', { exact: true });
+        await width.scrollIntoViewIfNeeded();
+        await page.getByRole('button', { name: 'Override Indent Width at 2', exact: true }).click();
+        expect(await width.inputValue()).toBe('2');
+        await page
+          .getByRole('button', { name: 'Stop overriding Indent Width', exact: true })
+          .waitFor();
+        await capture('draft');
+        await save();
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page
+          .getByRole('button', { name: 'Stop overriding Indent Width', exact: true })
+          .waitFor();
+        expect((await read()).behavior_defaults.intent.overrides).toEqual({
+          command_prefix: '/pin',
+          formatting: { common: { indent_width: 2 } },
+        });
+        await width.scrollIntoViewIfNeeded();
+        await capture('saved');
+        await page
+          .getByRole('button', { name: 'Stop overriding Indent Width', exact: true })
+          .click();
+        await save();
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page
+          .getByRole('button', { name: 'Override Indent Width at 2', exact: true })
+          .waitFor();
+        expect((await read()).behavior_defaults.intent.overrides).toEqual({
+          command_prefix: '/pin',
+        });
+        await width.scrollIntoViewIfNeeded();
+        await capture('reset');
+      } finally {
+        await page.close();
+      }
+    },
+  );
+
+  it.each(['light', 'dark'] as const)(
     'retains invalid duration edits across navigation and focuses recovery in %s',
     async (colorScheme) => {
       const page = await panel.browser.newPage({

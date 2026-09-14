@@ -233,6 +233,29 @@ describe('FormattingEditor [Component]', () => {
     },
   );
 
+  it('explicitly pins an inherited number without changing its value', async () => {
+    const onChange = vi.fn();
+    render(FormattingEditor, {
+      patch: { common: { line_width: 120 } },
+      inherited: defaultFormattingPolicy(),
+      scope: 'runtime',
+      idPrefix: 'equal-number',
+      onChange,
+    });
+    await fireEvent.input(screen.getByLabelText('Indent Width'), { target: { value: '' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Override Indent Width at 2' }));
+    expect(screen.getByLabelText('Indent Width').getAttribute('aria-invalid')).toBeNull();
+    expect(onChange).toHaveBeenLastCalledWith(
+      { common: { line_width: 120, indent_width: 2 } },
+      'formatting.common.indent_width',
+    );
+    await fireEvent.click(screen.getByRole('button', { name: 'Stop overriding Indent Width' }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      { common: { line_width: 120 } },
+      'formatting.common.indent_width',
+    );
+  });
+
   it('keeps a numeric override when restoring inheritance would change its displayed value', async () => {
     const onChange = vi.fn();
     const inherited = defaultFormattingPolicy();

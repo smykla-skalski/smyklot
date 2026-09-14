@@ -966,3 +966,9 @@ Runtime duration validation derives from retained draft values, including raw
 invalid text, before Save and while the editor is unmounted. Recovery waits for
 the shared settings query before focusing and revealing the invalid input.
 Correction preserves sibling edits, and discard clears the validation result.
+
+Numeric formatting fields offer a deliberate override action at the inherited
+value. Editing a number back to its original inherited value can undo an edit;
+explicitly choosing to pin that value is a separate action and persists ownership.
+The action names the field and value, clears invalid local text, and preserves
+sibling fields. Inherited chains stay muted; only explicit overrides use amber.
