@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 	"github.com/smykla-skalski/smyklot/internal/workqueue"
@@ -15,8 +16,8 @@ import (
 // RecoverDelivery shares the ordinary claim lock and preserves prior outcomes.
 // Callers must additionally establish workload-specific replay eligibility before
 // exposing this operation. Execution retains its normal freshness/permission checks.
-func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRecovery) (storage.DeliveryRecoveryResult, error) {
-	if !validDeliveryRecovery(request) {
+func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRecovery, now func() time.Time) (storage.DeliveryRecoveryResult, error) {
+	if now == nil || !validDeliveryRecovery(request) {
 		return storage.DeliveryRecoveryResult{}, storage.ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -32,7 +33,7 @@ func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRec
 	if err != nil {
 		return storage.DeliveryRecoveryResult{}, err
 	}
-	if err := s.authorizeDeliveryRecovery(ctx, tx, request); err != nil {
+	if err := s.authorizeWorkspaceCommand(ctx, tx, deliveryRecoveryAuthority(request, now)); err != nil {
 		return storage.DeliveryRecoveryResult{}, err
 	}
 	receipt, err := deliveryRecoveryReceipt(ctx, tx, request)
@@ -45,6 +46,7 @@ func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRec
 	if !operation.currentID.Valid || operation.currentID.Int64 != request.ExpectedRunID || operation.revision != request.ExpectedRevision {
 		return storage.DeliveryRecoveryResult{}, storage.ErrConflict
 	}
+	request.RequestedAt = now().UTC()
 	claim, err := readDeliveryRecoveryClaim(ctx, tx, request, key)
 	if err != nil {
 		return storage.DeliveryRecoveryResult{}, err
@@ -63,6 +65,9 @@ func (s *Store) RecoverDelivery(ctx context.Context, request storage.DeliveryRec
 		return storage.DeliveryRecoveryResult{}, err
 	}
 
+	if err := s.validateWorkspaceCommand(ctx, tx, deliveryRecoveryAuthority(request, now)); err != nil {
+		return storage.DeliveryRecoveryResult{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return storage.DeliveryRecoveryResult{}, fmt.Errorf("commit delivery recovery: %w", err)
 	}

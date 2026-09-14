@@ -28,16 +28,17 @@ func recoveryFixture(ctx context.Context, store storage.Store, now time.Time) (s
 }
 
 func declareDeliveryRecoverySpecs(runtime func() (context.Context, storage.Store, time.Time)) {
+	declareDeliveryRecoveryClockSpecs(runtime)
 	declareDeliveryRecoveryInputSpecs(runtime)
 	declareDeliveryRecoveryReceiptSpecs(runtime)
 	It("recovers a permanent delivery failure once and retains its receipt", func() {
 		ctx, store, now := runtime()
 		request, _ := recoveryFixture(ctx, store, now)
-		recovered, err := store.RecoverDelivery(ctx, request)
+		recovered, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).NotTo(HaveOccurred())
 		Expect(recovered.Repeated).To(BeFalse())
 		Expect(recovered.RunID).To(BeNumerically(">", request.SourceRunID))
-		repeated, err := store.RecoverDelivery(ctx, request)
+		repeated, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repeated.RunID).To(Equal(recovered.RunID))
 		Expect(repeated.Repeated).To(BeTrue())
@@ -55,11 +56,11 @@ func declareDeliveryRecoverySpecs(runtime func() (context.Context, storage.Store
 		Expect(err).NotTo(HaveOccurred())
 		Expect(events).To(ContainElement(HaveField("Kind", "recovery_requested")))
 		Expect(store.CompleteDelivery(ctx, recovered.RunID, now)).To(Succeed())
-		repeated, err = store.RecoverDelivery(ctx, request)
+		repeated, err = store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).NotTo(HaveOccurred())
 		Expect(repeated.RunID).To(Equal(recovered.RunID))
 		request.RequestKey = "another-click"
-		_, err = store.RecoverDelivery(ctx, request)
+		_, err = store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).To(MatchError(storage.ErrConflict))
 	})
 	declareDeliveryRecoveryConcurrency(runtime)
@@ -71,7 +72,9 @@ func declareDeliveryRecoveryConcurrency(runtime func() (context.Context, storage
 	It("serializes concurrent delivery recovery requests", func() {
 		ctx, store, now := runtime()
 		request, _ := recoveryFixture(ctx, store, now)
-		results := race(func(_ int) (storage.DeliveryRecoveryResult, error) { return store.RecoverDelivery(ctx, request) })
+		results := race(func(_ int) (storage.DeliveryRecoveryResult, error) {
+			return store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
+		})
 		accepted := 0
 		var id int64
 		for _, result := range results {
@@ -103,7 +106,7 @@ func declareDeliveryRedeliveryRace(runtime func() (context.Context, storage.Stor
 		request.SourceRunID, request.ExpectedRunID, request.ExpectedRevision = original.ID, original.ID, operation.Revision
 		results := race(func(index int) (int64, error) {
 			if index%2 == 0 {
-				recovered, err := store.RecoverDelivery(ctx, request)
+				recovered, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 				if errors.Is(err, storage.ErrConflict) {
 					return 0, nil
 				}
@@ -150,7 +153,7 @@ func declareDeliveryRecoveryDenied(runtime func() (context.Context, storage.Stor
 		case "empty key":
 			request.RequestKey = ""
 		}
-		_, err := store.RecoverDelivery(ctx, request)
+		_, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).To(HaveOccurred())
 		operation, err := store.GetDeliveryOperation(ctx, "github:installation:100", request.SourceRunID)
 		Expect(err).NotTo(HaveOccurred())

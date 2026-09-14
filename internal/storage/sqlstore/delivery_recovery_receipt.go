@@ -3,6 +3,7 @@ package sqlstore
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/smykla-skalski/smyklot/internal/storage"
 )
@@ -10,8 +11,8 @@ import (
 // GetDeliveryRecoveryReceipt checks current access before returning an accepted
 // request. A nil receipt never creates work. Callers can therefore resolve a
 // lost response before checking whether a new execution would still be eligible.
-func (s *Store) GetDeliveryRecoveryReceipt(ctx context.Context, request storage.DeliveryRecovery) (*storage.DeliveryRecoveryResult, error) {
-	if !validDeliveryRecovery(request) {
+func (s *Store) GetDeliveryRecoveryReceipt(ctx context.Context, request storage.DeliveryRecovery, now func() time.Time) (*storage.DeliveryRecoveryResult, error) {
+	if now == nil || !validDeliveryRecovery(request) {
 		return nil, storage.ErrConflict
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -19,7 +20,7 @@ func (s *Store) GetDeliveryRecoveryReceipt(ctx context.Context, request storage.
 		return nil, fmt.Errorf("begin recovery receipt lookup: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := s.authorizeDeliveryRecovery(ctx, tx, request); err != nil {
+	if err := s.authorizeWorkspaceCommand(ctx, tx, deliveryRecoveryAuthority(request, now)); err != nil {
 		return nil, err
 	}
 	var id int64

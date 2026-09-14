@@ -65,5 +65,5 @@ func (s *Store) validateSyncCheckRequest(ctx context.Context, tx *transaction, r
 }
 
 func checkAuthority(request workqueue.RecurringRequest, now func() time.Time) workspaceCommandAuthority {
-	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: *request.TargetID, RequestedAt: request.Now, Clock: now}
+	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: *request.TargetID, Clock: now}
 }

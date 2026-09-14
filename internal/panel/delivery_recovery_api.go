@@ -114,7 +114,7 @@ func (s *Server) postDeliveryRecovery(w http.ResponseWriter, r *http.Request, ro
 		return
 	}
 	request := storage.DeliveryRecovery{TargetID: access.Target.ID, SourceRunID: runID, ExpectedRunID: input.ExpectedRunID, ExpectedRevision: input.ExpectedRevision, RequestKey: input.RequestKey, ActorAccountID: access.Account.ID, SessionTokenHash: access.SessionHash, ElevationID: elevationID(access.Elevation), RequestedAt: s.now().UTC()}
-	receipt, err := s.store.GetDeliveryRecoveryReceipt(r.Context(), request)
+	receipt, err := s.store.GetDeliveryRecoveryReceipt(r.Context(), request, s.now)
 	if err != nil {
 		s.writeDeliveryRecoveryError(w, err)
 		return
@@ -130,7 +130,7 @@ func (s *Server) postDeliveryRecovery(w http.ResponseWriter, r *http.Request, ro
 	}
 	if !preview.Available || preview.CurrentRunID != request.ExpectedRunID || preview.Revision != request.ExpectedRevision {
 		// A concurrent copy of this request may have won while eligibility was read.
-		receipt, err = s.store.GetDeliveryRecoveryReceipt(r.Context(), request)
+		receipt, err = s.store.GetDeliveryRecoveryReceipt(r.Context(), request, s.now)
 		if err != nil {
 			s.writeDeliveryRecoveryError(w, err)
 			return
@@ -142,7 +142,7 @@ func (s *Server) postDeliveryRecovery(w http.ResponseWriter, r *http.Request, ro
 		writeJSON(w, http.StatusConflict, map[string]any{"error": map[string]string{"code": "recovery_unavailable", "message": "Review the latest recovery state."}, "current": preview})
 		return
 	}
-	result, err := s.store.RecoverDelivery(r.Context(), request)
+	result, err := s.store.RecoverDelivery(r.Context(), request, s.now)
 	if err != nil {
 		s.writeDeliveryRecoveryError(w, err)
 		return

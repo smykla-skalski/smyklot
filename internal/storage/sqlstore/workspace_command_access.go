@@ -16,7 +16,6 @@ type workspaceCommandAuthority struct {
 	SessionTokenHash string
 	TargetID         string
 	ElevationID      *string
-	RequestedAt      time.Time
 }
 
 // Lock revocable authority through command acceptance. Account and session locks
@@ -50,14 +49,20 @@ func (s *Store) authorizeWorkspaceCommand(ctx context.Context, tx *transaction, 
 			return err
 		}
 	}
+	if request.ElevationID != nil {
+		if _, err := getElevationByIDForWrite(ctx, tx, s.dialect, *request.ElevationID, request.SessionTokenHash); err != nil {
+			return fmt.Errorf("lock command elevation: %w", noRows(err))
+		}
+	}
 	return s.validateWorkspaceCommand(ctx, tx, request)
 }
 
 // Reuse held authority locks when only time can have changed during a command.
 func (s *Store) validateWorkspaceCommand(ctx context.Context, tx *transaction, request workspaceCommandAuthority) error {
-	if request.Clock != nil {
-		request.RequestedAt = request.Clock().UTC()
+	if request.Clock == nil {
+		return storage.ErrConflict
 	}
+	at := request.Clock().UTC()
 	var accountID string
 	var expiresAt, revokedAt StoredTime
 	if err := tx.QueryRowContext(ctx, "SELECT account_id, expires_at, revoked_at FROM sessions WHERE token_hash = ?", request.SessionTokenHash).Scan(&accountID, &expiresAt, &revokedAt); err != nil {
@@ -66,15 +71,15 @@ func (s *Store) validateWorkspaceCommand(ctx context.Context, tx *transaction, r
 		}
 		return fmt.Errorf("read command session: %w", err)
 	}
-	if accountID != request.ActorAccountID || revokedAt.Valid() || !request.RequestedAt.Before(expiresAt.Time()) {
+	if accountID != request.ActorAccountID || revokedAt.Valid() || !at.Before(expiresAt.Time()) {
 		return storage.ErrRevoked
 	}
-	access, err := resolveTargetAccess(ctx, tx, request.ActorAccountID, request.TargetID, request.RequestedAt)
+	access, err := resolveTargetAccess(ctx, tx, request.ActorAccountID, request.TargetID, at)
 	if err != nil {
 		return err
 	}
 	if request.ElevationID != nil {
-		_, err := s.elevatedWrite(ctx, tx, request.ElevationID, request.SessionTokenHash, request.ActorAccountID, request.TargetID, request.RequestedAt)
+		_, err := s.elevatedWrite(ctx, tx, request.ElevationID, request.SessionTokenHash, request.ActorAccountID, request.TargetID, at)
 		return err
 	}
 	if access.Role != storage.InstallationRoleOwner && access.Role != storage.InstallationRoleAdmin {

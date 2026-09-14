@@ -21,12 +21,12 @@ func declareDeliveryRecoveryAccess(runtime func() (context.Context, storage.Stor
 		ownerID := request.ActorAccountID
 		request.ActorAccountID, request.SessionTokenHash = root.ID, "root-recovery-session"
 		Expect(store.CreateSession(ctx, storage.Session{TokenHash: request.SessionTokenHash, AccountID: root.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, 1)).To(Succeed())
-		_, err := store.RecoverDelivery(ctx, request)
+		_, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).To(MatchError(storage.ErrRevoked))
 		grant, err := store.BeginElevation(ctx, storage.ElevationGrant{ID: "recovery-grant", SessionTokenHash: request.SessionTokenHash, RootAccountID: root.ID, TargetID: request.TargetID, StartedAt: now})
 		Expect(err).NotTo(HaveOccurred())
 		request.ElevationID = &grant.ID
-		recovered, err := store.RecoverDelivery(ctx, request)
+		recovered, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).NotTo(HaveOccurred())
 		Expect(recovered.RunID).To(BeNumerically(">", request.SourceRunID))
 		notices, err := store.ListSecurityNotifications(ctx, ownerID, storage.NotificationPageRequest{})
@@ -34,7 +34,7 @@ func declareDeliveryRecoveryAccess(runtime func() (context.Context, storage.Stor
 		Expect(notices.Items).To(HaveLen(1))
 		_, err = store.EndElevation(ctx, grant.ID, request.SessionTokenHash, storage.ElevationRevoked, now)
 		Expect(err).NotTo(HaveOccurred())
-		_, err = store.RecoverDelivery(ctx, request)
+		_, err = store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).To(HaveOccurred())
 	})
 	DescribeTable("checks target roles for delivery recovery", func(role storage.InstallationRole, suspended, allowed bool) {
@@ -49,7 +49,7 @@ func declareDeliveryRecoveryAccess(runtime func() (context.Context, storage.Stor
 		Expect(err).NotTo(HaveOccurred())
 		request.ActorAccountID, request.SessionTokenHash = actor.ID, "member-recovery-session"
 		Expect(store.CreateSession(ctx, storage.Session{TokenHash: request.SessionTokenHash, AccountID: actor.ID, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}, 1)).To(Succeed())
-		_, err = store.RecoverDelivery(ctx, request)
+		_, err = store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		if allowed {
 			Expect(err).NotTo(HaveOccurred())
 		} else {

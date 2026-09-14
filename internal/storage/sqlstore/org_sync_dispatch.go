@@ -124,5 +124,5 @@ func syncDispatchReceipt(ctx context.Context, reader runner, request orgsync.Pla
 }
 
 func dispatchAuthority(request orgsync.PlanDispatch, now func() time.Time) workspaceCommandAuthority {
-	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: request.TargetID, RequestedAt: request.Now, Clock: now}
+	return workspaceCommandAuthority{ActorAccountID: request.ActorID, SessionTokenHash: request.SessionTokenHash, TargetID: request.TargetID, Clock: now}
 }

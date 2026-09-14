@@ -118,10 +118,10 @@ type PendingCIGateStore interface {
 
 // DeliveryStore owns delivery claims, completion, failure, and retention.
 type DeliveryStore interface {
-	GetDeliveryRecoveryReceipt(context.Context, DeliveryRecovery) (*DeliveryRecoveryResult, error)
+	GetDeliveryRecoveryReceipt(context.Context, DeliveryRecovery, func() time.Time) (*DeliveryRecoveryResult, error)
 	GetDeliveryRecoveryInput(context.Context, string, int64, int64) (DeliveryRecoveryInput, error)
 	GetDeliveryOperation(context.Context, string, int64) (DeliveryOperation, error)
-	RecoverDelivery(context.Context, DeliveryRecovery) (DeliveryRecoveryResult, error)
+	RecoverDelivery(context.Context, DeliveryRecovery, func() time.Time) (DeliveryRecoveryResult, error)
 	ClaimDelivery(context.Context, DeliveryClaim) (DeliveryClaimResult, error)
 	AbandonDelivery(context.Context, int64) error
 	LeaseDelivery(context.Context, time.Time, time.Time) (DeliveryLeaseResult, error)

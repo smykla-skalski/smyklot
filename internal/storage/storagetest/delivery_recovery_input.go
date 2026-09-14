@@ -38,7 +38,7 @@ func declareDeliveryRecoveryInputSpecs(runtime func() (context.Context, storage.
 	It("binds delivery recovery input to the current failed execution", func() {
 		ctx, store, now := runtime()
 		request, claim := recoveryFixture(ctx, store, now)
-		recovered, err := store.RecoverDelivery(ctx, request)
+		recovered, err := store.RecoverDelivery(ctx, request, func() time.Time { return request.RequestedAt })
 		Expect(err).NotTo(HaveOccurred())
 		_, err = store.GetDeliveryRecoveryInput(ctx, request.TargetID, request.ExpectedRunID, request.ExpectedRevision)
 		Expect(err).To(MatchError(storage.ErrNotFound))
