@@ -338,7 +338,9 @@
       : { lead: 'Expires ', strong: until };
   });
 
-  const completed = $derived(actions.filter((action) => action.state === 'applied').length);
+  const succeeded = $derived(actions.filter((action) => action.state === 'applied').length);
+  const skipped = $derived(actions.filter((action) => action.state === 'skipped').length);
+  const completed = $derived(actions.filter((action) => action.state !== 'pending').length);
   const failed = $derived(actions.filter((action) => action.state === 'failed').length);
 
   const profileTime = (value: string, timezone?: string): string =>
@@ -409,6 +411,9 @@ the button.
           >{:else if plan.state === 'discarded'}Changes declined{:else}This check
           <span class="is-expired">expired</span>{/if}
       </h2>
+      {#if ['applying', 'applied', 'failed'].includes(plan.state) && completed > 0}
+        <p class="dispatch-guidance">{succeeded} succeeded · {failed} failed · {skipped} skipped</p>
+      {/if}
       <span class="hero-meta hero-meta-lines">
         <span>Changes prepared: <strong>{formatRelative(plan.computed_at, nowMs)}</strong></span>
         {#if plan.state === 'computed' && expiresWording !== null}
@@ -445,11 +450,7 @@ the button.
         <p class="schedule-summary">
           {queued.blocked_reason || queued.summary || queued.state.replaceAll('_', ' ')}
         </p>
-        {#if queued.state === 'running'}
-          <p class="dispatch-guidance">
-            {queued.progress_current} of {queued.progress_total} processed · attempt {queued.attempt}
-          </p>
-        {:else if queued.state === 'retrying'}
+        {#if queued.state === 'retrying'}
           <p class="dispatch-guidance">Retry attempt {queued.attempt}</p>
         {/if}
         {#if dispatchIntent}
@@ -487,7 +488,7 @@ the button.
               </dd>
             </div>
             <div>
-              <dt>Current status</dt>
+              <dt>Queue status</dt>
               <dd>
                 {queued.state.replaceAll('_', ' ')}
                 <small

@@ -56,7 +56,7 @@ describe('desktop dispatch capability guidance', () => {
               body.plan.actions = body.plan.actions.map(
                 (action: Record<string, unknown>, index: number) => ({
                   ...action,
-                  state: index < 4 ? 'applied' : action.state,
+                  state: ['applied', 'failed', 'skipped', 'applied'][index] ?? action.state,
                 }),
               );
               body.plan.queue_item = {
@@ -137,13 +137,18 @@ describe('desktop dispatch capability guidance', () => {
           await capture('recovered');
         }
         if (reason === 'already_running') {
-          await inspector.getByText('4 of 14 processed · attempt 2', { exact: true }).waitFor();
+          await inspector
+            .getByRole('heading', { name: '4 of 14 changes processed', exact: true })
+            .waitFor({ timeout: 5000 });
+          await inspector
+            .getByText('2 succeeded · 1 failed · 1 skipped', { exact: true })
+            .waitFor();
           const details = inspector.locator('details').filter({ hasText: 'Scheduling details' });
           expect(await details.getAttribute('open')).toBeNull();
-          const directory = process.env.SMYKLOT_SCHEDULE_HIERARCHY_SCREENSHOTS;
+          const directory = process.env.SMYKLOT_SYNC_PROGRESS_SCREENSHOTS;
           if (directory) {
             await mkdir(directory, { recursive: true });
-            await page.screenshot({ path: join(directory, `F35-schedule-running-${theme}.png`) });
+            await page.screenshot({ path: join(directory, `F33-progress-mixed-${theme}.png`) });
           }
           expect(posts).toBe(0);
         }

@@ -136,7 +136,7 @@ function finishPlan(state: State, item: QueueItem, plan: SyncPlan, at: string): 
     });
     updateObservations(state, targetId, plan.actions, at);
     const failures = plan.actions.filter((action) => action.state === 'failed').length;
-    const processed = plan.actions.filter((action) => action.state === 'applied').length;
+    const succeeded = plan.actions.filter((action) => action.state === 'applied').length;
     const skipped = plan.actions.filter((action) => action.state === 'skipped').length;
     plan.state = failures ? 'failed' : 'applied';
     plan.execution_stage = failures ? 'Sync needs attention' : 'Sync completed';
@@ -145,7 +145,7 @@ function finishPlan(state: State, item: QueueItem, plan: SyncPlan, at: string): 
       state,
       item,
       failures ? 'failed' : 'succeeded',
-      `${processed} changes processed, ${failures} failed, ${skipped} skipped. See Sync status for repository outcomes.`,
+      `${succeeded} changes succeeded, ${failures} failed, ${skipped} skipped. See Sync status for repository outcomes.`,
       at,
     );
   }

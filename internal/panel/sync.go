@@ -799,7 +799,7 @@ func syncExecutionStage(plan orgsync.Plan, actions []orgsync.Action) string {
 	case orgsync.PlanApplying:
 		return fmt.Sprintf("Applying changes - %d of %d settled", settled, total)
 	case orgsync.PlanApplied:
-		return "All changes applied"
+		return "Execution finished"
 	case orgsync.PlanFailed:
 		return "Execution finished with failures"
 	case orgsync.PlanStale:

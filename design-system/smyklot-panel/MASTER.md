@@ -163,6 +163,9 @@ in the disclosure laws; do not nest decorative cards inside the originating card
 - Ordinary dialogs are `560-640px` wide
 - Scrim uses 50-55% black plus restrained background blur
 - Use clear header, scrollable body, and sticky action footer
+- A processed count includes successful, failed and skipped actions. Show their
+  outcome breakdown so progress never implies success. Derive the primary count
+  from the same action records as that breakdown; queue snapshots belong in details
 - Put the current outcome, blockers, active progress and available action before
   optional execution diagnostics. Use the shared native disclosure for timing,
   queue priority and attempt details; keep its controls keyboard accessible.
