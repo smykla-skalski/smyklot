@@ -38,7 +38,12 @@
   }
 </script>
 
-<!-- @component Date-specific replacements for weekly hours. Unfinished rows stay in the parent's draft. -->
+<!--
+@component
+Date-specific replacements for weekly hours, shared by profile and request forms.
+The caller owns saving. Unfinished rows stay in its draft, and switching a date
+between closed and custom hours preserves the entered opening and closing times.
+-->
 <div class="form-stack" role="group" aria-label="Date exceptions">
   <div class="exception-heading">
     <span class="form-label">Date exceptions</span>

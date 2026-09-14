@@ -13,6 +13,28 @@ describe('desktop hours draft protection', () => {
     ['Timezone', 'UTC'],
   ] as const;
 
+  it('previews schedule timezones with the authoritative Go database', async () => {
+    const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
+    try {
+      const endpoint = addressOf(panel, 'api/v1/schedule-timezone');
+      const preview = await page.request.get(endpoint, {
+        params: { timezone: 'Europe/Warsaw', at: '2026-03-29T01:00:00Z' },
+      });
+      expect(preview.status()).toBe(200);
+      expect(await preview.json()).toMatchObject({
+        local_time: '2026-03-29T03:00:00+02:00',
+        offset_seconds: 7200,
+      });
+      const invalid = await page.request.get(endpoint, {
+        params: { timezone: 'Mars/Olympus', at: '2026-03-29T01:00:00Z' },
+      });
+      expect(invalid.status()).toBe(400);
+      expect((await invalid.json()).error.code).toBe('invalid_timezone');
+    } finally {
+      await page.close();
+    }
+  });
+
   it('rejects invalid calendar rules without changing mock profiles', async () => {
     const page = await panel.browser.newPage({ viewport: { width: 1920, height: 1200 } });
     try {
@@ -26,6 +48,7 @@ describe('desktop hours draft protection', () => {
         exceptions: [],
       };
       for (const rules of [
+        { timezone: 'Mars/Olympus', windows: [{ weekday: 1, start_minute: 0, end_minute: 1440 }] },
         { exceptions: [{ date: '2026-02-30', closed: true }] },
         { windows: [{ weekday: 1, start_minute: 600, end_minute: 500 }] },
         {

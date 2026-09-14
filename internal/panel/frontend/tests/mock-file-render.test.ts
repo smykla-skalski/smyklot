@@ -121,3 +121,26 @@ describe('development Go file renderer [Integration]', () => {
     expect(rendered.final_content).toContain('mise run check');
   });
 });
+
+describe('authoritative timezone preview [Integration]', () => {
+  it('uses the scheduler database across a daylight-saving transition', async () => {
+    const before = await renderer.previewTimezone('Europe/Warsaw', '2026-03-29T00:59:00Z');
+    const after = await renderer.previewTimezone('Europe/Warsaw', '2026-03-29T01:00:00Z');
+    expect(before.timezone_preview).toMatchObject({
+      local_time: '2026-03-29T01:59:00+01:00',
+      offset_seconds: 3600,
+    });
+    expect(after.timezone_preview).toMatchObject({
+      local_time: '2026-03-29T03:00:00+02:00',
+      offset_seconds: 7200,
+    });
+  });
+  it('rejects unsupported zones and instants without an offset', async () => {
+    expect(
+      (await renderer.previewTimezone('Mars/Olympus', '2026-01-01T00:00:00Z')).diagnostics[0].code,
+    ).toBe('invalid_timezone');
+    expect((await renderer.previewTimezone('UTC', '2026-01-01T00:00:00')).diagnostics[0].code).toBe(
+      'invalid_instant',
+    );
+  });
+});

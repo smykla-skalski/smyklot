@@ -1600,6 +1600,20 @@ async function handle(
       );
       return;
     }
+    if (path === route('/api/v1/schedule-timezone') && method === 'GET') {
+      const preview = await state.fileRenderer.previewTimezone(
+        parsed.searchParams.get('timezone') ?? '',
+        parsed.searchParams.get('at') ?? '',
+      );
+      if (!preview.valid) {
+        const problem = preview.diagnostics[0];
+        throw new MockApiError(400, problem.code, problem.message);
+      }
+      if (preview.timezone_preview === undefined)
+        throw new Error('Missing authoritative timezone preview');
+      respond(res, 200, preview.timezone_preview);
+      return;
+    }
     if (path === route('/api/v1/session') && method === 'GET') {
       respond(res, 200, {
         account: VIEWER,
@@ -2106,7 +2120,7 @@ async function handle(
     }
     if (path === route('/api/v1/root/schedule-profiles') && method === 'POST') {
       const input = await readBody<ScheduleProfileInput>(req);
-      const profile = saveMockScheduleProfile(state, input);
+      const profile = await saveMockScheduleProfile(state, input);
       broadcast(state, { type: 'queue.changed' });
       respond(res, 201, profile);
       return;
@@ -2116,7 +2130,7 @@ async function handle(
     );
     if (rootScheduleProfile && method === 'PUT') {
       const input = await readBody<ScheduleProfileInput>(req);
-      const profile = saveMockScheduleProfile(
+      const profile = await saveMockScheduleProfile(
         state,
         input,
         rootScheduleProfile.groups?.profile ?? '',
@@ -2243,7 +2257,7 @@ async function handle(
       if (input.approve) {
         let profileID = request.profile_id;
         if (request.custom_profile !== undefined) {
-          const promoted = saveMockScheduleProfile(state, {
+          const promoted = await saveMockScheduleProfile(state, {
             name: request.custom_profile.name,
             timezone: request.custom_profile.timezone,
             windows: request.custom_profile.windows,
@@ -2314,7 +2328,8 @@ async function handle(
     if (targetScheduleRequests && method === 'POST') {
       const target = findTarget(state, targetScheduleRequests.groups?.target ?? '');
       const input = await readBody<ScheduleRequestInput>(req);
-      if (input.custom_profile !== undefined) validateMockScheduleHours(input.custom_profile);
+      if (input.custom_profile !== undefined)
+        await validateMockScheduleHours(state, input.custom_profile);
       const effective = targetSchedulePolicies(state, target.value.id).effective.find(
         (policy) => policy.kind === input.kind,
       );
@@ -5720,21 +5735,31 @@ function findMockScheduleProfile(state: MockState, encodedID: string): ScheduleP
   return profile;
 }
 
-function validateMockScheduleHours(input: ScheduleProfileInput | ScheduleProfile): void {
+async function validateMockScheduleHours(
+  state: MockState,
+  input: ScheduleProfileInput | ScheduleProfile,
+): Promise<void> {
   const problem = scheduleHoursProblems(input)[0];
   if (problem !== undefined) {
     const field =
       problem.index === undefined ? problem.field : `${problem.field}[${problem.index}]`;
     throw new MockApiError(400, 'invalid_schedule', `${field}: ${problem.message}`);
   }
+  const timezone = await state.fileRenderer.previewTimezone(input.timezone, '2000-01-01T00:00:00Z');
+  if (!timezone.valid)
+    throw new MockApiError(
+      400,
+      'invalid_schedule',
+      'timezone: Choose a timezone supported by the scheduler',
+    );
 }
 
-function saveMockScheduleProfile(
+async function saveMockScheduleProfile(
   state: MockState,
   input: ScheduleProfileInput,
   encodedID?: string,
-): ScheduleProfile {
-  validateMockScheduleHours(input);
+): Promise<ScheduleProfile> {
+  await validateMockScheduleHours(state, input);
   const existing = encodedID === undefined ? undefined : findMockScheduleProfile(state, encodedID);
   if (existing !== undefined && input.expected_revision !== existing.revision) {
     throw new MockApiError(409, 'conflict', 'schedule profile changed; reload and try again');

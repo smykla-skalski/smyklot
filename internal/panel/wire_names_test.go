@@ -173,6 +173,7 @@ func panelWireNameProbePaths() []string {
 
 	return []string{
 		"/panel/api/v1/session",
+		"/panel/api/v1/schedule-timezone?timezone=UTC&at=2026-01-01T00:00:00Z",
 		"/panel/api/v1/notifications",
 		"/panel/api/v1/invites/" + token,
 		"/panel/api/v1/targets",
@@ -300,7 +301,8 @@ func TestPanelWireNameProbesCoverEveryReadableRoute(t *testing.T) {
 
 	probed := map[string]bool{}
 	for _, path := range panelWireNameProbePaths() {
-		probed[path] = true
+		route, _, _ := strings.Cut(path, "?")
+		probed[route] = true
 	}
 
 	for _, match := range pattern.FindAllStringSubmatch(source, -1) {

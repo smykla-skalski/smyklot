@@ -42,7 +42,16 @@ export interface GoRenderInput {
   inherited_layers: number;
 }
 
+export interface TimezonePreview {
+  timezone: string;
+  at: string;
+  local_time: string;
+  abbreviation: string;
+  offset_seconds: number;
+}
+
 export interface GoRenderResponse {
+  timezone_preview?: TimezonePreview;
   valid: boolean;
   final_content: string;
   matches_formatting: boolean;
@@ -61,6 +70,16 @@ export class GoFileRenderer {
   #sequence = 0;
 
   render(input: GoRenderInput): Promise<GoRenderResponse> {
+    return this.#request(input);
+  }
+
+  previewTimezone(timezone: string, at: string): Promise<GoRenderResponse> {
+    return this.#request({ timezone_preview: { timezone, at } });
+  }
+
+  #request(
+    input: GoRenderInput | { timezone_preview: { timezone: string; at: string } },
+  ): Promise<GoRenderResponse> {
     const child = this.#runningProcess();
     const id = `render-${(this.#sequence += 1)}`;
     const message = `${JSON.stringify({ version: VERSION, id, ...input })}\n`;
@@ -144,6 +163,7 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     'effective_policy',
     'provenance',
     'diagnostics',
+    'timezone_preview',
   ]);
   const inherited = parseFormattingPolicy(record?.inherited_policy);
   const effective = parseFormattingPolicy(record?.effective_policy);
@@ -163,6 +183,9 @@ function parseBridgeResponse(value: unknown): GoRenderResponse {
     throw new TypeError('the Go development renderer returned an invalid response');
   }
   return {
+    ...(record.timezone_preview === undefined
+      ? {}
+      : { timezone_preview: parseTimezonePreview(record.timezone_preview) }),
     valid: record.valid,
     final_content: record.final_content,
     matches_formatting: record.matches_formatting,
@@ -197,4 +220,32 @@ function exactRecord(value: unknown, allowed: readonly string[]): Record<string,
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
   return Object.keys(record).every((key) => allowed.includes(key)) ? record : null;
+}
+
+function parseTimezonePreview(value: unknown): TimezonePreview {
+  const record = exactRecord(value, [
+    'timezone',
+    'at',
+    'local_time',
+    'abbreviation',
+    'offset_seconds',
+  ]);
+  if (
+    record === null ||
+    typeof record.timezone !== 'string' ||
+    typeof record.at !== 'string' ||
+    typeof record.local_time !== 'string' ||
+    typeof record.abbreviation !== 'string' ||
+    typeof record.offset_seconds !== 'number' ||
+    !Number.isInteger(record.offset_seconds)
+  ) {
+    throw new TypeError('the Go development renderer returned an invalid timezone preview');
+  }
+  return {
+    timezone: record.timezone,
+    at: record.at,
+    local_time: record.local_time,
+    abbreviation: record.abbreviation,
+    offset_seconds: record.offset_seconds,
+  };
 }
