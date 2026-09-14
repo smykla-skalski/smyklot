@@ -1,10 +1,10 @@
 <script module lang="ts">
   import { defineMeta } from '@storybook/addon-svelte-csf';
-  import { createPanelApi } from '#lib/api.js';
+  import { resolveQueueTimeFixture } from '../support/queue-time.js';
   import { fn } from 'storybook/test';
 
   import QueueActionDialog from '#lib/components/QueueActionDialog.svelte';
-  import type { QueueItem } from '#lib/types.js';
+  import type { QueueActionInput, QueueItem } from '#lib/types.js';
 
   const item: QueueItem = {
     id: 'sync-plan:42',
@@ -37,14 +37,14 @@
       busy: false,
       error: '',
       onClose: fn(),
-      onResolveTime: createPanelApi('', fetch).resolveScheduleLocalTime,
-      onPreview: fn(async () => ({
+      onResolveTime: resolveQueueTimeFixture,
+      onPreview: fn(async (input: QueueActionInput) => ({
         item_revision: 4,
-        requested_at: '2026-08-24T13:00:00Z',
-        eligible_at: '2026-08-24T13:00:00Z',
-        outside_window: false,
-        profile_name: 'Europe hours',
-        profile_timezone: 'Europe/Warsaw',
+        requested_at: input.at!,
+        eligible_at: input.at!,
+        outside_window: input.outside_window ?? false,
+        profile_name: 'Always open',
+        profile_timezone: 'UTC',
       })),
       onSubmit: fn(),
     },
@@ -52,4 +52,4 @@
 </script>
 
 <Story name="Run now" />
-<Story name="Schedule outside window" args={{ action: 'schedule_at' }} />
+<Story name="Schedule exact time" args={{ action: 'schedule_at' }} />

@@ -213,3 +213,62 @@ it.each(['light', 'dark'] as const)(
     }
   },
 );
+
+it.each(['light', 'dark'] as const)(
+  'cancels an obsolete time lookup in %s desktop',
+  async (colorScheme) => {
+    const page = await panel.browser.newPage({
+      viewport: { width: 1920, height: 1200 },
+      timezoneId: 'Europe/Warsaw',
+      colorScheme,
+      reducedMotion: 'reduce',
+    });
+    page.setDefaultTimeout(5000);
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let started = () => {};
+    const arrived = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    try {
+      let lookups = 0;
+      await page.route('**/schedule-local-time?*', async (route) => {
+        if (++lookups !== 1) return route.continue();
+        started();
+        await held;
+        await route.abort();
+      });
+      await page.goto(`${panel.origin}/root/queue`);
+      await page
+        .getByRole('button', { name: 'Actions for Scan for new commands', exact: true })
+        .click();
+      await page.getByRole('menuitem', { name: /^Schedule exact time/ }).click();
+      const dialog = page.getByRole('dialog', { name: 'Schedule exact time', exact: true });
+      const input = dialog.getByLabel('Not before', { exact: true });
+      await input.fill('2026-10-25T02:30');
+      await dialog.getByRole('button', { name: 'Preview earliest start', exact: true }).click();
+      await arrived;
+      const cancelled = page.waitForEvent('requestfailed', {
+        predicate: (request) => request.url().includes('/schedule-local-time?'),
+      });
+      await input.fill('2026-10-26T02:30');
+      await cancelled;
+      release();
+      await dialog.getByRole('button', { name: 'Preview earliest start', exact: true }).click();
+      await dialog.locator('.schedule-preview time').waitFor();
+      expect(await dialog.getByRole('combobox', { name: 'Occurrence', exact: true }).count()).toBe(
+        0,
+      );
+      expect(await dialog.getByRole('alert').count()).toBe(0);
+      expect(await dialog.getByRole('button', { name: 'Apply', exact: true }).isDisabled()).toBe(
+        false,
+      );
+      expect(lookups).toBe(2);
+    } finally {
+      release();
+      await page.close();
+    }
+  },
+);
