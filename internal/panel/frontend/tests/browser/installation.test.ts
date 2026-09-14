@@ -57,9 +57,12 @@ it.each(['light', 'dark'] as const)(
       await capture('failure');
       // Clear the dev failure while preserving the current document and recovery control.
       await page.request.get(`${panel.origin}/?scenario=empty`);
-      await prompt.getByRole('button', { name: 'Retry installation link' }).click();
+      const retry = prompt.getByRole('button', { name: 'Retry installation link' });
+      await retry.focus();
+      await retry.press('Enter');
       const install = prompt.getByRole('link', { name: 'Install GitHub App', exact: true });
       await install.waitFor();
+      expect(await install.evaluate((node) => node === document.activeElement)).toBe(true);
       expect(await install.getAttribute('href')).toBe(
         'https://github.com/apps/smyklot/installations/new',
       );

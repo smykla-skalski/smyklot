@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import type { PanelApi } from '#lib/api.js';
   import Button from './Button.svelte';
@@ -6,12 +7,26 @@
 
   const { api, reload }: { api: Pick<PanelApi, 'fetchInstallation'>; reload: () => Promise<void> } =
     $props();
+  let region: HTMLElement;
+  let retrying = $state(false);
   const installation = createQuery(() => ({
     queryKey: ['installation'],
     queryFn: ({ signal }) => api.fetchInstallation(signal),
     staleTime: 5 * 60_000,
     retry: false,
   }));
+  async function retry(event: MouseEvent & { currentTarget: HTMLButtonElement }) {
+    if (retrying || installation.isFetching) return;
+    const control = event.currentTarget;
+    retrying = true;
+    await installation.refetch();
+    const retainedFocus = document.activeElement === control;
+    retrying = false;
+    await tick();
+    if (retainedFocus && !control.isConnected && region?.isConnected) {
+      region.querySelector<HTMLElement>('a, button')?.focus();
+    }
+  }
 </script>
 
 <!--
@@ -19,22 +34,19 @@
 The next step for a signed-in reader without workspace access. GitHub owns
 installation permissions. The panel keeps its return point and refresh action.
 -->
-<section class="installation-prompt" aria-label="Get workspace access">
+<section bind:this={region} class="installation-prompt" aria-label="Get workspace access">
   <h2>Connect your first workspace</h2>
   <p>
     Install the GitHub App on your account or organization, then return here and reload the panel.
   </p>
-  {#if installation.isPending && installation.data === undefined}
+  {#if !retrying && installation.isPending && installation.data === undefined}
     <p class="form-help" role="status">Loading installation link…</p>
-  {:else if installation.isError}
+  {:else if installation.isError || retrying}
     <FormError
       message="Could not load the installation link. Try again, or ask the person who runs this Smyklot service for the link."
     />
-    <Button
-      aria-disabled={installation.isFetching}
-      onclick={() => {
-        if (!installation.isFetching) void installation.refetch();
-      }}>Retry installation link</Button
+    <Button aria-disabled={installation.isFetching || retrying} aria-busy={retrying} onclick={retry}
+      >Retry installation link</Button
     >
   {:else if installation.data}
     <Button tone="signal" href={installation.data} target="_blank" rel="noopener noreferrer"
