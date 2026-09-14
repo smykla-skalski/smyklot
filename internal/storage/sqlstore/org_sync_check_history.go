@@ -7,24 +7,14 @@ import (
 
 	"github.com/smykla-skalski/smyklot/internal/orgsync"
 	"github.com/smykla-skalski/smyklot/internal/storage"
-	"github.com/smykla-skalski/smyklot/internal/workqueue"
 )
 
 // ListSyncCheckObservations pages immutable evidence with the workspace predicate
 // checked before any detail is returned. The ordinal is stable across later checks.
 func (s *Store) ListSyncCheckObservations(ctx context.Context, targetID, checkID string, after, limit int) (orgsync.CheckObservationPage, error) {
-	item, err := getQueueItem(ctx, s.db, checkID, "")
+	details, err := s.GetSyncCheckResult(ctx, targetID, checkID)
 	if err != nil {
-		return orgsync.CheckObservationPage{}, noRows(err)
-	}
-	if item.Kind != workqueue.KindSyncScan || item.TargetID == nil || *item.TargetID != targetID {
-		return orgsync.CheckObservationPage{}, storage.ErrNotFound
-	}
-	var details orgsync.CheckDetails
-	if len(item.Details) > 0 {
-		if err := json.Unmarshal(item.Details, &details); err != nil {
-			return orgsync.CheckObservationPage{}, fmt.Errorf("read check outcome: %w", err)
-		}
+		return orgsync.CheckObservationPage{}, err
 	}
 	if details.Outcome == nil {
 		return orgsync.CheckObservationPage{}, storage.ErrNotFound
@@ -61,4 +51,19 @@ func (s *Store) ListSyncCheckObservations(ctx context.Context, targetID, checkID
 		last = ordinal
 	}
 	return page, rows.Err()
+}
+
+// GetSyncCheckResult survives worker cleanup and never substitutes current data.
+// As with plan reads, callers must authorize the target before calling storage.
+func (s *Store) GetSyncCheckResult(ctx context.Context, targetID, checkID string) (orgsync.CheckDetails, error) {
+	var details orgsync.CheckDetails
+	var raw string
+	err := s.db.QueryRowContext(ctx, "SELECT details FROM sync_check_results WHERE check_id = ? AND target_id = ?", checkID, targetID).Scan(&raw)
+	if err != nil {
+		return details, noRows(err)
+	}
+	if err := json.Unmarshal([]byte(raw), &details); err != nil {
+		return orgsync.CheckDetails{}, fmt.Errorf("read retained check result: %w", err)
+	}
+	return details, nil
 }

@@ -83,6 +83,7 @@ var tables = []string{
 	"sync_plan_actions",
 	"sync_audit_entries",
 	"queue_items",
+	"sync_check_results",
 	"sync_check_observations",
 	"recurring_request_receipts",
 	"sync_dispatch_receipts",

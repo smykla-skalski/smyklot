@@ -51,8 +51,11 @@ func TestCopyPreservesRecoveryAndCheckEvidence(t *testing.T) {
 			// Force must also clear the new child tables before their referenced rows.
 			fixture.copyAndCheck(t, source, destination, true)
 			if crossEngine {
-				fixture.copyAndCheck(t, destination, openSQLite("returned"), false)
+				returned := openSQLite("returned")
+				fixture.copyAndCheck(t, destination, returned, false)
+				fixture.verifyCheckAfterPruning(t, returned)
 			}
+			fixture.verifyCheckAfterPruning(t, destination)
 		})
 	}
 }
@@ -181,10 +184,28 @@ func (f recoveryTransferFixture) copyAndCheck(t *testing.T, from, to recoveryTra
 	t.Helper()
 	report, err := transfer.Copy(t.Context(), from, to, transfer.Options{Force: force})
 	requireRecoveryTransfer(t, err)
-	for _, table := range []string{"delivery_operations", "delivery_recovery_receipts", "recurring_request_receipts", "sync_dispatch_receipts", "sync_check_observations"} {
+	for _, table := range []string{"delivery_operations", "delivery_recovery_receipts", "recurring_request_receipts", "sync_dispatch_receipts", "sync_check_results", "sync_check_observations"} {
 		if report.Rows[table] == 0 {
 			t.Errorf("copy omitted populated %s", table)
 		}
 	}
 	f.verify(t, to)
+}
+
+func (f recoveryTransferFixture) verifyCheckAfterPruning(t *testing.T, to storage.Store) {
+	t.Helper()
+	before, err := to.GetSyncCheckResult(t.Context(), *f.check.TargetID, f.accepted.ID)
+	requireRecoveryTransfer(t, err)
+	_, err = to.PruneWorkQueue(t.Context(), seededAt.AddDate(2, 0, 0))
+	requireRecoveryTransfer(t, err)
+	after, err := to.GetSyncCheckResult(t.Context(), *f.check.TargetID, f.accepted.ID)
+	requireRecoveryTransfer(t, err)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("queue cleanup changed the transferred comparison")
+	}
+	evidence, err := to.ListSyncCheckObservations(t.Context(), *f.check.TargetID, f.accepted.ID, 0, 10)
+	requireRecoveryTransfer(t, err)
+	if !reflect.DeepEqual(evidence, f.evidence) {
+		t.Fatal("queue cleanup changed transferred repository evidence")
+	}
 }

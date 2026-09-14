@@ -149,6 +149,45 @@ func declareSyncRequestHistorySpecs(runtime func() (context.Context, storage.Sto
 			Expect(err).To(MatchError(storage.ErrNotFound))
 		})
 
+		It("keeps accepted check evidence independently of queue pruning", func() {
+			query.Limit = 10
+			before, err := store.ListSyncRequests(ctx, query, clock)
+			Expect(err).NotTo(HaveOccurred())
+			item, found, err := store.ClaimRecurringWork(ctx, workqueue.RecurringClaim{Kind: check.Kind, TargetID: check.TargetID, Title: check.Title, Now: now, LeaseDuration: time.Minute})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(found).To(BeTrue())
+			result := orgsync.CheckResult{
+				Outcome:      orgsync.CheckOutcome{CompletedAt: now, Disposition: "checked", Summary: "Reused the earlier label comparison", Counts: map[orgsync.Observation]int{}},
+				Observations: []orgsync.CheckObservation{{RepositoryID: "historical-repository", Repository: "owner/original-name", Kind: orgsync.KindLabels, Outcome: orgsync.ObservationMatched, ObservedAt: now.Add(-time.Hour), InputDigest: "original-input", Cached: true}},
+			}
+			result.Outcome.Cached = 1
+			Expect(store.RecordSyncCheckResult(ctx, orgsync.CheckResultCreate{Check: orgsync.CheckReference{QueueID: item.ID, Attempt: item.Attempt}, TargetID: *check.TargetID, Result: result, Now: now})).To(Succeed())
+			_, err = store.FinishRecurringWork(ctx, item.ID, workqueue.RecurringCompletion{Attempt: item.Attempt, SuccessSummary: result.Outcome.Summary}, now)
+			Expect(err).NotTo(HaveOccurred())
+			evidence, err := store.ListSyncCheckObservations(ctx, query.TargetID, item.ID, 0, 10)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(evidence.Items).To(Equal(result.Observations))
+			removed, err := store.PruneWorkQueue(ctx, now.AddDate(2, 0, 0))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(removed).To(BeNumerically(">", 0))
+			_, err = store.GetQueueItem(ctx, item.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+			after, err := store.ListSyncRequests(ctx, query, clock)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(after).To(Equal(before))
+			retained, err := store.ListSyncCheckObservations(ctx, query.TargetID, item.ID, 0, 10)
+			Expect(err).NotTo(HaveOccurred(), "accepted check history must retain its evidence when worker rows are pruned")
+			Expect(retained).To(Equal(evidence))
+			summary, err := store.GetSyncCheckResult(ctx, query.TargetID, item.ID)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(summary.Outcome).To(Equal(&result.Outcome))
+			Expect(summary.ResultPlanID).To(BeEmpty())
+			_, err = store.GetSyncCheckResult(ctx, "another-workspace", item.ID)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+			_, err = store.ListSyncCheckObservations(ctx, "another-workspace", item.ID, 0, 10)
+			Expect(err).To(MatchError(storage.ErrNotFound))
+		})
+
 		It("requires a current matching session even for empty history", func() {
 			query.SessionTokenHash = "missing-session"
 			_, err := store.ListSyncRequests(ctx, query, clock)

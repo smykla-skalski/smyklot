@@ -311,6 +311,8 @@ type AuditEntry struct {
 // domain reaching for a handle.
 type Store interface {
 	RecordSyncCheckResult(context.Context, CheckResultCreate) error
+	// GetSyncCheckResult reads a retained comparison, not worker execution state.
+	GetSyncCheckResult(context.Context, string, string) (CheckDetails, error)
 	ListSyncCheckObservations(context.Context, string, string, int, int) (CheckObservationPage, error)
 	GetSyncConfig(context.Context, string, Kind) (Config, error)
 	ListSyncConfigs(context.Context, string) ([]Config, error)

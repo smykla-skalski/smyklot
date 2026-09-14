@@ -67,6 +67,9 @@ func (s *Store) writeSyncCheckResult(ctx context.Context, tx *transaction, check
 	if err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "INSERT INTO sync_check_results (check_id, target_id, details) VALUES (?, ?, ?)", item.ID, targetID, string(encoded)); err != nil {
+		return fmt.Errorf("retain sync check result: %w", err)
+	}
 	if result != nil {
 		if err := insertCheckEvidence(ctx, tx, item.ID, result.Observations); err != nil {
 			return err

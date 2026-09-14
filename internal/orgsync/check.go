@@ -2,8 +2,9 @@ package orgsync
 
 import "time"
 
-// CheckDetails is retained on one queue occurrence. Evidence rows are stored
-// separately so queue lists remain bounded independently of repository count.
+// CheckDetails is a retained comparison result identified by its original check.
+// Worker rows mirror it while retained, but do not own its lifetime. Evidence is
+// stored separately so summaries remain bounded by outcome kinds.
 type CheckDetails struct {
 	ResultPlanID string        `json:"result_plan_id,omitempty"`
 	Outcome      *CheckOutcome `json:"outcome,omitempty"`
