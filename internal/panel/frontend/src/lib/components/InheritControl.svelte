@@ -12,6 +12,7 @@
     value = null,
     options,
     disabled = false,
+    descriptionId,
     fluid = false,
     onSelect,
     onRestore,
@@ -24,6 +25,7 @@
     value?: string | null;
     options: readonly { value: string; label: string }[];
     disabled?: boolean;
+    descriptionId?: string;
     /** Shares the supplied row width between the available values. */
     fluid?: boolean;
     onSelect: (value: string) => void;
@@ -112,6 +114,7 @@ trusts.
     {value}
     {preview}
     {disabled}
+    {descriptionId}
     {fluid}
     compact
     onSelect={(selection) => onSelect(selection)}

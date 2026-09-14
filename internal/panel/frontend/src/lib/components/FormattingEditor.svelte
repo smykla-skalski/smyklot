@@ -21,6 +21,7 @@
   import type { SyncFileFormattingResolution } from '../sync-file-render.generated';
   import AppTooltip from './AppTooltip.svelte';
   import Icon from './Icon.svelte';
+  import FieldProblem from './FieldProblem.svelte';
   import InheritControl from './InheritControl.svelte';
   import Card from './Card.svelte';
   import SegmentedControl from './SegmentedControl.svelte';
@@ -79,6 +80,7 @@
     resolution,
     disabled = false,
     dirtyKeys = [],
+    serverProblems = {},
     onChange,
     onValidity = () => {},
   }: {
@@ -97,6 +99,7 @@
     resolution?: SyncFileFormattingResolution;
     disabled?: boolean;
     dirtyKeys?: readonly FormattingFieldKey[];
+    serverProblems?: Partial<Record<FormattingFieldKey, string>>;
     onChange: (next: FormattingPatch, changedKey: FormattingFieldKey) => void;
     onValidity?: (valid: boolean) => void;
   } = $props();
@@ -182,6 +185,12 @@
   });
 
   onDestroy(() => onValidity(true));
+
+  function problemId(key: FormattingFieldKey): string | undefined {
+    return serverProblems[key]
+      ? `formatting-${scope}-${idPrefix}-${key}-server-problem`
+      : undefined;
+  }
 
   function fieldsIn(group: string): readonly FormattingField[] {
     return relevantFields.filter((field) => field.path[0] === group);
@@ -315,10 +324,15 @@ three things among thirty finds them again.
             <span class="setting-why"
               >Choose a starting style; individual settings below take precedence</span
             >
+            <FieldProblem
+              id={problemId(presetField.key) ?? ''}
+              message={serverProblems[presetField.key]}
+            />
           </span>
           <span class="policy-value">
             <InheritControl
               label="Formatting preset"
+              descriptionId={problemId(presetField.key)}
               source={sourceFor(presetField)}
               inheritedValue={inherited.preset}
               inheritedLabel={optionLabel(inherited.preset)}
@@ -407,11 +421,13 @@ three things among thirty finds them again.
                     ? 'Set here'
                     : `From ${sourceFor(field)}`}</span
                 >
+                <FieldProblem id={problemId(field.key) ?? ''} message={serverProblems[field.key]} />
               </span>
               {#if field.kind === 'enum'}
                 <span class="policy-value">
                   <InheritControl
                     label={fieldLabel(field)}
+                    descriptionId={problemId(field.key)}
                     source={sourceFor(field)}
                     inheritedValue={String(formattingPolicyValue(baseline, field))}
                     inheritedLabel={optionLabel(String(formattingPolicyValue(baseline, field)))}
@@ -472,12 +488,14 @@ three things among thirty finds them again.
                     max={field.maximum}
                     step="1"
                     value={shownNumber(field)}
-                    aria-invalid={invalidNumbers[field.key] || undefined}
+                    aria-invalid={invalidNumbers[field.key] ||
+                      Boolean(serverProblems[field.key]) ||
+                      undefined}
                     aria-describedby={`formatting-${scope}-${idPrefix}-${field.key}-help${
                       invalidNumbers[field.key]
                         ? ` formatting-${scope}-${idPrefix}-${field.key}-error`
                         : ''
-                    }`}
+                    }${problemId(field.key) ? ` ${problemId(field.key)}` : ''}`}
                     {disabled}
                     oninput={(event) => typeNumber(field, event.currentTarget.value)}
                     onblur={() => finishNumber(field)}

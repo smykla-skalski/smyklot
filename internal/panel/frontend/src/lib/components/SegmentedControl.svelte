@@ -307,6 +307,7 @@ positioning will replace once it is portable.
     <label class:outlined={option.outline === true} class:previewed={preview === option.value}>
       <input
         type="radio"
+        aria-describedby={descriptionId}
         {name}
         value={option.value}
         checked={value === option.value}

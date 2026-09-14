@@ -660,7 +660,7 @@
       document.querySelector<HTMLElement>('.root-settings [aria-invalid="true"]');
     if (invalid !== null) {
       invalid.focus({ preventScroll: true });
-      revealControl(invalid);
+      revealControl(row ?? invalid);
     }
   }
 

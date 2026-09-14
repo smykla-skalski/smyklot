@@ -615,6 +615,12 @@ without the composer.
         idPrefix="root"
         disabled={saving}
         dirtyKeys={dirtyFormattingKeys}
+        serverProblems={Object.fromEntries(
+          FORMATTING_FIELDS.flatMap(({ key }) => {
+            const problem = drafts.serverProblem(ROOT_SETTINGS_SCOPE, `runtime.bot_config.${key}`);
+            return problem === null ? [] : [[key, problem]];
+          }),
+        )}
         onChange={updateFormatting}
         onValidity={setFormattingValidity}
       />

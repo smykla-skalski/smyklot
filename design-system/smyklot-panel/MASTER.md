@@ -964,7 +964,9 @@ state. Shared checkpoint component tests enforce names, side and time identity.
 
 Runtime duration validation derives from retained draft values, including raw
 invalid text, before Save and while the editor is unmounted. Recovery waits for
-the shared settings query before focusing and revealing the invalid input.
+the shared settings query before focusing the invalid input. Reveal its whole
+setting row above the Save composer, including the description and visible
+choice label; a hidden radio input does not describe the visible bounds.
 Correction preserves sibling edits, and discard clears the validation result.
 
 Numeric formatting fields offer a deliberate override action at the inherited

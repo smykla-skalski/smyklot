@@ -11,6 +11,41 @@ describe('FormattingEditor [Component]', () => {
     document.body.innerHTML = '<main class="app-shell"></main>';
   });
 
+  it('describes rejected numeric and radio values without creating client errors', async () => {
+    const onValidity = vi.fn();
+    const { rerender } = render(FormattingEditor, {
+      patch: { common: { indent_width: 4 }, preset: 'conventional' },
+      inherited: defaultFormattingPolicy(),
+      scope: 'runtime',
+      idPrefix: 'server',
+      onChange: vi.fn(),
+      onValidity,
+      serverProblems: {
+        'formatting.common.indent_width': 'Indent width was rejected',
+        'formatting.preset': 'Preset was rejected',
+      },
+    });
+    const amount = screen.getByLabelText('Indent Width');
+    const radio = within(screen.getByRole('group', { name: 'Formatting preset' })).getByRole(
+      'radio',
+      { name: 'Conventional' },
+    );
+    for (const [control, text] of [
+      [amount, 'Indent width was rejected'],
+      [radio, 'Preset was rejected'],
+    ] as const) {
+      const ids = control.getAttribute('aria-describedby')!.split(' ');
+      expect(ids.map((id) => document.getElementById(id)?.textContent).join(' ')).toContain(text);
+    }
+    expect(amount.getAttribute('aria-invalid')).toBe('true');
+    expect(onValidity).toHaveBeenLastCalledWith(true);
+    await rerender({ serverProblems: {} });
+    expect(amount.getAttribute('aria-invalid')).toBeNull();
+    expect(radio.getAttribute('aria-invalid')).toBeNull();
+    expect(amount.getAttribute('aria-describedby')).not.toContain('server-problem');
+    expect(radio.getAttribute('aria-describedby')).toBeNull();
+  });
+
   it('uses the shared content-width file type control', () => {
     render(FormattingEditor, {
       patch: {},
