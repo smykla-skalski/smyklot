@@ -29,6 +29,7 @@ import { observedRepositoryFileStatus } from './repository-files.js';
 import { mockBypassActorSuggestions } from './bypass-actors.ts';
 import { parseBypassPolicy } from '../src/lib/bypass-policy.js';
 import { preserveNumberToken } from '../src/lib/merge.js';
+import { parseRequestJSON } from './request-json.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
@@ -2375,7 +2376,7 @@ async function handle(
       return;
     }
     if (path === route('/api/v1/root/runtime/settings') && method === 'PUT') {
-      const input = await readBody<RootRuntimeSettingsInput>(req);
+      const input = await readBody<RootRuntimeSettingsInput>(req, ['bot_config']);
       respond(res, 200, saveMockRootRuntimeSettings(state, input));
       return;
     }
@@ -6826,11 +6827,11 @@ function devAvatarSVG(login: string): string {
   );
 }
 
-async function readBody<T>(req: IncomingMessage): Promise<T> {
+async function readBody<T>(req: IncomingMessage, uniqueFields: readonly string[] = []): Promise<T> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'), preserveNumberToken) as T;
+    return parseRequestJSON(Buffer.concat(chunks).toString('utf8'), uniqueFields) as T;
   } catch {
     throw new MockApiError(400, 'invalid_request', 'request body must be valid JSON');
   }

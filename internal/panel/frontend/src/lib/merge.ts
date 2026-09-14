@@ -776,7 +776,7 @@ export function parseJson(text: string): JsonValue | undefined {
 }
 
 /** Check decoded names before JSON.parse can discard the earlier property. */
-function hasDuplicateKeys(node: Node): boolean {
+export function hasDuplicateKeys(node: Node): boolean {
   if (node.type === 'object') {
     const names = new Set<string>();
     for (const property of node.children ?? []) {
