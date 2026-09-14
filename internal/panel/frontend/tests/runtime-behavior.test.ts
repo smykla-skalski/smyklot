@@ -103,6 +103,26 @@ describe('runtime behavior ownership [Unit]', () => {
     expect(resolveRuntimeBehavior(changed, intent)).toEqual(legacy);
   });
 
+  it('pins legacy zero values without requiring fields added by later versions', () => {
+    const intent = parseRuntimeBehavior({ quiet_success: true });
+    const resolved = resolveRuntimeBehavior(RUNTIME.behavior_defaults.deployment, intent);
+    expect(resolved).toMatchObject({
+      quiet_success: true,
+      quiet_pending: false,
+      allow_draft_merges: false,
+      command_prefix: '',
+      allowed_commands: [],
+      command_aliases: {},
+    });
+    expect(intent?.overrides.formatting?.preset).toBe('preserve');
+  });
+
+  it.each(['unknown', 1, false])('rejects an invalid legacy runner %j', (runner) => {
+    expect(() =>
+      parseRuntimeBehavior({ ...RUNTIME.behavior_defaults.deployment, runner }),
+    ).toThrow();
+  });
+
   it.each([
     { version: 2, overrides: {} },
     { version: 1, overrides: {}, extra: true },

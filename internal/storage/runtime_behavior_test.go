@@ -109,3 +109,19 @@ func TestRuntimeBehaviorRejectsAmbiguousOverrides(t *testing.T) {
 		})
 	}
 }
+
+func TestRuntimeBehaviorBeforeFormattingExisted(t *testing.T) {
+	var value storage.RuntimeBehavior
+	if err := json.Unmarshal([]byte(`{"quiet_success":true}`), &value); err != nil {
+		t.Fatal(err)
+	}
+	deployment := config.Default()
+	deployment.QuietPending = true
+	resolved := value.Resolve(deployment)
+	if !resolved.QuietSuccess || resolved.QuietPending || resolved.CommandPrefix != "" || len(resolved.AllowedCommands) != 0 || len(resolved.CommandAliases) != 0 {
+		t.Fatalf("legacy zero values no longer pinned: %+v", resolved)
+	}
+	if resolved.Formatting != config.DefaultFormattingPolicy() {
+		t.Fatal("pre-formatting records must preserve file presentation")
+	}
+}

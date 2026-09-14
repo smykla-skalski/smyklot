@@ -80,6 +80,11 @@ func (value *RuntimeBehavior) UnmarshalJSON(content []byte) error {
 		// Match the historical reader's concrete Config decoding, including zero
 		// values for fields absent in old records. Normalize collections to copies.
 		var legacy config.Config
+		// Records predating formatting must retain presentation instead of
+		// producing an invalid all-zero formatting policy during migration.
+		if _, exists := object["formatting"]; !exists {
+			legacy.Formatting = config.DefaultFormattingPolicy()
+		}
 		if err = json.Unmarshal(content, &legacy); err == nil {
 			if legacy.Runner != "" {
 				if _, runnerErr := config.ParseRunner(string(legacy.Runner)); runnerErr != nil {

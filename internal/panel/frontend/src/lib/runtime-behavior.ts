@@ -68,8 +68,29 @@ export function resolveRuntimeBehavior(
 
 function legacyRuntimeBehavior(value: Record<string, unknown>): RuntimeBehaviorIntent {
   const normalized = { ...value };
-  // Preserve browser drafts written before these fields existed.
-  if (!Object.hasOwn(normalized, 'allow_draft_merges')) normalized.allow_draft_merges = false;
+  // Historical concrete Go configs pin zero values for omitted behavior fields.
+  // This is migration behavior only; versioned overrides remain strict and sparse.
+  for (const key of CONFIG_KEYS) {
+    if (normalized[key] === undefined || normalized[key] === null) {
+      normalized[key] =
+        key === 'allowed_commands'
+          ? []
+          : key === 'command_aliases'
+            ? {}
+            : key === 'command_prefix'
+              ? ''
+              : false;
+    }
+  }
+  if (
+    normalized.runner !== undefined &&
+    normalized.runner !== null &&
+    normalized.runner !== '' &&
+    normalized.runner !== 'service' &&
+    normalized.runner !== 'action'
+  ) {
+    throw new TypeError('bot_config.runner is invalid');
+  }
   if (!Object.hasOwn(normalized, 'formatting')) normalized.formatting = defaultFormattingPolicy();
   const policy = normalized.formatting;
   if (
