@@ -283,16 +283,14 @@ not.
   {/if}
 
   {#snippet footer()}
-    {#if onRetry}
-      <Button onclick={onRetry} disabled={loading}>Try again</Button>
-    {:else if onRefresh && detail !== null}
+    {#if onRetry || (onRefresh && detail !== null)}
       <Button
         aria-disabled={loading}
         onclick={() => {
-          if (!loading) onRefresh();
+          if (!loading) (onRetry ?? onRefresh)?.();
         }}
       >
-        {loading ? 'Refreshing…' : 'Refresh'}
+        {loading ? 'Refreshing…' : onRetry ? 'Try again' : 'Refresh'}
       </Button>
     {/if}
     <Button disabled={recoveryPending} onclick={onClose}>Close</Button>

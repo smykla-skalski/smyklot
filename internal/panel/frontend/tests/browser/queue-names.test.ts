@@ -129,7 +129,16 @@ it.each(['light', 'dark'] as const)(
     });
     page.setDefaultTimeout(5000);
     let missing = true;
+    let failRefresh = false;
     await page.route('**/api/v1/**/queue/*', async (route) => {
+      if (failRefresh) {
+        await route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'temporary failure' }),
+        });
+        return;
+      }
       const response = await route.fetch();
       const body = await response.json();
       if (missing && body.item) body.item.repository_name = '';
@@ -156,7 +165,17 @@ it.each(['light', 'dark'] as const)(
         await dialog.getByRole('button', { name: 'Refresh', exact: true }).click();
         await dialog.getByRole('button', { name: 'Refresh', exact: true }).waitFor();
         expect(await dialog.innerText()).toContain('Deleted repositories keep their IDs');
+        failRefresh = true;
+        await dialog.getByRole('button', { name: 'Refresh', exact: true }).focus();
+        await page.keyboard.press('Enter');
+        await dialog.getByRole('alert').waitFor();
+        const retry = dialog.getByRole('button', { name: 'Try again', exact: true });
+        expect(await retry.evaluate((node) => node === document.activeElement)).toBe(true);
+        await capture(`${prefix}-inspector-refresh-error`);
+        failRefresh = false;
         missing = false;
+        await retry.press('Enter');
+        await dialog.getByText('smykla-skalski/platform-infra', { exact: true }).waitFor();
         await dialog.getByRole('button', { name: 'Refresh', exact: true }).focus();
         await page.keyboard.press('Enter');
         await dialog.getByText('smykla-skalski/platform-infra', { exact: true }).waitFor();
