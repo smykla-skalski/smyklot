@@ -795,13 +795,20 @@ the button.
       onRunNow({ ...runIntent, reason });
     }}
   >
-    <label class="run-reason" for="sync-run-reason"
-      >Reason<textarea
+    <div class="form-field">
+      <label class="form-label" for="sync-run-reason">Reason</label>
+      <textarea
+        class="text-input"
         id="sync-run-reason"
         rows="3"
+        required
+        aria-describedby="sync-run-reason-help"
         bind:value={runReason}
-        placeholder="Why should this run outside its normal schedule?"></textarea></label
-    >
+        placeholder="Why should this run outside its normal schedule?"></textarea>
+      <p id="sync-run-reason-help" class="form-help">
+        Required. Explain why these changes should run outside their usual timing.
+      </p>
+    </div>
   </ConfirmDialog>
 </div>
 
@@ -1423,29 +1430,6 @@ the button.
   .confirm-danger {
     color: var(--danger);
     font-weight: 600;
-  }
-
-  .run-reason {
-    color: var(--text-secondary);
-    display: grid;
-    font-size: var(--font-size-meta);
-    gap: var(--space-2);
-  }
-
-  .run-reason textarea {
-    background: var(--control-bg);
-    border: 1px solid var(--control-border);
-    border-radius: var(--r-ctl);
-    color: var(--text-primary);
-    font: inherit;
-    min-block-size: 5rem;
-    padding: var(--space-3);
-    resize: vertical;
-  }
-
-  .run-reason textarea:focus-visible {
-    outline: var(--focus-ring-width) solid var(--focus);
-    outline-offset: var(--focus-ring-offset);
   }
 
   @media (max-width: 36rem) {

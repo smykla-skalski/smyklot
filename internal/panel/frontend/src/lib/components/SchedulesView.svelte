@@ -593,11 +593,20 @@ in their own settings.
   onConfirm={() => void submitDecision()}
 >
   <div class="form-stack">
-    <label class="form-field">
-      <span class="form-label">Decision reason</span>
-      <textarea class="text-input" rows="3" disabled={dialogBusy} bind:value={decisionReason}
-      ></textarea>
-    </label>
+    <div class="form-field">
+      <label class="form-label" for="schedule-decision-reason">Decision reason</label>
+      <textarea
+        id="schedule-decision-reason"
+        class="text-input"
+        rows="3"
+        required
+        aria-describedby="schedule-decision-reason-help"
+        disabled={dialogBusy}
+        bind:value={decisionReason}></textarea>
+      <p id="schedule-decision-reason-help" class="form-help">
+        Required. Explain the decision so the requester knows what happens next.
+      </p>
+    </div>
     {#if deciding?.custom_profile !== undefined && decision === 'approve'}
       <div class="form-row">
         <span class="setting-say">

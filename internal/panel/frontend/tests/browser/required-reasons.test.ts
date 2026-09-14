@@ -87,6 +87,57 @@ it.each(['light', 'dark'] as const)(
         true,
       );
       await capture('queue-required');
+      await page.keyboard.press('Escape');
+      let decisions = 0;
+      await page.route('**/api/v1/root/schedule-requests/*/decision', async (route) => {
+        decisions++;
+        await route.fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            error: {
+              code: 'invalid_request',
+              message: 'Explain what the requester should do next.',
+            },
+          }),
+        });
+      });
+      await page.goto(`${panel.origin}/root/schedules`);
+      for (const action of ['Approve', 'Decline']) {
+        await page.getByRole('button', { name: action, exact: true }).first().click();
+        const decision = page.getByRole('dialog', {
+          name: `${action} schedule request`,
+          exact: true,
+        });
+        const field = decision.getByLabel('Decision reason', { exact: true });
+        expect(await field.getAttribute('required')).not.toBeNull();
+        expect(await field.getAttribute('aria-describedby')).toBe('schedule-decision-reason-help');
+        expect(await decision.getByRole('button', { name: action, exact: true }).isDisabled()).toBe(
+          true,
+        );
+        await capture(`decision-${action.toLowerCase()}-required`);
+        await field.fill('Coordinate with the release team before changing the hours.');
+        await decision.getByRole('button', { name: action, exact: true }).click();
+        await decision.getByRole('alert').waitFor();
+        expect(await field.inputValue()).toBe(
+          'Coordinate with the release team before changing the hours.',
+        );
+        await capture(`decision-${action.toLowerCase()}-rejected`);
+        await page.keyboard.press('Escape');
+      }
+      expect(decisions).toBe(2);
+      await visit(page, addressOf(panel, 'workspace/sync'));
+      await page.getByRole('button', { name: 'View changes', exact: true }).click();
+      const inspector = page.getByRole('dialog', { name: 'Sync details', exact: true });
+      await inspector.getByRole('button', { name: 'Run now', exact: true }).click();
+      const run = page.getByRole('dialog', { name: 'Sync now?', exact: true });
+      const runReason = run.getByLabel('Reason', { exact: true });
+      expect(await runReason.getAttribute('required')).not.toBeNull();
+      expect(await runReason.getAttribute('aria-describedby')).toBe('sync-run-reason-help');
+      expect(await run.getByRole('button', { name: 'Run now', exact: true }).isDisabled()).toBe(
+        true,
+      );
+      await capture('sync-required');
     } finally {
       await page.close();
     }
